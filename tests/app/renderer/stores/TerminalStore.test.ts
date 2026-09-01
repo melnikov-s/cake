@@ -1,14 +1,37 @@
-import { createStore, mount } from "r-state-tree";
+import { createStore } from "r-state-tree";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { RendererClient } from "../../../../src/renderer/client/RendererClient";
 import { TerminalStore, type TerminalTarget } from "../../../../src/renderer/stores/TerminalStore";
+import { mountWithRendererClient } from "../mount-with-renderer-client";
 
-const stores: TerminalStore[] = [];
+const stores: Disposable[] = [];
 
 const projectTarget = (sessionId: string): TerminalTarget => ({
   kind: "project",
   sessionId,
   workspacePath: `/workspace/${sessionId}`,
 });
+
+function mountTerminal(
+  activeTarget: () => TerminalTarget | undefined,
+  commands: Partial<RendererClient["terminals"]>,
+) {
+  const terminals: RendererClient["terminals"] = {
+    open: async () => {
+      throw new Error("Unexpected terminal open");
+    },
+    write: async () => undefined,
+    resize: async () => undefined,
+    status: async () => ({ runningProgram: false }),
+    close: async () => undefined,
+    ...commands,
+  };
+  const mounted = mountWithRendererClient(createStore(TerminalStore, { activeTarget }), {
+    terminals,
+  } as unknown as RendererClient);
+  stores.push(mounted.root);
+  return mounted.subject;
+}
 
 afterEach(() => {
   for (const store of stores.splice(0)) store[Symbol.dispose]();
@@ -17,17 +40,11 @@ afterEach(() => {
 describe("TerminalStore", () => {
   it("lazily retains an independent terminal for each Cake session", async () => {
     let target: TerminalTarget = projectTarget("one");
-    const openTerminal = vi.fn(async () => ({ terminalId: crypto.randomUUID(), shell: "zsh" }));
-    const closeTerminal = vi.fn(async () => undefined);
-    const store = mount(
-      createStore(TerminalStore, {
-        client: { openTerminal, closeTerminal },
-        activeTarget: () => target,
-      }),
-    );
-    stores.push(store);
+    const open = vi.fn(async () => ({ terminalId: crypto.randomUUID(), shell: "zsh" }));
+    const close = vi.fn(async () => undefined);
+    const store = mountTerminal(() => target, { open, close });
 
-    expect(openTerminal).not.toHaveBeenCalled();
+    expect(open).not.toHaveBeenCalled();
     await store.toggle();
     const firstTerminalId = store.activeEntry?.terminalId;
     await store.toggle();
@@ -39,35 +56,29 @@ describe("TerminalStore", () => {
     await store.toggle();
 
     expect(store.entries).toHaveLength(2);
-    expect(openTerminal).toHaveBeenCalledTimes(2);
-    expect(openTerminal).toHaveBeenNthCalledWith(1, {
+    expect(open).toHaveBeenCalledTimes(2);
+    expect(open).toHaveBeenNthCalledWith(1, {
       target: projectTarget("one"),
       cols: 80,
       rows: 24,
     });
-    expect(openTerminal).toHaveBeenNthCalledWith(2, {
+    expect(open).toHaveBeenNthCalledWith(2, {
       target: projectTarget("two"),
       cols: 80,
       rows: 24,
     });
-    expect(closeTerminal).not.toHaveBeenCalled();
+    expect(close).not.toHaveBeenCalled();
   });
 
   it("buffers shell output that arrives before the open response", async () => {
     let finishOpen!: (value: { terminalId: string; shell: string }) => void;
     const terminalId = crypto.randomUUID();
-    const store = mount(
-      createStore(TerminalStore, {
-        client: {
-          openTerminal: () =>
-            new Promise((resolve) => {
-              finishOpen = resolve;
-            }),
-        },
-        activeTarget: () => projectTarget("one"),
-      }),
-    );
-    stores.push(store);
+    const store = mountTerminal(() => projectTarget("one"), {
+      open: () =>
+        new Promise((resolve) => {
+          finishOpen = resolve;
+        }),
+    });
 
     const opening = store.toggle();
     store.receive({ type: "terminal-data", terminalId, data: "prompt> " });
@@ -80,18 +91,12 @@ describe("TerminalStore", () => {
   });
 
   it("requires confirmation and closes terminals with running programs before resolution", async () => {
-    const closeTerminal = vi.fn(async () => undefined);
-    const store = mount(
-      createStore(TerminalStore, {
-        client: {
-          openTerminal: async () => ({ terminalId: crypto.randomUUID(), shell: "zsh" }),
-          getTerminalStatus: async () => ({ runningProgram: true }),
-          closeTerminal,
-        },
-        activeTarget: () => projectTarget("one"),
-      }),
-    );
-    stores.push(store);
+    const close = vi.fn(async () => undefined);
+    const store = mountTerminal(() => projectTarget("one"), {
+      open: async () => ({ terminalId: crypto.randomUUID(), shell: "zsh" }),
+      status: async () => ({ runningProgram: true }),
+      close,
+    });
     await store.toggle();
 
     const prepared = store.prepareResolution([{ kind: "project", sessionId: "one" }]);
@@ -101,28 +106,22 @@ describe("TerminalStore", () => {
     await store.confirmResolution();
 
     await expect(prepared).resolves.toBe(true);
-    expect(closeTerminal).toHaveBeenCalledOnce();
+    expect(close).toHaveBeenCalledOnce();
     expect(store.entries).toHaveLength(0);
   });
 
   it("resolves without confirmation when the terminal is waiting at its shell prompt", async () => {
-    const getTerminalStatus = vi.fn(async () => ({ runningProgram: false }));
-    const store = mount(
-      createStore(TerminalStore, {
-        client: {
-          openTerminal: async () => ({ terminalId: crypto.randomUUID(), shell: "zsh" }),
-          getTerminalStatus,
-        },
-        activeTarget: () => projectTarget("one"),
-      }),
-    );
-    stores.push(store);
+    const status = vi.fn(async () => ({ runningProgram: false }));
+    const store = mountTerminal(() => projectTarget("one"), {
+      open: async () => ({ terminalId: crypto.randomUUID(), shell: "zsh" }),
+      status,
+    });
     await store.toggle();
 
     await expect(store.prepareResolution([{ kind: "project", sessionId: "one" }])).resolves.toBe(
       true,
     );
-    expect(getTerminalStatus).toHaveBeenCalledWith(store.activeEntry?.terminalId);
+    expect(status).toHaveBeenCalledWith(store.activeEntry?.terminalId);
     expect(store.resolutionRequest).toBeUndefined();
   });
 });

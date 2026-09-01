@@ -1,10 +1,7 @@
 # Cake Effect architecture
 
-This document is the normative technical architecture of Cake. It describes
-the intended system as a completed design, not a migration roadmap. See
-[`cake-vocabulary.md`](./cake-vocabulary.md) for canonical terminology and
-[`../development/effect-migration.md`](../development/effect-migration.md) for
-the temporary path from the legacy implementation.
+This document is the normative technical architecture of Cake. See
+[`cake-vocabulary.md`](./cake-vocabulary.md) for canonical terminology.
 
 ## Architectural model
 
@@ -567,9 +564,10 @@ React mounts the root Store outside render, finds it through r-state-tree's
 is lookup, not Store lifetime. React keeps only DOM-local behavior and isolated
 component state.
 
-`RootStore` remains the window composition and event-routing boundary. It does
-not own every workflow. Named product surfaces retain focused Stores. Every
-chat surface uses the authoritative shared `Chat` component and `ChatStore`.
+`RootStore` remains the window composition and application-intent boundary. It
+does not own event subscriptions or every workflow. Named product surfaces
+retain focused Stores. Every chat surface uses the authoritative shared `Chat`
+component and `ChatStore`.
 
 ## Source organization
 

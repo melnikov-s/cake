@@ -30,17 +30,17 @@ import {
 } from "../services/project-sessions/ProjectSessionEnvironment";
 
 export {
-  ProjectSessionCreateInput,
   ProjectSessionPromptInput,
+  ProjectSessionStartInput,
   ProjectSessionTarget,
   ProjectSessionUpdate,
 } from "./project-session-data";
 import {
   ProjectSessionError,
-  type ProjectSessionCreateInput,
   type ProjectSessionPreview,
   type ProjectSessionPromptInput,
   type ProjectSessionSnapshot,
+  type ProjectSessionStartInput,
   type ProjectSessionSummary,
   type ProjectSessionTarget,
   type ProjectSessionUpdate,
@@ -202,11 +202,11 @@ const acquireTarget = Effect.fn("ProjectSessions.acquireTarget")(function* (
   return yield* acquireConversation(sessions, options).pipe(asError("acquire"));
 });
 
-export const create = Effect.fn("ProjectSessions.create")(function* (
-  input: ProjectSessionCreateInput,
+export const start = Effect.fn("ProjectSessions.start")(function* (
+  input: ProjectSessionStartInput,
 ) {
   const environment = yield* ProjectSessionEnvironment;
-  const locations = yield* environment.locations().pipe(asError("create"));
+  const locations = yield* environment.locations().pipe(asError("start"));
   const location = locations.find(
     (item) =>
       (input.projectPath === undefined || item.projectPath === input.projectPath) &&
@@ -214,18 +214,20 @@ export const create = Effect.fn("ProjectSessions.create")(function* (
   );
   if (!location)
     return yield* new ProjectSessionError({
-      operation: "create",
+      operation: "start",
       message: "The Working Directory is not associated with that Project",
     });
   const handle = yield* acquireTarget(location, input.sessionId, true);
   if (input.configuration)
+    yield* handle.applyConfiguration(input.configuration).pipe(asError("start"));
+  if (input.name?.trim()) yield* handle.rename(input.name.trim()).pipe(asError("start"));
+  const turnId = TurnId.make(
     yield* handle
-      .applyConfiguration(input.configuration satisfies ChatConfiguration)
-      .pipe(asError("create"));
-  if (input.name?.trim()) yield* handle.rename(input.name.trim()).pipe(asError("create"));
-  const snapshot = projectSnapshot(yield* handle.snapshot().pipe(asError("create")));
+      .prompt(input.text, runtimeAttachments(input.attachments), input.renderUserMessageAsMarkdown)
+      .pipe(asError("start")),
+  );
   yield* refreshProjection();
-  return snapshot;
+  return turnId;
 });
 
 export const inspect = Effect.fn("ProjectSessions.inspect")(function* (
@@ -368,11 +370,19 @@ const runtimeAttachments = (
     }
   });
 
+const promptTarget = (input: ProjectSessionPromptInput): ProjectSessionTarget => {
+  const target: ProjectSessionTarget = { sessionId: input.sessionId };
+  if (input.workingDirectory !== undefined)
+    Object.assign(target, { workingDirectory: input.workingDirectory });
+  if (input.newSession !== undefined) Object.assign(target, { newSession: input.newSession });
+  return target;
+};
+
 export const prompt = Effect.fn("ProjectSessions.prompt")(function* (
   input: ProjectSessionPromptInput,
 ) {
   const turnId = TurnId.make(
-    yield* withHandle({ sessionId: input.sessionId }, (handle) =>
+    yield* withHandle(promptTarget(input), (handle) =>
       handle.prompt(
         input.text,
         runtimeAttachments(input.attachments),
@@ -388,7 +398,7 @@ export const steer = Effect.fn("ProjectSessions.steer")(function* (
   input: ProjectSessionPromptInput,
 ) {
   const turnId = TurnId.make(
-    yield* withHandle({ sessionId: input.sessionId }, (handle) =>
+    yield* withHandle(promptTarget(input), (handle) =>
       handle.steer(input.text, runtimeAttachments(input.attachments)),
     ).pipe(asError("steer")),
   );
@@ -400,7 +410,7 @@ export const followUp = Effect.fn("ProjectSessions.followUp")(function* (
   input: ProjectSessionPromptInput,
 ) {
   const turnId = TurnId.make(
-    yield* withHandle({ sessionId: input.sessionId }, (handle) =>
+    yield* withHandle(promptTarget(input), (handle) =>
       handle.followUp(input.text, runtimeAttachments(input.attachments)),
     ).pipe(asError("followUp")),
   );

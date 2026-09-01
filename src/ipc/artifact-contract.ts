@@ -1,9 +1,9 @@
-import { z } from "zod";
+import { Predicate, Schema } from "effect";
 import { jsonValueSchema, type JsonValue } from "./json-contract";
 
 const ARTIFACT_PROTOCOL = "cake.artifact/v1" as const;
 export const MAX_ARTIFACT_INPUT_BYTES = 1_048_576;
-const artifactKindSchema = z.enum([
+const artifactKindSchema = Schema.Literals([
   "markdown",
   "table",
   "diagram",
@@ -14,147 +14,167 @@ const artifactKindSchema = z.enum([
   "widget",
   "request",
 ]);
-const idSchema = z
-  .string()
-  .min(1)
-  .max(256)
-  .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/);
-const textSchema = z.string().max(MAX_ARTIFACT_INPUT_BYTES);
-const scalarSchema = z.union([z.string().max(262_144), z.number().finite(), z.boolean(), z.null()]);
-export const jsonSchemaSchema: z.ZodType<JsonSchema> = z.lazy(() =>
-  z
-    .object({
-      type: z
-        .enum(["object", "array", "string", "number", "integer", "boolean", "null"])
-        .optional(),
-      title: z.string().max(512).optional(),
-      description: z.string().max(4_096).optional(),
-      enum: z.array(scalarSchema).max(1_000).optional(),
-      required: z.array(z.string().max(256)).max(1_000).optional(),
-      properties: z.record(z.string().max(256), jsonSchemaSchema).optional(),
-      items: jsonSchemaSchema.optional(),
-      minimum: z.number().finite().optional(),
-      maximum: z.number().finite().optional(),
-      minLength: z.number().int().nonnegative().optional(),
-      maxLength: z.number().int().nonnegative().max(MAX_ARTIFACT_INPUT_BYTES).optional(),
-    })
-    .strict(),
+const idSchema = Schema.String.check(
+  Schema.isMinLength(1),
+  Schema.isMaxLength(256),
+  Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/),
 );
+const textSchema = Schema.String.check(Schema.isMaxLength(MAX_ARTIFACT_INPUT_BYTES));
+const scalarSchema = Schema.Union([
+  Schema.String.check(Schema.isMaxLength(262_144)),
+  Schema.Number.check(Schema.isFinite()),
+  Schema.Boolean,
+  Schema.Null,
+]);
 
 export interface JsonSchema {
-  type?: "object" | "array" | "string" | "number" | "integer" | "boolean" | "null";
-  title?: string;
-  description?: string;
-  enum?: Array<string | number | boolean | null>;
-  required?: string[];
-  properties?: Record<string, JsonSchema>;
-  items?: JsonSchema;
-  minimum?: number;
-  maximum?: number;
-  minLength?: number;
-  maxLength?: number;
+  readonly type?: "object" | "array" | "string" | "number" | "integer" | "boolean" | "null";
+  readonly title?: string;
+  readonly description?: string;
+  readonly enum?: ReadonlyArray<string | number | boolean | null>;
+  readonly required?: ReadonlyArray<string>;
+  readonly properties?: Readonly<Record<string, JsonSchema>>;
+  readonly items?: JsonSchema;
+  readonly minimum?: number;
+  readonly maximum?: number;
+  readonly minLength?: number;
+  readonly maxLength?: number;
 }
 
+export const jsonSchemaSchema: Schema.Codec<JsonSchema> = Schema.suspend(() =>
+  Schema.Struct({
+    type: Schema.optional(
+      Schema.Literals(["object", "array", "string", "number", "integer", "boolean", "null"]),
+    ),
+    title: Schema.optional(Schema.String.check(Schema.isMaxLength(512))),
+    description: Schema.optional(Schema.String.check(Schema.isMaxLength(4_096))),
+    enum: Schema.optional(Schema.Array(scalarSchema).check(Schema.isMaxLength(1_000))),
+    required: Schema.optional(
+      Schema.Array(Schema.String.check(Schema.isMaxLength(256))).check(Schema.isMaxLength(1_000)),
+    ),
+    properties: Schema.optional(
+      Schema.Record(Schema.String.check(Schema.isMaxLength(256)), jsonSchemaSchema),
+    ),
+    items: Schema.optional(jsonSchemaSchema),
+    minimum: Schema.optional(Schema.Number.check(Schema.isFinite())),
+    maximum: Schema.optional(Schema.Number.check(Schema.isFinite())),
+    minLength: Schema.optional(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
+    maxLength: Schema.optional(
+      Schema.Int.check(
+        Schema.isGreaterThanOrEqualTo(0),
+        Schema.isLessThanOrEqualTo(MAX_ARTIFACT_INPUT_BYTES),
+      ),
+    ),
+  }),
+);
+
 const artifactBase = {
-  protocol: z.literal(ARTIFACT_PROTOCOL),
+  protocol: Schema.Literal(ARTIFACT_PROTOCOL),
   id: idSchema,
   sessionId: idSchema,
-  revision: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
-  title: z.string().max(512).optional(),
-  fallback: z.object({ markdown: textSchema }),
-  interaction: z
-    .object({
-      mode: z.enum(["present", "request"]),
-      responseSchema: jsonSchemaSchema.optional(),
-    })
-    .optional(),
+  revision: Schema.Int.check(
+    Schema.isGreaterThan(0),
+    Schema.isLessThanOrEqualTo(Number.MAX_SAFE_INTEGER),
+  ),
+  title: Schema.optional(Schema.String.check(Schema.isMaxLength(512))),
+  fallback: Schema.Struct({ markdown: textSchema }),
+  interaction: Schema.optional(
+    Schema.Struct({
+      mode: Schema.Literals(["present", "request"]),
+      responseSchema: Schema.optional(jsonSchemaSchema),
+    }),
+  ),
 };
-
-const markdownArtifactSchema = z.object({
+const markdownArtifactSchema = Schema.Struct({
   ...artifactBase,
-  kind: z.literal("markdown"),
-  payload: z.object({ markdown: textSchema }),
+  kind: Schema.Literal("markdown"),
+  payload: Schema.Struct({ markdown: textSchema }),
 });
-const tableArtifactSchema = z.object({
+const tableArtifactSchema = Schema.Struct({
   ...artifactBase,
-  kind: z.literal("table"),
-  payload: z.object({
-    columns: z
-      .array(
-        z.object({
-          id: idSchema,
-          label: z.string().min(1).max(512),
-          type: z.enum(["text", "number", "boolean", "date"]).default("text"),
-        }),
-      )
-      .min(1)
-      .max(100),
-    rows: z.array(z.object({ id: idSchema }).catchall(scalarSchema)).max(20_000),
-    selectable: z.boolean().default(false),
+  kind: Schema.Literal("table"),
+  payload: Schema.Struct({
+    columns: Schema.Array(
+      Schema.Struct({
+        id: idSchema,
+        label: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(512)),
+        type: Schema.optional(Schema.Literals(["text", "number", "boolean", "date"])),
+      }),
+    ).check(Schema.isMinLength(1), Schema.isMaxLength(100)),
+    rows: Schema.Array(
+      Schema.StructWithRest(Schema.Struct({ id: idSchema }), [
+        Schema.Record(Schema.String, scalarSchema),
+      ]),
+    ).check(Schema.isMaxLength(20_000)),
+    selectable: Schema.optional(Schema.Boolean),
   }),
 });
-const diagramArtifactSchema = z.object({
+const diagramArtifactSchema = Schema.Struct({
   ...artifactBase,
-  kind: z.literal("diagram"),
-  payload: z.object({ source: textSchema }),
+  kind: Schema.Literal("diagram"),
+  payload: Schema.Struct({ source: textSchema }),
 });
-const formArtifactSchema = z.object({
+const formArtifactSchema = Schema.Struct({
   ...artifactBase,
-  kind: z.literal("form"),
-  payload: z.object({
-    fields: z
-      .array(
-        z.object({
-          id: idSchema,
-          label: z.string().min(1).max(512),
-          type: z.enum(["text", "textarea", "number", "checkbox", "select"]),
-          placeholder: z.string().max(512).optional(),
-          options: z
-            .array(z.object({ value: z.string().max(256), label: z.string().max(512) }))
-            .max(200)
-            .optional(),
-        }),
-      )
-      .min(1)
-      .max(200),
+  kind: Schema.Literal("form"),
+  payload: Schema.Struct({
+    fields: Schema.Array(
+      Schema.Struct({
+        id: idSchema,
+        label: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(512)),
+        type: Schema.Literals(["text", "textarea", "number", "checkbox", "select"]),
+        placeholder: Schema.optional(Schema.String.check(Schema.isMaxLength(512))),
+        options: Schema.optional(
+          Schema.Array(
+            Schema.Struct({
+              value: Schema.String.check(Schema.isMaxLength(256)),
+              label: Schema.String.check(Schema.isMaxLength(512)),
+            }),
+          ).check(Schema.isMaxLength(200)),
+        ),
+      }),
+    ).check(Schema.isMinLength(1), Schema.isMaxLength(200)),
   }),
 });
-const mediaArtifactSchema = z.object({
+const mediaArtifactSchema = Schema.Struct({
   ...artifactBase,
-  kind: z.literal("media"),
-  payload: z.object({
-    mediaType: z.enum(["image", "audio", "video", "document"]),
+  kind: Schema.Literal("media"),
+  payload: Schema.Struct({
+    mediaType: Schema.Literals(["image", "audio", "video", "document"]),
     src: textSchema,
-    alt: z.string().max(2_048).optional(),
+    alt: Schema.optional(Schema.String.check(Schema.isMaxLength(2_048))),
   }),
 });
-const diffArtifactSchema = z.object({
+const diffArtifactSchema = Schema.Struct({
   ...artifactBase,
-  kind: z.literal("diff"),
-  payload: z.object({ diff: textSchema, language: z.string().max(128).optional() }),
+  kind: Schema.Literal("diff"),
+  payload: Schema.Struct({
+    diff: textSchema,
+    language: Schema.optional(Schema.String.check(Schema.isMaxLength(128))),
+  }),
 });
-const htmlArtifactSchema = z.object({
+const htmlArtifactSchema = Schema.Struct({
   ...artifactBase,
-  kind: z.literal("html"),
-  payload: z.object({ html: textSchema }),
+  kind: Schema.Literal("html"),
+  payload: Schema.Struct({ html: textSchema }),
 });
-const widgetArtifactSchema = z.object({
+const widgetArtifactSchema = Schema.Struct({
   ...artifactBase,
-  kind: z.literal("widget"),
-  payload: z.object({
-    language: z.enum(["html", "react"]),
+  kind: Schema.Literal("widget"),
+  payload: Schema.Struct({
+    language: Schema.Literals(["html", "react"]),
     source: textSchema,
-    brief: z.string().min(1).max(262_144),
+    brief: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(262_144)),
     generationSessionId: idSchema,
   }),
 });
-const requestArtifactSchema = z.object({
+const requestArtifactSchema = Schema.Struct({
   ...artifactBase,
-  kind: z.literal("request"),
-  payload: z.object({ request: z.unknown() }),
+  kind: Schema.Literal("request"),
+  payload: Schema.Struct({ request: Schema.Unknown }),
 });
 
-export const cakeArtifactV1Schema = z.discriminatedUnion("kind", [
+const cakeArtifactV1Schema = Schema.Union([
   markdownArtifactSchema,
   tableArtifactSchema,
   diagramArtifactSchema,
@@ -166,42 +186,40 @@ export const cakeArtifactV1Schema = z.discriminatedUnion("kind", [
   requestArtifactSchema,
 ]);
 
-export const artifactRecordSchema = z.object({
+export const artifactRecordSchema = Schema.Struct({
   artifact: cakeArtifactV1Schema,
-  workspacePath: z.string().min(1).max(4_096),
-  digest: z.string().regex(/^[a-f0-9]{64}$/),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
+  workspacePath: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4_096)),
+  digest: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/)),
+  createdAt: Schema.String,
+  updatedAt: Schema.String,
 });
 
-export const artifactPointerSchema = z.object({
-  protocol: z.literal(ARTIFACT_PROTOCOL),
+export const artifactPointerSchema = Schema.Struct({
+  protocol: Schema.Literal(ARTIFACT_PROTOCOL),
   artifactId: idSchema,
   sessionId: idSchema,
-  revision: z.number().int().positive(),
+  revision: Schema.Int.check(Schema.isGreaterThan(0)),
   kind: artifactKindSchema,
-  digest: z.string().regex(/^[a-f0-9]{64}$/),
-  fallback: z.object({ markdown: textSchema }),
+  digest: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/)),
+  fallback: Schema.Struct({ markdown: textSchema }),
 });
 
-export type CakeArtifactV1 = z.infer<typeof cakeArtifactV1Schema>;
-export type ArtifactRecord = z.infer<typeof artifactRecordSchema>;
-export type ArtifactPointer = z.infer<typeof artifactPointerSchema>;
+export type CakeArtifactV1 = typeof cakeArtifactV1Schema.Type;
+export type ArtifactRecord = typeof artifactRecordSchema.Type;
+export type ArtifactPointer = typeof artifactPointerSchema.Type;
 
 export function parseArtifactInput(input: unknown): CakeArtifactV1 {
   const bytes = new TextEncoder().encode(JSON.stringify(input)).byteLength;
   if (bytes > MAX_ARTIFACT_INPUT_BYTES)
     throw new Error(`Artifact input exceeds the ${MAX_ARTIFACT_INPUT_BYTES}-byte limit`);
-  const artifact = cakeArtifactV1Schema.parse(input);
-  if (artifact.interaction?.mode === "request" && artifact.kind !== "request") {
+  const artifact = Schema.decodeUnknownSync(cakeArtifactV1Schema)(input);
+  if (artifact.interaction?.mode === "request" && artifact.kind !== "request")
     throw new Error("Only request artifacts can block for a response in cake.artifact/v1");
-  }
   if (
     artifact.kind === "media" &&
     !isSafeMediaSource(artifact.payload.src, artifact.payload.mediaType)
-  ) {
+  )
     throw new Error("Media source must be an HTTPS URL or a matching data URL");
-  }
   return artifact;
 }
 
@@ -211,7 +229,8 @@ export function validateArtifactResponse(
 ): JsonValue | undefined {
   if (new TextEncoder().encode(JSON.stringify(value)).byteLength > MAX_ARTIFACT_INPUT_BYTES)
     throw new Error("Artifact response exceeds the size limit");
-  const parsedValue = value === undefined ? undefined : jsonValueSchema.parse(value);
+  const parsedValue =
+    value === undefined ? undefined : Schema.decodeUnknownSync(jsonValueSchema)(value);
   if (schema) validateJsonValue(schema, parsedValue, "$response");
   return parsedValue;
 }
@@ -249,12 +268,17 @@ function validateJsonValue(schema: JsonSchema, value: JsonValue | undefined, pat
       value.forEach((item, index) => validateJsonValue(schema.items!, item, `${path}[${index}]`));
   }
   if (schema.type === "object") {
-    if (typeof value !== "object" || value === null || Array.isArray(value))
+    if (!Predicate.isObject(value) || Array.isArray(value))
       throw new Error(`${path} must be an object`);
     for (const key of schema.required ?? [])
       if (!(key in value)) throw new Error(`${path}.${key} is required`);
     for (const [key, child] of Object.entries(schema.properties ?? {}))
-      if (key in value) validateJsonValue(child, value[key], `${path}.${key}`);
+      if (key in value)
+        validateJsonValue(
+          child,
+          Schema.decodeUnknownSync(jsonValueSchema)(value[key]),
+          `${path}.${key}`,
+        );
   }
 }
 

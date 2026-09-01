@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
+import { emitRendererEvent } from "./main-harness";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -242,17 +243,11 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
     await expect(page.getByText("Phase 4 — Model references")).toBeVisible();
     await expect(agentInput).toHaveValue("Keep this IDE draft");
 
-    await application.evaluate(
-      ({ BrowserWindow }, event) => {
-        for (const window of BrowserWindow.getAllWindows())
-          window.webContents.send("cake:event", event);
-      },
-      {
-        type: "embedded-editor-location-opened",
-        workspacePath: project,
-        location: { path: "src/modelMeta.ts", range: { start: { line: 0 } } },
-      },
-    );
+    await emitRendererEvent(application, {
+      type: "embedded-editor-location-opened",
+      workspacePath: project,
+      location: { path: "src/modelMeta.ts", range: { start: { line: 0 } } },
+    });
     await expect(page.getByRole("region", { name: "VS Code workspace" })).toBeVisible();
     expect(await clickVsCodeTitleAction("Back to Agent")).toBe(true);
 
@@ -263,13 +258,10 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
       .poll(() => hasVsCodeTitleAction("Toggle Chat Sidebar"), { timeout: 20_000 })
       .toBe(true);
     const toggleChatSidebar = () =>
-      application.evaluate(
-        ({ BrowserWindow }, event) => {
-          for (const window of BrowserWindow.getAllWindows())
-            window.webContents.send("cake:event", event);
-        },
-        { type: "embedded-editor-toggle-chat", workspacePath: project },
-      );
+      emitRendererEvent(application, {
+        type: "embedded-editor-toggle-chat",
+        workspacePath: project,
+      });
     const vscodeFillsWindow = () =>
       application.evaluate(async ({ BrowserWindow }) => {
         const window = BrowserWindow.getAllWindows()[0];
@@ -315,7 +307,7 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
     await expect(imageDialog).toBeVisible();
     const previewBounds = await page.evaluate(() => {
       const chat = document
-        .querySelector<HTMLElement>("aside .chat-layout")!
+        .querySelector<HTMLElement>('aside [data-slot="chat"]')!
         .getBoundingClientRect();
       const dialog = document
         .querySelector<HTMLElement>(".image-preview-overlay")!
@@ -354,19 +346,13 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
     await expect(drawerInput).toHaveValue("Chat from the IDE drawer");
     await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
 
-    await application.evaluate(
-      ({ BrowserWindow }, event) => {
-        for (const window of BrowserWindow.getAllWindows())
-          window.webContents.send("cake:event", event);
-      },
-      {
-        type: "embedded-editor-selection",
-        workspacePath: project,
-        path: "src/modelMeta.ts",
-        startLine: 0,
-        endLine: 0,
-      },
-    );
+    await emitRendererEvent(application, {
+      type: "embedded-editor-selection",
+      workspacePath: project,
+      path: "src/modelMeta.ts",
+      startLine: 0,
+      endLine: 0,
+    });
     await expect(page.getByText("src/modelMeta.ts:1", { exact: true })).toBeVisible();
     expect(await clickVsCodeTitleAction("Back to Agent")).toBe(true);
     await link.click();

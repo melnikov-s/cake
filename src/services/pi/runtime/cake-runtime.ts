@@ -11,15 +11,13 @@ import {
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { Option, Schema } from "effect";
-import { z } from "zod";
+import { Effect, Option, Schema } from "effect";
 import type {
   Attachment,
   ChatConfiguration,
   PiSettings,
   PiSettingUpdate,
   ExtensionUiEvent,
-  ExtensionUiState,
   ResourceDiagnostic,
   SessionSnapshot,
   ThinkingLevel,
@@ -388,20 +386,20 @@ function createGlobalControlOperations(
     topic: tool.topic,
     summary: tool.summary,
     guidance: tool.guidance,
-    inputSchema: z.record(z.string(), jsonValueSchema),
+    inputSchema: jsonObjectSchema,
     inputJsonSchema: tool.parameters,
     examples: tool.examples ?? [],
     result: tool.result ?? "A bounded result from Cake's authoritative application control.",
     limitations: tool.limitations,
     async execute(input, context) {
       const result = await control.invoke(
-        { name: tool.command, arguments: jsonValueSchema.parse(input) },
+        { name: tool.command, arguments: Schema.decodeUnknownSync(jsonValueSchema)(input) },
         context.signal,
       );
-      const object = jsonObjectSchema.safeParse(result);
-      if (!object.success) return result;
+      const object = Schema.decodeUnknownOption(jsonObjectSchema)(result);
+      if (Option.isNone(object)) return result;
       const semanticResult = Object.fromEntries(
-        Object.entries(object.data).filter(([key]) => key !== "name"),
+        Object.entries(object.value).filter(([key]) => key !== "name"),
       );
       return { ...semanticResult, command: tool.command };
     },
@@ -412,8 +410,11 @@ function createAgentControlOperations(
   control: NonNullable<CakeRuntimeOptions["agentControl"]>,
   parentSessionId: () => string | undefined,
 ): CakeOperationDefinition[] {
-  const promptSchema = z.object({ handleId: z.uuid(), text: z.string().min(1).max(262_144) });
-  const handleSchema = z.object({ handleId: z.uuid() });
+  const promptSchema = Schema.Struct({
+    handleId: Schema.String.check(Schema.isUUID()),
+    text: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(262_144)),
+  });
+  const handleSchema = Schema.Struct({ handleId: Schema.String.check(Schema.isUUID()) });
   const guidance = [
     "Use subagents only when the user explicitly requested delegation, subagents, or parallel agent work.",
     "Use subagents.run for ordinary single-task delegation so the result returns in the same tool call. Use subagents.start only for explicitly background work; Cake automatically delivers its completion, so do not poll it.",
@@ -423,7 +424,7 @@ function createAgentControlOperations(
   const operation = <Input>(definition: {
     command: string;
     summary: string;
-    schema: z.ZodType<Input>;
+    schema: Schema.ConstraintDecoder<Input, never>;
     example: JsonObject;
     run(
       input: Input,
@@ -562,11 +563,10 @@ function createCakeGatewayExtension(
       name: "cake",
       label: "Cake",
       description: cakeToolDescription,
-      // SAFETY: Pi's TSchema and Zod's JSON Schema output share the JSON Schema shape used by Cake extensions.
-      parameters: z.toJSONSchema(cakeToolEnvelopeSchema, {
-        io: "input",
-        target: "draft-7",
-      }) as TSchema,
+      // SAFETY: Pi accepts the draft-07 JSON Schema produced by Effect Schema.
+      parameters: Schema.toStandardJSONSchemaV1(cakeToolEnvelopeSchema)[
+        "~standard"
+      ].jsonSchema.input({ target: "draft-07" }) as TSchema,
       async execute(toolCallId, params, signal, onUpdate, runtime) {
         const update = (value: JsonValue) =>
           onUpdate?.({
@@ -660,7 +660,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
   const persistArtifact =
     options.persistArtifact ??
     (async (artifact: CakeArtifactV1) =>
-      artifactRecordSchema.parse({
+      Schema.decodeUnknownSync(artifactRecordSchema)({
         artifact,
         workspacePath: options.cwd,
         digest: "0".repeat(64),
@@ -686,7 +686,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       if (!operationApi.current) throw new Error("The Cake session is not ready");
       return operationApi.current;
     };
-    const empty = z.object({}).strict();
+    const empty = Schema.Struct({});
     const operations: CakeOperationDefinition[] = [
       {
         command: "session.info",
@@ -708,7 +708,9 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         guidance: [
           "Singular session.* operations always target the calling session and never accept a sessionId.",
         ],
-        inputSchema: z.object({ title: z.string().trim().min(1).max(500) }).strict(),
+        inputSchema: Schema.Struct({
+          title: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(500))),
+        }),
         examples: [{ input: { title: "Authentication refactor" } }],
         result: "The calling session ID and committed title.",
         execute: (input) => {
@@ -724,7 +726,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
           "Singular session.* operations always target the calling session and never accept a sessionId.",
           "Resolving during an active response is scheduled for the moment that response settles.",
         ],
-        inputSchema: z.object({ resolved: z.boolean() }).strict(),
+        inputSchema: Schema.Struct({ resolved: Schema.Boolean }),
         examples: [{ input: { resolved: true } }],
         result:
           "The calling session ID and either the committed resolved value or a resolveOnSettle marker.",
@@ -751,15 +753,13 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         guidance: [
           "Singular session.* operations always target the calling session and never accept a sessionId.",
         ],
-        inputSchema: z
-          .object({
-            provider: z.string().min(1).max(256),
-            id: z.string().min(1).max(512),
-            reasoning: z
-              .enum(["off", "minimal", "low", "medium", "high", "xhigh", "max"])
-              .optional(),
-          })
-          .strict(),
+        inputSchema: Schema.Struct({
+          provider: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+          id: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(512)),
+          reasoning: Schema.optionalKey(
+            Schema.Literals(["off", "minimal", "low", "medium", "high", "xhigh", "max"]),
+          ),
+        }),
         examples: [{ input: { provider: "openai", id: "gpt-5", reasoning: "high" } }],
         result: "The committed model and reasoning selection.",
         execute: (input) => {
@@ -781,7 +781,9 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         command: "context.compact",
         topic: "context",
         summary: "Invoke Pi's normal compaction mechanism for the calling session.",
-        inputSchema: z.object({ instructions: z.string().max(262_144).optional() }).strict(),
+        inputSchema: Schema.Struct({
+          instructions: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(262_144))),
+        }),
         examples: [
           {
             input: { instructions: "Preserve implementation decisions and pending verification." },
@@ -798,13 +800,13 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         command: "notifications.send",
         topic: "notifications",
         summary: "Send a bounded user notification through Cake's normal notification surface.",
-        inputSchema: z
-          .object({
-            title: z.string().min(1).max(256),
-            body: z.string().min(1).max(2_000),
-            level: z.enum(["info", "success", "warning", "error"]).default("info"),
-          })
-          .strict(),
+        inputSchema: Schema.Struct({
+          title: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+          body: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(2_000)),
+          level: Schema.Literals(["info", "success", "warning", "error"]).pipe(
+            Schema.withDecodingDefaultKey(Effect.succeed("info" as const)),
+          ),
+        }),
         examples: [
           {
             input: {
@@ -1032,8 +1034,22 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
   let sessionNamingInFlight = false;
   const sessionNamingController = new AbortController();
   const generateTitle = options.generateSessionTitle;
-  const catalog = compatibilityCatalog(resourceLoader, settingsManager, options.cwd, agentDir);
-  const extensionUiState: ExtensionUiState = { statuses: [] };
+  const initialCatalog = compatibilityCatalog(
+    resourceLoader,
+    settingsManager,
+    options.cwd,
+    agentDir,
+  );
+  const catalog = {
+    ...initialCatalog,
+    resources: [...initialCatalog.resources],
+    diagnostics: [...initialCatalog.diagnostics],
+  };
+  interface MutableExtensionUiState {
+    statuses: Array<{ key: string; text: string }>;
+    title?: string;
+  }
+  const extensionUiState: MutableExtensionUiState = { statuses: [] };
   const compatibilityDiagnosticKeys = new Set(
     catalog.diagnostics.map((item) => `${item.method ?? ""}:${item.message}`),
   );
@@ -1200,8 +1216,8 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
             ),
             ...piCommandCatalog(),
           ].flatMap((command) => {
-            const parsed = slashCommandSchema.safeParse(command);
-            return parsed.success ? [parsed.data] : [];
+            const parsed = Schema.decodeUnknownOption(slashCommandSchema)(command);
+            return Option.isSome(parsed) ? [parsed.value] : [];
           }),
       usage: {
         tokens: stats.tokens,
@@ -1831,7 +1847,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
   operationApi.current = {
     info() {
       const stats = session.getSessionStats();
-      return jsonValueSchema.parse({
+      return Schema.decodeUnknownSync(jsonValueSchema)({
         sessionId: cakeSessionId,
         title: activeSessionSummary(stats.totalMessages).title,
         workspacePath: options.cwd,
@@ -1845,7 +1861,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     },
     usage() {
       const stats = session.getSessionStats();
-      return jsonValueSchema.parse({
+      return Schema.decodeUnknownSync(jsonValueSchema)({
         inputTokens: stats.tokens.input,
         outputTokens: stats.tokens.output,
         cacheReadTokens: stats.tokens.cacheRead,
@@ -1858,7 +1874,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       const context = session.getSessionStats().contextUsage;
       const tokens = context?.tokens ?? 0;
       const limit = context?.contextWindow ?? 1;
-      return jsonValueSchema.parse({
+      return Schema.decodeUnknownSync(jsonValueSchema)({
         tokens,
         limit,
         remaining: Math.max(0, limit - tokens),
@@ -1929,7 +1945,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     },
     recordReviewRun(run) {
       if (disposed) throw new Error("The Cake runtime has been disposed");
-      const parsed = reviewRunEntrySchema.parse(run);
+      const parsed = Schema.decodeUnknownSync(reviewRunEntrySchema)(run);
       session.sessionManager.appendCustomEntry(reviewRunEntryType, parsed);
       options.onEvent({
         type: "part-updated",

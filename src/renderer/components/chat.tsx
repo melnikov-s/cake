@@ -270,6 +270,7 @@ export const Chat = observer(function Chat({
   const composer = composerVisible && (
     <div
       ref={composerDockRef}
+      data-slot="composer-dock"
       className={
         embedded
           ? "min-w-0"
@@ -550,6 +551,7 @@ export const Chat = observer(function Chat({
   return (
     <div
       ref={layoutRef}
+      data-slot="chat"
       className={cn(
         "relative grid h-full w-full max-w-full min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_auto] overflow-hidden",
         compact && "chat-layout-compact",

@@ -1,3 +1,4 @@
+import { Schema } from "effect";
 import { useEffect, useState } from "react";
 import { piSettingsSchema, type PiSettings } from "../../../ipc/session-contract";
 import { Button } from "../ui/button";
@@ -19,7 +20,7 @@ export function SettingsPackagesField({
   }, [serialized]);
   const apply = () => {
     try {
-      onApply(piSettingsSchema.shape.packages.parse(JSON.parse(draft)));
+      onApply(Schema.decodeUnknownSync(piSettingsSchema.fields.packages)(JSON.parse(draft)));
       setError(undefined);
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : String(nextError));

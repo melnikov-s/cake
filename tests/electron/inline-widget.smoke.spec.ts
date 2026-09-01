@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
+import { callRpcHarness, openRpcHarness } from "./rpc-harness";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -26,19 +27,19 @@ test("executes a compiled React widget in its sandboxed document origin", async 
 
   try {
     const page = await application.firstWindow();
-    await page.waitForFunction(() => Boolean(window.cake));
-    const widgetUrl = await page.evaluate(async () => {
-      const response = await window.cake.request({
-        type: "compile-inline-widget",
-        language: "react",
-        capability: "display",
-        source:
-          "export default function Widget() { return <strong>React widget executed</strong>; }",
-      });
-      if (response.type !== "inline-widget-compiled")
-        throw new Error("Inline widget did not compile");
-      return response.widget.url;
+    const harness = await openRpcHarness(application, "inline-widget");
+    const response = await callRpcHarness<{
+      type: string;
+      widget: { url: string };
+    }>(harness, "invokePrivileged", {
+      type: "compile-inline-widget",
+      language: "react",
+      capability: "display",
+      source: "export default function Widget() { return <strong>React widget executed</strong>; }",
     });
+    if (response.type !== "inline-widget-compiled")
+      throw new Error("Inline widget did not compile");
+    const widgetUrl = response.widget.url;
     await page.evaluate((url) => {
       const frame = document.createElement("iframe");
       frame.title = "CSP React widget";

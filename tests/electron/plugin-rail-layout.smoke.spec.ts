@@ -58,7 +58,7 @@ test("keeps session plugin rails beside the chat and bounds plugin-authored widt
         .querySelector<HTMLElement>(".app-shell")
         ?.style.setProperty("--sidebar-width", "230px");
       const slot = document.querySelector(
-        ".project-session-plugin-rail-right .project-session-rail-slot-top",
+        '[aria-label="Right session plugins"] > [data-slot-content]',
       );
       if (!slot) throw new Error("Right session rail is unavailable");
       const panel = document.createElement("section");
@@ -71,12 +71,13 @@ test("keeps session plugin rails beside the chat and bounds plugin-authored widt
 
     const measure = () =>
       page.evaluate(() => {
-        const chat = document
-          .querySelector(".project-session-workbench > .chat-layout")!
+        const railElement = document.querySelector<HTMLElement>(
+          '[aria-label="Right session plugins"]',
+        )!;
+        const chat = railElement
+          .parentElement!.querySelector<HTMLElement>('[data-slot="chat"]')!
           .getBoundingClientRect();
-        const rail = document
-          .querySelector(".project-session-plugin-rail-right")!
-          .getBoundingClientRect();
+        const rail = railElement.getBoundingClientRect();
         const panel = document.querySelector("#rail-panel")!.getBoundingClientRect();
         return {
           viewportWidth: innerWidth,

@@ -19,10 +19,10 @@ interface SlashCommandComboboxProps extends Omit<
   ComponentProps<typeof ComposerInput>,
   "onChange" | "onInput" | "onKeyDown" | "onSubmit" | "value"
 > {
-  commands: SlashCommand[];
+  commands: ReadonlyArray<SlashCommand>;
   focusRequestRevision?: number;
   value: string;
-  suggestFiles?(prefix: string): Promise<FileSuggestion[]>;
+  suggestFiles?(prefix: string): Promise<ReadonlyArray<FileSuggestion>>;
   onValueChange(value: string): void;
   onSubmit(value?: string): void | Promise<void>;
   onEscape?(): void;
@@ -152,7 +152,8 @@ export function SlashCommandCombobox({
     const timer = window.setTimeout(() => {
       void suggestFilesRef.current!(fileMention.prefix)
         .then((items) => {
-          if (revision === requestRevision.current) setFileResults({ key: fileMention.key, items });
+          if (revision === requestRevision.current)
+            setFileResults({ key: fileMention.key, items: [...items] });
         })
         .catch(() => {
           if (revision === requestRevision.current)

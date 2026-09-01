@@ -1,10 +1,6 @@
 import { useCallback, useSyncExternalStore, type Dispatch, type SetStateAction } from "react";
-import type { z } from "zod";
-import {
-  desktopResponseSchema,
-  type DesktopRequest,
-  type DesktopResponse,
-} from "../ipc/desktop-ipc";
+import { Schema } from "effect";
+import type { RendererClient } from "./client/RendererClient";
 import type { PluginPersistenceScope } from "../plugin/plugin-contract";
 import { useRendererInfrastructure } from "./RendererInfrastructureContext";
 import { RootStore } from "./stores/RootStore";
@@ -15,8 +11,8 @@ export type SerializablePluginValue =
   | boolean
   | number
   | string
-  | SerializablePluginValue[]
-  | { [key: string]: SerializablePluginValue };
+  | ReadonlyArray<SerializablePluginValue>
+  | { readonly [key: string]: SerializablePluginValue };
 
 interface Resource {
   value: SerializablePluginValue;
@@ -38,18 +34,16 @@ function notify(resource: Resource) {
   for (const listener of resource.listeners) listener();
 }
 
-type InvokePrivileged = (request: DesktopRequest) => Promise<DesktopResponse>;
-
 function createResource<T extends SerializablePluginValue>(
-  invoke: InvokePrivileged,
+  client: RendererClient["plugins"],
   pluginId: string,
   key: string,
   scope: PluginPersistenceScope,
-  schema: z.ZodType<T>,
+  schema: Schema.ConstraintDecoder<T, never>,
   initialValue: T,
 ): Resource {
   const resource: Resource = {
-    value: schema.parse(initialValue),
+    value: Schema.decodeUnknownSync(schema)(initialValue),
     version: 0,
     revision: 0,
     status: "pending",
@@ -59,18 +53,10 @@ function createResource<T extends SerializablePluginValue>(
   };
   resource.promise = (async () => {
     try {
-      const response = desktopResponseSchema.parse(
-        await invoke({
-          type: "load-plugin-state",
-          pluginId,
-          key,
-          scope,
-        }),
-      );
-      if (response.type !== "plugin-state") throw new Error("Cake returned invalid plugin state");
-      if (response.record) {
-        resource.value = schema.parse(response.record.value);
-        resource.version = response.record.version;
+      const record = await client.loadState(pluginId, key, scope);
+      if (record) {
+        resource.value = Schema.decodeUnknownSync(schema)(record.value);
+        resource.version = record.version;
       }
       resource.status = "ready";
     } catch (error) {
@@ -86,16 +72,15 @@ function usePluginState<T extends SerializablePluginValue>(
   pluginId: string,
   key: string,
   scope: PluginPersistenceScope,
-  schema: z.ZodType<T>,
+  schema: Schema.ConstraintDecoder<T, never>,
   initialValue: T,
 ): [T, Dispatch<SetStateAction<T>>] {
   const infrastructure = useRendererInfrastructure();
-  const invoke: InvokePrivileged = (request) =>
-    infrastructure.client.plugins.invoke(request).then(desktopResponseSchema.parse);
+  const client = infrastructure.client.plugins;
   const cacheKey = resourceKey(pluginId, key, scope);
   let resource = resources.get(cacheKey);
   if (!resource) {
-    resource = createResource(invoke, pluginId, key, scope, schema, initialValue);
+    resource = createResource(client, pluginId, key, scope, schema, initialValue);
     resources.set(cacheKey, resource);
   }
   useSyncExternalStore(
@@ -108,25 +93,22 @@ function usePluginState<T extends SerializablePluginValue>(
   );
   const setValue = useCallback<Dispatch<SetStateAction<T>>>(
     (update) => {
-      const current = schema.parse(resource!.value);
-      const next = schema.parse(isStateUpdater(update) ? update(current) : update);
+      const current = Schema.decodeUnknownSync(schema)(resource!.value);
+      const next = Schema.decodeUnknownSync(schema)(
+        isStateUpdater(update) ? update(current) : update,
+      );
       resource!.value = next;
       notify(resource!);
       resource!.saveQueue = resource!.saveQueue
         .then(async () => {
-          const response = desktopResponseSchema.parse(
-            await invoke({
-              type: "save-plugin-state",
-              pluginId,
-              key,
-              scope,
-              value: next,
-              expectedVersion: resource!.version,
-            }),
-          );
-          if (response.type !== "plugin-state" || !response.record)
-            throw new Error("Cake did not persist plugin state");
-          resource!.version = response.record.version;
+          const record = await client.saveState({
+            pluginId,
+            key,
+            scope,
+            value: next,
+            expectedVersion: resource!.version,
+          });
+          resource!.version = record.version;
         })
         .catch((error) => {
           resource!.status = "failed";
@@ -134,11 +116,11 @@ function usePluginState<T extends SerializablePluginValue>(
           notify(resource!);
         });
     },
-    [pluginId, key, cacheKey, schema, invoke],
+    [pluginId, key, cacheKey, schema, client],
   );
   if (resource.status === "pending") throw resource.promise;
   if (resource.status === "failed") throw resource.error;
-  return [schema.parse(resource.value), setValue];
+  return [Schema.decodeUnknownSync(schema)(resource.value), setValue];
 }
 
 function isStateUpdater<T extends SerializablePluginValue>(
@@ -150,7 +132,7 @@ function isStateUpdater<T extends SerializablePluginValue>(
 export function usePluginGlobalState<T extends SerializablePluginValue>(
   pluginId: string,
   key: string,
-  schema: z.ZodType<T>,
+  schema: Schema.ConstraintDecoder<T, never>,
   initialValue: T,
 ) {
   return usePluginState(pluginId, key, { kind: "global" }, schema, initialValue);
@@ -159,7 +141,7 @@ export function usePluginGlobalState<T extends SerializablePluginValue>(
 export function usePluginSessionState<T extends SerializablePluginValue>(
   pluginId: string,
   key: string,
-  schema: z.ZodType<T>,
+  schema: Schema.ConstraintDecoder<T, never>,
   initialValue: T,
 ) {
   const sessionId = useStore(RootStore).projectWorkbenchStore.activeSession?.sessionId;

@@ -5,7 +5,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import type { CompatibilityCatalog, ResourceDiagnostic } from "../../../ipc/session-contract";
 
-/** Temporary legacy projection consumed by CakeRuntime until PiSessions lands in Phase 5B. */
+/** Projects Pi resource discovery into Cake-owned compatibility values. */
 export function compatibilityCatalog(
   resourceLoader: DefaultResourceLoader,
   settingsManager: SettingsManager,
@@ -20,7 +20,7 @@ export function compatibilityCatalog(
     agentDir: agentDirectory,
     settingsManager,
   }).listConfiguredPackages();
-  const resources: CompatibilityCatalog["resources"] = [];
+  const resources: Array<CompatibilityCatalog["resources"][number]> = [];
 
   for (const skill of skills.skills)
     resources.push({

@@ -1,5 +1,5 @@
+import { Option, Schema } from "effect";
 import { useId, useRef, useState, type FormEvent } from "react";
-import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { CheckIcon } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
@@ -10,7 +10,7 @@ export interface ArtifactFormField {
   label: string;
   type: "text" | "textarea" | "number" | "checkbox" | "select";
   placeholder?: string;
-  options?: { value: string; label: string }[];
+  options?: ReadonlyArray<{ value: string; label: string }>;
 }
 
 type ArtifactFormValue = string | number | boolean;
@@ -22,11 +22,14 @@ const radioRowClassName = cn(
   "has-[input:focus-visible]:ring-2 has-[input:focus-visible]:ring-inset has-[input:focus-visible]:ring-ring",
 );
 
-const answersSchema = z.record(z.string(), z.union([z.string(), z.number(), z.boolean()]));
+const answersSchema = Schema.Record(
+  Schema.String,
+  Schema.Union([Schema.String, Schema.Number, Schema.Boolean]),
+);
 
 function answersRecord(value: JsonValue | undefined): Record<string, ArtifactFormValue> | null {
-  const parsed = answersSchema.safeParse(value);
-  return parsed.success ? parsed.data : null;
+  const parsed = Schema.decodeUnknownOption(answersSchema)(value);
+  return Option.isSome(parsed) ? { ...parsed.value } : null;
 }
 
 /** Shared answer form for form artifacts and form-view request artifacts.
@@ -41,7 +44,7 @@ export function ArtifactForm({
   onSubmit,
   onSkip,
 }: {
-  fields: ArtifactFormField[];
+  fields: ReadonlyArray<ArtifactFormField>;
   requested: boolean;
   submittedAnswer?: JsonValue;
   onSubmit?: (value: JsonValue) => void;

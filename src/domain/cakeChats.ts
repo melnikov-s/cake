@@ -1,7 +1,6 @@
 import { Effect, Schema, Stream } from "effect";
 import * as subagents from "./subagents";
 import type { Annotation, Attachment, SessionSummary } from "../ipc/session-contract";
-import { jsonValueSchema } from "../ipc/json-contract";
 import { PiSessionError, PiSessions, type PiSessionHandle } from "../services/pi/PiSessions";
 import {
   CakeChatEnvironment,
@@ -431,11 +430,5 @@ export const respondControl = Effect.fn("CakeChats.respondControl")(function* (
   result: Schema.Schema.Type<typeof Schema.Json>,
 ) {
   const environment = yield* CakeChatEnvironment;
-  const parsed = jsonValueSchema.safeParse(result);
-  if (!parsed.success)
-    return yield* new CakeChatError({
-      operation: "respondControl",
-      message: "The Cake Chat control response is not valid JSON",
-    });
-  yield* environment.respondControl(controlRequestId, parsed.data).pipe(asError("respondControl"));
+  yield* environment.respondControl(controlRequestId, result).pipe(asError("respondControl"));
 });

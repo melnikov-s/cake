@@ -13,7 +13,7 @@ import {
   runInlineWidgetRepair,
   type InlineWidgetGenerationRequest,
 } from "../services/pi/runtime/sidecar-runtime";
-import type { DesktopEvent, DesktopRequest } from "../ipc/desktop-ipc";
+import type { PrivilegedEvent, PrivilegedRequest } from "../ipc/privileged-contract";
 import type { SourceLocation } from "../ipc/source-location";
 import type { ModelPreset, UtilityModel } from "../ipc/session-contract";
 import type { WorktreeLandingCoordinator } from "../ipc/worktree-contract";
@@ -52,7 +52,7 @@ type PiCommandType =
   | "respond-ui"
   | "respond-artifact";
 
-type PiCommandRequest = Extract<DesktopRequest, { type: PiCommandType }>;
+type PiCommandRequest = Extract<PrivilegedRequest, { type: PiCommandType }>;
 export type PiWorkspaceCommand = PiCommandRequest;
 
 interface PendingUi {
@@ -88,7 +88,7 @@ export interface PiWorkspaceDriverOptions {
   resolvedSessionDir?: string;
   widgetSessionDir?: string;
   pluginAgentSessionDir?: string;
-  emit(event: DesktopEvent): void;
+  emit(event: PrivilegedEvent): void;
   createRuntime?: typeof createCakeRuntime;
   runWidgetGeneration?: typeof runInlineWidgetGeneration;
   runWidgetRepair?: typeof runInlineWidgetRepair;
@@ -253,7 +253,7 @@ export class PiWorkspaceDriver {
           await runtime.editMessage(
             command.entryId,
             command.text,
-            command.attachments,
+            [...command.attachments],
             command.renderUserMessageAsMarkdown,
           );
           this.emit({ type: "session-snapshot", snapshot: await runtime.snapshot() });
@@ -490,7 +490,7 @@ export class PiWorkspaceDriver {
     };
   }
 
-  private emit(event: DesktopEvent) {
+  private emit(event: PrivilegedEvent) {
     if (!this.disposed) this.emitEvent(event);
   }
 

@@ -2,7 +2,7 @@
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createStore, mount } from "r-state-tree";
+import { createStore } from "r-state-tree";
 
 vi.mock("mermaid", () => ({
   default: { initialize: vi.fn(), render: vi.fn(async () => ({ svg: "<svg role='img'></svg>" })) },
@@ -10,10 +10,11 @@ vi.mock("mermaid", () => ({
 import { ArtifactHost } from "../../../src/renderer/components/artifact-host";
 import { ArtifactsPanel } from "../../../src/renderer/components/artifacts-panel";
 import type { ArtifactRecord } from "../../../src/ipc/artifact-contract";
-import type { DesktopClient } from "../../../src/renderer/desktop-client";
+import type { RendererClient } from "../../../src/renderer/client/RendererClient";
 import { InlineWidgetStore } from "../../../src/renderer/stores/InlineWidgetStore";
 import type { ProjectSessionStore } from "../../../src/renderer/stores/ProjectSessionStore";
 import { RendererInfrastructureFixture } from "./renderer-infrastructure";
+import { mountWithRendererClient } from "./mount-with-renderer-client";
 
 function record(artifact: ArtifactRecord["artifact"]): ArtifactRecord {
   return {
@@ -29,6 +30,7 @@ describe("ArtifactHost", () => {
   let container: HTMLDivElement;
   let root: Root;
   let widgets: InlineWidgetStore | undefined;
+  let widgetRoot: Disposable | undefined;
   beforeEach(() => {
     Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
     container = document.createElement("div");
@@ -37,7 +39,8 @@ describe("ArtifactHost", () => {
   });
   afterEach(() => {
     act(() => root.unmount());
-    widgets?.[Symbol.dispose]();
+    widgetRoot?.[Symbol.dispose]();
+    widgetRoot = undefined;
     widgets = undefined;
     container.remove();
   });
@@ -301,8 +304,11 @@ describe("ArtifactHost", () => {
     const client = {
       compileInlineWidget: vi.fn(async () => ({ token, url: `cake-widget://document/${token}` })),
       repairInlineWidget: vi.fn(),
-    } as unknown as DesktopClient;
-    widgets = mount(createStore(InlineWidgetStore, { client }));
+    } as unknown as RendererClient["plugins"];
+    ({ root: widgetRoot, subject: widgets } = mountWithRendererClient(
+      createStore(InlineWidgetStore),
+      { plugins: client } as unknown as RendererClient,
+    ));
     const submit = vi.fn();
     const request = {
       protocol: "cake.request/v1" as const,
@@ -383,8 +389,11 @@ describe("ArtifactHost", () => {
     const client = {
       compileInlineWidget: vi.fn(async () => ({ token, url: `cake-widget://document/${token}` })),
       repairInlineWidget: vi.fn(async () => ({ source, repairSessionId: "repair-session" })),
-    } as unknown as DesktopClient;
-    widgets = mount(createStore(InlineWidgetStore, { client }));
+    } as unknown as RendererClient["plugins"];
+    ({ root: widgetRoot, subject: widgets } = mountWithRendererClient(
+      createStore(InlineWidgetStore),
+      { plugins: client } as unknown as RendererClient,
+    ));
     const artifact = record({
       protocol: "cake.artifact/v1",
       id: "comparison",

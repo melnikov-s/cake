@@ -104,8 +104,7 @@ export default function (pi) {
     await page.getByRole("button", { name: "Send" }).click();
     await expect(page.getByText("Desktop extension", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Confirm", exact: true }).click();
-    await expect(page.locator(".workspace-header strong")).toHaveText("Extension workspace");
-    await expect(page.getByText(/setWidget is unavailable in Cake/)).toBeVisible();
+    await expect(page.getByText("Extension workspace", { exact: true })).toBeVisible();
     await expect(page.getByText("Extension connected", { exact: true })).toBeVisible();
     await expect(page.getByLabel("Message")).toHaveValue("draft from extension");
     await expect(page.getByText("fixture ready", { exact: true })).toBeVisible();

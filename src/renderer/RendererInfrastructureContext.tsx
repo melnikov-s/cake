@@ -1,10 +1,10 @@
 import { createContext, useContext, type ReactNode } from "react";
-import type { DesktopEvent } from "../ipc/desktop-ipc";
+import type { RendererEvent } from "./RendererEvent";
 import type { RendererClient } from "./client/RendererClient";
 
 export interface RendererInfrastructure {
   readonly client: RendererClient;
-  readonly subscribe: (listener: (event: DesktopEvent) => void) => () => void;
+  readonly subscribe: (listener: (event: RendererEvent) => void) => () => void;
 }
 
 const Context = createContext<RendererInfrastructure | undefined>(undefined);

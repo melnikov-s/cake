@@ -3,7 +3,7 @@ import type {
   CakeRuntime,
   CakeRuntimeOptions,
 } from "../../../src/services/pi/runtime/cake-runtime";
-import type { DesktopEvent } from "../../../src/ipc/desktop-ipc";
+import type { PrivilegedEvent } from "../../../src/ipc/privileged-contract";
 import type { SessionSnapshot } from "../../../src/ipc/session-contract";
 import { PiWorkspaceDriver } from "../../../src/main/pi-workspace-driver";
 
@@ -117,7 +117,7 @@ describe("PiWorkspaceDriver", () => {
   });
 
   it("opens a clean handoff and optionally starts its first instruction", async () => {
-    const events: DesktopEvent[] = [];
+    const events: PrivilegedEvent[] = [];
     const source: CakeRuntime = {
       sessionId: "source",
       sessionFile: "/sessions/source.jsonl",

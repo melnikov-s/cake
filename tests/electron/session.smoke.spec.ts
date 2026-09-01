@@ -69,13 +69,16 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
     await expect
       .poll(() =>
         page.evaluate(() => {
-          const sidebar = document.querySelector(".sidebar")?.getBoundingClientRect();
-          const toggle = document.querySelector(".header-sidebar-toggle")?.getBoundingClientRect();
-          const settingsElement = document.querySelector(".workspace-settings-icon");
+          const sidebarElement = document.querySelector('[data-slot="sidebar"]');
+          const sidebar = sidebarElement?.getBoundingClientRect();
+          const toggle = document
+            .querySelector('[data-slot="header-sidebar-toggle"]')
+            ?.getBoundingClientRect();
+          const settingsElement = document.querySelector('[data-slot="workspace-settings"]');
           const settings = settingsElement?.getBoundingClientRect();
-          const composer = document.querySelector(".composer-dock");
+          const composer = document.querySelector('[data-slot="composer-dock"]');
           return {
-            sidebarRemoved: sidebar?.width === 0,
+            sidebarRemoved: !sidebarElement || sidebar?.width === 0,
             toggleClearsWindowControls: Boolean(toggle && toggle.left >= 84),
             settingsOnWorkspace: Boolean(
               settings && settings.left === 16 && Math.abs(innerHeight - settings.bottom - 9.5) < 1,
@@ -96,7 +99,7 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
         settingsAboveComposer: true,
       });
     await page.getByRole("button", { name: "Toggle sidebar" }).click();
-    await page.locator(".sidebar").getByLabel("Open settings").click();
+    await page.getByRole("complementary").getByLabel("Open settings").click();
     await expect(page.getByRole("switch", { name: "Auto-compact" })).toBeVisible();
     await expect(page.getByLabel("Provider transport")).toHaveValue("auto");
     await expect(page.getByLabel("Default project trust")).toHaveValue("ask");
@@ -112,7 +115,7 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
 
     // New Chat is one durable staged composer, not a sidebar session. Navigating
     // away and choosing New Chat again must recover the exact in-progress input.
-    await page.locator(".sidebar").getByLabel("Open settings").click();
+    await page.getByRole("complementary").getByLabel("Open settings").click();
     await expect(page.getByRole("heading", { name: "Settings", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "New chat in project", exact: true }).click();
     await expect(newChatComposer).toHaveValue("Immediate draft");
@@ -130,11 +133,13 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
     await expect(newChatComposer).toHaveValue("");
     // An explicitly saved draft is the pseudo-session that belongs in the sidebar.
     await expect(page.locator(".session-item")).toHaveCount(sessionCountBeforeNewChat + 1);
-    await expect(page.locator(".workspace-header strong")).toHaveText("New chat");
+    await expect(page.locator('[data-slot="workspace-header"] strong')).toHaveText("New chat");
     await expect(page.getByLabel("Back to chat")).toHaveCount(0);
     await page.evaluate(() => {
       const longTitle = `Investigate-${"very-long-session-name-".repeat(500)}`;
-      const headerTitle = document.querySelector<HTMLElement>(".workspace-header strong");
+      const headerTitle = document.querySelector<HTMLElement>(
+        '[data-slot="workspace-header"] strong',
+      );
       const sidebarTitle = document.querySelector<HTMLElement>(".session-row span");
       if (headerTitle) headerTitle.textContent = longTitle;
       if (sidebarTitle) sidebarTitle.textContent = longTitle;
@@ -143,8 +148,8 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
       await page.evaluate(() => {
         const transcript = document.querySelector(".transcript");
         const composer = document.querySelector(".workbench-composer");
-        const sidebar = document.querySelector(".sidebar");
-        const workspace = document.querySelector(".workspace");
+        const sidebar = document.querySelector('[data-slot="sidebar"]');
+        const workspace = document.querySelector('[data-slot="workspace"]');
         const conversation = document.querySelector('[aria-label="Conversation"]');
         const sidebarRect = sidebar?.getBoundingClientRect();
         const workspaceRect = workspace?.getBoundingClientRect();
@@ -187,7 +192,7 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
       require: "undefined",
       process: "undefined",
       rawElectron: "undefined",
-      bridgeKeys: ["request", "rpc", "subscribe"],
+      bridgeKeys: ["rpc"],
     });
 
     await page.getByLabel("Message").fill("Persist this draft");

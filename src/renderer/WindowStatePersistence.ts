@@ -1,3 +1,4 @@
+import { Schema } from "effect";
 import { onSnapshot, toSnapshot, type Store } from "r-state-tree";
 import { jsonValueSchema } from "../ipc/json-contract";
 import type { RendererClient } from "./client/RendererClient";
@@ -46,7 +47,9 @@ export class WindowStatePersistence implements Disposable {
   }
 
   private enqueue(root: Store) {
-    const snapshot = jsonValueSchema.parse(JSON.parse(JSON.stringify(toSnapshot(root))));
+    const snapshot = Schema.decodeUnknownSync(jsonValueSchema)(
+      JSON.parse(JSON.stringify(toSnapshot(root))),
+    );
     this.saveQueue = this.saveQueue
       .then(() => {
         if (!this.disposed) return this.client.windowState.save(snapshot);

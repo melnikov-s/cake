@@ -2,8 +2,8 @@ import { Store, child, createStore, snapshot } from "r-state-tree";
 import type { SourceLocation } from "../../ipc/source-location";
 import type { ChatConfiguration } from "../../ipc/session-contract";
 import { reviewThreadAnnotations } from "../../utils/review-thread-annotations";
-import type { DesktopClient, DesktopClientEvent, PiState } from "../desktop-client";
-import { EmbeddedEditorStore, type EmbeddedEditorStoreProps } from "./EmbeddedEditorStore";
+import type { PiState, RendererEvent } from "../RendererEvent";
+import { EmbeddedEditorStore } from "./EmbeddedEditorStore";
 import type { ReviewsStore } from "./ReviewsStore";
 import type { ExtensionUiStore } from "./ExtensionUiStore";
 import type { PluginCommandStore } from "./PluginCommandStore";
@@ -16,28 +16,10 @@ import { RendererClientContext } from "../client/RendererClientContext";
 import { CommandPaneStore } from "./CommandPaneStore";
 import { SessionManagementStore, type SessionManagementStoreProps } from "./SessionManagementStore";
 import { SessionContinuationStore } from "./SessionContinuationStore";
-import {
-  WorktreeCreationStore,
-  type WorktreeCreationStoreProps,
-  type WorktreeDraftChoice,
-} from "./WorktreeCreationStore";
+import { WorktreeCreationStore, type WorktreeDraftChoice } from "./WorktreeCreationStore";
 
 export interface ProjectWorkbenchStoreProps {
-  nativeClient: Pick<
-    DesktopClient,
-    | "chooseProject"
-    | "discardWorktree"
-    | "inspectWorkspace"
-    | "registerProject"
-    | "removeProject"
-    | "renameProject"
-    | "respondToWorkspaceTrust"
-    | "restartPi"
-  >;
-  embeddedEditorClient: EmbeddedEditorStoreProps["client"];
-  sessionManagementClient: SessionManagementStoreProps["nativeClient"];
   prepareSessionResolution?: SessionManagementStoreProps["prepareResolution"];
-  worktreeCreationClient: WorktreeCreationStoreProps["client"];
   sessionRegistry: SessionRegistryStore;
   operations: SessionOperationCoordinatorStore;
   projects: ProjectCatalogStore;
@@ -95,7 +77,6 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   @child
   get embeddedEditorStore(): EmbeddedEditorStore {
     return createStore(EmbeddedEditorStore, {
-      client: this.props.embeddedEditorClient,
       projectPath: () => this.projectPath,
       annotations: () => {
         const sessionId = this.selectedSessionId;
@@ -124,7 +105,6 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   @child
   get sessionManagementStore(): SessionManagementStore {
     return createStore(SessionManagementStore, {
-      nativeClient: this.props.sessionManagementClient,
       operations: this.props.operations,
       catalog: this.props.catalog,
       registry: this.sessionRegistry,
@@ -149,7 +129,10 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       sessionContext: () => this.sessionContext(),
       sessionTitle: () => this.sessionTitle,
       closeCommandPane: () => this.commandPaneStore.close(),
-      openSession: (sessionId) => this.props.openSessionById(sessionId),
+      openSession: async (sessionId, workingDirectory) => {
+        this.sessionRegistry.load(sessionId, workingDirectory);
+        await this.props.openSessionById(sessionId);
+      },
       reportError: (error) => this.setError(error),
     });
   }
@@ -157,7 +140,6 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   @child
   get worktreeCreationStore(): WorktreeCreationStore {
     return createStore(WorktreeCreationStore, {
-      client: this.props.worktreeCreationClient,
       operations: this.props.operations,
       catalog: this.props.catalog,
       relocateTemporarySession: (sessionId, workspacePath) => {
@@ -175,12 +157,12 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     return this.props.operations.active("project-workbench");
   }
 
-  get nativeClient() {
-    return this.props.nativeClient;
-  }
-
   get sessionRegistry() {
     return this.props.sessionRegistry;
+  }
+
+  get pendingAuthorizationPath() {
+    return this.pendingOpen?.path;
   }
 
   get activeSession() {
@@ -264,11 +246,25 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     return { message: this.error, details: this.errorDetails };
   }
 
+  /** Re-authorizes the hydrated Working Directory before loading executable project resources. */
+  async initialize() {
+    const path = this.projectPath;
+    if (!path) return;
+    const sessionId = this.selectedSessionId;
+    const temporary = sessionId ? this.sessionRegistry.isTemporarySession(sessionId) : true;
+    await this.inspectPath(
+      path,
+      temporary,
+      sessionId,
+      temporary && sessionId !== undefined && !this.sessionRegistry.isDraftSession(sessionId),
+    );
+  }
+
   /** Repeated picker requests are latest-wins. */
   async chooseProject() {
     const revision = ++this.projectPickerRevision;
     try {
-      const path = await this.nativeClient.chooseProject();
+      const path = await this.client.electron.chooseProject({ signal: this.signal });
       if (path && !this.signal.aborted && revision === this.projectPickerRevision)
         await this.inspectPath(path);
     } catch (error) {
@@ -300,7 +296,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
 
   async renameProject(path: string, name: string) {
     try {
-      await this.nativeClient.renameProject(path, name);
+      await this.client.workspaces.renameProject(path, name, { signal: this.signal });
     } catch (error) {
       if (!this.signal.aborted) this.setError(error);
     }
@@ -308,7 +304,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
 
   async removeProject(path: string, deleteSessions: boolean) {
     try {
-      await this.nativeClient.removeProject(path, deleteSessions);
+      await this.client.workspaces.removeProject(path, deleteSessions, { signal: this.signal });
       if (this.signal.aborted) return false;
       if (this.projectPath === path) {
         this.projectPath = undefined;
@@ -325,7 +321,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     const records = this.props.catalog.resolvedWorktrees(path);
     try {
       for (const record of records) {
-        await this.nativeClient.discardWorktree({
+        await this.client.managedWorktrees.discard({
           operationId: crypto.randomUUID(),
           workspacePath: record.worktreePath,
           keepBranch: false,
@@ -497,7 +493,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       sessionId,
     };
     try {
-      await this.nativeClient.inspectWorkspace({ operationId, path });
+      await this.client.workspaces.inspect({ operationId, path }, { signal: this.signal });
     } catch (error) {
       if (revision === this.openRevision) this.setError(error);
       this.finishOperation(operationId);
@@ -509,7 +505,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     if (!pending || !this.pendingTrustPath) return;
     this.pendingTrustPath = undefined;
     try {
-      await this.nativeClient.respondToWorkspaceTrust({
+      await this.client.workspaces.respondToTrust({
         operationId: pending.inspectOperationId,
         path: pending.path,
         approved: trusted,
@@ -555,7 +551,9 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
 
   private async refreshRegisteredProject(path: string, openRevision?: number) {
     try {
-      await this.nativeClient.registerProject(path, this.props.projects.nameFromPath(path));
+      await this.client.workspaces.registerProject(path, this.props.projects.nameFromPath(path), {
+        signal: this.signal,
+      });
       if (this.signal.aborted || (openRevision !== undefined && openRevision !== this.openRevision))
         return;
     } catch (error) {
@@ -631,7 +629,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   async restartPi() {
     if (!this.projectPath) return;
     try {
-      await this.nativeClient.restartPi(this.projectPath);
+      await this.client.workspaces.restartPi(this.projectPath, { signal: this.signal });
     } catch (error) {
       if (!this.signal.aborted) this.setError(error);
     }
@@ -658,7 +656,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     return this.selectedSessionId === sessionId;
   }
 
-  receive(event: DesktopClientEvent) {
+  receive(event: RendererEvent) {
     if (
       event.type === "embedded-editor-state-received" ||
       event.type === "embedded-editor-selection" ||
@@ -746,7 +744,10 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
           pending.sessionId ?? crypto.randomUUID(),
           pending.stagedSession,
         );
-      else void this.openPath(event.path, false, pending.sessionId);
+      else {
+        this.pendingOpen = undefined;
+        void this.openPath(event.path, false, pending.sessionId);
+      }
       return;
     }
     if (event.type === "artifact-requested") return;

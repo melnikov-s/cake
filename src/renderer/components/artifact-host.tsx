@@ -1,3 +1,4 @@
+import { Option, Schema } from "effect";
 import { useState } from "react";
 import { Markdown } from "@/components/ai-elements/markdown";
 import { FullscreenButton } from "@/components/fullscreen-surface";
@@ -38,18 +39,18 @@ export const ArtifactHost = observer(function ArtifactHost({
   const [fullscreen, setFullscreen] = useState(false);
   const parsedRequest =
     artifact.kind === "request"
-      ? cakeRequestV1Schema.safeParse(artifact.payload.request)
-      : undefined;
+      ? Schema.decodeUnknownOption(cakeRequestV1Schema)(artifact.payload.request)
+      : Option.none<typeof cakeRequestV1Schema.Type>();
   const widget =
     artifact.kind === "widget"
       ? {
           id: `${artifact.sessionId}:widget:${artifact.id}:${artifact.revision}`,
           title: artifact.title ?? "Widget",
         }
-      : parsedRequest?.success && parsedRequest.data.view.type === "widget"
+      : Option.isSome(parsedRequest) && parsedRequest.value.view.type === "widget"
         ? {
             id: `${artifact.sessionId}:request:${artifact.id}:${artifact.revision}`,
-            title: parsedRequest.data.title,
+            title: parsedRequest.value.title,
           }
         : undefined;
   const widgetReady = Boolean(widget && inlineWidgets?.state(widget.id)?.compiled);

@@ -1,12 +1,11 @@
-import { z } from "zod";
+import { Schema } from "effect";
 import type { CakeOperationDefinition } from "./cake-operation-registry";
 
-const proposeSquashMessageInputSchema = z
-  .object({
-    subject: z.string().trim().min(1).max(200),
-    body: z.string().trim().max(4_000).optional(),
-  })
-  .strict();
+const proposeSquashMessageInputSchema = Schema.Struct({
+  subject: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(200))),
+  body: Schema.optionalKey(Schema.Trim.pipe(Schema.check(Schema.isMaxLength(4_000)))),
+});
+type ProposeSquashMessageInput = typeof proposeSquashMessageInputSchema.Type;
 
 export interface WorktreeLandingControl {
   proposeSquashMessage(message: { subject: string; body?: string }): Promise<void>;
@@ -14,7 +13,7 @@ export interface WorktreeLandingControl {
 
 export function createCakeWorktreeOperations(
   control: WorktreeLandingControl,
-): CakeOperationDefinition<z.infer<typeof proposeSquashMessageInputSchema>>[] {
+): CakeOperationDefinition<ProposeSquashMessageInput>[] {
   return [
     {
       command: "worktrees.proposeSquashMessage",

@@ -1,5 +1,5 @@
-import { z } from "zod";
-import { jsonObjectSchema, jsonValueSchema } from "../ipc/json-contract";
+import { Effect, Schema } from "effect";
+import { jsonObjectSchema, jsonValueSchema, type JsonValue } from "../ipc/json-contract";
 import {
   thinkingLevelSchema,
   type ChatConfiguration,
@@ -17,128 +17,110 @@ import {
   type PluginStatus,
 } from "../plugin/plugin-contract";
 
-const sessionIdTargetSchema = z.object({ sessionId: z.string().min(1).max(256) }).strict();
-const sessionNavigationTargetSchema = sessionIdTargetSchema.extend({
-  messageId: z
-    .string()
-    .min(1)
-    .max(256)
-    .optional()
-    .describe("Optional transcript message ID to reveal after opening the session."),
+const bounded = (minimum: number, maximum: number) =>
+  Schema.String.check(Schema.isMinLength(minimum), Schema.isMaxLength(maximum));
+const trimmed = (minimum: number, maximum: number) =>
+  Schema.Trim.pipe(Schema.check(Schema.isMinLength(minimum), Schema.isMaxLength(maximum)));
+const revisionSchema = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/));
+const sessionIdTargetSchema = Schema.Struct({ sessionId: bounded(1, 256) });
+const sessionNavigationTargetSchema = Schema.Struct({
+  ...sessionIdTargetSchema.fields,
+  messageId: Schema.optionalKey(bounded(1, 256)),
 });
-
-const emptyArgumentsSchema = z.object({}).strict();
-const pluginStatusesSchema = z.array(pluginStatusSchema).max(1_000);
-const pluginFileSchema = z
-  .object({
-    pluginId: pluginIdSchema,
-    path: z.string().min(1).max(8_192).describe("Path relative to the plugin directory."),
-  })
-  .strict();
+const emptyArgumentsSchema = Schema.Struct({});
+const pluginStatusesSchema = Schema.Array(pluginStatusSchema).check(Schema.isMaxLength(1_000));
+const pluginFileSchema = Schema.Struct({ pluginId: pluginIdSchema, path: bounded(1, 8_192) });
 const appControlArgumentSchemas = {
   get_app_state: emptyArgumentsSchema,
   get_customization_state: emptyArgumentsSchema,
   get_plugin_authoring_reference: emptyArgumentsSchema,
   list_plugin_files: emptyArgumentsSchema,
-  create_plugin: z
-    .object({
-      pluginId: pluginIdSchema,
-      name: z.string().trim().min(1).max(128),
-      renderer: z.boolean().default(true),
-      backend: z.boolean().default(false),
-      scene: z.boolean().default(false),
-      expectedWorkingRevision: z.string().regex(/^[a-f0-9]{64}$/),
-    })
-    .strict(),
-  read_plugin_file: pluginFileSchema,
-  write_plugin_file: pluginFileSchema.extend({
-    content: z.string().max(2_000_000),
-    expectedWorkingRevision: z.string().regex(/^[a-f0-9]{64}$/),
+  create_plugin: Schema.Struct({
+    pluginId: pluginIdSchema,
+    name: trimmed(1, 128),
+    renderer: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(true))),
+    backend: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
+    scene: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
+    expectedWorkingRevision: revisionSchema,
   }),
-  validate_customization: z
-    .object({
-      expectedBaseRevision: z
-        .string()
-        .regex(/^[a-f0-9]{64}$/)
-        .optional(),
-      expectedSourceRevision: z
-        .string()
-        .regex(/^[a-f0-9]{64}$/)
-        .optional(),
-      request: z.string().trim().min(1).max(8_192),
-    })
-    .strict(),
-  activate_customization: z
-    .object({
-      revision: z.string().regex(/^[a-f0-9]{64}$/),
-      expectedSourceRevision: z.string().regex(/^[a-f0-9]{64}$/),
-      request: z.string().trim().min(1).max(8_192),
-    })
-    .strict(),
+  read_plugin_file: pluginFileSchema,
+  write_plugin_file: Schema.Struct({
+    ...pluginFileSchema.fields,
+    content: Schema.String.check(Schema.isMaxLength(2_000_000)),
+    expectedWorkingRevision: revisionSchema,
+  }),
+  validate_customization: Schema.Struct({
+    expectedBaseRevision: Schema.optionalKey(revisionSchema),
+    expectedSourceRevision: Schema.optionalKey(revisionSchema),
+    request: trimmed(1, 8_192),
+  }),
+  activate_customization: Schema.Struct({
+    revision: revisionSchema,
+    expectedSourceRevision: revisionSchema,
+    request: trimmed(1, 8_192),
+  }),
   rollback_customization: emptyArgumentsSchema,
   use_factory_customization: emptyArgumentsSchema,
-  set_plugin_enabled: z.object({ pluginId: pluginIdSchema, enabled: z.boolean() }).strict(),
-  set_active_scene: z.object({ pluginId: pluginIdSchema.optional() }).strict(),
+  set_plugin_enabled: Schema.Struct({ pluginId: pluginIdSchema, enabled: Schema.Boolean }),
+  set_active_scene: Schema.Struct({ pluginId: Schema.optionalKey(pluginIdSchema) }),
   get_session_status: sessionIdTargetSchema,
   open_session: sessionNavigationTargetSchema,
-  create_session: z
-    .object({
-      workspacePath: z.string().min(1).max(4_096),
-      name: z.string().trim().min(1).max(500),
-      initialPrompt: z.string().trim().min(1).max(100_000),
-      model: z
-        .object({
-          provider: z.string().trim().min(1).max(256),
-          modelId: z.string().trim().min(1).max(512),
-          thinkingLevel: thinkingLevelSchema.default("off"),
-          fastMode: z.boolean().default(false),
-        })
-        .strict()
-        .optional()
-        .describe("Exact model configuration to apply before sending the initial prompt."),
-      worktreeName: z
-        .string()
-        .regex(/^[a-z0-9][a-z0-9-]{0,62}$/)
-        .optional()
-        .describe(
-          "When present, create the session in a new Cake-managed worktree with this name.",
+  create_session: Schema.Struct({
+    workspacePath: bounded(1, 4_096),
+    name: trimmed(1, 500),
+    initialPrompt: trimmed(1, 100_000),
+    model: Schema.optionalKey(
+      Schema.Struct({
+        provider: trimmed(1, 256),
+        modelId: trimmed(1, 512),
+        thinkingLevel: thinkingLevelSchema.pipe(
+          Schema.withDecodingDefaultKey(Effect.succeed("off" as const)),
         ),
-      markdown: z
-        .boolean()
-        .optional()
-        .describe("Render the initial prompt as Markdown in the transcript. Defaults to true."),
-    })
-    .strict(),
-  send_session_message: sessionIdTargetSchema.extend({
-    text: z.string().trim().min(1).max(100_000),
-    delivery: z.enum(["prompt", "follow-up", "steer"]).optional(),
+        fastMode: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
+      }),
+    ),
+    worktreeName: Schema.optionalKey(
+      Schema.String.check(Schema.isPattern(/^[a-z0-9][a-z0-9-]{0,62}$/)),
+    ),
+    markdown: Schema.optionalKey(Schema.Boolean),
+  }),
+  send_session_message: Schema.Struct({
+    ...sessionIdTargetSchema.fields,
+    text: trimmed(1, 100_000),
+    delivery: Schema.optionalKey(Schema.Literals(["prompt", "follow-up", "steer"])),
   }),
   abort_session: sessionIdTargetSchema,
-  rename_session: sessionIdTargetSchema.extend({ title: z.string().trim().min(1).max(500) }),
-  set_session_resolved: sessionIdTargetSchema.extend({ resolved: z.boolean() }),
-  set_sessions_resolved: z
-    .object({
-      sessionIds: z.array(z.string().min(1).max(256)).min(1).max(10_000),
-      resolved: z.boolean(),
-    })
-    .strict(),
-  set_cake_chat_sessions_resolved: z
-    .object({
-      sessionIds: z.array(z.string().min(1).max(256)).min(1).max(10_000),
-      resolved: z.boolean(),
-    })
-    .strict(),
-  set_session_model: sessionIdTargetSchema.extend({
-    provider: z.string().trim().min(1).max(100),
-    modelId: z.string().trim().min(1).max(200),
+  rename_session: Schema.Struct({ ...sessionIdTargetSchema.fields, title: trimmed(1, 500) }),
+  set_session_resolved: Schema.Struct({
+    ...sessionIdTargetSchema.fields,
+    resolved: Schema.Boolean,
+  }),
+  set_sessions_resolved: Schema.Struct({
+    sessionIds: Schema.Array(bounded(1, 256)).check(
+      Schema.isMinLength(1),
+      Schema.isMaxLength(10_000),
+    ),
+    resolved: Schema.Boolean,
+  }),
+  set_cake_chat_sessions_resolved: Schema.Struct({
+    sessionIds: Schema.Array(bounded(1, 256)).check(
+      Schema.isMinLength(1),
+      Schema.isMaxLength(10_000),
+    ),
+    resolved: Schema.Boolean,
+  }),
+  set_session_model: Schema.Struct({
+    ...sessionIdTargetSchema.fields,
+    provider: trimmed(1, 100),
+    modelId: trimmed(1, 200),
   }),
 } as const;
 
 function invocation<Name extends keyof typeof appControlArgumentSchemas>(name: Name) {
-  return z.object({ name: z.literal(name), arguments: appControlArgumentSchemas[name] }).strict();
+  return Schema.Struct({ name: Schema.Literal(name), arguments: appControlArgumentSchemas[name] });
 }
 
-const appControlInvocationSchema = z.discriminatedUnion("name", [
+const appControlInvocationSchema = Schema.Union([
   invocation("get_app_state"),
   invocation("get_customization_state"),
   invocation("get_plugin_authoring_reference"),
@@ -164,7 +146,7 @@ const appControlInvocationSchema = z.discriminatedUnion("name", [
   invocation("set_session_model"),
 ]);
 
-type AppControlInvocation = z.infer<typeof appControlInvocationSchema>;
+type AppControlInvocation = typeof appControlInvocationSchema.Type;
 type SessionSummaryView = Pick<
   SessionSummary,
   | "workingDirectory"
@@ -204,7 +186,11 @@ export interface AppControlHost {
   customizationState(): CustomizationState | undefined;
   plugins(): readonly PluginStatus[];
   getPluginAuthoringReference(): Promise<string>;
-  listPluginFiles(): Promise<{ workingRevision: string; buildRevision: string; files: string[] }>;
+  listPluginFiles(): Promise<{
+    workingRevision: string;
+    buildRevision: string;
+    files: ReadonlyArray<string>;
+  }>;
   createPlugin(input: {
     pluginId: string;
     name: string;
@@ -212,14 +198,22 @@ export interface AppControlHost {
     backend: boolean;
     scene: boolean;
     expectedWorkingRevision: string;
-  }): Promise<{ workingRevision: string; buildRevision: string; files: string[] }>;
+  }): Promise<{
+    workingRevision: string;
+    buildRevision: string;
+    files: ReadonlyArray<string>;
+  }>;
   readPluginFile(pluginId: string, path: string): Promise<string>;
   writePluginFile(
     pluginId: string,
     path: string,
     content: string,
     expectedWorkingRevision: string,
-  ): Promise<{ workingRevision: string; buildRevision: string; files: string[] }>;
+  ): Promise<{
+    workingRevision: string;
+    buildRevision: string;
+    files: ReadonlyArray<string>;
+  }>;
   validateCustomization(
     expectedBaseRevision: string | undefined,
     request: string,
@@ -227,7 +221,7 @@ export interface AppControlHost {
   ): Promise<{
     revision: string;
     sourceRevision: string;
-    diagnostics: PluginDiagnostic[];
+    diagnostics: ReadonlyArray<PluginDiagnostic>;
     valid: boolean;
   }>;
   activateCustomization(
@@ -275,7 +269,7 @@ export type AppControlResult =
       name: "list_plugin_files" | "create_plugin" | "write_plugin_file";
       workingRevision: string;
       buildRevision: string;
-      files: string[];
+      files: ReadonlyArray<string>;
     }
   | { ok: true; name: "read_plugin_file"; pluginId: string; path: string; content: string }
   | {
@@ -283,7 +277,7 @@ export type AppControlResult =
       name: "validate_customization";
       revision: string;
       sourceRevision: string;
-      diagnostics: PluginDiagnostic[];
+      diagnostics: ReadonlyArray<PluginDiagnostic>;
       valid: boolean;
     }
   | { ok: true; name: "activate_customization"; revision: string; activating: true }
@@ -352,7 +346,7 @@ export type AppControlResult =
       ok: true;
       command: "sessions.resolve";
       name: "sessions.resolve";
-      targets: Array<{ kind: "project" | "cake-chat"; sessionId: string }>;
+      targets: ReadonlyArray<{ kind: "project" | "cake-chat"; sessionId: string }>;
       resolved: boolean;
       sessionCount: number;
     }
@@ -365,20 +359,15 @@ interface SessionTarget {
 
 const recentSessionLimit = 20;
 
-const sessionResolutionSchema = z
-  .object({
-    targets: z
-      .array(
-        z.object({
-          kind: z.enum(["project", "cake-chat"]),
-          sessionId: z.string().min(1).max(256),
-        }),
-      )
-      .min(1)
-      .max(10_000),
-    resolved: z.boolean(),
-  })
-  .strict();
+const sessionResolutionSchema = Schema.Struct({
+  targets: Schema.Array(
+    Schema.Struct({
+      kind: Schema.Literals(["project", "cake-chat"]),
+      sessionId: bounded(1, 256),
+    }),
+  ).check(Schema.isMinLength(1), Schema.isMaxLength(10_000)),
+  resolved: Schema.Boolean,
+});
 
 const modelControlOperations = [
   operation(
@@ -524,7 +513,7 @@ const commandToLegacyName = {
   "customizations.set-active-scene": "set_active_scene",
 } as const;
 
-function operation(command: string, topic: string, summary: string, schema: z.ZodType) {
+function operation(command: string, topic: string, summary: string, schema: Schema.Constraint) {
   return {
     command,
     topic,
@@ -536,7 +525,9 @@ function operation(command: string, topic: string, summary: string, schema: z.Zo
             "Ordinary widgets are renderer plugins; create or select a scene only when the user explicitly requests whole-application replacement.",
           ]
         : undefined,
-    parameters: z.toJSONSchema(schema, { io: "input", target: "draft-7" }),
+    parameters: Schema.toStandardJSONSchemaV1(schema)["~standard"].jsonSchema.input({
+      target: "draft-07",
+    }),
     examples: [],
     result: "A bounded authoritative Cake application result.",
   };
@@ -548,7 +539,7 @@ export class AppControlBridge {
   listTools() {
     return modelControlOperations.map((definition) => ({
       ...definition,
-      parameters: jsonObjectSchema.parse(definition.parameters),
+      parameters: Schema.decodeUnknownSync(jsonObjectSchema)(definition.parameters),
     }));
   }
 
@@ -574,11 +565,14 @@ export class AppControlBridge {
     return currentSession ? { ...state, currentSession } : state;
   }
 
-  async invoke(untrustedInput: unknown): Promise<AppControlResult> {
-    const gatewayInvocation = z
-      .object({ name: z.string(), arguments: jsonObjectSchema })
-      .strict()
-      .parse(untrustedInput);
+  async invoke(untrustedInput: unknown): Promise<JsonValue> {
+    return toJsonValue(await this.invokeResult(untrustedInput));
+  }
+
+  private async invokeResult(untrustedInput: unknown): Promise<AppControlResult> {
+    const gatewayInvocation = Schema.decodeUnknownSync(
+      Schema.Struct({ name: Schema.String, arguments: jsonObjectSchema }),
+    )(untrustedInput);
     if (gatewayInvocation.name === "sessions.list") {
       const state = this.getAppState();
       return toStrictJson({
@@ -590,7 +584,7 @@ export class AppControlBridge {
       });
     }
     if (gatewayInvocation.name === "sessions.resolve") {
-      const input = sessionResolutionSchema.parse(gatewayInvocation.arguments);
+      const input = Schema.decodeUnknownSync(sessionResolutionSchema)(gatewayInvocation.arguments);
       const projectIds = input.targets
         .filter((target) => target.kind === "project")
         .map((target) => target.sessionId);
@@ -634,7 +628,7 @@ export class AppControlBridge {
     const legacyName = Object.entries(commandToLegacyName).find(
       ([command]) => command === gatewayInvocation.name,
     )?.[1];
-    const invocation = appControlInvocationSchema.parse(
+    const invocation = Schema.decodeUnknownSync(appControlInvocationSchema)(
       legacyName ? { name: legacyName, arguments: gatewayInvocation.arguments } : gatewayInvocation,
     );
     if (invocation.name === "get_app_state")
@@ -644,11 +638,14 @@ export class AppControlBridge {
       const result = {
         ok: true,
         name: invocation.name,
-        plugins: toStrictJson(pluginStatusesSchema.parse(this.host.plugins())),
+        plugins: toStrictJson(Schema.decodeUnknownSync(pluginStatusesSchema)(this.host.plugins())),
       } as const;
       return state === undefined
         ? result
-        : { ...result, state: toStrictJson(customizationStateSchema.parse(state)) };
+        : {
+            ...result,
+            state: toStrictJson(Schema.decodeUnknownSync(customizationStateSchema)(state)),
+          };
     }
     if (invocation.name === "get_plugin_authoring_reference")
       return {
@@ -711,7 +708,9 @@ export class AppControlBridge {
         ok: true,
         name: invocation.name,
         state: toStrictJson(
-          customizationStateSchema.parse(await this.host.rollbackCustomization()),
+          Schema.decodeUnknownSync(customizationStateSchema)(
+            await this.host.rollbackCustomization(),
+          ),
         ),
       };
     if (invocation.name === "use_factory_customization")
@@ -719,7 +718,9 @@ export class AppControlBridge {
         ok: true,
         name: invocation.name,
         state: toStrictJson(
-          customizationStateSchema.parse(await this.host.useFactoryCustomization()),
+          Schema.decodeUnknownSync(customizationStateSchema)(
+            await this.host.useFactoryCustomization(),
+          ),
         ),
       };
     if (invocation.name === "set_plugin_enabled")
@@ -727,7 +728,7 @@ export class AppControlBridge {
         ok: true,
         name: invocation.name,
         plugins: toStrictJson(
-          pluginStatusesSchema.parse(
+          Schema.decodeUnknownSync(pluginStatusesSchema)(
             await this.host.setPluginEnabled(
               invocation.arguments.pluginId,
               invocation.arguments.enabled,
@@ -740,7 +741,9 @@ export class AppControlBridge {
         ok: true,
         name: invocation.name,
         plugins: toStrictJson(
-          pluginStatusesSchema.parse(await this.host.setActiveScene(invocation.arguments.pluginId)),
+          Schema.decodeUnknownSync(pluginStatusesSchema)(
+            await this.host.setActiveScene(invocation.arguments.pluginId),
+          ),
         ),
       };
     if (invocation.name === "create_session") return this.createSession(invocation.arguments);
@@ -836,7 +839,7 @@ export class AppControlBridge {
   }
 
   private async createSession(
-    input: z.infer<typeof appControlArgumentSchemas.create_session>,
+    input: typeof appControlArgumentSchemas.create_session.Type,
   ): Promise<AppControlResult> {
     if (!this.host.projects().some((project) => project.path === input.workspacePath)) {
       return { ok: false, name: "create_session", error: "Cake could not find that project." };
@@ -856,7 +859,7 @@ export class AppControlBridge {
   private async setSessionsResolved({
     sessionIds,
     resolved,
-  }: z.infer<typeof appControlArgumentSchemas.set_sessions_resolved>): Promise<AppControlResult> {
+  }: typeof appControlArgumentSchemas.set_sessions_resolved.Type): Promise<AppControlResult> {
     const unknown = sessionIds.find((sessionId) => !this.knownSession(sessionId));
     if (unknown)
       return {
@@ -878,9 +881,7 @@ export class AppControlBridge {
   private async setCakeChatSessionsResolved({
     sessionIds,
     resolved,
-  }: z.infer<
-    typeof appControlArgumentSchemas.set_cake_chat_sessions_resolved
-  >): Promise<AppControlResult> {
+  }: typeof appControlArgumentSchemas.set_cake_chat_sessions_resolved.Type): Promise<AppControlResult> {
     const knownIds = new Set(this.host.cakeChatSessions().map((session) => session.sessionId));
     const unknown = sessionIds.find((sessionId) => !knownIds.has(sessionId));
     if (unknown)
@@ -917,5 +918,9 @@ export class AppControlBridge {
 
 function toStrictJson<T>(value: T): T {
   // SAFETY: callers pass schema-validated JSON-shaped data; the round trip only removes properties whose value is undefined.
-  return jsonValueSchema.parse(JSON.parse(JSON.stringify(value))) as T;
+  return Schema.decodeUnknownSync(jsonValueSchema)(JSON.parse(JSON.stringify(value))) as T;
+}
+
+function toJsonValue(value: AppControlResult): JsonValue {
+  return Schema.decodeUnknownSync(jsonValueSchema)(JSON.parse(JSON.stringify(value)));
 }

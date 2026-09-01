@@ -4,10 +4,9 @@ import type { ProjectCatalogStore } from "./ProjectCatalogStore";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
 import type { GlobalChatStore } from "./GlobalChatStore";
-import type { DesktopClient } from "../desktop-client";
+import { RendererClientContext } from "../client/RendererClientContext";
 
 export interface SidebarStoreProps {
-  client: Pick<DesktopClient, "showSessionContextMenu" | "showProjectContextMenu">;
   projects: ProjectCatalogStore;
   catalog: SessionCatalogStore;
   sessions: SessionRegistryStore;
@@ -21,6 +20,10 @@ export interface SidebarStoreProps {
 
 /** Owns project navigation, session pagination, and activity badges. */
 export class SidebarStore extends Store<SidebarStoreProps> {
+  get electron() {
+    return RendererClientContext.consume(this)!.electron;
+  }
+
   @snapshot limitsByProject: Record<string, number> = observable({});
   @snapshot collapsedGroups: Record<string, boolean> = observable({});
   @snapshot resolvedLaneExpanded = false;
@@ -47,11 +50,11 @@ export class SidebarStore extends Store<SidebarStoreProps> {
     resolved: boolean,
     unread?: boolean,
   ) {
-    return this.props.client.showSessionContextMenu({ sessionId, x, y, resolved, unread });
+    return this.electron.showSessionContextMenu({ sessionId, x, y, resolved, unread });
   }
 
   showProjectContextMenu(path: string, x: number, y: number) {
-    return this.props.client.showProjectContextMenu({
+    return this.electron.showProjectContextMenu({
       path,
       x,
       y,

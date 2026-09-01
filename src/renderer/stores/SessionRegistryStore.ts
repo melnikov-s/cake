@@ -1,6 +1,5 @@
 import { Store, child, createStore, observable, snapshot, updateStore } from "r-state-tree";
 import type { Attachment, ChatConfiguration, ModelPreset } from "../../ipc/session-contract";
-import type { DesktopClient } from "../desktop-client";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { ReviewsStore } from "./ReviewsStore";
 import type { PluginCommandStore } from "./PluginCommandStore";
@@ -11,7 +10,6 @@ import type { WorktreeStoreProps } from "./WorktreeStore";
 import type { ExistingWorktreeCandidate, WorktreeDraftChoice } from "./WorktreeCreationStore";
 
 export interface SessionRegistryStoreProps {
-  client: DesktopClient;
   catalog?: SessionCatalogStore;
   operations: SessionOperationCoordinatorStore;
   reviews(): ReviewsStore;
@@ -32,7 +30,6 @@ export interface SessionRegistryStoreProps {
   prepareNewSession?(sessionId: string, firstUserMessage: string): Promise<boolean>;
   configureDraftActivation?(sessionId: string, choice: WorktreeDraftChoice): void;
   draftActivationCandidates?(sessionId: string): ExistingWorktreeCandidate[];
-  worktreeClient: WorktreeStoreProps["nativeClient"];
   onWorktreeLanded: WorktreeStoreProps["onLanded"];
   onWorktreeDiscarded: WorktreeStoreProps["onDiscarded"];
   onResolveWorktree: WorktreeStoreProps["onResolveWorkspace"];
@@ -67,7 +64,6 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
       createStore(ProjectSessionStore, {
         key: target.sessionId,
         ...target,
-        client: this.props.client,
         registry: this,
         operations: this.props.operations,
         reviews: this.props.reviews,
@@ -90,7 +86,6 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
           this.props.configureDraftActivation?.(target.sessionId, choice),
         draftActivationCandidates: () =>
           this.props.draftActivationCandidates?.(target.sessionId) ?? [],
-        worktreeClient: this.props.worktreeClient,
         onWorktreeLanded: this.props.onWorktreeLanded,
         onWorktreeDiscarded: this.props.onWorktreeDiscarded,
         onResolveWorktree: this.props.onResolveWorktree,

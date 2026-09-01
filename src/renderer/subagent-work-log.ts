@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { Option, Schema } from "effect";
 import type { UiPart } from "../ipc/session-contract";
 import { toolOperationName } from "../utils/cake-tool";
 
@@ -15,16 +15,20 @@ interface SubagentWorkLogItem {
 
 export type WorkLogItem = UiPart | SubagentWorkLogItem;
 
-const handleProjectionSchema = z.object({ handleId: z.uuid() }).passthrough();
-const gatewayInputSchema = z.object({ input: z.unknown() }).passthrough();
+const handleProjectionSchema = Schema.Struct({
+  handleId: Schema.String.check(Schema.isUUID()),
+});
+const gatewayInputSchema = Schema.Struct({ input: Schema.Unknown });
 
 function handleId(value: string | undefined) {
   if (!value) return undefined;
   try {
     const raw: unknown = JSON.parse(value);
-    const gateway = gatewayInputSchema.safeParse(raw);
-    const parsed = handleProjectionSchema.safeParse(gateway.success ? gateway.data.input : raw);
-    return parsed.success ? parsed.data.handleId : undefined;
+    const gateway = Schema.decodeUnknownOption(gatewayInputSchema)(raw);
+    const parsed = Schema.decodeUnknownOption(handleProjectionSchema)(
+      Option.isSome(gateway) ? gateway.value.input : raw,
+    );
+    return Option.isSome(parsed) ? parsed.value.handleId : undefined;
   } catch {
     return undefined;
   }

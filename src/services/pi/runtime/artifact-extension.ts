@@ -1,3 +1,4 @@
+import { Schema } from "effect";
 import type { InlineExtension } from "@earendil-works/pi-coding-agent";
 import { jsonValueSchema, type JsonValue } from "../../../ipc/json-contract";
 import {
@@ -31,7 +32,7 @@ export function createCakeArtifactExtension(options: ArtifactExtensionOptions): 
     const appendPointer = (record: ArtifactRecord) => {
       pi.appendEntry(
         "cake.artifact/v1",
-        artifactPointerSchema.parse({
+        Schema.decodeUnknownSync(artifactPointerSchema)({
           protocol: "cake.artifact/v1",
           artifactId: record.artifact.id,
           sessionId: record.artifact.sessionId,
@@ -165,7 +166,7 @@ export function createCakeArtifactExtension(options: ArtifactExtensionOptions): 
             ? undefined
             : validateArtifactResponse(
                 form.artifact.interaction?.responseSchema,
-                jsonValueSchema.parse(value),
+                Schema.decodeUnknownSync(jsonValueSchema)(value),
               );
         if (validated !== undefined) {
           const completedForm = await persist(

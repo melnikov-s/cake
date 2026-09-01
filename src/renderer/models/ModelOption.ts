@@ -8,6 +8,7 @@ export class ModelOption extends Model {
   id = "";
   name = "";
   reasoning = false;
+  available: ModelOptionRecord["available"] = undefined;
   availableThinkingLevels: ModelOptionRecord["availableThinkingLevels"] = observable([]);
   fastMode = false;
   input: ModelOptionRecord["input"] = observable([]);

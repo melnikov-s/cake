@@ -1,5 +1,4 @@
 import { Store, untracked } from "r-state-tree";
-import type { DesktopClient } from "../desktop-client";
 import { describeError } from "../error-details";
 import { RendererClientContext } from "../client/RendererClientContext";
 import type {
@@ -12,7 +11,6 @@ import type {
 const POLL_INTERVAL_MS = 5_000;
 
 export interface WorktreeStoreProps {
-  nativeClient: Pick<DesktopClient, "getWorktreeStatus" | "landWorktree" | "discardWorktree">;
   workspacePath(): string | undefined;
   sessionId(): string | undefined;
   enabled(): boolean;
@@ -29,8 +27,12 @@ export interface WorktreeStoreProps {
  * run as ordinary turns in the same session so the user sees all agent work.
  */
 export class WorktreeStore extends Store<WorktreeStoreProps> {
-  get client() {
-    return RendererClientContext.consume(this)!;
+  get managedWorktrees() {
+    return RendererClientContext.consume(this)!.managedWorktrees;
+  }
+
+  get projectSessions() {
+    return RendererClientContext.consume(this)!.projectSessions;
   }
 
   status: WorktreeStatus | undefined;
@@ -95,7 +97,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     }
     this.refreshing = true;
     try {
-      const status = await this.props.nativeClient.getWorktreeStatus({ workspacePath });
+      const status = await this.managedWorktrees.status({ workspacePath });
       if (this.signal.aborted || this.props.workspacePath() !== workspacePath) return;
       this.status = status;
       if (!status) {
@@ -151,7 +153,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     this.stalled = false;
     this.error = undefined;
     try {
-      const outcome = await this.props.nativeClient.landWorktree({
+      const outcome = await this.managedWorktrees.land({
         operationId: crypto.randomUUID(),
         workspacePath,
         request,
@@ -194,7 +196,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     this.phase = "discarding";
     this.error = undefined;
     try {
-      await this.props.nativeClient.discardWorktree({
+      await this.managedWorktrees.discard({
         operationId: crypto.randomUUID(),
         workspacePath,
         keepBranch: keepUnmergedBranch,
@@ -310,7 +312,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     const sessionId = this.props.sessionId();
     if (!sessionId) throw new Error("Cake could not find the session to commit with");
     const target = this.status?.targetBranch ?? "its target";
-    await this.client.projectSessions.prompt(
+    await this.projectSessions.prompt(
       {
         sessionId,
         renderUserMessageAsMarkdown: false,
@@ -329,7 +331,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
 
   private async requestConflictResolution(
     strategy: WorktreeLandRequest["strategy"],
-    files: string[],
+    files: ReadonlyArray<string>,
   ) {
     const sessionId = this.props.sessionId();
     if (!sessionId) throw new Error("Cake could not find the session to resolve conflicts with");
@@ -363,7 +365,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
             "",
             "Do not push, merge, or switch branches, and do not rewrite commit messages. Cake will finish the landing.",
           ].join("\n");
-    await this.client.projectSessions.prompt(
+    await this.projectSessions.prompt(
       { sessionId, renderUserMessageAsMarkdown: false, attachments: [], text },
       { signal: this.signal },
     );
@@ -374,7 +376,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     if (!sessionId)
       throw new Error("Cake could not find the session to propose the commit message with");
     const target = this.status?.targetBranch ?? "its target";
-    await this.client.projectSessions.prompt(
+    await this.projectSessions.prompt(
       {
         sessionId,
         renderUserMessageAsMarkdown: false,

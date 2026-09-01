@@ -1,4 +1,4 @@
-import { Effect, Stream } from "effect";
+import { Effect, Stream, Schema } from "effect";
 import {
   applySnapshot,
   effect as reactiveEffect,
@@ -31,7 +31,8 @@ import {
   sessionSnapshotSchema,
   uiPartSchema,
 } from "../ipc/session-contract";
-import { toSessionSnapshot } from "../utils/session-snapshot";
+import { artifactSnapshot, toSessionSnapshot } from "../utils/session-snapshot";
+import type { ArtifactRecord } from "../ipc/artifact-contract";
 import type { CakeChatCatalog } from "./models/CakeChatCatalog";
 import type { Message } from "./models/Message";
 import type { ProjectCatalog } from "./models/ProjectCatalog";
@@ -40,7 +41,20 @@ import type { Session } from "./models/Session";
 import type { SessionCatalog } from "./models/SessionCatalog";
 import type { SubagentActivity } from "./models/SubagentActivity";
 import type { RendererRuntime } from "./RendererRuntime";
-import type { RootStore } from "./stores/RootStore";
+
+export interface RendererModelSource {
+  readonly projects: ProjectCatalog;
+  readonly sessionCatalog: SessionCatalog;
+  readonly cakeChatCatalog: CakeChatCatalog;
+  readonly projectSessions: () => ReadonlyArray<{
+    readonly target: ProjectSessionTarget;
+    readonly model: Session;
+  }>;
+  readonly cakeChats: () => ReadonlyArray<{
+    readonly target: CakeChatTarget;
+    readonly model: Session;
+  }>;
+}
 
 interface RevisionedUpdate {
   readonly _tag: string;
@@ -51,6 +65,7 @@ interface Subscription {
   abort: AbortController;
   generation: number;
   revision: number | undefined;
+  retryTimer: ReturnType<typeof setTimeout> | undefined;
 }
 
 type StreamFactory<Update> = (client: CakeIpcClientService) => Stream.Stream<Update, unknown>;
@@ -63,37 +78,42 @@ type StreamFactory<Update> = (client: CakeIpcClientService) => Stream.Stream<Upd
 export class RendererModelSynchronizer implements Disposable {
   private readonly subscriptions = new Map<string, Subscription>();
   private readonly models = new Map<string, Model>();
-  private stopObservingRoot: (() => void) | undefined;
+  private stopObservingSource: (() => void) | undefined;
   private disposed = false;
 
   constructor(private readonly runtime: RendererRuntime) {}
 
-  /** Watches the mounted Root Store from renderer infrastructure, outside the Store tree. */
-  observe(root: RootStore) {
-    if (this.stopObservingRoot)
-      throw new Error("Renderer Model synchronization is already observing a Root Store");
-    this.stopObservingRoot = reactiveEffect(() => {
-      const projectSessions = root.sessionRegistry.materializedSessions.map((session) => ({
-        target: {
-          sessionId: session.sessionId,
-          workingDirectory: session.model.workingDirectory,
-        },
-        model: session.model,
-      }));
-      const cakeChats = root.globalChatStore.loadedSessions
-        .filter((session) => !root.globalChatStore.isPendingSession(session.sessionId))
-        .map((session) => ({
-          target: root.globalChatStore.target(session.sessionId),
-          model: session.model,
-        }));
+  /** Watches loaded Models from renderer infrastructure, outside the Store tree. */
+  observe(source: RendererModelSource) {
+    if (this.stopObservingSource)
+      throw new Error("Renderer Model synchronization already has a Model source");
+    this.stopObservingSource = reactiveEffect(() => {
       this.sync({
-        projects: root.projectCatalogModel,
-        sessionCatalog: root.sessionCatalogModel,
-        cakeChatCatalog: root.cakeChatCatalogModel,
-        projectSessions,
-        cakeChats,
+        projects: source.projects,
+        sessionCatalog: source.sessionCatalog,
+        cakeChatCatalog: source.cakeChatCatalog,
+        projectSessions: source.projectSessions(),
+        cakeChats: source.cakeChats(),
       });
     });
+  }
+
+  /** Applies native artifact persistence notifications through the same Model boundary. */
+  updateArtifact(record: ArtifactRecord) {
+    const model = this.models.get(`project-session:${record.artifact.sessionId}`);
+    if (!model) return;
+    // SAFETY: project-session subscription keys are registered exclusively with Session Models.
+    const session = model as Session;
+    const current = toSnapshot(session);
+    // SAFETY: current is Session's canonical snapshot and record crossed artifactRecordSchema.
+    const next = {
+      ...current,
+      artifacts: [
+        ...(current.artifacts ?? []).filter((artifact) => artifact.id !== record.artifact.id),
+        artifactSnapshot(record),
+      ],
+    } as Snapshot<Session>;
+    applySnapshot(session, next);
   }
 
   sync(input: {
@@ -195,9 +215,12 @@ export class RendererModelSynchronizer implements Disposable {
   [Symbol.dispose]() {
     if (this.disposed) return;
     this.disposed = true;
-    this.stopObservingRoot?.();
-    this.stopObservingRoot = undefined;
-    for (const subscription of this.subscriptions.values()) subscription.abort.abort();
+    this.stopObservingSource?.();
+    this.stopObservingSource = undefined;
+    for (const subscription of this.subscriptions.values()) {
+      subscription.abort.abort();
+      if (subscription.retryTimer) clearTimeout(subscription.retryTimer);
+    }
     this.subscriptions.clear();
     this.models.clear();
   }
@@ -225,13 +248,16 @@ export class RendererModelSynchronizer implements Disposable {
       abort: new AbortController(),
       generation: 0,
       revision: undefined,
+      retryTimer: undefined,
     };
     this.subscriptions.set(key, subscription);
     this.start(key, subscription, stream, apply);
   }
 
   private stop(key: string) {
-    this.subscriptions.get(key)?.abort.abort();
+    const subscription = this.subscriptions.get(key);
+    subscription?.abort.abort();
+    if (subscription?.retryTimer) clearTimeout(subscription.retryTimer);
     this.subscriptions.delete(key);
     this.models.delete(key);
   }
@@ -243,6 +269,8 @@ export class RendererModelSynchronizer implements Disposable {
     apply: (update: Update) => void,
   ) {
     subscription.abort.abort();
+    if (subscription.retryTimer) clearTimeout(subscription.retryTimer);
+    subscription.retryTimer = undefined;
     subscription.abort = new AbortController();
     subscription.generation += 1;
     subscription.revision = undefined;
@@ -253,7 +281,7 @@ export class RendererModelSynchronizer implements Disposable {
           Effect.sync(() => {
             const decision = this.accept(subscription, generation, update);
             if (decision === "restart") {
-              this.start(key, subscription, stream, apply);
+              this.scheduleRestart(key, subscription, generation, stream, apply);
               return;
             }
             if (decision === "apply") apply(update);
@@ -268,8 +296,24 @@ export class RendererModelSynchronizer implements Disposable {
         generation === subscription.generation &&
         !subscription.abort.signal.aborted
       )
-        this.start(key, subscription, stream, apply);
+        this.scheduleRestart(key, subscription, generation, stream, apply);
     });
+  }
+
+  private scheduleRestart<Update extends RevisionedUpdate>(
+    key: string,
+    subscription: Subscription,
+    generation: number,
+    stream: StreamFactory<Update>,
+    apply: (update: Update) => void,
+  ) {
+    if (subscription.retryTimer || generation !== subscription.generation) return;
+    subscription.abort.abort();
+    subscription.retryTimer = setTimeout(() => {
+      subscription.retryTimer = undefined;
+      if (!this.disposed && this.subscriptions.get(key) === subscription)
+        this.start(key, subscription, stream, apply);
+    }, 250);
   }
 
   private accept(subscription: Subscription, generation: number, update: RevisionedUpdate) {
@@ -436,7 +480,7 @@ function applyConversationEvent(model: Session, event: ConversationEvent) {
   }
   const snapshot = toSnapshot(model);
   if (event._tag === "PartUpdated") {
-    const part = uiPartSchema.parse(event.part);
+    const part = Schema.decodeUnknownSync(uiPartSchema)(event.part);
     const parts = [...model.uiParts];
     const index = parts.findIndex((current) => current.id === part.id);
     if (index >= 0) parts[index] = part;
@@ -454,14 +498,14 @@ function applyConversationEvent(model: Session, event: ConversationEvent) {
       ...snapshot,
       extensionUi: extensionUiSnapshot(
         snapshot.extensionUi!,
-        extensionUiEventSchema.parse(event.event),
+        Schema.decodeUnknownSync(extensionUiEventSchema)(event.event),
       ),
     });
 }
 
 function extensionUiSnapshot(
   current: NonNullable<Snapshot<Session>["extensionUi"]>,
-  event: ReturnType<typeof extensionUiEventSchema.parse>,
+  event: typeof extensionUiEventSchema.Type,
 ): NonNullable<Snapshot<Session>["extensionUi"]> {
   if (event.kind === "notify") {
     const notifications = [...current.notifications!.filter((item) => item.id !== event.id), event];
@@ -525,7 +569,7 @@ function applyDiscussionUpdate(
   }
   const snapshot = toSnapshot(model);
   if (event._tag === "PartUpdated") {
-    const part = uiPartSchema.parse(event.part);
+    const part = Schema.decodeUnknownSync(uiPartSchema)(event.part);
     const parts = [...model.uiParts];
     const index = parts.findIndex((current) => current.id === part.id);
     if (index >= 0) parts[index] = part;
@@ -605,11 +649,11 @@ function subagentModelSnapshot(activity: SubagentActivity): Snapshot<SubagentAct
 function subagentSnapshot(activity: SubagentActivityValue): Snapshot<SubagentActivity> {
   const snapshot = {
     ...activity,
-    parts: activity.parts.map((part) => uiPartSchema.parse(part)),
+    parts: activity.parts.map((part) => Schema.decodeUnknownSync(uiPartSchema)(part)),
     usage:
       activity.usage === undefined
         ? undefined
-        : sessionSnapshotSchema.shape.usage.parse(activity.usage),
+        : Schema.decodeUnknownSync(sessionSnapshotSchema.fields.usage)(activity.usage),
   };
   // SAFETY: every field is populated from the validated Subagent activity RPC value.
   return snapshot as Snapshot<SubagentActivity>;
@@ -644,11 +688,13 @@ function discussionSnapshot(
   const usage =
     conversation?.usage === undefined
       ? thread.usage
-      : sessionSnapshotSchema.shape.usage.parse(conversation.usage);
+      : Schema.decodeUnknownSync(sessionSnapshotSchema.fields.usage)(conversation.usage);
   const snapshot = {
     ...thread,
     parts: messageSnapshots(
-      (conversation?.parts ?? thread.parts).map((part) => uiPartSchema.parse(part)),
+      (conversation?.parts ?? thread.parts).map((part) =>
+        Schema.decodeUnknownSync(uiPartSchema)(part),
+      ),
     ),
     streaming: conversation?.streaming ?? false,
   };
@@ -657,7 +703,7 @@ function discussionSnapshot(
   return snapshot as Snapshot<ReviewThread>;
 }
 
-function messageSnapshots(parts: ReturnType<typeof uiPartSchema.parse>[]): Snapshot<Message>[] {
+function messageSnapshots(parts: ReadonlyArray<typeof uiPartSchema.Type>): Snapshot<Message>[] {
   // SAFETY: Message's snapshot variants are exactly the validated UiPart union.
   return parts as Snapshot<Message>[];
 }

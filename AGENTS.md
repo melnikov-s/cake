@@ -27,8 +27,7 @@ state, and development boundaries behind these principles.
 - Read `docs/architecture/cake-architecture.md`,
   `docs/architecture/cake-vocabulary.md`, and
   `docs/architecture/effect-architecture.md` before changing architecture or
-  feature ownership. During the Effect migration, also read
-  `docs/development/effect-migration.md`.
+  feature ownership.
 - Before implementing or changing renderer state, read r-state-tree's installed
   `README.md`, `node_modules/r-state-tree/skills/r-state-tree/SKILL.md`, and every
   reference that skill routes to, plus the existing Cake Models/Stores.
@@ -36,9 +35,8 @@ state, and development boundaries behind these principles.
   editing.
 - For plugins, scenes, widgets, or plugin recovery, read the available
   `cake-plugin-authoring` skill before editing.
-- Custom Renderer is a future, unimplemented design and is explicitly outside
-  the Effect migration. Do not implement or prepare it speculatively while
-  carrying out `docs/development/effect-migration.md`.
+- Custom Renderer is a future, unimplemented design. Do not implement or prepare
+  it speculatively.
 
 ## Learning more about Effect
 

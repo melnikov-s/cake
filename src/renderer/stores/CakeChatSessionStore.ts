@@ -226,9 +226,9 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
     if (!this.props.collection.createDraftSession(this.sessionId, text, attachments)) return false;
     this.chatStore.setDraft("");
     this.attachments.splice(0);
-    if (text && this.props.collection.nativeClient.generateSessionTitle)
-      void this.props.collection.nativeClient
-        .generateSessionTitle(text)
+    if (text)
+      void this.client.workspaces
+        .generateSessionTitle(text, { signal: this.signal })
         .then((title) => {
           if (title && !this.signal.aborted)
             this.props.collection.applyGeneratedDraftName(this.sessionId, title);
@@ -369,9 +369,12 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       addPastedImages: (files) => this.addPastedImages(files),
       removeAttachment: (index) => this.removeAttachment(index),
       showComposerContextMenu: (selection, x, y) =>
-        this.props.collection.nativeClient.showComposerContextMenu({ selection, x, y }),
+        this.client.electron.showComposerContextMenu({ selection, x, y }, { signal: this.signal }),
       rewordComposerSelection: (selection, prompt) =>
-        this.props.collection.nativeClient.rewordComposerSelection({ selection, prompt }),
+        this.client.workspaces.rewordComposerSelection(
+          { selection, prompt },
+          { signal: this.signal },
+        ),
       usage: () => this.model.usage,
       hideThinking: () => Boolean(this.model.piSettings?.hideThinkingBlock),
       error: () => ({

@@ -1,5 +1,5 @@
 import { Store, child, createStore } from "r-state-tree";
-import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
+import type { RendererEvent } from "../RendererEvent";
 import { Session } from "../models/Session";
 import type { ChatConfiguration, ModelPreset } from "../../ipc/session-contract";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
@@ -23,7 +23,6 @@ export interface SessionTarget {
 }
 
 export interface ProjectSessionStoreProps extends SessionTarget {
-  client: DesktopClient;
   registry: SessionRegistryStore;
   operations: SessionOperationCoordinatorStore;
   reviews(): ReviewsStore;
@@ -43,7 +42,6 @@ export interface ProjectSessionStoreProps extends SessionTarget {
   prepareNewSession(firstUserMessage: string): Promise<boolean>;
   configureDraftActivation(choice: WorktreeDraftChoice): void;
   draftActivationCandidates(): ExistingWorktreeCandidate[];
-  worktreeClient: WorktreeStoreProps["nativeClient"];
   onWorktreeLanded(record: Parameters<WorktreeStoreProps["onLanded"]>[0]): Promise<void> | void;
   onWorktreeDiscarded(
     record: Parameters<WorktreeStoreProps["onDiscarded"]>[0],
@@ -89,7 +87,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   }
 
   /** Routes an event only to the session subsystem that authoritatively owns it. */
-  receive(event: DesktopClientEvent) {
+  receive(event: RendererEvent) {
     if (event.type === "artifact-requested") {
       if (event.record.artifact.sessionId !== this.sessionId) return;
       this.artifactRequestActive = true;
@@ -162,7 +160,6 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   @child
   get worktreeStore(): WorktreeStore {
     return createStore(WorktreeStore, {
-      nativeClient: this.props.worktreeClient,
       workspacePath: () => this.workspacePath,
       sessionId: () => this.sessionId,
       enabled: () => this.props.isActive(),
@@ -185,7 +182,6 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   @child
   get composerStore(): MessageComposerStore {
     return createStore(MessageComposerStore, {
-      nativeClient: this.props.client,
       sessionRegistry: this.props.registry,
       reviews: this.props.reviews,
       projectPath: () => this.workspacePath,
@@ -292,13 +288,16 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       suggestFiles: (prefix) => this.composerStore.suggestFiles(prefix),
       focusRequestRevision: () => this.composerStore.focusRequestRevision,
       showComposerContextMenu: (selection, x, y) =>
-        this.props.client.showComposerContextMenu({ selection, x, y }),
+        this.client.electron.showComposerContextMenu({ selection, x, y }, { signal: this.signal }),
       rewordComposerSelection: (selection, prompt) =>
-        this.props.client.rewordComposerSelection({
-          selection,
-          prompt,
-          workspacePath: this.props.workspacePath,
-        }),
+        this.client.workspaces.rewordComposerSelection(
+          {
+            selection,
+            prompt,
+            workingDirectory: this.props.workspacePath,
+          },
+          { signal: this.signal },
+        ),
       usage: () => this.model.usage,
       queuedPrompts: () => this.composerStore.queuedPrompts,
       steerQueuedPrompt: (id) => this.composerStore.steerQueuedPrompt(id),
@@ -323,7 +322,6 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   @child
   get artifactInteractionStore(): ArtifactInteractionStore {
     return createStore(ArtifactInteractionStore, {
-      nativeClient: this.props.client,
       sessionContext: () => ({ sessionId: this.sessionId }),
       operations: this.props.operations,
       operationOwner: `artifact-answer:${this.sessionId}`,

@@ -9,7 +9,7 @@ export interface SessionContinuationStoreProps {
   sessionContext(): { sessionId: string; workspacePath: string } | undefined;
   sessionTitle(): string;
   closeCommandPane(): void;
-  openSession(sessionId: string): Promise<void>;
+  openSession(sessionId: string, workingDirectory: string): Promise<void>;
   reportError(error: unknown): void;
 }
 
@@ -112,7 +112,8 @@ export class SessionContinuationStore extends Store<SessionContinuationStoreProp
         },
         { signal: this.signal },
       );
-      if (!this.signal.aborted) await this.props.openSession(result.sessionId);
+      if (!this.signal.aborted)
+        await this.props.openSession(result.sessionId, context.workspacePath);
       return !this.signal.aborted;
     } catch (error) {
       if (!this.signal.aborted) this.props.reportError(error);
@@ -148,7 +149,10 @@ export class SessionContinuationStore extends Store<SessionContinuationStoreProp
         destinationWorkingDirectory,
       };
       const result = await this.client.projectSessions.fork(input, { signal: this.signal });
-      if (!this.signal.aborted) await this.props.openSession(result.sessionId);
+      const workingDirectory =
+        destinationWorkingDirectory ?? this.props.sessionContext()?.workspacePath;
+      if (!this.signal.aborted && workingDirectory)
+        await this.props.openSession(result.sessionId, workingDirectory);
     } catch (error) {
       if (!this.signal.aborted) this.props.reportError(error);
     } finally {

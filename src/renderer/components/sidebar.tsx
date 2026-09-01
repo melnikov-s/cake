@@ -47,7 +47,10 @@ export const Sidebar = observer(function Sidebar({
 }) {
   const projectPaths = projects.orderedProjectPaths;
   return (
-    <aside className="flex h-full min-w-0 flex-col overflow-hidden border-r border-border/72 bg-sidebar select-none">
+    <aside
+      data-slot="sidebar"
+      className="flex h-full min-w-0 flex-col overflow-hidden border-r border-border/72 bg-sidebar select-none"
+    >
       <div className="flex h-[46px] shrink-0 items-center gap-1 pl-[103px] pr-3 [app-region:drag]">
         <IconButton tooltip="Toggle sidebar" onClick={onToggle}>
           <SidebarIcon />
@@ -116,7 +119,7 @@ export const Sidebar = observer(function Sidebar({
           <section
             data-slot="resolved-lane"
             className="mt-4 border-t border-border/72 pt-2"
-            aria-labelledby="resolved-lane-heading"
+            aria-label="Resolved sessions"
           >
             <div
               className="flex items-center justify-between px-1.5 pt-2.5 text-xs font-medium text-muted-foreground"

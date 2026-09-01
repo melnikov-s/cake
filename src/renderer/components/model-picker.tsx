@@ -87,12 +87,25 @@ export function ModelPicker({
   const configureBackRef = useRef<HTMLButtonElement>(null);
 
   const allModels = useMemo(() => groups.flatMap((group) => group.models), [groups]);
+  const configuration: ModelConfigurationValue | undefined =
+    value ??
+    (activePreset
+      ? {
+          provider: activePreset.provider,
+          modelId: activePreset.modelId,
+          thinkingLevel: activePreset.thinkingLevel,
+          fastMode: activePreset.fastMode,
+        }
+      : undefined);
   const selectedModel = useMemo(
     () =>
-      value?.provider && value?.modelId
-        ? allModels.find((model) => model.provider === value.provider && model.id === value.modelId)
+      configuration?.provider && configuration.modelId
+        ? allModels.find(
+            (model) =>
+              model.provider === configuration.provider && model.id === configuration.modelId,
+          )
         : undefined,
-    [allModels, value?.provider, value?.modelId],
+    [allModels, configuration?.provider, configuration?.modelId],
   );
 
   const normalizedQuery = query.trim().toLocaleLowerCase();
@@ -120,10 +133,12 @@ export function ModelPicker({
   );
 
   const activeName =
-    activePreset?.name ?? selectedModel?.name ?? (value?.modelId ? value.modelId : placeholder);
-  const displayThinking = value?.thinkingLevel ?? activePreset?.thinkingLevel;
-  const displayFast = value?.fastMode ?? Boolean(activePreset?.fastMode);
-  const hasValue = Boolean(value?.provider && value?.modelId);
+    activePreset?.name ??
+    selectedModel?.name ??
+    (configuration?.modelId ? configuration.modelId : placeholder);
+  const displayThinking = configuration?.thinkingLevel;
+  const displayFast = Boolean(configuration?.fastMode);
+  const hasValue = Boolean(configuration?.provider && configuration.modelId);
   const thinkingText =
     hasValue && displayThinking && displayThinking !== "off"
       ? reasoningLabel(displayThinking)
@@ -161,12 +176,13 @@ export function ModelPicker({
   };
 
   const configureModel = (model: ModelOption) => {
-    const isCurrent = value?.provider === model.provider && value?.modelId === model.id;
+    const isCurrent =
+      configuration?.provider === model.provider && configuration.modelId === model.id;
     const supportedCurrentLevel =
       isCurrent &&
-      value?.thinkingLevel &&
-      model.availableThinkingLevels?.includes(value.thinkingLevel)
-        ? value.thinkingLevel
+      configuration?.thinkingLevel &&
+      model.availableThinkingLevels?.includes(configuration.thinkingLevel)
+        ? configuration.thinkingLevel
         : undefined;
     setDraftModel(model);
     setDraftThinkingLevel(
@@ -175,7 +191,7 @@ export function ModelPicker({
           ? model.availableThinkingLevels![0]
           : "off"),
     );
-    setDraftFastMode(Boolean(isCurrent && model.fastMode && value?.fastMode));
+    setDraftFastMode(Boolean(isCurrent && model.fastMode && configuration?.fastMode));
     setView("configure");
   };
 
@@ -228,10 +244,10 @@ export function ModelPicker({
               <header className="mb-3 flex items-start justify-between gap-2">
                 <span className="min-w-0 flex-1">
                   <strong className="block truncate text-sm font-semibold text-foreground">
-                    {selectedModel?.name ?? value?.modelId}
+                    {selectedModel?.name ?? configuration?.modelId}
                   </strong>
                   <small className="block truncate font-mono text-[10px] text-muted-foreground">
-                    {value ? modelKey(value.provider, value.modelId) : ""}
+                    {configuration ? modelKey(configuration.provider, configuration.modelId) : ""}
                   </small>
                 </span>
                 <Button
@@ -254,22 +270,26 @@ export function ModelPicker({
                       Choose how much time this model spends thinking.
                     </small>
                   </span>
-                  <SegmentedControlGroup size="sm" className="w-full flex">
+                  <SegmentedControlGroup
+                    size="sm"
+                    className="w-full flex"
+                    aria-label="Reasoning level"
+                  >
                     {selectedModel.availableThinkingLevels?.map((level) => (
                       <SegmentedControlButton
                         type="button"
                         size="sm"
                         className="flex-1"
-                        active={(value?.thinkingLevel ?? "off") === level}
+                        active={(configuration?.thinkingLevel ?? "off") === level}
                         disabled={disabled}
                         key={level}
                         onClick={() => {
                           close();
                           onSelect({
-                            provider: value!.provider,
-                            modelId: value!.modelId,
+                            provider: configuration!.provider,
+                            modelId: configuration!.modelId,
                             thinkingLevel: level,
-                            fastMode: Boolean(value?.fastMode),
+                            fastMode: Boolean(configuration?.fastMode),
                           });
                         }}
                       >
@@ -291,13 +311,13 @@ export function ModelPicker({
                     </small>
                   </span>
                   <FastModeToggle
-                    enabled={Boolean(value?.fastMode)}
+                    enabled={Boolean(configuration?.fastMode)}
                     disabled={disabled}
                     onToggle={(enabled) => {
                       onSelect({
-                        provider: value!.provider,
-                        modelId: value!.modelId,
-                        thinkingLevel: value?.thinkingLevel ?? "off",
+                        provider: configuration!.provider,
+                        modelId: configuration!.modelId,
+                        thinkingLevel: configuration?.thinkingLevel ?? "off",
                         fastMode: enabled,
                       });
                     }}
@@ -351,10 +371,10 @@ export function ModelPicker({
                       const isActive =
                         activePreset?.id === preset.id ||
                         (!activePreset &&
-                          value?.provider === preset.provider &&
-                          value?.modelId === preset.modelId &&
-                          value?.thinkingLevel === preset.thinkingLevel &&
-                          Boolean(value?.fastMode) === Boolean(preset.fastMode));
+                          configuration?.provider === preset.provider &&
+                          configuration?.modelId === preset.modelId &&
+                          configuration?.thinkingLevel === preset.thinkingLevel &&
+                          Boolean(configuration?.fastMode) === Boolean(preset.fastMode));
                       return (
                         <NavItem
                           key={preset.id}

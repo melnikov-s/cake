@@ -63,7 +63,7 @@ export function TableArtifact({
         </Button>
       </div>
       <div className="max-h-[28rem] overflow-auto rounded-lg border border-border">
-        <table className="w-full border-collapse text-left text-xs">
+        <table data-slot="artifact-table" className="w-full border-collapse text-left text-xs">
           <thead>
             <tr className="sticky top-0 z-1 bg-muted">
               {artifact.payload.selectable && (

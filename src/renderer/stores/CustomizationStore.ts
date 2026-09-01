@@ -1,27 +1,19 @@
 import { Store, observable } from "r-state-tree";
 import type { CustomizationState, PluginStatus } from "../../plugin/plugin-contract";
-import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
-
-type CustomizationClient = Pick<
-  DesktopClient,
-  | "validateCustomization"
-  | "activateCustomization"
-  | "getCustomizationState"
-  | "listPlugins"
-  | "rollbackCustomization"
-  | "setPluginEnabled"
-  | "setActiveScene"
-  | "deletePlugin"
-  | "useFactoryCustomization"
->;
+import { RendererClientContext } from "../client/RendererClientContext";
+import type { RendererEvent } from "../RendererEvent";
 
 /** Owns customization diagnostics, candidate builds, rollback, and recovery. */
-export class CustomizationStore extends Store<{ client: CustomizationClient }> {
+export class CustomizationStore extends Store {
   state?: CustomizationState;
   busy = false;
   error?: string;
   plugins: PluginStatus[] = observable([]);
   private hydration: Promise<void> | undefined;
+
+  get pluginCommands() {
+    return RendererClientContext.consume(this)!.plugins;
+  }
 
   hydrate() {
     this.hydration ??= this.performHydration();
@@ -31,8 +23,8 @@ export class CustomizationStore extends Store<{ client: CustomizationClient }> {
   private async performHydration() {
     try {
       const [state, plugins] = await Promise.all([
-        this.props.client.getCustomizationState(),
-        this.props.client.listPlugins(),
+        this.pluginCommands.getCustomizationState({ signal: this.signal }),
+        this.pluginCommands.list({ signal: this.signal }),
       ]);
       if (this.signal.aborted) return;
       this.state = state;
@@ -43,7 +35,7 @@ export class CustomizationStore extends Store<{ client: CustomizationClient }> {
     }
   }
 
-  receive(event: DesktopClientEvent) {
+  receive(event: RendererEvent) {
     if (event.type === "customization-state-changed") this.state = event.state;
   }
 
@@ -52,7 +44,7 @@ export class CustomizationStore extends Store<{ client: CustomizationClient }> {
     this.busy = true;
     this.error = undefined;
     try {
-      const result = await this.props.client.validateCustomization(
+      const result = await this.pluginCommands.validate(
         this.state?.sourceRevision,
         "Rebuild customization from the recovery interface",
       );
@@ -60,7 +52,7 @@ export class CustomizationStore extends Store<{ client: CustomizationClient }> {
       if (result.diagnostics.length)
         this.error = "The customization candidate did not pass its checks.";
       else
-        await this.props.client.activateCustomization(
+        await this.pluginCommands.activate(
           result.revision,
           result.sourceRevision,
           "Activate customization from the recovery interface",
@@ -77,7 +69,7 @@ export class CustomizationStore extends Store<{ client: CustomizationClient }> {
     if (this.busy) return;
     this.busy = true;
     try {
-      const state = await this.props.client.rollbackCustomization();
+      const state = await this.pluginCommands.rollback({ signal: this.signal });
       if (!this.signal.aborted) this.state = state;
     } catch (error) {
       if (this.signal.aborted) return;
@@ -91,7 +83,7 @@ export class CustomizationStore extends Store<{ client: CustomizationClient }> {
     if (this.busy) return;
     this.busy = true;
     try {
-      const state = await this.props.client.useFactoryCustomization();
+      const state = await this.pluginCommands.useFactory({ signal: this.signal });
       if (!this.signal.aborted) this.state = state;
     } catch (error) {
       if (this.signal.aborted) return;
@@ -106,7 +98,9 @@ export class CustomizationStore extends Store<{ client: CustomizationClient }> {
     this.busy = true;
     this.error = undefined;
     try {
-      const plugins = await this.props.client.setPluginEnabled(pluginId, enabled);
+      const plugins = await this.pluginCommands.setEnabled(pluginId, enabled, {
+        signal: this.signal,
+      });
       if (this.signal.aborted) return;
       this.plugins.splice(0, this.plugins.length, ...plugins);
     } catch (error) {
@@ -122,7 +116,7 @@ export class CustomizationStore extends Store<{ client: CustomizationClient }> {
     this.busy = true;
     this.error = undefined;
     try {
-      const plugins = await this.props.client.setActiveScene(pluginId);
+      const plugins = await this.pluginCommands.setActiveScene(pluginId, { signal: this.signal });
       if (this.signal.aborted) return;
       this.plugins.splice(0, this.plugins.length, ...plugins);
     } catch (error) {
@@ -138,7 +132,7 @@ export class CustomizationStore extends Store<{ client: CustomizationClient }> {
     this.busy = true;
     this.error = undefined;
     try {
-      const plugins = await this.props.client.deletePlugin(pluginId);
+      const plugins = await this.pluginCommands.delete(pluginId, { signal: this.signal });
       if (this.signal.aborted) return;
       this.plugins.splice(0, this.plugins.length, ...plugins);
     } catch (error) {

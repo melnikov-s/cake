@@ -47,9 +47,22 @@ export function applyPiSetting(
   else if (update.key === "shellCommandPrefix")
     settingsManager.setShellCommandPrefix(update.value.trim() || undefined);
   else if (update.key === "npmCommand")
-    settingsManager.setNpmCommand(update.value.length > 0 ? update.value : undefined);
-  else if (update.key === "packages") settingsManager.setPackages(update.value);
-  else if (update.key === "extensions") settingsManager.setExtensionPaths(update.value);
-  else if (update.key === "skills") settingsManager.setSkillPaths(update.value);
-  else if (update.key === "prompts") settingsManager.setPromptTemplatePaths(update.value);
+    settingsManager.setNpmCommand(update.value.length > 0 ? [...update.value] : undefined);
+  else if (update.key === "packages")
+    settingsManager.setPackages(
+      update.value.map((item) =>
+        typeof item === "string"
+          ? item
+          : {
+              ...item,
+              extensions: item.extensions ? [...item.extensions] : undefined,
+              skills: item.skills ? [...item.skills] : undefined,
+              prompts: item.prompts ? [...item.prompts] : undefined,
+              themes: item.themes ? [...item.themes] : undefined,
+            },
+      ),
+    );
+  else if (update.key === "extensions") settingsManager.setExtensionPaths([...update.value]);
+  else if (update.key === "skills") settingsManager.setSkillPaths([...update.value]);
+  else if (update.key === "prompts") settingsManager.setPromptTemplatePaths([...update.value]);
 }

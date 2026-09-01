@@ -1,14 +1,14 @@
 import { Store } from "r-state-tree";
 import type { ApplicationState, ThinkingLevel, UtilityModel } from "../../ipc/session-contract";
-import type { DesktopClient } from "../desktop-client";
+import { RendererClientContext } from "../client/RendererClientContext";
 import { describeError } from "../error-details";
 
-export interface UtilityModelSettingsStoreProps {
-  client: Pick<DesktopClient, "setUtilityModel">;
-}
-
 /** Owns optimistic, queued persistence of the configured utility model. */
-export class UtilityModelSettingsStore extends Store<UtilityModelSettingsStoreProps> {
+export class UtilityModelSettingsStore extends Store {
+  get workspaces() {
+    return RendererClientContext.consume(this)!.workspaces;
+  }
+
   model: UtilityModel | undefined;
   saving = false;
   error: string | undefined;
@@ -50,7 +50,7 @@ export class UtilityModelSettingsStore extends Store<UtilityModelSettingsStorePr
     this.errorDetails = undefined;
     const save = this.saveQueue
       .catch(() => undefined)
-      .then(() => this.props.client.setUtilityModel(model))
+      .then(() => this.workspaces.setUtilityModel(model, { signal: this.signal }))
       .then((state) => {
         if (this.signal.aborted) return;
         this.persistedModel = state.utilityModel;

@@ -1,9 +1,19 @@
-import { z } from "zod";
+import { Schema, SchemaGetter } from "effect";
 
 /** Output DTO metadata is clipped instead of invalidating an entire IPC payload. */
 export const ipcProjectionString = (maximum: number) =>
-  z.string().transform((value) => value.slice(0, maximum));
+  Schema.String.pipe(
+    Schema.decode({
+      decode: SchemaGetter.transform((value) => value.slice(0, maximum)),
+      encode: SchemaGetter.transform((value) => value.slice(0, maximum)),
+    }),
+  );
 
 /** Output DTO collections retain the bounded prefix instead of invalidating the payload. */
-export const ipcProjectionArray = <T extends z.ZodType>(item: T, maximum: number) =>
-  z.array(item).transform((value) => value.slice(0, maximum));
+export const ipcProjectionArray = <S extends Schema.Top>(item: S, maximum: number) =>
+  Schema.Array(item).pipe(
+    Schema.decode({
+      decode: SchemaGetter.transform((value) => value.slice(0, maximum)),
+      encode: SchemaGetter.transform((value) => value.slice(0, maximum)),
+    }),
+  );

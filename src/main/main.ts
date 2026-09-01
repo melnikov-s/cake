@@ -1,7 +1,7 @@
 import { readFile, realpath } from "node:fs/promises";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { homedir } from "node:os";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import {
   app,
   BrowserWindow,
@@ -15,11 +15,12 @@ import {
   type WebContents,
 } from "electron";
 import {
-  desktopRequestSchema,
-  desktopResponseSchema,
-  type DesktopEvent,
-  type DesktopResponse,
-} from "../ipc/desktop-ipc";
+  privilegedEventSchema,
+  privilegedRequestSchema,
+  privilegedResponseSchema,
+  type PrivilegedEvent,
+  type PrivilegedResponse,
+} from "../ipc/privileged-contract";
 import { type Attachment } from "../ipc/session-contract";
 import type { SourceLocation } from "../ipc/source-location";
 import { jsonObjectSchema, jsonValueSchema } from "../ipc/json-contract";
@@ -290,11 +291,11 @@ const pluginAgents = new PluginAgentHost({
   emit: sendTo,
 });
 
-const privilegedEventListeners = new Map<number, Set<(event: DesktopEvent) => void>>();
+const privilegedEventListeners = new Map<number, Set<(event: PrivilegedEvent) => void>>();
 
 function subscribePrivilegedEvents(
   connectionId: number,
-  listener: (event: DesktopEvent) => void,
+  listener: (event: PrivilegedEvent) => void,
 ): () => void {
   const listeners = privilegedEventListeners.get(connectionId) ?? new Set();
   listeners.add(listener);
@@ -305,14 +306,14 @@ function subscribePrivilegedEvents(
   };
 }
 
-function sendTo(target: WebContents, event: DesktopEvent) {
+function sendTo(target: WebContents, event: PrivilegedEvent) {
   if (event.type === "session-snapshot")
     rememberSessionLocation(event.snapshot.workspacePath, event.snapshot.sessionId);
   if (target.isDestroyed()) return;
   for (const listener of privilegedEventListeners.get(target.id) ?? []) listener(event);
 }
 
-function broadcast(event: DesktopEvent) {
+function broadcast(event: PrivilegedEvent) {
   if (event.type === "session-snapshot")
     rememberSessionLocation(event.snapshot.workspacePath, event.snapshot.sessionId);
   for (const window of windows.values()) sendTo(window.webContents, event);
@@ -372,6 +373,8 @@ async function setProjectSessionResolution(
       activeRoot: cakePaths.piSessions,
       resolvedRoot: cakePaths.piResolvedSessions,
     });
+    if ((await listWorkspaceSessions(workspacePath, cakePaths.piSessions)).length === 0)
+      await worktrees.cleanupResolved(workspacePath);
   } else {
     const restoredWorktree = await worktrees.restoreResolved(workspacePath);
     if (restoredWorktree) {
@@ -594,46 +597,56 @@ function subagentControl(
         subagents.run(
           input,
           parent(parentSessionId),
-          onUpdate ? (value) => onUpdate(jsonValueSchema.parse(value)) : undefined,
+          onUpdate
+            ? (value) => onUpdate(Schema.decodeUnknownSync(jsonValueSchema)(value))
+            : undefined,
           anchorPartId,
         ),
         signal,
-      ).then((value) => jsonValueSchema.parse(value)),
+      ).then((value) => Schema.decodeUnknownSync(jsonValueSchema)(value)),
     start: (input, parentSessionId, signal, anchorPartId) =>
       runMainEffect(subagents.start(input, parent(parentSessionId), anchorPartId), signal).then(
-        (value) => jsonValueSchema.parse(value),
+        (value) => Schema.decodeUnknownSync(jsonValueSchema)(value),
       ),
     parallel: (input, parentSessionId, signal, onUpdate, anchorPartId) =>
       runMainEffect(
         subagents.parallel(
           input,
           parent(parentSessionId),
-          onUpdate ? (value) => onUpdate(jsonValueSchema.parse(value)) : undefined,
+          onUpdate
+            ? (value) => onUpdate(Schema.decodeUnknownSync(jsonValueSchema)(value))
+            : undefined,
           anchorPartId,
         ),
         signal,
-      ).then((value) => jsonValueSchema.parse(value)),
+      ).then((value) => Schema.decodeUnknownSync(jsonValueSchema)(value)),
     prompt: (input, parentSessionId, signal) =>
       runMainEffect(
         subagents.prompt(parentSessionId, input.handleId, input.text, input.delivery),
         signal,
-      ).then((value) => jsonValueSchema.parse(value)),
+      ).then((value) => Schema.decodeUnknownSync(jsonValueSchema)(value)),
     wait: (handleId, parentSessionId, signal, onUpdate) =>
       runMainEffect(
         subagents.wait(
           parentSessionId,
           handleId,
-          onUpdate ? (value) => onUpdate(jsonValueSchema.parse(value)) : undefined,
+          onUpdate
+            ? (value) => onUpdate(Schema.decodeUnknownSync(jsonValueSchema)(value))
+            : undefined,
         ),
         signal,
-      ).then((value) => jsonValueSchema.parse(value)),
+      ).then((value) => Schema.decodeUnknownSync(jsonValueSchema)(value)),
     abort: (handleId, parentSessionId) =>
       runMainEffect(subagents.abort(parentSessionId, handleId)).then(() =>
-        jsonValueSchema.parse({ handleId, status: "aborted", streaming: false }),
+        Schema.decodeUnknownSync(jsonValueSchema)({
+          handleId,
+          status: "aborted",
+          streaming: false,
+        }),
       ),
     close: (handleId, parentSessionId) =>
       runMainEffect(subagents.close(parentSessionId, handleId)).then((value) =>
-        jsonValueSchema.parse(value),
+        Schema.decodeUnknownSync(jsonValueSchema)(value),
       ),
   };
 }
@@ -1075,7 +1088,7 @@ async function chooseAttachments(window: BrowserWindow): Promise<Attachment[]> {
 async function invokePrivilegedRequest(
   connectionId: number,
   untrustedInput: unknown,
-): Promise<DesktopResponse> {
+): Promise<PrivilegedResponse> {
   const sender = webContents.fromId(connectionId);
   if (!sender || sender.isDestroyed()) throw new Error("Renderer connection is no longer active");
   // SAFETY: handleCakeRequest reads only the trusted sender field supplied here.
@@ -1085,8 +1098,8 @@ async function invokePrivilegedRequest(
 async function handleCakeRequest(
   event: Electron.IpcMainInvokeEvent,
   untrustedInput: unknown,
-): Promise<DesktopResponse> {
-  const request = desktopRequestSchema.parse(untrustedInput);
+): Promise<PrivilegedResponse> {
+  const request = Schema.decodeUnknownSync(privilegedRequestSchema)(untrustedInput);
   const owner = BrowserWindow.fromWebContents(event.sender);
   if (request.type === "open-terminal") {
     if (request.target.kind === "project" && !allowedProjectPaths.has(request.target.workspacePath))
@@ -1100,7 +1113,7 @@ async function handleCakeRequest(
       request.cols,
       request.rows,
     );
-    return desktopResponseSchema.parse({
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
       type: "terminal-opened",
       requestId: request.requestId,
       ...opened,
@@ -1108,14 +1121,20 @@ async function handleCakeRequest(
   }
   if (request.type === "write-terminal") {
     terminals.write(event.sender.id, request.terminalId, request.data);
-    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+      type: "accepted",
+      requestId: request.requestId,
+    });
   }
   if (request.type === "resize-terminal") {
     terminals.resize(event.sender.id, request.terminalId, request.cols, request.rows);
-    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+      type: "accepted",
+      requestId: request.requestId,
+    });
   }
   if (request.type === "get-terminal-status") {
-    return desktopResponseSchema.parse({
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
       type: "terminal-status",
       requestId: request.requestId,
       runningProgram: terminals.hasRunningProgram(event.sender.id, request.terminalId),
@@ -1123,18 +1142,21 @@ async function handleCakeRequest(
   }
   if (request.type === "close-terminal") {
     terminals.close(event.sender.id, request.terminalId);
-    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+      type: "accepted",
+      requestId: request.requestId,
+    });
   }
   if (request.type === "open-external-url") {
     const url = new URL(request.url);
     if (url.protocol !== "https:" && url.protocol !== "http:")
       throw new Error("External links must use HTTP or HTTPS");
     await shell.openExternal(url.href);
-    return desktopResponseSchema.parse({ type: "external-url-opened" });
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({ type: "external-url-opened" });
   }
   if (request.type === "show-transcript-selection-context-menu") {
     if (!owner)
-      return desktopResponseSchema.parse({
+      return Schema.decodeUnknownSync(privilegedResponseSchema)({
         type: "transcript-selection-context-menu-closed",
       });
     const action = await new Promise<"chat-about-selection" | "add-annotation" | undefined>(
@@ -1166,13 +1188,16 @@ async function handleCakeRequest(
         Menu.buildFromTemplate(template).popup({ window: owner, callback: () => finish() });
       },
     );
-    return desktopResponseSchema.parse({
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
       type: "transcript-selection-context-menu-closed",
       action,
     });
   }
   if (request.type === "show-composer-context-menu") {
-    if (!owner) return desktopResponseSchema.parse({ type: "composer-context-menu-closed" });
+    if (!owner)
+      return Schema.decodeUnknownSync(privilegedResponseSchema)({
+        type: "composer-context-menu-closed",
+      });
     const action = await new Promise<"reword" | "reword-with-prompt" | undefined>((resolve) => {
       let completed = false;
       const finish = (selected?: "reword" | "reword-with-prompt") => {
@@ -1205,7 +1230,10 @@ async function handleCakeRequest(
         callback: () => finish(),
       });
     });
-    return desktopResponseSchema.parse({ type: "composer-context-menu-closed", action });
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+      type: "composer-context-menu-closed",
+      action,
+    });
   }
   if (request.type === "reword-composer-selection") {
     const utilityModel = applicationState().utilityModel;
@@ -1242,7 +1270,10 @@ async function handleCakeRequest(
             }),
             signal,
           );
-      return desktopResponseSchema.parse({ type: "composer-selection-reworded", text });
+      return Schema.decodeUnknownSync(privilegedResponseSchema)({
+        type: "composer-selection-reworded",
+        text,
+      });
     } finally {
       controllers.delete(controller);
       if (controllers.size === 0) composerRewordControllers.delete(event.sender.id);
@@ -1250,14 +1281,20 @@ async function handleCakeRequest(
   }
   if (request.type === "generate-session-title") {
     const utilityModel = applicationState().utilityModel;
-    if (!utilityModel) return desktopResponseSchema.parse({ type: "session-title-generated" });
+    if (!utilityModel)
+      return Schema.decodeUnknownSync(privilegedResponseSchema)({
+        type: "session-title-generated",
+      });
     const title = await runMainEffect(
       generateSessionTitle({
         selection: utilityModelSelection(utilityModel),
         firstUserMessage: request.firstUserMessage,
       }),
     );
-    return desktopResponseSchema.parse({ type: "session-title-generated", title });
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+      type: "session-title-generated",
+      title,
+    });
   }
   if (request.type === "set-fullscreen-surface-open") {
     let surfaceIds = fullscreenSurfaces.get(event.sender.id);
@@ -1271,10 +1308,16 @@ async function handleCakeRequest(
       surfaceIds.delete(request.surfaceId);
       if (surfaceIds.size === 0) fullscreenSurfaces.delete(event.sender.id);
     }
-    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+      type: "accepted",
+      requestId: request.requestId,
+    });
   }
   if (request.type === "show-project-context-menu") {
-    if (!owner) return desktopResponseSchema.parse({ type: "project-context-menu-closed" });
+    if (!owner)
+      return Schema.decodeUnknownSync(privilegedResponseSchema)({
+        type: "project-context-menu-closed",
+      });
     type ProjectMenuAction = "remove-project" | "delete-resolved-worktrees";
     const action = await new Promise<ProjectMenuAction | undefined>((resolve) => {
       let completed = false;
@@ -1300,10 +1343,16 @@ async function handleCakeRequest(
         callback: () => finish(),
       });
     });
-    return desktopResponseSchema.parse({ type: "project-context-menu-closed", action });
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+      type: "project-context-menu-closed",
+      action,
+    });
   }
   if (request.type === "show-session-context-menu") {
-    if (!owner) return desktopResponseSchema.parse({ type: "session-context-menu-closed" });
+    if (!owner)
+      return Schema.decodeUnknownSync(privilegedResponseSchema)({
+        type: "session-context-menu-closed",
+      });
     type SessionMenuAction = "rename" | "mark-unread" | "resolve" | "unresolve" | "delete";
     const action = await new Promise<SessionMenuAction | undefined>((resolve) => {
       let completed = false;
@@ -1351,26 +1400,38 @@ async function handleCakeRequest(
         },
       });
     });
-    return desktopResponseSchema.parse({ type: "session-context-menu-closed", action });
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+      type: "session-context-menu-closed",
+      action,
+    });
   }
   if (request.type === "set-session-unread") {
     const state = await runMainEffect(setSessionUnread(request.sessionId, request.unread));
     broadcast({ type: "application-state-changed", state });
-    return desktopResponseSchema.parse({ type: "application-state-updated", state });
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+      type: "application-state-updated",
+      state,
+    });
   }
   if (request.type === "set-vscode-server-path") {
     const state = await runMainEffect(setVscodeServerPath(request.path));
     await vscodeEditor.refreshStatus();
-    return desktopResponseSchema.parse({ type: "application-state-updated", state });
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+      type: "application-state-updated",
+      state,
+    });
   }
   if (request.type === "get-embedded-editor-state")
-    return desktopResponseSchema.parse({
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
       type: "embedded-editor-state-loaded",
       ...vscodeEditor.snapshotState(),
     });
   if (request.type === "install-embedded-editor") {
     await vscodeEditor.install();
-    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+      type: "accepted",
+      requestId: request.requestId,
+    });
   }
   if (request.type === "open-embedded-editor") {
     if (!allowedProjectPaths.has(request.workspacePath))
@@ -1380,7 +1441,10 @@ async function handleCakeRequest(
       () => BrowserWindow.fromWebContents(event.sender),
       request.workspacePath,
     );
-    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+      type: "accepted",
+      requestId: request.requestId,
+    });
   }
   if (request.type === "update-embedded-editor-bounds") {
     const window = BrowserWindow.fromWebContents(event.sender);
@@ -1390,7 +1454,10 @@ async function handleCakeRequest(
         request.visible ? VSCODE_TITLE_BAR_HEIGHT : CAKE_TITLE_BAR_HEIGHT,
       );
     vscodeEditor.updateBounds(event.sender.id, request);
-    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+      type: "accepted",
+      requestId: request.requestId,
+    });
   }
   if (request.type === "reveal-in-embedded-editor") {
     if (!allowedProjectPaths.has(request.workspacePath))
@@ -1403,13 +1470,19 @@ async function handleCakeRequest(
       ...request.location,
       path: relative(workspace, target),
     });
-    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+      type: "accepted",
+      requestId: request.requestId,
+    });
   }
   if (request.type === "open-embedded-editor-source-control") {
     if (!allowedProjectPaths.has(request.workspacePath))
       throw new Error("Project path was not selected by the user");
     await vscodeEditor.openSourceControl(request.workspacePath);
-    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+      type: "accepted",
+      requestId: request.requestId,
+    });
   }
   if (request.type === "update-embedded-editor-annotations") {
     if (!allowedProjectPaths.has(request.workspacePath))
@@ -1431,25 +1504,28 @@ async function handleCakeRequest(
       sessionId: request.snapshot.sessionId,
       annotations: normalized.flatMap((item) => (item.status === "fulfilled" ? [item.value] : [])),
     });
-    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+      type: "accepted",
+      requestId: request.requestId,
+    });
   }
   if (request.type === "get-customization-state")
-    return desktopResponseSchema.parse({
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
       type: "customization-state",
       state: pluginActivation.snapshot(),
     });
   if (request.type === "get-plugin-authoring-reference")
-    return desktopResponseSchema.parse({
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
       type: "plugin-authoring-reference",
       reference: await pluginActivation.builder.authoringReference(),
     });
   if (request.type === "list-plugin-files")
-    return desktopResponseSchema.parse({
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
       type: "plugin-files",
       ...(await pluginActivation.builder.repository.authoringSnapshot()),
     });
   if (request.type === "create-plugin")
-    return desktopResponseSchema.parse({
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
       type: "plugin-files",
       ...(await pluginActivation.builder.repository.createPlugin(
         {
@@ -1463,7 +1539,7 @@ async function handleCakeRequest(
       )),
     });
   if (request.type === "read-plugin-file")
-    return desktopResponseSchema.parse({
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
       type: "plugin-file",
       pluginId: request.pluginId,
       path: request.path,
@@ -1473,7 +1549,7 @@ async function handleCakeRequest(
       ),
     });
   if (request.type === "write-plugin-file")
-    return desktopResponseSchema.parse({
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
       type: "plugin-files",
       ...(await pluginActivation.builder.repository.writePluginFile(
         request.pluginId,
@@ -1488,7 +1564,7 @@ async function handleCakeRequest(
       request.request,
       request.expectedSourceRevision,
     );
-    const response = desktopResponseSchema.parse({
+    const response = Schema.decodeUnknownSync(privilegedResponseSchema)({
       type: "customization-validation",
       revision: candidate.revision,
       sourceRevision: candidate.sourceRevision,
@@ -1517,7 +1593,7 @@ async function handleCakeRequest(
       refreshCakeChatApplicationContext();
       throw error;
     }
-    const response = desktopResponseSchema.parse({
+    const response = Schema.decodeUnknownSync(privilegedResponseSchema)({
       type: "customization-activation",
       revision: candidate.revision,
       activating: true,
@@ -1544,7 +1620,7 @@ async function handleCakeRequest(
     customizationHealthTimers.delete(event.sender.id);
     if (activating) refreshCakeChatApplicationContext();
     broadcast({ type: "customization-state-changed", state: pluginActivation.snapshot() });
-    return desktopResponseSchema.parse({
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
       type: "customization-state",
       state: pluginActivation.snapshot(),
     });
@@ -1555,7 +1631,7 @@ async function handleCakeRequest(
     refreshCakeChatApplicationContext();
     broadcast({ type: "customization-state-changed", state: pluginActivation.snapshot() });
     reloadAllAfterResponse({ kind: "factory" });
-    return desktopResponseSchema.parse({
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
       type: "customization-state",
       state: pluginActivation.snapshot(),
     });
@@ -1571,7 +1647,7 @@ async function handleCakeRequest(
       });
       refreshCakeChatApplicationContext();
       reloadAllAfterResponse({ kind: "factory" });
-      return desktopResponseSchema.parse({
+      return Schema.decodeUnknownSync(privilegedResponseSchema)({
         type: "customization-state",
         state: pluginActivation.snapshot(),
       });
@@ -1581,7 +1657,7 @@ async function handleCakeRequest(
       ? { kind: "custom" as const, revision, path: pluginActivation.buildPath(revision) }
       : { kind: "factory" as const };
     reloadAllAfterResponse(renderer);
-    return desktopResponseSchema.parse({
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
       type: "customization-state",
       state: pluginActivation.snapshot(),
     });
@@ -1591,18 +1667,18 @@ async function handleCakeRequest(
     await pluginBackends.stop();
     refreshCakeChatApplicationContext();
     reloadAllAfterResponse({ kind: "factory" });
-    return desktopResponseSchema.parse({
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
       type: "customization-state",
       state: pluginActivation.snapshot(),
     });
   }
   if (request.type === "list-plugins")
-    return desktopResponseSchema.parse({
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
       type: "plugins-listed",
       plugins: await pluginActivation.builder.repository.listPluginStatuses(),
     });
   if (request.type === "set-active-scene")
-    return desktopResponseSchema.parse({
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
       type: "plugins-listed",
       plugins: await pluginActivation.builder.repository.setActiveScene(request.pluginId),
     });
@@ -1615,7 +1691,7 @@ async function handleCakeRequest(
     await rebuildAfterPluginConfigurationChange(
       `${request.enabled ? "Enable" : "Disable"} plugin ${request.pluginId}`,
     );
-    return desktopResponseSchema.parse({ type: "plugins-listed", plugins });
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({ type: "plugins-listed", plugins });
   }
   if (request.type === "delete-plugin") {
     const { wasEnabled, plugins } = await pluginActivation.builder.repository.deletePlugin(
@@ -1632,10 +1708,10 @@ async function handleCakeRequest(
       refreshCakeChatApplicationContext();
       reloadAllAfterResponse({ kind: "factory" });
     }
-    return desktopResponseSchema.parse({ type: "plugins-listed", plugins });
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({ type: "plugins-listed", plugins });
   }
   if (request.type === "load-plugin-state") {
-    return desktopResponseSchema.parse({
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
       type: "plugin-state",
       record: await pluginPersistence.read(request.pluginId, request.key, request.scope),
     });
@@ -1644,7 +1720,7 @@ async function handleCakeRequest(
     const rendererRevision =
       windowCustomizationRevisions.get(event.sender.id) ??
       pluginActivation.snapshot().activeRevision;
-    return desktopResponseSchema.parse({
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
       type: "plugin-state",
       record: await pluginPersistence.write(
         request.pluginId,
@@ -1664,14 +1740,14 @@ async function handleCakeRequest(
         request.method,
         request.input,
       );
-      return desktopResponseSchema.parse({
+      return Schema.decodeUnknownSync(privilegedResponseSchema)({
         type: "plugin-backend-result",
         callId: request.callId,
         ok: true,
         value,
       });
     } catch (error) {
-      return desktopResponseSchema.parse({
+      return Schema.decodeUnknownSync(privilegedResponseSchema)({
         type: "plugin-backend-result",
         callId: request.callId,
         ok: false,
@@ -1681,11 +1757,14 @@ async function handleCakeRequest(
   }
   if (request.type === "cancel-plugin-backend-call") {
     pluginBackends.cancel(request.pluginId, request.callId);
-    return desktopResponseSchema.parse({ type: "accepted", requestId: request.callId });
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+      type: "accepted",
+      requestId: request.callId,
+    });
   }
   if (request.type === "open-plugin-agent") {
     if (!owner) throw new Error("Plugin agents require an application window");
-    return desktopResponseSchema.parse({
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
       type: "plugin-agent-snapshot",
       snapshot: await pluginAgents.open(
         event.sender,
@@ -1697,7 +1776,7 @@ async function handleCakeRequest(
   }
   if (request.type === "prompt-plugin-agent") {
     if (!owner) throw new Error("Plugin agents require an application window");
-    return desktopResponseSchema.parse({
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
       type: "plugin-agent-snapshot",
       snapshot: await pluginAgents.command(
         event.sender,
@@ -1710,7 +1789,7 @@ async function handleCakeRequest(
   }
   if (request.type === "abort-plugin-agent") {
     if (!owner) throw new Error("Plugin agents require an application window");
-    return desktopResponseSchema.parse({
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
       type: "plugin-agent-snapshot",
       snapshot: await pluginAgents.abort(event.sender, request.pluginId, request.handleId),
     });
@@ -1718,7 +1797,7 @@ async function handleCakeRequest(
   if (request.type === "detach-plugin-agent") {
     if (!owner) throw new Error("Plugin agents require an application window");
     pluginAgents.detach(event.sender, request.pluginId, request.handleId);
-    return desktopResponseSchema.parse({
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
       type: "plugin-agent-detached",
       handleId: request.handleId,
     });
@@ -1734,7 +1813,7 @@ async function handleCakeRequest(
         request.implicitSession,
         controller.signal,
       );
-      return desktopResponseSchema.parse({
+      return Schema.decodeUnknownSync(privilegedResponseSchema)({
         type: "plugin-completion-result",
         requestId: request.requestId,
         result,
@@ -1748,24 +1827,28 @@ async function handleCakeRequest(
     pluginCompletionControllers
       .get(`${event.sender.id}:${request.pluginId}:${request.requestId}`)
       ?.abort();
-    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+      type: "accepted",
+      requestId: request.requestId,
+    });
   }
   if (request.type === "choose-project") {
-    if (!owner) return desktopResponseSchema.parse({ type: "project-chosen" });
+    if (!owner)
+      return Schema.decodeUnknownSync(privilegedResponseSchema)({ type: "project-chosen" });
     const result = await dialog.showOpenDialog(owner, { properties: ["openDirectory"] });
     const path = result.canceled ? undefined : result.filePaths[0];
     if (path) allowedProjectPaths.add(path);
-    return desktopResponseSchema.parse({ type: "project-chosen", path });
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({ type: "project-chosen", path });
   }
   if (request.type === "choose-attachments")
-    return desktopResponseSchema.parse({
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
       type: "attachments-chosen",
       attachments: owner ? await chooseAttachments(owner) : [],
     });
   if (request.type === "suggest-files") {
     if (!allowedProjectPaths.has(request.workspacePath))
       throw new Error("Project path was not selected by the user");
-    return desktopResponseSchema.parse({
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
       type: "file-suggestions",
       suggestions: await suggestProjectFiles({
         cwd: request.workspacePath,
@@ -1785,7 +1868,7 @@ async function handleCakeRequest(
       throw new Error("File is outside the selected project");
     const content = await readFile(target, "utf8");
     if (content.length > 2_000_000) throw new Error("File is too large to display");
-    return desktopResponseSchema.parse({ type: "workspace-file", content });
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({ type: "workspace-file", content });
   }
   if (request.type === "compile-inline-widget") {
     const compiled = await compileInlineWidget(
@@ -1793,14 +1876,17 @@ async function handleCakeRequest(
       request.source,
       request.capability,
     );
-    return desktopResponseSchema.parse({
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
       type: "inline-widget-compiled",
       widget: publishInlineWidget(compiled),
     });
   }
   if (request.type === "set-utility-model") {
     const state = await runMainEffect(setUtilityModel(request.model));
-    return desktopResponseSchema.parse({ type: "application-state-updated", state });
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+      type: "application-state-updated",
+      state,
+    });
   }
   if (request.type === "register-project") {
     if (!allowedProjectPaths.has(request.path))
@@ -1808,20 +1894,26 @@ async function handleCakeRequest(
     const worktreeRecords = await worktrees.records();
     // Managed worktrees belong to their parent project; never register them as projects.
     if (worktreeRecords.some((entry) => entry.worktreePath === request.path))
-      return desktopResponseSchema.parse({
+      return Schema.decodeUnknownSync(privilegedResponseSchema)({
         type: "application-state-updated",
         state: applicationState(),
       });
     const state = await runMainEffect(upsertProject(request.path, request.name));
     for (const record of worktreeRecords)
       if (record.projectPath === request.path) allowedProjectPaths.add(record.worktreePath);
-    return desktopResponseSchema.parse({ type: "application-state-updated", state });
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+      type: "application-state-updated",
+      state,
+    });
   }
   if (request.type === "rename-project") {
     if (!allowedProjectPaths.has(request.path))
       throw new Error("Project path was not selected by the user");
     const state = await runMainEffect(renameProject(request.path, request.name));
-    return desktopResponseSchema.parse({ type: "application-state-updated", state });
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+      type: "application-state-updated",
+      state,
+    });
   }
   if (request.type === "remove-project") {
     if (!allowedProjectPaths.has(request.path))
@@ -1848,11 +1940,14 @@ async function handleCakeRequest(
     for (const [webContentsId, workspacePath] of windowWorkspaces)
       if (projectWorkspacePaths.has(workspacePath)) windowWorkspaces.delete(webContentsId);
     const state = await runMainEffect(removeProject(request.path));
-    return desktopResponseSchema.parse({ type: "application-state-updated", state });
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+      type: "application-state-updated",
+      state,
+    });
   }
   if (request.type === "delete-session") {
     await deleteProjectSession(request.sessionId);
-    return desktopResponseSchema.parse({
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
       type: "application-state-updated",
       state: applicationState(),
     });
@@ -1867,7 +1962,10 @@ async function handleCakeRequest(
       setPiState(old, "stopped");
     }
     launchPi(request.path);
-    return desktopResponseSchema.parse({ type: "accepted", requestId: crypto.randomUUID() });
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+      type: "accepted",
+      requestId: crypto.randomUUID(),
+    });
   }
   if (request.type === "respond-workspace-trust") {
     if (!allowedProjectPaths.has(request.path))
@@ -1877,7 +1975,10 @@ async function handleCakeRequest(
       throw new Error("Workspace trust request is no longer pending");
     pendingTrustRequests.delete(key);
     if (request.approved) await runMainEffect(trustProject(request.path));
-    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+      type: "accepted",
+      requestId: request.requestId,
+    });
   }
   if (request.type === "create-worktree") {
     if (!allowedProjectPaths.has(request.path))
@@ -1902,14 +2003,14 @@ async function handleCakeRequest(
     allowedProjectPaths.add(record.worktreePath);
     if (isProjectTrusted(record.projectPath))
       await runMainEffect(trustProject(record.worktreePath));
-    return desktopResponseSchema.parse({
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
       type: "worktree-created",
       requestId: request.requestId,
       record,
     });
   }
   if (request.type === "get-worktree-status") {
-    return desktopResponseSchema.parse({
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
       type: "worktree-status-loaded",
       status: await worktrees.status(request.workspacePath),
     });
@@ -1917,7 +2018,7 @@ async function handleCakeRequest(
   if (request.type === "land-worktree") {
     await requireWorktreeRecord(request.workspacePath);
     const result = await worktrees.land(request.workspacePath, { request: request.request });
-    return desktopResponseSchema.parse({
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
       type: "worktree-landed",
       requestId: request.requestId,
       result,
@@ -1926,14 +2027,20 @@ async function handleCakeRequest(
   if (request.type === "discard-worktree") {
     await requireWorktreeRecord(request.workspacePath, new Set(["active", "landed"]));
     await worktrees.discard(request.workspacePath, request.keepBranch);
-    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+      type: "accepted",
+      requestId: request.requestId,
+    });
   }
   // Model refresh is an app-global operation: it reaches every live runtime —
   // project sessions in any open workspace and Cake Chat — plus the shared
   // session-less catalog, not just the session whose settings page triggered it.
   if (request.type === "refresh-models") {
     void refreshModelsEverywhere(request.requestId);
-    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+      type: "accepted",
+      requestId: request.requestId,
+    });
   }
   const path =
     request.type === "inspect-workspace"
@@ -1952,7 +2059,7 @@ async function handleCakeRequest(
       diagnostic: request.diagnostic,
       model: request.model,
     });
-    return desktopResponseSchema.parse({
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
       type: "inline-widget-repaired",
       widget: {
         source: extractRepairedWidget(repaired.response, request.language),
@@ -1973,30 +2080,36 @@ async function handleCakeRequest(
       path,
       trustRequired,
     });
-    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+      type: "accepted",
+      requestId: request.requestId,
+    });
   }
   if (request.type === "respond-ui") {
     dispatchToPi(path, request);
-    return desktopResponseSchema.parse({
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
       type: "ui-response-accepted",
       uiRequestId: request.uiRequestId,
     });
   }
   if (request.type === "respond-artifact") {
     dispatchToPi(path, request);
-    return desktopResponseSchema.parse({
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
       type: "artifact-response-accepted",
       artifactRequestId: request.artifactRequestId,
     });
   }
   if (request.type === "export-artifacts") {
-    return desktopResponseSchema.parse({
+    return Schema.decodeUnknownSync(privilegedResponseSchema)({
       type: "artifacts-exported",
       markdown: await artifactRepository.exportMarkdown(path, request.sessionId),
     });
   }
   dispatchToPi(path, request);
-  return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
+  return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    type: "accepted",
+    requestId: request.requestId,
+  });
 }
 
 async function startApplicationCapabilities(owner: ApplicationStateOwner["Service"]) {
@@ -2039,10 +2152,8 @@ launchMainApplication({
   application: app,
   piAgentDirectory: cakePaths.piAgent,
   privilegedOperations: {
-    invoke: async (connectionId, request) =>
-      jsonValueSchema.parse(await invokePrivilegedRequest(connectionId, request)),
-    subscribe: (connectionId, listener) =>
-      subscribePrivilegedEvents(connectionId, (event) => listener(jsonValueSchema.parse(event))),
+    invoke: (connectionId, request) => invokePrivilegedRequest(connectionId, request),
+    subscribe: (connectionId, listener) => subscribePrivilegedEvents(connectionId, listener),
   },
   rpcOperations: {
     getHomeDirectory() {
@@ -2088,13 +2199,13 @@ launchMainApplication({
               globalControl: {
                 tools: input.tools.map((tool) => ({
                   ...tool,
-                  parameters: jsonObjectSchema.parse(tool.parameters),
+                  parameters: Schema.decodeUnknownSync(jsonObjectSchema)(tool.parameters),
                   examples: tool.examples?.map((example) => ({
                     ...example,
                     input:
                       example.input === undefined
                         ? undefined
-                        : jsonObjectSchema.parse(example.input),
+                        : Schema.decodeUnknownSync(jsonObjectSchema)(example.input),
                   })),
                 })),
                 recoveryContext: cakeChatRecoveryContext(),
@@ -2393,6 +2504,11 @@ launchMainApplication({
               activeRoot: cakePaths.piSessions,
               resolvedRoot: cakePaths.piResolvedSessions,
             });
+            if (
+              (await listWorkspaceSessions(location.workingDirectory, cakePaths.piSessions))
+                .length === 0
+            )
+              await worktrees.cleanupResolved(location.workingDirectory);
           },
           catch: (cause) =>
             new ProjectSessionEnvironmentError({
@@ -2458,6 +2574,9 @@ launchMainApplication({
 
 if (process.env.CAKE_ELECTRON_SMOKE === "1") {
   Object.assign(globalThis, {
+    cakeSmokeEmitRendererEvent(input: PrivilegedEvent) {
+      broadcast(Schema.decodeUnknownSync(privilegedEventSchema)(input));
+    },
     cakeSmokeResetPi() {
       const host = [...piHosts.values()][0];
       if (!host) throw new Error("Pi runtime is unavailable");

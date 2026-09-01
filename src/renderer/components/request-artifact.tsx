@@ -1,3 +1,4 @@
+import { Option, Schema } from "effect";
 import type { CakeArtifactV1 } from "../../ipc/artifact-contract";
 import type { JsonValue } from "../../ipc/json-contract";
 import { cakeRequestV1Schema } from "../../ipc/request-contract";
@@ -25,15 +26,15 @@ export function RequestArtifact({
   fullscreen: boolean;
   onCloseFullscreen(): void;
 }) {
-  const parsed = cakeRequestV1Schema.safeParse(artifact.payload.request);
-  if (!parsed.success)
+  const parsed = Schema.decodeUnknownOption(cakeRequestV1Schema)(artifact.payload.request);
+  if (Option.isNone(parsed))
     return (
       <Callout variant="error">
         <strong>Request could not render</strong>
-        <span className="text-xs">{parsed.error.message}</span>
+        <span className="text-xs">The request payload is invalid.</span>
       </Callout>
     );
-  const request = parsed.data;
+  const request = parsed.value;
   if (request.view.type === "form")
     return (
       <ArtifactForm

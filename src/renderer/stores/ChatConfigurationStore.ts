@@ -54,7 +54,7 @@ export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
   }
   get activePreset() {
     const session = this.session;
-    if (!session?.model) {
+    if (this.deferred || !session?.model) {
       const pending = this.effectiveConfiguration;
       if (!pending) return undefined;
       return this.presets.find(

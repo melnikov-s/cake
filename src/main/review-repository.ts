@@ -1,7 +1,7 @@
+import { Option, Predicate, Schema } from "effect";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { z } from "zod";
 import {
   projectReviewThread,
   reviewThreadRecordSchema,
@@ -12,22 +12,6 @@ import {
 } from "../ipc/review-contract";
 import { AtomicFileWriter } from "./atomic-file-writer";
 import { KeyedSerialExecutor } from "./keyed-serial-executor";
-
-const legacyReviewThreadRecordSchema = z
-  .object({
-    anchor: z
-      .object({
-        view: z.enum(["diff", "full"]),
-      })
-      .passthrough(),
-  })
-  .passthrough()
-  .transform((record) =>
-    reviewThreadRecordSchema.parse({
-      ...record,
-      anchor: { ...record.anchor, view: "file" },
-    }),
-  );
 
 export type ReviewSessionLoader = (record: ReviewThreadRecord) => Promise<ReviewSessionProjection>;
 export class ReviewRepository {
@@ -103,7 +87,7 @@ export class ReviewRepository {
     anchor: ReviewAnchor,
   ): Promise<ReviewThreadRecord> {
     const now = new Date().toISOString();
-    const record = reviewThreadRecordSchema.parse({
+    const record = Schema.decodeUnknownSync(reviewThreadRecordSchema)({
       id: crypto.randomUUID(),
       workspacePath,
       sessionId,
@@ -124,14 +108,14 @@ export class ReviewRepository {
     threadId: string,
     sidecar: { sessionId: string; sessionFile: string },
   ): Promise<ReviewThreadRecord> {
-    return this.update(workspacePath, sessionId, threadId, (thread) => {
-      thread.agentSessionId = sidecar.sessionId;
-      thread.agentSessionFile = sidecar.sessionFile;
-      thread.pendingComments.splice(0);
-      thread.submission = undefined;
-      thread.updatedAt = new Date().toISOString();
-      return thread;
-    });
+    return this.update(workspacePath, sessionId, threadId, (thread) => ({
+      ...thread,
+      agentSessionId: sidecar.sessionId,
+      agentSessionFile: sidecar.sessionFile,
+      pendingComments: [],
+      submission: undefined,
+      updatedAt: new Date().toISOString(),
+    }));
   }
 
   refreshDiscussionContext(workspacePath: string, sessionId: string) {
@@ -146,10 +130,12 @@ export class ReviewRepository {
   ): Promise<ReviewThread> {
     const record = await this.update(workspacePath, sessionId, threadId, (thread) => {
       const now = new Date().toISOString();
-      thread.status = resolved ? "resolved" : "open";
-      thread.resolvedAt = resolved ? now : undefined;
-      thread.updatedAt = now;
-      return thread;
+      return {
+        ...thread,
+        status: resolved ? "resolved" : "open",
+        resolvedAt: resolved ? now : undefined,
+        updatedAt: now,
+      };
     });
     await this.refreshReviewContext(workspacePath, sessionId);
     return this.project(record);
@@ -234,21 +220,25 @@ export class ReviewRepository {
     return this.updates.run(key, async () => {
       const existing = await this.get(workspacePath, sessionId, threadId);
       if (!existing) throw new Error("That review thread no longer exists");
-      const record = reviewThreadRecordSchema.parse(mutate(existing));
+      const record = Schema.decodeUnknownSync(reviewThreadRecordSchema)(mutate(existing));
       await this.write(record);
       return record;
     });
   }
 
   private async readRecord(untrustedValue: unknown): Promise<ReviewThreadRecord> {
-    const current = reviewThreadRecordSchema.safeParse(untrustedValue);
-    if (current.success) return current.data;
-
-    const migrated = legacyReviewThreadRecordSchema.safeParse(untrustedValue);
-    if (!migrated.success) throw current.error;
-
-    await this.write(migrated.data);
-    return migrated.data;
+    const current = Schema.decodeUnknownOption(reviewThreadRecordSchema)(untrustedValue);
+    if (Option.isSome(current)) return current.value;
+    if (!Predicate.isObject(untrustedValue) || !Predicate.isObject(untrustedValue.anchor))
+      throw new Error("Review thread document is malformed");
+    const view = untrustedValue.anchor.view;
+    if (view !== "diff" && view !== "full") throw new Error("Review thread document is malformed");
+    const migrated = Schema.decodeUnknownSync(reviewThreadRecordSchema)({
+      ...untrustedValue,
+      anchor: { ...untrustedValue.anchor, view: "file" },
+    });
+    await this.write(migrated);
+    return migrated;
   }
 
   private async write(record: ReviewThreadRecord) {
@@ -257,7 +247,7 @@ export class ReviewRepository {
     const target = this.threadPath(record.workspacePath, record.sessionId, record.id);
     await this.writer.write(
       target,
-      `${JSON.stringify(reviewThreadRecordSchema.parse(record), null, 2)}\n`,
+      `${JSON.stringify(Schema.decodeUnknownSync(reviewThreadRecordSchema)(record), null, 2)}\n`,
     );
   }
 

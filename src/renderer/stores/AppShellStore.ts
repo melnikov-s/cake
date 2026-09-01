@@ -85,6 +85,8 @@ export class AppShellStore extends Store<AppShellStoreProps> {
     for (let index = 0; index < this.sessionHistory.length; index += 1) {
       const entry = this.sessionHistory[index]!;
       if (removedIds.has(entry.sessionId)) continue;
+      const previous = kept.at(-1);
+      if (previous && sameSessionEntry(previous, entry)) continue;
       if (index < cursor) keptBeforeCursor += 1;
       kept.push(entry);
     }

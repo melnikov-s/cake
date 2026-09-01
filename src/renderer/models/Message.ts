@@ -1,10 +1,5 @@
 import { Model, id } from "r-state-tree";
-import {
-  uiPartSchema,
-  type Annotation,
-  type ToolOutputContent,
-  type UiPart,
-} from "../../ipc/session-contract";
+import { type Annotation, type ToolOutputContent, type UiPart } from "../../ipc/session-contract";
 
 type TextRole = Extract<UiPart, { kind: "text" }>["role"];
 type TextStatus = Extract<UiPart, { kind: "text" }>["status"];
@@ -82,7 +77,7 @@ export class Message extends Model {
         this.command = part.command;
         this.input = part.input;
         this.output = part.output;
-        this.outputContent = part.outputContent;
+        this.outputContent = part.outputContent ? [...part.outputContent] : undefined;
         this.artifactId = part.artifactId;
         this.filePath = part.filePath;
         this.diff = part.diff;
@@ -99,7 +94,7 @@ export class Message extends Model {
         this.data = part.data;
         return true;
       case "annotation":
-        this.annotations = part.annotations;
+        this.annotations = [...part.annotations];
         return true;
       case "notice":
         this.tone = part.tone;
@@ -109,7 +104,7 @@ export class Message extends Model {
         return true;
       case "review-run":
         this.operationId = part.operationId;
-        this.threadIds = part.threadIds;
+        this.threadIds = [...part.threadIds];
         this.commentCount = part.commentCount;
         this.status = part.status;
         return true;
@@ -138,12 +133,13 @@ export class Message extends Model {
       case "skill":
         return { id: this.id, kind: this.kind, name: this.name!, content: this.content! };
       case "reasoning":
-        return uiPartSchema.parse({
+        // SAFETY: snapshots and update() keep reasoning status aligned with the part discriminant.
+        return {
           id: this.id,
           kind: this.kind,
           text: this.text!,
-          status: this.status,
-        });
+          status: this.status as Extract<UiPart, { kind: "reasoning" }>["status"],
+        };
       case "command":
         return {
           id: this.id,
@@ -191,14 +187,15 @@ export class Message extends Model {
           retryAt: this.retryAt,
         };
       case "review-run":
-        return uiPartSchema.parse({
+        // SAFETY: snapshots and update() keep review status aligned with the part discriminant.
+        return {
           id: this.id,
           kind: this.kind,
           operationId: this.operationId!,
           threadIds: this.threadIds!,
           commentCount: this.commentCount!,
-          status: this.status,
-        });
+          status: this.status as Extract<UiPart, { kind: "review-run" }>["status"],
+        };
       case "compaction":
         return {
           id: this.id,

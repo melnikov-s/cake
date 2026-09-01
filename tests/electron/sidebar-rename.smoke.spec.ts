@@ -108,7 +108,6 @@ test("uses the native context menu for project sessions", async () => {
     await expect(page.getByLabel("Message")).toBeVisible({ timeout: 20_000 });
     const sessionRow = page.locator(".session-row").filter({ hasText: "Original session title" });
     await expect(sessionRow).toHaveCount(1);
-
     await sessionRow.click({ button: "right" });
 
     // Native Electron menus are outside the renderer accessibility tree. The

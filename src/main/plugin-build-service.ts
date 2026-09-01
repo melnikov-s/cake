@@ -1,3 +1,4 @@
+import { Effect, Schema } from "effect";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
@@ -5,7 +6,6 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { build as buildBackend } from "esbuild";
 import ts from "typescript";
-import { z } from "zod";
 import { build, type Plugin as VitePlugin } from "vite";
 import type { PluginDiagnostic } from "../plugin/plugin-contract";
 import type { CakePaths } from "./cake-paths";
@@ -21,14 +21,20 @@ export interface CandidateBuild {
   backends: Array<{ pluginId: string; path: string }>;
 }
 
-const authoringSnapshotSchema = z.object({ schemaVersion: z.number(), cakeVersion: z.string() });
-const runtimePackageSchema = z.object({ version: z.string() });
-const rendererBuildMetadataSchema = z.object({
-  schemaVersion: z.literal(1),
-  coreRevision: z.string().regex(/^[a-f0-9]{64}$/),
-  sourceRevision: z.string().regex(/^[a-f0-9]{64}$/),
-  buildRevision: z.string().regex(/^[a-f0-9]{64}$/),
-  backends: z.array(z.object({ pluginId: z.string(), file: z.string() })).default([]),
+const authoringSnapshotSchema = Schema.Struct({
+  schemaVersion: Schema.Number,
+  cakeVersion: Schema.String,
+});
+const runtimePackageSchema = Schema.Struct({ version: Schema.String });
+const revisionSchema = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/));
+const rendererBuildMetadataSchema = Schema.Struct({
+  schemaVersion: Schema.Literal(1),
+  coreRevision: revisionSchema,
+  sourceRevision: revisionSchema,
+  buildRevision: revisionSchema,
+  backends: Schema.Array(Schema.Struct({ pluginId: Schema.String, file: Schema.String })).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed([])),
+  ),
 });
 
 interface PluginCompilerPaths {
@@ -75,7 +81,6 @@ function policyPlugin(
       "react/jsx-runtime.js",
       "react/jsx-dev-runtime.js",
       "react-dom/index.js",
-      "zod/index.js",
     ].map((path) => resolve(runtimeRoot, "node_modules", path)),
   );
   sharedRuntimePaths.add(resolve(sourceRoot, "src/renderer/cake.ts"));
@@ -178,7 +183,7 @@ export class PluginBuildService {
 
   async isBuildCurrent(revision: string) {
     try {
-      const metadata = rendererBuildMetadataSchema.parse(
+      const metadata = Schema.decodeUnknownSync(rendererBuildMetadataSchema)(
         JSON.parse(
           await readFile(join(this.paths.recovery, "builds", revision, "cake-build.json"), "utf8"),
         ),
@@ -209,7 +214,6 @@ export class PluginBuildService {
         resolve(this.runtimeRoot, "node_modules/@types/react/jsx-dev-runtime.d.ts"),
       ],
       "react-dom": [resolve(this.runtimeRoot, "node_modules/@types/react-dom/index.d.ts")],
-      zod: [resolve(this.runtimeRoot, "node_modules/zod/index.d.ts")],
     };
     for (const plugin of source.plugins)
       if (plugin.rendererEntry) paths[`plugin:${plugin.manifest.id}`] = [plugin.rendererEntry];
@@ -253,10 +257,10 @@ export class PluginBuildService {
       try {
         const [snapshot, runtimePackage] = await Promise.all([
           readFile(join(this.sourceRoot, "cake-authoring.json"), "utf8").then((source) =>
-            authoringSnapshotSchema.parse(JSON.parse(source)),
+            Schema.decodeUnknownSync(authoringSnapshotSchema)(JSON.parse(source)),
           ),
           readFile(join(this.runtimeRoot, "package.json"), "utf8").then((source) =>
-            runtimePackageSchema.parse(JSON.parse(source)),
+            Schema.decodeUnknownSync(runtimePackageSchema)(JSON.parse(source)),
           ),
         ]);
         if (snapshot.schemaVersion !== 1 || snapshot.cakeVersion !== runtimePackage.version)
@@ -340,7 +344,6 @@ export class PluginBuildService {
               find: /^react-dom$/,
               replacement: resolve(this.runtimeRoot, "node_modules/react-dom/index.js"),
             },
-            { find: /^zod$/, replacement: resolve(this.runtimeRoot, "node_modules/zod/index.js") },
           ],
         },
         plugins: [policyPlugin(source, this.sourceRoot, this.runtimeRoot), react(), tailwindcss()],
@@ -387,7 +390,7 @@ export class PluginBuildService {
       }
       await writeFile(
         join(directory, "cake-build.json"),
-        `${JSON.stringify(rendererBuildMetadataSchema.parse({ schemaVersion: 1, coreRevision, sourceRevision: source.revision, buildRevision: revision, backends: backends.map((backend) => ({ pluginId: backend.pluginId, file: relative(directory, backend.path) })) }), null, 2)}\n`,
+        `${JSON.stringify(Schema.decodeUnknownSync(rendererBuildMetadataSchema)({ schemaVersion: 1, coreRevision, sourceRevision: source.revision, buildRevision: revision, backends: backends.map((backend) => ({ pluginId: backend.pluginId, file: relative(directory, backend.path) })) }), null, 2)}\n`,
       );
       return {
         revision,
@@ -417,7 +420,7 @@ export class PluginBuildService {
 
   async backendEntries(revision: string) {
     const directory = join(this.paths.recovery, "builds", revision);
-    const metadata = rendererBuildMetadataSchema.parse(
+    const metadata = Schema.decodeUnknownSync(rendererBuildMetadataSchema)(
       JSON.parse(await readFile(join(directory, "cake-build.json"), "utf8")),
     );
     return metadata.backends.map((backend) => ({

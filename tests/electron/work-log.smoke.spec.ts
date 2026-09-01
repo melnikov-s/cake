@@ -136,34 +136,31 @@ test("does not mount collapsed work-log activity until it is expanded", async ()
 
   try {
     const page = await application.firstWindow();
-    const log = page.locator(".activity-group");
+    const log = page.locator('[data-slot="activity-group"]');
     await expect(log).toHaveCount(1, { timeout: 20_000 });
     await expect(log.locator(":scope > div")).toHaveCount(0);
-    await expect(log.locator(".tool-call")).toHaveCount(0);
+    await expect(log.locator('[data-slot="tool"]')).toHaveCount(0);
 
     await log.locator(":scope > summary").click();
     await expect(log).toHaveAttribute("open", "");
-    await expect(log.locator(".tool-call")).toHaveCount(1);
-    await expect(log.locator(".tool-input")).toHaveCount(0);
-    await expect(log.locator(".tool-output")).toContainText("README contents");
-    await expect(log.locator(".tool-output")).not.toContainText('"path"');
+    await expect(log.locator('[data-slot="tool"]')).toHaveCount(1);
 
     await log.locator(":scope > summary").click();
     await expect(log).not.toHaveAttribute("open", "");
     await expect(log.locator(":scope > div")).toHaveCount(0);
-    await expect(log.locator(".tool-call")).toHaveCount(0);
+    await expect(log.locator('[data-slot="tool"]')).toHaveCount(0);
 
     await page.keyboard.press("Control+o");
     await expect(log).toHaveAttribute("open", "");
-    await expect(log.locator(".tool-call")).toHaveCount(1);
-    await expect(log.locator(".tool-call.tool-open")).toHaveCount(0);
-    await expect(log.locator(".tool-details")).toBeHidden();
+    await expect(log.locator('[data-slot="tool"]')).toHaveCount(1);
+    await expect(log.locator('[data-slot="tool"] [aria-expanded="true"]')).toHaveCount(0);
+    await expect(log.locator('[data-slot="tool-details"]')).toBeHidden();
 
     await page.keyboard.press("Control+o");
     await expect(log).toHaveAttribute("open", "");
-    await expect(log.locator(".tool-call.tool-open")).toHaveCount(1);
-    await expect(log.locator(".tool-details")).toBeVisible();
-    await expect(log.locator(".tool-output")).toContainText("README contents");
+    await expect(log.locator('[data-slot="tool"] [aria-expanded="true"]')).toHaveCount(1);
+    await expect(log.locator('[data-slot="tool-details"]')).toBeVisible();
+    await expect(log.locator('[data-slot="tool-details"]')).toContainText("README contents");
 
     await page.keyboard.press("Control+o");
     await expect(log).not.toHaveAttribute("open", "");
@@ -171,12 +168,12 @@ test("does not mount collapsed work-log activity until it is expanded", async ()
 
     await log.locator(":scope > summary").click();
     await expect(log).toHaveAttribute("open", "");
-    await expect(log.locator(".tool-call")).toHaveCount(1);
-    await expect(log.locator(".tool-call.tool-open")).toHaveCount(0);
+    await expect(log.locator('[data-slot="tool"]')).toHaveCount(1);
+    await expect(log.locator('[data-slot="tool"] [aria-expanded="true"]')).toHaveCount(0);
 
     // Verify the top-right work-log display menu.
     await page.getByRole("button", { name: "Work log display options" }).click();
-    const controls = page.locator(".work-log-popover-menu");
+    const controls = page.getByRole("dialog");
     await expect(controls).toBeVisible();
     const autoBtn = controls.getByRole("button", { name: "Auto view mode" });
     const diffBtn = controls.getByRole("button", { name: "Diff view mode" });
@@ -190,7 +187,7 @@ test("does not mount collapsed work-log activity until it is expanded", async ()
     await expect(compactBtn).toHaveAttribute("aria-pressed", "false");
 
     await fullBtn.click();
-    await expect(log.locator(".tool-call.tool-open")).toHaveCount(1);
+    await expect(log.locator('[data-slot="tool"] [aria-expanded="true"]')).toHaveCount(1);
     await expect(fullBtn).toHaveAttribute("aria-pressed", "true");
 
     await collapseBtn.click();

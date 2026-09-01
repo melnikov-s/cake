@@ -60,8 +60,7 @@
     "streamdown": "^2.5.0",
     "tailwind-merge": "3.6.0",
     "typescript": "5.9.3",
-    "vite": "7.3.6",
-    "zod": "4.4.3"
+    "vite": "7.3.6"
   },
   "devDependencies": {
     "@effect/vitest": "4.0.0-rc.111",

@@ -1,6 +1,6 @@
 import { Store, observable } from "r-state-tree";
 import type { WorktreeRecord } from "../../ipc/worktree-contract";
-import type { DesktopClient } from "../desktop-client";
+import { RendererClientContext } from "../client/RendererClientContext";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 
@@ -12,7 +12,6 @@ export type WorktreeDraftChoice =
 export type ExistingWorktreeCandidate = WorktreeRecord & { sessionTitle: string };
 
 export interface WorktreeCreationStoreProps {
-  client: Pick<DesktopClient, "createWorktree">;
   operations: SessionOperationCoordinatorStore;
   catalog: SessionCatalogStore;
   relocateTemporarySession(sessionId: string, workspacePath: string): void;
@@ -21,6 +20,10 @@ export interface WorktreeCreationStoreProps {
 
 /** Owns draft-only worktree selection and first-send checkout preparation. */
 export class WorktreeCreationStore extends Store<WorktreeCreationStoreProps> {
+  get managedWorktrees() {
+    return RendererClientContext.consume(this)!.managedWorktrees;
+  }
+
   private readonly choicesBySession: Record<string, WorktreeDraftChoice> = observable({});
   preparingSessionId: string | undefined;
 
@@ -57,7 +60,7 @@ export class WorktreeCreationStore extends Store<WorktreeCreationStoreProps> {
   ): Promise<WorktreeRecord> {
     const operationId = this.props.operations.start("project-workbench");
     try {
-      const record = await this.props.client.createWorktree({
+      const record = await this.managedWorktrees.create({
         operationId,
         path: projectPath,
         baseWorktreePath: options?.baseWorktreePath,
@@ -97,7 +100,7 @@ export class WorktreeCreationStore extends Store<WorktreeCreationStoreProps> {
           throw new Error("That worktree is no longer available.");
         workspacePath = record.worktreePath;
       } else {
-        const record = await this.props.client.createWorktree({
+        const record = await this.managedWorktrees.create({
           operationId,
           path: projectPath,
           baseWorktreePath: choice.baseWorktreePath,

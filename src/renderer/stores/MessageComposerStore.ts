@@ -7,8 +7,11 @@ import type {
   UiPart,
 } from "../../ipc/session-contract";
 import { parsePiBuiltinCommand } from "../../ipc/session-contract";
-import type { ProjectSessionCreateInput } from "../../domain/project-session-data";
-import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
+import type {
+  ProjectSessionPromptInput,
+  ProjectSessionStartInput,
+} from "../../domain/project-session-data";
+import type { RendererEvent } from "../RendererEvent";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
 import type { ReviewsStore } from "./ReviewsStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
@@ -36,8 +39,6 @@ export interface QueuedPrompt {
 }
 
 export interface MessageComposerStoreProps {
-  nativeClient: Pick<DesktopClient, "chooseAttachments" | "suggestFiles"> &
-    Partial<Pick<DesktopClient, "generateSessionTitle">>;
   sessionRegistry: SessionRegistryStore;
   reviews(): ReviewsStore;
   projectPath(): string | undefined;
@@ -141,7 +142,7 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     this.error = undefined;
     this.errorDetails = undefined;
     try {
-      const selected = await this.props.nativeClient.chooseAttachments();
+      const selected = await this.client.filesystem.chooseAttachments({ signal: this.signal });
       if (this.signal.aborted) return;
       const draft = this.props.draft();
       const fileMentions = selected
@@ -242,10 +243,10 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     }
   }
 
-  suggestFiles(prefix: string): Promise<FileSuggestion[]> {
+  suggestFiles(prefix: string): Promise<ReadonlyArray<FileSuggestion>> {
     const projectPath = this.props.projectPath();
     return projectPath
-      ? this.props.nativeClient.suggestFiles(projectPath, prefix)
+      ? this.client.filesystem.suggestFiles(projectPath, prefix, { signal: this.signal })
       : Promise.resolve([]);
   }
 
@@ -395,8 +396,9 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     if (!text && attachments.length === 0) return false;
     await this.props.sessionRegistry.createDraftSession(sessionId, text, attachments);
     this.clearComposer();
-    if (text && this.props.nativeClient.generateSessionTitle)
-      void this.props.nativeClient.generateSessionTitle!(text)
+    if (text)
+      void this.client.workspaces
+        .generateSessionTitle(text, { signal: this.signal })
         .then((title) => {
           if (title && !this.signal.aborted)
             this.props.sessionRegistry.applyGeneratedDraftName(sessionId, title);
@@ -791,23 +793,31 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
       }
       const newSession = this.props.newSessionRequest?.();
       if (newSession) {
-        const input: ProjectSessionCreateInput = {
+        const input: ProjectSessionStartInput = {
           sessionId,
           workingDirectory: newSession.path,
-          configuration: newSession.configuration,
-          name: newSession.name,
+          text,
+          renderUserMessageAsMarkdown,
+          attachments,
         };
-        await this.client.projectSessions.create(input, { signal: this.signal });
+        if (newSession.configuration !== undefined)
+          Object.assign(input, { configuration: newSession.configuration });
+        if (newSession.name !== undefined) Object.assign(input, { name: newSession.name });
+        await this.client.projectSessions.start(input, { signal: this.signal });
         this.props.sessionRegistry.load(sessionId, newSession.path);
+      } else {
+        const command =
+          delivery === "steer"
+            ? this.client.projectSessions.steer
+            : this.client.projectSessions.prompt;
+        const promptInput: ProjectSessionPromptInput = {
+          sessionId,
+          text,
+          renderUserMessageAsMarkdown,
+          attachments,
+        };
+        await command(promptInput, { signal: this.signal });
       }
-      const command =
-        delivery === "steer"
-          ? this.client.projectSessions.steer
-          : this.client.projectSessions.prompt;
-      await command(
-        { sessionId, text, renderUserMessageAsMarkdown, attachments },
-        { signal: this.signal },
-      );
       this.finishOperation(operationId);
       return !this.signal.aborted;
     } catch (error) {
@@ -841,7 +851,7 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     }
   }
 
-  receive(event: DesktopClientEvent) {
+  receive(event: RendererEvent) {
     if (
       event.type === "pi-state-changed" &&
       (event.state === "failed" || event.state === "stopped")

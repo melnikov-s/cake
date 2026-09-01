@@ -250,8 +250,16 @@ const migrateLegacyWindowState = Effect.fn("WindowStateStorage.migrateLegacy")(f
             (selection.kind === "cake-chat" && selection.sessionId)
               ? selection
               : undefined,
-          sessionHistory: [],
-          sessionHistoryCursor: -1,
+          sessionHistory:
+            selection.kind === "project-session" ||
+            (selection.kind === "cake-chat" && selection.sessionId)
+              ? [selection]
+              : [],
+          sessionHistoryCursor:
+            selection.kind === "project-session" ||
+            (selection.kind === "cake-chat" && selection.sessionId)
+              ? 0
+              : -1,
         },
         children: {},
       },

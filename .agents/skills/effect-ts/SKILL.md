@@ -37,9 +37,8 @@ a generic example.
 
 ## Repository setup
 
-Cake pins one exact Effect version. Do not use a floating `effect@rc` command in
-this repository. Preserve the version in
-`docs/development/effect-migration.md` and do not install `@effect/rpc`; Cake
+Cake pins one exact Effect version in `package.json`. Do not use a floating
+`effect@rc` command in this repository and do not install `@effect/rpc`; Cake
 uses `effect/unstable/rpc`.
 
 A repository adopting this skill must include the Effect learning instructions

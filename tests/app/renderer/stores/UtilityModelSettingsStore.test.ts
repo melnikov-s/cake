@@ -1,7 +1,9 @@
-import { createStore, mount } from "r-state-tree";
+import { createStore } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
 import type { ApplicationState, UtilityModel } from "../../../../src/ipc/session-contract";
+import type { RendererClient } from "../../../../src/renderer/client/RendererClient";
 import { UtilityModelSettingsStore } from "../../../../src/renderer/stores/UtilityModelSettingsStore";
+import { mountWithRendererClient } from "../mount-with-renderer-client";
 
 const applicationState = (utilityModel?: UtilityModel): ApplicationState => ({
   projects: [],
@@ -11,6 +13,12 @@ const applicationState = (utilityModel?: UtilityModel): ApplicationState => ({
   trustedProjectPaths: [],
   utilityModel,
 });
+
+function mountUtility(setUtilityModel: RendererClient["workspaces"]["setUtilityModel"]) {
+  return mountWithRendererClient(createStore(UtilityModelSettingsStore), {
+    workspaces: { setUtilityModel },
+  } as unknown as RendererClient);
+}
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -27,7 +35,7 @@ describe("UtilityModelSettingsStore", () => {
       .fn<(model: UtilityModel | undefined) => Promise<ApplicationState>>()
       .mockReturnValueOnce(first.promise)
       .mockImplementation(async (model) => applicationState(model));
-    const store = mount(createStore(UtilityModelSettingsStore, { client: { setUtilityModel } }));
+    const { root, subject: store } = mountUtility(setUtilityModel);
 
     const firstSave = store.select("openai/first", "low");
     const secondSave = store.select("openai/latest", "high");
@@ -41,16 +49,12 @@ describe("UtilityModelSettingsStore", () => {
     expect(setUtilityModel).toHaveBeenCalledTimes(2);
     expect(store.model).toEqual({ provider: "openai", modelId: "latest", thinkingLevel: "high" });
     expect(store.saving).toBe(false);
-    store[Symbol.dispose]();
+    root[Symbol.dispose]();
   });
 
   it("does not let a stale application event overwrite an optimistic edit", async () => {
     const pending = deferred<ApplicationState>();
-    const store = mount(
-      createStore(UtilityModelSettingsStore, {
-        client: { setUtilityModel: vi.fn(() => pending.promise) },
-      }),
-    );
+    const { root, subject: store } = mountUtility(vi.fn(() => pending.promise));
     store.applyApplicationState(
       applicationState({ provider: "openai", modelId: "confirmed", thinkingLevel: "low" }),
     );
@@ -66,18 +70,14 @@ describe("UtilityModelSettingsStore", () => {
     );
     await save;
     expect(store.model?.modelId).toBe("optimistic");
-    store[Symbol.dispose]();
+    root[Symbol.dispose]();
   });
 
   it("ignores a save completion after disposal", async () => {
     const pending = deferred<ApplicationState>();
-    const store = mount(
-      createStore(UtilityModelSettingsStore, {
-        client: { setUtilityModel: vi.fn(() => pending.promise) },
-      }),
-    );
+    const { root, subject: store } = mountUtility(vi.fn(() => pending.promise));
     const save = store.select("openai/model", "medium");
-    store[Symbol.dispose]();
+    root[Symbol.dispose]();
 
     pending.resolve(
       applicationState({ provider: "openai", modelId: "server-value", thinkingLevel: "high" }),

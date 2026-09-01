@@ -1,64 +1,62 @@
-import { z } from "zod";
+import { Schema } from "effect";
 import { jsonSchemaSchema } from "./artifact-contract";
 import { inlineWidgetLanguageSchema, inlineWidgetSourceSchema } from "./inline-widget-contract";
 
 const REQUEST_PROTOCOL = "cake.request/v1" as const;
-const requestIdSchema = z
-  .string()
-  .min(1)
-  .max(256)
-  .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/);
-const formFieldSchema = z.object({
+const requestIdSchema = Schema.String.check(
+  Schema.isMinLength(1),
+  Schema.isMaxLength(256),
+  Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/),
+);
+const formFieldSchema = Schema.Struct({
   id: requestIdSchema,
-  label: z.string().min(1).max(512),
-  type: z.enum(["text", "textarea", "number", "checkbox", "select"]),
-  placeholder: z.string().max(512).optional(),
-  options: z
-    .array(z.object({ value: z.string().max(256), label: z.string().max(512) }))
-    .max(200)
-    .optional(),
+  label: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(512)),
+  type: Schema.Literals(["text", "textarea", "number", "checkbox", "select"]),
+  placeholder: Schema.optional(Schema.String.check(Schema.isMaxLength(512))),
+  options: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        value: Schema.String.check(Schema.isMaxLength(256)),
+        label: Schema.String.check(Schema.isMaxLength(512)),
+      }),
+    ).check(Schema.isMaxLength(200)),
+  ),
 });
-
-const requestViewSchema = z.discriminatedUnion("type", [
-  z.object({
-    type: z.literal("form"),
-    fields: z.array(formFieldSchema).min(1).max(200),
+const requestViewSchema = Schema.Union([
+  Schema.Struct({
+    type: Schema.Literal("form"),
+    fields: Schema.Array(formFieldSchema).check(Schema.isMinLength(1), Schema.isMaxLength(200)),
   }),
-  z.object({
-    type: z.literal("widget"),
+  Schema.Struct({
+    type: Schema.Literal("widget"),
     language: inlineWidgetLanguageSchema,
     source: inlineWidgetSourceSchema,
   }),
 ]);
+export const cakeRequestV1Schema = Schema.Struct({
+  protocol: Schema.Literal(REQUEST_PROTOCOL),
+  id: requestIdSchema,
+  title: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(512)),
+  responseSchema: jsonSchemaSchema,
+  view: requestViewSchema,
+  fallback: Schema.Struct({
+    markdown: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(1_048_576)),
+  }),
+}).check(
+  Schema.makeFilter((request) =>
+    request.view.type === "form" &&
+    request.responseSchema.type === "object" &&
+    request.responseSchema.required?.length
+      ? "Form fields are optional and cannot be required by the response schema"
+      : undefined,
+  ),
+);
 
-export const cakeRequestV1Schema = z
-  .object({
-    protocol: z.literal(REQUEST_PROTOCOL),
-    id: requestIdSchema,
-    title: z.string().min(1).max(512),
-    responseSchema: jsonSchemaSchema,
-    view: requestViewSchema,
-    fallback: z.object({ markdown: z.string().min(1).max(1_048_576) }),
-  })
-  .strict()
-  .superRefine((request, context) => {
-    if (
-      request.view.type === "form" &&
-      request.responseSchema.type === "object" &&
-      request.responseSchema.required?.length
-    )
-      context.addIssue({
-        code: "custom",
-        path: ["responseSchema", "required"],
-        message: "Form fields are optional and cannot be required by the response schema",
-      });
-  });
-
-export type CakeRequestV1 = z.infer<typeof cakeRequestV1Schema>;
-export type CakeRequestView = z.infer<typeof requestViewSchema>;
+export type CakeRequestV1 = typeof cakeRequestV1Schema.Type;
+export type CakeRequestView = typeof requestViewSchema.Type;
 
 export function parseRequestInput(input: unknown): CakeRequestV1 {
   const bytes = new TextEncoder().encode(JSON.stringify(input)).byteLength;
   if (bytes > 1_048_576) throw new Error("Request input exceeds the 1 MB limit");
-  return cakeRequestV1Schema.parse(input);
+  return Schema.decodeUnknownSync(cakeRequestV1Schema)(input);
 }

@@ -1,8 +1,9 @@
-import type { CakeDesktopBridge } from "../ipc/desktop-ipc";
+import type { ElectronRpcTransport } from "../ipc/transport/ElectronRpcTransport";
+
 declare global {
   const __CAKE_ACTIVE_SCENE_PLUGIN_ID__: string | undefined;
   interface Window {
-    cake?: CakeDesktopBridge;
+    cake?: { readonly rpc: ElectronRpcTransport };
   }
 }
 

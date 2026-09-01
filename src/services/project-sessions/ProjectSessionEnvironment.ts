@@ -58,11 +58,7 @@ export interface ProjectSessionEnvironmentService {
   }) => Effect.Effect<string, ProjectSessionEnvironmentError>;
 }
 
-/**
- * Temporary outside-world adapter for Project Session paths, archive moves, and
- * Managed Worktree integration. Phase 9 replaces its worktree portion with the
- * Git/WorktreeStorage Services; it contains no Cake Session business policy.
- */
+/** Outside-world adapter for Project Session paths and archive operations. */
 export class ProjectSessionEnvironment extends Context.Service<
   ProjectSessionEnvironment,
   ProjectSessionEnvironmentService

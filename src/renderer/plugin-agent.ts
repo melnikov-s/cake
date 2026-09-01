@@ -12,6 +12,7 @@ import type {
 import type { SessionSnapshot, UiPart } from "../ipc/session-contract";
 import { RootStore } from "./stores/RootStore";
 import { useCurrentPluginId } from "./plugin-runtime";
+import { useRendererInfrastructure } from "./RendererInfrastructureContext";
 
 function implicitSession(root: RootStore): SessionRef | undefined {
   const selection = root.appShellStore.selection;
@@ -36,6 +37,7 @@ export interface PluginAgentHandle {
 
 export function usePluginAgent(options: { abortOnUnmount?: boolean } = {}): PluginAgentHandle {
   const root = useStore(RootStore);
+  const infrastructure = useRendererInfrastructure();
   const pluginId = useCurrentPluginId();
   const [snapshot, setSnapshot] = useState<PluginAgentSnapshot>();
   const [opening, setOpening] = useState(false);
@@ -45,7 +47,7 @@ export function usePluginAgent(options: { abortOnUnmount?: boolean } = {}): Plug
 
   useEffect(
     () =>
-      root.nativeClient.subscribe((event) => {
+      infrastructure.subscribe((event) => {
         if (
           event.type === "plugin-agent-event" &&
           event.pluginId === pluginId &&
@@ -53,7 +55,7 @@ export function usePluginAgent(options: { abortOnUnmount?: boolean } = {}): Plug
         )
           setSnapshot(event.snapshot);
       }),
-    [pluginId, root],
+    [infrastructure, pluginId],
   );
 
   useEffect(
@@ -61,10 +63,10 @@ export function usePluginAgent(options: { abortOnUnmount?: boolean } = {}): Plug
       const current = latest.current;
       if (!current) return;
       if (options.abortOnUnmount && current.status === "running")
-        void root.nativeClient
-          .abortPluginAgent(pluginId, current.handleId)
-          .finally(() => root.nativeClient.detachPluginAgent(pluginId, current.handleId));
-      else void root.nativeClient.detachPluginAgent(pluginId, current.handleId);
+        void root.client.plugins
+          .abortAgent(pluginId, current.handleId)
+          .finally(() => root.client.plugins.detachAgent(pluginId, current.handleId));
+      else void root.client.plugins.detachAgent(pluginId, current.handleId);
     },
     [options.abortOnUnmount, pluginId, root],
   );
@@ -72,14 +74,12 @@ export function usePluginAgent(options: { abortOnUnmount?: boolean } = {}): Plug
   const open = useCallback(
     async (input: PluginAgentOpenOptions) => {
       const previous = latest.current;
-      if (previous) await root.nativeClient.detachPluginAgent(pluginId, previous.handleId);
+      if (previous) await root.client.plugins.detachAgent(pluginId, previous.handleId);
       setOpening(true);
       setLocalError(undefined);
       setSnapshot(undefined);
       try {
-        setSnapshot(
-          await root.nativeClient.openPluginAgent(pluginId, input, implicitSession(root)),
-        );
+        setSnapshot(await root.client.plugins.openAgent(pluginId, input, implicitSession(root)));
       } catch (error) {
         setLocalError(error instanceof Error ? error.message : String(error));
         throw error;
@@ -99,7 +99,7 @@ export function usePluginAgent(options: { abortOnUnmount?: boolean } = {}): Plug
       setLocalError(undefined);
       try {
         setSnapshot(
-          await root.nativeClient.promptPluginAgent(pluginId, current.handleId, delivery, text),
+          await root.client.plugins.promptAgent(pluginId, current.handleId, delivery, text),
         );
       } catch (error) {
         setLocalError(error instanceof Error ? error.message : String(error));
@@ -112,7 +112,7 @@ export function usePluginAgent(options: { abortOnUnmount?: boolean } = {}): Plug
   const abort = useCallback(async () => {
     const current = latest.current;
     if (!current) return;
-    setSnapshot(await root.nativeClient.abortPluginAgent(pluginId, current.handleId));
+    setSnapshot(await root.client.plugins.abortAgent(pluginId, current.handleId));
   }, [pluginId, root]);
 
   return useMemo(
@@ -207,23 +207,23 @@ export function usePluginCompletion(): PluginCompletionHandle {
     const requestId = active.current;
     if (!requestId) return;
     active.current = undefined;
-    await root.nativeClient.cancelPluginCompletion(pluginId, requestId);
+    await root.client.plugins.cancelCompletion(pluginId, requestId);
     setState({ status: "idle" });
   }, [pluginId, root]);
   useEffect(
     () => () => {
-      if (active.current) void root.nativeClient.cancelPluginCompletion(pluginId, active.current);
+      if (active.current) void root.client.plugins.cancelCompletion(pluginId, active.current);
     },
     [pluginId, root],
   );
   const run = useCallback(
     async (request: PluginCompletionRequest) => {
-      if (active.current) await root.nativeClient.cancelPluginCompletion(pluginId, active.current);
+      if (active.current) await root.client.plugins.cancelCompletion(pluginId, active.current);
       const requestId = crypto.randomUUID();
       active.current = requestId;
       setState({ status: "running" });
       try {
-        const result = await root.nativeClient.runPluginCompletion(
+        const result = await root.client.plugins.runCompletion(
           pluginId,
           requestId,
           request,

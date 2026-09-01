@@ -1,29 +1,19 @@
-import { z } from "zod";
+import { Schema } from "effect";
 
-export const inlineWidgetMessageSchema = z.discriminatedUnion("type", [
-  z.object({
-    source: z.literal("cake-inline-widget"),
-    token: z.string(),
-    type: z.literal("height"),
-    value: z.number(),
+const inlineWidgetMessageBase = {
+  source: Schema.Literal("cake-inline-widget"),
+  token: Schema.String,
+};
+
+export const inlineWidgetMessageSchema = Schema.Union([
+  Schema.Struct({
+    ...inlineWidgetMessageBase,
+    type: Schema.Literal("height"),
+    value: Schema.Number,
   }),
-  z.object({
-    source: z.literal("cake-inline-widget"),
-    token: z.string(),
-    type: z.literal("error"),
-    value: z.json(),
-  }),
-  z.object({
-    source: z.literal("cake-inline-widget"),
-    token: z.string(),
-    type: z.literal("submit"),
-    value: z.json(),
-  }),
-  z.object({
-    source: z.literal("cake-inline-widget"),
-    token: z.string(),
-    type: z.literal("cancel"),
-  }),
+  Schema.Struct({ ...inlineWidgetMessageBase, type: Schema.Literal("error"), value: Schema.Json }),
+  Schema.Struct({ ...inlineWidgetMessageBase, type: Schema.Literal("submit"), value: Schema.Json }),
+  Schema.Struct({ ...inlineWidgetMessageBase, type: Schema.Literal("cancel") }),
 ]);
 
 export function inlineWidgetRepairContext(context: string, instructions: string) {

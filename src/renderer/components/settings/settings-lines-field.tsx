@@ -9,7 +9,7 @@ export function SettingsLinesField({
 }: {
   label: string;
   description: string;
-  value: string[];
+  value: ReadonlyArray<string>;
   onApply(value: string[]): void;
 }) {
   const serialized = value.join("\n");

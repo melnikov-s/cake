@@ -74,4 +74,48 @@ export default tseslint.config(
       ],
     },
   },
+  {
+    files: ["src/renderer/stores/**/*.{ts,tsx}", "src/renderer/models/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "effect",
+              message: "Renderer Stores and Models use RendererClient and passive reactive state.",
+            },
+          ],
+          patterns: [
+            {
+              group: [
+                "../../ipc/client/*",
+                "../../ipc/protocol/*",
+                "../RendererRuntime",
+                "../RendererModelSynchronizer",
+              ],
+              message:
+                "Effect RPC and synchronization mechanics belong to renderer infrastructure.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ["src/renderer/RendererModelSynchronizer.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["./stores/*", "./client/*"],
+              message: "The Model synchronizer depends only on CakeIpcClient and passive Models.",
+            },
+          ],
+        },
+      ],
+    },
+  },
 );

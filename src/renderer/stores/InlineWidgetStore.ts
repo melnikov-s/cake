@@ -4,7 +4,7 @@ import type {
   InlineWidgetCapability,
   InlineWidgetLanguage,
 } from "../../ipc/inline-widget-contract";
-import type { DesktopClient } from "../desktop-client";
+import { RendererClientContext } from "../client/RendererClientContext";
 
 export interface InlineWidgetState {
   language: InlineWidgetLanguage;
@@ -23,10 +23,12 @@ export interface InlineWidgetRepairInput {
   model?: { provider: string; id: string };
 }
 
-type InlineWidgetClient = Pick<DesktopClient, "compileInlineWidget" | "repairInlineWidget">;
-
 /** Owns compilation and dedicated-agent repair policy for inline transcript widgets. */
-export class InlineWidgetStore extends Store<{ client: InlineWidgetClient }> {
+export class InlineWidgetStore extends Store {
+  get plugins() {
+    return RendererClientContext.consume(this)!.plugins;
+  }
+
   readonly states: Record<string, InlineWidgetState> = observable({});
   private readonly revisions = new Map<string, number>();
 
@@ -71,7 +73,7 @@ export class InlineWidgetStore extends Store<{ client: InlineWidgetClient }> {
     const revision = (this.revisions.get(input.id) ?? 0) + 1;
     this.revisions.set(input.id, revision);
     try {
-      const repaired = await this.props.client.repairInlineWidget({
+      const repaired = await this.plugins.repairInlineWidget({
         sessionId: input.sessionId,
         language: state.language,
         capability: state.capability,
@@ -102,7 +104,7 @@ export class InlineWidgetStore extends Store<{ client: InlineWidgetClient }> {
     const revision = expectedRevision ?? (this.revisions.get(id) ?? 0) + 1;
     this.revisions.set(id, revision);
     try {
-      const compiled = await this.props.client.compileInlineWidget(
+      const compiled = await this.plugins.compileInlineWidget(
         state.language,
         source,
         state.capability,

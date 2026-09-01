@@ -1,5 +1,5 @@
+import { Schema } from "effect";
 import { describe, expect, it, vi } from "vitest";
-import { z } from "zod";
 import {
   CakeOperationRegistry,
   cakeToolEnvelopeSchema,
@@ -20,7 +20,7 @@ function registry(execute = vi.fn(async () => ({ status: "ok" }))) {
       command: "context.compact",
       topic: "context",
       summary: "Compact context.",
-      inputSchema: z.object({ instructions: z.string().optional() }).strict(),
+      inputSchema: Schema.Struct({ instructions: Schema.optionalKey(Schema.String) }),
       examples: [{ input: { instructions: "Keep decisions" } }],
       result: "A completion status.",
       execute,
@@ -29,7 +29,7 @@ function registry(execute = vi.fn(async () => ({ status: "ok" }))) {
       command: "session.info",
       topic: "sessions",
       summary: "Inspect this session.",
-      inputSchema: z.object({}).strict(),
+      inputSchema: Schema.Struct({}),
       examples: [{}],
       result: "Minimal session information.",
       execute: async () => ({ sessionId: "one" }),
@@ -39,20 +39,16 @@ function registry(execute = vi.fn(async () => ({ status: "ok" }))) {
 
 describe("Cake operation registry", () => {
   it("keeps the model-visible envelope and description compact", () => {
-    const schema = z.toJSONSchema(cakeToolEnvelopeSchema);
-    expect(schema.properties).toEqual(
-      expect.objectContaining({ command: expect.any(Object), input: expect.any(Object) }),
-    );
-    expect(JSON.stringify(schema)).not.toContain("context.compact");
-    expect(schema.properties?.command).toEqual(
-      expect.objectContaining({
-        description: "Exact topic or operation command. Omit for the help index.",
-      }),
-    );
-    expect(schema.properties?.input).toEqual(
-      expect.objectContaining({
-        description: "Operation arguments only. Omit for help and topic protocol discovery.",
-      }),
+    const schema = Schema.toStandardJSONSchemaV1(cakeToolEnvelopeSchema)[
+      "~standard"
+    ].jsonSchema.input({ target: "draft-07" });
+    const encoded = JSON.stringify(schema);
+    expect(encoded).toContain('"command"');
+    expect(encoded).toContain('"input"');
+    expect(encoded).not.toContain("context.compact");
+    expect(encoded).toContain("Exact topic or operation command. Omit for the help index.");
+    expect(encoded).toContain(
+      "Operation arguments only. Omit for help and topic protocol discovery.",
     );
     expect(cakeToolDescription).toContain(
       'set command to the exact topic name, for example {"command":"vscode"}',

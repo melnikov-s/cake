@@ -88,9 +88,8 @@ export type PiSessionUpdate =
   | { readonly _tag: "Event"; readonly event: PiSessionEvent };
 
 /**
- * Runtime construction remains an adapter concern until Cake Session domain
- * operations replace the legacy drivers in Phase 6. The semantic profile is
- * mandatory here so callers cannot assemble Pi extension/tool policy ad hoc.
+ * Runtime construction is a Pi adapter concern. The semantic profile is
+ * mandatory so callers cannot assemble Pi extension/tool policy ad hoc.
  */
 export interface PiSessionAcquireOptions {
   readonly profile: Schema.Schema.Type<typeof PiSessionCapabilityProfile>;
@@ -545,8 +544,9 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
               ? call(
                   "notifySubagentCompletion",
                   (runtime) =>
-                    runtime.notifySubagentCompletion?.(jsonValueSchema.parse(result)) ??
-                    Promise.resolve(),
+                    runtime.notifySubagentCompletion?.(
+                      Schema.decodeUnknownSync(jsonValueSchema)(result),
+                    ) ?? Promise.resolve(),
                 )
               : Effect.fail(
                   new PiSessionError({

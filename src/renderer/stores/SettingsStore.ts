@@ -1,6 +1,5 @@
 import { Store, child, createStore } from "r-state-tree";
 import type { ApplicationState } from "../../ipc/session-contract";
-import type { DesktopClient } from "../desktop-client";
 import { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import { ModelPresetSettingsStore } from "./ModelPresetSettingsStore";
 import { ProviderSettingsStore } from "./ProviderSettingsStore";
@@ -8,7 +7,6 @@ import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordin
 import { UtilityModelSettingsStore } from "./UtilityModelSettingsStore";
 
 export interface SettingsStoreProps {
-  client: Pick<DesktopClient, "setUtilityModel">;
   operations: SessionOperationCoordinatorStore;
 }
 
@@ -18,7 +16,7 @@ export class SettingsStore extends Store<SettingsStoreProps> {
     return createStore(AppearanceSettingsStore);
   }
   @child get utilityModel(): UtilityModelSettingsStore {
-    return createStore(UtilityModelSettingsStore, { client: this.props.client });
+    return createStore(UtilityModelSettingsStore);
   }
   @child get modelPresets(): ModelPresetSettingsStore {
     return createStore(ModelPresetSettingsStore);

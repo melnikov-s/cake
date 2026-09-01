@@ -181,7 +181,7 @@ Reviews store Cake-owned anchors and workflow metadata. Plugin storage is
 namespaced by stable plugin ID. If the separately scoped future Custom Renderer
 is implemented, its storage records immutable base revisions, user patches,
 semantic intent, diagnostics, activation history, and namespaced renderer
-snapshot state. That storage is not part of the Effect migration.
+snapshot state. That storage belongs to the separately scoped future project.
 
 Broken plugin or future Custom Renderer source, data, and diagnostics are preserved
 for repair. Recovery may disable or roll back executable code without deleting

@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { Schema } from "effect";
 import { jsonValueSchema, type JsonValue } from "../../../ipc/json-contract";
 import {
   MAX_ARTIFACT_INPUT_BYTES,
@@ -35,19 +35,22 @@ interface PiToolRuntimeContext {
   model?: { provider: string; id: string };
 }
 
-const widgetSchema = z
-  .object({
-    id: z
-      .string()
-      .min(1)
-      .max(256)
-      .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/),
-    title: z.string().min(1).max(512),
-    brief: z.string().min(1).max(262_144),
-    data: z.unknown().optional(),
-    fallback: z.object({ markdown: z.string().min(1).max(MAX_ARTIFACT_INPUT_BYTES) }),
-  })
-  .strict();
+const widgetSchema = Schema.Struct({
+  id: Schema.String.check(
+    Schema.isMinLength(1),
+    Schema.isMaxLength(256),
+    Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/),
+  ),
+  title: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(512)),
+  brief: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(262_144)),
+  data: Schema.optionalKey(Schema.Unknown),
+  fallback: Schema.Struct({
+    markdown: Schema.String.check(
+      Schema.isMinLength(1),
+      Schema.isMaxLength(MAX_ARTIFACT_INPUT_BYTES),
+    ),
+  }),
+});
 
 function runtimeContext(context: CakeOperationExecutionContext) {
   // SAFETY: createCakeGatewayExtension supplies Pi's validated tool execution context.
@@ -67,7 +70,7 @@ export function createCakeArtifactOperations(
   const appendPointer = (record: ArtifactRecord) => {
     pi.appendEntry(
       "cake.artifact/v1",
-      artifactPointerSchema.parse({
+      Schema.decodeUnknownSync(artifactPointerSchema)({
         protocol: "cake.artifact/v1",
         artifactId: record.artifact.id,
         sessionId: record.artifact.sessionId,
@@ -89,7 +92,7 @@ export function createCakeArtifactOperations(
         "Prefer forms for interviews, questionnaires, multiple decisions, and structured configuration; use normal conversation for simple one-off questions.",
         "Form fields are optional, so response schemas must accept an empty object. Selects accept listed choices or freeform text.",
       ],
-      inputSchema: z.object({ request: cakeRequestV1Schema }).strict(),
+      inputSchema: Schema.Struct({ request: cakeRequestV1Schema }),
       examples: [
         {
           input: {
@@ -143,12 +146,18 @@ export function createCakeArtifactOperations(
             ? context.signal.reason
             : new Error("The request ended because its turn was interrupted");
         if (value === undefined)
-          return jsonValueSchema.parse({ artifactId: record.artifact.id, cancelled: true });
-        return jsonValueSchema.parse({
+          return Schema.decodeUnknownSync(jsonValueSchema)({
+            artifactId: record.artifact.id,
+            cancelled: true,
+          });
+        return Schema.decodeUnknownSync(jsonValueSchema)({
           artifactId: record.artifact.id,
           cancelled: false,
-          value: jsonValueSchema.parse(
-            validateArtifactResponse(request.responseSchema, jsonValueSchema.parse(value)),
+          value: Schema.decodeUnknownSync(jsonValueSchema)(
+            validateArtifactResponse(
+              request.responseSchema,
+              Schema.decodeUnknownSync(jsonValueSchema)(value),
+            ),
           ),
         });
       },
@@ -164,7 +173,7 @@ export function createCakeArtifactOperations(
         "Use widgets when interactivity or visual presentation materially helps, especially when requested; prefer Markdown, tables, code, or Mermaid for simple textual explanations.",
         "Supply a complete presentation brief, bounded data, and a readable Markdown fallback. Do not write the generated React source yourself.",
       ],
-      inputSchema: z.object({ widget: widgetSchema }).strict(),
+      inputSchema: Schema.Struct({ widget: widgetSchema }),
       examples: [
         {
           input: {
@@ -183,7 +192,7 @@ export function createCakeArtifactOperations(
       ],
       async execute(input, context) {
         // SAFETY: CakeOperationRegistry parsed this value with the definition's input schema.
-        const widget = widgetSchema.parse((input as { widget: unknown }).widget);
+        const widget = (input as { widget: typeof widgetSchema.Type }).widget;
         const serialized = JSON.stringify(widget);
         if (new TextEncoder().encode(serialized).byteLength > 262_144)
           throw new Error("Widget brief exceeds the 262144-byte limit");

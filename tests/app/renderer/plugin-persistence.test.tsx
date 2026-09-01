@@ -1,11 +1,11 @@
 /** @vitest-environment jsdom */
+import { Schema } from "effect";
 import React, { Suspense, act, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { usePluginGlobalState } from "../../../src/renderer/plugin-persistence";
 import type { RendererClient } from "../../../src/renderer/client/RendererClient";
 import { RendererInfrastructureFixture } from "./renderer-infrastructure";
-import { z } from "zod";
 
 describe("plugin persistence hooks", () => {
   const containers: HTMLDivElement[] = [];
@@ -26,7 +26,12 @@ describe("plugin persistence hooks", () => {
     );
     const effect = vi.fn();
     function Probe() {
-      const [value] = usePluginGlobalState("test.persistence", "hydration", z.string(), "default");
+      const [value] = usePluginGlobalState(
+        "test.persistence",
+        "hydration",
+        Schema.String,
+        "default",
+      );
       useEffect(() => effect(value), [value]);
       return <span>{value}</span>;
     }
@@ -37,7 +42,7 @@ describe("plugin persistence hooks", () => {
     act(() =>
       root.render(
         <RendererInfrastructureFixture
-          pluginInvoke={request as RendererClient["plugins"]["invoke"]}
+          pluginLoadState={request as RendererClient["plugins"]["loadState"]}
         >
           <Suspense fallback={<i>loading</i>}>
             <Probe />
@@ -50,16 +55,13 @@ describe("plugin persistence hooks", () => {
 
     await act(async () =>
       resolveLoad({
-        type: "plugin-state",
-        record: {
-          schemaVersion: 1,
-          pluginId: "test.persistence",
-          key: "hydration",
-          scope: { kind: "global" },
-          value: "stored",
-          version: 3,
-          updatedAt: new Date(0).toISOString(),
-        },
+        schemaVersion: 1,
+        pluginId: "test.persistence",
+        key: "hydration",
+        scope: { kind: "global" },
+        value: "stored",
+        version: 3,
+        updatedAt: new Date(0).toISOString(),
       }),
     );
 

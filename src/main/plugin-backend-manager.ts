@@ -1,3 +1,4 @@
+import { Option, Schema } from "effect";
 import { utilityProcess, type UtilityProcess } from "electron";
 import type { JsonValue } from "../ipc/json-contract";
 import { pluginBackendHostMessageSchema } from "../plugin/backend-protocol";
@@ -96,9 +97,9 @@ export class PluginBackendManager {
       );
       child.on("spawn", () => child.postMessage({ type: "init", pluginId, backendPath }));
       child.on("message", (untrusted) => {
-        const parsed = pluginBackendHostMessageSchema.safeParse(untrusted);
-        if (!parsed.success) return;
-        const message = parsed.data;
+        const parsed = Schema.decodeUnknownOption(pluginBackendHostMessageSchema)(untrusted);
+        if (Option.isNone(parsed)) return;
+        const message = parsed.value;
         if (message.type === "ready") {
           ready = true;
           clearTimeout(timeout);

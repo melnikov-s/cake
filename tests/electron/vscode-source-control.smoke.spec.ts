@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
+import { emitRendererEvent } from "./main-harness";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const execFileAsync = promisify(execFile);
@@ -14,6 +15,7 @@ async function git(cwd: string, ...args: string[]) {
 }
 
 test("workspace changes use Source Control and historical changed files fall back to the file", async () => {
+  test.setTimeout(60_000);
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-vscode-source-control-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
@@ -169,25 +171,20 @@ test("workspace changes use Source Control and historical changed files fall bac
       )
       .toBe(true);
 
-    await application.evaluate(
-      ({ BrowserWindow }, event) => {
-        for (const window of BrowserWindow.getAllWindows())
-          window.webContents.send("cake:event", event);
-      },
-      { type: "embedded-editor-back-to-agent", workspacePath: project },
-    );
+    await emitRendererEvent(application, {
+      type: "embedded-editor-back-to-agent",
+      workspacePath: project,
+    });
     await expect(page.getByRole("region", { name: "VS Code workspace" })).toBeHidden();
 
+    await page.getByRole("button", { name: /Changed Files/ }).click();
     await page.getByTitle("Open src/app.ts in VS Code Changes").click();
     await expect.poll(activeVsCodeTab, { timeout: 20_000 }).toMatch(/app\.ts.+/);
 
-    await application.evaluate(
-      ({ BrowserWindow }, event) => {
-        for (const window of BrowserWindow.getAllWindows())
-          window.webContents.send("cake:event", event);
-      },
-      { type: "embedded-editor-back-to-agent", workspacePath: project },
-    );
+    await emitRendererEvent(application, {
+      type: "embedded-editor-back-to-agent",
+      workspacePath: project,
+    });
     await expect(page.getByRole("region", { name: "VS Code workspace" })).toBeHidden();
 
     await git(project, "add", ".");

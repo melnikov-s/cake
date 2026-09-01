@@ -1,9 +1,9 @@
+import { Effect, Schema } from "effect";
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, realpath } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
-import { z } from "zod";
 import { AtomicFileWriter } from "./atomic-file-writer";
 import {
   worktreeRecordSchema,
@@ -30,9 +30,11 @@ const realGit: GitRunner = async (cwd, args) => {
   return stdout;
 };
 
-const storageSchema = z.object({
-  schemaVersion: z.literal(1).default(1),
-  records: z.array(worktreeRecordSchema).max(500).default([]),
+const storageSchema = Schema.Struct({
+  schemaVersion: Schema.Literal(1).pipe(Schema.withDecodingDefaultKey(Effect.succeed(1 as const))),
+  records: Schema.Array(worktreeRecordSchema)
+    .check(Schema.isMaxLength(500))
+    .pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
 });
 
 interface LandOptions {
@@ -131,16 +133,18 @@ export class WorktreeService implements WorktreeLandingCoordinator {
     const worktreePath = join(worktreesDir, name);
     await mkdir(worktreesDir, { recursive: true });
     await this.git(root, "worktree", "add", "-b", branch, worktreePath, baseCommit);
-    const record: WorktreeRecord = {
+    const recordBase = {
       projectPath: registeredProjectPath,
       worktreePath,
       branch,
       baseBranch,
-      parentWorktreePath: parent?.worktreePath,
       baseCommit,
-      state: "active",
+      state: "active" as const,
       createdAt: new Date().toISOString(),
     };
+    const record: WorktreeRecord = parent
+      ? { ...recordBase, parentWorktreePath: parent.worktreePath }
+      : recordBase;
     this.allRecords = [...this.allRecords, record];
     await this.persist();
     return record;
@@ -173,7 +177,7 @@ export class WorktreeService implements WorktreeLandingCoordinator {
         this.revParseExists(record.worktreePath, "MERGE_HEAD"),
         this.rebaseInProgress(record.worktreePath),
       ]);
-    return worktreeStatusSchema.parse({
+    return Schema.decodeUnknownSync(worktreeStatusSchema)({
       record,
       targetBranch: record.baseBranch,
       dirtyCount,
@@ -571,7 +575,10 @@ export class WorktreeService implements WorktreeLandingCoordinator {
   }
 
   private async persist() {
-    const payload = storageSchema.parse({ schemaVersion: 1, records: this.allRecords });
+    const payload: typeof storageSchema.Type = {
+      schemaVersion: 1,
+      records: this.allRecords,
+    };
     await this.writer.write(this.storagePath, JSON.stringify(payload, null, 2));
   }
 
@@ -580,7 +587,7 @@ export class WorktreeService implements WorktreeLandingCoordinator {
     this.loaded = true;
     try {
       const raw = await readFile(this.storagePath, "utf8");
-      this.allRecords = storageSchema.parse(JSON.parse(raw)).records;
+      this.allRecords = [...Schema.decodeUnknownSync(storageSchema)(JSON.parse(raw)).records];
     } catch {
       this.allRecords = [];
     }

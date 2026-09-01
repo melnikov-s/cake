@@ -1,14 +1,15 @@
+import { Option, Schema } from "effect";
 import { describe, expect, it } from "vitest";
 import {
-  desktopEventSchema,
-  desktopRequestSchema,
-  desktopResponseSchema,
-} from "../../../src/ipc/desktop-ipc";
+  privilegedEventSchema,
+  privilegedRequestSchema,
+  privilegedResponseSchema,
+} from "../../../src/ipc/privileged-contract";
 
 describe("process IPC", () => {
   it("requires an actual selection before opening the composer reword menu", () => {
     expect(
-      desktopRequestSchema.parse({
+      Schema.decodeUnknownSync(privilegedRequestSchema)({
         type: "show-composer-context-menu",
         selection: "selected words",
         x: 12,
@@ -21,7 +22,7 @@ describe("process IPC", () => {
       y: 34,
     });
     expect(() =>
-      desktopRequestSchema.parse({
+      Schema.decodeUnknownSync(privilegedRequestSchema)({
         type: "show-composer-context-menu",
         selection: "",
         x: 12,
@@ -32,7 +33,7 @@ describe("process IPC", () => {
 
   it("accepts an optional project workspace for composer rewording", () => {
     expect(
-      desktopRequestSchema.parse({
+      Schema.decodeUnknownSync(privilegedRequestSchema)({
         type: "reword-composer-selection",
         selection: "selected words",
         workspacePath: "/project",
@@ -43,7 +44,7 @@ describe("process IPC", () => {
       workspacePath: "/project",
     });
     expect(
-      desktopRequestSchema.parse({
+      Schema.decodeUnknownSync(privilegedRequestSchema)({
         type: "reword-composer-selection",
         selection: "selected words",
       }),
@@ -53,7 +54,7 @@ describe("process IPC", () => {
   it("accepts remaining desktop requests", () => {
     const requestId = crypto.randomUUID();
     expect(
-      desktopRequestSchema.parse({
+      Schema.decodeUnknownSync(privilegedRequestSchema)({
         type: "respond-workspace-trust",
         requestId,
         path: "/project",
@@ -61,7 +62,7 @@ describe("process IPC", () => {
       }),
     ).toMatchObject({ approved: true });
     expect(
-      desktopRequestSchema.parse({
+      Schema.decodeUnknownSync(privilegedRequestSchema)({
         type: "set-utility-model",
         model: { provider: "openai", modelId: "gpt-5-mini", thinkingLevel: "low" },
       }),
@@ -69,25 +70,27 @@ describe("process IPC", () => {
       type: "set-utility-model",
       model: { provider: "openai", modelId: "gpt-5-mini", thinkingLevel: "low" },
     });
-    expect(desktopRequestSchema.parse({ type: "set-utility-model" })).toEqual({
+    expect(
+      Schema.decodeUnknownSync(privilegedRequestSchema)({ type: "set-utility-model" }),
+    ).toEqual({
       type: "set-utility-model",
     });
     expect(
-      desktopRequestSchema.parse({
+      Schema.decodeUnknownSync(privilegedRequestSchema)({
         type: "suggest-files",
         workspacePath: "/project",
         prefix: "src/app",
       }),
     ).toEqual({ type: "suggest-files", workspacePath: "/project", prefix: "src/app" });
     expect(
-      desktopRequestSchema.parse({
+      Schema.decodeUnknownSync(privilegedRequestSchema)({
         type: "read-workspace-file",
         workspacePath: "/project",
         path: "src/app.ts",
       }),
     ).toEqual({ type: "read-workspace-file", workspacePath: "/project", path: "src/app.ts" });
     expect(
-      desktopRequestSchema.parse({
+      Schema.decodeUnknownSync(privilegedRequestSchema)({
         type: "compile-inline-widget",
         language: "react",
         capability: "request",
@@ -96,22 +99,24 @@ describe("process IPC", () => {
     ).toMatchObject({ language: "react", capability: "request" });
     const widgetToken = "00000000-0000-4000-8000-000000000001";
     expect(
-      desktopResponseSchema.parse({
+      Schema.decodeUnknownSync(privilegedResponseSchema)({
         type: "inline-widget-compiled",
         widget: { token: widgetToken, url: `cake-widget://document/${widgetToken}` },
       }),
     ).toMatchObject({ widget: { token: widgetToken } });
     expect(
-      desktopResponseSchema.safeParse({
-        type: "inline-widget-compiled",
-        widget: {
-          token: widgetToken,
-          url: "cake-widget://document/00000000-0000-4000-8000-000000000002",
-        },
-      }).success,
+      Option.isSome(
+        Schema.decodeUnknownOption(privilegedResponseSchema)({
+          type: "inline-widget-compiled",
+          widget: {
+            token: widgetToken,
+            url: "cake-widget://document/00000000-0000-4000-8000-000000000002",
+          },
+        }),
+      ),
     ).toBe(false);
     expect(
-      desktopRequestSchema.parse({
+      Schema.decodeUnknownSync(privilegedRequestSchema)({
         type: "repair-inline-widget",
         sessionId: "session",
         language: "html",
@@ -121,7 +126,7 @@ describe("process IPC", () => {
       }),
     ).toMatchObject({ type: "repair-inline-widget", language: "html", capability: "display" });
     expect(
-      desktopRequestSchema.parse({
+      Schema.decodeUnknownSync(privilegedRequestSchema)({
         type: "set-pi-setting",
         requestId,
         sessionId: "session",
@@ -129,7 +134,7 @@ describe("process IPC", () => {
       }),
     ).toMatchObject({ update: { key: "transport", value: "websocket" } });
     expect(
-      desktopRequestSchema.parse({
+      Schema.decodeUnknownSync(privilegedRequestSchema)({
         type: "set-pi-setting",
         requestId,
         sessionId: "session",
@@ -137,16 +142,28 @@ describe("process IPC", () => {
       }),
     ).toMatchObject({ update: { key: "skills" } });
     expect(
-      desktopRequestSchema.parse({ type: "reload-pi", requestId, sessionId: "session" }),
+      Schema.decodeUnknownSync(privilegedRequestSchema)({
+        type: "reload-pi",
+        requestId,
+        sessionId: "session",
+      }),
     ).toMatchObject({ type: "reload-pi", requestId });
     expect(
-      desktopRequestSchema.parse({ type: "refresh-models", requestId, sessionId: "session" }),
+      Schema.decodeUnknownSync(privilegedRequestSchema)({
+        type: "refresh-models",
+        requestId,
+        sessionId: "session",
+      }),
     ).toMatchObject({ type: "refresh-models", requestId });
     expect(
-      desktopRequestSchema.parse({ type: "get-changelog", requestId, sessionId: "session" }),
+      Schema.decodeUnknownSync(privilegedRequestSchema)({
+        type: "get-changelog",
+        requestId,
+        sessionId: "session",
+      }),
     ).toMatchObject({ type: "get-changelog", requestId });
     expect(
-      desktopEventSchema.parse({
+      Schema.decodeUnknownSync(privilegedEventSchema)({
         type: "changelog-snapshot",
         requestId,
         workspacePath: "/project",
@@ -155,17 +172,19 @@ describe("process IPC", () => {
       }),
     ).toMatchObject({ markdown: "# Changelog" });
     expect(
-      desktopRequestSchema.safeParse({
-        type: "set-pi-setting",
-        requestId,
-        sessionId: "session",
-        update: { key: "transport", value: "invalid" },
-      }).success,
+      Option.isSome(
+        Schema.decodeUnknownOption(privilegedRequestSchema)({
+          type: "set-pi-setting",
+          requestId,
+          sessionId: "session",
+          update: { key: "transport", value: "invalid" },
+        }),
+      ),
     ).toBe(false);
   });
 
   it("clips oversized projected metadata instead of dropping the IPC payload", () => {
-    const result = desktopEventSchema.safeParse({
+    const result = Schema.decodeUnknownOption(privilegedEventSchema)({
       type: "part-updated",
       sessionId: "session",
       part: {
@@ -176,12 +195,16 @@ describe("process IPC", () => {
         status: "streaming",
       },
     });
-    expect(result.success).toBe(true);
-    if (!result.success || result.data.type !== "part-updated" || result.data.part.kind !== "text")
+    expect(Option.isSome(result)).toBe(true);
+    if (
+      Option.isNone(result) ||
+      result.value.type !== "part-updated" ||
+      result.value.part.kind !== "text"
+    )
       throw new Error("Expected a clipped text projection");
-    expect(result.data.part.text).toHaveLength(262_144);
+    expect(result.value.part.text).toHaveLength(262_144);
 
-    const ui = desktopEventSchema.parse({
+    const ui = Schema.decodeUnknownSync(privilegedEventSchema)({
       type: "ui-request",
       requestId: crypto.randomUUID(),
       uiRequestId: crypto.randomUUID(),
@@ -197,7 +220,7 @@ describe("process IPC", () => {
     const requestId = crypto.randomUUID();
     const uiRequestId = crypto.randomUUID();
     expect(
-      desktopEventSchema.parse({
+      Schema.decodeUnknownSync(privilegedEventSchema)({
         type: "ui-request",
         requestId,
         uiRequestId,
@@ -207,7 +230,7 @@ describe("process IPC", () => {
       }),
     ).toMatchObject({ uiRequestId, kind: "secret" });
     expect(
-      desktopRequestSchema.parse({
+      Schema.decodeUnknownSync(privilegedRequestSchema)({
         type: "respond-ui",
         requestId,
         sessionId: "session",
@@ -220,19 +243,23 @@ describe("process IPC", () => {
 
   it("rejects malformed project and UI requests", () => {
     expect(
-      desktopRequestSchema.safeParse({
-        type: "inspect-workspace",
-        requestId: "bad",
-        path: "/project",
-      }).success,
+      Option.isSome(
+        Schema.decodeUnknownOption(privilegedRequestSchema)({
+          type: "inspect-workspace",
+          requestId: "bad",
+          path: "/project",
+        }),
+      ),
     ).toBe(false);
     expect(
-      desktopRequestSchema.safeParse({
-        type: "respond-ui",
-        requestId: crypto.randomUUID(),
-        uiRequestId: "bad",
-        cancelled: false,
-      }).success,
+      Option.isSome(
+        Schema.decodeUnknownOption(privilegedRequestSchema)({
+          type: "respond-ui",
+          requestId: crypto.randomUUID(),
+          uiRequestId: "bad",
+          cancelled: false,
+        }),
+      ),
     ).toBe(false);
   });
 });

@@ -61,10 +61,7 @@ const cancelledControl = (name: string): JsonValue => ({
   error: "The Cake Chat request was cancelled.",
 });
 
-/**
- * Temporary outside-world adapter for Cake Chat archive paths and renderer control settlement.
- * Application-level policy stays in the cakeChats domain module; Phase 9 replaces archive plumbing.
- */
+/** Outside-world adapter for Cake Chat archive paths and renderer control settlement. */
 export const makeCakeChatEnvironmentLayer = (operations: CakeChatEnvironmentOperations) =>
   Layer.effect(
     CakeChatEnvironment,

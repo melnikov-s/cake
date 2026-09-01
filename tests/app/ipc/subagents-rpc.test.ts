@@ -7,7 +7,7 @@ import {
   SubagentUpdate,
 } from "../../../src/domain/subagent-data";
 import { CakeIpcClient } from "../../../src/ipc/client/CakeIpcClient";
-import { desktopRequestSchema } from "../../../src/ipc/desktop-ipc";
+import { privilegedRequestSchema } from "../../../src/ipc/privileged-contract";
 import { makeRendererRuntime } from "../../../src/renderer/RendererRuntime";
 
 const handleId = "00000000-0000-4000-8000-000000000001";
@@ -79,7 +79,7 @@ describe("Subagent Effect RPC contract", () => {
 
   it("removes the legacy desktop request path", () => {
     expect(() =>
-      desktopRequestSchema.parse({
+      Schema.decodeUnknownSync(privilegedRequestSchema)({
         type: "steer-subagent",
         requestId: crypto.randomUUID(),
         parentSessionId: "parent",
@@ -88,7 +88,7 @@ describe("Subagent Effect RPC contract", () => {
       }),
     ).toThrow();
     expect(() =>
-      desktopRequestSchema.parse({
+      Schema.decodeUnknownSync(privilegedRequestSchema)({
         type: "abort-subagent",
         requestId: crypto.randomUUID(),
         parentSessionId: "parent",

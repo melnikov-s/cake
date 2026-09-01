@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { Effect, Schema } from "effect";
 import { artifactRecordSchema } from "./artifact-contract";
 import { ipcProjectionArray, ipcProjectionString } from "./projection";
 import { sourceLocationSchema } from "./source-location";
@@ -6,8 +6,15 @@ import { sourceLocationSchema } from "./source-location";
 export const SESSION_TITLE_MAX_LENGTH = 1_024;
 
 const boundedText = ipcProjectionString(262_144);
+const stringMax = (maximum: number) => Schema.String.check(Schema.isMaxLength(maximum));
+const stringRange = (minimum: number, maximum: number) =>
+  Schema.String.check(Schema.isMinLength(minimum), Schema.isMaxLength(maximum));
+const nonNegativeInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
+const positiveInt = Schema.Int.check(Schema.isGreaterThan(0));
+const defaultKey = <S extends Schema.Top>(schema: S, value: S["Type"]) =>
+  schema.pipe(Schema.withDecodingDefaultKey(Effect.succeed(value)));
 
-export const thinkingLevelSchema = z.enum([
+export const thinkingLevelSchema = Schema.Literals([
   "off",
   "minimal",
   "low",
@@ -17,387 +24,412 @@ export const thinkingLevelSchema = z.enum([
   "max",
 ]);
 
-export const utilityModelSchema = z.object({
-  provider: z.string().min(1).max(256),
-  modelId: z.string().min(1).max(512),
+export const utilityModelSchema = Schema.Struct({
+  provider: stringRange(1, 256),
+  modelId: stringRange(1, 512),
   thinkingLevel: thinkingLevelSchema,
 });
 
-const modelPresetSchema = z.object({
-  id: z.uuid(),
-  name: z.string().trim().min(1).max(80),
-  provider: z.string().min(1).max(256),
-  modelId: z.string().min(1).max(512),
+const modelPresetSchema = Schema.Struct({
+  id: Schema.String.check(Schema.isUUID()),
+  name: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(80))),
+  provider: stringRange(1, 256),
+  modelId: stringRange(1, 512),
   thinkingLevel: thinkingLevelSchema,
-  fastMode: z.boolean(),
+  fastMode: Schema.Boolean,
 });
 
-export const chatConfigurationSchema = modelPresetSchema.omit({ id: true, name: true });
+export const chatConfigurationSchema = Schema.Struct({
+  provider: modelPresetSchema.fields.provider,
+  modelId: modelPresetSchema.fields.modelId,
+  thinkingLevel: modelPresetSchema.fields.thinkingLevel,
+  fastMode: modelPresetSchema.fields.fastMode,
+});
 
-const piResourcePathSchema = z.string().min(1).max(4_096);
-const piResourcePathsSchema = z.array(piResourcePathSchema).max(1_000);
-const piPackageSourceSchema = z.union([
+const piResourcePathSchema = stringRange(1, 4_096);
+const piResourcePathsSchema = Schema.Array(piResourcePathSchema).check(Schema.isMaxLength(1_000));
+const piPackageSourceSchema = Schema.Union([
   piResourcePathSchema,
-  z.object({
+  Schema.Struct({
     source: piResourcePathSchema,
-    autoload: z.boolean().optional(),
-    extensions: piResourcePathsSchema.optional(),
-    skills: piResourcePathsSchema.optional(),
-    prompts: piResourcePathsSchema.optional(),
-    themes: piResourcePathsSchema.optional(),
+    autoload: Schema.optional(Schema.Boolean),
+    extensions: Schema.optional(piResourcePathsSchema),
+    skills: Schema.optional(piResourcePathsSchema),
+    prompts: Schema.optional(piResourcePathsSchema),
+    themes: Schema.optional(piResourcePathsSchema),
   }),
 ]);
 
-export const piSettingsSchema = z.object({
-  defaultProvider: z.string().max(256).optional(),
-  defaultModel: z.string().max(512).optional(),
-  defaultThinkingLevel: thinkingLevelSchema.optional(),
-  autoCompact: z.boolean(),
-  autoResizeImages: z.boolean(),
-  blockImages: z.boolean(),
-  enableSkillCommands: z.boolean(),
-  steeringMode: z.enum(["one-at-a-time", "all"]),
-  followUpMode: z.enum(["one-at-a-time", "all"]),
-  transport: z.enum(["sse", "websocket", "websocket-cached", "auto"]),
-  httpIdleTimeoutMs: z.number().int().nonnegative(),
-  hideThinkingBlock: z.boolean(),
-  mermaidRenderingMode: z.enum(["off", "final", "streaming"]),
-  showCacheMissNotices: z.boolean(),
-  collapseChangelog: z.boolean(),
-  quietStartup: z.boolean(),
-  enableInstallTelemetry: z.boolean(),
-  defaultProjectTrust: z.enum(["ask", "always", "never"]),
-  doubleEscapeAction: z.enum(["fork", "tree", "none"]),
-  treeFilterMode: z.enum(["default", "no-tools", "user-only", "labeled-only", "all"]),
-  anthropicExtraUsageWarning: z.boolean(),
-  retryEnabled: z.boolean(),
-  shellPath: z.string().max(4_096),
-  shellCommandPrefix: z.string().max(16_384),
-  npmCommand: z.array(z.string().max(4_096)).max(100),
-  packages: z.array(piPackageSourceSchema).max(1_000),
+export const piSettingsSchema = Schema.Struct({
+  defaultProvider: Schema.optional(stringMax(256)),
+  defaultModel: Schema.optional(stringMax(512)),
+  defaultThinkingLevel: Schema.optional(thinkingLevelSchema),
+  autoCompact: Schema.Boolean,
+  autoResizeImages: Schema.Boolean,
+  blockImages: Schema.Boolean,
+  enableSkillCommands: Schema.Boolean,
+  steeringMode: Schema.Literals(["one-at-a-time", "all"]),
+  followUpMode: Schema.Literals(["one-at-a-time", "all"]),
+  transport: Schema.Literals(["sse", "websocket", "websocket-cached", "auto"]),
+  httpIdleTimeoutMs: nonNegativeInt,
+  hideThinkingBlock: Schema.Boolean,
+  mermaidRenderingMode: Schema.Literals(["off", "final", "streaming"]),
+  showCacheMissNotices: Schema.Boolean,
+  collapseChangelog: Schema.Boolean,
+  quietStartup: Schema.Boolean,
+  enableInstallTelemetry: Schema.Boolean,
+  defaultProjectTrust: Schema.Literals(["ask", "always", "never"]),
+  doubleEscapeAction: Schema.Literals(["fork", "tree", "none"]),
+  treeFilterMode: Schema.Literals(["default", "no-tools", "user-only", "labeled-only", "all"]),
+  anthropicExtraUsageWarning: Schema.Boolean,
+  retryEnabled: Schema.Boolean,
+  shellPath: stringMax(4_096),
+  shellCommandPrefix: stringMax(16_384),
+  npmCommand: Schema.Array(stringMax(4_096)).check(Schema.isMaxLength(100)),
+  packages: Schema.Array(piPackageSourceSchema).check(Schema.isMaxLength(1_000)),
   extensions: piResourcePathsSchema,
   skills: piResourcePathsSchema,
   prompts: piResourcePathsSchema,
-  reloadPending: z.boolean(),
+  reloadPending: Schema.Boolean,
 });
 
-export const piSettingUpdateSchema = z.discriminatedUnion("key", [
-  z.object({
-    key: z.literal("defaultModel"),
-    provider: z.string().min(1).max(256),
-    modelId: z.string().min(1).max(512),
+export const piSettingUpdateSchema = Schema.Union([
+  Schema.Struct({
+    key: Schema.Literal("defaultModel"),
+    provider: stringRange(1, 256),
+    modelId: stringRange(1, 512),
   }),
-  z.object({ key: z.literal("defaultThinkingLevel"), value: thinkingLevelSchema }),
-  z.object({ key: z.literal("autoCompact"), value: z.boolean() }),
-  z.object({ key: z.literal("autoResizeImages"), value: z.boolean() }),
-  z.object({ key: z.literal("blockImages"), value: z.boolean() }),
-  z.object({ key: z.literal("enableSkillCommands"), value: z.boolean() }),
-  z.object({ key: z.literal("steeringMode"), value: z.enum(["one-at-a-time", "all"]) }),
-  z.object({ key: z.literal("followUpMode"), value: z.enum(["one-at-a-time", "all"]) }),
-  z.object({
-    key: z.literal("transport"),
-    value: z.enum(["sse", "websocket", "websocket-cached", "auto"]),
+  Schema.Struct({ key: Schema.Literal("defaultThinkingLevel"), value: thinkingLevelSchema }),
+  Schema.Struct({ key: Schema.Literal("autoCompact"), value: Schema.Boolean }),
+  Schema.Struct({ key: Schema.Literal("autoResizeImages"), value: Schema.Boolean }),
+  Schema.Struct({ key: Schema.Literal("blockImages"), value: Schema.Boolean }),
+  Schema.Struct({ key: Schema.Literal("enableSkillCommands"), value: Schema.Boolean }),
+  Schema.Struct({
+    key: Schema.Literal("steeringMode"),
+    value: Schema.Literals(["one-at-a-time", "all"]),
   }),
-  z.object({ key: z.literal("httpIdleTimeoutMs"), value: z.number().int().nonnegative() }),
-  z.object({ key: z.literal("hideThinkingBlock"), value: z.boolean() }),
-  z.object({
-    key: z.literal("mermaidRenderingMode"),
-    value: z.enum(["off", "final", "streaming"]),
+  Schema.Struct({
+    key: Schema.Literal("followUpMode"),
+    value: Schema.Literals(["one-at-a-time", "all"]),
   }),
-  z.object({ key: z.literal("showCacheMissNotices"), value: z.boolean() }),
-  z.object({ key: z.literal("collapseChangelog"), value: z.boolean() }),
-  z.object({ key: z.literal("quietStartup"), value: z.boolean() }),
-  z.object({ key: z.literal("enableInstallTelemetry"), value: z.boolean() }),
-  z.object({ key: z.literal("defaultProjectTrust"), value: z.enum(["ask", "always", "never"]) }),
-  z.object({ key: z.literal("doubleEscapeAction"), value: z.enum(["fork", "tree", "none"]) }),
-  z.object({
-    key: z.literal("treeFilterMode"),
-    value: z.enum(["default", "no-tools", "user-only", "labeled-only", "all"]),
+  Schema.Struct({
+    key: Schema.Literal("transport"),
+    value: Schema.Literals(["sse", "websocket", "websocket-cached", "auto"]),
   }),
-  z.object({ key: z.literal("anthropicExtraUsageWarning"), value: z.boolean() }),
-  z.object({ key: z.literal("retryEnabled"), value: z.boolean() }),
-  z.object({ key: z.literal("shellPath"), value: z.string().max(4_096) }),
-  z.object({ key: z.literal("shellCommandPrefix"), value: z.string().max(16_384) }),
-  z.object({ key: z.literal("npmCommand"), value: z.array(z.string().max(4_096)).max(100) }),
-  z.object({ key: z.literal("packages"), value: z.array(piPackageSourceSchema).max(1_000) }),
-  z.object({ key: z.literal("extensions"), value: piResourcePathsSchema }),
-  z.object({ key: z.literal("skills"), value: piResourcePathsSchema }),
-  z.object({ key: z.literal("prompts"), value: piResourcePathsSchema }),
+  Schema.Struct({ key: Schema.Literal("httpIdleTimeoutMs"), value: nonNegativeInt }),
+  Schema.Struct({ key: Schema.Literal("hideThinkingBlock"), value: Schema.Boolean }),
+  Schema.Struct({
+    key: Schema.Literal("mermaidRenderingMode"),
+    value: Schema.Literals(["off", "final", "streaming"]),
+  }),
+  Schema.Struct({ key: Schema.Literal("showCacheMissNotices"), value: Schema.Boolean }),
+  Schema.Struct({ key: Schema.Literal("collapseChangelog"), value: Schema.Boolean }),
+  Schema.Struct({ key: Schema.Literal("quietStartup"), value: Schema.Boolean }),
+  Schema.Struct({ key: Schema.Literal("enableInstallTelemetry"), value: Schema.Boolean }),
+  Schema.Struct({
+    key: Schema.Literal("defaultProjectTrust"),
+    value: Schema.Literals(["ask", "always", "never"]),
+  }),
+  Schema.Struct({
+    key: Schema.Literal("doubleEscapeAction"),
+    value: Schema.Literals(["fork", "tree", "none"]),
+  }),
+  Schema.Struct({
+    key: Schema.Literal("treeFilterMode"),
+    value: Schema.Literals(["default", "no-tools", "user-only", "labeled-only", "all"]),
+  }),
+  Schema.Struct({ key: Schema.Literal("anthropicExtraUsageWarning"), value: Schema.Boolean }),
+  Schema.Struct({ key: Schema.Literal("retryEnabled"), value: Schema.Boolean }),
+  Schema.Struct({ key: Schema.Literal("shellPath"), value: stringMax(4_096) }),
+  Schema.Struct({ key: Schema.Literal("shellCommandPrefix"), value: stringMax(16_384) }),
+  Schema.Struct({
+    key: Schema.Literal("npmCommand"),
+    value: Schema.Array(stringMax(4_096)).check(Schema.isMaxLength(100)),
+  }),
+  Schema.Struct({
+    key: Schema.Literal("packages"),
+    value: Schema.Array(piPackageSourceSchema).check(Schema.isMaxLength(1_000)),
+  }),
+  Schema.Struct({ key: Schema.Literal("extensions"), value: piResourcePathsSchema }),
+  Schema.Struct({ key: Schema.Literal("skills"), value: piResourcePathsSchema }),
+  Schema.Struct({ key: Schema.Literal("prompts"), value: piResourcePathsSchema }),
 ]);
 
-export const fileSuggestionSchema = z.object({
-  value: z.string().min(1).max(4_096),
-  label: ipcProjectionString(512).pipe(z.string().min(1)),
-  description: ipcProjectionString(4_096).optional(),
+export const fileSuggestionSchema = Schema.Struct({
+  value: stringRange(1, 4_096),
+  label: ipcProjectionString(512).check(Schema.isMinLength(1)),
+  description: Schema.optional(ipcProjectionString(4_096)),
 });
 
-const annotationSchema = z
-  .object({
-    id: z.uuid(),
-    messageId: z.string().min(1).max(256),
-    entryId: z.string().min(1).max(256).optional(),
-    selectedText: ipcProjectionString(48_000).pipe(z.string().min(1)),
-    startOffset: z.number().int().nonnegative(),
-    endOffset: z.number().int().nonnegative(),
-    contextBefore: ipcProjectionString(8_000),
-    contextAfter: ipcProjectionString(8_000),
-    comment: ipcProjectionString(16_000).optional(),
-  })
-  .refine((annotation) => annotation.endOffset > annotation.startOffset, {
-    message: "Annotation end offset must follow its start offset",
-    path: ["endOffset"],
-  });
+const annotationSchema = Schema.Struct({
+  id: Schema.String.check(Schema.isUUID()),
+  messageId: stringRange(1, 256),
+  entryId: Schema.optional(stringRange(1, 256)),
+  selectedText: ipcProjectionString(48_000).check(Schema.isMinLength(1)),
+  startOffset: nonNegativeInt,
+  endOffset: nonNegativeInt,
+  contextBefore: ipcProjectionString(8_000),
+  contextAfter: ipcProjectionString(8_000),
+  comment: Schema.optional(ipcProjectionString(16_000)),
+}).check(
+  Schema.makeFilter((annotation) =>
+    annotation.endOffset > annotation.startOffset
+      ? undefined
+      : "Annotation end offset must follow its start offset",
+  ),
+);
 
-const sourceAttachmentLocationSchema = z.object({
-  path: z.string().trim().min(1).max(8_192),
-  range: z.object({
-    start: z.object({ line: z.number().int().nonnegative().max(10_000_000) }),
-    end: z.object({ line: z.number().int().nonnegative().max(10_000_000) }),
-  }),
+const sourceLineSchema = Schema.Struct({
+  line: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0), Schema.isLessThanOrEqualTo(10_000_000)),
+});
+const sourceAttachmentLocationSchema = Schema.Struct({
+  path: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(8_192))),
+  range: Schema.Struct({ start: sourceLineSchema, end: sourceLineSchema }),
 });
 
-export const attachmentSchema = z.discriminatedUnion("kind", [
-  z.object({
-    kind: z.literal("file"),
-    name: z.string().max(512),
-    path: z.string().max(4_096),
+export const attachmentSchema = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("file"), name: stringMax(512), path: stringMax(4_096) }),
+  Schema.Struct({
+    kind: Schema.Literal("image"),
+    name: stringMax(512),
+    mimeType: stringMax(128),
+    data: stringMax(20_000_000),
   }),
-  z.object({
-    kind: z.literal("image"),
-    name: z.string().max(512),
-    mimeType: z.string().max(128),
-    data: z.string().max(20_000_000),
-  }),
-  z.object({
-    kind: z.literal("source"),
-    name: z.string().max(512),
+  Schema.Struct({
+    kind: Schema.Literal("source"),
+    name: stringMax(512),
     location: sourceAttachmentLocationSchema,
   }),
-  z.object({
-    kind: z.literal("annotation"),
-    annotations: z.array(annotationSchema).min(1).max(100),
+  Schema.Struct({
+    kind: Schema.Literal("annotation"),
+    annotations: Schema.Array(annotationSchema).check(
+      Schema.isMinLength(1),
+      Schema.isMaxLength(100),
+    ),
   }),
 ]);
 
-const partBase = { id: z.string().min(1).max(256) };
-
-const toolOutputContentSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("text"), text: boundedText }),
-  z.object({
-    type: z.literal("image"),
-    data: z.string().max(20_000_000),
-    mimeType: z.string().max(128),
+const partBase = { id: stringRange(1, 256) };
+const toolOutputContentSchema = Schema.Union([
+  Schema.Struct({ type: Schema.Literal("text"), text: boundedText }),
+  Schema.Struct({
+    type: Schema.Literal("image"),
+    data: stringMax(20_000_000),
+    mimeType: stringMax(128),
   }),
 ]);
 export const toolOutputContentArraySchema = ipcProjectionArray(toolOutputContentSchema, 100);
-export type ToolOutputContent = z.infer<typeof toolOutputContentSchema>;
+export type ToolOutputContent = typeof toolOutputContentSchema.Type;
 
-export const uiPartSchema = z.discriminatedUnion("kind", [
-  z.object({
+export const uiPartSchema = Schema.Union([
+  Schema.Struct({
     ...partBase,
-    kind: z.literal("text"),
-    role: z.enum(["user", "assistant"]),
-    entryId: z.string().min(1).max(256).optional(),
+    kind: Schema.Literal("text"),
+    role: Schema.Literals(["user", "assistant"]),
+    entryId: Schema.optional(stringRange(1, 256)),
     text: boundedText,
-    status: z.enum(["streaming", "complete", "error"]),
-    renderAs: z.enum(["markdown"]).optional(),
-    deliveryState: z.enum(["sending", "queued", "steering"]).optional(),
-    draft: z.boolean().optional(),
+    status: Schema.Literals(["streaming", "complete", "error"]),
+    renderAs: Schema.optional(Schema.Literal("markdown")),
+    deliveryState: Schema.optional(Schema.Literals(["sending", "queued", "steering"])),
+    draft: Schema.optional(Schema.Boolean),
   }),
-  z.object({
+  Schema.Struct({
     ...partBase,
-    kind: z.literal("skill"),
-    entryId: z.string().min(1).max(256).optional(),
+    kind: Schema.Literal("skill"),
+    entryId: Schema.optional(stringRange(1, 256)),
     name: ipcProjectionString(256),
     content: boundedText,
   }),
-  z.object({
+  Schema.Struct({
     ...partBase,
-    kind: z.literal("reasoning"),
+    kind: Schema.Literal("reasoning"),
     text: boundedText,
-    status: z.enum(["streaming", "complete"]),
+    status: Schema.Literals(["streaming", "complete"]),
   }),
-  z.object({
+  Schema.Struct({
     ...partBase,
-    kind: z.literal("command"),
-    /** User-invoked `!`/`!!` shell command. */
+    kind: Schema.Literal("command"),
     command: boundedText,
     output: boundedText,
-    excludeFromContext: z.boolean(),
-    state: z.enum(["running", "success", "error"]),
+    excludeFromContext: Schema.Boolean,
+    state: Schema.Literals(["running", "success", "error"]),
   }),
-  z.object({
+  Schema.Struct({
     ...partBase,
-    kind: z.literal("tool"),
+    kind: Schema.Literal("tool"),
     name: ipcProjectionString(256),
-    /** Inner Cake operation discriminator when the outer model-visible tool is `cake`. */
-    command: ipcProjectionString(256).optional(),
+    command: Schema.optional(ipcProjectionString(256)),
     input: boundedText,
-    output: boundedText.optional(),
-    outputContent: toolOutputContentArraySchema.optional(),
-    artifactId: z.string().min(1).max(256).optional(),
-    filePath: z.string().max(8_192).optional(),
-    diff: boundedText.optional(),
-    state: z.enum(["approval", "running", "success", "error", "denied", "interrupted"]),
+    output: Schema.optional(boundedText),
+    outputContent: Schema.optional(toolOutputContentArraySchema),
+    artifactId: Schema.optional(stringRange(1, 256)),
+    filePath: Schema.optional(stringMax(8_192)),
+    diff: Schema.optional(boundedText),
+    state: Schema.Literals(["approval", "running", "success", "error", "denied", "interrupted"]),
   }),
-  z.object({
+  Schema.Struct({
     ...partBase,
-    kind: z.literal("source"),
+    kind: Schema.Literal("source"),
     title: ipcProjectionString(1_024),
-    url: z.string().max(8_192),
+    url: stringMax(8_192),
   }),
-  z.object({
+  Schema.Struct({
     ...partBase,
-    kind: z.literal("attachment"),
+    kind: Schema.Literal("attachment"),
     name: ipcProjectionString(512),
-    mediaType: z.string().max(128),
-    attachmentKind: z.enum(["file", "image", "source"]),
-    data: z.string().max(20_000_000).optional(),
-    location: sourceLocationSchema.optional(),
+    mediaType: stringMax(128),
+    attachmentKind: Schema.Literals(["file", "image", "source"]),
+    data: Schema.optional(stringMax(20_000_000)),
+    location: Schema.optional(sourceLocationSchema),
   }),
-  z.object({
+  Schema.Struct({
     ...partBase,
-    kind: z.literal("annotation"),
-    annotations: z.array(annotationSchema).min(1).max(100),
+    kind: Schema.Literal("annotation"),
+    annotations: Schema.Array(annotationSchema).check(
+      Schema.isMinLength(1),
+      Schema.isMaxLength(100),
+    ),
   }),
-  z.object({
+  Schema.Struct({
     ...partBase,
-    kind: z.literal("notice"),
-    tone: z.enum(["info", "warning", "error"]),
+    kind: Schema.Literal("notice"),
+    tone: Schema.Literals(["info", "warning", "error"]),
     title: ipcProjectionString(512),
-    detail: boundedText.optional(),
-    retryAt: z.number().int().nonnegative().optional(),
+    detail: Schema.optional(boundedText),
+    retryAt: Schema.optional(nonNegativeInt),
   }),
-  z.object({
+  Schema.Struct({
     ...partBase,
-    kind: z.literal("review-run"),
-    operationId: z.uuid(),
-    threadIds: z.array(z.string().min(1).max(256)).min(1).max(100),
-    commentCount: z.number().int().positive().max(1_000_000),
-    status: z.enum(["running", "complete", "error"]),
+    kind: Schema.Literal("review-run"),
+    operationId: Schema.String.check(Schema.isUUID()),
+    threadIds: Schema.Array(stringRange(1, 256)).check(
+      Schema.isMinLength(1),
+      Schema.isMaxLength(100),
+    ),
+    commentCount: Schema.Int.check(Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(1_000_000)),
+    status: Schema.Literals(["running", "complete", "error"]),
   }),
-  z.object({
+  Schema.Struct({
     ...partBase,
-    kind: z.literal("compaction"),
+    kind: Schema.Literal("compaction"),
     summary: boundedText,
-    tokensBefore: z.number().int().nonnegative(),
-    firstKeptEntryId: z.string().min(1).max(256).optional(),
+    tokensBefore: nonNegativeInt,
+    firstKeptEntryId: Schema.optional(stringRange(1, 256)),
   }),
 ]);
 
-const modelOptionSchema = z.object({
-  provider: z.string().max(256),
+const modelOptionSchema = Schema.Struct({
+  provider: stringMax(256),
   providerName: ipcProjectionString(512),
-  id: z.string().max(512),
+  id: stringMax(512),
   name: ipcProjectionString(1_024),
-  reasoning: z.boolean(),
+  reasoning: Schema.Boolean,
   availableThinkingLevels: ipcProjectionArray(thinkingLevelSchema, 7),
-  fastMode: z.boolean().optional(),
-  input: ipcProjectionArray(z.enum(["text", "image"]), 2),
-  authenticated: z.boolean(),
-  available: z.boolean().optional(),
-  authSource: z
-    .enum([
+  fastMode: Schema.optional(Schema.Boolean),
+  input: ipcProjectionArray(Schema.Literals(["text", "image"]), 2),
+  authenticated: Schema.Boolean,
+  available: Schema.optional(Schema.Boolean),
+  authSource: Schema.optional(
+    Schema.Literals([
       "stored",
       "runtime",
       "environment",
       "fallback",
       "models_json_key",
       "models_json_command",
-    ])
-    .optional(),
-  authLabel: ipcProjectionString(512).optional(),
-  authTypes: ipcProjectionArray(z.enum(["api_key", "oauth"]), 2),
+    ]),
+  ),
+  authLabel: Schema.optional(ipcProjectionString(512)),
+  authTypes: ipcProjectionArray(Schema.Literals(["api_key", "oauth"]), 2),
 });
 
-export const sessionUsageSchema = z.object({
-  tokens: z.object({
-    input: z.number().int().nonnegative(),
-    output: z.number().int().nonnegative(),
-    cacheRead: z.number().int().nonnegative(),
-    cacheWrite: z.number().int().nonnegative(),
-    total: z.number().int().nonnegative(),
+export const sessionUsageSchema = Schema.Struct({
+  tokens: Schema.Struct({
+    input: nonNegativeInt,
+    output: nonNegativeInt,
+    cacheRead: nonNegativeInt,
+    cacheWrite: nonNegativeInt,
+    total: nonNegativeInt,
   }),
-  cost: z.number().nonnegative(),
-  context: z
-    .object({
-      tokens: z.number().int().nonnegative().nullable(),
-      contextWindow: z.number().int().positive(),
-      percent: z.number().nonnegative().nullable(),
-    })
-    .optional(),
+  cost: Schema.Number.check(Schema.isGreaterThanOrEqualTo(0)),
+  context: Schema.optional(
+    Schema.Struct({
+      tokens: Schema.NullOr(nonNegativeInt),
+      contextWindow: positiveInt,
+      percent: Schema.NullOr(Schema.Number.check(Schema.isGreaterThanOrEqualTo(0))),
+    }),
+  ),
 });
 
-const sessionSummarySchema = z.object({
-  id: z.string().min(1).max(256),
+const sessionSummarySchema = Schema.Struct({
+  id: stringRange(1, 256),
   title: ipcProjectionString(SESSION_TITLE_MAX_LENGTH),
-  created: z.string().datetime(),
-  modified: z.string().datetime(),
-  messageCount: z.number().int().nonnegative(),
-  parentSessionId: z.string().max(256).optional(),
-  resolved: z.boolean().default(false),
-  draft: z.boolean().optional(),
+  created: Schema.String,
+  modified: Schema.String,
+  messageCount: nonNegativeInt,
+  parentSessionId: Schema.optional(stringMax(256)),
+  resolved: defaultKey(Schema.Boolean, false),
+  draft: Schema.optional(Schema.Boolean),
 });
 
-const sessionTreeEntrySchema = z.object({
-  id: z.string().min(1).max(256),
-  parentId: z.string().max(256).optional(),
-  type: z.string().max(128),
-  messageRole: z.string().max(128).optional(),
-  editorText: boundedText.optional(),
-  label: ipcProjectionString(512).optional(),
+const sessionTreeEntrySchema = Schema.Struct({
+  id: stringRange(1, 256),
+  parentId: Schema.optional(stringMax(256)),
+  type: stringMax(128),
+  messageRole: Schema.optional(stringMax(128)),
+  editorText: Schema.optional(boundedText),
+  label: Schema.optional(ipcProjectionString(512)),
   preview: ipcProjectionString(2_048),
-  active: z.boolean(),
+  active: Schema.Boolean,
 });
 
-const resourceScopeSchema = z.enum(["user", "project", "temporary"]);
-
-const compatibilityResourceSchema = z.object({
-  id: z.string().min(1).max(8_192),
-  kind: z.enum(["skill", "prompt", "package", "extension"]),
-  name: ipcProjectionString(1_024).pipe(z.string().min(1)),
-  description: ipcProjectionString(4_096).optional(),
-  path: z.string().max(8_192).optional(),
+const resourceScopeSchema = Schema.Literals(["user", "project", "temporary"]);
+const compatibilityResourceSchema = Schema.Struct({
+  id: stringRange(1, 8_192),
+  kind: Schema.Literals(["skill", "prompt", "package", "extension"]),
+  name: ipcProjectionString(1_024).check(Schema.isMinLength(1)),
+  description: Schema.optional(ipcProjectionString(4_096)),
+  path: Schema.optional(stringMax(8_192)),
   source: ipcProjectionString(2_048),
   scope: resourceScopeSchema,
-  origin: z.enum(["package", "top-level"]),
-  commands: ipcProjectionArray(z.string().max(256), 1_000).default([]),
-  tools: ipcProjectionArray(z.string().max(256), 1_000).default([]),
-  enabled: z.boolean().default(true),
+  origin: Schema.Literals(["package", "top-level"]),
+  commands: defaultKey(ipcProjectionArray(stringMax(256), 1_000), []),
+  tools: defaultKey(ipcProjectionArray(stringMax(256), 1_000), []),
+  enabled: defaultKey(Schema.Boolean, true),
 });
-
-const resourceDiagnosticSchema = z.object({
-  id: z.string().min(1).max(8_192),
-  severity: z.enum(["info", "warning", "error"]),
-  source: z.enum(["extension", "skill", "prompt", "package", "compatibility", "runtime"]),
+const resourceDiagnosticSchema = Schema.Struct({
+  id: stringRange(1, 8_192),
+  severity: Schema.Literals(["info", "warning", "error"]),
+  source: Schema.Literals(["extension", "skill", "prompt", "package", "compatibility", "runtime"]),
   message: ipcProjectionString(4_096),
-  path: z.string().max(8_192).optional(),
-  method: ipcProjectionString(256).optional(),
+  path: Schema.optional(stringMax(8_192)),
+  method: Schema.optional(ipcProjectionString(256)),
+});
+const compatibilityCatalogSchema = Schema.Struct({
+  resources: defaultKey(ipcProjectionArray(compatibilityResourceSchema, 20_000), []),
+  diagnostics: defaultKey(ipcProjectionArray(resourceDiagnosticSchema, 5_000), []),
+});
+const extensionUiStateSchema = Schema.Struct({
+  title: Schema.optional(ipcProjectionString(512)),
+  statuses: defaultKey(
+    ipcProjectionArray(
+      Schema.Struct({ key: stringMax(256), text: ipcProjectionString(2_048) }),
+      100,
+    ),
+    [],
+  ),
 });
 
-const compatibilityCatalogSchema = z.object({
-  resources: ipcProjectionArray(compatibilityResourceSchema, 20_000).default([]),
-  diagnostics: ipcProjectionArray(resourceDiagnosticSchema, 5_000).default([]),
-});
-
-const extensionUiStateSchema = z.object({
-  title: ipcProjectionString(512).optional(),
-  statuses: ipcProjectionArray(
-    z.object({ key: z.string().max(256), text: ipcProjectionString(2_048) }),
-    100,
-  ).default([]),
-});
-
-export const slashCommandSchema = z.object({
-  name: z.string().min(1).max(256),
-  description: ipcProjectionString(4_096).optional(),
-  argumentHint: ipcProjectionString(512).optional(),
-  source: z.enum(["builtin", "extension", "prompt", "skill", "plugin"]),
-  sourceInfo: z.object({
-    path: z.string().max(8_192),
+export const slashCommandSchema = Schema.Struct({
+  name: stringRange(1, 256),
+  description: Schema.optional(ipcProjectionString(4_096)),
+  argumentHint: Schema.optional(ipcProjectionString(512)),
+  source: Schema.Literals(["builtin", "extension", "prompt", "skill", "plugin"]),
+  sourceInfo: Schema.Struct({
+    path: stringMax(8_192),
     source: ipcProjectionString(2_048),
     scope: resourceScopeSchema,
-    origin: z.enum(["package", "top-level"]),
+    origin: Schema.Literals(["package", "top-level"]),
   }),
 });
 
@@ -407,16 +439,9 @@ const builtinSourceInfo = {
   scope: "temporary",
   origin: "top-level",
 } as const;
-
-// Pi builtins that Cake implements as first-class commands. These are the only
-// Pi CLI commands Cake advertises; any other input is an ordinary message.
 export const piBuiltinSlashCommands = [
   { name: "compact", description: "Manually compact the session context" },
-  {
-    name: "model",
-    description: "Switch model",
-    argumentHint: "<provider/model>",
-  },
+  { name: "model", description: "Switch model", argumentHint: "<provider/model>" },
   { name: "name", description: "Rename the current session" },
   {
     name: "handoff",
@@ -429,10 +454,13 @@ export const piBuiltinSlashCommands = [
     argumentHint: "[first instruction]",
   },
 ].map((command) =>
-  slashCommandSchema.parse({ ...command, source: "builtin", sourceInfo: builtinSourceInfo }),
+  Schema.decodeUnknownSync(slashCommandSchema)({
+    ...command,
+    source: "builtin",
+    sourceInfo: builtinSourceInfo,
+  }),
 );
 
-/** Parses text shaped like "/name [args]" into a Pi builtin command, or undefined. */
 export function parsePiBuiltinCommand(text: string): { name: string; args: string } | undefined {
   const match = /^\/([^\s]+)(?:\s+([\s\S]*))?$/.exec(text.trim());
   if (!match) return undefined;
@@ -441,97 +469,108 @@ export function parsePiBuiltinCommand(text: string): { name: string; args: strin
   return { name, args: match[2]?.trim() ?? "" };
 }
 
-export const extensionUiEventSchema = z.discriminatedUnion("kind", [
-  z.object({
-    kind: z.literal("notify"),
+export const extensionUiEventSchema = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("notify"),
     id: ipcProjectionString(256),
     message: ipcProjectionString(4_096),
-    tone: z.enum(["info", "warning", "error"]),
+    tone: Schema.Literals(["info", "warning", "error"]),
   }),
-  z.object({
-    kind: z.literal("status"),
-    key: z.string().max(256),
-    text: ipcProjectionString(2_048).optional(),
+  Schema.Struct({
+    kind: Schema.Literal("status"),
+    key: stringMax(256),
+    text: Schema.optional(ipcProjectionString(2_048)),
   }),
-  z.object({ kind: z.literal("title"), title: ipcProjectionString(512) }),
-  z.object({
-    kind: z.literal("editor-text"),
+  Schema.Struct({ kind: Schema.Literal("title"), title: ipcProjectionString(512) }),
+  Schema.Struct({
+    kind: Schema.Literal("editor-text"),
     text: boundedText,
-    mode: z.enum(["replace", "insert"]),
+    mode: Schema.Literals(["replace", "insert"]),
   }),
-  z.object({ kind: z.literal("diagnostic"), diagnostic: resourceDiagnosticSchema }),
+  Schema.Struct({ kind: Schema.Literal("diagnostic"), diagnostic: resourceDiagnosticSchema }),
 ]);
 
-export const sessionSnapshotSchema = z.object({
-  workspacePath: z.string().max(4_096),
-  sessionId: z.string().min(1).max(256),
-  sessionFile: z.string().max(4_096),
-  /** Whether Pi's persisted session listing already contains this active session. */
-  sessionListed: z.boolean().optional(),
+export const sessionSnapshotSchema = Schema.Struct({
+  workspacePath: stringMax(4_096),
+  sessionId: stringRange(1, 256),
+  sessionFile: stringMax(4_096),
+  sessionListed: Schema.optional(Schema.Boolean),
   parts: ipcProjectionArray(uiPartSchema, 50_000),
-  model: z.object({ provider: z.string(), id: z.string(), name: z.string() }).optional(),
-  fastMode: z.boolean().optional(),
-  fastModeAvailable: z.boolean().optional(),
+  model: Schema.optional(
+    Schema.Struct({ provider: Schema.String, id: Schema.String, name: Schema.String }),
+  ),
+  fastMode: Schema.optional(Schema.Boolean),
+  fastModeAvailable: Schema.optional(Schema.Boolean),
   models: ipcProjectionArray(modelOptionSchema, 5_000),
   thinkingLevel: thinkingLevelSchema,
   availableThinkingLevels: ipcProjectionArray(thinkingLevelSchema, 7),
-  piSettings: piSettingsSchema.optional(),
-  streaming: z.boolean(),
+  piSettings: Schema.optional(piSettingsSchema),
+  streaming: Schema.Boolean,
   diagnostics: ipcProjectionArray(ipcProjectionString(4_096), 1_000),
   commands: ipcProjectionArray(slashCommandSchema, 20_000),
-  usage: sessionUsageSchema.optional(),
-  compatibility: compatibilityCatalogSchema.default({ resources: [], diagnostics: [] }),
-  extensionUi: extensionUiStateSchema.default({ statuses: [] }),
-  sessions: ipcProjectionArray(sessionSummarySchema, 10_000).default([]),
-  tree: ipcProjectionArray(sessionTreeEntrySchema, 50_000).default([]),
-  artifacts: ipcProjectionArray(artifactRecordSchema, 10_000).optional(),
+  usage: Schema.optional(sessionUsageSchema),
+  compatibility: defaultKey(compatibilityCatalogSchema, { resources: [], diagnostics: [] }),
+  extensionUi: defaultKey(extensionUiStateSchema, { statuses: [] }),
+  sessions: defaultKey(ipcProjectionArray(sessionSummarySchema, 10_000), []),
+  tree: defaultKey(ipcProjectionArray(sessionTreeEntrySchema, 50_000), []),
+  artifacts: Schema.optional(ipcProjectionArray(artifactRecordSchema, 10_000)),
 });
 
-const projectRecordSchema = z.object({
-  path: z.string().min(1).max(4_096),
-  name: z.string().min(1).max(512),
-  addedAt: z.string().datetime(),
-  lastOpenedAt: z.string().datetime(),
+const projectRecordSchema = Schema.Struct({
+  path: stringRange(1, 4_096),
+  name: stringRange(1, 512),
+  addedAt: Schema.String,
+  lastOpenedAt: Schema.String,
 });
-
-export const applicationStateSchema = z.object({
-  projects: z.array(projectRecordSchema).max(200).readonly().default([]),
-  resolvedSessionIds: z.array(z.string().max(256)).max(10_000).readonly().default([]),
-  resolvedCakeChatSessionIds: z.array(z.string().max(256)).max(10_000).readonly().default([]),
-  unreadSessionIds: z.array(z.string().max(256)).max(10_000).readonly().default([]),
-  trustedProjectPaths: z.array(z.string().max(4_096)).max(200).readonly().default([]),
-  fastModeSessionIds: z.array(z.string().max(256)).max(10_000).readonly().optional(),
-  utilityModel: utilityModelSchema.optional(),
-  vscodeServerPath: z.string().max(4_096).optional(),
+export const applicationStateSchema = Schema.Struct({
+  projects: defaultKey(Schema.Array(projectRecordSchema).check(Schema.isMaxLength(200)), []),
+  resolvedSessionIds: defaultKey(
+    Schema.Array(stringMax(256)).check(Schema.isMaxLength(10_000)),
+    [],
+  ),
+  resolvedCakeChatSessionIds: defaultKey(
+    Schema.Array(stringMax(256)).check(Schema.isMaxLength(10_000)),
+    [],
+  ),
+  unreadSessionIds: defaultKey(Schema.Array(stringMax(256)).check(Schema.isMaxLength(10_000)), []),
+  trustedProjectPaths: defaultKey(
+    Schema.Array(stringMax(4_096)).check(Schema.isMaxLength(200)),
+    [],
+  ),
+  fastModeSessionIds: Schema.optional(
+    Schema.Array(stringMax(256)).check(Schema.isMaxLength(10_000)),
+  ),
+  utilityModel: Schema.optional(utilityModelSchema),
+  vscodeServerPath: Schema.optional(stringMax(4_096)),
 });
 
 export type WorkLogViewMode = "auto" | "diff" | "log";
 export type WorkLogsExpansion = "collapsed" | "expanded" | "fully-expanded";
-export type FileSuggestion = z.infer<typeof fileSuggestionSchema>;
-export type Annotation = z.infer<typeof annotationSchema>;
-export type Attachment = z.infer<typeof attachmentSchema>;
-export type UiPart = z.infer<typeof uiPartSchema>;
-export type ModelOption = z.infer<typeof modelOptionSchema>;
-export type ThinkingLevel = z.infer<typeof thinkingLevelSchema>;
-export type UtilityModel = z.infer<typeof utilityModelSchema>;
-export type SessionUsage = z.infer<typeof sessionUsageSchema>;
-export type ModelPreset = z.infer<typeof modelPresetSchema>;
-export type ChatConfiguration = z.infer<typeof chatConfigurationSchema>;
-export type PiSettings = z.infer<typeof piSettingsSchema>;
-export type PiSettingUpdate = z.infer<typeof piSettingUpdateSchema>;
-export type SessionSnapshot = z.infer<typeof sessionSnapshotSchema>;
+export type FileSuggestion = typeof fileSuggestionSchema.Type;
+export type Annotation = typeof annotationSchema.Type;
+export type Attachment = typeof attachmentSchema.Type;
+export type UiPart = typeof uiPartSchema.Type;
+export type ModelOption = typeof modelOptionSchema.Type;
+export type ThinkingLevel = typeof thinkingLevelSchema.Type;
+export type UtilityModel = typeof utilityModelSchema.Type;
+export type SessionUsage = typeof sessionUsageSchema.Type;
+export type ModelPreset = typeof modelPresetSchema.Type;
+export type ChatConfiguration = typeof chatConfigurationSchema.Type;
+export type PiSettings = typeof piSettingsSchema.Type;
+export type PiSettingUpdate = typeof piSettingUpdateSchema.Type;
+export type SessionSnapshot = typeof sessionSnapshotSchema.Type;
 export interface SessionPreview {
-  workspacePath: string;
-  sessionId: string;
-  sessionFile: string;
-  parts: UiPart[];
+  readonly workspacePath: string;
+  readonly sessionId: string;
+  readonly sessionFile: string;
+  readonly parts: ReadonlyArray<UiPart>;
 }
-export type SessionSummary = z.infer<typeof sessionSummarySchema>;
-export type SessionTreeEntry = z.infer<typeof sessionTreeEntrySchema>;
-export type CompatibilityResource = z.infer<typeof compatibilityResourceSchema>;
-export type ResourceDiagnostic = z.infer<typeof resourceDiagnosticSchema>;
-export type CompatibilityCatalog = z.infer<typeof compatibilityCatalogSchema>;
-export type ExtensionUiState = z.infer<typeof extensionUiStateSchema>;
-export type ExtensionUiEvent = z.infer<typeof extensionUiEventSchema>;
-export type ProjectRecord = z.infer<typeof projectRecordSchema>;
-export type ApplicationState = z.infer<typeof applicationStateSchema>;
+export type SessionSummary = typeof sessionSummarySchema.Type;
+export type SessionTreeEntry = typeof sessionTreeEntrySchema.Type;
+export type CompatibilityResource = typeof compatibilityResourceSchema.Type;
+export type ResourceDiagnostic = typeof resourceDiagnosticSchema.Type;
+export type CompatibilityCatalog = typeof compatibilityCatalogSchema.Type;
+export type ExtensionUiState = typeof extensionUiStateSchema.Type;
+export type ExtensionUiEvent = typeof extensionUiEventSchema.Type;
+export type ProjectRecord = typeof projectRecordSchema.Type;
+export type ApplicationState = typeof applicationStateSchema.Type;

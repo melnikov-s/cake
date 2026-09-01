@@ -3,8 +3,8 @@ export type PluginBackendValue =
   | boolean
   | number
   | string
-  | PluginBackendValue[]
-  | { [key: string]: PluginBackendValue };
+  | ReadonlyArray<PluginBackendValue>
+  | { readonly [key: string]: PluginBackendValue };
 
 export interface PluginBackendMethodContext {
   signal: AbortSignal;

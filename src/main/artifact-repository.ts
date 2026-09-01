@@ -1,7 +1,7 @@
+import { Schema } from "effect";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { z } from "zod";
 import {
   artifactRecordSchema,
   parseArtifactInput,
@@ -23,13 +23,13 @@ interface StoredArtifactMetadata {
   updatedAt: string;
 }
 
-const storedArtifactMetadataSchema: z.ZodType<StoredArtifactMetadata> = z.object({
-  protocol: z.literal("cake.artifact/v1"),
-  id: z.string(),
-  sessionId: z.string(),
-  workspacePath: z.string(),
-  revision: z.number().int().positive(),
-  kind: z.enum([
+const storedArtifactMetadataSchema: Schema.Codec<StoredArtifactMetadata> = Schema.Struct({
+  protocol: Schema.Literal("cake.artifact/v1"),
+  id: Schema.String,
+  sessionId: Schema.String,
+  workspacePath: Schema.String,
+  revision: Schema.Int.check(Schema.isGreaterThan(0)),
+  kind: Schema.Literals([
     "markdown",
     "table",
     "diagram",
@@ -40,9 +40,9 @@ const storedArtifactMetadataSchema: z.ZodType<StoredArtifactMetadata> = z.object
     "widget",
     "request",
   ]),
-  digest: z.string(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
+  digest: Schema.String,
+  createdAt: Schema.String,
+  updatedAt: Schema.String,
 });
 
 export class ArtifactRepository {
@@ -66,7 +66,7 @@ export class ArtifactRepository {
       const serialized = `${JSON.stringify(artifact, null, 2)}\n`;
       const digest = createHash("sha256").update(serialized).digest("hex");
       const now = new Date().toISOString();
-      const record = artifactRecordSchema.parse({
+      const record = Schema.decodeUnknownSync(artifactRecordSchema)({
         artifact,
         workspacePath,
         digest,
@@ -94,11 +94,11 @@ export class ArtifactRepository {
     artifactId: string,
   ): Promise<ArtifactRecord | undefined> {
     try {
-      const metadata = storedArtifactMetadataSchema.parse(
+      const metadata = Schema.decodeUnknownSync(storedArtifactMetadataSchema)(
         JSON.parse(await readFile(this.recordPath(workspacePath, sessionId, artifactId), "utf8")),
       );
       const artifact = JSON.parse(await readFile(this.blobPath(metadata.digest), "utf8"));
-      return artifactRecordSchema.parse({ artifact, ...metadata });
+      return Schema.decodeUnknownSync(artifactRecordSchema)({ artifact, ...metadata });
     } catch (error) {
       if (isMissing(error)) return undefined;
       throw error;
@@ -117,7 +117,7 @@ export class ArtifactRepository {
       names
         .filter((name) => name.endsWith(".json"))
         .map(async (name) => {
-          const metadata = storedArtifactMetadataSchema.parse(
+          const metadata = Schema.decodeUnknownSync(storedArtifactMetadataSchema)(
             JSON.parse(
               await readFile(join(this.recordDirectory(workspacePath, sessionId), name), "utf8"),
             ),

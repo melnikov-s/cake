@@ -2,26 +2,12 @@ import { Store } from "r-state-tree";
 import type { EditorAnnotationSnapshot } from "../../ipc/editor-annotation";
 import type { SourceLocation } from "../../ipc/source-location";
 import type { Attachment } from "../../ipc/session-contract";
-import type {
-  DesktopClient,
-  DesktopClientEvent,
-  EmbeddedEditorStateSnapshot,
-  EmbeddedEditorStatus,
-} from "../desktop-client";
+import type { EmbeddedEditorStateSnapshot, EmbeddedEditorStatus } from "../client/RendererClient";
+import { RendererClientContext } from "../client/RendererClientContext";
+import type { RendererEvent } from "../RendererEvent";
 import { describeError } from "../error-details";
 
 export interface EmbeddedEditorStoreProps {
-  client: Pick<
-    DesktopClient,
-    | "getEmbeddedEditorState"
-    | "installEmbeddedEditor"
-    | "setVscodeServerPath"
-    | "openEmbeddedEditor"
-    | "updateEmbeddedEditorBounds"
-    | "revealInEmbeddedEditor"
-    | "openEmbeddedEditorSourceControl"
-    | "updateEmbeddedEditorAnnotations"
-  >;
   projectPath(): string | undefined;
   annotations(): EditorAnnotationSnapshot | undefined;
   startCakeChat(prompt: string): Promise<void>;
@@ -50,6 +36,10 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
   private syncingAnnotations = false;
   private annotationSyncPending = false;
 
+  get vscode() {
+    return RendererClientContext.consume(this)!.vscode;
+  }
+
   constructor(props: EmbeddedEditorStore["props"]) {
     super(props);
     this.reaction(
@@ -61,7 +51,9 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
   async refresh() {
     const revision = ++this.refreshRevision;
     try {
-      const state: EmbeddedEditorStateSnapshot = await this.props.client.getEmbeddedEditorState();
+      const state: EmbeddedEditorStateSnapshot = await this.vscode.getState({
+        signal: this.signal,
+      });
       if (this.signal.aborted || revision !== this.refreshRevision) return;
       this.applySnapshot(state);
     } catch (error) {
@@ -74,7 +66,7 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
 
   receive(
     event: Extract<
-      DesktopClientEvent,
+      RendererEvent,
       {
         type:
           | "embedded-editor-state-received"
@@ -125,7 +117,7 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
     )
       return;
     try {
-      await this.props.client.openEmbeddedEditorSourceControl(projectPath);
+      await this.vscode.openSourceControl(projectPath, { signal: this.signal });
     } catch (error) {
       if (this.signal.aborted) return;
       const described = describeError(error);
@@ -166,7 +158,7 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
     this.error = undefined;
     this.errorDetails = undefined;
     try {
-      await this.props.client.openEmbeddedEditor(projectPath);
+      await this.vscode.open(projectPath, { signal: this.signal });
       if (this.signal.aborted || this.props.projectPath() !== projectPath) return;
       this.openedWorkspace = projectPath;
       await this.syncAnnotations();
@@ -222,7 +214,7 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
     this.error = undefined;
     this.errorDetails = undefined;
     try {
-      await this.props.client.installEmbeddedEditor();
+      await this.vscode.install({ signal: this.signal });
     } catch (error) {
       if (this.signal.aborted) return;
       const described = describeError(error);
@@ -233,7 +225,7 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
 
   async useExistingInstallation(path: string) {
     try {
-      await this.props.client.setVscodeServerPath(path || undefined);
+      await this.vscode.setServerPath(path || undefined, { signal: this.signal });
     } catch (error) {
       if (this.signal.aborted) return;
       const described = describeError(error, "Embedded editor");
@@ -250,7 +242,7 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
       ? { visible: true, ...bounds }
       : { visible: false, x: 0, y: 0, width: 0, height: 0 };
     try {
-      await this.props.client.updateEmbeddedEditorBounds(payload);
+      await this.vscode.updateBounds(payload, { signal: this.signal });
     } catch {
       // A stale bounds report after a newer one is expected and ignorable.
       if (revision !== this.boundsRevision) return;
@@ -273,7 +265,7 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
         if (!snapshot) return;
         const fingerprint = JSON.stringify(snapshot);
         if (fingerprint === this.sentAnnotationsFingerprint) continue;
-        await this.props.client.updateEmbeddedEditorAnnotations(projectPath, snapshot);
+        await this.vscode.updateAnnotations(projectPath, snapshot, { signal: this.signal });
         if (this.signal.aborted || this.props.projectPath() !== projectPath) return;
         this.sentAnnotationsFingerprint = fingerprint;
       } while (this.annotationSyncPending);
@@ -293,7 +285,7 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
     if (this.openedWorkspace !== projectPath) await this.open();
     if (this.signal.aborted || this.props.projectPath() !== projectPath || !this.visible) return;
     try {
-      await this.props.client.revealInEmbeddedEditor(projectPath, location);
+      await this.vscode.reveal(projectPath, location, { signal: this.signal });
     } catch (error) {
       if (this.signal.aborted) return;
       const described = describeError(error);

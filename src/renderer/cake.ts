@@ -104,6 +104,7 @@ export function definePlugin<const Plugin extends CakePluginDefinition>(plugin: 
   return plugin;
 }
 
+export { Schema } from "effect";
 export { Slot, useCommand, useContributionReveal } from "./plugin-runtime";
 export { usePluginBackend } from "./plugin-backend";
 export {

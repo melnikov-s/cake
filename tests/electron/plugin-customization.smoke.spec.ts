@@ -2,6 +2,7 @@ import { _electron as electron, expect, test } from "@playwright/test";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { callRpcHarness, openRpcHarness } from "./rpc-harness";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -47,19 +48,14 @@ test("builds, activates, persists, recovers, and disables a failed plugin render
       CAKE_ELECTRON_SMOKE: "1",
       CAKE_ELECTRON_USER_DATA: userData,
       CAKE_HOME: cakeHome,
+      CAKE_AUTHORING_ROOT: join(repositoryRoot, "out", "authoring"),
     },
   });
   try {
     const page = await application.firstWindow();
     await page.waitForLoadState("domcontentloaded");
-    const request = (input: unknown) =>
-      page.evaluate(
-        async (payload) =>
-          (
-            window as unknown as { cake: { request(value: unknown): Promise<unknown> } }
-          ).cake.request(payload),
-        input,
-      );
+    const harness = await openRpcHarness(application, "plugin-customization");
+    const request = (input: unknown) => callRpcHarness<unknown>(harness, "invokePrivileged", input);
     const validateAndActivate = async (input: Record<string, unknown> = {}) => {
       const validation = (await request({ type: "validate-customization", ...input })) as {
         revision: string;
@@ -83,47 +79,32 @@ test("builds, activates, persists, recovers, and disables a failed plugin render
     await expect(page.locator("#plugin-marker")).toContainText("FILE_WRITE_OK");
     await expect(page.locator("#plugin-marker")).toContainText("FIXTURE_NETWORK_OK");
     await expect
-      .poll(() =>
-        page.evaluate(
-          async () =>
-            (
-              await (
-                window as unknown as {
-                  cake: {
-                    request(
-                      input: unknown,
-                    ): Promise<{ state?: { pendingRevision?: string; activeRevision?: string } }>;
-                  };
-                }
-              ).cake.request({ type: "get-customization-state" })
-            ).state,
-        ),
+      .poll(
+        async () =>
+          (
+            (await request({ type: "get-customization-state" })) as {
+              state?: { pendingRevision?: string; activeRevision?: string };
+            }
+          ).state,
       )
       .toMatchObject({ pendingRevision: undefined, activeRevision: expect.any(String) });
 
-    await page.evaluate(async () => {
-      const bridge = (
-        window as unknown as {
-          cake: { request(input: unknown): Promise<{ record?: { value: unknown } }> };
-        }
-      ).cake;
-      await bridge.request({
-        type: "save-plugin-state",
-        pluginId: "smoke.example",
-        key: "selection",
-        scope: { kind: "global" },
-        value: { day: 3 },
-        expectedVersion: 0,
-      });
-      const loaded = await bridge.request({
-        type: "load-plugin-state",
-        pluginId: "smoke.example",
-        key: "selection",
-        scope: { kind: "global" },
-      });
-      if (JSON.stringify(loaded.record?.value) !== JSON.stringify({ day: 3 }))
-        throw new Error("Plugin state did not round-trip");
+    await request({
+      type: "save-plugin-state",
+      pluginId: "smoke.example",
+      key: "selection",
+      scope: { kind: "global" },
+      value: { day: 3 },
+      expectedVersion: 0,
     });
+    const loaded = (await request({
+      type: "load-plugin-state",
+      pluginId: "smoke.example",
+      key: "selection",
+      scope: { kind: "global" },
+    })) as { record?: { value: unknown } };
+    if (JSON.stringify(loaded.record?.value) !== JSON.stringify({ day: 3 }))
+      throw new Error("Plugin state did not round-trip");
 
     const sourceV1 = (await request({ type: "get-customization-state" })) as {
       state: { sourceRevision: string };
@@ -151,21 +132,13 @@ test("builds, activates, persists, recovers, and disables a failed plugin render
     });
     await expect(page.locator("#plugin-marker")).toContainText("PLUGIN_V2", { timeout: 20_000 });
     await expect
-      .poll(() =>
-        page.evaluate(
-          async () =>
-            (
-              await (
-                window as unknown as {
-                  cake: {
-                    request(
-                      input: unknown,
-                    ): Promise<{ state?: { pendingRevision?: string; activeRevision?: string } }>;
-                  };
-                }
-              ).cake.request({ type: "get-customization-state" })
-            ).state,
-        ),
+      .poll(
+        async () =>
+          (
+            (await request({ type: "get-customization-state" })) as {
+              state?: { pendingRevision?: string; activeRevision?: string };
+            }
+          ).state,
       )
       .toMatchObject({ pendingRevision: undefined, activeRevision: expect.any(String) });
     const activeV2 = (await request({ type: "get-customization-state" })) as {
@@ -192,21 +165,12 @@ test("builds, activates, persists, recovers, and disables a failed plugin render
     await recovery.getByRole("button", { name: "Disable for now" }).click();
     await expect
       .poll(
-        () =>
-          page.evaluate(
-            async () =>
-              (
-                await (
-                  window as unknown as {
-                    cake: {
-                      request(input: unknown): Promise<{
-                        state?: { recoveryRequired?: boolean; activeRevision?: string };
-                      }>;
-                    };
-                  }
-                ).cake.request({ type: "get-customization-state" })
-              ).state,
-          ),
+        async () =>
+          (
+            (await request({ type: "get-customization-state" })) as {
+              state?: { recoveryRequired?: boolean; activeRevision?: string };
+            }
+          ).state,
         { timeout: 20_000 },
       )
       .toMatchObject({ recoveryRequired: false, activeRevision: expect.any(String) });

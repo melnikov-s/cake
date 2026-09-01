@@ -116,7 +116,8 @@ test("Quake terminal runs a shell and only warns on resolution for a running pro
     await panel.locator(".xterm-screen").click();
     await page.keyboard.type("sleep 60");
     await page.keyboard.press("Enter");
-    await page.keyboard.press("Meta+Backquote");
+    await toggleTerminalViaMenu();
+    await expect(panel).toHaveAttribute("aria-hidden", "true");
     const resolveAction = page.locator(
       `.session-item[data-session-id='${sessionId}'] .session-resolve-action`,
     );
@@ -124,16 +125,17 @@ test("Quake terminal runs a shell and only warns on resolution for a running pro
     await expect(page.getByText("Resolve and stop running program?")).toBeVisible();
     await page.getByRole("button", { name: "Cancel" }).click();
 
-    await page.keyboard.press("Meta+Backquote");
+    await toggleTerminalViaMenu();
     await panel.locator(".xterm-screen").click();
     await page.keyboard.press("Control+C");
     await page.keyboard.type("printf CAKE_TERMINAL_IDLE");
     await page.keyboard.press("Enter");
     await expect(panel.locator(".xterm-rows")).toContainText("CAKE_TERMINAL_IDLE");
-    await page.keyboard.press("Meta+Backquote");
+    await toggleTerminalViaMenu();
+    await expect(panel).toHaveAttribute("aria-hidden", "true");
     await resolveAction.click();
     await expect(page.getByText("Resolve and stop running program?")).toHaveCount(0);
-    await expect(page.getByRole("region", { name: "Expand Resolved" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Resolved sessions" })).toBeVisible();
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

@@ -93,7 +93,7 @@ test("resolves and restores the selected project session in the desktop sidebar"
     await expect(selectedSession.locator(".session-time")).toHaveCount(1);
     await selectedSession.locator(".session-resolve-action").click();
 
-    const resolvedLane = page.getByRole("region", { name: "Expand Resolved" });
+    const resolvedLane = page.getByRole("region", { name: "Resolved sessions" });
     await expect(resolvedLane).toBeVisible();
     const resolvedToggle = page.getByRole("button", { name: "Expand Resolved" });
     await expect(resolvedToggle).toHaveAttribute("aria-expanded", "false");

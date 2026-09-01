@@ -1,44 +1,46 @@
-import { createStore, mount } from "r-state-tree";
+import { createStore } from "r-state-tree";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { EditorAnnotationSnapshot } from "../../../../src/ipc/editor-annotation";
-import type { DesktopClientEvent } from "../../../../src/renderer/desktop-client";
+import type { RendererEvent } from "../../../../src/renderer/RendererEvent";
 import { EmbeddedEditorStore } from "../../../../src/renderer/stores/EmbeddedEditorStore";
+import type { RendererClient } from "../../../../src/renderer/client/RendererClient";
+import { mountWithRendererClient } from "../mount-with-renderer-client";
 function createHarness(annotations?: EditorAnnotationSnapshot) {
   const client = {
-    getEmbeddedEditorState: vi.fn(async () => ({ status: "missing" as const })),
-    installEmbeddedEditor: vi.fn(async () => undefined),
-    setVscodeServerPath: vi.fn(async () => ({
+    getState: vi.fn(async () => ({ status: "missing" as const })),
+    install: vi.fn(async () => undefined),
+    setServerPath: vi.fn(async () => ({
       projects: [],
       resolvedSessionIds: [],
       resolvedCakeChatSessionIds: [],
       unreadSessionIds: [],
       trustedProjectPaths: [],
     })),
-    openEmbeddedEditor: vi.fn(async () => undefined),
-    updateEmbeddedEditorBounds: vi.fn(async () => undefined),
-    revealInEmbeddedEditor: vi.fn(async () => undefined),
-    openEmbeddedEditorSourceControl: vi.fn(async () => undefined),
-    updateEmbeddedEditorAnnotations: vi.fn(async () => undefined),
+    open: vi.fn(async () => undefined),
+    updateBounds: vi.fn(async () => undefined),
+    reveal: vi.fn(async () => undefined),
+    openSourceControl: vi.fn(async () => undefined),
+    updateAnnotations: vi.fn(async () => undefined),
   };
   const startCakeChat = vi.fn(async (prompt: string) => {
     void prompt;
   });
-  const store = mount(
+  const { root, subject: store } = mountWithRendererClient(
     createStore(EmbeddedEditorStore, {
-      client,
       projectPath: () => "/tmp/project",
       annotations: () => annotations,
       startCakeChat,
     }),
+    { vscode: client } as unknown as RendererClient,
   );
-  return { client, store, startCakeChat };
+  return { client, root, store, startCakeChat };
 }
 
 function stateEvent(status: "missing" | "downloading" | "starting" | "ready" | "failed") {
   return {
     type: "embedded-editor-state-received",
     status,
-  } as Extract<DesktopClientEvent, { type: "embedded-editor-state-received" }>;
+  } as Extract<RendererEvent, { type: "embedded-editor-state-received" }>;
 }
 
 describe("EmbeddedEditorStore", () => {
@@ -47,13 +49,13 @@ describe("EmbeddedEditorStore", () => {
   });
 
   it("shows and hides the IDE while retaining the running editor", async () => {
-    const { client, store } = createHarness();
+    const { client, root, store } = createHarness();
 
     await store.show();
     expect(store.visible).toBe(true);
     expect(store.chatSidebarVisible).toBe(true);
-    expect(client.getEmbeddedEditorState).toHaveBeenCalledOnce();
-    expect(client.openEmbeddedEditor).toHaveBeenCalledWith("/tmp/project");
+    expect(client.getState).toHaveBeenCalledOnce();
+    expect(client.open).toHaveBeenCalledWith("/tmp/project", expect.any(Object));
 
     store.toggleChatSidebar();
     expect(store.visible).toBe(true);
@@ -64,30 +66,33 @@ describe("EmbeddedEditorStore", () => {
     store.hide();
     expect(store.visible).toBe(false);
     await vi.waitFor(() =>
-      expect(client.updateEmbeddedEditorBounds).toHaveBeenCalledWith({
-        visible: false,
-        x: 0,
-        y: 0,
-        width: 0,
-        height: 0,
-      }),
+      expect(client.updateBounds).toHaveBeenCalledWith(
+        {
+          visible: false,
+          x: 0,
+          y: 0,
+          width: 0,
+          height: 0,
+        },
+        expect.any(Object),
+      ),
     );
-    store[Symbol.dispose]();
+    root[Symbol.dispose]();
   });
 
   it("adopts an agent-opened editor without opening it again", async () => {
-    const { client, store } = createHarness();
+    const { client, root, store } = createHarness();
 
     store.showAgentLocation();
 
     expect(store.visible).toBe(true);
-    expect(client.getEmbeddedEditorState).toHaveBeenCalledOnce();
-    expect(client.openEmbeddedEditor).not.toHaveBeenCalled();
-    store[Symbol.dispose]();
+    expect(client.getState).toHaveBeenCalledOnce();
+    expect(client.open).not.toHaveBeenCalled();
+    root[Symbol.dispose]();
   });
 
   it("tracks companion activity only for the active project", () => {
-    const { store } = createHarness();
+    const { root, store } = createHarness();
 
     store.receive({
       type: "embedded-editor-selection",
@@ -122,20 +127,20 @@ describe("EmbeddedEditorStore", () => {
     });
     expect(store.lastActivePath).toBeUndefined();
     expect(store.activeContextAttachment).toBeUndefined();
-    store[Symbol.dispose]();
+    root[Symbol.dispose]();
   });
 
   it("reveals through the client only while the IDE is visible", async () => {
-    const { client, store } = createHarness();
+    const { client, root, store } = createHarness();
 
     await store.reveal({ path: "src/app.ts", range: { start: { line: 3 } } });
-    expect(client.revealInEmbeddedEditor).not.toHaveBeenCalled();
+    expect(client.reveal).not.toHaveBeenCalled();
 
     const location = { path: "src/app.ts", range: { start: { line: 3 } } };
     await store.show(location);
 
-    expect(client.revealInEmbeddedEditor).toHaveBeenCalledWith("/tmp/project", location);
-    store[Symbol.dispose]();
+    expect(client.reveal).toHaveBeenCalledWith("/tmp/project", location, expect.any(Object));
+    root[Symbol.dispose]();
   });
 
   it("syncs active-session discussion annotations after opening the IDE", async () => {
@@ -154,16 +159,20 @@ describe("EmbeddedEditorStore", () => {
         },
       ],
     };
-    const { client, store } = createHarness(snapshot);
+    const { client, root, store } = createHarness(snapshot);
 
     await store.show();
 
-    expect(client.updateEmbeddedEditorAnnotations).toHaveBeenCalledWith("/tmp/project", snapshot);
-    store[Symbol.dispose]();
+    expect(client.updateAnnotations).toHaveBeenCalledWith(
+      "/tmp/project",
+      snapshot,
+      expect.any(Object),
+    );
+    root[Symbol.dispose]();
   });
 
   it("asks Cake Chat to set up a VS Code server with platform and project context", async () => {
-    const { store, startCakeChat } = createHarness();
+    const { root, store, startCakeChat } = createHarness();
 
     await store.askCakeToSetUp();
 
@@ -172,33 +181,36 @@ describe("EmbeddedEditorStore", () => {
     expect(prompt).toContain("Platform: ");
     expect(prompt).toContain("Project: /tmp/project");
     expect(store.error).toBeUndefined();
-    store[Symbol.dispose]();
+    root[Symbol.dispose]();
   });
 
   it("reports ask-Cake failures on the embedded editor card", async () => {
-    const { store, startCakeChat } = createHarness();
+    const { root, store, startCakeChat } = createHarness();
     startCakeChat.mockRejectedValueOnce(new Error("no chat"));
 
     await store.askCakeToSetUp();
 
     expect(store.error).toContain("no chat");
-    store[Symbol.dispose]();
+    root[Symbol.dispose]();
   });
 
   it("reports null bounds as a hidden view and swallows stale bound failures", async () => {
-    const { client, store } = createHarness();
-    client.updateEmbeddedEditorBounds.mockRejectedValueOnce(new Error("stale"));
+    const { client, root, store } = createHarness();
+    client.updateBounds.mockRejectedValueOnce(new Error("stale"));
 
     await store.reportBounds(null);
 
-    expect(client.updateEmbeddedEditorBounds).toHaveBeenCalledWith({
-      visible: false,
-      x: 0,
-      y: 0,
-      width: 0,
-      height: 0,
-    });
+    expect(client.updateBounds).toHaveBeenCalledWith(
+      {
+        visible: false,
+        x: 0,
+        y: 0,
+        width: 0,
+        height: 0,
+      },
+      expect.any(Object),
+    );
     expect(store.error).toBeUndefined();
-    store[Symbol.dispose]();
+    root[Symbol.dispose]();
   });
 });

@@ -1,20 +1,9 @@
 import { Store } from "r-state-tree";
+import { RendererClientContext } from "../client/RendererClientContext";
 
 export type TerminalTarget =
   | { kind: "project"; sessionId: string; workspacePath: string }
   | { kind: "cake-chat"; sessionId: string };
-
-export interface TerminalClient {
-  openTerminal?(input: {
-    target: TerminalTarget;
-    cols: number;
-    rows: number;
-  }): Promise<{ terminalId: string; shell: string }>;
-  writeTerminal?(terminalId: string, data: string): Promise<void>;
-  resizeTerminal?(terminalId: string, cols: number, rows: number): Promise<void>;
-  getTerminalStatus?(terminalId: string): Promise<{ runningProgram: boolean }>;
-  closeTerminal?(terminalId: string): Promise<void>;
-}
 
 export interface TerminalEntry {
   key: string;
@@ -32,9 +21,12 @@ interface PendingResolution {
 
 /** Owns the window's lazy, in-memory terminal collection, keyed by Cake session. */
 export class TerminalStore extends Store<{
-  client: TerminalClient;
   activeTarget(): TerminalTarget | undefined;
 }> {
+  get terminals() {
+    return RendererClientContext.consume(this)!.terminals;
+  }
+
   open = false;
   entries: TerminalEntry[] = [];
   resolutionRequest: { runningProgramCount: number } | undefined;
@@ -64,12 +56,14 @@ export class TerminalStore extends Store<{
         if (open) void this.ensureCurrent();
       },
     );
-    this.effect(() => () => {
-      this.pendingResolution?.finish(false);
-      for (const entry of this.entries) {
-        if (entry.terminalId)
-          void this.props.client.closeTerminal?.(entry.terminalId).catch(() => undefined);
-      }
+    this.effect(() => {
+      const terminals = this.terminals;
+      return () => {
+        this.pendingResolution?.finish(false);
+        for (const entry of this.entries) {
+          if (entry.terminalId) void terminals.close(entry.terminalId).catch(() => undefined);
+        }
+      };
     });
   }
 
@@ -78,7 +72,7 @@ export class TerminalStore extends Store<{
   }
 
   get available() {
-    return Boolean(this.activeTarget && this.props.client.openTerminal);
+    return Boolean(this.activeTarget && this.terminals.open);
   }
 
   get activeEntry() {
@@ -113,7 +107,7 @@ export class TerminalStore extends Store<{
   }
 
   private async start(target: TerminalTarget, cols: number, rows: number) {
-    const openTerminal = this.props.client.openTerminal;
+    const openTerminal = this.terminals.open;
     if (!openTerminal) return;
     const key = this.targetKey(target);
     const current = this.entries.find((entry) => entry.key === key);
@@ -122,7 +116,7 @@ export class TerminalStore extends Store<{
     try {
       const opened = await openTerminal({ target, cols, rows });
       if (this.signal.aborted) {
-        await this.props.client.closeTerminal?.(opened.terminalId);
+        await this.terminals.close(opened.terminalId);
         return;
       }
       this.setEntry({ key, target, opening: false, ...opened });
@@ -142,7 +136,7 @@ export class TerminalStore extends Store<{
   write(key: string, data: string) {
     const terminalId = this.entries.find((entry) => entry.key === key)?.terminalId;
     if (!terminalId || !data) return;
-    void this.props.client.writeTerminal?.(terminalId, data).catch((error) => {
+    void this.terminals.write(terminalId, data).catch((error) => {
       this.updateEntry(key, { error: error instanceof Error ? error.message : String(error) });
     });
   }
@@ -150,7 +144,7 @@ export class TerminalStore extends Store<{
   resize(key: string, cols: number, rows: number) {
     const terminalId = this.entries.find((entry) => entry.key === key)?.terminalId;
     if (!terminalId) return;
-    void this.props.client.resizeTerminal?.(terminalId, cols, rows).catch(() => undefined);
+    void this.terminals.resize(terminalId, cols, rows).catch(() => undefined);
   }
 
   receive(
@@ -210,11 +204,11 @@ export class TerminalStore extends Store<{
     if (this.pendingResolution) return false;
 
     const statuses = await Promise.allSettled(
-      terminals.map(({ terminalId }) => this.props.client.getTerminalStatus?.(terminalId)),
+      terminals.map(({ terminalId }) => this.terminals.status(terminalId)),
     );
     const keys = terminals.flatMap((terminal, index) => {
       const status = statuses[index];
-      return status?.status === "fulfilled" && status.value?.runningProgram ? [terminal.key] : [];
+      return status?.status === "fulfilled" && status.value.runningProgram ? [terminal.key] : [];
     });
     if (keys.length === 0) return true;
     if (this.pendingResolution) return false;
@@ -258,9 +252,7 @@ export class TerminalStore extends Store<{
     const closing = this.entries.filter((entry) => keys.includes(entry.key));
     await Promise.allSettled(
       closing.map((entry) =>
-        entry.terminalId
-          ? (this.props.client.closeTerminal?.(entry.terminalId) ?? Promise.resolve())
-          : Promise.resolve(),
+        entry.terminalId ? this.terminals.close(entry.terminalId) : Promise.resolve(),
       ),
     );
     const keySet = new Set(keys);

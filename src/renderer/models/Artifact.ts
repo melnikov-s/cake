@@ -1,20 +1,21 @@
 import { Model, id } from "r-state-tree";
-import {
-  cakeArtifactV1Schema,
-  type ArtifactRecord,
-  type CakeArtifactV1,
-} from "../../ipc/artifact-contract";
+import type { ArtifactRecord, CakeArtifactV1 } from "../../ipc/artifact-contract";
+
+function createEmptyArtifact(): CakeArtifactV1 {
+  return {
+    protocol: "cake.artifact/v1",
+    id: "",
+    sessionId: "",
+    revision: 1,
+    kind: "markdown",
+    payload: { markdown: "" },
+    fallback: { markdown: "" },
+  };
+}
 
 export class Artifact extends Model {
   @id id = "";
-  protocol: CakeArtifactV1["protocol"] = "cake.artifact/v1";
-  sessionId = "";
-  revision = 1;
-  kind: CakeArtifactV1["kind"] = "markdown";
-  title: string | undefined;
-  payload: CakeArtifactV1["payload"] = { markdown: "" };
-  fallback: CakeArtifactV1["fallback"] = { markdown: "" };
-  interaction: CakeArtifactV1["interaction"] = undefined;
+  artifact: CakeArtifactV1 = createEmptyArtifact();
   workspacePath = "";
   digest = "";
   createdAt = "";
@@ -22,17 +23,7 @@ export class Artifact extends Model {
 
   get value(): ArtifactRecord {
     return {
-      artifact: cakeArtifactV1Schema.parse({
-        protocol: this.protocol,
-        id: this.id,
-        sessionId: this.sessionId,
-        revision: this.revision,
-        kind: this.kind,
-        title: this.title,
-        payload: this.payload,
-        fallback: this.fallback,
-        interaction: this.interaction,
-      }),
+      artifact: this.artifact,
       workspacePath: this.workspacePath,
       digest: this.digest,
       createdAt: this.createdAt,

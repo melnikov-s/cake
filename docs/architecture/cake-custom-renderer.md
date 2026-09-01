@@ -1,10 +1,8 @@
 # Future Cake Custom Renderer architecture
 
-> **Status:** Design only. Custom Renderer has not been implemented and is
-> explicitly outside the Effect architecture migration. Nothing in the Effect
-> migration should build this feature, change scope to prepare it speculatively,
-> or treat it as an acceptance criterion. It may be implemented later as a
-> separate product project after the Effect migration is complete.
+> **Status:** Design only. Custom Renderer has not been implemented. Nothing in
+> current Cake should build this feature or change scope to prepare it
+> speculatively. It may be implemented later as a separate product project.
 
 This document records the intended architecture for a possible future feature
 in which Cake permits a user and their agent to modify or replace the renderer while

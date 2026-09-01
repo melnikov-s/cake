@@ -1,12 +1,12 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { CakeDesktopBridge } from "../ipc/desktop-ipc";
+import type { ElectronRpcTransport } from "../ipc/transport/ElectronRpcTransport";
 import { rpcRequestChannel, rpcResponseChannel } from "../ipc/transport/ElectronRpcChannels";
 
-const rpc: CakeDesktopBridge["rpc"] = Object.freeze({
-  send(message: Parameters<CakeDesktopBridge["rpc"]["send"]>[0]) {
+const rpc: ElectronRpcTransport = Object.freeze({
+  send(message: Parameters<ElectronRpcTransport["send"]>[0]) {
     ipcRenderer.send(rpcRequestChannel, message);
   },
-  subscribe(listener: Parameters<CakeDesktopBridge["rpc"]["subscribe"]>[0]) {
+  subscribe(listener: Parameters<ElectronRpcTransport["subscribe"]>[0]) {
     const handler = (_event: Electron.IpcRendererEvent, input: unknown) => {
       listener(input);
     };
@@ -15,6 +15,4 @@ const rpc: CakeDesktopBridge["rpc"] = Object.freeze({
   },
 });
 
-const bridge: CakeDesktopBridge = { rpc };
-
-contextBridge.exposeInMainWorld("cake", Object.freeze(bridge));
+contextBridge.exposeInMainWorld("cake", Object.freeze({ rpc }));

@@ -4,6 +4,7 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
+import { callRpcHarness, openRpcHarness } from "./rpc-harness";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -120,11 +121,14 @@ test("rewords a composer selection and records one undo step", async () => {
     await composer.fill("Before rough ramble after");
     await composer.evaluate((input: HTMLTextAreaElement) => input.setSelectionRange(7, 19));
 
-    const rewritten = await page.evaluate(() =>
-      window.cake!.request({
+    const harness = await openRpcHarness(application, "composer-reword");
+    const rewritten = await callRpcHarness<{ type: string; text: string }>(
+      harness,
+      "invokePrivileged",
+      {
         type: "reword-composer-selection",
         selection: "rough ramble",
-      }),
+      },
     );
     expect(rewritten).toEqual({ type: "composer-selection-reworded", text: "Clear request" });
     await composer.evaluate(

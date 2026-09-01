@@ -1,3 +1,4 @@
+import { Schema } from "effect";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -26,9 +27,9 @@ export class PluginPersistenceRepository {
   ) {}
 
   private path(pluginId: string, key: string, scope: PluginPersistenceScope) {
-    const parsedId = pluginIdSchema.parse(pluginId);
-    pluginPersistenceKeySchema.parse(key);
-    pluginPersistenceScopeSchema.parse(scope);
+    const parsedId = Schema.decodeUnknownSync(pluginIdSchema)(pluginId);
+    Schema.decodeUnknownSync(pluginPersistenceKeySchema)(key);
+    Schema.decodeUnknownSync(pluginPersistenceScopeSchema)(scope);
     return scope.kind === "global"
       ? join(this.root, "plugins", parsedId, "global", `${digest(key)}.json`)
       : join(
@@ -47,7 +48,7 @@ export class PluginPersistenceRepository {
     scope: PluginPersistenceScope,
   ): Promise<PluginPersistenceRecord | undefined> {
     try {
-      return pluginPersistenceRecordSchema.parse(
+      return Schema.decodeUnknownSync(pluginPersistenceRecordSchema)(
         JSON.parse(await readFile(this.path(pluginId, key, scope), "utf8")),
       );
     } catch (error) {
@@ -67,7 +68,9 @@ export class PluginPersistenceRepository {
     const encoded = JSON.stringify(value);
     if (encoded === undefined) throw new Error("Plugin state must be JSON-serializable");
     if (encoded.length > 1_000_000) throw new Error("Plugin state exceeds the 1 MB value limit");
-    const parsedValue = pluginPersistenceRecordSchema.shape.value.parse(JSON.parse(encoded));
+    const parsedValue = Schema.decodeUnknownSync(pluginPersistenceRecordSchema.fields.value)(
+      JSON.parse(encoded),
+    );
     const target = this.path(pluginId, key, scope);
     return this.updates.run(target, async () => {
       const current = await this.read(pluginId, key, scope);
@@ -75,7 +78,7 @@ export class PluginPersistenceRepository {
         throw new Error(
           `Plugin state changed concurrently: expected version ${expectedVersion}, found ${current?.version ?? 0}`,
         );
-      const record = pluginPersistenceRecordSchema.parse({
+      const record = Schema.decodeUnknownSync(pluginPersistenceRecordSchema)({
         schemaVersion: 1,
         pluginId,
         key,

@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { Schema } from "effect";
 import {
   sessionUsageSchema,
   uiPartSchema,
@@ -6,103 +6,89 @@ import {
   type UiPart,
 } from "./session-contract";
 
-const REVIEW_TEXT_MAX_LENGTH = 262_144;
-const boundedReviewText = z.string().max(REVIEW_TEXT_MAX_LENGTH);
-
-const reviewPointSchema = z.object({
-  diffLine: z.number().int().nonnegative(),
-  oldLine: z.number().int().positive().optional(),
-  newLine: z.number().int().positive().optional(),
-  column: z.number().int().nonnegative().optional(),
+const bounded = (minimum: number, maximum: number) =>
+  Schema.String.check(Schema.isMinLength(minimum), Schema.isMaxLength(maximum));
+const boundedReviewText = Schema.String.check(Schema.isMaxLength(262_144));
+const nonNegativeInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
+const reviewPointSchema = Schema.Struct({
+  diffLine: nonNegativeInt,
+  oldLine: Schema.optional(Schema.Int.check(Schema.isGreaterThan(0))),
+  newLine: Schema.optional(Schema.Int.check(Schema.isGreaterThan(0))),
+  column: Schema.optional(nonNegativeInt),
 });
-
-const reviewAnchorSchema = z.object({
-  path: z.string().min(1).max(8_192),
-  view: z.enum(["file", "message"]).optional(),
+const reviewAnchorSchema = Schema.Struct({
+  path: bounded(1, 8_192),
+  view: Schema.optional(Schema.Literals(["file", "message"])),
   start: reviewPointSchema,
   end: reviewPointSchema,
   selectedText: boundedReviewText,
   contextBefore: boundedReviewText,
   contextAfter: boundedReviewText,
   diff: boundedReviewText,
-  messageId: z.string().min(1).max(256).optional(),
-  entryId: z.string().min(1).max(256).optional(),
-  startOffset: z.number().int().nonnegative().optional(),
-  endOffset: z.number().int().nonnegative().optional(),
+  messageId: Schema.optional(bounded(1, 256)),
+  entryId: Schema.optional(bounded(1, 256)),
+  startOffset: Schema.optional(nonNegativeInt),
+  endOffset: Schema.optional(nonNegativeInt),
 });
-
-const pendingReviewCommentSchema = z.object({
-  id: z.string().min(1).max(256),
+const pendingReviewCommentSchema = Schema.Struct({
+  id: bounded(1, 256),
   body: boundedReviewText,
-  createdAt: z.string().datetime(),
+  createdAt: Schema.String,
 });
-
-const reviewSubmissionSchema = z.discriminatedUnion("status", [
-  z.object({
-    status: z.literal("running"),
-    runId: z.string().uuid(),
-    commentIds: z.array(z.string().min(1).max(256)).min(1),
-    startedAt: z.string().datetime(),
-  }),
-  z.object({
-    status: z.literal("answered"),
-    runId: z.string().uuid(),
-    commentIds: z.array(z.string().min(1).max(256)).min(1),
-    completedAt: z.string().datetime(),
-  }),
-  z.object({
-    status: z.literal("failed"),
-    runId: z.string().uuid(),
-    commentIds: z.array(z.string().min(1).max(256)).min(1),
-    failedAt: z.string().datetime(),
+const runBase = {
+  runId: Schema.String.check(Schema.isUUID()),
+  commentIds: Schema.Array(bounded(1, 256)).check(Schema.isMinLength(1)),
+};
+const reviewSubmissionSchema = Schema.Union([
+  Schema.Struct({ ...runBase, status: Schema.Literal("running"), startedAt: Schema.String }),
+  Schema.Struct({ ...runBase, status: Schema.Literal("answered"), completedAt: Schema.String }),
+  Schema.Struct({
+    ...runBase,
+    status: Schema.Literal("failed"),
+    failedAt: Schema.String,
     error: boundedReviewText,
   }),
 ]);
-
-export const reviewThreadRecordSchema = z.object({
-  id: z.string().min(1).max(256),
-  workspacePath: z.string().min(1).max(4_096),
-  sessionId: z.string().min(1).max(256),
-  agentSessionId: z.string().min(1).max(256).optional(),
-  agentSessionFile: z.string().min(1).max(8_192).optional(),
-  usage: sessionUsageSchema.optional(),
+export const reviewThreadRecordSchema = Schema.Struct({
+  id: bounded(1, 256),
+  workspacePath: bounded(1, 4_096),
+  sessionId: bounded(1, 256),
+  agentSessionId: Schema.optional(bounded(1, 256)),
+  agentSessionFile: Schema.optional(bounded(1, 8_192)),
+  usage: Schema.optional(sessionUsageSchema),
   anchor: reviewAnchorSchema,
-  pendingComments: z.array(pendingReviewCommentSchema).max(10_000),
-  submission: reviewSubmissionSchema.optional(),
-  status: z.enum(["open", "resolved"]),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
-  resolvedAt: z.string().datetime().optional(),
+  pendingComments: Schema.Array(pendingReviewCommentSchema).check(Schema.isMaxLength(10_000)),
+  submission: Schema.optional(reviewSubmissionSchema),
+  status: Schema.Literals(["open", "resolved"]),
+  createdAt: Schema.String,
+  updatedAt: Schema.String,
+  resolvedAt: Schema.optional(Schema.String),
 });
-
-const reviewThreadSchema = z.object({
-  id: z.string().min(1).max(256),
-  workspacePath: z.string().min(1).max(4_096),
-  sessionId: z.string().min(1).max(256),
-  agentSessionId: z.string().min(1).max(256).optional(),
+const reviewThreadSchema = Schema.Struct({
+  id: bounded(1, 256),
+  workspacePath: bounded(1, 4_096),
+  sessionId: bounded(1, 256),
+  agentSessionId: Schema.optional(bounded(1, 256)),
   anchor: reviewAnchorSchema,
-  parts: z.array(uiPartSchema).max(50_000),
-  usage: sessionUsageSchema.optional(),
-  status: z.enum(["open", "resolved"]),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
-  resolvedAt: z.string().datetime().optional(),
+  parts: Schema.Array(uiPartSchema).check(Schema.isMaxLength(50_000)),
+  usage: Schema.optional(sessionUsageSchema),
+  status: Schema.Literals(["open", "resolved"]),
+  createdAt: Schema.String,
+  updatedAt: Schema.String,
+  resolvedAt: Schema.optional(Schema.String),
 });
-
-export type ReviewAnchor = z.infer<typeof reviewAnchorSchema>;
-export type ReviewThreadRecord = z.infer<typeof reviewThreadRecordSchema>;
-export type ReviewThread = z.infer<typeof reviewThreadSchema>;
-
+export type ReviewAnchor = typeof reviewAnchorSchema.Type;
+export type ReviewThreadRecord = typeof reviewThreadRecordSchema.Type;
+export type ReviewThread = typeof reviewThreadSchema.Type;
 export interface ReviewSessionProjection {
-  parts: UiPart[];
-  usage?: SessionSnapshot["usage"];
+  readonly parts: ReadonlyArray<UiPart>;
+  readonly usage?: SessionSnapshot["usage"];
 }
-
 export function projectReviewThread(
   record: ReviewThreadRecord,
   projection: ReviewSessionProjection = { parts: [] },
 ): ReviewThread {
-  return reviewThreadSchema.parse({
+  return Schema.decodeUnknownSync(reviewThreadSchema)({
     id: record.id,
     workspacePath: record.workspacePath,
     sessionId: record.sessionId,

@@ -1,3 +1,4 @@
+import { Schema } from "effect";
 import { execFile } from "node:child_process";
 import { chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
@@ -221,7 +222,9 @@ describe("Pi 0.84.0 foundation contract", () => {
     expect(summary).toBeDefined();
     if (!summary) throw new Error("Expected Pi to list the session fixture");
     expect(summary.title).toBe("x".repeat(1_024));
-    expect(() => sessionSnapshotSchema.shape.sessions.parse([summary])).not.toThrow();
+    expect(() =>
+      Schema.decodeUnknownSync(sessionSnapshotSchema.fields.sessions)([summary]),
+    ).not.toThrow();
   });
 
   it("starts automatic naming from the initial user message", async () => {
@@ -2139,7 +2142,7 @@ export default function (pi) {
     runtimes.push(runtime);
 
     const firstSnapshot = await runtime.snapshot();
-    expect(() => sessionSnapshotSchema.parse(firstSnapshot)).not.toThrow();
+    expect(() => Schema.decodeUnknownSync(sessionSnapshotSchema)(firstSnapshot)).not.toThrow();
     expect(firstSnapshot.usage).toMatchObject({
       tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
       cost: 0,

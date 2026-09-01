@@ -1,5 +1,5 @@
+import { Option, Predicate, Schema } from "effect";
 import { pathToFileURL } from "node:url";
-import { z } from "zod";
 import { jsonValueSchema } from "../ipc/json-contract";
 import type { CakePluginBackend, PluginBackendValue } from "../plugin/backend-api";
 import {
@@ -16,17 +16,26 @@ function post(message: PluginBackendHostMessage) {
   port.postMessage(message);
 }
 
-const backendSchema = z.object({
-  methods: z.record(z.string(), z.function()),
-  start: z.function().optional(),
-  dispose: z.function().optional(),
-});
-
 function value(input: PluginBackendValue): PluginBackendValue {
   const serialized = JSON.stringify(input);
   if (serialized === undefined) throw new Error("Plugin backends must return JSON values");
   if (serialized.length > 2_000_000) throw new Error("Plugin backend values may not exceed 2 MB");
-  return jsonValueSchema.parse(JSON.parse(serialized));
+  return Schema.decodeUnknownSync(jsonValueSchema)(JSON.parse(serialized));
+}
+
+interface PluginBackendCandidate {
+  readonly methods?: unknown;
+  readonly start?: unknown;
+  readonly dispose?: unknown;
+}
+
+function isCakePluginBackend(input: PluginBackendCandidate): input is CakePluginBackend {
+  return (
+    Predicate.isObject(input.methods) &&
+    Object.values(input.methods).every(Predicate.isFunction) &&
+    (input.start === undefined || Predicate.isFunction(input.start)) &&
+    (input.dispose === undefined || Predicate.isFunction(input.dispose))
+  );
 }
 
 function errorMessage(error: unknown) {
@@ -42,13 +51,21 @@ async function dispose() {
 async function start(nextPluginId: string, backendPath: string) {
   pluginId = nextPluginId;
   const imported: { default?: unknown } = await import(pathToFileURL(backendPath).href);
-  const parsed = backendSchema.safeParse(imported.default);
-  if (!parsed.success)
+  const candidate = imported.default;
+  if (!Predicate.isObject(candidate))
     throw new Error(
       `Plugin ${pluginId} backend must default-export definePluginBackend({ methods: ... })`,
     );
-  // SAFETY: backendSchema established the callable methods and optional lifecycle function shape at this module boundary.
-  backend = parsed.data as CakePluginBackend;
+  const backendCandidate: PluginBackendCandidate = {
+    methods: candidate.methods,
+    start: candidate.start,
+    dispose: candidate.dispose,
+  };
+  if (!isCakePluginBackend(backendCandidate))
+    throw new Error(
+      `Plugin ${pluginId} backend must default-export definePluginBackend({ methods: ... })`,
+    );
+  backend = backendCandidate;
   const emit = (name: string, input: PluginBackendValue) =>
     post({ type: "event", name, value: value(input) });
   await backend.start?.({ emit });
@@ -56,9 +73,9 @@ async function start(nextPluginId: string, backendPath: string) {
 }
 
 port.on("message", (event) => {
-  const parsed = pluginBackendHostRequestSchema.safeParse(event.data);
-  if (!parsed.success) return;
-  const request = parsed.data;
+  const parsed = Schema.decodeUnknownOption(pluginBackendHostRequestSchema)(event.data);
+  if (Option.isNone(parsed)) return;
+  const request = parsed.value;
   if (request.type === "init") {
     if (backend || pluginId) return;
     void start(request.pluginId, request.backendPath).catch((error) => {

@@ -58,28 +58,18 @@ test("presents artifacts, sorts a table, resolves a form, and isolates HTML", as
 
     const table = page.locator('[data-artifact-id="cake-s4-table"]');
     await expect(table).toBeVisible();
-    await expect(table.locator(".artifact-table tbody td").allTextContents()).resolves.toEqual([
-      "",
-      "Alpha",
-      "2",
-      "",
-      "Beta",
-      "1",
-    ]);
+    await expect(
+      table.locator('[data-slot="artifact-table"] tbody td').allTextContents(),
+    ).resolves.toEqual(["", "Alpha", "2", "", "Beta", "1"]);
     await table.getByRole("button", { name: "Score" }).click();
-    await expect(table.locator(".artifact-table tbody td").allTextContents()).resolves.toEqual([
-      "",
-      "Beta",
-      "1",
-      "",
-      "Alpha",
-      "2",
-    ]);
+    await expect(
+      table.locator('[data-slot="artifact-table"] tbody td').allTextContents(),
+    ).resolves.toEqual(["", "Beta", "1", "", "Alpha", "2"]);
 
     const widget = page.locator('[data-artifact-id="cake-s4-widget"]');
     await expect(widget.locator("iframe")).toBeVisible();
     await widget.getByRole("button", { name: "Repair" }).click();
-    const repairPrompt = widget.locator(".inline-widget-repair-form");
+    const repairPrompt = widget.locator('[data-slot="inline-widget-repair-form"]');
     await expect(repairPrompt).toBeVisible();
     await expect(repairPrompt.getByLabel("What should be repaired?")).toBeFocused();
     await repairPrompt

@@ -1,6 +1,6 @@
+import { Schema } from "effect";
 import { createHash } from "node:crypto";
 import type { WebContents } from "electron";
-import { z } from "zod";
 import type { BoundedCompletionInput } from "../services/pi/model-data";
 import { resolveModel } from "../domain/subagents";
 import type { CakeRuntimeEvent } from "../services/pi/runtime/cake-runtime";
@@ -16,7 +16,7 @@ import {
   type SessionRef,
   type WorkspaceRef,
 } from "../ipc/plugin-agent-contract";
-import type { DesktopEvent } from "../ipc/desktop-ipc";
+import type { PrivilegedEvent } from "../ipc/privileged-contract";
 import type { SessionSnapshot, UiPart, UtilityModel } from "../ipc/session-contract";
 import type { PiWorkspaceDriver } from "./pi-workspace-driver";
 
@@ -40,29 +40,33 @@ interface Handle {
 
 const PLUGIN_AGENT_EVENT_INTERVAL_MS = 50;
 
-const workspaceRefValueSchema = z.object({ workspacePath: z.string().min(1) }).strict();
-const sessionRefValueSchema = z.object({ sessionId: z.string().min(1).max(256) }).strict();
+const workspaceRefValueSchema = Schema.Struct({
+  workspacePath: Schema.String.check(Schema.isMinLength(1)),
+});
+const sessionRefValueSchema = Schema.Struct({
+  sessionId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+});
 
 export function workspaceRef(workspacePath: string): WorkspaceRef {
   return {
     kind: "cake.workspace-ref",
-    id: JSON.stringify(workspaceRefValueSchema.parse({ workspacePath })),
+    id: JSON.stringify(Schema.decodeUnknownSync(workspaceRefValueSchema)({ workspacePath })),
   };
 }
 
 export function sessionRef(sessionId: string): SessionRef {
   return {
     kind: "cake.session-ref",
-    id: JSON.stringify(sessionRefValueSchema.parse({ sessionId })),
+    id: JSON.stringify(Schema.decodeUnknownSync(sessionRefValueSchema)({ sessionId })),
   };
 }
 
 function resolveWorkspaceRef(ref: WorkspaceRef) {
-  return workspaceRefValueSchema.parse(JSON.parse(ref.id)).workspacePath;
+  return Schema.decodeUnknownSync(workspaceRefValueSchema)(JSON.parse(ref.id)).workspacePath;
 }
 
 export function resolveSessionRef(ref: SessionRef) {
-  return sessionRefValueSchema.parse(JSON.parse(ref.id)).sessionId;
+  return Schema.decodeUnknownSync(sessionRefValueSchema)(JSON.parse(ref.id)).sessionId;
 }
 
 export function resolveAgentModel(
@@ -136,7 +140,7 @@ export class PluginAgentHost {
       completeModel(input: BoundedCompletionInput, signal?: AbortSignal): Promise<string>;
       driver(workspacePath: string): PiWorkspaceDriver;
       resolveSessionWorkspacePath(sessionId: string): Promise<string>;
-      emit(owner: WebContents, event: DesktopEvent): void;
+      emit(owner: WebContents, event: PrivilegedEvent): void;
     },
   ) {}
 
@@ -339,9 +343,9 @@ export class PluginAgentHost {
   }
 
   private project(handle: Handle, snapshot: SessionSnapshot): PluginAgentSnapshot {
-    const projectedActivity = activity(snapshot);
-    if (!snapshot.streaming) handle.settledRevision = projectedActivity.settledRevision;
-    projectedActivity.settledRevision = handle.settledRevision;
+    const currentActivity = activity(snapshot);
+    if (!snapshot.streaming) handle.settledRevision = currentActivity.settledRevision;
+    const projectedActivity = { ...currentActivity, settledRevision: handle.settledRevision };
     return {
       handleId: handle.handleId,
       ref: handle.ref,

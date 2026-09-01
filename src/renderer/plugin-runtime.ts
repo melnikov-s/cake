@@ -1,3 +1,4 @@
+import { Option, Schema } from "effect";
 import {
   Component,
   Fragment,
@@ -9,7 +10,6 @@ import {
   type ErrorInfo,
   type ReactNode,
 } from "react";
-import { z } from "zod";
 import { cakeSlotNames, type CakeSlotName } from "../plugin/slot-contract";
 import type { CakeCommandContext, CakePluginCommand, CakePluginDefinition } from "./cake";
 import type { JsonValue } from "../ipc/json-contract";
@@ -162,12 +162,15 @@ export function useContributionReveal(
   reveal: (input: JsonValue | undefined) => void,
 ) {
   useEffect(() => {
-    const detailSchema = z.object({ contributionId: z.string(), input: z.json().optional() });
+    const detailSchema = Schema.Struct({
+      contributionId: Schema.String,
+      input: Schema.optionalKey(Schema.Json),
+    });
     const listener = (event: Event) => {
       if (!(event instanceof CustomEvent)) return;
-      const detail = detailSchema.safeParse(event.detail);
-      if (detail.success && detail.data.contributionId === contributionId)
-        reveal(detail.data.input);
+      const detail = Schema.decodeUnknownOption(detailSchema)(event.detail);
+      if (Option.isSome(detail) && detail.value.contributionId === contributionId)
+        reveal(detail.value.input);
     };
     window.addEventListener("cake:reveal-contribution", listener);
     return () => window.removeEventListener("cake:reveal-contribution", listener);

@@ -13,9 +13,7 @@ for (const path of [
   "package.json",
   ".agents/skills/cake-plugin-authoring",
   "docs/architecture",
-  "src/renderer",
-  "src/ipc",
-  "src/plugin",
+  "src",
 ]) {
   await cp(join(root, path), join(target, path), { recursive: true });
 }

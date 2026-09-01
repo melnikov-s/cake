@@ -1,6 +1,7 @@
 import { Store, observable } from "r-state-tree";
 import type { ResourceDiagnostic } from "../../ipc/session-contract";
-import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
+import { RendererClientContext } from "../client/RendererClientContext";
+import type { RendererEvent } from "../RendererEvent";
 import type { Session } from "../models/Session";
 import { describeError } from "../error-details";
 
@@ -13,7 +14,7 @@ export interface UiRequestState {
   placeholder?: string;
   initialValue?: string;
   multiline?: boolean;
-  options?: Array<{ id: string; label: string }>;
+  options?: ReadonlyArray<{ id: string; label: string }>;
 }
 
 export interface ExtensionNotification {
@@ -23,16 +24,18 @@ export interface ExtensionNotification {
 }
 
 export interface ExtensionUiStoreProps {
-  client: Pick<DesktopClient, "respondToUi">;
   activeSessionModel(): Session | undefined;
   sessionContext(): { sessionId: string } | undefined;
-  operationActive(operationId: string): boolean;
   setDraft(value: string | ((current: string) => string)): void;
   requestComposerFocus(): void;
 }
 
 /** Owns extension-provided dialogs and transient renderer presentation. */
 export class ExtensionUiStore extends Store<ExtensionUiStoreProps> {
+  get artifacts() {
+    return RendererClientContext.consume(this)!.artifacts;
+  }
+
   request: UiRequestState | undefined;
   private readonly dismissedNotificationIds: Set<string> = observable(new Set<string>());
   error: string | undefined;
@@ -96,7 +99,7 @@ export class ExtensionUiStore extends Store<ExtensionUiStoreProps> {
     try {
       const context = this.props.sessionContext();
       if (!context) throw new Error("No active session");
-      await this.props.client.respondToUi({
+      await this.artifacts.respondToUi({
         operationId: request.operationId,
         sessionId: context.sessionId,
         uiRequestId: request.uiRequestId,
@@ -118,9 +121,9 @@ export class ExtensionUiStore extends Store<ExtensionUiStoreProps> {
     this.request = undefined;
   }
 
-  receive(event: DesktopClientEvent) {
+  receive(event: RendererEvent) {
     if (event.type === "ui-requested") {
-      if (this.props.operationActive(event.operationId)) this.request = event;
+      this.request = event;
       return;
     }
     if (

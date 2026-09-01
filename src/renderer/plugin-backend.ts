@@ -1,5 +1,4 @@
 import { useCallback, useMemo } from "react";
-import { desktopResponseSchema } from "../ipc/desktop-ipc";
 import type { PluginBackendValue } from "../plugin/backend-api";
 import { useRendererInfrastructure } from "./RendererInfrastructureContext";
 
@@ -22,27 +21,18 @@ export function usePluginBackend(pluginId: string): PluginBackendClient {
     ) => {
       const callId = crypto.randomUUID();
       const abort = () => {
-        void infrastructure.client.plugins.invoke({
-          type: "cancel-plugin-backend-call",
-          pluginId,
-          callId,
-        });
+        void infrastructure.client.plugins.cancelBackendCall(pluginId, callId);
       };
       if (options?.signal?.aborted)
         throw new DOMException("The plugin backend call was aborted", "AbortError");
       options?.signal?.addEventListener("abort", abort, { once: true });
       try {
-        const response = desktopResponseSchema.parse(
-          await infrastructure.client.plugins.invoke({
-            type: "call-plugin-backend",
-            pluginId,
-            callId,
-            method,
-            input,
-          }),
-        );
-        if (response.type !== "plugin-backend-result")
-          throw new Error("Cake returned an invalid plugin backend result");
+        const response = await infrastructure.client.plugins.callBackend({
+          pluginId,
+          callId,
+          method,
+          input,
+        });
         if (!response.ok) throw new Error(response.error ?? "The plugin backend call failed");
         return response.value ?? null;
       } finally {

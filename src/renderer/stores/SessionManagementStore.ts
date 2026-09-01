@@ -1,12 +1,10 @@
 import { Store } from "r-state-tree";
-import type { DesktopClient } from "../desktop-client";
 import { RendererClientContext } from "../client/RendererClientContext";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
 
 export interface SessionManagementStoreProps {
-  nativeClient: Pick<DesktopClient, "deleteSession" | "setSessionUnread">;
   operations: SessionOperationCoordinatorStore;
   catalog: SessionCatalogStore;
   registry: SessionRegistryStore;
@@ -60,7 +58,7 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
   async deleteSession(sessionId: string) {
     if (!this.props.catalog.find(sessionId)?.resolved || this.signal.aborted) return;
     try {
-      await this.props.nativeClient.deleteSession(sessionId);
+      await this.client.workspaces.deleteSession(sessionId, { signal: this.signal });
       if (!this.signal.aborted) this.props.registry.removeSession(sessionId);
     } catch (error) {
       if (!this.signal.aborted) this.props.reportError(error);
@@ -70,7 +68,7 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
   async setSessionUnread(sessionId: string, unread: boolean) {
     if (!this.props.catalog.find(sessionId) || this.signal.aborted) return;
     try {
-      await this.props.nativeClient.setSessionUnread(sessionId, unread);
+      await this.client.workspaces.setSessionUnread(sessionId, unread, { signal: this.signal });
     } catch (error) {
       if (!this.signal.aborted) this.props.reportError(error);
     }

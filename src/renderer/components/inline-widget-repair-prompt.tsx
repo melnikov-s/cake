@@ -16,7 +16,11 @@ export function InlineWidgetRepairPrompt({
     if (value) onSubmit(value);
   };
   return (
-    <form className="border-b border-border bg-muted/30 p-3" onSubmit={submit}>
+    <form
+      data-slot="inline-widget-repair-form"
+      className="border-b border-border bg-muted/30 p-3"
+      onSubmit={submit}
+    >
       <label className="block space-y-1.5">
         <span className="block text-xs font-medium text-foreground">What should be repaired?</span>
         <Textarea

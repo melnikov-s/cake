@@ -284,7 +284,7 @@ A future, unimplemented user-owned source overlay that may modify or replace
 Cake's renderer beyond the stable plugin API. If implemented in a separate
 future project, it is rebased and validated against each Cake update. Main,
 preload, RPC validation, activation, diagnostics, and immutable recovery remain
-outside the Custom Renderer. It is not part of the Effect migration.
+outside the Custom Renderer.
 
 ### Immutable recovery
 

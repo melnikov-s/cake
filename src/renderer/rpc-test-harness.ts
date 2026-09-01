@@ -1,6 +1,11 @@
 import { Effect, Option, Schema, Stream } from "effect";
 import { CakeIpcClient, type CakeIpcClientService } from "../ipc/client/CakeIpcClient";
 import { FoundationFailure } from "../ipc/protocol/CakeRpc";
+import {
+  privilegedRequestSchema,
+  type PrivilegedRequest,
+  type PrivilegedRouteType,
+} from "../ipc/privileged-contract";
 import { makeRendererRuntime } from "./RendererRuntime";
 
 const bridge = window.cake;
@@ -23,7 +28,22 @@ let delayController: AbortController | undefined;
 let runningDelay: Promise<void> | undefined;
 let runningStream: Promise<ReadonlyArray<number>> | undefined;
 
+type RoutedPrivilegedRequest = Extract<PrivilegedRequest, { type: PrivilegedRouteType }>;
+
 const harness = {
+  invokePrivileged: (input: PrivilegedRequest) => {
+    const parsed = Schema.decodeUnknownSync(privilegedRequestSchema)(input);
+    return run(
+      withClient((client) => {
+        if (!(parsed.type in client.privileged))
+          throw new Error(`The RPC test harness cannot invoke ${parsed.type}`);
+        // SAFETY: membership in the generated route map proves this parsed request is routable.
+        const request = parsed as RoutedPrivilegedRequest;
+        // SAFETY: the route key and request discriminant are correlated by RoutedPrivilegedRequest.
+        return client.privileged[request.type](request as never);
+      }),
+    );
+  },
   getHomeDirectory: () => run(withClient((client) => client.application.getHomeDirectory())),
   getApplicationState: () => run(withClient((client) => client.application.getState())),
   listModels: () => run(withClient((client) => client.models.list())),
@@ -33,7 +53,7 @@ const harness = {
   invokeElectronProbe: () =>
     run(
       withClient((client) =>
-        client.electron.invoke({
+        client.privileged["set-fullscreen-surface-open"]({
           type: "set-fullscreen-surface-open",
           requestId: crypto.randomUUID(),
           surfaceId: crypto.randomUUID(),

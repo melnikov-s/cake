@@ -1,5 +1,4 @@
 import { Store, child, createStore, observable, snapshot } from "r-state-tree";
-import type { DesktopClient } from "../desktop-client";
 import { RendererClientContext } from "../client/RendererClientContext";
 import type { JsonObject } from "../../ipc/json-contract";
 import type { Attachment, ChatConfiguration, ModelPreset } from "../../ipc/session-contract";
@@ -26,10 +25,6 @@ interface CakeControlTool {
 
 export interface GlobalChatStoreProps {
   catalog: CakeChatCatalog;
-  nativeClient: Pick<
-    DesktopClient,
-    "showComposerContextMenu" | "rewordComposerSelection" | "generateSessionTitle"
-  >;
   tools(): ReadonlyArray<CakeControlTool>;
   modelPresets?(): readonly ModelPreset[];
   defaultConfiguration?(): ChatConfiguration | undefined;
@@ -79,10 +74,6 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
       authoritative.push(this.pendingSummary);
     return authoritative.sort(compareSessionSummariesForSidebar);
   }
-  get nativeClient() {
-    return this.props.nativeClient;
-  }
-
   @child
   get loadedSessions(): CakeChatSessionStore[] {
     return this.targets.map((sessionId) =>

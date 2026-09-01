@@ -7,7 +7,6 @@ const pluginSharedModules = new Set([
   "react/jsx-runtime",
   "react/jsx-dev-runtime",
   "react-dom",
-  "zod",
 ]);
 
 export interface ValidatePluginImportOptions {

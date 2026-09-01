@@ -169,11 +169,13 @@ test("selects rendered TypeScript and opens a continuous, resizable selection ch
 
     const dialog = page.getByRole("dialog", { name: "Chat about this" });
     const input = page.getByLabel("Message about selected text");
-    const userMessages = dialog.locator(
-      'article[data-slot="message"]:has([data-slot="message-label"]:has-text("You"))',
-    );
     await expect(dialog).toBeVisible();
-    await expect(userMessages.first()).toContainText("UtilityModePreferences");
+    const userMessages = dialog
+      .locator('[data-slot="message"]')
+      .filter({ has: page.locator('[data-slot="message-label"]', { hasText: "You" }) });
+    await expect(userMessages.first().locator('[data-slot="message-content"]')).toHaveText(
+      "UtilityModePreferences",
+    );
     await expect(userMessages.first().locator('[data-slot="message-label"]')).toHaveText("You");
     await expect(dialog.locator(".chat-layout-compact")).toBeVisible();
     await expect(input).toBeFocused();
@@ -202,7 +204,9 @@ test("selects rendered TypeScript and opens a continuous, resizable selection ch
     await expect(dialog.locator(".chat-embedded-workbench-composer")).toBeVisible();
     await expect(input).toBeVisible();
     await expect(userMessages).toHaveCount(2);
-    await expect(userMessages.nth(1)).toContainText("Why is this interface shaped this way?");
+    await expect(userMessages.nth(1).locator('[data-slot="message-content"]')).toHaveText(
+      "Why is this interface shaped this way?",
+    );
 
     // Resize freely: drag the east edge narrower, then the south edge shorter.
     const eastBox = await dialog.boundingBox();

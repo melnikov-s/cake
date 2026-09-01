@@ -57,15 +57,17 @@ test("header sidebar toggle only appears when the sidebar is collapsed", async (
     await expect(page.getByLabel("Message")).toBeVisible({ timeout: 20_000 });
 
     // Expanded: the duplicate header toggle must be hidden.
-    await expect(page.locator(".icon-button.header-sidebar-toggle")).toBeHidden();
+    await expect(page.locator('[data-slot="header-sidebar-toggle"]')).toBeHidden();
     // The sidebar's own toggle remains visible.
-    await expect(page.locator(".sidebar-window-tools button").first()).toBeVisible();
+    await expect(
+      page.getByRole("complementary").getByRole("button", { name: "Toggle sidebar" }),
+    ).toBeVisible();
 
     // Collapse the sidebar.
-    await page.locator(".sidebar").getByRole("button", { name: "Toggle sidebar" }).click();
+    await page.getByRole("complementary").getByRole("button", { name: "Toggle sidebar" }).click();
 
     const state = await page.evaluate(() => {
-      const toggle = document.querySelector(".icon-button.header-sidebar-toggle");
+      const toggle = document.querySelector('[data-slot="header-sidebar-toggle"]');
       const rect = toggle?.getBoundingClientRect();
       const display = toggle ? getComputedStyle(toggle).display : "";
       return {
@@ -86,8 +88,8 @@ test("header sidebar toggle only appears when the sidebar is collapsed", async (
     });
 
     // Expand again: the toggle hides once more.
-    await page.locator(".icon-button.header-sidebar-toggle").click();
-    await expect(page.locator(".icon-button.header-sidebar-toggle")).toBeHidden();
+    await page.locator('[data-slot="header-sidebar-toggle"]').click();
+    await expect(page.locator('[data-slot="header-sidebar-toggle"]')).toBeHidden();
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

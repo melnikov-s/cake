@@ -1,3 +1,4 @@
+import { Schema } from "effect";
 import type { Snapshot } from "r-state-tree";
 import type { ConversationSnapshot } from "../domain/conversation-data";
 import { sessionSnapshotSchema } from "../ipc/session-contract";
@@ -7,7 +8,7 @@ import type { Session } from "../renderer/models/Session";
 
 /** Validates one authoritative conversation Snapshot into Session's canonical Model shape. */
 export function toSessionSnapshot(snapshot: ConversationSnapshot): Snapshot<Session> {
-  const parsed = sessionSnapshotSchema.parse({
+  const parsed = Schema.decodeUnknownSync(sessionSnapshotSchema)({
     ...snapshot,
     workspacePath: snapshot.workingDirectory,
   });
@@ -16,25 +17,29 @@ export function toSessionSnapshot(snapshot: ConversationSnapshot): Snapshot<Sess
     workingDirectory: snapshot.workingDirectory,
     sessionId: parsed.sessionId,
     sessionFile: parsed.sessionFile,
-    parts: parsed.parts,
+    parts: parsed.parts.map((part) => ({ ...part })),
     model: parsed.model,
     fastMode: parsed.fastMode ?? false,
     fastModeAvailable: parsed.fastModeAvailable ?? false,
     models: parsed.models.map((option) => ({ ...option, key: modelOptionKey(option) })),
     thinkingLevel: parsed.thinkingLevel,
-    availableThinkingLevels: parsed.availableThinkingLevels,
+    availableThinkingLevels: [...parsed.availableThinkingLevels],
     piSettings: parsed.piSettings,
     streaming: parsed.streaming,
-    diagnostics: parsed.diagnostics,
-    commands: parsed.commands,
+    diagnostics: [...parsed.diagnostics],
+    commands: parsed.commands.map((command) => ({ ...command })),
     usage: parsed.usage,
-    resources: parsed.compatibility.resources,
-    resourceDiagnostics: parsed.compatibility.diagnostics,
-    tree: parsed.tree,
+    resources: parsed.compatibility.resources.map((resource) => ({
+      ...resource,
+      commands: [...resource.commands],
+      tools: [...resource.tools],
+    })),
+    resourceDiagnostics: parsed.compatibility.diagnostics.map((diagnostic) => ({ ...diagnostic })),
+    tree: parsed.tree.map((entry) => ({ ...entry })),
     artifacts: (parsed.artifacts ?? []).map(artifactSnapshot),
     extensionUi: {
       title: parsed.extensionUi.title,
-      statuses: parsed.extensionUi.statuses,
+      statuses: parsed.extensionUi.statuses.map((status) => ({ ...status })),
       notifications: [],
       compatibilityDiagnostics: [],
       editorText: undefined,
@@ -43,9 +48,10 @@ export function toSessionSnapshot(snapshot: ConversationSnapshot): Snapshot<Sess
   } as Snapshot<Session>;
 }
 
-function artifactSnapshot(record: ArtifactRecord) {
+export function artifactSnapshot(record: ArtifactRecord) {
   return {
-    ...record.artifact,
+    id: record.artifact.id,
+    artifact: record.artifact,
     workspacePath: record.workspacePath,
     digest: record.digest,
     createdAt: record.createdAt,

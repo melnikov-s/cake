@@ -1,6 +1,6 @@
 import { observable, Store } from "r-state-tree";
 import { validateArtifactResponse, type ArtifactRecord } from "../../ipc/artifact-contract";
-import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
+import type { RendererEvent } from "../RendererEvent";
 import { describeError } from "../error-details";
 import { RendererClientContext } from "../client/RendererClientContext";
 import type { JsonValue } from "../../ipc/json-contract";
@@ -13,7 +13,6 @@ export interface ArtifactRequestState {
 }
 
 export interface ArtifactInteractionStoreProps {
-  nativeClient: Pick<DesktopClient, "respondToArtifact" | "exportArtifacts">;
   sessionContext(): { sessionId: string } | undefined;
   operations: SessionOperationCoordinatorStore;
   operationOwner: string;
@@ -51,7 +50,7 @@ export class ArtifactInteractionStore extends Store<ArtifactInteractionStoreProp
       this.responding = true;
       const context = this.props.sessionContext();
       if (!context) throw new Error("No active session");
-      await this.props.nativeClient.respondToArtifact({
+      await this.client.artifacts.respond({
         operationId: request.operationId,
         sessionId: context.sessionId,
         artifactRequestId: request.artifactRequestId,
@@ -126,10 +125,10 @@ export class ArtifactInteractionStore extends Store<ArtifactInteractionStoreProp
   async exportMarkdown() {
     const context = this.props.sessionContext();
     if (!context) throw new Error("No active session");
-    return this.props.nativeClient.exportArtifacts(context.sessionId);
+    return this.client.artifacts.export(context.sessionId, { signal: this.signal });
   }
 
-  receive(event: DesktopClientEvent) {
+  receive(event: RendererEvent) {
     if (event.type === "artifact-requested") {
       // Register even while another session is selected: the user may switch
       // back later, and the main process stays blocked until one response (or

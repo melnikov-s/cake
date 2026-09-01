@@ -7,16 +7,14 @@ import {
 
 export function RendererInfrastructureFixture({
   children,
-  electronInvoke = async () => ({ type: "accepted", requestId: crypto.randomUUID() }),
-  pluginInvoke = async () => ({ type: "accepted", requestId: crypto.randomUUID() }),
+  pluginLoadState = async () => undefined,
 }: {
   children: ReactNode;
-  electronInvoke?: RendererClient["electron"]["invoke"];
-  pluginInvoke?: RendererClient["plugins"]["invoke"];
+  pluginLoadState?: RendererClient["plugins"]["loadState"];
 }) {
   const client = {
-    electron: { invoke: electronInvoke },
-    plugins: { invoke: pluginInvoke },
+    electron: { setFullscreenSurfaceOpen: async () => undefined },
+    plugins: { loadState: pluginLoadState },
   } as unknown as RendererClient;
   const value: RendererInfrastructure = {
     client,

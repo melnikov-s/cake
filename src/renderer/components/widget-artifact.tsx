@@ -1,3 +1,4 @@
+import { Option, Schema } from "effect";
 import { useEffect, useRef, useState } from "react";
 import { observer } from "r-state-tree/react";
 import { fencedCode, Markdown } from "@/components/ai-elements/markdown";
@@ -37,19 +38,19 @@ export const WidgetArtifact = observer(function WidgetArtifact({
   useEffect(() => {
     if (!inlineWidgets) return;
     const receive = (event: MessageEvent) => {
-      const parsed = inlineWidgetMessageSchema.safeParse(event.data);
+      const parsed = Schema.decodeUnknownOption(inlineWidgetMessageSchema)(event.data);
       if (
         (event.source !== iframe.current?.contentWindow &&
           event.source !== fullscreenIframe.current?.contentWindow) ||
         !state?.compiled ||
-        !parsed.success ||
-        parsed.data.token !== state.compiled.token
+        Option.isNone(parsed) ||
+        parsed.value.token !== state.compiled.token
       )
         return;
-      if (parsed.data.type === "height")
-        setHeight(Math.max(120, Math.min(1_200, Math.ceil(parsed.data.value))));
-      if (parsed.data.type === "error")
-        inlineWidgets.reportRuntimeError(id, String(parsed.data.value));
+      if (parsed.value.type === "height")
+        setHeight(Math.max(120, Math.min(1_200, Math.ceil(parsed.value.value))));
+      if (parsed.value.type === "error")
+        inlineWidgets.reportRuntimeError(id, String(parsed.value.value));
     };
     window.addEventListener("message", receive);
     return () => window.removeEventListener("message", receive);

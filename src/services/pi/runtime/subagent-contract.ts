@@ -1,20 +1,22 @@
-import { z } from "zod";
+import { Effect, Schema } from "effect";
 import { agentModelPreferenceSchema } from "../../../ipc/plugin-agent-contract";
 
-const subagentProfileSchema = z.enum(["scout", "planner", "reviewer", "worker"]);
+const defaultKey = <S extends Schema.Top>(schema: S, value: S["Type"]) =>
+  schema.pipe(Schema.withDecodingDefaultKey(Effect.succeed(value)));
+const subagentProfileSchema = Schema.Literals(["scout", "planner", "reviewer", "worker"]);
 
-export const subagentTaskSchema = z.object({
-  task: z.string().min(1).max(262_144),
-  profile: subagentProfileSchema.default("worker"),
-  model: agentModelPreferenceSchema.default({ prefer: "current" }),
-  instructions: z.string().max(32_768).optional(),
-  fastMode: z.boolean().default(false),
-  maxDepth: z.number().int().min(0).max(1).default(0),
-  retain: z.boolean().default(false),
+export const subagentTaskSchema = Schema.Struct({
+  task: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(262_144)),
+  profile: defaultKey(subagentProfileSchema, "worker"),
+  model: defaultKey(agentModelPreferenceSchema, { prefer: "current" }),
+  instructions: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(32_768))),
+  fastMode: defaultKey(Schema.Boolean, false),
+  maxDepth: defaultKey(Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 1 })), 0),
+  retain: defaultKey(Schema.Boolean, false),
 });
-export type SubagentTaskInput = z.input<typeof subagentTaskSchema>;
+export type SubagentTaskInput = typeof subagentTaskSchema.Encoded;
 
-export const parallelSubagentSchema = z.object({
-  tasks: z.array(subagentTaskSchema).min(1).max(8),
+export const parallelSubagentSchema = Schema.Struct({
+  tasks: Schema.Array(subagentTaskSchema).check(Schema.isMinLength(1), Schema.isMaxLength(8)),
 });
-export type ParallelSubagentTasksInput = z.input<typeof parallelSubagentSchema>;
+export type ParallelSubagentTasksInput = typeof parallelSubagentSchema.Encoded;

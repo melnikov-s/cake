@@ -5,7 +5,7 @@ import {
   type SessionManager,
 } from "@earendil-works/pi-coding-agent";
 import { createHash } from "node:crypto";
-import { z } from "zod";
+import { Option, Schema } from "effect";
 import { artifactPointerSchema, type ArtifactPointer } from "../../../ipc/artifact-contract";
 import {
   attachmentSchema,
@@ -18,19 +18,21 @@ import {
 
 export const reviewRunEntryType = "cake.review-run/v1";
 export const userMessagePresentationEntryType = "cake.user-message-presentation/v1";
-const userMessagePresentationEntrySchema = z.object({
-  targetId: z.string().min(1).max(256),
-  renderAs: z.literal("markdown"),
+const userMessagePresentationEntrySchema = Schema.Struct({
+  targetId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+  renderAs: Schema.Literal("markdown"),
 });
 /** Marks the orientation preamble appended as the first entry of a handoff session. */
 export const handoffEntryType = "cake.handoff/v1";
-export const reviewRunEntrySchema = z.object({
-  operationId: z.uuid(),
-  threadIds: z.array(z.string().min(1).max(256)).min(1).max(100),
-  commentCount: z.number().int().positive().max(1_000_000),
-  status: z.enum(["running", "complete", "error"]),
+export const reviewRunEntrySchema = Schema.Struct({
+  operationId: Schema.String.check(Schema.isUUID()),
+  threadIds: Schema.Array(
+    Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+  ).check(Schema.isMinLength(1), Schema.isMaxLength(100)),
+  commentCount: Schema.Int.check(Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(1_000_000)),
+  status: Schema.Literals(["running", "complete", "error"]),
 });
-export type ReviewRunEntry = z.infer<typeof reviewRunEntrySchema>;
+export type ReviewRunEntry = typeof reviewRunEntrySchema.Type;
 
 export function boundedProjectionKey(value: string, maximum = 256) {
   if (value.length <= maximum) return value;
@@ -70,13 +72,13 @@ export function shellCommandPart(input: {
 }
 
 function parseToolOutputContent(content: unknown) {
-  const parsed = toolOutputContentArraySchema.safeParse(content);
-  return parsed.success && parsed.data.length > 0 ? parsed.data : undefined;
+  const parsed = Schema.decodeUnknownOption(toolOutputContentArraySchema)(content);
+  return Option.isSome(parsed) && parsed.value.length > 0 ? parsed.value : undefined;
 }
 
 function projectToolOutputContent(content: unknown): ToolOutputContent[] | undefined {
   const parsed = parseToolOutputContent(content);
-  return parsed?.some((item) => item.type !== "text") ? parsed : undefined;
+  return parsed?.some((item) => item.type !== "text") ? [...parsed] : undefined;
 }
 
 export function toolResultContent(result: unknown) {
@@ -86,7 +88,7 @@ export function toolResultContent(result: unknown) {
 
 export function toolResultOutputContent(result: unknown) {
   const content = toolResultContent(result);
-  return content?.some((item) => item.type !== "text") ? content : undefined;
+  return content?.some((item) => item.type !== "text") ? [...content] : undefined;
 }
 
 export function formatToolResult(result: unknown) {
@@ -168,9 +170,9 @@ function parseContextAttachmentBlocks(text: string) {
   const attachments: Extract<Attachment, { kind: "source" | "annotation" }>[] = [];
   const withoutSources = text.replace(sourceAttachmentPattern, (_match, encoded: string) => {
     try {
-      const parsed = attachmentSchema.safeParse(JSON.parse(encoded));
-      if (!parsed.success || parsed.data.kind !== "source") return _match;
-      attachments.push(parsed.data);
+      const parsed = Schema.decodeUnknownOption(attachmentSchema)(JSON.parse(encoded));
+      if (Option.isNone(parsed) || parsed.value.kind !== "source") return _match;
+      attachments.push(parsed.value);
       return "\n";
     } catch {
       return _match;
@@ -180,9 +182,9 @@ function parseContextAttachmentBlocks(text: string) {
     annotationAttachmentPattern,
     (_match, encoded: string) => {
       try {
-        const parsed = attachmentSchema.safeParse(JSON.parse(encoded));
-        if (!parsed.success || parsed.data.kind !== "annotation") return _match;
-        attachments.push(parsed.data);
+        const parsed = Schema.decodeUnknownOption(attachmentSchema)(JSON.parse(encoded));
+        if (Option.isNone(parsed) || parsed.value.kind !== "annotation") return _match;
+        attachments.push(parsed.value);
         return "\n";
       } catch {
         return _match;
@@ -543,24 +545,24 @@ export function projectSessionEntries(
   const visibleRunIds = new Set(
     entries.flatMap((entry) => {
       if (entry.type !== "custom" || entry.customType !== reviewRunEntryType) return [];
-      const run = reviewRunEntrySchema.safeParse(entry.data);
-      return run.success ? [run.data.operationId] : [];
+      const run = Schema.decodeUnknownOption(reviewRunEntrySchema)(entry.data);
+      return Option.isSome(run) ? [run.value.operationId] : [];
     }),
   );
   const compactedRuns = new Map<string, ReviewRunEntry>();
   for (const entry of branchEntries) {
     if (entry.type !== "custom" || entry.customType !== reviewRunEntryType) continue;
-    const run = reviewRunEntrySchema.safeParse(entry.data);
-    if (run.success && !visibleRunIds.has(run.data.operationId))
-      compactedRuns.set(run.data.operationId, run.data);
+    const run = Schema.decodeUnknownOption(reviewRunEntrySchema)(entry.data);
+    if (Option.isSome(run) && !visibleRunIds.has(run.value.operationId))
+      compactedRuns.set(run.value.operationId, run.value);
   }
   for (const run of compactedRuns.values()) append(reviewRunPart(run));
 
   const markdownUserMessageIds = new Set<string>();
   for (const entry of entries) {
     if (entry.type !== "custom" || entry.customType !== userMessagePresentationEntryType) continue;
-    const presentation = userMessagePresentationEntrySchema.safeParse(entry.data);
-    if (presentation.success) markdownUserMessageIds.add(presentation.data.targetId);
+    const presentation = Schema.decodeUnknownOption(userMessagePresentationEntrySchema)(entry.data);
+    if (Option.isSome(presentation)) markdownUserMessageIds.add(presentation.value.targetId);
   }
 
   const intermediateRetryErrors = new Set<string>();
@@ -604,18 +606,22 @@ export function projectSessionEntries(
     }
     if (entry.type === "custom_message") {
       if (entry.customType === "cake.subagent-completion") {
-        const completion = z.object({ handleId: z.uuid() }).passthrough().safeParse(entry.details);
-        const start = completion.success
+        const completion = Schema.decodeUnknownOption(
+          Schema.Struct({ handleId: Schema.String.check(Schema.isUUID()) }),
+        )(entry.details);
+        const start = Option.isSome(completion)
           ? projected.findLast(
               (part): part is Extract<UiPart, { kind: "tool" }> =>
                 part.kind === "tool" &&
                 part.command === "subagents.start" &&
-                (part.input.includes(completion.data.handleId) ||
-                  part.output?.includes(completion.data.handleId) === true),
+                (part.input.includes(completion.value.handleId) ||
+                  part.output?.includes(completion.value.handleId) === true),
             )
           : undefined;
-        if (start) start.output = formatUnknown(entry.details);
-        else
+        if (start) {
+          const index = projected.indexOf(start);
+          projected[index] = { ...start, output: formatUnknown(entry.details) };
+        } else
           append({
             id: `entry-${entry.id}-subagent-completion`,
             kind: "tool",
@@ -637,12 +643,12 @@ export function projectSessionEntries(
     }
     if (entry.type !== "custom") continue;
     if (entry.customType === "cake.artifact/v1") {
-      const pointer = artifactPointerSchema.safeParse(entry.data);
+      const pointer = Schema.decodeUnknownOption(artifactPointerSchema)(entry.data);
       if (
-        pointer.success &&
-        pointer.data.kind === "request" &&
+        Option.isSome(pointer) &&
+        pointer.value.kind === "request" &&
         !projected.some(
-          (part) => part.kind === "tool" && part.artifactId === pointer.data.artifactId,
+          (part) => part.kind === "tool" && part.artifactId === pointer.value.artifactId,
         )
       )
         append({
@@ -651,14 +657,14 @@ export function projectSessionEntries(
           name: "cake",
           command: "requests.open",
           input: "",
-          artifactId: pointer.data.artifactId,
+          artifactId: pointer.value.artifactId,
           state: "success",
         });
       continue;
     }
     if (entry.customType === reviewRunEntryType) {
-      const run = reviewRunEntrySchema.safeParse(entry.data);
-      if (run.success) append(reviewRunPart(run.data));
+      const run = Schema.decodeUnknownOption(reviewRunEntrySchema)(entry.data);
+      if (Option.isSome(run)) append(reviewRunPart(run.value));
     }
   }
   // Durable entries are settled history. A tool call still marked "running"
@@ -764,11 +770,11 @@ export function projectArtifactPointers(sessionManager: SessionManager): Artifac
   for (const entry of sessionManager.getBranch()) {
     if (entry.type !== "custom" || Reflect.get(entry, "customType") !== "cake.artifact/v1")
       continue;
-    const parsed = artifactPointerSchema.safeParse(Reflect.get(entry, "data"));
-    if (!parsed.success) continue;
-    const current = pointers.get(parsed.data.artifactId);
-    if (!current || parsed.data.revision > current.revision)
-      pointers.set(parsed.data.artifactId, parsed.data);
+    const parsed = Schema.decodeUnknownOption(artifactPointerSchema)(Reflect.get(entry, "data"));
+    if (Option.isNone(parsed)) continue;
+    const current = pointers.get(parsed.value.artifactId);
+    if (!current || parsed.value.revision > current.revision)
+      pointers.set(parsed.value.artifactId, parsed.value);
   }
   return [...pointers.values()];
 }

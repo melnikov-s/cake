@@ -421,7 +421,7 @@ export const ChatTranscript = observer(function ChatTranscript({
         >
           <TranscriptList>
             {items.map(renderItem)}
-            <div className="mx-auto w-full max-w-[51rem] px-6 pb-[calc(var(--composer-dock-height,210px)+2rem)] max-[620px]:px-4 in-[.chat-layout-compact]:px-3 in-[.chat-layout-compact]:pb-2 in-[.chat-layout-compact]:min-h-0">
+            <div className="mx-auto w-full max-w-[51rem] px-6 pb-[var(--composer-dock-height,210px)] max-[620px]:px-4 in-[.chat-layout-compact]:px-3 in-[.chat-layout-compact]:pb-2 in-[.chat-layout-compact]:min-h-0">
               {footer}
               {error?.message && (
                 <ErrorNotice
@@ -453,7 +453,7 @@ export const ChatTranscript = observer(function ChatTranscript({
         components={{
           List: TranscriptList,
           Footer: () => (
-            <div className="mx-auto w-full max-w-[51rem] px-6 pb-[calc(var(--composer-dock-height,210px)+2rem)] max-[620px]:px-4 in-[.chat-layout-compact]:px-3 in-[.chat-layout-compact]:pb-2 in-[.chat-layout-compact]:min-h-0">
+            <div className="mx-auto w-full max-w-[51rem] px-6 pb-[var(--composer-dock-height,210px)] max-[620px]:px-4 in-[.chat-layout-compact]:px-3 in-[.chat-layout-compact]:pb-2 in-[.chat-layout-compact]:min-h-0">
               {footer}
               {error?.message && (
                 <ErrorNotice

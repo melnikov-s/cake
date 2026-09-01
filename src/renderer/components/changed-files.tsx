@@ -60,7 +60,7 @@ export function ChangedFiles({
                     className="h-auto min-w-0 justify-start p-0 font-mono text-xs font-normal text-foreground underline decoration-border underline-offset-4 hover:bg-transparent hover:decoration-foreground"
                     variant="ghost"
                     title={`Open ${path} in VS Code Changes`}
-                    onClick={() => onOpenFile(path)}
+                    onClick={() => requestAnimationFrame(() => onOpenFile(path))}
                   >
                     <code className="truncate font-inherit">{path}</code>
                   </Button>

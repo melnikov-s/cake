@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { Schema } from "effect";
 import {
   jsonObjectSchema,
   jsonValueSchema,
@@ -10,19 +10,17 @@ const CAKE_OPERATION_PROTOCOL = "cake.operation/v1" as const;
 export const cakeToolDescription =
   'Access Cake-native capabilities unavailable through files or the shell: manage sessions and context, inspect model presets, communicate with other sessions, guide the user in embedded VS Code, delegate to subagents, request structured user input, create interactive visual widgets, manage customizations, and send notifications. Call with {} for help. For a topic protocol, set command to the exact topic name, for example {"command":"vscode"}; do not put the topic in input.';
 
-export const cakeToolEnvelopeSchema = z
-  .object({
-    command: z
-      .string()
-      .min(1)
-      .max(256)
-      .optional()
-      .describe("Exact topic or operation command. Omit for the help index."),
-    input: jsonObjectSchema
-      .optional()
-      .describe("Operation arguments only. Omit for help and topic protocol discovery."),
-  })
-  .strict();
+const commandSchema = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)).annotate({
+  description: "Exact topic or operation command. Omit for the help index.",
+});
+export const cakeToolEnvelopeSchema = Schema.Struct({
+  command: Schema.optionalKey(commandSchema),
+  input: Schema.optionalKey(
+    jsonObjectSchema.annotate({
+      description: "Operation arguments only. Omit for help and topic protocol discovery.",
+    }),
+  ),
+});
 
 export interface CakeOperationExecutionContext {
   signal: AbortSignal;
@@ -41,7 +39,7 @@ export interface CakeOperationDefinition<Input = unknown, Output = JsonValue> {
   topic: string;
   summary: string;
   guidance?: readonly string[];
-  inputSchema: z.ZodType<Input>;
+  inputSchema: Schema.ConstraintDecoder<Input, never>;
   /** Exact schema used in generated help when validation is delegated across a validated boundary. */
   inputJsonSchema?: JsonObject;
   examples: readonly CakeOperationExample[];
@@ -70,8 +68,10 @@ const cakeTopics = [
   { name: "worktrees", summary: "Complete an active worktree landing workflow." },
 ] as const satisfies readonly CakeTopicDefinition[];
 
-function schemaJson(schema: z.ZodType) {
-  return jsonObjectSchema.parse(z.toJSONSchema(schema, { io: "input", target: "draft-7" }));
+function schemaJson(schema: Schema.Constraint): JsonObject {
+  return Schema.decodeUnknownSync(jsonObjectSchema)(
+    Schema.toStandardJSONSchemaV1(schema)["~standard"].jsonSchema.input({ target: "draft-07" }),
+  );
 }
 
 function topicIndex(availableTopics: ReadonlySet<string>) {
@@ -178,7 +178,7 @@ export class CakeOperationRegistry {
     envelopeInput: unknown,
     context: CakeOperationExecutionContext,
   ): Promise<{ text: string; details: JsonValue }> {
-    const envelope = cakeToolEnvelopeSchema.parse(envelopeInput);
+    const envelope = Schema.decodeUnknownSync(cakeToolEnvelopeSchema)(envelopeInput);
     const command = envelope.command ?? "help";
     if (command === "help") {
       const text = this.help();
@@ -196,9 +196,12 @@ export class CakeOperationRegistry {
       const text = this.unknown(command);
       return { text, details: { protocol: CAKE_OPERATION_PROTOCOL, command, result: text } };
     }
-    const input = operation.inputSchema.parse(envelope.input ?? {});
-    const rawResult = await operation.execute(input, context);
-    const result = jsonValueSchema.parse(rawResult);
+    const input = Schema.decodeUnknownSync(operation.inputSchema, { onExcessProperty: "error" })(
+      envelope.input ?? {},
+    );
+    const result = Schema.decodeUnknownSync(jsonValueSchema)(
+      await operation.execute(input, context),
+    );
     const serialized = JSON.stringify(result);
     const byteLength = new TextEncoder().encode(serialized).byteLength;
     const boundedResult: JsonValue =

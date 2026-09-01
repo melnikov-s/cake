@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { Schema } from "effect";
 import type { ModelPreset } from "../../../ipc/session-contract";
 import type { CakeOperationDefinition } from "./cake-operation-registry";
 
@@ -14,7 +14,7 @@ export function createCakeModelOperations(
       command: "models.list",
       topic: "models",
       summary: "List configured model preset names and model IDs.",
-      inputSchema: z.object({}).strict(),
+      inputSchema: Schema.Struct({}),
       examples: [{}],
       result: "Configured presets containing only name and modelId.",
       execute: async () => {

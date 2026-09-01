@@ -56,9 +56,9 @@ function sessionTranscript(sessionId: string, project: string, title: string) {
 async function transcriptAnchor(transcript: Locator) {
   return transcript.evaluate((element) => {
     const viewportTop = element.getBoundingClientRect().top;
-    const item = Array.from(element.querySelectorAll<HTMLElement>(".transcript-item")).find(
-      (candidate) => candidate.getBoundingClientRect().bottom > viewportTop + 1,
-    );
+    const item = Array.from(
+      element.querySelectorAll<HTMLElement>('[data-slot="transcript-item"]'),
+    ).find((candidate) => candidate.getBoundingClientRect().bottom > viewportTop + 1);
     if (!item) throw new Error("No visible transcript item");
     return {
       text: item.textContent,
@@ -170,10 +170,11 @@ test("restores a session's virtualized transcript position after leaving and swi
 
     const composer = page.getByRole("combobox", { name: "Message" });
     await composer.fill(Array.from({ length: 30 }, (_, index) => `Line ${index + 1}`).join("\n"));
+    await expect(page.locator('[data-slot="transcript-item"]').last()).toBeVisible();
     await expect
       .poll(async () => {
         const lastMessageBottom = await page
-          .locator(".transcript-item")
+          .locator('[data-slot="transcript-item"]')
           .last()
           .evaluate((element) => element.getBoundingClientRect().bottom);
         const composerTop = await page

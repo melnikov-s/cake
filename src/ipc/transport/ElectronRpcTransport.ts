@@ -10,10 +10,10 @@ const request = Schema.Struct({
   tag: Schema.String,
   payload: Schema.Unknown,
   headers,
-  isNotification: Schema.optionalKey(Schema.Literal(true)),
-  traceId: Schema.optionalKey(Schema.String),
-  spanId: Schema.optionalKey(Schema.String),
-  sampled: Schema.optionalKey(Schema.Boolean),
+  isNotification: Schema.optional(Schema.Literal(true)),
+  traceId: Schema.optional(Schema.String),
+  spanId: Schema.optional(Schema.String),
+  sampled: Schema.optional(Schema.Boolean),
 });
 
 const FromRendererRpcMessage = Schema.Union([

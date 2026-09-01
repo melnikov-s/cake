@@ -56,23 +56,13 @@ export function FullscreenSurface({
         onCloseRef.current();
     });
     void infrastructure.client.electron
-      .invoke({
-        type: "set-fullscreen-surface-open",
-        requestId: crypto.randomUUID(),
-        surfaceId,
-        open: true,
-      })
+      .setFullscreenSurfaceOpen(surfaceId, true)
       .catch(() => undefined);
 
     return () => {
       unsubscribe();
       void infrastructure.client.electron
-        .invoke({
-          type: "set-fullscreen-surface-open",
-          requestId: crypto.randomUUID(),
-          surfaceId,
-          open: false,
-        })
+        .setFullscreenSurfaceOpen(surfaceId, false)
         .catch(() => undefined);
     };
   }, [infrastructure, surfaceId]);

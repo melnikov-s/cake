@@ -1,17 +1,20 @@
-import { z } from "zod";
+import { Option, Schema } from "effect";
 import type { UiPart } from "../ipc/session-contract";
 
-const editInputSchema = z.object({
-  edits: z
-    .array(z.object({ oldText: z.string().optional(), newText: z.string().optional() }))
-    .optional(),
+const editInputSchema = Schema.Struct({
+  edits: Schema.optionalKey(
+    Schema.Array(
+      Schema.Struct({
+        oldText: Schema.optionalKey(Schema.String),
+        newText: Schema.optionalKey(Schema.String),
+      }),
+    ),
+  ),
 });
-const writeInputSchema = z.object({
-  content: z.string().optional(),
-});
-const toolPathInputSchema = z.object({
-  path: z.string().optional(),
-  file_path: z.string().optional(),
+const writeInputSchema = Schema.Struct({ content: Schema.optionalKey(Schema.String) });
+const toolPathInputSchema = Schema.Struct({
+  path: Schema.optionalKey(Schema.String),
+  file_path: Schema.optionalKey(Schema.String),
 });
 
 export interface WorkLogChange {
@@ -26,9 +29,9 @@ export function toolDiff(part: Extract<UiPart, { kind: "tool" }>) {
   try {
     const input = JSON.parse(part.input);
     if (part.name === "edit") {
-      const parsed = editInputSchema.safeParse(input);
-      if (!parsed.success || !parsed.data.edits?.length) return undefined;
-      return parsed.data.edits
+      const parsed = Schema.decodeUnknownOption(editInputSchema)(input);
+      if (Option.isNone(parsed) || !parsed.value.edits?.length) return undefined;
+      return parsed.value.edits
         .flatMap((edit, index) => [
           ...(index > 0 ? [`@@ change ${index + 1} @@`] : []),
           ...(edit.oldText ?? "").split("\n").map((line) => `-${line}`),
@@ -37,9 +40,9 @@ export function toolDiff(part: Extract<UiPart, { kind: "tool" }>) {
         .join("\n");
     }
     if (part.name !== "write") return undefined;
-    const parsed = writeInputSchema.safeParse(input);
-    if (!parsed.success || !parsed.data.content) return undefined;
-    return parsed.data.content
+    const parsed = Schema.decodeUnknownOption(writeInputSchema)(input);
+    if (Option.isNone(parsed) || !parsed.value.content) return undefined;
+    return parsed.value.content
       .split("\n")
       .map((line) => `+${line}`)
       .join("\n");
@@ -51,9 +54,8 @@ export function toolDiff(part: Extract<UiPart, { kind: "tool" }>) {
 function toolPath(part: Extract<UiPart, { kind: "tool" }>) {
   if (part.filePath) return part.filePath;
   try {
-    const parsed = toolPathInputSchema.safeParse(JSON.parse(part.input));
-    if (!parsed.success) return undefined;
-    return parsed.data.path ?? parsed.data.file_path;
+    const parsed = Schema.decodeUnknownOption(toolPathInputSchema)(JSON.parse(part.input));
+    return Option.isSome(parsed) ? (parsed.value.path ?? parsed.value.file_path) : undefined;
   } catch {
     return undefined;
   }

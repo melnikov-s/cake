@@ -1,6 +1,6 @@
+import { Option, Predicate, Schema } from "effect";
 import { useEffect, useState, type ReactNode } from "react";
 import { observer } from "r-state-tree/react";
-import { z } from "zod";
 import { jsonObjectSchema, jsonValueSchema } from "../../../ipc/json-contract";
 import type { ToolOutputContent, UiPart } from "../../../ipc/session-contract";
 import type { SourceLocation } from "../../../ipc/source-location";
@@ -22,7 +22,7 @@ import { CopyFilePathButton } from "@/components/copy-file-path-button";
 
 function parseJson(value: string) {
   try {
-    return jsonValueSchema.parse(JSON.parse(value));
+    return Schema.decodeUnknownSync(jsonValueSchema)(JSON.parse(value));
   } catch {
     return undefined;
   }
@@ -35,11 +35,9 @@ function oneLine(value: string) {
 function toolPath(part: Extract<UiPart, { kind: "tool" }>) {
   if (part.filePath) return part.filePath;
   const parsed = parseJson(part.input);
-  const structuredResult = jsonObjectSchema.safeParse(parsed);
-  if (!structuredResult.success) return undefined;
-  return ["path", "file_path"]
-    .map((key) => z.string().safeParse(structuredResult.data[key]))
-    .find((result) => result.success)?.data;
+  const structuredResult = Schema.decodeUnknownOption(jsonObjectSchema)(parsed);
+  if (Option.isNone(structuredResult)) return undefined;
+  return ["path", "file_path"].map((key) => structuredResult.value[key]).find(Predicate.isString);
 }
 
 function toolTitle(
@@ -54,9 +52,8 @@ function toolTitle(
   if (operationName === "edit" && displayPath) return `edit ${displayPath}`;
 
   const parsed = parseJson(part.input);
-  const structuredResult = jsonObjectSchema.safeParse(parsed);
-  const structured = structuredResult.success ? structuredResult.data : undefined;
-  const parsedString = z.string().safeParse(parsed);
+  const structuredResult = Schema.decodeUnknownOption(jsonObjectSchema)(parsed);
+  const structured = Option.isSome(structuredResult) ? structuredResult.value : undefined;
   const detail =
     operationName === "bash"
       ? part.input
@@ -64,9 +61,9 @@ function toolTitle(
         (part.name === "cake"
           ? undefined
           : ["command", "query", "pattern", "url"]
-              .map((key) => z.string().safeParse(structured?.[key]))
-              .find((result) => result.success)?.data) ??
-        (parsedString.success ? parsedString.data : parsed === undefined ? part.input : ""));
+              .map((key) => structured?.[key])
+              .find(Predicate.isString)) ??
+        (Predicate.isString(parsed) ? parsed : parsed === undefined ? part.input : ""));
   const summary = oneLine(detail);
   return summary ? `${operationName} ${summary}` : operationName;
 }
@@ -229,7 +226,7 @@ export function Tool({
     diff || bash || part.input || part.output || part.outputContent?.length,
   );
   return (
-    <div className="rounded-xl border border-border bg-muted/35 px-4 py-3">
+    <div data-slot="tool" className="rounded-xl border border-border bg-muted/35 px-4 py-3">
       <div className="flex items-center justify-between gap-3 min-w-0">
         <div className="group/path flex min-w-0 flex-1 items-center">
           <DisclosureTrigger
@@ -268,7 +265,7 @@ export function Tool({
       </div>
       {/* Once opened, keep details mounted so later toggles do not feed Streamdown's passive update back into Virtuoso measurement. */}
       {hasDetails && detailsMounted && (
-        <div className="mt-1" hidden={!open}>
+        <div data-slot="tool-details" className="mt-1" hidden={!open}>
           {read ? (
             readToolCode(part, part.state !== "running")
           ) : diff ? (

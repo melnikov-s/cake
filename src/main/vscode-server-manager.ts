@@ -1,3 +1,4 @@
+import { Option, Schema } from "effect";
 import { spawn, type ChildProcess } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { createServer, request as httpRequest, type Server as HttpServer } from "node:http";
@@ -6,7 +7,6 @@ import { copyFile, mkdir, readFile, realpath, rm, writeFile } from "node:fs/prom
 import { dirname, join } from "node:path";
 import { WebContentsView, BrowserWindow } from "electron";
 import { applyEdits, modify, parse as parseJsonc, type ParseError } from "jsonc-parser";
-import { z } from "zod";
 import type { SourceLocation } from "../ipc/source-location";
 import type { EditorAnnotationSnapshot } from "../ipc/editor-annotation";
 import cakeIconMarkup from "../assets/cake-icon.svg?raw";
@@ -93,14 +93,17 @@ function vscodeShellControlsScript(workspacePath: string) {
     }
   })()`;
 }
-const editorPreferencesSchema = z.looseObject({
-  "security.workspace.trust.enabled": z.boolean().optional(),
-  "workbench.colorTheme": z.string().optional(),
-  "workbench.startupEditor": z.string().optional(),
-  "workbench.secondarySideBar.defaultVisibility": z.string().optional(),
-  "chat.disableAIFeatures": z.boolean().optional(),
-  "extensions.ignoreRecommendations": z.boolean().optional(),
-});
+const editorPreferencesSchema = Schema.StructWithRest(
+  Schema.Struct({
+    "security.workspace.trust.enabled": Schema.optionalKey(Schema.Boolean),
+    "workbench.colorTheme": Schema.optionalKey(Schema.String),
+    "workbench.startupEditor": Schema.optionalKey(Schema.String),
+    "workbench.secondarySideBar.defaultVisibility": Schema.optionalKey(Schema.String),
+    "chat.disableAIFeatures": Schema.optionalKey(Schema.Boolean),
+    "extensions.ignoreRecommendations": Schema.optionalKey(Schema.Boolean),
+  }),
+  [Schema.Record(Schema.String, Schema.Unknown)],
+);
 
 export type EmbeddedEditorStatus = "missing" | "downloading" | "starting" | "ready" | "failed";
 
@@ -110,36 +113,30 @@ export interface EmbeddedEditorState {
 }
 
 /** Payloads the companion extension posts to Cake's localhost bridge. */
-const bridgeMessageSchema = z.discriminatedUnion("type", [
-  z.object({
-    type: z.literal("hello"),
-    workspace: z.string().min(1).max(4_096),
-    port: z.number().int().min(1).max(65_535),
+const bounded = (minimum: number, maximum: number) =>
+  Schema.String.check(Schema.isMinLength(minimum), Schema.isMaxLength(maximum));
+const workspaceMessage = { workspace: bounded(1, 4_096) };
+const bridgeMessageSchema = Schema.Union([
+  Schema.Struct({
+    type: Schema.Literal("hello"),
+    ...workspaceMessage,
+    port: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 65_535 })),
   }),
-  z.object({
-    type: z.literal("back-to-agent"),
-    workspace: z.string().min(1).max(4_096),
+  Schema.Struct({ type: Schema.Literal("back-to-agent"), ...workspaceMessage }),
+  Schema.Struct({ type: Schema.Literal("toggle-chat-sidebar"), ...workspaceMessage }),
+  Schema.Struct({
+    type: Schema.Literal("open-annotation"),
+    ...workspaceMessage,
+    sessionId: bounded(1, 256),
+    threadId: bounded(1, 256),
   }),
-  z.object({
-    type: z.literal("toggle-chat-sidebar"),
-    workspace: z.string().min(1).max(4_096),
-  }),
-  z.object({
-    type: z.literal("open-annotation"),
-    workspace: z.string().min(1).max(4_096),
-    sessionId: z.string().min(1).max(256),
-    threadId: z.string().min(1).max(256),
-  }),
-  z.object({
-    type: z.literal("selection-cleared"),
-    workspace: z.string().min(1).max(4_096),
-  }),
-  z.object({
-    type: z.literal("selection"),
-    workspace: z.string().min(1).max(4_096),
-    path: z.string().min(1).max(8_192),
-    startLine: z.number().int().nonnegative(),
-    endLine: z.number().int().nonnegative(),
+  Schema.Struct({ type: Schema.Literal("selection-cleared"), ...workspaceMessage }),
+  Schema.Struct({
+    type: Schema.Literal("selection"),
+    ...workspaceMessage,
+    path: bounded(1, 8_192),
+    startLine: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+    endLine: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
   }),
 ]);
 
@@ -744,48 +741,48 @@ export class VsCodeServerManager {
     } catch {
       return;
     }
-    const message = bridgeMessageSchema.safeParse(payload);
-    if (!message.success) return;
-    if (message.data.type === "hello") {
-      this.companionPorts.set(message.data.workspace, message.data.port);
+    const message = Schema.decodeUnknownOption(bridgeMessageSchema)(payload);
+    if (Option.isNone(message)) return;
+    if (message.value.type === "hello") {
+      this.companionPorts.set(message.value.workspace, message.value.port);
       return;
     }
     const presentedWorkspace =
-      this.presentedWorkspacePaths.get(message.data.workspace) ?? message.data.workspace;
-    if (message.data.type === "back-to-agent" || message.data.type === "toggle-chat-sidebar") {
+      this.presentedWorkspacePaths.get(message.value.workspace) ?? message.value.workspace;
+    if (message.value.type === "back-to-agent" || message.value.type === "toggle-chat-sidebar") {
       this.props.broadcast({
         type:
-          message.data.type === "back-to-agent"
+          message.value.type === "back-to-agent"
             ? "embedded-editor-back-to-agent"
             : "embedded-editor-toggle-chat",
         workspacePath: presentedWorkspace,
       });
       return;
     }
-    if (message.data.type === "open-annotation") {
-      this.focusCakeWindow(message.data.workspace);
+    if (message.value.type === "open-annotation") {
+      this.focusCakeWindow(message.value.workspace);
       this.props.broadcast({
         type: "embedded-editor-annotation-opened",
         workspacePath: presentedWorkspace,
-        sessionId: message.data.sessionId,
-        threadId: message.data.threadId,
+        sessionId: message.value.sessionId,
+        threadId: message.value.threadId,
       });
       return;
     }
-    if (message.data.type === "selection-cleared") {
+    if (message.value.type === "selection-cleared") {
       this.props.broadcast({
         type: "embedded-editor-selection-cleared",
         workspacePath: presentedWorkspace,
       });
       return;
     }
-    if (message.data.type === "selection") {
+    if (message.value.type === "selection") {
       this.props.broadcast({
         type: "embedded-editor-selection",
         workspacePath: presentedWorkspace,
-        path: message.data.path,
-        startLine: message.data.startLine,
-        endLine: message.data.endLine,
+        path: message.value.path,
+        startLine: message.value.startLine,
+        endLine: message.value.endLine,
       });
       return;
     }
@@ -811,14 +808,14 @@ export class VsCodeServerManager {
       // The per-workspace profile has not been initialized yet.
     }
     const parseErrors: ParseError[] = [];
-    const parsed = editorPreferencesSchema.safeParse(
+    const parsed = Schema.decodeUnknownOption(editorPreferencesSchema)(
       parseJsonc(raw, parseErrors, { allowTrailingComma: true }),
     );
-    if (parseErrors.length > 0 || !parsed.success) {
+    if (parseErrors.length > 0 || Option.isNone(parsed)) {
       // Do not replace malformed user-authored settings.
       return;
     }
-    const settings = parsed.data;
+    const settings = parsed.value;
     const updates: Array<{ key: string; value: unknown }> = [];
     if (settings["security.workspace.trust.enabled"] !== false) {
       // Cake already gates project resources through its own persisted trust decision.
@@ -881,21 +878,29 @@ export class VsCodeServerManager {
       return;
     }
     try {
-      const parsed = z
-        .array(z.object({ identifier: z.object({ id: z.string() }).loose() }).loose())
-        .safeParse(JSON.parse(registryRaw));
-      if (!parsed.success) return;
+      const registryItemSchema = Schema.StructWithRest(
+        Schema.Struct({
+          identifier: Schema.StructWithRest(Schema.Struct({ id: Schema.String }), [
+            Schema.Record(Schema.String, Schema.Unknown),
+          ]),
+        }),
+        [Schema.Record(Schema.String, Schema.Unknown)],
+      );
+      const parsed = Schema.decodeUnknownOption(Schema.Array(registryItemSchema))(
+        JSON.parse(registryRaw),
+      );
+      if (Option.isNone(parsed)) return;
       const canonicalCompanion = {
         identifier: { id: "cake.cake-companion" },
         version: this.props.companionManifest.version,
         location: { scheme: "file", path: join(extensionsRoot, "cake-companion") },
         relativeLocation: "cake-companion",
       };
-      const retained = parsed.data.filter(
+      const retained = parsed.value.filter(
         (item) => item.identifier.id.toLowerCase() !== "cake.cake-companion",
       );
       const canonical = [...retained, canonicalCompanion];
-      if (JSON.stringify(parsed.data) !== JSON.stringify(canonical))
+      if (JSON.stringify(parsed.value) !== JSON.stringify(canonical))
         await writeFile(join(extensionsRoot, "extensions.json"), `${JSON.stringify(canonical)}\n`);
     } catch {
       // A malformed registry is rebuilt on the next extension-host scan.

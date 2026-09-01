@@ -12,10 +12,10 @@ import {
   ModelPresetValidationError,
 } from "../../domain/modelPresets";
 import {
-  ProjectSessionCreateInput,
   ProjectSessionError,
   ProjectSessionPreview,
   ProjectSessionPromptInput,
+  ProjectSessionStartInput,
   ProjectSessionSummary,
   ProjectSessionTarget,
   ProjectSessionUpdate,
@@ -73,6 +73,11 @@ import {
   WindowStateWriteError,
 } from "../../services/storage/WindowStateStorage";
 import { PrivilegedCapabilityError } from "../../services/privileged/PrivilegedCapabilities";
+import {
+  privilegedEventSchema,
+  privilegedRequestSchemas,
+  privilegedSuccessSchemas,
+} from "../privileged-contract";
 import { RendererConnectionMiddleware } from "./RendererConnectionMiddleware";
 
 export class FoundationFailure extends Schema.TaggedError<FoundationFailure>()(
@@ -202,7 +207,7 @@ export const CakeRpc = RpcGroup.make(
   Rpc.make("cakeChats.compact", {
     payload: {
       ...CakeChatTarget.fields,
-      instructions: Schema.optionalKey(Schema.String),
+      instructions: Schema.optional(Schema.String),
     },
     error: CakeChatError,
   }),
@@ -238,12 +243,12 @@ export const CakeRpc = RpcGroup.make(
     payload: {
       ...CakeChatTarget.fields,
       entryId: Schema.String,
-      prompt: Schema.optionalKey(Schema.String),
-      resolveSource: Schema.optionalKey(Schema.Boolean),
+      prompt: Schema.optional(Schema.String),
+      resolveSource: Schema.optional(Schema.Boolean),
     },
     success: Schema.Struct({
       sessionId: Schema.String,
-      turnId: Schema.optionalKey(TurnId),
+      turnId: Schema.optional(TurnId),
     }),
     error: CakeChatError,
   }),
@@ -313,9 +318,9 @@ export const CakeRpc = RpcGroup.make(
     success: ProjectSessionPreview,
     error: ProjectSessionError,
   }),
-  Rpc.make("projectSessions.create", {
-    payload: ProjectSessionCreateInput,
-    success: ConversationSnapshot,
+  Rpc.make("projectSessions.start", {
+    payload: ProjectSessionStartInput,
+    success: TurnId,
     error: ProjectSessionError,
   }),
   Rpc.make("projectSessions.open", {
@@ -351,7 +356,7 @@ export const CakeRpc = RpcGroup.make(
   Rpc.make("projectSessions.compact", {
     payload: {
       ...ProjectSessionTarget.fields,
-      instructions: Schema.optionalKey(Schema.String),
+      instructions: Schema.optional(Schema.String),
     },
     error: ProjectSessionError,
   }),
@@ -424,8 +429,8 @@ export const CakeRpc = RpcGroup.make(
     payload: {
       ...ProjectSessionTarget.fields,
       entryId: Schema.String,
-      prompt: Schema.optionalKey(Schema.String),
-      resolveSource: Schema.optionalKey(Schema.Boolean),
+      prompt: Schema.optional(Schema.String),
+      resolveSource: Schema.optional(Schema.Boolean),
     },
     success: Schema.Struct({ sessionId: Schema.String }),
     error: ProjectSessionError,
@@ -438,8 +443,8 @@ export const CakeRpc = RpcGroup.make(
     payload: {
       ...ProjectSessionTarget.fields,
       entryId: Schema.String,
-      destinationWorkingDirectory: Schema.optionalKey(Schema.String),
-      resolveSource: Schema.optionalKey(Schema.Boolean),
+      destinationWorkingDirectory: Schema.optional(Schema.String),
+      resolveSource: Schema.optional(Schema.Boolean),
     },
     success: Schema.Struct({ sessionId: Schema.String }),
     error: ProjectSessionError,
@@ -474,48 +479,356 @@ export const CakeRpc = RpcGroup.make(
     payload: { ...SubagentParent.fields, handleId: SubagentHandleId },
     error: SubagentError,
   }),
-  Rpc.make("electron.invoke", {
-    payload: { request: Schema.Json },
-    success: Schema.Json,
+  Rpc.make("electron.choose-project", {
+    payload: { request: privilegedRequestSchemas["choose-project"] },
+    success: privilegedSuccessSchemas["choose-project"],
     error: PrivilegedCapabilityError,
   }),
-  Rpc.make("filesystem.invoke", {
-    payload: { request: Schema.Json },
-    success: Schema.Json,
+  Rpc.make("electron.open-external-url", {
+    payload: { request: privilegedRequestSchemas["open-external-url"] },
+    success: privilegedSuccessSchemas["open-external-url"],
     error: PrivilegedCapabilityError,
   }),
-  Rpc.make("workspaces.invoke", {
-    payload: { request: Schema.Json },
-    success: Schema.Json,
+  Rpc.make("electron.show-transcript-selection-context-menu", {
+    payload: { request: privilegedRequestSchemas["show-transcript-selection-context-menu"] },
+    success: privilegedSuccessSchemas["show-transcript-selection-context-menu"],
     error: PrivilegedCapabilityError,
   }),
-  Rpc.make("managedWorktrees.invoke", {
-    payload: { request: Schema.Json },
-    success: Schema.Json,
+  Rpc.make("electron.show-composer-context-menu", {
+    payload: { request: privilegedRequestSchemas["show-composer-context-menu"] },
+    success: privilegedSuccessSchemas["show-composer-context-menu"],
     error: PrivilegedCapabilityError,
   }),
-  Rpc.make("terminals.invoke", {
-    payload: { request: Schema.Json },
-    success: Schema.Json,
+  Rpc.make("electron.show-session-context-menu", {
+    payload: { request: privilegedRequestSchemas["show-session-context-menu"] },
+    success: privilegedSuccessSchemas["show-session-context-menu"],
     error: PrivilegedCapabilityError,
   }),
-  Rpc.make("vscode.invoke", {
-    payload: { request: Schema.Json },
-    success: Schema.Json,
+  Rpc.make("electron.show-project-context-menu", {
+    payload: { request: privilegedRequestSchemas["show-project-context-menu"] },
+    success: privilegedSuccessSchemas["show-project-context-menu"],
     error: PrivilegedCapabilityError,
   }),
-  Rpc.make("artifacts.invoke", {
-    payload: { request: Schema.Json },
-    success: Schema.Json,
+  Rpc.make("filesystem.choose-attachments", {
+    payload: { request: privilegedRequestSchemas["choose-attachments"] },
+    success: privilegedSuccessSchemas["choose-attachments"],
     error: PrivilegedCapabilityError,
   }),
-  Rpc.make("plugins.invoke", {
-    payload: { request: Schema.Json },
-    success: Schema.Json,
+  Rpc.make("filesystem.suggest-files", {
+    payload: { request: privilegedRequestSchemas["suggest-files"] },
+    success: privilegedSuccessSchemas["suggest-files"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("filesystem.read-workspace-file", {
+    payload: { request: privilegedRequestSchemas["read-workspace-file"] },
+    success: privilegedSuccessSchemas["read-workspace-file"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("workspaces.reword-composer-selection", {
+    payload: { request: privilegedRequestSchemas["reword-composer-selection"] },
+    success: privilegedSuccessSchemas["reword-composer-selection"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("workspaces.generate-session-title", {
+    payload: { request: privilegedRequestSchemas["generate-session-title"] },
+    success: privilegedSuccessSchemas["generate-session-title"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("workspaces.set-utility-model", {
+    payload: { request: privilegedRequestSchemas["set-utility-model"] },
+    success: privilegedSuccessSchemas["set-utility-model"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("workspaces.register-project", {
+    payload: { request: privilegedRequestSchemas["register-project"] },
+    success: privilegedSuccessSchemas["register-project"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("workspaces.rename-project", {
+    payload: { request: privilegedRequestSchemas["rename-project"] },
+    success: privilegedSuccessSchemas["rename-project"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("workspaces.remove-project", {
+    payload: { request: privilegedRequestSchemas["remove-project"] },
+    success: privilegedSuccessSchemas["remove-project"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("workspaces.delete-session", {
+    payload: { request: privilegedRequestSchemas["delete-session"] },
+    success: privilegedSuccessSchemas["delete-session"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("workspaces.set-session-unread", {
+    payload: { request: privilegedRequestSchemas["set-session-unread"] },
+    success: privilegedSuccessSchemas["set-session-unread"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("workspaces.restart-pi", {
+    payload: { request: privilegedRequestSchemas["restart-pi"] },
+    success: privilegedSuccessSchemas["restart-pi"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("managedWorktrees.create-worktree", {
+    payload: { request: privilegedRequestSchemas["create-worktree"] },
+    success: privilegedSuccessSchemas["create-worktree"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("managedWorktrees.get-worktree-status", {
+    payload: { request: privilegedRequestSchemas["get-worktree-status"] },
+    success: privilegedSuccessSchemas["get-worktree-status"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("managedWorktrees.land-worktree", {
+    payload: { request: privilegedRequestSchemas["land-worktree"] },
+    success: privilegedSuccessSchemas["land-worktree"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("terminals.open-terminal", {
+    payload: { request: privilegedRequestSchemas["open-terminal"] },
+    success: privilegedSuccessSchemas["open-terminal"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("terminals.get-terminal-status", {
+    payload: { request: privilegedRequestSchemas["get-terminal-status"] },
+    success: privilegedSuccessSchemas["get-terminal-status"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("vscode.get-embedded-editor-state", {
+    payload: { request: privilegedRequestSchemas["get-embedded-editor-state"] },
+    success: privilegedSuccessSchemas["get-embedded-editor-state"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("vscode.set-vscode-server-path", {
+    payload: { request: privilegedRequestSchemas["set-vscode-server-path"] },
+    success: privilegedSuccessSchemas["set-vscode-server-path"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("artifacts.respond-artifact", {
+    payload: { request: privilegedRequestSchemas["respond-artifact"] },
+    success: privilegedSuccessSchemas["respond-artifact"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("artifacts.respond-ui", {
+    payload: { request: privilegedRequestSchemas["respond-ui"] },
+    success: privilegedSuccessSchemas["respond-ui"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("artifacts.export-artifacts", {
+    payload: { request: privilegedRequestSchemas["export-artifacts"] },
+    success: privilegedSuccessSchemas["export-artifacts"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("plugins.get-customization-state", {
+    payload: { request: privilegedRequestSchemas["get-customization-state"] },
+    success: privilegedSuccessSchemas["get-customization-state"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("plugins.get-plugin-authoring-reference", {
+    payload: { request: privilegedRequestSchemas["get-plugin-authoring-reference"] },
+    success: privilegedSuccessSchemas["get-plugin-authoring-reference"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("plugins.list-plugin-files", {
+    payload: { request: privilegedRequestSchemas["list-plugin-files"] },
+    success: privilegedSuccessSchemas["list-plugin-files"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("plugins.create-plugin", {
+    payload: { request: privilegedRequestSchemas["create-plugin"] },
+    success: privilegedSuccessSchemas["create-plugin"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("plugins.read-plugin-file", {
+    payload: { request: privilegedRequestSchemas["read-plugin-file"] },
+    success: privilegedSuccessSchemas["read-plugin-file"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("plugins.write-plugin-file", {
+    payload: { request: privilegedRequestSchemas["write-plugin-file"] },
+    success: privilegedSuccessSchemas["write-plugin-file"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("plugins.validate-customization", {
+    payload: { request: privilegedRequestSchemas["validate-customization"] },
+    success: privilegedSuccessSchemas["validate-customization"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("plugins.activate-customization", {
+    payload: { request: privilegedRequestSchemas["activate-customization"] },
+    success: privilegedSuccessSchemas["activate-customization"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("plugins.rollback-customization", {
+    payload: { request: privilegedRequestSchemas["rollback-customization"] },
+    success: privilegedSuccessSchemas["rollback-customization"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("plugins.use-factory-customization", {
+    payload: { request: privilegedRequestSchemas["use-factory-customization"] },
+    success: privilegedSuccessSchemas["use-factory-customization"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("plugins.list-plugins", {
+    payload: { request: privilegedRequestSchemas["list-plugins"] },
+    success: privilegedSuccessSchemas["list-plugins"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("plugins.set-plugin-enabled", {
+    payload: { request: privilegedRequestSchemas["set-plugin-enabled"] },
+    success: privilegedSuccessSchemas["set-plugin-enabled"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("plugins.set-active-scene", {
+    payload: { request: privilegedRequestSchemas["set-active-scene"] },
+    success: privilegedSuccessSchemas["set-active-scene"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("plugins.delete-plugin", {
+    payload: { request: privilegedRequestSchemas["delete-plugin"] },
+    success: privilegedSuccessSchemas["delete-plugin"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("plugins.compile-inline-widget", {
+    payload: { request: privilegedRequestSchemas["compile-inline-widget"] },
+    success: privilegedSuccessSchemas["compile-inline-widget"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("plugins.repair-inline-widget", {
+    payload: { request: privilegedRequestSchemas["repair-inline-widget"] },
+    success: privilegedSuccessSchemas["repair-inline-widget"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("plugins.open-plugin-agent", {
+    payload: { request: privilegedRequestSchemas["open-plugin-agent"] },
+    success: privilegedSuccessSchemas["open-plugin-agent"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("plugins.prompt-plugin-agent", {
+    payload: { request: privilegedRequestSchemas["prompt-plugin-agent"] },
+    success: privilegedSuccessSchemas["prompt-plugin-agent"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("plugins.abort-plugin-agent", {
+    payload: { request: privilegedRequestSchemas["abort-plugin-agent"] },
+    success: privilegedSuccessSchemas["abort-plugin-agent"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("plugins.detach-plugin-agent", {
+    payload: { request: privilegedRequestSchemas["detach-plugin-agent"] },
+    success: privilegedSuccessSchemas["detach-plugin-agent"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("plugins.run-plugin-completion", {
+    payload: { request: privilegedRequestSchemas["run-plugin-completion"] },
+    success: privilegedSuccessSchemas["run-plugin-completion"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("plugins.cancel-plugin-completion", {
+    payload: { request: privilegedRequestSchemas["cancel-plugin-completion"] },
+    success: privilegedSuccessSchemas["cancel-plugin-completion"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("plugins.load-plugin-state", {
+    payload: { request: privilegedRequestSchemas["load-plugin-state"] },
+    success: privilegedSuccessSchemas["load-plugin-state"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("plugins.save-plugin-state", {
+    payload: { request: privilegedRequestSchemas["save-plugin-state"] },
+    success: privilegedSuccessSchemas["save-plugin-state"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("plugins.call-plugin-backend", {
+    payload: { request: privilegedRequestSchemas["call-plugin-backend"] },
+    success: privilegedSuccessSchemas["call-plugin-backend"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("plugins.cancel-plugin-backend-call", {
+    payload: { request: privilegedRequestSchemas["cancel-plugin-backend-call"] },
+    success: privilegedSuccessSchemas["cancel-plugin-backend-call"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("plugins.customization-rendered", {
+    payload: { request: privilegedRequestSchemas["customization-rendered"] },
+    success: privilegedSuccessSchemas["customization-rendered"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("plugins.customization-runtime-failed", {
+    payload: { request: privilegedRequestSchemas["customization-runtime-failed"] },
+    success: privilegedSuccessSchemas["customization-runtime-failed"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("electron.set-fullscreen-surface-open", {
+    payload: { request: privilegedRequestSchemas["set-fullscreen-surface-open"] },
+    success: privilegedSuccessSchemas["set-fullscreen-surface-open"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("workspaces.inspect-workspace", {
+    payload: { request: privilegedRequestSchemas["inspect-workspace"] },
+    success: privilegedSuccessSchemas["inspect-workspace"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("workspaces.respond-workspace-trust", {
+    payload: { request: privilegedRequestSchemas["respond-workspace-trust"] },
+    success: privilegedSuccessSchemas["respond-workspace-trust"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("managedWorktrees.discard-worktree", {
+    payload: { request: privilegedRequestSchemas["discard-worktree"] },
+    success: privilegedSuccessSchemas["discard-worktree"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("terminals.write-terminal", {
+    payload: { request: privilegedRequestSchemas["write-terminal"] },
+    success: privilegedSuccessSchemas["write-terminal"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("terminals.resize-terminal", {
+    payload: { request: privilegedRequestSchemas["resize-terminal"] },
+    success: privilegedSuccessSchemas["resize-terminal"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("terminals.close-terminal", {
+    payload: { request: privilegedRequestSchemas["close-terminal"] },
+    success: privilegedSuccessSchemas["close-terminal"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("vscode.install-embedded-editor", {
+    payload: { request: privilegedRequestSchemas["install-embedded-editor"] },
+    success: privilegedSuccessSchemas["install-embedded-editor"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("vscode.open-embedded-editor", {
+    payload: { request: privilegedRequestSchemas["open-embedded-editor"] },
+    success: privilegedSuccessSchemas["open-embedded-editor"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("vscode.update-embedded-editor-bounds", {
+    payload: { request: privilegedRequestSchemas["update-embedded-editor-bounds"] },
+    success: privilegedSuccessSchemas["update-embedded-editor-bounds"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("vscode.reveal-in-embedded-editor", {
+    payload: { request: privilegedRequestSchemas["reveal-in-embedded-editor"] },
+    success: privilegedSuccessSchemas["reveal-in-embedded-editor"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("vscode.open-embedded-editor-source-control", {
+    payload: { request: privilegedRequestSchemas["open-embedded-editor-source-control"] },
+    success: privilegedSuccessSchemas["open-embedded-editor-source-control"],
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("vscode.update-embedded-editor-annotations", {
+    payload: { request: privilegedRequestSchemas["update-embedded-editor-annotations"] },
+    success: privilegedSuccessSchemas["update-embedded-editor-annotations"],
     error: PrivilegedCapabilityError,
   }),
   Rpc.make("privileged.observe", {
-    success: Schema.Json,
+    success: Schema.Union([
+      privilegedEventSchema,
+      Schema.Struct({ type: Schema.Literal("privileged-stream-ready") }),
+    ]),
     stream: true,
   }),
   Rpc.make("foundation.typedFailure", {

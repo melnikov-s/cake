@@ -45,7 +45,7 @@ export interface ChatStoreProps {
   addAnnotation?(annotation: Omit<Annotation, "id">): void;
   updateAnnotation?(id: string, update: Partial<Omit<Annotation, "id">>): void;
   removeAnnotation?(id: string): void;
-  suggestFiles?(prefix: string): Promise<FileSuggestion[]>;
+  suggestFiles?(prefix: string): Promise<ReadonlyArray<FileSuggestion>>;
   focusRequestRevision?(): number;
   usage?(): SessionSnapshot["usage"];
   queuedPrompts?(): readonly QueuedPrompt[];

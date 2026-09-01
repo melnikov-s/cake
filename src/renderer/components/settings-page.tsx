@@ -10,10 +10,25 @@ import { PluginSettings } from "./plugin-settings";
 import { SettingsLinesField } from "./settings/settings-lines-field";
 import { SettingsPackagesField } from "./settings/settings-packages-field";
 import { SettingsTextField } from "./settings/settings-text-field";
+
+function queueMode(value: string) {
+  if (value === "one-at-a-time" || value === "all") return value;
+  throw new Error("Unsupported queue mode");
+}
+
+function transportMode(value: string) {
+  if (value === "sse" || value === "websocket" || value === "websocket-cached" || value === "auto")
+    return value;
+  throw new Error("Unsupported transport mode");
+}
+
+function projectTrust(value: string) {
+  if (value === "ask" || value === "always" || value === "never") return value;
+  throw new Error("Unsupported project trust mode");
+}
 import { SettingsToggle } from "./settings/settings-toggle";
 import { SettingsAppearanceSection } from "./settings-appearance-section";
 import { SettingsProvidersSection } from "./settings-providers-section";
-import { piSettingsSchema } from "../../ipc/session-contract";
 import type { ChatConfigurationStore } from "../stores/ChatConfigurationStore";
 import type { CustomizationStore } from "../stores/CustomizationStore";
 import type { ProjectWorkbenchStore } from "../stores/ProjectWorkbenchStore";
@@ -250,7 +265,7 @@ export const SettingsPage = observer(function SettingsPage({
                 onChange={(event) =>
                   void providers.setPiSetting({
                     key: "steeringMode",
-                    value: piSettingsSchema.shape.steeringMode.parse(event.target.value),
+                    value: queueMode(event.target.value),
                   })
                 }
               >
@@ -272,7 +287,7 @@ export const SettingsPage = observer(function SettingsPage({
                 onChange={(event) =>
                   void providers.setPiSetting({
                     key: "followUpMode",
-                    value: piSettingsSchema.shape.followUpMode.parse(event.target.value),
+                    value: queueMode(event.target.value),
                   })
                 }
               >
@@ -452,7 +467,7 @@ export const SettingsPage = observer(function SettingsPage({
                 onChange={(event) =>
                   void providers.setPiSetting({
                     key: "transport",
-                    value: piSettingsSchema.shape.transport.parse(event.target.value),
+                    value: transportMode(event.target.value),
                   })
                 }
               >
@@ -522,7 +537,7 @@ export const SettingsPage = observer(function SettingsPage({
                 onChange={(event) =>
                   void providers.setPiSetting({
                     key: "defaultProjectTrust",
-                    value: piSettingsSchema.shape.defaultProjectTrust.parse(event.target.value),
+                    value: projectTrust(event.target.value),
                   })
                 }
               >

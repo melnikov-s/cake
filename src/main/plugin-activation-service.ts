@@ -1,3 +1,4 @@
+import { Schema } from "effect";
 import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
@@ -12,7 +13,7 @@ import { AtomicFileWriter } from "./atomic-file-writer";
 import { hasFileErrorCode } from "./file-errors";
 
 function initialState(): CustomizationState {
-  return customizationStateSchema.parse({
+  return Schema.decodeUnknownSync(customizationStateSchema)({
     schemaVersion: 1,
     recoveryRequired: false,
     diagnostics: [],
@@ -44,7 +45,7 @@ export class PluginActivationService {
   async load() {
     await mkdir(this.paths.recovery, { recursive: true });
     try {
-      this.state = customizationStateSchema.parse(
+      this.state = Schema.decodeUnknownSync(customizationStateSchema)(
         JSON.parse(await readFile(this.statePath, "utf8")),
       );
     } catch (error) {
@@ -115,7 +116,7 @@ export class PluginActivationService {
   }
 
   snapshot(): CustomizationState {
-    return customizationStateSchema.parse(this.state);
+    return Schema.decodeUnknownSync(customizationStateSchema)(this.state);
   }
 
   buildPath(revision: string) {
@@ -324,7 +325,7 @@ export class PluginActivationService {
   private async persist() {
     await this.writer.write(
       this.statePath,
-      `${JSON.stringify(customizationStateSchema.parse(this.state), null, 2)}\n`,
+      `${JSON.stringify(Schema.decodeUnknownSync(customizationStateSchema)(this.state), null, 2)}\n`,
     );
   }
 
@@ -340,7 +341,7 @@ export class PluginActivationService {
     revision: string,
     diagnostics: PluginDiagnostic[],
   ) {
-    const record = customizationProvenanceSchema.parse({
+    const record = Schema.decodeUnknownSync(customizationProvenanceSchema)({
       schemaVersion: 1,
       attemptId: this.attemptId ?? crypto.randomUUID(),
       request: this.request,

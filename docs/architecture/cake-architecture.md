@@ -213,7 +213,7 @@ falls back to the worktree service's existing random naming scheme.
 
 ## Renderer state
 
-`RootStore` is the renderer composition root and event-routing boundary. It is
+`RootStore` is the renderer composition and application-intent boundary. It is
 not the owner of every workflow merely because its lifetime matches the window.
 Named product surfaces receive named Stores with cohesive behavior, lifecycle,
 async policy, and persistence responsibility.
@@ -237,8 +237,9 @@ their actual owner.
 
 The window Store hierarchy mirrors the product surfaces:
 
-- `RootStore` composes the window, translates application intents, and routes
-  desktop events to their authoritative Store.
+- `RootStore` composes the window and translates application intents. Window-owned
+  renderer infrastructure routes non-authoritative native lifecycle events to
+  their focused owners outside the Store tree.
 - `AppShellStore` owns the window's one mutually exclusive application
   selection: a Project Session, a Cake Chat Session, settings, or an empty
   workbench. The visible surface and every active navigation treatment derive
@@ -421,9 +422,7 @@ recovery on the next boot.
 - `docs/architecture/effect-architecture.md`: Effect Services, domain, RPC,
   Streams, Scopes, storage, renderer state, and source boundaries.
 - `docs/architecture/cake-custom-renderer.md`: future, unimplemented design for
-  user-owned renderer overlays; explicitly outside the Effect migration.
-- `docs/development/effect-migration.md`: temporary ordered implementation
-  handoff from the legacy architecture.
+  user-owned renderer overlays.
 - `docs/architecture/cake-plugins.md`: executable plugin, scene, build,
   activation, persistence, command, and recovery contract.
 - `docs/architecture/cake-storage.md`: persistent storage ownership.

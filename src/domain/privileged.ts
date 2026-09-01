@@ -1,10 +1,11 @@
-import { Effect, type Schema } from "effect";
+import { Effect } from "effect";
+import type { PrivilegedRequest } from "../ipc/privileged-contract";
 import { PrivilegedCapabilities } from "../services/privileged/PrivilegedCapabilities";
 
 /** Requests one validated outside-world operation for a renderer connection. */
 export const invoke = Effect.fn("Privileged.invoke")(function* (
   connectionId: number,
-  request: Schema.Schema.Type<typeof Schema.Json>,
+  request: PrivilegedRequest,
 ) {
   const capabilities = yield* PrivilegedCapabilities;
   return yield* capabilities.invoke(connectionId, request);

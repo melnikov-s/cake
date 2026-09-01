@@ -133,15 +133,16 @@ test("navigates session history with back, forward, and resolve", async () => {
     await activeForwardSession.locator(".session-resolve-action").click();
     await expect(activeBackSession).toHaveCount(1);
     await expect(back).toBeDisabled();
-    await expect(page.locator(".resolved-lane")).toBeVisible();
+    await expect(page.locator('[data-slot="resolved-lane"]')).toBeVisible();
+    await page.getByRole("button", { name: "Expand Resolved" }).click();
     await expect(
       page.locator(
-        ".resolved-lane .session-item.active[data-session-id='history-forward-session']",
+        `[data-slot="resolved-lane"] .session-item.active[data-session-id="history-forward-session"]`,
       ),
     ).toHaveCount(0);
 
     const resolvedForwardSession = page.locator(
-      ".resolved-lane .session-item[data-session-id='history-forward-session']",
+      `[data-slot="resolved-lane"] .session-item[data-session-id="history-forward-session"]`,
     );
     await resolvedForwardSession.locator(".session-row").click();
     await expect(resolvedForwardSession).toHaveClass(/active/);

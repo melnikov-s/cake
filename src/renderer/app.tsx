@@ -248,23 +248,25 @@ export const App = observer(function App() {
       )}
       style={shellStyle}
     >
-      <Sidebar
-        store={sidebar}
-        projects={projects}
-        chat={store}
-        cakeChat={root.globalChatStore}
-        shell={shell}
-        onToggle={toggleSidebar}
-        onOpenSettings={openSettings}
-        onOpenCakeChat={openCakeChat}
-        onCreateCakeChat={createCakeChat}
-        onOpenSession={openSession}
-        onCreateSession={createSession}
-        onRemoveProject={(path, deleteSessions) => root.removeProject(path, deleteSessions)}
-        onChooseProject={chooseProject}
-        onGoBack={goBack}
-        onGoForward={goForward}
-      />
+      {!sidebarCollapsed && (
+        <Sidebar
+          store={sidebar}
+          projects={projects}
+          chat={store}
+          cakeChat={root.globalChatStore}
+          shell={shell}
+          onToggle={toggleSidebar}
+          onOpenSettings={openSettings}
+          onOpenCakeChat={openCakeChat}
+          onCreateCakeChat={createCakeChat}
+          onOpenSession={openSession}
+          onCreateSession={createSession}
+          onRemoveProject={(path, deleteSessions) => root.removeProject(path, deleteSessions)}
+          onChooseProject={chooseProject}
+          onGoBack={goBack}
+          onGoForward={goForward}
+        />
+      )}
       {!sidebarCollapsed && (
         <ResizeHandle
           className="left-[calc(var(--sidebar-width)-5px)] max-[820px]:left-[calc(min(var(--sidebar-width),230px)-5px)]"
@@ -279,6 +281,7 @@ export const App = observer(function App() {
         />
       )}
       <section
+        data-slot="workspace"
         className="relative grid h-full min-h-0 min-w-0 grid-rows-[52px_minmax(0,1fr)] overflow-hidden [contain:inline-size]"
         data-session-id={
           shell.selection.kind === "cake-chat"
@@ -294,6 +297,7 @@ export const App = observer(function App() {
             sidebarCollapsed && "grid",
             surface === "settings" && "bg-sidebar-hover text-foreground",
           )}
+          data-slot="workspace-settings"
           tooltip="Open settings"
           aria-current={surface === "settings" ? "page" : undefined}
           onClick={() => root.showSettings()}
@@ -301,19 +305,21 @@ export const App = observer(function App() {
           <SettingsIcon />
         </IconButton>
         <header
+          data-slot="workspace-header"
           className={cn(
-            "flex h-[52px] w-full max-w-full min-w-0 items-center justify-between overflow-hidden border-b border-border/65 px-5 [app-region:drag] max-[620px]:pl-[84px]",
-            sidebarCollapsed && "pl-[84px]",
+            "relative flex h-[52px] w-full max-w-full min-w-0 items-center justify-between overflow-hidden border-b border-border/65 px-5 [app-region:drag] max-[620px]:pl-[84px]",
+            sidebarCollapsed && "pl-[124px]",
           )}
         >
-          <div className="flex w-0 min-w-0 flex-1 items-center gap-3 overflow-hidden">
+          <div className="flex w-0 min-w-0 flex-1 items-center gap-3">
             <IconButton
               className={cn(
-                "hidden size-7 place-items-center rounded-lg bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground [app-region:no-drag] max-[620px]:grid",
-                sidebarCollapsed && "grid -mt-1.5",
+                "absolute left-[84px] top-[9px] z-20 size-7 place-items-center rounded-lg bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground [app-region:no-drag]",
+                sidebarCollapsed ? "grid" : "hidden max-[620px]:grid",
               )}
+              data-slot="header-sidebar-toggle"
               tooltip="Toggle sidebar"
-              onClick={() => setSidebarCollapsed((value) => !value)}
+              onClick={toggleSidebar}
             >
               <SidebarIcon />
             </IconButton>
@@ -487,10 +493,10 @@ export const App = observer(function App() {
                 </>,
                 sessionHeaderHost,
               )}
-            <div className="grid h-full min-h-0 min-w-0 overflow-hidden grid-cols-[auto_minmax(0,1fr)_auto]">
+            <div className="grid h-full min-h-0 min-w-0 overflow-hidden grid-cols-[auto_minmax(0,1fr)_auto] max-[1100px]:grid-cols-1 max-[1100px]:grid-rows-[minmax(0,1fr)_auto_auto]">
               <ProjectSessionPluginRail side="left" />
               <Chat
-                className="col-start-2"
+                className="col-start-2 max-[1100px]:col-start-1 max-[1100px]:row-start-1"
                 store={session.chatStore}
                 transcriptBehavior={projectTranscriptBehavior}
                 empty={

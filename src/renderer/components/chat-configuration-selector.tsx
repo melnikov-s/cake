@@ -11,6 +11,17 @@ export const ChatConfigurationSelector = observer(function ChatConfigurationSele
 }) {
   const session = configuration.session;
   const selectedModel = session?.model;
+  const sessionConfiguration = selectedModel
+    ? {
+        provider: selectedModel.provider,
+        modelId: selectedModel.id,
+        thinkingLevel: session?.thinkingLevel,
+        fastMode: configuration.fastMode,
+      }
+    : undefined;
+  const effectiveConfiguration = configuration.deferred
+    ? (configuration.effectiveConfiguration ?? sessionConfiguration)
+    : sessionConfiguration;
   const disabled = Boolean(session?.streaming || configuration.activeOperations.length > 0);
 
   return (
@@ -20,16 +31,7 @@ export const ChatConfigurationSelector = observer(function ChatConfigurationSele
         groups={configuration.connectedModelsByProvider}
         presets={configuration.presets}
         activePreset={configuration.activePreset}
-        value={
-          selectedModel
-            ? {
-                provider: selectedModel.provider,
-                modelId: selectedModel.id,
-                thinkingLevel: session?.thinkingLevel,
-                fastMode: configuration.fastMode,
-              }
-            : undefined
-        }
+        value={effectiveConfiguration}
         disabled={disabled}
         error={configuration.error}
         openPresetSettings={() => configuration.openPresetSettings()}

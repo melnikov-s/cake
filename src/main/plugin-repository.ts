@@ -1,3 +1,4 @@
+import { Schema } from "effect";
 import { createHash } from "node:crypto";
 import {
   copyFile,
@@ -95,7 +96,7 @@ export class PluginRepository {
       if (!/^[a-z0-9]+(?:[.-][a-z0-9]+)+$/.test(entry.name)) continue;
       const manifestPath = join(this.paths.plugins, entry.name, "cake-plugin.json");
       try {
-        const manifest = cakePluginManifestSchema.parse(
+        const manifest = Schema.decodeUnknownSync(cakePluginManifestSchema)(
           JSON.parse(await readFile(manifestPath, "utf8")),
         );
         statuses.push({
@@ -141,7 +142,7 @@ export class PluginRepository {
     if (!isWithin(await realpath(this.paths.plugins), root) || basename(root) !== pluginId)
       throw new Error("Plugin directory does not match its ID");
     const manifestPath = join(root, "cake-plugin.json");
-    const manifest = cakePluginManifestSchema.parse(
+    const manifest = Schema.decodeUnknownSync(cakePluginManifestSchema)(
       JSON.parse(await readFile(manifestPath, "utf8")),
     );
     if (manifest.id !== pluginId)
@@ -164,7 +165,9 @@ export class PluginRepository {
         const path = join(this.paths.plugins, entry.name, "cake-plugin.json");
         let manifest: CakePluginManifest;
         try {
-          manifest = cakePluginManifestSchema.parse(JSON.parse(await readFile(path, "utf8")));
+          manifest = Schema.decodeUnknownSync(cakePluginManifestSchema)(
+            JSON.parse(await readFile(path, "utf8")),
+          );
         } catch {
           continue;
         }
@@ -201,7 +204,7 @@ export class PluginRepository {
     }
     let wasEnabled = false;
     try {
-      const manifest = cakePluginManifestSchema.parse(
+      const manifest = Schema.decodeUnknownSync(cakePluginManifestSchema)(
         JSON.parse(await readFile(join(root, "cake-plugin.json"), "utf8")),
       );
       wasEnabled = manifest.id === pluginId && manifest.enabled;
@@ -267,7 +270,7 @@ export class PluginRepository {
 
   async createPlugin(options: PluginCreateOptions, expectedWorkingRevision: string) {
     const operation = async () => {
-      const parsedId = pluginIdSchema.parse(options.id);
+      const parsedId = Schema.decodeUnknownSync(pluginIdSchema)(options.id);
       const name = options.name.trim();
       if (!name || name.length > 128) throw new Error("Plugin name must contain 1–128 characters");
       if (!options.renderer && !options.backend && !options.scene)
@@ -287,7 +290,7 @@ export class PluginRepository {
       const temporary = `${root}.tmp-${crypto.randomUUID()}`;
       await mkdir(temporary, { recursive: true });
       try {
-        const manifest = cakePluginManifestSchema.parse({
+        const manifest = Schema.decodeUnknownSync(cakePluginManifestSchema)({
           schemaVersion: 2,
           id: parsedId,
           name,
@@ -332,7 +335,7 @@ export class PluginRepository {
   }
 
   private async pluginTarget(pluginId: string, relativePath: string, mustExist: boolean) {
-    const parsedId = pluginIdSchema.parse(pluginId);
+    const parsedId = Schema.decodeUnknownSync(pluginIdSchema)(pluginId);
     if (relativePath.includes("\0") || isAbsolute(relativePath))
       throw new Error("Plugin paths must be relative text paths");
     const suffix = relativePath.replaceAll("\\", "/");
@@ -372,7 +375,7 @@ export class PluginRepository {
       if (!entry.isDirectory()) continue;
       const root = join(this.paths.plugins, entry.name);
       try {
-        const manifest = cakePluginManifestSchema.parse(
+        const manifest = Schema.decodeUnknownSync(cakePluginManifestSchema)(
           JSON.parse(await readFile(join(root, "cake-plugin.json"), "utf8")),
         );
         if (manifest.id !== entry.name)

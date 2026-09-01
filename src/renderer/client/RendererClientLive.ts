@@ -1,5 +1,9 @@
 import { Effect, Predicate } from "effect";
 import { CakeIpcClient, type CakeIpcClientService } from "../../ipc/client/CakeIpcClient";
+import type { PrivilegedRequest, PrivilegedRouteType } from "../../ipc/privileged-contract";
+
+type RoutedPrivilegedRequest = Extract<PrivilegedRequest, { type: PrivilegedRouteType }>;
+import { makeRendererNativeClient } from "./RendererNativeClient";
 import type { RendererRuntime } from "../RendererRuntime";
 import {
   RendererClientError,
@@ -55,6 +59,41 @@ export function makeRendererClient(runtime: RendererRuntime): RendererClient {
     runtime
       .runPromise(effect, options?.signal ? { signal: options.signal } : undefined)
       .catch((error: unknown) => Promise.reject(rendererError(operation, error, options?.signal)));
+
+  const invoke = (
+    group:
+      | "electron"
+      | "filesystem"
+      | "workspaces"
+      | "managedWorktrees"
+      | "terminals"
+      | "vscode"
+      | "artifacts"
+      | "plugins",
+    request: RoutedPrivilegedRequest,
+    options?: RendererCommandOptions,
+  ) =>
+    run(
+      `${group}.${request.type}`,
+      // SAFETY: the route key and request discriminant are correlated by RoutedPrivilegedRequest.
+      withClient((client) => client.privileged[request.type](request as never)),
+      options,
+    );
+
+  const accept = async (
+    group: Parameters<typeof invoke>[0],
+    request: RoutedPrivilegedRequest & { requestId: string },
+    options?: RendererCommandOptions,
+  ) => {
+    const response = await invoke(group, request, options);
+    if (response.type !== "accepted" || response.requestId !== request.requestId)
+      throw new RendererClientError(
+        "unexpected",
+        `${group}.${request.type}`,
+        "Cake received a mismatched operation response",
+        `Expected accepted response for ${request.requestId}`,
+      );
+  };
 
   return {
     application: {
@@ -161,10 +200,10 @@ export function makeRendererClient(runtime: RendererRuntime): RendererClient {
           withClient((client) => client.projectSessions.inspect(target)),
           options,
         ),
-      create: (input, options) =>
+      start: (input, options) =>
         run(
-          "projectSessions.create",
-          withClient((client) => client.projectSessions.create(input)),
+          "projectSessions.start",
+          withClient((client) => client.projectSessions.start(input)),
           options,
         ),
       open: (target, options) =>
@@ -456,70 +495,7 @@ export function makeRendererClient(runtime: RendererRuntime): RendererClient {
           options,
         ),
     },
-    electron: {
-      invoke: (request, options) =>
-        run(
-          "electron.invoke",
-          withClient((client) => client.electron.invoke(request)),
-          options,
-        ),
-    },
-    filesystem: {
-      invoke: (request, options) =>
-        run(
-          "filesystem.invoke",
-          withClient((client) => client.filesystem.invoke(request)),
-          options,
-        ),
-    },
-    workspaces: {
-      invoke: (request, options) =>
-        run(
-          "workspaces.invoke",
-          withClient((client) => client.workspaces.invoke(request)),
-          options,
-        ),
-    },
-    managedWorktrees: {
-      invoke: (request, options) =>
-        run(
-          "managedWorktrees.invoke",
-          withClient((client) => client.managedWorktrees.invoke(request)),
-          options,
-        ),
-    },
-    terminals: {
-      invoke: (request, options) =>
-        run(
-          "terminals.invoke",
-          withClient((client) => client.terminals.invoke(request)),
-          options,
-        ),
-    },
-    vscode: {
-      invoke: (request, options) =>
-        run(
-          "vscode.invoke",
-          withClient((client) => client.vscode.invoke(request)),
-          options,
-        ),
-    },
-    artifacts: {
-      invoke: (request, options) =>
-        run(
-          "artifacts.invoke",
-          withClient((client) => client.artifacts.invoke(request)),
-          options,
-        ),
-    },
-    plugins: {
-      invoke: (request, options) =>
-        run(
-          "plugins.invoke",
-          withClient((client) => client.plugins.invoke(request)),
-          options,
-        ),
-    },
+    ...makeRendererNativeClient(invoke, accept),
     foundation: {
       typedFailure: (options) =>
         run(

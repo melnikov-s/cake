@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { Option, Schema } from "effect";
 import { jsonValueSchema } from "../ipc/json-contract";
 import { resolvedAgentModelSchema } from "../ipc/plugin-agent-contract";
 import { toolOperationName } from "./cake-tool";
@@ -9,34 +9,32 @@ import {
   type UiPart,
 } from "../ipc/session-contract";
 
-const statusSchema = z.enum(["queued", "running", "complete", "error", "aborted"]);
-const profileSchema = z.enum(["scout", "planner", "reviewer", "worker"]);
-const runPayloadSchema = z
-  .object({
-    handleId: z.uuid().optional(),
-    task: z.string().optional(),
-    profile: profileSchema.optional(),
-    status: statusSchema.optional(),
-    resolvedModel: resolvedAgentModelSchema.optional(),
-    streaming: z.boolean().optional(),
-    parts: z.array(z.unknown()).optional(),
-    usage: sessionUsageSchema.optional(),
-    error: z.string().optional(),
-  })
-  .passthrough();
-const gatewayInputSchema = z.object({ input: z.unknown() }).passthrough();
-const payloadSchema = runPayloadSchema
-  .extend({
-    tasks: z.array(runPayloadSchema).optional(),
-    latest: runPayloadSchema.optional(),
-    results: z.array(runPayloadSchema).optional(),
-    completed: z.number().int().nonnegative().optional(),
-    total: z.number().int().nonnegative().optional(),
-  })
-  .passthrough();
+const statusSchema = Schema.Literals(["queued", "running", "complete", "error", "aborted"]);
+const profileSchema = Schema.Literals(["scout", "planner", "reviewer", "worker"]);
+const runPayloadFields = {
+  handleId: Schema.optionalKey(Schema.String.check(Schema.isUUID())),
+  task: Schema.optionalKey(Schema.String),
+  profile: Schema.optionalKey(profileSchema),
+  status: Schema.optionalKey(statusSchema),
+  resolvedModel: Schema.optionalKey(resolvedAgentModelSchema),
+  streaming: Schema.optionalKey(Schema.Boolean),
+  parts: Schema.optionalKey(Schema.Array(Schema.Unknown)),
+  usage: Schema.optionalKey(sessionUsageSchema),
+  error: Schema.optionalKey(Schema.String),
+};
+const runPayloadSchema = Schema.Struct(runPayloadFields);
+const gatewayInputSchema = Schema.Struct({ input: Schema.Unknown });
+const payloadSchema = Schema.Struct({
+  ...runPayloadFields,
+  tasks: Schema.optionalKey(Schema.Array(runPayloadSchema)),
+  latest: Schema.optionalKey(runPayloadSchema),
+  results: Schema.optionalKey(Schema.Array(runPayloadSchema)),
+  completed: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
+  total: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
+});
 
-type RunPayload = z.infer<typeof runPayloadSchema>;
-type Payload = z.infer<typeof payloadSchema>;
+type RunPayload = typeof runPayloadSchema.Type;
+type Payload = typeof payloadSchema.Type;
 type ToolPart = Extract<UiPart, { kind: "tool" }>;
 
 export interface SubagentRun {
@@ -46,7 +44,7 @@ export interface SubagentRun {
   task: string;
   profile: "scout" | "planner" | "reviewer" | "worker";
   status: "queued" | "running" | "complete" | "error" | "aborted";
-  resolvedModel?: z.infer<typeof resolvedAgentModelSchema>;
+  resolvedModel?: typeof resolvedAgentModelSchema.Type;
   streaming: boolean;
   parts: UiPart[];
   usage?: SessionUsage;
@@ -57,19 +55,22 @@ export interface SubagentRun {
 function payload(value?: string): Payload | undefined {
   if (!value) return undefined;
   try {
-    const parsed = jsonValueSchema.parse(JSON.parse(value));
-    const gateway = gatewayInputSchema.safeParse(parsed);
-    const result = payloadSchema.safeParse(gateway.success ? gateway.data.input : parsed);
-    return result.success ? result.data : undefined;
+    const parsed = Schema.decodeUnknownSync(jsonValueSchema)(JSON.parse(value));
+    const gateway = Schema.decodeUnknownOption(gatewayInputSchema)(parsed);
+    return Option.getOrUndefined(
+      Schema.decodeUnknownOption(payloadSchema)(
+        Option.isSome(gateway) ? gateway.value.input : parsed,
+      ),
+    );
   } catch {
     return undefined;
   }
 }
 
-function projectedParts(value: unknown[] | undefined) {
+function projectedParts(value: ReadonlyArray<unknown> | undefined) {
   return (value ?? []).flatMap((part) => {
-    const parsed = uiPartSchema.safeParse(part);
-    return parsed.success ? [parsed.data] : [];
+    const parsed = Schema.decodeUnknownOption(uiPartSchema)(part);
+    return Option.isSome(parsed) ? [parsed.value] : [];
   });
 }
 

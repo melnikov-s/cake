@@ -1,12 +1,12 @@
 import type { ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 import { createHash } from "node:crypto";
-import type { ExtensionUiEvent, ExtensionUiState } from "../../../ipc/session-contract";
+import type { ExtensionUiEvent } from "../../../ipc/session-contract";
 import type { RuntimeUiRequest } from "./cake-runtime";
 
 export function createCakeExtensionUiContext(options: {
   request(request: RuntimeUiRequest): Promise<string | undefined>;
   emit(event: ExtensionUiEvent): void;
-  state: ExtensionUiState;
+  state: { statuses: Array<{ key: string; text: string }>; title?: string };
   addDiagnostic(method: string, message: string): void;
 }): ExtensionUIContext {
   let editorText = "";

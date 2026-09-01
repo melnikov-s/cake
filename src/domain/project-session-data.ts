@@ -64,17 +64,6 @@ const ChatConfiguration = Schema.Struct({
   fastMode: Schema.Boolean,
 });
 
-export const ProjectSessionCreateInput = Schema.Struct({
-  sessionId: boundedId,
-  projectPath: Schema.optionalKey(boundedPath),
-  workingDirectory: boundedPath,
-  configuration: Schema.optionalKey(ChatConfiguration),
-  name: Schema.optionalKey(Schema.String),
-});
-export interface ProjectSessionCreateInput extends Schema.Schema.Type<
-  typeof ProjectSessionCreateInput
-> {}
-
 const Attachment = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("file"), name: Schema.String, path: Schema.String }),
   Schema.Struct({
@@ -114,12 +103,28 @@ const Attachment = Schema.Union([
 
 export const ProjectSessionPromptInput = Schema.Struct({
   sessionId: boundedId,
+  workingDirectory: Schema.optionalKey(boundedPath),
+  newSession: Schema.optionalKey(Schema.Boolean),
   text: boundedText,
   attachments: Schema.Array(Attachment).check(Schema.isMaxLength(20)),
   renderUserMessageAsMarkdown: Schema.Boolean,
 });
 export interface ProjectSessionPromptInput extends Schema.Schema.Type<
   typeof ProjectSessionPromptInput
+> {}
+
+export const ProjectSessionStartInput = Schema.Struct({
+  sessionId: boundedId,
+  projectPath: Schema.optionalKey(boundedPath),
+  workingDirectory: boundedPath,
+  configuration: Schema.optionalKey(ChatConfiguration),
+  name: Schema.optionalKey(Schema.String),
+  text: boundedText,
+  attachments: Schema.Array(Attachment).check(Schema.isMaxLength(20)),
+  renderUserMessageAsMarkdown: Schema.Boolean,
+});
+export interface ProjectSessionStartInput extends Schema.Schema.Type<
+  typeof ProjectSessionStartInput
 > {}
 
 export class ProjectSessionError extends Schema.TaggedError<ProjectSessionError>()(

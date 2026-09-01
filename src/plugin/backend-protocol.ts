@@ -1,35 +1,45 @@
-import { z } from "zod";
+import { Schema } from "effect";
 import { jsonValueSchema } from "../ipc/json-contract";
 import { pluginIdSchema } from "./plugin-contract";
 
-export const pluginBackendHostRequestSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("init"), pluginId: pluginIdSchema, backendPath: z.string().min(1) }),
-  z.object({
-    type: z.literal("call"),
-    callId: z.uuid(),
-    method: z.string().min(1).max(256),
+const callId = Schema.String.check(Schema.isUUID());
+export const pluginBackendHostRequestSchema = Schema.Union([
+  Schema.Struct({
+    type: Schema.Literal("init"),
+    pluginId: pluginIdSchema,
+    backendPath: Schema.String.check(Schema.isMinLength(1)),
+  }),
+  Schema.Struct({
+    type: Schema.Literal("call"),
+    callId,
+    method: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
     input: jsonValueSchema,
   }),
-  z.object({ type: z.literal("cancel"), callId: z.uuid() }),
-  z.object({ type: z.literal("dispose") }),
+  Schema.Struct({ type: Schema.Literal("cancel"), callId }),
+  Schema.Struct({ type: Schema.Literal("dispose") }),
 ]);
-
-export const pluginBackendHostMessageSchema = z.union([
-  z.object({ type: z.literal("ready"), pluginId: pluginIdSchema }),
-  z.object({
-    type: z.literal("result"),
-    callId: z.uuid(),
-    ok: z.literal(true),
+export const pluginBackendHostMessageSchema = Schema.Union([
+  Schema.Struct({ type: Schema.Literal("ready"), pluginId: pluginIdSchema }),
+  Schema.Struct({
+    type: Schema.Literal("result"),
+    callId,
+    ok: Schema.Literal(true),
     value: jsonValueSchema,
   }),
-  z.object({
-    type: z.literal("result"),
-    callId: z.uuid(),
-    ok: z.literal(false),
-    error: z.string().max(32_768),
+  Schema.Struct({
+    type: Schema.Literal("result"),
+    callId,
+    ok: Schema.Literal(false),
+    error: Schema.String.check(Schema.isMaxLength(32_768)),
   }),
-  z.object({ type: z.literal("event"), name: z.string().min(1).max(256), value: jsonValueSchema }),
-  z.object({ type: z.literal("fatal"), error: z.string().max(32_768) }),
+  Schema.Struct({
+    type: Schema.Literal("event"),
+    name: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+    value: jsonValueSchema,
+  }),
+  Schema.Struct({
+    type: Schema.Literal("fatal"),
+    error: Schema.String.check(Schema.isMaxLength(32_768)),
+  }),
 ]);
-
-export type PluginBackendHostMessage = z.infer<typeof pluginBackendHostMessageSchema>;
+export type PluginBackendHostMessage = typeof pluginBackendHostMessageSchema.Type;

@@ -1,3 +1,4 @@
+import { Schema } from "effect";
 import { StrictMode, Suspense, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { StoreProvider } from "r-state-tree/react";
@@ -7,14 +8,7 @@ import { RendererErrorBoundary } from "./components/renderer-error-boundary";
 import { CustomizationRecovery } from "./components/customization-recovery";
 import { LoadingState } from "./components/ui/loading-state";
 import { MarkdownLinkProvider } from "./components/ai-elements/markdown";
-import {
-  desktopResponseSchema,
-  type DesktopRequest,
-  type DesktopResponse,
-} from "../ipc/desktop-ipc";
-import { createDesktopClient } from "./desktop-client";
 import { makeRendererRuntime } from "./RendererRuntime";
-import type { RendererClient } from "./client/RendererClient";
 import { makeRendererClient } from "./client/RendererClientLive";
 import { RendererModelSynchronizer } from "./RendererModelSynchronizer";
 import { RendererPrivilegedEvents } from "./RendererPrivilegedEvents";
@@ -32,6 +26,12 @@ const root = createRoot(document.getElementById("root")!);
 const disposeStaleAssetRecovery = installStaleAssetRecovery();
 interface PersistenceRef {
   current?: WindowStatePersistence;
+}
+
+interface ProjectSessionObservationTarget {
+  sessionId: string;
+  workingDirectory: string;
+  newSession?: boolean;
 }
 
 const customizationRevision =
@@ -61,84 +61,29 @@ if (!window.cake) {
   void bootstrap(window.cake);
 }
 
-const requestTypes = {
-  terminals: new Set([
-    "open-terminal",
-    "write-terminal",
-    "resize-terminal",
-    "get-terminal-status",
-    "close-terminal",
-  ]),
-  vscode: new Set([
-    "set-vscode-server-path",
-    "get-embedded-editor-state",
-    "install-embedded-editor",
-    "open-embedded-editor",
-    "update-embedded-editor-bounds",
-    "reveal-in-embedded-editor",
-    "open-embedded-editor-source-control",
-    "update-embedded-editor-annotations",
-  ]),
-  filesystem: new Set(["choose-attachments", "suggest-files", "read-workspace-file"]),
-  managedWorktrees: new Set([
-    "create-worktree",
-    "get-worktree-status",
-    "land-worktree",
-    "discard-worktree",
-  ]),
-  artifacts: new Set(["respond-artifact", "export-artifacts", "respond-ui"]),
-  workspaces: new Set([
-    "set-utility-model",
-    "register-project",
-    "rename-project",
-    "remove-project",
-    "delete-session",
-    "set-session-unread",
-    "restart-pi",
-    "inspect-workspace",
-    "respond-workspace-trust",
-  ]),
-} as const;
-
-function invokeDesktopRequest(client: RendererClient, request: DesktopRequest) {
-  const type = request.type;
-  if (requestTypes.terminals.has(type)) return client.terminals.invoke(request);
-  if (requestTypes.vscode.has(type)) return client.vscode.invoke(request);
-  if (requestTypes.filesystem.has(type)) return client.filesystem.invoke(request);
-  if (requestTypes.managedWorktrees.has(type)) return client.managedWorktrees.invoke(request);
-  if (requestTypes.artifacts.has(type)) return client.artifacts.invoke(request);
-  if (requestTypes.workspaces.has(type)) return client.workspaces.invoke(request);
-  if (type.includes("plugin") || type.includes("customization") || type.includes("inline-widget"))
-    return client.plugins.invoke(request);
-  return client.electron.invoke(request);
-}
-
 async function bootstrap(bridge: NonNullable<typeof window.cake>) {
   const rendererRuntime = makeRendererRuntime(bridge.rpc);
   const rendererClient = makeRendererClient(rendererRuntime);
   const synchronizer = new RendererModelSynchronizer(rendererRuntime);
   const privilegedEvents = new RendererPrivilegedEvents(rendererRuntime);
   await privilegedEvents.ready;
-  const desktopClient = createDesktopClient(privilegedEvents, (request) =>
-    invokeDesktopRequest(rendererClient, request).then((response): DesktopResponse =>
-      desktopResponseSchema.parse(response),
-    ),
-  );
   let hydrationError: unknown;
   const snapshot = await rendererClient.windowState
     .load()
-    .then(storeSnapshotSchema.parse)
+    .then(Schema.decodeUnknownSync(storeSnapshotSchema))
     .catch((error) => {
       hydrationError = error;
       return { state: {}, children: {} };
     });
   const persistenceRef: PersistenceRef = {};
   const rootStore = mountRootStore(
-    desktopClient,
     rendererClient,
     snapshot,
     () => persistenceRef.current?.flush() ?? Promise.resolve(),
   );
+  await rootStore.settingsStore.modelPresets.hydrate();
+  privilegedEvents.observe(rootStore, synchronizer);
+  void rootStore.projectWorkbenchStore.initialize();
   const persistence = new WindowStatePersistence(rendererClient, (error) =>
     rootStore.toastStore.show({
       tone: "error",
@@ -148,7 +93,36 @@ async function bootstrap(bridge: NonNullable<typeof window.cake>) {
   );
   persistenceRef.current = persistence;
   persistence.observe(rootStore);
-  synchronizer.observe(rootStore);
+  synchronizer.observe({
+    projects: rootStore.projectCatalogModel,
+    sessionCatalog: rootStore.sessionCatalogModel,
+    cakeChatCatalog: rootStore.cakeChatCatalogModel,
+    projectSessions: () => {
+      const blockedPath = rootStore.projectWorkbenchStore.pendingAuthorizationPath;
+      const sessions = [...rootStore.sessionRegistry.materializedSessions].filter(
+        (session) => session.workspacePath !== blockedPath,
+      );
+      const active = rootStore.projectWorkbenchStore.activeSession;
+      if (active && active.workspacePath !== blockedPath && !sessions.includes(active))
+        sessions.push(active);
+      return sessions.map((session) => {
+        const target: ProjectSessionObservationTarget = {
+          sessionId: session.sessionId,
+          workingDirectory: session.model.workingDirectory,
+        };
+        if (rootStore.sessionRegistry.isTemporarySession(session.sessionId))
+          target.newSession = true;
+        return { target, model: session.model };
+      });
+    },
+    cakeChats: () =>
+      rootStore.globalChatStore.loadedSessions
+        .filter((session) => !rootStore.globalChatStore.isPendingSession(session.sessionId))
+        .map((session) => ({
+          target: rootStore.globalChatStore.target(session.sessionId),
+          model: session.model,
+        })),
+  });
   if (hydrationError)
     rootStore.toastStore.show({
       tone: "warning",
@@ -172,13 +146,7 @@ async function bootstrap(bridge: NonNullable<typeof window.cake>) {
   root.render(
     <RendererErrorBoundary
       onCustomizationFailure={(revision, message) =>
-        rendererClient.plugins
-          .invoke({
-            type: "customization-runtime-failed",
-            revision,
-            message,
-          })
-          .then(() => undefined)
+        rendererClient.plugins.reportRuntimeFailure(revision, message)
       }
     >
       <StrictMode>
@@ -202,11 +170,7 @@ async function bootstrap(bridge: NonNullable<typeof window.cake>) {
               >
                 <Scene />
                 <CustomizationHealth
-                  report={(revision) =>
-                    rendererClient.plugins
-                      .invoke({ type: "customization-rendered", revision })
-                      .then(() => undefined)
-                  }
+                  report={(revision) => rendererClient.plugins.reportRendered(revision)}
                 />
               </Suspense>
               <CustomizationRecovery />

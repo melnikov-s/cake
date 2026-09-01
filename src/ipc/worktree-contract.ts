@@ -1,81 +1,47 @@
-import { z } from "zod";
+import { Schema } from "effect";
 import { ipcProjectionArray } from "./projection";
 
-/**
- * A Cake-managed Git worktree created for isolated session work.
- *
- * Worktrees live outside the repository in a sibling directory, use an
- * `agent/`-namespaced branch, and are cleaned up by Cake after their work is
- * merged back or discarded.
- */
-export const worktreeRecordSchema = z.object({
-  /** The registered project (repository) the worktree was created from. */
-  projectPath: z.string().min(1).max(4_096),
-  /** Absolute path of the worktree checkout; doubles as the session workspace path. */
-  worktreePath: z.string().min(1).max(4_096),
-  branch: z.string().min(1).max(512),
-  /** The branch this worktree was branched from and lands back into. */
-  baseBranch: z.string().min(1).max(512),
-  /** The managed parent checkout for a stacked worktree. Omitted when targeting the project checkout. */
-  parentWorktreePath: z.string().min(1).max(4_096).optional(),
-  /** Exact commit used to create this checkout. */
-  baseCommit: z.string().min(1).max(256).optional(),
-  state: z.enum(["active", "landed", "resolved", "discarded", "missing"]).optional(),
-  /** Strategy of a landing that is paused inside this worktree awaiting the session agent. */
-  pendingStrategy: z.enum(["preserve", "squash"]).optional(),
-  createdAt: z.string().datetime(),
+const bounded = (minimum: number, maximum: number) =>
+  Schema.String.check(Schema.isMinLength(minimum), Schema.isMaxLength(maximum));
+const nonNegativeInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
+
+export const worktreeRecordSchema = Schema.Struct({
+  projectPath: bounded(1, 4_096),
+  worktreePath: bounded(1, 4_096),
+  branch: bounded(1, 512),
+  baseBranch: bounded(1, 512),
+  parentWorktreePath: Schema.optional(bounded(1, 4_096)),
+  baseCommit: Schema.optional(bounded(1, 256)),
+  state: Schema.optional(Schema.Literals(["active", "landed", "resolved", "discarded", "missing"])),
+  pendingStrategy: Schema.optional(Schema.Literals(["preserve", "squash"])),
+  createdAt: Schema.String,
 });
-
-export type WorktreeRecord = z.infer<typeof worktreeRecordSchema>;
-
-export const worktreeStatusSchema = z.object({
+export type WorktreeRecord = typeof worktreeRecordSchema.Type;
+export const worktreeStatusSchema = Schema.Struct({
   record: worktreeRecordSchema,
-  targetBranch: z.string().min(1).max(512),
-  /** Uncommitted or untracked files in the worktree. */
-  dirtyCount: z.number().int().nonnegative(),
-  /** Commits on the worktree branch that are not reachable from the base branch. */
-  aheadCount: z.number().int().nonnegative(),
-  /** True when the branch tip is already contained in the base branch. */
-  merged: z.boolean(),
-  /** True when the checkout receiving this worktree has uncommitted changes. */
-  targetDirty: z.boolean(),
-  /** False when the receiving checkout has another branch checked out. */
-  targetOnBranch: z.boolean(),
-  /** True while a conflicted merge is in progress inside the worktree awaiting resolution. */
-  merging: z.boolean(),
-  /** True while a rebase is in progress inside the worktree awaiting resolution. */
-  rebasing: z.boolean(),
-  /** True when the session agent proposed a squash message for the current branch tip. */
-  squashMessageReady: z.boolean(),
+  targetBranch: bounded(1, 512),
+  dirtyCount: nonNegativeInt,
+  aheadCount: nonNegativeInt,
+  merged: Schema.Boolean,
+  targetDirty: Schema.Boolean,
+  targetOnBranch: Schema.Boolean,
+  merging: Schema.Boolean,
+  rebasing: Schema.Boolean,
+  squashMessageReady: Schema.Boolean,
 });
-
-export type WorktreeStatus = z.infer<typeof worktreeStatusSchema>;
-
-/**
- * How the worktree branch reaches its target.
- *
- * - `preserve` replays the worktree commits onto the target branch one by one
- *   and needs no model involvement.
- * - `squash` combines the worktree into one target commit. Without an explicit
- *   `message`, the session agent proposes the commit message first.
- */
-export const worktreeLandRequestSchema = z.discriminatedUnion("strategy", [
-  z.object({
-    strategy: z.literal("preserve"),
-    /** Set only after the user confirms the target checkout warning. */
-    allowDirtyTarget: z.literal(true).optional(),
+export type WorktreeStatus = typeof worktreeStatusSchema.Type;
+export const worktreeLandRequestSchema = Schema.Union([
+  Schema.Struct({
+    strategy: Schema.Literal("preserve"),
+    allowDirtyTarget: Schema.optional(Schema.Literal(true)),
   }),
-  z.object({
-    strategy: z.literal("squash"),
-    message: z.string().min(1).max(6_000).optional(),
-    /** Set only after the user confirms the target checkout warning. */
-    allowDirtyTarget: z.literal(true).optional(),
+  Schema.Struct({
+    strategy: Schema.Literal("squash"),
+    message: Schema.optional(bounded(1, 6_000)),
+    allowDirtyTarget: Schema.optional(Schema.Literal(true)),
   }),
 ]);
-
-export type WorktreeLandRequest = z.infer<typeof worktreeLandRequestSchema>;
-
-/** Resolves the pending squash-message request for the calling worktree workspace. */
+export type WorktreeLandRequest = typeof worktreeLandRequestSchema.Type;
 export interface WorktreeLandingCoordinator {
   proposeSquashMessage(input: {
     workspacePath: string;
@@ -83,22 +49,15 @@ export interface WorktreeLandingCoordinator {
     body?: string;
   }): Promise<void>;
 }
-
-export const worktreeLandOutcomeSchema = z.discriminatedUnion("outcome", [
-  z.object({
-    outcome: z.literal("landed"),
-    /** The commit created on the target branch, when commits were merged. */
-    commit: z.string().max(256).optional(),
+export const worktreeLandOutcomeSchema = Schema.Union([
+  Schema.Struct({
+    outcome: Schema.Literal("landed"),
+    commit: Schema.optional(Schema.String.check(Schema.isMaxLength(256))),
   }),
-  z.object({
-    /** A conflicted rebase or merge was started in the worktree for the session agent to resolve. */
-    outcome: z.literal("resolving"),
-    files: ipcProjectionArray(z.string().max(4_096), 10_000),
+  Schema.Struct({
+    outcome: Schema.Literal("resolving"),
+    files: ipcProjectionArray(Schema.String.check(Schema.isMaxLength(4_096)), 10_000),
   }),
-  z.object({
-    /** The session agent must propose a squash commit message before landing continues. */
-    outcome: z.literal("proposal"),
-  }),
+  Schema.Struct({ outcome: Schema.Literal("proposal") }),
 ]);
-
-export type WorktreeLandOutcome = z.infer<typeof worktreeLandOutcomeSchema>;
+export type WorktreeLandOutcome = typeof worktreeLandOutcomeSchema.Type;

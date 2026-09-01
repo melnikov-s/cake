@@ -94,21 +94,24 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
           onClick={() => onOpen(session.sessionId)}
           onContextMenu={(event) => {
             event.preventDefault();
-            void store
-              .showSessionContextMenu(
-                session.sessionId,
-                event.clientX,
-                event.clientY,
-                resolved,
-                onMarkUnread ? unread : undefined,
-              )
-              .then((action) => {
-                if (action === "rename") setRenamingValue(session.title);
-                else if (action === "mark-unread") onMarkUnread?.(session.sessionId, true);
-                else if (action === "resolve") onResolve(session.sessionId, true);
-                else if (action === "unresolve") onResolve(session.sessionId, false);
-                else if (action === "delete") onDelete(session.sessionId);
-              });
+            const { clientX, clientY } = event;
+            requestAnimationFrame(() => {
+              void store
+                .showSessionContextMenu(
+                  session.sessionId,
+                  clientX,
+                  clientY,
+                  resolved,
+                  onMarkUnread ? unread : undefined,
+                )
+                .then((action) => {
+                  if (action === "rename") setRenamingValue(session.title);
+                  else if (action === "mark-unread") onMarkUnread?.(session.sessionId, true);
+                  else if (action === "resolve") onResolve(session.sessionId, true);
+                  else if (action === "unresolve") onResolve(session.sessionId, false);
+                  else if (action === "delete") onDelete(session.sessionId);
+                });
+            });
           }}
           label={<span className="session-title min-w-0 truncate">{session.title}</span>}
           badge={
