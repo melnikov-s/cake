@@ -122,23 +122,16 @@ test("rewords a composer selection and records one undo step", async () => {
     await composer.evaluate((input: HTMLTextAreaElement) => input.setSelectionRange(7, 19));
 
     const harness = await openRpcHarness(application, "composer-reword");
-    const rewritten = await callRpcHarness<{ type: string; text: string }>(
-      harness,
-      "invokeNative",
-      {
-        type: "reword-composer-selection",
-        selection: "rough ramble",
-      },
-    );
-    expect(rewritten).toEqual({ type: "composer-selection-reworded", text: "Clear request" });
-    await composer.evaluate(
-      (input: HTMLTextAreaElement, text: string) => {
-        input.focus();
-        input.setSelectionRange(7, 19);
-        document.execCommand("insertText", false, text);
-      },
-      rewritten.type === "composer-selection-reworded" ? rewritten.text : "",
-    );
+    const rewritten = await callRpcHarness<{ text: string }>(harness, "invokeNative", {
+      type: "reword-composer-selection",
+      selection: "rough ramble",
+    });
+    expect(rewritten).toEqual({ text: "Clear request" });
+    await composer.evaluate((input: HTMLTextAreaElement, text: string) => {
+      input.focus();
+      input.setSelectionRange(7, 19);
+      document.execCommand("insertText", false, text);
+    }, rewritten.text);
 
     await expect(composer).toHaveValue("Before Clear request after");
     await expect(composer).toBeFocused();

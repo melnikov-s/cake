@@ -34,18 +34,26 @@ import {
   makeWindowStateStorageLive,
   type WindowStateStorage,
 } from "../services/storage/WindowStateStorage";
-import {
-  makeNativeCapabilitiesLive,
-  type NativeCapabilities,
-  type NativeCapabilityOperations,
-} from "../services/native/NativeCapabilities";
+import { makeNativeServicesLive } from "../services/native/NativeServices";
+import type {
+  Artifacts,
+  Electron,
+  Filesystem,
+  ManagedWorktrees,
+  NativeEvents,
+  NativeServiceOperations,
+  Plugins,
+  Terminals,
+  VsCode,
+  Workspaces,
+} from "../services/native/NativeServices";
 import { BootstrapLive } from "./BootstrapLive";
 import { MainApplication, type MainApplicationHooks } from "./MainApplication";
 
 const makeMainLive = (
   application: App,
   rpcOperations: CakeIpcServerOperations,
-  nativeOperations: NativeCapabilityOperations,
+  nativeOperations: NativeServiceOperations,
   piAgentDirectory: string,
 ) => {
   const storageLive = makeApplicationStorageLive(application.getPath("userData")).pipe(
@@ -66,7 +74,7 @@ const makeMainLive = (
     makeDiscussionSessionEnvironmentLayer(rpcOperations.discussionSessions),
     SubagentCoordinatorLive,
     makeSubagentEnvironmentLayer(rpcOperations.subagents),
-    makeNativeCapabilitiesLive(nativeOperations),
+    makeNativeServicesLive(nativeOperations),
   );
   const serverLive = makeCakeIpcServerLive(rpcOperations).pipe(Layer.provide(servicesLive));
   return Layer.merge(servicesLive, serverLive);
@@ -75,7 +83,7 @@ const makeMainLive = (
 export interface LaunchMainApplicationOptions extends Omit<MainApplicationHooks, "start"> {
   readonly application: App;
   readonly rpcOperations: CakeIpcServerOperations;
-  readonly nativeOperations: NativeCapabilityOperations;
+  readonly nativeOperations: NativeServiceOperations;
   readonly piAgentDirectory: string;
   readonly start: (applicationState: ApplicationState["Service"]) => Promise<void>;
 }
@@ -92,7 +100,15 @@ type MainService =
   | DiscussionSessionEnvironment
   | SubagentCoordinator
   | SubagentEnvironment
-  | NativeCapabilities;
+  | Electron
+  | Filesystem
+  | Workspaces
+  | ManagedWorktrees
+  | Terminals
+  | VsCode
+  | Artifacts
+  | Plugins
+  | NativeEvents;
 let runEffect:
   | (<A, E>(effect: Effect.Effect<A, E, MainService>, signal?: AbortSignal) => Promise<A>)
   | undefined;

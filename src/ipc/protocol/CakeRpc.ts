@@ -72,17 +72,17 @@ import {
   WindowStateUnsupportedVersionError,
   WindowStateWriteError,
 } from "../../services/storage/WindowStateStorage";
-import { NativeCapabilityError } from "../../services/native/NativeCapabilities";
+import { NativeOperationError } from "../../services/native/NativeServices";
 import {
   applicationEventSchema,
   artifactEventSchema,
   embeddedEditorEventSchema,
   pluginEventSchema,
-  nativeCommandSchemas,
-  nativeCommandSuccessSchemas,
+  nativeOperationPayloadSchemas,
+  nativeOperationSuccessSchemas,
   surfaceEventSchema,
   terminalEventSchema,
-} from "../native-contract";
+} from "../native-protocol";
 import { piSettingUpdateSchema } from "../session-contract";
 import { RendererConnectionMiddleware } from "./RendererConnectionMiddleware";
 
@@ -490,481 +490,349 @@ export const CakeRpc = RpcGroup.make(
     error: SubagentError,
   }),
   Rpc.make("electron.choose-project", {
-    payload: nativeCommandSchemas["choose-project"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["choose-project"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["choose-project"],
+    success: nativeOperationSuccessSchemas["choose-project"],
+    error: NativeOperationError,
   }),
   Rpc.make("electron.open-external-url", {
-    payload: nativeCommandSchemas["open-external-url"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["open-external-url"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["open-external-url"],
+    success: nativeOperationSuccessSchemas["open-external-url"],
+    error: NativeOperationError,
   }),
   Rpc.make("electron.show-transcript-selection-context-menu", {
-    payload: nativeCommandSchemas["show-transcript-selection-context-menu"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["show-transcript-selection-context-menu"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["show-transcript-selection-context-menu"],
+    success: nativeOperationSuccessSchemas["show-transcript-selection-context-menu"],
+    error: NativeOperationError,
   }),
   Rpc.make("electron.show-composer-context-menu", {
-    payload: nativeCommandSchemas["show-composer-context-menu"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["show-composer-context-menu"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["show-composer-context-menu"],
+    success: nativeOperationSuccessSchemas["show-composer-context-menu"],
+    error: NativeOperationError,
   }),
   Rpc.make("electron.show-session-context-menu", {
-    payload: nativeCommandSchemas["show-session-context-menu"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["show-session-context-menu"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["show-session-context-menu"],
+    success: nativeOperationSuccessSchemas["show-session-context-menu"],
+    error: NativeOperationError,
   }),
   Rpc.make("electron.show-project-context-menu", {
-    payload: nativeCommandSchemas["show-project-context-menu"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["show-project-context-menu"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["show-project-context-menu"],
+    success: nativeOperationSuccessSchemas["show-project-context-menu"],
+    error: NativeOperationError,
   }),
   Rpc.make("filesystem.choose-attachments", {
-    payload: nativeCommandSchemas["choose-attachments"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["choose-attachments"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["choose-attachments"],
+    success: nativeOperationSuccessSchemas["choose-attachments"],
+    error: NativeOperationError,
   }),
   Rpc.make("filesystem.suggest-files", {
-    payload: nativeCommandSchemas["suggest-files"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["suggest-files"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["suggest-files"],
+    success: nativeOperationSuccessSchemas["suggest-files"],
+    error: NativeOperationError,
   }),
   Rpc.make("filesystem.read-workspace-file", {
-    payload: nativeCommandSchemas["read-workspace-file"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["read-workspace-file"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["read-workspace-file"],
+    success: nativeOperationSuccessSchemas["read-workspace-file"],
+    error: NativeOperationError,
   }),
   Rpc.make("workspaces.reword-composer-selection", {
-    payload: nativeCommandSchemas["reword-composer-selection"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["reword-composer-selection"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["reword-composer-selection"],
+    success: nativeOperationSuccessSchemas["reword-composer-selection"],
+    error: NativeOperationError,
   }),
   Rpc.make("workspaces.generate-session-title", {
-    payload: nativeCommandSchemas["generate-session-title"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["generate-session-title"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["generate-session-title"],
+    success: nativeOperationSuccessSchemas["generate-session-title"],
+    error: NativeOperationError,
   }),
   Rpc.make("workspaces.set-utility-model", {
-    payload: nativeCommandSchemas["set-utility-model"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["set-utility-model"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["set-utility-model"],
+    success: nativeOperationSuccessSchemas["set-utility-model"],
+    error: NativeOperationError,
   }),
   Rpc.make("workspaces.register-project", {
-    payload: nativeCommandSchemas["register-project"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["register-project"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["register-project"],
+    success: nativeOperationSuccessSchemas["register-project"],
+    error: NativeOperationError,
   }),
   Rpc.make("workspaces.rename-project", {
-    payload: nativeCommandSchemas["rename-project"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["rename-project"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["rename-project"],
+    success: nativeOperationSuccessSchemas["rename-project"],
+    error: NativeOperationError,
   }),
   Rpc.make("workspaces.remove-project", {
-    payload: nativeCommandSchemas["remove-project"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["remove-project"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["remove-project"],
+    success: nativeOperationSuccessSchemas["remove-project"],
+    error: NativeOperationError,
   }),
   Rpc.make("workspaces.delete-session", {
-    payload: nativeCommandSchemas["delete-session"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["delete-session"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["delete-session"],
+    success: nativeOperationSuccessSchemas["delete-session"],
+    error: NativeOperationError,
   }),
   Rpc.make("workspaces.set-session-unread", {
-    payload: nativeCommandSchemas["set-session-unread"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["set-session-unread"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["set-session-unread"],
+    success: nativeOperationSuccessSchemas["set-session-unread"],
+    error: NativeOperationError,
   }),
   Rpc.make("workspaces.restart-pi", {
-    payload: nativeCommandSchemas["restart-pi"].mapFields(({ type: _type, ...fields }) => fields),
-    success: nativeCommandSuccessSchemas["restart-pi"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["restart-pi"],
+    success: nativeOperationSuccessSchemas["restart-pi"],
+    error: NativeOperationError,
   }),
   Rpc.make("managedWorktrees.create-worktree", {
-    payload: nativeCommandSchemas["create-worktree"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["create-worktree"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["create-worktree"],
+    success: nativeOperationSuccessSchemas["create-worktree"],
+    error: NativeOperationError,
   }),
   Rpc.make("managedWorktrees.get-worktree-status", {
-    payload: nativeCommandSchemas["get-worktree-status"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["get-worktree-status"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["get-worktree-status"],
+    success: nativeOperationSuccessSchemas["get-worktree-status"],
+    error: NativeOperationError,
   }),
   Rpc.make("managedWorktrees.land-worktree", {
-    payload: nativeCommandSchemas["land-worktree"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["land-worktree"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["land-worktree"],
+    success: nativeOperationSuccessSchemas["land-worktree"],
+    error: NativeOperationError,
   }),
   Rpc.make("terminals.open-terminal", {
-    payload: nativeCommandSchemas["open-terminal"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["open-terminal"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["open-terminal"],
+    success: nativeOperationSuccessSchemas["open-terminal"],
+    error: NativeOperationError,
   }),
   Rpc.make("terminals.get-terminal-status", {
-    payload: nativeCommandSchemas["get-terminal-status"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["get-terminal-status"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["get-terminal-status"],
+    success: nativeOperationSuccessSchemas["get-terminal-status"],
+    error: NativeOperationError,
   }),
   Rpc.make("vscode.get-embedded-editor-state", {
-    payload: nativeCommandSchemas["get-embedded-editor-state"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["get-embedded-editor-state"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["get-embedded-editor-state"],
+    success: nativeOperationSuccessSchemas["get-embedded-editor-state"],
+    error: NativeOperationError,
   }),
   Rpc.make("vscode.set-vscode-server-path", {
-    payload: nativeCommandSchemas["set-vscode-server-path"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["set-vscode-server-path"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["set-vscode-server-path"],
+    success: nativeOperationSuccessSchemas["set-vscode-server-path"],
+    error: NativeOperationError,
   }),
   Rpc.make("artifacts.respond-artifact", {
-    payload: nativeCommandSchemas["respond-artifact"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["respond-artifact"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["respond-artifact"],
+    success: nativeOperationSuccessSchemas["respond-artifact"],
+    error: NativeOperationError,
   }),
   Rpc.make("artifacts.respond-ui", {
-    payload: nativeCommandSchemas["respond-ui"].mapFields(({ type: _type, ...fields }) => fields),
-    success: nativeCommandSuccessSchemas["respond-ui"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["respond-ui"],
+    success: nativeOperationSuccessSchemas["respond-ui"],
+    error: NativeOperationError,
   }),
   Rpc.make("artifacts.export-artifacts", {
-    payload: nativeCommandSchemas["export-artifacts"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["export-artifacts"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["export-artifacts"],
+    success: nativeOperationSuccessSchemas["export-artifacts"],
+    error: NativeOperationError,
   }),
   Rpc.make("plugins.get-customization-state", {
-    payload: nativeCommandSchemas["get-customization-state"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["get-customization-state"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["get-customization-state"],
+    success: nativeOperationSuccessSchemas["get-customization-state"],
+    error: NativeOperationError,
   }),
   Rpc.make("plugins.get-plugin-authoring-reference", {
-    payload: nativeCommandSchemas["get-plugin-authoring-reference"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["get-plugin-authoring-reference"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["get-plugin-authoring-reference"],
+    success: nativeOperationSuccessSchemas["get-plugin-authoring-reference"],
+    error: NativeOperationError,
   }),
   Rpc.make("plugins.list-plugin-files", {
-    payload: nativeCommandSchemas["list-plugin-files"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["list-plugin-files"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["list-plugin-files"],
+    success: nativeOperationSuccessSchemas["list-plugin-files"],
+    error: NativeOperationError,
   }),
   Rpc.make("plugins.create-plugin", {
-    payload: nativeCommandSchemas["create-plugin"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["create-plugin"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["create-plugin"],
+    success: nativeOperationSuccessSchemas["create-plugin"],
+    error: NativeOperationError,
   }),
   Rpc.make("plugins.read-plugin-file", {
-    payload: nativeCommandSchemas["read-plugin-file"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["read-plugin-file"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["read-plugin-file"],
+    success: nativeOperationSuccessSchemas["read-plugin-file"],
+    error: NativeOperationError,
   }),
   Rpc.make("plugins.write-plugin-file", {
-    payload: nativeCommandSchemas["write-plugin-file"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["write-plugin-file"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["write-plugin-file"],
+    success: nativeOperationSuccessSchemas["write-plugin-file"],
+    error: NativeOperationError,
   }),
   Rpc.make("plugins.validate-customization", {
-    payload: nativeCommandSchemas["validate-customization"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["validate-customization"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["validate-customization"],
+    success: nativeOperationSuccessSchemas["validate-customization"],
+    error: NativeOperationError,
   }),
   Rpc.make("plugins.activate-customization", {
-    payload: nativeCommandSchemas["activate-customization"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["activate-customization"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["activate-customization"],
+    success: nativeOperationSuccessSchemas["activate-customization"],
+    error: NativeOperationError,
   }),
   Rpc.make("plugins.rollback-customization", {
-    payload: nativeCommandSchemas["rollback-customization"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["rollback-customization"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["rollback-customization"],
+    success: nativeOperationSuccessSchemas["rollback-customization"],
+    error: NativeOperationError,
   }),
   Rpc.make("plugins.use-factory-customization", {
-    payload: nativeCommandSchemas["use-factory-customization"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["use-factory-customization"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["use-factory-customization"],
+    success: nativeOperationSuccessSchemas["use-factory-customization"],
+    error: NativeOperationError,
   }),
   Rpc.make("plugins.list-plugins", {
-    payload: nativeCommandSchemas["list-plugins"].mapFields(({ type: _type, ...fields }) => fields),
-    success: nativeCommandSuccessSchemas["list-plugins"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["list-plugins"],
+    success: nativeOperationSuccessSchemas["list-plugins"],
+    error: NativeOperationError,
   }),
   Rpc.make("plugins.set-plugin-enabled", {
-    payload: nativeCommandSchemas["set-plugin-enabled"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["set-plugin-enabled"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["set-plugin-enabled"],
+    success: nativeOperationSuccessSchemas["set-plugin-enabled"],
+    error: NativeOperationError,
   }),
   Rpc.make("plugins.set-active-scene", {
-    payload: nativeCommandSchemas["set-active-scene"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["set-active-scene"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["set-active-scene"],
+    success: nativeOperationSuccessSchemas["set-active-scene"],
+    error: NativeOperationError,
   }),
   Rpc.make("plugins.delete-plugin", {
-    payload: nativeCommandSchemas["delete-plugin"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["delete-plugin"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["delete-plugin"],
+    success: nativeOperationSuccessSchemas["delete-plugin"],
+    error: NativeOperationError,
   }),
   Rpc.make("plugins.compile-inline-widget", {
-    payload: nativeCommandSchemas["compile-inline-widget"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["compile-inline-widget"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["compile-inline-widget"],
+    success: nativeOperationSuccessSchemas["compile-inline-widget"],
+    error: NativeOperationError,
   }),
   Rpc.make("plugins.repair-inline-widget", {
-    payload: nativeCommandSchemas["repair-inline-widget"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["repair-inline-widget"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["repair-inline-widget"],
+    success: nativeOperationSuccessSchemas["repair-inline-widget"],
+    error: NativeOperationError,
   }),
   Rpc.make("plugins.open-plugin-agent", {
-    payload: nativeCommandSchemas["open-plugin-agent"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["open-plugin-agent"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["open-plugin-agent"],
+    success: nativeOperationSuccessSchemas["open-plugin-agent"],
+    error: NativeOperationError,
   }),
   Rpc.make("plugins.prompt-plugin-agent", {
-    payload: nativeCommandSchemas["prompt-plugin-agent"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["prompt-plugin-agent"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["prompt-plugin-agent"],
+    success: nativeOperationSuccessSchemas["prompt-plugin-agent"],
+    error: NativeOperationError,
   }),
   Rpc.make("plugins.abort-plugin-agent", {
-    payload: nativeCommandSchemas["abort-plugin-agent"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["abort-plugin-agent"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["abort-plugin-agent"],
+    success: nativeOperationSuccessSchemas["abort-plugin-agent"],
+    error: NativeOperationError,
   }),
   Rpc.make("plugins.detach-plugin-agent", {
-    payload: nativeCommandSchemas["detach-plugin-agent"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["detach-plugin-agent"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["detach-plugin-agent"],
+    success: nativeOperationSuccessSchemas["detach-plugin-agent"],
+    error: NativeOperationError,
   }),
   Rpc.make("plugins.run-plugin-completion", {
-    payload: nativeCommandSchemas["run-plugin-completion"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["run-plugin-completion"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["run-plugin-completion"],
+    success: nativeOperationSuccessSchemas["run-plugin-completion"],
+    error: NativeOperationError,
   }),
   Rpc.make("plugins.cancel-plugin-completion", {
-    payload: nativeCommandSchemas["cancel-plugin-completion"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["cancel-plugin-completion"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["cancel-plugin-completion"],
+    success: nativeOperationSuccessSchemas["cancel-plugin-completion"],
+    error: NativeOperationError,
   }),
   Rpc.make("plugins.load-plugin-state", {
-    payload: nativeCommandSchemas["load-plugin-state"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["load-plugin-state"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["load-plugin-state"],
+    success: nativeOperationSuccessSchemas["load-plugin-state"],
+    error: NativeOperationError,
   }),
   Rpc.make("plugins.save-plugin-state", {
-    payload: nativeCommandSchemas["save-plugin-state"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["save-plugin-state"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["save-plugin-state"],
+    success: nativeOperationSuccessSchemas["save-plugin-state"],
+    error: NativeOperationError,
   }),
   Rpc.make("plugins.call-plugin-backend", {
-    payload: nativeCommandSchemas["call-plugin-backend"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["call-plugin-backend"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["call-plugin-backend"],
+    success: nativeOperationSuccessSchemas["call-plugin-backend"],
+    error: NativeOperationError,
   }),
   Rpc.make("plugins.cancel-plugin-backend-call", {
-    payload: nativeCommandSchemas["cancel-plugin-backend-call"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["cancel-plugin-backend-call"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["cancel-plugin-backend-call"],
+    success: nativeOperationSuccessSchemas["cancel-plugin-backend-call"],
+    error: NativeOperationError,
   }),
   Rpc.make("plugins.customization-rendered", {
-    payload: nativeCommandSchemas["customization-rendered"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["customization-rendered"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["customization-rendered"],
+    success: nativeOperationSuccessSchemas["customization-rendered"],
+    error: NativeOperationError,
   }),
   Rpc.make("plugins.customization-runtime-failed", {
-    payload: nativeCommandSchemas["customization-runtime-failed"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["customization-runtime-failed"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["customization-runtime-failed"],
+    success: nativeOperationSuccessSchemas["customization-runtime-failed"],
+    error: NativeOperationError,
   }),
   Rpc.make("electron.set-fullscreen-surface-open", {
-    payload: nativeCommandSchemas["set-fullscreen-surface-open"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["set-fullscreen-surface-open"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["set-fullscreen-surface-open"],
+    success: nativeOperationSuccessSchemas["set-fullscreen-surface-open"],
+    error: NativeOperationError,
   }),
   Rpc.make("workspaces.inspect-workspace", {
-    payload: nativeCommandSchemas["inspect-workspace"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["inspect-workspace"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["inspect-workspace"],
+    success: nativeOperationSuccessSchemas["inspect-workspace"],
+    error: NativeOperationError,
   }),
   Rpc.make("workspaces.respond-workspace-trust", {
-    payload: nativeCommandSchemas["respond-workspace-trust"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["respond-workspace-trust"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["respond-workspace-trust"],
+    success: nativeOperationSuccessSchemas["respond-workspace-trust"],
+    error: NativeOperationError,
   }),
   Rpc.make("managedWorktrees.discard-worktree", {
-    payload: nativeCommandSchemas["discard-worktree"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["discard-worktree"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["discard-worktree"],
+    success: nativeOperationSuccessSchemas["discard-worktree"],
+    error: NativeOperationError,
   }),
   Rpc.make("terminals.write-terminal", {
-    payload: nativeCommandSchemas["write-terminal"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["write-terminal"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["write-terminal"],
+    success: nativeOperationSuccessSchemas["write-terminal"],
+    error: NativeOperationError,
   }),
   Rpc.make("terminals.resize-terminal", {
-    payload: nativeCommandSchemas["resize-terminal"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["resize-terminal"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["resize-terminal"],
+    success: nativeOperationSuccessSchemas["resize-terminal"],
+    error: NativeOperationError,
   }),
   Rpc.make("terminals.close-terminal", {
-    payload: nativeCommandSchemas["close-terminal"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["close-terminal"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["close-terminal"],
+    success: nativeOperationSuccessSchemas["close-terminal"],
+    error: NativeOperationError,
   }),
   Rpc.make("vscode.install-embedded-editor", {
-    payload: nativeCommandSchemas["install-embedded-editor"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["install-embedded-editor"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["install-embedded-editor"],
+    success: nativeOperationSuccessSchemas["install-embedded-editor"],
+    error: NativeOperationError,
   }),
   Rpc.make("vscode.open-embedded-editor", {
-    payload: nativeCommandSchemas["open-embedded-editor"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["open-embedded-editor"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["open-embedded-editor"],
+    success: nativeOperationSuccessSchemas["open-embedded-editor"],
+    error: NativeOperationError,
   }),
   Rpc.make("vscode.update-embedded-editor-bounds", {
-    payload: nativeCommandSchemas["update-embedded-editor-bounds"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["update-embedded-editor-bounds"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["update-embedded-editor-bounds"],
+    success: nativeOperationSuccessSchemas["update-embedded-editor-bounds"],
+    error: NativeOperationError,
   }),
   Rpc.make("vscode.reveal-in-embedded-editor", {
-    payload: nativeCommandSchemas["reveal-in-embedded-editor"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["reveal-in-embedded-editor"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["reveal-in-embedded-editor"],
+    success: nativeOperationSuccessSchemas["reveal-in-embedded-editor"],
+    error: NativeOperationError,
   }),
   Rpc.make("vscode.open-embedded-editor-source-control", {
-    payload: nativeCommandSchemas["open-embedded-editor-source-control"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["open-embedded-editor-source-control"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["open-embedded-editor-source-control"],
+    success: nativeOperationSuccessSchemas["open-embedded-editor-source-control"],
+    error: NativeOperationError,
   }),
   Rpc.make("vscode.update-embedded-editor-annotations", {
-    payload: nativeCommandSchemas["update-embedded-editor-annotations"].mapFields(
-      ({ type: _type, ...fields }) => fields,
-    ),
-    success: nativeCommandSuccessSchemas["update-embedded-editor-annotations"],
-    error: NativeCapabilityError,
+    payload: nativeOperationPayloadSchemas["update-embedded-editor-annotations"],
+    success: nativeOperationSuccessSchemas["update-embedded-editor-annotations"],
+    error: NativeOperationError,
   }),
   Rpc.make("application.observeEvents", {
     success: Schema.Union([applicationEventSchema, NativeEventStreamReady]),

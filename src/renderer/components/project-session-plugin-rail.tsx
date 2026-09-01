@@ -19,19 +19,19 @@ export function ProjectSessionPluginRail({ side }: { side: "left" | "right" }) {
     >
       <div
         data-slot-content
-        className="grid min-w-0 content-start gap-3 empty:hidden [&>*]:max-w-full"
+        className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-3 empty:hidden [&>*]:max-w-full"
       >
         <Slot name={topSlot} />
       </div>
       <div
         data-slot-content
-        className="grid min-h-0 min-w-0 content-start gap-3 overflow-y-auto overscroll-contain empty:hidden [&>*]:max-w-full"
+        className="grid min-h-0 min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-3 overflow-y-auto overscroll-contain empty:hidden [&>*]:max-w-full"
       >
         <Slot name={middleSlot} />
       </div>
       <div
         data-slot-content
-        className="grid min-w-0 content-start gap-3 empty:hidden [&>*]:max-w-full"
+        className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-3 empty:hidden [&>*]:max-w-full"
       >
         <Slot name={bottomSlot} />
       </div>

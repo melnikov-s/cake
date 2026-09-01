@@ -29,7 +29,6 @@ test("executes a compiled React widget in its sandboxed document origin", async 
     const page = await application.firstWindow();
     const harness = await openRpcHarness(application, "inline-widget");
     const response = await callRpcHarness<{
-      type: string;
       widget: { url: string };
     }>(harness, "invokeNative", {
       type: "compile-inline-widget",
@@ -37,8 +36,6 @@ test("executes a compiled React widget in its sandboxed document origin", async 
       capability: "display",
       source: "export default function Widget() { return <strong>React widget executed</strong>; }",
     });
-    if (response.type !== "inline-widget-compiled")
-      throw new Error("Inline widget did not compile");
     const widgetUrl = response.widget.url;
     await page.evaluate((url) => {
       const frame = document.createElement("iframe");

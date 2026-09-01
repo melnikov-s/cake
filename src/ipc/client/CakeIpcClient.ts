@@ -2,13 +2,13 @@ import { Context, Effect, Layer, type Schema, type Stream } from "effect";
 import { RpcClient } from "effect/unstable/rpc";
 import type { RpcClientError } from "effect/unstable/rpc";
 import { CakeRpc, type FoundationFailure } from "../protocol/CakeRpc";
-import type { NativeCapabilityError } from "../../services/native/NativeCapabilities";
+import type { NativeOperationError } from "../../services/native/NativeServices";
 import type {
   NativeEvent as NativeEventEnvelope,
-  NativeCommand as NativeCommandEnvelope,
-  NativeCommandResult,
-  NativeCommandType,
-} from "../native-contract";
+  NativeOperationType,
+  nativeOperationPayloadSchemas,
+  nativeOperationSuccessSchemas,
+} from "../native-protocol";
 
 import type { RendererApplicationState } from "../../domain/application-data";
 import type { PiSettingUpdate } from "../session-contract";
@@ -79,18 +79,13 @@ type NativeStreamReady = { readonly type: "native-stream-ready" };
 type FocusedNativeEvent<Type extends NativeEventEnvelope["type"]> =
   | Extract<NativeEventEnvelope, { readonly type: Type }>
   | NativeStreamReady;
-type NativeRpcCommand<Type extends NativeCommandType> = (
-  payload: Omit<Extract<NativeCommandEnvelope, { type: Type }>, "type">,
+type NativeRpcCommand<Type extends NativeOperationType> = (
+  payload: (typeof nativeOperationPayloadSchemas)[Type]["Type"],
 ) => Effect.Effect<
-  Extract<
-    NativeCommandResult,
-    {
-      type: (typeof import("../native-contract").nativeCommandSuccessSchemas)[Type]["Type"]["type"];
-    }
-  >,
-  NativeCapabilityError | TransportError
+  (typeof nativeOperationSuccessSchemas)[Type]["Type"],
+  NativeOperationError | TransportError
 >;
-type NativeCommands<Types extends NativeCommandType> = {
+type NativeRpcOperations<Types extends NativeOperationType> = {
   readonly [Type in Types]: NativeRpcCommand<Type>;
 };
 type ModelPresetMutationError =
@@ -365,7 +360,7 @@ export interface CakeIpcClientService {
       readonly handleId: SubagentHandleId;
     }) => Effect.Effect<void, SubagentError | TransportError>;
   };
-  readonly electron: NativeCommands<
+  readonly electron: NativeRpcOperations<
     | "choose-project"
     | "open-external-url"
     | "show-transcript-selection-context-menu"
@@ -374,10 +369,10 @@ export interface CakeIpcClientService {
     | "show-project-context-menu"
     | "set-fullscreen-surface-open"
   >;
-  readonly filesystem: NativeCommands<
+  readonly filesystem: NativeRpcOperations<
     "choose-attachments" | "suggest-files" | "read-workspace-file"
   >;
-  readonly workspaces: NativeCommands<
+  readonly workspaces: NativeRpcOperations<
     | "reword-composer-selection"
     | "generate-session-title"
     | "set-utility-model"
@@ -390,17 +385,17 @@ export interface CakeIpcClientService {
     | "inspect-workspace"
     | "respond-workspace-trust"
   >;
-  readonly managedWorktrees: NativeCommands<
+  readonly managedWorktrees: NativeRpcOperations<
     "create-worktree" | "get-worktree-status" | "land-worktree" | "discard-worktree"
   >;
-  readonly terminals: NativeCommands<
+  readonly terminals: NativeRpcOperations<
     | "open-terminal"
     | "write-terminal"
     | "resize-terminal"
     | "get-terminal-status"
     | "close-terminal"
   >;
-  readonly vscode: NativeCommands<
+  readonly vscode: NativeRpcOperations<
     | "get-embedded-editor-state"
     | "set-vscode-server-path"
     | "install-embedded-editor"
@@ -410,8 +405,8 @@ export interface CakeIpcClientService {
     | "open-embedded-editor-source-control"
     | "update-embedded-editor-annotations"
   >;
-  readonly artifacts: NativeCommands<"respond-artifact" | "respond-ui" | "export-artifacts">;
-  readonly plugins: NativeCommands<
+  readonly artifacts: NativeRpcOperations<"respond-artifact" | "respond-ui" | "export-artifacts">;
+  readonly plugins: NativeRpcOperations<
     | "get-customization-state"
     | "get-plugin-authoring-reference"
     | "list-plugin-files"

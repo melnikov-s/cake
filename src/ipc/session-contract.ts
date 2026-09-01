@@ -30,22 +30,6 @@ export const utilityModelSchema = Schema.Struct({
   thinkingLevel: thinkingLevelSchema,
 });
 
-const modelPresetSchema = Schema.Struct({
-  id: Schema.String.check(Schema.isUUID()),
-  name: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(80))),
-  provider: stringRange(1, 256),
-  modelId: stringRange(1, 512),
-  thinkingLevel: thinkingLevelSchema,
-  fastMode: Schema.Boolean,
-});
-
-export const chatConfigurationSchema = Schema.Struct({
-  provider: modelPresetSchema.fields.provider,
-  modelId: modelPresetSchema.fields.modelId,
-  thinkingLevel: modelPresetSchema.fields.thinkingLevel,
-  fastMode: modelPresetSchema.fields.fastMode,
-});
-
 const piResourcePathSchema = stringRange(1, 4_096);
 const piResourcePathsSchema = Schema.Array(piResourcePathSchema).check(Schema.isMaxLength(1_000));
 const piPackageSourceSchema = Schema.Union([
@@ -554,8 +538,16 @@ export type ModelOption = typeof modelOptionSchema.Type;
 export type ThinkingLevel = typeof thinkingLevelSchema.Type;
 export type UtilityModel = typeof utilityModelSchema.Type;
 export type SessionUsage = typeof sessionUsageSchema.Type;
-export type ModelPreset = typeof modelPresetSchema.Type;
-export type ChatConfiguration = typeof chatConfigurationSchema.Type;
+export interface ModelPreset extends ChatConfiguration {
+  readonly id: string;
+  readonly name: string;
+}
+export interface ChatConfiguration {
+  readonly provider: string;
+  readonly modelId: string;
+  readonly thinkingLevel: ThinkingLevel;
+  readonly fastMode: boolean;
+}
 export type PiSettings = typeof piSettingsSchema.Type;
 export type PiSettingUpdate = typeof piSettingUpdateSchema.Type;
 export type SessionSnapshot = typeof sessionSnapshotSchema.Type;

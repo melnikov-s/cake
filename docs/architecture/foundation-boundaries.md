@@ -34,7 +34,8 @@ operations and contain no Cake business logic.
 
 State and lifetime ownership:
 
-- `RootStore` owns window composition and event routing, not every workflow.
+- `RootStore` is the window composition and application-intent boundary, not an
+  authoritative subscription or broad event-routing owner.
 - Focused Stores own renderer workflows, local operations, and concurrency
   policy. Renderer bootstrap attaches the window-owned Model synchronizer and
   one-way Store snapshot persistence to the mounted Root Store; neither
@@ -48,9 +49,12 @@ State and lifetime ownership:
   it does not automatically destroy independently retained domain work.
 
 Preload remains intentionally mechanical and exposes only the frozen Effect RPC
-transport. Electron, filesystem, worktree, terminal, VS Code, artifact, and
-plugin commands use semantic grouped RPC operations with direct payloads.
-Non-authoritative native lifecycle events use focused, renderer-connection-scoped
+transport. Electron, filesystem, workspace, Managed Worktree, terminal, VS Code,
+artifact, and plugin commands use semantic grouped RPC operations with direct
+payloads. Main implements those boundaries through the focused `Electron`,
+`Filesystem`, `Workspaces`, `ManagedWorktrees`, `Terminals`, `VsCode`, `Artifacts`,
+and `Plugins` Services; there is no tagged command envelope or second main
+dispatcher. Non-authoritative native lifecycle events use focused, renderer-connection-scoped
 application, artifact, plugin, terminal, embedded-editor, and
 surface Streams. Adding a renderer capability means adding it to that shared
 protocol and its focused main Service or domain boundary, never adding a generic

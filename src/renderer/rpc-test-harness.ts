@@ -1,12 +1,8 @@
 import { Effect, Option, Schema, Stream } from "effect";
 import { CakeIpcClient, type CakeIpcClientService } from "../ipc/client/CakeIpcClient";
 import { FoundationFailure } from "../ipc/protocol/CakeRpc";
-import {
-  nativeCommandSchema,
-  type NativeCommand,
-  type NativeCommandResult,
-  type NativeCommandType,
-} from "../ipc/native-contract";
+import type { JsonObject } from "../ipc/json-contract";
+import { nativeOperationPayloadSchemas } from "../ipc/native-protocol";
 import { makeRendererRuntime } from "./RendererRuntime";
 
 const bridge = window.cake;
@@ -29,125 +25,299 @@ let delayController: AbortController | undefined;
 let runningDelay: Promise<void> | undefined;
 let runningStream: Promise<ReadonlyArray<number>> | undefined;
 
-type RoutedNativeCommand = Extract<NativeCommand, { type: NativeCommandType }>;
-const widenNativeCommandResult = (response: NativeCommandResult): NativeCommandResult => response;
-
-const routeGroups = {
-  electron: new Set<string>([
-    "choose-project",
-    "open-external-url",
-    "show-transcript-selection-context-menu",
-    "show-composer-context-menu",
-    "show-session-context-menu",
-    "show-project-context-menu",
-    "set-fullscreen-surface-open",
-  ]),
-  filesystem: new Set<string>(["choose-attachments", "suggest-files", "read-workspace-file"]),
-  workspaces: new Set<string>([
-    "reword-composer-selection",
-    "generate-session-title",
-    "set-utility-model",
-    "register-project",
-    "rename-project",
-    "remove-project",
-    "delete-session",
-    "set-session-unread",
-    "restart-pi",
-    "inspect-workspace",
-    "respond-workspace-trust",
-  ]),
-  managedWorktrees: new Set<string>([
-    "create-worktree",
-    "get-worktree-status",
-    "land-worktree",
-    "discard-worktree",
-  ]),
-  terminals: new Set<string>([
-    "open-terminal",
-    "write-terminal",
-    "resize-terminal",
-    "get-terminal-status",
-    "close-terminal",
-  ]),
-  vscode: new Set<string>([
-    "get-embedded-editor-state",
-    "set-vscode-server-path",
-    "install-embedded-editor",
-    "open-embedded-editor",
-    "update-embedded-editor-bounds",
-    "reveal-in-embedded-editor",
-    "open-embedded-editor-source-control",
-    "update-embedded-editor-annotations",
-  ]),
-  artifacts: new Set<string>(["respond-artifact", "respond-ui", "export-artifacts"]),
-  plugins: new Set<string>([
-    "get-customization-state",
-    "get-plugin-authoring-reference",
-    "list-plugin-files",
-    "create-plugin",
-    "read-plugin-file",
-    "write-plugin-file",
-    "validate-customization",
-    "activate-customization",
-    "rollback-customization",
-    "use-factory-customization",
-    "list-plugins",
-    "set-plugin-enabled",
-    "set-active-scene",
-    "delete-plugin",
-    "compile-inline-widget",
-    "repair-inline-widget",
-    "open-plugin-agent",
-    "prompt-plugin-agent",
-    "abort-plugin-agent",
-    "detach-plugin-agent",
-    "run-plugin-completion",
-    "cancel-plugin-completion",
-    "load-plugin-state",
-    "save-plugin-state",
-    "call-plugin-backend",
-    "cancel-plugin-backend-call",
-    "customization-rendered",
-    "customization-runtime-failed",
-  ]),
-} as const;
-
-function routeGroup(type: NativeCommandType): keyof typeof routeGroups | undefined {
-  if (routeGroups.electron.has(type)) return "electron";
-  if (routeGroups.filesystem.has(type)) return "filesystem";
-  if (routeGroups.workspaces.has(type)) return "workspaces";
-  if (routeGroups.managedWorktrees.has(type)) return "managedWorktrees";
-  if (routeGroups.terminals.has(type)) return "terminals";
-  if (routeGroups.vscode.has(type)) return "vscode";
-  if (routeGroups.artifacts.has(type)) return "artifacts";
-  if (routeGroups.plugins.has(type)) return "plugins";
-  return undefined;
+function invokeSmokeCommand(
+  client: CakeIpcClientService,
+  type: string,
+  payload: JsonObject,
+): Effect.Effect<unknown, unknown> {
+  switch (type) {
+    case "choose-project":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["choose-project"])(
+        payload,
+      ).pipe(Effect.flatMap(client.electron["choose-project"]));
+    case "open-external-url":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["open-external-url"])(
+        payload,
+      ).pipe(Effect.flatMap(client.electron["open-external-url"]));
+    case "show-transcript-selection-context-menu":
+      return Schema.decodeUnknownEffect(
+        nativeOperationPayloadSchemas["show-transcript-selection-context-menu"],
+      )(payload).pipe(Effect.flatMap(client.electron["show-transcript-selection-context-menu"]));
+    case "show-composer-context-menu":
+      return Schema.decodeUnknownEffect(
+        nativeOperationPayloadSchemas["show-composer-context-menu"],
+      )(payload).pipe(Effect.flatMap(client.electron["show-composer-context-menu"]));
+    case "show-session-context-menu":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["show-session-context-menu"])(
+        payload,
+      ).pipe(Effect.flatMap(client.electron["show-session-context-menu"]));
+    case "show-project-context-menu":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["show-project-context-menu"])(
+        payload,
+      ).pipe(Effect.flatMap(client.electron["show-project-context-menu"]));
+    case "set-fullscreen-surface-open":
+      return Schema.decodeUnknownEffect(
+        nativeOperationPayloadSchemas["set-fullscreen-surface-open"],
+      )(payload).pipe(Effect.flatMap(client.electron["set-fullscreen-surface-open"]));
+    case "choose-attachments":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["choose-attachments"])(
+        payload,
+      ).pipe(Effect.flatMap(client.filesystem["choose-attachments"]));
+    case "suggest-files":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["suggest-files"])(
+        payload,
+      ).pipe(Effect.flatMap(client.filesystem["suggest-files"]));
+    case "read-workspace-file":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["read-workspace-file"])(
+        payload,
+      ).pipe(Effect.flatMap(client.filesystem["read-workspace-file"]));
+    case "reword-composer-selection":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["reword-composer-selection"])(
+        payload,
+      ).pipe(Effect.flatMap(client.workspaces["reword-composer-selection"]));
+    case "generate-session-title":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["generate-session-title"])(
+        payload,
+      ).pipe(Effect.flatMap(client.workspaces["generate-session-title"]));
+    case "set-utility-model":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["set-utility-model"])(
+        payload,
+      ).pipe(Effect.flatMap(client.workspaces["set-utility-model"]));
+    case "register-project":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["register-project"])(
+        payload,
+      ).pipe(Effect.flatMap(client.workspaces["register-project"]));
+    case "rename-project":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["rename-project"])(
+        payload,
+      ).pipe(Effect.flatMap(client.workspaces["rename-project"]));
+    case "remove-project":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["remove-project"])(
+        payload,
+      ).pipe(Effect.flatMap(client.workspaces["remove-project"]));
+    case "delete-session":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["delete-session"])(
+        payload,
+      ).pipe(Effect.flatMap(client.workspaces["delete-session"]));
+    case "set-session-unread":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["set-session-unread"])(
+        payload,
+      ).pipe(Effect.flatMap(client.workspaces["set-session-unread"]));
+    case "restart-pi":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["restart-pi"])(payload).pipe(
+        Effect.flatMap(client.workspaces["restart-pi"]),
+      );
+    case "inspect-workspace":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["inspect-workspace"])(
+        payload,
+      ).pipe(Effect.flatMap(client.workspaces["inspect-workspace"]));
+    case "respond-workspace-trust":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["respond-workspace-trust"])(
+        payload,
+      ).pipe(Effect.flatMap(client.workspaces["respond-workspace-trust"]));
+    case "create-worktree":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["create-worktree"])(
+        payload,
+      ).pipe(Effect.flatMap(client.managedWorktrees["create-worktree"]));
+    case "get-worktree-status":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["get-worktree-status"])(
+        payload,
+      ).pipe(Effect.flatMap(client.managedWorktrees["get-worktree-status"]));
+    case "land-worktree":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["land-worktree"])(
+        payload,
+      ).pipe(Effect.flatMap(client.managedWorktrees["land-worktree"]));
+    case "discard-worktree":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["discard-worktree"])(
+        payload,
+      ).pipe(Effect.flatMap(client.managedWorktrees["discard-worktree"]));
+    case "open-terminal":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["open-terminal"])(
+        payload,
+      ).pipe(Effect.flatMap(client.terminals["open-terminal"]));
+    case "write-terminal":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["write-terminal"])(
+        payload,
+      ).pipe(Effect.flatMap(client.terminals["write-terminal"]));
+    case "resize-terminal":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["resize-terminal"])(
+        payload,
+      ).pipe(Effect.flatMap(client.terminals["resize-terminal"]));
+    case "get-terminal-status":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["get-terminal-status"])(
+        payload,
+      ).pipe(Effect.flatMap(client.terminals["get-terminal-status"]));
+    case "close-terminal":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["close-terminal"])(
+        payload,
+      ).pipe(Effect.flatMap(client.terminals["close-terminal"]));
+    case "get-embedded-editor-state":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["get-embedded-editor-state"])(
+        payload,
+      ).pipe(Effect.flatMap(client.vscode["get-embedded-editor-state"]));
+    case "set-vscode-server-path":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["set-vscode-server-path"])(
+        payload,
+      ).pipe(Effect.flatMap(client.vscode["set-vscode-server-path"]));
+    case "install-embedded-editor":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["install-embedded-editor"])(
+        payload,
+      ).pipe(Effect.flatMap(client.vscode["install-embedded-editor"]));
+    case "open-embedded-editor":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["open-embedded-editor"])(
+        payload,
+      ).pipe(Effect.flatMap(client.vscode["open-embedded-editor"]));
+    case "update-embedded-editor-bounds":
+      return Schema.decodeUnknownEffect(
+        nativeOperationPayloadSchemas["update-embedded-editor-bounds"],
+      )(payload).pipe(Effect.flatMap(client.vscode["update-embedded-editor-bounds"]));
+    case "reveal-in-embedded-editor":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["reveal-in-embedded-editor"])(
+        payload,
+      ).pipe(Effect.flatMap(client.vscode["reveal-in-embedded-editor"]));
+    case "open-embedded-editor-source-control":
+      return Schema.decodeUnknownEffect(
+        nativeOperationPayloadSchemas["open-embedded-editor-source-control"],
+      )(payload).pipe(Effect.flatMap(client.vscode["open-embedded-editor-source-control"]));
+    case "update-embedded-editor-annotations":
+      return Schema.decodeUnknownEffect(
+        nativeOperationPayloadSchemas["update-embedded-editor-annotations"],
+      )(payload).pipe(Effect.flatMap(client.vscode["update-embedded-editor-annotations"]));
+    case "respond-artifact":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["respond-artifact"])(
+        payload,
+      ).pipe(Effect.flatMap(client.artifacts["respond-artifact"]));
+    case "respond-ui":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["respond-ui"])(payload).pipe(
+        Effect.flatMap(client.artifacts["respond-ui"]),
+      );
+    case "export-artifacts":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["export-artifacts"])(
+        payload,
+      ).pipe(Effect.flatMap(client.artifacts["export-artifacts"]));
+    case "get-customization-state":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["get-customization-state"])(
+        payload,
+      ).pipe(Effect.flatMap(client.plugins["get-customization-state"]));
+    case "get-plugin-authoring-reference":
+      return Schema.decodeUnknownEffect(
+        nativeOperationPayloadSchemas["get-plugin-authoring-reference"],
+      )(payload).pipe(Effect.flatMap(client.plugins["get-plugin-authoring-reference"]));
+    case "list-plugin-files":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["list-plugin-files"])(
+        payload,
+      ).pipe(Effect.flatMap(client.plugins["list-plugin-files"]));
+    case "create-plugin":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["create-plugin"])(
+        payload,
+      ).pipe(Effect.flatMap(client.plugins["create-plugin"]));
+    case "read-plugin-file":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["read-plugin-file"])(
+        payload,
+      ).pipe(Effect.flatMap(client.plugins["read-plugin-file"]));
+    case "write-plugin-file":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["write-plugin-file"])(
+        payload,
+      ).pipe(Effect.flatMap(client.plugins["write-plugin-file"]));
+    case "validate-customization":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["validate-customization"])(
+        payload,
+      ).pipe(Effect.flatMap(client.plugins["validate-customization"]));
+    case "activate-customization":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["activate-customization"])(
+        payload,
+      ).pipe(Effect.flatMap(client.plugins["activate-customization"]));
+    case "rollback-customization":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["rollback-customization"])(
+        payload,
+      ).pipe(Effect.flatMap(client.plugins["rollback-customization"]));
+    case "use-factory-customization":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["use-factory-customization"])(
+        payload,
+      ).pipe(Effect.flatMap(client.plugins["use-factory-customization"]));
+    case "list-plugins":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["list-plugins"])(
+        payload,
+      ).pipe(Effect.flatMap(client.plugins["list-plugins"]));
+    case "set-plugin-enabled":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["set-plugin-enabled"])(
+        payload,
+      ).pipe(Effect.flatMap(client.plugins["set-plugin-enabled"]));
+    case "set-active-scene":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["set-active-scene"])(
+        payload,
+      ).pipe(Effect.flatMap(client.plugins["set-active-scene"]));
+    case "delete-plugin":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["delete-plugin"])(
+        payload,
+      ).pipe(Effect.flatMap(client.plugins["delete-plugin"]));
+    case "compile-inline-widget":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["compile-inline-widget"])(
+        payload,
+      ).pipe(Effect.flatMap(client.plugins["compile-inline-widget"]));
+    case "repair-inline-widget":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["repair-inline-widget"])(
+        payload,
+      ).pipe(Effect.flatMap(client.plugins["repair-inline-widget"]));
+    case "open-plugin-agent":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["open-plugin-agent"])(
+        payload,
+      ).pipe(Effect.flatMap(client.plugins["open-plugin-agent"]));
+    case "prompt-plugin-agent":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["prompt-plugin-agent"])(
+        payload,
+      ).pipe(Effect.flatMap(client.plugins["prompt-plugin-agent"]));
+    case "abort-plugin-agent":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["abort-plugin-agent"])(
+        payload,
+      ).pipe(Effect.flatMap(client.plugins["abort-plugin-agent"]));
+    case "detach-plugin-agent":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["detach-plugin-agent"])(
+        payload,
+      ).pipe(Effect.flatMap(client.plugins["detach-plugin-agent"]));
+    case "run-plugin-completion":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["run-plugin-completion"])(
+        payload,
+      ).pipe(Effect.flatMap(client.plugins["run-plugin-completion"]));
+    case "cancel-plugin-completion":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["cancel-plugin-completion"])(
+        payload,
+      ).pipe(Effect.flatMap(client.plugins["cancel-plugin-completion"]));
+    case "load-plugin-state":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["load-plugin-state"])(
+        payload,
+      ).pipe(Effect.flatMap(client.plugins["load-plugin-state"]));
+    case "save-plugin-state":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["save-plugin-state"])(
+        payload,
+      ).pipe(Effect.flatMap(client.plugins["save-plugin-state"]));
+    case "call-plugin-backend":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["call-plugin-backend"])(
+        payload,
+      ).pipe(Effect.flatMap(client.plugins["call-plugin-backend"]));
+    case "cancel-plugin-backend-call":
+      return Schema.decodeUnknownEffect(
+        nativeOperationPayloadSchemas["cancel-plugin-backend-call"],
+      )(payload).pipe(Effect.flatMap(client.plugins["cancel-plugin-backend-call"]));
+    case "customization-rendered":
+      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["customization-rendered"])(
+        payload,
+      ).pipe(Effect.flatMap(client.plugins["customization-rendered"]));
+    case "customization-runtime-failed":
+      return Schema.decodeUnknownEffect(
+        nativeOperationPayloadSchemas["customization-runtime-failed"],
+      )(payload).pipe(Effect.flatMap(client.plugins["customization-runtime-failed"]));
+    default:
+      return Effect.die(new Error(`The RPC test harness cannot invoke ${type}`));
+  }
 }
 
 const harness = {
-  invokeNative: (input: NativeCommand) => {
-    const parsed = Schema.decodeUnknownSync(nativeCommandSchema)(input);
-    return run(
-      withClient((client) => {
-        const request: RoutedNativeCommand = parsed;
-        const group = routeGroup(request.type);
-        if (!group) throw new Error(`The RPC test harness cannot invoke ${parsed.type}`);
-        const { type: _type, ...payload } = request;
-        const commands = {
-          ...client.electron,
-          ...client.filesystem,
-          ...client.workspaces,
-          ...client.managedWorktrees,
-          ...client.terminals,
-          ...client.vscode,
-          ...client.artifacts,
-          ...client.plugins,
-        };
-        // SAFETY: nativeCommandSchema correlates the route discriminant and payload;
-        // this smoke-only dynamic dispatcher preserves that validated pair.
-        return commands[request.type](payload as never).pipe(Effect.map(widenNativeCommandResult));
-      }),
-    );
+  invokeNative: (input: JsonObject) => {
+    const type = Schema.decodeUnknownSync(Schema.String)(input.type);
+    const payload = { ...input };
+    Reflect.deleteProperty(payload, "type");
+    return run(withClient((client) => invokeSmokeCommand(client, type, payload)));
   },
   getHomeDirectory: () => run(withClient((client) => client.application.getHomeDirectory())),
   getApplicationState: () => run(withClient((client) => client.application.getState())),

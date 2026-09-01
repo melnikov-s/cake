@@ -1,9 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type {
-  CakeRuntime,
-  CakeRuntimeOptions,
-} from "../../../src/services/pi/runtime/cake-runtime";
-import type { NativeEvent } from "../../../src/ipc/native-contract";
+import type { CakeRuntime } from "../../../src/services/pi/runtime/cake-runtime";
 import type { SessionSnapshot } from "../../../src/ipc/session-contract";
 import { PiWorkspaceDriver } from "../../../src/main/pi-workspace-driver";
 

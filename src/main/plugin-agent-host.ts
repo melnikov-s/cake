@@ -16,7 +16,7 @@ import {
   type SessionRef,
   type WorkspaceRef,
 } from "../ipc/plugin-agent-contract";
-import type { NativeEvent } from "../ipc/native-contract";
+import type { NativeEvent } from "../ipc/native-protocol";
 import type { SessionSnapshot, UiPart, UtilityModel } from "../ipc/session-contract";
 import type { PiWorkspaceDriver } from "./pi-workspace-driver";
 

@@ -14,12 +14,7 @@ import {
   webContents,
   type WebContents,
 } from "electron";
-import {
-  nativeEventSchema,
-  type NativeEvent,
-  type NativeCommand,
-  type NativeCommandResult,
-} from "../ipc/native-contract";
+import { nativeEventSchema, type NativeEvent } from "../ipc/native-protocol";
 import { type Attachment } from "../ipc/session-contract";
 import type { SourceLocation } from "../ipc/source-location";
 import { jsonObjectSchema, jsonValueSchema } from "../ipc/json-contract";
@@ -91,6 +86,7 @@ import {
 import { PluginAgentHost } from "./plugin-agent-host";
 import { TerminalManager } from "./terminal-manager";
 import { launchMainApplication, runMainEffect } from "./MainLive";
+import type { NativeServiceOperations } from "../services/native/NativeServices";
 import cakeIconPath from "../assets/cake.png?asset";
 import annotationMenuIconPath from "../assets/menu-annotation.png?asset";
 import chatMenuIconPath from "../assets/menu-chat.png?asset";
@@ -1049,1017 +1045,1008 @@ async function chooseAttachments(window: BrowserWindow): Promise<Attachment[]> {
     }),
   );
 }
-
-async function invokeNativeCommand(
-  connectionId: number,
-  request: NativeCommand,
-): Promise<NativeCommandResult> {
+function requireRendererConnection(connectionId: number): WebContents {
   const sender = webContents.fromId(connectionId);
   if (!sender || sender.isDestroyed()) throw new Error("Renderer connection is no longer active");
-  // SAFETY: executeNativeCommand reads only the trusted sender field supplied here.
-  return executeNativeCommand({ sender } as Electron.IpcMainInvokeEvent, request);
+  return sender;
 }
 
-async function executeNativeCommand(
-  event: Electron.IpcMainInvokeEvent,
-  request: NativeCommand,
-): Promise<NativeCommandResult> {
-  const owner = BrowserWindow.fromWebContents(event.sender);
-  if (request.type === "open-terminal") {
-    if (request.target.kind === "project" && !allowedProjectPaths.has(request.target.workspacePath))
-      throw new Error("Project path was not selected by the user");
-    const cwd =
-      request.target.kind === "project" ? await realpath(request.target.workspacePath) : homedir();
-    const opened = terminals.open(
-      event.sender.id,
-      { kind: request.target.kind, sessionId: request.target.sessionId },
-      cwd,
-      request.cols,
-      request.rows,
-    );
-    return {
-      type: "terminal-opened",
-      requestId: request.requestId,
-      ...opened,
-    };
-  }
-  if (request.type === "write-terminal") {
-    terminals.write(event.sender.id, request.terminalId, request.data);
-    return {
-      type: "accepted",
-      requestId: request.requestId,
-    };
-  }
-  if (request.type === "resize-terminal") {
-    terminals.resize(event.sender.id, request.terminalId, request.cols, request.rows);
-    return {
-      type: "accepted",
-      requestId: request.requestId,
-    };
-  }
-  if (request.type === "get-terminal-status") {
-    return {
-      type: "terminal-status",
-      requestId: request.requestId,
-      runningProgram: terminals.hasRunningProgram(event.sender.id, request.terminalId),
-    };
-  }
-  if (request.type === "close-terminal") {
-    terminals.close(event.sender.id, request.terminalId);
-    return {
-      type: "accepted",
-      requestId: request.requestId,
-    };
-  }
-  if (request.type === "open-external-url") {
-    const url = new URL(request.url);
-    if (url.protocol !== "https:" && url.protocol !== "http:")
-      throw new Error("External links must use HTTP or HTTPS");
-    await shell.openExternal(url.href);
-    return { type: "external-url-opened" };
-  }
-  if (request.type === "show-transcript-selection-context-menu") {
-    if (!owner)
+const nativeOperations = {
+  electron: {
+    "choose-project": async (connectionId) => {
+      const sender = requireRendererConnection(connectionId);
+      const owner = BrowserWindow.fromWebContents(sender);
+      if (!owner) return {};
+      const result = await dialog.showOpenDialog(owner, { properties: ["openDirectory"] });
+      const path = result.canceled ? undefined : result.filePaths[0];
+      if (path) allowedProjectPaths.add(path);
+      return { path };
+    },
+    "open-external-url": async (connectionId, request) => {
+      const url = new URL(request.url);
+      if (url.protocol !== "https:" && url.protocol !== "http:")
+        throw new Error("External links must use HTTP or HTTPS");
+      await shell.openExternal(url.href);
+      return {};
+    },
+    "show-transcript-selection-context-menu": async (connectionId, request) => {
+      const sender = requireRendererConnection(connectionId);
+      const owner = BrowserWindow.fromWebContents(sender);
+      if (!owner) return {};
+      const action = await new Promise<"chat-about-selection" | "add-annotation" | undefined>(
+        (resolve) => {
+          let completed = false;
+          const finish = (selected?: "chat-about-selection" | "add-annotation") => {
+            if (completed) return;
+            completed = true;
+            resolve(selected);
+          };
+          const template: Electron.MenuItemConstructorOptions[] = [{ role: "copy" }];
+          if (request.canAnnotate)
+            template.push(
+              iconMenuEntry({
+                label: "Add annotation",
+                icon: annotationMenuIconPath,
+                click: () => finish("add-annotation"),
+              }),
+            );
+          if (request.canChat)
+            template.push(
+              iconMenuEntry({
+                label: "Chat about this",
+                icon: chatMenuIconPath,
+                click: () => finish("chat-about-selection"),
+              }),
+            );
+          template.push({ role: "selectAll" });
+          Menu.buildFromTemplate(template).popup({ window: owner, callback: () => finish() });
+        },
+      );
       return {
-        type: "transcript-selection-context-menu-closed",
+        action,
       };
-    const action = await new Promise<"chat-about-selection" | "add-annotation" | undefined>(
-      (resolve) => {
+    },
+    "show-composer-context-menu": async (connectionId, request) => {
+      const sender = requireRendererConnection(connectionId);
+      const owner = BrowserWindow.fromWebContents(sender);
+      if (!owner) return {};
+      const action = await new Promise<"reword" | "reword-with-prompt" | undefined>((resolve) => {
         let completed = false;
-        const finish = (selected?: "chat-about-selection" | "add-annotation") => {
+        const finish = (selected?: "reword" | "reword-with-prompt") => {
           if (completed) return;
           completed = true;
           resolve(selected);
         };
-        const template: Electron.MenuItemConstructorOptions[] = [{ role: "copy" }];
-        if (request.canAnnotate)
-          template.push(
-            iconMenuEntry({
-              label: "Add annotation",
-              icon: annotationMenuIconPath,
-              click: () => finish("add-annotation"),
-            }),
-          );
-        if (request.canChat)
-          template.push(
-            iconMenuEntry({
-              label: "Chat about this",
-              icon: chatMenuIconPath,
-              click: () => finish("chat-about-selection"),
-            }),
-          );
-        template.push({ role: "selectAll" });
-        Menu.buildFromTemplate(template).popup({ window: owner, callback: () => finish() });
-      },
-    );
-    return {
-      type: "transcript-selection-context-menu-closed",
-      action,
-    };
-  }
-  if (request.type === "show-composer-context-menu") {
-    if (!owner)
-      return {
-        type: "composer-context-menu-closed",
-      };
-    const action = await new Promise<"reword" | "reword-with-prompt" | undefined>((resolve) => {
-      let completed = false;
-      const finish = (selected?: "reword" | "reword-with-prompt") => {
-        if (completed) return;
-        completed = true;
-        resolve(selected);
-      };
-      const canReword = Boolean(applicationState().utilityModel);
-      Menu.buildFromTemplate([
-        { role: "cut" },
-        { role: "copy" },
-        { role: "paste" },
-        { type: "separator" },
-        {
-          label: "Reword",
-          enabled: canReword,
-          click: () => finish("reword"),
-        },
-        {
-          label: "Reword with Prompt…",
-          enabled: canReword,
-          click: () => finish("reword-with-prompt"),
-        },
-        { type: "separator" },
-        { role: "selectAll" },
-      ]).popup({
-        window: owner,
-        x: request.x,
-        y: request.y,
-        callback: () => finish(),
-      });
-    });
-    return {
-      type: "composer-context-menu-closed",
-      action,
-    };
-  }
-  if (request.type === "reword-composer-selection") {
-    const utilityModel = applicationState().utilityModel;
-    if (!utilityModel)
-      throw new Error("Configure a utility model in Settings before rewording text");
-    const controller = new AbortController();
-    const controllers = composerRewordControllers.get(event.sender.id) ?? new Set();
-    controllers.add(controller);
-    composerRewordControllers.set(event.sender.id, controllers);
-    const workspacePath = await resolveRewordingWorkspace({
-      requestedWorkspace: request.workspacePath,
-      activeWorkspace: windowWorkspaces.get(event.sender.id),
-      allowedWorkspacePaths: allowedProjectPaths,
-    });
-    const signal = AbortSignal.any([
-      controller.signal,
-      AbortSignal.timeout(workspacePath ? 60_000 : 30_000),
-    ]);
-    try {
-      const text = workspacePath
-        ? await rewordSelectionWithProjectContext({
-            workspacePath,
-            agentDir: cakePaths.piAgent,
-            utilityModel,
-            selection: request.selection,
-            guidance: request.prompt,
-            signal,
-          })
-        : await runMainEffect(
-            rewordSelection({
-              selection: utilityModelSelection(utilityModel),
-              text: request.selection,
-              guidance: request.prompt,
-            }),
-            signal,
-          );
-      return {
-        type: "composer-selection-reworded",
-        text,
-      };
-    } finally {
-      controllers.delete(controller);
-      if (controllers.size === 0) composerRewordControllers.delete(event.sender.id);
-    }
-  }
-  if (request.type === "generate-session-title") {
-    const utilityModel = applicationState().utilityModel;
-    if (!utilityModel)
-      return {
-        type: "session-title-generated",
-      };
-    const title = await runMainEffect(
-      generateSessionTitle({
-        selection: utilityModelSelection(utilityModel),
-        firstUserMessage: request.firstUserMessage,
-      }),
-    );
-    return {
-      type: "session-title-generated",
-      title,
-    };
-  }
-  if (request.type === "set-fullscreen-surface-open") {
-    let surfaceIds = fullscreenSurfaces.get(event.sender.id);
-    if (request.open) {
-      if (!surfaceIds) {
-        surfaceIds = new Set();
-        fullscreenSurfaces.set(event.sender.id, surfaceIds);
-      }
-      surfaceIds.add(request.surfaceId);
-    } else if (surfaceIds) {
-      surfaceIds.delete(request.surfaceId);
-      if (surfaceIds.size === 0) fullscreenSurfaces.delete(event.sender.id);
-    }
-    return {
-      type: "accepted",
-      requestId: request.requestId,
-    };
-  }
-  if (request.type === "show-project-context-menu") {
-    if (!owner)
-      return {
-        type: "project-context-menu-closed",
-      };
-    type ProjectMenuAction = "remove-project" | "delete-resolved-worktrees";
-    const action = await new Promise<ProjectMenuAction | undefined>((resolve) => {
-      let completed = false;
-      const finish = (selected?: ProjectMenuAction) => {
-        if (completed) return;
-        completed = true;
-        resolve(selected);
-      };
-      Menu.buildFromTemplate([
-        { label: "Copy Project Path", click: () => clipboard.writeText(request.path) },
-        { type: "separator" },
-        {
-          label: `Delete Resolved Worktrees${request.resolvedWorktreeCount > 0 ? ` (${request.resolvedWorktreeCount})` : ""}`,
-          enabled: request.resolvedWorktreeCount > 0,
-          click: () => finish("delete-resolved-worktrees"),
-        },
-        { type: "separator" },
-        { label: "Remove Project…", click: () => finish("remove-project") },
-      ]).popup({
-        window: owner,
-        x: request.x,
-        y: request.y,
-        callback: () => finish(),
-      });
-    });
-    return {
-      type: "project-context-menu-closed",
-      action,
-    };
-  }
-  if (request.type === "show-session-context-menu") {
-    if (!owner)
-      return {
-        type: "session-context-menu-closed",
-      };
-    type SessionMenuAction = "rename" | "mark-unread" | "resolve" | "unresolve" | "delete";
-    const action = await new Promise<SessionMenuAction | undefined>((resolve) => {
-      let completed = false;
-      const finish = (selected?: SessionMenuAction) => {
-        if (completed) return;
-        completed = true;
-        resolve(selected);
-      };
-      const menu = Menu.buildFromTemplate(
-        request.resolved
-          ? [
-              { label: "Unresolve", click: () => finish("unresolve") },
-              {
-                label: "Copy Session ID",
-                click: () => clipboard.writeText(request.sessionId),
-              },
-              { type: "separator" },
-              { label: "Delete", click: () => finish("delete") },
-            ]
-          : [
-              { label: "Rename", click: () => finish("rename") },
-              ...(request.unread === false
-                ? [
-                    {
-                      label: "Mark as Unread",
-                      click: () => finish("mark-unread"),
-                    } as const,
-                  ]
-                : []),
-              {
-                label: "Copy Session ID",
-                click: () => clipboard.writeText(request.sessionId),
-              },
-              { label: "Resolve", click: () => finish("resolve") },
-            ],
-      );
-      openSessionContextMenus.add(menu);
-      menu.popup({
-        window: owner,
-        x: request.x,
-        y: request.y,
-        callback: () => {
-          openSessionContextMenus.delete(menu);
-          finish();
-        },
-      });
-    });
-    return {
-      type: "session-context-menu-closed",
-      action,
-    };
-  }
-  if (request.type === "set-session-unread") {
-    const state = await runMainEffect(setSessionUnread(request.sessionId, request.unread));
-    broadcast({ type: "application-state-changed", state });
-    return {
-      type: "application-state-updated",
-      state,
-    };
-  }
-  if (request.type === "set-vscode-server-path") {
-    const state = await runMainEffect(setVscodeServerPath(request.path));
-    await vscodeEditor.refreshStatus();
-    return {
-      type: "application-state-updated",
-      state,
-    };
-  }
-  if (request.type === "get-embedded-editor-state")
-    return {
-      type: "embedded-editor-state-loaded",
-      ...vscodeEditor.snapshotState(),
-    };
-  if (request.type === "install-embedded-editor") {
-    await vscodeEditor.install();
-    return {
-      type: "accepted",
-      requestId: request.requestId,
-    };
-  }
-  if (request.type === "open-embedded-editor") {
-    if (!allowedProjectPaths.has(request.workspacePath))
-      throw new Error("Project path was not selected by the user");
-    await vscodeEditor.open(
-      event.sender.id,
-      () => BrowserWindow.fromWebContents(event.sender),
-      request.workspacePath,
-    );
-    return {
-      type: "accepted",
-      requestId: request.requestId,
-    };
-  }
-  if (request.type === "update-embedded-editor-bounds") {
-    const window = BrowserWindow.fromWebContents(event.sender);
-    if (window)
-      centerTrafficLights(
-        window,
-        request.visible ? VSCODE_TITLE_BAR_HEIGHT : CAKE_TITLE_BAR_HEIGHT,
-      );
-    vscodeEditor.updateBounds(event.sender.id, request);
-    return {
-      type: "accepted",
-      requestId: request.requestId,
-    };
-  }
-  if (request.type === "reveal-in-embedded-editor") {
-    if (!allowedProjectPaths.has(request.workspacePath))
-      throw new Error("Project path was not selected by the user");
-    const { workspace, target } = await resolveWorkspaceEditorTarget(
-      request.workspacePath,
-      request.location.path,
-    );
-    await vscodeEditor.reveal(workspace, {
-      ...request.location,
-      path: relative(workspace, target),
-    });
-    return {
-      type: "accepted",
-      requestId: request.requestId,
-    };
-  }
-  if (request.type === "open-embedded-editor-source-control") {
-    if (!allowedProjectPaths.has(request.workspacePath))
-      throw new Error("Project path was not selected by the user");
-    await vscodeEditor.openSourceControl(request.workspacePath);
-    return {
-      type: "accepted",
-      requestId: request.requestId,
-    };
-  }
-  if (request.type === "update-embedded-editor-annotations") {
-    if (!allowedProjectPaths.has(request.workspacePath))
-      throw new Error("Project path was not selected by the user");
-    const workspace = await realpath(request.workspacePath);
-    const normalized = await Promise.allSettled(
-      request.snapshot.annotations.map(async (annotation) => {
-        const { target } = await resolveWorkspaceEditorTarget(workspace, annotation.location.path);
-        return {
-          ...annotation,
-          location: {
-            ...annotation.location,
-            path: relative(workspace, target).split(sep).join("/"),
+        const canReword = Boolean(applicationState().utilityModel);
+        Menu.buildFromTemplate([
+          { role: "cut" },
+          { role: "copy" },
+          { role: "paste" },
+          { type: "separator" },
+          {
+            label: "Reword",
+            enabled: canReword,
+            click: () => finish("reword"),
           },
+          {
+            label: "Reword with Prompt…",
+            enabled: canReword,
+            click: () => finish("reword-with-prompt"),
+          },
+          { type: "separator" },
+          { role: "selectAll" },
+        ]).popup({
+          window: owner,
+          x: request.x,
+          y: request.y,
+          callback: () => finish(),
+        });
+      });
+      return {
+        action,
+      };
+    },
+    "show-session-context-menu": async (connectionId, request) => {
+      const sender = requireRendererConnection(connectionId);
+      const owner = BrowserWindow.fromWebContents(sender);
+      if (!owner) return {};
+      type SessionMenuAction = "rename" | "mark-unread" | "resolve" | "unresolve" | "delete";
+      const action = await new Promise<SessionMenuAction | undefined>((resolve) => {
+        let completed = false;
+        const finish = (selected?: SessionMenuAction) => {
+          if (completed) return;
+          completed = true;
+          resolve(selected);
         };
-      }),
-    );
-    await vscodeEditor.updateAnnotations(workspace, {
-      sessionId: request.snapshot.sessionId,
-      annotations: normalized.flatMap((item) => (item.status === "fulfilled" ? [item.value] : [])),
-    });
-    return {
-      type: "accepted",
-      requestId: request.requestId,
-    };
-  }
-  if (request.type === "get-customization-state")
-    return {
-      type: "customization-state",
-      state: pluginActivation.snapshot(),
-    };
-  if (request.type === "get-plugin-authoring-reference")
-    return {
-      type: "plugin-authoring-reference",
-      reference: await pluginActivation.builder.authoringReference(),
-    };
-  if (request.type === "list-plugin-files")
-    return {
-      type: "plugin-files",
-      ...(await pluginActivation.builder.repository.authoringSnapshot()),
-    };
-  if (request.type === "create-plugin")
-    return {
-      type: "plugin-files",
-      ...(await pluginActivation.builder.repository.createPlugin(
-        {
-          id: request.pluginId,
-          name: request.name,
-          renderer: request.renderer,
-          backend: request.backend,
-          scene: request.scene,
-        },
-        request.expectedWorkingRevision,
-      )),
-    };
-  if (request.type === "read-plugin-file")
-    return {
-      type: "plugin-file",
-      pluginId: request.pluginId,
-      path: request.path,
-      content: await pluginActivation.builder.repository.readPluginFile(
-        request.pluginId,
-        request.path,
-      ),
-    };
-  if (request.type === "write-plugin-file")
-    return {
-      type: "plugin-files",
-      ...(await pluginActivation.builder.repository.writePluginFile(
-        request.pluginId,
-        request.path,
-        request.content,
-        request.expectedWorkingRevision,
-      )),
-    };
-  if (request.type === "validate-customization") {
-    const candidate = await pluginActivation.validate(
-      request.expectedBaseRevision,
-      request.request,
-      request.expectedSourceRevision,
-    );
-    const response = {
-      type: "customization-validation",
-      revision: candidate.revision,
-      sourceRevision: candidate.sourceRevision,
-      diagnostics: candidate.diagnostics,
-      valid: candidate.diagnostics.length === 0,
-    } satisfies NativeCommandResult;
-    broadcast({ type: "customization-state-changed", state: pluginActivation.snapshot() });
-    if (candidate.diagnostics.length) refreshCakeChatApplicationContext();
-    return response;
-  }
-  if (request.type === "activate-customization") {
-    const candidate = await pluginActivation.activateValidated(
-      request.revision,
-      request.expectedSourceRevision,
-      request.request,
-    );
-    try {
-      await pluginBackends.activate(candidate.revision);
-    } catch (error) {
-      const diagnostic = {
-        phase: "backend" as const,
-        message: error instanceof Error ? error.message : String(error),
-      };
-      await pluginActivation.fail(candidate.revision, diagnostic);
-      broadcast({ type: "customization-state-changed", state: pluginActivation.snapshot() });
-      refreshCakeChatApplicationContext();
-      throw error;
-    }
-    const response = {
-      type: "customization-activation",
-      revision: candidate.revision,
-      activating: true,
-    } satisfies NativeCommandResult;
-    broadcast({ type: "customization-state-changed", state: pluginActivation.snapshot() });
-    await refreshPluginAgentResources();
-    reloadAllAfterResponse({
-      kind: "custom",
-      revision: candidate.revision,
-      path: candidate.indexHtml,
-    });
-    return response;
-  }
-  if (request.type === "customization-rendered") {
-    if (windowCustomizationRevisions.get(event.sender.id) !== request.revision)
-      throw new Error("Customization health report does not match this window");
-    const current = pluginActivation.snapshot();
-    const activating = current.pendingRevision === request.revision;
-    if (activating) await pluginActivation.markHealthy(request.revision);
-    else if (current.activeRevision !== request.revision)
-      throw new Error("Customization revision is not active");
-    const healthTimer = customizationHealthTimers.get(event.sender.id);
-    if (healthTimer) clearTimeout(healthTimer);
-    customizationHealthTimers.delete(event.sender.id);
-    if (activating) refreshCakeChatApplicationContext();
-    broadcast({ type: "customization-state-changed", state: pluginActivation.snapshot() });
-    return {
-      type: "customization-state",
-      state: pluginActivation.snapshot(),
-    };
-  }
-  if (request.type === "customization-runtime-failed") {
-    await pluginBackends.stop();
-    await pluginActivation.fail(request.revision, { phase: "runtime", message: request.message });
-    refreshCakeChatApplicationContext();
-    broadcast({ type: "customization-state-changed", state: pluginActivation.snapshot() });
-    reloadAllAfterResponse({ kind: "factory" });
-    return {
-      type: "customization-state",
-      state: pluginActivation.snapshot(),
-    };
-  }
-  if (request.type === "rollback-customization") {
-    const revision = await pluginActivation.rollback();
-    try {
-      await pluginBackends.activate(revision);
-    } catch (error) {
-      await pluginActivation.fail(revision, {
-        phase: "backend",
-        message: error instanceof Error ? error.message : String(error),
+        const menu = Menu.buildFromTemplate(
+          request.resolved
+            ? [
+                { label: "Unresolve", click: () => finish("unresolve") },
+                {
+                  label: "Copy Session ID",
+                  click: () => clipboard.writeText(request.sessionId),
+                },
+                { type: "separator" },
+                { label: "Delete", click: () => finish("delete") },
+              ]
+            : [
+                { label: "Rename", click: () => finish("rename") },
+                ...(request.unread === false
+                  ? [
+                      {
+                        label: "Mark as Unread",
+                        click: () => finish("mark-unread"),
+                      } as const,
+                    ]
+                  : []),
+                {
+                  label: "Copy Session ID",
+                  click: () => clipboard.writeText(request.sessionId),
+                },
+                { label: "Resolve", click: () => finish("resolve") },
+              ],
+        );
+        openSessionContextMenus.add(menu);
+        menu.popup({
+          window: owner,
+          x: request.x,
+          y: request.y,
+          callback: () => {
+            openSessionContextMenus.delete(menu);
+            finish();
+          },
+        });
       });
-      refreshCakeChatApplicationContext();
-      reloadAllAfterResponse({ kind: "factory" });
       return {
-        type: "customization-state",
-        state: pluginActivation.snapshot(),
+        action,
       };
-    }
-    refreshCakeChatApplicationContext();
-    const renderer = revision
-      ? { kind: "custom" as const, revision, path: pluginActivation.buildPath(revision) }
-      : { kind: "factory" as const };
-    reloadAllAfterResponse(renderer);
-    return {
-      type: "customization-state",
-      state: pluginActivation.snapshot(),
-    };
-  }
-  if (request.type === "use-factory-customization") {
-    await pluginActivation.useFactory();
-    await pluginBackends.stop();
-    refreshCakeChatApplicationContext();
-    reloadAllAfterResponse({ kind: "factory" });
-    return {
-      type: "customization-state",
-      state: pluginActivation.snapshot(),
-    };
-  }
-  if (request.type === "list-plugins")
-    return {
-      type: "plugins-listed",
-      plugins: await pluginActivation.builder.repository.listPluginStatuses(),
-    };
-  if (request.type === "set-active-scene")
-    return {
-      type: "plugins-listed",
-      plugins: await pluginActivation.builder.repository.setActiveScene(request.pluginId),
-    };
-  if (request.type === "set-plugin-enabled") {
-    const plugins = await pluginActivation.builder.repository.setEnabled(
-      request.pluginId,
-      request.enabled,
-    );
-    await refreshPluginAgentResources();
-    await rebuildAfterPluginConfigurationChange(
-      `${request.enabled ? "Enable" : "Disable"} plugin ${request.pluginId}`,
-    );
-    return { type: "plugins-listed", plugins };
-  }
-  if (request.type === "delete-plugin") {
-    const { wasEnabled, plugins } = await pluginActivation.builder.repository.deletePlugin(
-      request.pluginId,
-    );
-    await refreshPluginAgentResources();
-    if (wasEnabled) {
-      await pluginBackends.stop();
-      await pluginActivation.fail(pluginActivation.snapshot().activeRevision, {
-        phase: "discovery",
-        pluginId: request.pluginId,
-        message: `Plugin ${request.pluginId} was deleted. Rebuild the customization to activate the remaining plugins.`,
+    },
+    "show-project-context-menu": async (connectionId, request) => {
+      const sender = requireRendererConnection(connectionId);
+      const owner = BrowserWindow.fromWebContents(sender);
+      if (!owner) return {};
+      type ProjectMenuAction = "remove-project" | "delete-resolved-worktrees";
+      const action = await new Promise<ProjectMenuAction | undefined>((resolve) => {
+        let completed = false;
+        const finish = (selected?: ProjectMenuAction) => {
+          if (completed) return;
+          completed = true;
+          resolve(selected);
+        };
+        Menu.buildFromTemplate([
+          { label: "Copy Project Path", click: () => clipboard.writeText(request.path) },
+          { type: "separator" },
+          {
+            label: `Delete Resolved Worktrees${request.resolvedWorktreeCount > 0 ? ` (${request.resolvedWorktreeCount})` : ""}`,
+            enabled: request.resolvedWorktreeCount > 0,
+            click: () => finish("delete-resolved-worktrees"),
+          },
+          { type: "separator" },
+          { label: "Remove Project…", click: () => finish("remove-project") },
+        ]).popup({
+          window: owner,
+          x: request.x,
+          y: request.y,
+          callback: () => finish(),
+        });
       });
-      refreshCakeChatApplicationContext();
-      reloadAllAfterResponse({ kind: "factory" });
-    }
-    return { type: "plugins-listed", plugins };
-  }
-  if (request.type === "load-plugin-state") {
-    return {
-      type: "plugin-state",
-      record: await pluginPersistence.read(request.pluginId, request.key, request.scope),
-    };
-  }
-  if (request.type === "save-plugin-state") {
-    const rendererRevision =
-      windowCustomizationRevisions.get(event.sender.id) ??
-      pluginActivation.snapshot().activeRevision;
-    return {
-      type: "plugin-state",
-      record: await pluginPersistence.write(
-        request.pluginId,
-        request.key,
-        request.scope,
-        request.value,
-        request.expectedVersion,
-        rendererRevision,
-      ),
-    };
-  }
-  if (request.type === "call-plugin-backend") {
-    try {
-      const value = await pluginBackends.call(
-        request.pluginId,
-        request.callId,
-        request.method,
-        request.input,
-      );
       return {
-        type: "plugin-backend-result",
-        callId: request.callId,
-        ok: true,
-        value,
+        action,
       };
-    } catch (error) {
+    },
+    "set-fullscreen-surface-open": async (connectionId, request) => {
+      const sender = requireRendererConnection(connectionId);
+      let surfaceIds = fullscreenSurfaces.get(sender.id);
+      if (request.open) {
+        if (!surfaceIds) {
+          surfaceIds = new Set();
+          fullscreenSurfaces.set(sender.id, surfaceIds);
+        }
+        surfaceIds.add(request.surfaceId);
+      } else if (surfaceIds) {
+        surfaceIds.delete(request.surfaceId);
+        if (surfaceIds.size === 0) fullscreenSurfaces.delete(sender.id);
+      }
       return {
-        type: "plugin-backend-result",
-        callId: request.callId,
-        ok: false,
-        error: error instanceof Error ? error.message : String(error),
+        requestId: request.requestId,
       };
-    }
-  }
-  if (request.type === "cancel-plugin-backend-call") {
-    pluginBackends.cancel(request.pluginId, request.callId);
-    return {
-      type: "accepted",
-      requestId: request.callId,
-    };
-  }
-  if (request.type === "open-plugin-agent") {
-    if (!owner) throw new Error("Plugin agents require an application window");
-    return {
-      type: "plugin-agent-snapshot",
-      snapshot: await pluginAgents.open(
-        event.sender,
-        request.pluginId,
-        request.options,
-        request.implicitSession,
-      ),
-    };
-  }
-  if (request.type === "prompt-plugin-agent") {
-    if (!owner) throw new Error("Plugin agents require an application window");
-    return {
-      type: "plugin-agent-snapshot",
-      snapshot: await pluginAgents.command(
-        event.sender,
-        request.pluginId,
-        request.handleId,
-        request.delivery,
-        request.text,
-      ),
-    };
-  }
-  if (request.type === "abort-plugin-agent") {
-    if (!owner) throw new Error("Plugin agents require an application window");
-    return {
-      type: "plugin-agent-snapshot",
-      snapshot: await pluginAgents.abort(event.sender, request.pluginId, request.handleId),
-    };
-  }
-  if (request.type === "detach-plugin-agent") {
-    if (!owner) throw new Error("Plugin agents require an application window");
-    pluginAgents.detach(event.sender, request.pluginId, request.handleId);
-    return {
-      type: "plugin-agent-detached",
-      handleId: request.handleId,
-    };
-  }
-  if (request.type === "run-plugin-completion") {
-    const key = `${event.sender.id}:${request.pluginId}:${request.requestId}`;
-    const controller = new AbortController();
-    pluginCompletionControllers.set(key, controller);
-    try {
-      const result = await pluginAgents.complete(
-        request.pluginId,
-        request.request,
-        request.implicitSession,
+    },
+  },
+  filesystem: {
+    "choose-attachments": async (connectionId) => {
+      const sender = requireRendererConnection(connectionId);
+      const owner = BrowserWindow.fromWebContents(sender);
+      return {
+        attachments: owner ? await chooseAttachments(owner) : [],
+      };
+    },
+    "suggest-files": async (connectionId, request) => {
+      if (!allowedProjectPaths.has(request.workspacePath))
+        throw new Error("Project path was not selected by the user");
+      return {
+        suggestions: await suggestProjectFiles({
+          cwd: request.workspacePath,
+          prefix: request.prefix,
+          agentDir: cakePaths.piAgent,
+        }),
+      };
+    },
+    "read-workspace-file": async (connectionId, request) => {
+      if (!allowedProjectPaths.has(request.workspacePath))
+        throw new Error("Project path was not selected by the user");
+      if (isAbsolute(request.path)) throw new Error("Workspace file path must be relative");
+      const workspace = await realpath(request.workspacePath);
+      const target = await realpath(resolve(workspace, request.path));
+      const relativePath = relative(workspace, target);
+      if (!relativePath || relativePath.startsWith("..") || isAbsolute(relativePath))
+        throw new Error("File is outside the selected project");
+      const content = await readFile(target, "utf8");
+      if (content.length > 2_000_000) throw new Error("File is too large to display");
+      return { content };
+    },
+  },
+  workspaces: {
+    "reword-composer-selection": async (connectionId, request) => {
+      const sender = requireRendererConnection(connectionId);
+      const utilityModel = applicationState().utilityModel;
+      if (!utilityModel)
+        throw new Error("Configure a utility model in Settings before rewording text");
+      const controller = new AbortController();
+      const controllers = composerRewordControllers.get(sender.id) ?? new Set();
+      controllers.add(controller);
+      composerRewordControllers.set(sender.id, controllers);
+      const workspacePath = await resolveRewordingWorkspace({
+        requestedWorkspace: request.workspacePath,
+        activeWorkspace: windowWorkspaces.get(sender.id),
+        allowedWorkspacePaths: allowedProjectPaths,
+      });
+      const signal = AbortSignal.any([
         controller.signal,
+        AbortSignal.timeout(workspacePath ? 60_000 : 30_000),
+      ]);
+      try {
+        const text = workspacePath
+          ? await rewordSelectionWithProjectContext({
+              workspacePath,
+              agentDir: cakePaths.piAgent,
+              utilityModel,
+              selection: request.selection,
+              guidance: request.prompt,
+              signal,
+            })
+          : await runMainEffect(
+              rewordSelection({
+                selection: utilityModelSelection(utilityModel),
+                text: request.selection,
+                guidance: request.prompt,
+              }),
+              signal,
+            );
+        return {
+          text,
+        };
+      } finally {
+        controllers.delete(controller);
+        if (controllers.size === 0) composerRewordControllers.delete(sender.id);
+      }
+    },
+    "generate-session-title": async (connectionId, request) => {
+      const utilityModel = applicationState().utilityModel;
+      if (!utilityModel) return {};
+      const title = await runMainEffect(
+        generateSessionTitle({
+          selection: utilityModelSelection(utilityModel),
+          firstUserMessage: request.firstUserMessage,
+        }),
       );
       return {
-        type: "plugin-completion-result",
+        title,
+      };
+    },
+    "set-utility-model": async (connectionId, request) => {
+      const state = await runMainEffect(setUtilityModel(request.model));
+      return {
+        state,
+      };
+    },
+    "register-project": async (connectionId, request) => {
+      if (!allowedProjectPaths.has(request.path))
+        throw new Error("Project path was not selected by the user");
+      const worktreeRecords = await worktrees.records();
+      // Managed worktrees belong to their parent project; never register them as projects.
+      if (worktreeRecords.some((entry) => entry.worktreePath === request.path))
+        return {
+          state: applicationState(),
+        };
+      const state = await runMainEffect(upsertProject(request.path, request.name));
+      for (const record of worktreeRecords)
+        if (record.projectPath === request.path) allowedProjectPaths.add(record.worktreePath);
+      return {
+        state,
+      };
+    },
+    "rename-project": async (connectionId, request) => {
+      if (!allowedProjectPaths.has(request.path))
+        throw new Error("Project path was not selected by the user");
+      const state = await runMainEffect(renameProject(request.path, request.name));
+      return {
+        state,
+      };
+    },
+    "remove-project": async (connectionId, request) => {
+      if (!allowedProjectPaths.has(request.path))
+        throw new Error("Project path was not selected by the user");
+      const projectWorktrees = (await worktrees.records()).filter(
+        (record) => record.projectPath === request.path,
+      );
+      if (request.deleteSessions) await deleteProjectSessions(request.path, projectWorktrees);
+      const projectWorkspacePaths = new Set([
+        request.path,
+        ...projectWorktrees.map((record) => record.worktreePath),
+      ]);
+      for (const workspacePath of projectWorkspacePaths) {
+        allowedProjectPaths.delete(workspacePath);
+        const host = piHosts.get(workspacePath);
+        if (host) {
+          piHosts.delete(workspacePath);
+          host.driver[Symbol.dispose]();
+          setPiState(host, "stopped");
+        }
+      }
+      for (const [sessionId, workspacePath] of sessionWorkspacePaths)
+        if (projectWorkspacePaths.has(workspacePath)) sessionWorkspacePaths.delete(sessionId);
+      for (const [webContentsId, workspacePath] of windowWorkspaces)
+        if (projectWorkspacePaths.has(workspacePath)) windowWorkspaces.delete(webContentsId);
+      const state = await runMainEffect(removeProject(request.path));
+      return {
+        state,
+      };
+    },
+    "delete-session": async (connectionId, request) => {
+      await deleteProjectSession(request.sessionId);
+      return {
+        state: applicationState(),
+      };
+    },
+    "set-session-unread": async (connectionId, request) => {
+      const state = await runMainEffect(setSessionUnread(request.sessionId, request.unread));
+      broadcast({ type: "application-state-changed", state });
+      return {
+        state,
+      };
+    },
+    "restart-pi": async (connectionId, request) => {
+      if (!allowedProjectPaths.has(request.path))
+        throw new Error("Project path was not selected by the user");
+      const old = piHosts.get(request.path);
+      if (old) {
+        piHosts.delete(request.path);
+        old.driver[Symbol.dispose]();
+        setPiState(old, "stopped");
+      }
+      launchPi(request.path);
+      return {
+        requestId: crypto.randomUUID(),
+      };
+    },
+    "inspect-workspace": async (connectionId, request) => {
+      const sender = requireRendererConnection(connectionId);
+      const path = request.path;
+      if (!allowedProjectPaths.has(path))
+        throw new Error("Project path was not selected by the user");
+      const inspection = inspectWorkspace(path);
+      const trustRequired = inspection.trustRequired && !isProjectTrusted(path);
+      const key = `${sender.id}:${request.requestId}`;
+      clearPendingTrustRequests(sender.id);
+      windowWorkspaces.set(sender.id, path);
+      if (trustRequired) pendingTrustRequests.set(key, path);
+      sendTo(sender, {
+        type: "workspace-inspected",
+        requestId: request.requestId,
+        path,
+        trustRequired,
+      });
+      return {
+        requestId: request.requestId,
+      };
+    },
+    "respond-workspace-trust": async (connectionId, request) => {
+      const sender = requireRendererConnection(connectionId);
+      if (!allowedProjectPaths.has(request.path))
+        throw new Error("Project path was not selected by the user");
+      const key = `${sender.id}:${request.requestId}`;
+      if (pendingTrustRequests.get(key) !== request.path)
+        throw new Error("Workspace trust request is no longer pending");
+      pendingTrustRequests.delete(key);
+      if (request.approved) await runMainEffect(trustProject(request.path));
+      return {
+        requestId: request.requestId,
+      };
+    },
+  },
+  managedWorktrees: {
+    "create-worktree": async (connectionId, request) => {
+      if (!allowedProjectPaths.has(request.path))
+        throw new Error("Project path was not selected by the user");
+      let worktreeName = request.worktreeName;
+      const utilityModel = applicationState().utilityModel;
+      if (!worktreeName && request.firstUserMessage && utilityModel) {
+        const signal = AbortSignal.timeout(15_000);
+        try {
+          worktreeName = await runMainEffect(
+            generateWorktreeName({
+              selection: utilityModelSelection(utilityModel),
+              firstUserMessage: request.firstUserMessage,
+            }),
+            signal,
+          );
+        } catch {
+          // Worktree naming is advisory. The service's random name remains the fallback.
+        }
+      }
+      const record = await worktrees.create(request.path, request.baseWorktreePath, worktreeName);
+      allowedProjectPaths.add(record.worktreePath);
+      if (isProjectTrusted(record.projectPath))
+        await runMainEffect(trustProject(record.worktreePath));
+      return {
+        requestId: request.requestId,
+        record,
+      };
+    },
+    "get-worktree-status": async (connectionId, request) => {
+      return {
+        status: await worktrees.status(request.workspacePath),
+      };
+    },
+    "land-worktree": async (connectionId, request) => {
+      await requireWorktreeRecord(request.workspacePath);
+      const result = await worktrees.land(request.workspacePath, { request: request.request });
+      return {
         requestId: request.requestId,
         result,
       };
-    } finally {
-      if (pluginCompletionControllers.get(key) === controller)
-        pluginCompletionControllers.delete(key);
-    }
-  }
-  if (request.type === "cancel-plugin-completion") {
-    pluginCompletionControllers
-      .get(`${event.sender.id}:${request.pluginId}:${request.requestId}`)
-      ?.abort();
-    return {
-      type: "accepted",
-      requestId: request.requestId,
-    };
-  }
-  if (request.type === "choose-project") {
-    if (!owner) return { type: "project-chosen" };
-    const result = await dialog.showOpenDialog(owner, { properties: ["openDirectory"] });
-    const path = result.canceled ? undefined : result.filePaths[0];
-    if (path) allowedProjectPaths.add(path);
-    return { type: "project-chosen", path };
-  }
-  if (request.type === "choose-attachments")
-    return {
-      type: "attachments-chosen",
-      attachments: owner ? await chooseAttachments(owner) : [],
-    };
-  if (request.type === "suggest-files") {
-    if (!allowedProjectPaths.has(request.workspacePath))
-      throw new Error("Project path was not selected by the user");
-    return {
-      type: "file-suggestions",
-      suggestions: await suggestProjectFiles({
-        cwd: request.workspacePath,
-        prefix: request.prefix,
-        agentDir: cakePaths.piAgent,
-      }),
-    };
-  }
-  if (request.type === "read-workspace-file") {
-    if (!allowedProjectPaths.has(request.workspacePath))
-      throw new Error("Project path was not selected by the user");
-    if (isAbsolute(request.path)) throw new Error("Workspace file path must be relative");
-    const workspace = await realpath(request.workspacePath);
-    const target = await realpath(resolve(workspace, request.path));
-    const relativePath = relative(workspace, target);
-    if (!relativePath || relativePath.startsWith("..") || isAbsolute(relativePath))
-      throw new Error("File is outside the selected project");
-    const content = await readFile(target, "utf8");
-    if (content.length > 2_000_000) throw new Error("File is too large to display");
-    return { type: "workspace-file", content };
-  }
-  if (request.type === "compile-inline-widget") {
-    const compiled = await compileInlineWidget(
-      request.language,
-      request.source,
-      request.capability,
-    );
-    return {
-      type: "inline-widget-compiled",
-      widget: publishInlineWidget(compiled),
-    };
-  }
-  if (request.type === "set-utility-model") {
-    const state = await runMainEffect(setUtilityModel(request.model));
-    return {
-      type: "application-state-updated",
-      state,
-    };
-  }
-  if (request.type === "register-project") {
-    if (!allowedProjectPaths.has(request.path))
-      throw new Error("Project path was not selected by the user");
-    const worktreeRecords = await worktrees.records();
-    // Managed worktrees belong to their parent project; never register them as projects.
-    if (worktreeRecords.some((entry) => entry.worktreePath === request.path))
+    },
+    "discard-worktree": async (connectionId, request) => {
+      await requireWorktreeRecord(request.workspacePath, new Set(["active", "landed"]));
+      await worktrees.discard(request.workspacePath, request.keepBranch);
       return {
-        type: "application-state-updated",
-        state: applicationState(),
+        requestId: request.requestId,
       };
-    const state = await runMainEffect(upsertProject(request.path, request.name));
-    for (const record of worktreeRecords)
-      if (record.projectPath === request.path) allowedProjectPaths.add(record.worktreePath);
-    return {
-      type: "application-state-updated",
-      state,
-    };
-  }
-  if (request.type === "rename-project") {
-    if (!allowedProjectPaths.has(request.path))
-      throw new Error("Project path was not selected by the user");
-    const state = await runMainEffect(renameProject(request.path, request.name));
-    return {
-      type: "application-state-updated",
-      state,
-    };
-  }
-  if (request.type === "remove-project") {
-    if (!allowedProjectPaths.has(request.path))
-      throw new Error("Project path was not selected by the user");
-    const projectWorktrees = (await worktrees.records()).filter(
-      (record) => record.projectPath === request.path,
-    );
-    if (request.deleteSessions) await deleteProjectSessions(request.path, projectWorktrees);
-    const projectWorkspacePaths = new Set([
-      request.path,
-      ...projectWorktrees.map((record) => record.worktreePath),
-    ]);
-    for (const workspacePath of projectWorkspacePaths) {
-      allowedProjectPaths.delete(workspacePath);
-      const host = piHosts.get(workspacePath);
-      if (host) {
-        piHosts.delete(workspacePath);
-        host.driver[Symbol.dispose]();
-        setPiState(host, "stopped");
-      }
-    }
-    for (const [sessionId, workspacePath] of sessionWorkspacePaths)
-      if (projectWorkspacePaths.has(workspacePath)) sessionWorkspacePaths.delete(sessionId);
-    for (const [webContentsId, workspacePath] of windowWorkspaces)
-      if (projectWorkspacePaths.has(workspacePath)) windowWorkspaces.delete(webContentsId);
-    const state = await runMainEffect(removeProject(request.path));
-    return {
-      type: "application-state-updated",
-      state,
-    };
-  }
-  if (request.type === "delete-session") {
-    await deleteProjectSession(request.sessionId);
-    return {
-      type: "application-state-updated",
-      state: applicationState(),
-    };
-  }
-  if (request.type === "restart-pi") {
-    if (!allowedProjectPaths.has(request.path))
-      throw new Error("Project path was not selected by the user");
-    const old = piHosts.get(request.path);
-    if (old) {
-      piHosts.delete(request.path);
-      old.driver[Symbol.dispose]();
-      setPiState(old, "stopped");
-    }
-    launchPi(request.path);
-    return {
-      type: "accepted",
-      requestId: crypto.randomUUID(),
-    };
-  }
-  if (request.type === "respond-workspace-trust") {
-    if (!allowedProjectPaths.has(request.path))
-      throw new Error("Project path was not selected by the user");
-    const key = `${event.sender.id}:${request.requestId}`;
-    if (pendingTrustRequests.get(key) !== request.path)
-      throw new Error("Workspace trust request is no longer pending");
-    pendingTrustRequests.delete(key);
-    if (request.approved) await runMainEffect(trustProject(request.path));
-    return {
-      type: "accepted",
-      requestId: request.requestId,
-    };
-  }
-  if (request.type === "create-worktree") {
-    if (!allowedProjectPaths.has(request.path))
-      throw new Error("Project path was not selected by the user");
-    let worktreeName = request.worktreeName;
-    const utilityModel = applicationState().utilityModel;
-    if (!worktreeName && request.firstUserMessage && utilityModel) {
-      const signal = AbortSignal.timeout(15_000);
-      try {
-        worktreeName = await runMainEffect(
-          generateWorktreeName({
-            selection: utilityModelSelection(utilityModel),
-            firstUserMessage: request.firstUserMessage,
-          }),
-          signal,
+    },
+  },
+  terminals: {
+    "open-terminal": async (connectionId, request) => {
+      const sender = requireRendererConnection(connectionId);
+      if (
+        request.target.kind === "project" &&
+        !allowedProjectPaths.has(request.target.workspacePath)
+      )
+        throw new Error("Project path was not selected by the user");
+      const cwd =
+        request.target.kind === "project"
+          ? await realpath(request.target.workspacePath)
+          : homedir();
+      const opened = terminals.open(
+        sender.id,
+        { kind: request.target.kind, sessionId: request.target.sessionId },
+        cwd,
+        request.cols,
+        request.rows,
+      );
+      return {
+        requestId: request.requestId,
+        ...opened,
+      };
+    },
+    "write-terminal": async (connectionId, request) => {
+      const sender = requireRendererConnection(connectionId);
+      terminals.write(sender.id, request.terminalId, request.data);
+      return {
+        requestId: request.requestId,
+      };
+    },
+    "resize-terminal": async (connectionId, request) => {
+      const sender = requireRendererConnection(connectionId);
+      terminals.resize(sender.id, request.terminalId, request.cols, request.rows);
+      return {
+        requestId: request.requestId,
+      };
+    },
+    "get-terminal-status": async (connectionId, request) => {
+      const sender = requireRendererConnection(connectionId);
+      return {
+        requestId: request.requestId,
+        runningProgram: terminals.hasRunningProgram(sender.id, request.terminalId),
+      };
+    },
+    "close-terminal": async (connectionId, request) => {
+      const sender = requireRendererConnection(connectionId);
+      terminals.close(sender.id, request.terminalId);
+      return {
+        requestId: request.requestId,
+      };
+    },
+  },
+  vscode: {
+    "get-embedded-editor-state": async () => {
+      return {
+        ...vscodeEditor.snapshotState(),
+      };
+    },
+    "set-vscode-server-path": async (connectionId, request) => {
+      const state = await runMainEffect(setVscodeServerPath(request.path));
+      await vscodeEditor.refreshStatus();
+      return {
+        state,
+      };
+    },
+    "install-embedded-editor": async (connectionId, request) => {
+      await vscodeEditor.install();
+      return {
+        requestId: request.requestId,
+      };
+    },
+    "open-embedded-editor": async (connectionId, request) => {
+      const sender = requireRendererConnection(connectionId);
+      if (!allowedProjectPaths.has(request.workspacePath))
+        throw new Error("Project path was not selected by the user");
+      await vscodeEditor.open(
+        sender.id,
+        () => BrowserWindow.fromWebContents(sender),
+        request.workspacePath,
+      );
+      return {
+        requestId: request.requestId,
+      };
+    },
+    "update-embedded-editor-bounds": async (connectionId, request) => {
+      const sender = requireRendererConnection(connectionId);
+      const window = BrowserWindow.fromWebContents(sender);
+      if (window)
+        centerTrafficLights(
+          window,
+          request.visible ? VSCODE_TITLE_BAR_HEIGHT : CAKE_TITLE_BAR_HEIGHT,
         );
-      } catch {
-        // Worktree naming is advisory. The service's random name remains the fallback.
+      vscodeEditor.updateBounds(sender.id, request);
+      return {
+        requestId: request.requestId,
+      };
+    },
+    "reveal-in-embedded-editor": async (connectionId, request) => {
+      if (!allowedProjectPaths.has(request.workspacePath))
+        throw new Error("Project path was not selected by the user");
+      const { workspace, target } = await resolveWorkspaceEditorTarget(
+        request.workspacePath,
+        request.location.path,
+      );
+      await vscodeEditor.reveal(workspace, {
+        ...request.location,
+        path: relative(workspace, target),
+      });
+      return {
+        requestId: request.requestId,
+      };
+    },
+    "open-embedded-editor-source-control": async (connectionId, request) => {
+      if (!allowedProjectPaths.has(request.workspacePath))
+        throw new Error("Project path was not selected by the user");
+      await vscodeEditor.openSourceControl(request.workspacePath);
+      return {
+        requestId: request.requestId,
+      };
+    },
+    "update-embedded-editor-annotations": async (connectionId, request) => {
+      if (!allowedProjectPaths.has(request.workspacePath))
+        throw new Error("Project path was not selected by the user");
+      const workspace = await realpath(request.workspacePath);
+      const normalized = await Promise.allSettled(
+        request.snapshot.annotations.map(async (annotation) => {
+          const { target } = await resolveWorkspaceEditorTarget(
+            workspace,
+            annotation.location.path,
+          );
+          return {
+            ...annotation,
+            location: {
+              ...annotation.location,
+              path: relative(workspace, target).split(sep).join("/"),
+            },
+          };
+        }),
+      );
+      await vscodeEditor.updateAnnotations(workspace, {
+        sessionId: request.snapshot.sessionId,
+        annotations: normalized.flatMap((item) =>
+          item.status === "fulfilled" ? [item.value] : [],
+        ),
+      });
+      return {
+        requestId: request.requestId,
+      };
+    },
+  },
+  artifacts: {
+    "respond-artifact": async (connectionId, request) => {
+      const path = await resolveSessionWorkspacePath(request.sessionId);
+      if (!allowedProjectPaths.has(path))
+        throw new Error("Project path was not selected by the user");
+      dispatchToPi(path, { type: "respond-artifact", ...request });
+      return {
+        artifactRequestId: request.artifactRequestId,
+      };
+    },
+    "respond-ui": async (connectionId, request) => {
+      const path = await resolveSessionWorkspacePath(request.sessionId);
+      if (!allowedProjectPaths.has(path))
+        throw new Error("Project path was not selected by the user");
+      dispatchToPi(path, { type: "respond-ui", ...request });
+      return {
+        uiRequestId: request.uiRequestId,
+      };
+    },
+    "export-artifacts": async (connectionId, request) => {
+      const path = await resolveSessionWorkspacePath(request.sessionId);
+      if (!allowedProjectPaths.has(path))
+        throw new Error("Project path was not selected by the user");
+      return {
+        markdown: await artifactRepository.exportMarkdown(path, request.sessionId),
+      };
+    },
+  },
+  plugins: {
+    "get-customization-state": async () => {
+      return {
+        state: pluginActivation.snapshot(),
+      };
+    },
+    "get-plugin-authoring-reference": async () => {
+      return {
+        reference: await pluginActivation.builder.authoringReference(),
+      };
+    },
+    "list-plugin-files": async () => {
+      return {
+        ...(await pluginActivation.builder.repository.authoringSnapshot()),
+      };
+    },
+    "create-plugin": async (connectionId, request) => {
+      return {
+        ...(await pluginActivation.builder.repository.createPlugin(
+          {
+            id: request.pluginId,
+            name: request.name,
+            renderer: request.renderer,
+            backend: request.backend,
+            scene: request.scene,
+          },
+          request.expectedWorkingRevision,
+        )),
+      };
+    },
+    "read-plugin-file": async (connectionId, request) => {
+      return {
+        pluginId: request.pluginId,
+        path: request.path,
+        content: await pluginActivation.builder.repository.readPluginFile(
+          request.pluginId,
+          request.path,
+        ),
+      };
+    },
+    "write-plugin-file": async (connectionId, request) => {
+      return {
+        ...(await pluginActivation.builder.repository.writePluginFile(
+          request.pluginId,
+          request.path,
+          request.content,
+          request.expectedWorkingRevision,
+        )),
+      };
+    },
+    "validate-customization": async (connectionId, request) => {
+      const candidate = await pluginActivation.validate(
+        request.expectedBaseRevision,
+        request.request,
+        request.expectedSourceRevision,
+      );
+      const response = {
+        type: "customization-validation" as const,
+        revision: candidate.revision,
+        sourceRevision: candidate.sourceRevision,
+        diagnostics: candidate.diagnostics,
+        valid: candidate.diagnostics.length === 0,
+      };
+      broadcast({ type: "customization-state-changed", state: pluginActivation.snapshot() });
+      if (candidate.diagnostics.length) refreshCakeChatApplicationContext();
+      return response;
+    },
+    "activate-customization": async (connectionId, request) => {
+      const candidate = await pluginActivation.activateValidated(
+        request.revision,
+        request.expectedSourceRevision,
+        request.request,
+      );
+      try {
+        await pluginBackends.activate(candidate.revision);
+      } catch (error) {
+        const diagnostic = {
+          phase: "backend" as const,
+          message: error instanceof Error ? error.message : String(error),
+        };
+        await pluginActivation.fail(candidate.revision, diagnostic);
+        broadcast({ type: "customization-state-changed", state: pluginActivation.snapshot() });
+        refreshCakeChatApplicationContext();
+        throw error;
       }
-    }
-    const record = await worktrees.create(request.path, request.baseWorktreePath, worktreeName);
-    allowedProjectPaths.add(record.worktreePath);
-    if (isProjectTrusted(record.projectPath))
-      await runMainEffect(trustProject(record.worktreePath));
-    return {
-      type: "worktree-created",
-      requestId: request.requestId,
-      record,
-    };
-  }
-  if (request.type === "get-worktree-status") {
-    return {
-      type: "worktree-status-loaded",
-      status: await worktrees.status(request.workspacePath),
-    };
-  }
-  if (request.type === "land-worktree") {
-    await requireWorktreeRecord(request.workspacePath);
-    const result = await worktrees.land(request.workspacePath, { request: request.request });
-    return {
-      type: "worktree-landed",
-      requestId: request.requestId,
-      result,
-    };
-  }
-  if (request.type === "discard-worktree") {
-    await requireWorktreeRecord(request.workspacePath, new Set(["active", "landed"]));
-    await worktrees.discard(request.workspacePath, request.keepBranch);
-    return {
-      type: "accepted",
-      requestId: request.requestId,
-    };
-  }
-  const path =
-    request.type === "inspect-workspace"
-      ? request.path
-      : await resolveSessionWorkspacePath(request.sessionId);
-  if (!allowedProjectPaths.has(path)) throw new Error("Project path was not selected by the user");
-  if (request.type === "repair-inline-widget") {
-    const repaired = await runInlineWidgetRepair({
-      cwd: path,
-      agentDir: cakePaths.piAgent,
-      sessionDir: cakePaths.piWidgetSessions,
-      language: request.language,
-      capability: request.capability,
-      source: request.source,
-      context: request.context,
-      diagnostic: request.diagnostic,
-      model: request.model,
-    });
-    return {
-      type: "inline-widget-repaired",
-      widget: {
-        source: extractRepairedWidget(repaired.response, request.language),
-        repairSessionId: repaired.sessionId,
-      },
-    };
-  }
-  if (request.type === "inspect-workspace") {
-    const inspection = inspectWorkspace(path);
-    const trustRequired = inspection.trustRequired && !isProjectTrusted(path);
-    const key = `${event.sender.id}:${request.requestId}`;
-    clearPendingTrustRequests(event.sender.id);
-    windowWorkspaces.set(event.sender.id, path);
-    if (trustRequired) pendingTrustRequests.set(key, path);
-    sendTo(event.sender, {
-      type: "workspace-inspected",
-      requestId: request.requestId,
-      path,
-      trustRequired,
-    });
-    return {
-      type: "accepted",
-      requestId: request.requestId,
-    };
-  }
-  if (request.type === "respond-ui") {
-    dispatchToPi(path, request);
-    return {
-      type: "ui-response-accepted",
-      uiRequestId: request.uiRequestId,
-    };
-  }
-  if (request.type === "respond-artifact") {
-    dispatchToPi(path, request);
-    return {
-      type: "artifact-response-accepted",
-      artifactRequestId: request.artifactRequestId,
-    };
-  }
-  if (request.type === "export-artifacts") {
-    return {
-      type: "artifacts-exported",
-      markdown: await artifactRepository.exportMarkdown(path, request.sessionId),
-    };
-  }
-  throw new Error("Unsupported native operation");
-}
+      const response = {
+        type: "customization-activation" as const,
+        revision: candidate.revision,
+        activating: true as const,
+      };
+      broadcast({ type: "customization-state-changed", state: pluginActivation.snapshot() });
+      await refreshPluginAgentResources();
+      reloadAllAfterResponse({
+        kind: "custom",
+        revision: candidate.revision,
+        path: candidate.indexHtml,
+      });
+      return response;
+    },
+    "rollback-customization": async () => {
+      const revision = await pluginActivation.rollback();
+      try {
+        await pluginBackends.activate(revision);
+      } catch (error) {
+        await pluginActivation.fail(revision, {
+          phase: "backend",
+          message: error instanceof Error ? error.message : String(error),
+        });
+        refreshCakeChatApplicationContext();
+        reloadAllAfterResponse({ kind: "factory" });
+        return {
+          state: pluginActivation.snapshot(),
+        };
+      }
+      refreshCakeChatApplicationContext();
+      const renderer = revision
+        ? { kind: "custom" as const, revision, path: pluginActivation.buildPath(revision) }
+        : { kind: "factory" as const };
+      reloadAllAfterResponse(renderer);
+      return {
+        state: pluginActivation.snapshot(),
+      };
+    },
+    "use-factory-customization": async () => {
+      await pluginActivation.useFactory();
+      await pluginBackends.stop();
+      refreshCakeChatApplicationContext();
+      reloadAllAfterResponse({ kind: "factory" });
+      return {
+        state: pluginActivation.snapshot(),
+      };
+    },
+    "list-plugins": async () => {
+      return {
+        plugins: await pluginActivation.builder.repository.listPluginStatuses(),
+      };
+    },
+    "set-plugin-enabled": async (connectionId, request) => {
+      const plugins = await pluginActivation.builder.repository.setEnabled(
+        request.pluginId,
+        request.enabled,
+      );
+      await refreshPluginAgentResources();
+      await rebuildAfterPluginConfigurationChange(
+        `${request.enabled ? "Enable" : "Disable"} plugin ${request.pluginId}`,
+      );
+      return { plugins };
+    },
+    "set-active-scene": async (connectionId, request) => {
+      return {
+        plugins: await pluginActivation.builder.repository.setActiveScene(request.pluginId),
+      };
+    },
+    "delete-plugin": async (connectionId, request) => {
+      const { wasEnabled, plugins } = await pluginActivation.builder.repository.deletePlugin(
+        request.pluginId,
+      );
+      await refreshPluginAgentResources();
+      if (wasEnabled) {
+        await pluginBackends.stop();
+        await pluginActivation.fail(pluginActivation.snapshot().activeRevision, {
+          phase: "discovery",
+          pluginId: request.pluginId,
+          message: `Plugin ${request.pluginId} was deleted. Rebuild the customization to activate the remaining plugins.`,
+        });
+        refreshCakeChatApplicationContext();
+        reloadAllAfterResponse({ kind: "factory" });
+      }
+      return { plugins };
+    },
+    "compile-inline-widget": async (connectionId, request) => {
+      const compiled = await compileInlineWidget(
+        request.language,
+        request.source,
+        request.capability,
+      );
+      return {
+        widget: publishInlineWidget(compiled),
+      };
+    },
+    "repair-inline-widget": async (connectionId, request) => {
+      const path = await resolveSessionWorkspacePath(request.sessionId);
+      if (!allowedProjectPaths.has(path))
+        throw new Error("Project path was not selected by the user");
+      const repaired = await runInlineWidgetRepair({
+        cwd: path,
+        agentDir: cakePaths.piAgent,
+        sessionDir: cakePaths.piWidgetSessions,
+        language: request.language,
+        capability: request.capability,
+        source: request.source,
+        context: request.context,
+        diagnostic: request.diagnostic,
+        model: request.model,
+      });
+      return {
+        widget: {
+          source: extractRepairedWidget(repaired.response, request.language),
+          repairSessionId: repaired.sessionId,
+        },
+      };
+    },
+    "open-plugin-agent": async (connectionId, request) => {
+      const sender = requireRendererConnection(connectionId);
+      const owner = BrowserWindow.fromWebContents(sender);
+      if (!owner) throw new Error("Plugin agents require an application window");
+      return {
+        snapshot: await pluginAgents.open(
+          sender,
+          request.pluginId,
+          request.options,
+          request.implicitSession,
+        ),
+      };
+    },
+    "prompt-plugin-agent": async (connectionId, request) => {
+      const sender = requireRendererConnection(connectionId);
+      const owner = BrowserWindow.fromWebContents(sender);
+      if (!owner) throw new Error("Plugin agents require an application window");
+      return {
+        snapshot: await pluginAgents.command(
+          sender,
+          request.pluginId,
+          request.handleId,
+          request.delivery,
+          request.text,
+        ),
+      };
+    },
+    "abort-plugin-agent": async (connectionId, request) => {
+      const sender = requireRendererConnection(connectionId);
+      const owner = BrowserWindow.fromWebContents(sender);
+      if (!owner) throw new Error("Plugin agents require an application window");
+      return {
+        snapshot: await pluginAgents.abort(sender, request.pluginId, request.handleId),
+      };
+    },
+    "detach-plugin-agent": async (connectionId, request) => {
+      const sender = requireRendererConnection(connectionId);
+      const owner = BrowserWindow.fromWebContents(sender);
+      if (!owner) throw new Error("Plugin agents require an application window");
+      pluginAgents.detach(sender, request.pluginId, request.handleId);
+      return {
+        handleId: request.handleId,
+      };
+    },
+    "run-plugin-completion": async (connectionId, request) => {
+      const sender = requireRendererConnection(connectionId);
+      const key = `${sender.id}:${request.pluginId}:${request.requestId}`;
+      const controller = new AbortController();
+      pluginCompletionControllers.set(key, controller);
+      try {
+        const result = await pluginAgents.complete(
+          request.pluginId,
+          request.request,
+          request.implicitSession,
+          controller.signal,
+        );
+        return {
+          requestId: request.requestId,
+          result,
+        };
+      } finally {
+        if (pluginCompletionControllers.get(key) === controller)
+          pluginCompletionControllers.delete(key);
+      }
+    },
+    "cancel-plugin-completion": async (connectionId, request) => {
+      const sender = requireRendererConnection(connectionId);
+      pluginCompletionControllers
+        .get(`${sender.id}:${request.pluginId}:${request.requestId}`)
+        ?.abort();
+      return {
+        requestId: request.requestId,
+      };
+    },
+    "load-plugin-state": async (connectionId, request) => {
+      return {
+        record: await pluginPersistence.read(request.pluginId, request.key, request.scope),
+      };
+    },
+    "save-plugin-state": async (connectionId, request) => {
+      const sender = requireRendererConnection(connectionId);
+      const rendererRevision =
+        windowCustomizationRevisions.get(sender.id) ?? pluginActivation.snapshot().activeRevision;
+      return {
+        record: await pluginPersistence.write(
+          request.pluginId,
+          request.key,
+          request.scope,
+          request.value,
+          request.expectedVersion,
+          rendererRevision,
+        ),
+      };
+    },
+    "call-plugin-backend": async (connectionId, request) => {
+      try {
+        const value = await pluginBackends.call(
+          request.pluginId,
+          request.callId,
+          request.method,
+          request.input,
+        );
+        return {
+          callId: request.callId,
+          ok: true,
+          value,
+        };
+      } catch (error) {
+        return {
+          callId: request.callId,
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
+    },
+    "cancel-plugin-backend-call": async (connectionId, request) => {
+      pluginBackends.cancel(request.pluginId, request.callId);
+      return {
+        requestId: request.callId,
+      };
+    },
+    "customization-rendered": async (connectionId, request) => {
+      const sender = requireRendererConnection(connectionId);
+      if (windowCustomizationRevisions.get(sender.id) !== request.revision)
+        throw new Error("Customization health report does not match this window");
+      const current = pluginActivation.snapshot();
+      const activating = current.pendingRevision === request.revision;
+      if (activating) await pluginActivation.markHealthy(request.revision);
+      else if (current.activeRevision !== request.revision)
+        throw new Error("Customization revision is not active");
+      const healthTimer = customizationHealthTimers.get(sender.id);
+      if (healthTimer) clearTimeout(healthTimer);
+      customizationHealthTimers.delete(sender.id);
+      if (activating) refreshCakeChatApplicationContext();
+      broadcast({ type: "customization-state-changed", state: pluginActivation.snapshot() });
+      return {
+        state: pluginActivation.snapshot(),
+      };
+    },
+    "customization-runtime-failed": async (connectionId, request) => {
+      await pluginBackends.stop();
+      await pluginActivation.fail(request.revision, { phase: "runtime", message: request.message });
+      refreshCakeChatApplicationContext();
+      broadcast({ type: "customization-state-changed", state: pluginActivation.snapshot() });
+      reloadAllAfterResponse({ kind: "factory" });
+      return {
+        state: pluginActivation.snapshot(),
+      };
+    },
+  },
+  subscribe: (connectionId, listener) => subscribeNativeEvents(connectionId, listener),
+} satisfies NativeServiceOperations;
 
 async function startApplicationCapabilities(owner: ApplicationStateOwner["Service"]) {
   applicationStateOwner = owner;
@@ -2100,10 +2087,7 @@ function stopApplicationCapabilities() {
 launchMainApplication({
   application: app,
   piAgentDirectory: cakePaths.piAgent,
-  nativeOperations: {
-    invoke: (connectionId, request) => invokeNativeCommand(connectionId, request),
-    subscribe: (connectionId, listener) => subscribeNativeEvents(connectionId, listener),
-  },
+  nativeOperations,
   rpcOperations: {
     getHomeDirectory() {
       const path = homedir();

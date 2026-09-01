@@ -1,4 +1,4 @@
-import type { NativeEvent } from "../ipc/native-contract";
+import type { NativeEvent } from "../ipc/native-protocol";
 import type { ApplicationState } from "../ipc/session-contract";
 import type { ArtifactRecord } from "../ipc/artifact-contract";
 import type { SourceLocation } from "../ipc/source-location";

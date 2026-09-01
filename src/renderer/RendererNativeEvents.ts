@@ -1,6 +1,6 @@
 import { Effect, Stream } from "effect";
 import { CakeIpcClient } from "../ipc/client/CakeIpcClient";
-import type { NativeEvent } from "../ipc/native-contract";
+import type { NativeEvent } from "../ipc/native-protocol";
 import { toRendererEvent, type RendererEvent } from "./RendererEvent";
 import type { RendererRuntime } from "./RendererRuntime";
 import type { RendererModelSynchronizer } from "./RendererModelSynchronizer";

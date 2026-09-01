@@ -1,5 +1,5 @@
 import type { ElectronApplication } from "@playwright/test";
-import type { NativeEvent } from "../../src/ipc/native-contract";
+import type { NativeEvent } from "../../src/ipc/native-protocol";
 
 /** Sends a validated native event through Cake's smoke-only main-process event source. */
 export function emitRendererEvent(application: ElectronApplication, event: NativeEvent) {

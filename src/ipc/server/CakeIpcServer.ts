@@ -19,26 +19,18 @@ import type { CakeChatEnvironmentOperations } from "../../services/cake-chats/Ca
 import type { DiscussionSessionEnvironmentService } from "../../services/discussion-sessions/DiscussionSessionEnvironment";
 import type { SubagentEnvironmentService } from "../../services/subagents/SubagentEnvironment";
 import { WindowStateStorage } from "../../services/storage/WindowStateStorage";
-import { NativeCapabilities } from "../../services/native/NativeCapabilities";
-import type { NativeEvent, NativeCommandResult } from "../native-contract";
-
-function hasResponseType<Type extends NativeCommandResult["type"]>(
-  response: NativeCommandResult,
-  type: Type,
-): response is Extract<NativeCommandResult, { readonly type: Type }> {
-  return response.type === type;
-}
-
-type ObservedNativeEvent = NativeEvent | { readonly type: "native-stream-ready" };
-
-function eventIs<const Types extends ReadonlyArray<ObservedNativeEvent["type"]>>(...types: Types) {
-  const accepted = new Set<string>([...types, "native-stream-ready"]);
-  return (
-    event: ObservedNativeEvent,
-  ): event is Extract<ObservedNativeEvent, { type: Types[number] | "native-stream-ready" }> =>
-    accepted.has(event.type);
-}
-
+import {
+  Artifacts,
+  Electron,
+  Filesystem,
+  ManagedWorktrees,
+  NativeEvents,
+  Plugins,
+  Terminals,
+  VsCode,
+  Workspaces,
+  type NativeOperationError,
+} from "../../services/native/NativeServices";
 export interface CakeIpcServerOperations {
   readonly getHomeDirectory: () => string | Promise<string>;
   readonly projectSessions: ProjectSessionEnvironmentService;
@@ -52,19 +44,12 @@ export const makeCakeIpcServerLive = (operations: CakeIpcServerOperations) => {
   // request runs independently; RPC interruption and connection closure own cleanup.
   let activeDelays = 0;
   let activeStreams = 0;
-  const invokeNative = <Type extends NativeCommandResult["type"]>(
-    request: Parameters<NativeCapabilities["Service"]["invoke"]>[1],
-    expectedType: Type,
+  const withConnection = <Success, Requirements>(
+    operation: (connectionId: number) => Effect.Effect<Success, NativeOperationError, Requirements>,
   ) =>
     Effect.gen(function* () {
       const connection = yield* RendererConnection;
-      const capabilities = yield* NativeCapabilities;
-      const response = yield* capabilities.invoke(connection.connectionId, request);
-      if (!hasResponseType(response, expectedType))
-        return yield* Effect.die(
-          new Error(`Native operation returned ${response.type}; expected ${expectedType}`),
-        );
-      return response;
+      return yield* operation(connection.connectionId);
     });
 
   const handlers = CakeRpc.toLayer({
@@ -182,248 +167,397 @@ export const makeCakeIpcServerLive = (operations: CakeIpcServerOperations) => {
     "subagents.close": ({ parentSessionId, handleId }) =>
       subagents.close(parentSessionId, handleId).pipe(Effect.asVoid),
     "electron.choose-project": (request) =>
-      invokeNative({ type: "choose-project", ...request }, "project-chosen"),
+      withConnection((connectionId) =>
+        Effect.flatMap(Electron, (service) => service["choose-project"](connectionId, request)),
+      ),
     "electron.open-external-url": (request) =>
-      invokeNative({ type: "open-external-url", ...request }, "external-url-opened"),
+      withConnection((connectionId) =>
+        Effect.flatMap(Electron, (service) => service["open-external-url"](connectionId, request)),
+      ),
     "electron.show-transcript-selection-context-menu": (request) =>
-      invokeNative(
-        { type: "show-transcript-selection-context-menu", ...request },
-        "transcript-selection-context-menu-closed",
+      withConnection((connectionId) =>
+        Effect.flatMap(Electron, (service) =>
+          service["show-transcript-selection-context-menu"](connectionId, request),
+        ),
       ),
     "electron.show-composer-context-menu": (request) =>
-      invokeNative(
-        { type: "show-composer-context-menu", ...request },
-        "composer-context-menu-closed",
+      withConnection((connectionId) =>
+        Effect.flatMap(Electron, (service) =>
+          service["show-composer-context-menu"](connectionId, request),
+        ),
       ),
     "electron.show-session-context-menu": (request) =>
-      invokeNative(
-        { type: "show-session-context-menu", ...request },
-        "session-context-menu-closed",
+      withConnection((connectionId) =>
+        Effect.flatMap(Electron, (service) =>
+          service["show-session-context-menu"](connectionId, request),
+        ),
       ),
     "electron.show-project-context-menu": (request) =>
-      invokeNative(
-        { type: "show-project-context-menu", ...request },
-        "project-context-menu-closed",
+      withConnection((connectionId) =>
+        Effect.flatMap(Electron, (service) =>
+          service["show-project-context-menu"](connectionId, request),
+        ),
       ),
     "filesystem.choose-attachments": (request) =>
-      invokeNative({ type: "choose-attachments", ...request }, "attachments-chosen"),
+      withConnection((connectionId) =>
+        Effect.flatMap(Filesystem, (service) =>
+          service["choose-attachments"](connectionId, request),
+        ),
+      ),
     "filesystem.suggest-files": (request) =>
-      invokeNative({ type: "suggest-files", ...request }, "file-suggestions"),
+      withConnection((connectionId) =>
+        Effect.flatMap(Filesystem, (service) => service["suggest-files"](connectionId, request)),
+      ),
     "filesystem.read-workspace-file": (request) =>
-      invokeNative({ type: "read-workspace-file", ...request }, "workspace-file"),
+      withConnection((connectionId) =>
+        Effect.flatMap(Filesystem, (service) =>
+          service["read-workspace-file"](connectionId, request),
+        ),
+      ),
     "workspaces.reword-composer-selection": (request) =>
-      invokeNative(
-        { type: "reword-composer-selection", ...request },
-        "composer-selection-reworded",
+      withConnection((connectionId) =>
+        Effect.flatMap(Workspaces, (service) =>
+          service["reword-composer-selection"](connectionId, request),
+        ),
       ),
     "workspaces.generate-session-title": (request) =>
-      invokeNative({ type: "generate-session-title", ...request }, "session-title-generated"),
+      withConnection((connectionId) =>
+        Effect.flatMap(Workspaces, (service) =>
+          service["generate-session-title"](connectionId, request),
+        ),
+      ),
     "workspaces.set-utility-model": (request) =>
-      invokeNative({ type: "set-utility-model", ...request }, "application-state-updated"),
+      withConnection((connectionId) =>
+        Effect.flatMap(Workspaces, (service) =>
+          service["set-utility-model"](connectionId, request),
+        ),
+      ),
     "workspaces.register-project": (request) =>
-      invokeNative({ type: "register-project", ...request }, "application-state-updated"),
+      withConnection((connectionId) =>
+        Effect.flatMap(Workspaces, (service) => service["register-project"](connectionId, request)),
+      ),
     "workspaces.rename-project": (request) =>
-      invokeNative({ type: "rename-project", ...request }, "application-state-updated"),
+      withConnection((connectionId) =>
+        Effect.flatMap(Workspaces, (service) => service["rename-project"](connectionId, request)),
+      ),
     "workspaces.remove-project": (request) =>
-      invokeNative({ type: "remove-project", ...request }, "application-state-updated"),
+      withConnection((connectionId) =>
+        Effect.flatMap(Workspaces, (service) => service["remove-project"](connectionId, request)),
+      ),
     "workspaces.delete-session": (request) =>
-      invokeNative({ type: "delete-session", ...request }, "application-state-updated"),
+      withConnection((connectionId) =>
+        Effect.flatMap(Workspaces, (service) => service["delete-session"](connectionId, request)),
+      ),
     "workspaces.set-session-unread": (request) =>
-      invokeNative({ type: "set-session-unread", ...request }, "application-state-updated"),
+      withConnection((connectionId) =>
+        Effect.flatMap(Workspaces, (service) =>
+          service["set-session-unread"](connectionId, request),
+        ),
+      ),
     "workspaces.restart-pi": (request) =>
-      invokeNative({ type: "restart-pi", ...request }, "accepted"),
+      withConnection((connectionId) =>
+        Effect.flatMap(Workspaces, (service) => service["restart-pi"](connectionId, request)),
+      ),
     "managedWorktrees.create-worktree": (request) =>
-      invokeNative({ type: "create-worktree", ...request }, "worktree-created"),
+      withConnection((connectionId) =>
+        Effect.flatMap(ManagedWorktrees, (service) =>
+          service["create-worktree"](connectionId, request),
+        ),
+      ),
     "managedWorktrees.get-worktree-status": (request) =>
-      invokeNative({ type: "get-worktree-status", ...request }, "worktree-status-loaded"),
+      withConnection((connectionId) =>
+        Effect.flatMap(ManagedWorktrees, (service) =>
+          service["get-worktree-status"](connectionId, request),
+        ),
+      ),
     "managedWorktrees.land-worktree": (request) =>
-      invokeNative({ type: "land-worktree", ...request }, "worktree-landed"),
+      withConnection((connectionId) =>
+        Effect.flatMap(ManagedWorktrees, (service) =>
+          service["land-worktree"](connectionId, request),
+        ),
+      ),
     "terminals.open-terminal": (request) =>
-      invokeNative({ type: "open-terminal", ...request }, "terminal-opened"),
+      withConnection((connectionId) =>
+        Effect.flatMap(Terminals, (service) => service["open-terminal"](connectionId, request)),
+      ),
     "terminals.get-terminal-status": (request) =>
-      invokeNative({ type: "get-terminal-status", ...request }, "terminal-status"),
+      withConnection((connectionId) =>
+        Effect.flatMap(Terminals, (service) =>
+          service["get-terminal-status"](connectionId, request),
+        ),
+      ),
     "vscode.get-embedded-editor-state": (request) =>
-      invokeNative(
-        { type: "get-embedded-editor-state", ...request },
-        "embedded-editor-state-loaded",
+      withConnection((connectionId) =>
+        Effect.flatMap(VsCode, (service) =>
+          service["get-embedded-editor-state"](connectionId, request),
+        ),
       ),
     "vscode.set-vscode-server-path": (request) =>
-      invokeNative({ type: "set-vscode-server-path", ...request }, "application-state-updated"),
+      withConnection((connectionId) =>
+        Effect.flatMap(VsCode, (service) =>
+          service["set-vscode-server-path"](connectionId, request),
+        ),
+      ),
     "artifacts.respond-artifact": (request) =>
-      invokeNative({ type: "respond-artifact", ...request }, "artifact-response-accepted"),
+      withConnection((connectionId) =>
+        Effect.flatMap(Artifacts, (service) => service["respond-artifact"](connectionId, request)),
+      ),
     "artifacts.respond-ui": (request) =>
-      invokeNative({ type: "respond-ui", ...request }, "ui-response-accepted"),
+      withConnection((connectionId) =>
+        Effect.flatMap(Artifacts, (service) => service["respond-ui"](connectionId, request)),
+      ),
     "artifacts.export-artifacts": (request) =>
-      invokeNative({ type: "export-artifacts", ...request }, "artifacts-exported"),
+      withConnection((connectionId) =>
+        Effect.flatMap(Artifacts, (service) => service["export-artifacts"](connectionId, request)),
+      ),
     "plugins.get-customization-state": (request) =>
-      invokeNative({ type: "get-customization-state", ...request }, "customization-state"),
+      withConnection((connectionId) =>
+        Effect.flatMap(Plugins, (service) =>
+          service["get-customization-state"](connectionId, request),
+        ),
+      ),
     "plugins.get-plugin-authoring-reference": (request) =>
-      invokeNative(
-        { type: "get-plugin-authoring-reference", ...request },
-        "plugin-authoring-reference",
+      withConnection((connectionId) =>
+        Effect.flatMap(Plugins, (service) =>
+          service["get-plugin-authoring-reference"](connectionId, request),
+        ),
       ),
     "plugins.list-plugin-files": (request) =>
-      invokeNative({ type: "list-plugin-files", ...request }, "plugin-files"),
+      withConnection((connectionId) =>
+        Effect.flatMap(Plugins, (service) => service["list-plugin-files"](connectionId, request)),
+      ),
     "plugins.create-plugin": (request) =>
-      invokeNative({ type: "create-plugin", ...request }, "plugin-files"),
+      withConnection((connectionId) =>
+        Effect.flatMap(Plugins, (service) => service["create-plugin"](connectionId, request)),
+      ),
     "plugins.read-plugin-file": (request) =>
-      invokeNative({ type: "read-plugin-file", ...request }, "plugin-file"),
+      withConnection((connectionId) =>
+        Effect.flatMap(Plugins, (service) => service["read-plugin-file"](connectionId, request)),
+      ),
     "plugins.write-plugin-file": (request) =>
-      invokeNative({ type: "write-plugin-file", ...request }, "plugin-files"),
+      withConnection((connectionId) =>
+        Effect.flatMap(Plugins, (service) => service["write-plugin-file"](connectionId, request)),
+      ),
     "plugins.validate-customization": (request) =>
-      invokeNative({ type: "validate-customization", ...request }, "customization-validation"),
+      withConnection((connectionId) =>
+        Effect.flatMap(Plugins, (service) =>
+          service["validate-customization"](connectionId, request),
+        ),
+      ),
     "plugins.activate-customization": (request) =>
-      invokeNative({ type: "activate-customization", ...request }, "customization-activation"),
+      withConnection((connectionId) =>
+        Effect.flatMap(Plugins, (service) =>
+          service["activate-customization"](connectionId, request),
+        ),
+      ),
     "plugins.rollback-customization": (request) =>
-      invokeNative({ type: "rollback-customization", ...request }, "customization-state"),
+      withConnection((connectionId) =>
+        Effect.flatMap(Plugins, (service) =>
+          service["rollback-customization"](connectionId, request),
+        ),
+      ),
     "plugins.use-factory-customization": (request) =>
-      invokeNative({ type: "use-factory-customization", ...request }, "customization-state"),
+      withConnection((connectionId) =>
+        Effect.flatMap(Plugins, (service) =>
+          service["use-factory-customization"](connectionId, request),
+        ),
+      ),
     "plugins.list-plugins": (request) =>
-      invokeNative({ type: "list-plugins", ...request }, "plugins-listed"),
+      withConnection((connectionId) =>
+        Effect.flatMap(Plugins, (service) => service["list-plugins"](connectionId, request)),
+      ),
     "plugins.set-plugin-enabled": (request) =>
-      invokeNative({ type: "set-plugin-enabled", ...request }, "plugins-listed"),
+      withConnection((connectionId) =>
+        Effect.flatMap(Plugins, (service) => service["set-plugin-enabled"](connectionId, request)),
+      ),
     "plugins.set-active-scene": (request) =>
-      invokeNative({ type: "set-active-scene", ...request }, "plugins-listed"),
+      withConnection((connectionId) =>
+        Effect.flatMap(Plugins, (service) => service["set-active-scene"](connectionId, request)),
+      ),
     "plugins.delete-plugin": (request) =>
-      invokeNative({ type: "delete-plugin", ...request }, "plugins-listed"),
+      withConnection((connectionId) =>
+        Effect.flatMap(Plugins, (service) => service["delete-plugin"](connectionId, request)),
+      ),
     "plugins.compile-inline-widget": (request) =>
-      invokeNative({ type: "compile-inline-widget", ...request }, "inline-widget-compiled"),
+      withConnection((connectionId) =>
+        Effect.flatMap(Plugins, (service) =>
+          service["compile-inline-widget"](connectionId, request),
+        ),
+      ),
     "plugins.repair-inline-widget": (request) =>
-      invokeNative({ type: "repair-inline-widget", ...request }, "inline-widget-repaired"),
+      withConnection((connectionId) =>
+        Effect.flatMap(Plugins, (service) =>
+          service["repair-inline-widget"](connectionId, request),
+        ),
+      ),
     "plugins.open-plugin-agent": (request) =>
-      invokeNative({ type: "open-plugin-agent", ...request }, "plugin-agent-snapshot"),
+      withConnection((connectionId) =>
+        Effect.flatMap(Plugins, (service) => service["open-plugin-agent"](connectionId, request)),
+      ),
     "plugins.prompt-plugin-agent": (request) =>
-      invokeNative({ type: "prompt-plugin-agent", ...request }, "plugin-agent-snapshot"),
+      withConnection((connectionId) =>
+        Effect.flatMap(Plugins, (service) => service["prompt-plugin-agent"](connectionId, request)),
+      ),
     "plugins.abort-plugin-agent": (request) =>
-      invokeNative({ type: "abort-plugin-agent", ...request }, "plugin-agent-snapshot"),
+      withConnection((connectionId) =>
+        Effect.flatMap(Plugins, (service) => service["abort-plugin-agent"](connectionId, request)),
+      ),
     "plugins.detach-plugin-agent": (request) =>
-      invokeNative({ type: "detach-plugin-agent", ...request }, "plugin-agent-detached"),
+      withConnection((connectionId) =>
+        Effect.flatMap(Plugins, (service) => service["detach-plugin-agent"](connectionId, request)),
+      ),
     "plugins.run-plugin-completion": (request) =>
-      invokeNative({ type: "run-plugin-completion", ...request }, "plugin-completion-result"),
+      withConnection((connectionId) =>
+        Effect.flatMap(Plugins, (service) =>
+          service["run-plugin-completion"](connectionId, request),
+        ),
+      ),
     "plugins.cancel-plugin-completion": (request) =>
-      invokeNative({ type: "cancel-plugin-completion", ...request }, "accepted"),
+      withConnection((connectionId) =>
+        Effect.flatMap(Plugins, (service) =>
+          service["cancel-plugin-completion"](connectionId, request),
+        ),
+      ),
     "plugins.load-plugin-state": (request) =>
-      invokeNative({ type: "load-plugin-state", ...request }, "plugin-state"),
+      withConnection((connectionId) =>
+        Effect.flatMap(Plugins, (service) => service["load-plugin-state"](connectionId, request)),
+      ),
     "plugins.save-plugin-state": (request) =>
-      invokeNative({ type: "save-plugin-state", ...request }, "plugin-state"),
+      withConnection((connectionId) =>
+        Effect.flatMap(Plugins, (service) => service["save-plugin-state"](connectionId, request)),
+      ),
     "plugins.call-plugin-backend": (request) =>
-      invokeNative({ type: "call-plugin-backend", ...request }, "plugin-backend-result"),
+      withConnection((connectionId) =>
+        Effect.flatMap(Plugins, (service) => service["call-plugin-backend"](connectionId, request)),
+      ),
     "plugins.cancel-plugin-backend-call": (request) =>
-      invokeNative({ type: "cancel-plugin-backend-call", ...request }, "accepted"),
+      withConnection((connectionId) =>
+        Effect.flatMap(Plugins, (service) =>
+          service["cancel-plugin-backend-call"](connectionId, request),
+        ),
+      ),
     "plugins.customization-rendered": (request) =>
-      invokeNative({ type: "customization-rendered", ...request }, "customization-state"),
+      withConnection((connectionId) =>
+        Effect.flatMap(Plugins, (service) =>
+          service["customization-rendered"](connectionId, request),
+        ),
+      ),
     "plugins.customization-runtime-failed": (request) =>
-      invokeNative({ type: "customization-runtime-failed", ...request }, "customization-state"),
+      withConnection((connectionId) =>
+        Effect.flatMap(Plugins, (service) =>
+          service["customization-runtime-failed"](connectionId, request),
+        ),
+      ),
     "electron.set-fullscreen-surface-open": (request) =>
-      invokeNative({ type: "set-fullscreen-surface-open", ...request }, "accepted"),
+      withConnection((connectionId) =>
+        Effect.flatMap(Electron, (service) =>
+          service["set-fullscreen-surface-open"](connectionId, request),
+        ),
+      ),
     "workspaces.inspect-workspace": (request) =>
-      invokeNative({ type: "inspect-workspace", ...request }, "accepted"),
+      withConnection((connectionId) =>
+        Effect.flatMap(Workspaces, (service) =>
+          service["inspect-workspace"](connectionId, request),
+        ),
+      ),
     "workspaces.respond-workspace-trust": (request) =>
-      invokeNative({ type: "respond-workspace-trust", ...request }, "accepted"),
+      withConnection((connectionId) =>
+        Effect.flatMap(Workspaces, (service) =>
+          service["respond-workspace-trust"](connectionId, request),
+        ),
+      ),
     "managedWorktrees.discard-worktree": (request) =>
-      invokeNative({ type: "discard-worktree", ...request }, "accepted"),
+      withConnection((connectionId) =>
+        Effect.flatMap(ManagedWorktrees, (service) =>
+          service["discard-worktree"](connectionId, request),
+        ),
+      ),
     "terminals.write-terminal": (request) =>
-      invokeNative({ type: "write-terminal", ...request }, "accepted"),
+      withConnection((connectionId) =>
+        Effect.flatMap(Terminals, (service) => service["write-terminal"](connectionId, request)),
+      ),
     "terminals.resize-terminal": (request) =>
-      invokeNative({ type: "resize-terminal", ...request }, "accepted"),
+      withConnection((connectionId) =>
+        Effect.flatMap(Terminals, (service) => service["resize-terminal"](connectionId, request)),
+      ),
     "terminals.close-terminal": (request) =>
-      invokeNative({ type: "close-terminal", ...request }, "accepted"),
+      withConnection((connectionId) =>
+        Effect.flatMap(Terminals, (service) => service["close-terminal"](connectionId, request)),
+      ),
     "vscode.install-embedded-editor": (request) =>
-      invokeNative({ type: "install-embedded-editor", ...request }, "accepted"),
+      withConnection((connectionId) =>
+        Effect.flatMap(VsCode, (service) =>
+          service["install-embedded-editor"](connectionId, request),
+        ),
+      ),
     "vscode.open-embedded-editor": (request) =>
-      invokeNative({ type: "open-embedded-editor", ...request }, "accepted"),
+      withConnection((connectionId) =>
+        Effect.flatMap(VsCode, (service) => service["open-embedded-editor"](connectionId, request)),
+      ),
     "vscode.update-embedded-editor-bounds": (request) =>
-      invokeNative({ type: "update-embedded-editor-bounds", ...request }, "accepted"),
+      withConnection((connectionId) =>
+        Effect.flatMap(VsCode, (service) =>
+          service["update-embedded-editor-bounds"](connectionId, request),
+        ),
+      ),
     "vscode.reveal-in-embedded-editor": (request) =>
-      invokeNative({ type: "reveal-in-embedded-editor", ...request }, "accepted"),
+      withConnection((connectionId) =>
+        Effect.flatMap(VsCode, (service) =>
+          service["reveal-in-embedded-editor"](connectionId, request),
+        ),
+      ),
     "vscode.open-embedded-editor-source-control": (request) =>
-      invokeNative({ type: "open-embedded-editor-source-control", ...request }, "accepted"),
+      withConnection((connectionId) =>
+        Effect.flatMap(VsCode, (service) =>
+          service["open-embedded-editor-source-control"](connectionId, request),
+        ),
+      ),
     "vscode.update-embedded-editor-annotations": (request) =>
-      invokeNative({ type: "update-embedded-editor-annotations", ...request }, "accepted"),
+      withConnection((connectionId) =>
+        Effect.flatMap(VsCode, (service) =>
+          service["update-embedded-editor-annotations"](connectionId, request),
+        ),
+      ),
     "application.observeEvents": () =>
       Stream.unwrap(
         Effect.gen(function* () {
           const connection = yield* RendererConnection;
-          const capabilities = yield* NativeCapabilities;
-          const events = capabilities.observe(connection.connectionId);
-          return events.pipe(
-            Stream.filter(
-              eventIs(
-                "pi-state",
-                "workspace-inspected",
-                "changelog-snapshot",
-                "complete",
-                "fatal",
-                "application-state-changed",
-                "notification",
-              ),
-            ),
-          );
+          return (yield* NativeEvents).application(connection.connectionId);
         }),
       ),
     "artifacts.observeEvents": () =>
       Stream.unwrap(
         Effect.gen(function* () {
           const connection = yield* RendererConnection;
-          const capabilities = yield* NativeCapabilities;
-          const events = capabilities.observe(connection.connectionId);
-          return events.pipe(
-            Stream.filter(eventIs("artifact-updated", "artifact-requested", "ui-request")),
-          );
+          return (yield* NativeEvents).artifacts(connection.connectionId);
         }),
       ),
     "plugins.observeEvents": () =>
       Stream.unwrap(
         Effect.gen(function* () {
           const connection = yield* RendererConnection;
-          const capabilities = yield* NativeCapabilities;
-          const events = capabilities.observe(connection.connectionId);
-          return events.pipe(
-            Stream.filter(
-              eventIs("plugin-backend-event", "customization-state-changed", "plugin-agent-event"),
-            ),
-          );
+          return (yield* NativeEvents).plugins(connection.connectionId);
         }),
       ),
     "terminals.observeEvents": () =>
       Stream.unwrap(
         Effect.gen(function* () {
           const connection = yield* RendererConnection;
-          const capabilities = yield* NativeCapabilities;
-          const events = capabilities.observe(connection.connectionId);
-          return events.pipe(
-            Stream.filter(eventIs("terminal-data", "terminal-exited", "terminal-toggle-requested")),
-          );
+          return (yield* NativeEvents).terminals(connection.connectionId);
         }),
       ),
     "vscode.observeEvents": () =>
       Stream.unwrap(
         Effect.gen(function* () {
           const connection = yield* RendererConnection;
-          const capabilities = yield* NativeCapabilities;
-          const events = capabilities.observe(connection.connectionId);
-          return events.pipe(
-            Stream.filter(
-              eventIs(
-                "embedded-editor-state",
-                "embedded-editor-selection",
-                "embedded-editor-back-to-agent",
-                "embedded-editor-annotation-opened",
-                "embedded-editor-toggle-chat",
-                "embedded-editor-selection-cleared",
-                "embedded-editor-location-opened",
-              ),
-            ),
-          );
+          return (yield* NativeEvents).vscode(connection.connectionId);
         }),
       ),
     "electron.observeSurfaceEvents": () =>
       Stream.unwrap(
         Effect.gen(function* () {
           const connection = yield* RendererConnection;
-          const capabilities = yield* NativeCapabilities;
-          const events = capabilities.observe(connection.connectionId);
-          return events.pipe(Stream.filter(eventIs("fullscreen-surface-close-requested")));
+          return (yield* NativeEvents).surfaces(connection.connectionId);
         }),
       ),
     "foundation.typedFailure": () =>

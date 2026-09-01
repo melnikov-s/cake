@@ -104,9 +104,9 @@ test("Effect RPC crosses Electron with schemas, streams, interruption, and conne
     expect(await callHarness(observer, "listProjectSessions")).toEqual([]);
     expect(await callHarness(observer, "listCakeChats")).toEqual([]);
     expect(await callHarness(observer, "listDiscussionSessions")).toEqual([]);
-    expect(await callHarness<{ type: string }>(observer, "invokeElectronProbe")).toMatchObject({
-      type: "accepted",
-    });
+    expect(await callHarness<{ requestId: string }>(observer, "invokeElectronProbe")).toMatchObject(
+      { requestId: expect.any(String) },
+    );
     expect(await callHarness<{ type: string }>(observer, "nativeReady")).toEqual({
       type: "native-stream-ready",
     });

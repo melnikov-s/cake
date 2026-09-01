@@ -52,9 +52,9 @@ const int = Schema.Int;
 const nonNegativeInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
 const coordinate = Schema.Int.check(Schema.isBetween({ minimum: -1_000_000, maximum: 1_000_000 }));
 const requestBase = { requestId: uuid };
-const accepted = Schema.Struct({ type: Schema.Literal("accepted"), requestId: uuid });
+const accepted = Schema.Struct({ requestId: uuid });
 
-export const nativeEventSchemas = {
+const nativeEventSchemas = {
   "pi-state": Schema.Struct({
     type: Schema.Literal("pi-state"),
     state: Schema.Literals(["starting", "ready", "stopped", "failed"]),
@@ -287,41 +287,34 @@ const terminalTarget = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("cake-chat"), sessionId: bounded(1, 256) }),
 ]);
 
-export const nativeCommandSchemas = {
-  "choose-project": Schema.Struct({ type: Schema.Literal("choose-project") }),
+export const nativeOperationPayloadSchemas = {
+  "choose-project": Schema.Struct({}),
   "open-external-url": Schema.Struct({
-    type: Schema.Literal("open-external-url"),
     url: stringMax(8_192),
   }),
   "show-transcript-selection-context-menu": Schema.Struct({
-    type: Schema.Literal("show-transcript-selection-context-menu"),
     canChat: Schema.Boolean,
     canAnnotate: Schema.Boolean,
   }),
   "set-fullscreen-surface-open": Schema.Struct({
-    type: Schema.Literal("set-fullscreen-surface-open"),
     ...requestBase,
     surfaceId: uuid,
     open: Schema.Boolean,
   }),
   "show-composer-context-menu": Schema.Struct({
-    type: Schema.Literal("show-composer-context-menu"),
     selection: bounded(1, 32_000),
     x: coordinate,
     y: coordinate,
   }),
   "reword-composer-selection": Schema.Struct({
-    type: Schema.Literal("reword-composer-selection"),
     selection: bounded(1, 32_000),
     prompt: Schema.optional(stringMax(4_096)),
     workspacePath: Schema.optional(bounded(1, 4_096)),
   }),
   "generate-session-title": Schema.Struct({
-    type: Schema.Literal("generate-session-title"),
     firstUserMessage: bounded(1, 262_144),
   }),
   "show-session-context-menu": Schema.Struct({
-    type: Schema.Literal("show-session-context-menu"),
     sessionId: bounded(1, 256),
     x: coordinate,
     y: coordinate,
@@ -329,58 +322,48 @@ export const nativeCommandSchemas = {
     unread: Schema.optional(Schema.Boolean),
   }),
   "show-project-context-menu": Schema.Struct({
-    type: Schema.Literal("show-project-context-menu"),
     path: bounded(1, 4_096),
     x: coordinate,
     y: coordinate,
     resolvedWorktreeCount: Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 500 })),
   }),
   "open-terminal": Schema.Struct({
-    type: Schema.Literal("open-terminal"),
     ...requestBase,
     target: terminalTarget,
     cols: Schema.Int.check(Schema.isBetween({ minimum: 2, maximum: 1_000 })),
     rows: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 1_000 })),
   }),
   "write-terminal": Schema.Struct({
-    type: Schema.Literal("write-terminal"),
     ...requestBase,
     terminalId: uuid,
     data: stringMax(262_144),
   }),
   "resize-terminal": Schema.Struct({
-    type: Schema.Literal("resize-terminal"),
     ...requestBase,
     terminalId: uuid,
     cols: Schema.Int.check(Schema.isBetween({ minimum: 2, maximum: 1_000 })),
     rows: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 1_000 })),
   }),
   "get-terminal-status": Schema.Struct({
-    type: Schema.Literal("get-terminal-status"),
     ...requestBase,
     terminalId: uuid,
   }),
   "close-terminal": Schema.Struct({
-    type: Schema.Literal("close-terminal"),
     ...requestBase,
     terminalId: uuid,
   }),
   "set-vscode-server-path": Schema.Struct({
-    type: Schema.Literal("set-vscode-server-path"),
     path: Schema.optional(stringMax(4_096)),
   }),
-  "get-embedded-editor-state": Schema.Struct({ type: Schema.Literal("get-embedded-editor-state") }),
+  "get-embedded-editor-state": Schema.Struct({}),
   "install-embedded-editor": Schema.Struct({
-    type: Schema.Literal("install-embedded-editor"),
     ...requestBase,
   }),
   "open-embedded-editor": Schema.Struct({
-    type: Schema.Literal("open-embedded-editor"),
     ...requestBase,
     workspacePath: stringMax(4_096),
   }),
   "update-embedded-editor-bounds": Schema.Struct({
-    type: Schema.Literal("update-embedded-editor-bounds"),
     ...requestBase,
     visible: Schema.Boolean,
     x: Schema.Number,
@@ -395,29 +378,23 @@ export const nativeCommandSchemas = {
     ),
   }),
   "reveal-in-embedded-editor": Schema.Struct({
-    type: Schema.Literal("reveal-in-embedded-editor"),
     ...requestBase,
     workspacePath: stringMax(4_096),
     location: sourceLocationSchema,
   }),
   "open-embedded-editor-source-control": Schema.Struct({
-    type: Schema.Literal("open-embedded-editor-source-control"),
     ...requestBase,
     workspacePath: stringMax(4_096),
   }),
   "update-embedded-editor-annotations": Schema.Struct({
-    type: Schema.Literal("update-embedded-editor-annotations"),
     ...requestBase,
     workspacePath: stringMax(4_096),
     snapshot: editorAnnotationSnapshotSchema,
   }),
-  "get-customization-state": Schema.Struct({ type: Schema.Literal("get-customization-state") }),
-  "get-plugin-authoring-reference": Schema.Struct({
-    type: Schema.Literal("get-plugin-authoring-reference"),
-  }),
-  "list-plugin-files": Schema.Struct({ type: Schema.Literal("list-plugin-files") }),
+  "get-customization-state": Schema.Struct({}),
+  "get-plugin-authoring-reference": Schema.Struct({}),
+  "list-plugin-files": Schema.Struct({}),
   "create-plugin": Schema.Struct({
-    type: Schema.Literal("create-plugin"),
     pluginId: pluginIdSchema,
     name: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(128))),
     renderer: Schema.Boolean,
@@ -426,19 +403,16 @@ export const nativeCommandSchemas = {
     expectedWorkingRevision: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/)),
   }),
   "read-plugin-file": Schema.Struct({
-    type: Schema.Literal("read-plugin-file"),
     pluginId: pluginIdSchema,
     path: bounded(1, 8_192),
   }),
   "write-plugin-file": Schema.Struct({
-    type: Schema.Literal("write-plugin-file"),
     pluginId: pluginIdSchema,
     path: bounded(1, 8_192),
     content: stringMax(2_000_000),
     expectedWorkingRevision: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/)),
   }),
   "validate-customization": Schema.Struct({
-    type: Schema.Literal("validate-customization"),
     expectedBaseRevision: Schema.optional(Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/))),
     expectedSourceRevision: Schema.optional(
       Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/)),
@@ -446,38 +420,31 @@ export const nativeCommandSchemas = {
     request: Schema.optional(ipcProjectionString(8_192)),
   }),
   "activate-customization": Schema.Struct({
-    type: Schema.Literal("activate-customization"),
     revision: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/)),
     expectedSourceRevision: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/)),
     request: Schema.optional(ipcProjectionString(8_192)),
   }),
   "customization-rendered": Schema.Struct({
-    type: Schema.Literal("customization-rendered"),
     revision: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/)),
   }),
   "customization-runtime-failed": Schema.Struct({
-    type: Schema.Literal("customization-runtime-failed"),
     revision: Schema.optional(Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/))),
     message: ipcProjectionString(32_768),
   }),
-  "rollback-customization": Schema.Struct({ type: Schema.Literal("rollback-customization") }),
-  "use-factory-customization": Schema.Struct({ type: Schema.Literal("use-factory-customization") }),
-  "list-plugins": Schema.Struct({ type: Schema.Literal("list-plugins") }),
+  "rollback-customization": Schema.Struct({}),
+  "use-factory-customization": Schema.Struct({}),
+  "list-plugins": Schema.Struct({}),
   "set-plugin-enabled": Schema.Struct({
-    type: Schema.Literal("set-plugin-enabled"),
     pluginId: pluginIdSchema,
     enabled: Schema.Boolean,
   }),
   "set-active-scene": Schema.Struct({
-    type: Schema.Literal("set-active-scene"),
     pluginId: Schema.optional(pluginIdSchema),
   }),
   "delete-plugin": Schema.Struct({
-    type: Schema.Literal("delete-plugin"),
     pluginId: pluginIdSchema,
   }),
   "call-plugin-backend": Schema.Struct({
-    type: Schema.Literal("call-plugin-backend"),
     pluginId: pluginIdSchema,
     callId: uuid,
     method: Schema.String.check(
@@ -487,78 +454,65 @@ export const nativeCommandSchemas = {
     input: jsonValueSchema,
   }),
   "cancel-plugin-backend-call": Schema.Struct({
-    type: Schema.Literal("cancel-plugin-backend-call"),
     pluginId: pluginIdSchema,
     callId: uuid,
   }),
   "open-plugin-agent": Schema.Struct({
-    type: Schema.Literal("open-plugin-agent"),
     pluginId: pluginIdSchema,
     options: pluginAgentOpenOptionsSchema,
     implicitSession: Schema.optional(sessionRefSchema),
   }),
   "prompt-plugin-agent": Schema.Struct({
-    type: Schema.Literal("prompt-plugin-agent"),
     pluginId: pluginIdSchema,
     handleId: uuid,
     delivery: Schema.Literals(["prompt", "steer", "follow-up"]),
     text: bounded(1, 262_144),
   }),
   "abort-plugin-agent": Schema.Struct({
-    type: Schema.Literal("abort-plugin-agent"),
     pluginId: pluginIdSchema,
     handleId: uuid,
   }),
   "detach-plugin-agent": Schema.Struct({
-    type: Schema.Literal("detach-plugin-agent"),
     pluginId: pluginIdSchema,
     handleId: uuid,
   }),
   "run-plugin-completion": Schema.Struct({
-    type: Schema.Literal("run-plugin-completion"),
     pluginId: pluginIdSchema,
     ...requestBase,
     request: pluginCompletionRequestSchema,
     implicitSession: Schema.optional(sessionRefSchema),
   }),
   "cancel-plugin-completion": Schema.Struct({
-    type: Schema.Literal("cancel-plugin-completion"),
     pluginId: pluginIdSchema,
     ...requestBase,
   }),
   "load-plugin-state": Schema.Struct({
-    type: Schema.Literal("load-plugin-state"),
     pluginId: pluginIdSchema,
     key: pluginPersistenceKeySchema,
     scope: pluginPersistenceScopeSchema,
   }),
   "save-plugin-state": Schema.Struct({
-    type: Schema.Literal("save-plugin-state"),
     pluginId: pluginIdSchema,
     key: pluginPersistenceKeySchema,
     scope: pluginPersistenceScopeSchema,
     value: Schema.Json,
     expectedVersion: Schema.optional(nonNegativeInt),
   }),
-  "choose-attachments": Schema.Struct({ type: Schema.Literal("choose-attachments") }),
+  "choose-attachments": Schema.Struct({}),
   "suggest-files": Schema.Struct({
-    type: Schema.Literal("suggest-files"),
     workspacePath: stringMax(4_096),
     prefix: stringMax(4_096),
   }),
   "read-workspace-file": Schema.Struct({
-    type: Schema.Literal("read-workspace-file"),
     workspacePath: stringMax(4_096),
     path: bounded(1, 8_192),
   }),
   "compile-inline-widget": Schema.Struct({
-    type: Schema.Literal("compile-inline-widget"),
     language: inlineWidgetLanguageSchema,
     capability: inlineWidgetCapabilitySchema,
     source: inlineWidgetSourceSchema,
   }),
   "repair-inline-widget": Schema.Struct({
-    type: Schema.Literal("repair-inline-widget"),
     sessionId: bounded(1, 256),
     language: inlineWidgetLanguageSchema,
     capability: inlineWidgetCapabilitySchema,
@@ -568,36 +522,29 @@ export const nativeCommandSchemas = {
     model: Schema.optional(Schema.Struct({ provider: bounded(1, 256), id: bounded(1, 512) })),
   }),
   "set-utility-model": Schema.Struct({
-    type: Schema.Literal("set-utility-model"),
     model: Schema.optional(utilityModelSchema),
   }),
   "register-project": Schema.Struct({
-    type: Schema.Literal("register-project"),
     path: stringMax(4_096),
     name: bounded(1, 512),
   }),
   "rename-project": Schema.Struct({
-    type: Schema.Literal("rename-project"),
     path: stringMax(4_096),
     name: bounded(1, 512),
   }),
   "remove-project": Schema.Struct({
-    type: Schema.Literal("remove-project"),
     path: stringMax(4_096),
     deleteSessions: Schema.Boolean,
   }),
   "delete-session": Schema.Struct({
-    type: Schema.Literal("delete-session"),
     sessionId: bounded(1, 256),
   }),
   "set-session-unread": Schema.Struct({
-    type: Schema.Literal("set-session-unread"),
     sessionId: bounded(1, 256),
     unread: Schema.Boolean,
   }),
-  "restart-pi": Schema.Struct({ type: Schema.Literal("restart-pi"), path: stringMax(4_096) }),
+  "restart-pi": Schema.Struct({ path: stringMax(4_096) }),
   "create-worktree": Schema.Struct({
-    type: Schema.Literal("create-worktree"),
     ...requestBase,
     path: stringMax(4_096),
     baseWorktreePath: Schema.optional(bounded(1, 4_096)),
@@ -607,34 +554,28 @@ export const nativeCommandSchemas = {
     firstUserMessage: Schema.optional(bounded(1, 262_144)),
   }),
   "get-worktree-status": Schema.Struct({
-    type: Schema.Literal("get-worktree-status"),
     workspacePath: stringMax(4_096),
   }),
   "land-worktree": Schema.Struct({
-    type: Schema.Literal("land-worktree"),
     ...requestBase,
     workspacePath: stringMax(4_096),
     request: worktreeLandRequestSchema,
   }),
   "discard-worktree": Schema.Struct({
-    type: Schema.Literal("discard-worktree"),
     ...requestBase,
     workspacePath: stringMax(4_096),
     keepBranch: Schema.Boolean,
   }),
   "inspect-workspace": Schema.Struct({
-    type: Schema.Literal("inspect-workspace"),
     ...requestBase,
     path: stringMax(4_096),
   }),
   "respond-workspace-trust": Schema.Struct({
-    type: Schema.Literal("respond-workspace-trust"),
     ...requestBase,
     path: stringMax(4_096),
     approved: Schema.Boolean,
   }),
   "respond-artifact": Schema.Struct({
-    type: Schema.Literal("respond-artifact"),
     ...requestBase,
     artifactRequestId: uuid,
     sessionId: stringMax(256),
@@ -642,11 +583,9 @@ export const nativeCommandSchemas = {
     cancelled: Schema.Boolean,
   }),
   "export-artifacts": Schema.Struct({
-    type: Schema.Literal("export-artifacts"),
     sessionId: stringMax(256),
   }),
   "respond-ui": Schema.Struct({
-    type: Schema.Literal("respond-ui"),
     ...requestBase,
     uiRequestId: uuid,
     value: Schema.optional(stringMax(262_144)),
@@ -655,423 +594,206 @@ export const nativeCommandSchemas = {
   }),
 } as const;
 
-export const nativeCommandSchema = Schema.Union([
-  nativeCommandSchemas["choose-project"],
-  nativeCommandSchemas["open-external-url"],
-  nativeCommandSchemas["show-transcript-selection-context-menu"],
-  nativeCommandSchemas["set-fullscreen-surface-open"],
-  nativeCommandSchemas["show-composer-context-menu"],
-  nativeCommandSchemas["reword-composer-selection"],
-  nativeCommandSchemas["generate-session-title"],
-  nativeCommandSchemas["show-session-context-menu"],
-  nativeCommandSchemas["show-project-context-menu"],
-  nativeCommandSchemas["open-terminal"],
-  nativeCommandSchemas["write-terminal"],
-  nativeCommandSchemas["resize-terminal"],
-  nativeCommandSchemas["get-terminal-status"],
-  nativeCommandSchemas["close-terminal"],
-  nativeCommandSchemas["set-vscode-server-path"],
-  nativeCommandSchemas["get-embedded-editor-state"],
-  nativeCommandSchemas["install-embedded-editor"],
-  nativeCommandSchemas["open-embedded-editor"],
-  nativeCommandSchemas["update-embedded-editor-bounds"],
-  nativeCommandSchemas["reveal-in-embedded-editor"],
-  nativeCommandSchemas["open-embedded-editor-source-control"],
-  nativeCommandSchemas["update-embedded-editor-annotations"],
-  nativeCommandSchemas["get-customization-state"],
-  nativeCommandSchemas["get-plugin-authoring-reference"],
-  nativeCommandSchemas["list-plugin-files"],
-  nativeCommandSchemas["create-plugin"],
-  nativeCommandSchemas["read-plugin-file"],
-  nativeCommandSchemas["write-plugin-file"],
-  nativeCommandSchemas["validate-customization"],
-  nativeCommandSchemas["activate-customization"],
-  nativeCommandSchemas["customization-rendered"],
-  nativeCommandSchemas["customization-runtime-failed"],
-  nativeCommandSchemas["rollback-customization"],
-  nativeCommandSchemas["use-factory-customization"],
-  nativeCommandSchemas["list-plugins"],
-  nativeCommandSchemas["set-plugin-enabled"],
-  nativeCommandSchemas["set-active-scene"],
-  nativeCommandSchemas["delete-plugin"],
-  nativeCommandSchemas["call-plugin-backend"],
-  nativeCommandSchemas["cancel-plugin-backend-call"],
-  nativeCommandSchemas["open-plugin-agent"],
-  nativeCommandSchemas["prompt-plugin-agent"],
-  nativeCommandSchemas["abort-plugin-agent"],
-  nativeCommandSchemas["detach-plugin-agent"],
-  nativeCommandSchemas["run-plugin-completion"],
-  nativeCommandSchemas["cancel-plugin-completion"],
-  nativeCommandSchemas["load-plugin-state"],
-  nativeCommandSchemas["save-plugin-state"],
-  nativeCommandSchemas["choose-attachments"],
-  nativeCommandSchemas["suggest-files"],
-  nativeCommandSchemas["read-workspace-file"],
-  nativeCommandSchemas["compile-inline-widget"],
-  nativeCommandSchemas["repair-inline-widget"],
-  nativeCommandSchemas["set-utility-model"],
-  nativeCommandSchemas["register-project"],
-  nativeCommandSchemas["rename-project"],
-  nativeCommandSchemas["remove-project"],
-  nativeCommandSchemas["delete-session"],
-  nativeCommandSchemas["set-session-unread"],
-  nativeCommandSchemas["restart-pi"],
-  nativeCommandSchemas["create-worktree"],
-  nativeCommandSchemas["get-worktree-status"],
-  nativeCommandSchemas["land-worktree"],
-  nativeCommandSchemas["discard-worktree"],
-  nativeCommandSchemas["inspect-workspace"],
-  nativeCommandSchemas["respond-workspace-trust"],
-  nativeCommandSchemas["respond-artifact"],
-  nativeCommandSchemas["export-artifacts"],
-  nativeCommandSchemas["respond-ui"],
-]);
-
-const nativeCommandResultSchemas = {
+const nativeSuccessSchemas = {
   "project-chosen": Schema.Struct({
-    type: Schema.Literal("project-chosen"),
     path: Schema.optional(stringMax(4_096)),
   }),
-  "external-url-opened": Schema.Struct({ type: Schema.Literal("external-url-opened") }),
+  "external-url-opened": Schema.Struct({}),
   "transcript-selection-context-menu-closed": Schema.Struct({
-    type: Schema.Literal("transcript-selection-context-menu-closed"),
     action: Schema.optional(Schema.Literals(["chat-about-selection", "add-annotation"])),
   }),
   "composer-context-menu-closed": Schema.Struct({
-    type: Schema.Literal("composer-context-menu-closed"),
     action: Schema.optional(Schema.Literals(["reword", "reword-with-prompt"])),
   }),
   "composer-selection-reworded": Schema.Struct({
-    type: Schema.Literal("composer-selection-reworded"),
     text: bounded(1, 32_000),
   }),
   "session-title-generated": Schema.Struct({
-    type: Schema.Literal("session-title-generated"),
     title: Schema.optional(bounded(1, 80)),
   }),
   "session-context-menu-closed": Schema.Struct({
-    type: Schema.Literal("session-context-menu-closed"),
     action: Schema.optional(
       Schema.Literals(["rename", "mark-unread", "resolve", "unresolve", "delete"]),
     ),
   }),
   "project-context-menu-closed": Schema.Struct({
-    type: Schema.Literal("project-context-menu-closed"),
     action: Schema.optional(Schema.Literals(["remove-project", "delete-resolved-worktrees"])),
   }),
   "embedded-editor-state-loaded": Schema.Struct({
-    type: Schema.Literal("embedded-editor-state-loaded"),
     status: Schema.Literals(["missing", "downloading", "starting", "ready", "failed"]),
     message: Schema.optional(ipcProjectionString(4_096)),
     customPath: Schema.optional(stringMax(4_096)),
   }),
   "terminal-opened": Schema.Struct({
-    type: Schema.Literal("terminal-opened"),
     ...requestBase,
     terminalId: uuid,
     shell: bounded(1, 256),
   }),
   "terminal-status": Schema.Struct({
-    type: Schema.Literal("terminal-status"),
     ...requestBase,
     runningProgram: Schema.Boolean,
   }),
   "customization-state": Schema.Struct({
-    type: Schema.Literal("customization-state"),
     state: customizationStateSchema,
   }),
   "plugin-authoring-reference": Schema.Struct({
-    type: Schema.Literal("plugin-authoring-reference"),
     reference: stringMax(1_000_000),
   }),
   "plugin-files": Schema.Struct({
-    type: Schema.Literal("plugin-files"),
     workingRevision: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/)),
     buildRevision: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/)),
     files: Schema.Array(bounded(1, 8_192)).check(Schema.isMaxLength(100_000)),
   }),
   "plugin-file": Schema.Struct({
-    type: Schema.Literal("plugin-file"),
     pluginId: pluginIdSchema,
     path: bounded(1, 8_192),
     content: stringMax(2_000_000),
   }),
   "customization-validation": Schema.Struct({
-    type: Schema.Literal("customization-validation"),
     revision: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/)),
     sourceRevision: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/)),
     diagnostics: Schema.Array(pluginDiagnosticSchema).check(Schema.isMaxLength(1_000)),
     valid: Schema.Boolean,
   }),
   "customization-activation": Schema.Struct({
-    type: Schema.Literal("customization-activation"),
     revision: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/)),
     activating: Schema.Literal(true),
   }),
   "plugin-state": Schema.Struct({
-    type: Schema.Literal("plugin-state"),
     record: Schema.optional(pluginPersistenceRecordSchema),
   }),
   "plugins-listed": Schema.Struct({
-    type: Schema.Literal("plugins-listed"),
     plugins: Schema.Array(pluginStatusSchema).check(Schema.isMaxLength(1_000)),
   }),
   "plugin-backend-result": Schema.Struct({
-    type: Schema.Literal("plugin-backend-result"),
     callId: uuid,
     ok: Schema.Boolean,
     value: Schema.optional(jsonValueSchema),
     error: Schema.optional(ipcProjectionString(32_768)),
   }),
   "plugin-agent-snapshot": Schema.Struct({
-    type: Schema.Literal("plugin-agent-snapshot"),
     snapshot: pluginAgentSnapshotSchema,
   }),
   "plugin-agent-detached": Schema.Struct({
-    type: Schema.Literal("plugin-agent-detached"),
     handleId: uuid,
   }),
   "plugin-completion-result": Schema.Struct({
-    type: Schema.Literal("plugin-completion-result"),
     requestId: uuid,
     result: pluginCompletionResultSchema,
   }),
   "attachments-chosen": Schema.Struct({
-    type: Schema.Literal("attachments-chosen"),
     attachments: Schema.Array(attachmentSchema).check(Schema.isMaxLength(20)),
   }),
   "file-suggestions": Schema.Struct({
-    type: Schema.Literal("file-suggestions"),
     suggestions: Schema.Array(fileSuggestionSchema).check(Schema.isMaxLength(20)),
   }),
   "workspace-file": Schema.Struct({
-    type: Schema.Literal("workspace-file"),
     content: stringMax(2_000_000),
   }),
   "inline-widget-compiled": Schema.Struct({
-    type: Schema.Literal("inline-widget-compiled"),
     widget: compiledInlineWidgetSchema,
   }),
   "inline-widget-repaired": Schema.Struct({
-    type: Schema.Literal("inline-widget-repaired"),
     widget: repairedInlineWidgetSchema,
   }),
   "application-state-updated": Schema.Struct({
-    type: Schema.Literal("application-state-updated"),
     state: applicationStateSchema,
   }),
   "worktree-created": Schema.Struct({
-    type: Schema.Literal("worktree-created"),
     ...requestBase,
     record: worktreeRecordSchema,
   }),
   "worktree-status-loaded": Schema.Struct({
-    type: Schema.Literal("worktree-status-loaded"),
     status: Schema.optional(worktreeStatusSchema),
   }),
   "worktree-landed": Schema.Struct({
-    type: Schema.Literal("worktree-landed"),
     ...requestBase,
     result: worktreeLandOutcomeSchema,
   }),
   accepted: accepted,
   "ui-response-accepted": Schema.Struct({
-    type: Schema.Literal("ui-response-accepted"),
     uiRequestId: uuid,
   }),
   "artifact-response-accepted": Schema.Struct({
-    type: Schema.Literal("artifact-response-accepted"),
     artifactRequestId: uuid,
   }),
   "artifacts-exported": Schema.Struct({
-    type: Schema.Literal("artifacts-exported"),
     markdown: stringMax(20_000_000),
   }),
 } as const;
 
-export const nativeCommandResultSchema = Schema.Union([
-  nativeCommandResultSchemas["project-chosen"],
-  nativeCommandResultSchemas["external-url-opened"],
-  nativeCommandResultSchemas["transcript-selection-context-menu-closed"],
-  nativeCommandResultSchemas["composer-context-menu-closed"],
-  nativeCommandResultSchemas["composer-selection-reworded"],
-  nativeCommandResultSchemas["session-title-generated"],
-  nativeCommandResultSchemas["session-context-menu-closed"],
-  nativeCommandResultSchemas["project-context-menu-closed"],
-  nativeCommandResultSchemas["embedded-editor-state-loaded"],
-  nativeCommandResultSchemas["terminal-opened"],
-  nativeCommandResultSchemas["terminal-status"],
-  nativeCommandResultSchemas["customization-state"],
-  nativeCommandResultSchemas["plugin-authoring-reference"],
-  nativeCommandResultSchemas["plugin-files"],
-  nativeCommandResultSchemas["plugin-file"],
-  nativeCommandResultSchemas["customization-validation"],
-  nativeCommandResultSchemas["customization-activation"],
-  nativeCommandResultSchemas["plugin-state"],
-  nativeCommandResultSchemas["plugins-listed"],
-  nativeCommandResultSchemas["plugin-backend-result"],
-  nativeCommandResultSchemas["plugin-agent-snapshot"],
-  nativeCommandResultSchemas["plugin-agent-detached"],
-  nativeCommandResultSchemas["plugin-completion-result"],
-  nativeCommandResultSchemas["attachments-chosen"],
-  nativeCommandResultSchemas["file-suggestions"],
-  nativeCommandResultSchemas["workspace-file"],
-  nativeCommandResultSchemas["inline-widget-compiled"],
-  nativeCommandResultSchemas["inline-widget-repaired"],
-  nativeCommandResultSchemas["application-state-updated"],
-  nativeCommandResultSchemas["worktree-created"],
-  nativeCommandResultSchemas["worktree-status-loaded"],
-  nativeCommandResultSchemas["worktree-landed"],
-  nativeCommandResultSchemas["accepted"],
-  nativeCommandResultSchemas["ui-response-accepted"],
-  nativeCommandResultSchemas["artifact-response-accepted"],
-  nativeCommandResultSchemas["artifacts-exported"],
-]);
-
-export const nativeCommandSuccessSchemas = {
-  "choose-project": nativeCommandResultSchemas["project-chosen"],
-  "open-external-url": nativeCommandResultSchemas["external-url-opened"],
+export const nativeOperationSuccessSchemas = {
+  "choose-project": nativeSuccessSchemas["project-chosen"],
+  "open-external-url": nativeSuccessSchemas["external-url-opened"],
   "show-transcript-selection-context-menu":
-    nativeCommandResultSchemas["transcript-selection-context-menu-closed"],
-  "show-composer-context-menu": nativeCommandResultSchemas["composer-context-menu-closed"],
-  "show-session-context-menu": nativeCommandResultSchemas["session-context-menu-closed"],
-  "show-project-context-menu": nativeCommandResultSchemas["project-context-menu-closed"],
-  "set-fullscreen-surface-open": nativeCommandResultSchemas.accepted,
-  "choose-attachments": nativeCommandResultSchemas["attachments-chosen"],
-  "suggest-files": nativeCommandResultSchemas["file-suggestions"],
-  "read-workspace-file": nativeCommandResultSchemas["workspace-file"],
-  "reword-composer-selection": nativeCommandResultSchemas["composer-selection-reworded"],
-  "generate-session-title": nativeCommandResultSchemas["session-title-generated"],
-  "set-utility-model": nativeCommandResultSchemas["application-state-updated"],
-  "register-project": nativeCommandResultSchemas["application-state-updated"],
-  "rename-project": nativeCommandResultSchemas["application-state-updated"],
-  "remove-project": nativeCommandResultSchemas["application-state-updated"],
-  "delete-session": nativeCommandResultSchemas["application-state-updated"],
-  "set-session-unread": nativeCommandResultSchemas["application-state-updated"],
-  "restart-pi": nativeCommandResultSchemas.accepted,
-  "inspect-workspace": nativeCommandResultSchemas.accepted,
-  "respond-workspace-trust": nativeCommandResultSchemas.accepted,
-  "create-worktree": nativeCommandResultSchemas["worktree-created"],
-  "get-worktree-status": nativeCommandResultSchemas["worktree-status-loaded"],
-  "land-worktree": nativeCommandResultSchemas["worktree-landed"],
-  "discard-worktree": nativeCommandResultSchemas.accepted,
-  "open-terminal": nativeCommandResultSchemas["terminal-opened"],
-  "write-terminal": nativeCommandResultSchemas.accepted,
-  "resize-terminal": nativeCommandResultSchemas.accepted,
-  "get-terminal-status": nativeCommandResultSchemas["terminal-status"],
-  "close-terminal": nativeCommandResultSchemas.accepted,
-  "get-embedded-editor-state": nativeCommandResultSchemas["embedded-editor-state-loaded"],
-  "install-embedded-editor": nativeCommandResultSchemas.accepted,
-  "set-vscode-server-path": nativeCommandResultSchemas["application-state-updated"],
-  "open-embedded-editor": nativeCommandResultSchemas.accepted,
-  "update-embedded-editor-bounds": nativeCommandResultSchemas.accepted,
-  "reveal-in-embedded-editor": nativeCommandResultSchemas.accepted,
-  "open-embedded-editor-source-control": nativeCommandResultSchemas.accepted,
-  "update-embedded-editor-annotations": nativeCommandResultSchemas.accepted,
-  "respond-artifact": nativeCommandResultSchemas["artifact-response-accepted"],
-  "respond-ui": nativeCommandResultSchemas["ui-response-accepted"],
-  "export-artifacts": nativeCommandResultSchemas["artifacts-exported"],
-  "get-customization-state": nativeCommandResultSchemas["customization-state"],
-  "get-plugin-authoring-reference": nativeCommandResultSchemas["plugin-authoring-reference"],
-  "list-plugin-files": nativeCommandResultSchemas["plugin-files"],
-  "create-plugin": nativeCommandResultSchemas["plugin-files"],
-  "read-plugin-file": nativeCommandResultSchemas["plugin-file"],
-  "write-plugin-file": nativeCommandResultSchemas["plugin-files"],
-  "validate-customization": nativeCommandResultSchemas["customization-validation"],
-  "activate-customization": nativeCommandResultSchemas["customization-activation"],
-  "rollback-customization": nativeCommandResultSchemas["customization-state"],
-  "use-factory-customization": nativeCommandResultSchemas["customization-state"],
-  "list-plugins": nativeCommandResultSchemas["plugins-listed"],
-  "set-plugin-enabled": nativeCommandResultSchemas["plugins-listed"],
-  "set-active-scene": nativeCommandResultSchemas["plugins-listed"],
-  "delete-plugin": nativeCommandResultSchemas["plugins-listed"],
-  "compile-inline-widget": nativeCommandResultSchemas["inline-widget-compiled"],
-  "repair-inline-widget": nativeCommandResultSchemas["inline-widget-repaired"],
-  "open-plugin-agent": nativeCommandResultSchemas["plugin-agent-snapshot"],
-  "prompt-plugin-agent": nativeCommandResultSchemas["plugin-agent-snapshot"],
-  "abort-plugin-agent": nativeCommandResultSchemas["plugin-agent-snapshot"],
-  "detach-plugin-agent": nativeCommandResultSchemas["plugin-agent-detached"],
-  "run-plugin-completion": nativeCommandResultSchemas["plugin-completion-result"],
-  "cancel-plugin-completion": nativeCommandResultSchemas.accepted,
-  "load-plugin-state": nativeCommandResultSchemas["plugin-state"],
-  "save-plugin-state": nativeCommandResultSchemas["plugin-state"],
-  "call-plugin-backend": nativeCommandResultSchemas["plugin-backend-result"],
-  "cancel-plugin-backend-call": nativeCommandResultSchemas.accepted,
-  "customization-rendered": nativeCommandResultSchemas["customization-state"],
-  "customization-runtime-failed": nativeCommandResultSchemas["customization-state"],
+    nativeSuccessSchemas["transcript-selection-context-menu-closed"],
+  "show-composer-context-menu": nativeSuccessSchemas["composer-context-menu-closed"],
+  "show-session-context-menu": nativeSuccessSchemas["session-context-menu-closed"],
+  "show-project-context-menu": nativeSuccessSchemas["project-context-menu-closed"],
+  "set-fullscreen-surface-open": nativeSuccessSchemas.accepted,
+  "choose-attachments": nativeSuccessSchemas["attachments-chosen"],
+  "suggest-files": nativeSuccessSchemas["file-suggestions"],
+  "read-workspace-file": nativeSuccessSchemas["workspace-file"],
+  "reword-composer-selection": nativeSuccessSchemas["composer-selection-reworded"],
+  "generate-session-title": nativeSuccessSchemas["session-title-generated"],
+  "set-utility-model": nativeSuccessSchemas["application-state-updated"],
+  "register-project": nativeSuccessSchemas["application-state-updated"],
+  "rename-project": nativeSuccessSchemas["application-state-updated"],
+  "remove-project": nativeSuccessSchemas["application-state-updated"],
+  "delete-session": nativeSuccessSchemas["application-state-updated"],
+  "set-session-unread": nativeSuccessSchemas["application-state-updated"],
+  "restart-pi": nativeSuccessSchemas.accepted,
+  "inspect-workspace": nativeSuccessSchemas.accepted,
+  "respond-workspace-trust": nativeSuccessSchemas.accepted,
+  "create-worktree": nativeSuccessSchemas["worktree-created"],
+  "get-worktree-status": nativeSuccessSchemas["worktree-status-loaded"],
+  "land-worktree": nativeSuccessSchemas["worktree-landed"],
+  "discard-worktree": nativeSuccessSchemas.accepted,
+  "open-terminal": nativeSuccessSchemas["terminal-opened"],
+  "write-terminal": nativeSuccessSchemas.accepted,
+  "resize-terminal": nativeSuccessSchemas.accepted,
+  "get-terminal-status": nativeSuccessSchemas["terminal-status"],
+  "close-terminal": nativeSuccessSchemas.accepted,
+  "get-embedded-editor-state": nativeSuccessSchemas["embedded-editor-state-loaded"],
+  "install-embedded-editor": nativeSuccessSchemas.accepted,
+  "set-vscode-server-path": nativeSuccessSchemas["application-state-updated"],
+  "open-embedded-editor": nativeSuccessSchemas.accepted,
+  "update-embedded-editor-bounds": nativeSuccessSchemas.accepted,
+  "reveal-in-embedded-editor": nativeSuccessSchemas.accepted,
+  "open-embedded-editor-source-control": nativeSuccessSchemas.accepted,
+  "update-embedded-editor-annotations": nativeSuccessSchemas.accepted,
+  "respond-artifact": nativeSuccessSchemas["artifact-response-accepted"],
+  "respond-ui": nativeSuccessSchemas["ui-response-accepted"],
+  "export-artifacts": nativeSuccessSchemas["artifacts-exported"],
+  "get-customization-state": nativeSuccessSchemas["customization-state"],
+  "get-plugin-authoring-reference": nativeSuccessSchemas["plugin-authoring-reference"],
+  "list-plugin-files": nativeSuccessSchemas["plugin-files"],
+  "create-plugin": nativeSuccessSchemas["plugin-files"],
+  "read-plugin-file": nativeSuccessSchemas["plugin-file"],
+  "write-plugin-file": nativeSuccessSchemas["plugin-files"],
+  "validate-customization": nativeSuccessSchemas["customization-validation"],
+  "activate-customization": nativeSuccessSchemas["customization-activation"],
+  "rollback-customization": nativeSuccessSchemas["customization-state"],
+  "use-factory-customization": nativeSuccessSchemas["customization-state"],
+  "list-plugins": nativeSuccessSchemas["plugins-listed"],
+  "set-plugin-enabled": nativeSuccessSchemas["plugins-listed"],
+  "set-active-scene": nativeSuccessSchemas["plugins-listed"],
+  "delete-plugin": nativeSuccessSchemas["plugins-listed"],
+  "compile-inline-widget": nativeSuccessSchemas["inline-widget-compiled"],
+  "repair-inline-widget": nativeSuccessSchemas["inline-widget-repaired"],
+  "open-plugin-agent": nativeSuccessSchemas["plugin-agent-snapshot"],
+  "prompt-plugin-agent": nativeSuccessSchemas["plugin-agent-snapshot"],
+  "abort-plugin-agent": nativeSuccessSchemas["plugin-agent-snapshot"],
+  "detach-plugin-agent": nativeSuccessSchemas["plugin-agent-detached"],
+  "run-plugin-completion": nativeSuccessSchemas["plugin-completion-result"],
+  "cancel-plugin-completion": nativeSuccessSchemas.accepted,
+  "load-plugin-state": nativeSuccessSchemas["plugin-state"],
+  "save-plugin-state": nativeSuccessSchemas["plugin-state"],
+  "call-plugin-backend": nativeSuccessSchemas["plugin-backend-result"],
+  "cancel-plugin-backend-call": nativeSuccessSchemas.accepted,
+  "customization-rendered": nativeSuccessSchemas["customization-state"],
+  "customization-runtime-failed": nativeSuccessSchemas["customization-state"],
 } as const;
 
-export type NativeCommandType =
-  | "choose-project"
-  | "open-external-url"
-  | "show-transcript-selection-context-menu"
-  | "show-composer-context-menu"
-  | "show-session-context-menu"
-  | "show-project-context-menu"
-  | "choose-attachments"
-  | "suggest-files"
-  | "read-workspace-file"
-  | "reword-composer-selection"
-  | "generate-session-title"
-  | "set-utility-model"
-  | "register-project"
-  | "rename-project"
-  | "remove-project"
-  | "delete-session"
-  | "set-session-unread"
-  | "restart-pi"
-  | "create-worktree"
-  | "get-worktree-status"
-  | "land-worktree"
-  | "open-terminal"
-  | "get-terminal-status"
-  | "get-embedded-editor-state"
-  | "set-vscode-server-path"
-  | "respond-artifact"
-  | "respond-ui"
-  | "export-artifacts"
-  | "get-customization-state"
-  | "get-plugin-authoring-reference"
-  | "list-plugin-files"
-  | "create-plugin"
-  | "read-plugin-file"
-  | "write-plugin-file"
-  | "validate-customization"
-  | "activate-customization"
-  | "rollback-customization"
-  | "use-factory-customization"
-  | "list-plugins"
-  | "set-plugin-enabled"
-  | "set-active-scene"
-  | "delete-plugin"
-  | "compile-inline-widget"
-  | "repair-inline-widget"
-  | "open-plugin-agent"
-  | "prompt-plugin-agent"
-  | "abort-plugin-agent"
-  | "detach-plugin-agent"
-  | "run-plugin-completion"
-  | "cancel-plugin-completion"
-  | "load-plugin-state"
-  | "save-plugin-state"
-  | "call-plugin-backend"
-  | "cancel-plugin-backend-call"
-  | "customization-rendered"
-  | "customization-runtime-failed"
-  | "set-fullscreen-surface-open"
-  | "inspect-workspace"
-  | "respond-workspace-trust"
-  | "discard-worktree"
-  | "write-terminal"
-  | "resize-terminal"
-  | "close-terminal"
-  | "install-embedded-editor"
-  | "open-embedded-editor"
-  | "update-embedded-editor-bounds"
-  | "reveal-in-embedded-editor"
-  | "open-embedded-editor-source-control"
-  | "update-embedded-editor-annotations";
-
+export type NativeOperationType = keyof typeof nativeOperationPayloadSchemas;
 export type NativeEvent = typeof nativeEventSchema.Type;
-export type NativeCommand = typeof nativeCommandSchema.Type;
-export type NativeCommandResult = typeof nativeCommandResultSchema.Type;

@@ -13,7 +13,7 @@ import {
   runInlineWidgetRepair,
   type InlineWidgetGenerationRequest,
 } from "../services/pi/runtime/sidecar-runtime";
-import { type NativeEvent, type nativeCommandSchemas } from "../ipc/native-contract";
+import { type NativeEvent, type nativeOperationPayloadSchemas } from "../ipc/native-protocol";
 import type { SourceLocation } from "../ipc/source-location";
 import type { ModelPreset, UtilityModel } from "../ipc/session-contract";
 import type { WorktreeLandingCoordinator } from "../ipc/worktree-contract";
@@ -36,8 +36,10 @@ type ReviewRepositoryPort = Partial<Pick<ReviewRepository, "reviewContextPath">>
 const MAX_LIVE_PRIVATE_AGENT_RUNTIMES = 32;
 
 export type PiWorkspaceCommand =
-  | (typeof nativeCommandSchemas)["respond-ui"]["Type"]
-  | (typeof nativeCommandSchemas)["respond-artifact"]["Type"];
+  | ({ readonly type: "respond-ui" } & (typeof nativeOperationPayloadSchemas)["respond-ui"]["Type"])
+  | ({
+      readonly type: "respond-artifact";
+    } & (typeof nativeOperationPayloadSchemas)["respond-artifact"]["Type"]);
 
 interface PendingUi {
   operationId: string;
@@ -777,7 +779,7 @@ export class PiWorkspaceDriver {
 }
 
 /** Full message plus stack and cause chain so failures stay diagnosable across IPC. */
-export function describeOperationError(error: unknown) {
+function describeOperationError(error: unknown) {
   if (error instanceof Error) {
     const frames = [error.stack || `${error.name}: ${error.message}`];
     let cause: unknown = error.cause;
