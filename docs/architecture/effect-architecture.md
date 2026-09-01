@@ -157,8 +157,9 @@ MainLive
 ```
 
 `MainApplication` is the Effect program for Electron startup, window lifecycle,
-RPC registration, and shutdown. `src/main/main.ts` only starts that program.
-Ordinary Layers are the default composition mechanism. Cake does not introduce
+RPC registration, and shutdown. `src/main/main.ts` is the visible composition
+root: it imports and assembles `MainLive`, creates the one process runtime, and
+starts that program. Ordinary Layers are the default composition mechanism. Cake does not introduce
 an OpenCode-style custom Layer graph until concrete composition or replacement
 problems justify it.
 
@@ -602,16 +603,17 @@ src/
 │   ├── artifacts.ts
 │   ├── sessionTerminals.ts
 │   └── plugins.ts
+├── layers/                   # Production composition adapters joining domains to callback APIs
+├── config/                   # Decoded process configuration values
 ├── ipc/
 │   ├── protocol/             # Shared Effect RPC groups and Schemas
 │   ├── client/               # CakeIpcClient and renderer transport Layer
 │   ├── server/               # CakeIpcServer handlers and main transport Layer
 │   └── transport/            # Electron RPC protocol adapters
 ├── main/
-│   ├── main.ts
-│   ├── MainApplication.ts
-│   ├── MainLive.ts
-│   └── BootstrapLive.ts
+│   ├── main.ts              # MainLive assembly and process runtime
+│   ├── MainApplication.ts   # Effect-native Electron application program
+│   └── BootstrapLive.ts     # Immutable platform bootstrap capabilities
 ├── preload/
 ├── renderer/
 │   ├── RendererRuntime.ts    # one window-local Effect runtime

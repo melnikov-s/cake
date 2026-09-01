@@ -44,7 +44,7 @@ const jsonValue = <A>(value: A): Schema.Schema.Type<typeof Schema.Json> =>
 
 const projectThread = (
   record: DiscussionSessionRecord,
-  parts: ReadonlyArray<Schema.Schema.Type<typeof Schema.Json>> = [],
+  sidecarParts: ReadonlyArray<Schema.Schema.Type<typeof Schema.Json>> = [],
   usage?: Schema.Schema.Type<typeof Schema.Json>,
 ): DiscussionThread => {
   const thread: DiscussionThread = {
@@ -52,7 +52,7 @@ const projectThread = (
     workingDirectory: record.workingDirectory,
     parentSessionId: record.parentSessionId,
     anchor: record.anchor,
-    parts: [...parts],
+    parts: [...sidecarParts, ...record.pendingParts],
     status: record.status,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,

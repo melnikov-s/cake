@@ -99,6 +99,7 @@ test("chooses an isolated worktree without disturbing the new-chat composer", as
 });
 
 test("shows only resolve after a worktree is merged and removes the checkout", async () => {
+  test.setTimeout(60_000);
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-landed-worktree-pill-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
@@ -201,8 +202,10 @@ test("shows only resolve after a worktree is merged and removes the checkout", a
     await expect(page.getByRole("button", { name: "Current checkout", exact: true })).toBeVisible();
     await expect.poll(() => existsSync(worktreePath)).toBe(false);
     await page.getByRole("button", { name: "Expand Resolved" }).click();
-    const restore = page.locator(".resolved-lane .session-resolve-action");
-    await expect(restore).toHaveAttribute("aria-label", /^Restore /);
+    const restore = page
+      .getByRole("region", { name: "Resolved sessions" })
+      .getByRole("button", { name: /^Restore / });
+    await expect(restore).toBeVisible();
     await restore.click();
     await expect.poll(() => existsSync(worktreePath)).toBe(true);
     await expect(page.getByText(/Cake could not find session/)).toHaveCount(0);

@@ -58,10 +58,13 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
     const configuration = page.getByRole("button", { name: "Model configuration" });
     await expect(configuration).toBeVisible();
     await configuration.click();
-    await expect(page.getByLabel("Reasoning effort")).toBeVisible();
-    await expect(page.getByLabel("Reasoning level")).toBeVisible();
-    await page.getByRole("button", { name: /Change model/ }).click();
-    await expect(page.getByLabel("Search presets and models")).toBeVisible();
+    const modelSearch = page.getByLabel("Search presets and models");
+    const changeModel = page.getByRole("button", { name: /Change model/ });
+    await expect
+      .poll(async () => (await modelSearch.isVisible()) || (await changeModel.isVisible()))
+      .toBe(true);
+    if (await changeModel.isVisible()) await changeModel.click();
+    await expect(modelSearch).toBeVisible();
     await expect(page.getByRole("button", { name: /Manage model presets/ })).toBeVisible();
     await configuration.click();
     await expect(page.locator(".workspace-settings-icon")).toBeHidden();

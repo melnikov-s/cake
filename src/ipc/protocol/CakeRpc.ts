@@ -72,7 +72,13 @@ import {
   WindowStateUnsupportedVersionError,
   WindowStateWriteError,
 } from "../../services/storage/WindowStateStorage";
-import { NativeOperationError } from "../../services/native/NativeServices";
+import { ElectronError } from "../../services/electron/Electron";
+import { ArtifactError } from "../../domain/artifact-data";
+import { NativeOperationError } from "./NativeOperationError";
+import { ManagedWorktreeError } from "../../services/worktrees/ManagedWorktrees";
+import { PluginRuntimeError } from "../../services/plugins/PluginRuntime";
+import { TerminalError } from "../../services/terminal/Terminal";
+import { VsCodeServerError } from "../../services/vscode/VsCodeServer";
 import {
   applicationEventSchema,
   artifactEventSchema,
@@ -492,32 +498,32 @@ export const CakeRpc = RpcGroup.make(
   Rpc.make("electron.choose-project", {
     payload: nativeOperationPayloadSchemas["choose-project"],
     success: nativeOperationSuccessSchemas["choose-project"],
-    error: NativeOperationError,
+    error: ElectronError,
   }),
   Rpc.make("electron.open-external-url", {
     payload: nativeOperationPayloadSchemas["open-external-url"],
     success: nativeOperationSuccessSchemas["open-external-url"],
-    error: NativeOperationError,
+    error: ElectronError,
   }),
   Rpc.make("electron.show-transcript-selection-context-menu", {
     payload: nativeOperationPayloadSchemas["show-transcript-selection-context-menu"],
     success: nativeOperationSuccessSchemas["show-transcript-selection-context-menu"],
-    error: NativeOperationError,
+    error: ElectronError,
   }),
   Rpc.make("electron.show-composer-context-menu", {
     payload: nativeOperationPayloadSchemas["show-composer-context-menu"],
     success: nativeOperationSuccessSchemas["show-composer-context-menu"],
-    error: NativeOperationError,
+    error: ElectronError,
   }),
   Rpc.make("electron.show-session-context-menu", {
     payload: nativeOperationPayloadSchemas["show-session-context-menu"],
     success: nativeOperationSuccessSchemas["show-session-context-menu"],
-    error: NativeOperationError,
+    error: ElectronError,
   }),
   Rpc.make("electron.show-project-context-menu", {
     payload: nativeOperationPayloadSchemas["show-project-context-menu"],
     success: nativeOperationSuccessSchemas["show-project-context-menu"],
-    error: NativeOperationError,
+    error: ElectronError,
   }),
   Rpc.make("filesystem.choose-attachments", {
     payload: nativeOperationPayloadSchemas["choose-attachments"],
@@ -582,197 +588,197 @@ export const CakeRpc = RpcGroup.make(
   Rpc.make("managedWorktrees.create-worktree", {
     payload: nativeOperationPayloadSchemas["create-worktree"],
     success: nativeOperationSuccessSchemas["create-worktree"],
-    error: NativeOperationError,
+    error: ManagedWorktreeError,
   }),
   Rpc.make("managedWorktrees.get-worktree-status", {
     payload: nativeOperationPayloadSchemas["get-worktree-status"],
     success: nativeOperationSuccessSchemas["get-worktree-status"],
-    error: NativeOperationError,
+    error: ManagedWorktreeError,
   }),
   Rpc.make("managedWorktrees.land-worktree", {
     payload: nativeOperationPayloadSchemas["land-worktree"],
     success: nativeOperationSuccessSchemas["land-worktree"],
-    error: NativeOperationError,
+    error: ManagedWorktreeError,
   }),
   Rpc.make("terminals.open-terminal", {
     payload: nativeOperationPayloadSchemas["open-terminal"],
     success: nativeOperationSuccessSchemas["open-terminal"],
-    error: NativeOperationError,
+    error: TerminalError,
   }),
   Rpc.make("terminals.get-terminal-status", {
     payload: nativeOperationPayloadSchemas["get-terminal-status"],
     success: nativeOperationSuccessSchemas["get-terminal-status"],
-    error: NativeOperationError,
+    error: TerminalError,
   }),
   Rpc.make("vscode.get-embedded-editor-state", {
     payload: nativeOperationPayloadSchemas["get-embedded-editor-state"],
     success: nativeOperationSuccessSchemas["get-embedded-editor-state"],
-    error: NativeOperationError,
+    error: VsCodeServerError,
   }),
   Rpc.make("vscode.set-vscode-server-path", {
     payload: nativeOperationPayloadSchemas["set-vscode-server-path"],
     success: nativeOperationSuccessSchemas["set-vscode-server-path"],
-    error: NativeOperationError,
+    error: VsCodeServerError,
   }),
   Rpc.make("artifacts.respond-artifact", {
     payload: nativeOperationPayloadSchemas["respond-artifact"],
     success: nativeOperationSuccessSchemas["respond-artifact"],
-    error: NativeOperationError,
+    error: ArtifactError,
   }),
   Rpc.make("artifacts.respond-ui", {
     payload: nativeOperationPayloadSchemas["respond-ui"],
     success: nativeOperationSuccessSchemas["respond-ui"],
-    error: NativeOperationError,
+    error: ArtifactError,
   }),
   Rpc.make("artifacts.export-artifacts", {
     payload: nativeOperationPayloadSchemas["export-artifacts"],
     success: nativeOperationSuccessSchemas["export-artifacts"],
-    error: NativeOperationError,
+    error: ArtifactError,
   }),
   Rpc.make("plugins.get-customization-state", {
     payload: nativeOperationPayloadSchemas["get-customization-state"],
     success: nativeOperationSuccessSchemas["get-customization-state"],
-    error: NativeOperationError,
+    error: PluginRuntimeError,
   }),
   Rpc.make("plugins.get-plugin-authoring-reference", {
     payload: nativeOperationPayloadSchemas["get-plugin-authoring-reference"],
     success: nativeOperationSuccessSchemas["get-plugin-authoring-reference"],
-    error: NativeOperationError,
+    error: PluginRuntimeError,
   }),
   Rpc.make("plugins.list-plugin-files", {
     payload: nativeOperationPayloadSchemas["list-plugin-files"],
     success: nativeOperationSuccessSchemas["list-plugin-files"],
-    error: NativeOperationError,
+    error: PluginRuntimeError,
   }),
   Rpc.make("plugins.create-plugin", {
     payload: nativeOperationPayloadSchemas["create-plugin"],
     success: nativeOperationSuccessSchemas["create-plugin"],
-    error: NativeOperationError,
+    error: PluginRuntimeError,
   }),
   Rpc.make("plugins.read-plugin-file", {
     payload: nativeOperationPayloadSchemas["read-plugin-file"],
     success: nativeOperationSuccessSchemas["read-plugin-file"],
-    error: NativeOperationError,
+    error: PluginRuntimeError,
   }),
   Rpc.make("plugins.write-plugin-file", {
     payload: nativeOperationPayloadSchemas["write-plugin-file"],
     success: nativeOperationSuccessSchemas["write-plugin-file"],
-    error: NativeOperationError,
+    error: PluginRuntimeError,
   }),
   Rpc.make("plugins.validate-customization", {
     payload: nativeOperationPayloadSchemas["validate-customization"],
     success: nativeOperationSuccessSchemas["validate-customization"],
-    error: NativeOperationError,
+    error: PluginRuntimeError,
   }),
   Rpc.make("plugins.activate-customization", {
     payload: nativeOperationPayloadSchemas["activate-customization"],
     success: nativeOperationSuccessSchemas["activate-customization"],
-    error: NativeOperationError,
+    error: PluginRuntimeError,
   }),
   Rpc.make("plugins.rollback-customization", {
     payload: nativeOperationPayloadSchemas["rollback-customization"],
     success: nativeOperationSuccessSchemas["rollback-customization"],
-    error: NativeOperationError,
+    error: PluginRuntimeError,
   }),
   Rpc.make("plugins.use-factory-customization", {
     payload: nativeOperationPayloadSchemas["use-factory-customization"],
     success: nativeOperationSuccessSchemas["use-factory-customization"],
-    error: NativeOperationError,
+    error: PluginRuntimeError,
   }),
   Rpc.make("plugins.list-plugins", {
     payload: nativeOperationPayloadSchemas["list-plugins"],
     success: nativeOperationSuccessSchemas["list-plugins"],
-    error: NativeOperationError,
+    error: PluginRuntimeError,
   }),
   Rpc.make("plugins.set-plugin-enabled", {
     payload: nativeOperationPayloadSchemas["set-plugin-enabled"],
     success: nativeOperationSuccessSchemas["set-plugin-enabled"],
-    error: NativeOperationError,
+    error: PluginRuntimeError,
   }),
   Rpc.make("plugins.set-active-scene", {
     payload: nativeOperationPayloadSchemas["set-active-scene"],
     success: nativeOperationSuccessSchemas["set-active-scene"],
-    error: NativeOperationError,
+    error: PluginRuntimeError,
   }),
   Rpc.make("plugins.delete-plugin", {
     payload: nativeOperationPayloadSchemas["delete-plugin"],
     success: nativeOperationSuccessSchemas["delete-plugin"],
-    error: NativeOperationError,
+    error: PluginRuntimeError,
   }),
   Rpc.make("plugins.compile-inline-widget", {
     payload: nativeOperationPayloadSchemas["compile-inline-widget"],
     success: nativeOperationSuccessSchemas["compile-inline-widget"],
-    error: NativeOperationError,
+    error: PluginRuntimeError,
   }),
   Rpc.make("plugins.repair-inline-widget", {
     payload: nativeOperationPayloadSchemas["repair-inline-widget"],
     success: nativeOperationSuccessSchemas["repair-inline-widget"],
-    error: NativeOperationError,
+    error: PluginRuntimeError,
   }),
   Rpc.make("plugins.open-plugin-agent", {
     payload: nativeOperationPayloadSchemas["open-plugin-agent"],
     success: nativeOperationSuccessSchemas["open-plugin-agent"],
-    error: NativeOperationError,
+    error: PluginRuntimeError,
   }),
   Rpc.make("plugins.prompt-plugin-agent", {
     payload: nativeOperationPayloadSchemas["prompt-plugin-agent"],
     success: nativeOperationSuccessSchemas["prompt-plugin-agent"],
-    error: NativeOperationError,
+    error: PluginRuntimeError,
   }),
   Rpc.make("plugins.abort-plugin-agent", {
     payload: nativeOperationPayloadSchemas["abort-plugin-agent"],
     success: nativeOperationSuccessSchemas["abort-plugin-agent"],
-    error: NativeOperationError,
+    error: PluginRuntimeError,
   }),
   Rpc.make("plugins.detach-plugin-agent", {
     payload: nativeOperationPayloadSchemas["detach-plugin-agent"],
     success: nativeOperationSuccessSchemas["detach-plugin-agent"],
-    error: NativeOperationError,
+    error: PluginRuntimeError,
   }),
   Rpc.make("plugins.run-plugin-completion", {
     payload: nativeOperationPayloadSchemas["run-plugin-completion"],
     success: nativeOperationSuccessSchemas["run-plugin-completion"],
-    error: NativeOperationError,
+    error: PluginRuntimeError,
   }),
   Rpc.make("plugins.cancel-plugin-completion", {
     payload: nativeOperationPayloadSchemas["cancel-plugin-completion"],
     success: nativeOperationSuccessSchemas["cancel-plugin-completion"],
-    error: NativeOperationError,
+    error: PluginRuntimeError,
   }),
   Rpc.make("plugins.load-plugin-state", {
     payload: nativeOperationPayloadSchemas["load-plugin-state"],
     success: nativeOperationSuccessSchemas["load-plugin-state"],
-    error: NativeOperationError,
+    error: PluginRuntimeError,
   }),
   Rpc.make("plugins.save-plugin-state", {
     payload: nativeOperationPayloadSchemas["save-plugin-state"],
     success: nativeOperationSuccessSchemas["save-plugin-state"],
-    error: NativeOperationError,
+    error: PluginRuntimeError,
   }),
   Rpc.make("plugins.call-plugin-backend", {
     payload: nativeOperationPayloadSchemas["call-plugin-backend"],
     success: nativeOperationSuccessSchemas["call-plugin-backend"],
-    error: NativeOperationError,
+    error: PluginRuntimeError,
   }),
   Rpc.make("plugins.cancel-plugin-backend-call", {
     payload: nativeOperationPayloadSchemas["cancel-plugin-backend-call"],
     success: nativeOperationSuccessSchemas["cancel-plugin-backend-call"],
-    error: NativeOperationError,
+    error: PluginRuntimeError,
   }),
   Rpc.make("plugins.customization-rendered", {
     payload: nativeOperationPayloadSchemas["customization-rendered"],
     success: nativeOperationSuccessSchemas["customization-rendered"],
-    error: NativeOperationError,
+    error: PluginRuntimeError,
   }),
   Rpc.make("plugins.customization-runtime-failed", {
     payload: nativeOperationPayloadSchemas["customization-runtime-failed"],
     success: nativeOperationSuccessSchemas["customization-runtime-failed"],
-    error: NativeOperationError,
+    error: PluginRuntimeError,
   }),
   Rpc.make("electron.set-fullscreen-surface-open", {
     payload: nativeOperationPayloadSchemas["set-fullscreen-surface-open"],
     success: nativeOperationSuccessSchemas["set-fullscreen-surface-open"],
-    error: NativeOperationError,
+    error: ElectronError,
   }),
   Rpc.make("workspaces.inspect-workspace", {
     payload: nativeOperationPayloadSchemas["inspect-workspace"],
@@ -787,52 +793,52 @@ export const CakeRpc = RpcGroup.make(
   Rpc.make("managedWorktrees.discard-worktree", {
     payload: nativeOperationPayloadSchemas["discard-worktree"],
     success: nativeOperationSuccessSchemas["discard-worktree"],
-    error: NativeOperationError,
+    error: ManagedWorktreeError,
   }),
   Rpc.make("terminals.write-terminal", {
     payload: nativeOperationPayloadSchemas["write-terminal"],
     success: nativeOperationSuccessSchemas["write-terminal"],
-    error: NativeOperationError,
+    error: TerminalError,
   }),
   Rpc.make("terminals.resize-terminal", {
     payload: nativeOperationPayloadSchemas["resize-terminal"],
     success: nativeOperationSuccessSchemas["resize-terminal"],
-    error: NativeOperationError,
+    error: TerminalError,
   }),
   Rpc.make("terminals.close-terminal", {
     payload: nativeOperationPayloadSchemas["close-terminal"],
     success: nativeOperationSuccessSchemas["close-terminal"],
-    error: NativeOperationError,
+    error: TerminalError,
   }),
   Rpc.make("vscode.install-embedded-editor", {
     payload: nativeOperationPayloadSchemas["install-embedded-editor"],
     success: nativeOperationSuccessSchemas["install-embedded-editor"],
-    error: NativeOperationError,
+    error: VsCodeServerError,
   }),
   Rpc.make("vscode.open-embedded-editor", {
     payload: nativeOperationPayloadSchemas["open-embedded-editor"],
     success: nativeOperationSuccessSchemas["open-embedded-editor"],
-    error: NativeOperationError,
+    error: VsCodeServerError,
   }),
   Rpc.make("vscode.update-embedded-editor-bounds", {
     payload: nativeOperationPayloadSchemas["update-embedded-editor-bounds"],
     success: nativeOperationSuccessSchemas["update-embedded-editor-bounds"],
-    error: NativeOperationError,
+    error: VsCodeServerError,
   }),
   Rpc.make("vscode.reveal-in-embedded-editor", {
     payload: nativeOperationPayloadSchemas["reveal-in-embedded-editor"],
     success: nativeOperationSuccessSchemas["reveal-in-embedded-editor"],
-    error: NativeOperationError,
+    error: VsCodeServerError,
   }),
   Rpc.make("vscode.open-embedded-editor-source-control", {
     payload: nativeOperationPayloadSchemas["open-embedded-editor-source-control"],
     success: nativeOperationSuccessSchemas["open-embedded-editor-source-control"],
-    error: NativeOperationError,
+    error: VsCodeServerError,
   }),
   Rpc.make("vscode.update-embedded-editor-annotations", {
     payload: nativeOperationPayloadSchemas["update-embedded-editor-annotations"],
     success: nativeOperationSuccessSchemas["update-embedded-editor-annotations"],
-    error: NativeOperationError,
+    error: VsCodeServerError,
   }),
   Rpc.make("application.observeEvents", {
     success: Schema.Union([applicationEventSchema, NativeEventStreamReady]),

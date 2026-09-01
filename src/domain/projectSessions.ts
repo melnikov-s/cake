@@ -1,4 +1,5 @@
 import { Effect, Schema, Stream } from "effect";
+import * as sessionTerminals from "./sessionTerminals";
 import * as subagents from "./subagents";
 import type {
   Annotation,
@@ -634,6 +635,7 @@ export const resolve = Effect.fn("ProjectSessions.resolve")(function* (
       message: "Cake cannot resolve an empty Project Session",
     });
   yield* subagents.releaseParent(target.sessionId).pipe(asError("resolve"));
+  yield* sessionTerminals.closeSession("project", target.sessionId).pipe(asError("resolve"));
   const environment = yield* ProjectSessionEnvironment;
   yield* environment.archive(target.sessionId, location).pipe(asError("resolve"));
   return yield* setSessionsResolved([target.sessionId], true).pipe(asError("resolve"));

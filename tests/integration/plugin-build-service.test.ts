@@ -2,8 +2,8 @@ import { access, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:f
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { resolveCakePaths } from "../../src/main/cake-paths";
-import { PluginBuildService } from "../../src/main/plugin-build-service";
+import { resolveCakePaths } from "../../src/config/CakePaths";
+import { PluginBuildService } from "../../src/services/plugins/plugin-build-service";
 
 const roots: string[] = [];
 afterEach(async () =>

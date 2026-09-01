@@ -15,6 +15,7 @@ import type {
 } from "../../../src/services/pi/runtime/cake-runtime";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { SubagentCoordinatorLive } from "../../../src/services/subagents/SubagentCoordinator";
+import { Terminal } from "../../../src/services/terminal/Terminal";
 import type { SessionSnapshot } from "../../../src/ipc/session-contract";
 
 const snapshot: SessionSnapshot = {
@@ -39,10 +40,20 @@ const makeLayer = () => {
   let created = 0;
   let archived = 0;
   const toolCounts: number[] = [];
+  const terminal = Terminal.of({
+    open: () => Effect.die("Unexpected terminal open"),
+    write: () => Effect.die("Unexpected terminal write"),
+    resize: () => Effect.die("Unexpected terminal resize"),
+    hasRunningProgram: () => Effect.die("Unexpected terminal status"),
+    close: () => Effect.die("Unexpected terminal close"),
+    closeSession: () => Effect.void,
+    closeOwner: () => Effect.void,
+    events: () => Stream.empty,
+  });
   const application = ApplicationState.of({
     initialize: () => Effect.succeed(state),
     current: () => Effect.succeed(state),
-    unsafeCurrent: () => state,
+    snapshot: () => state,
     changes: () => Stream.make({ revision: 0, state }),
     refreshProjection: () => Effect.void,
     transact: (transition) =>
@@ -126,6 +137,7 @@ const makeLayer = () => {
       makePiSessionsLayer(adapter),
       environment,
       SubagentCoordinatorLive,
+      Layer.succeed(Terminal, terminal),
     ),
     created: () => created,
     archived: () => archived,

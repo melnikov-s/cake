@@ -402,18 +402,16 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     this.pendingAllowDirtyTarget = false;
     this.pendingResolveAfterLanding = false;
     this.stalled = false;
-    if (currentStatus)
-      this.status = {
-        ...currentStatus,
-        merged: true,
-        record: { ...currentStatus.record, state: "landed", pendingStrategy: undefined },
-      };
-    if (currentStatus && projectPath && this.props.workspacePath() === workspacePath)
-      await this.props.onLanded({
-        ...currentStatus.record,
-        state: "landed",
-        pendingStrategy: undefined,
-      });
+    if (currentStatus) {
+      const record = { ...currentStatus.record, state: "landed" as const };
+      Reflect.deleteProperty(record, "pendingStrategy");
+      this.status = { ...currentStatus, merged: true, record };
+    }
+    if (currentStatus && projectPath && this.props.workspacePath() === workspacePath) {
+      const record = { ...currentStatus.record, state: "landed" as const };
+      Reflect.deleteProperty(record, "pendingStrategy");
+      await this.props.onLanded(record);
+    }
     if (resolveAfterLanding && this.props.workspacePath() === workspacePath) await this.resolve();
   }
 

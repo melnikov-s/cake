@@ -7,7 +7,7 @@ import {
 } from "../../../ipc/review-contract";
 import { runIsolatedSession } from "./isolated-session-runner";
 import { assertSessionPath } from "./session-path";
-import { AtomicFileWriter } from "../../../main/atomic-file-writer";
+import { AtomicFileWriter } from "../../storage/internal/AtomicFileWriter";
 import { projectSessionEntries } from "./session-projection";
 
 const atomicFileWriter = new AtomicFileWriter();

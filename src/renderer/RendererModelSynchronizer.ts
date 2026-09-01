@@ -289,14 +289,16 @@ export class RendererModelSynchronizer implements Disposable {
         ),
       ),
     );
-    void this.runtime.runPromise(consume, { signal: subscription.abort.signal }).catch(() => {
+    void this.runtime.runPromise(consume, { signal: subscription.abort.signal }).catch((error) => {
       if (
         !this.disposed &&
         this.subscriptions.get(key) === subscription &&
         generation === subscription.generation &&
         !subscription.abort.signal.aborted
-      )
+      ) {
+        console.error(`[cake.renderer] ${key} synchronization failed`, error);
         this.scheduleRestart(key, subscription, generation, stream, apply);
+      }
     });
   }
 

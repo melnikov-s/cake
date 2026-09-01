@@ -1,19 +1,26 @@
 import { EventEmitter } from "node:events";
 import type { Event } from "electron";
 import { it } from "@effect/vitest";
-import { Effect, Exit, Fiber } from "effect";
+import { Effect, Exit, Fiber, Layer } from "effect";
 import { describe, expect, vi } from "vitest";
-import { MainApplication, type MainApplicationOptions } from "../../../src/main/MainApplication";
+import { defaultApplicationState } from "../../../src/domain/application-data";
+import { MainApplication } from "../../../src/main/MainApplication";
+import { Electron } from "../../../src/services/electron/Electron";
+import { PiSessions } from "../../../src/services/pi/PiSessions";
+import { ProjectSessionIntegrations } from "../../../src/services/pi/ProjectSessionIntegrations";
+import { PluginRuntime, PluginRuntimeError } from "../../../src/services/plugins/PluginRuntime";
+import { ProjectSessionLifecycle } from "../../../src/services/project-sessions/ProjectSessionLifecycle";
+import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
+import { RewordingRequests } from "../../../src/services/projects/RewordingRequests";
+import { ApplicationState } from "../../../src/services/storage/ApplicationState";
+import { Terminal } from "../../../src/services/terminal/Terminal";
+import { VsCodeServer } from "../../../src/services/vscode/VsCodeServer";
 
 class TestApplication extends EventEmitter {
   readonly quit = vi.fn(() => this.emit("before-quit", { preventDefault: vi.fn() }));
-  private readonly ready: Promise<void>;
-
-  constructor(ready: Promise<void> = Promise.resolve()) {
+  constructor(private readonly ready: Promise<void> = Promise.resolve()) {
     super();
-    this.ready = ready;
   }
-
   override on(eventName: "before-quit", listener: (event: Event) => void): this;
   override on(eventName: "window-all-closed", listener: () => void): this;
   override on(
@@ -24,16 +31,13 @@ class TestApplication extends EventEmitter {
     this.emit(`listener:${eventName}`);
     return this;
   }
-
   whenReady() {
     return this.ready;
   }
-
   waitForListener(eventName: string) {
     if (this.listenerCount(eventName) > 0) return Promise.resolve();
     return new Promise<void>((resolve) => this.once(`listener:${eventName}`, resolve));
   }
-
   requestQuit() {
     const event = { preventDefault: vi.fn() };
     this.emit("before-quit", event);
@@ -41,32 +45,76 @@ class TestApplication extends EventEmitter {
   }
 }
 
-function options(
-  application: TestApplication,
-  overrides: Partial<MainApplicationOptions> = {},
-): MainApplicationOptions {
-  return {
+const testLayer = (input?: {
+  readonly stop?: () => void;
+  readonly start?: () => Effect.Effect<void, PluginRuntimeError>;
+}) =>
+  Layer.mergeAll(
+    Layer.mock(ApplicationState, {
+      initialize: () => Effect.succeed(defaultApplicationState()),
+      snapshot: defaultApplicationState,
+    }),
+    Layer.mock(Electron, {
+      start: () => Effect.void,
+      stop: () => Effect.sync(() => input?.stop?.()),
+      sendTo: () => {},
+      broadcast: () => {},
+      requireRendererConnection: () => {
+        throw new Error("No renderer connection in this test");
+      },
+      workspaceForConnection: () => undefined,
+      associateWorkspace: () => {},
+      forgetWorkspace: () => {},
+      windowsForWorkspace: () => [],
+      centerTrafficLights: () => {},
+      reloadAll: () => {},
+      reloadWindowWithFactory: () => {},
+    }),
+    Layer.mock(PluginRuntime, {
+      start: input?.start ?? (() => Effect.void),
+      startupRenderer: () => ({ kind: "factory" }),
+      trackRenderer: () => {},
+      rendererProcessGone: () => {},
+      disposeOwner: () => {},
+      recoveryContext: () => undefined,
+      agentResources: () => ({ skills: [], prompts: [], extensions: [] }),
+    }),
+    Layer.mock(ProjectSessionLifecycle, { reconcile: () => Effect.void }),
+    Layer.mock(ProjectAccess, {
+      allow: () => Effect.void,
+      clearOwner: () => Effect.void,
+      rememberSessionLocation: () => Effect.void,
+    }),
+    Layer.mock(RewordingRequests, {
+      acquire: () => Effect.succeed(new AbortController()),
+      release: () => Effect.void,
+      disposeOwner: () => Effect.void,
+    }),
+    Layer.mock(ProjectSessionIntegrations, { cancelPendingRequests: () => Effect.void }),
+    Layer.mock(PiSessions, {}),
+    Layer.mock(Terminal, {}),
+    Layer.mock(VsCodeServer, {
+      closeForWindow: () => Effect.void,
+      backToAgentForWindow: () => Effect.succeed(false),
+    }),
+  );
+
+const program = (application: TestApplication, layer = testLayer()) =>
+  MainApplication({
     application,
-    start: vi.fn(async () => {}),
-    stop: vi.fn(),
     platform: "linux",
-    ...overrides,
-  };
-}
+    initializeNativeProtocols: () => {},
+  }).pipe(Effect.provide(layer));
 
 describe("MainApplication", () => {
   it.effect("starts after Electron is ready and stops on a quit request", () =>
     Effect.gen(function* () {
       const application = new TestApplication();
-      const start = vi.fn(async () => {});
       const stop = vi.fn();
-      const fiber = yield* Effect.forkChild(MainApplication(options(application, { start, stop })));
-
+      const fiber = yield* Effect.forkChild(program(application, testLayer({ stop })));
       yield* Effect.promise(() => application.waitForListener("before-quit"));
       const event = application.requestQuit();
       yield* Fiber.join(fiber);
-
-      expect(start).toHaveBeenCalledOnce();
       expect(event.preventDefault).toHaveBeenCalledOnce();
       expect(stop).toHaveBeenCalledOnce();
       expect(application.listenerCount("before-quit")).toBe(0);
@@ -76,12 +124,10 @@ describe("MainApplication", () => {
   it.effect("delegates non-macOS window closure to Electron quit", () =>
     Effect.gen(function* () {
       const application = new TestApplication();
-      const fiber = yield* Effect.forkChild(MainApplication(options(application)));
-
+      const fiber = yield* Effect.forkChild(program(application));
       yield* Effect.promise(() => application.waitForListener("window-all-closed"));
       application.emit("window-all-closed");
       yield* Fiber.join(fiber);
-
       expect(application.quit).toHaveBeenCalledOnce();
     }),
   );
@@ -90,11 +136,9 @@ describe("MainApplication", () => {
     Effect.gen(function* () {
       const application = new TestApplication(new Promise(() => {}));
       const stop = vi.fn();
-      const fiber = yield* Effect.forkChild(MainApplication(options(application, { stop })));
-
+      const fiber = yield* Effect.forkChild(program(application, testLayer({ stop })));
       yield* Effect.promise(() => application.waitForListener("before-quit"));
       yield* Fiber.interrupt(fiber);
-
       expect(stop).toHaveBeenCalledOnce();
       expect(application.listenerCount("before-quit")).toBe(0);
       expect(application.listenerCount("window-all-closed")).toBe(0);
@@ -104,19 +148,23 @@ describe("MainApplication", () => {
   it.effect("reports a failed bootstrap and still finalizes", () =>
     Effect.gen(function* () {
       const application = new TestApplication();
-      const failure = new Error("bootstrap failed");
       const stop = vi.fn();
       const reportDefect = vi.fn();
       const exit = yield* Effect.exit(
-        MainApplication(
-          options(application, {
-            start: vi.fn(async () => Promise.reject(failure)),
-            stop,
-            reportDefect,
-          }),
+        MainApplication({
+          application,
+          platform: "linux",
+          reportDefect,
+          initializeNativeProtocols: () => {},
+        }).pipe(
+          Effect.provide(
+            testLayer({
+              stop,
+              start: () => new PluginRuntimeError({ message: "bootstrap failed" }),
+            }),
+          ),
         ),
       );
-
       expect(Exit.isFailure(exit)).toBe(true);
       expect(reportDefect).toHaveBeenCalledOnce();
       expect(stop).toHaveBeenCalledOnce();

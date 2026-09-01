@@ -209,7 +209,7 @@ describe("Model Presets domain", () => {
           Effect.succeed(duplicateState),
         ),
         current: Effect.fn("ApplicationState.Test.current")(() => SynchronizedRef.get(stateRef)),
-        unsafeCurrent: () => SynchronizedRef.getUnsafe(stateRef),
+        snapshot: () => SynchronizedRef.getUnsafe(stateRef),
         changes: () =>
           Stream.fromEffect(
             SynchronizedRef.get(stateRef).pipe(Effect.map((state) => ({ revision: 0, state }))),

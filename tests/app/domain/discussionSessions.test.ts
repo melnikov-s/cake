@@ -50,6 +50,16 @@ const makeLayer = () => {
     id: "thread-1",
     workingDirectory: "/project",
     parentSessionId: "parent-1",
+    pendingParts: [
+      {
+        id: "pending-question",
+        kind: "text",
+        role: "user",
+        text: "Why is this exported?",
+        status: "complete",
+        deliveryState: "sending",
+      },
+    ],
     anchor,
     status: "open",
     createdAt: "2026-01-01T00:00:00.000Z",
@@ -168,7 +178,7 @@ const makeLayer = () => {
       discussions,
       projects,
       Layer.mock(ApplicationState, {
-        unsafeCurrent: defaultApplicationState,
+        snapshot: defaultApplicationState,
         refreshProjection: () => Effect.void,
       }),
     ),
@@ -179,6 +189,18 @@ const makeLayer = () => {
 };
 
 describe("Discussion Sessions domain", () => {
+  it.effect("projects Cake-owned pending comments before a sidecar transcript exists", () => {
+    const fixture = makeLayer();
+    return Effect.gen(function* () {
+      const threads = yield* discussionSessions.list({
+        workingDirectory: "/project",
+        parentSessionId: "parent-1",
+      });
+      assert.equal(threads.length, 1);
+      assert.deepEqual(threads[0]?.parts, fixture.record().pendingParts);
+    }).pipe(Effect.provide(fixture.layer));
+  });
+
   it.effect("regenerates parent context and uses a constrained shared Pi runtime", () => {
     const fixture = makeLayer();
     return Effect.gen(function* () {

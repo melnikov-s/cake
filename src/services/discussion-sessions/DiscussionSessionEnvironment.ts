@@ -8,6 +8,8 @@ export interface DiscussionSessionRecord {
   readonly parentSessionId: string;
   readonly sidecarSessionId?: string;
   readonly sidecarSessionFile?: string;
+  /** Cake-owned comments awaiting delivery to a sidecar Pi transcript. */
+  readonly pendingParts: ReadonlyArray<Schema.Schema.Type<typeof Schema.Json>>;
   readonly anchor: DiscussionAnchor;
   readonly status: "open" | "resolved";
   readonly createdAt: string;

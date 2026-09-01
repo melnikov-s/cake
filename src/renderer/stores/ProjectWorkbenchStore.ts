@@ -42,7 +42,8 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   get client() {
     return RendererClientContext.consume(this)!;
   }
-  piState: PiState = "starting";
+  // Pi Sessions are acquired lazily; the main application is ready to accept work once mounted.
+  piState: PiState = "ready";
   @snapshot projectPath: string | undefined;
   @snapshot selectedSessionId: string | undefined;
   pendingTrustPath: string | undefined;

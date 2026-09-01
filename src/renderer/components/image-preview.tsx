@@ -44,7 +44,7 @@ export function ImagePreview({
   }, [open]);
 
   const portalHost =
-    triggerButton.current?.closest<HTMLElement>(".chat-layout") ?? globalThis.document?.body;
+    triggerButton.current?.closest<HTMLElement>('[data-slot="chat"]') ?? globalThis.document?.body;
   const contained = Boolean(
     portalHost && globalThis.document && portalHost !== globalThis.document.body,
   );

@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { rewordSelectionWithProjectContext } from "../../../src/services/pi/runtime/rewording-agent";
 import { runIsolatedSession } from "../../../src/services/pi/runtime/isolated-session-runner";
-import { REWORD_CHARACTER_LIMIT } from "../../../src/domain/utilityWork";
+import {
+  dictationRewordingGuidance,
+  REWORD_CHARACTER_LIMIT,
+} from "../../../src/domain/utilityWork";
 import type { IsolatedSessionResult } from "../../../src/services/pi/runtime/isolated-session-runner";
 
 vi.mock("../../../src/services/pi/runtime/isolated-session-runner", () => ({
@@ -9,6 +12,10 @@ vi.mock("../../../src/services/pi/runtime/isolated-session-runner", () => ({
 }));
 
 const runIsolatedSessionMock = vi.mocked(runIsolatedSession);
+const rewordingPolicy = {
+  systemGuidance: dictationRewordingGuidance,
+  characterLimit: REWORD_CHARACTER_LIMIT,
+};
 
 function isolatedResult(overrides: Partial<IsolatedSessionResult>): IsolatedSessionResult {
   return { sessionId: "utility-session", sessionFile: undefined, response: "", ...overrides };
@@ -22,6 +29,7 @@ describe("rewording agent", () => {
   it("runs one ephemeral read-only session with project context and dictation guidance", async () => {
     runIsolatedSessionMock.mockResolvedValue(isolatedResult({ response: "Use the Git skills." }));
     const text = await rewordSelectionWithProjectContext({
+      ...rewordingPolicy,
       workspacePath: "/project",
       agentDir: "/agent-dir",
       utilityModel: { provider: "openai", modelId: "gpt-5-mini", thinkingLevel: "low" },
@@ -64,6 +72,7 @@ describe("rewording agent", () => {
   it("omits blank guidance and passes thinking level off through to the session", async () => {
     runIsolatedSessionMock.mockResolvedValue(isolatedResult({ response: "Clear text" }));
     await rewordSelectionWithProjectContext({
+      ...rewordingPolicy,
       workspacePath: "/project",
       agentDir: "/agent-dir",
       utilityModel: { provider: "openai", modelId: "gpt-5-mini", thinkingLevel: "off" },
@@ -82,6 +91,7 @@ describe("rewording agent", () => {
     );
     await expect(
       rewordSelectionWithProjectContext({
+        ...rewordingPolicy,
         workspacePath: "/project",
         agentDir: "/agent-dir",
         utilityModel: { provider: "openai", modelId: "gpt-5-mini", thinkingLevel: "off" },
@@ -94,6 +104,7 @@ describe("rewording agent", () => {
     runIsolatedSessionMock.mockResolvedValue(isolatedResult({ response: "   " }));
     await expect(
       rewordSelectionWithProjectContext({
+        ...rewordingPolicy,
         workspacePath: "/project",
         agentDir: "/agent-dir",
         utilityModel: { provider: "openai", modelId: "gpt-5-mini", thinkingLevel: "off" },
@@ -105,6 +116,7 @@ describe("rewording agent", () => {
     runIsolatedSessionMock.mockResolvedValue(isolatedResult({ response: oversized }));
     await expect(
       rewordSelectionWithProjectContext({
+        ...rewordingPolicy,
         workspacePath: "/project",
         agentDir: "/agent-dir",
         utilityModel: { provider: "openai", modelId: "gpt-5-mini", thinkingLevel: "off" },

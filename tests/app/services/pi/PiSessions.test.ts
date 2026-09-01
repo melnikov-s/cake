@@ -121,6 +121,57 @@ describe("PiSessions", () => {
     }),
   );
 
+  it.effect("finalizes Cake integrations with the final shared runtime lease", () =>
+    Effect.gen(function* () {
+      const acquisitions = yield* Ref.make(0);
+      const finalizations = yield* Ref.make(0);
+      const integrationFinalizations = yield* Ref.make(0);
+      const context = yield* Layer.build(makePiSessionsLayer(adapter(acquisitions, finalizations)));
+      const sessions = Context.get(context, PiSessions);
+      const firstScope = yield* Scope.make();
+      const secondScope = yield* Scope.make();
+      const acquireOptions: PiSessionAcquireOptions = {
+        ...options(),
+        onRelease: Ref.update(integrationFinalizations, (count) => count + 1),
+      };
+
+      yield* sessions.acquire(acquireOptions).pipe(Effect.provideService(Scope.Scope, firstScope));
+      yield* sessions.acquire(acquireOptions).pipe(Effect.provideService(Scope.Scope, secondScope));
+      yield* Scope.close(firstScope, Exit.void);
+      assert.equal(yield* Ref.get(integrationFinalizations), 0);
+      yield* Scope.close(secondScope, Exit.void);
+      assert.equal(yield* Ref.get(finalizations), 1);
+      assert.equal(yield* Ref.get(integrationFinalizations), 1);
+    }),
+  );
+
+  it.effect("acquires the current runtime without reconstructing its options", () =>
+    Effect.gen(function* () {
+      const acquisitions = yield* Ref.make(0);
+      const finalizations = yield* Ref.make(0);
+      const context = yield* Layer.build(makePiSessionsLayer(adapter(acquisitions, finalizations)));
+      const sessions = Context.get(context, PiSessions);
+      const owner = yield* Scope.make();
+      const observer = yield* Scope.make();
+      yield* sessions.acquire(options()).pipe(Effect.provideService(Scope.Scope, owner));
+
+      const current = yield* sessions
+        .acquireCurrent({
+          workingDirectory: "/project",
+          sessionDirectory: "/sessions",
+          sessionId: "session-1",
+        })
+        .pipe(Effect.provideService(Scope.Scope, observer));
+      assert.equal((yield* current.snapshot()).sessionId, "session-1");
+      assert.equal(yield* Ref.get(acquisitions), 1);
+
+      yield* Scope.close(owner, Exit.void);
+      assert.equal(yield* Ref.get(finalizations), 0);
+      yield* Scope.close(observer, Exit.void);
+      assert.equal(yield* Ref.get(finalizations), 1);
+    }),
+  );
+
   it.effect("awaits asynchronous runtime finalization after the last Scope releases", () =>
     Effect.gen(function* () {
       const started = yield* Deferred.make<void>();

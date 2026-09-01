@@ -72,7 +72,7 @@ const applicationLayer = Layer.effect(
     return ApplicationState.of({
       initialize: () => Effect.succeed(applicationValue),
       current: () => SubscriptionRef.get(projection).pipe(Effect.map((value) => value.state)),
-      unsafeCurrent: () => SubscriptionRef.getUnsafe(projection).state,
+      snapshot: () => SubscriptionRef.getUnsafe(projection).state,
       changes: () => SubscriptionRef.changes(projection),
       refreshProjection: () => Effect.void,
       transact: (transition) =>

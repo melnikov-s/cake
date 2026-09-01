@@ -79,7 +79,7 @@ const makeLayer = (
       return ApplicationState.of({
         initialize: () => Effect.succeed(SubscriptionRef.getUnsafe(projection).state),
         current: () => SubscriptionRef.get(projection).pipe(Effect.map((current) => current.state)),
-        unsafeCurrent: () => SubscriptionRef.getUnsafe(projection).state,
+        snapshot: () => SubscriptionRef.getUnsafe(projection).state,
         changes: () => SubscriptionRef.changes(projection),
         refreshProjection: () =>
           SubscriptionRef.update(projection, (current) => ({

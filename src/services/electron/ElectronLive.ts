@@ -1,0 +1,658 @@
+import { Effect, Layer, Queue, Stream } from "effect";
+import {
+  BrowserWindow,
+  clipboard,
+  dialog,
+  Menu,
+  nativeImage,
+  shell,
+  webContents,
+  type App,
+  type MenuItemConstructorOptions,
+  type WebContents,
+} from "electron";
+import type { NativeEvent } from "../../ipc/native-protocol";
+import { shouldAllowNavigation } from "./navigation-policy";
+import type { StartupRenderer } from "../plugins/plugin-activation-service";
+import {
+  CAKE_TITLE_BAR_HEIGHT,
+  Electron,
+  ElectronError,
+  type ElectronWindowLifecycle,
+} from "./Electron";
+import { NativeEvents, type FocusedNativeEvent, type NativeStreamElement } from "./NativeEvents";
+
+const TRAFFIC_LIGHT_X = 18;
+const TRAFFIC_LIGHT_DIAMETER = 14;
+
+export interface ElectronLiveOptions {
+  readonly application: App;
+  readonly cakeIconPath: string;
+  readonly annotationMenuIconPath: string;
+  readonly chatMenuIconPath: string;
+  readonly preloadPath: string;
+  readonly rendererPath: string;
+}
+
+const electronError = (cause: unknown) =>
+  new ElectronError({ message: cause instanceof Error ? cause.message : String(cause) });
+
+const trafficLightPosition = (titleBarHeight: number) => ({
+  x: TRAFFIC_LIGHT_X,
+  y: Math.round((titleBarHeight - TRAFFIC_LIGHT_DIAMETER) / 2),
+});
+
+type IconMenuEntry = Omit<MenuItemConstructorOptions, "icon" | "label" | "role" | "type"> & {
+  readonly label: string;
+  readonly icon: string;
+};
+
+const iconMenuEntry = ({ icon: iconPath, ...entry }: IconMenuEntry) => {
+  const icon = nativeImage.createFromPath(iconPath);
+  icon.setTemplateImage(true);
+  return { ...entry, icon } satisfies MenuItemConstructorOptions;
+};
+
+export const makeElectronLive = (options: ElectronLiveOptions) => {
+  const windows = new Map<number, BrowserWindow>();
+  const windowWorkspaces = new Map<number, string>();
+  const fullscreenSurfaces = new Map<number, Set<string>>();
+  const openSessionContextMenus = new Set<Menu>();
+  const nativeEventListeners = new Map<number, Set<(event: NativeEvent) => void>>();
+  let applicationQuitting = false;
+  let stopped = false;
+  let windowLifecycle: ElectronWindowLifecycle | undefined;
+  const lifecycle = () => {
+    if (!windowLifecycle) throw new Error("Electron window lifecycle has not started");
+    return windowLifecycle;
+  };
+
+  const requireRendererConnection = (connectionId: number): WebContents => {
+    const sender = webContents.fromId(connectionId);
+    if (!sender || sender.isDestroyed()) throw new Error("Renderer connection is no longer active");
+    return sender;
+  };
+
+  const subscribeNativeEvents = (
+    connectionId: number,
+    listener: (event: NativeEvent) => void,
+  ): (() => void) => {
+    const listeners = nativeEventListeners.get(connectionId) ?? new Set();
+    listeners.add(listener);
+    nativeEventListeners.set(connectionId, listeners);
+    return () => {
+      listeners.delete(listener);
+      if (listeners.size === 0) nativeEventListeners.delete(connectionId);
+    };
+  };
+
+  const sendTo = (target: WebContents, event: NativeEvent) => {
+    if (event.type === "session-snapshot")
+      lifecycle().rememberSessionLocation(event.snapshot.workspacePath, event.snapshot.sessionId);
+    if (target.isDestroyed()) return;
+    for (const listener of nativeEventListeners.get(target.id) ?? []) listener(event);
+  };
+
+  const broadcast = (event: NativeEvent) => {
+    if (event.type === "session-snapshot")
+      lifecycle().rememberSessionLocation(event.snapshot.workspacePath, event.snapshot.sessionId);
+    for (const window of windows.values()) sendTo(window.webContents, event);
+  };
+
+  const centerTrafficLights = (window: BrowserWindow, titleBarHeight: number) => {
+    if (process.platform === "darwin")
+      window.setWindowButtonPosition(trafficLightPosition(titleBarHeight));
+  };
+
+  const loadSelectedRenderer = async (window: BrowserWindow, renderer: StartupRenderer) => {
+    if (renderer.kind === "custom") {
+      await window.loadFile(renderer.path);
+      lifecycle().trackRenderer(window.webContents.id, renderer);
+      return;
+    }
+    lifecycle().trackRenderer(window.webContents.id, renderer);
+    if (process.env.ELECTRON_RENDERER_URL) await window.loadURL(process.env.ELECTRON_RENDERER_URL);
+    else await window.loadFile(options.rendererPath);
+  };
+
+  const closeFullscreenSurfaceForWindow = (window: BrowserWindow) => {
+    const surfaceIds = fullscreenSurfaces.get(window.webContents.id);
+    const surfaceId = surfaceIds ? Array.from(surfaceIds).at(-1) : undefined;
+    if (!surfaceId) return false;
+    sendTo(window.webContents, { type: "fullscreen-surface-close-requested", surfaceId });
+    return true;
+  };
+
+  const createWindow = () => {
+    const browserWindowOptions = {
+      width: 1180,
+      height: 820,
+      minWidth: 760,
+      minHeight: 560,
+      titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
+      backgroundColor: "#15191d",
+      icon: options.cakeIconPath,
+      webPreferences: {
+        preload: options.preloadPath,
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+        backgroundThrottling: false,
+      },
+    } as const;
+    const window = new BrowserWindow({
+      ...(process.platform === "darwin"
+        ? {
+            ...browserWindowOptions,
+            trafficLightPosition: trafficLightPosition(CAKE_TITLE_BAR_HEIGHT),
+          }
+        : browserWindowOptions),
+      ...(process.env.CAKE_ELECTRON_SMOKE === "1" ? { show: false } : null),
+    });
+    const ownerId = window.webContents.id;
+    windows.set(window.id, window);
+    window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+    window.webContents.on("context-menu", (_event, params) => {
+      if (!params.isEditable && !params.selectionText && !params.misspelledWord && !params.linkURL)
+        return;
+      const template: MenuItemConstructorOptions[] = [];
+      if (params.misspelledWord) {
+        for (const suggestion of params.dictionarySuggestions.slice(0, 5))
+          template.push({
+            label: suggestion,
+            click: () => window.webContents.replaceMisspelling(suggestion),
+          });
+        if (!params.dictionarySuggestions.length)
+          template.push({ label: "No Suggestions", enabled: false });
+        template.push({ type: "separator" });
+      }
+      if (params.linkURL)
+        template.push(
+          { label: "Copy Link", click: () => clipboard.writeText(params.linkURL) },
+          { type: "separator" },
+        );
+      if (params.isEditable || params.selectionText)
+        template.push(
+          { role: "cut", enabled: params.isEditable && params.editFlags.canCut },
+          {
+            role: "copy",
+            enabled: params.isEditable ? params.editFlags.canCopy : Boolean(params.selectionText),
+          },
+          { role: "paste", enabled: params.isEditable && params.editFlags.canPaste },
+          { role: "selectAll" },
+        );
+      Menu.buildFromTemplate(template).popup({ window });
+    });
+    window.webContents.on("will-navigate", (event, url) => {
+      if (
+        !shouldAllowNavigation(window.webContents.getURL(), url, process.env.ELECTRON_RENDERER_URL)
+      )
+        event.preventDefault();
+    });
+    window.webContents.on("did-finish-load", () =>
+      sendTo(window.webContents, { type: "pi-state", state: "ready" }),
+    );
+    window.webContents.on("render-process-gone", (_event, details) => {
+      fullscreenSurfaces.delete(ownerId);
+      if (!applicationQuitting) lifecycle().rendererProcessGone(ownerId, details.reason);
+    });
+    window.on("close", (event) => {
+      if (applicationQuitting) return;
+      if (closeFullscreenSurfaceForWindow(window)) {
+        event.preventDefault();
+        return;
+      }
+      if (lifecycle().backToAgentForWindow(ownerId)) {
+        centerTrafficLights(window, CAKE_TITLE_BAR_HEIGHT);
+        event.preventDefault();
+      }
+    });
+    window.on("closed", () => {
+      const workingDirectory = windowWorkspaces.get(ownerId);
+      windows.delete(window.id);
+      windowWorkspaces.delete(ownerId);
+      fullscreenSurfaces.delete(ownerId);
+      nativeEventListeners.delete(ownerId);
+      if (applicationQuitting) return;
+      lifecycle().closeEditorForWindow(ownerId);
+      lifecycle().closeTerminalOwner(ownerId);
+      lifecycle().disposePluginOwner(ownerId);
+      lifecycle().onWindowClosed(ownerId, workingDirectory);
+    });
+    void loadSelectedRenderer(window, lifecycle().startupRenderer());
+    return window;
+  };
+
+  const configureApplicationBranding = () => {
+    const windowMenuTail: MenuItemConstructorOptions[] =
+      process.platform === "darwin"
+        ? [{ type: "separator" }, { role: "front" }]
+        : [{ role: "close" }];
+    Menu.setApplicationMenu(
+      Menu.buildFromTemplate([
+        {
+          label: "Cake",
+          submenu: [
+            { role: "about", label: "About Cake" },
+            { type: "separator" },
+            { role: "services", submenu: [] },
+            { type: "separator" },
+            { role: "hide" },
+            { role: "hideOthers" },
+            { role: "unhide" },
+            { type: "separator" },
+            { role: "quit" },
+          ],
+        },
+        { role: "fileMenu" },
+        { role: "editMenu" },
+        { role: "viewMenu" },
+        ...(process.env.CAKE_MANUAL_RELOAD === "1"
+          ? [
+              {
+                label: "Developer",
+                submenu: [
+                  {
+                    label: "Reload Cake",
+                    click: () => BrowserWindow.getFocusedWindow()?.webContents.reload(),
+                  },
+                ],
+              } satisfies MenuItemConstructorOptions,
+            ]
+          : []),
+        {
+          label: "Window",
+          submenu: [
+            { role: "minimize" },
+            { role: "zoom" },
+            { type: "separator" },
+            {
+              label: "Toggle Terminal",
+              accelerator: "CommandOrControl+`",
+              click: () => {
+                const focused = BrowserWindow.getFocusedWindow();
+                const target =
+                  focused && windows.has(focused.id) ? focused : [...windows.values()].at(-1);
+                if (target) sendTo(target.webContents, { type: "terminal-toggle-requested" });
+              },
+            },
+            ...windowMenuTail,
+          ],
+        },
+      ]),
+    );
+    if (process.platform === "darwin" && options.application.dock) {
+      const icon = nativeImage.createFromPath(options.cakeIconPath);
+      if (!icon.isEmpty()) options.application.dock.setIcon(icon);
+    }
+  };
+
+  const service = Electron.of({
+    chooseProject: Effect.fn("Electron.chooseProject")(function* (connectionId) {
+      const sender = yield* Effect.try({
+        try: () => requireRendererConnection(connectionId),
+        catch: electronError,
+      });
+      const owner = BrowserWindow.fromWebContents(sender);
+      if (!owner) return {};
+      return yield* Effect.tryPromise({
+        try: async () => {
+          const result = await dialog.showOpenDialog(owner, { properties: ["openDirectory"] });
+          const path = result.canceled ? undefined : result.filePaths[0];
+          if (path) lifecycle().allowProjectPath(path);
+          return { path };
+        },
+        catch: electronError,
+      });
+    }),
+    openExternalUrl: Effect.fn("Electron.openExternalUrl")(function* (_connectionId, request) {
+      return yield* Effect.tryPromise({
+        try: async () => {
+          const url = new URL(request.url);
+          if (url.protocol !== "https:" && url.protocol !== "http:")
+            throw new Error("External links must use HTTP or HTTPS");
+          await shell.openExternal(url.href);
+          return {};
+        },
+        catch: electronError,
+      });
+    }),
+    showTranscriptSelectionContextMenu: Effect.fn("Electron.showTranscriptSelectionContextMenu")(
+      function* (connectionId, request) {
+        const sender = yield* Effect.try({
+          try: () => requireRendererConnection(connectionId),
+          catch: electronError,
+        });
+        const owner = BrowserWindow.fromWebContents(sender);
+        if (!owner) return {};
+        return yield* Effect.tryPromise({
+          try: () =>
+            new Promise<SuccessTranscriptMenu>((resolve) => {
+              let completed = false;
+              const finish = (action?: SuccessTranscriptMenu["action"]) => {
+                if (completed) return;
+                completed = true;
+                resolve({ action });
+              };
+              const template: MenuItemConstructorOptions[] = [{ role: "copy" }];
+              if (request.canAnnotate)
+                template.push(
+                  iconMenuEntry({
+                    label: "Add annotation",
+                    icon: options.annotationMenuIconPath,
+                    click: () => finish("add-annotation"),
+                  }),
+                );
+              if (request.canChat)
+                template.push(
+                  iconMenuEntry({
+                    label: "Chat about this",
+                    icon: options.chatMenuIconPath,
+                    click: () => finish("chat-about-selection"),
+                  }),
+                );
+              template.push({ role: "selectAll" });
+              Menu.buildFromTemplate(template).popup({ window: owner, callback: () => finish() });
+            }),
+          catch: electronError,
+        });
+      },
+    ),
+    showComposerContextMenu: Effect.fn("Electron.showComposerContextMenu")(
+      function* (connectionId, request) {
+        const sender = yield* Effect.try({
+          try: () => requireRendererConnection(connectionId),
+          catch: electronError,
+        });
+        const owner = BrowserWindow.fromWebContents(sender);
+        if (!owner) return {};
+        return yield* Effect.tryPromise({
+          try: () =>
+            new Promise<SuccessComposerMenu>((resolve) => {
+              let completed = false;
+              const finish = (action?: SuccessComposerMenu["action"]) => {
+                if (completed) return;
+                completed = true;
+                resolve({ action });
+              };
+              Menu.buildFromTemplate([
+                { role: "cut" },
+                { role: "copy" },
+                { role: "paste" },
+                { type: "separator" },
+                {
+                  label: "Reword",
+                  enabled: lifecycle().hasUtilityModel(),
+                  click: () => finish("reword"),
+                },
+                {
+                  label: "Reword with Prompt…",
+                  enabled: lifecycle().hasUtilityModel(),
+                  click: () => finish("reword-with-prompt"),
+                },
+                { type: "separator" },
+                { role: "selectAll" },
+              ]).popup({ window: owner, x: request.x, y: request.y, callback: () => finish() });
+            }),
+          catch: electronError,
+        });
+      },
+    ),
+    showSessionContextMenu: Effect.fn("Electron.showSessionContextMenu")(
+      function* (connectionId, request) {
+        const sender = yield* Effect.try({
+          try: () => requireRendererConnection(connectionId),
+          catch: electronError,
+        });
+        const owner = BrowserWindow.fromWebContents(sender);
+        if (!owner) return {};
+        return yield* Effect.tryPromise({
+          try: () =>
+            new Promise<SuccessSessionMenu>((resolve) => {
+              let completed = false;
+              const finish = (action?: SuccessSessionMenu["action"]) => {
+                if (completed) return;
+                completed = true;
+                resolve({ action });
+              };
+              const menu = Menu.buildFromTemplate(
+                request.resolved
+                  ? [
+                      { label: "Unresolve", click: () => finish("unresolve") },
+                      {
+                        label: "Copy Session ID",
+                        click: () => clipboard.writeText(request.sessionId),
+                      },
+                      { type: "separator" },
+                      { label: "Delete", click: () => finish("delete") },
+                    ]
+                  : [
+                      { label: "Rename", click: () => finish("rename") },
+                      ...(request.unread === false
+                        ? [{ label: "Mark as Unread", click: () => finish("mark-unread") } as const]
+                        : []),
+                      {
+                        label: "Copy Session ID",
+                        click: () => clipboard.writeText(request.sessionId),
+                      },
+                      { label: "Resolve", click: () => finish("resolve") },
+                    ],
+              );
+              openSessionContextMenus.add(menu);
+              menu.popup({
+                window: owner,
+                x: request.x,
+                y: request.y,
+                callback: () => {
+                  openSessionContextMenus.delete(menu);
+                  finish();
+                },
+              });
+            }),
+          catch: electronError,
+        });
+      },
+    ),
+    showProjectContextMenu: Effect.fn("Electron.showProjectContextMenu")(
+      function* (connectionId, request) {
+        const sender = yield* Effect.try({
+          try: () => requireRendererConnection(connectionId),
+          catch: electronError,
+        });
+        const owner = BrowserWindow.fromWebContents(sender);
+        if (!owner) return {};
+        return yield* Effect.tryPromise({
+          try: () =>
+            new Promise<SuccessProjectMenu>((resolve) => {
+              let completed = false;
+              const finish = (action?: SuccessProjectMenu["action"]) => {
+                if (completed) return;
+                completed = true;
+                resolve({ action });
+              };
+              Menu.buildFromTemplate([
+                { label: "Copy Project Path", click: () => clipboard.writeText(request.path) },
+                { type: "separator" },
+                {
+                  label: `Delete Resolved Worktrees${request.resolvedWorktreeCount > 0 ? ` (${request.resolvedWorktreeCount})` : ""}`,
+                  enabled: request.resolvedWorktreeCount > 0,
+                  click: () => finish("delete-resolved-worktrees"),
+                },
+                { type: "separator" },
+                { label: "Remove Project…", click: () => finish("remove-project") },
+              ]).popup({ window: owner, x: request.x, y: request.y, callback: () => finish() });
+            }),
+          catch: electronError,
+        });
+      },
+    ),
+    setFullscreenSurfaceOpen: Effect.fn("Electron.setFullscreenSurfaceOpen")(
+      function* (connectionId, request) {
+        const sender = yield* Effect.try({
+          try: () => requireRendererConnection(connectionId),
+          catch: electronError,
+        });
+        let surfaceIds = fullscreenSurfaces.get(sender.id);
+        if (request.open) {
+          if (!surfaceIds) {
+            surfaceIds = new Set();
+            fullscreenSurfaces.set(sender.id, surfaceIds);
+          }
+          surfaceIds.add(request.surfaceId);
+        } else if (surfaceIds) {
+          surfaceIds.delete(request.surfaceId);
+          if (surfaceIds.size === 0) fullscreenSurfaces.delete(sender.id);
+        }
+        return { requestId: request.requestId };
+      },
+    ),
+    openExternal: Effect.fn("Electron.openExternal")((url) =>
+      Effect.tryPromise({
+        try: async () => {
+          const protocol = new URL(url).protocol;
+          if (protocol !== "https:" && protocol !== "http:")
+            throw new Error("External URL must use HTTP or HTTPS");
+          await shell.openExternal(url);
+        },
+        catch: electronError,
+      }),
+    ),
+    start: Effect.fn("Electron.start")((nextLifecycle) =>
+      Effect.sync(() => {
+        windowLifecycle = nextLifecycle;
+        stopped = false;
+        applicationQuitting = false;
+        if (
+          process.env.CAKE_ELECTRON_SMOKE === "1" &&
+          process.platform === "darwin" &&
+          options.application.dock
+        )
+          options.application.dock.hide();
+        configureApplicationBranding();
+        createWindow();
+      }),
+    ),
+    stop: Effect.fn("Electron.stop")(() =>
+      Effect.sync(() => {
+        if (stopped) return;
+        stopped = true;
+        applicationQuitting = true;
+        for (const menu of openSessionContextMenus) menu.closePopup();
+        openSessionContextMenus.clear();
+        // The initial Electron quit is prevented so Effect can finalize first. Destroy the
+        // renderer windows now so RPC transports and native views cannot retain the runtime.
+        for (const window of windows.values()) if (!window.isDestroyed()) window.destroy();
+        nativeEventListeners.clear();
+        windowWorkspaces.clear();
+        fullscreenSurfaces.clear();
+        windows.clear();
+        windowLifecycle = undefined;
+      }),
+    ),
+    sendTo,
+    broadcast,
+    requireRendererConnection,
+    workspaceForConnection: (connectionId) => windowWorkspaces.get(connectionId),
+    associateWorkspace: (connectionId, workingDirectory) =>
+      windowWorkspaces.set(connectionId, workingDirectory),
+    forgetWorkspace: (workingDirectory) => {
+      for (const [connectionId, current] of windowWorkspaces)
+        if (current === workingDirectory) windowWorkspaces.delete(connectionId);
+    },
+    windowsForWorkspace: (workingDirectory) =>
+      [...windows.values()].flatMap((window) =>
+        windowWorkspaces.get(window.webContents.id) === workingDirectory && !window.isDestroyed()
+          ? [[window.webContents.id, window] as const]
+          : [],
+      ),
+    centerTrafficLights,
+    reloadAll: (renderer) => {
+      for (const window of windows.values()) void loadSelectedRenderer(window, renderer);
+    },
+    reloadWindowWithFactory: (ownerId) => {
+      const window = [...windows.values()].find((item) => item.webContents.id === ownerId);
+      if (window && !window.isDestroyed()) void loadSelectedRenderer(window, { kind: "factory" });
+    },
+  });
+
+  const observe = (connectionId: number) =>
+    Stream.callback<NativeStreamElement>((queue) =>
+      Effect.acquireRelease(
+        Effect.sync(() => {
+          const unsubscribe = subscribeNativeEvents(connectionId, (event) => {
+            Queue.offerUnsafe(queue, event);
+          });
+          Queue.offerUnsafe(queue, { type: "native-stream-ready" });
+          return unsubscribe;
+        }),
+        (unsubscribe) => Effect.sync(unsubscribe),
+      ),
+    );
+  const focused = <Types extends NativeEvent["type"]>(
+    connectionId: number,
+    ...types: ReadonlyArray<Types>
+  ): Stream.Stream<FocusedNativeEvent<Types>> => {
+    const accepted = new Set<NativeEvent["type"]>(types);
+    return observe(connectionId).pipe(
+      Stream.filter(
+        (event): event is FocusedNativeEvent<Types> =>
+          event.type === "native-stream-ready" || accepted.has(event.type),
+      ),
+    );
+  };
+  const nativeEvents = NativeEvents.of({
+    application: (connectionId) =>
+      focused(
+        connectionId,
+        "pi-state",
+        "workspace-inspected",
+        "changelog-snapshot",
+        "complete",
+        "fatal",
+        "application-state-changed",
+        "notification",
+      ),
+    artifacts: (connectionId) =>
+      focused(connectionId, "artifact-updated", "artifact-requested", "ui-request"),
+    plugins: (connectionId) =>
+      focused(
+        connectionId,
+        "plugin-backend-event",
+        "customization-state-changed",
+        "plugin-agent-event",
+      ),
+    terminals: (connectionId) => focused(connectionId, "terminal-toggle-requested"),
+    vscode: (connectionId) =>
+      focused(
+        connectionId,
+        "embedded-editor-state",
+        "embedded-editor-selection",
+        "embedded-editor-back-to-agent",
+        "embedded-editor-annotation-opened",
+        "embedded-editor-toggle-chat",
+        "embedded-editor-selection-cleared",
+        "embedded-editor-location-opened",
+      ),
+    surfaces: (connectionId) => focused(connectionId, "fullscreen-surface-close-requested"),
+  });
+
+  const layer = Layer.merge(
+    Layer.effect(
+      Electron,
+      Effect.acquireRelease(Effect.succeed(service), () => service.stop()),
+    ),
+    Layer.succeed(NativeEvents, nativeEvents),
+  );
+  return { layer, service } as const;
+};
+
+type SuccessTranscriptMenu = {
+  readonly action?: "chat-about-selection" | "add-annotation";
+};
+type SuccessComposerMenu = { readonly action?: "reword" | "reword-with-prompt" };
+type SuccessSessionMenu = {
+  readonly action?: "rename" | "mark-unread" | "resolve" | "unresolve" | "delete";
+};
+type SuccessProjectMenu = {
+  readonly action?: "remove-project" | "delete-resolved-worktrees";
+};

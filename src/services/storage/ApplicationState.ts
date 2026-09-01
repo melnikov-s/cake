@@ -20,7 +20,7 @@ export class ApplicationState extends Context.Service<
   {
     readonly initialize: () => Effect.Effect<ApplicationStateValue, ApplicationStorageError>;
     readonly current: () => Effect.Effect<ApplicationStateValue>;
-    readonly unsafeCurrent: () => ApplicationStateValue;
+    readonly snapshot: () => ApplicationStateValue;
     readonly changes: () => Stream.Stream<ApplicationStateProjection>;
     readonly refreshProjection: () => Effect.Effect<void>;
     readonly transact: <E>(
@@ -72,7 +72,7 @@ export class ApplicationState extends Context.Service<
       return ApplicationState.of({
         initialize,
         current,
-        unsafeCurrent: () => SubscriptionRef.getUnsafe(projection).state,
+        snapshot: () => SubscriptionRef.getUnsafe(projection).state,
         changes: () => SubscriptionRef.changes(projection),
         refreshProjection,
         transact,

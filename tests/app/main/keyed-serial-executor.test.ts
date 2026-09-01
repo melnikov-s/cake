@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { KeyedSerialExecutor } from "../../../src/main/keyed-serial-executor";
+import { KeyedSerialExecutor } from "../../../src/utils/KeyedSerialExecutor";
 
 describe("KeyedSerialExecutor", () => {
   it("continues a key after failure and does not block a different key", async () => {

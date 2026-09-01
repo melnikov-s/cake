@@ -2,7 +2,13 @@ import { Context, Effect, Layer, type Schema, type Stream } from "effect";
 import { RpcClient } from "effect/unstable/rpc";
 import type { RpcClientError } from "effect/unstable/rpc";
 import { CakeRpc, type FoundationFailure } from "../protocol/CakeRpc";
-import type { NativeOperationError } from "../../services/native/NativeServices";
+import type { ArtifactError } from "../../domain/artifact-data";
+import type { ElectronError } from "../../services/electron/Electron";
+import type { NativeOperationError } from "../protocol/NativeOperationError";
+import type { PluginRuntimeError } from "../../services/plugins/PluginRuntime";
+import type { TerminalError } from "../../services/terminal/Terminal";
+import type { ManagedWorktreeError } from "../../services/worktrees/ManagedWorktrees";
+import type { VsCodeServerError } from "../../services/vscode/VsCodeServer";
 import type {
   NativeEvent as NativeEventEnvelope,
   NativeOperationType,
@@ -79,14 +85,17 @@ type NativeStreamReady = { readonly type: "native-stream-ready" };
 type FocusedNativeEvent<Type extends NativeEventEnvelope["type"]> =
   | Extract<NativeEventEnvelope, { readonly type: Type }>
   | NativeStreamReady;
-type NativeRpcCommand<Type extends NativeOperationType> = (
+type NativeRpcCommand<Type extends NativeOperationType, OperationError = NativeOperationError> = (
   payload: (typeof nativeOperationPayloadSchemas)[Type]["Type"],
 ) => Effect.Effect<
   (typeof nativeOperationSuccessSchemas)[Type]["Type"],
-  NativeOperationError | TransportError
+  OperationError | TransportError
 >;
-type NativeRpcOperations<Types extends NativeOperationType> = {
-  readonly [Type in Types]: NativeRpcCommand<Type>;
+type NativeRpcOperations<
+  Types extends NativeOperationType,
+  OperationError = NativeOperationError,
+> = {
+  readonly [Type in Types]: NativeRpcCommand<Type, OperationError>;
 };
 type ModelPresetMutationError =
   | ModelPresetValidationError
@@ -367,7 +376,8 @@ export interface CakeIpcClientService {
     | "show-composer-context-menu"
     | "show-session-context-menu"
     | "show-project-context-menu"
-    | "set-fullscreen-surface-open"
+    | "set-fullscreen-surface-open",
+    ElectronError
   >;
   readonly filesystem: NativeRpcOperations<
     "choose-attachments" | "suggest-files" | "read-workspace-file"
@@ -386,14 +396,16 @@ export interface CakeIpcClientService {
     | "respond-workspace-trust"
   >;
   readonly managedWorktrees: NativeRpcOperations<
-    "create-worktree" | "get-worktree-status" | "land-worktree" | "discard-worktree"
+    "create-worktree" | "get-worktree-status" | "land-worktree" | "discard-worktree",
+    ManagedWorktreeError
   >;
   readonly terminals: NativeRpcOperations<
     | "open-terminal"
     | "write-terminal"
     | "resize-terminal"
     | "get-terminal-status"
-    | "close-terminal"
+    | "close-terminal",
+    TerminalError
   >;
   readonly vscode: NativeRpcOperations<
     | "get-embedded-editor-state"
@@ -403,9 +415,13 @@ export interface CakeIpcClientService {
     | "update-embedded-editor-bounds"
     | "reveal-in-embedded-editor"
     | "open-embedded-editor-source-control"
-    | "update-embedded-editor-annotations"
+    | "update-embedded-editor-annotations",
+    VsCodeServerError
   >;
-  readonly artifacts: NativeRpcOperations<"respond-artifact" | "respond-ui" | "export-artifacts">;
+  readonly artifacts: NativeRpcOperations<
+    "respond-artifact" | "respond-ui" | "export-artifacts",
+    ArtifactError
+  >;
   readonly plugins: NativeRpcOperations<
     | "get-customization-state"
     | "get-plugin-authoring-reference"
@@ -434,7 +450,8 @@ export interface CakeIpcClientService {
     | "call-plugin-backend"
     | "cancel-plugin-backend-call"
     | "customization-rendered"
-    | "customization-runtime-failed"
+    | "customization-runtime-failed",
+    PluginRuntimeError
   >;
   readonly events: {
     readonly application: () => Stream.Stream<

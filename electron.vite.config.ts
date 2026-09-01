@@ -12,7 +12,10 @@ export default defineConfig({
       rollupOptions: {
         input: {
           main: resolve(import.meta.dirname, "src/main/main.ts"),
-          "plugin-backend-host": resolve(import.meta.dirname, "src/main/plugin-backend-host.ts"),
+          "plugin-backend-host": resolve(
+            import.meta.dirname,
+            "src/services/plugins/plugin-backend-host.ts",
+          ),
         },
         output: { entryFileNames: "[name].js" },
       },

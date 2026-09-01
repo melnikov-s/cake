@@ -305,32 +305,20 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
     await imagePreview.click();
     const imageDialog = page.getByRole("dialog", { name: "Image 1" });
     await expect(imageDialog).toBeVisible();
-    const previewBounds = await page.evaluate(() => {
-      const chat = document
-        .querySelector<HTMLElement>('aside [data-slot="chat"]')!
-        .getBoundingClientRect();
-      const dialog = document
-        .querySelector<HTMLElement>(".image-preview-overlay")!
-        .getBoundingClientRect();
-      const image = document
-        .querySelector<HTMLImageElement>(".image-preview-figure img")!
-        .getBoundingClientRect();
-      return {
-        chat: { top: chat.top, right: chat.right, bottom: chat.bottom, left: chat.left },
-        dialog: {
-          top: dialog.top,
-          right: dialog.right,
-          bottom: dialog.bottom,
-          left: dialog.left,
-        },
-        image: { top: image.top, right: image.right, bottom: image.bottom, left: image.left },
-      };
-    });
-    expect(previewBounds.dialog).toEqual(previewBounds.chat);
-    expect(previewBounds.image.left).toBeGreaterThanOrEqual(previewBounds.dialog.left);
-    expect(previewBounds.image.right).toBeLessThanOrEqual(previewBounds.dialog.right);
-    expect(previewBounds.image.top).toBeGreaterThanOrEqual(previewBounds.dialog.top);
-    expect(previewBounds.image.bottom).toBeLessThanOrEqual(previewBounds.dialog.bottom);
+    const [chatBounds, dialogBounds, imageBounds] = await Promise.all([
+      page.locator('aside [data-slot="chat"]').boundingBox(),
+      imageDialog.boundingBox(),
+      imageDialog.locator("img").boundingBox(),
+    ]);
+    expect(dialogBounds).toEqual(chatBounds);
+    expect(imageBounds!.x).toBeGreaterThanOrEqual(dialogBounds!.x);
+    expect(imageBounds!.x + imageBounds!.width).toBeLessThanOrEqual(
+      dialogBounds!.x + dialogBounds!.width,
+    );
+    expect(imageBounds!.y).toBeGreaterThanOrEqual(dialogBounds!.y);
+    expect(imageBounds!.y + imageBounds!.height).toBeLessThanOrEqual(
+      dialogBounds!.y + dialogBounds!.height,
+    );
     await page.getByRole("button", { name: "Close Image 1" }).click();
 
     const resizeHandle = page.getByRole("separator", { name: "Resize current session sidebar" });

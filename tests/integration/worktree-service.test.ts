@@ -5,7 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
-import { WorktreeService } from "../../src/main/worktree-service";
+import { makeTestWorktreeStorageRepository } from "../helpers/worktree-storage-repository";
+import { ManagedWorktreeEngine } from "../../src/services/worktrees/ManagedWorktreeEngine";
 
 const execFileAsync = promisify(execFile);
 const directories: string[] = [];
@@ -38,7 +39,12 @@ function service(
   storage = join(tmpdir(), `cake-worktree-store-${Math.random().toString(16).slice(2)}.json`),
 ) {
   storages.push(storage);
-  return new WorktreeService(storage);
+  return new ManagedWorktreeEngine(
+    makeTestWorktreeStorageRepository(storage),
+    async (workingDirectory, arguments_) =>
+      (await execFileAsync("git", [...arguments_], { cwd: workingDirectory, maxBuffer: 4_000_000 }))
+        .stdout,
+  );
 }
 
 async function commitAll(cwd: string, message: string) {

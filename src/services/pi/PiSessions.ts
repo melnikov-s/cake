@@ -43,6 +43,9 @@ const PiSessionCapabilityProfile = Schema.TaggedUnion({
   SubagentSession: {
     profile: Schema.Literals(["scout", "planner", "reviewer", "worker"]),
   },
+  PluginAgentSession: {
+    visibility: Schema.Literals(["private", "project"]),
+  },
 });
 export const PiSessionQuery = Schema.Struct({
   workingDirectory: Schema.String,
@@ -94,6 +97,8 @@ export type PiSessionUpdate =
 export interface PiSessionAcquireOptions {
   readonly profile: Schema.Schema.Type<typeof PiSessionCapabilityProfile>;
   readonly runtime: Omit<CakeRuntimeOptions, "onEvent">;
+  /** Finalizes Cake-owned integrations when the final shared runtime lease is released. */
+  readonly onRelease?: Effect.Effect<void, unknown>;
 }
 
 export interface PiSessionHandle {
@@ -169,13 +174,21 @@ export class PiSessions extends Context.Service<
     readonly acquire: (
       options: PiSessionAcquireOptions,
     ) => Effect.Effect<PiSessionHandle, PiSessionError, Scope.Scope>;
+    readonly acquireCurrent: (
+      target: Pick<PiSessionTarget, "workingDirectory" | "sessionId" | "sessionDirectory">,
+    ) => Effect.Effect<PiSessionHandle, PiSessionError, Scope.Scope>;
     readonly refreshModels: () => Effect.Effect<void, PiSessionError>;
+    readonly reloadWorkingDirectory: (
+      workingDirectory: string,
+    ) => Effect.Effect<void, PiSessionError>;
+    readonly reloadAll: () => Effect.Effect<void, PiSessionError>;
     readonly reloadCakeChatContext: () => Effect.Effect<void, PiSessionError>;
   }
 >()("cake/services/pi/PiSessions") {}
 
 interface SharedRuntime {
   readonly fingerprint: string;
+  readonly workingDirectory: string;
   readonly profile: PiSessionAcquireOptions["profile"]["_tag"];
   readonly runtime: CakeRuntime;
   readonly events: PubSub.PubSub<PiSessionEvent>;
@@ -248,7 +261,8 @@ const validateProfile = Effect.fn("PiSessions.validateProfile")(function* (
     (profile === "CakeChatSession" && runtime.globalControl !== undefined && !runtime.auxiliary) ||
     ((profile === "DiscussionSession" || profile === "SubagentSession") &&
       runtime.auxiliary === true &&
-      runtime.globalControl === undefined);
+      runtime.globalControl === undefined) ||
+    (profile === "PluginAgentSession" && runtime.globalControl === undefined);
   if (valid) return;
   return yield* new PiSessionError({
     operation: "acquire",
@@ -268,6 +282,7 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
       // to fan explicit refresh intents to currently acquired runtimes; it never acquires or
       // retains a runtime.
       const activeRuntimes = new Set<SharedRuntime>();
+      const acquiredOptions = new Map<string, PiSessionAcquireOptions>();
       // RcMap is the process-local keyed resource owner. Each acquire retains a
       // reference in its caller Scope; the final release disposes the one Pi
       // runtime. Equal/Hash intentionally key only by Pi Session target, while
@@ -292,22 +307,35 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
               });
               const shared = {
                 fingerprint: key.fingerprint,
+                workingDirectory: key.options.runtime.cwd,
                 profile: key.options.profile._tag,
                 runtime,
                 events,
                 activeTurns,
               } satisfies SharedRuntime;
               activeRuntimes.add(shared);
+              acquiredOptions.set(runtimeTarget(key.options), key.options);
+              acquiredOptions.set(
+                `${key.options.runtime.cwd}\u0000${key.options.runtime.sessionDir}\u0000${runtime.sessionId}`,
+                key.options,
+              );
               return shared;
             }),
             (shared) =>
               Effect.tryPromise({
                 try: async () => {
                   activeRuntimes.delete(shared);
+                  for (const [target, options] of acquiredOptions)
+                    if (runtimeTarget(options) === runtimeTarget(key.options))
+                      acquiredOptions.delete(target);
                   await shared.runtime.dispose();
                 },
                 catch: (cause) => cause,
-              }).pipe(Effect.orDie, Effect.ensuring(PubSub.shutdown(shared.events))),
+              }).pipe(
+                Effect.orDie,
+                Effect.ensuring((key.options.onRelease ?? Effect.void).pipe(Effect.orDie)),
+                Effect.ensuring(PubSub.shutdown(shared.events)),
+              ),
           ),
       });
 
@@ -575,20 +603,62 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
           { concurrency: "unbounded", discard: true },
         );
       });
-      const reloadCakeChatContext = Effect.fn("PiSessions.reloadCakeChatContext")(function* () {
+      const reloadShared = Effect.fn("PiSessions.reloadShared")(function* (
+        operation: string,
+        selected: ReadonlyArray<SharedRuntime>,
+      ) {
         yield* Effect.forEach(
-          [...activeRuntimes].filter((shared) => shared.profile === "CakeChatSession"),
+          selected,
           (shared) => {
             const reload = shared.runtime.reload;
             return reload
-              ? runtimeOperation("reloadCakeChatContext", () => reload.call(shared.runtime))
+              ? runtimeOperation(operation, () => reload.call(shared.runtime))
               : Effect.void;
           },
           { concurrency: "unbounded", discard: true },
         );
       });
+      const reloadWorkingDirectory = Effect.fn("PiSessions.reloadWorkingDirectory")(function* (
+        workingDirectory: string,
+      ) {
+        yield* reloadShared(
+          "reloadWorkingDirectory",
+          [...activeRuntimes].filter((shared) => shared.workingDirectory === workingDirectory),
+        );
+      });
+      const reloadAll = Effect.fn("PiSessions.reloadAll")(function* () {
+        yield* reloadShared("reloadAll", [...activeRuntimes]);
+      });
+      const reloadCakeChatContext = Effect.fn("PiSessions.reloadCakeChatContext")(function* () {
+        yield* reloadShared(
+          "reloadCakeChatContext",
+          [...activeRuntimes].filter((shared) => shared.profile === "CakeChatSession"),
+        );
+      });
 
-      return PiSessions.of({ list, inspect, acquire, refreshModels, reloadCakeChatContext });
+      const acquireCurrent = Effect.fn("PiSessions.acquireCurrent")(function* (
+        target: Pick<PiSessionTarget, "workingDirectory" | "sessionId" | "sessionDirectory">,
+      ) {
+        const key = `${target.workingDirectory}\u0000${target.sessionDirectory}\u0000${target.sessionId}`;
+        const options = acquiredOptions.get(key);
+        if (!options)
+          return yield* new PiSessionError({
+            operation: "acquireCurrent",
+            message: `Pi Session ${target.sessionId} is not currently acquired`,
+          });
+        return yield* acquire(options);
+      });
+
+      return PiSessions.of({
+        list,
+        inspect,
+        acquire,
+        acquireCurrent,
+        refreshModels,
+        reloadWorkingDirectory,
+        reloadAll,
+        reloadCakeChatContext,
+      });
     }),
   );
 
