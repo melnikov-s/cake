@@ -156,7 +156,7 @@ type SessionSummaryView = Pick<
   | "modifiedAt"
   | "messageCount"
   | "resolved"
->;
+> & { managedWorktree?: SessionSummary["managedWorktree"] };
 
 export interface AppControlHost {
   currentSession(): { workspacePath: string; sessionId: string } | undefined;
@@ -243,6 +243,7 @@ export interface AppControlSession {
   modified: string;
   messageCount: number;
   resolved: boolean;
+  managedWorktree?: SessionSummaryView["managedWorktree"];
   activity?: "running" | "unread" | "error";
 }
 
@@ -914,7 +915,10 @@ export class AppControlBridge {
       messageCount: session.messageCount,
       resolved: session.resolved,
     };
-    return activity ? { ...result, activity } : result;
+    const resultWithWorktree = session.managedWorktree
+      ? { ...result, managedWorktree: session.managedWorktree }
+      : result;
+    return activity ? { ...resultWithWorktree, activity } : resultWithWorktree;
   }
 }
 
