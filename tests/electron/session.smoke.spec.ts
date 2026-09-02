@@ -103,9 +103,19 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
       });
     await page.getByRole("button", { name: "Toggle sidebar" }).click();
     await page.getByRole("complementary").getByLabel("Open settings").click();
-    await expect(page.getByRole("switch", { name: "Auto-compact" })).toBeVisible();
-    await expect(page.getByLabel("Provider transport")).toHaveValue("auto");
-    await expect(page.getByLabel("Default project trust")).toHaveValue("ask");
+    await expect(
+      page
+        .getByRole("region", { name: "Agent behavior" })
+        .getByText("Open a chat to load Pi’s settings."),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("region", { name: "Network" }).getByText("Open a chat to load Pi’s settings."),
+    ).toBeVisible();
+    await expect(
+      page
+        .getByRole("region", { name: "Safety & privacy" })
+        .getByText("Open a chat to load Pi’s settings."),
+    ).toBeVisible();
     await expect(page.getByLabel("Color theme")).toHaveValue("system");
     const sessionCountBeforeNewChat = await page.locator(".session-item").count();
     await page.getByRole("button", { name: "New chat in project", exact: true }).click();

@@ -805,8 +805,7 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
         if (newSession.name !== undefined) Object.assign(input, { name: newSession.name });
         this.props.sessionRegistry.projectNewSessionSubmission(sessionId, newSession.name ?? text);
         await this.client.projectSessions.start(input, { signal: this.signal });
-        this.props.sessionRegistry.load(sessionId, newSession.path);
-        this.props.sessionRegistry.markNewSessionStarted(sessionId);
+        this.props.sessionRegistry.materializeNewSession(sessionId, newSession.path);
       } else {
         const command =
           delivery === "steer"

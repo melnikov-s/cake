@@ -31,7 +31,6 @@ interface PersistenceRef {
 interface ProjectSessionObservationTarget {
   sessionId: string;
   workingDirectory: string;
-  newSession?: boolean;
 }
 
 const customizationRevision =
@@ -99,28 +98,19 @@ async function bootstrap(bridge: NonNullable<typeof window.cake>) {
     cakeChatCatalog: rootStore.cakeChatCatalogModel,
     projectSessions: () => {
       const blockedPath = rootStore.projectWorkbenchStore.pendingAuthorizationPath;
-      const sessions = [...rootStore.sessionRegistry.materializedSessions].filter(
-        (session) =>
-          session.workspacePath !== blockedPath &&
-          !rootStore.sessionCatalogStore.find(session.sessionId)?.resolved,
-      );
-      const active = rootStore.projectWorkbenchStore.activeSession;
-      if (
-        active &&
-        active.workspacePath !== blockedPath &&
-        !rootStore.sessionCatalogStore.find(active.sessionId)?.resolved &&
-        !sessions.includes(active)
-      )
-        sessions.push(active);
-      return sessions.map((session) => {
-        const target: ProjectSessionObservationTarget = {
-          sessionId: session.sessionId,
-          workingDirectory: session.model.workingDirectory,
-        };
-        if (rootStore.sessionRegistry.isTemporarySession(session.sessionId))
-          target.newSession = true;
-        return { target, model: session.model };
-      });
+      return rootStore.sessionRegistry.materializedSessions
+        .filter(
+          (session) =>
+            session.workspacePath !== blockedPath &&
+            !rootStore.sessionCatalogStore.find(session.sessionId)?.resolved,
+        )
+        .map((session) => ({
+          target: {
+            sessionId: session.sessionId,
+            workingDirectory: session.workspacePath,
+          } satisfies ProjectSessionObservationTarget,
+          model: session.model,
+        }));
     },
     cakeChats: () =>
       rootStore.globalChatStore.loadedSessions

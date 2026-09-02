@@ -46,6 +46,47 @@ function clientWithProjectStream(
 }
 
 describe("RendererModelSynchronizer", () => {
+  it("allows an unhydrated session placeholder to observe its final Working Directory", async () => {
+    const targets: Array<{ sessionId: string; workingDirectory?: string }> = [];
+    const client = {
+      ...clientWithProjectStream(() => Stream.never),
+      projectSessions: {
+        observeCatalog: () => Stream.concat(Stream.make(emptySessionCatalog), Stream.never),
+        observe: (target: { sessionId: string; workingDirectory?: string }) => {
+          targets.push(target);
+          return Stream.never;
+        },
+      },
+      discussionSessions: { observeCatalog: () => Stream.never },
+      subagents: { observe: () => Stream.never },
+    } as unknown as CakeIpcClientService;
+    const projects = ProjectCatalog.create();
+    const sessions = SessionCatalog.create();
+    const cakeChats = CakeChatCatalog.create();
+    const session = Session.create({ sessionId: "session", workingDirectory: "/project" });
+    const synchronizer = new RendererModelSynchronizer(runtimeFor(client));
+
+    synchronizer.sync({
+      projects,
+      sessionCatalog: sessions,
+      cakeChatCatalog: cakeChats,
+      projectSessions: [
+        { target: { sessionId: "session", workingDirectory: "/worktree" }, model: session },
+      ],
+      cakeChats: [],
+    });
+
+    await vi.waitFor(() =>
+      expect(targets).toContainEqual({ sessionId: "session", workingDirectory: "/worktree" }),
+    );
+
+    synchronizer[Symbol.dispose]();
+    projects[Symbol.dispose]();
+    sessions[Symbol.dispose]();
+    cakeChats[Symbol.dispose]();
+    session[Symbol.dispose]();
+  });
+
   it("maps one current-first stream into stable reactive Models with applySnapshot", async () => {
     const updates: ProjectCatalogUpdate[] = [
       {

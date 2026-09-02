@@ -73,7 +73,12 @@ const makeLayer = (
     ],
     trustedProjectPaths: ["/project"],
   },
-  hooks: { onCreateRuntime?(): void; onArchive?(): void; onList?(): void } = {},
+  hooks: {
+    onCreateRuntime?(): void;
+    onArchive?(): void;
+    onList?(): void;
+    onRuntimeOptions?(newSession: boolean): void;
+  } = {},
 ) => {
   const application = Layer.effect(
     ApplicationState,
@@ -143,18 +148,21 @@ const makeLayer = (
           },
         ]),
       runtimeOptions: ({ location, sessionId, newSession }) =>
-        Effect.succeed({
-          profile: { _tag: "ProjectSession" },
-          runtime: {
-            cwd: location.workingDirectory,
-            trusted: true,
-            agentDir: "/agent",
-            sessionDir: location.sessionDirectory,
-            resolvedSessionDir: location.resolvedSessionDirectory,
-            sessionId,
-            newSession,
-            requestUi: async () => undefined,
-          },
+        Effect.sync(() => {
+          hooks.onRuntimeOptions?.(newSession);
+          return {
+            profile: { _tag: "ProjectSession" as const },
+            runtime: {
+              cwd: location.workingDirectory,
+              trusted: true,
+              agentDir: "/agent",
+              sessionDir: location.sessionDirectory,
+              resolvedSessionDir: location.resolvedSessionDirectory,
+              sessionId,
+              newSession,
+              requestUi: async () => undefined,
+            },
+          };
         }),
       archive: () => Effect.sync(() => hooks.onArchive?.()),
       restore: (_sessionId, location) => Effect.succeed(location),
@@ -277,6 +285,24 @@ describe("Project Sessions domain", () => {
       assert.match(turnId, /^[0-9a-f-]{36}$/);
     }).pipe(Effect.provide(makeLayer())),
   );
+
+  it.effect("never materializes a new Pi Session through observation", () => {
+    const creationModes: boolean[] = [];
+    return Effect.gen(function* () {
+      const stream = yield* projectSessions.observe({
+        sessionId: "session-1",
+        workingDirectory: "/project",
+      });
+      yield* stream.pipe(Stream.take(1), Stream.runDrain);
+      assert.deepEqual(creationModes, [false]);
+    }).pipe(
+      Effect.provide(
+        makeLayer(undefined, {
+          onRuntimeOptions: (newSession) => creationModes.push(newSession),
+        }),
+      ),
+    );
+  });
 
   it.effect("opens an untrusted Working Directory with local executable resources disabled", () =>
     Effect.gen(function* () {

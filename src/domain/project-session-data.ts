@@ -53,7 +53,6 @@ export type ProjectSessionUpdate = Schema.Schema.Type<typeof ProjectSessionUpdat
 export const ProjectSessionTarget = Schema.Struct({
   sessionId: boundedId,
   workingDirectory: Schema.optionalKey(boundedPath),
-  newSession: Schema.optionalKey(Schema.Boolean),
 });
 export interface ProjectSessionTarget extends Schema.Schema.Type<typeof ProjectSessionTarget> {}
 
@@ -104,7 +103,6 @@ const Attachment = Schema.Union([
 export const ProjectSessionPromptInput = Schema.Struct({
   sessionId: boundedId,
   workingDirectory: Schema.optionalKey(boundedPath),
-  newSession: Schema.optionalKey(Schema.Boolean),
   text: boundedText,
   attachments: Schema.Array(Attachment).check(Schema.isMaxLength(20)),
   renderUserMessageAsMarkdown: Schema.Boolean,

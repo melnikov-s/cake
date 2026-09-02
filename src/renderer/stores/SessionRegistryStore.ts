@@ -1,4 +1,4 @@
-import { Store, child, createStore, observable, snapshot, updateStore } from "r-state-tree";
+import { Store, batch, child, createStore, observable, snapshot, updateStore } from "r-state-tree";
 import {
   SESSION_TITLE_MAX_LENGTH,
   type Attachment,
@@ -124,24 +124,32 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     );
   }
 
-  markNewSessionStarted(sessionId: string) {
-    if (!removeValue(this.temporarySessionIds, sessionId)) return;
-    if (this.stagedSessionId === sessionId) this.stagedSessionId = undefined;
-    delete this.pendingConfigurationsBySession[sessionId];
-    delete this.pendingNamesBySession[sessionId];
-    delete this.draftSessionsById[sessionId];
-    const workspacePath = this.sessionWorkspacePaths.get(sessionId);
-    if (workspacePath && !this.props.catalog?.find(sessionId))
-      this.props.catalog?.upsertPending(
-        sessionId,
-        workspacePath,
-        this.props.projectName(workspacePath),
-      );
-    else {
-      this.props.catalog?.setDraft(sessionId, false);
-      this.props.catalog?.setPendingResolved(sessionId, false);
-    }
-    addUnique(this.unlistedNewSessionIds, sessionId);
+  /** Atomically transitions one successfully started renderer draft into an observed Pi Session. */
+  materializeNewSession(sessionId: string, workingDirectory: string) {
+    if (!this.temporarySessionIds.includes(sessionId))
+      throw new Error("Only a successfully started renderer draft can be materialized.");
+    return batch(() => {
+      this.rememberSessionLocation(sessionId, workingDirectory);
+      const session = this.addTarget(sessionId, workingDirectory);
+      addUnique(this.materializedSessionIds, sessionId);
+      removeValue(this.temporarySessionIds, sessionId);
+      if (this.stagedSessionId === sessionId) this.stagedSessionId = undefined;
+      delete this.pendingConfigurationsBySession[sessionId];
+      delete this.pendingNamesBySession[sessionId];
+      delete this.draftSessionsById[sessionId];
+      if (!this.props.catalog?.find(sessionId))
+        this.props.catalog?.upsertPending(
+          sessionId,
+          workingDirectory,
+          this.props.projectName(workingDirectory),
+        );
+      else {
+        this.props.catalog?.setDraft(sessionId, false);
+        this.props.catalog?.setPendingResolved(sessionId, false);
+      }
+      addUnique(this.unlistedNewSessionIds, sessionId);
+      return session;
+    });
   }
 
   /** Publishes the first-message projection before Pi creates its authoritative session. */

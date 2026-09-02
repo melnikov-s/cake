@@ -341,7 +341,14 @@ export class RendererModelSynchronizer implements Disposable {
   private assertSessionIdentity(model: Session, sessionId: string, workingDirectory?: string) {
     if (model.sessionId !== sessionId)
       throw new Error(`Session Model identity collision: ${sessionId}`);
-    if (workingDirectory && model.workingDirectory && model.workingDirectory !== workingDirectory)
+    // A renderer-only composer has an identity placeholder but no authoritative Pi snapshot yet.
+    // Its Working Directory may change before `projectSessions.start` materializes the session.
+    if (
+      model.sessionFile &&
+      workingDirectory &&
+      model.workingDirectory &&
+      model.workingDirectory !== workingDirectory
+    )
       throw new Error(`Session Model Working Directory collision: ${sessionId}`);
   }
 }

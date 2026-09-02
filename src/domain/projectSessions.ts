@@ -327,7 +327,7 @@ export const observe = Effect.fn("ProjectSessions.observe")(function* (
 ) {
   const location = yield* findLocation(target);
   const state = yield* getState();
-  const handle = yield* acquireTarget(location, target.sessionId, target.newSession ?? false);
+  const handle = yield* acquireTarget(location, target.sessionId, false);
   const identity = {
     _tag: "ProjectSession" as const,
     sessionId: target.sessionId,
@@ -427,7 +427,6 @@ const promptTarget = (input: ProjectSessionPromptInput): ProjectSessionTarget =>
   const target: ProjectSessionTarget = { sessionId: input.sessionId };
   if (input.workingDirectory !== undefined)
     Object.assign(target, { workingDirectory: input.workingDirectory });
-  if (input.newSession !== undefined) Object.assign(target, { newSession: input.newSession });
   return target;
 };
 

@@ -91,7 +91,14 @@ test("chooses an isolated worktree without disturbing the new-chat composer", as
     await expect(composer).toBeFocused();
     await composer.pressSequentially("Build this in isolation");
     await expect(composer).toHaveValue("Build this in isolation");
-    await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
+    const send = page.getByRole("button", { name: "Send" });
+    await expect(send).toBeEnabled();
+    await send.click();
+    await expect(composer).toHaveValue("", { timeout: 20_000 });
+    await expect(page.getByText(/Session ID collision detected/)).toHaveCount(0);
+    await expect(
+      page.getByTestId("virtuoso-item-list").getByText("Build this in isolation", { exact: true }),
+    ).toBeVisible();
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });
