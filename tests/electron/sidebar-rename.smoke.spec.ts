@@ -125,6 +125,10 @@ test("uses the native context menu for project sessions", async () => {
     await expect(page.getByLabel("Session name")).toHaveCount(0);
     await page.keyboard.press("Escape");
 
+    await cakeChatRow.click();
+    await expect(page.getByLabel("Message Cake Chat")).toBeVisible();
+    await expect(page.getByText("Original Cake Chat title", { exact: true })).toBeVisible();
+
     await page.getByRole("button", { name: "New Cake Chat" }).first().click();
     await expect(page.getByLabel("Message Cake Chat")).toBeVisible();
     await expect(page.locator(".session-row").filter({ hasText: "New chat" })).toHaveCount(1);

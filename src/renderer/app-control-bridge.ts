@@ -514,33 +514,39 @@ const commandToLegacyName = {
 } as const;
 
 function operation(command: string, topic: string, summary: string, schema: Schema.Constraint) {
-  return {
+  const definition = {
     command,
     topic,
     summary,
-    guidance:
-      topic === "customizations"
-        ? [
-            "Read customizations.authoring-reference before changing plugin source, then inspect files and revisions, validate until clean, and activate only the completed valid revision.",
-            "Ordinary widgets are renderer plugins; create or select a scene only when the user explicitly requests whole-application replacement.",
-          ]
-        : undefined,
     parameters: Schema.toStandardJSONSchemaV1(schema)["~standard"].jsonSchema.input({
       target: "draft-07",
     }),
     examples: [],
     result: "A bounded authoritative Cake application result.",
   };
+  return topic === "customizations"
+    ? {
+        ...definition,
+        guidance: [
+          "Read customizations.authoring-reference before changing plugin source, then inspect files and revisions, validate until clean, and activate only the completed valid revision.",
+          "Ordinary widgets are renderer plugins; create or select a scene only when the user explicitly requests whole-application replacement.",
+        ],
+      }
+    : definition;
+}
+
+export function listAppControlTools() {
+  return modelControlOperations.map((definition) => ({
+    ...definition,
+    parameters: Schema.decodeUnknownSync(jsonObjectSchema)(definition.parameters),
+  }));
 }
 
 export class AppControlBridge {
   constructor(private readonly host: AppControlHost) {}
 
   listTools() {
-    return modelControlOperations.map((definition) => ({
-      ...definition,
-      parameters: Schema.decodeUnknownSync(jsonObjectSchema)(definition.parameters),
-    }));
+    return listAppControlTools();
   }
 
   getAppState(): AppControlState {
