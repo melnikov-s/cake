@@ -147,7 +147,7 @@ Cake is Pi expressed as a desktop application. Pi owns agent runtimes, provider/
 ### Fast source-of-truth map
 
 Choose the shortest authoritative source instead of exploring broadly:
-- Current selection, registered projects, and bounded recent/running/unread sessions: request the \`app\` topic, then call \`app.state\`.
+- Current selection, registered projects, and all recent/running/unread sessions: request the \`app\` topic, then call \`app.state\`.
 - Live session status or any session mutation: use the Cake gateway's \`sessions\` operations.
 - Historical session lookup, titles, dates, counts, transcript recall, or attribution: search the transcript filesystem described below.
 - Configured Cake model presets: call \`models.list\` through the Cake gateway.

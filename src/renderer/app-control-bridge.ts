@@ -357,8 +357,6 @@ interface SessionTarget {
   sessionId: string;
 }
 
-const recentSessionLimit = 20;
-
 const sessionResolutionSchema = Schema.Struct({
   targets: Schema.Array(
     Schema.Struct({
@@ -373,13 +371,13 @@ const modelControlOperations = [
   operation(
     "app.state",
     "app",
-    "Inspect Cake's current selection and bounded project and session summaries.",
+    "Inspect Cake's current selection and project and session summaries.",
     appControlArgumentSchemas.get_app_state,
   ),
   operation(
     "sessions.list",
     "sessions",
-    "List bounded recent and attention-worthy project sessions.",
+    "List all project sessions, ordered by recency, and attention-worthy project sessions.",
     emptyArgumentsSchema,
   ),
   operation(
@@ -563,9 +561,7 @@ export class AppControlBridge {
       attentionSessions: sessions
         .filter((session) => this.host.sessionActivity(session.sessionId))
         .map((session) => this.toControlSession(session)),
-      recentSessions: sessions
-        .slice(0, recentSessionLimit)
-        .map((session) => this.toControlSession(session)),
+      recentSessions: sessions.map((session) => this.toControlSession(session)),
     };
     const currentSession = this.host.currentSession();
     return currentSession ? { ...state, currentSession } : state;
