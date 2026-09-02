@@ -323,9 +323,17 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
 
     const resizeHandle = page.getByRole("separator", { name: "Resize current session sidebar" });
     await expect(resizeHandle).toHaveAttribute("aria-valuenow", "420");
+    const resizeBounds = await resizeHandle.boundingBox();
+    expect(resizeBounds?.width).toBe(9);
+    await page.mouse.move(resizeBounds!.x + 7, resizeBounds!.y + resizeBounds!.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(resizeBounds!.x + 47, resizeBounds!.y + resizeBounds!.height / 2);
+    await page.mouse.up();
+    await expect(resizeHandle).toHaveAttribute("aria-valuenow", "380");
+    await expect(page.locator("aside")).toHaveCSS("width", "380px");
     await resizeHandle.focus();
     await resizeHandle.press("ArrowLeft");
-    await expect(resizeHandle).toHaveAttribute("aria-valuenow", "436");
+    await expect(resizeHandle).toHaveAttribute("aria-valuenow", "396");
     const drawerInput = page.getByRole("combobox", { name: "Message" });
     await expect(drawerInput).toHaveValue("Keep this IDE draft");
     await drawerInput.focus();

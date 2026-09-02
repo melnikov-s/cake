@@ -8,7 +8,7 @@ import type { ReviewsStore } from "../stores/ReviewsStore";
 import { Button } from "./ui/button";
 import { Chat } from "./chat";
 import { EmbeddedEditorPane } from "./embedded-editor";
-import { PanelResizeHandle } from "./panel-resize-handle";
+import { ResizeHandle } from "./ui/resize-handle";
 
 function anchorTitle(anchor: NonNullable<ReviewsStore["draftAnchor"]>) {
   const start = anchor.start.newLine ?? anchor.start.oldLine;
@@ -68,7 +68,7 @@ export const IdeWorkspace = observer(function IdeWorkspace({
       </section>
       {editor.chatSidebarVisible ? (
         <>
-          <PanelResizeHandle
+          <ResizeHandle
             className="right-[calc(var(--ide-chat-sidebar-width)-5px)]"
             label="Resize current session sidebar"
             value={visibleChatSidebarWidth}

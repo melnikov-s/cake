@@ -4,9 +4,9 @@
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { PanelResizeHandle } from "../../../src/renderer/components/panel-resize-handle";
+import { ResizeHandle } from "../../../../src/renderer/components/ui/resize-handle";
 
-describe("PanelResizeHandle", () => {
+describe("ResizeHandle", () => {
   let container: HTMLDivElement;
   let root: Root;
 
@@ -26,7 +26,7 @@ describe("PanelResizeHandle", () => {
     const onChange = vi.fn();
     act(() =>
       root.render(
-        <PanelResizeHandle
+        <ResizeHandle
           label="Resize sidebar"
           value={292}
           min={220}
@@ -52,7 +52,7 @@ describe("PanelResizeHandle", () => {
     const onChange = vi.fn();
     act(() =>
       root.render(
-        <PanelResizeHandle
+        <ResizeHandle
           label="Resize details"
           value={320}
           min={240}
@@ -75,7 +75,7 @@ describe("PanelResizeHandle", () => {
     const onChange = vi.fn();
     act(() =>
       root.render(
-        <PanelResizeHandle
+        <ResizeHandle
           label="Resize comments"
           value={120}
           min={76}
