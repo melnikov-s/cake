@@ -21,6 +21,7 @@ import type {
   ApplicationState,
   FileSuggestion,
   ModelOption,
+  SessionSnapshot,
   UtilityModel,
 } from "../../ipc/session-contract";
 import type {
@@ -118,6 +119,10 @@ interface WorkspaceCommands {
     model: UtilityModel | undefined,
     options?: RendererCommandOptions,
   ): Promise<ApplicationState>;
+  loadSlashCommands(
+    path: string,
+    options?: RendererCommandOptions,
+  ): Promise<SessionSnapshot["commands"]>;
   registerProject(
     path: string,
     name: string,

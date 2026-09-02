@@ -32,6 +32,7 @@ import {
   applicationStateSchema,
   attachmentSchema,
   fileSuggestionSchema,
+  slashCommandSchema,
   utilityModelSchema,
 } from "./session-contract";
 import {
@@ -465,6 +466,9 @@ export const cakeRpcPayloadSchemas = {
   "set-utility-model": Schema.Struct({
     model: Schema.optional(utilityModelSchema),
   }),
+  "load-slash-commands": Schema.Struct({
+    path: stringMax(4_096),
+  }),
   "register-project": Schema.Struct({
     path: stringMax(4_096),
     name: bounded(1, 512),
@@ -640,6 +644,9 @@ const cakeRpcResultSchemas = {
   "application-state-updated": Schema.Struct({
     state: applicationStateSchema,
   }),
+  "slash-commands-loaded": Schema.Struct({
+    commands: ipcProjectionArray(slashCommandSchema, 20_000),
+  }),
   "worktree-created": Schema.Struct({
     ...requestBase,
     record: worktreeRecordSchema,
@@ -678,6 +685,7 @@ export const cakeRpcSuccessSchemas = {
   "reword-composer-selection": cakeRpcResultSchemas["composer-selection-reworded"],
   "generate-session-title": cakeRpcResultSchemas["session-title-generated"],
   "set-utility-model": cakeRpcResultSchemas["application-state-updated"],
+  "load-slash-commands": cakeRpcResultSchemas["slash-commands-loaded"],
   "register-project": cakeRpcResultSchemas["application-state-updated"],
   "rename-project": cakeRpcResultSchemas["application-state-updated"],
   "remove-project": cakeRpcResultSchemas["application-state-updated"],

@@ -83,6 +83,10 @@ function invokeSmokeCommand(
       return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["set-utility-model"])(payload).pipe(
         Effect.flatMap(client.workspaces["set-utility-model"]),
       );
+    case "load-slash-commands":
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["load-slash-commands"])(payload).pipe(
+        Effect.flatMap(client.workspaces["load-slash-commands"]),
+      );
     case "register-project":
       return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["register-project"])(payload).pipe(
         Effect.flatMap(client.workspaces["register-project"]),
