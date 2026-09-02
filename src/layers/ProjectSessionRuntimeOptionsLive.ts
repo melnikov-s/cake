@@ -58,7 +58,7 @@ export const makeProjectSessionRuntimeOptionsLive = (
           resolvedSessionDir: options.resolvedSessionDirectory,
           widgetSessionDir: options.widgetSessionDirectory,
           pluginAgentSessionDir: options.pluginAgentSessionDirectory,
-          pluginResources: plugins.current(),
+          pluginResources: plugins.current,
           isTrusted: () => application.snapshot().trustedProjectPaths.includes(workingDirectory),
           utilityModel: () => application.snapshot().utilityModel,
           generateSessionTitle: ({ utilityModel, firstUserMessage, signal }) =>

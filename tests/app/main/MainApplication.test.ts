@@ -47,7 +47,7 @@ class TestApplication extends EventEmitter {
 
 const testLayer = (input?: {
   readonly stop?: () => void;
-  readonly start?: () => Effect.Effect<void, PluginRuntimeError>;
+  readonly initializeCustomization?: () => Effect.Effect<void, PluginRuntimeError>;
 }) =>
   Layer.mergeAll(
     Layer.mock(ApplicationState, {
@@ -71,7 +71,7 @@ const testLayer = (input?: {
       reloadWindowWithFactory: () => {},
     }),
     Layer.mock(PluginRuntime, {
-      start: input?.start ?? (() => Effect.void),
+      initializeCustomization: input?.initializeCustomization ?? (() => Effect.void),
       startupRenderer: () => ({ kind: "factory" }),
       trackRenderer: () => {},
       rendererProcessGone: () => {},
@@ -94,6 +94,7 @@ const testLayer = (input?: {
     Layer.mock(PiSessions, {}),
     Layer.mock(Terminal, {}),
     Layer.mock(VsCodeServer, {
+      refreshStatus: () => Effect.void,
       closeForWindow: () => Effect.void,
       backToAgentForWindow: () => Effect.succeed(false),
     }),
@@ -145,7 +146,7 @@ describe("MainApplication", () => {
     }),
   );
 
-  it.effect("reports a failed bootstrap and still finalizes", () =>
+  it.effect("reports failed customization initialization and still finalizes", () =>
     Effect.gen(function* () {
       const application = new TestApplication();
       const stop = vi.fn();
@@ -160,7 +161,8 @@ describe("MainApplication", () => {
           Effect.provide(
             testLayer({
               stop,
-              start: () => new PluginRuntimeError({ message: "bootstrap failed" }),
+              initializeCustomization: () =>
+                new PluginRuntimeError({ message: "bootstrap failed" }),
             }),
           ),
         ),

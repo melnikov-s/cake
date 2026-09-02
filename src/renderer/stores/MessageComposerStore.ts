@@ -854,10 +854,7 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
   }
 
   receive(event: RendererEvent) {
-    if (
-      event.type === "pi-state-changed" &&
-      (event.state === "failed" || event.state === "stopped")
-    ) {
+    if (event.type === "agent-availability-changed" && event.availability.state === "unavailable") {
       for (const operationId of this.activeOperations.slice()) this.finishOperation(operationId);
       this.pendingUserMessages.splice(0);
       return;

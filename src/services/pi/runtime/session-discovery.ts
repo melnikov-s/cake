@@ -24,7 +24,7 @@ export function loadPiChangelog() {
 
 /** Resolve the Cake source tree that matches the running authoring skill. */
 export function cakePluginAuthoringSkillPath(
-  authoringRoot = process.env.CAKE_AUTHORING_ROOT ?? resolve(import.meta.dirname, "../.."),
+  authoringRoot = process.env.CAKE_AUTHORING_ROOT ?? resolve(import.meta.dirname, "../../../.."),
 ) {
   return join(authoringRoot, ".agents", "skills", "cake-plugin-authoring");
 }

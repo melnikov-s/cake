@@ -251,7 +251,8 @@ const runtimeFingerprint = (options: PiSessionAcquireOptions): string => {
     tools: runtime.tools ? [...runtime.tools].sort() : undefined,
     auxiliary: runtime.auxiliary ?? false,
     slashCommands: runtime.slashCommands,
-    pluginResources: runtime.pluginResources,
+    // Plugin resources are a process-local live capability. Their revision is deliberately
+    // excluded: an existing runtime observes the latest value on its next safe reload.
     additionalSystemPrompt: runtime.additionalSystemPrompt,
     hasGlobalControl: runtime.globalControl !== undefined,
     hasAgentControl: runtime.agentControl !== undefined,

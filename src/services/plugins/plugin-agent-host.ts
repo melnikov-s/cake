@@ -15,7 +15,7 @@ import {
   type SessionRef,
   type WorkspaceRef,
 } from "../../ipc/plugin-agent-contract";
-import type { NativeEvent } from "../../ipc/native-protocol";
+import type { CakeEvent } from "../../ipc/cake-rpc-contract";
 import type { SessionSnapshot, UiPart, UtilityModel } from "../../ipc/session-contract";
 type PluginAgentTarget =
   | { readonly kind: "new"; readonly visibility: "private" | "project" }
@@ -168,7 +168,7 @@ export class PluginAgentHost {
         snapshot: SessionSnapshot,
         utility: UtilityModel | undefined,
       ): ResolvedAgentModel;
-      emit(owner: WebContents, event: NativeEvent): void;
+      emit(owner: WebContents, event: CakeEvent): void;
     },
   ) {}
 

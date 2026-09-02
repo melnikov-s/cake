@@ -138,10 +138,7 @@ export class ArtifactInteractionStore extends Store<ArtifactInteractionStoreProp
       this.props.onRequestChanged?.(true);
       return;
     }
-    if (
-      event.type === "pi-state-changed" &&
-      (event.state === "failed" || event.state === "stopped")
-    ) {
+    if (event.type === "agent-availability-changed" && event.availability.state === "unavailable") {
       this.request = undefined;
       this.responding = false;
       this.props.onRequestChanged?.(false);

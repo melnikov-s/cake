@@ -191,7 +191,7 @@ const storageError = (operation: string, cause: unknown) =>
     message: cause instanceof Error ? cause.message : String(cause),
   });
 
-export const makeArtifactStorageLive = (root: string) => {
+const makeArtifactStorageService = (root: string) => {
   const repository = new ArtifactRepository(root);
   const attempt = <A>(operation: string, evaluate: () => Promise<A>) =>
     Effect.tryPromise({
@@ -218,5 +218,13 @@ export const makeArtifactStorageLive = (root: string) => {
       attempt("exportMarkdown", () => repository.exportMarkdown(workingDirectory, sessionId)),
     ),
   });
+  return service;
+};
+
+export const makeArtifactStorageTestAdapter = (root: string) => {
+  const service = makeArtifactStorageService(root);
   return { service, layer: Layer.succeed(ArtifactStorage, service) } as const;
 };
+
+export const makeArtifactStorageLive = (root: string) =>
+  Layer.sync(ArtifactStorage, () => makeArtifactStorageService(root));

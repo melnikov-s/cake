@@ -1,5 +1,5 @@
 import { Context, Schema, type Effect } from "effect";
-import type { nativeOperationPayloadSchemas } from "../../ipc/native-protocol";
+import type { cakeRpcPayloadSchemas } from "../../ipc/cake-rpc-contract";
 import type { ProjectSessionRuntimeIntegrations } from "./ProjectSessionIntegrationHost";
 
 export class ProjectSessionIntegrationsError extends Schema.TaggedError<ProjectSessionIntegrationsError>()(
@@ -7,8 +7,8 @@ export class ProjectSessionIntegrationsError extends Schema.TaggedError<ProjectS
   { operation: Schema.String, message: Schema.String },
 ) {}
 
-type ArtifactResponse = (typeof nativeOperationPayloadSchemas)["respond-artifact"]["Type"];
-type UiResponse = (typeof nativeOperationPayloadSchemas)["respond-ui"]["Type"];
+type ArtifactResponse = (typeof cakeRpcPayloadSchemas)["respond-artifact"]["Type"];
+type UiResponse = (typeof cakeRpcPayloadSchemas)["respond-ui"]["Type"];
 
 /**
  * Scoped Cake UI/artifact integrations attached to authoritative Pi Session runtimes.
@@ -37,6 +37,5 @@ export class ProjectSessionIntegrations extends Context.Service<
       sessionId: string,
       response: UiResponse,
     ) => Effect.Effect<void, ProjectSessionIntegrationsError>;
-    readonly reloadAgentResources: () => Effect.Effect<void, ProjectSessionIntegrationsError>;
   }
 >()("cake/services/pi/ProjectSessionIntegrations") {}

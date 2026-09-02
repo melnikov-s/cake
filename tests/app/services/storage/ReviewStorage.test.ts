@@ -2,9 +2,9 @@ import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect } from "effect";
+import { Effect, Fiber, Stream } from "effect";
 import { afterEach, describe, expect, it } from "vitest";
-import { makeReviewStorageLive } from "../../../../src/services/storage/ReviewStorageLive";
+import { makeReviewStorageTestAdapter } from "../../../../src/services/storage/ReviewStorageLive";
 
 const directories: string[] = [];
 afterEach(async () =>
@@ -23,12 +23,30 @@ const codeAnchor = {
 };
 
 describe("ReviewStorage Discussion metadata", () => {
+  it("publishes a current-first revision stream for review mutations", async () => {
+    const root = await mkdtemp(join(tmpdir(), "cake-review-revisions-"));
+    directories.push(root);
+    const storage = makeReviewStorageTestAdapter(root, join(root, "pi-sessions")).service;
+    const revisions = await Effect.runPromise(
+      Effect.gen(function* () {
+        const observer = yield* storage
+          .changes()
+          .pipe(Stream.take(2), Stream.runCollect, Effect.forkChild);
+        yield* Effect.yieldNow;
+        yield* storage.createDiscussion("/project", "session", codeAnchor);
+        return yield* Fiber.join(observer);
+      }),
+    );
+
+    expect([...revisions]).toEqual([0, 1]);
+  });
+
   it.each(["diff", "full"] as const)(
     "migrates persisted %s review anchors to file anchors",
     async (view) => {
       const root = await mkdtemp(join(tmpdir(), "cake-review-migration-"));
       directories.push(root);
-      const storage = makeReviewStorageLive(root, join(root, "pi-sessions")).service;
+      const storage = makeReviewStorageTestAdapter(root, join(root, "pi-sessions")).service;
       const created = await Effect.runPromise(
         storage.createDiscussion("/project", "session", codeAnchor),
       );
@@ -70,7 +88,7 @@ describe("ReviewStorage Discussion metadata", () => {
         status: "complete" as const,
       },
     ];
-    const storage = makeReviewStorageLive(root, join(root, "pi-sessions"), async () => ({
+    const storage = makeReviewStorageTestAdapter(root, join(root, "pi-sessions"), async () => ({
       parts: projectedParts,
     })).service;
     const created = await Effect.runPromise(
@@ -105,7 +123,7 @@ describe("ReviewStorage Discussion metadata", () => {
   it("refreshes the parent index and resolves Discussion anchors", async () => {
     const root = await mkdtemp(join(tmpdir(), "cake-message-comments-"));
     directories.push(root);
-    const live = makeReviewStorageLive(root, join(root, "pi-sessions"));
+    const live = makeReviewStorageTestAdapter(root, join(root, "pi-sessions"));
     const storage = live.service;
     const anchor = {
       path: "session:parent/message/assistant-1",

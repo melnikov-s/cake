@@ -126,10 +126,7 @@ export class ExtensionUiStore extends Store<ExtensionUiStoreProps> {
       this.request = event;
       return;
     }
-    if (
-      event.type === "pi-state-changed" &&
-      (event.state === "failed" || event.state === "stopped")
-    )
+    if (event.type === "agent-availability-changed" && event.availability.state === "unavailable")
       this.request = undefined;
   }
 }

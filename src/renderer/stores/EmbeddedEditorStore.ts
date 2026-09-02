@@ -68,17 +68,10 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
     event: Extract<
       RendererEvent,
       {
-        type:
-          | "embedded-editor-state-received"
-          | "embedded-editor-selection"
-          | "embedded-editor-selection-cleared";
+        type: "embedded-editor-selection" | "embedded-editor-selection-cleared";
       }
     >,
   ) {
-    if (event.type === "embedded-editor-state-received") {
-      this.applySnapshot({ status: event.status, message: event.message });
-      return;
-    }
     if (event.workspacePath !== this.props.projectPath()) return;
     if (event.type === "embedded-editor-selection-cleared") {
       this.lastActivePath = undefined;
@@ -97,6 +90,10 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
         },
       },
     };
+  }
+
+  applyState(state: EmbeddedEditorStateSnapshot) {
+    this.applySnapshot(state);
   }
 
   async show(location?: SourceLocation) {

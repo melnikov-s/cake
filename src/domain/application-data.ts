@@ -49,6 +49,11 @@ const RendererApplicationFields = {
 /** Broad renderer projection. Model Presets hydrate through their focused RPC group. */
 export const RendererApplicationState = Schema.Struct(RendererApplicationFields);
 
+export const RendererApplicationProjection = Schema.Struct({
+  revision: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  state: RendererApplicationState,
+});
+
 /** Current main-owned Application value. Storage envelope versioning is separate. */
 export const ApplicationState = Schema.Struct({
   ...RendererApplicationFields,
@@ -72,6 +77,9 @@ export const ApplicationState = Schema.Struct({
 export interface ApplicationState extends Schema.Schema.Type<typeof ApplicationState> {}
 export interface RendererApplicationState extends Schema.Schema.Type<
   typeof RendererApplicationState
+> {}
+export interface RendererApplicationProjection extends Schema.Schema.Type<
+  typeof RendererApplicationProjection
 > {}
 export interface ProjectRecord extends Schema.Schema.Type<typeof ProjectRecord> {}
 export interface UtilityModel extends Schema.Schema.Type<typeof UtilityModel> {}

@@ -1,7 +1,7 @@
 import { Effect, Layer } from "effect";
-import { Git } from "../git/Git";
-import { WorktreeStorage } from "../storage/WorktreeStorage";
-import { ManagedWorktreeEngine } from "./ManagedWorktreeEngine";
+import type { Git } from "../git/Git";
+import type { WorktreeStorage } from "../storage/WorktreeStorage";
+import { makeManagedWorktreeEngineAdapter } from "./ManagedWorktreeEngineAdapter";
 import { ManagedWorktreeError, ManagedWorktrees } from "./ManagedWorktrees";
 
 const worktreeError = (operation: string, cause: unknown) =>
@@ -14,17 +14,7 @@ export const ManagedWorktreesLive: Layer.Layer<ManagedWorktrees, never, Git | Wo
   Layer.effect(
     ManagedWorktrees,
     Effect.gen(function* () {
-      const git = yield* Git;
-      const storage = yield* WorktreeStorage;
-      const context = yield* Effect.context<Git | WorktreeStorage>();
-      const run = Effect.runPromiseWith(context);
-      const engine = new ManagedWorktreeEngine(
-        {
-          load: () => run(storage.load()),
-          save: (records) => run(storage.save(records)),
-        },
-        (workingDirectory, arguments_) => run(git.run(workingDirectory, arguments_)),
-      );
+      const engine = yield* makeManagedWorktreeEngineAdapter;
       const attempt = <A>(operation: string, execute: () => Promise<A>) =>
         Effect.tryPromise({
           try: execute,

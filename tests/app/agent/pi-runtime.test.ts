@@ -1568,6 +1568,50 @@ describe("S1 Pi runtime", () => {
     });
   });
 
+  it("reloads the latest revision of live Cake Plugin resources", async () => {
+    const directory = await createTemporaryDirectory();
+    const firstSkill = join(directory, "first-skill");
+    const secondSkill = join(directory, "second-skill");
+    await mkdir(firstSkill, { recursive: true });
+    await mkdir(secondSkill, { recursive: true });
+    await writeFile(
+      join(firstSkill, "SKILL.md"),
+      "---\nname: first-plugin-skill\ndescription: First plugin skill.\n---\n\n# First\n",
+    );
+    await writeFile(
+      join(secondSkill, "SKILL.md"),
+      "---\nname: second-plugin-skill\ndescription: Second plugin skill.\n---\n\n# Second\n",
+    );
+    let pluginResources = {
+      revision: 1,
+      resources: { skills: [firstSkill], prompts: [], extensions: [] },
+    };
+    const runtime = await createCakeRuntime({
+      cwd: directory,
+      agentDir: join(directory, "agent"),
+      sessionDir: join(directory, "sessions"),
+      trusted: false,
+      pluginResources: () => pluginResources,
+      requestUi: async () => undefined,
+      onEvent: () => undefined,
+    });
+    runtimes.push(runtime);
+
+    expect((await runtime.snapshot()).commands.map((command) => command.name)).toContain(
+      "skill:first-plugin-skill",
+    );
+
+    pluginResources = {
+      revision: 2,
+      resources: { skills: [secondSkill], prompts: [], extensions: [] },
+    };
+    await runtime.reload?.();
+
+    const commands = (await runtime.snapshot()).commands.map((command) => command.name);
+    expect(commands).not.toContain("skill:first-plugin-skill");
+    expect(commands).toContain("skill:second-plugin-skill");
+  });
+
   it("keeps serving the command catalog while Pi reloads", async () => {
     const directory = await createTemporaryDirectory();
     const agentDir = join(directory, "agent");

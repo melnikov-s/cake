@@ -1,10 +1,10 @@
 import { Context, Schema, type Effect } from "effect";
 import type { BrowserWindow, WebContents } from "electron";
 import type {
-  NativeEvent,
-  nativeOperationPayloadSchemas,
-  nativeOperationSuccessSchemas,
-} from "../../ipc/native-protocol";
+  CakeEvent,
+  cakeRpcPayloadSchemas,
+  cakeRpcSuccessSchemas,
+} from "../../ipc/cake-rpc-contract";
 import type { StartupRenderer } from "../plugins/plugin-activation-service";
 
 export const CAKE_TITLE_BAR_HEIGHT = 46;
@@ -14,10 +14,10 @@ export class ElectronError extends Schema.TaggedError<ElectronError>()("Electron
   message: Schema.String,
 }) {}
 
-type Payload<Type extends keyof typeof nativeOperationPayloadSchemas> =
-  (typeof nativeOperationPayloadSchemas)[Type]["Type"];
-type Success<Type extends keyof typeof nativeOperationSuccessSchemas> =
-  (typeof nativeOperationSuccessSchemas)[Type]["Type"];
+type Payload<Type extends keyof typeof cakeRpcPayloadSchemas> =
+  (typeof cakeRpcPayloadSchemas)[Type]["Type"];
+type Success<Type extends keyof typeof cakeRpcSuccessSchemas> =
+  (typeof cakeRpcSuccessSchemas)[Type]["Type"];
 
 export interface ElectronWindowLifecycle {
   readonly startupRenderer: () => StartupRenderer;
@@ -30,7 +30,6 @@ export interface ElectronWindowLifecycle {
   readonly onWindowClosed: (ownerId: number, workingDirectory: string | undefined) => void;
   readonly allowProjectPath: (path: string) => void;
   readonly hasUtilityModel: () => boolean;
-  readonly rememberSessionLocation: (workingDirectory: string, sessionId: string) => void;
 }
 
 export interface ElectronService {
@@ -66,8 +65,8 @@ export interface ElectronService {
   readonly start: (lifecycle: ElectronWindowLifecycle) => Effect.Effect<void>;
   readonly openExternal: (url: string) => Effect.Effect<void, ElectronError>;
   readonly stop: () => Effect.Effect<void>;
-  readonly sendTo: (target: WebContents, event: NativeEvent) => void;
-  readonly broadcast: (event: NativeEvent) => void;
+  readonly sendTo: (target: WebContents, event: CakeEvent) => void;
+  readonly broadcast: (event: CakeEvent) => void;
   readonly requireRendererConnection: (connectionId: number) => WebContents;
   readonly workspaceForConnection: (connectionId: number) => string | undefined;
   readonly associateWorkspace: (connectionId: number, workingDirectory: string) => void;

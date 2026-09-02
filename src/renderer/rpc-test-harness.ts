@@ -2,7 +2,7 @@ import { Effect, Option, Schema, Stream } from "effect";
 import { CakeIpcClient, type CakeIpcClientService } from "../ipc/client/CakeIpcClient";
 import { FoundationFailure } from "../ipc/protocol/CakeRpc";
 import type { JsonObject } from "../ipc/json-contract";
-import { nativeOperationPayloadSchemas } from "../ipc/native-protocol";
+import { cakeRpcPayloadSchemas } from "../ipc/cake-rpc-contract";
 import { makeRendererRuntime } from "./RendererRuntime";
 
 const bridge = window.cake;
@@ -32,281 +32,281 @@ function invokeSmokeCommand(
 ): Effect.Effect<unknown, unknown> {
   switch (type) {
     case "choose-project":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["choose-project"])(
-        payload,
-      ).pipe(Effect.flatMap(client.electron["choose-project"]));
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["choose-project"])(payload).pipe(
+        Effect.flatMap(client.electron["choose-project"]),
+      );
     case "open-external-url":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["open-external-url"])(
-        payload,
-      ).pipe(Effect.flatMap(client.electron["open-external-url"]));
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["open-external-url"])(payload).pipe(
+        Effect.flatMap(client.electron["open-external-url"]),
+      );
     case "show-transcript-selection-context-menu":
       return Schema.decodeUnknownEffect(
-        nativeOperationPayloadSchemas["show-transcript-selection-context-menu"],
+        cakeRpcPayloadSchemas["show-transcript-selection-context-menu"],
       )(payload).pipe(Effect.flatMap(client.electron["show-transcript-selection-context-menu"]));
     case "show-composer-context-menu":
-      return Schema.decodeUnknownEffect(
-        nativeOperationPayloadSchemas["show-composer-context-menu"],
-      )(payload).pipe(Effect.flatMap(client.electron["show-composer-context-menu"]));
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["show-composer-context-menu"])(
+        payload,
+      ).pipe(Effect.flatMap(client.electron["show-composer-context-menu"]));
     case "show-session-context-menu":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["show-session-context-menu"])(
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["show-session-context-menu"])(
         payload,
       ).pipe(Effect.flatMap(client.electron["show-session-context-menu"]));
     case "show-project-context-menu":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["show-project-context-menu"])(
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["show-project-context-menu"])(
         payload,
       ).pipe(Effect.flatMap(client.electron["show-project-context-menu"]));
     case "set-fullscreen-surface-open":
-      return Schema.decodeUnknownEffect(
-        nativeOperationPayloadSchemas["set-fullscreen-surface-open"],
-      )(payload).pipe(Effect.flatMap(client.electron["set-fullscreen-surface-open"]));
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["set-fullscreen-surface-open"])(
+        payload,
+      ).pipe(Effect.flatMap(client.electron["set-fullscreen-surface-open"]));
     case "choose-attachments":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["choose-attachments"])(
-        payload,
-      ).pipe(Effect.flatMap(client.filesystem["choose-attachments"]));
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["choose-attachments"])(payload).pipe(
+        Effect.flatMap(client.filesystem["choose-attachments"]),
+      );
     case "suggest-files":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["suggest-files"])(
-        payload,
-      ).pipe(Effect.flatMap(client.filesystem["suggest-files"]));
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["suggest-files"])(payload).pipe(
+        Effect.flatMap(client.filesystem["suggest-files"]),
+      );
     case "read-workspace-file":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["read-workspace-file"])(
-        payload,
-      ).pipe(Effect.flatMap(client.filesystem["read-workspace-file"]));
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["read-workspace-file"])(payload).pipe(
+        Effect.flatMap(client.filesystem["read-workspace-file"]),
+      );
     case "reword-composer-selection":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["reword-composer-selection"])(
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["reword-composer-selection"])(
         payload,
       ).pipe(Effect.flatMap(client.workspaces["reword-composer-selection"]));
     case "generate-session-title":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["generate-session-title"])(
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["generate-session-title"])(
         payload,
       ).pipe(Effect.flatMap(client.workspaces["generate-session-title"]));
     case "set-utility-model":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["set-utility-model"])(
-        payload,
-      ).pipe(Effect.flatMap(client.workspaces["set-utility-model"]));
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["set-utility-model"])(payload).pipe(
+        Effect.flatMap(client.workspaces["set-utility-model"]),
+      );
     case "register-project":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["register-project"])(
-        payload,
-      ).pipe(Effect.flatMap(client.workspaces["register-project"]));
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["register-project"])(payload).pipe(
+        Effect.flatMap(client.workspaces["register-project"]),
+      );
     case "rename-project":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["rename-project"])(
-        payload,
-      ).pipe(Effect.flatMap(client.workspaces["rename-project"]));
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["rename-project"])(payload).pipe(
+        Effect.flatMap(client.workspaces["rename-project"]),
+      );
     case "remove-project":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["remove-project"])(
-        payload,
-      ).pipe(Effect.flatMap(client.workspaces["remove-project"]));
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["remove-project"])(payload).pipe(
+        Effect.flatMap(client.workspaces["remove-project"]),
+      );
     case "delete-session":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["delete-session"])(
-        payload,
-      ).pipe(Effect.flatMap(client.workspaces["delete-session"]));
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["delete-session"])(payload).pipe(
+        Effect.flatMap(client.workspaces["delete-session"]),
+      );
     case "set-session-unread":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["set-session-unread"])(
-        payload,
-      ).pipe(Effect.flatMap(client.workspaces["set-session-unread"]));
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["set-session-unread"])(payload).pipe(
+        Effect.flatMap(client.workspaces["set-session-unread"]),
+      );
     case "restart-pi":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["restart-pi"])(payload).pipe(
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["restart-pi"])(payload).pipe(
         Effect.flatMap(client.workspaces["restart-pi"]),
       );
     case "inspect-workspace":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["inspect-workspace"])(
-        payload,
-      ).pipe(Effect.flatMap(client.workspaces["inspect-workspace"]));
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["inspect-workspace"])(payload).pipe(
+        Effect.flatMap(client.workspaces["inspect-workspace"]),
+      );
     case "respond-workspace-trust":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["respond-workspace-trust"])(
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["respond-workspace-trust"])(
         payload,
       ).pipe(Effect.flatMap(client.workspaces["respond-workspace-trust"]));
     case "create-worktree":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["create-worktree"])(
-        payload,
-      ).pipe(Effect.flatMap(client.managedWorktrees["create-worktree"]));
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["create-worktree"])(payload).pipe(
+        Effect.flatMap(client.managedWorktrees["create-worktree"]),
+      );
     case "get-worktree-status":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["get-worktree-status"])(
-        payload,
-      ).pipe(Effect.flatMap(client.managedWorktrees["get-worktree-status"]));
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["get-worktree-status"])(payload).pipe(
+        Effect.flatMap(client.managedWorktrees["get-worktree-status"]),
+      );
     case "land-worktree":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["land-worktree"])(
-        payload,
-      ).pipe(Effect.flatMap(client.managedWorktrees["land-worktree"]));
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["land-worktree"])(payload).pipe(
+        Effect.flatMap(client.managedWorktrees["land-worktree"]),
+      );
     case "discard-worktree":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["discard-worktree"])(
-        payload,
-      ).pipe(Effect.flatMap(client.managedWorktrees["discard-worktree"]));
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["discard-worktree"])(payload).pipe(
+        Effect.flatMap(client.managedWorktrees["discard-worktree"]),
+      );
     case "open-terminal":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["open-terminal"])(
-        payload,
-      ).pipe(Effect.flatMap(client.terminals["open-terminal"]));
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["open-terminal"])(payload).pipe(
+        Effect.flatMap(client.terminals["open-terminal"]),
+      );
     case "write-terminal":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["write-terminal"])(
-        payload,
-      ).pipe(Effect.flatMap(client.terminals["write-terminal"]));
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["write-terminal"])(payload).pipe(
+        Effect.flatMap(client.terminals["write-terminal"]),
+      );
     case "resize-terminal":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["resize-terminal"])(
-        payload,
-      ).pipe(Effect.flatMap(client.terminals["resize-terminal"]));
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["resize-terminal"])(payload).pipe(
+        Effect.flatMap(client.terminals["resize-terminal"]),
+      );
     case "get-terminal-status":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["get-terminal-status"])(
-        payload,
-      ).pipe(Effect.flatMap(client.terminals["get-terminal-status"]));
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["get-terminal-status"])(payload).pipe(
+        Effect.flatMap(client.terminals["get-terminal-status"]),
+      );
     case "close-terminal":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["close-terminal"])(
-        payload,
-      ).pipe(Effect.flatMap(client.terminals["close-terminal"]));
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["close-terminal"])(payload).pipe(
+        Effect.flatMap(client.terminals["close-terminal"]),
+      );
     case "get-embedded-editor-state":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["get-embedded-editor-state"])(
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["get-embedded-editor-state"])(
         payload,
       ).pipe(Effect.flatMap(client.vscode["get-embedded-editor-state"]));
     case "set-vscode-server-path":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["set-vscode-server-path"])(
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["set-vscode-server-path"])(
         payload,
       ).pipe(Effect.flatMap(client.vscode["set-vscode-server-path"]));
     case "install-embedded-editor":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["install-embedded-editor"])(
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["install-embedded-editor"])(
         payload,
       ).pipe(Effect.flatMap(client.vscode["install-embedded-editor"]));
     case "open-embedded-editor":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["open-embedded-editor"])(
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["open-embedded-editor"])(
         payload,
       ).pipe(Effect.flatMap(client.vscode["open-embedded-editor"]));
     case "update-embedded-editor-bounds":
-      return Schema.decodeUnknownEffect(
-        nativeOperationPayloadSchemas["update-embedded-editor-bounds"],
-      )(payload).pipe(Effect.flatMap(client.vscode["update-embedded-editor-bounds"]));
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["update-embedded-editor-bounds"])(
+        payload,
+      ).pipe(Effect.flatMap(client.vscode["update-embedded-editor-bounds"]));
     case "reveal-in-embedded-editor":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["reveal-in-embedded-editor"])(
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["reveal-in-embedded-editor"])(
         payload,
       ).pipe(Effect.flatMap(client.vscode["reveal-in-embedded-editor"]));
     case "open-embedded-editor-source-control":
       return Schema.decodeUnknownEffect(
-        nativeOperationPayloadSchemas["open-embedded-editor-source-control"],
+        cakeRpcPayloadSchemas["open-embedded-editor-source-control"],
       )(payload).pipe(Effect.flatMap(client.vscode["open-embedded-editor-source-control"]));
     case "update-embedded-editor-annotations":
       return Schema.decodeUnknownEffect(
-        nativeOperationPayloadSchemas["update-embedded-editor-annotations"],
+        cakeRpcPayloadSchemas["update-embedded-editor-annotations"],
       )(payload).pipe(Effect.flatMap(client.vscode["update-embedded-editor-annotations"]));
     case "respond-artifact":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["respond-artifact"])(
-        payload,
-      ).pipe(Effect.flatMap(client.artifacts["respond-artifact"]));
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["respond-artifact"])(payload).pipe(
+        Effect.flatMap(client.artifacts["respond-artifact"]),
+      );
     case "respond-ui":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["respond-ui"])(payload).pipe(
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["respond-ui"])(payload).pipe(
         Effect.flatMap(client.artifacts["respond-ui"]),
       );
     case "export-artifacts":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["export-artifacts"])(
-        payload,
-      ).pipe(Effect.flatMap(client.artifacts["export-artifacts"]));
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["export-artifacts"])(payload).pipe(
+        Effect.flatMap(client.artifacts["export-artifacts"]),
+      );
     case "get-customization-state":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["get-customization-state"])(
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["get-customization-state"])(
         payload,
       ).pipe(Effect.flatMap(client.plugins["get-customization-state"]));
     case "get-plugin-authoring-reference":
-      return Schema.decodeUnknownEffect(
-        nativeOperationPayloadSchemas["get-plugin-authoring-reference"],
-      )(payload).pipe(Effect.flatMap(client.plugins["get-plugin-authoring-reference"]));
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["get-plugin-authoring-reference"])(
+        payload,
+      ).pipe(Effect.flatMap(client.plugins["get-plugin-authoring-reference"]));
     case "list-plugin-files":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["list-plugin-files"])(
-        payload,
-      ).pipe(Effect.flatMap(client.plugins["list-plugin-files"]));
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["list-plugin-files"])(payload).pipe(
+        Effect.flatMap(client.plugins["list-plugin-files"]),
+      );
     case "create-plugin":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["create-plugin"])(
-        payload,
-      ).pipe(Effect.flatMap(client.plugins["create-plugin"]));
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["create-plugin"])(payload).pipe(
+        Effect.flatMap(client.plugins["create-plugin"]),
+      );
     case "read-plugin-file":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["read-plugin-file"])(
-        payload,
-      ).pipe(Effect.flatMap(client.plugins["read-plugin-file"]));
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["read-plugin-file"])(payload).pipe(
+        Effect.flatMap(client.plugins["read-plugin-file"]),
+      );
     case "write-plugin-file":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["write-plugin-file"])(
-        payload,
-      ).pipe(Effect.flatMap(client.plugins["write-plugin-file"]));
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["write-plugin-file"])(payload).pipe(
+        Effect.flatMap(client.plugins["write-plugin-file"]),
+      );
     case "validate-customization":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["validate-customization"])(
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["validate-customization"])(
         payload,
       ).pipe(Effect.flatMap(client.plugins["validate-customization"]));
     case "activate-customization":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["activate-customization"])(
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["activate-customization"])(
         payload,
       ).pipe(Effect.flatMap(client.plugins["activate-customization"]));
     case "rollback-customization":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["rollback-customization"])(
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["rollback-customization"])(
         payload,
       ).pipe(Effect.flatMap(client.plugins["rollback-customization"]));
     case "use-factory-customization":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["use-factory-customization"])(
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["use-factory-customization"])(
         payload,
       ).pipe(Effect.flatMap(client.plugins["use-factory-customization"]));
     case "list-plugins":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["list-plugins"])(
-        payload,
-      ).pipe(Effect.flatMap(client.plugins["list-plugins"]));
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["list-plugins"])(payload).pipe(
+        Effect.flatMap(client.plugins["list-plugins"]),
+      );
     case "set-plugin-enabled":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["set-plugin-enabled"])(
-        payload,
-      ).pipe(Effect.flatMap(client.plugins["set-plugin-enabled"]));
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["set-plugin-enabled"])(payload).pipe(
+        Effect.flatMap(client.plugins["set-plugin-enabled"]),
+      );
     case "set-active-scene":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["set-active-scene"])(
-        payload,
-      ).pipe(Effect.flatMap(client.plugins["set-active-scene"]));
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["set-active-scene"])(payload).pipe(
+        Effect.flatMap(client.plugins["set-active-scene"]),
+      );
     case "delete-plugin":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["delete-plugin"])(
-        payload,
-      ).pipe(Effect.flatMap(client.plugins["delete-plugin"]));
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["delete-plugin"])(payload).pipe(
+        Effect.flatMap(client.plugins["delete-plugin"]),
+      );
     case "compile-inline-widget":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["compile-inline-widget"])(
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["compile-inline-widget"])(
         payload,
       ).pipe(Effect.flatMap(client.plugins["compile-inline-widget"]));
     case "repair-inline-widget":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["repair-inline-widget"])(
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["repair-inline-widget"])(
         payload,
       ).pipe(Effect.flatMap(client.plugins["repair-inline-widget"]));
     case "open-plugin-agent":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["open-plugin-agent"])(
-        payload,
-      ).pipe(Effect.flatMap(client.plugins["open-plugin-agent"]));
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["open-plugin-agent"])(payload).pipe(
+        Effect.flatMap(client.plugins["open-plugin-agent"]),
+      );
     case "prompt-plugin-agent":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["prompt-plugin-agent"])(
-        payload,
-      ).pipe(Effect.flatMap(client.plugins["prompt-plugin-agent"]));
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["prompt-plugin-agent"])(payload).pipe(
+        Effect.flatMap(client.plugins["prompt-plugin-agent"]),
+      );
     case "abort-plugin-agent":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["abort-plugin-agent"])(
-        payload,
-      ).pipe(Effect.flatMap(client.plugins["abort-plugin-agent"]));
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["abort-plugin-agent"])(payload).pipe(
+        Effect.flatMap(client.plugins["abort-plugin-agent"]),
+      );
     case "detach-plugin-agent":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["detach-plugin-agent"])(
-        payload,
-      ).pipe(Effect.flatMap(client.plugins["detach-plugin-agent"]));
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["detach-plugin-agent"])(payload).pipe(
+        Effect.flatMap(client.plugins["detach-plugin-agent"]),
+      );
     case "run-plugin-completion":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["run-plugin-completion"])(
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["run-plugin-completion"])(
         payload,
       ).pipe(Effect.flatMap(client.plugins["run-plugin-completion"]));
     case "cancel-plugin-completion":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["cancel-plugin-completion"])(
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["cancel-plugin-completion"])(
         payload,
       ).pipe(Effect.flatMap(client.plugins["cancel-plugin-completion"]));
     case "load-plugin-state":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["load-plugin-state"])(
-        payload,
-      ).pipe(Effect.flatMap(client.plugins["load-plugin-state"]));
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["load-plugin-state"])(payload).pipe(
+        Effect.flatMap(client.plugins["load-plugin-state"]),
+      );
     case "save-plugin-state":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["save-plugin-state"])(
-        payload,
-      ).pipe(Effect.flatMap(client.plugins["save-plugin-state"]));
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["save-plugin-state"])(payload).pipe(
+        Effect.flatMap(client.plugins["save-plugin-state"]),
+      );
     case "call-plugin-backend":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["call-plugin-backend"])(
-        payload,
-      ).pipe(Effect.flatMap(client.plugins["call-plugin-backend"]));
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["call-plugin-backend"])(payload).pipe(
+        Effect.flatMap(client.plugins["call-plugin-backend"]),
+      );
     case "cancel-plugin-backend-call":
-      return Schema.decodeUnknownEffect(
-        nativeOperationPayloadSchemas["cancel-plugin-backend-call"],
-      )(payload).pipe(Effect.flatMap(client.plugins["cancel-plugin-backend-call"]));
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["cancel-plugin-backend-call"])(
+        payload,
+      ).pipe(Effect.flatMap(client.plugins["cancel-plugin-backend-call"]));
     case "customization-rendered":
-      return Schema.decodeUnknownEffect(nativeOperationPayloadSchemas["customization-rendered"])(
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["customization-rendered"])(
         payload,
       ).pipe(Effect.flatMap(client.plugins["customization-rendered"]));
     case "customization-runtime-failed":
-      return Schema.decodeUnknownEffect(
-        nativeOperationPayloadSchemas["customization-runtime-failed"],
-      )(payload).pipe(Effect.flatMap(client.plugins["customization-runtime-failed"]));
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["customization-runtime-failed"])(
+        payload,
+      ).pipe(Effect.flatMap(client.plugins["customization-runtime-failed"]));
     default:
       return Effect.die(new Error(`The RPC test harness cannot invoke ${type}`));
   }
@@ -335,11 +335,11 @@ const harness = {
         }),
       ),
     ),
-  nativeReady: () =>
+  agentAvailability: () =>
     collect(
-      Stream.unwrap(Effect.map(CakeIpcClient, (client) => client.events.application())).pipe(
-        Stream.take(1),
-      ),
+      Stream.unwrap(
+        Effect.map(CakeIpcClient, (client) => client.application.observeAgentAvailability()),
+      ).pipe(Stream.take(1)),
     ).then(([event]) => event),
   listDiscussionSessions: () =>
     run(

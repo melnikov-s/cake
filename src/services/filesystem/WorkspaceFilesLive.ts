@@ -6,8 +6,7 @@ import type { Attachment } from "../../ipc/session-contract";
 import { Electron } from "../electron/Electron";
 import { ProjectAccess } from "../projects/ProjectAccess";
 import { suggestProjectFiles } from "../pi/runtime/session-discovery";
-import { NativeOperationError } from "../../ipc/protocol/NativeOperationError";
-import { WorkspaceFiles } from "./WorkspaceFiles";
+import { WorkspaceFileError, WorkspaceFiles } from "./WorkspaceFiles";
 
 const imageMimeTypes = new Map([
   [".png", "image/png"],
@@ -18,8 +17,9 @@ const imageMimeTypes = new Map([
 ]);
 
 const workspaceFilesError = (operation: string, cause: unknown) =>
-  new NativeOperationError({
-    message: `${operation}: ${cause instanceof Error ? cause.message : String(cause)}`,
+  new WorkspaceFileError({
+    operation,
+    message: cause instanceof Error ? cause.message : String(cause),
   });
 
 export const makeWorkspaceFilesLive = (agentDirectory: string) =>
@@ -32,7 +32,8 @@ export const makeWorkspaceFilesLive = (agentDirectory: string) =>
       const requireAllowed = (workingDirectory: string) =>
         access.isAllowed(workingDirectory)
           ? Effect.void
-          : new NativeOperationError({
+          : new WorkspaceFileError({
+              operation: "authorizeWorkingDirectory",
               message: "Project path was not selected by the user",
             });
 
@@ -90,7 +91,8 @@ export const makeWorkspaceFilesLive = (agentDirectory: string) =>
         function* (_connectionId, request) {
           yield* requireAllowed(request.workspacePath);
           if (isAbsolute(request.path))
-            return yield* new NativeOperationError({
+            return yield* new WorkspaceFileError({
+              operation: "readFile",
               message: "Workspace file path must be relative",
             });
           const content = yield* Effect.tryPromise({

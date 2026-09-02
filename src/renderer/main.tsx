@@ -13,6 +13,7 @@ import { makeRendererClient } from "./client/RendererClientLive";
 import { RendererModelSynchronizer } from "./RendererModelSynchronizer";
 import { RendererModels } from "./RendererModels";
 import { RendererNativeEvents } from "./RendererNativeEvents";
+import { RendererMainStateSynchronizer } from "./RendererMainStateSynchronizer";
 import { RendererInfrastructureProvider } from "./RendererInfrastructureContext";
 import { installStaleAssetRecovery } from "./stale-asset-recovery";
 import { mountRootStore } from "./mount-root-store";
@@ -67,7 +68,7 @@ async function bootstrap(bridge: NonNullable<typeof window.cake>) {
   const synchronizer = new RendererModelSynchronizer(rendererRuntime);
   const models = new RendererModels();
   const nativeEvents = new RendererNativeEvents(rendererRuntime);
-  await nativeEvents.ready;
+  const nativeState = new RendererMainStateSynchronizer(rendererRuntime);
   let hydrationError: unknown;
   const snapshot = await rendererClient.windowState
     .load()
@@ -83,6 +84,7 @@ async function bootstrap(bridge: NonNullable<typeof window.cake>) {
     () => persistenceRef.current?.flush() ?? Promise.resolve(),
     models,
   );
+  nativeState.observe(rootStore);
   await rootStore.settingsStore.modelPresets.hydrate();
   nativeEvents.observe(rootStore, synchronizer);
   void rootStore.projectWorkbenchStore.initialize();
@@ -186,6 +188,7 @@ async function bootstrap(bridge: NonNullable<typeof window.cake>) {
       disposeStaleAssetRecovery();
       persistence?.[Symbol.dispose]();
       nativeEvents[Symbol.dispose]();
+      nativeState[Symbol.dispose]();
       synchronizer[Symbol.dispose]();
       rootStore[Symbol.dispose]();
       models[Symbol.dispose]();

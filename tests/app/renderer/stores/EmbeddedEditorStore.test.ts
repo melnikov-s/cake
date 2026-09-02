@@ -1,7 +1,6 @@
 import { createStore } from "r-state-tree";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { EditorAnnotationSnapshot } from "../../../../src/ipc/editor-annotation";
-import type { RendererEvent } from "../../../../src/renderer/RendererEvent";
 import { EmbeddedEditorStore } from "../../../../src/renderer/stores/EmbeddedEditorStore";
 import type { RendererClient } from "../../../../src/renderer/client/RendererClient";
 import { mountWithRendererClient } from "../mount-with-renderer-client";
@@ -37,10 +36,7 @@ function createHarness(annotations?: EditorAnnotationSnapshot) {
 }
 
 function stateEvent(status: "missing" | "downloading" | "starting" | "ready" | "failed") {
-  return {
-    type: "embedded-editor-state-received",
-    status,
-  } as Extract<RendererEvent, { type: "embedded-editor-state-received" }>;
+  return { status };
 }
 
 describe("EmbeddedEditorStore", () => {
@@ -108,7 +104,7 @@ describe("EmbeddedEditorStore", () => {
       startLine: 0,
       endLine: 0,
     });
-    store.receive(stateEvent("ready"));
+    store.applyState(stateEvent("ready"));
 
     expect(store.lastActivePath).toBe("src/app.ts");
     expect(store.activeContextAttachment).toEqual({

@@ -1,7 +1,5 @@
 import { Effect, Schema, Stream } from "effect";
-import { observeState, refreshProjection } from "./application";
 import type { DiscussionCatalogUpdate } from "./catalog-data";
-import type { ApplicationState } from "./application-data";
 import { PiSessionError, PiSessions } from "../services/pi/PiSessions";
 import { ProjectSessionEnvironment } from "../services/project-sessions/ProjectSessionEnvironment";
 import {
@@ -23,13 +21,9 @@ import {
   type DiscussionSessionUpdate,
   type DiscussionThread,
 } from "./discussion-session-data";
+import { ReviewStorage } from "../services/storage/ReviewStorage";
 
 export * from "./discussion-session-data";
-
-interface DiscussionCatalogObservation {
-  readonly revision: number;
-  readonly state: ApplicationState | undefined;
-}
 
 const asError = (operation: string) =>
   Effect.mapError(
@@ -175,36 +169,31 @@ export const observeCatalog = Effect.fn("DiscussionSessions.observeCatalog")(fun
   readonly workingDirectory: string;
   readonly parentSessionId: string;
 }) {
-  const changes = yield* observeState();
+  const changes = (yield* ReviewStorage).changes();
   return changes.pipe(
     Stream.mapAccumEffect(
-      (): DiscussionCatalogObservation => ({
-        revision: 0,
-        state: undefined,
-      }),
-      (observation, projection) => {
-        if (observation.state && observation.state !== projection.state)
-          return Effect.succeed([{ ...observation, state: projection.state }, []] as const);
-        return list(input).pipe(
+      () => 0,
+      (observationRevision) =>
+        list(input).pipe(
           Effect.map((threads) => {
-            const revision = observation.revision + 1;
-            const update: DiscussionCatalogUpdate = observation.state
-              ? {
-                  _tag: "Event",
-                  revision,
-                  parentSessionId: input.parentSessionId,
-                  event: { _tag: "Replaced", threads },
-                }
-              : {
-                  _tag: "Snapshot",
-                  revision,
-                  parentSessionId: input.parentSessionId,
-                  threads,
-                };
-            return [{ revision, state: projection.state }, [update]] as const;
+            const revision = observationRevision + 1;
+            const update: DiscussionCatalogUpdate =
+              observationRevision === 0
+                ? {
+                    _tag: "Snapshot",
+                    revision,
+                    parentSessionId: input.parentSessionId,
+                    threads,
+                  }
+                : {
+                    _tag: "Event",
+                    revision,
+                    parentSessionId: input.parentSessionId,
+                    event: { _tag: "Replaced", threads },
+                  };
+            return [revision, [update]] as const;
           }),
-        );
-      },
+        ),
     ),
   );
 });
@@ -216,7 +205,6 @@ export const create = Effect.fn("DiscussionSessions.create")(function* (
   const record = yield* environment
     .create(input.workingDirectory, input.parentSessionId, input.anchor)
     .pipe(asError("create"));
-  yield* refreshProjection();
   return projectThread(record);
 });
 
@@ -283,7 +271,6 @@ export const prompt = Effect.fn("DiscussionSessions.prompt")(function* (
   const turnId = TurnId.make(
     yield* prepared.handle.prompt(input.text.trim()).pipe(asError("prompt")),
   );
-  yield* refreshProjection();
   return { turnId, thread: projectThread(prepared.record) };
 });
 
@@ -309,6 +296,5 @@ export const setResolved = Effect.fn("DiscussionSessions.setResolved")(function*
   const thread = projectThread(
     yield* environment.setResolved(record, resolved).pipe(asError("setResolved")),
   );
-  yield* refreshProjection();
   return thread;
 });

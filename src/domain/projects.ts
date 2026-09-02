@@ -1,9 +1,9 @@
 import type { WebContents } from "electron";
 import { Effect, Stream } from "effect";
-import type { NativeEvent, nativeOperationPayloadSchemas } from "../ipc/native-protocol";
-import { NativeOperationError } from "../ipc/protocol/NativeOperationError";
+import type { cakeRpcPayloadSchemas } from "../ipc/cake-rpc-contract";
 import { Electron } from "../services/electron/Electron";
 import { PiSessions } from "../services/pi/PiSessions";
+import { AgentAvailability } from "../services/pi/AgentAvailability";
 import { ProjectSessionIntegrations } from "../services/pi/ProjectSessionIntegrations";
 import { rewordSelectionWithProjectContext } from "../services/pi/runtime/rewording-agent";
 import { inspectWorkspace } from "../services/pi/runtime/session-discovery";
@@ -16,6 +16,7 @@ import { ManagedWorktrees } from "../services/worktrees/ManagedWorktrees";
 import { resolveRewordingWorkspace } from "../services/projects/rewording-workspace";
 import type { ProjectCatalogUpdate } from "./catalog-data";
 import type { ProjectRecord } from "./application-data";
+import { ProjectError } from "./project-error";
 import {
   observeState,
   removeProject,
@@ -33,26 +34,28 @@ import {
   utilityModelSelection,
 } from "./utilityWork";
 
-type Payload<Type extends keyof typeof nativeOperationPayloadSchemas> =
-  (typeof nativeOperationPayloadSchemas)[Type]["Type"];
+type Payload<Type extends keyof typeof cakeRpcPayloadSchemas> =
+  (typeof cakeRpcPayloadSchemas)[Type]["Type"];
 
 interface ProjectCatalogObservation {
   readonly revision: number;
   readonly projects: ReadonlyArray<ProjectRecord> | undefined;
 }
 
-const nativeError = (operation: string, cause: unknown) =>
-  new NativeOperationError({
-    message: `${operation}: ${cause instanceof Error ? cause.message : String(cause)}`,
+const projectError = (operation: string, cause: unknown) =>
+  new ProjectError({
+    operation,
+    message: cause instanceof Error ? cause.message : String(cause),
   });
 
-const mapNativeError = <A, E, R>(operation: string, effect: Effect.Effect<A, E, R>) =>
-  effect.pipe(Effect.mapError((cause) => nativeError(operation, cause)));
+const mapProjectError = <A, E, R>(operation: string, effect: Effect.Effect<A, E, R>) =>
+  effect.pipe(Effect.mapError((cause) => projectError(operation, cause)));
 
 const requireAllowed = Effect.fn("Projects.requireAllowed")(function* (workingDirectory: string) {
   const access = yield* ProjectAccess;
   if (!(yield* access.isAllowed(workingDirectory)))
-    return yield* new NativeOperationError({
+    return yield* new ProjectError({
+      operation: "authorizeWorkingDirectory",
       message: "Project path was not selected by the user",
     });
 });
@@ -60,18 +63,18 @@ const requireAllowed = Effect.fn("Projects.requireAllowed")(function* (workingDi
 const requireConnection = Effect.fn("Projects.requireConnection")(function* (
   connectionId: number,
   operation: string,
-): Effect.fn.Return<WebContents, NativeOperationError, Electron> {
+): Effect.fn.Return<WebContents, ProjectError, Electron> {
   const electron = yield* Electron;
   return yield* Effect.try({
     try: () => electron.requireRendererConnection(connectionId),
-    catch: (cause) => nativeError(operation, cause),
+    catch: (cause) => projectError(operation, cause),
   });
 });
 
 const resolveRewordingWorkingDirectory = Effect.fn("Projects.resolveRewordingWorkingDirectory")(
   function* (requested: string | undefined, active: string | undefined) {
     const access = yield* ProjectAccess;
-    const allowed = yield* mapNativeError(
+    const allowed = yield* mapProjectError(
       "rewordComposerSelection",
       access.allowedWorkingDirectories(),
     );
@@ -82,7 +85,7 @@ const resolveRewordingWorkingDirectory = Effect.fn("Projects.resolveRewordingWor
           activeWorkspace: active,
           allowedWorkspacePaths: new Set(allowed),
         }),
-      catch: (cause) => nativeError("rewordComposerSelection", cause),
+      catch: (cause) => projectError("rewordComposerSelection", cause),
     });
   },
 );
@@ -98,7 +101,8 @@ export const rewordComposerSelection = Effect.fn("Projects.rewordComposerSelecti
   const sender = yield* requireConnection(connectionId, "rewordComposerSelection");
   const utilityModel = application.snapshot().utilityModel;
   if (!utilityModel)
-    return yield* new NativeOperationError({
+    return yield* new ProjectError({
+      operation: "rewordComposerSelection",
       message: "Configure a utility model in Settings before rewording text",
     });
 
@@ -125,9 +129,9 @@ export const rewordComposerSelection = Effect.fn("Projects.rewordComposerSelecti
               characterLimit: REWORD_CHARACTER_LIMIT,
               signal,
             }),
-          catch: (cause) => nativeError("rewordComposerSelection", cause),
+          catch: (cause) => projectError("rewordComposerSelection", cause),
         })
-      : yield* mapNativeError(
+      : yield* mapProjectError(
           "rewordComposerSelection",
           rewordSelection({
             selection: utilityModelSelection(utilityModel),
@@ -147,7 +151,7 @@ export const generateSessionTitle = Effect.fn("Projects.generateSessionTitle")(f
   const application = yield* ApplicationState;
   const utilityModel = application.snapshot().utilityModel;
   if (!utilityModel) return {};
-  const title = yield* mapNativeError(
+  const title = yield* mapProjectError(
     "generateSessionTitle",
     generateUtilitySessionTitle({
       selection: utilityModelSelection(utilityModel),
@@ -162,7 +166,7 @@ export const setUtilityModel = Effect.fn("Projects.setUtilityModel")(function* (
   request: Payload<"set-utility-model">,
 ) {
   return {
-    state: yield* mapNativeError("setUtilityModel", setApplicationUtilityModel(request.model)),
+    state: yield* mapProjectError("setUtilityModel", setApplicationUtilityModel(request.model)),
   };
 });
 
@@ -174,10 +178,13 @@ export const register = Effect.fn("Projects.register")(function* (
   const application = yield* ApplicationState;
   const access = yield* ProjectAccess;
   const worktrees = yield* ManagedWorktrees;
-  const records = yield* mapNativeError("registerProject", worktrees.records());
+  const records = yield* mapProjectError("registerProject", worktrees.records());
   if (records.some((entry) => entry.worktreePath === request.path))
     return { state: application.snapshot() };
-  const state = yield* mapNativeError("registerProject", upsertProject(request.path, request.name));
+  const state = yield* mapProjectError(
+    "registerProject",
+    upsertProject(request.path, request.name),
+  );
   yield* Effect.forEach(
     records.filter((record) => record.projectPath === request.path),
     (record) => access.allow(record.worktreePath),
@@ -192,7 +199,7 @@ export const rename = Effect.fn("Projects.rename")(function* (
 ) {
   yield* requireAllowed(request.path);
   return {
-    state: yield* mapNativeError("renameProject", renameProject(request.path, request.name)),
+    state: yield* mapProjectError("renameProject", renameProject(request.path, request.name)),
   };
 });
 
@@ -206,10 +213,10 @@ export const remove = Effect.fn("Projects.remove")(function* (
   const integrations = yield* ProjectSessionIntegrations;
   const lifecycle = yield* ProjectSessionLifecycle;
   const worktrees = yield* ManagedWorktrees;
-  const records = yield* mapNativeError("removeProject", worktrees.records());
+  const records = yield* mapProjectError("removeProject", worktrees.records());
   const projectWorktrees = records.filter((record) => record.projectPath === request.path);
   if (request.deleteSessions)
-    yield* mapNativeError(
+    yield* mapProjectError(
       "removeProject",
       lifecycle.deleteProjectSessions(request.path, projectWorktrees),
     );
@@ -218,12 +225,12 @@ export const remove = Effect.fn("Projects.remove")(function* (
     ...projectWorktrees.map((record) => record.worktreePath),
   ]);
   for (const workingDirectory of workingDirectories) {
-    yield* mapNativeError("removeProject", access.revoke(workingDirectory));
-    yield* mapNativeError("removeProject", integrations.stopWorkingDirectory(workingDirectory));
+    yield* mapProjectError("removeProject", access.revoke(workingDirectory));
+    yield* mapProjectError("removeProject", integrations.stopWorkingDirectory(workingDirectory));
     electron.forgetWorkspace(workingDirectory);
   }
-  yield* mapNativeError("removeProject", access.forgetWorkingDirectories(workingDirectories));
-  return { state: yield* mapNativeError("removeProject", removeProject(request.path)) };
+  yield* mapProjectError("removeProject", access.forgetWorkingDirectories(workingDirectories));
+  return { state: yield* mapProjectError("removeProject", removeProject(request.path)) };
 });
 
 export const deleteSession = Effect.fn("Projects.deleteSession")(function* (
@@ -232,7 +239,10 @@ export const deleteSession = Effect.fn("Projects.deleteSession")(function* (
 ) {
   const application = yield* ApplicationState;
   const lifecycle = yield* ProjectSessionLifecycle;
-  yield* mapNativeError("deleteSession", lifecycle.deleteResolvedProjectSession(request.sessionId));
+  yield* mapProjectError(
+    "deleteSession",
+    lifecycle.deleteResolvedProjectSession(request.sessionId),
+  );
   return { state: application.snapshot() };
 });
 
@@ -240,13 +250,9 @@ export const setSessionUnread = Effect.fn("Projects.setSessionUnread")(function*
   _connectionId: number,
   request: Payload<"set-session-unread">,
 ) {
-  const electron = yield* Electron;
-  const state = yield* mapNativeError(
+  const state = yield* mapProjectError(
     "setSessionUnread",
     setApplicationSessionUnread(request.sessionId, request.unread),
-  );
-  yield* Effect.sync(() =>
-    electron.broadcast({ type: "application-state-changed", state } satisfies NativeEvent),
   );
   return { state };
 });
@@ -256,26 +262,21 @@ export const restartPi = Effect.fn("Projects.restartPi")(function* (
   request: Payload<"restart-pi">,
 ) {
   yield* requireAllowed(request.path);
-  const electron = yield* Electron;
+  const availability = yield* AgentAvailability;
   const sessions = yield* PiSessions;
-  yield* Effect.sync(() =>
-    electron.broadcast({ type: "pi-state", state: "starting", workspacePath: request.path }),
-  );
-  yield* mapNativeError(
+  yield* availability.setWorkingDirectory(request.path, { state: "reloading" });
+  yield* mapProjectError(
     "restartPi",
-    sessions
-      .reloadWorkingDirectory(request.path)
-      .pipe(
-        Effect.tapError(() =>
-          Effect.sync(() =>
-            electron.broadcast({ type: "pi-state", state: "failed", workspacePath: request.path }),
-          ),
-        ),
+    sessions.reloadWorkingDirectory(request.path).pipe(
+      Effect.tapError((error) =>
+        availability.setWorkingDirectory(request.path, {
+          state: "unavailable",
+          reason: error.message,
+        }),
       ),
+    ),
   );
-  yield* Effect.sync(() =>
-    electron.broadcast({ type: "pi-state", state: "ready", workspacePath: request.path }),
-  );
+  yield* availability.setWorkingDirectory(request.path, { state: "available" });
   return { requestId: crypto.randomUUID() };
 });
 
@@ -290,14 +291,14 @@ export const inspect = Effect.fn("Projects.inspect")(function* (
   yield* requireAllowed(request.path);
   const inspection = yield* Effect.try({
     try: () => inspectWorkspace(request.path),
-    catch: (cause) => nativeError("inspectWorkspace", cause),
+    catch: (cause) => projectError("inspectWorkspace", cause),
   });
   const trustRequired =
     inspection.trustRequired && !application.snapshot().trustedProjectPaths.includes(request.path);
-  yield* mapNativeError("inspectWorkspace", access.clearOwner(sender.id));
+  yield* mapProjectError("inspectWorkspace", access.clearOwner(sender.id));
   electron.associateWorkspace(sender.id, request.path);
   if (trustRequired)
-    yield* mapNativeError(
+    yield* mapProjectError(
       "inspectWorkspace",
       access.requestTrust(sender.id, request.requestId, request.path),
     );
@@ -317,11 +318,11 @@ export const respondTrust = Effect.fn("Projects.respondTrust")(function* (
   const access = yield* ProjectAccess;
   const sender = yield* requireConnection(connectionId, "respondTrust");
   yield* requireAllowed(request.path);
-  yield* mapNativeError(
+  yield* mapProjectError(
     "respondTrust",
     access.consumeTrustRequest(sender.id, request.requestId, request.path),
   );
-  if (request.approved) yield* mapNativeError("respondTrust", trustProject(request.path));
+  if (request.approved) yield* mapProjectError("respondTrust", trustProject(request.path));
   return { requestId: request.requestId };
 });
 

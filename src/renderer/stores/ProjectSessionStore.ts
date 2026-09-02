@@ -97,10 +97,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
         this.composerStore.receive(event);
       return;
     }
-    if (
-      event.type === "pi-state-changed" &&
-      (event.state === "failed" || event.state === "stopped")
-    ) {
+    if (event.type === "agent-availability-changed" && event.availability.state === "unavailable") {
       if (this.props.operations.active(this.composerOwner).length > 0)
         this.composerStore.receive(event);
       if (this.artifactRequestActive) this.artifactInteractionStore.receive(event);

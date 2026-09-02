@@ -1,11 +1,11 @@
-import { Effect, Layer } from "effect";
+import { Effect, Layer, SubscriptionRef } from "effect";
+import type { CustomizationState } from "../plugin/plugin-contract";
 import { resolveAgentModel } from "../domain/pluginAgents";
 import type { CakePaths } from "../config/CakePaths";
 import type { BoundedCompletionInput } from "../services/pi/model-data";
 import { PiModels } from "../services/pi/PiModels";
 import { PiPluginAgents } from "../services/pi/PiPluginAgents";
 import { PiSessions } from "../services/pi/PiSessions";
-import { ProjectSessionIntegrations } from "../services/pi/ProjectSessionIntegrations";
 import { ProjectAccess } from "../services/projects/ProjectAccess";
 import { ApplicationState } from "../services/storage/ApplicationState";
 import { Electron } from "../services/electron/Electron";
@@ -16,6 +16,7 @@ import {
   PluginRuntimeError,
   type PluginPromiseOperations,
 } from "../services/plugins/PluginRuntime";
+import { adaptPluginHostOperation as operation } from "../services/plugins/PluginHostEffectAdapter";
 
 export interface PluginRuntimeLiveOptions {
   readonly paths: CakePaths;
@@ -24,18 +25,6 @@ export interface PluginRuntimeLiveOptions {
   readonly backendHostPath: string;
   readonly publishInlineWidget: PluginHostOptions["publishInlineWidget"];
 }
-
-const operation = <Payload, Success>(
-  name: string,
-  execute: (connectionId: number, payload: Payload) => Promise<Success>,
-): ((connectionId: number, payload: Payload) => Effect.Effect<Success, PluginRuntimeError>) =>
-  Effect.fn(name)((connectionId, payload) =>
-    Effect.tryPromise({
-      try: () => execute(connectionId, payload),
-      catch: (cause) =>
-        new PluginRuntimeError({ message: cause instanceof Error ? cause.message : String(cause) }),
-    }),
-  );
 
 export const makePluginRuntimeLive = (
   options: PluginRuntimeLiveOptions,
@@ -48,7 +37,6 @@ export const makePluginRuntimeLive = (
   | PiPluginAgents
   | PiSessions
   | ProjectAccess
-  | ProjectSessionIntegrations
   | PluginResources
 > =>
   Layer.effect(
@@ -60,13 +48,13 @@ export const makePluginRuntimeLive = (
       const pluginAgents = yield* PiPluginAgents;
       const sessions = yield* PiSessions;
       const access = yield* ProjectAccess;
-      const integrations = yield* ProjectSessionIntegrations;
       const resources = yield* PluginResources;
       const context = yield* Effect.context<
-        PiModels | PiSessions | ProjectAccess | ProjectSessionIntegrations | PluginResources
+        PiModels | PiSessions | ProjectAccess | PluginResources
       >();
       const run = Effect.runPromiseWith(context);
 
+      let publishCustomizationState: (state: CustomizationState) => void = () => undefined;
       const hostOptions: PluginHostOptions = {
         ...options,
         utilityModel: () => application.snapshot().utilityModel,
@@ -93,11 +81,15 @@ export const makePluginRuntimeLive = (
             Effect.gen(function* () {
               yield* resources.replace(next);
               yield* sessions.reloadAll();
-              yield* integrations.reloadAgentResources();
             }),
           ),
+        customizationStateChanged: (state) => publishCustomizationState(state),
       };
       const host = new PluginHost(hostOptions);
+      const customizationState = yield* SubscriptionRef.make(host.customizationState());
+      publishCustomizationState = (state) => {
+        Effect.runSync(SubscriptionRef.set(customizationState, state));
+      };
       yield* Effect.addFinalizer(() => Effect.sync(() => host.dispose()));
       const operations: PluginPromiseOperations = host.operations;
       const service = {
@@ -151,6 +143,12 @@ export const makePluginRuntimeLive = (
         "prompt-plugin-agent": operation(
           "PluginRuntime.promptAgent",
           operations["prompt-plugin-agent"],
+          async (connectionId, payload) => {
+            await operations["abort-plugin-agent"](connectionId, {
+              pluginId: payload.pluginId,
+              handleId: payload.handleId,
+            });
+          },
         ),
         "abort-plugin-agent": operation(
           "PluginRuntime.abortAgent",
@@ -163,6 +161,12 @@ export const makePluginRuntimeLive = (
         "run-plugin-completion": operation(
           "PluginRuntime.runCompletion",
           operations["run-plugin-completion"],
+          async (connectionId, payload) => {
+            await operations["cancel-plugin-completion"](connectionId, {
+              pluginId: payload.pluginId,
+              requestId: payload.requestId,
+            });
+          },
         ),
         "cancel-plugin-completion": operation(
           "PluginRuntime.cancelCompletion",
@@ -173,6 +177,12 @@ export const makePluginRuntimeLive = (
         "call-plugin-backend": operation(
           "PluginRuntime.callBackend",
           operations["call-plugin-backend"],
+          async (connectionId, payload) => {
+            await operations["cancel-plugin-backend-call"](connectionId, {
+              pluginId: payload.pluginId,
+              callId: payload.callId,
+            });
+          },
         ),
         "cancel-plugin-backend-call": operation(
           "PluginRuntime.cancelBackendCall",
@@ -186,9 +196,9 @@ export const makePluginRuntimeLive = (
           "PluginRuntime.reportRuntimeFailure",
           operations["customization-runtime-failed"],
         ),
-        start: Effect.fn("PluginRuntime.start")(() =>
+        initializeCustomization: Effect.fn("PluginRuntime.initializeCustomization")(() =>
           Effect.tryPromise({
-            try: () => host.start(),
+            try: () => host.initializeCustomization(),
             catch: (cause) =>
               new PluginRuntimeError({
                 message: cause instanceof Error ? cause.message : String(cause),
@@ -203,6 +213,7 @@ export const makePluginRuntimeLive = (
         disposeOwner: (ownerId: number) => host.disposeOwner(ownerId),
         recoveryContext: () => host.recoveryContext(),
         agentResources: () => host.agentResources,
+        customizationChanges: () => SubscriptionRef.changes(customizationState),
       } satisfies PluginRuntime["Service"];
       return PluginRuntime.of(service);
     }),

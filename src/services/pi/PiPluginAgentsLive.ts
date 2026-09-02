@@ -293,9 +293,8 @@ export const makePiPluginAgentsLive = (options: PiPluginAgentsLiveOptions) => {
     }),
   });
 
-  const layer = Layer.effect(
+  return Layer.effect(
     PiPluginAgents,
     Effect.acquireRelease(Effect.succeed(service), () => service.closeAll().pipe(Effect.orDie)),
   );
-  return { layer, controller: { driver: service.driver } } as const;
 };
