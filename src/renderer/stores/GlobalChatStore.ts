@@ -23,6 +23,12 @@ interface CakeControlTool {
   limitations?: readonly string[];
 }
 
+interface NewCakeChatSessionRequest {
+  tools: ReadonlyArray<CakeControlTool>;
+  configuration?: ChatConfiguration;
+  name?: string;
+}
+
 export interface GlobalChatStoreProps {
   catalog: CakeChatCatalog;
   tools(): ReadonlyArray<CakeControlTool>;
@@ -216,11 +222,11 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
 
   newSessionRequest(sessionId: string) {
     if (!this.isPendingSession(sessionId)) return undefined;
-    return {
-      tools: this.props.tools(),
-      configuration: this.pendingSessionConfiguration(sessionId),
-      name: this.pendingName,
-    };
+    const request: NewCakeChatSessionRequest = { tools: this.props.tools() };
+    const configuration = this.pendingSessionConfiguration(sessionId);
+    if (configuration !== undefined) request.configuration = configuration;
+    if (this.pendingName !== undefined) request.name = this.pendingName;
+    return request;
   }
 
   markSessionStarted(sessionId: string) {
