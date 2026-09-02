@@ -424,7 +424,7 @@ export const App = observer(function App() {
             <div className="mt-6 flex gap-2.5">
               <Button
                 size="lg"
-                disabled={store.piState !== "ready" || store.isBusy}
+                disabled={store.agentAvailability !== "available" || store.isBusy}
                 onClick={() => void root.chooseProject()}
               >
                 <FolderIcon /> Open project
@@ -432,7 +432,7 @@ export const App = observer(function App() {
               <Button
                 size="lg"
                 variant="outline"
-                disabled={store.piState !== "ready" || store.isBusy}
+                disabled={store.agentAvailability !== "available" || store.isBusy}
                 onClick={() => void root.startOneOffChat()}
               >
                 <ChatIcon /> One-off chat
@@ -644,9 +644,9 @@ export const App = observer(function App() {
         ))}
       </ToastHost>
       <QuakeTerminal store={terminal} />
-      {(store.piState === "failed" || store.piState === "stopped") && store.projectPath && (
+      {store.agentAvailability === "unavailable" && store.projectPath && (
         <div className="fixed bottom-4 right-4 z-40 flex items-center gap-3 rounded-xl border border-border bg-card p-2.5 px-3 text-xs shadow-lg">
-          <span>Pi runtime stopped.</span>
+          <span>{store.agentAvailabilityReason ?? "The coding agent is unavailable."}</span>
           <Button size="sm" onClick={() => void store.restartPi()}>
             Restart and reopen
           </Button>

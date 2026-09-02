@@ -14,6 +14,5 @@ export function mountRootStore(
     }),
     { snapshot },
   );
-  void root.settingsStore.modelPresets.hydrate();
   return root;
 }

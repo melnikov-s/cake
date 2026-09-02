@@ -612,7 +612,7 @@ export class RootStore extends Store<{
       setActiveScene: (pluginId) => this.client.plugins.setActiveScene(pluginId),
     });
     this.effect(() => {
-      void this.customizationStore.hydrate();
+      void this.customizationStore.loadPluginCatalog();
     });
     this.effect(() => {
       untracked(() => void this.globalChatStore.initialize());

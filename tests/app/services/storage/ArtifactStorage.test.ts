@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect } from "effect";
 import { afterEach, describe, expect, it } from "vitest";
-import { makeArtifactStorageLive } from "../../../../src/services/storage/ArtifactStorageLive";
+import { makeArtifactStorageTestAdapter } from "../../../../src/services/storage/ArtifactStorageLive";
 
 const directories: string[] = [];
 
@@ -29,7 +29,7 @@ describe("ArtifactStorage", () => {
   it("persists content-addressed payloads, enforces revisions, hydrates, and exports fallbacks", async () => {
     const root = await mkdtemp(join(tmpdir(), "cake-artifacts-"));
     directories.push(root);
-    const storage = makeArtifactStorageLive(root).service;
+    const storage = makeArtifactStorageTestAdapter(root).service;
     const first = await Effect.runPromise(
       storage.upsert("/project", { ...baseArtifact, revision: 1, title: "Scores" }),
     );
@@ -45,7 +45,7 @@ describe("ArtifactStorage", () => {
       }),
     );
     expect(second.createdAt).toBe(first.createdAt);
-    const reloaded = makeArtifactStorageLive(root).service;
+    const reloaded = makeArtifactStorageTestAdapter(root).service;
     expect(
       (await Effect.runPromise(reloaded.listSession("/project", "session-1")))[0]?.artifact,
     ).toMatchObject({ id: "table-1", revision: 2 });
@@ -59,7 +59,7 @@ describe("ArtifactStorage", () => {
   it("serializes revision validation and writes for the same artifact", async () => {
     const root = await mkdtemp(join(tmpdir(), "cake-artifacts-"));
     directories.push(root);
-    const storage = makeArtifactStorageLive(root).service;
+    const storage = makeArtifactStorageTestAdapter(root).service;
     await Effect.runPromise(storage.upsert("/project", { ...baseArtifact, revision: 1 }));
 
     const results = await Promise.allSettled([

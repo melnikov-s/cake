@@ -90,8 +90,9 @@ export const MainApplication = Effect.fn("MainApplication")(function* ({
         Effect.withSpan("MainApplication.electronReady"),
       );
       yield* initialize();
+      yield* vscode.refreshStatus();
       yield* Effect.sync(initializeNativeProtocols);
-      yield* plugins.start();
+      yield* plugins.initializeCustomization();
       yield* lifecycle.reconcile();
       yield* electron.start({
         startupRenderer: plugins.startupRenderer,
@@ -118,9 +119,6 @@ export const MainApplication = Effect.fn("MainApplication")(function* ({
           Effect.runSync(access.allow(path));
         },
         hasUtilityModel: () => Boolean(applicationState.snapshot().utilityModel),
-        rememberSessionLocation: (workingDirectory, sessionId) => {
-          Effect.runSync(access.rememberSessionLocation(workingDirectory, sessionId));
-        },
       });
       yield* Effect.logInfo("Cake main application started");
       yield* Deferred.await(shutdownRequested);

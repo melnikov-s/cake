@@ -4,19 +4,25 @@ import type { RpcClientError } from "effect/unstable/rpc";
 import { CakeRpc, type FoundationFailure } from "../protocol/CakeRpc";
 import type { ArtifactError } from "../../domain/artifact-data";
 import type { ElectronError } from "../../services/electron/Electron";
-import type { NativeOperationError } from "../protocol/NativeOperationError";
 import type { PluginRuntimeError } from "../../services/plugins/PluginRuntime";
 import type { TerminalError } from "../../services/terminal/Terminal";
 import type { ManagedWorktreeError } from "../../services/worktrees/ManagedWorktrees";
 import type { VsCodeServerError } from "../../services/vscode/VsCodeServer";
+import type { WorkspaceFileError } from "../../services/filesystem/WorkspaceFiles";
+import type { ProjectError } from "../../domain/project-error";
 import type {
-  NativeEvent as NativeEventEnvelope,
-  NativeOperationType,
-  nativeOperationPayloadSchemas,
-  nativeOperationSuccessSchemas,
-} from "../native-protocol";
+  CakeEvent as CakeEventEnvelope,
+  CakeRpcOperation,
+  cakeRpcPayloadSchemas,
+  cakeRpcSuccessSchemas,
+} from "../cake-rpc-contract";
 
-import type { RendererApplicationState } from "../../domain/application-data";
+import type {
+  RendererApplicationProjection,
+  RendererApplicationState,
+} from "../../domain/application-data";
+import type { AgentAvailabilitySnapshot } from "../../domain/agent-availability-data";
+import type { CustomizationState } from "../../plugin/plugin-contract";
 import type { PiSettingUpdate } from "../session-contract";
 import type {
   ProjectSessionError,
@@ -81,21 +87,15 @@ import type {
 } from "../../services/storage/WindowStateStorage";
 
 type TransportError = RpcClientError.RpcClientError;
-type NativeStreamReady = { readonly type: "native-stream-ready" };
-type FocusedNativeEvent<Type extends NativeEventEnvelope["type"]> =
-  | Extract<NativeEventEnvelope, { readonly type: Type }>
-  | NativeStreamReady;
-type NativeRpcCommand<Type extends NativeOperationType, OperationError = NativeOperationError> = (
-  payload: (typeof nativeOperationPayloadSchemas)[Type]["Type"],
-) => Effect.Effect<
-  (typeof nativeOperationSuccessSchemas)[Type]["Type"],
-  OperationError | TransportError
+type FocusedCakeEvent<Type extends CakeEventEnvelope["type"]> = Extract<
+  CakeEventEnvelope,
+  { readonly type: Type }
 >;
-type NativeRpcOperations<
-  Types extends NativeOperationType,
-  OperationError = NativeOperationError,
-> = {
-  readonly [Type in Types]: NativeRpcCommand<Type, OperationError>;
+type RpcCommand<Type extends CakeRpcOperation, OperationError> = (
+  payload: (typeof cakeRpcPayloadSchemas)[Type]["Type"],
+) => Effect.Effect<(typeof cakeRpcSuccessSchemas)[Type]["Type"], OperationError | TransportError>;
+type RpcOperations<Types extends CakeRpcOperation, OperationError> = {
+  readonly [Type in Types]: RpcCommand<Type, OperationError>;
 };
 type ModelPresetMutationError =
   | ModelPresetValidationError
@@ -116,6 +116,11 @@ export interface CakeIpcClientService {
   readonly application: {
     readonly getHomeDirectory: () => Effect.Effect<string, TransportError>;
     readonly getState: () => Effect.Effect<RendererApplicationState, TransportError>;
+    readonly observeState: () => Stream.Stream<RendererApplicationProjection, TransportError>;
+    readonly observeAgentAvailability: () => Stream.Stream<
+      AgentAvailabilitySnapshot,
+      TransportError
+    >;
   };
   readonly windowState: {
     readonly load: () => Effect.Effect<
@@ -369,7 +374,7 @@ export interface CakeIpcClientService {
       readonly handleId: SubagentHandleId;
     }) => Effect.Effect<void, SubagentError | TransportError>;
   };
-  readonly electron: NativeRpcOperations<
+  readonly electron: RpcOperations<
     | "choose-project"
     | "open-external-url"
     | "show-transcript-selection-context-menu"
@@ -379,10 +384,11 @@ export interface CakeIpcClientService {
     | "set-fullscreen-surface-open",
     ElectronError
   >;
-  readonly filesystem: NativeRpcOperations<
-    "choose-attachments" | "suggest-files" | "read-workspace-file"
+  readonly filesystem: RpcOperations<
+    "choose-attachments" | "suggest-files" | "read-workspace-file",
+    WorkspaceFileError
   >;
-  readonly workspaces: NativeRpcOperations<
+  readonly workspaces: RpcOperations<
     | "reword-composer-selection"
     | "generate-session-title"
     | "set-utility-model"
@@ -393,13 +399,14 @@ export interface CakeIpcClientService {
     | "set-session-unread"
     | "restart-pi"
     | "inspect-workspace"
-    | "respond-workspace-trust"
+    | "respond-workspace-trust",
+    ProjectError
   >;
-  readonly managedWorktrees: NativeRpcOperations<
+  readonly managedWorktrees: RpcOperations<
     "create-worktree" | "get-worktree-status" | "land-worktree" | "discard-worktree",
     ManagedWorktreeError
   >;
-  readonly terminals: NativeRpcOperations<
+  readonly terminals: RpcOperations<
     | "open-terminal"
     | "write-terminal"
     | "resize-terminal"
@@ -407,7 +414,7 @@ export interface CakeIpcClientService {
     | "close-terminal",
     TerminalError
   >;
-  readonly vscode: NativeRpcOperations<
+  readonly vscode: RpcOperations<
     | "get-embedded-editor-state"
     | "set-vscode-server-path"
     | "install-embedded-editor"
@@ -417,12 +424,17 @@ export interface CakeIpcClientService {
     | "open-embedded-editor-source-control"
     | "update-embedded-editor-annotations",
     VsCodeServerError
-  >;
-  readonly artifacts: NativeRpcOperations<
+  > & {
+    readonly observeState: () => Stream.Stream<
+      (typeof cakeRpcSuccessSchemas)["get-embedded-editor-state"]["Type"],
+      TransportError
+    >;
+  };
+  readonly artifacts: RpcOperations<
     "respond-artifact" | "respond-ui" | "export-artifacts",
     ArtifactError
   >;
-  readonly plugins: NativeRpcOperations<
+  readonly plugins: RpcOperations<
     | "get-customization-state"
     | "get-plugin-authoring-reference"
     | "list-plugin-files"
@@ -452,37 +464,30 @@ export interface CakeIpcClientService {
     | "customization-rendered"
     | "customization-runtime-failed",
     PluginRuntimeError
-  >;
+  > & {
+    readonly observeCustomization: () => Stream.Stream<CustomizationState, TransportError>;
+  };
   readonly events: {
     readonly application: () => Stream.Stream<
-      FocusedNativeEvent<
-        | "pi-state"
-        | "workspace-inspected"
-        | "changelog-snapshot"
-        | "complete"
-        | "fatal"
-        | "application-state-changed"
-        | "notification"
+      FocusedCakeEvent<
+        "workspace-inspected" | "changelog-snapshot" | "complete" | "fatal" | "notification"
       >,
       TransportError
     >;
     readonly artifacts: () => Stream.Stream<
-      FocusedNativeEvent<"artifact-updated" | "artifact-requested" | "ui-request">,
+      FocusedCakeEvent<"artifact-updated" | "artifact-requested" | "ui-request">,
       TransportError
     >;
     readonly plugins: () => Stream.Stream<
-      FocusedNativeEvent<
-        "plugin-backend-event" | "customization-state-changed" | "plugin-agent-event"
-      >,
+      FocusedCakeEvent<"plugin-backend-event" | "plugin-agent-event">,
       TransportError
     >;
     readonly terminals: () => Stream.Stream<
-      FocusedNativeEvent<"terminal-data" | "terminal-exited" | "terminal-toggle-requested">,
+      FocusedCakeEvent<"terminal-data" | "terminal-exited" | "terminal-toggle-requested">,
       TransportError
     >;
     readonly vscode: () => Stream.Stream<
-      FocusedNativeEvent<
-        | "embedded-editor-state"
+      FocusedCakeEvent<
         | "embedded-editor-selection"
         | "embedded-editor-back-to-agent"
         | "embedded-editor-annotation-opened"
@@ -493,7 +498,7 @@ export interface CakeIpcClientService {
       TransportError
     >;
     readonly surfaces: () => Stream.Stream<
-      FocusedNativeEvent<"fullscreen-surface-close-requested">,
+      FocusedCakeEvent<"fullscreen-surface-close-requested">,
       TransportError
     >;
   };
@@ -527,6 +532,8 @@ export const CakeIpcClientLive = Layer.effect(
         getState: Effect.fn("CakeIpcClient.application.getState")(() =>
           client("application.getState", undefined),
         ),
+        observeState: () => client("application.observeState", undefined),
+        observeAgentAvailability: () => client("application.observeAgentAvailability", undefined),
       },
       windowState: {
         load: Effect.fn("CakeIpcClient.windowState.load")(() =>
@@ -831,6 +838,7 @@ export const CakeIpcClientLive = Layer.effect(
         ),
       },
       vscode: {
+        observeState: () => client("vscode.observeState", undefined),
         "get-embedded-editor-state": Effect.fn("CakeIpcClient.vscode.get-embedded-editor-state")(
           (payload) => client("vscode.get-embedded-editor-state", payload),
         ),
@@ -876,6 +884,7 @@ export const CakeIpcClientLive = Layer.effect(
         ),
       },
       plugins: {
+        observeCustomization: () => client("plugins.observeCustomization", undefined),
         "get-customization-state": Effect.fn("CakeIpcClient.plugins.get-customization-state")(
           (payload) => client("plugins.get-customization-state", payload),
         ),

@@ -2,11 +2,12 @@ import { join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { Cause, Effect, Exit, Layer, ManagedRuntime, Schema } from "effect";
 import { app, nativeTheme } from "electron";
-import { nativeEventSchema, type NativeEvent } from "../ipc/native-protocol";
+import { cakeEventSchema, type CakeEvent } from "../ipc/cake-rpc-contract";
 import { makeCakeIpcServerLive } from "../ipc/server/CakeIpcServer";
 import { makePiAgentResourcesLive } from "../services/pi/live/PiAgentResourcesLive";
 import { makePiModelsLive } from "../services/pi/live/PiModelsLive";
 import { makePiSessionsLive } from "../services/pi/PiSessions";
+import { AgentAvailability } from "../services/pi/AgentAvailability";
 import { ProjectSessionIntegrationsLive } from "../services/pi/ProjectSessionIntegrationsLive";
 import { makeProjectSessionRuntimeOptionsLive } from "../layers/ProjectSessionRuntimeOptionsLive";
 import { makePiPluginAgentsProductionLive } from "../services/pi/PiPluginAgentsProductionLive";
@@ -86,6 +87,7 @@ const managedWorktreesLive = ManagedWorktreesLive.pipe(
 const pluginResourcesLive = PluginResources.layer;
 const piModelsLive = makePiModelsLive(cakePaths.piAgent);
 const piSessionsLive = makePiSessionsLive();
+const agentAvailabilityLive = AgentAvailability.layer;
 const electronLive = makeElectronLive({
   application: app,
   cakeIconPath,
@@ -98,8 +100,8 @@ const electronLive = makeElectronLive({
 const baseLive = Layer.mergeAll(
   applicationStateLive,
   windowStateLive,
-  artifactStorageLive.layer,
-  reviewStorageLive.layer,
+  artifactStorageLive,
+  reviewStorageLive,
   gitLive,
   worktreeStorageLive,
   managedWorktreesLive,
@@ -108,7 +110,8 @@ const baseLive = Layer.mergeAll(
   piModelsLive,
   makePiAgentResourcesLive(cakePaths.piAgent),
   piSessionsLive,
-  electronLive.layer,
+  agentAvailabilityLive,
+  electronLive,
   SubagentCoordinatorLive,
   Layer.succeed(ProjectConfiguration, { agentDirectory: cakePaths.piAgent }),
   RewordingRequestsLive,
@@ -132,7 +135,7 @@ const vscodeLive = makeVsCodeServerLive({
     nativeTheme.on("updated", listener);
     return () => nativeTheme.off("updated", listener);
   },
-}).layer.pipe(Layer.provide(accessLive));
+}).pipe(Layer.provide(accessLive));
 const nativeLive = Layer.mergeAll(accessLive, terminalLive, vscodeLive);
 const lifecycleLive = makeProjectSessionLifecycleLive({
   homeDirectory: homedir(),
@@ -235,17 +238,17 @@ void mainRuntime
 
 if (process.env.CAKE_ELECTRON_SMOKE === "1") {
   Object.assign(globalThis, {
-    cakeSmokeEmitRendererEvent(input: NativeEvent) {
+    cakeSmokeEmitRendererEvent(input: CakeEvent) {
       void mainRuntime.runPromise(
         Effect.flatMap(Electron, (electron) =>
-          Effect.sync(() => electron.broadcast(Schema.decodeUnknownSync(nativeEventSchema)(input))),
+          Effect.sync(() => electron.broadcast(Schema.decodeUnknownSync(cakeEventSchema)(input))),
         ),
       );
     },
     cakeSmokeResetPi() {
       void mainRuntime.runPromise(
-        Effect.flatMap(Electron, (electron) =>
-          Effect.sync(() => electron.broadcast({ type: "pi-state", state: "stopped" })),
+        Effect.flatMap(AgentAvailability, (availability) =>
+          availability.setGlobal({ state: "unavailable", reason: "Pi runtime stopped" }),
         ),
       );
     },

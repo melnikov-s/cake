@@ -1,9 +1,19 @@
 import { Context, Effect, Layer } from "effect";
-import type { PluginAgentResources } from "./PluginHost";
+
+export interface PluginAgentResources {
+  readonly skills: readonly string[];
+  readonly prompts: readonly string[];
+  readonly extensions: readonly string[];
+}
+
+export interface PluginResourcesSnapshot {
+  readonly revision: number;
+  readonly resources: PluginAgentResources;
+}
 
 export interface PluginResourcesService {
-  readonly current: () => PluginAgentResources;
-  readonly replace: (resources: PluginAgentResources) => Effect.Effect<void>;
+  readonly current: () => PluginResourcesSnapshot;
+  readonly replace: (resources: PluginAgentResources) => Effect.Effect<PluginResourcesSnapshot>;
 }
 
 /** Process-local projection of the resources contributed by enabled Cake Plugins. */
@@ -11,12 +21,23 @@ export class PluginResources extends Context.Service<PluginResources, PluginReso
   "cake/services/plugins/PluginResources",
 ) {
   static readonly layer = Layer.sync(PluginResources, () => {
-    let resources: PluginAgentResources = { skills: [], prompts: [], extensions: [] };
+    let snapshot: PluginResourcesSnapshot = {
+      revision: 0,
+      resources: { skills: [], prompts: [], extensions: [] },
+    };
     return PluginResources.of({
-      current: () => resources,
+      current: () => snapshot,
       replace: Effect.fn("PluginResources.replace")((next) =>
         Effect.sync(() => {
-          resources = next;
+          snapshot = {
+            revision: snapshot.revision + 1,
+            resources: {
+              skills: [...next.skills],
+              prompts: [...next.prompts],
+              extensions: [...next.extensions],
+            },
+          };
+          return snapshot;
         }),
       ),
     });

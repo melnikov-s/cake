@@ -11,7 +11,7 @@ import {
   type MenuItemConstructorOptions,
   type WebContents,
 } from "electron";
-import type { NativeEvent } from "../../ipc/native-protocol";
+import type { CakeEvent } from "../../ipc/cake-rpc-contract";
 import { shouldAllowNavigation } from "./navigation-policy";
 import type { StartupRenderer } from "../plugins/plugin-activation-service";
 import {
@@ -20,7 +20,7 @@ import {
   ElectronError,
   type ElectronWindowLifecycle,
 } from "./Electron";
-import { NativeEvents, type FocusedNativeEvent, type NativeStreamElement } from "./NativeEvents";
+import { NativeEvents, type FocusedCakeEvent } from "./NativeEvents";
 
 const TRAFFIC_LIGHT_X = 18;
 const TRAFFIC_LIGHT_DIAMETER = 14;
@@ -58,7 +58,7 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
   const windowWorkspaces = new Map<number, string>();
   const fullscreenSurfaces = new Map<number, Set<string>>();
   const openSessionContextMenus = new Set<Menu>();
-  const nativeEventListeners = new Map<number, Set<(event: NativeEvent) => void>>();
+  const nativeEventListeners = new Map<number, Set<(event: CakeEvent) => void>>();
   let applicationQuitting = false;
   let stopped = false;
   let windowLifecycle: ElectronWindowLifecycle | undefined;
@@ -75,7 +75,7 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
 
   const subscribeNativeEvents = (
     connectionId: number,
-    listener: (event: NativeEvent) => void,
+    listener: (event: CakeEvent) => void,
   ): (() => void) => {
     const listeners = nativeEventListeners.get(connectionId) ?? new Set();
     listeners.add(listener);
@@ -86,16 +86,12 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
     };
   };
 
-  const sendTo = (target: WebContents, event: NativeEvent) => {
-    if (event.type === "session-snapshot")
-      lifecycle().rememberSessionLocation(event.snapshot.workspacePath, event.snapshot.sessionId);
+  const sendTo = (target: WebContents, event: CakeEvent) => {
     if (target.isDestroyed()) return;
     for (const listener of nativeEventListeners.get(target.id) ?? []) listener(event);
   };
 
-  const broadcast = (event: NativeEvent) => {
-    if (event.type === "session-snapshot")
-      lifecycle().rememberSessionLocation(event.snapshot.workspacePath, event.snapshot.sessionId);
+  const broadcast = (event: CakeEvent) => {
     for (const window of windows.values()) sendTo(window.webContents, event);
   };
 
@@ -189,9 +185,6 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
       )
         event.preventDefault();
     });
-    window.webContents.on("did-finish-load", () =>
-      sendTo(window.webContents, { type: "pi-state", state: "ready" }),
-    );
     window.webContents.on("render-process-gone", (_event, details) => {
       fullscreenSurfaces.delete(ownerId);
       if (!applicationQuitting) lifecycle().rendererProcessGone(ownerId, details.reason);
@@ -576,56 +569,43 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
   });
 
   const observe = (connectionId: number) =>
-    Stream.callback<NativeStreamElement>((queue) =>
+    Stream.callback<CakeEvent>((queue) =>
       Effect.acquireRelease(
         Effect.sync(() => {
           const unsubscribe = subscribeNativeEvents(connectionId, (event) => {
             Queue.offerUnsafe(queue, event);
           });
-          Queue.offerUnsafe(queue, { type: "native-stream-ready" });
           return unsubscribe;
         }),
         (unsubscribe) => Effect.sync(unsubscribe),
       ),
     );
-  const focused = <Types extends NativeEvent["type"]>(
+  const focused = <Types extends CakeEvent["type"]>(
     connectionId: number,
     ...types: ReadonlyArray<Types>
-  ): Stream.Stream<FocusedNativeEvent<Types>> => {
-    const accepted = new Set<NativeEvent["type"]>(types);
+  ): Stream.Stream<FocusedCakeEvent<Types>> => {
+    const accepted = new Set<CakeEvent["type"]>(types);
     return observe(connectionId).pipe(
-      Stream.filter(
-        (event): event is FocusedNativeEvent<Types> =>
-          event.type === "native-stream-ready" || accepted.has(event.type),
-      ),
+      Stream.filter((event): event is FocusedCakeEvent<Types> => accepted.has(event.type)),
     );
   };
   const nativeEvents = NativeEvents.of({
     application: (connectionId) =>
       focused(
         connectionId,
-        "pi-state",
         "workspace-inspected",
         "changelog-snapshot",
         "complete",
         "fatal",
-        "application-state-changed",
         "notification",
       ),
     artifacts: (connectionId) =>
       focused(connectionId, "artifact-updated", "artifact-requested", "ui-request"),
-    plugins: (connectionId) =>
-      focused(
-        connectionId,
-        "plugin-backend-event",
-        "customization-state-changed",
-        "plugin-agent-event",
-      ),
+    plugins: (connectionId) => focused(connectionId, "plugin-backend-event", "plugin-agent-event"),
     terminals: (connectionId) => focused(connectionId, "terminal-toggle-requested"),
     vscode: (connectionId) =>
       focused(
         connectionId,
-        "embedded-editor-state",
         "embedded-editor-selection",
         "embedded-editor-back-to-agent",
         "embedded-editor-annotation-opened",
@@ -636,14 +616,13 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
     surfaces: (connectionId) => focused(connectionId, "fullscreen-surface-close-requested"),
   });
 
-  const layer = Layer.merge(
+  return Layer.merge(
     Layer.effect(
       Electron,
       Effect.acquireRelease(Effect.succeed(service), () => service.stop()),
     ),
     Layer.succeed(NativeEvents, nativeEvents),
   );
-  return { layer, service } as const;
 };
 
 type SuccessTranscriptMenu = {

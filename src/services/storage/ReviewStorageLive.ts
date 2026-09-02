@@ -1,4 +1,4 @@
-import { Effect, Layer, Option, Predicate, Schema } from "effect";
+import { Effect, Layer, Option, Predicate, Schema, SubscriptionRef } from "effect";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
@@ -273,70 +273,108 @@ const storageError = (operation: string, cause: unknown) =>
     message: cause instanceof Error ? cause.message : String(cause),
   });
 
-export const makeReviewStorageLive = (
+const makeReviewStorage = (
+  root: string,
+  piSessionRoot: string,
+  loadSession?: ReviewSessionLoader,
+) =>
+  Effect.gen(function* () {
+    const repository = new ReviewRepository(root, piSessionRoot, loadSession);
+    const revision = yield* SubscriptionRef.make(0);
+    const changed = <A, E>(effect: Effect.Effect<A, E>) =>
+      effect.pipe(Effect.tap(() => SubscriptionRef.update(revision, (value) => value + 1)));
+    const attempt = <A>(operation: string, evaluate: () => Promise<A>) =>
+      Effect.tryPromise({
+        try: evaluate,
+        catch: (cause) => storageError(operation, cause),
+      });
+    const service = ReviewStorage.of({
+      changes: () => SubscriptionRef.changes(revision),
+      agentSessionDirectory: (workingDirectory, sessionId, threadId) =>
+        Effect.sync(() => repository.agentSessionDirectory(workingDirectory, sessionId, threadId)),
+      reviewContextPath: (workingDirectory, sessionId) =>
+        Effect.sync(() => repository.reviewContextPath(workingDirectory, sessionId)),
+      discussionParentContextPath: (workingDirectory, sessionId, threadId) =>
+        Effect.sync(() =>
+          repository.discussionParentContextPath(workingDirectory, sessionId, threadId),
+        ),
+      deleteSession: Effect.fn("ReviewStorage.deleteSession")((workingDirectory, sessionId) =>
+        changed(
+          attempt("deleteSession", () => repository.deleteSession(workingDirectory, sessionId)),
+        ),
+      ),
+      listSession: Effect.fn("ReviewStorage.listSession")((workingDirectory, sessionId) =>
+        attempt("listSession", () => repository.listSession(workingDirectory, sessionId)),
+      ),
+      listDiscussionRecords: Effect.fn("ReviewStorage.listDiscussionRecords")(
+        (workingDirectory, sessionId) =>
+          attempt("listDiscussionRecords", () =>
+            repository.listDiscussionRecords(workingDirectory, sessionId),
+          ),
+      ),
+      get: Effect.fn("ReviewStorage.get")((workingDirectory, sessionId, threadId) =>
+        attempt("get", () => repository.get(workingDirectory, sessionId, threadId)),
+      ),
+      createDiscussion: Effect.fn("ReviewStorage.createDiscussion")(
+        (workingDirectory, sessionId, anchor) =>
+          changed(
+            attempt("createDiscussion", () =>
+              repository.createDiscussion(workingDirectory, sessionId, anchor),
+            ),
+          ),
+      ),
+      linkDiscussionSidecar: Effect.fn("ReviewStorage.linkDiscussionSidecar")(
+        (workingDirectory, sessionId, threadId, sidecar) =>
+          changed(
+            attempt("linkDiscussionSidecar", () =>
+              repository.linkDiscussionSidecar(workingDirectory, sessionId, threadId, sidecar),
+            ),
+          ),
+      ),
+      resolve: Effect.fn("ReviewStorage.resolve")(
+        (workingDirectory, sessionId, threadId, resolved) =>
+          changed(
+            attempt("resolve", () =>
+              repository.resolve(workingDirectory, sessionId, threadId, resolved),
+            ),
+          ),
+      ),
+      refreshDiscussionContext: Effect.fn("ReviewStorage.refreshDiscussionContext")(
+        (workingDirectory, sessionId) =>
+          attempt("refreshDiscussionContext", () =>
+            repository.refreshDiscussionContext(workingDirectory, sessionId),
+          ),
+      ),
+    });
+    const paths = {
+      agentSessionDirectory: (workingDirectory: string, sessionId: string, threadId: string) =>
+        repository.agentSessionDirectory(workingDirectory, sessionId, threadId),
+      reviewContextPath: (workingDirectory: string, sessionId: string) =>
+        repository.reviewContextPath(workingDirectory, sessionId),
+      discussionParentContextPath: (
+        workingDirectory: string,
+        sessionId: string,
+        threadId: string,
+      ) => repository.discussionParentContextPath(workingDirectory, sessionId, threadId),
+    };
+    return { service, paths } as const;
+  });
+
+export const makeReviewStorageTestAdapter = (
   root: string,
   piSessionRoot: string,
   loadSession?: ReviewSessionLoader,
 ) => {
-  const repository = new ReviewRepository(root, piSessionRoot, loadSession);
-  const attempt = <A>(operation: string, evaluate: () => Promise<A>) =>
-    Effect.tryPromise({
-      try: evaluate,
-      catch: (cause) => storageError(operation, cause),
-    });
-  const service = ReviewStorage.of({
-    agentSessionDirectory: (workingDirectory, sessionId, threadId) =>
-      Effect.sync(() => repository.agentSessionDirectory(workingDirectory, sessionId, threadId)),
-    reviewContextPath: (workingDirectory, sessionId) =>
-      Effect.sync(() => repository.reviewContextPath(workingDirectory, sessionId)),
-    discussionParentContextPath: (workingDirectory, sessionId, threadId) =>
-      Effect.sync(() =>
-        repository.discussionParentContextPath(workingDirectory, sessionId, threadId),
-      ),
-    deleteSession: Effect.fn("ReviewStorage.deleteSession")((workingDirectory, sessionId) =>
-      attempt("deleteSession", () => repository.deleteSession(workingDirectory, sessionId)),
-    ),
-    listSession: Effect.fn("ReviewStorage.listSession")((workingDirectory, sessionId) =>
-      attempt("listSession", () => repository.listSession(workingDirectory, sessionId)),
-    ),
-    listDiscussionRecords: Effect.fn("ReviewStorage.listDiscussionRecords")(
-      (workingDirectory, sessionId) =>
-        attempt("listDiscussionRecords", () =>
-          repository.listDiscussionRecords(workingDirectory, sessionId),
-        ),
-    ),
-    get: Effect.fn("ReviewStorage.get")((workingDirectory, sessionId, threadId) =>
-      attempt("get", () => repository.get(workingDirectory, sessionId, threadId)),
-    ),
-    createDiscussion: Effect.fn("ReviewStorage.createDiscussion")(
-      (workingDirectory, sessionId, anchor) =>
-        attempt("createDiscussion", () =>
-          repository.createDiscussion(workingDirectory, sessionId, anchor),
-        ),
-    ),
-    linkDiscussionSidecar: Effect.fn("ReviewStorage.linkDiscussionSidecar")(
-      (workingDirectory, sessionId, threadId, sidecar) =>
-        attempt("linkDiscussionSidecar", () =>
-          repository.linkDiscussionSidecar(workingDirectory, sessionId, threadId, sidecar),
-        ),
-    ),
-    resolve: Effect.fn("ReviewStorage.resolve")((workingDirectory, sessionId, threadId, resolved) =>
-      attempt("resolve", () => repository.resolve(workingDirectory, sessionId, threadId, resolved)),
-    ),
-    refreshDiscussionContext: Effect.fn("ReviewStorage.refreshDiscussionContext")(
-      (workingDirectory, sessionId) =>
-        attempt("refreshDiscussionContext", () =>
-          repository.refreshDiscussionContext(workingDirectory, sessionId),
-        ),
-    ),
-  });
-  const paths = {
-    agentSessionDirectory: (workingDirectory: string, sessionId: string, threadId: string) =>
-      repository.agentSessionDirectory(workingDirectory, sessionId, threadId),
-    reviewContextPath: (workingDirectory: string, sessionId: string) =>
-      repository.reviewContextPath(workingDirectory, sessionId),
-    discussionParentContextPath: (workingDirectory: string, sessionId: string, threadId: string) =>
-      repository.discussionParentContextPath(workingDirectory, sessionId, threadId),
-  };
+  const { service, paths } = Effect.runSync(makeReviewStorage(root, piSessionRoot, loadSession));
   return { service, paths, layer: Layer.succeed(ReviewStorage, service) } as const;
 };
+
+export const makeReviewStorageLive = (
+  root: string,
+  piSessionRoot: string,
+  loadSession?: ReviewSessionLoader,
+) =>
+  Layer.effect(
+    ReviewStorage,
+    Effect.map(makeReviewStorage(root, piSessionRoot, loadSession), ({ service }) => service),
+  );

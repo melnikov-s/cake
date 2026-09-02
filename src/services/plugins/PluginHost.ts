@@ -2,7 +2,7 @@ import { BrowserWindow, type WebContents } from "electron";
 import type { BoundedCompletionInput } from "../pi/model-data";
 import type { SessionSnapshot, UtilityModel } from "../../ipc/session-contract";
 import type { AgentModelPreference, ResolvedAgentModel } from "../../ipc/plugin-agent-contract";
-import type { NativeEvent } from "../../ipc/native-protocol";
+import type { CakeEvent } from "../../ipc/cake-rpc-contract";
 import type { PluginPromiseOperations } from "./PluginRuntime";
 import type { CakePaths } from "../../config/CakePaths";
 import { PluginBuildService } from "./plugin-build-service";
@@ -14,12 +14,8 @@ import { makePluginAgentOperations } from "./PluginAgentOperations";
 import { makePluginAuthoringOperations } from "./PluginAuthoringOperations";
 import type { PluginOperationContext } from "./PluginOperationContext";
 import { makePluginRuntimeOperations } from "./PluginRuntimeOperations";
-
-export interface PluginAgentResources {
-  readonly skills: string[];
-  readonly prompts: string[];
-  readonly extensions: string[];
-}
+import type { PluginAgentResources } from "./PluginResources";
+import type { CustomizationState } from "../../plugin/plugin-contract";
 
 export interface PluginHostOptions {
   readonly paths: CakePaths;
@@ -37,8 +33,8 @@ export interface PluginHostOptions {
   ) => ResolvedAgentModel;
   readonly requireRendererConnection: (connectionId: number) => WebContents;
   readonly isWorkingDirectoryAllowed: (workingDirectory: string) => boolean;
-  readonly emitToRenderer: (owner: WebContents, event: NativeEvent) => void;
-  readonly broadcast: (event: NativeEvent) => void;
+  readonly emitToRenderer: (owner: WebContents, event: CakeEvent) => void;
+  readonly broadcast: (event: CakeEvent) => void;
   readonly publishInlineWidget: (compiled: {
     readonly token: string;
     readonly document: string;
@@ -47,6 +43,7 @@ export interface PluginHostOptions {
   readonly reloadAll: (renderer: StartupRenderer) => void;
   readonly reloadWindowWithFactory: (ownerId: number) => void;
   readonly resourcesChanged: (resources: PluginAgentResources) => Promise<void> | void;
+  readonly customizationStateChanged: (state: CustomizationState) => void;
 }
 
 export class PluginHost {
@@ -131,7 +128,11 @@ export class PluginHost {
     return this.activation.startupRenderer();
   }
 
-  async start(): Promise<void> {
+  customizationState(): CustomizationState {
+    return this.activation.snapshot();
+  }
+
+  async initializeCustomization(): Promise<void> {
     await this.activation.load();
     const startupRenderer = this.activation.startupRenderer();
     if (startupRenderer.kind === "custom") {
@@ -145,6 +146,7 @@ export class PluginHost {
       }
     }
     await this.refreshAgentResources();
+    this.options.customizationStateChanged(this.activation.snapshot());
   }
 
   dispose(): void {
@@ -224,10 +226,7 @@ export class PluginHost {
 
   private customizationChanged(refreshContext: boolean): void {
     if (refreshContext) this.options.refreshApplicationContext();
-    this.options.broadcast({
-      type: "customization-state-changed",
-      state: this.activation.snapshot(),
-    });
+    this.options.customizationStateChanged(this.activation.snapshot());
   }
 
   private async refreshAgentResources(): Promise<void> {

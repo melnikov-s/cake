@@ -1,13 +1,13 @@
 import { Effect } from "effect";
-import type { nativeOperationPayloadSchemas } from "../ipc/native-protocol";
+import type { cakeRpcPayloadSchemas } from "../ipc/cake-rpc-contract";
 import { ProjectSessionIntegrations } from "../services/pi/ProjectSessionIntegrations";
 import { ProjectAccess } from "../services/projects/ProjectAccess";
 import { ArtifactStorage } from "../services/storage/ArtifactStorage";
 import { ArtifactError } from "./artifact-data";
 
-type ArtifactResponse = (typeof nativeOperationPayloadSchemas)["respond-artifact"]["Type"];
-type UiResponse = (typeof nativeOperationPayloadSchemas)["respond-ui"]["Type"];
-type ExportArtifacts = (typeof nativeOperationPayloadSchemas)["export-artifacts"]["Type"];
+type ArtifactResponse = (typeof cakeRpcPayloadSchemas)["respond-artifact"]["Type"];
+type UiResponse = (typeof cakeRpcPayloadSchemas)["respond-ui"]["Type"];
+type ExportArtifacts = (typeof cakeRpcPayloadSchemas)["export-artifacts"]["Type"];
 
 const asError = (operation: string) =>
   Effect.mapError(

@@ -1,13 +1,13 @@
 import {
   DefaultPackageManager,
-  type DefaultResourceLoader,
+  type ResourceLoader,
   type SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import type { CompatibilityCatalog, ResourceDiagnostic } from "../../../ipc/session-contract";
 
 /** Projects Pi resource discovery into Cake-owned compatibility values. */
 export function compatibilityCatalog(
-  resourceLoader: DefaultResourceLoader,
+  resourceLoader: ResourceLoader,
   settingsManager: SettingsManager,
   workingDirectory: string,
   agentDirectory: string,

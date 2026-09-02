@@ -12,6 +12,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { Effect, Option, Schema } from "effect";
+import type { PluginResourcesSnapshot } from "../../plugins/PluginResources";
 import type {
   Attachment,
   ChatConfiguration,
@@ -85,6 +86,7 @@ import type {
 } from "./sidecar-runtime";
 import { assertSessionPath } from "./session-path";
 import { ResponseRetryController, type ResponseRetryNotice } from "./response-retry";
+import { ReloadableResourceLoader } from "./ReloadableResourceLoader";
 import { applyPiSetting } from "./settings-translation";
 import {
   cakePluginAuthoringSkillPath,
@@ -259,7 +261,7 @@ export interface CakeRuntimeOptions {
   newSession?: boolean;
   sessionId?: string;
   sessionFile?: string;
-  pluginResources?: { skills: string[]; prompts: string[]; extensions: string[] };
+  pluginResources?: () => PluginResourcesSnapshot;
   additionalSystemPrompt?: string;
   tools?: string[];
   auxiliary?: boolean;
@@ -867,99 +869,111 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
   const detectedWorktreePrompt = detectedWorktree
     ? worktreeSystemPrompt(detectedWorktree)
     : undefined;
-  const resourceLoader = new DefaultResourceLoader(
-    globalControl
-      ? {
-          cwd: options.cwd,
-          agentDir,
-          settingsManager,
-          additionalSkillPaths: [cakePluginAuthoringSkillPath()],
-          extensionFactories: [
-            createFastModeExtension(fastModeEnabled),
-            createCakeGatewayExtension((pi) =>
-              filterRuntimeOperations([
-                ...localOperations(),
-                ...createGlobalControlOperations(globalControl),
-                ...(options.modelPresets ? createCakeModelOperations(options.modelPresets) : []),
-                ...createCakeArtifactOperations(pi, {
-                  persistArtifact,
-                  requestArtifact,
-                  generateInlineWidget: options.generateInlineWidget,
-                }),
-                ...(options.vscodeControl ? createCakeVscodeOperations(options.vscodeControl) : []),
-                ...(options.worktreeLandingControl
-                  ? createCakeWorktreeOperations(options.worktreeLandingControl)
-                  : []),
-                ...(options.agentControl
-                  ? createAgentControlOperations(
-                      options.agentControl,
+  const resourceLoader = new ReloadableResourceLoader(() => {
+    const pluginResources = options.pluginResources?.().resources;
+    return new DefaultResourceLoader(
+      globalControl
+        ? {
+            cwd: options.cwd,
+            agentDir,
+            settingsManager,
+            additionalSkillPaths: [cakePluginAuthoringSkillPath()],
+            extensionFactories: [
+              createFastModeExtension(fastModeEnabled),
+              createCakeGatewayExtension((pi) =>
+                filterRuntimeOperations([
+                  ...localOperations(),
+                  ...createGlobalControlOperations(globalControl),
+                  ...(options.modelPresets ? createCakeModelOperations(options.modelPresets) : []),
+                  ...createCakeArtifactOperations(pi, {
+                    persistArtifact,
+                    requestArtifact,
+                    generateInlineWidget: options.generateInlineWidget,
+                  }),
+                  ...(options.vscodeControl
+                    ? createCakeVscodeOperations(options.vscodeControl)
+                    : []),
+                  ...(options.worktreeLandingControl
+                    ? createCakeWorktreeOperations(options.worktreeLandingControl)
+                    : []),
+                  ...(options.agentControl
+                    ? createAgentControlOperations(
+                        options.agentControl,
+                        () => runtimeIdentity.sessionId,
+                      )
+                    : []),
+                ]),
+              ),
+              createCakeArtifactExtension({ persistArtifact, requestArtifact }),
+            ],
+            appendSystemPromptOverride: (base) => [
+              ...base,
+              globalControl.recoveryContext
+                ? `${cakeChatSystemPrompt}\n\nCustomization recovery context from immutable Cake core:\n${globalControl.recoveryContext}`
+                : cakeChatSystemPrompt,
+            ],
+          }
+        : {
+            cwd: options.cwd,
+            agentDir,
+            settingsManager,
+            appendSystemPromptOverride: (base) => [
+              ...base,
+              cakeProjectSystemPrompt,
+              ...(options.additionalSystemPrompt ? [options.additionalSystemPrompt] : []),
+              ...(detectedWorktreePrompt ? [detectedWorktreePrompt] : []),
+            ],
+            additionalSkillPaths: options.auxiliary
+              ? []
+              : [cakePluginAuthoringSkillPath(), ...(pluginResources?.skills ?? [])],
+            additionalPromptTemplatePaths: options.auxiliary
+              ? []
+              : [...(pluginResources?.prompts ?? [])],
+            additionalExtensionPaths: options.auxiliary
+              ? []
+              : [...(pluginResources?.extensions ?? [])],
+            noExtensions: options.auxiliary,
+            noSkills: options.auxiliary,
+            noPromptTemplates: options.auxiliary,
+            noThemes: options.auxiliary,
+            extensionFactories: [
+              createFastModeExtension(fastModeEnabled),
+              createCakeGatewayExtension((pi) =>
+                filterRuntimeOperations([
+                  ...localOperations(),
+                  ...(options.modelPresets ? createCakeModelOperations(options.modelPresets) : []),
+                  ...createCakeArtifactOperations(pi, {
+                    persistArtifact,
+                    requestArtifact,
+                    generateInlineWidget: options.generateInlineWidget,
+                  }),
+                  ...(options.vscodeControl
+                    ? createCakeVscodeOperations(options.vscodeControl)
+                    : []),
+                  ...(options.worktreeLandingControl
+                    ? createCakeWorktreeOperations(options.worktreeLandingControl)
+                    : []),
+                  ...(options.agentControl
+                    ? createAgentControlOperations(
+                        options.agentControl,
+                        () => runtimeIdentity.sessionId,
+                      )
+                    : []),
+                ]),
+              ),
+              createCakeArtifactExtension({ persistArtifact, requestArtifact }),
+              ...(options.reviewContextPath
+                ? [
+                    reviewContextExtension(
+                      options.reviewContextPath,
                       () => runtimeIdentity.sessionId,
-                    )
-                  : []),
-              ]),
-            ),
-            createCakeArtifactExtension({ persistArtifact, requestArtifact }),
-          ],
-          appendSystemPromptOverride: (base) => [
-            ...base,
-            globalControl.recoveryContext
-              ? `${cakeChatSystemPrompt}\n\nCustomization recovery context from immutable Cake core:\n${globalControl.recoveryContext}`
-              : cakeChatSystemPrompt,
-          ],
-        }
-      : {
-          cwd: options.cwd,
-          agentDir,
-          settingsManager,
-          appendSystemPromptOverride: (base) => [
-            ...base,
-            cakeProjectSystemPrompt,
-            ...(options.additionalSystemPrompt ? [options.additionalSystemPrompt] : []),
-            ...(detectedWorktreePrompt ? [detectedWorktreePrompt] : []),
-          ],
-          additionalSkillPaths: options.auxiliary
-            ? []
-            : [cakePluginAuthoringSkillPath(), ...(options.pluginResources?.skills ?? [])],
-          additionalPromptTemplatePaths: options.auxiliary
-            ? []
-            : (options.pluginResources?.prompts ?? []),
-          additionalExtensionPaths: options.auxiliary
-            ? []
-            : (options.pluginResources?.extensions ?? []),
-          noExtensions: options.auxiliary,
-          noSkills: options.auxiliary,
-          noPromptTemplates: options.auxiliary,
-          noThemes: options.auxiliary,
-          extensionFactories: [
-            createFastModeExtension(fastModeEnabled),
-            createCakeGatewayExtension((pi) =>
-              filterRuntimeOperations([
-                ...localOperations(),
-                ...(options.modelPresets ? createCakeModelOperations(options.modelPresets) : []),
-                ...createCakeArtifactOperations(pi, {
-                  persistArtifact,
-                  requestArtifact,
-                  generateInlineWidget: options.generateInlineWidget,
-                }),
-                ...(options.vscodeControl ? createCakeVscodeOperations(options.vscodeControl) : []),
-                ...(options.worktreeLandingControl
-                  ? createCakeWorktreeOperations(options.worktreeLandingControl)
-                  : []),
-                ...(options.agentControl
-                  ? createAgentControlOperations(
-                      options.agentControl,
-                      () => runtimeIdentity.sessionId,
-                    )
-                  : []),
-              ]),
-            ),
-            createCakeArtifactExtension({ persistArtifact, requestArtifact }),
-            ...(options.reviewContextPath
-              ? [reviewContextExtension(options.reviewContextPath, () => runtimeIdentity.sessionId)]
-              : []),
-          ],
-        },
-  );
+                    ),
+                  ]
+                : []),
+            ],
+          },
+    );
+  });
   await resourceLoader.reload({ resolveProjectTrust: async () => options.trusted });
   const sessionDir = options.globalControl
     ? resolve(options.sessionDir)

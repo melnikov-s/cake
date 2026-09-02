@@ -31,11 +31,8 @@ import {
 import {
   applicationStateSchema,
   attachmentSchema,
-  extensionUiEventSchema,
   fileSuggestionSchema,
-  sessionSnapshotSchema,
   utilityModelSchema,
-  uiPartSchema,
 } from "./session-contract";
 import {
   worktreeLandOutcomeSchema,
@@ -54,12 +51,7 @@ const coordinate = Schema.Int.check(Schema.isBetween({ minimum: -1_000_000, maxi
 const requestBase = { requestId: uuid };
 const accepted = Schema.Struct({ requestId: uuid });
 
-const nativeEventSchemas = {
-  "pi-state": Schema.Struct({
-    type: Schema.Literal("pi-state"),
-    state: Schema.Literals(["starting", "ready", "stopped", "failed"]),
-    workspacePath: Schema.optional(stringMax(4_096)),
-  }),
+const cakeEventSchemas = {
   "fullscreen-surface-close-requested": Schema.Struct({
     type: Schema.Literal("fullscreen-surface-close-requested"),
     surfaceId: uuid,
@@ -69,31 +61,6 @@ const nativeEventSchemas = {
     requestId: uuid,
     path: stringMax(4_096),
     trustRequired: Schema.Boolean,
-  }),
-  "session-snapshot": Schema.Struct({
-    type: Schema.Literal("session-snapshot"),
-    requestId: Schema.optional(uuid),
-    snapshot: sessionSnapshotSchema,
-  }),
-  "part-updated": Schema.Struct({
-    type: Schema.Literal("part-updated"),
-    sessionId: Schema.String,
-    part: uiPartSchema,
-  }),
-  "part-removed": Schema.Struct({
-    type: Schema.Literal("part-removed"),
-    sessionId: Schema.String,
-    partId: stringMax(256),
-  }),
-  "session-streaming": Schema.Struct({
-    type: Schema.Literal("session-streaming"),
-    sessionId: Schema.String,
-    streaming: Schema.Boolean,
-  }),
-  "extension-ui": Schema.Struct({
-    type: Schema.Literal("extension-ui"),
-    sessionId: stringMax(256),
-    event: extensionUiEventSchema,
   }),
   "changelog-snapshot": Schema.Struct({
     type: Schema.Literal("changelog-snapshot"),
@@ -139,14 +106,6 @@ const nativeEventSchemas = {
   "plugin-backend-event": pluginBackendEventSchema.pipe(
     Schema.fieldsAssign({ type: Schema.Literal("plugin-backend-event") }),
   ),
-  "customization-state-changed": Schema.Struct({
-    type: Schema.Literal("customization-state-changed"),
-    state: customizationStateSchema,
-  }),
-  "application-state-changed": Schema.Struct({
-    type: Schema.Literal("application-state-changed"),
-    state: applicationStateSchema,
-  }),
   notification: Schema.Struct({
     type: Schema.Literal("notification"),
     tone: Schema.Literals(["info", "warning", "error"]),
@@ -169,11 +128,6 @@ const nativeEventSchemas = {
     exitCode: int,
   }),
   "terminal-toggle-requested": Schema.Struct({ type: Schema.Literal("terminal-toggle-requested") }),
-  "embedded-editor-state": Schema.Struct({
-    type: Schema.Literal("embedded-editor-state"),
-    status: Schema.Literals(["missing", "downloading", "starting", "ready", "failed"]),
-    message: Schema.optional(ipcProjectionString(4_096)),
-  }),
   "embedded-editor-selection": Schema.Struct({
     type: Schema.Literal("embedded-editor-selection"),
     workspacePath: stringMax(4_096),
@@ -207,75 +161,62 @@ const nativeEventSchemas = {
 } as const;
 
 export const applicationEventSchema = Schema.Union([
-  nativeEventSchemas["pi-state"],
-  nativeEventSchemas["workspace-inspected"],
-  nativeEventSchemas["changelog-snapshot"],
-  nativeEventSchemas.complete,
-  nativeEventSchemas.fatal,
-  nativeEventSchemas["application-state-changed"],
-  nativeEventSchemas.notification,
+  cakeEventSchemas["workspace-inspected"],
+  cakeEventSchemas["changelog-snapshot"],
+  cakeEventSchemas.complete,
+  cakeEventSchemas.fatal,
+  cakeEventSchemas.notification,
 ]);
 
 export const artifactEventSchema = Schema.Union([
-  nativeEventSchemas["artifact-updated"],
-  nativeEventSchemas["artifact-requested"],
-  nativeEventSchemas["ui-request"],
+  cakeEventSchemas["artifact-updated"],
+  cakeEventSchemas["artifact-requested"],
+  cakeEventSchemas["ui-request"],
 ]);
 
 export const pluginEventSchema = Schema.Union([
-  nativeEventSchemas["plugin-backend-event"],
-  nativeEventSchemas["customization-state-changed"],
-  nativeEventSchemas["plugin-agent-event"],
+  cakeEventSchemas["plugin-backend-event"],
+  cakeEventSchemas["plugin-agent-event"],
 ]);
 
 export const terminalEventSchema = Schema.Union([
-  nativeEventSchemas["terminal-data"],
-  nativeEventSchemas["terminal-exited"],
-  nativeEventSchemas["terminal-toggle-requested"],
+  cakeEventSchemas["terminal-data"],
+  cakeEventSchemas["terminal-exited"],
+  cakeEventSchemas["terminal-toggle-requested"],
 ]);
 
 export const embeddedEditorEventSchema = Schema.Union([
-  nativeEventSchemas["embedded-editor-state"],
-  nativeEventSchemas["embedded-editor-selection"],
-  nativeEventSchemas["embedded-editor-back-to-agent"],
-  nativeEventSchemas["embedded-editor-annotation-opened"],
-  nativeEventSchemas["embedded-editor-toggle-chat"],
-  nativeEventSchemas["embedded-editor-selection-cleared"],
-  nativeEventSchemas["embedded-editor-location-opened"],
+  cakeEventSchemas["embedded-editor-selection"],
+  cakeEventSchemas["embedded-editor-back-to-agent"],
+  cakeEventSchemas["embedded-editor-annotation-opened"],
+  cakeEventSchemas["embedded-editor-toggle-chat"],
+  cakeEventSchemas["embedded-editor-selection-cleared"],
+  cakeEventSchemas["embedded-editor-location-opened"],
 ]);
 
-export const surfaceEventSchema = nativeEventSchemas["fullscreen-surface-close-requested"];
+export const surfaceEventSchema = cakeEventSchemas["fullscreen-surface-close-requested"];
 
-export const nativeEventSchema = Schema.Union([
-  nativeEventSchemas["pi-state"],
-  nativeEventSchemas["fullscreen-surface-close-requested"],
-  nativeEventSchemas["workspace-inspected"],
-  nativeEventSchemas["session-snapshot"],
-  nativeEventSchemas["part-updated"],
-  nativeEventSchemas["part-removed"],
-  nativeEventSchemas["session-streaming"],
-  nativeEventSchemas["extension-ui"],
-  nativeEventSchemas["changelog-snapshot"],
-  nativeEventSchemas["artifact-updated"],
-  nativeEventSchemas["artifact-requested"],
-  nativeEventSchemas["ui-request"],
-  nativeEventSchemas["complete"],
-  nativeEventSchemas["fatal"],
-  nativeEventSchemas["plugin-backend-event"],
-  nativeEventSchemas["customization-state-changed"],
-  nativeEventSchemas["application-state-changed"],
-  nativeEventSchemas["notification"],
-  nativeEventSchemas["plugin-agent-event"],
-  nativeEventSchemas["terminal-data"],
-  nativeEventSchemas["terminal-exited"],
-  nativeEventSchemas["terminal-toggle-requested"],
-  nativeEventSchemas["embedded-editor-state"],
-  nativeEventSchemas["embedded-editor-selection"],
-  nativeEventSchemas["embedded-editor-back-to-agent"],
-  nativeEventSchemas["embedded-editor-annotation-opened"],
-  nativeEventSchemas["embedded-editor-toggle-chat"],
-  nativeEventSchemas["embedded-editor-selection-cleared"],
-  nativeEventSchemas["embedded-editor-location-opened"],
+export const cakeEventSchema = Schema.Union([
+  cakeEventSchemas["fullscreen-surface-close-requested"],
+  cakeEventSchemas["workspace-inspected"],
+  cakeEventSchemas["changelog-snapshot"],
+  cakeEventSchemas["artifact-updated"],
+  cakeEventSchemas["artifact-requested"],
+  cakeEventSchemas["ui-request"],
+  cakeEventSchemas["complete"],
+  cakeEventSchemas["fatal"],
+  cakeEventSchemas["plugin-backend-event"],
+  cakeEventSchemas["notification"],
+  cakeEventSchemas["plugin-agent-event"],
+  cakeEventSchemas["terminal-data"],
+  cakeEventSchemas["terminal-exited"],
+  cakeEventSchemas["terminal-toggle-requested"],
+  cakeEventSchemas["embedded-editor-selection"],
+  cakeEventSchemas["embedded-editor-back-to-agent"],
+  cakeEventSchemas["embedded-editor-annotation-opened"],
+  cakeEventSchemas["embedded-editor-toggle-chat"],
+  cakeEventSchemas["embedded-editor-selection-cleared"],
+  cakeEventSchemas["embedded-editor-location-opened"],
 ]);
 
 const terminalTarget = Schema.Union([
@@ -287,7 +228,7 @@ const terminalTarget = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("cake-chat"), sessionId: bounded(1, 256) }),
 ]);
 
-export const nativeOperationPayloadSchemas = {
+export const cakeRpcPayloadSchemas = {
   "choose-project": Schema.Struct({}),
   "open-external-url": Schema.Struct({
     url: stringMax(8_192),
@@ -594,7 +535,7 @@ export const nativeOperationPayloadSchemas = {
   }),
 } as const;
 
-const nativeSuccessSchemas = {
+const cakeRpcResultSchemas = {
   "project-chosen": Schema.Struct({
     path: Schema.optional(stringMax(4_096)),
   }),
@@ -722,78 +663,78 @@ const nativeSuccessSchemas = {
   }),
 } as const;
 
-export const nativeOperationSuccessSchemas = {
-  "choose-project": nativeSuccessSchemas["project-chosen"],
-  "open-external-url": nativeSuccessSchemas["external-url-opened"],
+export const cakeRpcSuccessSchemas = {
+  "choose-project": cakeRpcResultSchemas["project-chosen"],
+  "open-external-url": cakeRpcResultSchemas["external-url-opened"],
   "show-transcript-selection-context-menu":
-    nativeSuccessSchemas["transcript-selection-context-menu-closed"],
-  "show-composer-context-menu": nativeSuccessSchemas["composer-context-menu-closed"],
-  "show-session-context-menu": nativeSuccessSchemas["session-context-menu-closed"],
-  "show-project-context-menu": nativeSuccessSchemas["project-context-menu-closed"],
-  "set-fullscreen-surface-open": nativeSuccessSchemas.accepted,
-  "choose-attachments": nativeSuccessSchemas["attachments-chosen"],
-  "suggest-files": nativeSuccessSchemas["file-suggestions"],
-  "read-workspace-file": nativeSuccessSchemas["workspace-file"],
-  "reword-composer-selection": nativeSuccessSchemas["composer-selection-reworded"],
-  "generate-session-title": nativeSuccessSchemas["session-title-generated"],
-  "set-utility-model": nativeSuccessSchemas["application-state-updated"],
-  "register-project": nativeSuccessSchemas["application-state-updated"],
-  "rename-project": nativeSuccessSchemas["application-state-updated"],
-  "remove-project": nativeSuccessSchemas["application-state-updated"],
-  "delete-session": nativeSuccessSchemas["application-state-updated"],
-  "set-session-unread": nativeSuccessSchemas["application-state-updated"],
-  "restart-pi": nativeSuccessSchemas.accepted,
-  "inspect-workspace": nativeSuccessSchemas.accepted,
-  "respond-workspace-trust": nativeSuccessSchemas.accepted,
-  "create-worktree": nativeSuccessSchemas["worktree-created"],
-  "get-worktree-status": nativeSuccessSchemas["worktree-status-loaded"],
-  "land-worktree": nativeSuccessSchemas["worktree-landed"],
-  "discard-worktree": nativeSuccessSchemas.accepted,
-  "open-terminal": nativeSuccessSchemas["terminal-opened"],
-  "write-terminal": nativeSuccessSchemas.accepted,
-  "resize-terminal": nativeSuccessSchemas.accepted,
-  "get-terminal-status": nativeSuccessSchemas["terminal-status"],
-  "close-terminal": nativeSuccessSchemas.accepted,
-  "get-embedded-editor-state": nativeSuccessSchemas["embedded-editor-state-loaded"],
-  "install-embedded-editor": nativeSuccessSchemas.accepted,
-  "set-vscode-server-path": nativeSuccessSchemas["application-state-updated"],
-  "open-embedded-editor": nativeSuccessSchemas.accepted,
-  "update-embedded-editor-bounds": nativeSuccessSchemas.accepted,
-  "reveal-in-embedded-editor": nativeSuccessSchemas.accepted,
-  "open-embedded-editor-source-control": nativeSuccessSchemas.accepted,
-  "update-embedded-editor-annotations": nativeSuccessSchemas.accepted,
-  "respond-artifact": nativeSuccessSchemas["artifact-response-accepted"],
-  "respond-ui": nativeSuccessSchemas["ui-response-accepted"],
-  "export-artifacts": nativeSuccessSchemas["artifacts-exported"],
-  "get-customization-state": nativeSuccessSchemas["customization-state"],
-  "get-plugin-authoring-reference": nativeSuccessSchemas["plugin-authoring-reference"],
-  "list-plugin-files": nativeSuccessSchemas["plugin-files"],
-  "create-plugin": nativeSuccessSchemas["plugin-files"],
-  "read-plugin-file": nativeSuccessSchemas["plugin-file"],
-  "write-plugin-file": nativeSuccessSchemas["plugin-files"],
-  "validate-customization": nativeSuccessSchemas["customization-validation"],
-  "activate-customization": nativeSuccessSchemas["customization-activation"],
-  "rollback-customization": nativeSuccessSchemas["customization-state"],
-  "use-factory-customization": nativeSuccessSchemas["customization-state"],
-  "list-plugins": nativeSuccessSchemas["plugins-listed"],
-  "set-plugin-enabled": nativeSuccessSchemas["plugins-listed"],
-  "set-active-scene": nativeSuccessSchemas["plugins-listed"],
-  "delete-plugin": nativeSuccessSchemas["plugins-listed"],
-  "compile-inline-widget": nativeSuccessSchemas["inline-widget-compiled"],
-  "repair-inline-widget": nativeSuccessSchemas["inline-widget-repaired"],
-  "open-plugin-agent": nativeSuccessSchemas["plugin-agent-snapshot"],
-  "prompt-plugin-agent": nativeSuccessSchemas["plugin-agent-snapshot"],
-  "abort-plugin-agent": nativeSuccessSchemas["plugin-agent-snapshot"],
-  "detach-plugin-agent": nativeSuccessSchemas["plugin-agent-detached"],
-  "run-plugin-completion": nativeSuccessSchemas["plugin-completion-result"],
-  "cancel-plugin-completion": nativeSuccessSchemas.accepted,
-  "load-plugin-state": nativeSuccessSchemas["plugin-state"],
-  "save-plugin-state": nativeSuccessSchemas["plugin-state"],
-  "call-plugin-backend": nativeSuccessSchemas["plugin-backend-result"],
-  "cancel-plugin-backend-call": nativeSuccessSchemas.accepted,
-  "customization-rendered": nativeSuccessSchemas["customization-state"],
-  "customization-runtime-failed": nativeSuccessSchemas["customization-state"],
+    cakeRpcResultSchemas["transcript-selection-context-menu-closed"],
+  "show-composer-context-menu": cakeRpcResultSchemas["composer-context-menu-closed"],
+  "show-session-context-menu": cakeRpcResultSchemas["session-context-menu-closed"],
+  "show-project-context-menu": cakeRpcResultSchemas["project-context-menu-closed"],
+  "set-fullscreen-surface-open": cakeRpcResultSchemas.accepted,
+  "choose-attachments": cakeRpcResultSchemas["attachments-chosen"],
+  "suggest-files": cakeRpcResultSchemas["file-suggestions"],
+  "read-workspace-file": cakeRpcResultSchemas["workspace-file"],
+  "reword-composer-selection": cakeRpcResultSchemas["composer-selection-reworded"],
+  "generate-session-title": cakeRpcResultSchemas["session-title-generated"],
+  "set-utility-model": cakeRpcResultSchemas["application-state-updated"],
+  "register-project": cakeRpcResultSchemas["application-state-updated"],
+  "rename-project": cakeRpcResultSchemas["application-state-updated"],
+  "remove-project": cakeRpcResultSchemas["application-state-updated"],
+  "delete-session": cakeRpcResultSchemas["application-state-updated"],
+  "set-session-unread": cakeRpcResultSchemas["application-state-updated"],
+  "restart-pi": cakeRpcResultSchemas.accepted,
+  "inspect-workspace": cakeRpcResultSchemas.accepted,
+  "respond-workspace-trust": cakeRpcResultSchemas.accepted,
+  "create-worktree": cakeRpcResultSchemas["worktree-created"],
+  "get-worktree-status": cakeRpcResultSchemas["worktree-status-loaded"],
+  "land-worktree": cakeRpcResultSchemas["worktree-landed"],
+  "discard-worktree": cakeRpcResultSchemas.accepted,
+  "open-terminal": cakeRpcResultSchemas["terminal-opened"],
+  "write-terminal": cakeRpcResultSchemas.accepted,
+  "resize-terminal": cakeRpcResultSchemas.accepted,
+  "get-terminal-status": cakeRpcResultSchemas["terminal-status"],
+  "close-terminal": cakeRpcResultSchemas.accepted,
+  "get-embedded-editor-state": cakeRpcResultSchemas["embedded-editor-state-loaded"],
+  "install-embedded-editor": cakeRpcResultSchemas.accepted,
+  "set-vscode-server-path": cakeRpcResultSchemas["application-state-updated"],
+  "open-embedded-editor": cakeRpcResultSchemas.accepted,
+  "update-embedded-editor-bounds": cakeRpcResultSchemas.accepted,
+  "reveal-in-embedded-editor": cakeRpcResultSchemas.accepted,
+  "open-embedded-editor-source-control": cakeRpcResultSchemas.accepted,
+  "update-embedded-editor-annotations": cakeRpcResultSchemas.accepted,
+  "respond-artifact": cakeRpcResultSchemas["artifact-response-accepted"],
+  "respond-ui": cakeRpcResultSchemas["ui-response-accepted"],
+  "export-artifacts": cakeRpcResultSchemas["artifacts-exported"],
+  "get-customization-state": cakeRpcResultSchemas["customization-state"],
+  "get-plugin-authoring-reference": cakeRpcResultSchemas["plugin-authoring-reference"],
+  "list-plugin-files": cakeRpcResultSchemas["plugin-files"],
+  "create-plugin": cakeRpcResultSchemas["plugin-files"],
+  "read-plugin-file": cakeRpcResultSchemas["plugin-file"],
+  "write-plugin-file": cakeRpcResultSchemas["plugin-files"],
+  "validate-customization": cakeRpcResultSchemas["customization-validation"],
+  "activate-customization": cakeRpcResultSchemas["customization-activation"],
+  "rollback-customization": cakeRpcResultSchemas["customization-state"],
+  "use-factory-customization": cakeRpcResultSchemas["customization-state"],
+  "list-plugins": cakeRpcResultSchemas["plugins-listed"],
+  "set-plugin-enabled": cakeRpcResultSchemas["plugins-listed"],
+  "set-active-scene": cakeRpcResultSchemas["plugins-listed"],
+  "delete-plugin": cakeRpcResultSchemas["plugins-listed"],
+  "compile-inline-widget": cakeRpcResultSchemas["inline-widget-compiled"],
+  "repair-inline-widget": cakeRpcResultSchemas["inline-widget-repaired"],
+  "open-plugin-agent": cakeRpcResultSchemas["plugin-agent-snapshot"],
+  "prompt-plugin-agent": cakeRpcResultSchemas["plugin-agent-snapshot"],
+  "abort-plugin-agent": cakeRpcResultSchemas["plugin-agent-snapshot"],
+  "detach-plugin-agent": cakeRpcResultSchemas["plugin-agent-detached"],
+  "run-plugin-completion": cakeRpcResultSchemas["plugin-completion-result"],
+  "cancel-plugin-completion": cakeRpcResultSchemas.accepted,
+  "load-plugin-state": cakeRpcResultSchemas["plugin-state"],
+  "save-plugin-state": cakeRpcResultSchemas["plugin-state"],
+  "call-plugin-backend": cakeRpcResultSchemas["plugin-backend-result"],
+  "cancel-plugin-backend-call": cakeRpcResultSchemas.accepted,
+  "customization-rendered": cakeRpcResultSchemas["customization-state"],
+  "customization-runtime-failed": cakeRpcResultSchemas["customization-state"],
 } as const;
 
-export type NativeOperationType = keyof typeof nativeOperationPayloadSchemas;
-export type NativeEvent = typeof nativeEventSchema.Type;
+export type CakeRpcOperation = keyof typeof cakeRpcPayloadSchemas;
+export type CakeEvent = typeof cakeEventSchema.Type;

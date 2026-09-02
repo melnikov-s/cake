@@ -1,7 +1,6 @@
 import { Store, observable } from "r-state-tree";
 import type { CustomizationState, PluginStatus } from "../../plugin/plugin-contract";
 import { RendererClientContext } from "../client/RendererClientContext";
-import type { RendererEvent } from "../RendererEvent";
 
 /** Owns customization diagnostics, candidate builds, rollback, and recovery. */
 export class CustomizationStore extends Store {
@@ -9,25 +8,21 @@ export class CustomizationStore extends Store {
   busy = false;
   error?: string;
   plugins: PluginStatus[] = observable([]);
-  private hydration: Promise<void> | undefined;
+  private pluginCatalogLoad: Promise<void> | undefined;
 
   get pluginCommands() {
     return RendererClientContext.consume(this)!.plugins;
   }
 
-  hydrate() {
-    this.hydration ??= this.performHydration();
-    return this.hydration;
+  loadPluginCatalog() {
+    this.pluginCatalogLoad ??= this.performPluginCatalogLoad();
+    return this.pluginCatalogLoad;
   }
 
-  private async performHydration() {
+  private async performPluginCatalogLoad() {
     try {
-      const [state, plugins] = await Promise.all([
-        this.pluginCommands.getCustomizationState({ signal: this.signal }),
-        this.pluginCommands.list({ signal: this.signal }),
-      ]);
+      const plugins = await this.pluginCommands.list({ signal: this.signal });
       if (this.signal.aborted) return;
-      this.state = state;
       this.plugins.splice(0, this.plugins.length, ...plugins);
     } catch (error) {
       if (this.signal.aborted) return;
@@ -35,8 +30,8 @@ export class CustomizationStore extends Store {
     }
   }
 
-  receive(event: RendererEvent) {
-    if (event.type === "customization-state-changed") this.state = event.state;
+  applyState(state: CustomizationState) {
+    this.state = state;
   }
 
   async rebuild() {

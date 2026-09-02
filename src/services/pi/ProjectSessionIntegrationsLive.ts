@@ -124,9 +124,6 @@ export const ProjectSessionIntegrationsLive: Layer.Layer<
           catch: (cause) => runtimeError("respondUi", cause),
         }),
       ),
-      reloadAgentResources: Effect.fn("ProjectSessionIntegrations.reloadAgentResources")(() =>
-        Effect.sync(releaseAll),
-      ),
     });
   }),
 );

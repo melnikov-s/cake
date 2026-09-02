@@ -1,14 +1,11 @@
-import { Context, Schema, type Effect } from "effect";
-import type {
-  nativeOperationPayloadSchemas,
-  nativeOperationSuccessSchemas,
-} from "../../ipc/native-protocol";
+import { Context, Schema, type Effect, type Stream } from "effect";
+import type { cakeRpcPayloadSchemas, cakeRpcSuccessSchemas } from "../../ipc/cake-rpc-contract";
 import type { SourceLocation } from "../../ipc/source-location";
 
-type Payload<Type extends keyof typeof nativeOperationPayloadSchemas> =
-  (typeof nativeOperationPayloadSchemas)[Type]["Type"];
-type Success<Type extends keyof typeof nativeOperationSuccessSchemas> =
-  (typeof nativeOperationSuccessSchemas)[Type]["Type"];
+type Payload<Type extends keyof typeof cakeRpcPayloadSchemas> =
+  (typeof cakeRpcPayloadSchemas)[Type]["Type"];
+type Success<Type extends keyof typeof cakeRpcSuccessSchemas> =
+  (typeof cakeRpcSuccessSchemas)[Type]["Type"];
 
 export class VsCodeServerError extends Schema.TaggedError<VsCodeServerError>()(
   "VsCodeServerError",
@@ -17,6 +14,7 @@ export class VsCodeServerError extends Schema.TaggedError<VsCodeServerError>()(
 
 export interface VsCodeServerService {
   readonly state: () => Effect.Effect<Success<"get-embedded-editor-state">>;
+  readonly stateChanges: () => Stream.Stream<Success<"get-embedded-editor-state">>;
   readonly refreshStatus: () => Effect.Effect<void, VsCodeServerError>;
   readonly install: (
     request: Payload<"install-embedded-editor">,

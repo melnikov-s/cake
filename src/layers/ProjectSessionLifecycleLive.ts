@@ -11,7 +11,6 @@ import * as reviews from "../domain/reviews";
 import * as sessionTerminals from "../domain/sessionTerminals";
 import type { WorktreeRecord } from "../ipc/worktree-contract";
 import { listWorkspaceSessions } from "../services/pi/runtime/session-discovery";
-import { Electron } from "../services/electron/Electron";
 import { ProjectAccess } from "../services/projects/ProjectAccess";
 import { ApplicationState } from "../services/storage/ApplicationState";
 import type { ArtifactStorage } from "../services/storage/ArtifactStorage";
@@ -45,7 +44,6 @@ export const makeProjectSessionLifecycleLive = (
   never,
   | ApplicationState
   | ArtifactStorage
-  | Electron
   | ManagedWorktrees
   | ProjectAccess
   | ReviewStorage
@@ -58,12 +56,10 @@ export const makeProjectSessionLifecycleLive = (
       const access = yield* ProjectAccess;
       const application = yield* ApplicationState;
       const archive = yield* SessionArchiveStorage;
-      const electron = yield* Electron;
       const worktrees = yield* ManagedWorktrees;
       const context = yield* Effect.context<
         | ApplicationState
         | ArtifactStorage
-        | Electron
         | ManagedWorktrees
         | ProjectAccess
         | ReviewStorage
@@ -95,9 +91,6 @@ export const makeProjectSessionLifecycleLive = (
             ),
           catch: (cause) => lifecycleError("listSessions", cause),
         });
-      const publish = (state: ReturnType<ApplicationState["Service"]["snapshot"]>) =>
-        Effect.sync(() => electron.broadcast({ type: "application-state-changed", state }));
-
       const setCakeChatResolved = Effect.fn("ProjectSessionLifecycle.setCakeChatResolved")(
         function* (sessionId: string, resolved: boolean) {
           const location = {
@@ -113,11 +106,7 @@ export const makeProjectSessionLifecycleLive = (
             );
             yield* run("setCakeChatResolved", archive.resolve(sessionId, location));
           } else yield* run("setCakeChatResolved", archive.restore(sessionId, location));
-          const state = yield* run(
-            "setCakeChatResolved",
-            setCakeChatSessionResolved(sessionId, resolved),
-          );
-          yield* publish(state);
+          yield* run("setCakeChatResolved", setCakeChatSessionResolved(sessionId, resolved));
         },
       );
 
@@ -165,11 +154,7 @@ export const makeProjectSessionLifecycleLive = (
             }),
           );
         }
-        const state = yield* run(
-          "setProjectSessionResolved",
-          setSessionsResolved([sessionId], resolved),
-        );
-        yield* publish(state);
+        yield* run("setProjectSessionResolved", setSessionsResolved([sessionId], resolved));
       });
 
       const deleteResolvedProjectSession = Effect.fn(

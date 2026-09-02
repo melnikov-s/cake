@@ -76,6 +76,6 @@ export const makePiPluginAgentsProductionLive = (
             onRelease: () => run(integrations.releaseSession(input.sessionId)),
           };
         },
-      }).layer;
+      });
     }),
   );

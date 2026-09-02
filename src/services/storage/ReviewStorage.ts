@@ -1,4 +1,4 @@
-import { Context, Schema, type Effect } from "effect";
+import { Context, Schema, type Effect, type Stream } from "effect";
 import type { ReviewAnchor, ReviewThread, ReviewThreadRecord } from "../../ipc/review-contract";
 
 export class ReviewStorageError extends Schema.TaggedError<ReviewStorageError>()(
@@ -7,6 +7,7 @@ export class ReviewStorageError extends Schema.TaggedError<ReviewStorageError>()
 ) {}
 
 export interface ReviewStorageService {
+  readonly changes: () => Stream.Stream<number>;
   readonly agentSessionDirectory: (
     workingDirectory: string,
     sessionId: string,

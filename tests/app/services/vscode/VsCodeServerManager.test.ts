@@ -49,6 +49,7 @@ function createManager({
     customPath: () => undefined,
     preferredTheme,
     broadcast,
+    stateChanged: () => undefined,
   });
 }
 

@@ -8,7 +8,8 @@ import {
   type ArtifactRecord,
   type CakeArtifactV1,
 } from "../../ipc/artifact-contract";
-import type { NativeEvent, nativeOperationPayloadSchemas } from "../../ipc/native-protocol";
+import type { CakeEvent, cakeRpcPayloadSchemas } from "../../ipc/cake-rpc-contract";
+import type { PluginResourcesSnapshot } from "../plugins/PluginResources";
 import { compileInlineWidget, extractRepairedWidget } from "../widgets/inline-widget-service";
 import {
   runInlineWidgetGeneration,
@@ -35,10 +36,10 @@ interface ReviewRepositoryPort {
 }
 
 export type PiWorkspaceCommand =
-  | ({ readonly type: "respond-ui" } & (typeof nativeOperationPayloadSchemas)["respond-ui"]["Type"])
+  | ({ readonly type: "respond-ui" } & (typeof cakeRpcPayloadSchemas)["respond-ui"]["Type"])
   | ({
       readonly type: "respond-artifact";
-    } & (typeof nativeOperationPayloadSchemas)["respond-artifact"]["Type"]);
+    } & (typeof cakeRpcPayloadSchemas)["respond-artifact"]["Type"]);
 
 interface PendingUi {
   readonly operationId: string;
@@ -72,7 +73,7 @@ export interface ProjectSessionIntegrationHostOptions {
   readonly resolvedSessionDir?: string;
   readonly widgetSessionDir?: string;
   readonly pluginAgentSessionDir?: string;
-  readonly emit: (event: NativeEvent) => void;
+  readonly emit: (event: CakeEvent) => void;
   readonly runWidgetGeneration?: typeof runInlineWidgetGeneration;
   readonly runWidgetRepair?: typeof runInlineWidgetRepair;
   readonly compileWidget?: typeof compileInlineWidget;
@@ -95,18 +96,14 @@ export interface ProjectSessionIntegrationHostOptions {
   readonly setFastMode?: (sessionId: string, enabled: boolean) => Promise<void>;
   readonly sessionResolved?: (sessionId: string) => boolean;
   readonly setSessionResolved?: (sessionId: string, resolved: boolean) => Promise<void>;
-  readonly pluginResources?: {
-    readonly skills: string[];
-    readonly prompts: string[];
-    readonly extensions: string[];
-  };
+  readonly pluginResources?: () => PluginResourcesSnapshot;
 }
 
 export class ProjectSessionIntegrationHost {
   readonly workspacePath: string;
   private readonly agentDir: string;
   private readonly widgetSessionDir: string;
-  private readonly emitEvent: (event: NativeEvent) => void;
+  private readonly emitEvent: (event: CakeEvent) => void;
   private readonly runWidgetGeneration: typeof runInlineWidgetGeneration;
   private readonly runWidgetRepair: typeof runInlineWidgetRepair;
   private readonly compileWidget: typeof compileInlineWidget;
@@ -203,7 +200,7 @@ export class ProjectSessionIntegrationHost {
     };
   }
 
-  private emit(event: NativeEvent) {
+  private emit(event: CakeEvent) {
     if (!this.disposed) this.emitEvent(event);
   }
 

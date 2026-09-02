@@ -2,7 +2,11 @@ import { Store, child, createStore, snapshot } from "r-state-tree";
 import type { SourceLocation } from "../../ipc/source-location";
 import type { ChatConfiguration } from "../../ipc/session-contract";
 import { reviewThreadAnnotations } from "../../utils/review-thread-annotations";
-import type { PiState, RendererEvent } from "../RendererEvent";
+import type { RendererEvent } from "../RendererEvent";
+import type {
+  AgentAvailabilitySnapshot,
+  AgentAvailabilityState,
+} from "../../domain/agent-availability-data";
 import { EmbeddedEditorStore } from "./EmbeddedEditorStore";
 import type { ReviewsStore } from "./ReviewsStore";
 import type { ExtensionUiStore } from "./ExtensionUiStore";
@@ -42,8 +46,8 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   get client() {
     return RendererClientContext.consume(this)!;
   }
-  // Pi Sessions are acquired lazily; the main application is ready to accept work once mounted.
-  piState: PiState = "ready";
+  agentAvailability: AgentAvailabilityState = "available";
+  agentAvailabilityReason: string | undefined;
   @snapshot projectPath: string | undefined;
   @snapshot selectedSessionId: string | undefined;
   pendingTrustPath: string | undefined;
@@ -199,7 +203,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       command === "/resources" ||
       command === "/changelog" ||
       this.props.pluginCommands().matches(session.chatStore.draft);
-    return local || this.piState === "ready";
+    return local || this.agentAvailability === "available";
   }
 
   get pluginCommands() {
@@ -658,15 +662,11 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
 
   receive(event: RendererEvent) {
     if (
-      event.type === "embedded-editor-state-received" ||
       event.type === "embedded-editor-selection" ||
       event.type === "embedded-editor-selection-cleared"
     ) {
       this.embeddedEditorStore.receive(event);
-      if (
-        event.type !== "embedded-editor-state-received" &&
-        event.workspacePath === this.projectPath
-      )
+      if (event.workspacePath === this.projectPath)
         this.activeSession?.composerStore.setEditorContextAttachment(
           this.embeddedEditorStore.visible
             ? this.embeddedEditorStore.activeContextAttachment
@@ -700,15 +700,16 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       if (event.workspacePath === this.projectPath) this.embeddedEditorStore.showAgentLocation();
       return;
     }
-    if (event.type === "pi-state-changed") {
+    if (event.type === "agent-availability-changed") {
       if (
-        event.workspacePath &&
-        event.workspacePath !== this.projectPath &&
-        event.workspacePath !== this.pendingOpen?.path
+        event.workingDirectory &&
+        event.workingDirectory !== this.projectPath &&
+        event.workingDirectory !== this.pendingOpen?.path
       )
         return;
-      this.piState = event.state;
-      if (event.state === "failed" || event.state === "stopped") {
+      this.agentAvailability = event.availability.state;
+      this.agentAvailabilityReason = event.availability.reason;
+      if (event.availability.state === "unavailable") {
         this.reopenAfterAgentRestart = Boolean(
           this.projectPath &&
           this.session &&
@@ -723,7 +724,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
         this.activeOpenExpectsEmpty = false;
       }
       if (
-        event.state === "ready" &&
+        event.availability.state === "available" &&
         this.reopenAfterAgentRestart &&
         this.projectPath &&
         this.session
@@ -773,5 +774,20 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       this.errorDetails = event.details ?? event.message;
       this.errorSessionId = this.selectedSessionId;
     }
+  }
+
+  applyAgentAvailability(snapshot: AgentAvailabilitySnapshot) {
+    const workingDirectory = this.projectPath ?? this.pendingOpen?.path;
+    const availability =
+      snapshot.workingDirectories.find((entry) => entry.workingDirectory === workingDirectory)
+        ?.availability ?? snapshot.global;
+    const event = {
+      type: "agent-availability-changed",
+      availability,
+      ...(workingDirectory ? { workingDirectory } : null),
+    } as const;
+    this.extensionUi.receive(event);
+    this.activeSession?.receive(event);
+    this.receive(event);
   }
 }

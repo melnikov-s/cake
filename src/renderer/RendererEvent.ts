@@ -1,15 +1,11 @@
-import type { NativeEvent } from "../ipc/native-protocol";
-import type { ApplicationState } from "../ipc/session-contract";
+import type { CakeEvent } from "../ipc/cake-rpc-contract";
 import type { ArtifactRecord } from "../ipc/artifact-contract";
 import type { SourceLocation } from "../ipc/source-location";
-import type { CustomizationState } from "../plugin/plugin-contract";
 import type { PluginAgentSnapshot } from "../ipc/plugin-agent-contract";
-import type { EmbeddedEditorStatus } from "./client/RendererClient";
-
-export type PiState = "starting" | "ready" | "stopped" | "failed";
+import type { AgentAvailabilityEntry } from "../domain/agent-availability-data";
 
 type NativePassthroughEvent = Extract<
-  NativeEvent,
+  CakeEvent,
   {
     type: "plugin-backend-event" | "fullscreen-surface-close-requested" | "artifact-updated";
   }
@@ -17,7 +13,11 @@ type NativePassthroughEvent = Extract<
 
 export type RendererEvent =
   | NativePassthroughEvent
-  | { type: "pi-state-changed"; state: PiState; workspacePath?: string }
+  | {
+      type: "agent-availability-changed";
+      availability: AgentAvailabilityEntry;
+      workingDirectory?: string;
+    }
   | { type: "workspace-inspected"; operationId: string; path: string; trustRequired: boolean }
   | {
       type: "changelog-received";
@@ -46,8 +46,6 @@ export type RendererEvent =
     }
   | { type: "operation-completed"; operationId: string }
   | { type: "operation-failed"; operationId?: string; message: string; details?: string }
-  | { type: "customization-state-changed"; state: CustomizationState }
-  | { type: "application-state-changed"; state: ApplicationState }
   | {
       type: "notification";
       tone: "info" | "warning" | "error";
@@ -58,7 +56,6 @@ export type RendererEvent =
   | { type: "terminal-data"; terminalId: string; data: string }
   | { type: "terminal-exited"; terminalId: string; exitCode: number }
   | { type: "terminal-toggle-requested" }
-  | { type: "embedded-editor-state-received"; status: EmbeddedEditorStatus; message?: string }
   | {
       type: "embedded-editor-location-opened";
       workspacePath: string;
@@ -81,9 +78,7 @@ export type RendererEvent =
   | { type: "embedded-editor-toggle-chat"; workspacePath: string }
   | { type: "embedded-editor-selection-cleared"; workspacePath: string };
 
-export function toRendererEvent(event: NativeEvent): RendererEvent | undefined {
-  if (event.type === "pi-state")
-    return { type: "pi-state-changed", state: event.state, workspacePath: event.workspacePath };
+export function toRendererEvent(event: CakeEvent): RendererEvent | undefined {
   if (event.type === "workspace-inspected")
     return {
       type: "workspace-inspected",
@@ -129,20 +124,13 @@ export function toRendererEvent(event: NativeEvent): RendererEvent | undefined {
       message: event.message,
       details: event.details,
     };
-  if (event.type === "customization-state-changed") return event;
-  if (event.type === "application-state-changed" || event.type === "notification") return event;
+  if (event.type === "notification") return event;
   if (
     event.type === "terminal-data" ||
     event.type === "terminal-exited" ||
     event.type === "terminal-toggle-requested"
   )
     return event;
-  if (event.type === "embedded-editor-state")
-    return {
-      type: "embedded-editor-state-received",
-      status: event.status,
-      message: event.message,
-    };
   if (
     event.type === "plugin-backend-event" ||
     event.type === "fullscreen-surface-close-requested" ||

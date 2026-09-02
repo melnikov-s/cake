@@ -151,11 +151,6 @@ interface BroadcastTarget {
   broadcast(
     event:
       | {
-          type: "embedded-editor-state";
-          status: EmbeddedEditorStatus;
-          message?: string;
-        }
-      | {
           type: "embedded-editor-selection";
           workspacePath: string;
           path: string;
@@ -172,6 +167,7 @@ interface BroadcastTarget {
       | { type: "embedded-editor-toggle-chat"; workspacePath: string }
       | { type: "embedded-editor-selection-cleared"; workspacePath: string },
   ): void;
+  stateChanged(state: EmbeddedEditorState & { customPath?: string }): void;
 }
 
 export interface VsCodeServerManagerProps extends BroadcastTarget {
@@ -272,16 +268,16 @@ export class VsCodeServerManager {
   private setStatus(status: EmbeddedEditorStatus, message?: string) {
     this.status = status;
     this.message = message;
-    this.props.broadcast({ type: "embedded-editor-state", status, message });
+    this.props.stateChanged(this.snapshotState());
   }
 
   async refreshStatus() {
     if (this.status === "downloading" || this.status === "starting") return;
     try {
       await resolveServerBinary(this.props.root, this.props.customPath());
-      if (this.status !== "ready") this.setStatus("ready");
+      this.setStatus("ready");
     } catch {
-      if (this.status !== "failed") this.setStatus("missing");
+      this.setStatus("missing");
     }
   }
 
