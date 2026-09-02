@@ -49,9 +49,10 @@ function actionStore({
   } as unknown as WorktreeStore;
 }
 
+const candidates = vi.fn(() => []);
 const creation = {
   choice: () => ({ kind: "current" }),
-  candidates: () => [],
+  candidates,
   preparingSessionId: undefined,
 } as unknown as WorktreeCreationStore;
 
@@ -60,6 +61,7 @@ describe("WorktreePill", () => {
   let root: Root;
 
   beforeEach(() => {
+    candidates.mockClear();
     Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
     container = document.createElement("div");
     document.body.appendChild(container);
@@ -101,6 +103,12 @@ describe("WorktreePill", () => {
     render(actionStore({ aheadCount: 1, dirtyCount: 0 }));
     expect(button("Merge").disabled).toBe(false);
     expect(button("Merge & resolve").disabled).toBe(false);
+  });
+
+  it("does not derive draft worktree candidates for an existing session", () => {
+    render(actionStore({ aheadCount: 1, dirtyCount: 0 }));
+
+    expect(candidates).not.toHaveBeenCalled();
   });
 
   it("keeps merge actions visible but disabled when there is nothing to land", () => {

@@ -111,8 +111,18 @@ export class AppShellStore extends Store<AppShellStoreProps> {
   private setProjectSessionSelection(sessionId: string) {
     const workspacePath = this.props.sessionWorkspacePath(sessionId);
     if (!workspacePath) throw new Error(`Cake could not find session ${sessionId}`);
-    this.selection = { kind: "project-session", workspacePath, sessionId };
-    this.activeConversation = this.selection;
+    if (
+      this.selection.kind === "project-session" &&
+      this.selection.sessionId === sessionId &&
+      this.selection.workspacePath === workspacePath &&
+      this.activeConversation?.kind === "project-session" &&
+      this.activeConversation.sessionId === sessionId &&
+      this.activeConversation.workspacePath === workspacePath
+    )
+      return;
+    const selection = { kind: "project-session", workspacePath, sessionId } as const;
+    this.selection = selection;
+    this.activeConversation = selection;
   }
   selectCakeChat(sessionId?: string) {
     this.setCakeChatSelection(sessionId);
@@ -123,7 +133,17 @@ export class AppShellStore extends Store<AppShellStoreProps> {
     this.setCakeChatSelection(sessionId);
   }
   private setCakeChatSelection(sessionId?: string) {
-    this.selection = { kind: "cake-chat", sessionId };
+    if (
+      this.selection.kind === "cake-chat" &&
+      this.selection.sessionId === sessionId &&
+      (sessionId === undefined
+        ? this.activeConversation === undefined
+        : this.activeConversation?.kind === "cake-chat" &&
+          this.activeConversation.sessionId === sessionId)
+    )
+      return;
+    const selection = { kind: "cake-chat", sessionId } as const;
+    this.selection = selection;
     this.activeConversation = sessionId ? { kind: "cake-chat", sessionId } : undefined;
   }
   showSettings() {

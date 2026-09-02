@@ -51,7 +51,9 @@ export const WorktreePill = observer(function WorktreePill({
   const [existingOpen, setExistingOpen] = useState(false);
   const [confirmation, setConfirmation] = useState<ConfirmationKind>();
   const choice = creation.choice(sessionId);
-  const candidates = creation.candidates(projectPath);
+  // Existing-worktree choices only belong to an unsent draft. Avoid subscribing every
+  // ordinary session render to the full session catalog just to produce an unused list.
+  const candidates = draft ? creation.candidates(projectPath) : [];
   const status = actions.status;
   const busy = actions.isBusy || creation.preparingSessionId === sessionId;
 

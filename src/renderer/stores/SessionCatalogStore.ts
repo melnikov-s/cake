@@ -1,4 +1,4 @@
-import { Store, observable, snapshot } from "r-state-tree";
+import { Store, computed, observable, snapshot } from "r-state-tree";
 import type { SessionCatalog } from "../models/SessionCatalog";
 import type { SessionSummary } from "../models/SessionSummary";
 import type { WorktreeRecord } from "../../ipc/worktree-contract";
@@ -23,8 +23,9 @@ export interface PendingSessionSummary {
 /** Owns renderer-local pending-session and Managed Worktree policy over the catalog projection. */
 export class SessionCatalogStore extends Store<{ model: SessionCatalog }> {
   @snapshot private readonly pendingSessions: PendingSessionSummary[] = observable([]);
-  private readonly managedWorktrees = observable(new Map<string, WorktreeRecord>());
+  private readonly managedWorktreeOverrides = observable(new Map<string, WorktreeRecord>());
 
+  @computed
   get sessions(): ReadonlyArray<SessionSummary | PendingSessionSummary> {
     const authoritativeIds = new Set(this.props.model.sessions.map((session) => session.sessionId));
     return [
@@ -36,17 +37,20 @@ export class SessionCatalogStore extends Store<{ model: SessionCatalog }> {
     });
   }
 
-  find(sessionId: string) {
-    return (
-      this.props.model.find(sessionId) ??
-      this.pendingSessions.find((session) => session.sessionId === sessionId)
-    );
-  }
-
-  get sessionsById(): ReadonlyMap<string, SessionSummary | PendingSessionSummary> {
+  @computed
+  private get sessionIndex(): ReadonlyMap<string, SessionSummary | PendingSessionSummary> {
     return new Map(this.sessions.map((session) => [session.sessionId, session]));
   }
 
+  find(sessionId: string) {
+    return this.sessionIndex.get(sessionId);
+  }
+
+  get sessionsById(): ReadonlyMap<string, SessionSummary | PendingSessionSummary> {
+    return this.sessionIndex;
+  }
+
+  @computed
   get sessionsByProject(): ReadonlyMap<
     string,
     ReadonlyArray<SessionSummary | PendingSessionSummary>
@@ -61,19 +65,27 @@ export class SessionCatalogStore extends Store<{ model: SessionCatalog }> {
   }
 
   projectSessions(projectPath: string) {
-    return this.sessions.filter((session) => session.projectPath === projectPath);
+    return this.sessionsByProject.get(projectPath) ?? [];
   }
 
   noteManagedWorktree(record: WorktreeRecord) {
-    this.managedWorktrees.set(record.worktreePath, record);
+    this.managedWorktreeOverrides.set(record.worktreePath, record);
+  }
+
+  @computed
+  private get managedWorktreeIndex(): ReadonlyMap<string, WorktreeRecord> {
+    const indexed = new Map<string, WorktreeRecord>();
+    for (const session of this.sessions) {
+      const record = session.managedWorktree;
+      if (record && !indexed.has(session.workingDirectory))
+        indexed.set(session.workingDirectory, record);
+    }
+    for (const [path, record] of this.managedWorktreeOverrides) indexed.set(path, record);
+    return indexed;
   }
 
   managedWorktree(workingDirectory: string) {
-    return (
-      this.managedWorktrees.get(workingDirectory) ??
-      this.sessions.find((session) => session.workingDirectory === workingDirectory)
-        ?.managedWorktree
-    );
+    return this.managedWorktreeIndex.get(workingDirectory);
   }
 
   projectOfManagedWorktree(workingDirectory: string) {

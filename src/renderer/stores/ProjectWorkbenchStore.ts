@@ -453,7 +453,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
         { signal: this.signal },
       );
       if (this.signal.aborted) return;
-      this.showCachedSession(sessionId);
+      if (!cached) this.showCachedSession(sessionId);
       this.props.projects.recordOpened(
         this.props.catalog.projectOfManagedWorktree(workspacePath) ?? workspacePath,
       );
@@ -469,7 +469,6 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     this.closeEmbeddedEditor();
     this.projectPath = session.workspacePath;
     this.selectedSessionId = sessionId;
-    this.markSessionRead(sessionId);
     this.extensionUi.clear();
     this.commandPaneStore.dismiss();
     session.composerStore.requestFocus();

@@ -58,6 +58,28 @@ describe("AppShellStore session history", () => {
     shell[Symbol.dispose]();
   });
 
+  it("preserves selection identity when the current session is reselected", () => {
+    const shell = createShell();
+    shell.selectProjectSession("a");
+    const projectSelection = shell.selection;
+    const projectConversation = shell.activeConversation;
+
+    shell.selectProjectSession("a");
+
+    expect(shell.selection).toBe(projectSelection);
+    expect(shell.activeConversation).toBe(projectConversation);
+
+    shell.selectCakeChat("cake-1");
+    const cakeChatSelection = shell.selection;
+    const cakeChatConversation = shell.activeConversation;
+
+    shell.selectCakeChat("cake-1");
+
+    expect(shell.selection).toBe(cakeChatSelection);
+    expect(shell.activeConversation).toBe(cakeChatConversation);
+    shell[Symbol.dispose]();
+  });
+
   it("selects a resolved session preview without adding it to history", () => {
     const shell = createShell();
     shell.selectProjectSession("a");

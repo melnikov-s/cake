@@ -75,10 +75,10 @@ export class RootStore extends Store<{
     this.projectSession(sessionId);
     this.projectWorkbenchStore.dismissSecondarySurfaces();
     const opening = this.projectWorkbenchStore.openSession(sessionId);
-    if (this.projectWorkbenchStore.isActiveSession(sessionId))
-      this.selectProjectSessionForShell(sessionId);
+    const selectedImmediately = this.projectWorkbenchStore.isActiveSession(sessionId);
+    if (selectedImmediately) this.selectProjectSessionForShell(sessionId);
     await opening;
-    if (this.projectWorkbenchStore.isActiveSession(sessionId))
+    if (!selectedImmediately && this.projectWorkbenchStore.isActiveSession(sessionId))
       this.selectProjectSessionForShell(sessionId);
     if (!messageId) return true;
     const session = this.sessionRegistry.findSession(sessionId);
