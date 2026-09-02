@@ -72,4 +72,39 @@ describe("SessionCatalogStore indexes", () => {
     expect(store.managedWorktree("/worktree")).toBe(landed);
     store[Symbol.dispose]();
   });
+
+  it("shows the first-message projection until the authoritative Pi summary arrives", () => {
+    const model = SessionCatalog.create({ sessions: [] });
+    const store = mount(createStore(SessionCatalogStore, { model }));
+
+    store.upsertPending("new-session", "/project", "project", {
+      title: "Hi",
+      messageCount: 1,
+    });
+
+    expect(store.sessions).toMatchObject([
+      {
+        sessionId: "new-session",
+        title: "Hi",
+        messageCount: 1,
+        pending: true,
+      },
+    ]);
+
+    applySnapshot(model, {
+      sessions: [
+        {
+          ...session("new-session", "2026-01-03T00:00:00.000Z"),
+          title: "Authoritative Pi title",
+        },
+      ],
+    });
+
+    expect(store.sessions).toHaveLength(1);
+    expect(store.find("new-session")).toMatchObject({
+      title: "Authoritative Pi title",
+      pending: false,
+    });
+    store[Symbol.dispose]();
+  });
 });

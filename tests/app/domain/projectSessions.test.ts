@@ -16,6 +16,7 @@ import type {
 import { makeProjectSessionEnvironmentLayer } from "../../../src/services/project-sessions/ProjectSessionEnvironment";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { SubagentCoordinatorLive } from "../../../src/services/subagents/SubagentCoordinator";
+import { Terminal } from "../../../src/services/terminal/Terminal";
 import type { SessionSnapshot } from "../../../src/ipc/session-contract";
 
 const snapshot: SessionSnapshot = {
@@ -38,6 +39,7 @@ const snapshot: SessionSnapshot = {
 const fakeRuntime = (options: CakeRuntimeOptions): CakeRuntime => ({
   sessionId: snapshot.sessionId,
   sessionFile: snapshot.sessionFile,
+  streaming: false,
   snapshot: async () => snapshot,
   prompt: async () => {
     options.onEvent({ type: "streaming", sessionId: snapshot.sessionId, streaming: false });
@@ -71,6 +73,7 @@ const makeLayer = (
     ],
     trustedProjectPaths: ["/project"],
   },
+  hooks: { onCreateRuntime?(): void; onArchive?(): void } = {},
 ) => {
   const application = Layer.effect(
     ApplicationState,
@@ -114,7 +117,11 @@ const makeLayer = (
         sessionFile: snapshot.sessionFile,
         parts: snapshot.parts,
       }),
-    createRuntime: (options) => Effect.succeed(fakeRuntime(options)),
+    createRuntime: (options) =>
+      Effect.sync(() => {
+        hooks.onCreateRuntime?.();
+        return fakeRuntime(options);
+      }),
     changelog: () => Effect.succeed("# Changelog"),
   };
   return Layer.mergeAll(
@@ -146,10 +153,23 @@ const makeLayer = (
             requestUi: async () => undefined,
           },
         }),
-      archive: () => Effect.void,
+      archive: () => Effect.sync(() => hooks.onArchive?.()),
       restore: (_sessionId, location) => Effect.succeed(location),
       forkToWorkingDirectory: () => Effect.succeed("forked"),
     }),
+    Layer.succeed(
+      Terminal,
+      Terminal.of({
+        open: () => Effect.die("Unexpected terminal open"),
+        write: () => Effect.die("Unexpected terminal write"),
+        resize: () => Effect.die("Unexpected terminal resize"),
+        hasRunningProgram: () => Effect.die("Unexpected terminal status"),
+        close: () => Effect.die("Unexpected terminal close"),
+        closeSession: () => Effect.void,
+        closeOwner: () => Effect.void,
+        events: () => Stream.empty,
+      }),
+    ),
   );
 };
 
@@ -188,6 +208,26 @@ describe("Project Sessions domain", () => {
       );
     }).pipe(Effect.provide(makeLayer())),
   );
+
+  it.effect("resolves a located idle session without constructing a Pi runtime", () => {
+    let runtimeConstructions = 0;
+    let archives = 0;
+    return Effect.gen(function* () {
+      yield* projectSessions.resolve({
+        sessionId: "session-1",
+        workingDirectory: "/project",
+      });
+      assert.equal(runtimeConstructions, 0);
+      assert.equal(archives, 1);
+    }).pipe(
+      Effect.provide(
+        makeLayer(defaultApplicationState(), {
+          onCreateRuntime: () => runtimeConstructions++,
+          onArchive: () => archives++,
+        }),
+      ),
+    );
+  });
 
   it.effect("emits a Cake snapshot and returns an accepted Turn ID", () =>
     Effect.gen(function* () {

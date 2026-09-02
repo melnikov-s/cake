@@ -618,18 +618,18 @@ export const resolve = Effect.fn("ProjectSessions.resolve")(function* (
   target: ProjectSessionTarget,
 ) {
   const location = yield* findLocation(target);
-  const snapshot = yield* Effect.scoped(
-    Effect.gen(function* () {
-      const handle = yield* acquireTarget(location, target.sessionId, false);
-      return yield* handle.snapshot().pipe(asError("resolve"));
-    }),
-  );
-  if (snapshot.streaming)
+  const sessions = yield* PiSessions;
+  const status = yield* sessions.currentStatus({
+    workingDirectory: location.workingDirectory,
+    sessionDirectory: location.sessionDirectory,
+    sessionId: target.sessionId,
+  });
+  if (status?.streaming)
     return yield* new ProjectSessionError({
       operation: "resolve",
       message: "Cake cannot resolve a Project Session while its turn is active",
     });
-  if (!snapshot.sessionFile)
+  if (status && !status.persisted)
     return yield* new ProjectSessionError({
       operation: "resolve",
       message: "Cake cannot resolve an empty Project Session",

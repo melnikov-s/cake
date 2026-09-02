@@ -14,6 +14,8 @@ export interface SessionManagementStoreProps {
 
 /** Owns Project Session rename, archive/restore, deletion, and unread commands. */
 export class SessionManagementStore extends Store<SessionManagementStoreProps> {
+  private readonly resolvingSessionIds = new Set<string>();
+
   get client() {
     return RendererClientContext.consume(this)!;
   }
@@ -36,22 +38,27 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
   }
 
   async resolveSession(sessionId: string, resolved: boolean) {
-    if (!this.props.catalog.find(sessionId) || this.signal.aborted) return false;
-    if (resolved && !(await (this.props.prepareResolution?.([sessionId]) ?? true))) return false;
-    if (this.signal.aborted) return false;
-    if (this.props.registry.setDraftSessionResolved(sessionId, resolved)) return true;
-    if (resolved && this.props.registry.isTemporarySession(sessionId)) {
-      this.props.registry.removeSession(sessionId);
-      return true;
-    }
+    const session = this.props.catalog.find(sessionId);
+    if (!session || this.signal.aborted) return false;
+    if (this.resolvingSessionIds.has(sessionId)) return false;
+    this.resolvingSessionIds.add(sessionId);
     try {
-      const target = { sessionId };
+      if (resolved && !(await (this.props.prepareResolution?.([sessionId]) ?? true))) return false;
+      if (this.signal.aborted) return false;
+      if (this.props.registry.setDraftSessionResolved(sessionId, resolved)) return true;
+      if (resolved && this.props.registry.isTemporarySession(sessionId)) {
+        this.props.registry.removeSession(sessionId);
+        return true;
+      }
+      const target = { sessionId, workingDirectory: session.workingDirectory };
       if (resolved) await this.client.projectSessions.resolve(target, { signal: this.signal });
       else await this.client.projectSessions.restore(target, { signal: this.signal });
       return !this.signal.aborted;
     } catch (error) {
       if (!this.signal.aborted) this.props.reportError(error);
       return false;
+    } finally {
+      this.resolvingSessionIds.delete(sessionId);
     }
   }
 

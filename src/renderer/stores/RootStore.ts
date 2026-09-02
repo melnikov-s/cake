@@ -251,8 +251,11 @@ export class RootStore extends Store<{
   }
 
   private async resolveProjectSession(sessionId: string, resolved: boolean) {
-    await this.projectWorkbenchStore.sessionManagementStore.resolveSession(sessionId, resolved);
-    if (resolved) await this.forgetResolvedSessions([sessionId]);
+    const changed = await this.projectWorkbenchStore.sessionManagementStore.resolveSession(
+      sessionId,
+      resolved,
+    );
+    if (resolved && changed) await this.forgetResolvedProjectSessions([sessionId]);
   }
 
   private async deleteProjectSession(sessionId: string) {
@@ -301,6 +304,23 @@ export class RootStore extends Store<{
       return;
     }
     if (fallbackProjectPath) await this.createSession(fallbackProjectPath);
+  }
+
+  /** Ends live renderer ownership before navigating away from archived Pi sessions. */
+  private async forgetResolvedProjectSessions(
+    sessionIds: readonly string[],
+    fallbackProjectPath?: string,
+  ) {
+    const active = this.appShellStore.activeConversation;
+    const activeSessionId =
+      active?.kind === "project-session" && sessionIds.includes(active.sessionId)
+        ? active.sessionId
+        : undefined;
+    const activeProjectPath = activeSessionId
+      ? this.sessionCatalogStore.find(activeSessionId)?.projectPath
+      : undefined;
+    for (const sessionId of sessionIds) this.sessionRegistry.removeSession(sessionId);
+    await this.forgetResolvedSessions(sessionIds, fallbackProjectPath ?? activeProjectPath);
   }
 
   @child
@@ -467,7 +487,7 @@ export class RootStore extends Store<{
       catalog: this.sessionCatalogStore,
       startCakeChat: (prompt) => this.startCakeChat(prompt),
       onWorktreeSessionsResolved: (sessionIds, projectPath) =>
-        this.forgetResolvedSessions(sessionIds, projectPath),
+        this.forgetResolvedProjectSessions(sessionIds, projectPath),
       openSessionById: async (sessionId) => {
         await this.openSession(sessionId);
       },
@@ -558,7 +578,8 @@ export class RootStore extends Store<{
           sessionIds,
           resolved,
         );
-        if (resolved) await this.forgetResolvedSessions(sessionIds);
+        if (resolved && count === sessionIds.length)
+          await this.forgetResolvedProjectSessions(sessionIds);
         return count;
       },
       setCakeChatSessionsResolved: async (sessionIds, resolved) => {

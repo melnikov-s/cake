@@ -52,6 +52,7 @@ function fakeRuntime(
   return {
     sessionId: snapshot.sessionId,
     sessionFile: snapshot.sessionFile,
+    streaming: false,
     snapshot: async () => {
       runtimeOptions.onEvent({
         type: "streaming",
@@ -169,6 +170,33 @@ describe("PiSessions", () => {
       assert.equal(yield* Ref.get(finalizations), 0);
       yield* Scope.close(observer, Exit.void);
       assert.equal(yield* Ref.get(finalizations), 1);
+    }),
+  );
+
+  it.effect("reads current runtime status without acquiring or snapshotting a session", () =>
+    Effect.gen(function* () {
+      const acquisitions = yield* Ref.make(0);
+      const finalizations = yield* Ref.make(0);
+      const context = yield* Layer.build(makePiSessionsLayer(adapter(acquisitions, finalizations)));
+      const sessions = Context.get(context, PiSessions);
+      const target = {
+        workingDirectory: "/project",
+        sessionDirectory: "/sessions",
+        sessionId: "session-1",
+      };
+
+      assert.equal(yield* sessions.currentStatus(target), undefined);
+      assert.equal(yield* Ref.get(acquisitions), 0);
+
+      const owner = yield* Scope.make();
+      yield* sessions.acquire(options()).pipe(Effect.provideService(Scope.Scope, owner));
+      assert.deepEqual(yield* sessions.currentStatus(target), {
+        streaming: false,
+        persisted: true,
+      });
+      assert.equal(yield* Ref.get(acquisitions), 1);
+
+      yield* Scope.close(owner, Exit.void);
     }),
   );
 

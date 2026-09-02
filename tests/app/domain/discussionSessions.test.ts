@@ -75,6 +75,7 @@ const makeLayer = () => {
     return {
       sessionId,
       sessionFile,
+      streaming: false,
       getReviewParentContext: options.auxiliary
         ? undefined
         : () => ({

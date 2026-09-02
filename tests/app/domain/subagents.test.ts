@@ -121,6 +121,9 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (): Effect.
     return {
       sessionId,
       sessionFile: `/sessions/${sessionId}.jsonl`,
+      get streaming() {
+        return streaming;
+      },
       getReviewParentContext: () => ({
         sessionId,
         sessionFile: `/sessions/${sessionId}.jsonl`,

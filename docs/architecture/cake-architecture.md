@@ -271,7 +271,12 @@ The window Store hierarchy mirrors the product surfaces:
   not enter the session catalog or navigation history, and repeatedly choosing New
   Chat reopens the same staged composer with its text, attachments, configuration,
   and Working Directory intact. Cake persists that staged input continuously in window state.
-  The first submitted prompt promotes it to an ordinary Pi Session. An explicitly
+  The first submitted prompt promotes the existing renderer Store identity to an ordinary
+  Pi Session only after main accepts the start command. Promotion keeps the optimistic
+  message visible, immediately clears the staged slot so New Chat can create another
+  composer, and retains a renderer-local pending catalog summary until the authoritative
+  Pi-backed catalog projection catches up. It must not wait for catalog discovery or replace
+  the visible Store with a newly synchronized instance. An explicitly
   saved draft is different: it becomes a cataloged pseudo-session, stages its initial
   message and attachments in Cake window state, projects them through the shared
   `Chat`, and carries draft and resolved presentation metadata until activation.

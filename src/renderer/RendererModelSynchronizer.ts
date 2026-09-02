@@ -21,6 +21,7 @@ import type {
   DiscussionThread,
 } from "../domain/discussion-session-data";
 import type { ProjectSessionTarget, ProjectSessionUpdate } from "../domain/project-session-data";
+import { ProjectSessionError } from "../domain/project-session-data";
 import type {
   SubagentActivity as SubagentActivityValue,
   SubagentUpdate,
@@ -296,6 +297,10 @@ export class RendererModelSynchronizer implements Disposable {
         generation === subscription.generation &&
         !subscription.abort.signal.aborted
       ) {
+        if (isUnavailableProjectSessionObservation(key, error)) {
+          this.stop(key);
+          return;
+        }
         console.error(`[cake.renderer] ${key} synchronization failed`, error);
         this.scheduleRestart(key, subscription, generation, stream, apply);
       }
@@ -338,6 +343,12 @@ export class RendererModelSynchronizer implements Disposable {
       throw new Error(`Session Model Working Directory collision: ${sessionId}`);
   }
 }
+
+const isUnavailableProjectSessionObservation = (key: string, error: unknown) =>
+  key.startsWith("project-session:") &&
+  Schema.is(ProjectSessionError)(error) &&
+  error.operation === "observe" &&
+  error.message === "That session is no longer available";
 
 function applyProjectCatalogUpdate(model: ProjectCatalog, update: ProjectCatalogUpdate) {
   let projects: ProjectRecord[] = model.projects.map((project) => ({

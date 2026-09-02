@@ -78,6 +78,22 @@ describe("SessionArchiveStorage", () => {
     ]);
   });
 
+  it("treats concurrent archive requests as one idempotent move", async () => {
+    const location = await fixture();
+    const outcomes = await Promise.all([
+      runArchive((storage) => storage.resolve("session-1", location)),
+      runArchive((storage) => storage.resolve("session-1", location)),
+    ]);
+
+    expect(outcomes.sort()).toEqual([false, true]);
+    expect(await listWorkspaceSessions(location.cwd, location.activeRoot)).toEqual([]);
+    expect(
+      await listWorkspaceSessions(location.cwd, location.activeRoot, {
+        resolvedSessionDir: location.resolvedRoot,
+      }),
+    ).toEqual([expect.objectContaining({ id: "session-1", resolved: true })]);
+  });
+
   it("permanently deletes a transcript from either namespace", async () => {
     const activeLocation = await fixture();
     const resolvedLocation = await fixture();

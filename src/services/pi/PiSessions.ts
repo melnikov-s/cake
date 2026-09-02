@@ -157,6 +157,11 @@ export interface PiSessionHandle {
   readonly reload: () => Effect.Effect<void, PiSessionError>;
 }
 
+export interface PiSessionRuntimeStatus {
+  readonly streaming: boolean;
+  readonly persisted: boolean;
+}
+
 export interface PiSessionsAdapter {
   readonly list: (query: PiSessionQuery) => Effect.Effect<ReadonlyArray<SessionSummary>, unknown>;
   readonly inspect: (target: PiSessionTarget) => Effect.Effect<SessionPreview | undefined, unknown>;
@@ -177,6 +182,10 @@ export class PiSessions extends Context.Service<
     readonly acquireCurrent: (
       target: Pick<PiSessionTarget, "workingDirectory" | "sessionId" | "sessionDirectory">,
     ) => Effect.Effect<PiSessionHandle, PiSessionError, Scope.Scope>;
+    /** Reads an already-acquired runtime without constructing or retaining one. */
+    readonly currentStatus: (
+      target: Pick<PiSessionTarget, "workingDirectory" | "sessionId" | "sessionDirectory">,
+    ) => Effect.Effect<PiSessionRuntimeStatus | undefined>;
     readonly refreshModels: () => Effect.Effect<void, PiSessionError>;
     readonly reloadWorkingDirectory: (
       workingDirectory: string,
@@ -189,6 +198,7 @@ export class PiSessions extends Context.Service<
 interface SharedRuntime {
   readonly fingerprint: string;
   readonly workingDirectory: string;
+  readonly sessionDirectory: string;
   readonly profile: PiSessionAcquireOptions["profile"]["_tag"];
   readonly runtime: CakeRuntime;
   readonly events: PubSub.PubSub<PiSessionEvent>;
@@ -308,6 +318,7 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
               const shared = {
                 fingerprint: key.fingerprint,
                 workingDirectory: key.options.runtime.cwd,
+                sessionDirectory: key.options.runtime.sessionDir,
                 profile: key.options.profile._tag,
                 runtime,
                 events,
@@ -649,11 +660,29 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
         return yield* acquire(options);
       });
 
+      const currentStatus = Effect.fn("PiSessions.currentStatus")(
+        (target: Pick<PiSessionTarget, "workingDirectory" | "sessionId" | "sessionDirectory">) =>
+          Effect.sync(() => {
+            const shared = [...activeRuntimes].find(
+              (candidate) =>
+                candidate.workingDirectory === target.workingDirectory &&
+                candidate.sessionDirectory === target.sessionDirectory &&
+                candidate.runtime.sessionId === target.sessionId,
+            );
+            if (!shared) return undefined;
+            return {
+              streaming: shared.runtime.streaming,
+              persisted: shared.runtime.sessionFile.length > 0,
+            };
+          }),
+      );
+
       return PiSessions.of({
         list,
         inspect,
         acquire,
         acquireCurrent,
+        currentStatus,
         refreshModels,
         reloadWorkingDirectory,
         reloadAll,

@@ -803,8 +803,10 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
         if (newSession.configuration !== undefined)
           Object.assign(input, { configuration: newSession.configuration });
         if (newSession.name !== undefined) Object.assign(input, { name: newSession.name });
+        this.props.sessionRegistry.projectNewSessionSubmission(sessionId, newSession.name ?? text);
         await this.client.projectSessions.start(input, { signal: this.signal });
         this.props.sessionRegistry.load(sessionId, newSession.path);
+        this.props.sessionRegistry.markNewSessionStarted(sessionId);
       } else {
         const command =
           delivery === "steer"
@@ -821,6 +823,7 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
       this.finishOperation(operationId);
       return !this.signal.aborted;
     } catch (error) {
+      this.props.sessionRegistry.cancelNewSessionSubmission(sessionId);
       if (this.signal.aborted) {
         this.finishOperation(operationId);
         return false;

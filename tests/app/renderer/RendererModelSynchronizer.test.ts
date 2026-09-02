@@ -1,12 +1,14 @@
 import { Effect, Stream } from "effect";
 import { describe, expect, it, vi } from "vitest";
 import type { ProjectCatalogUpdate, SessionCatalogUpdate } from "../../../src/domain/catalog-data";
+import { ProjectSessionError } from "../../../src/domain/project-session-data";
 import { CakeIpcClient, type CakeIpcClientService } from "../../../src/ipc/client/CakeIpcClient";
 import { RendererModelSynchronizer } from "../../../src/renderer/RendererModelSynchronizer";
 import type { RendererRuntime } from "../../../src/renderer/RendererRuntime";
 import { ProjectCatalog } from "../../../src/renderer/models/ProjectCatalog";
 import { CakeChatCatalog } from "../../../src/renderer/models/CakeChatCatalog";
 import { SessionCatalog } from "../../../src/renderer/models/SessionCatalog";
+import { Session } from "../../../src/renderer/models/Session";
 
 function runtimeFor(client: CakeIpcClientService): RendererRuntime {
   return {
@@ -147,5 +149,63 @@ describe("RendererModelSynchronizer", () => {
     projects[Symbol.dispose]();
     sessions[Symbol.dispose]();
     cakeChats[Symbol.dispose]();
+  });
+
+  it("stops an observation when its Project Session has been archived", async () => {
+    vi.useFakeTimers();
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    let observations = 0;
+    const client = {
+      ...clientWithProjectStream(() => Stream.never),
+      projectSessions: {
+        observeCatalog: () => Stream.concat(Stream.make(emptySessionCatalog), Stream.never),
+        observe: () => {
+          observations += 1;
+          return observations === 1
+            ? Stream.fail(
+                new ProjectSessionError({
+                  operation: "observe",
+                  message: "That session is no longer available",
+                }),
+              )
+            : Stream.never;
+        },
+      },
+      discussionSessions: { observeCatalog: () => Stream.never },
+      subagents: { observe: () => Stream.never },
+    } as unknown as CakeIpcClientService;
+    const projects = ProjectCatalog.create();
+    const sessions = SessionCatalog.create();
+    const cakeChats = CakeChatCatalog.create();
+    const session = Session.create({ sessionId: "archived", workingDirectory: "/cake" });
+    const synchronizer = new RendererModelSynchronizer(runtimeFor(client));
+
+    try {
+      synchronizer.sync({
+        projects,
+        sessionCatalog: sessions,
+        cakeChatCatalog: cakeChats,
+        projectSessions: [
+          {
+            target: { sessionId: "archived", workingDirectory: "/cake" },
+            model: session,
+          },
+        ],
+        cakeChats: [],
+      });
+
+      await vi.advanceTimersByTimeAsync(300);
+
+      expect(observations).toBe(1);
+      expect(consoleError).not.toHaveBeenCalled();
+    } finally {
+      synchronizer[Symbol.dispose]();
+      projects[Symbol.dispose]();
+      sessions[Symbol.dispose]();
+      cakeChats[Symbol.dispose]();
+      session[Symbol.dispose]();
+      consoleError.mockRestore();
+      vi.useRealTimers();
+    }
   });
 });

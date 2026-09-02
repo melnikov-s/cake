@@ -1,5 +1,10 @@
 import { Store, child, createStore, observable, snapshot, updateStore } from "r-state-tree";
-import type { Attachment, ChatConfiguration, ModelPreset } from "../../ipc/session-contract";
+import {
+  SESSION_TITLE_MAX_LENGTH,
+  type Attachment,
+  type ChatConfiguration,
+  type ModelPreset,
+} from "../../ipc/session-contract";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { ReviewsStore } from "./ReviewsStore";
 import type { PluginCommandStore } from "./PluginCommandStore";
@@ -125,8 +130,37 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     delete this.pendingConfigurationsBySession[sessionId];
     delete this.pendingNamesBySession[sessionId];
     delete this.draftSessionsById[sessionId];
-    this.props.catalog?.setDraft(sessionId, false);
+    const workspacePath = this.sessionWorkspacePaths.get(sessionId);
+    if (workspacePath && !this.props.catalog?.find(sessionId))
+      this.props.catalog?.upsertPending(
+        sessionId,
+        workspacePath,
+        this.props.projectName(workspacePath),
+      );
+    else {
+      this.props.catalog?.setDraft(sessionId, false);
+      this.props.catalog?.setPendingResolved(sessionId, false);
+    }
     addUnique(this.unlistedNewSessionIds, sessionId);
+  }
+
+  /** Publishes the first-message projection before Pi creates its authoritative session. */
+  projectNewSessionSubmission(sessionId: string, text: string) {
+    if (!this.temporarySessionIds.includes(sessionId)) return;
+    const workspacePath = this.sessionWorkspacePaths.get(sessionId);
+    if (!workspacePath) return;
+    const title = text.trim().slice(0, SESSION_TITLE_MAX_LENGTH) || "New chat";
+    this.props.catalog?.upsertPending(
+      sessionId,
+      workspacePath,
+      this.props.projectName(workspacePath),
+      { draft: false, resolved: false, title, messageCount: 1 },
+    );
+  }
+
+  cancelNewSessionSubmission(sessionId: string) {
+    if (this.temporarySessionIds.includes(sessionId) && !this.isDraftSession(sessionId))
+      this.props.catalog?.remove(sessionId);
   }
 
   retainedNewSessionIds(workspacePath: string) {
@@ -213,7 +247,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     if (!current) return undefined;
     delete this.draftSessionsById[sessionId];
     this.props.catalog?.setDraft(sessionId, false);
-    this.props.catalog?.setResolved(sessionId, false);
+    this.props.catalog?.setPendingResolved(sessionId, false);
     return current;
   }
 
@@ -221,7 +255,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     const current = this.draftSessionsById[sessionId];
     if (!current) return false;
     this.draftSessionsById[sessionId] = { ...current, resolved };
-    this.props.catalog?.setResolved(sessionId, resolved);
+    this.props.catalog?.setPendingResolved(sessionId, resolved);
     return true;
   }
 

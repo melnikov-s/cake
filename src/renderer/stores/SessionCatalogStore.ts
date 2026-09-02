@@ -110,7 +110,12 @@ export class SessionCatalogStore extends Store<{ model: SessionCatalog }> {
     sessionId: string,
     workingDirectory: string,
     projectName: string,
-    options: { draft?: boolean; resolved?: boolean } = {},
+    options: {
+      draft?: boolean;
+      resolved?: boolean;
+      title?: string;
+      messageCount?: number;
+    } = {},
   ) {
     if (this.props.model.find(sessionId))
       throw new Error(`Session ID collision detected: ${sessionId}`);
@@ -123,13 +128,15 @@ export class SessionCatalogStore extends Store<{ model: SessionCatalog }> {
           modifiedAt: now,
           resolved: options.resolved ?? current.resolved,
           draft: options.draft ?? current.draft,
+          title: options.title ?? current.title,
+          messageCount: options.messageCount ?? current.messageCount,
         }
       : {
           sessionId,
-          title: "New chat",
+          title: options.title ?? "New chat",
           createdAt: now,
           modifiedAt: now,
-          messageCount: 0,
+          messageCount: options.messageCount ?? 0,
           resolved: options.resolved ?? false,
           unread: false,
           projectPath: this.projectOfManagedWorktree(workingDirectory) ?? workingDirectory,
@@ -146,7 +153,7 @@ export class SessionCatalogStore extends Store<{ model: SessionCatalog }> {
     this.updatePending(sessionId, (session) => ({ ...session, draft }));
   }
 
-  setResolved(sessionId: string, resolved: boolean) {
+  setPendingResolved(sessionId: string, resolved: boolean) {
     this.updatePending(sessionId, (session) => ({ ...session, resolved }));
   }
 

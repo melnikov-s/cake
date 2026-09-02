@@ -50,11 +50,27 @@ export const SessionArchiveStorageLive = Layer.sync(SessionArchiveStorage, () =>
         const destination = join(destinationDirectory, basename(source));
         try {
           await access(destination);
+          try {
+            await access(source);
+          } catch (error) {
+            if (error instanceof Error && "code" in error && error.code === "ENOENT") return false;
+            throw error;
+          }
           throw new Error(`Session archive destination already exists for ${sessionId}`);
         } catch (error) {
           if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
         }
-        await rename(source, destination);
+        try {
+          await rename(source, destination);
+        } catch (error) {
+          if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+          try {
+            await access(destination);
+            return false;
+          } catch {
+            throw error;
+          }
+        }
         return true;
       },
       catch: (cause) => archiveError(resolved ? "resolve" : "restore", sessionId, cause),

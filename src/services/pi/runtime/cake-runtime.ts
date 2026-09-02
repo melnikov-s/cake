@@ -609,6 +609,8 @@ function reviewContextExtension(
 export interface CakeRuntime {
   readonly sessionId: string;
   readonly sessionFile: string;
+  /** Returns Pi's live turn state without assembling a SessionSnapshot. */
+  readonly streaming: boolean;
   getReviewParentContext?(): ReviewParentContext;
   recordReviewRun(run: ReviewRunEntry): void;
   snapshot(requestId?: string): Promise<SessionSnapshot>;
@@ -1928,6 +1930,9 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     sessionId: cakeSessionId,
     get sessionFile() {
       return session.sessionFile ?? "";
+    },
+    get streaming() {
+      return session.isStreaming;
     },
     getReviewParentContext() {
       if (!session.sessionFile) throw new Error("The parent session is not persisted");
