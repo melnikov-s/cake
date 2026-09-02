@@ -73,7 +73,7 @@ const makeLayer = (
     ],
     trustedProjectPaths: ["/project"],
   },
-  hooks: { onCreateRuntime?(): void; onArchive?(): void } = {},
+  hooks: { onCreateRuntime?(): void; onArchive?(): void; onList?(): void } = {},
 ) => {
   const application = Layer.effect(
     ApplicationState,
@@ -100,16 +100,19 @@ const makeLayer = (
   );
   const adapter: PiSessionsAdapter = {
     list: () =>
-      Effect.succeed([
-        {
-          id: "session-1",
-          title: "Active branch",
-          created: "2026-01-01T00:00:00.000Z",
-          modified: "2026-01-02T00:00:00.000Z",
-          messageCount: 2,
-          resolved: false,
-        },
-      ]),
+      Effect.sync(() => {
+        hooks.onList?.();
+        return [
+          {
+            id: "session-1",
+            title: "Active branch",
+            created: "2026-01-01T00:00:00.000Z",
+            modified: "2026-01-02T00:00:00.000Z",
+            messageCount: 2,
+            resolved: false,
+          },
+        ];
+      }),
     inspect: () =>
       Effect.succeed({
         workspacePath: snapshot.workspacePath,
@@ -194,6 +197,37 @@ describe("Project Sessions domain", () => {
       assert.ok(observed[1]!.revision > observed[0]!.revision);
     }).pipe(Effect.provide(makeLayer())),
   );
+
+  it.effect("projects a resolve as one status event without relisting the catalog", () => {
+    let listCalls = 0;
+    return Effect.gen(function* () {
+      const updates = yield* projectSessions.observeCatalog();
+      const ready = yield* Deferred.make<void>();
+      const fiber = yield* updates.pipe(
+        Stream.tap(() => Deferred.succeed(ready, undefined)),
+        Stream.take(2),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      yield* Deferred.await(ready);
+      yield* projectSessions.resolve({
+        sessionId: "session-1",
+        workingDirectory: "/project",
+      });
+      const observed = Array.from(yield* Fiber.join(fiber));
+      assert.equal(listCalls, 1);
+      assert.deepEqual(observed[1], {
+        _tag: "Event",
+        revision: 2,
+        event: {
+          _tag: "StatusChanged",
+          sessionId: "session-1",
+          resolved: true,
+          unread: false,
+        },
+      });
+    }).pipe(Effect.provide(makeLayer(undefined, { onList: () => listCalls++ })));
+  });
 
   it.effect("lists Project and Working Directory associations above PiSessions", () =>
     Effect.gen(function* () {

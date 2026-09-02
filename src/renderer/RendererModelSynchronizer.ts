@@ -375,6 +375,18 @@ function applyProjectCatalogUpdate(model: ProjectCatalog, update: ProjectCatalog
 }
 
 function applySessionCatalogUpdate(model: SessionCatalog, update: SessionCatalogUpdate) {
+  if (update._tag === "Event" && update.event._tag === "StatusChanged") {
+    const event = update.event;
+    const session = model.find(event.sessionId);
+    if (!session) return;
+    applySnapshot(session, {
+      ...toSnapshot(session),
+      resolved: event.resolved,
+      unread: event.unread,
+    });
+    model.sessions.sort(compareSessionSummaries);
+    return;
+  }
   let sessions = model.sessions.map((session) => toSnapshot(session));
   if (update._tag === "Snapshot") sessions = [...update.sessions];
   else {
@@ -393,10 +405,7 @@ function applySessionCatalogUpdate(model: SessionCatalog, update: SessionCatalog
           : session,
       );
   }
-  sessions.sort((left, right) => {
-    if (left.resolved !== right.resolved) return left.resolved ? 1 : -1;
-    return right.modifiedAt!.localeCompare(left.modifiedAt!);
-  });
+  sessions.sort(compareSessionSummaries);
   assertUnique(
     sessions
       .map((session) => session.sessionId)
@@ -405,6 +414,16 @@ function applySessionCatalogUpdate(model: SessionCatalog, update: SessionCatalog
   );
   applySnapshot(model, { sessions });
 }
+
+const compareSessionSummaries = (
+  left: { readonly resolved?: boolean | null; readonly modifiedAt?: string | null },
+  right: { readonly resolved?: boolean | null; readonly modifiedAt?: string | null },
+) => {
+  const leftResolved = left.resolved === true;
+  const rightResolved = right.resolved === true;
+  if (leftResolved !== rightResolved) return leftResolved ? 1 : -1;
+  return (right.modifiedAt ?? "").localeCompare(left.modifiedAt ?? "");
+};
 
 function applyCakeChatCatalogUpdate(model: CakeChatCatalog, update: CakeChatCatalogUpdate) {
   const sessions = update._tag === "Snapshot" ? update.sessions : update.event.sessions;

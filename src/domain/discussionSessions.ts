@@ -1,6 +1,7 @@
 import { Effect, Schema, Stream } from "effect";
 import { observeState, refreshProjection } from "./application";
 import type { DiscussionCatalogUpdate } from "./catalog-data";
+import type { ApplicationState } from "./application-data";
 import { PiSessionError, PiSessions } from "../services/pi/PiSessions";
 import { ProjectSessionEnvironment } from "../services/project-sessions/ProjectSessionEnvironment";
 import {
@@ -24,6 +25,11 @@ import {
 } from "./discussion-session-data";
 
 export * from "./discussion-session-data";
+
+interface DiscussionCatalogObservation {
+  readonly revision: number;
+  readonly state: ApplicationState | undefined;
+}
 
 const asError = (operation: string) =>
   Effect.mapError(
@@ -170,28 +176,35 @@ export const observeCatalog = Effect.fn("DiscussionSessions.observeCatalog")(fun
   readonly parentSessionId: string;
 }) {
   const changes = yield* observeState();
-  let initialized = false;
   return changes.pipe(
-    Stream.mapEffect((projection) =>
-      list(input).pipe(
-        Effect.map((threads): DiscussionCatalogUpdate => {
-          if (!initialized) {
-            initialized = true;
-            return {
-              _tag: "Snapshot",
-              revision: projection.revision,
-              parentSessionId: input.parentSessionId,
-              threads,
-            };
-          }
-          return {
-            _tag: "Event",
-            revision: projection.revision,
-            parentSessionId: input.parentSessionId,
-            event: { _tag: "Replaced", threads },
-          };
-        }),
-      ),
+    Stream.mapAccumEffect(
+      (): DiscussionCatalogObservation => ({
+        revision: 0,
+        state: undefined,
+      }),
+      (observation, projection) => {
+        if (observation.state && observation.state !== projection.state)
+          return Effect.succeed([{ ...observation, state: projection.state }, []] as const);
+        return list(input).pipe(
+          Effect.map((threads) => {
+            const revision = observation.revision + 1;
+            const update: DiscussionCatalogUpdate = observation.state
+              ? {
+                  _tag: "Event",
+                  revision,
+                  parentSessionId: input.parentSessionId,
+                  event: { _tag: "Replaced", threads },
+                }
+              : {
+                  _tag: "Snapshot",
+                  revision,
+                  parentSessionId: input.parentSessionId,
+                  threads,
+                };
+            return [{ revision, state: projection.state }, [update]] as const;
+          }),
+        );
+      },
     ),
   );
 });

@@ -15,6 +15,7 @@ import { ApplicationState } from "../services/storage/ApplicationState";
 import { ManagedWorktrees } from "../services/worktrees/ManagedWorktrees";
 import { resolveRewordingWorkspace } from "../services/projects/rewording-workspace";
 import type { ProjectCatalogUpdate } from "./catalog-data";
+import type { ProjectRecord } from "./application-data";
 import {
   observeState,
   removeProject,
@@ -34,6 +35,11 @@ import {
 
 type Payload<Type extends keyof typeof nativeOperationPayloadSchemas> =
   (typeof nativeOperationPayloadSchemas)[Type]["Type"];
+
+interface ProjectCatalogObservation {
+  readonly revision: number;
+  readonly projects: ReadonlyArray<ProjectRecord> | undefined;
+}
 
 const nativeError = (operation: string, cause: unknown) =>
   new NativeOperationError({
@@ -322,19 +328,35 @@ export const respondTrust = Effect.fn("Projects.respondTrust")(function* (
 /** Observes main-owned Project registration facts as a current-first renderer projection. */
 export const observeCatalog = Effect.fn("Projects.observeCatalog")(function* () {
   const changes = yield* observeState();
-  let initialized = false;
   return changes.pipe(
-    Stream.map((projection): ProjectCatalogUpdate => {
-      const projects = projection.state.projects.map((project) => ({ ...project }));
-      if (!initialized) {
-        initialized = true;
-        return { _tag: "Snapshot", revision: projection.revision, projects };
-      }
-      return {
-        _tag: "Event",
-        revision: projection.revision,
-        event: { _tag: "Replaced", projects },
-      };
-    }),
+    Stream.mapAccum(
+      (): ProjectCatalogObservation => ({
+        revision: 0,
+        projects: undefined,
+      }),
+      (observation, projection) => {
+        const projects = projection.state.projects.map((project) => ({ ...project }));
+        if (observation.projects && sameProjects(observation.projects, projects))
+          return [{ ...observation, projects }, []] as const;
+        const revision = observation.revision + 1;
+        const update: ProjectCatalogUpdate = observation.projects
+          ? { _tag: "Event", revision, event: { _tag: "Replaced", projects } }
+          : { _tag: "Snapshot", revision, projects };
+        return [{ revision, projects }, [update]] as const;
+      },
+    ),
   );
 });
+
+const sameProjects = (left: ReadonlyArray<ProjectRecord>, right: ReadonlyArray<ProjectRecord>) =>
+  left.length === right.length &&
+  left.every((project, index) => {
+    const other = right[index];
+    return (
+      other !== undefined &&
+      project.path === other.path &&
+      project.name === other.name &&
+      project.addedAt === other.addedAt &&
+      project.lastOpenedAt === other.lastOpenedAt
+    );
+  });

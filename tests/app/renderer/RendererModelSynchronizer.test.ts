@@ -151,6 +151,77 @@ describe("RendererModelSynchronizer", () => {
     cakeChats[Symbol.dispose]();
   });
 
+  it("updates and reorders one resolved Session summary", async () => {
+    const sessionUpdates: SessionCatalogUpdate[] = [
+      {
+        _tag: "Snapshot",
+        revision: 1,
+        sessions: [
+          {
+            sessionId: "older",
+            title: "Older",
+            createdAt: "2026-01-01",
+            modifiedAt: "2026-01-01",
+            messageCount: 1,
+            resolved: false,
+            unread: false,
+            projectPath: "/cake",
+            projectName: "Cake",
+            workingDirectory: "/cake",
+          },
+          {
+            sessionId: "newer",
+            title: "Newer",
+            createdAt: "2026-01-02",
+            modifiedAt: "2026-01-02",
+            messageCount: 1,
+            resolved: false,
+            unread: false,
+            projectPath: "/cake",
+            projectName: "Cake",
+            workingDirectory: "/cake",
+          },
+        ],
+      },
+      {
+        _tag: "Event",
+        revision: 2,
+        event: {
+          _tag: "StatusChanged",
+          sessionId: "newer",
+          resolved: true,
+          unread: false,
+        },
+      },
+    ];
+    const client = {
+      ...clientWithProjectStream(() => Stream.never),
+      projectSessions: {
+        observeCatalog: () => Stream.concat(Stream.fromIterable(sessionUpdates), Stream.never),
+      },
+    } as unknown as CakeIpcClientService;
+    const projects = ProjectCatalog.create();
+    const sessions = SessionCatalog.create();
+    const cakeChats = CakeChatCatalog.create();
+    const synchronizer = new RendererModelSynchronizer(runtimeFor(client));
+
+    synchronizer.sync({
+      projects,
+      sessionCatalog: sessions,
+      cakeChatCatalog: cakeChats,
+      projectSessions: [],
+      cakeChats: [],
+    });
+
+    await vi.waitFor(() => expect(sessions.find("newer")?.resolved).toBe(true));
+    expect(sessions.sessions.map((session) => session.sessionId)).toEqual(["older", "newer"]);
+
+    synchronizer[Symbol.dispose]();
+    projects[Symbol.dispose]();
+    sessions[Symbol.dispose]();
+    cakeChats[Symbol.dispose]();
+  });
+
   it("stops an observation when its Project Session has been archived", async () => {
     vi.useFakeTimers();
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);

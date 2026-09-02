@@ -47,6 +47,12 @@ import {
   type ProjectSessionUpdate,
 } from "./project-session-data";
 
+interface SessionCatalogObservation {
+  readonly revision: number;
+  readonly state: ApplicationState | undefined;
+  readonly sessions: ReadonlyArray<ProjectSessionSummary> | undefined;
+}
+
 const asError = (operation: string) =>
   Effect.mapError(
     (error: PiSessionError | ProjectSessionEnvironmentError | unknown) =>
@@ -129,25 +135,71 @@ export const list = Effect.fn("ProjectSessions.list")(function* () {
  */
 export const observeCatalog = Effect.fn("ProjectSessions.observeCatalog")(function* () {
   const changes = yield* observeState();
-  let initialized = false;
   return changes.pipe(
-    Stream.mapEffect((projection) =>
-      listForState(projection.state).pipe(
-        Effect.map((sessions): SessionCatalogUpdate => {
-          if (!initialized) {
-            initialized = true;
-            return { _tag: "Snapshot", revision: projection.revision, sessions };
-          }
-          return {
-            _tag: "Event",
-            revision: projection.revision,
-            event: { _tag: "Replaced", sessions },
-          };
-        }),
-      ),
+    Stream.mapAccumEffect(
+      (): SessionCatalogObservation => ({
+        revision: 0,
+        state: undefined,
+        sessions: undefined,
+      }),
+      (observation, projection) => {
+        const replace = () =>
+          listForState(projection.state).pipe(
+            Effect.map((sessions) => {
+              const revision = observation.revision + 1;
+              const update: SessionCatalogUpdate = observation.sessions
+                ? { _tag: "Event", revision, event: { _tag: "Replaced", sessions } }
+                : { _tag: "Snapshot", revision, sessions };
+              return [{ revision, state: projection.state, sessions }, [update]] as const;
+            }),
+          );
+        if (!observation.state || !observation.sessions) return replace();
+        if (observation.state === projection.state) return replace();
+        if (!sameProjects(observation.state.projects, projection.state.projects)) return replace();
+
+        const changed = observation.sessions.filter((session) => {
+          const resolved = projection.state.resolvedSessionIds.includes(session.sessionId);
+          const unread = projection.state.unreadSessionIds.includes(session.sessionId);
+          return session.resolved !== resolved || session.unread !== unread;
+        });
+        if (changed.length === 0)
+          return Effect.succeed([{ ...observation, state: projection.state }, []] as const);
+        if (changed.length > 1) return replace();
+
+        const [changedSession] = changed;
+        if (!changedSession)
+          return Effect.succeed([{ ...observation, state: projection.state }, []] as const);
+        const resolved = projection.state.resolvedSessionIds.includes(changedSession.sessionId);
+        const unread = projection.state.unreadSessionIds.includes(changedSession.sessionId);
+        const sessions = observation.sessions.map((session) =>
+          session.sessionId === changedSession.sessionId
+            ? { ...session, resolved, unread }
+            : session,
+        );
+        const revision = observation.revision + 1;
+        const update: SessionCatalogUpdate = {
+          _tag: "Event",
+          revision,
+          event: { _tag: "StatusChanged", sessionId: changedSession.sessionId, resolved, unread },
+        };
+        return Effect.succeed([{ revision, state: projection.state, sessions }, [update]] as const);
+      },
     ),
   );
 });
+
+const sameProjects = (left: ApplicationState["projects"], right: ApplicationState["projects"]) =>
+  left.length === right.length &&
+  left.every((project, index) => {
+    const other = right[index];
+    return (
+      other !== undefined &&
+      project.path === other.path &&
+      project.name === other.name &&
+      project.addedAt === other.addedAt &&
+      project.lastOpenedAt === other.lastOpenedAt
+    );
+  });
 
 const findLocation = Effect.fn("ProjectSessions.findLocation")(function* (
   target: ProjectSessionTarget,

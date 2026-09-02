@@ -14,6 +14,7 @@ import {
   setCakeChatSessionResolved,
 } from "./application";
 import type { CakeChatCatalogUpdate } from "./catalog-data";
+import type { ApplicationState } from "./application-data";
 import {
   acquire as acquireConversation,
   observe as observeConversation,
@@ -32,6 +33,11 @@ import {
 } from "./cake-chat-data";
 
 export * from "./cake-chat-data";
+
+interface CakeChatCatalogObservation {
+  readonly revision: number;
+  readonly state: ApplicationState | undefined;
+}
 
 const asError = (operation: string) =>
   Effect.mapError(
@@ -83,25 +89,38 @@ export const list = Effect.fn("CakeChats.list")(function* () {
 /** Current-first Cake Chat catalog observation driven by main-owned application revisions. */
 export const observeCatalog = Effect.fn("CakeChats.observeCatalog")(function* () {
   const changes = yield* observeState();
-  let initialized = false;
   return changes.pipe(
-    Stream.mapEffect((projection) =>
-      list().pipe(
-        Effect.map((sessions): CakeChatCatalogUpdate => {
-          if (!initialized) {
-            initialized = true;
-            return { _tag: "Snapshot", revision: projection.revision, sessions };
-          }
-          return {
-            _tag: "Event",
-            revision: projection.revision,
-            event: { _tag: "Replaced", sessions },
-          };
-        }),
-      ),
+    Stream.mapAccumEffect(
+      (): CakeChatCatalogObservation => ({
+        revision: 0,
+        state: undefined,
+      }),
+      (observation, projection) => {
+        if (
+          observation.state &&
+          observation.state !== projection.state &&
+          sameIds(
+            observation.state.resolvedCakeChatSessionIds,
+            projection.state.resolvedCakeChatSessionIds,
+          )
+        )
+          return Effect.succeed([{ ...observation, state: projection.state }, []] as const);
+        return list().pipe(
+          Effect.map((sessions) => {
+            const revision = observation.revision + 1;
+            const update: CakeChatCatalogUpdate = observation.state
+              ? { _tag: "Event", revision, event: { _tag: "Replaced", sessions } }
+              : { _tag: "Snapshot", revision, sessions };
+            return [{ revision, state: projection.state }, [update]] as const;
+          }),
+        );
+      },
     ),
   );
 });
+
+const sameIds = (left: ReadonlyArray<string>, right: ReadonlyArray<string>) =>
+  left.length === right.length && left.every((id, index) => id === right[index]);
 
 export const inspect = Effect.fn("CakeChats.inspect")(function* (sessionId: string) {
   const environment = yield* CakeChatEnvironment;
