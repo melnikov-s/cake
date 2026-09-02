@@ -2,14 +2,27 @@ import { createStore, mount } from "r-state-tree";
 import { describe, expect, it } from "vitest";
 import { AppShellStore } from "../../../../src/renderer/stores/AppShellStore";
 
-const createShell = () =>
+const createShell = (markProjectSessionRead: (sessionId: string) => void = () => undefined) =>
   mount(
     createStore(AppShellStore, {
       sessionWorkspacePath: (sessionId) => `/work/${sessionId}`,
+      markProjectSessionRead,
     }),
   );
 
 describe("AppShellStore session history", () => {
+  it("marks a Project Session read when navigating away from it", () => {
+    const marked: string[] = [];
+    const shell = createShell((sessionId) => marked.push(sessionId));
+
+    shell.selectProjectSession("a");
+    shell.selectProjectSession("b");
+    shell.showSettings();
+
+    expect(marked).toEqual(["a", "b"]);
+    shell[Symbol.dispose]();
+  });
+
   it("records visited sessions and steps back and forward through them", () => {
     const shell = createShell();
     expect(shell.canGoBack).toBe(false);

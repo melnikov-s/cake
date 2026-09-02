@@ -24,18 +24,24 @@ import { ProjectCatalogStore } from "./ProjectCatalogStore";
 import { ToastStore } from "./ToastStore";
 import { TerminalStore, type TerminalTarget } from "./TerminalStore";
 import { resolveDraftUpdate } from "../../utils/resolve-draft-update";
-import { ProjectCatalog } from "../models/ProjectCatalog";
-import { SessionCatalog } from "../models/SessionCatalog";
-import { CakeChatCatalog } from "../models/CakeChatCatalog";
+import type { RendererModels } from "../RendererModels";
 
 export class RootStore extends Store<{
   rendererClient: RendererClient;
+  models: RendererModels;
   flushWindowState(): Promise<void>;
 }> {
   readonly appControl: AppControlBridge;
-  readonly projectCatalogModel = ProjectCatalog.create();
-  readonly sessionCatalogModel = SessionCatalog.create();
-  readonly cakeChatCatalogModel = CakeChatCatalog.create();
+
+  get projectCatalogModel() {
+    return this.props.models.projects;
+  }
+  get sessionCatalogModel() {
+    return this.props.models.sessionCatalog;
+  }
+  get cakeChatCatalogModel() {
+    return this.props.models.cakeChatCatalog;
+  }
 
   [RendererClientContext.provide]() {
     return this.client;
@@ -335,8 +341,12 @@ export class RootStore extends Store<{
       operations: this.sessionOperationCoordinator,
       reviews: () => this.reviewsStore,
       pluginCommands: () => this.pluginCommandStore,
+      sessionModel: (sessionId, workingDirectory) =>
+        this.props.models.projectSession(sessionId, workingDirectory),
       canSubmit: (sessionId) => this.projectWorkbenchStore.canSubmitSession(sessionId),
-      isActive: (sessionId) => this.projectWorkbenchStore.isActiveSession(sessionId),
+      isActive: (sessionId) =>
+        this.appShellStore.selection.kind === "project-session" &&
+        this.appShellStore.selection.sessionId === sessionId,
       openCommandPane: (pane) => this.projectWorkbenchStore.commandPaneStore.open(pane),
       persistNow: () => this.props.flushWindowState(),
       projectName: (workspacePath) => this.projectCatalogStore.nameForPath(workspacePath),
@@ -498,6 +508,7 @@ export class RootStore extends Store<{
   get globalChatStore(): GlobalChatStore {
     return createStore(GlobalChatStore, {
       catalog: this.cakeChatCatalogModel,
+      sessionModel: (sessionId) => this.props.models.cakeChat(sessionId),
       tools: () => this.appControl.listTools(),
       modelPresets: () => this.settingsStore.modelPresets.presets,
       defaultConfiguration: () => this.settingsStore.modelPresets.defaultConfiguration,
@@ -516,16 +527,13 @@ export class RootStore extends Store<{
       sessionWorkspacePath: (sessionId) =>
         this.sessionCatalogStore.find(sessionId)?.workingDirectory ??
         this.sessionRegistry.findSession(sessionId)?.workspacePath,
+      markProjectSessionRead: (sessionId) =>
+        this.sessionRegistry.findSession(sessionId)?.markRead(),
     });
   }
 
   constructor(props: RootStore["props"]) {
     super(props);
-    this.effect(() => () => {
-      this.projectCatalogModel[Symbol.dispose]();
-      this.sessionCatalogModel[Symbol.dispose]();
-      this.cakeChatCatalogModel[Symbol.dispose]();
-    });
     this.effect(() => {
       for (const session of this.globalChatStore.loadedSessions)
         for (const request of session.model.controlRequests)

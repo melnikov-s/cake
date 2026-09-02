@@ -20,6 +20,7 @@ export type SessionHistoryEntry =
 /** Owns the one active application selection and its session navigation history in this window. */
 export interface AppShellStoreProps {
   sessionWorkspacePath(sessionId: string): string | undefined;
+  markProjectSessionRead(sessionId: string): void;
 }
 
 const sameSessionEntry = (left: SessionHistoryEntry, right: SessionHistoryEntry) =>
@@ -97,6 +98,7 @@ export class AppShellStore extends Store<AppShellStoreProps> {
   }
 
   showWorkbench() {
+    this.markDepartingProjectSession();
     this.selection = { kind: "workbench" };
     this.activeConversation = undefined;
   }
@@ -120,6 +122,7 @@ export class AppShellStore extends Store<AppShellStoreProps> {
       this.activeConversation.workspacePath === workspacePath
     )
       return;
+    this.markDepartingProjectSession(sessionId);
     const selection = { kind: "project-session", workspacePath, sessionId } as const;
     this.selection = selection;
     this.activeConversation = selection;
@@ -142,12 +145,19 @@ export class AppShellStore extends Store<AppShellStoreProps> {
           this.activeConversation.sessionId === sessionId)
     )
       return;
+    this.markDepartingProjectSession();
     const selection = { kind: "cake-chat", sessionId } as const;
     this.selection = selection;
     this.activeConversation = sessionId ? { kind: "cake-chat", sessionId } : undefined;
   }
   showSettings() {
+    this.markDepartingProjectSession();
     this.selection = { kind: "settings" };
+  }
+
+  private markDepartingProjectSession(nextSessionId?: string) {
+    if (this.selection.kind === "project-session" && this.selection.sessionId !== nextSessionId)
+      this.props.markProjectSessionRead(this.selection.sessionId);
   }
   /**
    * Records a visit to the top of the history, truncating any forward branch. A pending

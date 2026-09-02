@@ -11,6 +11,7 @@ import { MarkdownLinkProvider } from "./components/ai-elements/markdown";
 import { makeRendererRuntime } from "./RendererRuntime";
 import { makeRendererClient } from "./client/RendererClientLive";
 import { RendererModelSynchronizer } from "./RendererModelSynchronizer";
+import { RendererModels } from "./RendererModels";
 import { RendererNativeEvents } from "./RendererNativeEvents";
 import { RendererInfrastructureProvider } from "./RendererInfrastructureContext";
 import { installStaleAssetRecovery } from "./stale-asset-recovery";
@@ -64,6 +65,7 @@ async function bootstrap(bridge: NonNullable<typeof window.cake>) {
   const rendererRuntime = makeRendererRuntime(bridge.rpc);
   const rendererClient = makeRendererClient(rendererRuntime);
   const synchronizer = new RendererModelSynchronizer(rendererRuntime);
+  const models = new RendererModels();
   const nativeEvents = new RendererNativeEvents(rendererRuntime);
   await nativeEvents.ready;
   let hydrationError: unknown;
@@ -79,6 +81,7 @@ async function bootstrap(bridge: NonNullable<typeof window.cake>) {
     rendererClient,
     snapshot,
     () => persistenceRef.current?.flush() ?? Promise.resolve(),
+    models,
   );
   await rootStore.settingsStore.modelPresets.hydrate();
   nativeEvents.observe(rootStore, synchronizer);
@@ -182,9 +185,10 @@ async function bootstrap(bridge: NonNullable<typeof window.cake>) {
     () => {
       disposeStaleAssetRecovery();
       persistence?.[Symbol.dispose]();
-      rootStore[Symbol.dispose]();
-      synchronizer[Symbol.dispose]();
       nativeEvents[Symbol.dispose]();
+      synchronizer[Symbol.dispose]();
+      rootStore[Symbol.dispose]();
+      models[Symbol.dispose]();
       void rendererRuntime.dispose();
     },
     { once: true },

@@ -311,6 +311,21 @@ describe("RendererModelSynchronizer", () => {
     await vi.waitFor(() => expect(session.parts[0]?.text).toBe("Hello, world"));
     expect(session.parts[0]).toBe(message);
 
+    await Effect.runPromise(
+      Queue.offer(updates, {
+        _tag: "Event",
+        revision: 3,
+        sessionId: "session",
+        event: {
+          _tag: "TurnSettled",
+          sessionId: "session",
+          turnId: TurnId.make("123e4567-e89b-42d3-a456-426614174001"),
+          outcome: "complete",
+        },
+      }),
+    );
+    await vi.waitFor(() => expect(session.settledTurnRevision).toBe(1));
+
     synchronizer[Symbol.dispose]();
     projects[Symbol.dispose]();
     sessions[Symbol.dispose]();

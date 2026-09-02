@@ -1,5 +1,5 @@
 import { Store, child, createStore, observable, snapshot } from "r-state-tree";
-import { Session } from "../models/Session";
+import type { Session } from "../models/Session";
 import type { Attachment, ModelPreset, SessionSnapshot } from "../../ipc/session-contract";
 import { parsePiBuiltinCommand } from "../../ipc/session-contract";
 import { pastedImageAttachments } from "../pasted-image-attachments";
@@ -13,6 +13,7 @@ import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordin
 
 export interface CakeChatSessionStoreProps {
   sessionId: string;
+  model: Session;
   collection: GlobalChatStore;
   operations: SessionOperationCoordinatorStore;
   modelPresets(): readonly ModelPreset[];
@@ -22,7 +23,6 @@ export interface CakeChatSessionStoreProps {
 
 /** Owns the independent draft, attachments, configuration, and turn policy for one Cake Chat session. */
 export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
-  readonly model: Session;
   @snapshot attachments: Attachment[] = observable([]);
   error: string | undefined;
   errorDetails: string | undefined;
@@ -35,15 +35,16 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
 
   constructor(props: CakeChatSessionStore["props"]) {
     super(props);
-    this.model = Session.create({ sessionId: props.sessionId });
     this.effect(() => () => {
       this.props.operations.reset(this.promptOwner);
       this.props.operations.reset(this.configurationOwner);
       this.props.operations.reset(`cake-chat-abort:${this.sessionId}`);
-      this.model[Symbol.dispose]();
     });
   }
 
+  get model() {
+    return this.props.model;
+  }
   get client() {
     return RendererClientContext.consume(this)!;
   }

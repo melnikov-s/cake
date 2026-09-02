@@ -127,6 +127,11 @@ direct, batched Model mutations for incremental entity changes. Renderer
 bootstrap attaches both the Model synchronizer and
 window snapshot persistence to the mounted Root Store; neither is a Store.
 
+A window-owned renderer Model registry creates and retains passive projection
+Models independently of Store and React lifetimes. Session Stores receive those
+Models as dependencies. Window teardown first stops native events and Model
+synchronization, then disposes the Store tree, and finally disposes the Models.
+
 Renderer Stores read those Models, invoke `RendererClient`, and own window-local
 application/UI logic and repeated-call policy. They do not import Effect,
 `CakeIpcClient`, RPC definitions, Pi, Git, storage, Electron main
@@ -625,7 +630,8 @@ src/
 │   ├── RendererRuntime.ts    # one window-local Effect runtime
 │   ├── client/               # permanent Promise RendererClient adapter
 │   ├── RendererModelSynchronizer.ts # Effect Streams → snapshot hydration and event reduction
-│   ├── models/               # r-state-tree projection Models
+│   ├── RendererModels.ts    # window ownership and lifetime of projection Models
+│   ├── models/               # r-state-tree projection Model definitions
 │   ├── stores/               # r-state-tree application/UI Stores
 │   └── components/
 ├── plugin/                   # Public Cake plugin APIs

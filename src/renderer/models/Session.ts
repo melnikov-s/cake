@@ -1,4 +1,4 @@
-import { Model, child, id, observable } from "r-state-tree";
+import { Model, child, id, observable, transient } from "r-state-tree";
 import type { SessionSnapshot, ThinkingLevel, UiPart } from "../../ipc/session-contract";
 import type { CakeChatControlRequest } from "../../domain/cake-chat-data";
 import { Artifact } from "./Artifact";
@@ -26,6 +26,8 @@ export class Session extends Model {
   streaming = false;
   /** Pi-accepted turns bridge command acceptance to the first streaming event. */
   activeTurnIds: string[] = observable([]);
+  /** Window-local ordering marker for turn settlements observed after this Model was created. */
+  @transient settledTurnRevision = 0;
   diagnostics: string[] = observable([]);
   commands: SessionSnapshot["commands"] = observable([]);
   usage: SessionSnapshot["usage"] = undefined;

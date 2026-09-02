@@ -287,7 +287,7 @@ The window Store hierarchy mirrors the product surfaces:
   path; Pi remains the transcript authority once the session starts. The Working
   Directory remains routing/storage context for the Pi runtime, not part of
   session identity. Cake Chat never enters this registry.
-- Each `ProjectSessionStore` owns that session's activity, `Session`,
+- Each `ProjectSessionStore` owns that session's activity,
   message composer, chat configuration, managed-worktree status and actions,
   artifacts, and message comments. Its
   `ChatStore` is the common conversation-facing state boundary: it presents the
@@ -307,9 +307,11 @@ The window Store hierarchy mirrors the product surfaces:
   selected. Like a new project chat, a new Cake Chat begins as one renderer-owned
   pending session and creates its Pi runtime on the first prompt; its identity and
   draft may be restored from window state without implying that a transcript file
-  exists. Persisted Cake Chat sessions keep live runtimes as they are opened. A
-  `CakeChatSessionStore` directly owns its Pi `Session`; its snapshots and deltas
-  route through the Cake Chat collection, independently of project-session
+  exists. Persisted Cake Chat sessions keep live runtimes as they are opened. The
+  window's renderer Model owner retains each projected `Session` independently of
+  Store or React lifetimes and disposes Models only after Model synchronization has
+  stopped. Project and Cake Chat session Stores receive those Models rather than
+  creating or disposing them. Cake Chat snapshots and deltas route through the collection, independently of project-session
   registry and workbench lifetimes. Cross-process operations use explicit project
   or Cake Chat intents and never infer session ownership from transcript-file
   existence.

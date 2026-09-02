@@ -1,6 +1,6 @@
-import { Store, child, createStore } from "r-state-tree";
+import { Store, child, computed, createStore } from "r-state-tree";
 import type { RendererEvent } from "../RendererEvent";
-import { Session } from "../models/Session";
+import type { Session } from "../models/Session";
 import type { ChatConfiguration, ModelPreset } from "../../ipc/session-contract";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
@@ -23,6 +23,7 @@ export interface SessionTarget {
 }
 
 export interface ProjectSessionStoreProps extends SessionTarget {
+  model: Session;
   registry: SessionRegistryStore;
   operations: SessionOperationCoordinatorStore;
   reviews(): ReviewsStore;
@@ -52,18 +53,12 @@ export interface ProjectSessionStoreProps extends SessionTarget {
 
 /** Owns the view and interaction workflow for one project Pi session. */
 export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
-  readonly model: Session;
-  activity: "running" | "unread" | "error" | undefined;
   private artifactRequestActive = false;
-  constructor(props: ProjectSessionStore["props"]) {
-    super(props);
-    this.model = Session.create({
-      sessionId: props.sessionId,
-      workingDirectory: props.workspacePath,
-    });
-    this.effect(() => () => this.model[Symbol.dispose]());
-  }
+  private readSettledTurnRevision = 0;
 
+  get model() {
+    return this.props.model;
+  }
   get client() {
     return RendererClientContext.consume(this)!;
   }
@@ -129,21 +124,16 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
     );
   }
 
-  markRead() {
-    if (this.activity === "unread") this.activity = undefined;
+  @computed
+  get activity(): "running" | "unread" | "error" | undefined {
+    if (this.isStreaming) return "running";
+    if (this.props.isActive() || this.model.settledTurnRevision <= this.readSettledTurnRevision)
+      return undefined;
+    return this.latestTurnErrored ? "error" : "unread";
   }
 
-  updateActivity(streaming: boolean, wasStreaming = false) {
-    if (streaming) {
-      this.activity = "running";
-      return;
-    }
-    if (this.activity !== "running" && !wasStreaming) return;
-    if (this.latestTurnErrored) {
-      this.activity = "error";
-      return;
-    }
-    this.activity = this.props.isActive() ? undefined : "unread";
+  markRead() {
+    this.readSettledTurnRevision = this.model.settledTurnRevision;
   }
 
   private get latestTurnErrored() {

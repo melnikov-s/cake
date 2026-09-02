@@ -9,6 +9,7 @@ import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import { CakeChatSessionStore } from "./CakeChatSessionStore";
 import { describeError } from "../error-details";
 import type { CakeChatCatalog } from "../models/CakeChatCatalog";
+import type { Session } from "../models/Session";
 
 type CakeChatSummaryProjection = CakeChatSummary & { draft?: boolean };
 
@@ -31,6 +32,7 @@ interface NewCakeChatSessionRequest {
 
 export interface GlobalChatStoreProps {
   catalog: CakeChatCatalog;
+  sessionModel(sessionId: string): Session;
   tools(): ReadonlyArray<CakeControlTool>;
   modelPresets?(): readonly ModelPreset[];
   defaultConfiguration?(): ChatConfiguration | undefined;
@@ -86,6 +88,7 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
       createStore(CakeChatSessionStore, {
         key: sessionId,
         sessionId,
+        model: this.props.sessionModel(sessionId),
         collection: this,
         operations: this.operations,
         modelPresets: () => this.props.modelPresets?.() ?? [],

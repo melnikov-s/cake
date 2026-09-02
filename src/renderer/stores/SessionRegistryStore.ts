@@ -13,9 +13,11 @@ import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import { ProjectSessionStore, type SessionTarget } from "./ProjectSessionStore";
 import type { WorktreeStoreProps } from "./WorktreeStore";
 import type { ExistingWorktreeCandidate, WorktreeDraftChoice } from "./WorktreeCreationStore";
+import type { Session } from "../models/Session";
 
 export interface SessionRegistryStoreProps {
   catalog?: SessionCatalogStore;
+  sessionModel(sessionId: string, workingDirectory: string): Session;
   operations: SessionOperationCoordinatorStore;
   reviews(): ReviewsStore;
   pluginCommands(): PluginCommandStore;
@@ -69,6 +71,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
       createStore(ProjectSessionStore, {
         key: target.sessionId,
         ...target,
+        model: this.props.sessionModel(target.sessionId, target.workspacePath),
         registry: this,
         operations: this.props.operations,
         reviews: this.props.reviews,

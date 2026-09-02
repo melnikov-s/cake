@@ -4,13 +4,19 @@ import type { RendererClient } from "../../../../src/renderer/client/RendererCli
 import { CakeChatCatalog } from "../../../../src/renderer/models/CakeChatCatalog";
 import { GlobalChatStore } from "../../../../src/renderer/stores/GlobalChatStore";
 import { mountWithRendererClient } from "../mount-with-renderer-client";
+import { RendererModels } from "../../../../src/renderer/RendererModels";
 
 describe("GlobalChatStore", () => {
   it("omits unset optional fields from Cake Chat prompts", async () => {
     const prompt = vi.fn(async () => "turn-1");
     const catalog = CakeChatCatalog.create({ loaded: false, sessions: [] });
+    const models = new RendererModels();
     const { root, subject: store } = mountWithRendererClient(
-      createStore(GlobalChatStore, { catalog, tools: () => [] }),
+      createStore(GlobalChatStore, {
+        catalog,
+        sessionModel: (sessionId) => models.cakeChat(sessionId),
+        tools: () => [],
+      }),
       { cakeChats: { prompt } } as unknown as RendererClient,
     );
 
@@ -47,5 +53,7 @@ describe("GlobalChatStore", () => {
       expect.any(Object),
     );
     root[Symbol.dispose]();
+    catalog[Symbol.dispose]();
+    models[Symbol.dispose]();
   });
 });
