@@ -289,6 +289,42 @@ describe("Chat", () => {
     expect(abort).toHaveBeenCalledOnce();
   });
 
+  it("keeps draft typing from rendering the surrounding chat", () => {
+    const composerVisible = vi.fn(() => true);
+    store = mount(
+      createStore(ChatStore, {
+        id: () => "isolated-draft-chat",
+        parts: () => [],
+        streaming: () => false,
+        submitting: () => false,
+        configuration: () => undefined,
+        commands: () => [],
+        placeholder: () => "Message Cake",
+        inputLabel: () => "Message",
+        canSubmit: (draft) => Boolean(draft.trim()),
+        submit: async () => true,
+        composerVisible,
+      }),
+    );
+
+    act(() => root.render(<Chat store={store!} />));
+    const surroundingRenderReads = composerVisible.mock.calls.length;
+    const input = container.querySelector<HTMLTextAreaElement>('[aria-label="Message"]')!;
+
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(
+        input,
+        "Only update the draft controls",
+      );
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    expect(input.value).toBe("Only update the draft controls");
+    expect(store.draft).toBe("Only update the draft controls");
+    expect(composerVisible).toHaveBeenCalledTimes(surroundingRenderReads);
+    expect(container.querySelector<HTMLButtonElement>('[aria-label="Send"]')?.disabled).toBe(false);
+  });
+
   it("submits the draft from the send icon when idle", async () => {
     const submit = vi.fn(async () => true);
     store = mount(

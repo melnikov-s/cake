@@ -1,20 +1,19 @@
-import { useLayoutEffect, useReducer, useRef, useState, type ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { observer } from "r-state-tree/react";
 import { cn } from "@/lib/utils";
 import { AnnotationSummary } from "@/components/annotation-summary";
 import { ChatComposer } from "@/components/chat-composer";
+import { ChatComposerInput } from "@/components/chat-composer-input";
+import { ChatSubmitAction } from "@/components/chat-submit-action";
 import { ImagePreview } from "@/components/image-preview";
 import { ChatTranscript, type ChatTranscriptBehavior } from "@/components/chat-transcript";
 import { QueuedPrompts } from "@/components/queued-prompts";
 import { RewordPromptDialog } from "@/components/reword-prompt-dialog";
-import { SlashCommandCombobox } from "@/components/slash-command-combobox";
 import { SourceAttachment } from "@/components/source-attachment";
 import { SubagentStatus } from "@/components/subagent-status";
-import { Button } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
 import { IconButton } from "@/components/ui/icon-button";
-import { MarkdownIcon, PaperclipIcon, SendIcon, StopIcon } from "@/components/ui/icons";
-import { Popover, PopoverContent } from "@/components/ui/popover";
+import { MarkdownIcon, PaperclipIcon } from "@/components/ui/icons";
 import { TooltipBubble, useTooltip } from "@/components/ui/tooltip";
 import type { ChatStore } from "../stores/ChatStore";
 
@@ -120,16 +119,9 @@ export const Chat = observer(function Chat({
   embedded?: boolean;
   compact?: boolean;
 }) {
-  // The input keeps its DOM draft locally, while ChatStore remains canonical.
-  // Force the surrounding toolbar to re-read semantic submit state in the same event.
-  const [, draftChanged] = useReducer((revision: number) => revision + 1, 0);
   const layoutRef = useRef<HTMLDivElement>(null);
   const composerDockRef = useRef<HTMLDivElement>(null);
   const composerInputRef = useRef<HTMLTextAreaElement>(null);
-  const draftSendButtonRef = useRef<HTMLButtonElement>(null);
-  const draftHoldTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const suppressSendClickRef = useRef(false);
-  const [draftMenuOpen, setDraftMenuOpen] = useState(false);
   const [promptedSelection, setPromptedSelection] = useState<{
     draft: string;
     start: number;
@@ -137,12 +129,6 @@ export const Chat = observer(function Chat({
     text: string;
   }>();
   const composerVisible = store.composerVisible;
-  useLayoutEffect(
-    () => () => {
-      if (draftHoldTimerRef.current) clearTimeout(draftHoldTimerRef.current);
-    },
-    [],
-  );
   useLayoutEffect(() => {
     const layout = layoutRef.current;
     const dock = composerDockRef.current;
@@ -209,10 +195,6 @@ export const Chat = observer(function Chat({
       if (scrollFrame !== undefined) cancelAnimationFrame(scrollFrame);
     };
   }, [composerVisible, embedded]);
-  const submit = async (value?: string) => {
-    await store.submit(value ?? store.draft);
-    draftChanged();
-  };
   const restoreSelection = (selection: { start: number; end: number }) => {
     requestAnimationFrame(() => {
       const input = composerInputRef.current;
@@ -240,12 +222,10 @@ export const Chat = observer(function Chat({
     input.setSelectionRange(selection.start, selection.end);
     // Chromium's editing command records the replacement as one native undo step.
     const recordedUndo = document.execCommand("insertText", false, rewritten);
-    if (!recordedUndo) {
+    if (!recordedUndo)
       store.setDraft(
         `${selection.draft.slice(0, selection.start)}${rewritten}${selection.draft.slice(selection.end)}`,
       );
-      draftChanged();
-    }
     setPromptedSelection(undefined);
     restoreSelection({
       start: selection.start + rewritten.length,
@@ -295,65 +275,14 @@ export const Chat = observer(function Chat({
         }
         onSubmit={(event) => {
           event.preventDefault();
-          void submit();
+          void store.submit();
         }}
         input={
-          <SlashCommandCombobox
-            autoFocus
-            aria-label={store.inputLabel}
-            aria-busy={store.rewording}
-            inputRef={(input) => {
-              composerInputRef.current = input;
-            }}
-            commands={store.commands}
-            focusRequestRevision={store.focusRequestRevision}
-            suggestFiles={
-              store.canSuggestFiles ? (prefix) => store.suggestFiles(prefix) : undefined
-            }
-            placeholder={store.placeholder}
-            value={store.draft}
-            disabled={store.submittingLocally}
-            onValueChange={(value) => {
-              store.setDraft(value);
-              draftChanged();
-            }}
-            onContextMenu={(event) => {
-              if (!store.canRewordComposerSelection || store.rewording) return;
-              const input = event.currentTarget;
-              const start = input.selectionStart;
-              const end = input.selectionEnd;
-              if (start === end) return;
-              event.preventDefault();
-              const selection = {
-                draft: input.value,
-                start,
-                end,
-                text: input.value.slice(start, end),
-              };
-              void store
-                .showComposerContextMenu(selection.text, event.clientX, event.clientY)
-                .then((action) => {
-                  if (action === "reword") void reword(selection);
-                  else if (action === "reword-with-prompt") setPromptedSelection(selection);
-                });
-            }}
-            onPaste={(event) => {
-              if (!store.canPasteImages) return;
-              const images = [...event.clipboardData.files].filter((file) =>
-                file.type.startsWith("image/"),
-              );
-              if (images.length === 0)
-                for (const item of event.clipboardData.items) {
-                  if (!item.type.startsWith("image/")) continue;
-                  const file = item.getAsFile();
-                  if (file) images.push(file);
-                }
-              if (images.length === 0) return;
-              event.preventDefault();
-              void store.addPastedImages(images);
-            }}
-            onSubmit={(value) => submit(value)}
-            onEscape={store.canStop ? () => void store.abort() : undefined}
+          <ChatComposerInput
+            store={store}
+            inputRef={composerInputRef}
+            onReword={(selection) => void reword(selection)}
+            onPromptedReword={setPromptedSelection}
           />
         }
         toolbarLeading={
@@ -386,96 +315,7 @@ export const Chat = observer(function Chat({
           <>
             <Usage store={store} />
             {pluginActions}
-            {(() => {
-              const hasInput =
-                store.draft.trim().length > 0 ||
-                store.attachments.length > 0 ||
-                store.annotations.length > 0;
-              return (
-                <>
-                  {(!store.loading || hasInput) && (
-                    <Popover open={draftMenuOpen} onOpenChange={setDraftMenuOpen}>
-                      <IconButton
-                        ref={draftSendButtonRef}
-                        className="size-8 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-45"
-                        tooltip={
-                          store.editingMessage
-                            ? store.isDraftSession
-                              ? "Save draft"
-                              : "Save and regenerate"
-                            : store.canCreateDraft
-                              ? "Send · hold to save as draft"
-                              : "Send"
-                        }
-                        type="submit"
-                        disabled={!store.canSubmitDraft(store.draft)}
-                        onClick={(event) => {
-                          if (!suppressSendClickRef.current) return;
-                          event.preventDefault();
-                          suppressSendClickRef.current = false;
-                        }}
-                        onContextMenu={(event) => {
-                          if (!store.canCreateDraft) return;
-                          event.preventDefault();
-                          setDraftMenuOpen(true);
-                        }}
-                        onPointerDown={() => {
-                          if (!store.canCreateDraft) return;
-                          suppressSendClickRef.current = false;
-                          draftHoldTimerRef.current = setTimeout(() => {
-                            suppressSendClickRef.current = true;
-                            setDraftMenuOpen(true);
-                          }, 600);
-                        }}
-                        onPointerUp={() => {
-                          if (draftHoldTimerRef.current) clearTimeout(draftHoldTimerRef.current);
-                          draftHoldTimerRef.current = undefined;
-                        }}
-                        onPointerCancel={() => {
-                          if (draftHoldTimerRef.current) clearTimeout(draftHoldTimerRef.current);
-                          draftHoldTimerRef.current = undefined;
-                        }}
-                        onPointerLeave={() => {
-                          if (draftHoldTimerRef.current) clearTimeout(draftHoldTimerRef.current);
-                          draftHoldTimerRef.current = undefined;
-                        }}
-                      >
-                        <SendIcon />
-                      </IconButton>
-                      <PopoverContent
-                        anchorRef={draftSendButtonRef}
-                        align="end"
-                        className="w-44 p-1"
-                        role="menu"
-                        side="top"
-                      >
-                        <Button
-                          className="w-full justify-start"
-                          role="menuitem"
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => {
-                            setDraftMenuOpen(false);
-                            void store.createDraft();
-                          }}
-                        >
-                          Create draft
-                        </Button>
-                      </PopoverContent>
-                    </Popover>
-                  )}
-                  {store.canStop && !hasInput && (
-                    <IconButton
-                      className="size-8 rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
-                      tooltip="Stop"
-                      onClick={() => void store.abort()}
-                    >
-                      <StopIcon />
-                    </IconButton>
-                  )}
-                </>
-              );
-            })()}
+            <ChatSubmitAction store={store} />
           </>
         }
       >
