@@ -438,20 +438,8 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     this.extensionUi.clear();
     this.commandPaneStore.dismiss();
     session.composerStore.requestFocus();
-    void this.loadSlashCommands(path, sessionId);
+    void session.stagedCommandStore.load(path);
     void this.refreshRegisteredProject(path);
-  }
-
-  private async loadSlashCommands(path: string, sessionId: string) {
-    try {
-      const commands = await this.client.workspaces.loadSlashCommands(path, {
-        signal: this.signal,
-      });
-      if (!this.signal.aborted) this.sessionRegistry.setWorkingDirectoryCommands(path, commands);
-    } catch (error) {
-      if (!this.signal.aborted && this.selectedSessionId === sessionId)
-        this.setError(error, "Loading slash commands");
-    }
   }
 
   async openSession(sessionId: string) {

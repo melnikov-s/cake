@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Deferred, Effect, Fiber } from "effect";
@@ -10,7 +10,10 @@ import {
   PiAgentResources,
 } from "../../../../src/services/pi/PiAgentResources";
 import type { PiAgentResourcesSnapshot } from "../../../../src/services/pi/agent-resource-data";
-import { discoverPiAgentResources } from "../../../../src/services/pi/live/PiAgentResourcesLive";
+import {
+  discoverPiAgentPromptResources,
+  discoverPiAgentResources,
+} from "../../../../src/services/pi/live/PiAgentResourcesLive";
 
 const context = {
   workingDirectory: "/project",
@@ -40,6 +43,7 @@ describe("PiAgentResources", () => {
           operations.push(input.workingDirectory);
           return snapshot;
         }),
+      loadPromptResources: () => Effect.succeed({ skills: [], promptTemplates: [] }),
     });
     return Effect.gen(function* () {
       const resources = yield* PiAgentResources;
@@ -59,6 +63,7 @@ describe("PiAgentResources", () => {
             Effect.andThen(Effect.never),
             Effect.onInterrupt(() => Deferred.succeed(interrupted, undefined)),
           ),
+        loadPromptResources: () => Effect.never,
       });
       const operation = Effect.gen(function* () {
         return yield* (yield* PiAgentResources).load(context);
@@ -74,6 +79,7 @@ describe("PiAgentResources", () => {
     Effect.gen(function* () {
       const failed = makePiAgentResourcesLayer({
         load: () => Effect.fail(new Error("resource discovery failed")),
+        loadPromptResources: () => Effect.fail(new Error("prompt discovery failed")),
       });
       const failure = yield* Effect.gen(function* () {
         return yield* Effect.flip((yield* PiAgentResources).reload(context));
@@ -88,6 +94,7 @@ describe("PiAgentResources", () => {
             ...snapshot,
             skills: [{ invalid: true }],
           }),
+        loadPromptResources: () => Effect.succeed({ skills: [], promptTemplates: [] }),
       });
       const malformedFailure = yield* Effect.gen(function* () {
         return yield* Effect.flip((yield* PiAgentResources).load(context));
@@ -104,6 +111,7 @@ describe("PiAgentResources", () => {
       temporaryDirectories.push(directory);
       const agentDirectory = join(directory, "agent");
       const packageDirectory = join(directory, "fixture-package");
+      const extensionMarker = join(directory, "extension-loaded");
       await mkdir(join(directory, ".pi"), { recursive: true });
       await mkdir(join(packageDirectory, "skills", "fixture-skill"), { recursive: true });
       await mkdir(join(packageDirectory, "prompts"), { recursive: true });
@@ -135,8 +143,16 @@ describe("PiAgentResources", () => {
       );
       await writeFile(
         join(packageDirectory, "extensions", "fixture.ts"),
-        "export default function (pi) { pi.registerCommand('fixture-command', { description: 'Fixture', handler: async () => undefined }); }\n",
+        `import { writeFileSync } from "node:fs";\nwriteFileSync(${JSON.stringify(extensionMarker)}, "loaded");\nexport default function (pi) { pi.registerCommand('fixture-command', { description: 'Fixture', handler: async () => undefined }); }\n`,
       );
+
+      const staged = await discoverPiAgentPromptResources(agentDirectory, {
+        workingDirectory: directory,
+        projectTrusted: true,
+      });
+      assert.ok(staged.skills.some((skill) => skill.name === "fixture-skill"));
+      assert.ok(staged.promptTemplates.some((prompt) => prompt.name === "fixture-prompt"));
+      await assert.rejects(access(extensionMarker));
 
       const result = await discoverPiAgentResources(agentDirectory, {
         workingDirectory: directory,
@@ -151,6 +167,7 @@ describe("PiAgentResources", () => {
       );
       assert.ok(extension);
       assert.equal("commands" in extension, false);
+      await access(extensionMarker);
     },
   );
 });

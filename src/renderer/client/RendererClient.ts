@@ -119,7 +119,7 @@ interface WorkspaceCommands {
     model: UtilityModel | undefined,
     options?: RendererCommandOptions,
   ): Promise<ApplicationState>;
-  loadSlashCommands(
+  loadStagedSlashCommands(
     path: string,
     options?: RendererCommandOptions,
   ): Promise<SessionSnapshot["commands"]>;

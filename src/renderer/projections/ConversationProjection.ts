@@ -57,6 +57,15 @@ function applyConversationSnapshot(
 ) {
   const current = toSnapshot(model);
   const authoritative = toSessionSnapshot(conversation);
+  const currentExtensionUi = current.extensionUi!;
+  const authoritativeExtensionUi = authoritative.extensionUi!;
+  const extensionUi =
+    (currentExtensionUi.revision ?? 0) > (authoritativeExtensionUi.revision ?? 0)
+      ? currentExtensionUi
+      : {
+          ...authoritativeExtensionUi,
+          compatibilityDiagnostics: currentExtensionUi.compatibilityDiagnostics,
+        };
   applySnapshot(model, {
     ...authoritative,
     activeTurnIds: preserveActiveTurns ? current.activeTurnIds : [],
@@ -65,13 +74,7 @@ function applyConversationSnapshot(
     releasedSubagentHandleIds: current.releasedSubagentHandleIds,
     backgroundWorkActive: current.backgroundWorkActive,
     controlRequests: current.controlRequests,
-    extensionUi: {
-      ...authoritative.extensionUi,
-      notifications: current.extensionUi!.notifications,
-      compatibilityDiagnostics: current.extensionUi!.compatibilityDiagnostics,
-      editorText: current.extensionUi!.editorText,
-      editorTextRevision: current.extensionUi!.editorTextRevision,
-    },
+    extensionUi,
   });
 }
 
@@ -98,6 +101,7 @@ function applyConversationEvent(model: Session, event: ConversationEvent) {
 
 function applyExtensionUiEvent(model: Session, event: typeof extensionUiEventSchema.Type): void {
   const extensionUi = model.extensionUi;
+  extensionUi.revision += 1;
   if (event.kind === "notify") {
     const existing = extensionUi.notifications.findIndex((item) => item.id === event.id);
     if (existing >= 0) extensionUi.notifications.splice(existing, 1);

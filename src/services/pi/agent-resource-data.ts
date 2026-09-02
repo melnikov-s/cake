@@ -73,10 +73,15 @@ export const PiAgentResourcesSnapshot = Schema.Struct({
   diagnostics: Schema.Array(PiAgentResourceDiagnostic).check(Schema.isMaxLength(8_192)),
 });
 
+export const PiAgentPromptResourcesSnapshot = Schema.Struct({
+  skills: Schema.Array(PiAgentSkill).check(Schema.isMaxLength(4_096)),
+  promptTemplates: Schema.Array(PiAgentPromptTemplate).check(Schema.isMaxLength(4_096)),
+});
+
 export class PiAgentResourcesError extends Schema.TaggedError<PiAgentResourcesError>()(
   "PiAgentResourcesError",
   {
-    operation: Schema.Literals(["load", "reload"]),
+    operation: Schema.Literals(["load", "reload", "loadPromptResources"]),
     message: Schema.String,
   },
 ) {}
@@ -84,4 +89,7 @@ export class PiAgentResourcesError extends Schema.TaggedError<PiAgentResourcesEr
 export interface PiAgentResourceContext extends Schema.Schema.Type<typeof PiAgentResourceContext> {}
 export interface PiAgentResourcesSnapshot extends Schema.Schema.Type<
   typeof PiAgentResourcesSnapshot
+> {}
+export interface PiAgentPromptResourcesSnapshot extends Schema.Schema.Type<
+  typeof PiAgentPromptResourcesSnapshot
 > {}

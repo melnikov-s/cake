@@ -9,6 +9,7 @@ export interface ExtensionNotification {
 
 /** Passive renderer projection of session-bound Pi Extension UI state. */
 export class ExtensionUi extends Model {
+  revision = 0;
   title: string | undefined;
   statuses: Array<ExtensionUiState["statuses"][number]> = observable([]);
   notifications: ExtensionNotification[] = observable([]);

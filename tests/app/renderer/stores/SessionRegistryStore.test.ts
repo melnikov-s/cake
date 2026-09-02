@@ -1,5 +1,5 @@
 import { createStore, mount } from "r-state-tree";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { SessionCatalog } from "../../../../src/renderer/models/SessionCatalog";
 import { SessionCatalogStore } from "../../../../src/renderer/stores/SessionCatalogStore";
 import { SessionOperationCoordinatorStore } from "../../../../src/renderer/stores/SessionOperationCoordinatorStore";
@@ -44,8 +44,13 @@ describe("SessionRegistryStore materialization", () => {
     expect(registry.materializedSessions).toEqual([]);
     expect(registry.findSession("session-1")?.workspacePath).toBe("/worktree");
 
+    const invalidate = vi.spyOn(
+      registry.findSession("session-1")!.stagedCommandStore,
+      "invalidate",
+    );
     registry.materializeNewSession("session-1", "/worktree");
 
+    expect(invalidate).toHaveBeenCalledOnce();
     expect(registry.isTemporarySession("session-1")).toBe(false);
     expect(registry.materializedSessions).toHaveLength(1);
     expect(registry.materializedSessions[0]?.workspacePath).toBe("/worktree");

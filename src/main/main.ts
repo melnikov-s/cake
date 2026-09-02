@@ -5,7 +5,6 @@ import { app, nativeTheme } from "electron";
 import { cakeEventSchema, type CakeEvent } from "../ipc/cake-rpc-contract";
 import { makeCakeIpcServerLive } from "../ipc/server/CakeIpcServer";
 import { makePiAgentResourcesLive } from "../services/pi/live/PiAgentResourcesLive";
-import { makePiCommandCatalogLive } from "../services/pi/live/PiCommandCatalogLive";
 import { makePiModelsLive } from "../services/pi/live/PiModelsLive";
 import { makePiSessionsLive } from "../services/pi/PiSessions";
 import { AgentAvailability } from "../services/pi/AgentAvailability";
@@ -110,7 +109,6 @@ const baseLive = Layer.mergeAll(
   pluginResourcesLive,
   piModelsLive,
   makePiAgentResourcesLive(cakePaths.piAgent),
-  makePiCommandCatalogLive(cakePaths.piAgent),
   piSessionsLive,
   agentAvailabilityLive,
   electronLive,

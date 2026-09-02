@@ -51,6 +51,7 @@ export interface MessageComposerStoreProps {
   openCommandPane(pane: "changelog" | "tree" | "resources"): Promise<void>;
   matchesPluginCommand(input: string): boolean;
   runPluginCommand(input: string): Promise<boolean>;
+  selectModel(value: string): Promise<void>;
   renameSession(name: string): Promise<void>;
   handoffSession(entryId: string, prompt?: string, resolveSource?: boolean): Promise<boolean>;
   operations: SessionOperationCoordinatorStore;
@@ -320,8 +321,12 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
       return;
     }
     if (builtin?.name === "model") {
+      if (builtin.args.indexOf("/") < 1) {
+        this.reportError(new Error("Usage: /model <provider/model>"));
+        return;
+      }
       this.props.setDraft("");
-      await this.switchModel(builtin.args);
+      await this.props.selectModel(builtin.args);
       return;
     }
     if (builtin?.name === "name") {
@@ -462,37 +467,6 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
   removeQueuedPrompt(id: string) {
     const index = this.queuedPrompts.findIndex((entry) => entry.id === id);
     if (index >= 0) this.queuedPrompts.splice(index, 1);
-  }
-
-  private async switchModel(value: string) {
-    const separator = value.indexOf("/");
-    if (!value || separator < 1) {
-      this.reportError(new Error("Usage: /model <provider/model>"));
-      return;
-    }
-    const sessionId = this.props.sessionId();
-    if (!sessionId) return;
-    this.error = undefined;
-    this.errorDetails = undefined;
-    const operationId = this.props.operations.start(this.props.operationOwner);
-    try {
-      await this.client.projectSessions.setModel(
-        {
-          sessionId,
-          provider: value.slice(0, separator),
-          modelId: value.slice(separator + 1),
-        },
-        { signal: this.signal },
-      );
-      this.finishOperation(operationId);
-    } catch (error) {
-      if (this.signal.aborted) {
-        this.finishOperation(operationId);
-        return;
-      }
-      this.reportError(error);
-      this.finishOperation(operationId);
-    }
   }
 
   private async renameSession(name: string) {

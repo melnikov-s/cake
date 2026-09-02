@@ -5,6 +5,7 @@ export async function loadPiResources(
   agentDirectory: string,
   context: PiAgentResourceContext,
   signal?: AbortSignal,
+  options?: { readonly noExtensions?: boolean },
 ) {
   signal?.throwIfAborted();
   const settingsManager = SettingsManager.create(context.workingDirectory, agentDirectory, {
@@ -23,6 +24,7 @@ export async function loadPiResources(
       : [],
     noThemes: true,
     noContextFiles: true,
+    noExtensions: options?.noExtensions,
   });
   await resourceLoader.reload({ resolveProjectTrust: async () => context.projectTrusted });
   signal?.throwIfAborted();

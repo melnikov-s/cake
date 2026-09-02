@@ -466,7 +466,7 @@ export const cakeRpcPayloadSchemas = {
   "set-utility-model": Schema.Struct({
     model: Schema.optional(utilityModelSchema),
   }),
-  "load-slash-commands": Schema.Struct({
+  "load-staged-slash-commands": Schema.Struct({
     path: stringMax(4_096),
   }),
   "register-project": Schema.Struct({
@@ -685,7 +685,7 @@ export const cakeRpcSuccessSchemas = {
   "reword-composer-selection": cakeRpcResultSchemas["composer-selection-reworded"],
   "generate-session-title": cakeRpcResultSchemas["session-title-generated"],
   "set-utility-model": cakeRpcResultSchemas["application-state-updated"],
-  "load-slash-commands": cakeRpcResultSchemas["slash-commands-loaded"],
+  "load-staged-slash-commands": cakeRpcResultSchemas["slash-commands-loaded"],
   "register-project": cakeRpcResultSchemas["application-state-updated"],
   "rename-project": cakeRpcResultSchemas["application-state-updated"],
   "remove-project": cakeRpcResultSchemas["application-state-updated"],

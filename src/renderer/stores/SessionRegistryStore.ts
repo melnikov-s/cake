@@ -1,11 +1,9 @@
 import { Store, batch, child, createStore, observable, snapshot, updateStore } from "r-state-tree";
 import {
-  piBuiltinSlashCommands,
   SESSION_TITLE_MAX_LENGTH,
   type Attachment,
   type ChatConfiguration,
   type ModelPreset,
-  type SessionSnapshot,
 } from "../../ipc/session-contract";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { ReviewsStore } from "./ReviewsStore";
@@ -64,8 +62,6 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
   @snapshot private readonly temporarySessionIds: string[] = observable([]);
   /** The one unsent, unsaved project chat. Explicit drafts are not staged chats. */
   @snapshot private stagedSessionId: string | undefined;
-  private readonly commandsByWorkingDirectory: Record<string, SessionSnapshot["commands"]> =
-    observable({});
   private readonly sessionsById = new Map<string, ProjectSessionStore>();
   private readonly sessionWorkspacePaths = new Map<string, string>();
 
@@ -136,6 +132,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     if (!this.temporarySessionIds.includes(sessionId))
       throw new Error("Only a successfully started renderer draft can be materialized.");
     return batch(() => {
+      this.findSession(sessionId)?.stagedCommandStore.invalidate();
       this.rememberSessionLocation(sessionId, workingDirectory);
       const session = this.addTarget(sessionId, workingDirectory);
       addUnique(this.materializedSessionIds, sessionId);
@@ -285,6 +282,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     this.sessionWorkspacePaths.set(sessionId, workspacePath);
     this.targets.splice(index, 1, { sessionId, workspacePath });
     updateStore(session, { ...session.props, workspacePath });
+    void session.stagedCommandStore.load(workspacePath);
     if (this.isDraftSession(sessionId))
       this.props.catalog?.upsertPending(
         sessionId,
@@ -295,25 +293,6 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
           resolved: this.draftSessionPrompt(sessionId)?.resolved,
         },
       );
-  }
-
-  commandsForSession(sessionId: string, workspacePath: string) {
-    const session = this.findSession(sessionId);
-    if (session?.model.commands.length) return session.model.commands;
-    const sessionCommands = this.sessions.find(
-      (candidate) =>
-        candidate.sessionId !== sessionId &&
-        candidate.workspacePath === workspacePath &&
-        candidate.hydrated &&
-        candidate.model.commands.length > 0,
-    )?.model.commands;
-    return (
-      sessionCommands ?? this.commandsByWorkingDirectory[workspacePath] ?? piBuiltinSlashCommands
-    );
-  }
-
-  setWorkingDirectoryCommands(workspacePath: string, commands: SessionSnapshot["commands"]) {
-    this.commandsByWorkingDirectory[workspacePath] = [...commands];
   }
 
   pendingConfiguration(sessionId: string) {

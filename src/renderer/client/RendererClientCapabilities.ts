@@ -129,10 +129,10 @@ export function makeRendererClientCapabilities(execute: Execute): RendererClient
           (client) => client.workspaces["set-utility-model"]({ model }),
           options,
         ).then((response) => response.state),
-      loadSlashCommands: (path, options) =>
+      loadStagedSlashCommands: (path, options) =>
         execute(
-          "workspaces.load-slash-commands",
-          (client) => client.workspaces["load-slash-commands"]({ path }),
+          "workspaces.load-staged-slash-commands",
+          (client) => client.workspaces["load-staged-slash-commands"]({ path }),
           options,
         ).then((response) => response.commands),
       registerProject: (path, name, options) =>

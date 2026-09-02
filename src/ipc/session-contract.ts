@@ -393,7 +393,17 @@ const compatibilityCatalogSchema = Schema.Struct({
   resources: defaultKey(ipcProjectionArray(compatibilityResourceSchema, 20_000), []),
   diagnostics: defaultKey(ipcProjectionArray(resourceDiagnosticSchema, 5_000), []),
 });
+const extensionNotificationSchema = Schema.Struct({
+  id: stringRange(1, 256),
+  message: ipcProjectionString(4_096),
+  tone: Schema.Literals(["info", "warning", "error"]),
+});
+const extensionEditorTextSchema = Schema.Struct({
+  text: ipcProjectionString(262_144),
+  mode: Schema.Literals(["replace", "insert"]),
+});
 const extensionUiStateSchema = Schema.Struct({
+  revision: defaultKey(nonNegativeInt, 0),
   title: Schema.optional(ipcProjectionString(512)),
   statuses: defaultKey(
     ipcProjectionArray(
@@ -402,6 +412,9 @@ const extensionUiStateSchema = Schema.Struct({
     ),
     [],
   ),
+  notifications: defaultKey(ipcProjectionArray(extensionNotificationSchema, 8), []),
+  editorText: Schema.optional(extensionEditorTextSchema),
+  editorTextRevision: defaultKey(nonNegativeInt, 0),
 });
 
 export const slashCommandSchema = Schema.Struct({
@@ -445,6 +458,11 @@ export const piBuiltinSlashCommands = [
   }),
 );
 
+/** Pi commands Cake can execute before a Pi Session Runtime exists. */
+export const stagedSessionSlashCommands = piBuiltinSlashCommands.filter(
+  (command) => command.name === "model" || command.name === "name",
+);
+
 export function parsePiBuiltinCommand(text: string): { name: string; args: string } | undefined {
   const match = /^\/([^\s]+)(?:\s+([\s\S]*))?$/.exec(text.trim());
   if (!match) return undefined;
@@ -454,12 +472,7 @@ export function parsePiBuiltinCommand(text: string): { name: string; args: strin
 }
 
 export const extensionUiEventSchema = Schema.Union([
-  Schema.Struct({
-    kind: Schema.Literal("notify"),
-    id: ipcProjectionString(256),
-    message: ipcProjectionString(4_096),
-    tone: Schema.Literals(["info", "warning", "error"]),
-  }),
+  Schema.Struct({ kind: Schema.Literal("notify"), ...extensionNotificationSchema.fields }),
   Schema.Struct({
     kind: Schema.Literal("status"),
     key: stringMax(256),
@@ -494,7 +507,12 @@ export const sessionSnapshotSchema = Schema.Struct({
   commands: ipcProjectionArray(slashCommandSchema, 20_000),
   usage: Schema.optional(sessionUsageSchema),
   compatibility: defaultKey(compatibilityCatalogSchema, { resources: [], diagnostics: [] }),
-  extensionUi: defaultKey(extensionUiStateSchema, { statuses: [] }),
+  extensionUi: defaultKey(extensionUiStateSchema, {
+    revision: 0,
+    statuses: [],
+    notifications: [],
+    editorTextRevision: 0,
+  }),
   sessions: defaultKey(ipcProjectionArray(sessionSummarySchema, 10_000), []),
   tree: defaultKey(ipcProjectionArray(sessionTreeEntrySchema, 50_000), []),
   artifacts: Schema.optional(ipcProjectionArray(artifactRecordSchema, 10_000)),

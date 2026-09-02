@@ -149,7 +149,7 @@ describe("RendererModelSynchronizer", () => {
       diagnostics: [],
       commands: [],
       compatibility: { resources: [], diagnostics: [] },
-      extensionUi: { statuses: [] },
+      extensionUi: { revision: 0, statuses: [], notifications: [], editorTextRevision: 0 },
       sessions: [],
       tree: [],
     };
@@ -240,7 +240,7 @@ describe("RendererModelSynchronizer", () => {
       diagnostics: [],
       commands: [],
       compatibility: { resources: [], diagnostics: [] },
-      extensionUi: { statuses: [] },
+      extensionUi: { revision: 0, statuses: [], notifications: [], editorTextRevision: 0 },
       sessions: [],
       tree: [],
     };

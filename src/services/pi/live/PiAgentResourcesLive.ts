@@ -1,10 +1,55 @@
 import { DefaultPackageManager } from "@earendil-works/pi-coding-agent";
 import { Effect, Layer } from "effect";
 import { makePiAgentResources, PiAgentResources } from "../PiAgentResources";
-import type { PiAgentResourceContext, PiAgentResourcesSnapshot } from "../agent-resource-data";
+import type {
+  PiAgentPromptResourcesSnapshot,
+  PiAgentResourceContext,
+  PiAgentResourcesSnapshot,
+} from "../agent-resource-data";
 import { loadPiResources } from "./PiResourceLoader";
 
 const bounded = (value: string, maximum: number) => value.slice(0, maximum);
+
+const promptResources = (
+  resourceLoader: Awaited<ReturnType<typeof loadPiResources>>["resourceLoader"],
+): PiAgentPromptResourcesSnapshot => ({
+  skills: resourceLoader
+    .getSkills()
+    .skills.slice(0, 4_096)
+    .map((skill) => ({
+      kind: "skill" as const,
+      name: bounded(skill.name, 256),
+      description: bounded(skill.description, 8_192),
+      path: bounded(skill.filePath, 8_192),
+      source: bounded(skill.sourceInfo.source, 8_192),
+      scope: skill.sourceInfo.scope,
+      origin: skill.sourceInfo.origin,
+    })),
+  promptTemplates: resourceLoader
+    .getPrompts()
+    .prompts.slice(0, 4_096)
+    .map((prompt) => ({
+      kind: "prompt" as const,
+      name: bounded(prompt.name, 256),
+      description: bounded(prompt.description, 8_192),
+      ...(prompt.argumentHint ? { argumentHint: bounded(prompt.argumentHint, 2_048) } : undefined),
+      path: bounded(prompt.filePath, 8_192),
+      source: bounded(prompt.sourceInfo.source, 8_192),
+      scope: prompt.sourceInfo.scope,
+      origin: prompt.sourceInfo.origin,
+    })),
+});
+
+export async function discoverPiAgentPromptResources(
+  agentDirectory: string,
+  context: PiAgentResourceContext,
+  signal?: AbortSignal,
+): Promise<PiAgentPromptResourcesSnapshot> {
+  const { resourceLoader } = await loadPiResources(agentDirectory, context, signal, {
+    noExtensions: true,
+  });
+  return promptResources(resourceLoader);
+}
 
 export async function discoverPiAgentResources(
   agentDirectory: string,
@@ -17,29 +62,8 @@ export async function discoverPiAgentResources(
     signal,
   );
 
-  const skills = resourceLoader
-    .getSkills()
-    .skills.slice(0, 4_096)
-    .map((skill) => ({
-      kind: "skill" as const,
-      name: bounded(skill.name, 256),
-      description: bounded(skill.description, 8_192),
-      path: bounded(skill.filePath, 8_192),
-      source: bounded(skill.sourceInfo.source, 8_192),
-      scope: skill.sourceInfo.scope,
-      origin: skill.sourceInfo.origin,
-    }));
+  const { skills, promptTemplates } = promptResources(resourceLoader);
   const prompts = resourceLoader.getPrompts();
-  const promptTemplates = prompts.prompts.slice(0, 4_096).map((prompt) => ({
-    kind: "prompt" as const,
-    name: bounded(prompt.name, 256),
-    description: bounded(prompt.description, 8_192),
-    ...(prompt.argumentHint ? { argumentHint: bounded(prompt.argumentHint, 2_048) } : undefined),
-    path: bounded(prompt.filePath, 8_192),
-    source: bounded(prompt.sourceInfo.source, 8_192),
-    scope: prompt.sourceInfo.scope,
-    origin: prompt.sourceInfo.origin,
-  }));
   const extensions = resourceLoader.getExtensions();
   const extensionSources = extensions.extensions.slice(0, 4_096).map((extension) => ({
     kind: "extension" as const,
@@ -99,6 +123,12 @@ export const makePiAgentResourcesLive = (agentDirectory: string) =>
       load: Effect.fn("PiAgentResourcesLive.load")((context) =>
         Effect.tryPromise({
           try: (signal) => discoverPiAgentResources(agentDirectory, context, signal),
+          catch: (cause) => cause,
+        }),
+      ),
+      loadPromptResources: Effect.fn("PiAgentResourcesLive.loadPromptResources")((context) =>
+        Effect.tryPromise({
+          try: (signal) => discoverPiAgentPromptResources(agentDirectory, context, signal),
           catch: (cause) => cause,
         }),
       ),

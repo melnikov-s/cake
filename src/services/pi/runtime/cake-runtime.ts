@@ -1062,10 +1062,23 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     diagnostics: [...initialCatalog.diagnostics],
   };
   interface MutableExtensionUiState {
+    revision: number;
     statuses: Array<{ key: string; text: string }>;
+    notifications: Array<{
+      id: string;
+      message: string;
+      tone: "info" | "warning" | "error";
+    }>;
     title?: string;
+    editorText?: { text: string; mode: "replace" | "insert" };
+    editorTextRevision: number;
   }
-  const extensionUiState: MutableExtensionUiState = { statuses: [] };
+  const extensionUiState: MutableExtensionUiState = {
+    revision: 0,
+    statuses: [],
+    notifications: [],
+    editorTextRevision: 0,
+  };
   const compatibilityDiagnosticKeys = new Set(
     catalog.diagnostics.map((item) => `${item.method ?? ""}:${item.message}`),
   );
@@ -1075,6 +1088,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     request: requestExtensionValue,
     state: extensionUiState,
     emit: (event) => {
+      extensionUiState.revision += 1;
       if (!disposed) options.onEvent({ type: "extension-ui", sessionId: cakeSessionId, event });
     },
     addDiagnostic(method, message) {
@@ -1089,12 +1103,14 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         message,
       };
       catalog.diagnostics.push(diagnostic);
-      if (!disposed)
+      if (!disposed) {
+        extensionUiState.revision += 1;
         options.onEvent({
           type: "extension-ui",
           sessionId: cakeSessionId,
           event: { kind: "diagnostic", diagnostic },
         });
+      }
     },
   });
   await session.bindExtensions({ mode: "rpc", uiContext: extensionUi });

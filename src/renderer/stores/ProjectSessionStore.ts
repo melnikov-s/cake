@@ -14,6 +14,7 @@ import { ArtifactInteractionStore } from "./ArtifactInteractionStore";
 import { MessageCommentsStore } from "./MessageCommentsStore";
 import { SubagentActivityStore } from "./SubagentActivityStore";
 import { WorktreeStore, type WorktreeStoreProps } from "./WorktreeStore";
+import { StagedSessionCommandStore } from "./StagedSessionCommandStore";
 import { RendererClientContext } from "../client/RendererClientContext";
 import type { ExistingWorktreeCandidate, WorktreeDraftChoice } from "./WorktreeCreationStore";
 
@@ -181,6 +182,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       openCommandPane: (pane) => this.props.openCommandPane(pane),
       matchesPluginCommand: (input) => this.props.pluginCommands().matches(input),
       runPluginCommand: (input) => this.props.pluginCommands().run(input),
+      selectModel: (value) => this.configurationStore.selectModel(value),
       renameSession: (name) => this.props.renameSession(name),
       handoffSession: (entryId, prompt, resolveSource) =>
         this.props.handoffSession(entryId, prompt, resolveSource),
@@ -228,6 +230,11 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   }
 
   @child
+  get stagedCommandStore(): StagedSessionCommandStore {
+    return createStore(StagedSessionCommandStore);
+  }
+
+  @child
   get chatStore(): ChatStore {
     return createStore(ChatStore, {
       id: () => this.sessionId,
@@ -238,7 +245,9 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       stoppable: () => this.model.backgroundWorkActive,
       configuration: () => this.configurationStore,
       commands: () => [
-        ...this.props.registry.commandsForSession(this.sessionId, this.workspacePath),
+        ...(this.props.registry.isTemporarySession(this.sessionId)
+          ? this.stagedCommandStore.commands
+          : this.model.commands),
         ...this.props.pluginCommands().commands,
       ],
       placeholder: () =>
@@ -293,8 +302,14 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       removeQueuedPrompt: (id) => this.composerStore.removeQueuedPrompt(id),
       hideThinking: () => Boolean(this.model.piSettings?.hideThinkingBlock),
       error: () => ({
-        message: this.composerStore.error ?? this.configurationStore.error,
-        details: this.composerStore.errorDetails ?? this.configurationStore.errorDetails,
+        message:
+          this.composerStore.error ??
+          this.configurationStore.error ??
+          this.stagedCommandStore.error,
+        details:
+          this.composerStore.errorDetails ??
+          this.configurationStore.errorDetails ??
+          this.stagedCommandStore.errorDetails,
       }),
       workLogViewMode: () => this.props.settings?.()?.workLogViewMode,
       setWorkLogViewMode: (mode) => {

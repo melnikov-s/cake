@@ -3,7 +3,7 @@ import { Effect, Stream } from "effect";
 import type { cakeRpcPayloadSchemas } from "../ipc/cake-rpc-contract";
 import { Electron } from "../services/electron/Electron";
 import { PiSessions } from "../services/pi/PiSessions";
-import { PiCommandCatalog } from "../services/pi/PiCommandCatalog";
+import { PiAgentResources } from "../services/pi/PiAgentResources";
 import { AgentAvailability } from "../services/pi/AgentAvailability";
 import { ProjectSessionIntegrations } from "../services/pi/ProjectSessionIntegrations";
 import { rewordSelectionWithProjectContext } from "../services/pi/runtime/rewording-agent";
@@ -171,21 +171,47 @@ export const setUtilityModel = Effect.fn("Projects.setUtilityModel")(function* (
   };
 });
 
-export const loadSlashCommands = Effect.fn("Projects.loadSlashCommands")(function* (
+export const loadStagedSlashCommands = Effect.fn("Projects.loadStagedSlashCommands")(function* (
   _connectionId: number,
-  request: Payload<"load-slash-commands">,
+  request: Payload<"load-staged-slash-commands">,
 ) {
   yield* requireAllowed(request.path);
   const application = yield* ApplicationState;
-  const catalog = yield* PiCommandCatalog;
-  const commands = yield* mapProjectError(
-    "loadSlashCommands",
-    catalog.load({
+  const resources = yield* PiAgentResources;
+  const { skills, promptTemplates } = yield* mapProjectError(
+    "loadStagedSlashCommands",
+    resources.loadPromptResources({
       workingDirectory: request.path,
       projectTrusted: application.snapshot().trustedProjectPaths.includes(request.path),
     }),
   );
-  return { commands };
+  return {
+    commands: [
+      ...promptTemplates.map((prompt) => ({
+        name: prompt.name,
+        description: prompt.description,
+        ...(prompt.argumentHint ? { argumentHint: prompt.argumentHint } : undefined),
+        source: "prompt" as const,
+        sourceInfo: {
+          path: prompt.path,
+          source: prompt.source,
+          scope: prompt.scope,
+          origin: prompt.origin,
+        },
+      })),
+      ...skills.map((skill) => ({
+        name: `skill:${skill.name}`,
+        description: skill.description,
+        source: "skill" as const,
+        sourceInfo: {
+          path: skill.path,
+          source: skill.source,
+          scope: skill.scope,
+          origin: skill.origin,
+        },
+      })),
+    ],
+  };
 });
 
 export const register = Effect.fn("Projects.register")(function* (

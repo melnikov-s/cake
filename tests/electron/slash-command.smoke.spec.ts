@@ -80,7 +80,8 @@ test("selects and runs slash commands from the composer with the keyboard", asyn
 
     await composer.fill("/");
     await expect(page.getByRole("listbox", { name: "Slash commands" })).toBeVisible();
-    await composer.press("ArrowDown");
+    await expect(page.getByRole("option", { name: /compact/ })).toHaveCount(0);
+    await expect(page.getByRole("option", { name: /handoff/ })).toHaveCount(0);
     await composer.press("Tab");
     await expect(composer).toHaveValue("/model ");
 
@@ -93,6 +94,11 @@ test("selects and runs slash commands from the composer with the keyboard", asyn
     await expect(
       page.getByRole("option", { name: /skill:desktop-fixture Desktop fixture skill/ }),
     ).toBeVisible();
+    await composer.press("Tab");
+    await expect(composer).toHaveValue("/skill:desktop-fixture ");
+    await composer.press("Enter");
+    await expect(page.locator(".session-item.active")).toHaveCount(1, { timeout: 20_000 });
+    await expect(composer).toHaveValue("");
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });
