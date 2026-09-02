@@ -74,13 +74,13 @@ describe("ChatStore work log timers", () => {
     store[Symbol.dispose]();
   });
 
-  it("prunes timers and overrides when transcript parts are removed", () => {
+  it("prunes removed item overrides while retaining the surviving work-log group", () => {
     vi.useFakeTimers();
     vi.setSystemTime(1_000_000);
     let parts: UiPart[] = [toolPart("tool-1", "running"), toolPart("tool-2", "running")];
     const store = createChatStore(() => parts);
     store.setWorkLogItemOpen("tool-1", true);
-    store.setWorkLogGroupOpen("tool-1", true);
+    store.setWorkLogGroupOpen("activity-0", true);
 
     parts = [toolPart("tool-2", "success")];
     store["syncWorkLogTimers"]();
@@ -88,9 +88,34 @@ describe("ChatStore work log timers", () => {
     expect(store.workLogElapsedMs("tool-1")).toBeUndefined();
     expect(store.workLogTimers.has("tool-1")).toBe(false);
     expect(store.workLogItemOverrides.has("tool-1")).toBe(false);
-    expect(store.workLogGroupOverrides.has("tool-1")).toBe(false);
+    expect(store.workLogGroupOverrides.get("activity-0")).toBe(true);
     expect(store.workLogElapsedMs("tool-2")).toBeGreaterThanOrEqual(0);
     expect(vi.getTimerCount()).toBe(0);
+
+    parts = [];
+    store["syncWorkLogTimers"]();
+    expect(store.workLogGroupOverrides.has("activity-0")).toBe(false);
+    store[Symbol.dispose]();
+  });
+
+  it("retains a group override when settled reasoning replaces its live part ID", () => {
+    let parts: UiPart[] = [
+      { id: "live-reasoning", kind: "reasoning", text: "Inspecting", status: "streaming" },
+    ];
+    const store = createChatStore(() => parts);
+    store.setWorkLogGroupOpen("activity-0", true);
+
+    parts = [
+      {
+        id: "entry-assistant-reasoning-0",
+        kind: "reasoning",
+        text: "Inspected",
+        status: "complete",
+      },
+    ];
+    store["syncWorkLogTimers"]();
+
+    expect(store.workLogGroupOpen("activity-0", false)).toBe(true);
     store[Symbol.dispose]();
   });
 

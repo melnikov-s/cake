@@ -1,7 +1,11 @@
-import { Effect, Stream } from "effect";
+import { Effect, Queue, Stream } from "effect";
 import { describe, expect, it, vi } from "vitest";
 import type { ProjectCatalogUpdate, SessionCatalogUpdate } from "../../../src/domain/catalog-data";
-import { ProjectSessionError } from "../../../src/domain/project-session-data";
+import { TurnId, type ConversationSnapshot } from "../../../src/domain/conversation-data";
+import {
+  ProjectSessionError,
+  type ProjectSessionUpdate,
+} from "../../../src/domain/project-session-data";
 import { CakeIpcClient, type CakeIpcClientService } from "../../../src/ipc/client/CakeIpcClient";
 import { RendererModelSynchronizer } from "../../../src/renderer/RendererModelSynchronizer";
 import type { RendererRuntime } from "../../../src/renderer/RendererRuntime";
@@ -89,6 +93,188 @@ describe("RendererModelSynchronizer", () => {
     projects[Symbol.dispose]();
     sessions[Symbol.dispose]();
     cakeChats[Symbol.dispose]();
+  });
+
+  it("projects an accepted Pi turn before streaming begins", async () => {
+    const conversation: ConversationSnapshot = {
+      workingDirectory: "/cake",
+      sessionId: "session",
+      sessionFile: "/cake/session.jsonl",
+      parts: [],
+      models: [],
+      thinkingLevel: "off",
+      availableThinkingLevels: ["off"],
+      streaming: false,
+      diagnostics: [],
+      commands: [],
+      compatibility: { resources: [], diagnostics: [] },
+      extensionUi: { statuses: [] },
+      sessions: [],
+      tree: [],
+    };
+    const turnId = TurnId.make("123e4567-e89b-42d3-a456-426614174000");
+    const updates: ProjectSessionUpdate[] = [
+      {
+        _tag: "Snapshot",
+        revision: 1,
+        snapshot: {
+          identity: {
+            _tag: "ProjectSession",
+            sessionId: "session",
+            projectPath: "/cake",
+            workingDirectory: "/cake",
+          },
+          projectName: "Cake",
+          resolved: false,
+          unread: false,
+          conversation,
+        },
+      },
+      {
+        _tag: "Event",
+        revision: 2,
+        sessionId: "session",
+        event: {
+          _tag: "TurnAccepted",
+          sessionId: "session",
+          turnId,
+          delivery: "prompt",
+        },
+      },
+    ];
+    const client = {
+      ...clientWithProjectStream(() => Stream.never),
+      projectSessions: {
+        observeCatalog: () => Stream.concat(Stream.make(emptySessionCatalog), Stream.never),
+        observe: () => Stream.concat(Stream.fromIterable(updates), Stream.never),
+      },
+      discussionSessions: { observeCatalog: () => Stream.never },
+      subagents: { observe: () => Stream.never },
+    } as unknown as CakeIpcClientService;
+    const projects = ProjectCatalog.create();
+    const sessions = SessionCatalog.create();
+    const cakeChats = CakeChatCatalog.create();
+    const session = Session.create({ sessionId: "session", workingDirectory: "/cake" });
+    const synchronizer = new RendererModelSynchronizer(runtimeFor(client));
+
+    synchronizer.sync({
+      projects,
+      sessionCatalog: sessions,
+      cakeChatCatalog: cakeChats,
+      projectSessions: [
+        { target: { sessionId: "session", workingDirectory: "/cake" }, model: session },
+      ],
+      cakeChats: [],
+    });
+
+    await vi.waitFor(() => expect(session.activeTurnIds).toEqual([turnId]));
+    expect(session.streaming).toBe(false);
+
+    synchronizer[Symbol.dispose]();
+    projects[Symbol.dispose]();
+    sessions[Symbol.dispose]();
+    cakeChats[Symbol.dispose]();
+    session[Symbol.dispose]();
+  });
+
+  it("mutates an existing Message in place for incremental part updates", async () => {
+    const updates = Effect.runSync(Queue.unbounded<ProjectSessionUpdate>());
+    const conversation: ConversationSnapshot = {
+      workingDirectory: "/cake",
+      sessionId: "session",
+      sessionFile: "/cake/session.jsonl",
+      parts: [
+        {
+          id: "assistant-text",
+          kind: "text",
+          role: "assistant",
+          text: "Hello",
+          status: "streaming",
+        },
+      ],
+      models: [],
+      thinkingLevel: "off",
+      availableThinkingLevels: ["off"],
+      streaming: true,
+      diagnostics: [],
+      commands: [],
+      compatibility: { resources: [], diagnostics: [] },
+      extensionUi: { statuses: [] },
+      sessions: [],
+      tree: [],
+    };
+    const client = {
+      ...clientWithProjectStream(() => Stream.never),
+      projectSessions: {
+        observeCatalog: () => Stream.concat(Stream.make(emptySessionCatalog), Stream.never),
+        observe: () => Stream.fromQueue(updates),
+      },
+      discussionSessions: { observeCatalog: () => Stream.never },
+      subagents: { observe: () => Stream.never },
+    } as unknown as CakeIpcClientService;
+    const projects = ProjectCatalog.create();
+    const sessions = SessionCatalog.create();
+    const cakeChats = CakeChatCatalog.create();
+    const session = Session.create({ sessionId: "session", workingDirectory: "/cake" });
+    const synchronizer = new RendererModelSynchronizer(runtimeFor(client));
+
+    synchronizer.sync({
+      projects,
+      sessionCatalog: sessions,
+      cakeChatCatalog: cakeChats,
+      projectSessions: [
+        { target: { sessionId: "session", workingDirectory: "/cake" }, model: session },
+      ],
+      cakeChats: [],
+    });
+    await Effect.runPromise(
+      Queue.offer(updates, {
+        _tag: "Snapshot",
+        revision: 1,
+        snapshot: {
+          identity: {
+            _tag: "ProjectSession",
+            sessionId: "session",
+            projectPath: "/cake",
+            workingDirectory: "/cake",
+          },
+          projectName: "Cake",
+          resolved: false,
+          unread: false,
+          conversation,
+        },
+      }),
+    );
+    await vi.waitFor(() => expect(session.parts[0]?.text).toBe("Hello"));
+    const message = session.parts[0];
+
+    await Effect.runPromise(
+      Queue.offer(updates, {
+        _tag: "Event",
+        revision: 2,
+        sessionId: "session",
+        event: {
+          _tag: "PartUpdated",
+          sessionId: "session",
+          part: {
+            id: "assistant-text",
+            kind: "text",
+            role: "assistant",
+            text: "Hello, world",
+            status: "streaming",
+          },
+        },
+      }),
+    );
+
+    await vi.waitFor(() => expect(session.parts[0]?.text).toBe("Hello, world"));
+    expect(session.parts[0]).toBe(message);
+
+    synchronizer[Symbol.dispose]();
+    projects[Symbol.dispose]();
+    sessions[Symbol.dispose]();
+    cakeChats[Symbol.dispose]();
+    session[Symbol.dispose]();
   });
 
   it("reconnects from a fresh Snapshot after a revision gap", async () => {

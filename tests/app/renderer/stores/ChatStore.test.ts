@@ -1,4 +1,4 @@
-import { createStore, mount } from "r-state-tree";
+import { createStore, mount, observable } from "r-state-tree";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ChatStore, type ChatStoreProps } from "../../../../src/renderer/stores/ChatStore";
 
@@ -158,6 +158,40 @@ describe("ChatStore loading timer", () => {
 
     finish(true);
     await submission;
+    expect(store.loadingStartedAt).toBeUndefined();
+    store[Symbol.dispose]();
+  });
+
+  it("keeps loading continuous while an accepted turn crosses into streaming", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-18T12:00:00Z"));
+    const activity = observable({ accepted: false, streaming: false });
+    let finish!: (value: boolean) => void;
+    const store = createChatStore(
+      () =>
+        new Promise<boolean>((resolve) => {
+          finish = resolve;
+        }),
+      {
+        submitting: () => activity.accepted,
+        streaming: () => activity.streaming,
+      },
+    );
+
+    const submission = store.submit("Keep working");
+    const startedAt = store.loadingStartedAt;
+    activity.accepted = true;
+    finish(true);
+    await submission;
+
+    expect(store.loading).toBe(true);
+    expect(store.loadingStartedAt).toBe(startedAt);
+
+    activity.streaming = true;
+    activity.accepted = false;
+    expect(store.loadingStartedAt).toBe(startedAt);
+
+    activity.streaming = false;
     expect(store.loadingStartedAt).toBeUndefined();
     store[Symbol.dispose]();
   });

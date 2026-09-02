@@ -348,7 +348,9 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       id: () => this.sessionId,
       parts: () => this.parts,
       streaming: () => this.streaming,
-      submitting: () => this.props.operations.active(this.promptOwner).length > 0,
+      submitting: () =>
+        this.props.operations.active(this.promptOwner).length > 0 ||
+        this.model.activeTurnIds.length > 0,
       configuration: () => this.configurationStore,
       commands: () => this.model.commands,
       placeholder: () => "Ask Cake to find or control a task…",

@@ -26,6 +26,7 @@ export function toSessionSnapshot(snapshot: ConversationSnapshot): Snapshot<Sess
     availableThinkingLevels: [...parsed.availableThinkingLevels],
     piSettings: parsed.piSettings,
     streaming: parsed.streaming,
+    activeTurnIds: [],
     diagnostics: [...parsed.diagnostics],
     commands: parsed.commands.map((command) => ({ ...command })),
     usage: parsed.usage,

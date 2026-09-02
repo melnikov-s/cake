@@ -86,8 +86,17 @@ export const ChatTranscript = observer(function ChatTranscript({
   useLayoutEffect(() => {
     store.syncChangedFilesOpen(showAssistantLoading);
   }, [showAssistantLoading, store]);
+  const groupedParts = groupTranscriptParts(store.parts);
+  const visibleGroupedParts = store.hideThinking
+    ? groupedParts.flatMap((item): TranscriptItem[] => {
+        if (item.kind === "reasoning") return [];
+        if (item.kind !== "activity-group") return [item];
+        const parts = item.parts.filter((part) => part.kind !== "reasoning");
+        return parts.length > 0 ? [{ ...item, parts }] : [];
+      })
+    : groupedParts;
   const items: TranscriptItem[] = [
-    ...groupTranscriptParts(visibleParts),
+    ...visibleGroupedParts,
     ...(workLogChanges(store.parts).length > 0
       ? [{ kind: "changed-files" as const, id: "changed-files" }]
       : []),
@@ -370,6 +379,7 @@ export const ChatTranscript = observer(function ChatTranscript({
     >
       {item.kind === "activity-group" ? (
         <ActivityGroup
+          groupId={item.id}
           parts={item.parts}
           behavior={transcriptBehavior}
           isStreaming={store.streaming}

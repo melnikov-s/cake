@@ -220,7 +220,9 @@ async policy, and persistence responsibility.
 
 Models are validated reactive projections of entities. One window-owned Model
 synchronizer owns authoritative RPC Stream subscriptions, reconnect and revision
-policy, maps updates to Model snapshots, and applies them with `applySnapshot`.
+policy. It applies authoritative snapshots with `applySnapshot` and reduces
+ordered events transactionally, using direct, batched Model mutations for
+incremental entity changes so identity is preserved.
 Window bootstrap attaches it to the mounted Root Store so it can discover the
 current loaded Models reactively; feature Stores and Models never access
 synchronization machinery. Stores own window-local application/UI

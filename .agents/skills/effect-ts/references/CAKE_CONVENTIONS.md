@@ -22,7 +22,9 @@ CakeIpcServer → free Cake domain Effects → outside-world Services
 - Ordinary renderer Stores consume the Promise-based `RendererClient` and never
   import Effect, `CakeIpcClient`, RPC contracts, main Services, or domain
   implementations. Projection synchronizers are the renderer Effect/Stream
-  boundary and update r-state-tree Models transactionally.
+  boundary: they apply authoritative snapshots with `applySnapshot` and reduce
+  ordered Events transactionally, using direct, batched r-state-tree Model
+  mutations for incremental entity changes.
 - Pi packages stop beneath `src/services/pi`. Raw Pi values do not cross RPC.
 - Pi remains transcript authority. Effect Streams and renderer Models are
   projections, not new durable authorities.

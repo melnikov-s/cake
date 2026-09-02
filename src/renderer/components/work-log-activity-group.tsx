@@ -14,10 +14,12 @@ import type { CanonicalTranscriptBehavior } from "./chat-message";
 import { TranscriptPart } from "./chat-transcript-part";
 
 export const ActivityGroup = observer(function ActivityGroup({
+  groupId,
   parts,
   behavior,
   isStreaming,
 }: {
+  groupId: string;
   parts: UiPart[];
   behavior: CanonicalTranscriptBehavior;
   isStreaming: boolean;
@@ -26,7 +28,6 @@ export const ActivityGroup = observer(function ActivityGroup({
   const hasDiff = changes.length > 0;
   const viewMode = behavior.store.workLogViewMode;
   const showDiff = hasDiff && (viewMode === "diff" || viewMode === "auto");
-  const groupId = parts[0]?.id ?? "work-log";
   const open = behavior.store.workLogGroupOpen(groupId, hasDiff);
   const [activityStripOpen, setActivityStripOpen] = useState(false);
   const [logElement, setLogElement] = useState<HTMLDivElement | null>(null);

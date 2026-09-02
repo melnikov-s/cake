@@ -24,6 +24,8 @@ export class Session extends Model {
   availableThinkingLevels: ThinkingLevel[] = observable([]);
   piSettings: SessionSnapshot["piSettings"] = undefined;
   streaming = false;
+  /** Pi-accepted turns bridge command acceptance to the first streaming event. */
+  activeTurnIds: string[] = observable([]);
   diagnostics: string[] = observable([]);
   commands: SessionSnapshot["commands"] = observable([]);
   usage: SessionSnapshot["usage"] = undefined;

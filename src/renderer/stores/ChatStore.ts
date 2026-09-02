@@ -9,6 +9,7 @@ import type {
   WorkLogViewMode,
   WorkLogsExpansion,
 } from "../../ipc/session-contract";
+import { workLogGroupKeys } from "../../utils/work-log-groups";
 import type { QueuedPrompt } from "./MessageComposerStore";
 import type { ChatConfigurationStore } from "./ChatConfigurationStore";
 import type { ExistingWorktreeCandidate, WorktreeDraftChoice } from "./WorktreeCreationStore";
@@ -145,8 +146,9 @@ export class ChatStore extends Store<ChatStoreProps> {
     for (const partId of this.workLogItemOverrides.keys()) {
       if (!retainedPartIds.has(partId)) this.workLogItemOverrides.delete(partId);
     }
+    const retainedGroupIds = new Set(workLogGroupKeys(this.props.parts()));
     for (const groupId of this.workLogGroupOverrides.keys()) {
-      if (!retainedPartIds.has(groupId)) this.workLogGroupOverrides.delete(groupId);
+      if (!retainedGroupIds.has(groupId)) this.workLogGroupOverrides.delete(groupId);
     }
     this.updateWorkLogTick();
   }

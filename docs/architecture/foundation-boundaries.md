@@ -27,8 +27,9 @@ renderer decoding is never privilege authorization.
 
 The renderer never executes Cake domain modules. Renderer infrastructure calls
 the grouped `CakeIpcClient`; the window-owned Model synchronizer consumes scoped
-Streams, maps Updates to snapshots, and applies them to renderer-owned
-r-state-tree Models. Ordinary Stores use the
+Streams, applies authoritative snapshots, and reduces subsequent Events
+transactionally, using direct, batched mutations for incremental changes to
+renderer-owned r-state-tree Models. Ordinary Stores use the
 Promise-based `RendererClient`. RPC handlers are thin adapters to main domain
 operations and contain no Cake business logic.
 

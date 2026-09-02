@@ -246,7 +246,8 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       id: () => this.sessionId,
       parts: () => this.composerStore.parts,
       streaming: () => this.isStreaming,
-      submitting: () => this.composerStore.activeOperations.length > 0,
+      submitting: () =>
+        this.composerStore.activeOperations.length > 0 || this.model.activeTurnIds.length > 0,
       stoppable: () => this.model.backgroundWorkActive,
       configuration: () => this.configurationStore,
       commands: () => [

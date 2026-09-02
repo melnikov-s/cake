@@ -628,7 +628,7 @@ describe("Transcript scrolling", () => {
 
     expect(groupTranscriptParts([command, tool])).toEqual([
       command,
-      { kind: "activity-group", id: "activity-tool-1", parts: [tool] },
+      { kind: "activity-group", id: "activity-0", parts: [tool] },
     ]);
     expect(chatWorkIsActive([command], false, true)).toBe(false);
 
@@ -849,7 +849,13 @@ describe("Transcript scrolling", () => {
     expect(log.scrollTop).toBe(100);
   });
 
-  it("leaves work log expansion under user control as streaming changes", async () => {
+  it("leaves work log expansion under user control when settled part IDs replace live IDs", async () => {
+    const liveReasoning: UiPart = {
+      id: "live-reasoning",
+      kind: "reasoning",
+      text: "Inspecting",
+      status: "streaming",
+    };
     const running: UiPart = {
       id: "tool-1",
       kind: "tool",
@@ -860,7 +866,7 @@ describe("Transcript scrolling", () => {
     const render = (parts: UiPart[], isStreaming = false) =>
       root.render(<TestTranscript sessionId="session-1" store={storeWith(parts, isStreaming)} />);
 
-    act(() => render([running], true));
+    act(() => render([liveReasoning, running], true));
     const log = container.querySelector<HTMLDetailsElement>('[data-slot="activity-group"]')!;
     expect(log.open).toBe(false);
     expect(container.querySelector('[data-slot="work-log-content"]')).toBeNull();
@@ -869,19 +875,24 @@ describe("Transcript scrolling", () => {
       container.querySelector<HTMLElement>('[data-slot="activity-group"] > summary')!.click(),
     );
     const toolToggle = container.querySelector<HTMLButtonElement>(
-      '[data-slot="work-log-content"] button',
+      '[data-slot="work-log-content"] [data-slot="tool"] button',
     )!;
     expect(toolToggle.getAttribute("aria-expanded")).toBe("false");
     act(() => toolToggle.click());
     // Signal-driven commits can be dropped in reused vitest workers, so re-render
     // explicitly and retry until the DOM reflects the store's item override.
     await waitFor(() => {
-      act(() => render([running], true));
+      act(() => render([liveReasoning, running], true));
       expect(toolToggle.getAttribute("aria-expanded")).toBe("true");
     });
     expect(log.open).toBe(true);
 
-    act(() => render([{ ...running, state: "success" }]));
+    const settledReasoning: UiPart = {
+      ...liveReasoning,
+      id: "entry-assistant-reasoning-0",
+      status: "complete",
+    };
+    act(() => render([settledReasoning, { ...running, state: "success" }]));
     expect(log.open).toBe(true);
     expect(toolToggle.getAttribute("aria-expanded")).toBe("true");
     expect(log.querySelector(':scope > summary span[class*="bg-success"]')).not.toBeNull();

@@ -229,9 +229,11 @@ Stores and React.
 ### Model synchronizer
 
 The renderer's single window-owned Stream-to-Model boundary. It listens to
-current-first Effect RPC Streams, maps validated Updates to ordinary r-state-tree
-snapshots, and applies them with `applySnapshot`. It owns subscription,
-revision, reconnect, and interruption mechanics. Renderer bootstrap attaches it
+current-first Effect RPC Streams, applies authoritative snapshots with
+`applySnapshot`, and reduces subsequent validated Events transactionally. It
+uses direct, batched Model mutations for incremental entity changes. It owns
+subscription, revision, reconnect, and interruption
+mechanics. Renderer bootstrap attaches it
 to the mounted Root Store so it can reactively discover current loaded Models;
 feature Stores and Models never access the synchronizer.
 

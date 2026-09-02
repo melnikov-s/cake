@@ -1,6 +1,7 @@
 import { Effect, Stream, Schema } from "effect";
 import {
   applySnapshot,
+  batch,
   effect as reactiveEffect,
   toSnapshot,
   type Model,
@@ -35,12 +36,12 @@ import {
 import { artifactSnapshot, toSessionSnapshot } from "../utils/session-snapshot";
 import type { ArtifactRecord } from "../ipc/artifact-contract";
 import type { CakeChatCatalog } from "./models/CakeChatCatalog";
-import type { Message } from "./models/Message";
+import { Message } from "./models/Message";
 import type { ProjectCatalog } from "./models/ProjectCatalog";
 import type { ReviewThread } from "./models/ReviewThread";
 import type { Session } from "./models/Session";
 import type { SessionCatalog } from "./models/SessionCatalog";
-import type { SubagentActivity } from "./models/SubagentActivity";
+import { SubagentActivity } from "./models/SubagentActivity";
 import type { RendererRuntime } from "./RendererRuntime";
 
 export interface RendererModelSource {
@@ -73,8 +74,9 @@ type StreamFactory<Update> = (client: CakeIpcClientService) => Stream.Stream<Upd
 
 /**
  * The renderer's one Stream-to-Model boundary. It listens to authoritative RPC
- * Streams and synchronizes passive r-state-tree Models exclusively through
- * applySnapshot. Stores and Models never see Effect, RPC, revisions, or Fibers.
+ * Streams and synchronizes passive r-state-tree Models. Authoritative snapshots
+ * hydrate Models; incremental Events use direct reactive batches. Stores and
+ * Models never see Effect, RPC, revisions, or Fibers.
  */
 export class RendererModelSynchronizer implements Disposable {
   private readonly subscriptions = new Map<string, Subscription>();
@@ -445,7 +447,7 @@ function applyProjectSessionUpdate(
       update.snapshot.identity.sessionId !== sessionId
     )
       throw new Error(`Project Session identity collision: ${sessionId}`);
-    applyConversationSnapshot(model, update.snapshot.conversation);
+    applyConversationSnapshot(model, update.snapshot.conversation, false);
     return;
   }
   if (update.sessionId !== sessionId)
@@ -460,7 +462,7 @@ function applyCakeChatUpdate(model: Session, sessionId: string, update: CakeChat
       update.snapshot.identity.sessionId !== sessionId
     )
       throw new Error(`Cake Chat identity collision: ${sessionId}`);
-    applyConversationSnapshot(model, update.snapshot.conversation);
+    applyConversationSnapshot(model, update.snapshot.conversation, false);
     return;
   }
   if (update.sessionId !== sessionId)
@@ -469,14 +471,8 @@ function applyCakeChatUpdate(model: Session, sessionId: string, update: CakeChat
   if (event._tag === "ControlRequested") {
     if (
       !model.controlRequests.some((request) => request.controlRequestId === event.controlRequestId)
-    ) {
-      // SAFETY: ControlRequested is the exact validated element type of Session.controlRequests.
-      const controlRequests = [
-        ...model.controlRequests,
-        event,
-      ] as Snapshot<Session>["controlRequests"];
-      applySnapshot(model, { ...toSnapshot(model), controlRequests });
-    }
+    )
+      model.controlRequests.push(event);
     return;
   }
   applyConversationEvent(model, event);
@@ -485,11 +481,14 @@ function applyCakeChatUpdate(model: Session, sessionId: string, update: CakeChat
 function applyConversationSnapshot(
   model: Session,
   conversation: Parameters<typeof toSessionSnapshot>[0],
+  preserveActiveTurns: boolean,
 ) {
   const current = toSnapshot(model);
   const authoritative = toSessionSnapshot(conversation);
   applySnapshot(model, {
     ...authoritative,
+    // Runtime snapshots can arrive before TurnSettled; a fresh observation cannot retain IDs.
+    activeTurnIds: preserveActiveTurns ? current.activeTurnIds : [],
     reviewThreads: current.reviewThreads,
     subagentActivities: current.subagentActivities,
     releasedSubagentHandleIds: current.releasedSubagentHandleIds,
@@ -507,60 +506,66 @@ function applyConversationSnapshot(
 
 function applyConversationEvent(model: Session, event: ConversationEvent) {
   if (event._tag === "SnapshotUpdated") {
-    applyConversationSnapshot(model, event.snapshot);
+    applyConversationSnapshot(model, event.snapshot, true);
     return;
   }
-  const snapshot = toSnapshot(model);
-  if (event._tag === "PartUpdated") {
-    const part = Schema.decodeUnknownSync(uiPartSchema)(event.part);
-    const parts = [...model.uiParts];
-    const index = parts.findIndex((current) => current.id === part.id);
-    if (index >= 0) parts[index] = part;
-    else parts.push(part);
-    applySnapshot(model, { ...snapshot, parts: messageSnapshots(parts) });
-  } else if (event._tag === "PartRemoved")
-    applySnapshot(model, {
-      ...snapshot,
-      parts: messageSnapshots(model.uiParts.filter((part) => part.id !== event.partId)),
-    });
-  else if (event._tag === "StreamingChanged")
-    applySnapshot(model, { ...snapshot, streaming: event.streaming });
-  else if (event._tag === "ExtensionUi")
-    applySnapshot(model, {
-      ...snapshot,
-      extensionUi: extensionUiSnapshot(
-        snapshot.extensionUi!,
-        Schema.decodeUnknownSync(extensionUiEventSchema)(event.event),
-      ),
-    });
+  batch(() => {
+    if (event._tag === "PartUpdated")
+      applyPartUpdate(model.parts, Schema.decodeUnknownSync(uiPartSchema)(event.part));
+    else if (event._tag === "PartRemoved") removePart(model.parts, event.partId);
+    else if (event._tag === "StreamingChanged") model.streaming = event.streaming;
+    else if (event._tag === "TurnAccepted") {
+      if (!model.activeTurnIds.includes(event.turnId)) model.activeTurnIds.push(event.turnId);
+    } else if (event._tag === "TurnSettled") {
+      const index = model.activeTurnIds.indexOf(event.turnId);
+      if (index >= 0) model.activeTurnIds.splice(index, 1);
+    } else if (event._tag === "ExtensionUi")
+      applyExtensionUiEvent(model, Schema.decodeUnknownSync(extensionUiEventSchema)(event.event));
+  });
 }
 
-function extensionUiSnapshot(
-  current: NonNullable<Snapshot<Session>["extensionUi"]>,
-  event: typeof extensionUiEventSchema.Type,
-): NonNullable<Snapshot<Session>["extensionUi"]> {
+function applyExtensionUiEvent(model: Session, event: typeof extensionUiEventSchema.Type): void {
+  const extensionUi = model.extensionUi;
   if (event.kind === "notify") {
-    const notifications = [...current.notifications!.filter((item) => item.id !== event.id), event];
-    return { ...current, notifications: notifications.slice(-8) };
+    const existing = extensionUi.notifications.findIndex((item) => item.id === event.id);
+    if (existing >= 0) extensionUi.notifications.splice(existing, 1);
+    extensionUi.notifications.push(event);
+    if (extensionUi.notifications.length > 8)
+      extensionUi.notifications.splice(0, extensionUi.notifications.length - 8);
+    return;
   }
   if (event.kind === "status") {
-    const statuses = current.statuses!.filter((item) => item.key !== event.key);
-    if (event.text !== undefined) statuses.push({ key: event.key, text: event.text });
-    return { ...current, statuses };
+    const existing = extensionUi.statuses.findIndex((item) => item.key === event.key);
+    if (existing >= 0) extensionUi.statuses.splice(existing, 1);
+    if (event.text !== undefined) extensionUi.statuses.push({ key: event.key, text: event.text });
+    return;
   }
-  if (event.kind === "title") return { ...current, title: event.title };
-  if (event.kind === "editor-text")
-    return {
-      ...current,
-      editorText: { text: event.text, mode: event.mode },
-      editorTextRevision: current.editorTextRevision! + 1,
-    };
-  const diagnostics = current.compatibilityDiagnostics!.some(
-    (item) => item.id === event.diagnostic.id,
-  )
-    ? current.compatibilityDiagnostics!
-    : [...current.compatibilityDiagnostics!, event.diagnostic];
-  return { ...current, compatibilityDiagnostics: diagnostics };
+  if (event.kind === "title") {
+    extensionUi.title = event.title;
+    return;
+  }
+  if (event.kind === "editor-text") {
+    extensionUi.editorText = { text: event.text, mode: event.mode };
+    extensionUi.editorTextRevision += 1;
+    return;
+  }
+  if (!extensionUi.compatibilityDiagnostics.some((item) => item.id === event.diagnostic.id))
+    extensionUi.compatibilityDiagnostics.push(event.diagnostic);
+}
+
+function applyPartUpdate(parts: Message[], part: typeof uiPartSchema.Type) {
+  const index = parts.findIndex((current) => current.id === part.id);
+  const createPart = () => Message.create(messageSnapshots([part])[0]);
+  if (index < 0) {
+    parts.push(createPart());
+    return;
+  }
+  if (!parts[index]!.update(part)) parts.splice(index, 1, createPart());
+}
+
+function removePart(parts: Message[], partId: string) {
+  const index = parts.findIndex((part) => part.id === partId);
+  if (index >= 0) parts.splice(index, 1);
 }
 
 function applyDiscussionCatalogUpdate(
@@ -599,96 +604,69 @@ function applyDiscussionUpdate(
     applySnapshot(model, discussionSnapshot(toDiscussionThread(model), event.snapshot));
     return;
   }
-  const snapshot = toSnapshot(model);
-  if (event._tag === "PartUpdated") {
-    const part = Schema.decodeUnknownSync(uiPartSchema)(event.part);
-    const parts = [...model.uiParts];
-    const index = parts.findIndex((current) => current.id === part.id);
-    if (index >= 0) parts[index] = part;
-    else parts.push(part);
-    applySnapshot(model, { ...snapshot, parts: messageSnapshots(parts) });
-  } else if (event._tag === "PartRemoved")
-    applySnapshot(model, {
-      ...snapshot,
-      parts: messageSnapshots(model.uiParts.filter((part) => part.id !== event.partId)),
-    });
-  else if (event._tag === "StreamingChanged")
-    applySnapshot(model, { ...snapshot, streaming: event.streaming });
+  batch(() => {
+    if (event._tag === "PartUpdated")
+      applyPartUpdate(model.parts, Schema.decodeUnknownSync(uiPartSchema)(event.part));
+    else if (event._tag === "PartRemoved") removePart(model.parts, event.partId);
+    else if (event._tag === "StreamingChanged") model.streaming = event.streaming;
+  });
 }
 
 function applySubagentUpdate(model: Session, sessionId: string, update: SubagentUpdate) {
   if (update.parentSessionId !== sessionId)
     throw new Error(`Subagent parent identity collision: ${sessionId}`);
-  const snapshot = toSnapshot(model);
-  const activities = model.subagentActivities.map(subagentModelSnapshot);
-  let releasedSubagentHandleIds = [...model.releasedSubagentHandleIds];
-  let backgroundWorkActive = model.backgroundWorkActive;
-  if (update._tag === "Snapshot") {
-    activities.splice(0, activities.length, ...update.activities.map(subagentSnapshot));
-    releasedSubagentHandleIds = releasedSubagentHandleIds.filter(
-      (handleId) => !update.activities.some((activity) => activity.handleId === handleId),
-    );
-    backgroundWorkActive = update.backgroundActive;
-  } else if (update._tag === "Activity") {
-    const next = subagentSnapshot(update.activity);
-    const index = activities.findIndex((activity) => activity.handleId === next.handleId);
-    if (index >= 0) activities[index] = next;
-    else activities.push(next);
-    releasedSubagentHandleIds = releasedSubagentHandleIds.filter(
-      (handleId) => handleId !== update.activity.handleId,
-    );
-  } else if (update._tag === "Removed") {
-    const index = activities.findIndex((activity) => activity.handleId === update.handleId);
-    if (index >= 0) activities.splice(index, 1);
-    if (!releasedSubagentHandleIds.includes(update.handleId))
-      releasedSubagentHandleIds.push(update.handleId);
-  } else backgroundWorkActive = update.active;
-  assertUnique(
-    activities
-      .map((activity) => activity.handleId)
-      .filter((handleId): handleId is string => typeof handleId === "string"),
-    "Subagent handle ID",
-  );
-  applySnapshot(model, {
-    ...snapshot,
-    subagentActivities: activities,
-    releasedSubagentHandleIds,
-    backgroundWorkActive,
+  batch(() => {
+    if (update._tag === "Snapshot") {
+      assertUnique(
+        update.activities.map((activity) => activity.handleId),
+        "Subagent handle ID",
+      );
+      const retained = new Set<string>(update.activities.map((activity) => activity.handleId));
+      for (let index = model.subagentActivities.length - 1; index >= 0; index -= 1)
+        if (!retained.has(model.subagentActivities[index]!.handleId))
+          model.subagentActivities.splice(index, 1);
+      for (const activity of update.activities) upsertSubagentActivity(model, activity);
+      for (let index = model.releasedSubagentHandleIds.length - 1; index >= 0; index -= 1)
+        if (retained.has(model.releasedSubagentHandleIds[index]!))
+          model.releasedSubagentHandleIds.splice(index, 1);
+      model.backgroundWorkActive = update.backgroundActive;
+    } else if (update._tag === "Activity") {
+      upsertSubagentActivity(model, update.activity);
+      const releasedIndex = model.releasedSubagentHandleIds.indexOf(update.activity.handleId);
+      if (releasedIndex >= 0) model.releasedSubagentHandleIds.splice(releasedIndex, 1);
+    } else if (update._tag === "Removed") {
+      const index = model.subagentActivities.findIndex(
+        (activity) => activity.handleId === update.handleId,
+      );
+      if (index >= 0) model.subagentActivities.splice(index, 1);
+      if (!model.releasedSubagentHandleIds.includes(update.handleId))
+        model.releasedSubagentHandleIds.push(update.handleId);
+    } else model.backgroundWorkActive = update.active;
   });
 }
 
-function subagentModelSnapshot(activity: SubagentActivity): Snapshot<SubagentActivity> {
-  const snapshot = {
-    parentSessionId: activity.parentSessionId,
-    anchorPartId: activity.anchorPartId,
-    handleId: activity.handleId,
-    revision: activity.revision,
-    task: activity.task,
-    profile: activity.profile,
-    status: activity.status,
-    resolvedModel: activity.resolvedModel,
-    fastMode: activity.fastMode,
-    retained: activity.retained,
-    streaming: activity.streaming,
-    parts: activity.parts,
-    usage: activity.usage,
-    error: activity.error,
-  };
-  // SAFETY: every field is read from the already validated SubagentActivity Model.
-  return snapshot as Snapshot<SubagentActivity>;
-}
-
-function subagentSnapshot(activity: SubagentActivityValue): Snapshot<SubagentActivity> {
-  const snapshot = {
-    ...activity,
-    parts: activity.parts.map((part) => Schema.decodeUnknownSync(uiPartSchema)(part)),
-    usage:
-      activity.usage === undefined
-        ? undefined
-        : Schema.decodeUnknownSync(sessionSnapshotSchema.fields.usage)(activity.usage),
-  };
-  // SAFETY: every field is populated from the validated Subagent activity RPC value.
-  return snapshot as Snapshot<SubagentActivity>;
+function upsertSubagentActivity(model: Session, activity: SubagentActivityValue) {
+  let target = model.subagentActivities.find((item) => item.handleId === activity.handleId);
+  if (!target) {
+    target = SubagentActivity.create({ handleId: activity.handleId });
+    model.subagentActivities.push(target);
+  }
+  target.parentSessionId = activity.parentSessionId;
+  target.anchorPartId = activity.anchorPartId;
+  target.revision = activity.revision;
+  target.task = activity.task;
+  target.profile = activity.profile;
+  target.status = activity.status;
+  target.resolvedModel = activity.resolvedModel;
+  target.fastMode = activity.fastMode;
+  target.retained = activity.retained;
+  target.streaming = activity.streaming;
+  target.parts = activity.parts.map((part) => Schema.decodeUnknownSync(uiPartSchema)(part));
+  target.usage =
+    activity.usage === undefined
+      ? undefined
+      : Schema.decodeUnknownSync(sessionSnapshotSchema.fields.usage)(activity.usage);
+  target.error = activity.error;
 }
 
 function toDiscussionThread(thread: ReviewThread): DiscussionThread {

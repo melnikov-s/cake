@@ -120,9 +120,11 @@ parallel conversation engines.
 The window's renderer infrastructure owns `CakeIpcClient` and the Effect
 runtime. A permanent typed `RendererClient` executes semantic commands as
 Promises and propagates optional `AbortSignal` cancellation to Effect Fiber and
-RPC interruption. One window-owned Model synchronizer consumes RPC Streams, maps validated Updates
-to snapshots, and applies them to stable r-state-tree Models with
-`applySnapshot`. Renderer bootstrap attaches both the Model synchronizer and
+RPC interruption. One window-owned Model synchronizer consumes RPC Streams,
+applies authoritative snapshots to stable r-state-tree Models with
+`applySnapshot`, and reduces subsequent ordered Events transactionally. It uses
+direct, batched Model mutations for incremental entity changes. Renderer
+bootstrap attaches both the Model synchronizer and
 window snapshot persistence to the mounted Root Store; neither is a Store.
 
 Renderer Stores read those Models, invoke `RendererClient`, and own window-local
@@ -383,7 +385,8 @@ RPC Stream into Model snapshots and applies them.
 
 ```text
 Pi → PiSessions Stream → Cake domain projection → RPC Stream
-   → Model synchronizer → applySnapshot → reactive r-state-tree Models → Stores/React
+   → Model synchronizer → snapshot hydration / event reduction
+   → reactive r-state-tree Models → Stores/React
 ```
 
 Terminal output, plugin diagnostics, filesystem observation, and other live
@@ -532,15 +535,16 @@ Renderer Stores live in `src/renderer/stores`. They own:
 
 The single Model synchronizer lives in renderer infrastructure. It owns RPC
 Stream subscriptions, observation generations, and revision/reconnect policy.
-It maps each validated Update to an ordinary Model snapshot and calls
-`applySnapshot`; it is not a second application state system. Renderer bootstrap
+It applies each validated Snapshot with `applySnapshot` and reduces each
+subsequent Event transactionally, using direct reactive batches for incremental
+entity changes; it is not a second application state system. Renderer bootstrap
 attaches it to the mounted Root Store so it can watch the loaded Model set.
 Feature Stores and Models never access it.
 
 The normal data and command paths are:
 
 ```text
-CakeIpcClient Stream → Model synchronizer → applySnapshot(Model) → Store/React
+CakeIpcClient Stream → Model synchronizer → hydrate snapshot / reduce event → Store/React
 Store intent → RendererClient Promise → CakeIpcClient Effect → RPC
 ```
 
@@ -558,8 +562,10 @@ r-state-tree Models and Stores use the installed package's actual semantics:
 - snapshots contain only explicitly selected renderer-owned state.
 
 The Model synchronizer never lets arbitrary Effect Fibers mutate Models. Each
-validated Update maps to one snapshot application, stale generations cannot
-commit, and reconnect starts from a fresh authoritative Snapshot. It owns at
+validated Snapshot is applied atomically and each Event is reduced
+transactionally; incremental entity changes use direct reactive batches. Stale
+generations cannot commit, and reconnect starts from a fresh authoritative
+Snapshot. It owns at
 most one active observation for each loaded identity. Models remain passive
 reactive data and know nothing about Streams or synchronization.
 
@@ -618,7 +624,7 @@ src/
 ├── renderer/
 │   ├── RendererRuntime.ts    # one window-local Effect runtime
 │   ├── client/               # permanent Promise RendererClient adapter
-│   ├── RendererModelSynchronizer.ts # Effect Streams → applySnapshot(Model)
+│   ├── RendererModelSynchronizer.ts # Effect Streams → snapshot hydration and event reduction
 │   ├── models/               # r-state-tree projection Models
 │   ├── stores/               # r-state-tree application/UI Stores
 │   └── components/
