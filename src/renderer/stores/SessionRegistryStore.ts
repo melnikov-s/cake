@@ -9,6 +9,7 @@ import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordin
 import type { ReviewsStore } from "./ReviewsStore";
 import type { PluginCommandStore } from "./PluginCommandStore";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
+import type { PendingSessionSummary } from "./SessionCatalogStore";
 import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import { ProjectSessionStore, type SessionTarget } from "./ProjectSessionStore";
 import type { WorktreeStoreProps } from "./WorktreeStore";
@@ -60,10 +61,14 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     { text: string; attachments: Attachment[]; resolved: boolean }
   > = observable({});
   @snapshot private readonly temporarySessionIds: string[] = observable([]);
+  @snapshot private readonly pendingSummaryMetadataBySession: Record<
+    string,
+    { fallbackTitle?: string; createdAt: string; modifiedAt: string }
+  > = observable({});
   /** The one unsent, unsaved project chat. Explicit drafts are not staged chats. */
   @snapshot private stagedSessionId: string | undefined;
   private readonly sessionsById = new Map<string, ProjectSessionStore>();
-  private readonly sessionWorkspacePaths = new Map<string, string>();
+  private readonly submittingSessionIds: string[] = observable([]);
 
   @child
   get sessions(): ProjectSessionStore[] {
@@ -127,6 +132,40 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     );
   }
 
+  get pendingSummaries(): readonly PendingSessionSummary[] {
+    const visibleIds = new Set([
+      ...Object.keys(this.draftSessionsById),
+      ...this.submittingSessionIds,
+      ...this.unlistedNewSessionIds,
+    ]);
+    return [...visibleIds].flatMap((sessionId) => {
+      const target = this.targets.find((candidate) => candidate.sessionId === sessionId);
+      if (!target) return [];
+      const draft = this.draftSessionsById[sessionId];
+      const metadata = this.pendingSummaryMetadataBySession[sessionId];
+      const managedWorktree = this.props.catalog?.managedWorktree(target.workspacePath);
+      const projectPath = managedWorktree?.projectPath ?? target.workspacePath;
+      const epoch = "1970-01-01T00:00:00.000Z";
+      return [
+        {
+          sessionId,
+          title: this.pendingNamesBySession[sessionId] ?? metadata?.fallbackTitle ?? "New chat",
+          createdAt: metadata?.createdAt ?? epoch,
+          modifiedAt: metadata?.modifiedAt ?? epoch,
+          messageCount: draft ? 0 : 1,
+          resolved: draft?.resolved ?? false,
+          unread: false,
+          projectPath,
+          projectName: this.props.projectName(projectPath),
+          workingDirectory: target.workspacePath,
+          managedWorktree,
+          pending: true as const,
+          draft: draft !== undefined,
+        },
+      ];
+    });
+  }
+
   /** Atomically transitions one successfully started renderer draft into an observed Pi Session. */
   materializeNewSession(sessionId: string, workingDirectory: string) {
     if (!this.temporarySessionIds.includes(sessionId))
@@ -137,20 +176,10 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
       const session = this.addTarget(sessionId, workingDirectory);
       addUnique(this.materializedSessionIds, sessionId);
       removeValue(this.temporarySessionIds, sessionId);
+      removeValue(this.submittingSessionIds, sessionId);
       if (this.stagedSessionId === sessionId) this.stagedSessionId = undefined;
       delete this.pendingConfigurationsBySession[sessionId];
-      delete this.pendingNamesBySession[sessionId];
       delete this.draftSessionsById[sessionId];
-      if (!this.props.catalog?.find(sessionId))
-        this.props.catalog?.upsertPending(
-          sessionId,
-          workingDirectory,
-          this.props.projectName(workingDirectory),
-        );
-      else {
-        this.props.catalog?.setDraft(sessionId, false);
-        this.props.catalog?.setPendingResolved(sessionId, false);
-      }
       addUnique(this.unlistedNewSessionIds, sessionId);
       return session;
     });
@@ -159,27 +188,14 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
   /** Publishes the first-message projection before Pi creates its authoritative session. */
   projectNewSessionSubmission(sessionId: string, text: string) {
     if (!this.temporarySessionIds.includes(sessionId)) return;
-    const workspacePath = this.sessionWorkspacePaths.get(sessionId);
-    if (!workspacePath) return;
+    if (!this.targets.some((target) => target.sessionId === sessionId)) return;
     const title = text.trim().slice(0, SESSION_TITLE_MAX_LENGTH) || "New chat";
-    this.props.catalog?.upsertPending(
-      sessionId,
-      workspacePath,
-      this.props.projectName(workspacePath),
-      { draft: false, resolved: false, title, messageCount: 1 },
-    );
+    addUnique(this.submittingSessionIds, sessionId);
+    this.updatePendingSummaryMetadata(sessionId, title);
   }
 
   cancelNewSessionSubmission(sessionId: string) {
-    if (this.temporarySessionIds.includes(sessionId) && !this.isDraftSession(sessionId))
-      this.props.catalog?.remove(sessionId);
-  }
-
-  retainedNewSessionIds(workspacePath: string) {
-    return [
-      ...this.temporarySessionIds.filter((sessionId) => !this.isStagedSession(sessionId)),
-      ...this.unlistedNewSessionIds,
-    ].filter((sessionId) => this.sessionWorkspacePaths.get(sessionId) === workspacePath);
+    removeValue(this.submittingSessionIds, sessionId);
   }
 
   prepareNewSession(workspacePath: string, sessionId: string) {
@@ -233,13 +249,8 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
       attachments: attachments.map((attachment) => ({ ...attachment })),
       resolved: false,
     };
+    this.ensurePendingSummaryMetadata(sessionId);
     if (this.stagedSessionId === sessionId) this.stagedSessionId = undefined;
-    this.props.catalog?.upsertPending(
-      sessionId,
-      session.workspacePath,
-      this.props.projectName(session.workspacePath),
-      { draft: true },
-    );
     await this.props.persistNow();
   }
 
@@ -258,8 +269,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     const current = this.draftSessionsById[sessionId];
     if (!current) return undefined;
     delete this.draftSessionsById[sessionId];
-    this.props.catalog?.setDraft(sessionId, false);
-    this.props.catalog?.setPendingResolved(sessionId, false);
+    this.touchPendingSummary(sessionId);
     return current;
   }
 
@@ -267,7 +277,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     const current = this.draftSessionsById[sessionId];
     if (!current) return false;
     this.draftSessionsById[sessionId] = { ...current, resolved };
-    this.props.catalog?.setPendingResolved(sessionId, resolved);
+    this.touchPendingSummary(sessionId);
     return true;
   }
 
@@ -279,20 +289,10 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     if (!session || index < 0) throw new Error("Cake could not find that draft session.");
     const previousPath = session.workspacePath;
     if (previousPath === workspacePath) return;
-    this.sessionWorkspacePaths.set(sessionId, workspacePath);
     this.targets.splice(index, 1, { sessionId, workspacePath });
     updateStore(session, { ...session.props, workspacePath });
     void session.stagedCommandStore.load(workspacePath);
-    if (this.isDraftSession(sessionId))
-      this.props.catalog?.upsertPending(
-        sessionId,
-        workspacePath,
-        this.props.projectName(workspacePath),
-        {
-          draft: true,
-          resolved: this.draftSessionPrompt(sessionId)?.resolved,
-        },
-      );
+    if (this.isDraftSession(sessionId)) this.touchPendingSummary(sessionId);
   }
 
   pendingConfiguration(sessionId: string) {
@@ -307,7 +307,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     if (!this.temporarySessionIds.includes(sessionId))
       throw new Error("Only an unsent session can receive an initial name.");
     this.pendingNamesBySession[sessionId] = name;
-    this.props.catalog?.rename(sessionId, name);
+    this.touchPendingSummary(sessionId);
   }
 
   applyGeneratedDraftName(sessionId: string, name: string) {
@@ -330,8 +330,8 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     delete this.pendingConfigurationsBySession[sessionId];
     delete this.pendingNamesBySession[sessionId];
     delete this.draftSessionsById[sessionId];
-    this.sessionWorkspacePaths.delete(sessionId);
-    this.props.catalog?.remove(sessionId);
+    delete this.pendingSummaryMetadataBySession[sessionId];
+    removeValue(this.submittingSessionIds, sessionId);
   }
 
   private addTarget(sessionId: string, workspacePath: string) {
@@ -343,11 +343,49 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
 
   private rememberSessionLocation(sessionId: string, workspacePath: string) {
     const prior =
-      this.sessionWorkspacePaths.get(sessionId) ??
+      this.targets.find((target) => target.sessionId === sessionId)?.workspacePath ??
       this.props.catalog?.find(sessionId)?.workingDirectory;
     if (prior && prior !== workspacePath)
       throw new Error(`Session ID collision detected: ${sessionId}`);
-    this.sessionWorkspacePaths.set(sessionId, workspacePath);
+  }
+
+  private ensurePendingSummaryMetadata(sessionId: string) {
+    if (this.pendingSummaryMetadataBySession[sessionId]) return;
+    const now = new Date().toISOString();
+    this.pendingSummaryMetadataBySession[sessionId] = { createdAt: now, modifiedAt: now };
+  }
+
+  private updatePendingSummaryMetadata(sessionId: string, fallbackTitle?: string) {
+    const current = this.pendingSummaryMetadataBySession[sessionId];
+    const now = new Date().toISOString();
+    this.pendingSummaryMetadataBySession[sessionId] = {
+      createdAt: current?.createdAt ?? now,
+      modifiedAt: now,
+      fallbackTitle: fallbackTitle ?? current?.fallbackTitle,
+    };
+  }
+
+  private touchPendingSummary(sessionId: string) {
+    this.updatePendingSummaryMetadata(sessionId);
+  }
+
+  private reconcileAuthoritativeSessions(sessionIds: readonly string[]) {
+    const authoritative = new Set(sessionIds);
+    for (let index = this.unlistedNewSessionIds.length - 1; index >= 0; index -= 1) {
+      const sessionId = this.unlistedNewSessionIds[index]!;
+      if (!authoritative.has(sessionId)) continue;
+      this.unlistedNewSessionIds.splice(index, 1);
+      delete this.pendingNamesBySession[sessionId];
+      delete this.pendingSummaryMetadataBySession[sessionId];
+    }
+  }
+
+  constructor(props: SessionRegistryStore["props"]) {
+    super(props);
+    this.reaction(
+      () => this.props.catalog?.authoritativeSessionIds ?? [],
+      (sessionIds) => this.reconcileAuthoritativeSessions(sessionIds),
+    );
   }
 }
 

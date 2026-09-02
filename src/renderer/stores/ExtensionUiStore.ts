@@ -37,35 +37,9 @@ export class ExtensionUiStore extends Store<ExtensionUiStoreProps> {
   }
 
   request: UiRequestState | undefined;
-  private readonly dismissedNotificationIds: Set<string> = observable(new Set<string>());
+  readonly notifications: ExtensionNotification[] = observable([]);
   error: string | undefined;
   errorDetails: string | undefined;
-
-  constructor(props: ExtensionUiStore["props"]) {
-    super(props);
-    this.reaction(
-      () => {
-        const model = this.props.activeSessionModel();
-        return model ? `${model.sessionId}\u0000${model.extensionUi.editorTextRevision}` : "";
-      },
-      (current, previous) => {
-        const separator = current.lastIndexOf("\u0000");
-        const previousSeparator = previous.lastIndexOf("\u0000");
-        if (
-          separator < 0 ||
-          previousSeparator < 0 ||
-          current.slice(0, separator) !== previous.slice(0, previousSeparator)
-        )
-          return;
-        const event = this.props.activeSessionModel()?.extensionUi.editorText;
-        if (!event) return;
-        this.props.setDraft(
-          event.mode === "insert" ? (draft) => `${draft}${event.text}` : event.text,
-        );
-        this.props.requestComposerFocus();
-      },
-    );
-  }
 
   get title() {
     return this.props.activeSessionModel()?.extensionUi.title;
@@ -73,16 +47,6 @@ export class ExtensionUiStore extends Store<ExtensionUiStoreProps> {
 
   get statuses() {
     return this.props.activeSessionModel()?.extensionUi.statuses ?? [];
-  }
-
-  get notifications(): readonly ExtensionNotification[] {
-    return (
-      this.props
-        .activeSessionModel()
-        ?.extensionUi.notifications.filter(
-          (notification) => !this.dismissedNotificationIds.has(notification.id),
-        ) ?? []
-    );
   }
 
   get compatibilityDiagnostics(): readonly ResourceDiagnostic[] {
@@ -114,14 +78,33 @@ export class ExtensionUiStore extends Store<ExtensionUiStoreProps> {
   }
 
   dismissNotification(id: string) {
-    this.dismissedNotificationIds.add(id);
+    const index = this.notifications.findIndex((notification) => notification.id === id);
+    if (index >= 0) this.notifications.splice(index, 1);
   }
 
   clear() {
     this.request = undefined;
+    this.notifications.splice(0);
   }
 
   receive(event: RendererEvent) {
+    if (event.type === "extension-ui-intent") {
+      if (event.sessionId !== this.props.sessionContext()?.sessionId) return;
+      const intent = event.intent;
+      if (intent.kind === "notify") {
+        const index = this.notifications.findIndex((notification) => notification.id === intent.id);
+        if (index >= 0) this.notifications.splice(index, 1);
+        this.notifications.push(intent);
+        if (this.notifications.length > 8)
+          this.notifications.splice(0, this.notifications.length - 8);
+        return;
+      }
+      this.props.setDraft(
+        intent.mode === "insert" ? (draft) => `${draft}${intent.text}` : intent.text,
+      );
+      this.props.requestComposerFocus();
+      return;
+    }
     if (event.type === "ui-requested") {
       this.request = event;
       return;

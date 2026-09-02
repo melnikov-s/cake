@@ -1,4 +1,4 @@
-import { createStore } from "r-state-tree";
+import { createStore, toSnapshot } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
 import type { RendererClient } from "../../../../src/renderer/client/RendererClient";
 import { StagedSessionCommandStore } from "../../../../src/renderer/stores/StagedSessionCommandStore";
@@ -92,6 +92,7 @@ describe("StagedSessionCommandStore", () => {
   it("does not advertise runtime-only commands before materialization", () => {
     const { root, subject: store } = mountCommands(vi.fn(async () => []));
     expect(store.commands.map((command) => command.name)).toEqual(["model", "name"]);
+    expect(toSnapshot(store).state).not.toHaveProperty("resourceCommands");
     root[Symbol.dispose]();
   });
 });

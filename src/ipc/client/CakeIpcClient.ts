@@ -471,20 +471,30 @@ export interface CakeIpcClientService {
   readonly events: {
     readonly application: () => Stream.Stream<
       FocusedCakeEvent<
-        "workspace-inspected" | "changelog-snapshot" | "complete" | "fatal" | "notification"
+        | "workspace-inspected"
+        | "changelog-snapshot"
+        | "complete"
+        | "fatal"
+        | "notification"
+        | "extension-ui-intent"
+        | "renderer-events-ready"
       >,
       TransportError
     >;
     readonly artifacts: () => Stream.Stream<
-      FocusedCakeEvent<"artifact-updated" | "artifact-requested" | "ui-request">,
+      FocusedCakeEvent<
+        "artifact-updated" | "artifact-requested" | "ui-request" | "renderer-events-ready"
+      >,
       TransportError
     >;
     readonly plugins: () => Stream.Stream<
-      FocusedCakeEvent<"plugin-backend-event" | "plugin-agent-event">,
+      FocusedCakeEvent<"plugin-backend-event" | "plugin-agent-event" | "renderer-events-ready">,
       TransportError
     >;
     readonly terminals: () => Stream.Stream<
-      FocusedCakeEvent<"terminal-data" | "terminal-exited" | "terminal-toggle-requested">,
+      FocusedCakeEvent<
+        "terminal-data" | "terminal-exited" | "terminal-toggle-requested" | "renderer-events-ready"
+      >,
       TransportError
     >;
     readonly vscode: () => Stream.Stream<
@@ -495,11 +505,12 @@ export interface CakeIpcClientService {
         | "embedded-editor-toggle-chat"
         | "embedded-editor-selection-cleared"
         | "embedded-editor-location-opened"
+        | "renderer-events-ready"
       >,
       TransportError
     >;
     readonly surfaces: () => Stream.Stream<
-      FocusedCakeEvent<"fullscreen-surface-close-requested">,
+      FocusedCakeEvent<"fullscreen-surface-close-requested" | "renderer-events-ready">,
       TransportError
     >;
   };

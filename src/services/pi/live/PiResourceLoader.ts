@@ -19,9 +19,10 @@ export async function loadPiResources(
     additionalPromptTemplatePaths: context.additionalPromptTemplatePaths
       ? [...context.additionalPromptTemplatePaths]
       : [],
-    additionalExtensionPaths: context.additionalExtensionPaths
-      ? [...context.additionalExtensionPaths]
-      : [],
+    additionalExtensionPaths:
+      !options?.noExtensions && context.additionalExtensionPaths
+        ? [...context.additionalExtensionPaths]
+        : [],
     noThemes: true,
     noContextFiles: true,
     noExtensions: options?.noExtensions,

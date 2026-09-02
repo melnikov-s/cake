@@ -1,11 +1,19 @@
-import { createStore, mount } from "r-state-tree";
+import { createStore, mount, observable } from "r-state-tree";
 import { describe, expect, it } from "vitest";
 import { AppShellStore } from "../../../../src/renderer/stores/AppShellStore";
 
-const createShell = (markProjectSessionRead: (sessionId: string) => void = () => undefined) =>
+const createShell = (
+  markProjectSessionRead: (sessionId: string) => void = () => undefined,
+  resolved: {
+    project(sessionId: string): boolean | undefined;
+    cakeChat(sessionId: string): boolean | undefined;
+  } = { project: () => false, cakeChat: () => false },
+) =>
   mount(
     createStore(AppShellStore, {
       sessionWorkspacePath: (sessionId) => `/work/${sessionId}`,
+      projectSessionResolved: resolved.project,
+      cakeChatSessionResolved: resolved.cakeChat,
       markProjectSessionRead,
     }),
   );
@@ -109,6 +117,36 @@ describe("AppShellStore session history", () => {
       kind: "project-session",
       sessionId: "a",
     });
+    shell[Symbol.dispose]();
+  });
+
+  it("promotes a restored Project Session preview into navigation history", () => {
+    const resolution = observable({ restored: true });
+    const shell = createShell(undefined, {
+      project: (sessionId) => (sessionId === "restored" ? resolution.restored : false),
+      cakeChat: () => false,
+    });
+    shell.selectProjectSession("previous");
+    shell.previewResolvedProjectSession("restored");
+
+    resolution.restored = false;
+
+    expect(shell.goBack()).toEqual({ kind: "project-session", sessionId: "previous" });
+    shell[Symbol.dispose]();
+  });
+
+  it("promotes a restored Cake Chat preview into navigation history", () => {
+    const resolution = observable({ restored: true });
+    const shell = createShell(undefined, {
+      project: () => false,
+      cakeChat: (sessionId) => (sessionId === "restored" ? resolution.restored : false),
+    });
+    shell.selectProjectSession("previous");
+    shell.previewResolvedCakeChat("restored");
+
+    resolution.restored = false;
+
+    expect(shell.goBack()).toEqual({ kind: "project-session", sessionId: "previous" });
     shell[Symbol.dispose]();
   });
 

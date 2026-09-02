@@ -39,15 +39,9 @@ export function toSessionSnapshot(snapshot: ConversationSnapshot): Snapshot<Sess
     tree: parsed.tree.map((entry) => ({ ...entry })),
     artifacts: (parsed.artifacts ?? []).map(artifactSnapshot),
     extensionUi: {
-      revision: parsed.extensionUi.revision,
       title: parsed.extensionUi.title,
       statuses: parsed.extensionUi.statuses.map((status) => ({ ...status })),
-      notifications: parsed.extensionUi.notifications.map((notification) => ({
-        ...notification,
-      })),
       compatibilityDiagnostics: [],
-      editorText: parsed.extensionUi.editorText,
-      editorTextRevision: parsed.extensionUi.editorTextRevision,
     },
   } as Snapshot<Session>;
 }

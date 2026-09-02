@@ -16,11 +16,13 @@ export class UtilityModelSettingsStore extends Store {
   private saveRevision = 0;
   private saveQueue: Promise<unknown> = Promise.resolve();
   private persistedModel: UtilityModel | undefined;
+  private applicationRevision = -1;
 
-  applyApplicationState(state: ApplicationState) {
-    if (this.saving) return;
+  applyApplicationState(revision: number, state: ApplicationState) {
+    if (revision <= this.applicationRevision) return;
+    this.applicationRevision = revision;
     this.persistedModel = state.utilityModel;
-    this.model = state.utilityModel;
+    if (!this.saving) this.model = state.utilityModel;
   }
 
   select(value: string, thinkingLevel?: ThinkingLevel) {
@@ -50,11 +52,15 @@ export class UtilityModelSettingsStore extends Store {
     this.errorDetails = undefined;
     const save = this.saveQueue
       .catch(() => undefined)
-      .then(() => this.workspaces.setUtilityModel(model, { signal: this.signal }))
-      .then((state) => {
+      .then(async () => {
+        const baseRevision = this.applicationRevision;
+        await this.workspaces.setUtilityModel(model, { signal: this.signal });
+        return baseRevision;
+      })
+      .then((baseRevision) => {
         if (this.signal.aborted) return;
-        this.persistedModel = state.utilityModel;
-        if (revision === this.saveRevision) this.model = state.utilityModel;
+        if (revision === this.saveRevision && this.applicationRevision > baseRevision)
+          this.model = this.persistedModel;
       })
       .catch((error) => {
         if (this.signal.aborted || revision !== this.saveRevision) return;

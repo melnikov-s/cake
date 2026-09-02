@@ -11,6 +11,7 @@ const applicationState = (utilityModel?: UtilityModel): ApplicationState => ({
   resolvedCakeChatSessionIds: [],
   unreadSessionIds: [],
   trustedProjectPaths: [],
+  fastModeSessionIds: [],
   utilityModel,
 });
 
@@ -52,16 +53,20 @@ describe("UtilityModelSettingsStore", () => {
     root[Symbol.dispose]();
   });
 
-  it("does not let a stale application event overwrite an optimistic edit", async () => {
+  it("retains an authoritative application event received while a save is in flight", async () => {
     const pending = deferred<ApplicationState>();
-    const { root, subject: store } = mountUtility(vi.fn(() => pending.promise));
+    const setUtilityModel = vi.fn(() => pending.promise);
+    const { root, subject: store } = mountUtility(setUtilityModel);
     store.applyApplicationState(
+      0,
       applicationState({ provider: "openai", modelId: "confirmed", thinkingLevel: "low" }),
     );
     const save = store.select("openai/optimistic", "high");
+    await vi.waitFor(() => expect(setUtilityModel).toHaveBeenCalledOnce());
 
     store.applyApplicationState(
-      applicationState({ provider: "openai", modelId: "stale", thinkingLevel: "off" }),
+      1,
+      applicationState({ provider: "openai", modelId: "authoritative", thinkingLevel: "off" }),
     );
     expect(store.model?.modelId).toBe("optimistic");
 
@@ -69,7 +74,26 @@ describe("UtilityModelSettingsStore", () => {
       applicationState({ provider: "openai", modelId: "optimistic", thinkingLevel: "high" }),
     );
     await save;
-    expect(store.model?.modelId).toBe("optimistic");
+    expect(store.model?.modelId).toBe("authoritative");
+    root[Symbol.dispose]();
+  });
+
+  it("ignores stale and duplicate application revisions", () => {
+    const { root, subject: store } = mountUtility(vi.fn());
+    store.applyApplicationState(
+      2,
+      applicationState({ provider: "openai", modelId: "current", thinkingLevel: "high" }),
+    );
+    store.applyApplicationState(
+      1,
+      applicationState({ provider: "openai", modelId: "older", thinkingLevel: "low" }),
+    );
+    store.applyApplicationState(
+      2,
+      applicationState({ provider: "openai", modelId: "duplicate", thinkingLevel: "off" }),
+    );
+
+    expect(store.model?.modelId).toBe("current");
     root[Symbol.dispose]();
   });
 

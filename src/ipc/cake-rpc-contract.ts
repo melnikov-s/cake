@@ -31,6 +31,7 @@ import {
 import {
   applicationStateSchema,
   attachmentSchema,
+  extensionUiIntentSchema,
   fileSuggestionSchema,
   slashCommandSchema,
   utilityModelSchema,
@@ -53,6 +54,17 @@ const requestBase = { requestId: uuid };
 const accepted = Schema.Struct({ requestId: uuid });
 
 const cakeEventSchemas = {
+  "renderer-events-ready": Schema.Struct({
+    type: Schema.Literal("renderer-events-ready"),
+    channel: Schema.Literals([
+      "application",
+      "artifacts",
+      "plugins",
+      "terminals",
+      "vscode",
+      "surfaces",
+    ]),
+  }),
   "fullscreen-surface-close-requested": Schema.Struct({
     type: Schema.Literal("fullscreen-surface-close-requested"),
     surfaceId: uuid,
@@ -113,6 +125,11 @@ const cakeEventSchemas = {
     title: ipcProjectionString(256),
     message: ipcProjectionString(2_048),
   }),
+  "extension-ui-intent": Schema.Struct({
+    type: Schema.Literal("extension-ui-intent"),
+    sessionId: stringMax(256),
+    intent: extensionUiIntentSchema,
+  }),
   "plugin-agent-event": Schema.Struct({
     type: Schema.Literal("plugin-agent-event"),
     pluginId: pluginIdSchema,
@@ -162,31 +179,37 @@ const cakeEventSchemas = {
 } as const;
 
 export const applicationEventSchema = Schema.Union([
+  cakeEventSchemas["renderer-events-ready"],
   cakeEventSchemas["workspace-inspected"],
   cakeEventSchemas["changelog-snapshot"],
   cakeEventSchemas.complete,
   cakeEventSchemas.fatal,
   cakeEventSchemas.notification,
+  cakeEventSchemas["extension-ui-intent"],
 ]);
 
 export const artifactEventSchema = Schema.Union([
+  cakeEventSchemas["renderer-events-ready"],
   cakeEventSchemas["artifact-updated"],
   cakeEventSchemas["artifact-requested"],
   cakeEventSchemas["ui-request"],
 ]);
 
 export const pluginEventSchema = Schema.Union([
+  cakeEventSchemas["renderer-events-ready"],
   cakeEventSchemas["plugin-backend-event"],
   cakeEventSchemas["plugin-agent-event"],
 ]);
 
 export const terminalEventSchema = Schema.Union([
+  cakeEventSchemas["renderer-events-ready"],
   cakeEventSchemas["terminal-data"],
   cakeEventSchemas["terminal-exited"],
   cakeEventSchemas["terminal-toggle-requested"],
 ]);
 
 export const embeddedEditorEventSchema = Schema.Union([
+  cakeEventSchemas["renderer-events-ready"],
   cakeEventSchemas["embedded-editor-selection"],
   cakeEventSchemas["embedded-editor-back-to-agent"],
   cakeEventSchemas["embedded-editor-annotation-opened"],
@@ -195,9 +218,13 @@ export const embeddedEditorEventSchema = Schema.Union([
   cakeEventSchemas["embedded-editor-location-opened"],
 ]);
 
-export const surfaceEventSchema = cakeEventSchemas["fullscreen-surface-close-requested"];
+export const surfaceEventSchema = Schema.Union([
+  cakeEventSchemas["renderer-events-ready"],
+  cakeEventSchemas["fullscreen-surface-close-requested"],
+]);
 
 export const cakeEventSchema = Schema.Union([
+  cakeEventSchemas["renderer-events-ready"],
   cakeEventSchemas["fullscreen-surface-close-requested"],
   cakeEventSchemas["workspace-inspected"],
   cakeEventSchemas["changelog-snapshot"],
@@ -208,6 +235,7 @@ export const cakeEventSchema = Schema.Union([
   cakeEventSchemas["fatal"],
   cakeEventSchemas["plugin-backend-event"],
   cakeEventSchemas["notification"],
+  cakeEventSchemas["extension-ui-intent"],
   cakeEventSchemas["plugin-agent-event"],
   cakeEventSchemas["terminal-data"],
   cakeEventSchemas["terminal-exited"],

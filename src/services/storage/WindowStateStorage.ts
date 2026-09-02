@@ -1,7 +1,7 @@
 import { Context, Effect, FileSystem, Layer, Path, Schema, Semaphore } from "effect";
 import { atomicWriteFile, type AtomicFileStage } from "./internal/atomicFile";
 
-const WINDOW_STATE_DOCUMENT_VERSION = 1;
+const WINDOW_STATE_DOCUMENT_VERSION = 2;
 const WINDOW_STATE_DOCUMENT_NAME = "window-state.json";
 
 const EmptyWindowSnapshot: Schema.Schema.Type<typeof Schema.Json> = {
@@ -227,15 +227,22 @@ const migrateLegacyWindowState = Effect.fn("WindowStateStorage.migrateLegacy")(f
       },
     },
   }));
-  const pendingCakeChatSummary = pendingCakeChat
+  const pendingCakeChatSession = pendingCakeChat
     ? {
         sessionId: pendingCakeChat.sessionId,
-        title: pendingCakeChat.name ?? "New chat",
+        started: false,
+        configuration: pendingCakeChat.configuration,
+        name: pendingCakeChat.name,
+        draftPrompt:
+          pendingCakeChat.draftSession && pendingCakeChat.stagedPrompt
+            ? {
+                ...pendingCakeChat.stagedPrompt,
+                resolved: pendingCakeChat.resolved ?? false,
+              }
+            : undefined,
         createdAt: epoch,
         modifiedAt: epoch,
         messageCount: 0,
-        resolved: pendingCakeChat.resolved ?? false,
-        draft: pendingCakeChat.draftSession ?? false,
       }
     : undefined;
 
@@ -275,7 +282,7 @@ const migrateLegacyWindowState = Effect.fn("WindowStateStorage.migrateLegacy")(f
         children: {},
       },
       sessionCatalogStore: {
-        state: { pendingSessions: pendingSummaries },
+        state: {},
         children: {},
       },
       sessionRegistry: {
@@ -291,6 +298,16 @@ const migrateLegacyWindowState = Effect.fn("WindowStateStorage.migrateLegacy")(f
           pendingNamesBySession,
           draftSessionsById,
           temporarySessionIds,
+          pendingSummaryMetadataBySession: Object.fromEntries(
+            pendingSummaries.map((summary) => [
+              summary.sessionId,
+              {
+                fallbackTitle: summary.title,
+                createdAt: summary.createdAt,
+                modifiedAt: summary.modifiedAt,
+              },
+            ]),
+          ),
           stagedSessionId: pending.find((item) => item.lifecycle === "staged")?.sessionId,
         },
         children: { sessions: sessionChildren },
@@ -299,17 +316,7 @@ const migrateLegacyWindowState = Effect.fn("WindowStateStorage.migrateLegacy")(f
         state: {
           selectedSessionId: selectedCakeChatId,
           targets: cakeChatTargets,
-          pendingSessionId: pendingCakeChat?.sessionId,
-          pendingConfiguration: pendingCakeChat?.configuration,
-          pendingName: pendingCakeChat?.name,
-          pendingDraftPrompt:
-            pendingCakeChat?.draftSession && pendingCakeChat.stagedPrompt
-              ? {
-                  ...pendingCakeChat.stagedPrompt,
-                  resolved: pendingCakeChat.resolved ?? false,
-                }
-              : undefined,
-          pendingSummary: pendingCakeChatSummary,
+          pendingSessions: pendingCakeChatSession ? [pendingCakeChatSession] : [],
         },
         children: { loadedSessions: cakeChatChildren },
       },

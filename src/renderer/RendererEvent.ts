@@ -7,7 +7,11 @@ import type { AgentAvailabilityEntry } from "../domain/agent-availability-data";
 type NativePassthroughEvent = Extract<
   CakeEvent,
   {
-    type: "plugin-backend-event" | "fullscreen-surface-close-requested" | "artifact-updated";
+    type:
+      | "plugin-backend-event"
+      | "fullscreen-surface-close-requested"
+      | "artifact-updated"
+      | "extension-ui-intent";
   }
 >;
 
@@ -134,7 +138,8 @@ export function toRendererEvent(event: CakeEvent): RendererEvent | undefined {
   if (
     event.type === "plugin-backend-event" ||
     event.type === "fullscreen-surface-close-requested" ||
-    event.type === "artifact-updated"
+    event.type === "artifact-updated" ||
+    event.type === "extension-ui-intent"
   )
     return event;
   if (

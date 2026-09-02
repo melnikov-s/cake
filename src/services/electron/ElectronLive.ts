@@ -568,13 +568,14 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
     },
   });
 
-  const observe = (connectionId: number) =>
+  const observe = (connectionId: number, initial: CakeEvent) =>
     Stream.callback<CakeEvent>((queue) =>
       Effect.acquireRelease(
         Effect.sync(() => {
           const unsubscribe = subscribeNativeEvents(connectionId, (event) => {
             Queue.offerUnsafe(queue, event);
           });
+          Queue.offerUnsafe(queue, initial);
           return unsubscribe;
         }),
         (unsubscribe) => Effect.sync(unsubscribe),
@@ -582,30 +583,37 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
     );
   const focused = <Types extends CakeEvent["type"]>(
     connectionId: number,
+    channel: Extract<CakeEvent, { type: "renderer-events-ready" }>["channel"],
     ...types: ReadonlyArray<Types>
-  ): Stream.Stream<FocusedCakeEvent<Types>> => {
-    const accepted = new Set<CakeEvent["type"]>(types);
-    return observe(connectionId).pipe(
-      Stream.filter((event): event is FocusedCakeEvent<Types> => accepted.has(event.type)),
+  ): Stream.Stream<FocusedCakeEvent<Types | "renderer-events-ready">> => {
+    const accepted = new Set<CakeEvent["type"]>(["renderer-events-ready", ...types]);
+    return observe(connectionId, { type: "renderer-events-ready", channel }).pipe(
+      Stream.filter((event): event is FocusedCakeEvent<Types | "renderer-events-ready"> =>
+        accepted.has(event.type),
+      ),
     );
   };
   const nativeEvents = NativeEvents.of({
     application: (connectionId) =>
       focused(
         connectionId,
+        "application",
         "workspace-inspected",
         "changelog-snapshot",
         "complete",
         "fatal",
         "notification",
+        "extension-ui-intent",
       ),
     artifacts: (connectionId) =>
-      focused(connectionId, "artifact-updated", "artifact-requested", "ui-request"),
-    plugins: (connectionId) => focused(connectionId, "plugin-backend-event", "plugin-agent-event"),
-    terminals: (connectionId) => focused(connectionId, "terminal-toggle-requested"),
+      focused(connectionId, "artifacts", "artifact-updated", "artifact-requested", "ui-request"),
+    plugins: (connectionId) =>
+      focused(connectionId, "plugins", "plugin-backend-event", "plugin-agent-event"),
+    terminals: (connectionId) => focused(connectionId, "terminals", "terminal-toggle-requested"),
     vscode: (connectionId) =>
       focused(
         connectionId,
+        "vscode",
         "embedded-editor-selection",
         "embedded-editor-back-to-agent",
         "embedded-editor-annotation-opened",
@@ -613,7 +621,8 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
         "embedded-editor-selection-cleared",
         "embedded-editor-location-opened",
       ),
-    surfaces: (connectionId) => focused(connectionId, "fullscreen-surface-close-requested"),
+    surfaces: (connectionId) =>
+      focused(connectionId, "surfaces", "fullscreen-surface-close-requested"),
   });
 
   return Layer.merge(

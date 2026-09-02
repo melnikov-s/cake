@@ -38,7 +38,7 @@ export class SettingsStore extends Store<SettingsStoreProps> {
     );
   }
 
-  applyApplicationState(state: ApplicationState) {
-    this.utilityModel.applyApplicationState(state);
+  applyApplicationState(revision: number, state: ApplicationState) {
+    this.utilityModel.applyApplicationState(revision, state);
   }
 }

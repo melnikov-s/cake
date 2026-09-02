@@ -76,6 +76,7 @@ export default function (pi) {
     ctx.ui.setTitle("Extension workspace");
     ctx.ui.setWidget("fixture", ["unsupported widget line"], { placement: "aboveEditor" });
     ctx.ui.setEditorText("draft from extension");
+    ctx.ui.pasteToEditor(" once");
     await ctx.ui.confirm("Desktop extension", "Confirm the compatibility path");
     ctx.ui.setFooter(() => ({ render: () => [], invalidate() {} }));
   } });
@@ -106,7 +107,7 @@ export default function (pi) {
     await expect(page.getByText("Extension connected", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Confirm", exact: true }).click();
     await expect(page.getByText("Extension workspace", { exact: true })).toBeVisible();
-    await expect(page.getByLabel("Message")).toHaveValue("draft from extension");
+    await expect(page.getByLabel("Message")).toHaveValue("draft from extension once");
     await expect(page.getByText("fixture ready", { exact: true })).toBeVisible();
   } finally {
     await application.close();

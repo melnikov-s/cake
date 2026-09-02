@@ -18,7 +18,6 @@ function conversation(extensionUi: ConversationSnapshot["extensionUi"]): Convers
     commands: [],
     compatibility: { resources: [], diagnostics: [] },
     extensionUi,
-    sessions: [],
     tree: [],
   };
 }
@@ -42,35 +41,27 @@ function snapshot(extensionUi: ConversationSnapshot["extensionUi"]): ProjectSess
   };
 }
 
-describe("ConversationProjection extension UI ordering", () => {
-  it("recovers extension UI emitted before the renderer subscribes from the first snapshot", () => {
+describe("ConversationProjection extension UI state", () => {
+  it("hydrates current extension status and title from a snapshot", () => {
     const session = Session.create({ sessionId: "session", workingDirectory: "/cake" });
 
     applyProjectSessionUpdate(
       session,
       "session",
       snapshot({
-        revision: 2,
-        statuses: [],
-        notifications: [{ id: "notice", message: "Connected", tone: "info" }],
-        editorText: { text: "extension draft", mode: "replace" },
-        editorTextRevision: 1,
+        title: "Extension workspace",
+        statuses: [{ key: "fixture", text: "ready" }],
       }),
     );
 
-    expect(session.extensionUi.notifications.map((item) => item.message)).toEqual(["Connected"]);
-    expect(session.extensionUi.editorText).toEqual({ text: "extension draft", mode: "replace" });
-    expect(session.extensionUi.editorTextRevision).toBe(1);
+    expect(session.extensionUi.title).toBe("Extension workspace");
+    expect(session.extensionUi.statuses).toEqual([{ key: "fixture", text: "ready" }]);
     session[Symbol.dispose]();
   });
 
-  it("does not let an older snapshot overwrite a newer extension event", () => {
+  it("applies ordered extension state events without a nested revision", () => {
     const session = Session.create({ sessionId: "session", workingDirectory: "/cake" });
-    applyProjectSessionUpdate(
-      session,
-      "session",
-      snapshot({ revision: 0, statuses: [], notifications: [], editorTextRevision: 0 }),
-    );
+    applyProjectSessionUpdate(session, "session", snapshot({ statuses: [] }));
     applyProjectSessionUpdate(session, "session", {
       _tag: "Event",
       revision: 2,
@@ -78,26 +69,11 @@ describe("ConversationProjection extension UI ordering", () => {
       event: {
         _tag: "ExtensionUi",
         sessionId: "session",
-        event: { kind: "editor-text", text: "newer", mode: "replace" },
-      },
-    });
-    applyProjectSessionUpdate(session, "session", {
-      _tag: "Event",
-      revision: 3,
-      sessionId: "session",
-      event: {
-        _tag: "SnapshotUpdated",
-        snapshot: conversation({
-          revision: 0,
-          statuses: [],
-          notifications: [],
-          editorTextRevision: 0,
-        }),
+        event: { kind: "status", key: "fixture", text: "ready" },
       },
     });
 
-    expect(session.extensionUi.editorText).toEqual({ text: "newer", mode: "replace" });
-    expect(session.extensionUi.revision).toBe(1);
+    expect(session.extensionUi.statuses).toEqual([{ key: "fixture", text: "ready" }]);
     session[Symbol.dispose]();
   });
 });

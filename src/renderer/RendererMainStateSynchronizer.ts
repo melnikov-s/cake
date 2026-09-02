@@ -7,6 +7,7 @@ import type { RootStore } from "./stores/RootStore";
 export class RendererMainStateSynchronizer implements Disposable {
   private readonly abort = new AbortController();
   private observing = false;
+  private applicationRevision = -1;
 
   constructor(private readonly runtime: RendererRuntime) {}
 
@@ -21,8 +22,8 @@ export class RendererMainStateSynchronizer implements Disposable {
     const program = Effect.flatMap(CakeIpcClient, (client) =>
       Effect.all(
         [
-          consume(client.application.observeState(), ({ state }) =>
-            this.applyApplicationState(root, state),
+          consume(client.application.observeState(), (projection) =>
+            this.applyApplicationState(root, projection),
           ),
           consume(client.application.observeAgentAvailability(), (snapshot) =>
             root.projectWorkbenchStore.applyAgentAvailability(snapshot),
@@ -45,42 +46,14 @@ export class RendererMainStateSynchronizer implements Disposable {
 
   private applyApplicationState(
     root: RootStore,
-    state: Parameters<RootStore["settingsStore"]["applyApplicationState"]>[0],
+    projection: {
+      readonly revision: number;
+      readonly state: Parameters<RootStore["settingsStore"]["applyApplicationState"]>[1];
+    },
   ) {
-    const activeProjectSessionId =
-      root.appShellStore.activeConversation?.kind === "project-session"
-        ? root.appShellStore.activeConversation.sessionId
-        : undefined;
-    const activeProjectSessionWasResolved = activeProjectSessionId
-      ? root.sessionCatalogStore.find(activeProjectSessionId)?.resolved === true
-      : false;
-    const activeCakeChatSessionId =
-      root.appShellStore.activeConversation?.kind === "cake-chat"
-        ? root.appShellStore.activeConversation.sessionId
-        : undefined;
-    const activeCakeChatSessionWasResolved = activeCakeChatSessionId
-      ? root.globalChatStore.isSessionResolved(activeCakeChatSessionId)
-      : false;
-    root.settingsStore.applyApplicationState(state);
-    root.terminalStore.discardResolvedSessions([
-      ...state.resolvedSessionIds.map((sessionId) => ({ kind: "project" as const, sessionId })),
-      ...state.resolvedCakeChatSessionIds.map((sessionId) => ({
-        kind: "cake-chat" as const,
-        sessionId,
-      })),
-    ]);
-    if (
-      activeProjectSessionId &&
-      activeProjectSessionWasResolved &&
-      !root.sessionCatalogStore.find(activeProjectSessionId)?.resolved
-    )
-      root.appShellStore.selectProjectSession(activeProjectSessionId);
-    if (
-      activeCakeChatSessionId &&
-      activeCakeChatSessionWasResolved &&
-      !root.globalChatStore.isSessionResolved(activeCakeChatSessionId)
-    )
-      root.appShellStore.selectCakeChat(activeCakeChatSessionId);
+    if (projection.revision <= this.applicationRevision) return;
+    this.applicationRevision = projection.revision;
+    root.settingsStore.applyApplicationState(projection.revision, projection.state);
   }
 
   [Symbol.dispose]() {

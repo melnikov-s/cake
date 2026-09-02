@@ -18,8 +18,7 @@ it("hydrates a complete authoritative conversation snapshot", () => {
     diagnostics: [],
     commands: [],
     compatibility: { resources: [], diagnostics: [] },
-    extensionUi: { revision: 0, statuses: [], notifications: [], editorTextRevision: 0 },
-    sessions: [],
+    extensionUi: { statuses: [] },
     tree: [],
     artifacts: [],
   };

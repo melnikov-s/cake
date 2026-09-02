@@ -149,8 +149,7 @@ describe("RendererModelSynchronizer", () => {
       diagnostics: [],
       commands: [],
       compatibility: { resources: [], diagnostics: [] },
-      extensionUi: { revision: 0, statuses: [], notifications: [], editorTextRevision: 0 },
-      sessions: [],
+      extensionUi: { statuses: [] },
       tree: [],
     };
     const turnId = TurnId.make("123e4567-e89b-42d3-a456-426614174000");
@@ -240,8 +239,7 @@ describe("RendererModelSynchronizer", () => {
       diagnostics: [],
       commands: [],
       compatibility: { resources: [], diagnostics: [] },
-      extensionUi: { revision: 0, statuses: [], notifications: [], editorTextRevision: 0 },
-      sessions: [],
+      extensionUi: { statuses: [] },
       tree: [],
     };
     const client = {

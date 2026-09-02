@@ -9,7 +9,13 @@ import { RendererModels } from "../../../../src/renderer/RendererModels";
 describe("SessionRegistryStore materialization", () => {
   it("keeps a relocated composer unmaterialized until its Pi Session has started", () => {
     const catalogModel = SessionCatalog.create({ sessions: [] });
-    const catalog = mount(createStore(SessionCatalogStore, { model: catalogModel }));
+    const registryRef: { current?: SessionRegistryStore } = {};
+    const catalog = mount(
+      createStore(SessionCatalogStore, {
+        model: catalogModel,
+        pendingSessions: () => registryRef.current?.pendingSummaries ?? [],
+      }),
+    );
     const operations = mount(createStore(SessionOperationCoordinatorStore));
     const models = new RendererModels();
     const registry = mount(
@@ -37,6 +43,7 @@ describe("SessionRegistryStore materialization", () => {
         onResolveWorktree: () => undefined,
       }),
     );
+    registryRef.current = registry;
 
     registry.prepareNewSession("/project", "session-1");
     registry.relocateTemporarySession("session-1", "/worktree");

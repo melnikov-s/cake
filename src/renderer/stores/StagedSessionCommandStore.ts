@@ -1,4 +1,4 @@
-import { Store, observable, snapshot } from "r-state-tree";
+import { Store, observable } from "r-state-tree";
 import { stagedSessionSlashCommands, type SessionSnapshot } from "../../ipc/session-contract";
 import { RendererClientContext } from "../client/RendererClientContext";
 import { describeError } from "../error-details";
@@ -7,7 +7,7 @@ type SlashCommand = SessionSnapshot["commands"][number];
 
 /** Owns the finite, non-executable command preview for one unsent session. */
 export class StagedSessionCommandStore extends Store {
-  @snapshot readonly resourceCommands: SlashCommand[] = observable([]);
+  readonly resourceCommands: SlashCommand[] = observable([]);
   error: string | undefined;
   errorDetails: string | undefined;
   private loadRevision = 0;

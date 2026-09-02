@@ -1,4 +1,4 @@
-import { Store, computed, observable, snapshot } from "r-state-tree";
+import { Store, computed, observable } from "r-state-tree";
 import type { SessionCatalog } from "../models/SessionCatalog";
 import type { SessionSummary } from "../models/SessionSummary";
 import type { WorktreeRecord } from "../../ipc/worktree-contract";
@@ -20,9 +20,11 @@ export interface PendingSessionSummary {
   draft: boolean;
 }
 
-/** Owns renderer-local pending-session and Managed Worktree policy over the catalog projection. */
-export class SessionCatalogStore extends Store<{ model: SessionCatalog }> {
-  @snapshot private readonly pendingSessions: PendingSessionSummary[] = observable([]);
+/** Projects the authoritative and renderer-pending catalogs with Managed Worktree policy. */
+export class SessionCatalogStore extends Store<{
+  model: SessionCatalog;
+  pendingSessions?(): readonly PendingSessionSummary[];
+}> {
   private readonly managedWorktreeOverrides = observable(new Map<string, WorktreeRecord>());
 
   @computed
@@ -30,7 +32,9 @@ export class SessionCatalogStore extends Store<{ model: SessionCatalog }> {
     const authoritativeIds = new Set(this.props.model.sessions.map((session) => session.sessionId));
     return [
       ...this.props.model.sessions,
-      ...this.pendingSessions.filter((session) => !authoritativeIds.has(session.sessionId)),
+      ...(this.props.pendingSessions?.() ?? []).filter(
+        (session) => !authoritativeIds.has(session.sessionId),
+      ),
     ].sort((left, right) => {
       if (left.resolved !== right.resolved) return left.resolved ? 1 : -1;
       return right.modifiedAt.localeCompare(left.modifiedAt);
@@ -75,7 +79,7 @@ export class SessionCatalogStore extends Store<{ model: SessionCatalog }> {
   @computed
   private get managedWorktreeIndex(): ReadonlyMap<string, WorktreeRecord> {
     const indexed = new Map<string, WorktreeRecord>();
-    for (const session of this.sessions) {
+    for (const session of this.props.model.sessions) {
       const record = session.managedWorktree;
       if (record && !indexed.has(session.workingDirectory))
         indexed.set(session.workingDirectory, record);
@@ -106,76 +110,7 @@ export class SessionCatalogStore extends Store<{ model: SessionCatalog }> {
       .map((sessions) => sessions[0]!.managedWorktree!);
   }
 
-  upsertPending(
-    sessionId: string,
-    workingDirectory: string,
-    projectName: string,
-    options: {
-      draft?: boolean;
-      resolved?: boolean;
-      title?: string;
-      messageCount?: number;
-    } = {},
-  ) {
-    if (this.props.model.find(sessionId))
-      throw new Error(`Session ID collision detected: ${sessionId}`);
-    const now = new Date().toISOString();
-    const index = this.pendingSessions.findIndex((session) => session.sessionId === sessionId);
-    const current = this.pendingSessions[index];
-    const next: PendingSessionSummary = current
-      ? {
-          ...current,
-          modifiedAt: now,
-          resolved: options.resolved ?? current.resolved,
-          draft: options.draft ?? current.draft,
-          title: options.title ?? current.title,
-          messageCount: options.messageCount ?? current.messageCount,
-        }
-      : {
-          sessionId,
-          title: options.title ?? "New chat",
-          createdAt: now,
-          modifiedAt: now,
-          messageCount: options.messageCount ?? 0,
-          resolved: options.resolved ?? false,
-          unread: false,
-          projectPath: this.projectOfManagedWorktree(workingDirectory) ?? workingDirectory,
-          projectName,
-          workingDirectory,
-          pending: true,
-          draft: options.draft ?? false,
-        };
-    if (index >= 0) this.pendingSessions.splice(index, 1, next);
-    else this.pendingSessions.push(next);
-  }
-
-  setDraft(sessionId: string, draft: boolean) {
-    this.updatePending(sessionId, (session) => ({ ...session, draft }));
-  }
-
-  setPendingResolved(sessionId: string, resolved: boolean) {
-    this.updatePending(sessionId, (session) => ({ ...session, resolved }));
-  }
-
-  remove(sessionId: string) {
-    const index = this.pendingSessions.findIndex((session) => session.sessionId === sessionId);
-    if (index >= 0) this.pendingSessions.splice(index, 1);
-  }
-
-  rename(sessionId: string, title: string) {
-    const session = this.pendingSessions.find((candidate) => candidate.sessionId === sessionId);
-    if (!session) return undefined;
-    const previousTitle = session.title;
-    this.updatePending(sessionId, (current) => ({ ...current, title }));
-    return previousTitle;
-  }
-
-  private updatePending(
-    sessionId: string,
-    update: (session: PendingSessionSummary) => PendingSessionSummary,
-  ) {
-    const index = this.pendingSessions.findIndex((session) => session.sessionId === sessionId);
-    const session = this.pendingSessions[index];
-    if (index >= 0 && session) this.pendingSessions.splice(index, 1, update(session));
+  get authoritativeSessionIds() {
+    return this.props.model.sessions.map((session) => session.sessionId);
   }
 }

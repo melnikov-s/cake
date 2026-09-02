@@ -59,6 +59,7 @@ export type ProjectSessionRuntimeIntegrations = Pick<
   | "persistArtifact"
   | "requestArtifact"
   | "requestUi"
+  | "emitExtensionUiIntent"
   | "reviewContextPath"
 >;
 
@@ -175,6 +176,8 @@ export class ProjectSessionIntegrationHost {
     const reviewContextPath = this.reviewRepository.reviewContextPath;
     return {
       requestUi: (request) => this.requestUi(request),
+      emitExtensionUiIntent: (intent) =>
+        this.emit({ type: "extension-ui-intent", sessionId, intent }),
       persistArtifact: (artifact) => this.persistArtifact(artifact, sessionId),
       requestArtifact: (record, signal) => this.requestArtifact(record, signal),
       generateInlineWidget: (input) => this.generateInlineWidget(input),

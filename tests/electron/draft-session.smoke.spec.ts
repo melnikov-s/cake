@@ -76,6 +76,7 @@ test("restores, edits, resolves, and activates a project draft session", async (
     await expect(page.getByRole("button", { name: "Restore Planned work" })).toBeVisible();
     await page.getByRole("button", { name: "Restore Planned work" }).click();
 
+    await page.getByText("Original plan", { exact: true }).hover();
     await page.getByRole("button", { name: "Edit latest prompt" }).click();
     const composer = page.getByLabel("Message");
     await expect(composer).toBeFocused();

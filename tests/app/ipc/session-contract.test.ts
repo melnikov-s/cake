@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { parsePiBuiltinCommand } from "../../../src/ipc/session-contract";
+import { RendererApplicationState } from "../../../src/domain/application-data";
+import { applicationStateSchema, parsePiBuiltinCommand } from "../../../src/ipc/session-contract";
+
+it("uses the domain-owned renderer application schema at the IPC boundary", () => {
+  expect(applicationStateSchema).toBe(RendererApplicationState);
+});
 
 describe("parsePiBuiltinCommand", () => {
   it("parses builtin commands with and without arguments", () => {

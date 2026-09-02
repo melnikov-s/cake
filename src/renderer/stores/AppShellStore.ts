@@ -20,6 +20,8 @@ export type SessionHistoryEntry =
 /** Owns the one active application selection and its session navigation history in this window. */
 export interface AppShellStoreProps {
   sessionWorkspacePath(sessionId: string): string | undefined;
+  projectSessionResolved(sessionId: string): boolean | undefined;
+  cakeChatSessionResolved(sessionId: string): boolean | undefined;
   markProjectSessionRead(sessionId: string): void;
 }
 
@@ -32,6 +34,34 @@ export class AppShellStore extends Store<AppShellStoreProps> {
   @snapshot private readonly sessionHistory: SessionHistoryEntry[] = observable([]);
   @snapshot private sessionHistoryCursor = -1;
   private pendingTraversal: { entry: SessionHistoryEntry; cursor: number } | undefined;
+
+  constructor(props: AppShellStore["props"]) {
+    super(props);
+    this.reaction(
+      () => {
+        const active = this.activeConversation;
+        if (!active) return undefined;
+        const resolved =
+          active.kind === "project-session"
+            ? this.props.projectSessionResolved(active.sessionId)
+            : this.props.cakeChatSessionResolved(active.sessionId);
+        return { ...active, resolved };
+      },
+      (current, previous) => {
+        if (
+          !current ||
+          !previous ||
+          current.kind !== previous.kind ||
+          current.sessionId !== previous.sessionId ||
+          previous.resolved !== true ||
+          current.resolved !== false
+        )
+          return;
+        if (current.kind === "project-session") this.selectProjectSession(current.sessionId);
+        else this.selectCakeChat(current.sessionId);
+      },
+    );
+  }
 
   get surface(): AppSurface {
     if (this.selection.kind === "settings") return "settings";

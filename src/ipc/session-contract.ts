@@ -1,4 +1,9 @@
 import { Effect, Schema } from "effect";
+import {
+  RendererApplicationState,
+  UtilityModel as UtilityModelSchema,
+  type ProjectRecord as ProjectRecordType,
+} from "../domain/application-data";
 import { artifactRecordSchema } from "./artifact-contract";
 import { ipcProjectionArray, ipcProjectionString } from "./projection";
 import { sourceLocationSchema } from "./source-location";
@@ -24,11 +29,7 @@ export const thinkingLevelSchema = Schema.Literals([
   "max",
 ]);
 
-export const utilityModelSchema = Schema.Struct({
-  provider: stringRange(1, 256),
-  modelId: stringRange(1, 512),
-  thinkingLevel: thinkingLevelSchema,
-});
+export const utilityModelSchema = UtilityModelSchema;
 
 const piResourcePathSchema = stringRange(1, 4_096);
 const piResourcePathsSchema = Schema.Array(piResourcePathSchema).check(Schema.isMaxLength(1_000));
@@ -345,17 +346,6 @@ export const sessionUsageSchema = Schema.Struct({
   ),
 });
 
-const sessionSummarySchema = Schema.Struct({
-  id: stringRange(1, 256),
-  title: ipcProjectionString(SESSION_TITLE_MAX_LENGTH),
-  created: Schema.String,
-  modified: Schema.String,
-  messageCount: nonNegativeInt,
-  parentSessionId: Schema.optional(stringMax(256)),
-  resolved: defaultKey(Schema.Boolean, false),
-  draft: Schema.optional(Schema.Boolean),
-});
-
 const sessionTreeEntrySchema = Schema.Struct({
   id: stringRange(1, 256),
   parentId: Schema.optional(stringMax(256)),
@@ -403,7 +393,6 @@ const extensionEditorTextSchema = Schema.Struct({
   mode: Schema.Literals(["replace", "insert"]),
 });
 const extensionUiStateSchema = Schema.Struct({
-  revision: defaultKey(nonNegativeInt, 0),
   title: Schema.optional(ipcProjectionString(512)),
   statuses: defaultKey(
     ipcProjectionArray(
@@ -412,9 +401,6 @@ const extensionUiStateSchema = Schema.Struct({
     ),
     [],
   ),
-  notifications: defaultKey(ipcProjectionArray(extensionNotificationSchema, 8), []),
-  editorText: Schema.optional(extensionEditorTextSchema),
-  editorTextRevision: defaultKey(nonNegativeInt, 0),
 });
 
 export const slashCommandSchema = Schema.Struct({
@@ -472,19 +458,18 @@ export function parsePiBuiltinCommand(text: string): { name: string; args: strin
 }
 
 export const extensionUiEventSchema = Schema.Union([
-  Schema.Struct({ kind: Schema.Literal("notify"), ...extensionNotificationSchema.fields }),
   Schema.Struct({
     kind: Schema.Literal("status"),
     key: stringMax(256),
     text: Schema.optional(ipcProjectionString(2_048)),
   }),
   Schema.Struct({ kind: Schema.Literal("title"), title: ipcProjectionString(512) }),
-  Schema.Struct({
-    kind: Schema.Literal("editor-text"),
-    text: boundedText,
-    mode: Schema.Literals(["replace", "insert"]),
-  }),
   Schema.Struct({ kind: Schema.Literal("diagnostic"), diagnostic: resourceDiagnosticSchema }),
+]);
+
+export const extensionUiIntentSchema = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("notify"), ...extensionNotificationSchema.fields }),
+  Schema.Struct({ kind: Schema.Literal("editor-text"), ...extensionEditorTextSchema.fields }),
 ]);
 
 export const sessionSnapshotSchema = Schema.Struct({
@@ -507,44 +492,12 @@ export const sessionSnapshotSchema = Schema.Struct({
   commands: ipcProjectionArray(slashCommandSchema, 20_000),
   usage: Schema.optional(sessionUsageSchema),
   compatibility: defaultKey(compatibilityCatalogSchema, { resources: [], diagnostics: [] }),
-  extensionUi: defaultKey(extensionUiStateSchema, {
-    revision: 0,
-    statuses: [],
-    notifications: [],
-    editorTextRevision: 0,
-  }),
-  sessions: defaultKey(ipcProjectionArray(sessionSummarySchema, 10_000), []),
+  extensionUi: defaultKey(extensionUiStateSchema, { statuses: [] }),
   tree: defaultKey(ipcProjectionArray(sessionTreeEntrySchema, 50_000), []),
   artifacts: Schema.optional(ipcProjectionArray(artifactRecordSchema, 10_000)),
 });
 
-const projectRecordSchema = Schema.Struct({
-  path: stringRange(1, 4_096),
-  name: stringRange(1, 512),
-  addedAt: Schema.String,
-  lastOpenedAt: Schema.String,
-});
-export const applicationStateSchema = Schema.Struct({
-  projects: defaultKey(Schema.Array(projectRecordSchema).check(Schema.isMaxLength(200)), []),
-  resolvedSessionIds: defaultKey(
-    Schema.Array(stringMax(256)).check(Schema.isMaxLength(10_000)),
-    [],
-  ),
-  resolvedCakeChatSessionIds: defaultKey(
-    Schema.Array(stringMax(256)).check(Schema.isMaxLength(10_000)),
-    [],
-  ),
-  unreadSessionIds: defaultKey(Schema.Array(stringMax(256)).check(Schema.isMaxLength(10_000)), []),
-  trustedProjectPaths: defaultKey(
-    Schema.Array(stringMax(4_096)).check(Schema.isMaxLength(200)),
-    [],
-  ),
-  fastModeSessionIds: Schema.optional(
-    Schema.Array(stringMax(256)).check(Schema.isMaxLength(10_000)),
-  ),
-  utilityModel: Schema.optional(utilityModelSchema),
-  vscodeServerPath: Schema.optional(stringMax(4_096)),
-});
+export const applicationStateSchema = RendererApplicationState;
 
 export type WorkLogViewMode = "auto" | "diff" | "log";
 export type WorkLogsExpansion = "collapsed" | "expanded" | "fully-expanded";
@@ -575,12 +528,22 @@ export interface SessionPreview {
   readonly sessionFile: string;
   readonly parts: ReadonlyArray<UiPart>;
 }
-export type SessionSummary = typeof sessionSummarySchema.Type;
+export interface SessionSummary {
+  readonly id: string;
+  readonly title: string;
+  readonly created: string;
+  readonly modified: string;
+  readonly messageCount: number;
+  readonly parentSessionId?: string;
+  readonly resolved: boolean;
+  readonly draft?: boolean;
+}
 export type SessionTreeEntry = typeof sessionTreeEntrySchema.Type;
 export type CompatibilityResource = typeof compatibilityResourceSchema.Type;
 export type ResourceDiagnostic = typeof resourceDiagnosticSchema.Type;
 export type CompatibilityCatalog = typeof compatibilityCatalogSchema.Type;
 export type ExtensionUiState = typeof extensionUiStateSchema.Type;
 export type ExtensionUiEvent = typeof extensionUiEventSchema.Type;
-export type ProjectRecord = typeof projectRecordSchema.Type;
+export type ExtensionUiIntent = typeof extensionUiIntentSchema.Type;
+export type ProjectRecord = ProjectRecordType;
 export type ApplicationState = typeof applicationStateSchema.Type;

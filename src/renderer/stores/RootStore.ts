@@ -80,12 +80,9 @@ export class RootStore extends Store<{
   async openSession(sessionId: string, messageId?: string) {
     this.projectSession(sessionId);
     this.projectWorkbenchStore.dismissSecondarySurfaces();
-    const opening = this.projectWorkbenchStore.openSession(sessionId);
-    const selectedImmediately = this.projectWorkbenchStore.isActiveSession(sessionId);
-    if (selectedImmediately) this.selectProjectSessionForShell(sessionId);
-    await opening;
-    if (!selectedImmediately && this.projectWorkbenchStore.isActiveSession(sessionId))
-      this.selectProjectSessionForShell(sessionId);
+    this.selectProjectSessionForShell(sessionId);
+    await this.projectWorkbenchStore.openSession(sessionId);
+    if (!this.projectWorkbenchStore.isActiveSession(sessionId)) return false;
     if (!messageId) return true;
     const session = this.sessionRegistry.findSession(sessionId);
     if (!session) return false;
@@ -239,7 +236,6 @@ export class RootStore extends Store<{
     if (deleteSessions) {
       for (const sessionId of sessionIds) {
         this.sessionRegistry.removeSession(sessionId);
-        this.sessionCatalogStore.remove(sessionId);
       }
     }
     if (target) await this.navigateToHistoryEntry(target);
@@ -257,11 +253,13 @@ export class RootStore extends Store<{
   }
 
   private async resolveProjectSession(sessionId: string, resolved: boolean) {
+    const rendererDraft = this.sessionRegistry.isDraftSession(sessionId);
     const changed = await this.projectWorkbenchStore.sessionManagementStore.resolveSession(
       sessionId,
       resolved,
     );
-    if (resolved && changed) await this.forgetResolvedProjectSessions([sessionId]);
+    if (resolved && changed && !rendererDraft)
+      await this.forgetResolvedProjectSessions([sessionId]);
   }
 
   private async deleteProjectSession(sessionId: string) {
@@ -414,7 +412,10 @@ export class RootStore extends Store<{
 
   @child
   get sessionCatalogStore(): SessionCatalogStore {
-    return createStore(SessionCatalogStore, { model: this.sessionCatalogModel });
+    return createStore(SessionCatalogStore, {
+      model: this.sessionCatalogModel,
+      pendingSessions: () => this.sessionRegistry.pendingSummaries,
+    });
   }
 
   @child
@@ -527,6 +528,8 @@ export class RootStore extends Store<{
       sessionWorkspacePath: (sessionId) =>
         this.sessionCatalogStore.find(sessionId)?.workingDirectory ??
         this.sessionRegistry.findSession(sessionId)?.workspacePath,
+      projectSessionResolved: (sessionId) => this.sessionCatalogModel.find(sessionId)?.resolved,
+      cakeChatSessionResolved: (sessionId) => this.cakeChatCatalogModel.find(sessionId)?.resolved,
       markProjectSessionRead: (sessionId) =>
         this.sessionRegistry.findSession(sessionId)?.markRead(),
     });
@@ -534,6 +537,26 @@ export class RootStore extends Store<{
 
   constructor(props: RootStore["props"]) {
     super(props);
+    this.reaction(
+      () => [
+        ...this.sessionCatalogModel.sessions.map((session) => ({
+          kind: "project" as const,
+          sessionId: session.sessionId,
+          resolved: session.resolved,
+        })),
+        ...this.cakeChatCatalogModel.sessions.map((session) => ({
+          kind: "cake-chat" as const,
+          sessionId: session.sessionId,
+          resolved: session.resolved,
+        })),
+      ],
+      (sessions) =>
+        this.terminalStore.discardResolvedSessions(
+          sessions
+            .filter((session) => session.resolved)
+            .map(({ kind, sessionId }) => ({ kind, sessionId })),
+        ),
+    );
     this.effect(() => {
       for (const session of this.globalChatStore.loadedSessions)
         for (const request of session.model.controlRequests)

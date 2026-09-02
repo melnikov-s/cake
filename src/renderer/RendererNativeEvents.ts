@@ -6,10 +6,24 @@ import type { RendererRuntime } from "./RendererRuntime";
 import type { RendererModelSynchronizer } from "./RendererModelSynchronizer";
 import type { RootStore } from "./stores/RootStore";
 
+const nativeEventChannels = [
+  "application",
+  "artifacts",
+  "plugins",
+  "terminals",
+  "vscode",
+  "surfaces",
+] as const;
+
 /** Window-owned bridge from focused native RPC Streams to their renderer owners. */
 export class RendererNativeEvents implements Disposable {
   private readonly abort = new AbortController();
   private readonly listeners = new Set<(event: RendererEvent) => void>();
+  private readonly readyChannels = new Set<(typeof nativeEventChannels)[number]>();
+  private resolveReady: (() => void) | undefined;
+  private readonly ready = new Promise<void>((resolve) => {
+    this.resolveReady = resolve;
+  });
   private disposed = false;
   private started = false;
 
@@ -23,6 +37,14 @@ export class RendererNativeEvents implements Disposable {
         Stream.retry(Schedule.spaced("250 millis")),
         Stream.runForEach((event) =>
           Effect.sync(() => {
+            if (event.type === "renderer-events-ready") {
+              this.readyChannels.add(event.channel);
+              if (this.readyChannels.size === nativeEventChannels.length) {
+                this.resolveReady?.();
+                this.resolveReady = undefined;
+              }
+              return;
+            }
             const rendererEvent = toRendererEvent(event);
             if (rendererEvent) for (const listener of this.listeners) listener(rendererEvent);
           }),
@@ -55,7 +77,7 @@ export class RendererNativeEvents implements Disposable {
 
   /** Routes non-authoritative native lifecycle events outside the Store tree. */
   observe(root: RootStore, synchronizer: RendererModelSynchronizer) {
-    const unsubscribe = this.subscribe((event) => {
+    this.subscribe((event) => {
       try {
         if (event.type === "artifact-updated") {
           synchronizer.updateArtifact(event.record);
@@ -82,12 +104,14 @@ export class RendererNativeEvents implements Disposable {
       }
     });
     this.start();
-    return unsubscribe;
+    return this.ready;
   }
 
   [Symbol.dispose]() {
     if (this.disposed) return;
     this.disposed = true;
+    this.resolveReady?.();
+    this.resolveReady = undefined;
     this.abort.abort();
     this.listeners.clear();
   }

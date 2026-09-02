@@ -34,7 +34,6 @@ export const projectSnapshot = (snapshot: SessionSnapshot): ConversationSnapshot
     commands: snapshot.commands.map(jsonValue),
     compatibility: jsonValue(snapshot.compatibility),
     extensionUi: jsonValue(snapshot.extensionUi),
-    sessions: snapshot.sessions.map(jsonValue),
     tree: snapshot.tree.map(jsonValue),
   };
   if (snapshot.sessionListed !== undefined)

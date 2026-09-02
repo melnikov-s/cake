@@ -71,6 +71,9 @@ test("promotes a staged chat immediately and leaves New Chat free for the next s
 
     const firstSessionId = await firstSession.getAttribute("data-session-id");
     expect(firstSessionId).toBeTruthy();
+    const stop = page.getByRole("button", { name: "Stop" });
+    await expect(stop).toBeVisible();
+    await stop.click();
     await page.getByRole("button", { name: "New chat in project", exact: true }).click();
     await expect(page.locator(".session-item.active")).toHaveCount(0);
     await expect(page.locator('[data-slot="workspace-header"] strong')).toHaveText("New chat");
@@ -86,10 +89,13 @@ test("promotes a staged chat immediately and leaves New Chat free for the next s
       page.locator(".session-item").filter({ hasText: "Second promoted session" }),
     ).toHaveCount(1, { timeout: 20_000 });
 
-    await page
-      .locator(`.session-item[data-session-id='${firstSessionId}']`)
-      .locator(".session-resolve-action")
-      .click();
+    const firstSessionAfterPromotion = page.locator(
+      `.session-item[data-session-id='${firstSessionId}']`,
+    );
+    await firstSessionAfterPromotion.locator(".session-row").click();
+    await expect(firstSessionAfterPromotion).toHaveClass(/active/);
+    await expect(firstSessionAfterPromotion.locator(".session-resolve-action")).toBeAttached();
+    await firstSessionAfterPromotion.locator(".session-resolve-action").click();
     await expect(page.getByRole("region", { name: "Resolved sessions" })).toBeVisible();
     await expect(
       page.locator(`.session-item.active[data-session-id='${firstSessionId}']`),

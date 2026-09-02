@@ -11,18 +11,30 @@ export interface NativeEventsService {
     connectionId: number,
   ) => Stream.Stream<
     FocusedCakeEvent<
-      "workspace-inspected" | "changelog-snapshot" | "complete" | "fatal" | "notification"
+      | "workspace-inspected"
+      | "changelog-snapshot"
+      | "complete"
+      | "fatal"
+      | "notification"
+      | "extension-ui-intent"
+      | "renderer-events-ready"
     >
   >;
   readonly artifacts: (
     connectionId: number,
-  ) => Stream.Stream<FocusedCakeEvent<"artifact-updated" | "artifact-requested" | "ui-request">>;
+  ) => Stream.Stream<
+    FocusedCakeEvent<
+      "artifact-updated" | "artifact-requested" | "ui-request" | "renderer-events-ready"
+    >
+  >;
   readonly plugins: (
     connectionId: number,
-  ) => Stream.Stream<FocusedCakeEvent<"plugin-backend-event" | "plugin-agent-event">>;
+  ) => Stream.Stream<
+    FocusedCakeEvent<"plugin-backend-event" | "plugin-agent-event" | "renderer-events-ready">
+  >;
   readonly terminals: (
     connectionId: number,
-  ) => Stream.Stream<FocusedCakeEvent<"terminal-toggle-requested">>;
+  ) => Stream.Stream<FocusedCakeEvent<"terminal-toggle-requested" | "renderer-events-ready">>;
   readonly vscode: (
     connectionId: number,
   ) => Stream.Stream<
@@ -33,11 +45,14 @@ export interface NativeEventsService {
       | "embedded-editor-toggle-chat"
       | "embedded-editor-selection-cleared"
       | "embedded-editor-location-opened"
+      | "renderer-events-ready"
     >
   >;
   readonly surfaces: (
     connectionId: number,
-  ) => Stream.Stream<FocusedCakeEvent<"fullscreen-surface-close-requested">>;
+  ) => Stream.Stream<
+    FocusedCakeEvent<"fullscreen-surface-close-requested" | "renderer-events-ready">
+  >;
 }
 
 export class NativeEvents extends Context.Service<NativeEvents, NativeEventsService>()(

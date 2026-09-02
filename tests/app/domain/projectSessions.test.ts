@@ -31,8 +31,7 @@ const snapshot: SessionSnapshot = {
   diagnostics: [],
   commands: [],
   compatibility: { resources: [], diagnostics: [] },
-  extensionUi: { revision: 0, statuses: [], notifications: [], editorTextRevision: 0 },
-  sessions: [],
+  extensionUi: { statuses: [] },
   tree: [],
 };
 

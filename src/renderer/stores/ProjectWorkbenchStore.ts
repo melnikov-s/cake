@@ -312,6 +312,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       await this.client.workspaces.removeProject(path, deleteSessions, { signal: this.signal });
       if (this.signal.aborted) return false;
       if (this.projectPath === path) {
+        this.openRevision += 1;
         this.projectPath = undefined;
         this.selectedSessionId = undefined;
       }
@@ -344,6 +345,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   async startNewSession(path = this.projectPath) {
     const staged = this.sessionRegistry.stagedSession();
     if (staged) {
+      this.openRevision += 1;
       this.showCachedSession(staged.sessionId);
       return;
     }
@@ -427,6 +429,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   }
 
   private showTemporarySession(path: string, sessionId: string, staged = false) {
+    this.openRevision += 1;
     this.pendingOpen = undefined;
     const session = staged
       ? this.sessionRegistry.prepareStagedSession(path, sessionId)
@@ -443,6 +446,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   }
 
   async openSession(sessionId: string) {
+    const revision = ++this.openRevision;
     const summary = this.props.catalog.find(sessionId);
     const workspacePath =
       summary?.workingDirectory ?? this.sessionRegistry.findSession(sessionId)?.workspacePath;
@@ -457,13 +461,14 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
         { sessionId, workingDirectory: workspacePath },
         { signal: this.signal },
       );
-      if (this.signal.aborted) return;
+      if (this.signal.aborted || revision !== this.openRevision) return;
       if (!cached) this.showCachedSession(sessionId);
       this.props.projects.recordOpened(
         this.props.catalog.projectOfManagedWorktree(workspacePath) ?? workspacePath,
       );
     } catch (error) {
-      if (!this.signal.aborted) this.setError(error, "Opening Project Session");
+      if (!this.signal.aborted && revision === this.openRevision)
+        this.setError(error, "Opening Project Session");
     }
   }
 
@@ -711,6 +716,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       this.agentAvailability = event.availability.state;
       this.agentAvailabilityReason = event.availability.reason;
       if (event.availability.state === "unavailable") {
+        this.openRevision += 1;
         this.reopenAfterAgentRestart = Boolean(
           this.projectPath &&
           this.session &&

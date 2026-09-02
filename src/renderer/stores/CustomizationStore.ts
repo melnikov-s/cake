@@ -64,8 +64,7 @@ export class CustomizationStore extends Store {
     if (this.busy) return;
     this.busy = true;
     try {
-      const state = await this.pluginCommands.rollback({ signal: this.signal });
-      if (!this.signal.aborted) this.state = state;
+      await this.pluginCommands.rollback({ signal: this.signal });
     } catch (error) {
       if (this.signal.aborted) return;
       this.error = error instanceof Error ? error.message : String(error);
@@ -78,8 +77,7 @@ export class CustomizationStore extends Store {
     if (this.busy) return;
     this.busy = true;
     try {
-      const state = await this.pluginCommands.useFactory({ signal: this.signal });
-      if (!this.signal.aborted) this.state = state;
+      await this.pluginCommands.useFactory({ signal: this.signal });
     } catch (error) {
       if (this.signal.aborted) return;
       this.error = error instanceof Error ? error.message : String(error);

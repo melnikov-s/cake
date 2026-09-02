@@ -75,12 +75,16 @@ describe("SessionCatalogStore indexes", () => {
 
   it("shows the first-message projection until the authoritative Pi summary arrives", () => {
     const model = SessionCatalog.create({ sessions: [] });
-    const store = mount(createStore(SessionCatalogStore, { model }));
-
-    store.upsertPending("new-session", "/project", "project", {
-      title: "Hi",
-      messageCount: 1,
-    });
+    const pending = [
+      {
+        ...session("new-session", "2026-01-03T00:00:00.000Z"),
+        title: "Hi",
+        pending: true as const,
+      },
+    ];
+    const store = mount(
+      createStore(SessionCatalogStore, { model, pendingSessions: () => pending }),
+    );
 
     expect(store.sessions).toMatchObject([
       {

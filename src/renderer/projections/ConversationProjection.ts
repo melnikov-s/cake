@@ -57,15 +57,6 @@ function applyConversationSnapshot(
 ) {
   const current = toSnapshot(model);
   const authoritative = toSessionSnapshot(conversation);
-  const currentExtensionUi = current.extensionUi!;
-  const authoritativeExtensionUi = authoritative.extensionUi!;
-  const extensionUi =
-    (currentExtensionUi.revision ?? 0) > (authoritativeExtensionUi.revision ?? 0)
-      ? currentExtensionUi
-      : {
-          ...authoritativeExtensionUi,
-          compatibilityDiagnostics: currentExtensionUi.compatibilityDiagnostics,
-        };
   applySnapshot(model, {
     ...authoritative,
     activeTurnIds: preserveActiveTurns ? current.activeTurnIds : [],
@@ -74,7 +65,10 @@ function applyConversationSnapshot(
     releasedSubagentHandleIds: current.releasedSubagentHandleIds,
     backgroundWorkActive: current.backgroundWorkActive,
     controlRequests: current.controlRequests,
-    extensionUi,
+    extensionUi: {
+      ...authoritative.extensionUi,
+      compatibilityDiagnostics: current.extensionUi?.compatibilityDiagnostics ?? [],
+    },
   });
 }
 
@@ -101,15 +95,6 @@ function applyConversationEvent(model: Session, event: ConversationEvent) {
 
 function applyExtensionUiEvent(model: Session, event: typeof extensionUiEventSchema.Type): void {
   const extensionUi = model.extensionUi;
-  extensionUi.revision += 1;
-  if (event.kind === "notify") {
-    const existing = extensionUi.notifications.findIndex((item) => item.id === event.id);
-    if (existing >= 0) extensionUi.notifications.splice(existing, 1);
-    extensionUi.notifications.push(event);
-    if (extensionUi.notifications.length > 8)
-      extensionUi.notifications.splice(0, extensionUi.notifications.length - 8);
-    return;
-  }
   if (event.kind === "status") {
     const existing = extensionUi.statuses.findIndex((item) => item.key === event.key);
     if (existing >= 0) extensionUi.statuses.splice(existing, 1);
@@ -118,11 +103,6 @@ function applyExtensionUiEvent(model: Session, event: typeof extensionUiEventSch
   }
   if (event.kind === "title") {
     extensionUi.title = event.title;
-    return;
-  }
-  if (event.kind === "editor-text") {
-    extensionUi.editorText = { text: event.text, mode: event.mode };
-    extensionUi.editorTextRevision += 1;
     return;
   }
   if (!extensionUi.compatibilityDiagnostics.some((item) => item.id === event.diagnostic.id))

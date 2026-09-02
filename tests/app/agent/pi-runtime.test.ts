@@ -38,7 +38,11 @@ import {
 } from "../../../src/services/pi/runtime/session-projection";
 import { loadReviewSessionProjection } from "../../../src/services/pi/runtime/sidecar-runtime";
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
-import { sessionSnapshotSchema, type SessionSnapshot } from "../../../src/ipc/session-contract";
+import {
+  sessionSnapshotSchema,
+  type ExtensionUiIntent,
+  type SessionSnapshot,
+} from "../../../src/ipc/session-contract";
 
 const execFileAsync = promisify(execFile);
 const temporaryDirectories: string[] = [];
@@ -222,9 +226,6 @@ describe("Pi 0.84.0 foundation contract", () => {
     expect(summary).toBeDefined();
     if (!summary) throw new Error("Expected Pi to list the session fixture");
     expect(summary.title).toBe("x".repeat(1_024));
-    expect(() =>
-      Schema.decodeUnknownSync(sessionSnapshotSchema.fields.sessions)([summary]),
-    ).not.toThrow();
   });
 
   it("starts automatic naming from the initial user message", async () => {
@@ -283,11 +284,12 @@ describe("Pi 0.84.0 foundation contract", () => {
     const generateTitle = vi.fn(async ({ firstUserMessage }: { firstUserMessage: string }) => {
       return firstUserMessage === "Investigate session naming" ? "Generated title" : "Unexpected";
     });
+    const sessionDir = join(directory, "sessions");
     try {
       const runtime = await createCakeRuntime({
         cwd: directory,
         agentDir,
-        sessionDir: join(directory, "sessions"),
+        sessionDir,
         trusted: true,
         utilityModel: () => ({
           provider: "fixture-provider",
@@ -318,19 +320,15 @@ describe("Pi 0.84.0 foundation contract", () => {
         { timeout: 1_000 },
       );
       await vi.waitFor(() => expect(generateTitle).toHaveBeenCalledOnce(), { timeout: 1_000 });
-      await vi.waitFor(
-        async () =>
-          expect(
-            (await runtime.snapshot()).sessions.find((item) => item.id === runtime.sessionId)
-              ?.title,
-          ).toBe("Generated title"),
-        { timeout: 1_000 },
-      );
       expect(generateTitle).toHaveBeenCalledWith(
         expect.objectContaining({ firstUserMessage: "Investigate session naming" }),
       );
       releaseResponse();
       await prompt;
+      await vi.waitFor(async () => {
+        const sessionText = await readFile(runtime.sessionFile, "utf8");
+        expect(sessionText).toContain('"name":"Generated title"');
+      });
       const entries = (await readFile(runtime.sessionFile, "utf8"))
         .trim()
         .split("\n")
@@ -346,6 +344,9 @@ describe("Pi 0.84.0 foundation contract", () => {
           customType: "cake.user-message-presentation/v1",
           data: { targetId: userEntry?.id, renderAs: "markdown" },
         }),
+      );
+      expect(entries).toContainEqual(
+        expect.objectContaining({ type: "session_info", name: "Generated title" }),
       );
       prompt = undefined;
     } finally {
@@ -1676,13 +1677,6 @@ describe("S1 Pi runtime", () => {
     expect(first.sessionFile).toMatch(/\.jsonl$/);
     expect(firstSnapshot.sessionId).toBe(first.sessionId);
     expect(firstSnapshot.parts).toEqual([]);
-    expect(firstSnapshot.sessions).toEqual([
-      expect.objectContaining({
-        id: first.sessionId,
-        title: "New chat",
-        messageCount: 0,
-      }),
-    ]);
     expect(firstSnapshot.piSettings).toMatchObject({
       autoCompact: true,
       steeringMode: "one-at-a-time",
@@ -1996,7 +1990,9 @@ describe("S1 Pi runtime", () => {
     expect((await second.snapshot()).tree[0]).toMatchObject({ id: "user-1", active: true });
     await second.rename("Named session");
     expect(
-      (await second.snapshot()).sessions.find((item) => item.id === second.sessionId)?.title,
+      (await listWorkspaceSessions(directory, sessionDir)).find(
+        (item) => item.id === second.sessionId,
+      )?.title,
     ).toBe("Named session");
     await second.navigate("assistant-tools");
     expect((await second.snapshot()).tree[0]).toMatchObject({ id: "user-1", active: true });
@@ -2172,6 +2168,7 @@ export default function (pi) {
     );
     const events: Array<{ type: string; event?: { kind: string } }> = [];
     const requests: string[] = [];
+    const intents: ExtensionUiIntent[] = [];
     const runtime = await createCakeRuntime({
       cwd: directory,
       agentDir,
@@ -2181,6 +2178,7 @@ export default function (pi) {
         requests.push(request.kind);
         return request.kind === "select" ? "one" : request.kind === "editor" ? "edited" : "value";
       },
+      emitExtensionUiIntent: (intent) => intents.push(intent),
       onEvent: (event) => events.push(event),
     });
     runtimes.push(runtime);
@@ -2238,9 +2236,11 @@ export default function (pi) {
       title: "Fixture title",
       statuses: [{ key: "fixture", text: "Ready" }],
     });
-    expect(
-      events.some((event) => event.type === "extension-ui" && event.event?.kind === "notify"),
-    ).toBe(true);
+    expect(intents).toEqual([
+      expect.objectContaining({ kind: "notify", message: "Fixture notification" }),
+      { kind: "editor-text", text: "fixture draft", mode: "replace" },
+    ]);
+    expect(events.some((event) => event.event?.kind === "notify")).toBe(false);
     expect(snapshot.compatibility.diagnostics).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ source: "compatibility", method: "setFooter" }),

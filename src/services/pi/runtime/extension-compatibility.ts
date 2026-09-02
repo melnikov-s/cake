@@ -1,18 +1,13 @@
 import type { ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 import { createHash } from "node:crypto";
-import type { ExtensionUiEvent } from "../../../ipc/session-contract";
+import type { ExtensionUiEvent, ExtensionUiIntent } from "../../../ipc/session-contract";
 import type { RuntimeUiRequest } from "./cake-runtime";
 
 export function createCakeExtensionUiContext(options: {
   request(request: RuntimeUiRequest): Promise<string | undefined>;
-  emit(event: ExtensionUiEvent): void;
-  state: {
-    statuses: Array<{ key: string; text: string }>;
-    notifications: Array<{ id: string; message: string; tone: "info" | "warning" | "error" }>;
-    title?: string;
-    editorText?: { text: string; mode: "replace" | "insert" };
-    editorTextRevision: number;
-  };
+  emitState(event: ExtensionUiEvent): void;
+  emitIntent(intent: ExtensionUiIntent): void;
+  state: { statuses: Array<{ key: string; text: string }>; title?: string };
   addDiagnostic(method: string, message: string): void;
 }): ExtensionUIContext {
   let editorText = "";
@@ -55,11 +50,7 @@ export function createCakeExtensionUiContext(options: {
         timeout: opts?.timeout,
       }),
     notify(message, tone = "info") {
-      const event = { kind: "notify" as const, id: crypto.randomUUID(), message, tone };
-      options.state.notifications.push(event);
-      if (options.state.notifications.length > 8)
-        options.state.notifications.splice(0, options.state.notifications.length - 8);
-      options.emit(event);
+      options.emitIntent({ kind: "notify", id: crypto.randomUUID(), message, tone });
     },
     onTerminalInput() {
       degraded("onTerminalInput", "raw terminal input has no desktop equivalent");
@@ -72,7 +63,7 @@ export function createCakeExtensionUiContext(options: {
         if (index >= 0) options.state.statuses.splice(index, 1);
       } else if (index >= 0) options.state.statuses.splice(index, 1, { key, text });
       else options.state.statuses.push({ key, text });
-      options.emit({ kind: "status", key, text });
+      options.emitState({ kind: "status", key, text });
     },
     setWorkingMessage(message) {
       degraded(
@@ -103,7 +94,7 @@ export function createCakeExtensionUiContext(options: {
     },
     setTitle(title) {
       options.state.title = title;
-      options.emit({ kind: "title", title });
+      options.emitState({ kind: "title", title });
     },
     async custom() {
       degraded("custom", "arbitrary TUI components require a Cake artifact or widget fallback");
@@ -111,15 +102,11 @@ export function createCakeExtensionUiContext(options: {
     },
     pasteToEditor(text) {
       editorText += text;
-      options.state.editorText = { text: editorText, mode: "replace" };
-      options.state.editorTextRevision += 1;
-      options.emit({ kind: "editor-text", text, mode: "insert" });
+      options.emitIntent({ kind: "editor-text", text, mode: "insert" });
     },
     setEditorText(text) {
       editorText = text;
-      options.state.editorText = { text, mode: "replace" };
-      options.state.editorTextRevision += 1;
-      options.emit({ kind: "editor-text", text, mode: "replace" });
+      options.emitIntent({ kind: "editor-text", text, mode: "replace" });
     },
     getEditorText: () => editorText,
     editor: (title, prefill) =>

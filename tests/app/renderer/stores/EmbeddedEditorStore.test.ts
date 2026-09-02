@@ -50,7 +50,7 @@ describe("EmbeddedEditorStore", () => {
     await store.show();
     expect(store.visible).toBe(true);
     expect(store.chatSidebarVisible).toBe(true);
-    expect(client.getState).toHaveBeenCalledOnce();
+    expect(client.getState).not.toHaveBeenCalled();
     expect(client.open).toHaveBeenCalledWith("/tmp/project", expect.any(Object));
 
     store.toggleChatSidebar();
@@ -82,7 +82,7 @@ describe("EmbeddedEditorStore", () => {
     store.showAgentLocation();
 
     expect(store.visible).toBe(true);
-    expect(client.getState).toHaveBeenCalledOnce();
+    expect(client.getState).not.toHaveBeenCalled();
     expect(client.open).not.toHaveBeenCalled();
     root[Symbol.dispose]();
   });
@@ -123,6 +123,33 @@ describe("EmbeddedEditorStore", () => {
     });
     expect(store.lastActivePath).toBeUndefined();
     expect(store.activeContextAttachment).toBeUndefined();
+    root[Symbol.dispose]();
+  });
+
+  it("keeps the state stream authoritative while changing the server path", async () => {
+    const { client, root, store } = createHarness();
+    let finish!: () => void;
+    client.setServerPath.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = () =>
+            resolve({
+              projects: [],
+              resolvedSessionIds: [],
+              resolvedCakeChatSessionIds: [],
+              unreadSessionIds: [],
+              trustedProjectPaths: [],
+            });
+        }),
+    );
+    const request = store.useExistingInstallation("/usr/local/bin/code-server");
+    store.applyState(stateEvent("ready"));
+
+    finish();
+    await request;
+
+    expect(store.status).toBe("ready");
+    expect(client.getState).not.toHaveBeenCalled();
     root[Symbol.dispose]();
   });
 

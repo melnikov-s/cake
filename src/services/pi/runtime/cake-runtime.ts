@@ -19,6 +19,7 @@ import type {
   PiSettings,
   PiSettingUpdate,
   ExtensionUiEvent,
+  ExtensionUiIntent,
   ResourceDiagnostic,
   SessionSnapshot,
   ThinkingLevel,
@@ -268,6 +269,7 @@ export interface CakeRuntimeOptions {
   /** Subset of builtin slash command names to advertise; defaults to all of them. */
   slashCommands?: readonly string[];
   requestUi(request: RuntimeUiRequest): Promise<string | undefined>;
+  emitExtensionUiIntent?(intent: ExtensionUiIntent): void;
   persistArtifact?(artifact: CakeArtifactV1): Promise<ArtifactRecord>;
   requestArtifact?(record: ArtifactRecord, signal: AbortSignal): Promise<JsonValue | undefined>;
   generateInlineWidget?(
@@ -615,7 +617,7 @@ export interface CakeRuntime {
   readonly streaming: boolean;
   getReviewParentContext?(): ReviewParentContext;
   recordReviewRun(run: ReviewRunEntry): void;
-  snapshot(requestId?: string): Promise<SessionSnapshot>;
+  snapshot(): Promise<SessionSnapshot>;
   /** Returns the active model configuration without performing snapshot discovery or auth checks. */
   currentConfiguration?(): ChatConfiguration | undefined;
   notifySubagentCompletion?(result: JsonValue): Promise<void>;
@@ -1062,23 +1064,10 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     diagnostics: [...initialCatalog.diagnostics],
   };
   interface MutableExtensionUiState {
-    revision: number;
     statuses: Array<{ key: string; text: string }>;
-    notifications: Array<{
-      id: string;
-      message: string;
-      tone: "info" | "warning" | "error";
-    }>;
     title?: string;
-    editorText?: { text: string; mode: "replace" | "insert" };
-    editorTextRevision: number;
   }
-  const extensionUiState: MutableExtensionUiState = {
-    revision: 0,
-    statuses: [],
-    notifications: [],
-    editorTextRevision: 0,
-  };
+  const extensionUiState: MutableExtensionUiState = { statuses: [] };
   const compatibilityDiagnosticKeys = new Set(
     catalog.diagnostics.map((item) => `${item.method ?? ""}:${item.message}`),
   );
@@ -1087,9 +1076,11 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
   const extensionUi = createCakeExtensionUiContext({
     request: requestExtensionValue,
     state: extensionUiState,
-    emit: (event) => {
-      extensionUiState.revision += 1;
+    emitState: (event) => {
       if (!disposed) options.onEvent({ type: "extension-ui", sessionId: cakeSessionId, event });
+    },
+    emitIntent: (intent) => {
+      if (!disposed) options.emitExtensionUiIntent?.(intent);
     },
     addDiagnostic(method, message) {
       const key = `${method}:${message}`;
@@ -1104,7 +1095,6 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       };
       catalog.diagnostics.push(diagnostic);
       if (!disposed) {
-        extensionUiState.revision += 1;
         options.onEvent({
           type: "extension-ui",
           sessionId: cakeSessionId,
@@ -1152,7 +1142,9 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     return [...extensionCommands, ...templateCommands, ...skillCommands];
   }
 
-  async function makeSnapshot(): Promise<SessionSnapshot> {
+  async function makeSnapshot(
+    onCaptured?: (snapshot: SessionSnapshot) => void,
+  ): Promise<SessionSnapshot> {
     // Resolve every asynchronous projection first. Pi can continue emitting live
     // events while these are in flight, so reading mutable session state before
     // an await would let an older snapshot overwrite newer renderer deltas.
@@ -1174,15 +1166,12 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     // this synchronous block starts, no live event can interleave before emit.
     const stats = session.getSessionStats();
     const sessionListed = listedSessions.some((item) => item.id === cakeSessionId);
-    const sessions = sessionListed
-      ? listedSessions
-      : [activeSessionSummary(stats.totalMessages), ...listedSessions];
     const globalSettings = settingsManager.getGlobalSettings();
     const branchParts = projectSessionEntries(session.sessionManager.getBranch(), undefined, {
       live: session.isStreaming,
     });
     const queuedParts = allQueuedParts();
-    return {
+    const snapshot: SessionSnapshot = {
       workspacePath: options.cwd,
       sessionId: cakeSessionId,
       sessionFile: session.sessionFile ?? "",
@@ -1263,18 +1252,29 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
           : undefined,
       },
       compatibility: catalog,
-      extensionUi: extensionUiState,
-      sessions,
+      extensionUi: {
+        title: extensionUiState.title,
+        statuses: extensionUiState.statuses.map((status) => ({ ...status })),
+      },
       tree: options.auxiliary ? [] : projectTree(session.sessionManager),
       artifacts,
     };
+    // State capture and publication share one synchronous turn. Live events cannot
+    // overtake a snapshot after its fields have been read.
+    onCaptured?.(snapshot);
+    return snapshot;
   }
 
-  function activeSessionSummary(messageCount: number): SessionSnapshot["sessions"][number] {
-    const header = session.sessionManager.getHeader();
-    const entries = session.sessionManager.getEntries();
-    const created = header?.timestamp ?? new Date().toISOString();
-    const firstUserMessage = entries
+  async function emitSnapshot(requestId?: string) {
+    if (disposed) return;
+    await makeSnapshot((snapshot) => {
+      if (!disposed) options.onEvent({ type: "snapshot", requestId, snapshot });
+    });
+  }
+
+  function activeSessionTitle() {
+    const firstUserMessage = session.sessionManager
+      .getEntries()
       .flatMap((entry) => {
         if (
           entry.type !== "message" ||
@@ -1285,24 +1285,10 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         return [textFromContent(entry.message.content).trim()];
       })
       .find(Boolean);
-    return {
-      id: cakeSessionId,
-      title: (session.sessionManager.getSessionName() || firstUserMessage || "New chat").slice(
-        0,
-        SESSION_TITLE_MAX_LENGTH,
-      ),
-      created,
-      modified: entries.at(-1)?.timestamp ?? created,
-      messageCount,
-      resolved: false,
-    };
-  }
-
-  async function emitSnapshot(requestId?: string) {
-    if (disposed) return;
-    const snapshot = await makeSnapshot();
-    if (disposed) return;
-    options.onEvent({ type: "snapshot", requestId, snapshot });
+    return (session.sessionManager.getSessionName() || firstUserMessage || "New chat").slice(
+      0,
+      SESSION_TITLE_MAX_LENGTH,
+    );
   }
 
   function emitSnapshotInBackground() {
@@ -1878,10 +1864,9 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
 
   operationApi.current = {
     info() {
-      const stats = session.getSessionStats();
       return Schema.decodeUnknownSync(jsonValueSchema)({
         sessionId: cakeSessionId,
-        title: activeSessionSummary(stats.totalMessages).title,
+        title: activeSessionTitle(),
         workspacePath: options.cwd,
         resolved: options.currentSessionControl?.resolved() ?? false,
         model: {
@@ -1988,7 +1973,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         part: reviewRunPart(parsed),
       });
     },
-    snapshot: makeSnapshot,
+    snapshot: () => makeSnapshot(),
     async notifySubagentCompletion(result) {
       if (disposed) throw new Error("The Cake runtime has been disposed");
       await session.sendCustomMessage(

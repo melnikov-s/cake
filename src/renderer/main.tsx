@@ -86,7 +86,7 @@ async function bootstrap(bridge: NonNullable<typeof window.cake>) {
   );
   nativeState.observe(rootStore);
   await rootStore.settingsStore.modelPresets.hydrate();
-  nativeEvents.observe(rootStore, synchronizer);
+  await nativeEvents.observe(rootStore, synchronizer);
   void rootStore.projectWorkbenchStore.initialize();
   const persistence = new WindowStatePersistence(rendererClient, (error) =>
     rootStore.toastStore.show({

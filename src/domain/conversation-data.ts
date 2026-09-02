@@ -36,7 +36,6 @@ export const ConversationSnapshot = Schema.Struct({
   usage: Schema.optionalKey(Schema.Json),
   compatibility: Schema.Json,
   extensionUi: Schema.Json,
-  sessions: Schema.Array(Schema.Json),
   tree: Schema.Array(Schema.Json),
   artifacts: Schema.optionalKey(Schema.Array(Schema.Json)),
 });

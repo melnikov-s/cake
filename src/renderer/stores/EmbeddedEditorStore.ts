@@ -30,7 +30,6 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
   activeContextAttachment: Extract<Attachment, { kind: "source" }> | undefined;
   private openedWorkspace: string | undefined;
   private boundsRevision = 0;
-  private refreshRevision = 0;
   private installation: Promise<void> | undefined;
   private sentAnnotationsFingerprint: string | undefined;
   private syncingAnnotations = false;
@@ -46,22 +45,6 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
       () => JSON.stringify(this.props.annotations()),
       () => void this.syncAnnotations(),
     );
-  }
-
-  async refresh() {
-    const revision = ++this.refreshRevision;
-    try {
-      const state: EmbeddedEditorStateSnapshot = await this.vscode.getState({
-        signal: this.signal,
-      });
-      if (this.signal.aborted || revision !== this.refreshRevision) return;
-      this.applySnapshot(state);
-    } catch (error) {
-      if (this.signal.aborted || revision !== this.refreshRevision) return;
-      const described = describeError(error);
-      this.error = described.message;
-      this.errorDetails = described.details;
-    }
   }
 
   receive(
@@ -136,7 +119,6 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
     if (this.visible) return;
     this.chatSidebarVisible = true;
     this.visible = true;
-    void this.refresh();
   }
 
   /** Toggles only Cake's chat drawer while leaving the VS Code surface mounted. */
@@ -229,7 +211,6 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
       this.error = described.message;
       this.errorDetails = described.details;
     }
-    await this.refresh();
   }
 
   /** Reports the visible rect of the embedded surface; null hides the native view. */
