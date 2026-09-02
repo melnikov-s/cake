@@ -79,7 +79,7 @@ export const ChatTextMessage = forwardRef<
     <Message
       ref={ref}
       className={cn(
-        assistant ? "group/msg relative mr-auto w-full" : "ml-auto w-[min(88%,42rem)]",
+        assistant ? "group/msg relative mr-auto w-full" : "group/msg ml-auto w-[min(88%,42rem)]",
         pending && "opacity-75",
       )}
     >

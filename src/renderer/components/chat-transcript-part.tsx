@@ -46,36 +46,41 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
       <AssistantTextMessage part={part} behavior={behavior} />
     ) : (
       <ChatTextMessage part={part} onOpenSourceLocation={behavior.openSourceLocation}>
-        {part.entryId === behavior.store.lastEditableUserEntryId &&
-          behavior.store.canEditLastUserMessage && (
-            <div className="ml-auto flex items-center gap-2" aria-label="User actions">
-              {part.draft && <DraftActivationMenu store={behavior.store} />}
+        <div className="ml-auto flex min-h-[30px] items-center gap-2" aria-label="User actions">
+          {part.entryId === behavior.store.lastEditableUserEntryId &&
+            behavior.store.canEditLastUserMessage && (
+              <>
+                {part.draft && <DraftActivationMenu store={behavior.store} />}
+                <IconButton
+                  className="pointer-events-none opacity-0 transition-opacity group-hover/msg:pointer-events-auto group-hover/msg:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
+                  tooltip="Edit message"
+                  ariaLabel="Edit latest prompt"
+                  onClick={() => behavior.store.editLastUserMessage(part.entryId!)}
+                >
+                  <EditIcon />
+                </IconButton>
+              </>
+            )}
+        </div>
+      </ChatTextMessage>
+    );
+  if (part.kind === "skill")
+    return (
+      <div className="group/msg grid gap-2">
+        <SkillMessage part={part} onOpenSourceLocation={behavior.openSourceLocation} />
+        <div className="ml-auto min-h-[30px]">
+          {part.entryId === behavior.store.lastEditableUserEntryId &&
+            behavior.store.canEditLastUserMessage && (
               <IconButton
+                className="pointer-events-none opacity-0 transition-opacity group-hover/msg:pointer-events-auto group-hover/msg:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
                 tooltip="Edit message"
                 ariaLabel="Edit latest prompt"
                 onClick={() => behavior.store.editLastUserMessage(part.entryId!)}
               >
                 <EditIcon />
               </IconButton>
-            </div>
-          )}
-      </ChatTextMessage>
-    );
-  if (part.kind === "skill")
-    return (
-      <div className="grid gap-2">
-        <SkillMessage part={part} onOpenSourceLocation={behavior.openSourceLocation} />
-        {part.entryId === behavior.store.lastEditableUserEntryId &&
-          behavior.store.canEditLastUserMessage && (
-            <IconButton
-              className="ml-auto"
-              tooltip="Edit message"
-              ariaLabel="Edit latest prompt"
-              onClick={() => behavior.store.editLastUserMessage(part.entryId!)}
-            >
-              <EditIcon />
-            </IconButton>
-          )}
+            )}
+        </div>
       </div>
     );
   if (part.kind === "reasoning")
