@@ -195,16 +195,14 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
     this.attachments.splice(0);
     try {
       const newSession = this.props.collection.newSessionRequest(this.sessionId);
-      await this.client.cakeChats.prompt(
-        {
-          sessionId: this.sessionId,
-          text,
-          renderUserMessageAsMarkdown,
-          attachments,
-          newSession,
-        },
-        { signal: this.signal },
-      );
+      const input = {
+        sessionId: this.sessionId,
+        text,
+        renderUserMessageAsMarkdown,
+        attachments,
+      };
+      if (newSession !== undefined) Object.assign(input, { newSession });
+      await this.client.cakeChats.prompt(input, { signal: this.signal });
       this.props.collection.markSessionStarted(this.sessionId);
       this.pendingSubmissions.delete(operationId);
       this.props.operations.finish(operationId);
