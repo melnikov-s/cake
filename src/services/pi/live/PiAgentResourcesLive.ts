@@ -1,11 +1,8 @@
-import {
-  DefaultPackageManager,
-  DefaultResourceLoader,
-  SettingsManager,
-} from "@earendil-works/pi-coding-agent";
+import { DefaultPackageManager } from "@earendil-works/pi-coding-agent";
 import { Effect, Layer } from "effect";
 import { makePiAgentResources, PiAgentResources } from "../PiAgentResources";
 import type { PiAgentResourceContext, PiAgentResourcesSnapshot } from "../agent-resource-data";
+import { loadPiResources } from "./PiResourceLoader";
 
 const bounded = (value: string, maximum: number) => value.slice(0, maximum);
 
@@ -14,26 +11,11 @@ export async function discoverPiAgentResources(
   context: PiAgentResourceContext,
   signal?: AbortSignal,
 ): Promise<PiAgentResourcesSnapshot> {
-  signal?.throwIfAborted();
-  const settingsManager = SettingsManager.create(context.workingDirectory, agentDirectory, {
-    projectTrusted: context.projectTrusted,
-  });
-  const resourceLoader = new DefaultResourceLoader({
-    cwd: context.workingDirectory,
-    agentDir: agentDirectory,
-    settingsManager,
-    additionalSkillPaths: context.additionalSkillPaths ? [...context.additionalSkillPaths] : [],
-    additionalPromptTemplatePaths: context.additionalPromptTemplatePaths
-      ? [...context.additionalPromptTemplatePaths]
-      : [],
-    additionalExtensionPaths: context.additionalExtensionPaths
-      ? [...context.additionalExtensionPaths]
-      : [],
-    noThemes: true,
-    noContextFiles: true,
-  });
-  await resourceLoader.reload({ resolveProjectTrust: async () => context.projectTrusted });
-  signal?.throwIfAborted();
+  const { resourceLoader, settingsManager } = await loadPiResources(
+    agentDirectory,
+    context,
+    signal,
+  );
 
   const skills = resourceLoader
     .getSkills()

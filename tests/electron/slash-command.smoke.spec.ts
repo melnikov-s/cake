@@ -78,12 +78,6 @@ test("selects and runs slash commands from the composer with the keyboard", asyn
     expect(expandedSize.height).toBeLessThanOrEqual(321);
     expect(expandedSize.scrollHeight).toBeGreaterThan(expandedSize.height);
 
-    // A staged composer intentionally does not create a Pi runtime. Materialize
-    // it before asserting runtime-provided commands and project skills.
-    await composer.fill("Initialize slash commands");
-    await page.getByRole("button", { name: "Send" }).click();
-    await expect(composer).toHaveValue("", { timeout: 20_000 });
-
     await composer.fill("/");
     await expect(page.getByRole("listbox", { name: "Slash commands" })).toBeVisible();
     await composer.press("ArrowDown");

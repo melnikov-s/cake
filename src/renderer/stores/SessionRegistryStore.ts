@@ -1,9 +1,11 @@
 import { Store, batch, child, createStore, observable, snapshot, updateStore } from "r-state-tree";
 import {
+  piBuiltinSlashCommands,
   SESSION_TITLE_MAX_LENGTH,
   type Attachment,
   type ChatConfiguration,
   type ModelPreset,
+  type SessionSnapshot,
 } from "../../ipc/session-contract";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { ReviewsStore } from "./ReviewsStore";
@@ -62,6 +64,8 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
   @snapshot private readonly temporarySessionIds: string[] = observable([]);
   /** The one unsent, unsaved project chat. Explicit drafts are not staged chats. */
   @snapshot private stagedSessionId: string | undefined;
+  private readonly commandsByWorkingDirectory: Record<string, SessionSnapshot["commands"]> =
+    observable({});
   private readonly sessionsById = new Map<string, ProjectSessionStore>();
   private readonly sessionWorkspacePaths = new Map<string, string>();
 
@@ -296,15 +300,20 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
   commandsForSession(sessionId: string, workspacePath: string) {
     const session = this.findSession(sessionId);
     if (session?.model.commands.length) return session.model.commands;
+    const sessionCommands = this.sessions.find(
+      (candidate) =>
+        candidate.sessionId !== sessionId &&
+        candidate.workspacePath === workspacePath &&
+        candidate.hydrated &&
+        candidate.model.commands.length > 0,
+    )?.model.commands;
     return (
-      this.sessions.find(
-        (candidate) =>
-          candidate.sessionId !== sessionId &&
-          candidate.workspacePath === workspacePath &&
-          candidate.hydrated &&
-          candidate.model.commands.length > 0,
-      )?.model.commands ?? []
+      sessionCommands ?? this.commandsByWorkingDirectory[workspacePath] ?? piBuiltinSlashCommands
     );
+  }
+
+  setWorkingDirectoryCommands(workspacePath: string, commands: SessionSnapshot["commands"]) {
+    this.commandsByWorkingDirectory[workspacePath] = [...commands];
   }
 
   pendingConfiguration(sessionId: string) {

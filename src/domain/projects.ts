@@ -3,6 +3,7 @@ import { Effect, Stream } from "effect";
 import type { cakeRpcPayloadSchemas } from "../ipc/cake-rpc-contract";
 import { Electron } from "../services/electron/Electron";
 import { PiSessions } from "../services/pi/PiSessions";
+import { PiCommandCatalog } from "../services/pi/PiCommandCatalog";
 import { AgentAvailability } from "../services/pi/AgentAvailability";
 import { ProjectSessionIntegrations } from "../services/pi/ProjectSessionIntegrations";
 import { rewordSelectionWithProjectContext } from "../services/pi/runtime/rewording-agent";
@@ -168,6 +169,23 @@ export const setUtilityModel = Effect.fn("Projects.setUtilityModel")(function* (
   return {
     state: yield* mapProjectError("setUtilityModel", setApplicationUtilityModel(request.model)),
   };
+});
+
+export const loadSlashCommands = Effect.fn("Projects.loadSlashCommands")(function* (
+  _connectionId: number,
+  request: Payload<"load-slash-commands">,
+) {
+  yield* requireAllowed(request.path);
+  const application = yield* ApplicationState;
+  const catalog = yield* PiCommandCatalog;
+  const commands = yield* mapProjectError(
+    "loadSlashCommands",
+    catalog.load({
+      workingDirectory: request.path,
+      projectTrusted: application.snapshot().trustedProjectPaths.includes(request.path),
+    }),
+  );
+  return { commands };
 });
 
 export const register = Effect.fn("Projects.register")(function* (

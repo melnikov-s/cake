@@ -32,6 +32,7 @@ export const WorkspaceRpc = RpcGroup.make(
   workspaceRpc("workspaces.reword-composer-selection", "reword-composer-selection"),
   workspaceRpc("workspaces.generate-session-title", "generate-session-title"),
   workspaceRpc("workspaces.set-utility-model", "set-utility-model"),
+  workspaceRpc("workspaces.load-slash-commands", "load-slash-commands"),
   workspaceRpc("workspaces.register-project", "register-project"),
   workspaceRpc("workspaces.rename-project", "rename-project"),
   workspaceRpc("workspaces.remove-project", "remove-project"),
