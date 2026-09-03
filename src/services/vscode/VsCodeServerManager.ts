@@ -30,11 +30,37 @@ const START_TIMEOUT = 45_000;
 const COMPANION_START_TIMEOUT = 5_000;
 const COMPANION_SCRIPT_TIMEOUT = 30_000;
 const COMPANION_SCRIPT_RESULT_BYTES = 256_000;
+const VSCODE_BACKGROUND = { dark: "#121519", light: "#f5f7f9" } as const;
+const WORKBENCH_THEME_READY_TIMEOUT_MS = 10_000;
 // VS Code exposes editor-title actions to extensions, but those disappear when no
 // file is open and it has no public top-level title-bar contribution point. Cake
 // owns this managed web surface, so install its two shell controls alongside the
 // built-in layout actions and keep them present across title-bar rerenders.
 const VSCODE_SHELL_CONTROL_PREFIX = "__CAKE_SHELL_CONTROL__";
+
+function waitForWorkbenchThemeScript(theme: "light" | "dark") {
+  const themeClass = theme === "dark" ? "vs-dark" : "vs";
+  return `new Promise((resolve) => {
+    const matches = () => Boolean(document.querySelector(".monaco-workbench.${themeClass}"));
+    if (matches()) return resolve(true);
+    const observer = new MutationObserver(() => {
+      if (!matches()) return;
+      observer.disconnect();
+      clearTimeout(timeout);
+      resolve(true);
+    });
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class"],
+      childList: true,
+      subtree: true,
+    });
+    const timeout = setTimeout(() => {
+      observer.disconnect();
+      resolve(false);
+    }, ${WORKBENCH_THEME_READY_TIMEOUT_MS});
+  })`;
+}
 
 function vscodeShellControlsScript(workspacePath: string) {
   return `(() => {
@@ -367,9 +393,13 @@ export class VsCodeServerManager {
       this.releaseViewer(previous.workspacePath);
       detachView(window, previous.view);
     }
+    const theme = await this.props.preferredTheme();
     const view = new WebContentsView({
       webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: false },
     });
+    // Chromium otherwise clears a new WebContentsView to white before VS Code
+    // has restored its theme. Keep that first paint consistent with Cake.
+    view.setBackgroundColor(VSCODE_BACKGROUND[theme]);
     view.webContents.on("console-message", (event) => {
       if (!event.message.startsWith(VSCODE_SHELL_CONTROL_PREFIX)) return;
       event.preventDefault();
@@ -385,6 +415,9 @@ export class VsCodeServerManager {
     try {
       const authSuffix = instance.flavor === "openvscode" ? `/?tkn=${instance.token}` : "/";
       await view.webContents.loadURL(`http://127.0.0.1:${instance.port}${authSuffix}`);
+      // loadURL resolves before the asynchronously bootstrapped workbench applies
+      // its saved color theme. Do not expose the native view during that interval.
+      await view.webContents.executeJavaScript(waitForWorkbenchThemeScript(theme));
       await view.webContents.executeJavaScript(vscodeShellControlsScript(workspacePath));
     } catch (error) {
       this.views.delete(webContentsId);
