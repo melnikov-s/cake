@@ -57,6 +57,10 @@ export const makePiPluginAgentsProductionLive = (
                 setResolved: (resolved) =>
                   base.setSessionResolved?.(input.sessionId, resolved) ?? Promise.resolve(),
               },
+              sessionMetadata: {
+                setTitle: (title) =>
+                  base.setSessionTitleMetadata?.(input.sessionId, title) ?? Promise.resolve(),
+              },
               worktreeLandingControl:
                 input.visibility === "project"
                   ? {

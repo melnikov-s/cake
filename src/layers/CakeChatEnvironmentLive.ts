@@ -1,8 +1,9 @@
 import { Effect, Layer, Schema } from "effect";
-import { setSessionFastMode } from "../domain/application";
+import { refreshProjection, setSessionFastMode } from "../domain/application";
 import { makeSubagentControl } from "../domain/subagentControl";
 import { jsonObjectSchema } from "../ipc/json-contract";
 import type { PiSessions } from "../services/pi/PiSessions";
+import { PiSessionMetadataIndex } from "../services/pi/PiSessionMetadataIndex";
 import { PluginRuntime } from "../services/plugins/PluginRuntime";
 import { ProjectSessionLifecycle } from "../services/project-sessions/ProjectSessionLifecycle";
 import { ApplicationState } from "../services/storage/ApplicationState";
@@ -42,6 +43,7 @@ export const makeCakeChatEnvironmentLive = (
   never,
   | ApplicationState
   | PiSessions
+  | PiSessionMetadataIndex
   | PluginRuntime
   | ProjectSessionLifecycle
   | SessionArchiveStorage
@@ -58,10 +60,15 @@ export const makeCakeChatEnvironmentLive = (
     Effect.gen(function* () {
       const application = yield* ApplicationState;
       const lifecycle = yield* ProjectSessionLifecycle;
+      const metadata = yield* PiSessionMetadataIndex;
       const plugins = yield* PluginRuntime;
       const storage = yield* SessionArchiveStorage;
       const context = yield* Effect.context<
-        ApplicationState | PiSessions | SubagentCoordinator | SubagentEnvironment
+        | ApplicationState
+        | PiSessionMetadataIndex
+        | PiSessions
+        | SubagentCoordinator
+        | SubagentEnvironment
       >();
       const run = Effect.runPromiseWith(context);
       const agentControl = makeSubagentControl({
@@ -109,6 +116,26 @@ export const makeCakeChatEnvironmentLive = (
                   setResolved: (resolved: boolean) =>
                     run(lifecycle.setCakeChatResolved(input.sessionId, resolved)).then(
                       () => undefined,
+                    ),
+                },
+                sessionMetadata: {
+                  setTitle: (title: string) =>
+                    run(
+                      metadata
+                        .setTitle(
+                          {
+                            workingDirectory: options.homeDirectory,
+                            sessionDirectory: options.sessionDirectory,
+                            direct: true,
+                          },
+                          input.sessionId,
+                          title,
+                        )
+                        .pipe(
+                          Effect.flatMap((changed) =>
+                            changed ? refreshProjection() : Effect.void,
+                          ),
+                        ),
                     ),
                 },
                 agentControl: agentControl(getRuntimeOptions, options.homeDirectory),

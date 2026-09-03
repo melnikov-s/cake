@@ -222,12 +222,14 @@ describe("Pi 0.84.0 foundation contract", () => {
     );
 
     const [summary] = await Effect.runPromise(
-      streamWorkspaceSessions(directory, sessionDir).pipe(Stream.runCollect),
+      streamWorkspaceSessions(directory, sessionDir, {
+        titles: new Map([["long-title", "Indexed title"]]),
+      }).pipe(Stream.runCollect),
     );
 
     expect(summary).toBeDefined();
     if (!summary) throw new Error("Expected Pi to list the session fixture");
-    expect(summary.title).toBe("long-title");
+    expect(summary.title).toBe("Indexed title");
   });
 
   it("starts automatic naming from the initial user message", async () => {
@@ -286,6 +288,9 @@ describe("Pi 0.84.0 foundation contract", () => {
     const generateTitle = vi.fn(async ({ firstUserMessage }: { firstUserMessage: string }) => {
       return firstUserMessage === "Investigate session naming" ? "Generated title" : "Unexpected";
     });
+    const setTitle = vi.fn(async (title: string) => {
+      void title;
+    });
     const sessionDir = join(directory, "sessions");
     try {
       const runtime = await createCakeRuntime({
@@ -299,6 +304,7 @@ describe("Pi 0.84.0 foundation contract", () => {
           thinkingLevel: "off",
         }),
         generateSessionTitle: generateTitle as never,
+        sessionMetadata: { setTitle },
         requestUi: async () => undefined,
         onEvent: (event) => events.push(event),
       });
@@ -322,6 +328,7 @@ describe("Pi 0.84.0 foundation contract", () => {
         { timeout: 1_000 },
       );
       await vi.waitFor(() => expect(generateTitle).toHaveBeenCalledOnce(), { timeout: 1_000 });
+      expect(setTitle).toHaveBeenCalledWith("Investigate session naming");
       expect(generateTitle).toHaveBeenCalledWith(
         expect.objectContaining({ firstUserMessage: "Investigate session naming" }),
       );
@@ -331,6 +338,7 @@ describe("Pi 0.84.0 foundation contract", () => {
         const sessionText = await readFile(runtime.sessionFile, "utf8");
         expect(sessionText).toContain('"name":"Generated title"');
       });
+      expect(setTitle).toHaveBeenCalledWith("Generated title");
       const entries = (await readFile(runtime.sessionFile, "utf8"))
         .trim()
         .split("\n")
@@ -1949,11 +1957,17 @@ describe("S1 Pi runtime", () => {
       preview?.parts.findIndex((part) => part.kind === "tool") ?? -1,
     );
 
+    const titles = new Map<string, string>();
     const second = await createCakeRuntime({
       cwd: directory,
       agentDir,
       sessionDir,
       trusted: false,
+      sessionMetadata: {
+        setTitle: async (title) => {
+          titles.set(first.sessionId, title);
+        },
+      },
       requestUi: async () => undefined,
       onEvent: () => undefined,
     });
@@ -1961,6 +1975,7 @@ describe("S1 Pi runtime", () => {
 
     expect(second.sessionId).toBe(first.sessionId);
     expect(second.sessionFile).toBe(first.sessionFile);
+    expect(titles.get(second.sessionId)).toBe("Hello");
     const reopenedParts = (await second.snapshot()).parts;
     expect(reopenedParts.some((part) => part.kind === "text" && part.text === "Hi")).toBe(true);
     expect(reopenedParts.filter((part) => part.kind === "review-run")).toEqual([
@@ -1994,10 +2009,10 @@ describe("S1 Pi runtime", () => {
     expect(
       Array.from(
         await Effect.runPromise(
-          streamWorkspaceSessions(directory, sessionDir).pipe(Stream.runCollect),
+          streamWorkspaceSessions(directory, sessionDir, { titles }).pipe(Stream.runCollect),
         ),
       ).find((item) => item.id === second.sessionId)?.title,
-    ).toBe(second.sessionId);
+    ).toBe("Named session");
     await second.navigate("assistant-tools");
     expect((await second.snapshot()).tree[0]).toMatchObject({ id: "user-1", active: true });
     const fork = await second.fork("user-1");

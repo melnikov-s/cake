@@ -7,6 +7,7 @@ import { makeCakeIpcServerLive } from "../ipc/server/CakeIpcServer";
 import { makePiAgentResourcesLive } from "../services/pi/live/PiAgentResourcesLive";
 import { makePiModelsLive } from "../services/pi/live/PiModelsLive";
 import { makePiSessionsLive } from "../services/pi/PiSessions";
+import { PiSessionMetadataIndexLive } from "../services/pi/PiSessionMetadataIndex";
 import { AgentAvailability } from "../services/pi/AgentAvailability";
 import { ProjectSessionIntegrationsLive } from "../services/pi/ProjectSessionIntegrationsLive";
 import { makeProjectSessionRuntimeOptionsLive } from "../layers/ProjectSessionRuntimeOptionsLive";
@@ -86,7 +87,7 @@ const managedWorktreesLive = ManagedWorktreesLive.pipe(
 );
 const pluginResourcesLive = PluginResources.layer;
 const piModelsLive = makePiModelsLive(cakePaths.piAgent);
-const piSessionsLive = makePiSessionsLive();
+const piSessionsLive = makePiSessionsLive().pipe(Layer.provide(PiSessionMetadataIndexLive));
 const agentAvailabilityLive = AgentAvailability.layer;
 const electronLive = makeElectronLive({
   application: app,
@@ -107,6 +108,7 @@ const baseLive = Layer.mergeAll(
   managedWorktreesLive,
   SessionArchiveStorageLive,
   pluginResourcesLive,
+  PiSessionMetadataIndexLive,
   piModelsLive,
   makePiAgentResourcesLive(cakePaths.piAgent),
   piSessionsLive,

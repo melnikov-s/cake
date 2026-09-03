@@ -290,10 +290,13 @@ interface PiSessions {
 }
 ```
 
-The catalog stream reads filename and filesystem metadata only. It never opens
-transcripts. Resolved Project Sessions are not a Pi catalog concern: Cake's
-archive storage streams that namespace directly, and opens one transcript only
-for an explicit inspect, open, restore, or recovery operation.
+The catalog stream reads filename and filesystem metadata plus Cake's small
+active-session title index. It never opens transcripts. The index is a Pi
+adapter projection, not a second transcript: Pi JSONL remains authoritative and
+the runtime updates the title entry when a session is created, opened, or
+renamed. Resolved Project Sessions never consult this index. Cake's archive
+storage streams that namespace directly and opens one transcript only for an
+explicit inspect, open, restore, or recovery operation.
 
 A `PiSessionHandle` exposes an observation Stream and operations such as
 prompt, steer, follow-up, abort, execute command, set model, compact, fork, and

@@ -2,6 +2,7 @@ import type { Event } from "electron";
 import { Deferred, Effect } from "effect";
 import type * as Cause from "effect/Cause";
 import { initialize } from "../domain/application";
+import { initializeRegisteredProjectAccess } from "../domain/projects";
 import * as sessionTerminals from "../domain/sessionTerminals";
 import { Electron } from "../services/electron/Electron";
 import { ProjectSessionIntegrations } from "../services/pi/ProjectSessionIntegrations";
@@ -12,6 +13,7 @@ import { RewordingRequests } from "../services/projects/RewordingRequests";
 import { ApplicationState } from "../services/storage/ApplicationState";
 import type { Terminal } from "../services/terminal/Terminal";
 import { VsCodeServer } from "../services/vscode/VsCodeServer";
+import type { ManagedWorktrees } from "../services/worktrees/ManagedWorktrees";
 import { handleInlineWidgetScheme } from "../services/widgets/inline-widget-protocol";
 
 interface MainApplicationElectron {
@@ -39,7 +41,8 @@ type MainApplicationServices =
   | ProjectSessionIntegrations
   | RewordingRequests
   | Terminal
-  | VsCodeServer;
+  | VsCodeServer
+  | ManagedWorktrees;
 
 /** Owns Electron startup, native callbacks, and process-lifetime shutdown. */
 export const MainApplication = Effect.fn("MainApplication")(function* ({
@@ -87,6 +90,7 @@ export const MainApplication = Effect.fn("MainApplication")(function* ({
         Effect.withSpan("MainApplication.electronReady"),
       );
       yield* initialize();
+      yield* initializeRegisteredProjectAccess();
       yield* vscode.refreshStatus();
       yield* Effect.sync(initializeNativeProtocols);
       yield* plugins.initializeCustomization();

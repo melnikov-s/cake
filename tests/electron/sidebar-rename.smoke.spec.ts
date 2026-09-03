@@ -52,6 +52,20 @@ test("uses the native context menu for project sessions", async () => {
   );
   await Promise.all([
     writeFile(
+      join(sessionDirectory, ".pi-session-metadata.json"),
+      JSON.stringify({
+        version: 1,
+        sessions: { [sessionId]: { title: "Original session title" } },
+      }),
+    ),
+    writeFile(
+      join(cakeChatDirectory, ".pi-session-metadata.json"),
+      JSON.stringify({
+        version: 1,
+        sessions: { [cakeChatSessionId]: { title: "Original Cake Chat title" } },
+      }),
+    ),
+    writeFile(
       join(sessionDirectory, `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`),
       [
         { type: "session", version: 3, id: sessionId, timestamp, cwd: project },
@@ -105,7 +119,7 @@ test("uses the native context menu for project sessions", async () => {
   try {
     const page = await application.firstWindow();
     await expect(page.getByLabel("Message")).toBeVisible({ timeout: 20_000 });
-    const sessionRow = page.locator(".session-row").filter({ hasText: sessionId });
+    const sessionRow = page.locator(".session-row").filter({ hasText: "Original session title" });
     await expect(sessionRow).toHaveCount(1);
     await sessionRow.click({ button: "right" });
 
@@ -115,7 +129,9 @@ test("uses the native context menu for project sessions", async () => {
     await expect(page.getByLabel("Session name")).toHaveCount(0);
     await page.keyboard.press("Escape");
 
-    const cakeChatRow = page.locator(".session-row").filter({ hasText: cakeChatSessionId });
+    const cakeChatRow = page
+      .locator(".session-row")
+      .filter({ hasText: "Original Cake Chat title" });
     await expect(cakeChatRow).toHaveCount(1);
     await cakeChatRow.click({ button: "right" });
     await expect(page.getByRole("menu")).toHaveCount(0);
@@ -130,6 +146,7 @@ test("uses the native context menu for project sessions", async () => {
     await expect(page.getByLabel("Message Cake Chat")).toBeVisible();
     await expect(page.locator(".session-row").filter({ hasText: "New chat" })).toHaveCount(1);
     expect(await readdir(cakeChatDirectory)).toEqual([
+      ".pi-session-metadata.json",
       `1970-01-01T00-00-00-000Z_${cakeChatSessionId}.jsonl`,
     ]);
   } finally {

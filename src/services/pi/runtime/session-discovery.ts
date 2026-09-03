@@ -76,6 +76,7 @@ export async function suggestProjectFiles(options: {
 
 export interface StreamWorkspaceSessionsOptions {
   direct?: boolean;
+  titles?: ReadonlyMap<string, string>;
 }
 
 /** Streams cheap file metadata for active sessions without opening transcript bodies. */
@@ -91,7 +92,7 @@ export function streamWorkspaceSessions(
   }).pipe(
     Stream.map((item) => ({
       id: item.id,
-      title: item.id.slice(0, SESSION_TITLE_MAX_LENGTH),
+      title: (options.titles?.get(item.id) ?? item.id).slice(0, SESSION_TITLE_MAX_LENGTH),
       created: item.createdAt,
       modified: item.modifiedAt,
       messageCount: 0,

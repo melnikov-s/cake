@@ -1,5 +1,5 @@
 import { Effect, Layer } from "effect";
-import { setSessionFastMode } from "../domain/application";
+import { refreshProjection, setSessionFastMode } from "../domain/application";
 import { generateSessionTitle, utilityModelSelection } from "../domain/utilityWork";
 import { Electron } from "../services/electron/Electron";
 import { PluginResources } from "../services/plugins/PluginResources";
@@ -9,6 +9,7 @@ import { VsCodeServer } from "../services/vscode/VsCodeServer";
 import { ManagedWorktrees } from "../services/worktrees/ManagedWorktrees";
 import type { PiModels } from "../services/pi/PiModels";
 import { ProjectSessionRuntimeOptions } from "../services/pi/ProjectSessionRuntimeOptions";
+import { PiSessionMetadataIndex } from "../services/pi/PiSessionMetadataIndex";
 
 export interface ProjectSessionRuntimeOptionsLiveOptions {
   readonly agentDirectory: string;
@@ -27,6 +28,7 @@ export const makeProjectSessionRuntimeOptionsLive = (
   | Electron
   | ManagedWorktrees
   | PiModels
+  | PiSessionMetadataIndex
   | PluginResources
   | ProjectSessionLifecycle
   | VsCodeServer
@@ -37,11 +39,17 @@ export const makeProjectSessionRuntimeOptionsLive = (
       const application = yield* ApplicationState;
       const electron = yield* Electron;
       const lifecycle = yield* ProjectSessionLifecycle;
+      const metadata = yield* PiSessionMetadataIndex;
       const plugins = yield* PluginResources;
       const vscode = yield* VsCodeServer;
       const worktrees = yield* ManagedWorktrees;
       const context = yield* Effect.context<
-        ApplicationState | ManagedWorktrees | PiModels | ProjectSessionLifecycle | VsCodeServer
+        | ApplicationState
+        | ManagedWorktrees
+        | PiModels
+        | PiSessionMetadataIndex
+        | ProjectSessionLifecycle
+        | VsCodeServer
       >();
       const run = Effect.runPromiseWith(context);
       const modelPresets = () => {
@@ -82,6 +90,19 @@ export const makeProjectSessionRuntimeOptionsLive = (
           setSessionResolved: (sessionId, resolved) =>
             run(lifecycle.setProjectSessionResolved(sessionId, resolved, workingDirectory)).then(
               () => undefined,
+            ),
+          setSessionTitleMetadata: (sessionId, title) =>
+            run(
+              metadata
+                .setTitle(
+                  {
+                    workingDirectory,
+                    sessionDirectory: options.sessionDirectory,
+                  },
+                  sessionId,
+                  title,
+                )
+                .pipe(Effect.flatMap((changed) => (changed ? refreshProjection() : Effect.void))),
             ),
           enterEditor: (signal) => run(vscode.enterProjectEditor(workingDirectory), { signal }),
           openInEditor: (location, signal) =>

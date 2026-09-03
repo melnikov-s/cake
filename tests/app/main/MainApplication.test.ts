@@ -4,6 +4,8 @@ import { it } from "@effect/vitest";
 import { Effect, Exit, Fiber, Layer } from "effect";
 import { describe, expect, vi } from "vitest";
 import { defaultApplicationState } from "../../../src/domain/application-data";
+import type { ApplicationState as ApplicationStateValue } from "../../../src/domain/application-data";
+import type { WorktreeRecord } from "../../../src/ipc/worktree-contract";
 import { MainApplication } from "../../../src/main/MainApplication";
 import { Electron } from "../../../src/services/electron/Electron";
 import { PiSessions } from "../../../src/services/pi/PiSessions";
@@ -15,6 +17,7 @@ import { RewordingRequests } from "../../../src/services/projects/RewordingReque
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { Terminal } from "../../../src/services/terminal/Terminal";
 import { VsCodeServer } from "../../../src/services/vscode/VsCodeServer";
+import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 
 class TestApplication extends EventEmitter {
   readonly quit = vi.fn(() => this.emit("before-quit", { preventDefault: vi.fn() }));
@@ -48,11 +51,15 @@ class TestApplication extends EventEmitter {
 const testLayer = (input?: {
   readonly stop?: () => void;
   readonly initializeCustomization?: () => Effect.Effect<void, PluginRuntimeError>;
-}) =>
-  Layer.mergeAll(
+  readonly applicationState?: ApplicationStateValue;
+  readonly worktrees?: ReadonlyArray<WorktreeRecord>;
+  readonly allow?: (path: string) => void;
+}) => {
+  const state = input?.applicationState ?? defaultApplicationState();
+  return Layer.mergeAll(
     Layer.mock(ApplicationState, {
-      initialize: () => Effect.succeed(defaultApplicationState()),
-      snapshot: defaultApplicationState,
+      initialize: () => Effect.succeed(state),
+      snapshot: () => state,
     }),
     Layer.mock(Electron, {
       start: () => Effect.void,
@@ -81,7 +88,7 @@ const testLayer = (input?: {
     }),
     Layer.mock(ProjectSessionLifecycle, {}),
     Layer.mock(ProjectAccess, {
-      allow: () => Effect.void,
+      allow: (path) => Effect.sync(() => input?.allow?.(path)),
       clearOwner: () => Effect.void,
       rememberSessionLocation: () => Effect.void,
     }),
@@ -91,6 +98,7 @@ const testLayer = (input?: {
       disposeOwner: () => Effect.void,
     }),
     Layer.mock(ProjectSessionIntegrations, { cancelPendingRequests: () => Effect.void }),
+    Layer.mock(ManagedWorktrees, { records: () => Effect.succeed(input?.worktrees ?? []) }),
     Layer.mock(PiSessions, {}),
     Layer.mock(Terminal, {}),
     Layer.mock(VsCodeServer, {
@@ -99,6 +107,7 @@ const testLayer = (input?: {
       backToAgentForWindow: () => Effect.succeed(false),
     }),
   );
+};
 
 const program = (application: TestApplication, layer = testLayer()) =>
   MainApplication({
@@ -130,6 +139,51 @@ describe("MainApplication", () => {
       application.emit("window-all-closed");
       yield* Fiber.join(fiber);
       expect(application.quit).toHaveBeenCalledOnce();
+    }),
+  );
+
+  it.effect("restores access to registered Projects and their managed worktrees", () =>
+    Effect.gen(function* () {
+      const application = new TestApplication();
+      const allow = vi.fn();
+      const state: ApplicationStateValue = {
+        ...defaultApplicationState(),
+        projects: [
+          {
+            path: "/projects/cake",
+            name: "cake",
+            addedAt: "2026-01-01T00:00:00.000Z",
+            lastOpenedAt: "2026-01-01T00:00:00.000Z",
+          },
+        ],
+      };
+      const layer = testLayer({
+        applicationState: state,
+        allow,
+        worktrees: [
+          {
+            projectPath: "/projects/cake",
+            worktreePath: "/worktrees/cake-feature",
+            branch: "feature",
+            baseBranch: "main",
+            createdAt: "2026-01-01T00:00:00.000Z",
+          },
+          {
+            projectPath: "/projects/not-registered",
+            worktreePath: "/worktrees/not-registered",
+            branch: "other",
+            baseBranch: "main",
+            createdAt: "2026-01-01T00:00:00.000Z",
+          },
+        ],
+      });
+      const fiber = yield* Effect.forkChild(program(application, layer));
+      yield* Effect.promise(() => application.waitForListener("window-all-closed"));
+      application.emit("window-all-closed");
+      yield* Fiber.join(fiber);
+      expect(allow).toHaveBeenCalledWith("/projects/cake");
+      expect(allow).toHaveBeenCalledWith("/worktrees/cake-feature");
+      expect(allow).not.toHaveBeenCalledWith("/worktrees/not-registered");
     }),
   );
 

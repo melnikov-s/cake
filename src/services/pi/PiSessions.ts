@@ -35,6 +35,7 @@ import {
   streamWorkspaceSessions,
 } from "./runtime/session-discovery";
 import type { ReviewParentContext } from "./runtime/sidecar-runtime";
+import { PiSessionMetadataIndex } from "./PiSessionMetadataIndex";
 
 const PiSessionCapabilityProfile = Schema.TaggedUnion({
   ProjectSession: {},
@@ -692,25 +693,43 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
     }),
   );
 
-export const makePiSessionsLive = (): Layer.Layer<PiSessions> =>
-  makePiSessionsLayer({
-    catalog: (query) =>
-      streamWorkspaceSessions(query.workingDirectory, query.sessionDirectory, {
-        direct: query.direct,
-      }),
-    inspect: (target) =>
-      Effect.tryPromise({
-        try: () =>
-          loadWorkspaceSessionPreview(
-            target.workingDirectory,
-            target.sessionId,
-            target.sessionDirectory,
-            target.resolvedSessionDirectory,
-            target.direct,
+export const makePiSessionsLive = (): Layer.Layer<PiSessions, never, PiSessionMetadataIndex> =>
+  Layer.unwrap(
+    Effect.gen(function* () {
+      const metadata = yield* PiSessionMetadataIndex;
+      return makePiSessionsLayer({
+        catalog: (query) =>
+          Stream.unwrap(
+            metadata
+              .titles({
+                workingDirectory: query.workingDirectory,
+                sessionDirectory: query.sessionDirectory,
+                direct: query.direct,
+              })
+              .pipe(
+                Effect.map((titles) =>
+                  streamWorkspaceSessions(query.workingDirectory, query.sessionDirectory, {
+                    direct: query.direct,
+                    titles,
+                  }),
+                ),
+              ),
           ),
-        catch: (cause) => cause,
-      }),
-    createRuntime: (options) =>
-      Effect.tryPromise({ try: () => createCakeRuntime(options), catch: (cause) => cause }),
-    changelog: () => Effect.sync(loadPiChangelog),
-  });
+        inspect: (target) =>
+          Effect.tryPromise({
+            try: () =>
+              loadWorkspaceSessionPreview(
+                target.workingDirectory,
+                target.sessionId,
+                target.sessionDirectory,
+                target.resolvedSessionDirectory,
+                target.direct,
+              ),
+            catch: (cause) => cause,
+          }),
+        createRuntime: (options) =>
+          Effect.tryPromise({ try: () => createCakeRuntime(options), catch: (cause) => cause }),
+        changelog: () => Effect.sync(loadPiChangelog),
+      });
+    }),
+  );

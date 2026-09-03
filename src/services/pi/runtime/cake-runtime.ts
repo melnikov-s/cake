@@ -292,6 +292,9 @@ export interface CakeRuntimeOptions {
     firstUserMessage: string;
     signal?: AbortSignal;
   }): Promise<string>;
+  sessionMetadata?: {
+    setTitle(title: string): Promise<void>;
+  };
   currentSessionControl?: {
     resolved(): boolean;
     setResolved(resolved: boolean): Promise<void>;
@@ -1294,6 +1297,10 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     );
   }
 
+  const loadedSessionTitle = activeSessionTitle();
+  if (!options.newSession && loadedSessionTitle !== "New chat")
+    await options.sessionMetadata?.setTitle(loadedSessionTitle);
+
   function emitSnapshotInBackground() {
     void emitSnapshot().catch(() => undefined);
   }
@@ -1375,8 +1382,6 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
 
   async function nameSessionFromFirstMessage(currentUserMessage: string) {
     if (disposed || sessionNamingInFlight || session.sessionManager.getSessionName()) return;
-    const utilityModel = options.utilityModel?.();
-    if (!utilityModel || !generateTitle) return;
     const firstUserMessage = session.sessionManager
       .getBranch()
       .flatMap((entry) => (entry.type === "message" ? [entry.message] : []))
@@ -1385,6 +1390,10 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       .find(Boolean);
     const userText = firstUserMessage || currentUserMessage.trim();
     if (!userText) return;
+    await options.sessionMetadata?.setTitle(userText.slice(0, SESSION_TITLE_MAX_LENGTH));
+
+    const utilityModel = options.utilityModel?.();
+    if (!utilityModel || !generateTitle) return;
 
     sessionNamingInFlight = true;
     try {
@@ -1395,6 +1404,9 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       });
       if (disposed || !title || session.sessionManager.getSessionName()) return;
       session.setSessionName(title);
+      await options.sessionMetadata?.setTitle(
+        session.sessionManager.getSessionName() ?? title.trim(),
+      );
       await emitSnapshot();
     } catch {
       // Utility work is opportunistic. The first-message title remains the fallback.
@@ -1908,6 +1920,9 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     },
     async rename(title) {
       session.setSessionName(title.trim());
+      await options.sessionMetadata?.setTitle(
+        session.sessionManager.getSessionName() ?? title.trim(),
+      );
       await emitSnapshot();
       return {
         sessionId: cakeSessionId,
@@ -2242,6 +2257,9 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     },
     async rename(name) {
       session.setSessionName(name.trim());
+      await options.sessionMetadata?.setTitle(
+        session.sessionManager.getSessionName() ?? name.trim(),
+      );
       await emitSnapshot();
     },
     async fork(entryId) {

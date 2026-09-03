@@ -133,6 +133,10 @@ export const makeProjectSessionEnvironmentLive = (
                 setResolved: (resolved) =>
                   base.setSessionResolved?.(sessionId, resolved) ?? Promise.resolve(),
               },
+              sessionMetadata: {
+                setTitle: (title) =>
+                  base.setSessionTitleMetadata?.(sessionId, title) ?? Promise.resolve(),
+              },
               worktreeLandingControl: location.managedWorktree
                 ? {
                     proposeSquashMessage: (message) =>

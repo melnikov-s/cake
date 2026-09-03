@@ -72,6 +72,24 @@ const requireConnection = Effect.fn("Projects.requireConnection")(function* (
   });
 });
 
+/** Restores authorization for previously user-registered Projects without inspecting sessions. */
+export const initializeRegisteredProjectAccess = Effect.fn(
+  "Projects.initializeRegisteredProjectAccess",
+)(function* () {
+  const application = yield* ApplicationState;
+  const access = yield* ProjectAccess;
+  const worktrees = yield* ManagedWorktrees;
+  const projectPaths = new Set(application.snapshot().projects.map((project) => project.path));
+  const records = yield* mapProjectError("initializeRegisteredProjectAccess", worktrees.records());
+  const workingDirectories = [
+    ...projectPaths,
+    ...records
+      .filter((record) => projectPaths.has(record.projectPath))
+      .map((record) => record.worktreePath),
+  ];
+  yield* Effect.forEach(workingDirectories, (path) => access.allow(path), { discard: true });
+});
+
 const resolveRewordingWorkingDirectory = Effect.fn("Projects.resolveRewordingWorkingDirectory")(
   function* (requested: string | undefined, active: string | undefined) {
     const access = yield* ProjectAccess;

@@ -104,6 +104,7 @@ export interface ProjectSessionIntegrationHostOptions {
   readonly setFastMode?: (sessionId: string, enabled: boolean) => Promise<void>;
   readonly sessionResolved?: (sessionId: string) => boolean;
   readonly setSessionResolved?: (sessionId: string, resolved: boolean) => Promise<void>;
+  readonly setSessionTitleMetadata?: (sessionId: string, title: string) => Promise<void>;
   readonly pluginResources?: () => PluginResourcesSnapshot;
 }
 
