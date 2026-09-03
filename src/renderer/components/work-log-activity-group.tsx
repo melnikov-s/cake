@@ -7,6 +7,7 @@ import { StatusDot } from "@/components/ui/status-dot";
 import { Badge } from "@/components/ui/badge";
 import { DisclosureTrigger } from "@/components/ui/disclosure-trigger";
 import { formatElapsed } from "@/components/ui/loading-state";
+import { cn } from "@/lib/utils";
 import type { UiPart } from "../../ipc/session-contract";
 import { toolDiff, workLogChanges } from "../../utils/turn-diff";
 import { combineSubagentWorkLogParts } from "../subagent-work-log";
@@ -148,7 +149,10 @@ export const ActivityGroup = observer(function ActivityGroup({
       {open && (
         <div
           data-slot="work-log-content"
-          className="max-h-[32rem] space-y-2 overflow-y-auto border-t border-border/60 p-3 pt-2.5"
+          className={cn(
+            "max-h-[32rem] overflow-y-auto border-t border-border/60",
+            showDiff ? "p-0" : "p-3 pt-2.5",
+          )}
           ref={attachLog}
           onScroll={(event) => {
             const log = event.currentTarget;
@@ -157,7 +161,7 @@ export const ActivityGroup = observer(function ActivityGroup({
         >
           {showDiff ? (
             <div>
-              <div className="sticky top-0 z-20 mb-2 overflow-hidden rounded-lg border border-border bg-card">
+              <div className="overflow-hidden border-b border-border bg-card">
                 <DisclosureTrigger
                   className="px-3 py-2 hover:bg-muted/50"
                   open={activityStripOpen}
@@ -177,7 +181,7 @@ export const ActivityGroup = observer(function ActivityGroup({
               </div>
               {activityStripOpen && logElement && (
                 <VirtualizedConversation
-                  className="mb-2 space-y-2 rounded-lg border border-border bg-muted/20 p-2.5"
+                  className="space-y-2 border-b border-border bg-muted/20 p-2.5"
                   customScrollParent={logElement}
                   data={workLogItems}
                   computeItemKey={(_index, item) => item.id}
@@ -190,7 +194,8 @@ export const ActivityGroup = observer(function ActivityGroup({
                 streaming={activityIsRunning}
                 onOpenSourceLocation={behavior.openSourceLocation}
                 workspacePath={behavior.workspacePath}
-                headerClassName="top-[42px]"
+                changeClassName="rounded-none border-x-0 border-t-0 last:border-b-0"
+                headerClassName="top-0 bg-card"
               />
             </div>
           ) : (

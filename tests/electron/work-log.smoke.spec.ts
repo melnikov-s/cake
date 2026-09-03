@@ -14,6 +14,14 @@ test("does not mount collapsed work-log activity until it is expanded", async ()
   const sessionId = "work-log-session";
   const timestamp = new Date(0).toISOString();
   const sessionDirectory = cakeWorkspaceSessionDirectory(project, join(cakeHome, "pi", "sessions"));
+  const oldSource = Array.from(
+    { length: 80 },
+    (_, index) => `export const old${index} = ${index};`,
+  ).join("\n");
+  const newSource = Array.from(
+    { length: 80 },
+    (_, index) => `export const current${index} = ${index};`,
+  ).join("\n");
 
   await Promise.all([
     mkdir(userData, { recursive: true }),
@@ -64,7 +72,15 @@ test("does not mount collapsed work-log activity until it is expanded", async ()
         message: {
           role: "assistant",
           content: [
-            { type: "toolCall", id: "call-1", name: "read", arguments: { path: "README.md" } },
+            {
+              type: "toolCall",
+              id: "call-1",
+              name: "edit",
+              arguments: {
+                path: "src/app.ts",
+                edits: [{ oldText: oldSource, newText: newSource }],
+              },
+            },
           ],
           api: "anthropic-messages",
           provider: "anthropic",
@@ -89,8 +105,8 @@ test("does not mount collapsed work-log activity until it is expanded", async ()
         message: {
           role: "toolResult",
           toolCallId: "call-1",
-          toolName: "read",
-          content: [{ type: "text", text: "README contents" }],
+          toolName: "edit",
+          content: [{ type: "text", text: "Successfully replaced text in src/app.ts" }],
           isError: false,
           timestamp: 2,
         },
@@ -143,6 +159,34 @@ test("does not mount collapsed work-log activity until it is expanded", async ()
 
     await log.locator(":scope > summary").click();
     await expect(log).toHaveAttribute("open", "");
+
+    const content = log.locator('[data-slot="work-log-content"]');
+    const activityToggle = content.getByRole("button", { name: /View steps/ });
+    const fileHeader = content.locator('[aria-label^="File changes to"] > header');
+    await expect(activityToggle).toBeVisible();
+    await expect(fileHeader).toBeVisible();
+
+    const initialContentBox = await content.boundingBox();
+    const initialActivityBox = await activityToggle.boundingBox();
+    const initialFileHeaderBox = await fileHeader.boundingBox();
+    expect(initialContentBox).not.toBeNull();
+    expect(initialActivityBox).not.toBeNull();
+    expect(initialFileHeaderBox).not.toBeNull();
+    expect(Math.abs(initialActivityBox!.y - initialContentBox!.y)).toBeLessThanOrEqual(1);
+    expect(
+      Math.abs(initialFileHeaderBox!.y - (initialActivityBox!.y + initialActivityBox!.height)),
+    ).toBeLessThanOrEqual(1);
+
+    await content.evaluate((element) => element.scrollTo({ top: 100 }));
+    const scrolledActivityBox = await activityToggle.boundingBox();
+    const pinnedFileHeaderBox = await fileHeader.boundingBox();
+    expect(scrolledActivityBox).not.toBeNull();
+    expect(pinnedFileHeaderBox).not.toBeNull();
+    expect(scrolledActivityBox!.y).toBeLessThan(initialContentBox!.y);
+    expect(Math.abs(pinnedFileHeaderBox!.y - initialContentBox!.y)).toBeLessThanOrEqual(1);
+
+    await content.evaluate((element) => element.scrollTo({ top: 0 }));
+    await activityToggle.click();
     await expect(log.locator('[data-slot="tool"]')).toHaveCount(1);
 
     await log.locator(":scope > summary").click();
@@ -160,7 +204,9 @@ test("does not mount collapsed work-log activity until it is expanded", async ()
     await expect(log).toHaveAttribute("open", "");
     await expect(log.locator('[data-slot="tool"] [aria-expanded="true"]')).toHaveCount(1);
     await expect(log.locator('[data-slot="tool-details"]')).toBeVisible();
-    await expect(log.locator('[data-slot="tool-details"]')).toContainText("README contents");
+    await expect(log.locator('[data-slot="tool-details"]')).toContainText(
+      "Successfully replaced text in src/app.ts",
+    );
 
     await page.keyboard.press("Control+o");
     await expect(log).not.toHaveAttribute("open", "");

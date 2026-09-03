@@ -9,12 +9,14 @@ export function WorkLogDiff({
   streaming,
   onOpenSourceLocation,
   workspacePath,
+  changeClassName,
   headerClassName,
 }: {
   parts: readonly UiPart[];
   streaming: boolean;
   onOpenSourceLocation?: (location: SourceLocation) => void | Promise<void>;
   workspacePath?: string;
+  changeClassName?: string;
   headerClassName?: string;
 }) {
   const changes = workLogChanges(parts);
@@ -26,7 +28,7 @@ export function WorkLogDiff({
     ) : null;
 
   return (
-    <div className="grid gap-2" aria-label="Streaming file diff">
+    <div className="grid" aria-label="Streaming file diff">
       {changes.map((change) => (
         <DiffView
           key={change.path}
@@ -34,6 +36,7 @@ export function WorkLogDiff({
           filePath={toWorkspaceRelativePath(change.path, workspacePath)}
           label={streaming ? "Streaming changes" : "File changes"}
           onOpenSourceLocation={onOpenSourceLocation}
+          className={changeClassName}
           headerClassName={headerClassName}
         />
       ))}
