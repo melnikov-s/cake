@@ -94,7 +94,7 @@ try {
 
   child = spawn(electron, [runDirectory], {
     stdio: "inherit",
-    env: { ...process.env, CAKE_AUTHORING_ROOT: root },
+    env: process.env,
   });
 
   const forwardSignal = (signal) => {

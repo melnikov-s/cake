@@ -2,7 +2,6 @@ import { createStore, mount, toSnapshot } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
 import type { RendererClient } from "../../../../src/renderer/client/RendererClient";
 import type { ExtensionUiStore } from "../../../../src/renderer/stores/ExtensionUiStore";
-import type { PluginCommandStore } from "../../../../src/renderer/stores/PluginCommandStore";
 import type { ProjectCatalogStore } from "../../../../src/renderer/stores/ProjectCatalogStore";
 import { ProjectWorkbenchStore } from "../../../../src/renderer/stores/ProjectWorkbenchStore";
 import type { ReviewsStore } from "../../../../src/renderer/stores/ReviewsStore";
@@ -30,7 +29,6 @@ describe("ProjectWorkbenchStore startup selection", () => {
         projects: {} as ProjectCatalogStore,
         reviews: () => ({}) as ReviewsStore,
         extensionUi: () => ({ clear: vi.fn() }) as unknown as ExtensionUiStore,
-        pluginCommands: () => ({}) as PluginCommandStore,
         catalog: {} as SessionCatalogStore,
         startCakeChat: async () => undefined,
         onWorktreeSessionsResolved: async () => undefined,

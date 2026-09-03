@@ -28,29 +28,6 @@ function createHost(overrides: Partial<AppControlHost> = {}): AppControlHost {
     setSessionsResolved: async () => 0,
     setCakeChatSessionsResolved: async () => 0,
     setSessionModel: async () => undefined,
-    customizationState: () => undefined,
-    plugins: () => [],
-    getPluginAuthoringReference: async () => "",
-    listPluginFiles: async () => ({ workingRevision: "", buildRevision: "", files: [] }),
-    createPlugin: async () => {
-      throw new Error("not used");
-    },
-    readPluginFile: async () => "",
-    writePluginFile: async () => ({ workingRevision: "", buildRevision: "", files: [] }),
-    validateCustomization: async () => {
-      throw new Error("not used");
-    },
-    activateCustomization: async () => {
-      throw new Error("not used");
-    },
-    rollbackCustomization: async () => {
-      throw new Error("not used");
-    },
-    useFactoryCustomization: async () => {
-      throw new Error("not used");
-    },
-    setPluginEnabled: async () => [],
-    setActiveScene: async () => [],
     ...overrides,
   };
 }
@@ -64,11 +41,7 @@ describe("AppControlBridge", () => {
 
     expect(() => Schema.decodeUnknownSync(CakeChatTarget)(target)).not.toThrow();
     expect(target.tools.some((tool) => tool.command === "sessions.create-draft")).toBe(true);
-    expect(
-      target.tools
-        .filter((tool) => tool.topic !== "customizations")
-        .every((tool) => !("guidance" in tool)),
-    ).toBe(true);
+    expect(target.tools.every((tool) => !("guidance" in tool))).toBe(true);
   });
 
   it("creates a saved draft without starting a Pi session", async () => {

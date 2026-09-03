@@ -302,12 +302,12 @@ describe("ArtifactHost", () => {
   it("renders a custom request in the script sandbox and accepts its token-bound submission", async () => {
     const token = "00000000-0000-4000-8000-000000000001";
     const client = {
-      compileInlineWidget: vi.fn(async () => ({ token, url: `cake-widget://document/${token}` })),
-      repairInlineWidget: vi.fn(),
-    } as unknown as RendererClient["plugins"];
+      compile: vi.fn(async () => ({ token, url: `cake-widget://document/${token}` })),
+      repair: vi.fn(),
+    } as unknown as RendererClient["inlineWidgets"];
     ({ root: widgetRoot, subject: widgets } = mountWithRendererClient(
       createStore(InlineWidgetStore),
-      { plugins: client } as unknown as RendererClient,
+      { inlineWidgets: client } as unknown as RendererClient,
     ));
     const submit = vi.fn();
     const request = {
@@ -342,7 +342,7 @@ describe("ArtifactHost", () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
-    expect(client.compileInlineWidget).toHaveBeenCalledWith("html", request.view.source, "request");
+    expect(client.compile).toHaveBeenCalledWith("html", request.view.source, "request");
     const frame = container.querySelector("iframe")!;
     expect(frame.getAttribute("sandbox")).toBe("allow-scripts");
     expect(frame.getAttribute("src")).toBe(`cake-widget://document/${token}`);
@@ -387,12 +387,12 @@ describe("ArtifactHost", () => {
     const token = "00000000-0000-4000-8000-000000000002";
     const source = "export default () => <strong>Generated</strong>";
     const client = {
-      compileInlineWidget: vi.fn(async () => ({ token, url: `cake-widget://document/${token}` })),
-      repairInlineWidget: vi.fn(async () => ({ source, repairSessionId: "repair-session" })),
-    } as unknown as RendererClient["plugins"];
+      compile: vi.fn(async () => ({ token, url: `cake-widget://document/${token}` })),
+      repair: vi.fn(async () => ({ source, repairSessionId: "repair-session" })),
+    } as unknown as RendererClient["inlineWidgets"];
     ({ root: widgetRoot, subject: widgets } = mountWithRendererClient(
       createStore(InlineWidgetStore),
-      { plugins: client } as unknown as RendererClient,
+      { inlineWidgets: client } as unknown as RendererClient,
     ));
     const artifact = record({
       protocol: "cake.artifact/v1",
@@ -420,7 +420,7 @@ describe("ArtifactHost", () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
-    expect(client.compileInlineWidget).toHaveBeenCalledWith("react", source, "display");
+    expect(client.compile).toHaveBeenCalledWith("react", source, "display");
     expect(container.querySelector("iframe")?.getAttribute("sandbox")).toBe("allow-scripts");
     expect(container.textContent).not.toContain("export default");
     const fullscreenButton = container.querySelector<HTMLButtonElement>(
@@ -458,7 +458,7 @@ describe("ArtifactHost", () => {
       (container.querySelector("form button[type='submit']") as HTMLButtonElement).click();
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
-    expect(client.repairInlineWidget).toHaveBeenCalledWith(
+    expect(client.repair).toHaveBeenCalledWith(
       expect.objectContaining({
         context: expect.stringContaining("Make the result easier to scan on a narrow window."),
       }),

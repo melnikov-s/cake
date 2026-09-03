@@ -10,7 +10,7 @@ const LoggingLive = Logger.layer([Logger.withConsoleLog(Logger.formatLogFmt)]);
 
 /**
  * The platform capabilities needed at the immutable main-process bootstrap
- * boundary. Product services, IPC handlers, and user plugins are deliberately
+ * boundary. Product services and IPC handlers are deliberately
  * not part of this layer.
  */
 export const BootstrapLive = Layer.mergeAll(

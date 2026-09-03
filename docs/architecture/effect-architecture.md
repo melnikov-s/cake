@@ -66,7 +66,7 @@ Primary Services are:
 - `VsCodeServer`;
 - `Terminal`;
 - `Electron`;
-- `PluginRuntime`;
+- `InlineWidgets`;
 - `CakeIpcClient` in the renderer and `CakeIpcServer` in main.
 
 Cake does not introduce generic abstractions for dependencies it has chosen
@@ -108,7 +108,6 @@ managedWorktrees
 reviews
 artifacts
 sessionTerminals
-plugins
 ```
 
 Shared conversation functions live in `conversations`; Project Sessions, Cake
@@ -158,7 +157,7 @@ MainLive
 ├── StorageLive
 ├── VsCodeServerLive
 ├── TerminalLive
-├── PluginRuntimeLive
+├── InlineWidgetsLive
 ├── ElectronLive
 └── CakeIpcServerLive
 ```
@@ -170,11 +169,8 @@ starts that program. Ordinary Layers are the default composition mechanism. Cake
 an OpenCode-style custom Layer graph until concrete composition or replacement
 problems justify it.
 
-A minimal bootstrap Layer can start the immutable shell and recovery without
-loading user plugins, project resources, VS Code Server, terminals, or Project
-Session runtimes. Any future Custom Renderer must also remain outside this
-bootstrap boundary, but implementing it is not part of this architecture
-migration.
+A minimal bootstrap Layer can start the application shell without loading
+project resources, VS Code Server, terminals, or Project Session runtimes.
 
 ### Renderer runtime
 
@@ -212,7 +208,7 @@ managedWorktrees
 modelPresets
 terminals
 vscode
-plugins
+widgets
 electron
 windowState
 ```
@@ -252,9 +248,9 @@ Preload is deliberately mechanical. It exposes no raw `ipcRenderer`, performs
 no Cake business logic, and accepts only the protocol transport messages.
 Both receiving boundaries decode untrusted values. Remaining outside-world
 commands are partitioned into the `electron`, `filesystem`, `workspaces`,
-`managedWorktrees`, `terminals`, `vscode`, `artifacts`, and `plugins` RPC groups.
+`managedWorktrees`, `terminals`, `vscode`, `artifacts`, and `widgets` RPC groups.
 Each operation carries its semantic payload directly; there is no generic request
-envelope or second dispatcher protocol inside Effect RPC. Focused application, artifact, plugin, terminal, embedded-editor, and surface Streams
+envelope or second dispatcher protocol inside Effect RPC. Focused application, artifact, terminal, embedded-editor, and surface Streams
 carry renderer-connection-scoped native events to their window-owned consumers.
 
 Main RPC handlers are thin adapters to domain operations. They do not own
@@ -401,8 +397,7 @@ Pi → PiSessions Stream → Cake domain projection → RPC Stream
    → reactive r-state-tree Models → Stores/React
 ```
 
-Terminal output, plugin diagnostics, filesystem observation, and other live
-sources follow the same Scope and Stream principles but define their own event
+Terminal output, filesystem observation, and other live sources follow the same Scope and Stream principles but define their own event
 vocabularies.
 
 ## Resource lifetimes and concurrency
@@ -490,7 +485,6 @@ WindowStateStorage
 WorktreeStorage
 ReviewStorage
 ArtifactStorage
-PluginStorage
 SessionArchiveStorage
 ```
 
@@ -605,7 +599,7 @@ src/
 │   ├── vscode/
 │   ├── terminal/
 │   ├── electron/
-│   └── plugins/
+│   └── widgets/
 ├── domain/                   # Cohesive free Effect modules
 │   ├── application.ts
 │   ├── projects.ts
@@ -619,8 +613,7 @@ src/
 │   ├── managedWorktrees.ts
 │   ├── reviews.ts
 │   ├── artifacts.ts
-│   ├── sessionTerminals.ts
-│   └── plugins.ts
+│   └── sessionTerminals.ts
 ├── layers/                   # Production composition adapters joining domains to callback APIs
 ├── config/                   # Decoded process configuration values
 ├── ipc/
@@ -641,7 +634,6 @@ src/
 │   ├── models/               # r-state-tree projection Model definitions
 │   ├── stores/               # r-state-tree application/UI Stores
 │   └── components/
-├── plugin/                   # Public Cake plugin APIs
 └── utils/
 ```
 
@@ -682,19 +674,9 @@ Cross-process and persistence boundaries use Effect Schema. A generic shared
 ## Security and extensibility
 
 The renderer remains sandboxed with no Node globals, raw Electron IPC, raw Pi,
-filesystem, credentials, or compiler/recovery authority. Main validates trust,
-paths, and permissions even when renderer input has already decoded.
-
-Pi Extensions and Cake Plugins are distinct trust systems. Model-presented
-artifacts remain data and use validated or sandboxed protocols.
-
-The Effect/RPC privilege boundary is compatible with a possible future Custom
-Renderer, but that feature is not implemented and is not part of the Effect
-migration. If pursued later, main, preload, `CakeIpcClient`, RPC schemas and
-validation, customization compiler, activation journal, diagnostics,
-last-known-good build, and immutable recovery remain Cake-owned and cannot be
-replaced by user renderer source. See the separate future design in
-[`cake-custom-renderer.md`](./cake-custom-renderer.md).
+filesystem, or credentials. Main validates trust, paths, and permissions even
+when renderer input has already decoded. Model-presented artifacts remain data
+and use validated or sandboxed protocols.
 
 ## Testing and observability
 

@@ -4,7 +4,6 @@ import { makeSubagentControl } from "../domain/subagentControl";
 import { jsonObjectSchema } from "../ipc/json-contract";
 import type { PiSessions } from "../services/pi/PiSessions";
 import { SessionMetadataStorage } from "../services/storage/SessionMetadataStorage";
-import { PluginRuntime } from "../services/plugins/PluginRuntime";
 import { ProjectSessionLifecycle } from "../services/project-sessions/ProjectSessionLifecycle";
 import { ApplicationState } from "../services/storage/ApplicationState";
 import { SessionArchiveStorage } from "../services/storage/SessionArchiveStorage";
@@ -45,7 +44,6 @@ export const makeCakeChatEnvironmentLive = (
   | ApplicationState
   | PiSessions
   | SessionMetadataStorage
-  | PluginRuntime
   | ProjectSessionLifecycle
   | SessionArchiveStorage
   | SessionCatalogChanges
@@ -64,7 +62,6 @@ export const makeCakeChatEnvironmentLive = (
       const lifecycle = yield* ProjectSessionLifecycle;
       const metadata = yield* SessionMetadataStorage;
       const catalogs = yield* SessionCatalogChanges;
-      const plugins = yield* PluginRuntime;
       const storage = yield* SessionArchiveStorage;
       const context = yield* Effect.context<
         | ApplicationState
@@ -151,7 +148,6 @@ export const makeCakeChatEnvironmentLive = (
                           : Schema.decodeUnknownSync(jsonObjectSchema)(example.input),
                     })),
                   })),
-                  recoveryContext: plugins.recoveryContext(),
                   invoke: (invocation: Parameters<typeof invoke>[1], signal: AbortSignal) =>
                     invoke(input.sessionId, invocation, signal),
                 },

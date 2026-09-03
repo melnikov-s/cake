@@ -4,16 +4,6 @@ import { ipcProjectionArray, ipcProjectionString } from "./projection";
 import { sourceLocationSchema } from "./source-location";
 import { editorAnnotationSnapshotSchema } from "./editor-annotation";
 import {
-  customizationStateSchema,
-  pluginBackendEventSchema,
-  pluginDiagnosticSchema,
-  pluginIdSchema,
-  pluginPersistenceKeySchema,
-  pluginPersistenceRecordSchema,
-  pluginPersistenceScopeSchema,
-  pluginStatusSchema,
-} from "../plugin/plugin-contract";
-import {
   compiledInlineWidgetSchema,
   inlineWidgetCapabilitySchema,
   inlineWidgetLanguageSchema,
@@ -22,13 +12,6 @@ import {
 } from "./inline-widget-contract";
 import { jsonValueSchema } from "./json-contract";
 import { ProjectSessionControlRequest } from "../domain/project-session-data";
-import {
-  pluginAgentOpenOptionsSchema,
-  pluginAgentSnapshotSchema,
-  pluginCompletionRequestSchema,
-  pluginCompletionResultSchema,
-  sessionRefSchema,
-} from "./plugin-agent-contract";
 import {
   applicationStateSchema,
   attachmentSchema,
@@ -57,14 +40,7 @@ const accepted = Schema.Struct({ requestId: uuid });
 const cakeEventSchemas = {
   "renderer-events-ready": Schema.Struct({
     type: Schema.Literal("renderer-events-ready"),
-    channel: Schema.Literals([
-      "application",
-      "artifacts",
-      "plugins",
-      "terminals",
-      "vscode",
-      "surfaces",
-    ]),
+    channel: Schema.Literals(["application", "artifacts", "terminals", "vscode", "surfaces"]),
   }),
   "fullscreen-surface-close-requested": Schema.Struct({
     type: Schema.Literal("fullscreen-surface-close-requested"),
@@ -117,9 +93,6 @@ const cakeEventSchemas = {
     message: ipcProjectionString(2_048),
     details: Schema.optional(ipcProjectionString(16_384)),
   }),
-  "plugin-backend-event": pluginBackendEventSchema.pipe(
-    Schema.fieldsAssign({ type: Schema.Literal("plugin-backend-event") }),
-  ),
   notification: Schema.Struct({
     type: Schema.Literal("notification"),
     tone: Schema.Literals(["info", "warning", "error"]),
@@ -134,11 +107,6 @@ const cakeEventSchemas = {
   "project-session-control-requested": ProjectSessionControlRequest.pipe(
     Schema.fieldsAssign({ type: Schema.Literal("project-session-control-requested") }),
   ),
-  "plugin-agent-event": Schema.Struct({
-    type: Schema.Literal("plugin-agent-event"),
-    pluginId: pluginIdSchema,
-    snapshot: pluginAgentSnapshotSchema,
-  }),
   "terminal-data": Schema.Struct({
     type: Schema.Literal("terminal-data"),
     terminalId: uuid,
@@ -199,12 +167,6 @@ export const artifactEventSchema = Schema.Union([
   cakeEventSchemas["ui-request"],
 ]);
 
-export const pluginEventSchema = Schema.Union([
-  cakeEventSchemas["renderer-events-ready"],
-  cakeEventSchemas["plugin-backend-event"],
-  cakeEventSchemas["plugin-agent-event"],
-]);
-
 export const terminalEventSchema = Schema.Union([
   cakeEventSchemas["renderer-events-ready"],
   cakeEventSchemas["terminal-data"],
@@ -237,11 +199,9 @@ export const cakeEventSchema = Schema.Union([
   cakeEventSchemas["ui-request"],
   cakeEventSchemas["complete"],
   cakeEventSchemas["fatal"],
-  cakeEventSchemas["plugin-backend-event"],
   cakeEventSchemas["notification"],
   cakeEventSchemas["extension-ui-intent"],
   cakeEventSchemas["project-session-control-requested"],
-  cakeEventSchemas["plugin-agent-event"],
   cakeEventSchemas["terminal-data"],
   cakeEventSchemas["terminal-exited"],
   cakeEventSchemas["terminal-toggle-requested"],
@@ -365,113 +325,6 @@ export const cakeRpcPayloadSchemas = {
     ...requestBase,
     workspacePath: stringMax(4_096),
     snapshot: editorAnnotationSnapshotSchema,
-  }),
-  "get-customization-state": Schema.Struct({}),
-  "get-plugin-authoring-reference": Schema.Struct({}),
-  "list-plugin-files": Schema.Struct({}),
-  "create-plugin": Schema.Struct({
-    pluginId: pluginIdSchema,
-    name: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(128))),
-    renderer: Schema.Boolean,
-    backend: Schema.Boolean,
-    scene: Schema.Boolean,
-    expectedWorkingRevision: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/)),
-  }),
-  "read-plugin-file": Schema.Struct({
-    pluginId: pluginIdSchema,
-    path: bounded(1, 8_192),
-  }),
-  "write-plugin-file": Schema.Struct({
-    pluginId: pluginIdSchema,
-    path: bounded(1, 8_192),
-    content: stringMax(2_000_000),
-    expectedWorkingRevision: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/)),
-  }),
-  "validate-customization": Schema.Struct({
-    expectedBaseRevision: Schema.optional(Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/))),
-    expectedSourceRevision: Schema.optional(
-      Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/)),
-    ),
-    request: Schema.optional(ipcProjectionString(8_192)),
-  }),
-  "activate-customization": Schema.Struct({
-    revision: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/)),
-    expectedSourceRevision: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/)),
-    request: Schema.optional(ipcProjectionString(8_192)),
-  }),
-  "customization-rendered": Schema.Struct({
-    revision: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/)),
-  }),
-  "customization-runtime-failed": Schema.Struct({
-    revision: Schema.optional(Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/))),
-    message: ipcProjectionString(32_768),
-  }),
-  "rollback-customization": Schema.Struct({}),
-  "use-factory-customization": Schema.Struct({}),
-  "list-plugins": Schema.Struct({}),
-  "set-plugin-enabled": Schema.Struct({
-    pluginId: pluginIdSchema,
-    enabled: Schema.Boolean,
-  }),
-  "set-active-scene": Schema.Struct({
-    pluginId: Schema.optional(pluginIdSchema),
-  }),
-  "delete-plugin": Schema.Struct({
-    pluginId: pluginIdSchema,
-  }),
-  "call-plugin-backend": Schema.Struct({
-    pluginId: pluginIdSchema,
-    callId: uuid,
-    method: Schema.String.check(
-      Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._-]*$/),
-      Schema.isMaxLength(256),
-    ),
-    input: jsonValueSchema,
-  }),
-  "cancel-plugin-backend-call": Schema.Struct({
-    pluginId: pluginIdSchema,
-    callId: uuid,
-  }),
-  "open-plugin-agent": Schema.Struct({
-    pluginId: pluginIdSchema,
-    options: pluginAgentOpenOptionsSchema,
-    implicitSession: Schema.optional(sessionRefSchema),
-  }),
-  "prompt-plugin-agent": Schema.Struct({
-    pluginId: pluginIdSchema,
-    handleId: uuid,
-    delivery: Schema.Literals(["prompt", "steer", "follow-up"]),
-    text: bounded(1, 262_144),
-  }),
-  "abort-plugin-agent": Schema.Struct({
-    pluginId: pluginIdSchema,
-    handleId: uuid,
-  }),
-  "detach-plugin-agent": Schema.Struct({
-    pluginId: pluginIdSchema,
-    handleId: uuid,
-  }),
-  "run-plugin-completion": Schema.Struct({
-    pluginId: pluginIdSchema,
-    ...requestBase,
-    request: pluginCompletionRequestSchema,
-    implicitSession: Schema.optional(sessionRefSchema),
-  }),
-  "cancel-plugin-completion": Schema.Struct({
-    pluginId: pluginIdSchema,
-    ...requestBase,
-  }),
-  "load-plugin-state": Schema.Struct({
-    pluginId: pluginIdSchema,
-    key: pluginPersistenceKeySchema,
-    scope: pluginPersistenceScopeSchema,
-  }),
-  "save-plugin-state": Schema.Struct({
-    pluginId: pluginIdSchema,
-    key: pluginPersistenceKeySchema,
-    scope: pluginPersistenceScopeSchema,
-    value: Schema.Json,
-    expectedVersion: Schema.optional(nonNegativeInt),
   }),
   "choose-attachments": Schema.Struct({}),
   "suggest-files": Schema.Struct({
@@ -611,54 +464,6 @@ const cakeRpcResultSchemas = {
     ...requestBase,
     runningProgram: Schema.Boolean,
   }),
-  "customization-state": Schema.Struct({
-    state: customizationStateSchema,
-  }),
-  "plugin-authoring-reference": Schema.Struct({
-    reference: stringMax(1_000_000),
-  }),
-  "plugin-files": Schema.Struct({
-    workingRevision: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/)),
-    buildRevision: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/)),
-    files: Schema.Array(bounded(1, 8_192)).check(Schema.isMaxLength(100_000)),
-  }),
-  "plugin-file": Schema.Struct({
-    pluginId: pluginIdSchema,
-    path: bounded(1, 8_192),
-    content: stringMax(2_000_000),
-  }),
-  "customization-validation": Schema.Struct({
-    revision: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/)),
-    sourceRevision: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/)),
-    diagnostics: Schema.Array(pluginDiagnosticSchema).check(Schema.isMaxLength(1_000)),
-    valid: Schema.Boolean,
-  }),
-  "customization-activation": Schema.Struct({
-    revision: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/)),
-    activating: Schema.Literal(true),
-  }),
-  "plugin-state": Schema.Struct({
-    record: Schema.optional(pluginPersistenceRecordSchema),
-  }),
-  "plugins-listed": Schema.Struct({
-    plugins: Schema.Array(pluginStatusSchema).check(Schema.isMaxLength(1_000)),
-  }),
-  "plugin-backend-result": Schema.Struct({
-    callId: uuid,
-    ok: Schema.Boolean,
-    value: Schema.optional(jsonValueSchema),
-    error: Schema.optional(ipcProjectionString(32_768)),
-  }),
-  "plugin-agent-snapshot": Schema.Struct({
-    snapshot: pluginAgentSnapshotSchema,
-  }),
-  "plugin-agent-detached": Schema.Struct({
-    handleId: uuid,
-  }),
-  "plugin-completion-result": Schema.Struct({
-    requestId: uuid,
-    result: pluginCompletionResultSchema,
-  }),
   "attachments-chosen": Schema.Struct({
     attachments: Schema.Array(attachmentSchema).check(Schema.isMaxLength(20)),
   }),
@@ -747,34 +552,8 @@ export const cakeRpcSuccessSchemas = {
   "respond-artifact": cakeRpcResultSchemas["artifact-response-accepted"],
   "respond-ui": cakeRpcResultSchemas["ui-response-accepted"],
   "export-artifacts": cakeRpcResultSchemas["artifacts-exported"],
-  "get-customization-state": cakeRpcResultSchemas["customization-state"],
-  "get-plugin-authoring-reference": cakeRpcResultSchemas["plugin-authoring-reference"],
-  "list-plugin-files": cakeRpcResultSchemas["plugin-files"],
-  "create-plugin": cakeRpcResultSchemas["plugin-files"],
-  "read-plugin-file": cakeRpcResultSchemas["plugin-file"],
-  "write-plugin-file": cakeRpcResultSchemas["plugin-files"],
-  "validate-customization": cakeRpcResultSchemas["customization-validation"],
-  "activate-customization": cakeRpcResultSchemas["customization-activation"],
-  "rollback-customization": cakeRpcResultSchemas["customization-state"],
-  "use-factory-customization": cakeRpcResultSchemas["customization-state"],
-  "list-plugins": cakeRpcResultSchemas["plugins-listed"],
-  "set-plugin-enabled": cakeRpcResultSchemas["plugins-listed"],
-  "set-active-scene": cakeRpcResultSchemas["plugins-listed"],
-  "delete-plugin": cakeRpcResultSchemas["plugins-listed"],
   "compile-inline-widget": cakeRpcResultSchemas["inline-widget-compiled"],
   "repair-inline-widget": cakeRpcResultSchemas["inline-widget-repaired"],
-  "open-plugin-agent": cakeRpcResultSchemas["plugin-agent-snapshot"],
-  "prompt-plugin-agent": cakeRpcResultSchemas["plugin-agent-snapshot"],
-  "abort-plugin-agent": cakeRpcResultSchemas["plugin-agent-snapshot"],
-  "detach-plugin-agent": cakeRpcResultSchemas["plugin-agent-detached"],
-  "run-plugin-completion": cakeRpcResultSchemas["plugin-completion-result"],
-  "cancel-plugin-completion": cakeRpcResultSchemas.accepted,
-  "load-plugin-state": cakeRpcResultSchemas["plugin-state"],
-  "save-plugin-state": cakeRpcResultSchemas["plugin-state"],
-  "call-plugin-backend": cakeRpcResultSchemas["plugin-backend-result"],
-  "cancel-plugin-backend-call": cakeRpcResultSchemas.accepted,
-  "customization-rendered": cakeRpcResultSchemas["customization-state"],
-  "customization-runtime-failed": cakeRpcResultSchemas["customization-state"],
 } as const;
 
 export type CakeRpcOperation = keyof typeof cakeRpcPayloadSchemas;

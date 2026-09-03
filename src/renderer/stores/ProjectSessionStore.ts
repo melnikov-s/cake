@@ -5,7 +5,6 @@ import type { ChatConfiguration, ModelPreset } from "../../ipc/session-contract"
 import type { SessionRegistryStore } from "./SessionRegistryStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { ReviewsStore } from "./ReviewsStore";
-import type { PluginCommandStore } from "./PluginCommandStore";
 import { MessageComposerStore } from "./MessageComposerStore";
 import { ChatConfigurationStore } from "./ChatConfigurationStore";
 import { ChatStore } from "./ChatStore";
@@ -28,7 +27,6 @@ export interface ProjectSessionStoreProps extends SessionTarget {
   registry: SessionRegistryStore;
   operations: SessionOperationCoordinatorStore;
   reviews(): ReviewsStore;
-  pluginCommands(): PluginCommandStore;
   canSubmit(): boolean;
   isActive(): boolean;
   openCommandPane(pane: "changelog" | "tree" | "resources"): Promise<void>;
@@ -180,8 +178,6 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       canSubmit: () => this.canSubmit,
       isStreaming: () => this.isStreaming,
       openCommandPane: (pane) => this.props.openCommandPane(pane),
-      matchesPluginCommand: (input) => this.props.pluginCommands().matches(input),
-      runPluginCommand: (input) => this.props.pluginCommands().run(input),
       selectModel: (value) => this.configurationStore.selectModel(value),
       renameSession: (name) => this.props.renameSession(name),
       handoffSession: (entryId, prompt, resolveSource) =>
@@ -244,12 +240,10 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
         this.composerStore.activeOperations.length > 0 || this.model.activeTurnIds.length > 0,
       stoppable: () => this.model.backgroundWorkActive,
       configuration: () => this.configurationStore,
-      commands: () => [
-        ...(this.props.registry.isTemporarySession(this.sessionId)
+      commands: () =>
+        this.props.registry.isTemporarySession(this.sessionId)
           ? this.stagedCommandStore.commands
-          : this.model.commands),
-        ...this.props.pluginCommands().commands,
-      ],
+          : this.model.commands,
       placeholder: () =>
         this.isStreaming
           ? "Add the next instruction…"

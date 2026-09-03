@@ -1,6 +1,6 @@
 import { Option, Schema } from "effect";
 import { jsonValueSchema } from "../ipc/json-contract";
-import { resolvedAgentModelSchema } from "../ipc/plugin-agent-contract";
+import { ResolvedAgentModel as resolvedAgentModelSchema } from "../domain/subagent-data";
 import { toolOperationName } from "./cake-tool";
 import {
   sessionUsageSchema,

@@ -134,7 +134,7 @@ const fallbackReason = (snapshot: SessionSnapshot, provider: string, modelId: st
   return undefined;
 };
 
-export const resolveModel = (
+const resolveModel = (
   preference: AgentModelPreference,
   snapshot: SessionSnapshot,
   utility: UtilityModel | undefined,

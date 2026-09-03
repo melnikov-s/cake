@@ -8,7 +8,7 @@ import {
 
 const CAKE_OPERATION_PROTOCOL = "cake.operation/v1" as const;
 export const cakeToolDescription =
-  'Access Cake-native capabilities unavailable through files or the shell: manage sessions and context, inspect model presets, communicate with other sessions, enter and control embedded VS Code, delegate to subagents, request structured user input, create interactive visual widgets, manage customizations, and send notifications. Call with {} for help. For a topic protocol, set command to the exact topic name, for example {"command":"vscode"}; do not put the topic in input.';
+  'Access Cake-native capabilities unavailable through files or the shell: manage sessions and context, inspect model presets, communicate with other sessions, enter and control embedded VS Code, delegate to subagents, request structured user input, create interactive visual widgets, and send notifications. Call with {} for help. For a topic protocol, set command to the exact topic name, for example {"command":"vscode"}; do not put the topic in input.';
 
 const commandSchema = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)).annotate({
   description: "Exact topic or operation command. Omit for the help index.",
@@ -64,7 +64,6 @@ const cakeTopics = [
   { name: "vscode", summary: "Enter and control embedded VS Code." },
   { name: "subagents", summary: "Delegate explicitly requested work." },
   { name: "notifications", summary: "Notify the user." },
-  { name: "customizations", summary: "Inspect or modify Cake plugins and scenes." },
   { name: "worktrees", summary: "Complete an active worktree landing workflow." },
 ] as const satisfies readonly CakeTopicDefinition[];
 

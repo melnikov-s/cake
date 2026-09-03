@@ -14,7 +14,6 @@ import {
   type CakeArtifactV1,
 } from "../../ipc/artifact-contract";
 import type { CakeEvent, cakeRpcPayloadSchemas } from "../../ipc/cake-rpc-contract";
-import type { PluginResourcesSnapshot } from "../plugins/PluginResources";
 import { compileInlineWidget, extractRepairedWidget } from "../widgets/inline-widget-service";
 import {
   runInlineWidgetGeneration,
@@ -88,7 +87,6 @@ export interface ProjectSessionIntegrationHostOptions {
   readonly sessionDir: string;
   readonly resolvedSessionDir?: string;
   readonly widgetSessionDir?: string;
-  readonly pluginAgentSessionDir?: string;
   readonly emit: (event: CakeEvent) => void;
   readonly emitApplicationControl: (
     event: CakeEvent & { readonly type: "project-session-control-requested" },
@@ -122,7 +120,6 @@ export interface ProjectSessionIntegrationHostOptions {
   readonly sessionResolved?: (sessionId: string) => boolean;
   readonly setSessionResolved?: (sessionId: string, resolved: boolean) => Promise<void>;
   readonly setSessionTitleMetadata?: (sessionId: string, title: string) => Promise<void>;
-  readonly pluginResources?: () => PluginResourcesSnapshot;
 }
 
 export class ProjectSessionIntegrationHost {

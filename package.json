@@ -5,7 +5,7 @@
   "type": "module",
   "main": "out/main/main.js",
   "scripts": {
-    "build": "electron-vite build && node scripts/prepare-authoring-snapshot.mjs",
+    "build": "electron-vite build",
     "dev": "electron-vite dev --watch",
     "dev:agent": "electron-vite dev --watch --remoteDebuggingPort 9222",
     "dev:manual": "CAKE_MANUAL_RELOAD=1 electron-vite dev --watch",
@@ -23,7 +23,7 @@
     "build:start": "pnpm build && pnpm start",
     "test": "vitest run",
     "test:integration": "vitest run --config vitest.integration.config.ts",
-    "test:electron": "electron-vite build --logLevel warn && node scripts/prepare-authoring-snapshot.mjs && playwright test",
+    "test:electron": "electron-vite build --logLevel warn && playwright test",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

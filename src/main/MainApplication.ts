@@ -7,7 +7,6 @@ import * as sessionTerminals from "../domain/sessionTerminals";
 import { Electron } from "../services/electron/Electron";
 import { ProjectSessionIntegrations } from "../services/pi/ProjectSessionIntegrations";
 import type { PiSessions } from "../services/pi/PiSessions";
-import { PluginRuntime } from "../services/plugins/PluginRuntime";
 import { ProjectAccess } from "../services/projects/ProjectAccess";
 import { RewordingRequests } from "../services/projects/RewordingRequests";
 import { ApplicationState } from "../services/storage/ApplicationState";
@@ -36,7 +35,6 @@ type MainApplicationServices =
   | ApplicationState
   | Electron
   | PiSessions
-  | PluginRuntime
   | ProjectAccess
   | ProjectSessionIntegrations
   | RewordingRequests
@@ -61,7 +59,6 @@ export const MainApplication = Effect.fn("MainApplication")(function* ({
       const applicationState = yield* ApplicationState;
       const electron = yield* Electron;
       const integrations = yield* ProjectSessionIntegrations;
-      const plugins = yield* PluginRuntime;
       const access = yield* ProjectAccess;
       const rewordingRequests = yield* RewordingRequests;
       const vscode = yield* VsCodeServer;
@@ -93,12 +90,7 @@ export const MainApplication = Effect.fn("MainApplication")(function* ({
       yield* initializeRegisteredProjectAccess();
       yield* vscode.refreshStatus();
       yield* Effect.sync(initializeNativeProtocols);
-      yield* plugins.initializeCustomization();
       yield* electron.start({
-        startupRenderer: plugins.startupRenderer,
-        trackRenderer: plugins.trackRenderer,
-        rendererProcessGone: plugins.rendererProcessGone,
-        disposePluginOwner: plugins.disposeOwner,
         closeTerminalOwner: (ownerId) => {
           void run(sessionTerminals.closeOwner(ownerId));
         },

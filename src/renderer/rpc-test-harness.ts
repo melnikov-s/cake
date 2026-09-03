@@ -199,118 +199,14 @@ function invokeSmokeCommand(
       return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["export-artifacts"])(payload).pipe(
         Effect.flatMap(client.artifacts["export-artifacts"]),
       );
-    case "get-customization-state":
-      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["get-customization-state"])(
-        payload,
-      ).pipe(Effect.flatMap(client.plugins["get-customization-state"]));
-    case "get-plugin-authoring-reference":
-      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["get-plugin-authoring-reference"])(
-        payload,
-      ).pipe(Effect.flatMap(client.plugins["get-plugin-authoring-reference"]));
-    case "list-plugin-files":
-      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["list-plugin-files"])(payload).pipe(
-        Effect.flatMap(client.plugins["list-plugin-files"]),
-      );
-    case "create-plugin":
-      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["create-plugin"])(payload).pipe(
-        Effect.flatMap(client.plugins["create-plugin"]),
-      );
-    case "read-plugin-file":
-      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["read-plugin-file"])(payload).pipe(
-        Effect.flatMap(client.plugins["read-plugin-file"]),
-      );
-    case "write-plugin-file":
-      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["write-plugin-file"])(payload).pipe(
-        Effect.flatMap(client.plugins["write-plugin-file"]),
-      );
-    case "validate-customization":
-      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["validate-customization"])(
-        payload,
-      ).pipe(Effect.flatMap(client.plugins["validate-customization"]));
-    case "activate-customization":
-      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["activate-customization"])(
-        payload,
-      ).pipe(Effect.flatMap(client.plugins["activate-customization"]));
-    case "rollback-customization":
-      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["rollback-customization"])(
-        payload,
-      ).pipe(Effect.flatMap(client.plugins["rollback-customization"]));
-    case "use-factory-customization":
-      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["use-factory-customization"])(
-        payload,
-      ).pipe(Effect.flatMap(client.plugins["use-factory-customization"]));
-    case "list-plugins":
-      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["list-plugins"])(payload).pipe(
-        Effect.flatMap(client.plugins["list-plugins"]),
-      );
-    case "set-plugin-enabled":
-      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["set-plugin-enabled"])(payload).pipe(
-        Effect.flatMap(client.plugins["set-plugin-enabled"]),
-      );
-    case "set-active-scene":
-      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["set-active-scene"])(payload).pipe(
-        Effect.flatMap(client.plugins["set-active-scene"]),
-      );
-    case "delete-plugin":
-      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["delete-plugin"])(payload).pipe(
-        Effect.flatMap(client.plugins["delete-plugin"]),
-      );
     case "compile-inline-widget":
       return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["compile-inline-widget"])(
         payload,
-      ).pipe(Effect.flatMap(client.plugins["compile-inline-widget"]));
+      ).pipe(Effect.flatMap(client.widgets["compile-inline-widget"]));
     case "repair-inline-widget":
       return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["repair-inline-widget"])(
         payload,
-      ).pipe(Effect.flatMap(client.plugins["repair-inline-widget"]));
-    case "open-plugin-agent":
-      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["open-plugin-agent"])(payload).pipe(
-        Effect.flatMap(client.plugins["open-plugin-agent"]),
-      );
-    case "prompt-plugin-agent":
-      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["prompt-plugin-agent"])(payload).pipe(
-        Effect.flatMap(client.plugins["prompt-plugin-agent"]),
-      );
-    case "abort-plugin-agent":
-      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["abort-plugin-agent"])(payload).pipe(
-        Effect.flatMap(client.plugins["abort-plugin-agent"]),
-      );
-    case "detach-plugin-agent":
-      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["detach-plugin-agent"])(payload).pipe(
-        Effect.flatMap(client.plugins["detach-plugin-agent"]),
-      );
-    case "run-plugin-completion":
-      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["run-plugin-completion"])(
-        payload,
-      ).pipe(Effect.flatMap(client.plugins["run-plugin-completion"]));
-    case "cancel-plugin-completion":
-      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["cancel-plugin-completion"])(
-        payload,
-      ).pipe(Effect.flatMap(client.plugins["cancel-plugin-completion"]));
-    case "load-plugin-state":
-      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["load-plugin-state"])(payload).pipe(
-        Effect.flatMap(client.plugins["load-plugin-state"]),
-      );
-    case "save-plugin-state":
-      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["save-plugin-state"])(payload).pipe(
-        Effect.flatMap(client.plugins["save-plugin-state"]),
-      );
-    case "call-plugin-backend":
-      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["call-plugin-backend"])(payload).pipe(
-        Effect.flatMap(client.plugins["call-plugin-backend"]),
-      );
-    case "cancel-plugin-backend-call":
-      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["cancel-plugin-backend-call"])(
-        payload,
-      ).pipe(Effect.flatMap(client.plugins["cancel-plugin-backend-call"]));
-    case "customization-rendered":
-      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["customization-rendered"])(
-        payload,
-      ).pipe(Effect.flatMap(client.plugins["customization-rendered"]));
-    case "customization-runtime-failed":
-      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["customization-runtime-failed"])(
-        payload,
-      ).pipe(Effect.flatMap(client.plugins["customization-runtime-failed"]));
+      ).pipe(Effect.flatMap(client.widgets["repair-inline-widget"]));
     default:
       return Effect.die(new Error(`The RPC test harness cannot invoke ${type}`));
   }

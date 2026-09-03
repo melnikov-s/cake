@@ -5,16 +5,9 @@ import {
   type RendererInfrastructure,
 } from "../../../src/renderer/RendererInfrastructureContext";
 
-export function RendererInfrastructureFixture({
-  children,
-  pluginLoadState = async () => undefined,
-}: {
-  children: ReactNode;
-  pluginLoadState?: RendererClient["plugins"]["loadState"];
-}) {
+export function RendererInfrastructureFixture({ children }: { children: ReactNode }) {
   const client = {
     electron: { setFullscreenSurfaceOpen: async () => undefined },
-    plugins: { loadState: pluginLoadState },
   } as unknown as RendererClient;
   const value: RendererInfrastructure = {
     client,

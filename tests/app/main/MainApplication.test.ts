@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
 import type { Event } from "electron";
 import { it } from "@effect/vitest";
-import { Effect, Exit, Fiber, Layer } from "effect";
+import { Effect, Fiber, Layer } from "effect";
 import { describe, expect, vi } from "vitest";
 import { defaultApplicationState } from "../../../src/domain/application-data";
 import type { ApplicationState as ApplicationStateValue } from "../../../src/domain/application-data";
@@ -10,7 +10,6 @@ import { MainApplication } from "../../../src/main/MainApplication";
 import { Electron } from "../../../src/services/electron/Electron";
 import { PiSessions } from "../../../src/services/pi/PiSessions";
 import { ProjectSessionIntegrations } from "../../../src/services/pi/ProjectSessionIntegrations";
-import { PluginRuntime, PluginRuntimeError } from "../../../src/services/plugins/PluginRuntime";
 import { ProjectSessionLifecycle } from "../../../src/services/project-sessions/ProjectSessionLifecycle";
 import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
 import { RewordingRequests } from "../../../src/services/projects/RewordingRequests";
@@ -50,7 +49,6 @@ class TestApplication extends EventEmitter {
 
 const testLayer = (input?: {
   readonly stop?: () => void;
-  readonly initializeCustomization?: () => Effect.Effect<void, PluginRuntimeError>;
   readonly applicationState?: ApplicationStateValue;
   readonly worktrees?: ReadonlyArray<WorktreeRecord>;
   readonly allow?: (path: string) => void;
@@ -74,17 +72,6 @@ const testLayer = (input?: {
       forgetWorkspace: () => {},
       windowsForWorkspace: () => [],
       centerTrafficLights: () => {},
-      reloadAll: () => {},
-      reloadWindowWithFactory: () => {},
-    }),
-    Layer.mock(PluginRuntime, {
-      initializeCustomization: input?.initializeCustomization ?? (() => Effect.void),
-      startupRenderer: () => ({ kind: "factory" }),
-      trackRenderer: () => {},
-      rendererProcessGone: () => {},
-      disposeOwner: () => {},
-      recoveryContext: () => undefined,
-      agentResources: () => ({ skills: [], prompts: [], extensions: [] }),
     }),
     Layer.mock(ProjectSessionLifecycle, {}),
     Layer.mock(ProjectAccess, {
@@ -197,33 +184,6 @@ describe("MainApplication", () => {
       expect(stop).toHaveBeenCalledOnce();
       expect(application.listenerCount("before-quit")).toBe(0);
       expect(application.listenerCount("window-all-closed")).toBe(0);
-    }),
-  );
-
-  it.effect("reports failed customization initialization and still finalizes", () =>
-    Effect.gen(function* () {
-      const application = new TestApplication();
-      const stop = vi.fn();
-      const reportDefect = vi.fn();
-      const exit = yield* Effect.exit(
-        MainApplication({
-          application,
-          platform: "linux",
-          reportDefect,
-          initializeNativeProtocols: () => {},
-        }).pipe(
-          Effect.provide(
-            testLayer({
-              stop,
-              initializeCustomization: () =>
-                new PluginRuntimeError({ message: "bootstrap failed" }),
-            }),
-          ),
-        ),
-      );
-      expect(Exit.isFailure(exit)).toBe(true);
-      expect(reportDefect).toHaveBeenCalledOnce();
-      expect(stop).toHaveBeenCalledOnce();
     }),
   );
 });

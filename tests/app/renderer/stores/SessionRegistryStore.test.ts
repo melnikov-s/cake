@@ -27,9 +27,6 @@ describe("SessionRegistryStore materialization", () => {
         reviews: () => {
           throw new Error("ReviewsStore is not used by this test");
         },
-        pluginCommands: () => {
-          throw new Error("PluginCommandStore is not used by this test");
-        },
         canSubmit: () => true,
         isActive: () => false,
         openCommandPane: async () => undefined,

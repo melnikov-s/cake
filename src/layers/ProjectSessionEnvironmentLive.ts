@@ -120,7 +120,6 @@ export const makeProjectSessionEnvironmentLive = (
               resolvedSessionDir: base.resolvedSessionDir,
               newSession,
               sessionId,
-              pluginResources: base.pluginResources,
               utilityModel: base.utilityModel,
               generateSessionTitle: base.generateSessionTitle,
               modelPresets: base.modelPresets,

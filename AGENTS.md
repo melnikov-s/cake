@@ -6,8 +6,7 @@ Cake is Pi expressed as a desktop GUI. Pi remains the coding-agent engine; Cake
 does not reimplement its agent loop, providers, tools, extensions, skills,
 compaction, or session format. Cake makes Pi's work navigable across projects
 and sessions and uses the web platform for interactions that a terminal cannot
-express well: rich transcripts, diffs, artifacts, forms, diagrams, media, and
-trusted user-authored React plugins.
+express well: rich transcripts, diffs, artifacts, forms, diagrams, and media.
 
 Cake is also a layer above any one Pi Session. It presents the user's
 collection of Projects and Cake Sessions, lets them move among and compare
@@ -33,10 +32,6 @@ state, and development boundaries behind these principles.
   reference that skill routes to, plus the existing Cake Models/Stores.
   Classify authority, owner, lifetime, persistence, and concurrency before
   editing.
-- For plugins, scenes, widgets, or plugin recovery, read the available
-  `cake-plugin-authoring` skill before editing.
-- Custom Renderer is a future, unimplemented design. Do not implement or prepare
-  it speculatively.
 
 ## Learning more about Effect
 
@@ -57,8 +52,8 @@ guides don't cover, search through the source code in `node_modules/effect/src`.
 - Pi owns agent sessions, transcript history, model/provider state, tool loops,
   compaction, branching, and the Pi JSONL format.
 - Cake owns the desktop application model, project/session navigation, renderer
-  projections, window and workflow state, artifacts, reviews, plugin metadata,
-  and other GUI-specific persistence. Never create a second Cake-owned copy of
+  projections, window and workflow state, artifacts, reviews, and other
+  GUI-specific persistence. Never create a second Cake-owned copy of
   a Pi transcript.
 - `src/services/pi` is the target Pi Service boundary. During migration,
   focused legacy adapters may remain in `src/agent`, but no new Pi integration
@@ -72,14 +67,7 @@ guides don't cover, search through the source code in `node_modules/effect/src`.
 - A Cake Chat Session is an application-level Cake Session backed by Pi. Keep
   it separate from Project Session lists and use curated Cake control intents
   for application navigation and coordination.
-- Model-presented artifacts are data and remain validated or sandboxed. A user
-  plugin is executable, trusted renderer source only after explicit approval;
-  it still receives no direct Node, Electron, credentials, raw IPC, or raw Pi
-  access.
-- The immutable core shell, Cake Chat, customization diagnostics, and recovery
-  UI must boot without evaluating user plugin code or, if implemented later,
-  Custom Renderer code. Broken user code must be repairable, disableable, or
-  reversible without making Cake unusable.
+- Model-presented artifacts are data and remain validated or sandboxed.
 
 ## Greenfield compatibility policy
 
@@ -98,8 +86,7 @@ Before implementing renderer UI:
 
 1. Inspect `src/renderer/components`, especially `components/ui` for primitives
    and `components/ai-elements` for conversation, Markdown, code, tool, and
-   source surfaces. Also inspect `src/renderer/cake.ts` for components exposed
-   to plugins.
+   source surfaces.
 2. Identify the existing primitive, product component, Store, and Model that
    own the behavior. Existing one-off implementations are migration debt, not
    precedent.
@@ -154,7 +141,7 @@ Before implementing renderer UI:
   are cohesive compound primitive APIs, the centralized icon catalog, and tiny
   private render helpers with no independent responsibility.
 - Every chat of every kind—project-session, Cake Chat, pop-up, selection,
-  comment, review, inline, modal, plugin, recovery, secondary, and any future
+  comment, review, inline, modal, secondary, and any future
   chat surface—must render the authoritative `Chat` component from
   `src/renderer/components/chat.tsx` and supply an instance of the shared
   `ChatStore` from `src/renderer/stores/ChatStore.ts`. Extend those shared

@@ -1,5 +1,5 @@
 import { Effect, Schema } from "effect";
-import { agentModelPreferenceSchema } from "../../../ipc/plugin-agent-contract";
+import { AgentModelPreference as agentModelPreferenceSchema } from "../../../domain/subagent-data";
 
 const defaultKey = <S extends Schema.Top>(schema: S, value: S["Type"]) =>
   schema.pipe(Schema.withDecodingDefaultKey(Effect.succeed(value)));

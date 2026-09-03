@@ -32,7 +32,6 @@ import { ToastHost } from "@/components/toast-host";
 import { WorktreePill } from "@/components/worktree-pill";
 import { WorkLogControls } from "@/components/work-log-controls";
 import { Sidebar } from "@/components/sidebar";
-import { ProjectSessionPluginRail } from "@/components/project-session-plugin-rail";
 import { ErrorNotice } from "@/components/error-notice";
 import { ForkSessionDialog } from "@/components/fork-session-dialog";
 import { ArtifactsPanel } from "@/components/artifacts-panel";
@@ -45,7 +44,6 @@ import { cn } from "@/lib/utils";
 import type { SourceLocation } from "../ipc/source-location";
 import { toWorkspaceRelativePath } from "../utils/workspace-relative-path";
 import { RootStore } from "./stores/RootStore";
-import { Slot } from "./plugin-runtime";
 
 export const App = observer(function App() {
   const root = useStore(RootStore);
@@ -374,12 +372,7 @@ export const App = observer(function App() {
         </header>
         {surface === "settings" ? (
           <div className="h-full min-h-0 w-full overflow-y-auto [scrollbar-gutter:stable_both-edges]">
-            <SettingsPage
-              store={store}
-              settings={settings}
-              configuration={chatConfiguration}
-              customization={root.customizationStore}
-            />
+            <SettingsPage store={store} settings={settings} configuration={chatConfiguration} />
           </div>
         ) : globalChat ? (
           cakeChatSession ? (
@@ -499,16 +492,11 @@ export const App = observer(function App() {
                     )}
                     <WorkLogControls store={session.chatStore} />
                   </div>
-                  <div className="relative flex h-[30px] max-h-[30px] min-w-0 items-center gap-1 overflow-visible">
-                    <Slot name="project-session.header.actions" />
-                  </div>
                 </>,
                 sessionHeaderHost,
               )}
-            <div className="grid h-full min-h-0 min-w-0 overflow-hidden grid-cols-[auto_minmax(0,1fr)_auto] max-[1100px]:grid-cols-1 max-[1100px]:grid-rows-[minmax(0,1fr)_auto_auto]">
-              <ProjectSessionPluginRail side="left" />
+            <div className="h-full min-h-0 min-w-0 overflow-hidden">
               <Chat
-                className="col-start-2 max-[1100px]:col-start-1 max-[1100px]:row-start-1"
                 store={session.chatStore}
                 transcriptBehavior={projectTranscriptBehavior}
                 empty={
@@ -527,38 +515,29 @@ export const App = observer(function App() {
                   </div>
                 }
                 footer={
-                  <>
-                    <ArtifactsPanel
-                      session={session}
-                      inlineWidgets={root.inlineWidgetStore}
-                      onOpenSourceLocation={openSourceLocation}
-                    />
-                    <Slot name="project-session.transcript.after" />
-                  </>
+                  <ArtifactsPanel
+                    session={session}
+                    inlineWidgets={root.inlineWidgetStore}
+                    onOpenSourceLocation={openSourceLocation}
+                  />
                 }
                 error={chatError ? { message: chatError, details: chatErrorDetails } : undefined}
-                composerContent={<Slot name="project-session.composer.before" />}
                 composerHeader={projectComposerHeader}
-                pluginActions={<Slot name="project-session.composer.actions" />}
                 status={
-                  <>
-                    {extensionUi.statuses.length > 0 && (
-                      <div
-                        className="mx-auto mt-1.5 flex w-full max-w-[51.25rem] gap-2.5 overflow-x-auto font-mono text-[10px] text-muted-foreground pointer-events-auto"
-                        role="status"
-                      >
-                        {extensionUi.statuses.map((status) => (
-                          <span key={status.key} className="whitespace-nowrap">
-                            <strong className="text-foreground">{status.key}</strong> {status.text}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                    <Slot name="project-session.status" />
-                  </>
+                  extensionUi.statuses.length > 0 ? (
+                    <div
+                      className="mx-auto mt-1.5 flex w-full max-w-[51.25rem] gap-2.5 overflow-x-auto font-mono text-[10px] text-muted-foreground pointer-events-auto"
+                      role="status"
+                    >
+                      {extensionUi.statuses.map((status) => (
+                        <span key={status.key} className="whitespace-nowrap">
+                          <strong className="text-foreground">{status.key}</strong> {status.text}
+                        </span>
+                      ))}
+                    </div>
+                  ) : undefined
                 }
               />
-              <ProjectSessionPluginRail side="right" />
             </div>
           </StoreProvider>
         )}

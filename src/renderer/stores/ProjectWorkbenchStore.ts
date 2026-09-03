@@ -10,7 +10,6 @@ import type {
 import { EmbeddedEditorStore } from "./EmbeddedEditorStore";
 import type { ReviewsStore } from "./ReviewsStore";
 import type { ExtensionUiStore } from "./ExtensionUiStore";
-import type { PluginCommandStore } from "./PluginCommandStore";
 import type { ProjectCatalogStore } from "./ProjectCatalogStore";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
@@ -30,7 +29,6 @@ export interface ProjectWorkbenchStoreProps {
   defaultConfiguration?(): ChatConfiguration | undefined;
   reviews(): ReviewsStore;
   extensionUi(): ExtensionUiStore;
-  pluginCommands(): PluginCommandStore;
   catalog: SessionCatalogStore;
   startCakeChat(prompt?: string): Promise<void>;
   /** Removes resolved worktree sessions from history and chooses the next conversation. */
@@ -200,16 +198,8 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     if (!session) return false;
     if (this.sessionRegistry.isTemporarySession(sessionId)) return true;
     const command = session.chatStore.draft.trim().toLocaleLowerCase();
-    const local =
-      command === "/tree" ||
-      command === "/resources" ||
-      command === "/changelog" ||
-      this.props.pluginCommands().matches(session.chatStore.draft);
+    const local = command === "/tree" || command === "/resources" || command === "/changelog";
     return local || this.agentAvailability === "available";
-  }
-
-  get pluginCommands() {
-    return this.props.pluginCommands().commands;
   }
 
   get projectName() {

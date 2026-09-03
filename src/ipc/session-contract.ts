@@ -407,7 +407,7 @@ export const slashCommandSchema = Schema.Struct({
   name: stringRange(1, 256),
   description: Schema.optional(ipcProjectionString(4_096)),
   argumentHint: Schema.optional(ipcProjectionString(512)),
-  source: Schema.Literals(["builtin", "extension", "prompt", "skill", "plugin"]),
+  source: Schema.Literals(["builtin", "extension", "prompt", "skill"]),
   sourceInfo: Schema.Struct({
     path: stringMax(8_192),
     source: ipcProjectionString(2_048),

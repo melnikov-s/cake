@@ -101,12 +101,18 @@ test("presents artifacts, sorts a table, resolves a form, and isolates HTML", as
           version?: number;
           data?: {
             children?: {
-              projectWorkbenchStore?: { state?: Record<string, unknown> };
+              appShellStore?: {
+                state?: {
+                  selection?: { kind?: string; sessionId?: string };
+                };
+              };
             };
           };
         };
-        const state = document.data?.children?.projectWorkbenchStore?.state;
-        return Boolean(document.version === 1 && state?.selectedSessionId && !state.sessionFile);
+        const selection = document.data?.children?.appShellStore?.state?.selection;
+        return Boolean(
+          document.version === 2 && selection?.kind === "project-session" && selection.sessionId,
+        );
       })
       .toBe(true);
   } finally {

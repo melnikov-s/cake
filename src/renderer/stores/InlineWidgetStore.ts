@@ -25,8 +25,8 @@ export interface InlineWidgetRepairInput {
 
 /** Owns compilation and dedicated-agent repair policy for inline transcript widgets. */
 export class InlineWidgetStore extends Store {
-  get plugins() {
-    return RendererClientContext.consume(this)!.plugins;
+  get inlineWidgets() {
+    return RendererClientContext.consume(this)!.inlineWidgets;
   }
 
   readonly states: Record<string, InlineWidgetState> = observable({});
@@ -73,7 +73,7 @@ export class InlineWidgetStore extends Store {
     const revision = (this.revisions.get(input.id) ?? 0) + 1;
     this.revisions.set(input.id, revision);
     try {
-      const repaired = await this.plugins.repairInlineWidget({
+      const repaired = await this.inlineWidgets.repair({
         sessionId: input.sessionId,
         language: state.language,
         capability: state.capability,
@@ -104,11 +104,7 @@ export class InlineWidgetStore extends Store {
     const revision = expectedRevision ?? (this.revisions.get(id) ?? 0) + 1;
     this.revisions.set(id, revision);
     try {
-      const compiled = await this.plugins.compileInlineWidget(
-        state.language,
-        source,
-        state.capability,
-      );
+      const compiled = await this.inlineWidgets.compile(state.language, source, state.capability);
       if (this.signal.aborted || this.revisions.get(id) !== revision || this.states[id] !== state)
         return;
       state.compiled = compiled;

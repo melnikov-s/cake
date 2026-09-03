@@ -10,7 +10,6 @@ import type { ProjectCatalogStore } from "../stores/ProjectCatalogStore";
 import type { SidebarStore } from "../stores/SidebarStore";
 import type { GlobalChatStore } from "../stores/GlobalChatStore";
 import type { AppShellStore } from "../stores/AppShellStore";
-import { Slot } from "../plugin-runtime";
 
 export const Sidebar = observer(function Sidebar({
   store,
@@ -72,9 +71,7 @@ export const Sidebar = observer(function Sidebar({
           <ForwardIcon />
         </IconButton>
       </div>
-      <div className="flex min-w-0 flex-wrap gap-1.5 px-3 pb-2 empty:hidden">
-        <Slot name="global.sidebar.header" />
-      </div>
+      <div className="flex min-w-0 flex-wrap gap-1.5 px-3 pb-2 empty:hidden"></div>
       <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-3 pb-4 pt-2">
         <SidebarCakeChatGroup
           store={store}
@@ -162,9 +159,7 @@ export const Sidebar = observer(function Sidebar({
         </section>
       </div>
       <div className="flex min-h-[52px] items-center justify-end border-t border-border/65 px-4 py-2 text-muted-foreground">
-        <div className="flex min-w-0 flex-1 items-center gap-1.5 empty:hidden">
-          <Slot name="global.sidebar.footer" />
-        </div>
+        <div className="flex min-w-0 flex-1 items-center gap-1.5 empty:hidden"></div>
         <IconButton
           className={cn(
             "size-8 rounded-lg bg-transparent text-muted-foreground hover:bg-sidebar-hover hover:text-foreground",

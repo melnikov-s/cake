@@ -6,7 +6,6 @@ import { Select } from "./ui/select";
 import { ChatConfigurationSelector } from "./chat-configuration-selector";
 import { ModelPicker } from "./model-picker";
 import { ModelPresetSettings } from "./model-preset-settings";
-import { PluginSettings } from "./plugin-settings";
 import { SettingsLinesField } from "./settings/settings-lines-field";
 import { SettingsPackagesField } from "./settings/settings-packages-field";
 import { SettingsTextField } from "./settings/settings-text-field";
@@ -30,7 +29,6 @@ import { SettingsToggle } from "./settings/settings-toggle";
 import { SettingsAppearanceSection } from "./settings-appearance-section";
 import { SettingsProvidersSection } from "./settings-providers-section";
 import type { ChatConfigurationStore } from "../stores/ChatConfigurationStore";
-import type { CustomizationStore } from "../stores/CustomizationStore";
 import type { ProjectWorkbenchStore } from "../stores/ProjectWorkbenchStore";
 import type { SettingsStore } from "../stores/SettingsStore";
 
@@ -38,12 +36,10 @@ export const SettingsPage = observer(function SettingsPage({
   store,
   settings,
   configuration,
-  customization,
 }: {
   store: ProjectWorkbenchStore;
   settings: SettingsStore;
   configuration?: ChatConfigurationStore;
-  customization: CustomizationStore;
 }) {
   const pi = store.session?.piSettings;
   const authNotice = store.activeSession?.canonicalParts.find(
@@ -124,7 +120,7 @@ export const SettingsPage = observer(function SettingsPage({
               Default agent model
             </h2>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              Pi’s own default profile for new project chats and plugin agents.
+              Pi’s own default profile for new project chats.
             </p>
           </div>
           <Badge variant="outline" size="xs" className="text-muted-foreground">
@@ -136,7 +132,7 @@ export const SettingsPage = observer(function SettingsPage({
             <span className="flex min-w-0 flex-1 flex-col gap-0.5">
               <strong className="text-xs font-medium text-foreground">Model & reasoning</strong>
               <small className="text-[11px] text-muted-foreground">
-                The default model and reasoning profile for new project chats and plugin agents.
+                The default model and reasoning profile for new project chats.
               </small>
             </span>
             <ModelPicker
@@ -390,8 +386,6 @@ export const SettingsPage = observer(function SettingsPage({
           <p className="text-xs text-muted-foreground">Open a chat to load Pi’s settings.</p>
         )}
       </section>
-
-      <PluginSettings store={customization} />
 
       <section className="border-t border-border py-5" aria-labelledby="content-title">
         <header className="mb-4">

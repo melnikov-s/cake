@@ -61,8 +61,6 @@ class HarnessStore extends Store<{ client: RendererClient; model: Session }> {
       canSubmit: () => true,
       isStreaming: () => false,
       openCommandPane: async () => undefined,
-      matchesPluginCommand: () => false,
-      runPluginCommand: async () => false,
       selectModel: async () => undefined,
       renameSession: async () => undefined,
       handoffSession: async () => false,

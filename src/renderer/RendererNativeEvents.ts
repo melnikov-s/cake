@@ -10,7 +10,6 @@ import type { RendererSynchronizationSupervisor } from "./RendererSynchronizatio
 const nativeEventChannels = [
   "application",
   "artifacts",
-  "plugins",
   "terminals",
   "vscode",
   "surfaces",
@@ -61,7 +60,6 @@ export class RendererNativeEvents implements Disposable {
       });
     register("application", (client) => client.events.application());
     register("artifacts", (client) => client.events.artifacts());
-    register("plugins", (client) => client.events.plugins());
     register("terminals", (client) => client.events.terminals());
     register("vscode", (client) => client.events.vscode());
     register("surfaces", (client) => client.events.surfaces());

@@ -2,7 +2,6 @@ import { Effect, Layer } from "effect";
 import { setSessionFastMode } from "../domain/application";
 import { generateSessionTitle, utilityModelSelection } from "../domain/utilityWork";
 import { Electron } from "../services/electron/Electron";
-import { PluginResources } from "../services/plugins/PluginResources";
 import { ProjectSessionLifecycle } from "../services/project-sessions/ProjectSessionLifecycle";
 import { ApplicationState } from "../services/storage/ApplicationState";
 import { VsCodeServer } from "../services/vscode/VsCodeServer";
@@ -17,7 +16,6 @@ export interface ProjectSessionRuntimeOptionsLiveOptions {
   readonly sessionDirectory: string;
   readonly resolvedSessionDirectory: string;
   readonly widgetSessionDirectory: string;
-  readonly pluginAgentSessionDirectory: string;
 }
 
 export const makeProjectSessionRuntimeOptionsLive = (
@@ -30,7 +28,6 @@ export const makeProjectSessionRuntimeOptionsLive = (
   | ManagedWorktrees
   | PiModels
   | SessionMetadataStorage
-  | PluginResources
   | ProjectSessionLifecycle
   | SessionCatalogChanges
   | VsCodeServer
@@ -43,7 +40,6 @@ export const makeProjectSessionRuntimeOptionsLive = (
       const lifecycle = yield* ProjectSessionLifecycle;
       const metadata = yield* SessionMetadataStorage;
       const catalogs = yield* SessionCatalogChanges;
-      const plugins = yield* PluginResources;
       const vscode = yield* VsCodeServer;
       const worktrees = yield* ManagedWorktrees;
       const context = yield* Effect.context<
@@ -69,8 +65,6 @@ export const makeProjectSessionRuntimeOptionsLive = (
           sessionDir: options.sessionDirectory,
           resolvedSessionDir: options.resolvedSessionDirectory,
           widgetSessionDir: options.widgetSessionDirectory,
-          pluginAgentSessionDir: options.pluginAgentSessionDirectory,
-          pluginResources: plugins.current,
           isTrusted: () => application.snapshot().trustedProjectPaths.includes(workingDirectory),
           utilityModel: () => application.snapshot().utilityModel,
           generateSessionTitle: ({ utilityModel, firstUserMessage, signal }) =>

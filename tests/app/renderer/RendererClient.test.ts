@@ -30,7 +30,7 @@ describe("RendererClient", () => {
       "terminals",
       "vscode",
       "artifacts",
-      "plugins",
+      "inlineWidgets",
       "foundation",
     ]);
     expect("observe" in client.projectSessions).toBe(false);

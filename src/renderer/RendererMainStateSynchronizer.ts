@@ -51,11 +51,6 @@ export class RendererMainStateSynchronizer implements Disposable {
       (snapshot) => root.projectWorkbenchStore.applyAgentAvailability(snapshot),
     );
     register(
-      "customization",
-      (client) => client.plugins.observeCustomization(),
-      (state) => root.customizationStore.applyState(state),
-    );
-    register(
       "vscode",
       (client) => client.vscode.observeState(),
       (state) => root.projectWorkbenchStore.embeddedEditorStore.applyState(state),
@@ -75,7 +70,7 @@ export class RendererMainStateSynchronizer implements Disposable {
   }
 
   [Symbol.dispose]() {
-    for (const key of ["application", "agent-availability", "customization", "vscode"])
+    for (const key of ["application", "agent-availability", "vscode"])
       this.supervisor.unregister(`state:${key}`);
   }
 }

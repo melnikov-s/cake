@@ -18,7 +18,6 @@ import {
   type FoundationRuntime,
 } from "../../../src/services/pi/runtime/foundation-runtime";
 import {
-  cakePluginAuthoringSkillPath,
   cakeWorkspaceSessionDirectory,
   inspectWorkspace,
   loadPiChangelog,
@@ -527,7 +526,7 @@ describe("Pi 0.84.0 foundation contract", () => {
           timestamp,
           message: {
             role: "user",
-            content: [{ type: "text", text: "Repair my plugins" }],
+            content: [{ type: "text", text: "Review my sessions" }],
             timestamp: Date.now(),
           },
         },
@@ -1251,12 +1250,6 @@ describe("Pi 0.84.0 foundation contract", () => {
     expect(loadPiChangelog()).toContain("0.84.0");
   });
 
-  it("resolves Cake's bundled authoring skill from the matching source tree", () => {
-    expect(cakePluginAuthoringSkillPath("/cake-authoring")).toBe(
-      join("/cake-authoring", ".agents", "skills", "cake-plugin-authoring"),
-    );
-  });
-
   it("uses Pi's fuzzy @ provider for project file suggestions", async () => {
     const directory = await createTemporaryDirectory();
     const fakeFd = join(directory, "fd");
@@ -1432,9 +1425,7 @@ describe("S1 Pi runtime", () => {
       'setting the Cake tool\'s `command` to the exact topic name (for example, `{"command":"sessions"}`)',
     );
     expect(context?.systemPrompt).toContain("do not put a help topic in `input`");
-    expect(context?.systemPrompt).toContain("call `cake customizations`");
     expect(context?.systemPrompt).not.toContain("Call `cake widgets`");
-    expect(context?.systemPrompt).not.toContain("customizations.write-file");
   });
 
   it("opens the OpenAI Codex browser login URL", async () => {
@@ -1540,50 +1531,6 @@ describe("S1 Pi runtime", () => {
       sessionId: runtime.sessionId,
       partId: "pi-reload-status",
     });
-  });
-
-  it("reloads the latest revision of live Cake Plugin resources", async () => {
-    const directory = await createTemporaryDirectory();
-    const firstSkill = join(directory, "first-skill");
-    const secondSkill = join(directory, "second-skill");
-    await mkdir(firstSkill, { recursive: true });
-    await mkdir(secondSkill, { recursive: true });
-    await writeFile(
-      join(firstSkill, "SKILL.md"),
-      "---\nname: first-plugin-skill\ndescription: First plugin skill.\n---\n\n# First\n",
-    );
-    await writeFile(
-      join(secondSkill, "SKILL.md"),
-      "---\nname: second-plugin-skill\ndescription: Second plugin skill.\n---\n\n# Second\n",
-    );
-    let pluginResources = {
-      revision: 1,
-      resources: { skills: [firstSkill], prompts: [], extensions: [] },
-    };
-    const runtime = await createCakeRuntime({
-      cwd: directory,
-      agentDir: join(directory, "agent"),
-      sessionDir: join(directory, "sessions"),
-      trusted: false,
-      pluginResources: () => pluginResources,
-      requestUi: async () => undefined,
-      onEvent: () => undefined,
-    });
-    runtimes.push(runtime);
-
-    expect((await runtime.snapshot()).commands.map((command) => command.name)).toContain(
-      "skill:first-plugin-skill",
-    );
-
-    pluginResources = {
-      revision: 2,
-      resources: { skills: [secondSkill], prompts: [], extensions: [] },
-    };
-    await runtime.reload?.();
-
-    const commands = (await runtime.snapshot()).commands.map((command) => command.name);
-    expect(commands).not.toContain("skill:first-plugin-skill");
-    expect(commands).toContain("skill:second-plugin-skill");
   });
 
   it("keeps serving the command catalog while Pi reloads", async () => {
@@ -2077,10 +2024,7 @@ describe("S3 Pi ecosystem compatibility", () => {
         expect.arrayContaining([expect.objectContaining({ name: "cake-only" })]),
       );
       expect(snapshot.compatibility.resources).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ kind: "skill", name: "cake-plugin-authoring" }),
-          expect.objectContaining({ kind: "extension", tools: ["cake"] }),
-        ]),
+        expect.arrayContaining([expect.objectContaining({ kind: "extension", tools: ["cake"] })]),
       );
       expect(
         snapshot.compatibility.resources.some((resource) =>
@@ -2174,7 +2118,6 @@ export default function (pi) {
         expect.objectContaining({ name: "cake-compat", source: "extension" }),
         expect.objectContaining({ name: "fixture-prompt", source: "prompt" }),
         expect.objectContaining({ name: "skill:fixture-skill", source: "skill" }),
-        expect.objectContaining({ name: "skill:cake-plugin-authoring", source: "skill" }),
       ]),
     );
     expect(firstSnapshot.commands.slice(0, 3).map((command) => command.name)).toEqual([
@@ -2186,7 +2129,6 @@ export default function (pi) {
       expect.arrayContaining([
         expect.objectContaining({ kind: "package", name: packageDir }),
         expect.objectContaining({ kind: "skill", name: "fixture-skill" }),
-        expect.objectContaining({ kind: "skill", name: "cake-plugin-authoring" }),
         expect.objectContaining({ kind: "prompt", name: "fixture-prompt" }),
         expect.objectContaining({
           kind: "extension",

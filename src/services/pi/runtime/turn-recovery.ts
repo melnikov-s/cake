@@ -11,7 +11,7 @@ export const INTERRUPTED_TURN_NOTICE_PART_ID = "interrupted-turn-resume";
 
 /**
  * Hidden context sent when a session reattaches after its previous run was
- * killed mid-task (crash, window teardown, plugin reload).
+ * killed mid-task (crash or window teardown).
  */
 export const interruptedTurnResumePrompt =
   "The previous turn was interrupted before you could respond; your earlier tool results are in the conversation above. Continue exactly where you left off.";

@@ -12,7 +12,6 @@ import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { Effect, Option, Schema } from "effect";
-import type { PluginResourcesSnapshot } from "../../plugins/PluginResources";
 import type {
   Attachment,
   ChatConfiguration,
@@ -89,11 +88,7 @@ import { assertSessionPath } from "./session-path";
 import { ResponseRetryController, type ResponseRetryNotice } from "./response-retry";
 import { ReloadableResourceLoader } from "./ReloadableResourceLoader";
 import { applyPiSetting } from "./settings-translation";
-import {
-  cakePluginAuthoringSkillPath,
-  cakeWorkspaceSessionDirectory,
-  findSessionFile,
-} from "./session-discovery";
+import { cakeWorkspaceSessionDirectory, findSessionFile } from "./session-discovery";
 import { createConversationHandoff } from "./session-handoff";
 import { detectGitWorktree, worktreeSystemPrompt } from "./worktree-system-prompt";
 import {
@@ -139,13 +134,13 @@ const cakeChatSystemPrompt = `## Cake Chat
 
 ${cakeMediumSystemPrompt}
 
-You are Cake Chat, the application-level assistant built into Cake, a desktop application powered by Pi. Unlike a project session, you work across projects and sessions. Users commonly come to you to find, recall, compare, or summarize past work; navigate and manage sessions; author or repair Cake plugins; understand or operate Cake; or perform machine-level work that is not naturally scoped to one project.
+You are Cake Chat, the application-level assistant built into Cake, a desktop application powered by Pi. Unlike a project session, you work across projects and sessions. Users commonly come to you to find, recall, compare, or summarize past work; navigate and manage sessions; understand or operate Cake; or perform machine-level work that is not naturally scoped to one project.
 
 Your working directory is the user's home directory and you have the standard filesystem, search, editing, Git, and subprocess tools.
 
 ### What Cake is
 
-Cake is Pi expressed as a desktop application. Pi owns agent runtimes, provider/model configuration, tools, skills, commands, transcript history, branching, and compaction. Cake owns projects, application navigation, Cake Chat, resolved-session archival, worktrees, reviews, artifacts, model presets, plugins, and other GUI state. A project chat is one Pi coding session scoped to a workspace; Cake Chat is a separate Pi-backed meta-session for reasoning and acting across the application. Do not treat Cake Chat as a project session or copy project transcripts into it.
+Cake is Pi expressed as a desktop application. Pi owns agent runtimes, provider/model configuration, tools, skills, commands, transcript history, branching, and compaction. Cake owns projects, application navigation, Cake Chat, resolved-session archival, worktrees, reviews, artifacts, model presets, and other GUI state. A project chat is one Pi coding session scoped to a workspace; Cake Chat is a separate Pi-backed meta-session for reasoning and acting across the application. Do not treat Cake Chat as a project session or copy project transcripts into it.
 
 ### Fast source-of-truth map
 
@@ -174,7 +169,7 @@ Pi session transcripts are JSONL files beneath the Cake home directory:
 - Resolved project sessions: ~/.cake/pi/resolved-sessions/--<workspace path with separators replaced by dashes>--/
 - Active Cake Chat sessions: ~/.cake/pi/global-chat/sessions/
 - Resolved Cake Chat sessions: ~/.cake/pi/global-chat/resolved-sessions/
-- Related review, widget, and plugin-agent sessions: ~/.cake/pi/review-sessions/, ~/.cake/pi/widget-sessions/, and ~/.cake/pi/plugin-agent-sessions/.
+- Related review, widget, and subagent sessions: ~/.cake/pi/review-sessions/, ~/.cake/pi/widget-sessions/, and ~/.cake/pi/subagent-sessions/.
 
 For read-only session questions — listing, counting, locating, or recalling sessions — start with ordinary filesystem tools (\`ls\`, \`find\`, \`rg\`, \`jq\`) over the directories above instead of the Cake gateway:
 - A session is unresolved exactly when its transcript is not beneath a resolved-sessions directory.
@@ -195,7 +190,6 @@ The \`cake\` tool provides capabilities that cannot be reproduced through shell 
 - \`sessions\`: list, inspect, open, create, message, stop, resolve, or restore explicitly targeted sessions. Use \`prompt\` for a new turn, \`follow-up\` to queue after current work, and \`steer\` to redirect a running turn when those delivery modes are offered.
 - \`context\`: inspect context use or compact the current conversation.
 - \`models\`: list configured model preset names and model IDs.
-- \`customizations\`: inspect, author, validate, activate, disable, or repair plugins and scenes.
 - \`requests\`: collect structured information or confirmation from the user; normal conversation is better for one simple question.
 - \`widgets\`: present a disposable interactive or highly visual explanation when Markdown is insufficient.
 - \`vscode\`: guide the user to source in Cake's embedded VS Code.
@@ -208,12 +202,6 @@ This is a capability map, not the complete operation protocol. Call the gateway 
 ### Commands and resources
 
 Cake Chat exposes the user-facing Pi slash commands \`/compact\`, \`/model\`, \`/handoff\`, and \`/handoffandresolve\`. Explain these when asked, but do not tell the user to operate a terminal. The gateway is a model tool and is not the same thing as a slash command. Pi settings, model providers, skills, prompts, and extensions are loaded from \`~/.cake/pi/\`, not standalone \`~/.pi/agent\`. For implementation questions about Pi features, read the version-matched Pi documentation and examples installed with Cake rather than guessing an API.
-
-### Customizing Cake
-
-Treat requests for persistent Cake interface elements, widgets, commands, integrations, scenes, or behavior as plugin-authoring work. Before changing a customization, call \`cake customizations\`, read the version-matched authoring reference, inspect current files, revisions, state, and diagnostics, then make changes through that protocol. Validate the completed candidate before activating it.
-
-Choose the execution path deliberately: persistent UI belongs in a plugin renderer; deterministic network, filesystem, Git, Bash, subprocess, or other privileged work belongs in a plugin backend; bounded summaries, classification, and extraction belong in usePluginCompletion; and open-ended multi-turn tool work belongs in usePluginAgent. Create or select a whole-application scene only when the user explicitly requests whole-application replacement.
 
 ### Interaction policy
 
@@ -262,7 +250,6 @@ export interface CakeRuntimeOptions {
   newSession?: boolean;
   sessionId?: string;
   sessionFile?: string;
-  pluginResources?: () => PluginResourcesSnapshot;
   additionalSystemPrompt?: string;
   tools?: string[];
   auxiliary?: boolean;
@@ -307,7 +294,6 @@ export interface CakeRuntimeOptions {
   worktreeLandingControl?: WorktreeLandingControl;
   globalControl?: {
     tools: readonly GlobalControlTool[];
-    recoveryContext?: string;
     invoke(input: { name: string; arguments: JsonValue }, signal: AbortSignal): Promise<JsonValue>;
   };
   agentControl?: {
@@ -935,14 +921,12 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     ? worktreeSystemPrompt(detectedWorktree)
     : undefined;
   const resourceLoader = new ReloadableResourceLoader(() => {
-    const pluginResources = options.pluginResources?.().resources;
     return new DefaultResourceLoader(
       globalControl
         ? {
             cwd: options.cwd,
             agentDir,
             settingsManager,
-            additionalSkillPaths: [cakePluginAuthoringSkillPath()],
             extensionFactories: [
               createFastModeExtension(fastModeEnabled),
               createCakeGatewayExtension((pi) =>
@@ -971,12 +955,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
               ),
               createCakeArtifactExtension({ persistArtifact, requestArtifact }),
             ],
-            appendSystemPromptOverride: (base) => [
-              ...base,
-              globalControl.recoveryContext
-                ? `${cakeChatSystemPrompt}\n\nCustomization recovery context from immutable Cake core:\n${globalControl.recoveryContext}`
-                : cakeChatSystemPrompt,
-            ],
+            appendSystemPromptOverride: (base) => [...base, cakeChatSystemPrompt],
           }
         : {
             cwd: options.cwd,
@@ -988,15 +967,9 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
               ...(options.additionalSystemPrompt ? [options.additionalSystemPrompt] : []),
               ...(detectedWorktreePrompt ? [detectedWorktreePrompt] : []),
             ],
-            additionalSkillPaths: options.auxiliary
-              ? []
-              : [cakePluginAuthoringSkillPath(), ...(pluginResources?.skills ?? [])],
-            additionalPromptTemplatePaths: options.auxiliary
-              ? []
-              : [...(pluginResources?.prompts ?? [])],
-            additionalExtensionPaths: options.auxiliary
-              ? []
-              : [...(pluginResources?.extensions ?? [])],
+            additionalSkillPaths: [],
+            additionalPromptTemplatePaths: [],
+            additionalExtensionPaths: [],
             noExtensions: options.auxiliary,
             noSkills: options.auxiliary,
             noPromptTemplates: options.auxiliary,

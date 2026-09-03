@@ -1,13 +1,11 @@
 import type { CakeEvent } from "../ipc/cake-rpc-contract";
 import type { ArtifactRecord } from "../ipc/artifact-contract";
-import type { PluginAgentSnapshot } from "../ipc/plugin-agent-contract";
 import type { AgentAvailabilityEntry } from "../domain/agent-availability-data";
 
 type NativePassthroughEvent = Extract<
   CakeEvent,
   {
     type:
-      | "plugin-backend-event"
       | "fullscreen-surface-close-requested"
       | "artifact-updated"
       | "extension-ui-intent"
@@ -56,7 +54,6 @@ export type RendererEvent =
       title: string;
       message: string;
     }
-  | { type: "plugin-agent-event"; pluginId: string; snapshot: PluginAgentSnapshot }
   | { type: "terminal-data"; terminalId: string; data: string }
   | { type: "terminal-exited"; terminalId: string; exitCode: number }
   | { type: "terminal-toggle-requested" }
@@ -86,7 +83,6 @@ export function toRendererEvent(event: CakeEvent): RendererEvent | undefined {
       path: event.path,
       trustRequired: event.trustRequired,
     };
-  if (event.type === "plugin-agent-event") return event;
   if (event.type === "artifact-requested")
     return {
       type: "artifact-requested",
@@ -132,7 +128,6 @@ export function toRendererEvent(event: CakeEvent): RendererEvent | undefined {
   )
     return event;
   if (
-    event.type === "plugin-backend-event" ||
     event.type === "fullscreen-surface-close-requested" ||
     event.type === "artifact-updated" ||
     event.type === "extension-ui-intent" ||

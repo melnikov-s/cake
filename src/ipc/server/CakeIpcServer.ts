@@ -9,9 +9,9 @@ import { cakeChatHandlers } from "./CakeChatHandlers";
 import { discussionHandlers } from "./DiscussionHandlers";
 import { electronHandlers } from "./ElectronHandlers";
 import { makeFoundationHandlers } from "./FoundationHandlers";
+import { inlineWidgetHandlers } from "./InlineWidgetHandlers";
 import { managedWorktreeHandlers } from "./ManagedWorktreeHandlers";
 import { modelHandlers } from "./ModelHandlers";
-import { pluginHandlers } from "./PluginHandlers";
 import { projectSessionHandlers } from "./ProjectSessionHandlers";
 import { subagentHandlers } from "./SubagentHandlers";
 import { terminalHandlers } from "./TerminalHandlers";
@@ -26,9 +26,9 @@ export const makeCakeIpcServerLive = (homeDirectory: string) => {
     ...discussionHandlers,
     ...electronHandlers,
     ...makeFoundationHandlers(homeDirectory),
+    ...inlineWidgetHandlers,
     ...managedWorktreeHandlers,
     ...modelHandlers,
-    ...pluginHandlers,
     ...projectSessionHandlers,
     ...subagentHandlers,
     ...terminalHandlers,

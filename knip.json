@@ -1,13 +1,6 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "entry": [
-    "src/renderer/index.html",
-    "src/renderer/cake.ts",
-    "src/renderer/factory-scene.tsx",
-    "src/renderer/empty-plugin-catalog.ts",
-    "src/assets/vscode-companion/extension.js",
-    "src/plugin/backend-api.ts"
-  ],
+  "entry": ["src/renderer/index.html", "src/assets/vscode-companion/extension.js"],
   "ignoreDependencies": ["vscode"],
   "ignoreExportsUsedInFile": false
 }

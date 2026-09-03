@@ -4,7 +4,7 @@ import type { RpcClientError } from "effect/unstable/rpc";
 import { CakeRpc, type FoundationFailure } from "../protocol/CakeRpc";
 import type { ArtifactError } from "../../domain/artifact-data";
 import type { ElectronError } from "../../services/electron/Electron";
-import type { PluginRuntimeError } from "../../services/plugins/PluginRuntime";
+import type { InlineWidgetError } from "../../services/widgets/InlineWidgets";
 import type { TerminalError } from "../../services/terminal/Terminal";
 import type { ManagedWorktreeError } from "../../services/worktrees/ManagedWorktrees";
 import type { VsCodeServerError } from "../../services/vscode/VsCodeServer";
@@ -22,7 +22,6 @@ import type {
   RendererApplicationState,
 } from "../../domain/application-data";
 import type { AgentAvailabilitySnapshot } from "../../domain/agent-availability-data";
-import type { CustomizationState } from "../../plugin/plugin-contract";
 import type { PiSettingUpdate } from "../session-contract";
 import type {
   ProjectSessionError,
@@ -430,39 +429,10 @@ export interface CakeIpcClientService {
     "respond-artifact" | "respond-ui" | "export-artifacts",
     ArtifactError
   >;
-  readonly plugins: RpcOperations<
-    | "get-customization-state"
-    | "get-plugin-authoring-reference"
-    | "list-plugin-files"
-    | "create-plugin"
-    | "read-plugin-file"
-    | "write-plugin-file"
-    | "validate-customization"
-    | "activate-customization"
-    | "rollback-customization"
-    | "use-factory-customization"
-    | "list-plugins"
-    | "set-plugin-enabled"
-    | "set-active-scene"
-    | "delete-plugin"
-    | "compile-inline-widget"
-    | "repair-inline-widget"
-    | "open-plugin-agent"
-    | "prompt-plugin-agent"
-    | "abort-plugin-agent"
-    | "detach-plugin-agent"
-    | "run-plugin-completion"
-    | "cancel-plugin-completion"
-    | "load-plugin-state"
-    | "save-plugin-state"
-    | "call-plugin-backend"
-    | "cancel-plugin-backend-call"
-    | "customization-rendered"
-    | "customization-runtime-failed",
-    PluginRuntimeError
-  > & {
-    readonly observeCustomization: () => Stream.Stream<CustomizationState, TransportError>;
-  };
+  readonly widgets: RpcOperations<
+    "compile-inline-widget" | "repair-inline-widget",
+    InlineWidgetError
+  >;
   readonly events: {
     readonly application: () => Stream.Stream<
       FocusedCakeEvent<
@@ -481,10 +451,6 @@ export interface CakeIpcClientService {
       FocusedCakeEvent<
         "artifact-updated" | "artifact-requested" | "ui-request" | "renderer-events-ready"
       >,
-      TransportError
-    >;
-    readonly plugins: () => Stream.Stream<
-      FocusedCakeEvent<"plugin-backend-event" | "plugin-agent-event" | "renderer-events-ready">,
       TransportError
     >;
     readonly terminals: () => Stream.Stream<
@@ -878,7 +844,6 @@ export const CakeIpcClientLive = Layer.effect(
       events: {
         application: () => client("application.observeEvents", undefined),
         artifacts: () => client("artifacts.observeEvents", undefined),
-        plugins: () => client("plugins.observeEvents", undefined),
         terminals: () => client("terminals.observeEvents", undefined),
         vscode: () => client("vscode.observeEvents", undefined),
         surfaces: () => client("electron.observeSurfaceEvents", undefined),
@@ -894,92 +859,13 @@ export const CakeIpcClientLive = Layer.effect(
           client("artifacts.export-artifacts", payload),
         ),
       },
-      plugins: {
-        observeCustomization: () => client("plugins.observeCustomization", undefined),
-        "get-customization-state": Effect.fn("CakeIpcClient.plugins.get-customization-state")(
-          (payload) => client("plugins.get-customization-state", payload),
+      widgets: {
+        "compile-inline-widget": Effect.fn("CakeIpcClient.widgets.compile-inline-widget")(
+          (payload) => client("widgets.compile-inline-widget", payload),
         ),
-        "get-plugin-authoring-reference": Effect.fn(
-          "CakeIpcClient.plugins.get-plugin-authoring-reference",
-        )((payload) => client("plugins.get-plugin-authoring-reference", payload)),
-        "list-plugin-files": Effect.fn("CakeIpcClient.plugins.list-plugin-files")((payload) =>
-          client("plugins.list-plugin-files", payload),
+        "repair-inline-widget": Effect.fn("CakeIpcClient.widgets.repair-inline-widget")((payload) =>
+          client("widgets.repair-inline-widget", payload),
         ),
-        "create-plugin": Effect.fn("CakeIpcClient.plugins.create-plugin")((payload) =>
-          client("plugins.create-plugin", payload),
-        ),
-        "read-plugin-file": Effect.fn("CakeIpcClient.plugins.read-plugin-file")((payload) =>
-          client("plugins.read-plugin-file", payload),
-        ),
-        "write-plugin-file": Effect.fn("CakeIpcClient.plugins.write-plugin-file")((payload) =>
-          client("plugins.write-plugin-file", payload),
-        ),
-        "validate-customization": Effect.fn("CakeIpcClient.plugins.validate-customization")(
-          (payload) => client("plugins.validate-customization", payload),
-        ),
-        "activate-customization": Effect.fn("CakeIpcClient.plugins.activate-customization")(
-          (payload) => client("plugins.activate-customization", payload),
-        ),
-        "rollback-customization": Effect.fn("CakeIpcClient.plugins.rollback-customization")(
-          (payload) => client("plugins.rollback-customization", payload),
-        ),
-        "use-factory-customization": Effect.fn("CakeIpcClient.plugins.use-factory-customization")(
-          (payload) => client("plugins.use-factory-customization", payload),
-        ),
-        "list-plugins": Effect.fn("CakeIpcClient.plugins.list-plugins")((payload) =>
-          client("plugins.list-plugins", payload),
-        ),
-        "set-plugin-enabled": Effect.fn("CakeIpcClient.plugins.set-plugin-enabled")((payload) =>
-          client("plugins.set-plugin-enabled", payload),
-        ),
-        "set-active-scene": Effect.fn("CakeIpcClient.plugins.set-active-scene")((payload) =>
-          client("plugins.set-active-scene", payload),
-        ),
-        "delete-plugin": Effect.fn("CakeIpcClient.plugins.delete-plugin")((payload) =>
-          client("plugins.delete-plugin", payload),
-        ),
-        "compile-inline-widget": Effect.fn("CakeIpcClient.plugins.compile-inline-widget")(
-          (payload) => client("plugins.compile-inline-widget", payload),
-        ),
-        "repair-inline-widget": Effect.fn("CakeIpcClient.plugins.repair-inline-widget")((payload) =>
-          client("plugins.repair-inline-widget", payload),
-        ),
-        "open-plugin-agent": Effect.fn("CakeIpcClient.plugins.open-plugin-agent")((payload) =>
-          client("plugins.open-plugin-agent", payload),
-        ),
-        "prompt-plugin-agent": Effect.fn("CakeIpcClient.plugins.prompt-plugin-agent")((payload) =>
-          client("plugins.prompt-plugin-agent", payload),
-        ),
-        "abort-plugin-agent": Effect.fn("CakeIpcClient.plugins.abort-plugin-agent")((payload) =>
-          client("plugins.abort-plugin-agent", payload),
-        ),
-        "detach-plugin-agent": Effect.fn("CakeIpcClient.plugins.detach-plugin-agent")((payload) =>
-          client("plugins.detach-plugin-agent", payload),
-        ),
-        "run-plugin-completion": Effect.fn("CakeIpcClient.plugins.run-plugin-completion")(
-          (payload) => client("plugins.run-plugin-completion", payload),
-        ),
-        "cancel-plugin-completion": Effect.fn("CakeIpcClient.plugins.cancel-plugin-completion")(
-          (payload) => client("plugins.cancel-plugin-completion", payload),
-        ),
-        "load-plugin-state": Effect.fn("CakeIpcClient.plugins.load-plugin-state")((payload) =>
-          client("plugins.load-plugin-state", payload),
-        ),
-        "save-plugin-state": Effect.fn("CakeIpcClient.plugins.save-plugin-state")((payload) =>
-          client("plugins.save-plugin-state", payload),
-        ),
-        "call-plugin-backend": Effect.fn("CakeIpcClient.plugins.call-plugin-backend")((payload) =>
-          client("plugins.call-plugin-backend", payload),
-        ),
-        "cancel-plugin-backend-call": Effect.fn("CakeIpcClient.plugins.cancel-plugin-backend-call")(
-          (payload) => client("plugins.cancel-plugin-backend-call", payload),
-        ),
-        "customization-rendered": Effect.fn("CakeIpcClient.plugins.customization-rendered")(
-          (payload) => client("plugins.customization-rendered", payload),
-        ),
-        "customization-runtime-failed": Effect.fn(
-          "CakeIpcClient.plugins.customization-runtime-failed",
-        )((payload) => client("plugins.customization-runtime-failed", payload)),
       },
       foundation: {
         typedFailure: Effect.fn("CakeIpcClient.foundation.typedFailure")(() =>

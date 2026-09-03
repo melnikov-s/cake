@@ -1,4 +1,4 @@
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { homedir } from "node:os";
 import { Cause, Effect, Exit, Layer, ManagedRuntime, Schema } from "effect";
 import { app, nativeTheme } from "electron";
@@ -11,7 +11,6 @@ import { makeSessionMetadataStorageLive } from "../services/storage/SessionMetad
 import { AgentAvailability } from "../services/pi/AgentAvailability";
 import { ProjectSessionIntegrationsLive } from "../services/pi/ProjectSessionIntegrationsLive";
 import { makeProjectSessionRuntimeOptionsLive } from "../layers/ProjectSessionRuntimeOptionsLive";
-import { makePiPluginAgentsProductionLive } from "../services/pi/PiPluginAgentsProductionLive";
 import { makeProjectSessionEnvironmentLive } from "../layers/ProjectSessionEnvironmentLive";
 import { makeProjectSessionLifecycleLive } from "../layers/ProjectSessionLifecycleLive";
 import { makeProjectAccessLive } from "../services/projects/ProjectAccessLive";
@@ -36,9 +35,8 @@ import { makeGitLive } from "../services/git/GitLive";
 import { makeWorktreeStorageLive } from "../services/storage/WorktreeStorageLive";
 import { SessionArchiveStorageLive } from "../services/storage/SessionArchiveStorageLive";
 import { SessionCatalogChanges } from "../services/session-catalogs/SessionCatalogChanges";
-import { PluginResources } from "../services/plugins/PluginResources";
-import { makePluginRuntimeLive } from "../layers/PluginRuntimeLive";
 import { loadReviewSessionProjection } from "../services/pi/runtime/sidecar-runtime";
+import { makeInlineWidgetsLive } from "../services/widgets/InlineWidgetsLive";
 import {
   publishInlineWidget,
   registerInlineWidgetScheme,
@@ -60,14 +58,6 @@ if (process.env.CAKE_ELECTRON_USER_DATA)
   app.setPath("userData", process.env.CAKE_ELECTRON_USER_DATA);
 
 const cakePaths = resolveCakePaths();
-const applicationRoot = app.getAppPath();
-const authoringRoot = resolve(
-  process.env.CAKE_AUTHORING_ROOT ||
-    (app.isPackaged
-      ? join(applicationRoot, "out", "authoring")
-      : join(import.meta.dirname, "../..")),
-);
-process.env.CAKE_AUTHORING_ROOT = authoringRoot;
 const userData = app.getPath("userData");
 
 const applicationStorageLive = makeApplicationStorageLive(userData).pipe(
@@ -92,7 +82,6 @@ const worktreeStorageLive = makeWorktreeStorageLive(join(userData, "worktrees.js
 const managedWorktreesLive = ManagedWorktreesLive.pipe(
   Layer.provide(Layer.merge(gitLive, worktreeStorageLive)),
 );
-const pluginResourcesLive = PluginResources.layer;
 const piModelsLive = makePiModelsLive(cakePaths.piAgent);
 const piSessionsLive = makePiSessionsLive().pipe(Layer.provide(sessionMetadataStorageLive));
 const agentAvailabilityLive = AgentAvailability.layer;
@@ -115,7 +104,6 @@ const baseLive = Layer.mergeAll(
   managedWorktreesLive,
   sessionArchiveStorageLive,
   SessionCatalogChanges.layer,
-  pluginResourcesLive,
   sessionMetadataStorageLive,
   piModelsLive,
   makePiAgentResourcesLive(cakePaths.piAgent),
@@ -160,7 +148,6 @@ const projectSessionRuntimeOptionsLive = makeProjectSessionRuntimeOptionsLive({
   sessionDirectory: cakePaths.piSessions,
   resolvedSessionDirectory: cakePaths.piResolvedSessions,
   widgetSessionDirectory: cakePaths.piWidgetSessions,
-  pluginAgentSessionDirectory: cakePaths.piPluginAgentSessions,
 }).pipe(Layer.provide(sessionFoundationLive));
 const runtimeOptionsGraphLive = Layer.merge(
   sessionFoundationLive,
@@ -170,23 +157,16 @@ const integrationsLive = ProjectSessionIntegrationsLive.pipe(
   Layer.provide(runtimeOptionsGraphLive),
 );
 const integrationGraphLive = Layer.merge(runtimeOptionsGraphLive, integrationsLive);
-const piPluginAgentsLive = makePiPluginAgentsProductionLive({
-  projectSessionDirectory: cakePaths.piSessions,
-  privateSessionDirectory: cakePaths.piPluginAgentSessions,
-}).pipe(Layer.provide(integrationGraphLive));
-const pluginRuntimeLive = makePluginRuntimeLive({
+const inlineWidgetsLive = makeInlineWidgetsLive({
   paths: cakePaths,
-  authoringRoot,
-  applicationRoot,
-  backendHostPath: join(import.meta.dirname, "plugin-backend-host.js"),
-  publishInlineWidget,
-}).pipe(Layer.provide(Layer.merge(integrationGraphLive, piPluginAgentsLive)));
-const runtimeLive = Layer.mergeAll(integrationGraphLive, piPluginAgentsLive, pluginRuntimeLive);
+  publish: publishInlineWidget,
+}).pipe(Layer.provide(integrationGraphLive));
+const runtimeLive = Layer.merge(integrationGraphLive, inlineWidgetsLive);
 
 const subagentEnvironmentLive = makeSubagentEnvironmentLive({
   homeDirectory: homedir(),
   agentDirectory: cakePaths.piAgent,
-  sessionDirectory: cakePaths.piPluginAgentSessions,
+  sessionDirectory: cakePaths.piSubagentSessions,
 }).pipe(Layer.provide(runtimeLive));
 const environmentDependenciesLive = Layer.merge(runtimeLive, subagentEnvironmentLive);
 const cakeSessionLive = Layer.mergeAll(

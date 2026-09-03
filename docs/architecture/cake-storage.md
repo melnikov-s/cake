@@ -11,8 +11,6 @@ replaces that root for tests and alternate installations.
 
 ```text
 ~/.cake/
-├── plugins/
-├── recovery/
 ├── state/
 ├── pi/
 │   ├── auth.json
@@ -22,6 +20,8 @@ replaces that root for tests and alternate installations.
 │   ├── sessions/
 │   ├── resolved-sessions/
 │   ├── review-sessions/
+│   ├── widget-sessions/
+│   ├── subagent-sessions/
 │   └── global-chat/
 │       ├── sessions/
 │       └── resolved-sessions/
@@ -43,7 +43,6 @@ WindowStateStorage
 WorktreeStorage
 ReviewStorage
 ArtifactStorage
-PluginStorage
 SessionArchiveStorage
 ```
 
@@ -174,15 +173,7 @@ Pi owns provider credentials and Pi resource settings. Cake storage may hold a
 Model Preset or Utility Model Preference referencing provider/model IDs, but it
 never stores provider secrets or utility-completion transcripts.
 
-## Artifact, review, plugin, and Custom Renderer storage
+## Artifact and review storage
 
 Artifacts use bounded, versioned metadata and content-addressed payloads.
-Reviews store Cake-owned anchors and workflow metadata. Plugin storage is
-namespaced by stable plugin ID. If the separately scoped future Custom Renderer
-is implemented, its storage records immutable base revisions, user patches,
-semantic intent, diagnostics, activation history, and namespaced renderer
-snapshot state. That storage belongs to the separately scoped future project.
-
-Broken plugin or future Custom Renderer source, data, and diagnostics are preserved
-for repair. Recovery may disable or roll back executable code without deleting
-its evidence.
+Reviews store Cake-owned anchors and workflow metadata.

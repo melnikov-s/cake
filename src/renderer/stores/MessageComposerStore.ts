@@ -40,8 +40,6 @@ export interface MessageComposerStoreProps {
   canSubmit(): boolean;
   isStreaming(): boolean;
   openCommandPane(pane: "changelog" | "tree" | "resources"): Promise<void>;
-  matchesPluginCommand(input: string): boolean;
-  runPluginCommand(input: string): Promise<boolean>;
   selectModel(value: string): Promise<void>;
   renameSession(name: string): Promise<void>;
   handoffSession(entryId: string, prompt?: string, resolveSource?: boolean): Promise<boolean>;
@@ -254,12 +252,6 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
       await this.props.openCommandPane(
         command === "/tree" ? "tree" : command === "/changelog" ? "changelog" : "resources",
       );
-      return;
-    }
-    if (this.props.matchesPluginCommand(text)) {
-      await this.props.runPluginCommand(text);
-      if (this.signal.aborted) return;
-      this.props.setDraft("");
       return;
     }
     const builtin = parsePiBuiltinCommand(text);

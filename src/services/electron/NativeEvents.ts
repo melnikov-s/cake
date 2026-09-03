@@ -28,11 +28,6 @@ export interface NativeEventsService {
       "artifact-updated" | "artifact-requested" | "ui-request" | "renderer-events-ready"
     >
   >;
-  readonly plugins: (
-    connectionId: number,
-  ) => Stream.Stream<
-    FocusedCakeEvent<"plugin-backend-event" | "plugin-agent-event" | "renderer-events-ready">
-  >;
   readonly terminals: (
     connectionId: number,
   ) => Stream.Stream<FocusedCakeEvent<"terminal-toggle-requested" | "renderer-events-ready">>;

@@ -17,7 +17,7 @@ export type RendererClientCapabilities = Pick<
   | "terminals"
   | "vscode"
   | "artifacts"
-  | "plugins"
+  | "inlineWidgets"
 >;
 
 export function makeRendererClientCapabilities(execute: Execute): RendererClientCapabilities {
@@ -431,201 +431,19 @@ export function makeRendererClientCapabilities(execute: Execute): RendererClient
           options,
         ).then((response) => response.markdown),
     },
-    plugins: {
-      getCustomizationState: (options) =>
+    inlineWidgets: {
+      compile: (language, source, capability, options) =>
         execute(
-          "plugins.get-customization-state",
-          (client) => client.plugins["get-customization-state"]({}),
-          options,
-        ).then((response) => response.state),
-      getAuthoringReference: (options) =>
-        execute(
-          "plugins.get-plugin-authoring-reference",
-          (client) => client.plugins["get-plugin-authoring-reference"]({}),
-          options,
-        ).then((response) => response.reference),
-      listFiles: (options) =>
-        execute(
-          "plugins.list-plugin-files",
-          (client) => client.plugins["list-plugin-files"]({}),
-          options,
-        ).then((response) => response),
-      create: (input, options) =>
-        execute(
-          "plugins.create-plugin",
-          (client) => client.plugins["create-plugin"]({ ...input }),
-          options,
-        ).then((response) => response),
-      readFile: (pluginId, path, options) =>
-        execute(
-          "plugins.read-plugin-file",
-          (client) => client.plugins["read-plugin-file"]({ pluginId, path }),
-          options,
-        ).then((response) => response.content),
-      writeFile: (pluginId, path, content, expectedWorkingRevision, options) =>
-        execute(
-          "plugins.write-plugin-file",
-          (client) =>
-            client.plugins["write-plugin-file"]({
-              pluginId,
-              path,
-              content,
-              expectedWorkingRevision,
-            }),
-          options,
-        ).then((response) => response),
-      validate: (expectedBaseRevision, request, expectedSourceRevision, options) =>
-        execute(
-          "plugins.validate-customization",
-          (client) =>
-            client.plugins["validate-customization"]({
-              expectedBaseRevision,
-              request,
-              expectedSourceRevision,
-            }),
-          options,
-        ).then((response) => response),
-      activate: (revision, expectedSourceRevision, request, options) =>
-        execute(
-          "plugins.activate-customization",
-          (client) =>
-            client.plugins["activate-customization"]({ revision, expectedSourceRevision, request }),
-          options,
-        ).then((response) => response),
-      rollback: (options) =>
-        execute(
-          "plugins.rollback-customization",
-          (client) => client.plugins["rollback-customization"]({}),
-          options,
-        ).then((response) => response.state),
-      useFactory: (options) =>
-        execute(
-          "plugins.use-factory-customization",
-          (client) => client.plugins["use-factory-customization"]({}),
-          options,
-        ).then((response) => response.state),
-      list: (options) =>
-        execute(
-          "plugins.list-plugins",
-          (client) => client.plugins["list-plugins"]({}),
-          options,
-        ).then((response) => response.plugins),
-      setEnabled: (pluginId, enabled, options) =>
-        execute(
-          "plugins.set-plugin-enabled",
-          (client) => client.plugins["set-plugin-enabled"]({ pluginId, enabled }),
-          options,
-        ).then((response) => response.plugins),
-      setActiveScene: (pluginId, options) =>
-        execute(
-          "plugins.set-active-scene",
-          (client) => client.plugins["set-active-scene"]({ pluginId }),
-          options,
-        ).then((response) => response.plugins),
-      delete: (pluginId, options) =>
-        execute(
-          "plugins.delete-plugin",
-          (client) => client.plugins["delete-plugin"]({ pluginId }),
-          options,
-        ).then((response) => response.plugins),
-      compileInlineWidget: (language, source, capability, options) =>
-        execute(
-          "plugins.compile-inline-widget",
-          (client) => client.plugins["compile-inline-widget"]({ language, source, capability }),
+          "widgets.compile-inline-widget",
+          (client) => client.widgets["compile-inline-widget"]({ language, source, capability }),
           options,
         ).then((response) => response.widget),
-      repairInlineWidget: (input, options) =>
+      repair: (input, options) =>
         execute(
-          "plugins.repair-inline-widget",
-          (client) => client.plugins["repair-inline-widget"]({ ...input }),
+          "widgets.repair-inline-widget",
+          (client) => client.widgets["repair-inline-widget"]({ ...input }),
           options,
         ).then((response) => response.widget),
-      openAgent: (pluginId, input, implicitSession, options) =>
-        execute(
-          "plugins.open-plugin-agent",
-          (client) =>
-            client.plugins["open-plugin-agent"]({ pluginId, options: input, implicitSession }),
-          options,
-        ).then((response) => response.snapshot),
-      promptAgent: (pluginId, handleId, delivery, text, options) =>
-        execute(
-          "plugins.prompt-plugin-agent",
-          (client) => client.plugins["prompt-plugin-agent"]({ pluginId, handleId, delivery, text }),
-          options,
-        ).then((response) => response.snapshot),
-      abortAgent: (pluginId, handleId, options) =>
-        execute(
-          "plugins.abort-plugin-agent",
-          (client) => client.plugins["abort-plugin-agent"]({ pluginId, handleId }),
-          options,
-        ).then((response) => response.snapshot),
-      detachAgent: (pluginId, handleId, options) =>
-        execute(
-          "plugins.detach-plugin-agent",
-          (client) => client.plugins["detach-plugin-agent"]({ pluginId, handleId }),
-          options,
-        ).then(() => undefined),
-      runCompletion: (pluginId, requestId, request, implicitSession, options) =>
-        execute(
-          "plugins.run-plugin-completion",
-          (client) =>
-            client.plugins["run-plugin-completion"]({
-              pluginId,
-              requestId,
-              request,
-              implicitSession,
-            }),
-          options,
-        ).then((response) => response.result),
-      cancelCompletion: (pluginId, requestId, options) =>
-        execute(
-          "plugins.cancel-plugin-completion",
-          (client) => client.plugins["cancel-plugin-completion"]({ pluginId, requestId }),
-          options,
-        ).then(() => undefined),
-      loadState: (pluginId, key, scope, options) =>
-        execute(
-          "plugins.load-plugin-state",
-          (client) => client.plugins["load-plugin-state"]({ pluginId, key, scope }),
-          options,
-        ).then((response) => response.record),
-      saveState: (input, options) =>
-        execute(
-          "plugins.save-plugin-state",
-          (client) => client.plugins["save-plugin-state"]({ ...input }),
-          options,
-        ).then((response) => {
-          const record = response.record;
-          if (!record) throw new Error("Cake did not persist plugin state");
-          return record;
-        }),
-      callBackend: (input, options) =>
-        execute(
-          "plugins.call-plugin-backend",
-          (client) => client.plugins["call-plugin-backend"]({ ...input }),
-          options,
-        ).then((response) => {
-          const result = response;
-          return { ok: result.ok, value: result.value, error: result.error };
-        }),
-      cancelBackendCall: (pluginId, callId, options) =>
-        execute(
-          "plugins.cancel-plugin-backend-call",
-          (client) => client.plugins["cancel-plugin-backend-call"]({ pluginId, callId }),
-          options,
-        ).then(() => undefined),
-      reportRendered: (revision, options) =>
-        execute(
-          "plugins.customization-rendered",
-          (client) => client.plugins["customization-rendered"]({ revision }),
-          options,
-        ).then(() => undefined),
-      reportRuntimeFailure: (revision, message, options) =>
-        execute(
-          "plugins.customization-runtime-failed",
-          (client) => client.plugins["customization-runtime-failed"]({ revision, message }),
-          options,
-        ).then(() => undefined),
     },
   };
 }

@@ -7,7 +7,6 @@ import {
 } from "../../ipc/session-contract";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { ReviewsStore } from "./ReviewsStore";
-import type { PluginCommandStore } from "./PluginCommandStore";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
 import type { PendingSessionSummary } from "./SessionCatalogStore";
 import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
@@ -21,7 +20,6 @@ export interface SessionRegistryStoreProps {
   sessionModel(sessionId: string, workingDirectory: string): Session;
   operations: SessionOperationCoordinatorStore;
   reviews(): ReviewsStore;
-  pluginCommands(): PluginCommandStore;
   canSubmit(sessionId: string): boolean;
   isActive(sessionId: string): boolean;
   openCommandPane(pane: "changelog" | "tree" | "resources"): Promise<void>;
@@ -80,7 +78,6 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
         registry: this,
         operations: this.props.operations,
         reviews: this.props.reviews,
-        pluginCommands: this.props.pluginCommands,
         canSubmit: () => this.props.canSubmit(target.sessionId),
         isActive: () => this.props.isActive(target.sessionId),
         openCommandPane: (pane) => this.props.openCommandPane(pane),

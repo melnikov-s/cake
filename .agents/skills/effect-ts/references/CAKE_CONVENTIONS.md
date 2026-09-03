@@ -76,8 +76,8 @@ abstraction.
 - Use `Layer.provide` when an implementation dependency should be hidden and
   `provideMerge` only when it intentionally remains available downstream.
 - Name Layer subgraphs and keep runtime composition topologically legible.
-- Bootstrap must not evaluate user plugin code or acquire optional project,
-  session, terminal, or editor resources.
+- Bootstrap must not acquire optional project, session, terminal, or editor
+  resources.
 
 ## Schemas and optional keys
 
@@ -101,7 +101,7 @@ Use the representation that matches the encoded contract:
 - null unions only when null is an actual encoded value.
 
 Do not make required domain values optional for constructor convenience. Decode
-unknown persisted, RPC-transport, plugin, and Pi-adapter values at their
+unknown persisted, RPC-transport, and Pi-adapter values at their
 receiving boundary. Use non-throwing/effectful decoding in runtime paths.
 
 Use constrained branded Schemas for stable IDs as new contracts are introduced.

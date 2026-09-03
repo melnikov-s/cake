@@ -13,7 +13,6 @@ import {
 } from "electron";
 import type { CakeEvent } from "../../ipc/cake-rpc-contract";
 import { shouldAllowNavigation } from "./navigation-policy";
-import type { StartupRenderer } from "../plugins/plugin-activation-service";
 import {
   CAKE_TITLE_BAR_HEIGHT,
   Electron,
@@ -100,13 +99,7 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
       window.setWindowButtonPosition(trafficLightPosition(titleBarHeight));
   };
 
-  const loadSelectedRenderer = async (window: BrowserWindow, renderer: StartupRenderer) => {
-    if (renderer.kind === "custom") {
-      await window.loadFile(renderer.path);
-      lifecycle().trackRenderer(window.webContents.id, renderer);
-      return;
-    }
-    lifecycle().trackRenderer(window.webContents.id, renderer);
+  const loadRenderer = async (window: BrowserWindow) => {
     if (process.env.ELECTRON_RENDERER_URL) await window.loadURL(process.env.ELECTRON_RENDERER_URL);
     else await window.loadFile(options.rendererPath);
   };
@@ -185,9 +178,8 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
       )
         event.preventDefault();
     });
-    window.webContents.on("render-process-gone", (_event, details) => {
+    window.webContents.on("render-process-gone", () => {
       fullscreenSurfaces.delete(ownerId);
-      if (!applicationQuitting) lifecycle().rendererProcessGone(ownerId, details.reason);
     });
     window.on("close", (event) => {
       if (applicationQuitting) return;
@@ -209,10 +201,9 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
       if (applicationQuitting) return;
       lifecycle().closeEditorForWindow(ownerId);
       lifecycle().closeTerminalOwner(ownerId);
-      lifecycle().disposePluginOwner(ownerId);
       lifecycle().onWindowClosed(ownerId, workingDirectory);
     });
-    void loadSelectedRenderer(window, lifecycle().startupRenderer());
+    void loadRenderer(window);
     return window;
   };
 
@@ -559,13 +550,6 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
           : [],
       ),
     centerTrafficLights,
-    reloadAll: (renderer) => {
-      for (const window of windows.values()) void loadSelectedRenderer(window, renderer);
-    },
-    reloadWindowWithFactory: (ownerId) => {
-      const window = [...windows.values()].find((item) => item.webContents.id === ownerId);
-      if (window && !window.isDestroyed()) void loadSelectedRenderer(window, { kind: "factory" });
-    },
   });
 
   const observe = (connectionId: number, initial: CakeEvent) =>
@@ -608,8 +592,6 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
       ),
     artifacts: (connectionId) =>
       focused(connectionId, "artifacts", "artifact-updated", "artifact-requested", "ui-request"),
-    plugins: (connectionId) =>
-      focused(connectionId, "plugins", "plugin-backend-event", "plugin-agent-event"),
     terminals: (connectionId) => focused(connectionId, "terminals", "terminal-toggle-requested"),
     vscode: (connectionId) =>
       focused(

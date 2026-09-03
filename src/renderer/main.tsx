@@ -1,12 +1,9 @@
 import { Schema } from "effect";
-import { StrictMode, Suspense, useEffect } from "react";
+import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { StoreProvider } from "r-state-tree/react";
-import Scene from "virtual:cake-scene";
-import "virtual:cake-plugins";
+import { App } from "./app";
 import { RendererErrorBoundary } from "./components/renderer-error-boundary";
-import { CustomizationRecovery } from "./components/customization-recovery";
-import { LoadingState } from "./components/ui/loading-state";
 import { MarkdownLinkProvider } from "./components/ai-elements/markdown";
 import { makeRendererRuntime } from "./RendererRuntime";
 import { makeRendererClient } from "./client/RendererClientLive";
@@ -34,18 +31,6 @@ interface PersistenceRef {
 interface ProjectSessionObservationTarget {
   sessionId: string;
   workingDirectory: string;
-}
-
-const customizationRevision =
-  typeof __CAKE_CUSTOMIZATION_REVISION__ === "undefined"
-    ? undefined
-    : __CAKE_CUSTOMIZATION_REVISION__;
-
-function CustomizationHealth({ report }: { report(revision: string): Promise<void> }) {
-  useEffect(() => {
-    if (customizationRevision) void report(customizationRevision);
-  }, [report]);
-  return null;
 }
 
 if (!window.cake) {
@@ -150,11 +135,7 @@ async function bootstrap(bridge: NonNullable<typeof window.cake>) {
     },
   };
   root.render(
-    <RendererErrorBoundary
-      onCustomizationFailure={(revision, message) =>
-        rendererClient.plugins.reportRuntimeFailure(revision, message)
-      }
-    >
+    <RendererErrorBoundary>
       <StrictMode>
         <RendererInfrastructureProvider
           value={{
@@ -164,22 +145,7 @@ async function bootstrap(bridge: NonNullable<typeof window.cake>) {
         >
           <StoreProvider store={rootStore}>
             <MarkdownLinkProvider actions={markdownLinkActions}>
-              <Suspense
-                fallback={
-                  <main className="grid h-screen place-items-center bg-background text-foreground">
-                    <span className="grid size-12 place-items-center rounded-2xl bg-primary text-xl font-bold text-primary-foreground shadow-lg">
-                      C
-                    </span>
-                    <LoadingState label="Hydrating customization" />
-                  </main>
-                }
-              >
-                <Scene />
-                <CustomizationHealth
-                  report={(revision) => rendererClient.plugins.reportRendered(revision)}
-                />
-              </Suspense>
-              <CustomizationRecovery />
+              <App />
             </MarkdownLinkProvider>
           </StoreProvider>
         </RendererInfrastructureProvider>

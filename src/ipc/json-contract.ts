@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 
-/** JSON data that can safely cross Cake's process and plugin boundaries. */
+/** JSON data that can safely cross Cake's process boundaries. */
 export const jsonValueSchema = Schema.Json;
 export type JsonValue = typeof jsonValueSchema.Type;
 

@@ -5,7 +5,6 @@ import type {
   cakeRpcPayloadSchemas,
   cakeRpcSuccessSchemas,
 } from "../../ipc/cake-rpc-contract";
-import type { StartupRenderer } from "../plugins/plugin-activation-service";
 
 export const CAKE_TITLE_BAR_HEIGHT = 46;
 export const VSCODE_TITLE_BAR_HEIGHT = 35;
@@ -20,10 +19,6 @@ type Success<Type extends keyof typeof cakeRpcSuccessSchemas> =
   (typeof cakeRpcSuccessSchemas)[Type]["Type"];
 
 export interface ElectronWindowLifecycle {
-  readonly startupRenderer: () => StartupRenderer;
-  readonly trackRenderer: (ownerId: number, renderer: StartupRenderer) => void;
-  readonly rendererProcessGone: (ownerId: number, reason: string) => void;
-  readonly disposePluginOwner: (ownerId: number) => void;
   readonly closeTerminalOwner: (ownerId: number) => void;
   readonly closeEditorForWindow: (ownerId: number) => void;
   readonly backToAgentForWindow: (ownerId: number) => boolean;
@@ -75,8 +70,6 @@ export interface ElectronService {
     workingDirectory: string,
   ) => ReadonlyArray<readonly [connectionId: number, window: BrowserWindow]>;
   readonly centerTrafficLights: (window: BrowserWindow, titleBarHeight: number) => void;
-  readonly reloadAll: (renderer: StartupRenderer) => void;
-  readonly reloadWindowWithFactory: (ownerId: number) => void;
 }
 
 export class Electron extends Context.Service<Electron, ElectronService>()(

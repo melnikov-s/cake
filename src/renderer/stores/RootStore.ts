@@ -15,8 +15,6 @@ import { ExtensionUiStore } from "./ExtensionUiStore";
 import { AppControlBridge } from "../app-control-bridge";
 import { GlobalChatStore } from "./GlobalChatStore";
 import { AppShellStore } from "./AppShellStore";
-import { CustomizationStore } from "./CustomizationStore";
-import { PluginCommandStore } from "./PluginCommandStore";
 import { InlineWidgetStore } from "./InlineWidgetStore";
 import { SessionCatalogStore } from "./SessionCatalogStore";
 import { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
@@ -56,11 +54,6 @@ export class RootStore extends Store<{
   }
   private readonly respondedCakeChatControlIds = new Set<string>();
   private readonly respondedProjectSessionControlIds = new Set<string>();
-
-  @child
-  get pluginCommandStore(): PluginCommandStore {
-    return createStore(PluginCommandStore);
-  }
 
   @child
   get inlineWidgetStore(): InlineWidgetStore {
@@ -401,17 +394,11 @@ export class RootStore extends Store<{
   }
 
   @child
-  get customizationStore(): CustomizationStore {
-    return createStore(CustomizationStore);
-  }
-
-  @child
   get sessionRegistry(): SessionRegistryStore {
     return createStore(SessionRegistryStore, {
       catalog: this.sessionCatalogStore,
       operations: this.sessionOperationCoordinator,
       reviews: () => this.reviewsStore,
-      pluginCommands: () => this.pluginCommandStore,
       sessionModel: (sessionId, workingDirectory) =>
         this.props.models.projectSession(sessionId, workingDirectory),
       canSubmit: (sessionId) => this.projectWorkbenchStore.canSubmitSession(sessionId),
@@ -567,7 +554,6 @@ export class RootStore extends Store<{
       defaultConfiguration: () => this.settingsStore.modelPresets.defaultConfiguration,
       reviews: () => this.reviewsStore,
       extensionUi: () => this.extensionUiStore,
-      pluginCommands: () => this.pluginCommandStore,
       catalog: this.sessionCatalogStore,
       startCakeChat: (prompt) => this.startCakeChat(prompt),
       onWorktreeSessionsResolved: (sessionIds, projectPath) =>
@@ -700,25 +686,6 @@ export class RootStore extends Store<{
             { signal: this.signal },
           ),
         ),
-      customizationState: () => this.customizationStore.state,
-      plugins: () => this.customizationStore.plugins,
-      getPluginAuthoringReference: () => this.client.plugins.getAuthoringReference(),
-      listPluginFiles: () => this.client.plugins.listFiles(),
-      createPlugin: (input) => this.client.plugins.create(input),
-      readPluginFile: (pluginId, path) => this.client.plugins.readFile(pluginId, path),
-      writePluginFile: (pluginId, path, content, expectedWorkingRevision) =>
-        this.client.plugins.writeFile(pluginId, path, content, expectedWorkingRevision),
-      validateCustomization: (expectedBaseRevision, request, expectedSourceRevision) =>
-        this.client.plugins.validate(expectedBaseRevision, request, expectedSourceRevision),
-      activateCustomization: (revision, expectedSourceRevision, request) =>
-        this.client.plugins.activate(revision, expectedSourceRevision, request),
-      rollbackCustomization: () => this.client.plugins.rollback(),
-      useFactoryCustomization: () => this.client.plugins.useFactory(),
-      setPluginEnabled: (pluginId, enabled) => this.client.plugins.setEnabled(pluginId, enabled),
-      setActiveScene: (pluginId) => this.client.plugins.setActiveScene(pluginId),
-    });
-    this.effect(() => {
-      void this.customizationStore.loadPluginCatalog();
     });
     this.effect(() => {
       untracked(() => void this.globalChatStore.initialize());

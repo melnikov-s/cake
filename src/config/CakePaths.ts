@@ -8,11 +8,9 @@ export interface CakePaths {
   piResolvedSessions: string;
   piReviewSessions: string;
   piWidgetSessions: string;
-  piPluginAgentSessions: string;
+  piSubagentSessions: string;
   piGlobalChatSessions: string;
   piGlobalChatResolvedSessions: string;
-  plugins: string;
-  recovery: string;
   state: string;
 }
 
@@ -34,11 +32,9 @@ export function resolveCakePaths(options: ResolveCakePathsOptions = {}): CakePat
     piResolvedSessions: join(piAgent, "resolved-sessions"),
     piReviewSessions: join(piAgent, "review-sessions"),
     piWidgetSessions: join(piAgent, "widget-sessions"),
-    piPluginAgentSessions: join(piAgent, "plugin-agent-sessions"),
+    piSubagentSessions: join(piAgent, "subagent-sessions"),
     piGlobalChatSessions: join(piAgent, "global-chat", "sessions"),
     piGlobalChatResolvedSessions: join(piAgent, "global-chat", "resolved-sessions"),
-    plugins: join(home, "plugins"),
-    recovery: join(home, "recovery"),
     state: join(home, "state"),
   };
 }

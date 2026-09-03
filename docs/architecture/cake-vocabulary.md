@@ -168,8 +168,7 @@ Use Pi's term **thinking level**, not `reasoning level`, in new contracts.
 ### Service
 
 An Effect Context capability that touches or represents the outside world.
-Examples are Pi, Git, the filesystem, storage, Electron, VS Code Server, a PTY,
-plugin runtime processes, and the IPC boundary. A service has Effectful methods
+Examples are Pi, Git, the filesystem, storage, Electron, VS Code Server, a PTY and the IPC boundary. A service has Effectful methods
 and may own scoped resources.
 
 A service may represent a deliberate concrete dependency such as VS Code
@@ -273,23 +272,3 @@ here.
 Executable code loaded by Pi and bound to a Pi Session Runtime. Its executable
 lifecycle belongs to `PiSessions`; discovery and diagnostics belong to
 `PiAgentResources`.
-
-### Cake Plugin
-
-Trusted user-owned software managed by Cake. It may contribute renderer UI,
-an unrestricted Node backend, or a replacement scene through Cake's public
-plugin contract.
-
-### Custom Renderer
-
-A future, unimplemented user-owned source overlay that may modify or replace
-Cake's renderer beyond the stable plugin API. If implemented in a separate
-future project, it is rebased and validated against each Cake update. Main,
-preload, RPC validation, activation, diagnostics, and immutable recovery remain
-outside the Custom Renderer.
-
-### Immutable recovery
-
-Cake-owned UI and activation machinery that boots without evaluating user
-renderer or plugin code and can inspect, repair, disable, or roll back broken
-customizations.

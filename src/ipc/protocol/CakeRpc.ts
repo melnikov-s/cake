@@ -4,9 +4,9 @@ import { CakeChatRpc } from "./CakeChatRpc";
 import { DiscussionRpc } from "./DiscussionRpc";
 import { ElectronRpc } from "./ElectronRpc";
 import { FoundationRpc } from "./FoundationRpc";
+import { InlineWidgetRpc } from "./InlineWidgetRpc";
 import { ManagedWorktreeRpc } from "./ManagedWorktreeRpc";
 import { ModelRpc } from "./ModelRpc";
-import { PluginRpc } from "./PluginRpc";
 import { ProjectSessionRpc } from "./ProjectSessionRpc";
 import { RendererConnectionMiddleware } from "./RendererConnectionMiddleware";
 import { SubagentRpc } from "./SubagentRpc";
@@ -22,9 +22,9 @@ export const CakeRpc = ApplicationRpc.merge(
   DiscussionRpc,
   ElectronRpc,
   FoundationRpc,
+  InlineWidgetRpc,
   ManagedWorktreeRpc,
   ModelRpc,
-  PluginRpc,
   ProjectSessionRpc,
   SubagentRpc,
   TerminalRpc,

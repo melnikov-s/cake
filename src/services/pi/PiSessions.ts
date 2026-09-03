@@ -45,9 +45,6 @@ const PiSessionCapabilityProfile = Schema.TaggedUnion({
   SubagentSession: {
     profile: Schema.Literals(["scout", "planner", "reviewer", "worker"]),
   },
-  PluginAgentSession: {
-    visibility: Schema.Literals(["private", "project"]),
-  },
 });
 export const PiSessionQuery = Schema.Struct({
   workingDirectory: Schema.String,
@@ -261,8 +258,6 @@ const runtimeFingerprint = (options: PiSessionAcquireOptions): string => {
     tools: runtime.tools ? [...runtime.tools].sort() : undefined,
     auxiliary: runtime.auxiliary ?? false,
     slashCommands: runtime.slashCommands,
-    // Plugin resources are a process-local live capability. Their revision is deliberately
-    // excluded: an existing runtime observes the latest value on its next safe reload.
     additionalSystemPrompt: runtime.additionalSystemPrompt,
     hasGlobalControl: runtime.globalControl !== undefined,
     hasAgentControl: runtime.agentControl !== undefined,
@@ -282,8 +277,7 @@ const validateProfile = Effect.fn("PiSessions.validateProfile")(function* (
     (profile === "CakeChatSession" && runtime.globalControl !== undefined && !runtime.auxiliary) ||
     ((profile === "DiscussionSession" || profile === "SubagentSession") &&
       runtime.auxiliary === true &&
-      runtime.globalControl === undefined) ||
-    (profile === "PluginAgentSession" && runtime.globalControl === undefined);
+      runtime.globalControl === undefined);
   if (valid) return;
   return yield* new PiSessionError({
     operation: "acquire",

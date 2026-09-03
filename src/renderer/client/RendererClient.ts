@@ -8,13 +8,6 @@ import type {
   RepairedInlineWidget,
 } from "../../ipc/inline-widget-contract";
 import type { JsonValue } from "../../ipc/json-contract";
-import type {
-  PluginAgentOpenOptions,
-  PluginAgentSnapshot,
-  PluginCompletionRequest,
-  PluginCompletionResult,
-  SessionRef,
-} from "../../ipc/plugin-agent-contract";
 import type { SourceLocation } from "../../ipc/source-location";
 import type {
   Attachment,
@@ -30,13 +23,6 @@ import type {
   WorktreeRecord,
   WorktreeStatus,
 } from "../../ipc/worktree-contract";
-import type {
-  CustomizationState,
-  PluginDiagnostic,
-  PluginPersistenceRecord,
-  PluginPersistenceScope,
-  PluginStatus,
-} from "../../plugin/plugin-contract";
 
 export interface RendererCommandOptions {
   readonly signal?: AbortSignal;
@@ -248,68 +234,14 @@ interface ArtifactCommands {
   export(sessionId: string, options?: RendererCommandOptions): Promise<string>;
 }
 
-interface PluginCommands {
-  getCustomizationState(options?: RendererCommandOptions): Promise<CustomizationState>;
-  getAuthoringReference(options?: RendererCommandOptions): Promise<string>;
-  listFiles(
-    options?: RendererCommandOptions,
-  ): Promise<{ workingRevision: string; buildRevision: string; files: ReadonlyArray<string> }>;
-  create(
-    input: {
-      pluginId: string;
-      name: string;
-      renderer: boolean;
-      backend: boolean;
-      scene: boolean;
-      expectedWorkingRevision: string;
-    },
-    options?: RendererCommandOptions,
-  ): Promise<{ workingRevision: string; buildRevision: string; files: ReadonlyArray<string> }>;
-  readFile(pluginId: string, path: string, options?: RendererCommandOptions): Promise<string>;
-  writeFile(
-    pluginId: string,
-    path: string,
-    content: string,
-    expectedWorkingRevision: string,
-    options?: RendererCommandOptions,
-  ): Promise<{ workingRevision: string; buildRevision: string; files: ReadonlyArray<string> }>;
-  validate(
-    expectedBaseRevision?: string,
-    request?: string,
-    expectedSourceRevision?: string,
-    options?: RendererCommandOptions,
-  ): Promise<{
-    revision: string;
-    sourceRevision: string;
-    diagnostics: ReadonlyArray<PluginDiagnostic>;
-    valid: boolean;
-  }>;
-  activate(
-    revision: string,
-    expectedSourceRevision: string,
-    request?: string,
-    options?: RendererCommandOptions,
-  ): Promise<{ revision: string; activating: true }>;
-  rollback(options?: RendererCommandOptions): Promise<CustomizationState>;
-  useFactory(options?: RendererCommandOptions): Promise<CustomizationState>;
-  list(options?: RendererCommandOptions): Promise<ReadonlyArray<PluginStatus>>;
-  setEnabled(
-    pluginId: string,
-    enabled: boolean,
-    options?: RendererCommandOptions,
-  ): Promise<ReadonlyArray<PluginStatus>>;
-  setActiveScene(
-    pluginId?: string,
-    options?: RendererCommandOptions,
-  ): Promise<ReadonlyArray<PluginStatus>>;
-  delete(pluginId: string, options?: RendererCommandOptions): Promise<ReadonlyArray<PluginStatus>>;
-  compileInlineWidget(
+interface InlineWidgetCommands {
+  compile(
     language: InlineWidgetLanguage,
     source: string,
     capability: InlineWidgetCapability,
     options?: RendererCommandOptions,
   ): Promise<CompiledInlineWidget>;
-  repairInlineWidget(
+  repair(
     input: {
       sessionId: string;
       language: InlineWidgetLanguage;
@@ -321,68 +253,6 @@ interface PluginCommands {
     },
     options?: RendererCommandOptions,
   ): Promise<RepairedInlineWidget>;
-  openAgent(
-    pluginId: string,
-    input: PluginAgentOpenOptions,
-    implicitSession?: SessionRef,
-    options?: RendererCommandOptions,
-  ): Promise<PluginAgentSnapshot>;
-  promptAgent(
-    pluginId: string,
-    handleId: string,
-    delivery: "prompt" | "steer" | "follow-up",
-    text: string,
-    options?: RendererCommandOptions,
-  ): Promise<PluginAgentSnapshot>;
-  abortAgent(
-    pluginId: string,
-    handleId: string,
-    options?: RendererCommandOptions,
-  ): Promise<PluginAgentSnapshot>;
-  detachAgent(pluginId: string, handleId: string, options?: RendererCommandOptions): Promise<void>;
-  runCompletion(
-    pluginId: string,
-    requestId: string,
-    request: PluginCompletionRequest,
-    implicitSession?: SessionRef,
-    options?: RendererCommandOptions,
-  ): Promise<PluginCompletionResult>;
-  cancelCompletion(
-    pluginId: string,
-    requestId: string,
-    options?: RendererCommandOptions,
-  ): Promise<void>;
-  loadState(
-    pluginId: string,
-    key: string,
-    scope: PluginPersistenceScope,
-    options?: RendererCommandOptions,
-  ): Promise<PluginPersistenceRecord | undefined>;
-  saveState(
-    input: {
-      pluginId: string;
-      key: string;
-      scope: PluginPersistenceScope;
-      value: JsonValue;
-      expectedVersion: number;
-    },
-    options?: RendererCommandOptions,
-  ): Promise<PluginPersistenceRecord>;
-  callBackend(
-    input: { pluginId: string; callId: string; method: string; input: JsonValue },
-    options?: RendererCommandOptions,
-  ): Promise<{ ok: boolean; value?: JsonValue; error?: string }>;
-  cancelBackendCall(
-    pluginId: string,
-    callId: string,
-    options?: RendererCommandOptions,
-  ): Promise<void>;
-  reportRendered(revision: string, options?: RendererCommandOptions): Promise<void>;
-  reportRuntimeFailure(
-    revision: string,
-    message: string,
-    options?: RendererCommandOptions,
-  ): Promise<void>;
 }
 
 /** Permanent renderer-facing Promise API grouped by semantic Cake capability. */
@@ -405,7 +275,7 @@ export interface RendererClient {
   readonly terminals: TerminalCommands;
   readonly vscode: VsCodeCommands;
   readonly artifacts: ArtifactCommands;
-  readonly plugins: PluginCommands;
+  readonly inlineWidgets: InlineWidgetCommands;
   readonly foundation: CommandGroup<CakeIpcClientService["foundation"]>;
 }
 
