@@ -604,6 +604,7 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
         "fatal",
         "notification",
         "extension-ui-intent",
+        "project-session-control-requested",
       ),
     artifacts: (connectionId) =>
       focused(connectionId, "artifacts", "artifact-updated", "artifact-requested", "ui-request"),

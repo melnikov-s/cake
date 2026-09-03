@@ -109,6 +109,13 @@ export class RendererNativeEvents implements Disposable {
           void root.terminalStore.toggle();
           return;
         }
+        if (event.type === "project-session-control-requested") {
+          void root.respondProjectSessionControl(event).catch((error) => {
+            if (!root.signal.aborted)
+              root.projectWorkbenchStore.setError(error, "Project Session control response");
+          });
+          return;
+        }
         root.extensionUiStore.receive(event);
         if (event.type === "artifact-requested")
           root.sessionRegistry.findSession(event.record.artifact.sessionId)?.receive(event);

@@ -115,7 +115,11 @@ privileged implementations.
 
 Every cross-process request, success, typed failure, and stream element is
 parsed by shared Effect Schemas at the receiving boundary. Raw Pi event and
-object shapes stop in `src/services/pi`.
+object shapes stop in `src/services/pi`. When a Project Session agent needs a
+renderer-owned application mutation, main sends one validated control request
+only to the renderer connection associated with the calling Project Session;
+the renderer executes the shared application intent, completes persistence,
+and acknowledges the result through Effect RPC before the tool call returns.
 
 ## Utility model
 

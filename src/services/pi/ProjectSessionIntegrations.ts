@@ -1,5 +1,6 @@
 import { Context, Schema, type Effect } from "effect";
 import type { cakeRpcPayloadSchemas } from "../../ipc/cake-rpc-contract";
+import type { JsonValue } from "../../ipc/json-contract";
 import type { ProjectSessionRuntimeIntegrations } from "./ProjectSessionIntegrationHost";
 
 export class ProjectSessionIntegrationsError extends Schema.TaggedError<ProjectSessionIntegrationsError>()(
@@ -29,6 +30,10 @@ export class ProjectSessionIntegrations extends Context.Service<
     readonly releaseSession: (
       sessionId: string,
     ) => Effect.Effect<void, ProjectSessionIntegrationsError>;
+    readonly bindRenderer: (
+      sessionId: string,
+      connectionId: number,
+    ) => Effect.Effect<void, ProjectSessionIntegrationsError>;
     readonly respondArtifact: (
       sessionId: string,
       response: ArtifactResponse,
@@ -36,6 +41,11 @@ export class ProjectSessionIntegrations extends Context.Service<
     readonly respondUi: (
       sessionId: string,
       response: UiResponse,
+    ) => Effect.Effect<void, ProjectSessionIntegrationsError>;
+    readonly respondControl: (
+      sessionId: string,
+      controlRequestId: string,
+      result: JsonValue,
     ) => Effect.Effect<void, ProjectSessionIntegrationsError>;
   }
 >()("cake/services/pi/ProjectSessionIntegrations") {}

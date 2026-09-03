@@ -345,6 +345,11 @@ export interface CakeIpcClientService {
     readonly restore: (
       target: ProjectSessionTarget,
     ) => Effect.Effect<void, ProjectSessionError | TransportError>;
+    readonly respondControl: (
+      sessionId: string,
+      controlRequestId: string,
+      result: Schema.Schema.Type<typeof Schema.Json>,
+    ) => Effect.Effect<void, ProjectSessionError | TransportError>;
   };
   readonly subagents: {
     readonly observe: (
@@ -467,6 +472,7 @@ export interface CakeIpcClientService {
         | "fatal"
         | "notification"
         | "extension-ui-intent"
+        | "project-session-control-requested"
         | "renderer-events-ready"
       >,
       TransportError
@@ -720,6 +726,10 @@ export const CakeIpcClientLive = Layer.effect(
         ),
         restore: Effect.fn("CakeIpcClient.projectSessions.restore")((target) =>
           client("projectSessions.restore", target),
+        ),
+        respondControl: Effect.fn("CakeIpcClient.projectSessions.respondControl")(
+          (sessionId, controlRequestId, result) =>
+            client("projectSessions.respondControl", { sessionId, controlRequestId, result }),
         ),
       },
       subagents: {

@@ -3,7 +3,7 @@ import type { ProjectSessionIntegrationHostOptions } from "./ProjectSessionInteg
 
 export type ProjectSessionRuntimeBase = Omit<
   ProjectSessionIntegrationHostOptions,
-  "workspacePath" | "emit" | "artifactRepository" | "reviewRepository"
+  "workspacePath" | "emit" | "emitApplicationControl" | "artifactRepository" | "reviewRepository"
 >;
 
 /** Shared Cake policy projected into Pi's Project Session callback contract. */

@@ -3,6 +3,10 @@ import type { SourceLocation } from "../../ipc/source-location";
 import type { ModelPreset, UtilityModel } from "../../ipc/session-contract";
 import type { WorktreeLandingCoordinator } from "../../ipc/worktree-contract";
 import type { JsonValue } from "../../ipc/json-contract";
+import type {
+  ProjectSessionControlInvocation,
+  ProjectSessionControlRequest,
+} from "../../domain/project-session-data";
 import type { VscodeActionResult } from "../vscode/VsCodeServer";
 import {
   parseArtifactInput,
@@ -40,7 +44,12 @@ export type PiWorkspaceCommand =
   | ({ readonly type: "respond-ui" } & (typeof cakeRpcPayloadSchemas)["respond-ui"]["Type"])
   | ({
       readonly type: "respond-artifact";
-    } & (typeof cakeRpcPayloadSchemas)["respond-artifact"]["Type"]);
+    } & (typeof cakeRpcPayloadSchemas)["respond-artifact"]["Type"])
+  | {
+      readonly type: "respond-project-session-control";
+      readonly controlRequestId: string;
+      readonly result: JsonValue;
+    };
 
 interface PendingUi {
   readonly operationId: string;
@@ -62,7 +71,12 @@ export type ProjectSessionRuntimeIntegrations = Pick<
   | "requestUi"
   | "emitExtensionUiIntent"
   | "reviewContextPath"
->;
+> & {
+  readonly requestApplicationControl: (
+    invocation: ProjectSessionControlInvocation,
+    signal: AbortSignal,
+  ) => Promise<JsonValue>;
+};
 
 /**
  * Cake-owned artifact, UI-request, review, and inline-widget integrations for
@@ -76,6 +90,9 @@ export interface ProjectSessionIntegrationHostOptions {
   readonly widgetSessionDir?: string;
   readonly pluginAgentSessionDir?: string;
   readonly emit: (event: CakeEvent) => void;
+  readonly emitApplicationControl: (
+    event: CakeEvent & { readonly type: "project-session-control-requested" },
+  ) => void;
   readonly runWidgetGeneration?: typeof runInlineWidgetGeneration;
   readonly runWidgetRepair?: typeof runInlineWidgetRepair;
   readonly compileWidget?: typeof compileInlineWidget;
@@ -113,6 +130,7 @@ export class ProjectSessionIntegrationHost {
   private readonly agentDir: string;
   private readonly widgetSessionDir: string;
   private readonly emitEvent: (event: CakeEvent) => void;
+  private readonly emitApplicationControl: ProjectSessionIntegrationHostOptions["emitApplicationControl"];
   private readonly runWidgetGeneration: typeof runInlineWidgetGeneration;
   private readonly runWidgetRepair: typeof runInlineWidgetRepair;
   private readonly compileWidget: typeof compileInlineWidget;
@@ -120,6 +138,7 @@ export class ProjectSessionIntegrationHost {
   private readonly reviewRepository: ReviewRepositoryPort;
   private readonly pendingUi = new Map<string, PendingUi>();
   private readonly pendingArtifacts = new Map<string, PendingArtifact>();
+  private readonly pendingControls = new Map<string, (value: JsonValue) => void>();
   private disposed = false;
 
   constructor(options: ProjectSessionIntegrationHostOptions) {
@@ -128,6 +147,7 @@ export class ProjectSessionIntegrationHost {
     this.widgetSessionDir =
       options.widgetSessionDir ?? resolve(options.sessionDir, "..", "widget-sessions");
     this.emitEvent = options.emit;
+    this.emitApplicationControl = options.emitApplicationControl;
     this.runWidgetGeneration = options.runWidgetGeneration ?? runInlineWidgetGeneration;
     this.runWidgetRepair = options.runWidgetRepair ?? runInlineWidgetRepair;
     this.compileWidget = options.compileWidget ?? compileInlineWidget;
@@ -161,6 +181,12 @@ export class ProjectSessionIntegrationHost {
         pending.settle(command.cancelled ? undefined : command.value);
       return;
     }
+    if (command.type === "respond-project-session-control") {
+      const settle = this.pendingControls.get(command.controlRequestId);
+      if (!settle) throw new Error("That Project Session control request is no longer pending");
+      settle(command.result);
+      return;
+    }
     const pending = this.pendingArtifacts.get(command.artifactRequestId);
     if (pending?.operationId === command.requestId)
       pending.settle(command.cancelled ? undefined : command.value);
@@ -171,19 +197,27 @@ export class ProjectSessionIntegrationHost {
     this.disposed = true;
     for (const pending of this.pendingUi.values()) pending.settle(undefined);
     for (const pending of this.pendingArtifacts.values()) pending.settle(undefined);
+    for (const settle of this.pendingControls.values())
+      settle({ ok: false, error: "The Project Session stopped." });
     this.pendingUi.clear();
     this.pendingArtifacts.clear();
+    this.pendingControls.clear();
   }
 
   cancelPendingRequests() {
     for (const pending of this.pendingArtifacts.values()) pending.settle(undefined);
+    for (const settle of this.pendingControls.values())
+      settle({ ok: false, error: "The Project Session request was cancelled." });
     this.pendingArtifacts.clear();
+    this.pendingControls.clear();
   }
 
   projectSessionRuntimeIntegrations(sessionId: string): ProjectSessionRuntimeIntegrations {
     const reviewContextPath = this.reviewRepository.reviewContextPath;
     return {
       requestUi: (request) => this.requestUi(request),
+      requestApplicationControl: (invocation, signal) =>
+        this.requestApplicationControl(sessionId, invocation, signal),
       emitExtensionUiIntent: (intent) =>
         this.emit({ type: "extension-ui-intent", sessionId, intent }),
       persistArtifact: (artifact) => this.persistArtifact(artifact, sessionId),
@@ -213,6 +247,41 @@ export class ProjectSessionIntegrationHost {
 
   private emit(event: CakeEvent) {
     if (!this.disposed) this.emitEvent(event);
+  }
+
+  private requestApplicationControl(
+    sessionId: string,
+    invocation: ProjectSessionControlInvocation,
+    signal: AbortSignal,
+  ) {
+    if (signal.aborted)
+      return Promise.resolve<JsonValue>({ ok: false, error: "The request was cancelled." });
+    const controlRequestId = crypto.randomUUID();
+    return new Promise<JsonValue>((resolve, reject) => {
+      let settled = false;
+      const settle = (value: JsonValue) => {
+        if (settled) return;
+        settled = true;
+        this.pendingControls.delete(controlRequestId);
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      };
+      const onAbort = () => settle({ ok: false, error: "The request was cancelled." });
+      this.pendingControls.set(controlRequestId, settle);
+      signal.addEventListener("abort", onAbort, { once: true });
+      const request: ProjectSessionControlRequest = {
+        sessionId,
+        controlRequestId,
+        invocation,
+      };
+      try {
+        this.emitApplicationControl({ type: "project-session-control-requested", ...request });
+      } catch (error) {
+        this.pendingControls.delete(controlRequestId);
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      }
+    });
   }
 
   private requestUi(request: RuntimeUiRequest) {

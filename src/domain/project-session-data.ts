@@ -58,6 +58,33 @@ export const ProjectSessionUpdate = Schema.TaggedUnion({
 });
 export type ProjectSessionUpdate = Schema.Schema.Type<typeof ProjectSessionUpdate>;
 
+export const ProjectSessionControlInvocation = Schema.TaggedUnion({
+  CreateDraft: {
+    name: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(500)),
+    initialPrompt: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(100_000)),
+    model: Schema.optionalKey(
+      Schema.Struct({
+        provider: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+        modelId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(512)),
+        thinkingLevel: ThinkingLevel,
+        fastMode: Schema.Boolean,
+      }),
+    ),
+  },
+});
+export type ProjectSessionControlInvocation = Schema.Schema.Type<
+  typeof ProjectSessionControlInvocation
+>;
+
+export const ProjectSessionControlRequest = Schema.Struct({
+  sessionId: boundedId,
+  controlRequestId: Schema.String.check(Schema.isUUID(4)),
+  invocation: ProjectSessionControlInvocation,
+});
+export interface ProjectSessionControlRequest extends Schema.Schema.Type<
+  typeof ProjectSessionControlRequest
+> {}
+
 export const ProjectSessionTarget = Schema.Struct({
   sessionId: boundedId,
   workingDirectory: Schema.optionalKey(boundedPath),

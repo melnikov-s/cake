@@ -4,6 +4,7 @@ import * as projects from "../../domain/projects";
 import * as projectSessions from "../../domain/projectSessions";
 import { ProjectSessionRpc } from "../protocol/ProjectSessionRpc";
 import { RendererConnection } from "../protocol/RendererConnectionMiddleware";
+import { ProjectSessionIntegrations } from "../../services/pi/ProjectSessionIntegrations";
 
 const withConnection = <A, E, R>(operation: (connectionId: number) => Effect.Effect<A, E, R>) =>
   Effect.flatMap(RendererConnection, ({ connectionId }) => operation(connectionId));
@@ -19,31 +20,55 @@ const activateWorkingDirectory = (connectionId: number, workingDirectory: string
     ),
   );
 
+const bindRenderer = (connectionId: number, sessionId: string) =>
+  Effect.flatMap(ProjectSessionIntegrations, (integrations) =>
+    integrations.bindRenderer(sessionId, connectionId),
+  ).pipe(
+    Effect.mapError(
+      (error) => new ProjectSessionError({ operation: "bindRenderer", message: error.message }),
+    ),
+  );
+
 export const projectSessionHandlers = ProjectSessionRpc.of({
   "projectSessions.observeCatalog": (query) => Stream.unwrap(projectSessions.observeCatalog(query)),
   "projectSessions.inspect": (target) => projectSessions.inspect(target),
   "projectSessions.start": (input) =>
     withConnection((connectionId) =>
       activateWorkingDirectory(connectionId, input.workingDirectory).pipe(
+        Effect.andThen(bindRenderer(connectionId, input.sessionId)),
         Effect.andThen(projectSessions.start(input)),
       ),
     ),
   "projectSessions.open": (target) =>
     withConnection((connectionId) =>
-      projectSessions
-        .open(target)
-        .pipe(
-          Effect.tap(() =>
-            target.workingDirectory
-              ? activateWorkingDirectory(connectionId, target.workingDirectory)
-              : Effect.void,
-          ),
+      bindRenderer(connectionId, target.sessionId).pipe(
+        Effect.andThen(projectSessions.open(target)),
+        Effect.tap(() =>
+          target.workingDirectory
+            ? activateWorkingDirectory(connectionId, target.workingDirectory)
+            : Effect.void,
         ),
+      ),
     ),
   "projectSessions.observe": (target) => Stream.unwrap(projectSessions.observe(target)),
-  "projectSessions.prompt": (input) => projectSessions.prompt(input),
-  "projectSessions.steer": (input) => projectSessions.steer(input),
-  "projectSessions.followUp": (input) => projectSessions.followUp(input),
+  "projectSessions.prompt": (input) =>
+    withConnection((connectionId) =>
+      bindRenderer(connectionId, input.sessionId).pipe(
+        Effect.andThen(projectSessions.prompt(input)),
+      ),
+    ),
+  "projectSessions.steer": (input) =>
+    withConnection((connectionId) =>
+      bindRenderer(connectionId, input.sessionId).pipe(
+        Effect.andThen(projectSessions.steer(input)),
+      ),
+    ),
+  "projectSessions.followUp": (input) =>
+    withConnection((connectionId) =>
+      bindRenderer(connectionId, input.sessionId).pipe(
+        Effect.andThen(projectSessions.followUp(input)),
+      ),
+    ),
   "projectSessions.abort": (target) => projectSessions.abort(target),
   "projectSessions.compact": ({ instructions, ...target }) =>
     projectSessions.compact(target, instructions),
@@ -80,4 +105,12 @@ export const projectSessionHandlers = ProjectSessionRpc.of({
   },
   "projectSessions.resolve": (target) => projectSessions.resolve(target).pipe(Effect.asVoid),
   "projectSessions.restore": (target) => projectSessions.restore(target).pipe(Effect.asVoid),
+  "projectSessions.respondControl": ({ sessionId, controlRequestId, result }) =>
+    Effect.flatMap(ProjectSessionIntegrations, (integrations) =>
+      integrations.respondControl(sessionId, controlRequestId, result),
+    ).pipe(
+      Effect.mapError(
+        (error) => new ProjectSessionError({ operation: "respondControl", message: error.message }),
+      ),
+    ),
 });

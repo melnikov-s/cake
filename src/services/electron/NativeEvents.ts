@@ -17,6 +17,7 @@ export interface NativeEventsService {
       | "fatal"
       | "notification"
       | "extension-ui-intent"
+      | "project-session-control-requested"
       | "renderer-events-ready"
     >
   >;

@@ -35,8 +35,10 @@ export const ProjectSessionIntegrationsLive: Layer.Layer<
     const context = yield* Effect.context<ArtifactStorage>();
     const run = Effect.runPromiseWith(context);
     const sessions = new Map<string, SessionIntegration>();
+    const rendererConnections = new Map<string, number>();
 
     const release = (sessionId: string) => {
+      rendererConnections.delete(sessionId);
       const integration = sessions.get(sessionId);
       if (!integration) return;
       sessions.delete(sessionId);
@@ -58,6 +60,12 @@ export const ProjectSessionIntegrationsLive: Layer.Layer<
         ...options,
         workspacePath: workingDirectory,
         emit: electron.broadcast,
+        emitApplicationControl: (event) => {
+          const connectionId = rendererConnections.get(event.sessionId);
+          if (connectionId === undefined)
+            throw new Error("No renderer is associated with the calling Project Session");
+          electron.sendTo(electron.requireRendererConnection(connectionId), event);
+        },
         artifactRepository: {
           upsert: (directory, artifact) => run(artifacts.upsert(directory, artifact)),
           get: (directory, targetSessionId, artifactId) =>
@@ -110,6 +118,12 @@ export const ProjectSessionIntegrationsLive: Layer.Layer<
       releaseSession: Effect.fn("ProjectSessionIntegrations.releaseSession")((sessionId) =>
         Effect.sync(() => release(sessionId)),
       ),
+      bindRenderer: Effect.fn("ProjectSessionIntegrations.bindRenderer")(
+        (sessionId, connectionId) =>
+          Effect.sync(() => {
+            rendererConnections.set(sessionId, connectionId);
+          }),
+      ),
       respondArtifact: Effect.fn("ProjectSessionIntegrations.respondArtifact")(
         (sessionId, response) =>
           Effect.try({
@@ -123,6 +137,18 @@ export const ProjectSessionIntegrationsLive: Layer.Layer<
           try: () => requireSession(sessionId).host.dispatch({ type: "respond-ui", ...response }),
           catch: (cause) => runtimeError("respondUi", cause),
         }),
+      ),
+      respondControl: Effect.fn("ProjectSessionIntegrations.respondControl")(
+        (sessionId, controlRequestId, result) =>
+          Effect.try({
+            try: () =>
+              requireSession(sessionId).host.dispatch({
+                type: "respond-project-session-control",
+                controlRequestId,
+                result,
+              }),
+            catch: (cause) => runtimeError("respondControl", cause),
+          }),
       ),
     });
   }),

@@ -1,5 +1,6 @@
 import { Store, child, createStore, untracked } from "r-state-tree";
 import type { CakeChatControlRequest } from "../../domain/cake-chat-data";
+import type { ProjectSessionControlRequest } from "../../domain/project-session-data";
 import type { ChatConfiguration } from "../../ipc/session-contract";
 import type { RendererClient } from "../client/RendererClient";
 import { RendererClientContext } from "../client/RendererClientContext";
@@ -54,6 +55,7 @@ export class RootStore extends Store<{
       : undefined;
   }
   private readonly respondedCakeChatControlIds = new Set<string>();
+  private readonly respondedProjectSessionControlIds = new Set<string>();
 
   @child
   get pluginCommandStore(): PluginCommandStore {
@@ -141,6 +143,53 @@ export class RootStore extends Store<{
     );
     this.selectProjectSessionForShell(sessionId);
     return { workspacePath: input.workspacePath, sessionId };
+  }
+
+  async respondProjectSessionControl(request: ProjectSessionControlRequest) {
+    if (this.respondedProjectSessionControlIds.has(request.controlRequestId)) return;
+    this.respondedProjectSessionControlIds.add(request.controlRequestId);
+    const catalogSession = this.sessionCatalogStore.find(request.sessionId);
+    const loadedSession = this.sessionRegistry.findSession(request.sessionId);
+    const sourceWorkingDirectory = catalogSession?.workingDirectory ?? loadedSession?.workspacePath;
+    const projectPath =
+      catalogSession?.projectPath ??
+      (sourceWorkingDirectory
+        ? (this.sessionCatalogStore.projectOfManagedWorktree(sourceWorkingDirectory) ??
+          sourceWorkingDirectory)
+        : undefined);
+    const result = projectPath
+      ? await this.appControl
+          .invoke({
+            name: "sessions.create-draft",
+            arguments: request.invocation.model
+              ? {
+                  workspacePath: projectPath,
+                  name: request.invocation.name,
+                  initialPrompt: request.invocation.initialPrompt,
+                  model: request.invocation.model,
+                }
+              : {
+                  workspacePath: projectPath,
+                  name: request.invocation.name,
+                  initialPrompt: request.invocation.initialPrompt,
+                },
+          })
+          .catch((error) => ({
+            ok: false as const,
+            name: "sessions.create-draft",
+            error: error instanceof Error ? error.message : String(error),
+          }))
+      : {
+          ok: false as const,
+          name: "sessions.create-draft",
+          error: "Cake could not find the calling Project Session.",
+        };
+    await this.client.projectSessions.respondControl(
+      request.sessionId,
+      request.controlRequestId,
+      result,
+      { signal: this.signal },
+    );
   }
 
   async createPromptedSession(input: {

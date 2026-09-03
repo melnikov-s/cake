@@ -294,6 +294,14 @@ export function makeRendererClient(runtime: RendererRuntime): RendererClient {
           withClient((client) => client.projectSessions.restore(target)),
           options,
         ),
+      respondControl: (sessionId, controlRequestId, result, options) =>
+        run(
+          "projectSessions.respondControl",
+          withClient((client) =>
+            client.projectSessions.respondControl(sessionId, controlRequestId, result),
+          ),
+          options,
+        ),
     },
     cakeChats: {
       inspect: (sessionId, options) =>

@@ -298,6 +298,10 @@ export interface CakeRuntimeOptions {
   currentSessionControl?: {
     resolved(): boolean;
     setResolved(resolved: boolean): Promise<void>;
+    createDraftSession?(
+      input: { name: string; initialPrompt: string; model?: ChatConfiguration },
+      signal: AbortSignal,
+    ): Promise<JsonValue>;
   };
   vscodeControl?: VscodeControl;
   worktreeLandingControl?: WorktreeLandingControl;
@@ -681,6 +685,10 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     contextStatus(): JsonValue;
     compact(instructions?: string): Promise<JsonValue>;
     rename(title: string): Promise<JsonValue>;
+    createDraftSession(
+      input: { name: string; initialPrompt: string; model?: ChatConfiguration },
+      signal: AbortSignal,
+    ): Promise<JsonValue>;
     setModel(provider: string, modelId: string, reasoning?: ThinkingLevel): Promise<JsonValue>;
     setResolved(resolved: boolean): Promise<JsonValue>;
   }
@@ -723,6 +731,57 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         execute: (input) => {
           // SAFETY: CakeOperationRegistry parsed input with this operation's schema.
           return api().rename((input as { title: string }).title);
+        },
+      },
+      {
+        command: "session.create-draft",
+        topic: "sessions",
+        summary:
+          "Create a saved draft in the calling Project Session's project without starting a Pi session.",
+        guidance: [
+          "This operation derives the project from the calling session and never accepts a workspacePath or sessionId.",
+        ],
+        inputSchema: Schema.Struct({
+          name: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(500))),
+          initialPrompt: Schema.Trim.pipe(
+            Schema.check(Schema.isMinLength(1), Schema.isMaxLength(100_000)),
+          ),
+          model: Schema.optionalKey(
+            Schema.Struct({
+              provider: Schema.Trim.pipe(
+                Schema.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+              ),
+              modelId: Schema.Trim.pipe(
+                Schema.check(Schema.isMinLength(1), Schema.isMaxLength(512)),
+              ),
+              thinkingLevel: Schema.Literals([
+                "off",
+                "minimal",
+                "low",
+                "medium",
+                "high",
+                "xhigh",
+                "max",
+              ]).pipe(Schema.withDecodingDefaultKey(Effect.succeed("off" as const))),
+              fastMode: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
+            }),
+          ),
+        }),
+        examples: [
+          {
+            input: {
+              name: "Authentication follow-up",
+              initialPrompt: "Review the authentication flow and propose the next changes.",
+            },
+          },
+        ],
+        result: "The saved draft session ID and confirmation that renderer persistence completed.",
+        execute: (input, context) => {
+          // SAFETY: CakeOperationRegistry parsed input with this operation's schema.
+          return api().createDraftSession(
+            input as { name: string; initialPrompt: string; model?: ChatConfiguration },
+            context.signal,
+          );
         },
       },
       {
@@ -847,9 +906,12 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         },
       },
     ];
-    return options.currentSessionControl
-      ? operations
-      : operations.filter((operation) => operation.command !== "session.resolve");
+    return operations.filter(
+      (operation) =>
+        (operation.command !== "session.resolve" || options.currentSessionControl !== undefined) &&
+        (operation.command !== "session.create-draft" ||
+          options.currentSessionControl?.createDraftSession !== undefined),
+    );
   };
   let fastMode = options.fastMode?.get() ?? false;
   let currentModel: FastModeModel | undefined;
@@ -1928,6 +1990,11 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         sessionId: cakeSessionId,
         title: session.sessionManager.getSessionName() ?? title.trim(),
       };
+    },
+    async createDraftSession(input, signal) {
+      if (!options.currentSessionControl?.createDraftSession)
+        throw new Error("This Cake runtime cannot create project draft sessions");
+      return options.currentSessionControl.createDraftSession(input, signal);
     },
     async setResolved(resolved) {
       if (!options.currentSessionControl)

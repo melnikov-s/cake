@@ -21,6 +21,7 @@ import {
   repairedInlineWidgetSchema,
 } from "./inline-widget-contract";
 import { jsonValueSchema } from "./json-contract";
+import { ProjectSessionControlRequest } from "../domain/project-session-data";
 import {
   pluginAgentOpenOptionsSchema,
   pluginAgentSnapshotSchema,
@@ -130,6 +131,9 @@ const cakeEventSchemas = {
     sessionId: stringMax(256),
     intent: extensionUiIntentSchema,
   }),
+  "project-session-control-requested": ProjectSessionControlRequest.pipe(
+    Schema.fieldsAssign({ type: Schema.Literal("project-session-control-requested") }),
+  ),
   "plugin-agent-event": Schema.Struct({
     type: Schema.Literal("plugin-agent-event"),
     pluginId: pluginIdSchema,
@@ -185,6 +189,7 @@ export const applicationEventSchema = Schema.Union([
   cakeEventSchemas.fatal,
   cakeEventSchemas.notification,
   cakeEventSchemas["extension-ui-intent"],
+  cakeEventSchemas["project-session-control-requested"],
 ]);
 
 export const artifactEventSchema = Schema.Union([
@@ -235,6 +240,7 @@ export const cakeEventSchema = Schema.Union([
   cakeEventSchemas["plugin-backend-event"],
   cakeEventSchemas["notification"],
   cakeEventSchemas["extension-ui-intent"],
+  cakeEventSchemas["project-session-control-requested"],
   cakeEventSchemas["plugin-agent-event"],
   cakeEventSchemas["terminal-data"],
   cakeEventSchemas["terminal-exited"],

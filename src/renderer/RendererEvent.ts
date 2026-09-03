@@ -10,7 +10,8 @@ type NativePassthroughEvent = Extract<
       | "plugin-backend-event"
       | "fullscreen-surface-close-requested"
       | "artifact-updated"
-      | "extension-ui-intent";
+      | "extension-ui-intent"
+      | "project-session-control-requested";
   }
 >;
 
@@ -134,7 +135,8 @@ export function toRendererEvent(event: CakeEvent): RendererEvent | undefined {
     event.type === "plugin-backend-event" ||
     event.type === "fullscreen-surface-close-requested" ||
     event.type === "artifact-updated" ||
-    event.type === "extension-ui-intent"
+    event.type === "extension-ui-intent" ||
+    event.type === "project-session-control-requested"
   )
     return event;
   if (

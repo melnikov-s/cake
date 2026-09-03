@@ -151,4 +151,12 @@ export const ProjectSessionRpc = RpcGroup.make(
     payload: ProjectSessionTarget,
     error: ProjectSessionError,
   }),
+  Rpc.make("projectSessions.respondControl", {
+    payload: {
+      sessionId: ProjectSessionTarget.fields.sessionId,
+      controlRequestId: Schema.String.check(Schema.isUUID(4)),
+      result: Schema.Json,
+    },
+    error: ProjectSessionError,
+  }),
 );
