@@ -102,7 +102,7 @@ const makeLayer = (
     catalogModifiedAt?(): string;
     onResolvedCatalog?(): void;
     onMigrateProject?(): void;
-    onLocations?(): void;
+    onLocations?(options?: { readonly includeInactive?: boolean }): void;
     locations?: ReadonlyArray<ProjectSessionLocation>;
     onRuntimeOptions?(newSession: boolean): void;
     prompt?(): Promise<void>;
@@ -176,8 +176,8 @@ const makeLayer = (
     makePiSessionsLayer(adapter),
     SubagentCoordinatorLive,
     makeProjectSessionEnvironmentLayer({
-      locations: () => {
-        hooks.onLocations?.();
+      locations: (options) => {
+        hooks.onLocations?.(options);
         return Effect.succeed(
           hooks.locations ?? [
             {
@@ -615,6 +615,45 @@ describe("Project Sessions domain", () => {
       Effect.provide(
         makeLayer(defaultApplicationState(), {
           onCreateRuntime: () => runtimeConstructions++,
+          onArchive: () => archives++,
+        }),
+      ),
+    );
+  });
+
+  it.effect("resolves a session from an inactive Managed Worktree location", () => {
+    let includeInactive = false;
+    let archives = 0;
+    return Effect.gen(function* () {
+      yield* projectSessions.resolve({
+        sessionId: "session-1",
+        workingDirectory: "/discarded-worktree",
+      });
+      assert.equal(includeInactive, true);
+      assert.equal(archives, 1);
+    }).pipe(
+      Effect.provide(
+        makeLayer(defaultApplicationState(), {
+          locations: [
+            {
+              projectPath: "/project",
+              projectName: "Project",
+              workingDirectory: "/discarded-worktree",
+              sessionDirectory: "/sessions",
+              resolvedSessionDirectory: "/resolved-sessions",
+              managedWorktree: {
+                projectPath: "/project",
+                worktreePath: "/discarded-worktree",
+                branch: "agent/discarded",
+                baseBranch: "main",
+                state: "discarded",
+                createdAt: "2026-01-01T00:00:00.000Z",
+              },
+            },
+          ],
+          onLocations: (options) => {
+            includeInactive = options?.includeInactive === true;
+          },
           onArchive: () => archives++,
         }),
       ),

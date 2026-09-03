@@ -370,6 +370,7 @@ export const observeCatalog = Effect.fn("ProjectSessions.observeCatalog")(functi
 
 const findLocation = Effect.fn("ProjectSessions.findLocation")(function* (
   target: ProjectSessionTarget,
+  options?: { readonly includeInactive?: boolean },
 ) {
   const archive = yield* SessionArchiveStorage;
   const archived = yield* archive
@@ -381,7 +382,7 @@ const findLocation = Effect.fn("ProjectSessions.findLocation")(function* (
   )
     return archivedLocation(archived);
   const environment = yield* ProjectSessionEnvironment;
-  const locations = yield* environment.locations().pipe(asError("resolve"));
+  const locations = yield* environment.locations(options).pipe(asError("resolve"));
   const candidates = target.workingDirectory
     ? locations.filter((item) => item.workingDirectory === target.workingDirectory)
     : locations;
@@ -968,7 +969,10 @@ export const handoff = Effect.fn("ProjectSessions.handoff")(function* (input: {
 export const resolve = Effect.fn("ProjectSessions.resolve")(function* (
   target: ProjectSessionTarget,
 ) {
-  const location = yield* findLocation(target);
+  // A compound "Discard & resolve" removes the Git worktree first. Its Pi
+  // transcript still lives under the historical Working Directory namespace,
+  // so resolution must retain inactive Managed Worktrees as routing metadata.
+  const location = yield* findLocation(target, { includeInactive: true });
   const sessions = yield* PiSessions;
   const status = yield* sessions.currentStatus({
     workingDirectory: location.workingDirectory,
