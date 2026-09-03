@@ -246,21 +246,16 @@ export const App = observer(function App() {
       </>
     );
   const shellStyle: CSSProperties & Record<"--sidebar-width" | "--right-pane-width", string> = {
-    "--sidebar-width": `${Math.min(sidebarWidth, sidebarMax)}px`,
-    "--right-pane-width": `${Math.min(commandPaneWidth, commandPaneMax)}px`,
+    "--sidebar-width": sidebarCollapsed ? "0px" : `${Math.min(sidebarWidth, sidebarMax)}px`,
+    "--right-pane-width": store.commandPaneStore.pane
+      ? `${Math.min(commandPaneWidth, commandPaneMax)}px`
+      : "0px",
   };
   return (
     <main
       className={cn(
         "relative grid h-screen w-screen max-w-[100vw] overflow-hidden bg-background text-foreground transition-[grid-template-columns] duration-180 ease-out",
-        "grid-cols-[var(--sidebar-width)_minmax(0,1fr)_0px] max-[820px]:grid-cols-[min(var(--sidebar-width),230px)_minmax(0,1fr)_0px] max-[620px]:grid-cols-[0px_minmax(0,1fr)]",
-        sidebarCollapsed &&
-          "grid-cols-[0px_minmax(0,1fr)_0px] max-[820px]:grid-cols-[0px_minmax(0,1fr)_0px]",
-        store.commandPaneStore.pane &&
-          "grid-cols-[var(--sidebar-width)_minmax(0,1fr)_var(--right-pane-width)] max-[820px]:grid-cols-[min(var(--sidebar-width),230px)_minmax(0,1fr)_var(--right-pane-width)]",
-        sidebarCollapsed &&
-          store.commandPaneStore.pane &&
-          "grid-cols-[0px_minmax(0,1fr)_var(--right-pane-width)]",
+        "grid-cols-[var(--sidebar-width)_minmax(0,1fr)_var(--right-pane-width)] max-[820px]:grid-cols-[min(var(--sidebar-width),230px)_minmax(0,1fr)_var(--right-pane-width)] max-[620px]:grid-cols-[0px_minmax(0,1fr)]",
         resizingPanel && "cursor-col-resize select-none transition-none",
       )}
       style={shellStyle}
@@ -299,7 +294,7 @@ export const App = observer(function App() {
       )}
       <section
         data-slot="workspace"
-        className="relative grid h-full min-h-0 min-w-0 grid-rows-[52px_minmax(0,1fr)] overflow-hidden [contain:inline-size]"
+        className="relative col-start-2 grid h-full min-h-0 min-w-0 grid-rows-[52px_minmax(0,1fr)] overflow-hidden [contain:inline-size]"
         data-session-id={
           shell.selection.kind === "cake-chat"
             ? shell.selection.sessionId

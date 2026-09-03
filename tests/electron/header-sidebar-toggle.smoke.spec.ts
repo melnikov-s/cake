@@ -66,12 +66,27 @@ test("header sidebar toggle only appears when the sidebar is collapsed", async (
     // Collapse the sidebar.
     await page.getByRole("complementary").getByRole("button", { name: "Toggle sidebar" }).click();
 
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const workspace = document
+            .querySelector('[data-slot="workspace"]')
+            ?.getBoundingClientRect();
+          return Boolean(workspace && workspace.left === 0 && workspace.right === innerWidth);
+        }),
+      )
+      .toBe(true);
+
     const state = await page.evaluate(() => {
       const toggle = document.querySelector('[data-slot="header-sidebar-toggle"]');
       const rect = toggle?.getBoundingClientRect();
+      const workspace = document.querySelector('[data-slot="workspace"]')?.getBoundingClientRect();
       const display = toggle ? getComputedStyle(toggle).display : "";
       return {
         visible: Boolean(rect && rect.width > 0 && rect.height > 0),
+        workspaceFillsWindow: Boolean(
+          workspace && workspace.left === 0 && workspace.right === innerWidth,
+        ),
         clearsWindowControls: Boolean(rect && rect.left >= 84),
         // Same horizontal line as the 46px .sidebar-window-tools row (28px
         // buttons centered in it → 23px from the window's top edge) despite
@@ -82,6 +97,7 @@ test("header sidebar toggle only appears when the sidebar is collapsed", async (
     });
     expect(state).toEqual({
       visible: true,
+      workspaceFillsWindow: true,
       clearsWindowControls: true,
       alignedWithWindowToolsRow: true,
       display: "grid",

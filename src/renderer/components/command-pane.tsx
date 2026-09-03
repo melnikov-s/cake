@@ -50,7 +50,7 @@ export const CommandPane = observer(function CommandPane({
       : [];
   return (
     <aside
-      className="flex h-full w-full flex-col overflow-y-auto border-l border-border bg-card/40 p-6 max-[620px]:fixed max-[620px]:inset-x-0 max-[620px]:bottom-0 max-[620px]:top-[52px] max-[620px]:z-45 max-[620px]:border-l-0"
+      className="col-start-3 flex h-full w-full flex-col overflow-y-auto border-l border-border bg-card/40 p-6 max-[620px]:fixed max-[620px]:inset-x-0 max-[620px]:bottom-0 max-[620px]:top-[52px] max-[620px]:z-45 max-[620px]:border-l-0"
       aria-labelledby="command-pane-title"
     >
       <header className="mb-4 flex items-center justify-between">
