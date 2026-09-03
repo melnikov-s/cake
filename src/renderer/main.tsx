@@ -89,7 +89,7 @@ async function bootstrap(bridge: NonNullable<typeof window.cake>) {
     cakeChatCatalogQueries: () => rootStore.sidebarStore.cakeChatCatalogQueries,
     projectSessions: () => {
       const blockedPath = rootStore.projectWorkbenchStore.pendingAuthorizationPath;
-      return rootStore.sessionRegistry.materializedSessions
+      return rootStore.sessionRegistry.observationSessions
         .filter(
           (session) =>
             session.workspacePath !== blockedPath &&

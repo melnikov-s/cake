@@ -169,6 +169,8 @@ const publishCatalogStatus = Effect.fn("ProjectSessions.publishCatalogStatus")(f
   });
 });
 
+const ACTIVE_CATALOG_LOCATION_CONCURRENCY = 32;
+
 const catalogForState = Effect.fn("ProjectSessions.catalogForState")(function* (
   query: ProjectSessionCatalogQuery,
   state: ApplicationState,
@@ -216,7 +218,7 @@ const catalogForState = Effect.fn("ProjectSessions.catalogForState")(function* (
   const environment = yield* ProjectSessionEnvironment;
   const sessions = yield* PiSessions;
   const locations = yield* environment.locations().pipe(asError("list"));
-  return Stream.fromIterable(
+  const locationCatalogs = Stream.fromIterable(
     locations.filter((location) => location.projectPath === query.projectPath),
   ).pipe(
     Stream.flatMap(
@@ -230,8 +232,14 @@ const catalogForState = Effect.fn("ProjectSessions.catalogForState")(function* (
           Stream.catch(() => Stream.empty),
         );
       },
-      { concurrency: 8 },
+      { concurrency: ACTIVE_CATALOG_LOCATION_CONCURRENCY },
     ),
+  );
+  // Project-root and Managed Worktree catalogs form one initial projection. Scan
+  // their lightweight metadata concurrently, then release the bounded batches
+  // together instead of visually appending worktree sessions after root sessions.
+  return Stream.fromEffect(Stream.runCollect(locationCatalogs)).pipe(
+    Stream.flatMap(Stream.fromIterable),
   );
 });
 

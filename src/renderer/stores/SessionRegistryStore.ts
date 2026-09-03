@@ -15,6 +15,8 @@ import type { WorktreeStoreProps } from "./WorktreeStore";
 import type { ExistingWorktreeCandidate, WorktreeDraftChoice } from "./WorktreeCreationStore";
 import type { Session } from "../models/Session";
 
+const IDLE_OBSERVATION_LIMIT = 20;
+
 export interface SessionRegistryStoreProps {
   catalog?: SessionCatalogStore;
   sessionModel(sessionId: string, workingDirectory: string): Session;
@@ -67,6 +69,8 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
   @snapshot private stagedSessionId: string | undefined;
   private readonly sessionsById = new Map<string, ProjectSessionStore>();
   private readonly submittingSessionIds: string[] = observable([]);
+  /** Process-local LRU. Selected and running sessions are pinned outside this idle budget. */
+  private readonly recentObservationSessionIds: string[] = observable([]);
 
   @child
   get sessions(): ProjectSessionStore[] {
@@ -120,13 +124,27 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     this.rememberSessionLocation(sessionId, workingDirectory);
     const session = this.addTarget(sessionId, workingDirectory);
     addUnique(this.materializedSessionIds, sessionId);
+    this.retainObservation(sessionId);
     return session;
   }
 
-  get materializedSessions() {
-    return this.sessions.filter((session) =>
-      this.materializedSessionIds.includes(session.sessionId),
+  /** Project Sessions whose transcript projections should remain synchronized. */
+  get observationSessions() {
+    const recent = new Set(this.recentObservationSessionIds);
+    return this.sessions.filter(
+      (session) =>
+        this.isObservableSession(session) &&
+        (recent.has(session.sessionId) ||
+          this.props.isActive(session.sessionId) ||
+          this.isRunning(session)),
     );
+  }
+
+  /** Marks a user-visible or newly started session as most recently used. */
+  retainObservation(sessionId: string) {
+    if (!this.materializedSessionIds.includes(sessionId)) return;
+    this.touchObservationLru(sessionId);
+    this.trimObservationLru();
   }
 
   get pendingSummaries(): readonly PendingSessionSummary[] {
@@ -172,6 +190,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
       this.rememberSessionLocation(sessionId, workingDirectory);
       const session = this.addTarget(sessionId, workingDirectory);
       addUnique(this.materializedSessionIds, sessionId);
+      this.retainObservation(sessionId);
       removeValue(this.temporarySessionIds, sessionId);
       removeValue(this.submittingSessionIds, sessionId);
       if (this.stagedSessionId === sessionId) this.stagedSessionId = undefined;
@@ -324,11 +343,49 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     if (this.stagedSessionId === sessionId) this.stagedSessionId = undefined;
     removeValue(this.unlistedNewSessionIds, sessionId);
     removeValue(this.materializedSessionIds, sessionId);
+    removeValue(this.recentObservationSessionIds, sessionId);
     delete this.pendingConfigurationsBySession[sessionId];
     delete this.pendingNamesBySession[sessionId];
     delete this.draftSessionsById[sessionId];
     delete this.pendingSummaryMetadataBySession[sessionId];
     removeValue(this.submittingSessionIds, sessionId);
+  }
+
+  private isRunning(session: ProjectSessionStore) {
+    return (
+      session.model.streaming ||
+      session.model.activeTurnIds.length > 0 ||
+      session.model.backgroundWorkActive
+    );
+  }
+
+  private isObservableSession(session: ProjectSessionStore) {
+    return (
+      this.materializedSessionIds.includes(session.sessionId) &&
+      !this.props.catalog?.find(session.sessionId)?.resolved
+    );
+  }
+
+  private touchObservationLru(sessionId: string) {
+    removeValue(this.recentObservationSessionIds, sessionId);
+    this.recentObservationSessionIds.push(sessionId);
+  }
+
+  private trimObservationLru() {
+    for (let index = this.recentObservationSessionIds.length - 1; index >= 0; index -= 1) {
+      const sessionId = this.recentObservationSessionIds[index]!;
+      const session = this.findSession(sessionId);
+      if (session && this.isObservableSession(session)) continue;
+      this.recentObservationSessionIds.splice(index, 1);
+    }
+    const idleIds = this.recentObservationSessionIds.filter((sessionId) => {
+      const session = this.findSession(sessionId)!;
+      return !this.props.isActive(sessionId) && !this.isRunning(session);
+    });
+    while (idleIds.length > IDLE_OBSERVATION_LIMIT) {
+      const sessionId = idleIds.shift()!;
+      removeValue(this.recentObservationSessionIds, sessionId);
+    }
   }
 
   private addTarget(sessionId: string, workspacePath: string) {
@@ -382,6 +439,29 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     this.reaction(
       () => this.props.catalog?.authoritativeSessionIds ?? [],
       (sessionIds) => this.reconcileAuthoritativeSessions(sessionIds),
+    );
+    this.reaction(
+      () =>
+        this.sessions.map((session) => ({
+          sessionId: session.sessionId,
+          active: this.props.isActive(session.sessionId),
+          running: this.isRunning(session),
+          resolved: this.props.catalog?.find(session.sessionId)?.resolved ?? false,
+        })),
+      (sessions, previousSessions) => {
+        const previousById = new Map(
+          previousSessions.map((session) => [session.sessionId, session]),
+        );
+        for (const session of sessions) {
+          const previous = previousById.get(session.sessionId);
+          if (
+            previous &&
+            ((previous.active && !session.active) || (previous.running && !session.running))
+          )
+            this.touchObservationLru(session.sessionId);
+        }
+        this.trimObservationLru();
+      },
     );
   }
 }

@@ -261,6 +261,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       this.selectedSessionId = selection.sessionId;
       if (!this.sessionRegistry.findSession(selection.sessionId))
         this.sessionRegistry.load(selection.sessionId, selection.workspacePath);
+      else this.sessionRegistry.retainObservation(selection.sessionId);
     }
     const path = this.projectPath;
     if (!path) return;
@@ -517,6 +518,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     const session = this.sessionRegistry.findSession(sessionId);
     // An identity-only registry entry must not replace the visible session.
     if (!session) return false;
+    this.sessionRegistry.retainObservation(sessionId);
     this.suspendEmbeddedEditor();
     this.projectPath = session.workspacePath;
     this.selectedSessionId = sessionId;

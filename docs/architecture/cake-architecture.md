@@ -248,7 +248,10 @@ The window Store hierarchy mirrors the product surfaces:
   expanding a group never restarts discovery or clears its projection. Its
   active discovery reads only the Project root and active or landed Managed
   Worktrees; finished, discarded, and missing worktrees never participate in
-  startup. Metadata arrives in bounded batches. The resolved lane and every
+  startup. Project-root and active or landed Managed Worktree metadata scans run
+  concurrently and join the same bounded initial projection, so worktree sessions
+  do not appear as a delayed second catalog. Metadata arrives in bounded batches.
+  The resolved lane and every
   resolved project group start collapsed, so archive metadata is not read until
   both are expanded. After its first expansion, a resolved group's catalog and
   projection remain active for the window lifetime; collapsing it changes only
@@ -286,7 +289,12 @@ The window Store hierarchy mirrors the product surfaces:
   state and lifetime; the workbench does not re-export one-for-one child APIs.
 - The root-scoped `SessionRegistryStore` preserves one keyed
   `ProjectSessionStore` for every loaded project-session ID so background
-  project events and navigation share session identity. The window has exactly one
+  project events and navigation share session identity. Persisted loaded-session
+  identity does not create transcript observation demand after restart. The selected
+  session and every session running in the current process are pinned for observation;
+  up to 20 additional idle sessions remain observed in a process-local LRU. Selecting,
+  opening, or starting a session refreshes that retention, and eviction stops its live
+  observation while preserving its loaded Store and Model for later reuse. The window has exactly one
   unsent, unsaved project chat. It is staged renderer state, not a session: it does
   not enter the session catalog or navigation history, and repeatedly choosing New
   Chat reopens the same staged composer with its text, attachments, configuration,

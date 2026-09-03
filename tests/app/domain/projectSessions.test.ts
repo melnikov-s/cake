@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
-import { Deferred, Effect, Fiber, Layer, Stream, SubscriptionRef } from "effect";
+import { Deferred, Effect, Fiber, Layer, Queue, Stream, SubscriptionRef } from "effect";
+import * as TestClock from "effect/testing/TestClock";
 import { describe } from "vitest";
 import * as projectSessions from "../../../src/domain/projectSessions";
+import type { SessionCatalogUpdate } from "../../../src/domain/catalog-data";
 import { getState } from "../../../src/domain/application";
 import {
   defaultApplicationState,
@@ -13,13 +15,16 @@ import type {
   CakeRuntime,
   CakeRuntimeOptions,
 } from "../../../src/services/pi/runtime/cake-runtime";
-import { makeProjectSessionEnvironmentLayer } from "../../../src/services/project-sessions/ProjectSessionEnvironment";
+import {
+  makeProjectSessionEnvironmentLayer,
+  type ProjectSessionLocation,
+} from "../../../src/services/project-sessions/ProjectSessionEnvironment";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { SubagentCoordinatorLive } from "../../../src/services/subagents/SubagentCoordinator";
 import { Terminal } from "../../../src/services/terminal/Terminal";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
-import type { SessionSnapshot } from "../../../src/ipc/session-contract";
+import type { SessionSnapshot, SessionSummary } from "../../../src/ipc/session-contract";
 
 const snapshot: SessionSnapshot = {
   workspacePath: "/project",
@@ -93,10 +98,12 @@ const makeLayer = (
     onArchive?(): void;
     onRestore?(): void;
     onCatalog?(): void;
+    catalog?(workingDirectory: string): Stream.Stream<SessionSummary, unknown>;
     catalogModifiedAt?(): string;
     onResolvedCatalog?(): void;
     onMigrateProject?(): void;
     onLocations?(): void;
+    locations?: ReadonlyArray<ProjectSessionLocation>;
     onRuntimeOptions?(newSession: boolean): void;
     prompt?(): Promise<void>;
     sessionExists?: boolean;
@@ -124,8 +131,9 @@ const makeLayer = (
     }),
   );
   const adapter: PiSessionsAdapter = {
-    catalog: () => {
+    catalog: (query) => {
       hooks.onCatalog?.();
+      if (hooks.catalog) return hooks.catalog(query.workingDirectory);
       return hooks.sessionExists === false || resolvedOnDisk
         ? Stream.empty
         : Stream.make({
@@ -170,15 +178,17 @@ const makeLayer = (
     makeProjectSessionEnvironmentLayer({
       locations: () => {
         hooks.onLocations?.();
-        return Effect.succeed([
-          {
-            projectPath: "/project",
-            projectName: "Project",
-            workingDirectory: "/project",
-            sessionDirectory: "/sessions",
-            resolvedSessionDirectory: "/resolved-sessions",
-          },
-        ]);
+        return Effect.succeed(
+          hooks.locations ?? [
+            {
+              projectPath: "/project",
+              projectName: "Project",
+              workingDirectory: "/project",
+              sessionDirectory: "/sessions",
+              resolvedSessionDirectory: "/resolved-sessions",
+            },
+          ],
+        );
       },
       runtimeOptions: ({ location, sessionId, newSession }) =>
         Effect.sync(() => {
@@ -379,6 +389,81 @@ describe("Project Sessions domain", () => {
       assert.equal(resolvedCatalogs, 0);
     }).pipe(Effect.provide(makeLayer(undefined, { onResolvedCatalog: () => resolvedCatalogs++ })));
   });
+
+  it.effect("publishes project-root and worktree metadata in one initial update", () =>
+    Effect.gen(function* () {
+      const releaseWorktree = yield* Deferred.make<void>();
+      const rootScanned = yield* Deferred.make<void>();
+      const session = (id: string): SessionSummary => ({
+        id,
+        title: id,
+        created: "2026-01-01T00:00:00.000Z",
+        modified: "2026-01-02T00:00:00.000Z",
+        messageCount: 0,
+        resolved: false,
+      });
+      const locations: ReadonlyArray<ProjectSessionLocation> = [
+        {
+          projectPath: "/project",
+          projectName: "Project",
+          workingDirectory: "/project",
+          sessionDirectory: "/sessions",
+          resolvedSessionDirectory: "/resolved-sessions",
+        },
+        {
+          projectPath: "/project",
+          projectName: "Project",
+          workingDirectory: "/worktree",
+          sessionDirectory: "/sessions",
+          resolvedSessionDirectory: "/resolved-sessions",
+        },
+      ];
+      const layer = makeLayer(undefined, {
+        locations,
+        catalog: (workingDirectory) =>
+          workingDirectory === "/project"
+            ? Stream.make(session("root-session")).pipe(
+                Stream.ensuring(Deferred.succeed(rootScanned, undefined)),
+              )
+            : Stream.fromEffect(
+                Deferred.await(releaseWorktree).pipe(Effect.as(session("worktree-session"))),
+              ),
+      });
+
+      yield* Effect.gen(function* () {
+        const updates = yield* projectSessions.observeCatalog({
+          projectPath: "/project",
+          resolved: false,
+        });
+        const published = yield* Queue.unbounded<SessionCatalogUpdate>();
+        const firstUpdate = yield* updates.pipe(
+          Stream.take(1),
+          Stream.runForEach((update) => Queue.offer(published, update)),
+          Effect.forkChild,
+        );
+
+        yield* Deferred.await(rootScanned);
+        yield* TestClock.adjust("16 millis");
+        assert.equal(yield* Queue.size(published), 0);
+
+        yield* Deferred.succeed(releaseWorktree, undefined);
+        yield* Fiber.join(firstUpdate);
+        const observed = yield* Queue.take(published);
+        assert.deepEqual(
+          observed._tag === "Snapshot"
+            ? observed.sessions.map(({ sessionId, workingDirectory }) => ({
+                sessionId,
+                workingDirectory,
+              }))
+            : [],
+          [
+            { sessionId: "root-session", workingDirectory: "/project" },
+            { sessionId: "worktree-session", workingDirectory: "/worktree" },
+          ],
+        );
+      }).pipe(Effect.provide(layer));
+    }),
+  );
 
   it.effect("updates one catalog entry without restarting its initial scan", () => {
     let catalogScans = 0;

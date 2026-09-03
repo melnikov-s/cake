@@ -128,7 +128,10 @@ window snapshot persistence to the mounted Root Store; neither is a Store.
 
 A window-owned renderer Model registry creates and retains passive projection
 Models independently of Store and React lifetimes. Session Stores receive those
-Models as dependencies. Window teardown first stops native events and Model
+Models as dependencies. Loaded Project Session identity is independent from observation
+lifetime: the selected and currently running sessions are pinned, while a process-local
+20-session idle LRU bounds warm observations. Persisted loaded identities do not demand
+subscriptions at startup. Window teardown first stops native events and Model
 synchronization, then disposes the Store tree, and finally disposes the Models.
 
 Renderer Stores read those Models, invoke `RendererClient`, and own window-local

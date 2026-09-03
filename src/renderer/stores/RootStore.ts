@@ -72,6 +72,12 @@ export class RootStore extends Store<{
     throw new Error("Cake could not find that session");
   }
 
+  private retainProjectSessionObservation(sessionId: string) {
+    const summary = this.sessionCatalogStore.find(sessionId);
+    if (summary) this.sessionRegistry.load(sessionId, summary.workingDirectory);
+    else this.sessionRegistry.retainObservation(sessionId);
+  }
+
   async openSession(sessionId: string, messageId?: string) {
     this.projectSession(sessionId);
     this.projectWorkbenchStore.dismissSecondarySurfaces();
@@ -644,6 +650,7 @@ export class RootStore extends Store<{
       createDraftSession: (input) => this.createDraftSession(input),
       sendSessionMessage: (sessionId, text, delivery) =>
         this.appControlOperationStore.run(() => {
+          this.retainProjectSessionObservation(sessionId);
           const command =
             delivery === "steer"
               ? this.client.projectSessions.steer
