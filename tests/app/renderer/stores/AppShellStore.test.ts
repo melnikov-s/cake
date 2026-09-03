@@ -11,7 +11,6 @@ const createShell = (
 ) =>
   mount(
     createStore(AppShellStore, {
-      sessionWorkspacePath: (sessionId) => `/work/${sessionId}`,
       projectSessionResolved: resolved.project,
       cakeChatSessionResolved: resolved.cakeChat,
       markProjectSessionRead,
@@ -108,7 +107,6 @@ describe("AppShellStore session history", () => {
 
     expect(shell.selection).toEqual({
       kind: "project-session",
-      workspacePath: "/work/resolved",
       sessionId: "resolved",
     });
     expect(shell.goBack()).toBeUndefined();

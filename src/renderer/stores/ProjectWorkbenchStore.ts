@@ -490,6 +490,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     if (!workspacePath) throw new Error(`Cake could not find session ${sessionId}`);
     this.markSessionRead(sessionId);
     if (workspacePath === this.projectPath && sessionId === this.session?.sessionId) {
+      this.props.onSessionShown(sessionId);
       this.restoreSessionPresentation();
       return;
     }

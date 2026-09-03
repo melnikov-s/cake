@@ -236,7 +236,6 @@ describe("Sidebar projects", () => {
             {
               selection: {
                 kind: "project-session",
-                workspacePath: "/work/cake",
                 sessionId: "ready",
               },
             } as any
@@ -262,7 +261,6 @@ describe("Sidebar projects", () => {
             {
               selection: {
                 kind: "project-session",
-                workspacePath: "/work/cake",
                 sessionId: "running",
               },
             } as any
@@ -705,7 +703,6 @@ describe("Sidebar projects", () => {
               {
                 selection: {
                   kind: "project-session",
-                  workspacePath: "/work/cake",
                   sessionId: "session-1",
                 },
                 canGoBack,
@@ -802,7 +799,6 @@ describe("Sidebar projects", () => {
             {
               selection: {
                 kind: "project-session",
-                workspacePath: "/work/cake",
                 sessionId: "project-session",
               },
             } as any
@@ -936,7 +932,6 @@ describe("Sidebar projects", () => {
             {
               selection: {
                 kind: "project-session",
-                workspacePath: "/work/cake",
                 sessionId: "active",
               },
             } as any
@@ -962,7 +957,6 @@ describe("Sidebar projects", () => {
             {
               selection: {
                 kind: "project-session",
-                workspacePath: "/work/cake",
                 sessionId: "resolved",
               },
             } as any
@@ -1010,7 +1004,6 @@ describe("Sidebar projects", () => {
             {
               selection: {
                 kind: "project-session",
-                workspacePath: "/work/cake",
                 sessionId: "selected",
               },
             } as any

@@ -238,9 +238,12 @@ The window Store hierarchy mirrors the product surfaces:
   their focused owners outside the Store tree.
 - `AppShellStore` owns the window's one mutually exclusive application
   selection: a Project Session, a Cake Chat Session, settings, or an empty
-  workbench. The visible surface and every active navigation treatment derive
-  from that selection. `SidebarStore` owns navigation presentation and
-  filtering, visibility, and width; neither Store opens sessions directly.
+  workbench. A Project Session selection stores only its globally unique Session
+  ID; its Working Directory is routing context derived from the session catalog
+  or registry, never part of selection identity. The visible surface and every
+  active navigation treatment derive from that selection. `SidebarStore` owns
+  navigation presentation and filtering, visibility, and width; neither Store
+  opens sessions directly.
 - `ProjectCatalogStore` owns registered project records and their window-local
   ordering. `SessionCatalogStore` owns the currently demanded, activity-sorted
   session metadata projection plus cached ID and project-group indexes. Active

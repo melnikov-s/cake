@@ -64,12 +64,17 @@ export class RootStore extends Store<{
     return this.props.rendererClient;
   }
 
-  private projectSession(sessionId: string) {
-    const catalogSession = this.sessionCatalogStore.find(sessionId);
-    if (catalogSession) return catalogSession;
-    const loadedSession = this.sessionRegistry.findSession(sessionId);
-    if (loadedSession) return { workspacePath: loadedSession.workspacePath };
-    throw new Error("Cake could not find that session");
+  private projectSessionWorkingDirectory(sessionId: string) {
+    return (
+      this.sessionCatalogStore.find(sessionId)?.workingDirectory ??
+      this.sessionRegistry.findSession(sessionId)?.workspacePath
+    );
+  }
+
+  private requireProjectSessionWorkingDirectory(sessionId: string) {
+    const workingDirectory = this.projectSessionWorkingDirectory(sessionId);
+    if (!workingDirectory) throw new Error("Cake could not find that session");
+    return workingDirectory;
   }
 
   private retainProjectSessionObservation(sessionId: string) {
@@ -79,7 +84,7 @@ export class RootStore extends Store<{
   }
 
   async openSession(sessionId: string, messageId?: string) {
-    this.projectSession(sessionId);
+    this.requireProjectSessionWorkingDirectory(sessionId);
     this.projectWorkbenchStore.dismissSecondarySurfaces();
     await this.projectWorkbenchStore.openSession(sessionId);
     if (!this.projectWorkbenchStore.isActiveSession(sessionId)) return false;
@@ -105,7 +110,10 @@ export class RootStore extends Store<{
   initialize() {
     const selection = this.appShellStore.selection;
     if (selection.kind === "project-session")
-      return this.projectWorkbenchStore.initialize(selection);
+      return this.projectWorkbenchStore.initialize({
+        sessionId: selection.sessionId,
+        workspacePath: this.requireProjectSessionWorkingDirectory(selection.sessionId),
+      });
     if (selection.kind === "workbench") return this.projectWorkbenchStore.initialize();
     return Promise.resolve();
   }
@@ -452,11 +460,10 @@ export class RootStore extends Store<{
     const selection = this.appShellStore.selection;
     if (selection.kind === "project-session") {
       if (this.sessionCatalogStore.find(selection.sessionId)?.resolved) return undefined;
-      return {
-        kind: "project",
-        sessionId: selection.sessionId,
-        workspacePath: selection.workspacePath,
-      };
+      const workspacePath = this.projectSessionWorkingDirectory(selection.sessionId);
+      return workspacePath
+        ? { kind: "project", sessionId: selection.sessionId, workspacePath }
+        : undefined;
     }
     if (selection.kind === "cake-chat" && selection.sessionId) {
       if (this.globalChatStore.isSessionResolved(selection.sessionId)) return undefined;
@@ -593,9 +600,6 @@ export class RootStore extends Store<{
   @child
   get appShellStore(): AppShellStore {
     return createStore(AppShellStore, {
-      sessionWorkspacePath: (sessionId) =>
-        this.sessionCatalogStore.find(sessionId)?.workingDirectory ??
-        this.sessionRegistry.findSession(sessionId)?.workspacePath,
       projectSessionResolved: (sessionId) => this.sessionCatalogModel.find(sessionId)?.resolved,
       cakeChatSessionResolved: (sessionId) => this.cakeChatCatalogModel.find(sessionId)?.resolved,
       markProjectSessionRead: (sessionId) =>

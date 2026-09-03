@@ -204,15 +204,13 @@ const migrateLegacyWindowState = Effect.fn("WindowStateStorage.migrateLegacy")(f
       draft: item.lifecycle === "saved-draft",
     }));
 
-  const selection =
-    legacy.activeConversation ??
-    (selectedSessionId && legacy.projectPath
-      ? {
-          kind: "project-session" as const,
-          workspacePath: legacy.projectPath,
-          sessionId: selectedSessionId,
-        }
-      : { kind: "workbench" as const });
+  const selection = legacy.activeConversation
+    ? legacy.activeConversation.kind === "project-session"
+      ? { kind: "project-session" as const, sessionId: legacy.activeConversation.sessionId }
+      : legacy.activeConversation
+    : selectedSessionId && legacy.projectPath
+      ? { kind: "project-session" as const, sessionId: selectedSessionId }
+      : { kind: "workbench" as const };
   const pendingCakeChat = legacy.pendingCakeChat;
   const selectedCakeChatId =
     selection.kind === "cake-chat" ? selection.sessionId : pendingCakeChat?.sessionId;

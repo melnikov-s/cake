@@ -11,6 +11,54 @@ import { SessionOperationCoordinatorStore } from "../../../../src/renderer/store
 import { mountWithRendererClient } from "../mount-with-renderer-client";
 
 describe("ProjectWorkbenchStore startup selection", () => {
+  it("recommits an already active session when the shell opens it from Cake Chat", async () => {
+    const open = vi.fn(async () => undefined);
+    const onSessionShown = vi.fn();
+    const operations = mount(createStore(SessionOperationCoordinatorStore));
+    const session = {
+      workspacePath: "/project",
+      model: { sessionId: "session-1" },
+      ideMode: false,
+      markRead: vi.fn(),
+    };
+    const registry = {
+      findSession: (sessionId: string) => (sessionId === "session-1" ? session : undefined),
+      isTemporarySession: () => false,
+    } as unknown as SessionRegistryStore;
+    const catalog = {
+      find: (sessionId: string) =>
+        sessionId === "session-1"
+          ? { sessionId, workingDirectory: "/project", unread: false }
+          : undefined,
+    } as SessionCatalogStore;
+    const { root, subject: store } = mountWithRendererClient(
+      createStore(ProjectWorkbenchStore, {
+        sessionRegistry: registry,
+        operations,
+        projects: {} as ProjectCatalogStore,
+        reviews: () => ({}) as ReviewsStore,
+        extensionUi: () => ({ clear: vi.fn() }) as unknown as ExtensionUiStore,
+        catalog,
+        startCakeChat: async () => undefined,
+        onWorktreeSessionsResolved: async () => undefined,
+        openSessionById: async () => undefined,
+        onSessionShown,
+        toggleProjectSidebar: vi.fn(),
+      }),
+      { projectSessions: { open } } as unknown as RendererClient,
+    );
+    store.projectPath = "/project";
+    store.selectedSessionId = "session-1";
+
+    await store.openSession("session-1");
+
+    expect(onSessionShown).toHaveBeenCalledWith("session-1");
+    expect(open).not.toHaveBeenCalled();
+
+    root[Symbol.dispose]();
+    operations[Symbol.dispose]();
+  });
+
   it("hydrates its runtime view from the shell selection without persisting another selection", async () => {
     const inspect = vi.fn(async () => undefined);
     const load = vi.fn();

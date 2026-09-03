@@ -3,12 +3,12 @@ import { Store, observable, snapshot } from "r-state-tree";
 export type AppSurface = "workbench" | "global-chat" | "settings";
 
 export type WindowConversationSelection =
-  | { kind: "project-session"; workspacePath: string; sessionId: string }
+  | { kind: "project-session"; sessionId: string }
   | { kind: "cake-chat"; sessionId: string };
 
 export type AppSelection =
   | { kind: "workbench" }
-  | { kind: "project-session"; workspacePath: string; sessionId: string }
+  | { kind: "project-session"; sessionId: string }
   | { kind: "cake-chat"; sessionId?: string }
   | { kind: "settings" };
 
@@ -19,7 +19,6 @@ export type SessionHistoryEntry =
 
 /** Owns the one active application selection and its session navigation history in this window. */
 export interface AppShellStoreProps {
-  sessionWorkspacePath(sessionId: string): string | undefined;
   projectSessionResolved(sessionId: string): boolean | undefined;
   cakeChatSessionResolved(sessionId: string): boolean | undefined;
   markProjectSessionRead(sessionId: string): void;
@@ -141,19 +140,15 @@ export class AppShellStore extends Store<AppShellStoreProps> {
     this.setProjectSessionSelection(sessionId);
   }
   private setProjectSessionSelection(sessionId: string) {
-    const workspacePath = this.props.sessionWorkspacePath(sessionId);
-    if (!workspacePath) throw new Error(`Cake could not find session ${sessionId}`);
     if (
       this.selection.kind === "project-session" &&
       this.selection.sessionId === sessionId &&
-      this.selection.workspacePath === workspacePath &&
       this.activeConversation?.kind === "project-session" &&
-      this.activeConversation.sessionId === sessionId &&
-      this.activeConversation.workspacePath === workspacePath
+      this.activeConversation.sessionId === sessionId
     )
       return;
     this.markDepartingProjectSession(sessionId);
-    const selection = { kind: "project-session", workspacePath, sessionId } as const;
+    const selection = { kind: "project-session", sessionId } as const;
     this.selection = selection;
     this.activeConversation = selection;
   }
