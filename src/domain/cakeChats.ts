@@ -19,6 +19,7 @@ import type { ApplicationState } from "./application-data";
 import {
   acquire as acquireConversation,
   observe as observeConversation,
+  projectPreviewSnapshot,
   projectSnapshot,
   TurnId,
 } from "./conversations";
@@ -166,7 +167,13 @@ const restoreIfResolved = Effect.fn("CakeChats.restoreIfResolved")(function* (se
 });
 
 export const open = Effect.fn("CakeChats.open")(function* (target: CakeChatTarget) {
-  yield* restoreIfResolved(target.sessionId);
+  const state = yield* getState();
+  if (state.resolvedCakeChatSessionIds.includes(target.sessionId)) {
+    const preview = yield* inspect(target.sessionId);
+    const environment = yield* CakeChatEnvironment;
+    const location = yield* environment.location().pipe(asError("open"));
+    return projectPreviewSnapshot({ ...preview, workspacePath: location.workingDirectory });
+  }
   const handle = yield* acquireTarget(target, false);
   return projectSnapshot(yield* handle.snapshot().pipe(asError("open")));
 });
@@ -176,32 +183,60 @@ type UnrevisionedCakeChatUpdate =
   | { readonly _tag: "Event"; readonly sessionId: string; readonly event: CakeChatEvent };
 
 export const observe = Effect.fn("CakeChats.observe")(function* (target: CakeChatTarget) {
-  yield* restoreIfResolved(target.sessionId);
-  const state = yield* getState();
-  const environment = yield* CakeChatEnvironment;
-  const handle = yield* acquireTarget(target, false);
-  const conversation = observeConversation(handle).pipe(
-    Stream.map((update): UnrevisionedCakeChatUpdate => {
-      if (update._tag === "Event")
-        return { _tag: "Event", sessionId: target.sessionId, event: update.event };
-      const snapshot: CakeChatSnapshot = {
-        identity: { _tag: "CakeChatSession", sessionId: target.sessionId },
-        resolved: state.resolvedCakeChatSessionIds.includes(target.sessionId),
-        conversation: update.snapshot,
-      };
-      return { _tag: "Snapshot", snapshot };
-    }),
-  );
-  const controls = environment.controlRequests().pipe(
-    Stream.filter((request) => request.sessionId === target.sessionId),
-    Stream.map((event): UnrevisionedCakeChatUpdate => ({
-      _tag: "Event",
-      sessionId: target.sessionId,
-      event,
-    })),
-  );
-  return conversation.pipe(
-    Stream.merge(controls),
+  const states = yield* observeState();
+  return states.pipe(
+    Stream.map((projection) =>
+      projection.state.resolvedCakeChatSessionIds.includes(target.sessionId),
+    ),
+    Stream.changes,
+    Stream.switchMap((resolved) =>
+      resolved
+        ? Stream.fromEffect(
+            Effect.gen(function* () {
+              const preview = yield* inspect(target.sessionId);
+              const environment = yield* CakeChatEnvironment;
+              const location = yield* environment.location().pipe(asError("observe"));
+              return {
+                _tag: "Snapshot",
+                snapshot: {
+                  identity: { _tag: "CakeChatSession", sessionId: target.sessionId },
+                  resolved: true,
+                  conversation: projectPreviewSnapshot({
+                    ...preview,
+                    workspacePath: location.workingDirectory,
+                  }),
+                },
+              } satisfies UnrevisionedCakeChatUpdate;
+            }),
+          )
+        : Stream.unwrap(
+            Effect.gen(function* () {
+              const environment = yield* CakeChatEnvironment;
+              const handle = yield* acquireTarget(target, false);
+              const conversation = observeConversation(handle).pipe(
+                Stream.map((update): UnrevisionedCakeChatUpdate => {
+                  if (update._tag === "Event")
+                    return { _tag: "Event", sessionId: target.sessionId, event: update.event };
+                  const snapshot: CakeChatSnapshot = {
+                    identity: { _tag: "CakeChatSession", sessionId: target.sessionId },
+                    resolved: false,
+                    conversation: update.snapshot,
+                  };
+                  return { _tag: "Snapshot", snapshot };
+                }),
+              );
+              const controls = environment.controlRequests().pipe(
+                Stream.filter((request) => request.sessionId === target.sessionId),
+                Stream.map((event): UnrevisionedCakeChatUpdate => ({
+                  _tag: "Event",
+                  sessionId: target.sessionId,
+                  event,
+                })),
+              );
+              return conversation.pipe(Stream.merge(controls));
+            }),
+          ),
+    ),
     Stream.tap((update) =>
       update._tag === "Event" && update.event._tag === "TurnSettled"
         ? refreshProjection()

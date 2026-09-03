@@ -20,6 +20,27 @@ export * from "./conversation-data";
 const jsonValue = <A>(value: A): Schema.Schema.Type<typeof Schema.Json> =>
   Schema.decodeUnknownSync(Schema.Json)(JSON.parse(JSON.stringify(value)));
 
+export const projectPreviewSnapshot = (preview: {
+  readonly workspacePath: string;
+  readonly sessionId: string;
+  readonly sessionFile: string;
+  readonly parts: ReadonlyArray<unknown>;
+}): ConversationSnapshot => ({
+  workingDirectory: preview.workspacePath,
+  sessionId: preview.sessionId,
+  sessionFile: preview.sessionFile,
+  parts: preview.parts.map(jsonValue),
+  models: [],
+  thinkingLevel: "off",
+  availableThinkingLevels: [],
+  streaming: false,
+  diagnostics: [],
+  commands: [],
+  compatibility: { resources: [], diagnostics: [] },
+  extensionUi: { statuses: [] },
+  tree: [],
+});
+
 export const projectSnapshot = (snapshot: SessionSnapshot): ConversationSnapshot => {
   const projected: ConversationSnapshot = {
     workingDirectory: snapshot.workspacePath,

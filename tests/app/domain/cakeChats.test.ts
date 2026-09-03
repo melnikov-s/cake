@@ -38,6 +38,7 @@ const makeLayer = (initial: ApplicationStateValue = defaultApplicationState()) =
   let state = initial;
   let created = 0;
   let archived = 0;
+  let restored = 0;
   const toolCounts: number[] = [];
   const terminal = Terminal.of({
     open: () => Effect.die("Unexpected terminal open"),
@@ -128,7 +129,10 @@ const makeLayer = (initial: ApplicationStateValue = defaultApplicationState()) =
       Effect.sync(() => {
         archived += 1;
       }),
-    restore: () => Effect.void,
+    restore: () =>
+      Effect.sync(() => {
+        restored += 1;
+      }),
     deleteResolved: () => Effect.void,
   });
   return {
@@ -141,6 +145,7 @@ const makeLayer = (initial: ApplicationStateValue = defaultApplicationState()) =
     ),
     created: () => created,
     archived: () => archived,
+    restored: () => restored,
     state: () => state,
     toolCounts: () => toolCounts,
   };
@@ -177,6 +182,42 @@ describe("Cake Chats domain", () => {
       assert.equal(result.sessionId, "handoff");
       assert.equal(fixture.created(), 1);
       assert.deepEqual(fixture.state().fastModeSessionIds, ["cake-chat-1", "handoff"]);
+    }).pipe(Effect.provide(fixture.layer));
+  });
+
+  it.effect("previews a resolved Cake Chat without restoring or constructing its runtime", () => {
+    const fixture = makeLayer({
+      ...defaultApplicationState(),
+      resolvedCakeChatSessionIds: ["cake-chat-1"],
+    });
+    return Effect.gen(function* () {
+      const opened = yield* cakeChats.open({ sessionId: "cake-chat-1", tools: [] });
+      assert.equal(opened.sessionId, "cake-chat-1");
+      assert.equal(fixture.created(), 0);
+      assert.equal(fixture.restored(), 0);
+
+      const updates = yield* cakeChats.observe({ sessionId: "cake-chat-1", tools: [] });
+      const preview = Array.from(yield* updates.pipe(Stream.take(1), Stream.runCollect));
+      assert.equal(preview[0]?._tag, "Snapshot");
+      assert.equal(fixture.created(), 0);
+      assert.equal(fixture.restored(), 0);
+    }).pipe(Effect.provide(fixture.layer));
+  });
+
+  it.effect("restores a resolved Cake Chat when a message is submitted", () => {
+    const fixture = makeLayer({
+      ...defaultApplicationState(),
+      resolvedCakeChatSessionIds: ["cake-chat-1"],
+    });
+    return Effect.gen(function* () {
+      yield* cakeChats.prompt({
+        sessionId: "cake-chat-1",
+        text: "Continue",
+        attachments: [],
+        renderUserMessageAsMarkdown: false,
+      });
+      assert.equal(fixture.restored(), 1);
+      assert.equal(fixture.created(), 1);
     }).pipe(Effect.provide(fixture.layer));
   });
 

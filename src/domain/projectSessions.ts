@@ -22,6 +22,7 @@ import {
   TurnId,
   acquire as acquireConversation,
   observe as observeConversation,
+  projectPreviewSnapshot,
 } from "./conversations";
 import { PiSessionError, PiSessions, type PiSessionHandle } from "../services/pi/PiSessions";
 import {
@@ -310,6 +311,18 @@ export const inspect = Effect.fn("ProjectSessions.inspect")(function* (
   return projected;
 });
 
+const restoreIfResolved = Effect.fn("ProjectSessions.restoreIfResolved")(function* (
+  target: ProjectSessionTarget,
+) {
+  const state = yield* getState();
+  if (!state.resolvedSessionIds.includes(target.sessionId)) return;
+  const location = yield* findLocation(target);
+  const environment = yield* ProjectSessionEnvironment;
+  const restored = yield* environment.restore(target.sessionId, location).pipe(asError("restore"));
+  yield* trustProject(restored.workingDirectory).pipe(asError("restore"));
+  yield* setSessionsResolved([target.sessionId], false).pipe(asError("restore"));
+});
+
 export const open = Effect.fn("ProjectSessions.open")(function* (target: ProjectSessionTarget) {
   const location = yield* findLocation(target);
   const sessions = yield* PiSessions;
@@ -327,57 +340,120 @@ export const open = Effect.fn("ProjectSessions.open")(function* (target: Project
       message: `Cake could not find Project Session ${target.sessionId}`,
     });
   const state = yield* getState();
-  if (found.resolved || state.resolvedSessionIds.includes(target.sessionId)) {
-    const environment = yield* ProjectSessionEnvironment;
-    yield* environment.restore(target.sessionId, location).pipe(asError("open"));
-    yield* setSessionsResolved([target.sessionId], false).pipe(asError("open"));
-  }
+  if (found.resolved && !state.resolvedSessionIds.includes(target.sessionId))
+    yield* setSessionsResolved([target.sessionId], true).pipe(asError("open"));
   // Selection starts observation in the renderer's Model synchronizer. Opening
-  // validates/restores durable transcript state, but it must not eagerly acquire
-  // a second request-scoped runtime or build a snapshot the caller discards.
+  // validates durable transcript state, but resolved sessions remain archived
+  // and are projected as read-only previews until an explicit restore or prompt.
+});
+
+const isSessionResolved = Effect.fn("ProjectSessions.isSessionResolved")(function* (
+  target: ProjectSessionTarget,
+  state: ApplicationState,
+) {
+  if (state.resolvedSessionIds.includes(target.sessionId)) return true;
+  const location = yield* findLocation(target);
+  const sessions = yield* PiSessions;
+  const listed = yield* sessions
+    .list({
+      workingDirectory: location.workingDirectory,
+      sessionDirectory: location.sessionDirectory,
+      resolvedSessionDirectory: location.resolvedSessionDirectory,
+    })
+    .pipe(asError("observe"));
+  return listed.some((session) => session.id === target.sessionId && session.resolved);
 });
 
 export const observe = Effect.fn("ProjectSessions.observe")(function* (
   target: ProjectSessionTarget,
 ) {
-  const location = yield* findLocation(target);
-  const state = yield* getState();
-  const handle = yield* acquireTarget(location, target.sessionId, false);
-  const identity = {
-    _tag: "ProjectSession" as const,
-    sessionId: target.sessionId,
-    projectPath: location.projectPath,
-    workingDirectory: location.workingDirectory,
-  };
-  return observeConversation(handle).pipe(
-    Stream.tap((update) =>
-      update._tag === "Event" && update.event._tag === "TurnSettled"
-        ? refreshProjection()
-        : Effect.void,
+  const states = yield* observeState();
+  const updates = states.pipe(
+    Stream.mapEffect((projection) => isSessionResolved(target, projection.state)),
+    Stream.changes,
+    Stream.switchMap((resolved) =>
+      resolved
+        ? Stream.fromEffect(
+            Effect.gen(function* () {
+              const preview = yield* inspect(target);
+              const snapshot: ProjectSessionSnapshot = {
+                identity: {
+                  _tag: "ProjectSession",
+                  sessionId: target.sessionId,
+                  projectPath: preview.projectPath,
+                  workingDirectory: preview.workingDirectory,
+                },
+                projectName: (yield* findLocation(target)).projectName,
+                resolved: true,
+                unread: false,
+                conversation: projectPreviewSnapshot({
+                  ...preview,
+                  workspacePath: preview.workingDirectory,
+                }),
+              };
+              if (preview.managedWorktree !== undefined)
+                Object.assign(snapshot, { managedWorktree: preview.managedWorktree });
+              return { _tag: "Snapshot", revision: 0, snapshot } satisfies ProjectSessionUpdate;
+            }),
+          )
+        : Stream.unwrap(
+            Effect.gen(function* () {
+              const location = yield* findLocation(target);
+              const state = yield* getState();
+              const handle = yield* acquireTarget(location, target.sessionId, false);
+              const identity = {
+                _tag: "ProjectSession" as const,
+                sessionId: target.sessionId,
+                projectPath: location.projectPath,
+                workingDirectory: location.workingDirectory,
+              };
+              return observeConversation(handle).pipe(
+                Stream.tap((update) =>
+                  update._tag === "Event" && update.event._tag === "TurnSettled"
+                    ? refreshProjection()
+                    : Effect.void,
+                ),
+                Stream.map((update): ProjectSessionUpdate => {
+                  if (update._tag === "Event")
+                    return {
+                      _tag: "Event",
+                      revision: update.revision,
+                      sessionId: target.sessionId,
+                      event: update.event,
+                    };
+                  const snapshot: ProjectSessionSnapshot = {
+                    identity,
+                    projectName: location.projectName,
+                    resolved: false,
+                    unread: state.unreadSessionIds.includes(target.sessionId),
+                    conversation: update.snapshot,
+                  };
+                  if (location.managedWorktree !== undefined)
+                    Object.assign(snapshot, { managedWorktree: location.managedWorktree });
+                  return { _tag: "Snapshot", revision: update.revision, snapshot };
+                }),
+              );
+            }),
+          ),
     ),
-    Stream.mapError(
-      (error) => new ProjectSessionError({ operation: "observe", message: error.message }),
+    Stream.mapError((error) =>
+      error instanceof ProjectSessionError
+        ? error
+        : new ProjectSessionError({
+            operation: "observe",
+            message: error instanceof Error ? error.message : String(error),
+          }),
     ),
-    Stream.map((update): ProjectSessionUpdate => {
-      if (update._tag === "Event")
-        return {
-          _tag: "Event",
-          revision: update.revision,
-          sessionId: target.sessionId,
-          event: update.event,
-        };
-      const snapshot: ProjectSessionSnapshot = {
-        identity,
-        projectName: location.projectName,
-        resolved: state.resolvedSessionIds.includes(target.sessionId),
-        unread: state.unreadSessionIds.includes(target.sessionId),
-        conversation: update.snapshot,
-      };
-      if (location.managedWorktree !== undefined)
-        Object.assign(snapshot, { managedWorktree: location.managedWorktree });
-      return { _tag: "Snapshot", revision: update.revision, snapshot };
-    }),
+    Stream.mapAccum(
+      () => 0,
+      (revision, update) => {
+        const nextRevision = revision + 1;
+        const revised: ProjectSessionUpdate = { ...update, revision: nextRevision };
+        return [nextRevision, [revised]] as const;
+      },
+    ),
   );
+  return updates;
 });
 
 const withHandle = Effect.fn("ProjectSessions.withHandle")(function* <A, E>(
@@ -448,6 +524,7 @@ const promptTarget = (input: ProjectSessionPromptInput): ProjectSessionTarget =>
 export const prompt = Effect.fn("ProjectSessions.prompt")(function* (
   input: ProjectSessionPromptInput,
 ) {
+  yield* restoreIfResolved(promptTarget(input));
   const turnId = TurnId.make(
     yield* withHandle(promptTarget(input), (handle) =>
       handle.prompt(

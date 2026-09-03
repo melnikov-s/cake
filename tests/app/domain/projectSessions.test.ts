@@ -75,6 +75,7 @@ const makeLayer = (
   hooks: {
     onCreateRuntime?(): void;
     onArchive?(): void;
+    onRestore?(): void;
     onList?(): void;
     onRuntimeOptions?(newSession: boolean): void;
     sessionExists?: boolean;
@@ -171,7 +172,11 @@ const makeLayer = (
           };
         }),
       archive: () => Effect.sync(() => hooks.onArchive?.()),
-      restore: (_sessionId, location) => Effect.succeed(location),
+      restore: (_sessionId, location) =>
+        Effect.sync(() => {
+          hooks.onRestore?.();
+          return location;
+        }),
       forkToWorkingDirectory: () => Effect.succeed("forked"),
     }),
     Layer.succeed(
@@ -363,6 +368,81 @@ describe("Project Sessions domain", () => {
             ],
           },
           { onCreateRuntime: () => runtimeConstructions++ },
+        ),
+      ),
+    );
+  });
+
+  it.effect("previews a resolved session without restoring or constructing its runtime", () => {
+    let runtimeConstructions = 0;
+    let restores = 0;
+    return Effect.gen(function* () {
+      yield* projectSessions.open({ sessionId: "session-1" });
+      assert.equal(runtimeConstructions, 0);
+      assert.equal(restores, 0);
+
+      const updates = yield* projectSessions.observe({ sessionId: "session-1" });
+      const preview = Array.from(yield* updates.pipe(Stream.take(1), Stream.runCollect));
+      assert.equal(preview[0]?._tag, "Snapshot");
+      assert.equal(runtimeConstructions, 0);
+      assert.equal(restores, 0);
+    }).pipe(
+      Effect.provide(
+        makeLayer(
+          {
+            ...defaultApplicationState(),
+            projects: [
+              {
+                path: "/project",
+                name: "Project",
+                addedAt: "2026-01-01T00:00:00.000Z",
+                lastOpenedAt: "2026-01-01T00:00:00.000Z",
+              },
+            ],
+            trustedProjectPaths: ["/project"],
+            resolvedSessionIds: ["session-1"],
+          },
+          {
+            onCreateRuntime: () => runtimeConstructions++,
+            onRestore: () => restores++,
+          },
+        ),
+      ),
+    );
+  });
+
+  it.effect("restores a resolved session when a message is submitted", () => {
+    let runtimeConstructions = 0;
+    let restores = 0;
+    return Effect.gen(function* () {
+      yield* projectSessions.prompt({
+        sessionId: "session-1",
+        text: "Continue",
+        attachments: [],
+        renderUserMessageAsMarkdown: false,
+      });
+      assert.equal(restores, 1);
+      assert.equal(runtimeConstructions, 1);
+    }).pipe(
+      Effect.provide(
+        makeLayer(
+          {
+            ...defaultApplicationState(),
+            projects: [
+              {
+                path: "/project",
+                name: "Project",
+                addedAt: "2026-01-01T00:00:00.000Z",
+                lastOpenedAt: "2026-01-01T00:00:00.000Z",
+              },
+            ],
+            trustedProjectPaths: ["/project"],
+            resolvedSessionIds: ["session-1"],
+          },
+          {
+            onCreateRuntime: () => runtimeConstructions++,
+            onRestore: () => restores++,
+          },
         ),
       ),
     );
