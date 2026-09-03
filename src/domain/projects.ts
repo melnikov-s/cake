@@ -301,6 +301,16 @@ export const setSessionUnread = Effect.fn("Projects.setSessionUnread")(function*
   return { state };
 });
 
+export const activateWorkingDirectory = Effect.fn("Projects.activateWorkingDirectory")(function* (
+  connectionId: number,
+  workingDirectory: string,
+) {
+  const electron = yield* Electron;
+  const sender = yield* requireConnection(connectionId, "activateWorkingDirectory");
+  yield* requireAllowed(workingDirectory);
+  electron.associateWorkspace(sender.id, workingDirectory);
+});
+
 export const restartPi = Effect.fn("Projects.restartPi")(function* (
   _connectionId: number,
   request: Payload<"restart-pi">,

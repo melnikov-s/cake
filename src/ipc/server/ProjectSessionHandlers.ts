@@ -1,13 +1,46 @@
 import { Effect, Stream } from "effect";
+import { ProjectSessionError } from "../../domain/project-session-data";
+import * as projects from "../../domain/projects";
 import * as projectSessions from "../../domain/projectSessions";
 import { ProjectSessionRpc } from "../protocol/ProjectSessionRpc";
+import { RendererConnection } from "../protocol/RendererConnectionMiddleware";
+
+const withConnection = <A, E, R>(operation: (connectionId: number) => Effect.Effect<A, E, R>) =>
+  Effect.flatMap(RendererConnection, ({ connectionId }) => operation(connectionId));
+
+const activateWorkingDirectory = (connectionId: number, workingDirectory: string) =>
+  projects.activateWorkingDirectory(connectionId, workingDirectory).pipe(
+    Effect.mapError(
+      (error) =>
+        new ProjectSessionError({
+          operation: "activateWorkingDirectory",
+          message: error.message,
+        }),
+    ),
+  );
 
 export const projectSessionHandlers = ProjectSessionRpc.of({
   "projectSessions.list": () => projectSessions.list(),
   "projectSessions.observeCatalog": () => Stream.unwrap(projectSessions.observeCatalog()),
   "projectSessions.inspect": (target) => projectSessions.inspect(target),
-  "projectSessions.start": (input) => projectSessions.start(input),
-  "projectSessions.open": (target) => projectSessions.open(target),
+  "projectSessions.start": (input) =>
+    withConnection((connectionId) =>
+      activateWorkingDirectory(connectionId, input.workingDirectory).pipe(
+        Effect.andThen(projectSessions.start(input)),
+      ),
+    ),
+  "projectSessions.open": (target) =>
+    withConnection((connectionId) =>
+      projectSessions
+        .open(target)
+        .pipe(
+          Effect.tap(() =>
+            target.workingDirectory
+              ? activateWorkingDirectory(connectionId, target.workingDirectory)
+              : Effect.void,
+          ),
+        ),
+    ),
   "projectSessions.observe": (target) => Stream.unwrap(projectSessions.observe(target)),
   "projectSessions.prompt": (input) => projectSessions.prompt(input),
   "projectSessions.steer": (input) => projectSessions.steer(input),
