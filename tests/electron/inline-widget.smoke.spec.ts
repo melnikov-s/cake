@@ -9,9 +9,11 @@ const repositoryRoot = resolve(import.meta.dirname, "../..");
 test("executes a compiled React widget in its sandboxed document origin", async () => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-inline-widget-smoke-"));
   const userData = join(temporaryRoot, "user-data");
+  const cakeHome = join(temporaryRoot, "cake-home");
   await mkdir(userData, { recursive: true });
+  await mkdir(join(cakeHome, "state"), { recursive: true });
   await writeFile(
-    join(userData, "application.json"),
+    join(cakeHome, "state", "application.json"),
     JSON.stringify({ schemaVersion: 1, projects: [], trustedProjectPaths: [] }),
   );
   const application = await electron.launch({
@@ -21,7 +23,7 @@ test("executes a compiled React widget in its sandboxed document origin", async 
       ...process.env,
       CAKE_ELECTRON_SMOKE: "1",
       CAKE_ELECTRON_USER_DATA: userData,
-      CAKE_HOME: join(temporaryRoot, "cake-home"),
+      CAKE_HOME: cakeHome,
     },
   });
 

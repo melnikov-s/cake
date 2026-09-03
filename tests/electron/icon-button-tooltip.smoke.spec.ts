@@ -8,7 +8,10 @@ const repositoryRoot = resolve(import.meta.dirname, "../..");
 test("icon buttons reveal their tooltip bubble on hover and hide on leave", async () => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-tooltip-smoke-"));
   const userData = join(temporaryRoot, "user-data");
+  const cakeHome = join(temporaryRoot, "cake-home");
+  const cakeState = join(cakeHome, "state");
   await mkdir(userData, { recursive: true });
+  await mkdir(cakeState, { recursive: true });
   await writeFile(
     join(userData, "window-state.json"),
     JSON.stringify({
@@ -18,7 +21,7 @@ test("icon buttons reveal their tooltip bubble on hover and hide on leave", asyn
     }),
   );
   await writeFile(
-    join(userData, "application.json"),
+    join(cakeState, "application.json"),
     JSON.stringify({
       schemaVersion: 1,
       projects: [],
@@ -33,6 +36,7 @@ test("icon buttons reveal their tooltip bubble on hover and hide on leave", asyn
       ...process.env,
       CAKE_ELECTRON_SMOKE: "1",
       CAKE_ELECTRON_USER_DATA: userData,
+      CAKE_HOME: cakeHome,
     },
   });
 

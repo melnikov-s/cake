@@ -31,8 +31,9 @@ test("resolves and restores the selected project session in the desktop sidebar"
       draftsBySession: {},
     }),
   );
+  await mkdir(join(cakeHome, "state"), { recursive: true });
   await writeFile(
-    join(userData, "application.json"),
+    join(cakeHome, "state", "application.json"),
     JSON.stringify({
       schemaVersion: 1,
       projects: [

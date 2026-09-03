@@ -13,16 +13,18 @@ const launch = (temporaryRoot: string) =>
       ...process.env,
       CAKE_ELECTRON_SMOKE: "1",
       CAKE_ELECTRON_USER_DATA: join(temporaryRoot, "user-data"),
-      CAKE_HOME: join(temporaryRoot, "cake-home"),
+      CAKE_HOME: cakeHome,
     },
   });
 
 test("legacy Application storage migrates before normal renderer hydration", async () => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-application-storage-smoke-"));
   const userData = join(temporaryRoot, "user-data");
+  const cakeHome = join(temporaryRoot, "cake-home");
   await mkdir(userData, { recursive: true });
+  await mkdir(join(cakeHome, "state"), { recursive: true });
   await writeFile(
-    join(userData, "application.json"),
+    join(cakeHome, "state", "application.json"),
     JSON.stringify({
       schemaVersion: 1,
       projects: [],
@@ -36,7 +38,9 @@ test("legacy Application storage migrates before normal renderer hydration", asy
     await expect(page.getByRole("heading", { name: "What should we build?" })).toBeVisible({
       timeout: 20_000,
     });
-    const document = JSON.parse(await readFile(join(userData, "application.json"), "utf8"));
+    const document = JSON.parse(
+      await readFile(join(cakeHome, "state", "application.json"), "utf8"),
+    );
     expect(document.version).toBe(1);
     expect(document.data).toMatchObject({ projects: [], modelPresets: [] });
     expect(document.data).not.toHaveProperty("schemaVersion");
@@ -49,8 +53,10 @@ test("legacy Application storage migrates before normal renderer hydration", asy
 test("malformed Application storage fails startup without overwriting the source", async () => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-application-corrupt-smoke-"));
   const userData = join(temporaryRoot, "user-data");
+  const cakeHome = join(temporaryRoot, "cake-home");
   await mkdir(userData, { recursive: true });
-  const target = join(userData, "application.json");
+  await mkdir(join(cakeHome, "state"), { recursive: true });
+  const target = join(cakeHome, "state", "application.json");
   await writeFile(target, "{ malformed", "utf8");
   const application = await launch(temporaryRoot);
   const child = application.process();

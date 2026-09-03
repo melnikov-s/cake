@@ -9,6 +9,7 @@ test("selects and runs slash commands from the composer with the keyboard", asyn
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-slash-command-smoke-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
+  const cakeHome = join(temporaryRoot, "cake-home");
   const skillDirectory = join(project, ".agents", "skills", "desktop-fixture");
   await Promise.all([
     mkdir(userData, { recursive: true }),
@@ -27,8 +28,9 @@ test("selects and runs slash commands from the composer with the keyboard", asyn
       theme: "system",
     }),
   );
+  await mkdir(join(cakeHome, "state"), { recursive: true });
   await writeFile(
-    join(userData, "application.json"),
+    join(cakeHome, "state", "application.json"),
     JSON.stringify({
       schemaVersion: 1,
       projects: [
@@ -50,7 +52,7 @@ test("selects and runs slash commands from the composer with the keyboard", asyn
       ...process.env,
       CAKE_ELECTRON_SMOKE: "1",
       CAKE_ELECTRON_USER_DATA: userData,
-      CAKE_HOME: join(temporaryRoot, "cake-home"),
+      CAKE_HOME: cakeHome,
     },
   });
 

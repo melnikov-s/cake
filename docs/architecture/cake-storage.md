@@ -12,6 +12,12 @@ replaces that root for tests and alternate installations.
 ```text
 ~/.cake/
 ├── state/
+│   ├── application.json
+│   ├── worktrees.json
+│   ├── session-metadata/
+│   ├── resolved-project-metadata/
+│   ├── artifacts/
+│   └── reviews/
 ├── pi/
 │   ├── auth.json
 │   ├── models.json
@@ -27,10 +33,12 @@ replaces that root for tests and alternate installations.
 │       └── resolved-sessions/
 ```
 
-Electron-platform documents and repositories may remain under
-`app.getPath("userData")`, with `CAKE_ELECTRON_USER_DATA` as the test override.
-`CakePaths` resolves these locations in main; renderer code never constructs
-storage paths.
+Cake-owned durable domain data and configuration live beneath `state/` so they
+move together with Pi sessions when `CAKE_HOME` changes. Electron's
+`app.getPath("userData")`, with `CAKE_ELECTRON_USER_DATA` as its test override,
+contains only window/renderer presentation state and machine-local Electron or
+embedded-editor data. `CakePaths` resolves durable Cake locations in main;
+renderer code never constructs storage paths.
 
 ## Focused storage Services
 

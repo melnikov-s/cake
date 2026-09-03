@@ -9,6 +9,7 @@ test("presents artifacts, sorts a table, resolves a form, and isolates HTML", as
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-s4-smoke-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
+  const cakeHome = join(temporaryRoot, "cake-home");
   await Promise.all([mkdir(userData, { recursive: true }), mkdir(project, { recursive: true })]);
   await writeFile(
     join(userData, "window-state.json"),
@@ -19,8 +20,9 @@ test("presents artifacts, sorts a table, resolves a form, and isolates HTML", as
       theme: "system",
     }),
   );
+  await mkdir(join(cakeHome, "state"), { recursive: true });
   await writeFile(
-    join(userData, "application.json"),
+    join(cakeHome, "state", "application.json"),
     JSON.stringify({
       schemaVersion: 1,
       projects: [
@@ -42,7 +44,7 @@ test("presents artifacts, sorts a table, resolves a form, and isolates HTML", as
         ...process.env,
         CAKE_ELECTRON_SMOKE: "1",
         CAKE_ELECTRON_USER_DATA: userData,
-        CAKE_HOME: join(temporaryRoot, "cake-home"),
+        CAKE_HOME: cakeHome,
       },
     });
   let application: ElectronApplication | undefined;

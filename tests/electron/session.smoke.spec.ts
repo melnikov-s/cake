@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
@@ -9,6 +9,7 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-s1-smoke-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
+  const cakeHome = join(temporaryRoot, "cake-home");
   await import("node:fs/promises").then(({ mkdir }) =>
     Promise.all([mkdir(userData, { recursive: true }), mkdir(project, { recursive: true })]),
   );
@@ -21,8 +22,9 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
       theme: "system",
     }),
   );
+  await mkdir(join(cakeHome, "state"), { recursive: true });
   await writeFile(
-    join(userData, "application.json"),
+    join(cakeHome, "state", "application.json"),
     JSON.stringify({
       schemaVersion: 1,
       projects: [
@@ -44,7 +46,7 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
       ...process.env,
       CAKE_ELECTRON_SMOKE: "1",
       CAKE_ELECTRON_USER_DATA: userData,
-      CAKE_HOME: join(temporaryRoot, "cake-home"),
+      CAKE_HOME: cakeHome,
     },
   });
 

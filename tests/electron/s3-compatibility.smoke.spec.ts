@@ -9,6 +9,7 @@ test("adapts extension dialogs and reports unsupported widgets", async () => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-s3-smoke-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
+  const cakeHome = join(temporaryRoot, "cake-home");
   const fixturePackage = join(project, "fixture-package");
   await Promise.all([
     mkdir(userData, { recursive: true }),
@@ -26,8 +27,9 @@ test("adapts extension dialogs and reports unsupported widgets", async () => {
       theme: "system",
     }),
   );
+  await mkdir(join(cakeHome, "state"), { recursive: true });
   await writeFile(
-    join(userData, "application.json"),
+    join(cakeHome, "state", "application.json"),
     JSON.stringify({
       schemaVersion: 1,
       projects: [
@@ -90,7 +92,7 @@ export default function (pi) {
       ...process.env,
       CAKE_ELECTRON_SMOKE: "1",
       CAKE_ELECTRON_USER_DATA: userData,
-      CAKE_HOME: join(temporaryRoot, "cake-home"),
+      CAKE_HOME: cakeHome,
     },
   });
 

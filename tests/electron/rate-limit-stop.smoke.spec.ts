@@ -12,6 +12,7 @@ test("429 polling keeps the stop control available", async () => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-429-stop-smoke-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
+  const cakeHome = join(temporaryRoot, "cake-home");
   await mkdir(userData, { recursive: true });
   await mkdir(project, { recursive: true });
 
@@ -56,8 +57,9 @@ test("429 polling keeps the stop control available", async () => {
       theme: "system",
     }),
   );
+  await mkdir(join(cakeHome, "state"), { recursive: true });
   await writeFile(
-    join(userData, "application.json"),
+    join(cakeHome, "state", "application.json"),
     JSON.stringify({
       schemaVersion: 1,
       projects: [
@@ -79,7 +81,7 @@ test("429 polling keeps the stop control available", async () => {
       ...process.env,
       CAKE_ELECTRON_SMOKE: "1",
       CAKE_ELECTRON_USER_DATA: userData,
-      CAKE_HOME: join(temporaryRoot, "cake-home"),
+      CAKE_HOME: cakeHome,
     },
   });
 

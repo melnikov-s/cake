@@ -60,25 +60,23 @@ if (process.env.CAKE_ELECTRON_USER_DATA)
 const cakePaths = resolveCakePaths();
 const userData = app.getPath("userData");
 
-const applicationStorageLive = makeApplicationStorageLive(userData).pipe(
+const applicationStorageLive = makeApplicationStorageLive(cakePaths.state).pipe(
   Layer.provide(BootstrapLive),
 );
 const applicationStateLive = ApplicationState.layer.pipe(Layer.provide(applicationStorageLive));
 const windowStateLive = makeWindowStateStorageLive(userData).pipe(Layer.provide(BootstrapLive));
-const sessionMetadataStorageLive = makeSessionMetadataStorageLive(
-  join(userData, "session-metadata"),
-);
+const sessionMetadataStorageLive = makeSessionMetadataStorageLive(cakePaths.sessionMetadata);
 const sessionArchiveStorageLive = makeSessionArchiveStorageLive(
-  join(userData, "resolved-project-metadata"),
+  cakePaths.resolvedProjectMetadata,
 ).pipe(Layer.provide(sessionMetadataStorageLive));
-const artifactStorageLive = makeArtifactStorageLive(join(userData, "artifacts"));
+const artifactStorageLive = makeArtifactStorageLive(cakePaths.artifacts);
 const reviewStorageLive = makeReviewStorageLive(
-  join(userData, "reviews"),
+  cakePaths.reviews,
   cakePaths.piReviewSessions,
   (record) => loadReviewSessionProjection(record, cakePaths.piReviewSessions),
 );
 const gitLive = makeGitLive();
-const worktreeStorageLive = makeWorktreeStorageLive(join(userData, "worktrees.json"));
+const worktreeStorageLive = makeWorktreeStorageLive(cakePaths.worktrees);
 const managedWorktreesLive = ManagedWorktreesLive.pipe(
   Layer.provide(Layer.merge(gitLive, worktreeStorageLive)),
 );

@@ -42,8 +42,9 @@ test("stacks a Mermaid diagram's fullscreen view above a fullscreen reader", asy
       draftsBySession: {},
     }),
   );
+  await mkdir(join(cakeHome, "state"), { recursive: true });
   await writeFile(
-    join(userData, "application.json"),
+    join(cakeHome, "state", "application.json"),
     JSON.stringify({
       schemaVersion: 1,
       projects: [{ path: project, name: "project", addedAt: timestamp, lastOpenedAt: timestamp }],

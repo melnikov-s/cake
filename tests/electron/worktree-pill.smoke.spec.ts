@@ -44,8 +44,9 @@ test("chooses an isolated worktree without disturbing the new-chat composer", as
       theme: "system",
     }),
   );
+  await mkdir(join(cakeHome, "state"), { recursive: true });
   await writeFile(
-    join(userData, "application.json"),
+    join(cakeHome, "state", "application.json"),
     JSON.stringify({
       schemaVersion: 1,
       projects: [
@@ -67,7 +68,7 @@ test("chooses an isolated worktree without disturbing the new-chat composer", as
       ...process.env,
       CAKE_ELECTRON_SMOKE: "1",
       CAKE_ELECTRON_USER_DATA: userData,
-      CAKE_HOME: join(temporaryRoot, "cake-home"),
+      CAKE_HOME: cakeHome,
     },
   });
 
@@ -153,8 +154,9 @@ test("shows only resolve after a worktree is merged and removes the checkout", a
       .map((entry) => JSON.stringify(entry))
       .join("\n")}\n`,
   );
+  await mkdir(join(cakeHome, "state"), { recursive: true });
   await writeFile(
-    join(userData, "worktrees.json"),
+    join(cakeHome, "state", "worktrees.json"),
     JSON.stringify({
       schemaVersion: 1,
       records: [
@@ -181,8 +183,9 @@ test("shows only resolve after a worktree is merged and removes the checkout", a
       theme: "system",
     }),
   );
+  await mkdir(join(cakeHome, "state"), { recursive: true });
   await writeFile(
-    join(userData, "application.json"),
+    join(cakeHome, "state", "application.json"),
     JSON.stringify({
       schemaVersion: 1,
       projects: [

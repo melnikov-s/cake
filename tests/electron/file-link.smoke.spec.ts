@@ -21,7 +21,7 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
   ).toString("base64");
   const sessionDirectory = cakeWorkspaceSessionDirectory(project, join(cakeHome, "pi", "sessions"));
   const digest = (value: string) => createHash("sha256").update(value).digest("hex");
-  const reviewDirectory = join(userData, "reviews", digest(project), digest(sessionId));
+  const reviewDirectory = join(cakeHome, "state", "reviews", digest(project), digest(sessionId));
 
   await Promise.all([
     mkdir(userData, { recursive: true }),
@@ -42,8 +42,9 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
       draftsBySession: {},
     }),
   );
+  await mkdir(join(cakeHome, "state"), { recursive: true });
   await writeFile(
-    join(userData, "application.json"),
+    join(cakeHome, "state", "application.json"),
     JSON.stringify({
       schemaVersion: 1,
       projects: [{ path: project, name: "project", addedAt: timestamp, lastOpenedAt: timestamp }],

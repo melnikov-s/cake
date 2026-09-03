@@ -14,6 +14,11 @@ describe("resolveCakePaths", () => {
       piGlobalChatSessions: "/Users/fixture/.cake/pi/global-chat/sessions",
       piGlobalChatResolvedSessions: "/Users/fixture/.cake/pi/global-chat/resolved-sessions",
       state: "/Users/fixture/.cake/state",
+      sessionMetadata: "/Users/fixture/.cake/state/session-metadata",
+      resolvedProjectMetadata: "/Users/fixture/.cake/state/resolved-project-metadata",
+      artifacts: "/Users/fixture/.cake/state/artifacts",
+      reviews: "/Users/fixture/.cake/state/reviews",
+      worktrees: "/Users/fixture/.cake/state/worktrees.json",
     });
   });
 
@@ -27,5 +32,7 @@ describe("resolveCakePaths", () => {
     expect(paths.piSessions).toBe("/opt/cake-data/pi/sessions");
     expect(paths.piWidgetSessions).toBe("/opt/cake-data/pi/widget-sessions");
     expect(paths.piSubagentSessions).toBe("/opt/cake-data/pi/subagent-sessions");
+    expect(paths.sessionMetadata).toBe("/opt/cake-data/state/session-metadata");
+    expect(paths.worktrees).toBe("/opt/cake-data/state/worktrees.json");
   });
 });

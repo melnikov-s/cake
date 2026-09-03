@@ -13,7 +13,8 @@ Markdown or carry compatibility behavior for superseded contracts.
 
 - Cake owns artifact payloads and metadata. Pi remains the transcript and
   session-tree authority.
-- Electron main stores payloads under `app.getPath("userData")/artifacts` as
+- Electron main stores payloads under `$CAKE_HOME/state/artifacts` (defaulting
+  to `~/.cake/state/artifacts`) as
   SHA-256-addressed JSON blobs. Atomic per-session metadata files point to the
   blobs. Artifact IDs are stable within a session and revisions must begin at
   one and advance exactly one step.
@@ -32,8 +33,8 @@ Markdown or carry compatibility behavior for superseded contracts.
 
 The maximum serialized tool input and response size is 1 MiB. Larger payloads
 are rejected before display. This is the S4 answer to Q4: the durable location
-is the Electron user-data artifact repository, and the v1 inline protocol cap
-is 1,048,576 UTF-8 bytes.
+is the Cake-home artifact repository, and the v1 inline protocol cap is
+1,048,576 UTF-8 bytes.
 
 ## Tools and interaction lifecycle
 

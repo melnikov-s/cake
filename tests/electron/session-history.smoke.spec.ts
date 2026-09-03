@@ -47,8 +47,9 @@ test("navigates session history with back, forward, and resolve", async () => {
       draftsBySession: {},
     }),
   );
+  await mkdir(join(cakeHome, "state"), { recursive: true });
   await writeFile(
-    join(userData, "application.json"),
+    join(cakeHome, "state", "application.json"),
     JSON.stringify({
       schemaVersion: 1,
       projects: [

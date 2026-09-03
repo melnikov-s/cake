@@ -33,7 +33,7 @@ async function launch(temporaryRoot: string) {
       ...process.env,
       CAKE_ELECTRON_SMOKE: "1",
       CAKE_ELECTRON_USER_DATA: join(temporaryRoot, "user-data"),
-      CAKE_HOME: join(temporaryRoot, "cake-home"),
+      CAKE_HOME: cakeHome,
     },
   });
 }
@@ -80,9 +80,11 @@ test("Model Presets use Effect RPC, persist transactionally, and preserve unreso
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-model-presets-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
+  const cakeHome = join(temporaryRoot, "cake-home");
   await Promise.all([mkdir(userData, { recursive: true }), mkdir(project, { recursive: true })]);
+  await mkdir(join(cakeHome, "state"), { recursive: true });
   await writeFile(
-    join(userData, "application.json"),
+    join(cakeHome, "state", "application.json"),
     JSON.stringify({
       schemaVersion: 1,
       projects: [

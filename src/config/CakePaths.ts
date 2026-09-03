@@ -12,6 +12,11 @@ export interface CakePaths {
   piGlobalChatSessions: string;
   piGlobalChatResolvedSessions: string;
   state: string;
+  sessionMetadata: string;
+  resolvedProjectMetadata: string;
+  artifacts: string;
+  reviews: string;
+  worktrees: string;
 }
 
 export interface ResolveCakePathsOptions {
@@ -25,6 +30,7 @@ export function resolveCakePaths(options: ResolveCakePathsOptions = {}): CakePat
   const homeDirectory = options.homeDirectory ?? homedir();
   const home = resolve(env.CAKE_HOME || join(homeDirectory, ".cake"));
   const piAgent = join(home, "pi");
+  const state = join(home, "state");
   return {
     home,
     piAgent,
@@ -35,6 +41,11 @@ export function resolveCakePaths(options: ResolveCakePathsOptions = {}): CakePat
     piSubagentSessions: join(piAgent, "subagent-sessions"),
     piGlobalChatSessions: join(piAgent, "global-chat", "sessions"),
     piGlobalChatResolvedSessions: join(piAgent, "global-chat", "resolved-sessions"),
-    state: join(home, "state"),
+    state,
+    sessionMetadata: join(state, "session-metadata"),
+    resolvedProjectMetadata: join(state, "resolved-project-metadata"),
+    artifacts: join(state, "artifacts"),
+    reviews: join(state, "reviews"),
+    worktrees: join(state, "worktrees.json"),
   };
 }

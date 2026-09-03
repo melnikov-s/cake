@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test, type Page } from "@playwright/test";
@@ -12,6 +12,7 @@ test("workspace settings icon visibility follows sidebar state", async () => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-settings-icon-check-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
+  const cakeHome = join(temporaryRoot, "cake-home");
   await import("node:fs/promises").then(({ mkdir }) =>
     Promise.all([mkdir(userData, { recursive: true }), mkdir(project, { recursive: true })]),
   );
@@ -24,8 +25,9 @@ test("workspace settings icon visibility follows sidebar state", async () => {
       theme: "system",
     }),
   );
+  await mkdir(join(cakeHome, "state"), { recursive: true });
   await writeFile(
-    join(userData, "application.json"),
+    join(cakeHome, "state", "application.json"),
     JSON.stringify({
       schemaVersion: 1,
       projects: [
@@ -46,7 +48,7 @@ test("workspace settings icon visibility follows sidebar state", async () => {
       ...process.env,
       CAKE_ELECTRON_SMOKE: "1",
       CAKE_ELECTRON_USER_DATA: userData,
-      CAKE_HOME: join(temporaryRoot, "cake-home"),
+      CAKE_HOME: cakeHome,
     },
   });
   try {

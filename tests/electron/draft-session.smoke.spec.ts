@@ -9,6 +9,7 @@ test("restores, edits, resolves, and activates a project draft session", async (
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-draft-session-smoke-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
+  const cakeHome = join(temporaryRoot, "cake-home");
   const sessionId = "draft-session";
   await Promise.all([mkdir(userData, { recursive: true }), mkdir(project, { recursive: true })]);
   await writeFile(
@@ -34,8 +35,9 @@ test("restores, edits, resolves, and activates a project draft session", async (
       theme: "system",
     }),
   );
+  await mkdir(join(cakeHome, "state"), { recursive: true });
   await writeFile(
-    join(userData, "application.json"),
+    join(cakeHome, "state", "application.json"),
     JSON.stringify({
       schemaVersion: 1,
       projects: [
@@ -57,7 +59,7 @@ test("restores, edits, resolves, and activates a project draft session", async (
       ...process.env,
       CAKE_ELECTRON_SMOKE: "1",
       CAKE_ELECTRON_USER_DATA: userData,
-      CAKE_HOME: join(temporaryRoot, "cake-home"),
+      CAKE_HOME: cakeHome,
     },
   });
 

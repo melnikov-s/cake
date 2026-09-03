@@ -30,8 +30,9 @@ test("Quake terminal runs a shell and only warns on resolution for a running pro
       theme: "dark",
     }),
   );
+  await mkdir(join(cakeHome, "state"), { recursive: true });
   await writeFile(
-    join(userData, "application.json"),
+    join(cakeHome, "state", "application.json"),
     JSON.stringify({
       schemaVersion: 1,
       projects: [
