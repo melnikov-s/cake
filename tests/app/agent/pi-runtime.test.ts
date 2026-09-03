@@ -317,6 +317,22 @@ describe("Pi 0.84.0 foundation contract", () => {
           data: { targetId: userEntry?.id, renderAs: "markdown" },
         }),
       );
+      if (typeof userEntry?.id !== "string") throw new Error("Expected a user entry ID");
+      await runtime.setUserMessageMarkdown(userEntry.id, false);
+      const updatedEntries = (await readFile(runtime.sessionFile, "utf8"))
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line) as Record<string, unknown>);
+      expect(updatedEntries).toContainEqual(
+        expect.objectContaining({
+          type: "custom",
+          customType: "cake.user-message-presentation/v1",
+          data: { targetId: userEntry.id, renderAs: "plain" },
+        }),
+      );
+      expect((await runtime.snapshot()).parts).toContainEqual(
+        expect.objectContaining({ entryId: userEntry.id, role: "user", renderAs: undefined }),
+      );
       expect(entries).toContainEqual(
         expect.objectContaining({ type: "session_info", name: "Generated title" }),
       );
@@ -906,6 +922,43 @@ describe("Pi 0.84.0 foundation contract", () => {
         role: "user",
         text: "# Heading",
         renderAs: "markdown",
+      }),
+    ]);
+  });
+
+  it("uses the latest persisted presentation choice for a user message", () => {
+    const parts = projectSessionEntries([
+      {
+        type: "message",
+        id: "user-markdown",
+        parentId: null,
+        timestamp: new Date(0).toISOString(),
+        message: { role: "user", content: "# Heading", timestamp: 0 },
+      },
+      {
+        type: "custom",
+        id: "presentation-markdown",
+        parentId: "user-markdown",
+        timestamp: new Date(0).toISOString(),
+        customType: "cake.user-message-presentation/v1",
+        data: { targetId: "user-markdown", renderAs: "markdown" },
+      },
+      {
+        type: "custom",
+        id: "presentation-plain",
+        parentId: "presentation-markdown",
+        timestamp: new Date(0).toISOString(),
+        customType: "cake.user-message-presentation/v1",
+        data: { targetId: "user-markdown", renderAs: "plain" },
+      },
+    ] as never);
+
+    expect(parts).toEqual([
+      expect.objectContaining({
+        kind: "text",
+        role: "user",
+        text: "# Heading",
+        renderAs: undefined,
       }),
     ]);
   });

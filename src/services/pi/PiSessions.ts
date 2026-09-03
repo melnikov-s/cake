@@ -111,16 +111,22 @@ export interface PiSessionHandle {
   readonly steer: (
     text: string,
     attachments?: ReadonlyArray<Attachment>,
+    renderUserMessageAsMarkdown?: boolean,
   ) => Effect.Effect<string, PiSessionError>;
   readonly followUp: (
     text: string,
     attachments?: ReadonlyArray<Attachment>,
+    renderUserMessageAsMarkdown?: boolean,
   ) => Effect.Effect<string, PiSessionError>;
   readonly editMessage: (
     entryId: string,
     text: string,
     attachments: ReadonlyArray<Attachment>,
     renderUserMessageAsMarkdown: boolean,
+  ) => Effect.Effect<void, PiSessionError>;
+  readonly setUserMessageMarkdown: (
+    entryId: string,
+    renderAsMarkdown: boolean,
   ) => Effect.Effect<void, PiSessionError>;
   readonly abort: () => Effect.Effect<void, PiSessionError>;
   readonly executeCommand: (
@@ -499,8 +505,10 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
           snapshot: () => call("snapshot", (runtime) => runtime.snapshot()),
           prompt: (text, attachments = [], markdown = false) =>
             startTurn("prompt", text, attachments, markdown),
-          steer: (text, attachments = []) => startTurn("steer", text, attachments),
-          followUp: (text, attachments = []) => startTurn("follow-up", text, attachments),
+          steer: (text, attachments = [], markdown = false) =>
+            startTurn("steer", text, attachments, markdown),
+          followUp: (text, attachments = [], markdown = false) =>
+            startTurn("follow-up", text, attachments, markdown),
           editMessage: (entryId, text, attachments, renderUserMessageAsMarkdown) =>
             shared.runtime.editMessage
               ? call(
@@ -519,6 +527,10 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
                     message: "Message editing is unavailable",
                   }),
                 ),
+          setUserMessageMarkdown: (entryId, renderAsMarkdown) =>
+            call("setUserMessageMarkdown", (runtime) =>
+              runtime.setUserMessageMarkdown(entryId, renderAsMarkdown),
+            ),
           abort: Effect.fn("PiSessions.abort")(function* () {
             const active = yield* Ref.getAndSet(shared.activeTurns, new Map());
             yield* call("abort", (runtime) => runtime.abort());

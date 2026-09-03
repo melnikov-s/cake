@@ -1,4 +1,5 @@
 import { observable, snapshot, Store, untracked } from "r-state-tree";
+import { shouldRenderMarkdown } from "../../utils/markdown";
 import type { StateSnapshot } from "react-virtuoso";
 import type {
   Annotation,
@@ -29,7 +30,7 @@ export interface ChatStoreProps {
     draft: string,
     options?: { renderUserMessageAsMarkdown?: boolean },
   ): Promise<boolean | void>;
-  supportsUserMessageMarkdown?(): boolean;
+  setUserMessageMarkdown?(entryId: string, renderAsMarkdown: boolean): Promise<void>;
   createDraft?(): Promise<boolean>;
   canCreateDraft?(): boolean;
   activateDraft?(choice?: WorktreeDraftChoice): Promise<boolean>;
@@ -83,14 +84,15 @@ export type { WorkLogViewMode, WorkLogsExpansion };
 /** Common state and behavior contract for every Cake conversation surface. */
 export class ChatStore extends Store<ChatStoreProps> {
   @snapshot draft = "";
-  renderUserMessageAsMarkdown = false;
   private localWorkLogViewMode: WorkLogViewMode = "auto";
   private localWorkLogsExpansion: WorkLogsExpansion = "collapsed";
   readonly workLogItemOverrides = observable(new Map<string, boolean>());
   readonly workLogGroupOverrides = observable(new Map<string, boolean>());
+  readonly updatingUserMessagePresentation = observable(new Set<string>());
   submittingLocally = false;
   rewording = false;
   rewordError: string | undefined;
+  userMessagePresentationError: string | undefined;
   loadingStartedAt: number | undefined;
   readonly workLogTimers = observable(new Map<string, WorkLogTimerState>());
   transcriptScrollState: StateSnapshot | undefined;
@@ -251,12 +253,22 @@ export class ChatStore extends Store<ChatStoreProps> {
   get canAttach() {
     return Boolean(this.props.addAttachments);
   }
-  get supportsUserMessageMarkdown() {
-    return this.props.supportsUserMessageMarkdown?.() ?? false;
+  get canToggleUserMessageMarkdown() {
+    return Boolean(this.props.setUserMessageMarkdown);
   }
-  toggleUserMessageMarkdown() {
-    if (this.supportsUserMessageMarkdown)
-      this.renderUserMessageAsMarkdown = !this.renderUserMessageAsMarkdown;
+  async setUserMessageMarkdown(entryId: string, renderAsMarkdown: boolean) {
+    if (!this.props.setUserMessageMarkdown || this.updatingUserMessagePresentation.has(entryId))
+      return;
+    this.updatingUserMessagePresentation.add(entryId);
+    this.userMessagePresentationError = undefined;
+    try {
+      await this.props.setUserMessageMarkdown(entryId, renderAsMarkdown);
+    } catch (error) {
+      if (!this.signal.aborted)
+        this.userMessagePresentationError = error instanceof Error ? error.message : String(error);
+    } finally {
+      this.updatingUserMessagePresentation.delete(entryId);
+    }
   }
   get canPasteImages() {
     return Boolean(this.props.addPastedImages);
@@ -299,6 +311,11 @@ export class ChatStore extends Store<ChatStoreProps> {
   }
   get error() {
     if (this.rewordError) return { message: this.rewordError, title: "Reword failed" };
+    if (this.userMessagePresentationError)
+      return {
+        message: this.userMessagePresentationError,
+        title: "Could not change message formatting",
+      };
     return this.props.error?.();
   }
   get canRewordComposerSelection() {
@@ -443,7 +460,7 @@ export class ChatStore extends Store<ChatStoreProps> {
     try {
       const submitted = await this.props.submit(value, {
         renderUserMessageAsMarkdown:
-          options?.renderUserMessageAsMarkdown ?? this.renderUserMessageAsMarkdown,
+          options?.renderUserMessageAsMarkdown ?? shouldRenderMarkdown(value),
       });
       if (submitted !== false && this.draft === value && this.draftRevision === submittedRevision)
         this.setDraft("");
@@ -457,8 +474,7 @@ export class ChatStore extends Store<ChatStoreProps> {
     this.props.steerQueuedPrompt?.(id);
   }
   editQueuedPrompt(id: string) {
-    const renderAsMarkdown = this.props.editQueuedPrompt?.(id);
-    if (renderAsMarkdown !== undefined) this.renderUserMessageAsMarkdown = renderAsMarkdown;
+    this.props.editQueuedPrompt?.(id);
   }
   removeQueuedPrompt(id: string) {
     this.props.removeQueuedPrompt?.(id);
@@ -474,8 +490,7 @@ export class ChatStore extends Store<ChatStoreProps> {
     return this.props.activateDraft?.(choice) ?? Promise.resolve(false);
   }
   editLastUserMessage(entryId: string) {
-    const renderAsMarkdown = this.props.editLastUserMessage?.(entryId);
-    if (renderAsMarkdown !== undefined) this.renderUserMessageAsMarkdown = renderAsMarkdown;
+    this.props.editLastUserMessage?.(entryId);
   }
   abort() {
     return this.props.abort?.() ?? Promise.resolve();

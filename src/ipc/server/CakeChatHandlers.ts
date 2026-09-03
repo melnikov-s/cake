@@ -11,6 +11,8 @@ export const cakeChatHandlers = CakeChatRpc.of({
   "cakeChats.abort": (target) => cakeChats.abort(target),
   "cakeChats.compact": ({ instructions, ...target }) => cakeChats.compact(target, instructions),
   "cakeChats.editMessage": (input) => cakeChats.editMessage(input),
+  "cakeChats.setUserMessageMarkdown": ({ entryId, renderAsMarkdown, ...target }) =>
+    cakeChats.setUserMessageMarkdown(target, entryId, renderAsMarkdown),
   "cakeChats.applyConfiguration": ({ configuration, ...target }) =>
     cakeChats.applyConfiguration(target, configuration),
   "cakeChats.setModel": ({ provider, modelId, ...target }) =>

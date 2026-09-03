@@ -13,7 +13,7 @@ import { SourceAttachment } from "@/components/source-attachment";
 import { SubagentStatus } from "@/components/subagent-status";
 import { Chip } from "@/components/ui/chip";
 import { IconButton } from "@/components/ui/icon-button";
-import { MarkdownIcon, PaperclipIcon } from "@/components/ui/icons";
+import { PaperclipIcon } from "@/components/ui/icons";
 import { TooltipBubble, useTooltip } from "@/components/ui/tooltip";
 import type { ChatStore } from "../stores/ChatStore";
 
@@ -292,21 +292,7 @@ export const Chat = observer(function Chat({
                 <PaperclipIcon />
               </IconButton>
             )}
-            {store.supportsUserMessageMarkdown && (
-              <IconButton
-                tooltip={
-                  store.renderUserMessageAsMarkdown
-                    ? "Stop rendering sent messages as Markdown"
-                    : "Render sent messages as Markdown"
-                }
-                ariaLabel="Markdown formatting"
-                aria-pressed={store.renderUserMessageAsMarkdown}
-                onClick={() => store.toggleUserMessageMarkdown()}
-              >
-                <MarkdownIcon />
-              </IconButton>
-            )}
-            {(store.canAttach || store.supportsUserMessageMarkdown) && store.configuration && (
+            {store.canAttach && store.configuration && (
               <div className="mx-0.5 h-4 w-px bg-border/60" aria-hidden="true" />
             )}
           </>

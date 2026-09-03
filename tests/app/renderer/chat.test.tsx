@@ -62,6 +62,7 @@ describe("Chat", () => {
   it("renders the shared transcript, loading state, configuration, and composer actions", async () => {
     const submit = vi.fn(async () => true);
     const abort = vi.fn(async () => undefined);
+    const setUserMessageMarkdown = vi.fn(async () => undefined);
     const configuration = {
       session: {
         model: { provider: "openai", id: "gpt", name: "GPT" },
@@ -84,10 +85,10 @@ describe("Chat", () => {
     store = mount(
       createStore(ChatStore, {
         id: () => "shared-chat",
-        supportsUserMessageMarkdown: () => true,
         parts: () => [
           {
             id: "question",
+            entryId: "user-entry",
             kind: "text",
             role: "user",
             text: "Can you check this?",
@@ -103,6 +104,7 @@ describe("Chat", () => {
         inputLabel: () => "Reply to chat",
         canSubmit: (draft) => Boolean(draft.trim()),
         submit,
+        setUserMessageMarkdown,
         abort,
       }),
     );
@@ -116,13 +118,13 @@ describe("Chat", () => {
       "GPT",
     );
     expect(container.textContent).toContain("Medium");
-    const markdown = container.querySelector<HTMLButtonElement>(
-      '[aria-label="Markdown formatting"]',
-    )!;
-    expect(markdown.getAttribute("aria-pressed")).toBe("false");
-    expect(markdown.className).toContain("aria-pressed:bg-primary");
-    await act(async () => markdown.click());
-    expect(markdown.getAttribute("aria-pressed")).toBe("true");
+    expect(container.querySelector('[aria-label="Markdown formatting"]')).toBeNull();
+    const renderMarkdown = container.querySelector<HTMLButtonElement>(
+      '[aria-label="Render as Markdown"]',
+    );
+    expect(renderMarkdown?.className).toContain("group-hover/msg:opacity-100");
+    await act(async () => renderMarkdown?.click());
+    expect(setUserMessageMarkdown).toHaveBeenCalledWith("user-entry", true);
 
     // While streaming, the send icon becomes a stop icon and submits are hidden.
     expect(container.querySelector<HTMLButtonElement>('[aria-label="Send"]')).toBeNull();

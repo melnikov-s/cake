@@ -7,7 +7,7 @@ import { Tool, ToolRunTimer } from "@/components/ai-elements/tool";
 import { AnnotationSummary } from "@/components/annotation-summary";
 import { DraftActivationMenu } from "@/components/draft-activation-menu";
 import { IconButton } from "@/components/ui/icon-button";
-import { EditIcon } from "@/components/ui/icons";
+import { EditIcon, MarkdownIcon } from "@/components/ui/icons";
 import { ArtifactHost } from "@/components/artifact-host";
 import { CompactionMessage } from "@/components/compaction-message";
 import { ImagePreview } from "@/components/image-preview";
@@ -47,6 +47,26 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
     ) : (
       <ChatTextMessage part={part} onOpenSourceLocation={behavior.openSourceLocation}>
         <div className="ml-auto flex min-h-[30px] items-center gap-2" aria-label="User actions">
+          {part.entryId && behavior.store.canToggleUserMessageMarkdown && !part.draft && (
+            <IconButton
+              className="pointer-events-none opacity-0 transition-opacity group-hover/msg:pointer-events-auto group-hover/msg:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
+              tooltip={part.renderAs === "markdown" ? "Render as plain text" : "Render as Markdown"}
+              ariaLabel={
+                part.renderAs === "markdown" ? "Render as plain text" : "Render as Markdown"
+              }
+              aria-pressed={part.renderAs === "markdown"}
+              disabled={behavior.store.updatingUserMessagePresentation.has(part.entryId)}
+              onClick={() => {
+                if (part.entryId)
+                  void behavior.store.setUserMessageMarkdown(
+                    part.entryId,
+                    part.renderAs !== "markdown",
+                  );
+              }}
+            >
+              <MarkdownIcon />
+            </IconButton>
+          )}
           {part.entryId === behavior.store.lastEditableUserEntryId &&
             behavior.store.canEditLastUserMessage && (
               <>

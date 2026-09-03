@@ -74,6 +74,14 @@ export const ProjectSessionRpc = RpcGroup.make(
     },
     error: ProjectSessionError,
   }),
+  Rpc.make("projectSessions.setUserMessageMarkdown", {
+    payload: {
+      ...ProjectSessionTarget.fields,
+      entryId: Schema.String,
+      renderAsMarkdown: Schema.Boolean,
+    },
+    error: ProjectSessionError,
+  }),
   Rpc.make("projectSessions.applyConfiguration", {
     payload: { ...ProjectSessionTarget.fields, configuration: CakeChatConfiguration },
     error: ProjectSessionError,

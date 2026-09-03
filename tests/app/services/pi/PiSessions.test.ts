@@ -61,6 +61,7 @@ function fakeRuntime(
       return snapshot;
     },
     prompt: async () => undefined,
+    setUserMessageMarkdown: async () => undefined,
     compact: async () => undefined,
     abort: async () => undefined,
     setModel: async () => undefined,

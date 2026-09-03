@@ -182,6 +182,9 @@ export interface CakeIpcClientService {
     readonly editMessage: (
       input: CakeChatPromptInput & { readonly entryId: string },
     ) => Effect.Effect<void, CakeChatError | TransportError>;
+    readonly setUserMessageMarkdown: (
+      input: CakeChatTarget & { readonly entryId: string; readonly renderAsMarkdown: boolean },
+    ) => Effect.Effect<void, CakeChatError | TransportError>;
     readonly applyConfiguration: (
       input: CakeChatTarget & { readonly configuration: CakeChatConfiguration },
     ) => Effect.Effect<void, CakeChatError | TransportError>;
@@ -285,6 +288,12 @@ export interface CakeIpcClientService {
         Pick<ProjectSessionPromptInput, "text" | "attachments" | "renderUserMessageAsMarkdown"> & {
           readonly entryId: string;
         },
+    ) => Effect.Effect<void, ProjectSessionError | TransportError>;
+    readonly setUserMessageMarkdown: (
+      input: ProjectSessionTarget & {
+        readonly entryId: string;
+        readonly renderAsMarkdown: boolean;
+      },
     ) => Effect.Effect<void, ProjectSessionError | TransportError>;
     readonly applyConfiguration: (
       input: ProjectSessionTarget & { readonly configuration: CakeChatConfiguration },
@@ -571,6 +580,9 @@ export const CakeIpcClientLive = Layer.effect(
         editMessage: Effect.fn("CakeIpcClient.cakeChats.editMessage")((input) =>
           client("cakeChats.editMessage", input),
         ),
+        setUserMessageMarkdown: Effect.fn("CakeIpcClient.cakeChats.setUserMessageMarkdown")(
+          (input) => client("cakeChats.setUserMessageMarkdown", input),
+        ),
         applyConfiguration: Effect.fn("CakeIpcClient.cakeChats.applyConfiguration")((input) =>
           client("cakeChats.applyConfiguration", input),
         ),
@@ -651,6 +663,9 @@ export const CakeIpcClientLive = Layer.effect(
         ),
         editMessage: Effect.fn("CakeIpcClient.projectSessions.editMessage")((input) =>
           client("projectSessions.editMessage", input),
+        ),
+        setUserMessageMarkdown: Effect.fn("CakeIpcClient.projectSessions.setUserMessageMarkdown")(
+          (input) => client("projectSessions.setUserMessageMarkdown", input),
         ),
         applyConfiguration: Effect.fn("CakeIpcClient.projectSessions.applyConfiguration")((input) =>
           client("projectSessions.applyConfiguration", input),

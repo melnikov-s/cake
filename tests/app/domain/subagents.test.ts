@@ -144,6 +144,7 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (): Effect.
         await Effect.runPromise(Ref.update(active, (count) => count - 1));
         options.onEvent({ type: "streaming", sessionId, streaming: false });
       },
+      setUserMessageMarkdown: async () => undefined,
       compact: async () => undefined,
       abort: async () => {
         const gate = (await Effect.runPromise(Ref.get(childGates))).get(sessionId);

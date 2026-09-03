@@ -469,7 +469,7 @@ export const prompt = Effect.fn("CakeChats.prompt")(function* (input: CakeChatPr
   const attachments = runtimeAttachments(input.attachments);
   const snapshot = yield* handle.snapshot().pipe(asError("prompt"));
   const accepted = snapshot.streaming
-    ? handle.followUp(input.text, attachments)
+    ? handle.followUp(input.text, attachments, input.renderUserMessageAsMarkdown)
     : handle.prompt(input.text, attachments, input.renderUserMessageAsMarkdown);
   const turnId = TurnId.make(yield* accepted.pipe(asError("prompt")));
   if (!input.newSession) yield* publishCatalogChange(input.sessionId, false);
@@ -501,6 +501,16 @@ export const editMessage = Effect.fn("CakeChats.editMessage")(function* (
     ),
   ).pipe(asError("editMessage"));
   yield* publishCatalogChange(input.sessionId, false);
+});
+
+export const setUserMessageMarkdown = Effect.fn("CakeChats.setUserMessageMarkdown")(function* (
+  target: CakeChatTarget,
+  entryId: string,
+  renderAsMarkdown: boolean,
+) {
+  yield* withHandle(target, (handle) =>
+    handle.setUserMessageMarkdown(entryId, renderAsMarkdown),
+  ).pipe(asError("setUserMessageMarkdown"));
 });
 
 export const applyConfiguration = Effect.fn("CakeChats.applyConfiguration")(function* (

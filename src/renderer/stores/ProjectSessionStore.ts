@@ -252,7 +252,11 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       canSubmit: () => this.canSubmit,
       submit: (_draft, options) =>
         this.composerStore.submit(undefined, options?.renderUserMessageAsMarkdown ?? false),
-      supportsUserMessageMarkdown: () => true,
+      setUserMessageMarkdown: (entryId, renderAsMarkdown) =>
+        this.client.projectSessions.setUserMessageMarkdown(
+          { sessionId: this.sessionId, entryId, renderAsMarkdown },
+          { signal: this.signal },
+        ),
       createDraft: () => this.composerStore.createDraftSession(),
       canCreateDraft: () =>
         this.props.registry.isTemporarySession(this.sessionId) &&

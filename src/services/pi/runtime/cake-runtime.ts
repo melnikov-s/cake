@@ -115,6 +115,7 @@ import {
   reviewRunPart,
   shellCommandPart,
   textFromContent,
+  userMessagePresentationEntrySchema,
   userMessagePresentationEntryType,
   toolArtifactId,
   toolFilePath,
@@ -624,6 +625,7 @@ export interface CakeRuntime {
     attachments: Attachment[],
     renderUserMessageAsMarkdown: boolean,
   ): Promise<void>;
+  setUserMessageMarkdown(entryId: string, renderAsMarkdown: boolean): Promise<void>;
   compact(instructions?: string): Promise<void>;
   abort(): Promise<void>;
   setModel(provider: string, modelId: string): Promise<void>;
@@ -2133,6 +2135,22 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
           );
         }
       }
+    },
+    async setUserMessageMarkdown(entryId, renderAsMarkdown) {
+      if (disposed) throw new Error("The Cake runtime has been disposed");
+      const target = session.sessionManager
+        .getBranch()
+        .find(
+          (entry) =>
+            entry.type === "message" && entry.id === entryId && entry.message.role === "user",
+        );
+      if (!target) throw new Error("The user message is not in the active conversation");
+      const presentation = Schema.decodeUnknownSync(userMessagePresentationEntrySchema)({
+        targetId: entryId,
+        renderAs: renderAsMarkdown ? "markdown" : "plain",
+      });
+      session.sessionManager.appendCustomEntry(userMessagePresentationEntryType, presentation);
+      await emitSnapshot();
     },
     async editMessage(entryId, text, attachments, renderUserMessageAsMarkdown) {
       if (disposed) throw new Error("The Cake runtime has been disposed");

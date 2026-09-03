@@ -56,10 +56,13 @@
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-virtuoso": "^4.18.11",
+    "remark-gfm": "4.0.1",
+    "remark-parse": "11.0.0",
     "shiki": "3.23.0",
     "streamdown": "^2.5.0",
     "tailwind-merge": "3.6.0",
     "typescript": "5.9.3",
+    "unified": "11.0.5",
     "vite": "7.3.6"
   },
   "devDependencies": {
@@ -67,6 +70,7 @@
     "@eslint/js": "10.0.1",
     "@oxlint/plugins": "1.78.0",
     "@playwright/test": "1.62.1",
+    "@types/mdast": "4.0.4",
     "electron": "43.3.0",
     "electron-vite": "5.0.0",
     "eslint": "10.8.0",

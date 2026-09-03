@@ -731,7 +731,11 @@ export const steer = Effect.fn("ProjectSessions.steer")(function* (
 ) {
   const turnId = TurnId.make(
     yield* withHandle(promptTarget(input), (handle) =>
-      handle.steer(input.text, runtimeAttachments(input.attachments)),
+      handle.steer(
+        input.text,
+        runtimeAttachments(input.attachments),
+        input.renderUserMessageAsMarkdown,
+      ),
     ).pipe(asError("steer")),
   );
   yield* publishTargetCatalogChange(promptTarget(input));
@@ -743,7 +747,11 @@ export const followUp = Effect.fn("ProjectSessions.followUp")(function* (
 ) {
   const turnId = TurnId.make(
     yield* withHandle(promptTarget(input), (handle) =>
-      handle.followUp(input.text, runtimeAttachments(input.attachments)),
+      handle.followUp(
+        input.text,
+        runtimeAttachments(input.attachments),
+        input.renderUserMessageAsMarkdown,
+      ),
     ).pipe(asError("followUp")),
   );
   yield* publishTargetCatalogChange(promptTarget(input));
@@ -816,6 +824,14 @@ export const editMessage = Effect.fn("ProjectSessions.editMessage")(function* (
     ),
   ).pipe(asError("editMessage"));
 });
+
+export const setUserMessageMarkdown = Effect.fn("ProjectSessions.setUserMessageMarkdown")(
+  function* (target: ProjectSessionTarget, entryId: string, renderAsMarkdown: boolean) {
+    yield* withHandle(target, (handle) =>
+      handle.setUserMessageMarkdown(entryId, renderAsMarkdown),
+    ).pipe(asError("setUserMessageMarkdown"));
+  },
+);
 
 export const applyConfiguration = Effect.fn("ProjectSessions.applyConfiguration")(function* (
   target: ProjectSessionTarget,

@@ -58,6 +58,7 @@ const fakeRuntime = (
     await prompt();
     options.onEvent({ type: "streaming", sessionId: snapshot.sessionId, streaming: false });
   },
+  setUserMessageMarkdown: async () => undefined,
   compact: async () => undefined,
   abort: async () => undefined,
   setModel: async () => undefined,

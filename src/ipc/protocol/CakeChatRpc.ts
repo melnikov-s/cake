@@ -49,6 +49,14 @@ export const CakeChatRpc = RpcGroup.make(
     payload: { ...CakeChatPromptInput.fields, entryId: Schema.String },
     error: CakeChatError,
   }),
+  Rpc.make("cakeChats.setUserMessageMarkdown", {
+    payload: {
+      ...CakeChatTarget.fields,
+      entryId: Schema.String,
+      renderAsMarkdown: Schema.Boolean,
+    },
+    error: CakeChatError,
+  }),
   Rpc.make("cakeChats.applyConfiguration", {
     payload: { ...CakeChatTarget.fields, configuration: CakeChatConfiguration },
     error: CakeChatError,

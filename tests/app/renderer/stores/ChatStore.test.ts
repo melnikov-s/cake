@@ -90,11 +90,10 @@ describe("ChatStore empty-composer submit", () => {
 });
 
 describe("ChatStore user message Markdown", () => {
-  it("captures the active Markdown mode in each submission", async () => {
+  it("detects Markdown when submitting a message", async () => {
     const submit = vi.fn(() => Promise.resolve(true));
-    const store = createChatStore(submit, { supportsUserMessageMarkdown: () => true });
+    const store = createChatStore(submit);
 
-    store.toggleUserMessageMarkdown();
     await store.submit("# Heading");
 
     expect(submit).toHaveBeenCalledWith("# Heading", {
@@ -103,17 +102,25 @@ describe("ChatStore user message Markdown", () => {
     store[Symbol.dispose]();
   });
 
-  it("restores the edited message's Markdown mode", () => {
-    const editLastUserMessage = vi.fn(() => true);
-    const store = createChatStore(() => Promise.resolve(true), {
-      supportsUserMessageMarkdown: () => true,
-      editLastUserMessage,
+  it("keeps ordinary multiline text plain", async () => {
+    const submit = vi.fn(() => Promise.resolve(true));
+    const store = createChatStore(submit);
+
+    await store.submit("First line\nSecond line");
+
+    expect(submit).toHaveBeenCalledWith("First line\nSecond line", {
+      renderUserMessageAsMarkdown: false,
     });
+    store[Symbol.dispose]();
+  });
 
-    store.editLastUserMessage("user-entry");
+  it("forwards a message presentation change", async () => {
+    const setUserMessageMarkdown = vi.fn(() => Promise.resolve());
+    const store = createChatStore(() => Promise.resolve(true), { setUserMessageMarkdown });
 
-    expect(editLastUserMessage).toHaveBeenCalledWith("user-entry");
-    expect(store.renderUserMessageAsMarkdown).toBe(true);
+    await store.setUserMessageMarkdown("user-entry", true);
+
+    expect(setUserMessageMarkdown).toHaveBeenCalledWith("user-entry", true);
     store[Symbol.dispose]();
   });
 });

@@ -361,7 +361,11 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       inputLabel: () => "Message Cake Chat",
       canSubmit: (draft) => Boolean(draft.trim() || this.attachments.length > 0),
       submit: (draft, options) => this.submit(draft, options?.renderUserMessageAsMarkdown ?? false),
-      supportsUserMessageMarkdown: () => true,
+      setUserMessageMarkdown: (entryId, renderAsMarkdown) =>
+        this.client.cakeChats.setUserMessageMarkdown(
+          { ...this.props.collection.target(this.sessionId), entryId, renderAsMarkdown },
+          { signal: this.signal },
+        ),
       createDraft: () => this.createDraftSession(),
       canCreateDraft: () =>
         this.props.collection.isPendingSession(this.sessionId) &&

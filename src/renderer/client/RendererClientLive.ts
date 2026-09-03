@@ -204,6 +204,12 @@ export function makeRendererClient(runtime: RendererRuntime): RendererClient {
           withClient((client) => client.projectSessions.editMessage(input)),
           options,
         ),
+      setUserMessageMarkdown: (input, options) =>
+        run(
+          "projectSessions.setUserMessageMarkdown",
+          withClient((client) => client.projectSessions.setUserMessageMarkdown(input)),
+          options,
+        ),
       applyConfiguration: (input, options) =>
         run(
           "projectSessions.applyConfiguration",
@@ -338,6 +344,12 @@ export function makeRendererClient(runtime: RendererRuntime): RendererClient {
         run(
           "cakeChats.editMessage",
           withClient((client) => client.cakeChats.editMessage(input)),
+          options,
+        ),
+      setUserMessageMarkdown: (input, options) =>
+        run(
+          "cakeChats.setUserMessageMarkdown",
+          withClient((client) => client.cakeChats.setUserMessageMarkdown(input)),
           options,
         ),
       applyConfiguration: (input, options) =>

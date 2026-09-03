@@ -86,6 +86,7 @@ const makeLayer = () => {
       prompt: async () => {
         options.onEvent({ type: "streaming", sessionId, streaming: false });
       },
+      setUserMessageMarkdown: async () => undefined,
       compact: async () => undefined,
       abort: async () => undefined,
       setModel: async () => undefined,

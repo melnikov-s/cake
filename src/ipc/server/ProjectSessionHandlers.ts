@@ -73,6 +73,8 @@ export const projectSessionHandlers = ProjectSessionRpc.of({
   "projectSessions.compact": ({ instructions, ...target }) =>
     projectSessions.compact(target, instructions),
   "projectSessions.editMessage": (input) => projectSessions.editMessage(input),
+  "projectSessions.setUserMessageMarkdown": ({ entryId, renderAsMarkdown, ...target }) =>
+    projectSessions.setUserMessageMarkdown(target, entryId, renderAsMarkdown),
   "projectSessions.applyConfiguration": ({ configuration, ...target }) =>
     projectSessions.applyConfiguration(target, configuration),
   "projectSessions.setModel": ({ provider, modelId, ...target }) =>

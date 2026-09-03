@@ -18,10 +18,11 @@ import {
 
 export const reviewRunEntryType = "cake.review-run/v1";
 export const userMessagePresentationEntryType = "cake.user-message-presentation/v1";
-const userMessagePresentationEntrySchema = Schema.Struct({
+export const userMessagePresentationEntrySchema = Schema.Struct({
   targetId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
-  renderAs: Schema.Literal("markdown"),
+  renderAs: Schema.Literals(["markdown", "plain"]),
 });
+export type UserMessagePresentation = typeof userMessagePresentationEntrySchema.Type;
 /** Marks the orientation preamble appended as the first entry of a handoff session. */
 export const handoffEntryType = "cake.handoff/v1";
 export const reviewRunEntrySchema = Schema.Struct({
@@ -558,11 +559,12 @@ export function projectSessionEntries(
   }
   for (const run of compactedRuns.values()) append(reviewRunPart(run));
 
-  const markdownUserMessageIds = new Set<string>();
+  const userMessagePresentations = new Map<string, UserMessagePresentation["renderAs"]>();
   for (const entry of entries) {
     if (entry.type !== "custom" || entry.customType !== userMessagePresentationEntryType) continue;
     const presentation = Schema.decodeUnknownOption(userMessagePresentationEntrySchema)(entry.data);
-    if (Option.isSome(presentation)) markdownUserMessageIds.add(presentation.value.targetId);
+    if (Option.isSome(presentation))
+      userMessagePresentations.set(presentation.value.targetId, presentation.value.renderAs);
   }
 
   const intermediateRetryErrors = new Set<string>();
@@ -589,7 +591,7 @@ export function projectSessionEntries(
         `entry-${entry.id}`,
         false,
         entry.id,
-        markdownUserMessageIds.has(entry.id),
+        userMessagePresentations.get(entry.id) === "markdown",
       ))
         append(part);
       continue;
