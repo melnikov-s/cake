@@ -360,10 +360,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
   }
 
   private isObservableSession(session: ProjectSessionStore) {
-    return (
-      this.materializedSessionIds.includes(session.sessionId) &&
-      !this.props.catalog?.find(session.sessionId)?.resolved
-    );
+    return this.materializedSessionIds.includes(session.sessionId);
   }
 
   private touchObservationLru(sessionId: string) {

@@ -1,6 +1,7 @@
 import { createStore, mount, type StoreSnapshot } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
 import { SessionCatalog } from "../../../../src/renderer/models/SessionCatalog";
+import { SessionSummary } from "../../../../src/renderer/models/SessionSummary";
 import { RendererModels } from "../../../../src/renderer/RendererModels";
 import { SessionCatalogStore } from "../../../../src/renderer/stores/SessionCatalogStore";
 import { SessionOperationCoordinatorStore } from "../../../../src/renderer/stores/SessionOperationCoordinatorStore";
@@ -46,6 +47,7 @@ function registryFixture(
   registryRef.current = registry;
   return {
     catalog,
+    catalogModel,
     registry,
     dispose() {
       registry[Symbol.dispose]();
@@ -122,6 +124,30 @@ describe("SessionRegistryStore materialization", () => {
     fixture.registry.retainObservation("session-2");
     expect(fixture.registry.observationSessions.map((session) => session.sessionId)).toEqual([
       "session-2",
+    ]);
+
+    fixture.dispose();
+  });
+
+  it("observes a loaded resolved session so its archived transcript can be projected", () => {
+    const fixture = registryFixture();
+    fixture.catalogModel.sessions.push(
+      SessionSummary.create({
+        sessionId: "resolved-session",
+        title: "Resolved session",
+        createdAt: "1970-01-01T00:00:00.000Z",
+        modifiedAt: "1970-01-01T00:00:00.000Z",
+        resolved: true,
+        projectPath: "/project",
+        projectName: "project",
+        workingDirectory: "/project",
+      }),
+    );
+
+    fixture.registry.load("resolved-session", "/project");
+
+    expect(fixture.registry.observationSessions.map((session) => session.sessionId)).toEqual([
+      "resolved-session",
     ]);
 
     fixture.dispose();

@@ -90,11 +90,7 @@ async function bootstrap(bridge: NonNullable<typeof window.cake>) {
     projectSessions: () => {
       const blockedPath = rootStore.projectWorkbenchStore.pendingAuthorizationPath;
       return rootStore.sessionRegistry.observationSessions
-        .filter(
-          (session) =>
-            session.workspacePath !== blockedPath &&
-            !rootStore.sessionCatalogStore.find(session.sessionId)?.resolved,
-        )
+        .filter((session) => session.workspacePath !== blockedPath)
         .map((session) => ({
           target: {
             sessionId: session.sessionId,

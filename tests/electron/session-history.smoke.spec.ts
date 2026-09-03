@@ -134,6 +134,7 @@ test("navigates session history with back, forward, and resolve", async () => {
     await expect(back).toBeDisabled();
     await expect(page.locator('[data-slot="resolved-lane"]')).toBeVisible();
     await page.getByRole("button", { name: "Expand Resolved" }).click();
+    await page.getByRole("button", { name: "Expand project resolved" }).last().click();
     await expect(
       page.locator(
         `[data-slot="resolved-lane"] .session-item.active[data-session-id="history-forward-session"]`,
@@ -145,6 +146,7 @@ test("navigates session history with back, forward, and resolve", async () => {
     );
     await resolvedForwardSession.locator(".session-row").click();
     await expect(resolvedForwardSession).toHaveClass(/active/);
+    await expect(page.getByRole("article").getByText("Second history session")).toBeVisible();
     await expect(resolvedForwardSession.locator(".session-resolve-action")).toHaveAttribute(
       "aria-label",
       /^Restore /,
