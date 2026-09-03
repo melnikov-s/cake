@@ -250,9 +250,10 @@ The window Store hierarchy mirrors the product surfaces:
   Worktrees; finished, discarded, and missing worktrees never participate in
   startup. Metadata arrives in bounded batches. The resolved lane and every
   resolved project group start collapsed, so archive metadata is not read until
-  both are expanded. Closing a resolved group cancels its stream and unloads
-  that group's projection. After a group's one initial lazy metadata scan,
-  session mutations publish scoped catalog events; they refresh
+  both are expanded. After its first expansion, a resolved group's catalog and
+  projection remain active for the window lifetime; collapsing it changes only
+  visibility, so re-expansion is immediate. After a group's one initial lazy
+  metadata scan, session mutations publish scoped catalog events; they refresh
   only the affected session's filename metadata and never restart catalogs from
   application-state revisions. Titles come from Cake's namespace-independent,
   per-session metadata repository, so neither active nor resolved listing opens

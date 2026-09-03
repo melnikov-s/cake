@@ -30,6 +30,7 @@ export class SidebarStore extends Store<SidebarStoreProps> {
     "cake-chat": true,
   });
   private readonly expandedResolvedGroups: Record<string, boolean> = observable({});
+  private readonly activatedResolvedCatalogs: Record<string, boolean> = observable({});
   resolvedLaneExpanded = false;
   now = Date.now();
 
@@ -103,21 +104,23 @@ export class SidebarStore extends Store<SidebarStoreProps> {
   }
 
   toggleResolvedGroupExpanded(groupKey: string) {
-    this.expandedResolvedGroups[groupKey] = !this.isResolvedGroupExpanded(groupKey);
+    const expanded = !this.isResolvedGroupExpanded(groupKey);
+    this.expandedResolvedGroups[groupKey] = expanded;
+    if (expanded) this.activatedResolvedCatalogs[groupKey] = true;
   }
 
   get projectSessionCatalogQueries(): ReadonlyArray<ProjectSessionCatalogQuery> {
     const queries: ProjectSessionCatalogQuery[] = [];
     for (const projectPath of this.props.projects.orderedProjectPaths) {
       queries.push({ projectPath, resolved: false });
-      if (this.resolvedLaneExpanded && this.isResolvedGroupExpanded(projectPath))
+      if (this.activatedResolvedCatalogs[projectPath])
         queries.push({ projectPath, resolved: true });
     }
     return queries;
   }
 
   get cakeChatCatalogQueries(): ReadonlyArray<CakeChatCatalogQuery> {
-    return this.resolvedLaneExpanded && this.isResolvedGroupExpanded("cake-chat")
+    return this.activatedResolvedCatalogs["cake-chat"]
       ? [{ resolved: false }, { resolved: true }]
       : [{ resolved: false }];
   }

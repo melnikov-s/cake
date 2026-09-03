@@ -7,7 +7,7 @@ import type { GlobalChatStore } from "../../../../src/renderer/stores/GlobalChat
 import { SidebarStore } from "../../../../src/renderer/stores/SidebarStore";
 
 describe("SidebarStore catalog demand", () => {
-  it("always requests active projects and requests resolved projects only when expanded", () => {
+  it("loads resolved catalogs on first expansion and retains them for the window lifetime", () => {
     const store = mount(
       createStore(SidebarStore, {
         projects: {
@@ -48,6 +48,17 @@ describe("SidebarStore catalog demand", () => {
     expect(store.cakeChatCatalogQueries).toEqual([{ resolved: false }]);
 
     store.toggleResolvedGroupExpanded("cake-chat");
+    expect(store.cakeChatCatalogQueries).toEqual([{ resolved: false }, { resolved: true }]);
+
+    store.toggleResolvedGroupExpanded("/cake");
+    store.toggleResolvedGroupExpanded("cake-chat");
+    store.toggleResolvedLane();
+    expect(store.isResolvedGroupExpanded("/cake")).toBe(false);
+    expect(store.projectSessionCatalogQueries).toEqual([
+      { projectPath: "/cake", resolved: false },
+      { projectPath: "/cake", resolved: true },
+      { projectPath: "/pi", resolved: false },
+    ]);
     expect(store.cakeChatCatalogQueries).toEqual([{ resolved: false }, { resolved: true }]);
 
     store[Symbol.dispose]();
