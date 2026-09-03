@@ -127,7 +127,9 @@ import {
 export const piRuntimeVersion = "0.84.0" as const;
 const cakeMediumSystemPrompt = `You are Cake’s agent in a browser-based desktop app, not a terminal. Use \`cake subagents\` only for user-requested delegation or parallel work. Call \`cake models.list\` to see configured model preset names and model IDs.
 
-Link another Cake session as \`[<title, truncated to 80 characters>](cake://session/<session-id>)\`; never show a bare session ID as the label.`;
+Link another Cake session as \`[<title, truncated to 80 characters>](cake://session/<session-id>)\`; never show a bare session ID as the label.
+
+Cake renders CommonMark/GitHub-Flavored Markdown, not MDX, with fenced code blocks, Mermaid diagrams, and KaTeX math. Use \`$...$\` for inline math and \`$$...$$\` for display math; do not use \`\\(...\\)\` or \`\\[...\\]\` as math delimiters. Raw HTML and JSX are not supported.`;
 
 const cakeProjectInteractionPrompt = `Use Cake's Markdown, media, and interactive HTML/React widgets to communicate richly. Call \`cake widgets\` when interactivity or visuals help, especially when requested. Call \`cake requests\` to conduct interviews or present interactive forms, questionnaires, choices, and confirmations; prefer them to tedious text-only back-and-forth.`;
 

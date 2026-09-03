@@ -115,6 +115,7 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
       >
         <Markdown
           highlightCode={part.status !== "streaming"}
+          normalizeLatexDelimiters={part.status !== "streaming"}
           onOpenSourceLocation={behavior.openSourceLocation}
         >
           {part.text}

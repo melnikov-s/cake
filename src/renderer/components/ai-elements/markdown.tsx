@@ -83,6 +83,73 @@ function prepareMarkdownLinks(markdown: string, sourceLinks: boolean) {
     .join("");
 }
 
+function normalizeLatexMathDelimiters(markdown: string) {
+  const normalizeText = (text: string) =>
+    text
+      .replace(/\\\[([\s\S]*?)\\\]/g, (_match, body: string) => `$$${body}$$`)
+      .replace(/\\\((.*?)\\\)/g, (_match, body: string) => `$${body}$`);
+  let result = "";
+  let text = "";
+  let fence: { marker: "`" | "~"; length: number } | undefined;
+
+  const flushText = () => {
+    result += normalizeText(text);
+    text = "";
+  };
+
+  for (const line of markdown.match(/[^\n]*\n|[^\n]+$/g) ?? []) {
+    if (fence) {
+      flushText();
+      result += line;
+      const closingFence = line.match(/^ {0,3}(`+|~+)[ \t]*(?:\n|$)/)?.[1];
+      if (closingFence?.[0] === fence.marker && closingFence.length >= fence.length)
+        fence = undefined;
+      continue;
+    }
+
+    const openingFence = line.match(/^ {0,3}(`{3,}|~{3,})/)?.[1];
+    if (
+      openingFence &&
+      (openingFence[0] === "~" ||
+        !line.slice(line.indexOf(openingFence) + openingFence.length).includes("`"))
+    ) {
+      flushText();
+      result += line;
+      fence = {
+        marker: openingFence.startsWith("`") ? "`" : "~",
+        length: openingFence.length,
+      };
+      continue;
+    }
+
+    let cursor = 0;
+    while (cursor < line.length) {
+      const opening = line.indexOf("`", cursor);
+      if (opening < 0) break;
+      let openingEnd = opening + 1;
+      while (line[openingEnd] === "`") openingEnd += 1;
+      const delimiter = line.slice(opening, openingEnd);
+      let closing = line.indexOf(delimiter, openingEnd);
+      while (
+        closing >= 0 &&
+        (line[closing - 1] === "`" || line[closing + delimiter.length] === "`")
+      )
+        closing = line.indexOf(delimiter, closing + delimiter.length);
+      if (closing < 0) break;
+
+      text += line.slice(cursor, opening);
+      flushText();
+      const closingEnd = closing + delimiter.length;
+      result += line.slice(opening, closingEnd);
+      cursor = closingEnd;
+    }
+    text += line.slice(cursor);
+  }
+
+  flushText();
+  return result;
+}
+
 function linkAnchor(allProps: AnchorProps, actions?: MarkdownLinkActions) {
   const props = { ...allProps };
   delete props.node;
@@ -141,6 +208,8 @@ type MarkdownProps = Omit<
   children: string;
   /** Defers expensive highlighting while content is still changing. */
   highlightCode?: boolean;
+  /** Normalizes conventional LaTeX delimiters after streamed content settles. */
+  normalizeLatexDelimiters?: boolean;
   /** Invoked when the reader selects a workspace source reference. */
   onOpenSourceLocation?(location: SourceLocation): void;
 };
@@ -149,12 +218,16 @@ export function Markdown({
   children,
   className,
   highlightCode = true,
+  normalizeLatexDelimiters = true,
   onOpenSourceLocation,
   ...props
 }: MarkdownProps) {
   const colorTheme = useResolvedColorTheme();
   const linkActions = useContext(MarkdownLinkContext);
-  const source = prepareMarkdownLinks(children, Boolean(onOpenSourceLocation));
+  const source = prepareMarkdownLinks(
+    normalizeLatexDelimiters ? normalizeLatexMathDelimiters(children) : children,
+    Boolean(onOpenSourceLocation),
+  );
   const components = useMemo<Components>(() => {
     if (!onOpenSourceLocation) return { a: (anchorProps) => linkAnchor(anchorProps, linkActions) };
     const openSourceLocation = onOpenSourceLocation;

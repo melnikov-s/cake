@@ -86,6 +86,48 @@ describe("Markdown", () => {
     );
   });
 
+  it("normalizes LaTeX math delimiters without changing code", () => {
+    const source = [
+      "Inline \\(x + y\\).",
+      "",
+      "\\[",
+      "E = mc^2",
+      "\\]",
+      "",
+      "`\\(inline code\\)`",
+      "",
+      "````tex",
+      "\\[fenced code\\]",
+      "````",
+    ].join("\n");
+
+    act(() => root.render(<Markdown>{source}</Markdown>));
+
+    expect(vi.mocked(Streamdown).mock.calls.at(-1)![0].children).toBe(
+      [
+        "Inline $x + y$.",
+        "",
+        "$$",
+        "E = mc^2",
+        "$$",
+        "",
+        "`\\(inline code\\)`",
+        "",
+        "````tex",
+        "\\[fenced code\\]",
+        "````",
+      ].join("\n"),
+    );
+  });
+
+  it("defers LaTeX delimiter normalization while content is streaming", () => {
+    const source = "Streaming \\(x + y\\) and \\[E = mc^2\\]";
+
+    act(() => root.render(<Markdown normalizeLatexDelimiters={false}>{source}</Markdown>));
+
+    expect(vi.mocked(Streamdown).mock.calls.at(-1)![0].children).toBe(source);
+  });
+
   it("recognizes bare source references without changing inline code", () => {
     act(() =>
       root.render(

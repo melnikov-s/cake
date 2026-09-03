@@ -98,6 +98,9 @@ describe("Pi 0.84.0 foundation contract", () => {
     expect(systemPrompt).toContain("You are an expert coding assistant operating inside pi");
     expect(systemPrompt).toContain("## Cake desktop environment");
     expect(systemPrompt).toContain("Mermaid diagrams directly in the transcript");
+    expect(systemPrompt).toContain("CommonMark/GitHub-Flavored Markdown, not MDX");
+    expect(systemPrompt).toContain("Use `$...$` for inline math and `$$...$$` for display math");
+    expect(systemPrompt).toContain("Raw HTML and JSX are not supported");
     expect(systemPrompt).toContain("Call `cake widgets`");
     expect(systemPrompt).toContain("Call `cake requests`");
     expect(systemPrompt).toContain("Call `cake models.list`");
