@@ -37,7 +37,6 @@ const SessionIds = boundedArray(boundedString(256), 10_000).check(Schema.isUniqu
 
 const RendererApplicationFields = {
   projects: boundedArray(ProjectRecord, 200),
-  resolvedCakeChatSessionIds: SessionIds,
   unreadSessionIds: SessionIds,
   trustedProjectPaths: boundedArray(boundedString(4_096), 200).check(Schema.isUnique()),
   fastModeSessionIds: SessionIds,
@@ -86,7 +85,6 @@ export interface ModelPreset extends Schema.Schema.Type<typeof ModelPreset> {}
 
 export const defaultApplicationState = (): ApplicationState => ({
   projects: [],
-  resolvedCakeChatSessionIds: [],
   unreadSessionIds: [],
   trustedProjectPaths: [],
   fastModeSessionIds: [],

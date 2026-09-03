@@ -46,7 +46,6 @@ test("uses the native context menu for project sessions", async () => {
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
-      resolvedCakeChatSessionIds: [],
       trustedProjectPaths: [],
     }),
   );

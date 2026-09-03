@@ -82,7 +82,6 @@ const LegacyApplicationState = Schema.Struct({
   schemaVersion: Schema.Literal(1),
   projects: Schema.optionalKey(Schema.Array(ProjectRecord)),
   resolvedSessionIds: Schema.optionalKey(Schema.Array(Schema.String)),
-  resolvedCakeChatSessionIds: Schema.optionalKey(Schema.Array(Schema.String)),
   unreadSessionIds: Schema.optionalKey(Schema.Array(Schema.String)),
   trustedProjectPaths: Schema.optionalKey(Schema.Array(Schema.String)),
   fastModeSessionIds: Schema.optionalKey(Schema.Array(Schema.String)),
@@ -116,7 +115,6 @@ const migrateVersionZero = Effect.fn("ApplicationStorage.migrateVersionZero")((
   const vscodeServerPath = legacy.vscodeServerPath?.trim() || undefined;
   const base: ApplicationStateValue = {
     projects,
-    resolvedCakeChatSessionIds: dedupe(legacy.resolvedCakeChatSessionIds ?? []),
     unreadSessionIds: dedupe(legacy.unreadSessionIds ?? []),
     trustedProjectPaths: dedupe(legacy.trustedProjectPaths ?? []),
     fastModeSessionIds: dedupe(legacy.fastModeSessionIds ?? []),

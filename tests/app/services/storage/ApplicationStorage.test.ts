@@ -109,7 +109,6 @@ const legacy = {
   schemaVersion: 1,
   projects: [],
   resolvedSessionIds: ["session-1"],
-  resolvedCakeChatSessionIds: [],
   unreadSessionIds: [],
   trustedProjectPaths: [],
 };

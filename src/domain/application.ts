@@ -158,17 +158,6 @@ export const setSessionFastMode = Effect.fn("Application.setSessionFastMode")(fu
   }));
 });
 
-export const setCakeChatSessionResolved = Effect.fn("Application.setCakeChatSessionResolved")(
-  function* (sessionId: string, resolved: boolean) {
-    return yield* update((current) => ({
-      ...current,
-      resolvedCakeChatSessionIds: resolved
-        ? unique([...current.resolvedCakeChatSessionIds, sessionId])
-        : current.resolvedCakeChatSessionIds.filter((id) => id !== sessionId),
-    }));
-  },
-);
-
 export const setSessionUnread = Effect.fn("Application.setSessionUnread")(function* (
   sessionId: string,
   unread: boolean,

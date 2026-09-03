@@ -92,7 +92,6 @@ test("rewords a composer selection and records one undo step", async () => {
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
-      resolvedCakeChatSessionIds: [],
       trustedProjectPaths: [project],
       utilityModel: {
         provider: "reword-provider",

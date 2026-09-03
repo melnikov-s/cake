@@ -3,7 +3,7 @@ import { setSessionFastMode } from "../domain/application";
 import { makeSubagentControl } from "../domain/subagentControl";
 import { jsonObjectSchema } from "../ipc/json-contract";
 import type { PiSessions } from "../services/pi/PiSessions";
-import { PiSessionMetadataIndex } from "../services/pi/PiSessionMetadataIndex";
+import { SessionMetadataStorage } from "../services/storage/SessionMetadataStorage";
 import { PluginRuntime } from "../services/plugins/PluginRuntime";
 import { ProjectSessionLifecycle } from "../services/project-sessions/ProjectSessionLifecycle";
 import { ApplicationState } from "../services/storage/ApplicationState";
@@ -44,7 +44,7 @@ export const makeCakeChatEnvironmentLive = (
   never,
   | ApplicationState
   | PiSessions
-  | PiSessionMetadataIndex
+  | SessionMetadataStorage
   | PluginRuntime
   | ProjectSessionLifecycle
   | SessionArchiveStorage
@@ -62,13 +62,13 @@ export const makeCakeChatEnvironmentLive = (
     Effect.gen(function* () {
       const application = yield* ApplicationState;
       const lifecycle = yield* ProjectSessionLifecycle;
-      const metadata = yield* PiSessionMetadataIndex;
+      const metadata = yield* SessionMetadataStorage;
       const catalogs = yield* SessionCatalogChanges;
       const plugins = yield* PluginRuntime;
       const storage = yield* SessionArchiveStorage;
       const context = yield* Effect.context<
         | ApplicationState
-        | PiSessionMetadataIndex
+        | SessionMetadataStorage
         | PiSessions
         | SessionCatalogChanges
         | SubagentCoordinator
@@ -115,8 +115,8 @@ export const makeCakeChatEnvironmentLive = (
                     run(setSessionFastMode(input.sessionId, enabled)).then(() => undefined),
                 },
                 currentSessionControl: {
-                  resolved: () =>
-                    application.snapshot().resolvedCakeChatSessionIds.includes(input.sessionId),
+                  // A Cake Chat runtime is acquired only from the active namespace.
+                  resolved: () => false,
                   setResolved: (resolved: boolean) =>
                     run(lifecycle.setCakeChatResolved(input.sessionId, resolved)).then(
                       () => undefined,
@@ -125,27 +125,17 @@ export const makeCakeChatEnvironmentLive = (
                 sessionMetadata: {
                   setTitle: (title: string) =>
                     run(
-                      metadata
-                        .setTitle(
-                          {
-                            workingDirectory: options.homeDirectory,
-                            sessionDirectory: options.sessionDirectory,
-                            direct: true,
-                          },
-                          input.sessionId,
-                          title,
-                        )
-                        .pipe(
-                          Effect.flatMap((changed) =>
-                            changed
-                              ? catalogs.publish({
-                                  _tag: "CakeChatSessionChanged",
-                                  sessionId: input.sessionId,
-                                  resolved: false,
-                                })
-                              : Effect.void,
-                          ),
+                      metadata.setTitle(input.sessionId, title).pipe(
+                        Effect.flatMap((changed) =>
+                          changed
+                            ? catalogs.publish({
+                                _tag: "CakeChatSessionChanged",
+                                sessionId: input.sessionId,
+                                resolved: false,
+                              })
+                            : Effect.void,
                         ),
+                      ),
                     ),
                 },
                 agentControl: agentControl(getRuntimeOptions, options.homeDirectory),

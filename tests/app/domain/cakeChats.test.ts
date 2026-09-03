@@ -45,8 +45,12 @@ const snapshot: SessionSnapshot = {
   tree: [],
 };
 
-const makeLayer = (initial: ApplicationStateValue = defaultApplicationState()) => {
+const makeLayer = (
+  initial: ApplicationStateValue = defaultApplicationState(),
+  options: { resolvedOnDisk?: boolean } = {},
+) => {
   let state = initial;
+  let resolvedOnDisk = options.resolvedOnDisk ?? false;
   let created = 0;
   let archived = 0;
   let restored = 0;
@@ -139,12 +143,17 @@ const makeLayer = (initial: ApplicationStateValue = defaultApplicationState()) =
     archive: () =>
       Effect.sync(() => {
         archived += 1;
+        resolvedOnDisk = true;
       }),
     restore: () =>
       Effect.sync(() => {
         restored += 1;
+        resolvedOnDisk = false;
       }),
-    deleteResolved: () => Effect.void,
+    deleteResolved: () =>
+      Effect.sync(() => {
+        resolvedOnDisk = false;
+      }),
   });
   return {
     layer: Layer.mergeAll(
@@ -158,7 +167,7 @@ const makeLayer = (initial: ApplicationStateValue = defaultApplicationState()) =
           restore: () => Effect.succeed(false),
           deleteResolved: () => Effect.void,
           delete: () => Effect.void,
-          locate: () => Effect.succeed(undefined),
+          locate: () => Effect.succeed(resolvedOnDisk ? "resolved" : "active"),
           resolved: () => Stream.empty,
           resolvedEntry: () => Effect.succeed(undefined),
         }),
@@ -211,10 +220,7 @@ describe("Cake Chats domain", () => {
   });
 
   it.effect("previews a resolved Cake Chat without restoring or constructing its runtime", () => {
-    const fixture = makeLayer({
-      ...defaultApplicationState(),
-      resolvedCakeChatSessionIds: ["cake-chat-1"],
-    });
+    const fixture = makeLayer(defaultApplicationState(), { resolvedOnDisk: true });
     return Effect.gen(function* () {
       const opened = yield* cakeChats.open({ sessionId: "cake-chat-1", tools: [] });
       assert.equal(opened.sessionId, "cake-chat-1");
@@ -237,10 +243,7 @@ describe("Cake Chats domain", () => {
   });
 
   it.effect("restores a resolved Cake Chat when a message is submitted", () => {
-    const fixture = makeLayer({
-      ...defaultApplicationState(),
-      resolvedCakeChatSessionIds: ["cake-chat-1"],
-    });
+    const fixture = makeLayer(defaultApplicationState(), { resolvedOnDisk: true });
     return Effect.gen(function* () {
       yield* cakeChats.prompt({
         sessionId: "cake-chat-1",

@@ -7,7 +7,6 @@ import { mountWithRendererClient } from "../mount-with-renderer-client";
 
 const applicationState = (utilityModel?: UtilityModel): ApplicationState => ({
   projects: [],
-  resolvedCakeChatSessionIds: [],
   unreadSessionIds: [],
   trustedProjectPaths: [],
   fastModeSessionIds: [],

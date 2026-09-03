@@ -9,7 +9,7 @@ import { VsCodeServer } from "../services/vscode/VsCodeServer";
 import { ManagedWorktrees } from "../services/worktrees/ManagedWorktrees";
 import type { PiModels } from "../services/pi/PiModels";
 import { ProjectSessionRuntimeOptions } from "../services/pi/ProjectSessionRuntimeOptions";
-import { PiSessionMetadataIndex } from "../services/pi/PiSessionMetadataIndex";
+import { SessionMetadataStorage } from "../services/storage/SessionMetadataStorage";
 import { SessionCatalogChanges } from "../services/session-catalogs/SessionCatalogChanges";
 
 export interface ProjectSessionRuntimeOptionsLiveOptions {
@@ -29,7 +29,7 @@ export const makeProjectSessionRuntimeOptionsLive = (
   | Electron
   | ManagedWorktrees
   | PiModels
-  | PiSessionMetadataIndex
+  | SessionMetadataStorage
   | PluginResources
   | ProjectSessionLifecycle
   | SessionCatalogChanges
@@ -41,7 +41,7 @@ export const makeProjectSessionRuntimeOptionsLive = (
       const application = yield* ApplicationState;
       const electron = yield* Electron;
       const lifecycle = yield* ProjectSessionLifecycle;
-      const metadata = yield* PiSessionMetadataIndex;
+      const metadata = yield* SessionMetadataStorage;
       const catalogs = yield* SessionCatalogChanges;
       const plugins = yield* PluginResources;
       const vscode = yield* VsCodeServer;
@@ -50,7 +50,7 @@ export const makeProjectSessionRuntimeOptionsLive = (
         | ApplicationState
         | ManagedWorktrees
         | PiModels
-        | PiSessionMetadataIndex
+        | SessionMetadataStorage
         | ProjectSessionLifecycle
         | SessionCatalogChanges
         | VsCodeServer
@@ -97,34 +97,25 @@ export const makeProjectSessionRuntimeOptionsLive = (
             ),
           setSessionTitleMetadata: (sessionId, title) =>
             run(
-              metadata
-                .setTitle(
-                  {
-                    workingDirectory,
-                    sessionDirectory: options.sessionDirectory,
-                  },
-                  sessionId,
-                  title,
-                )
-                .pipe(
-                  Effect.flatMap((changed) =>
-                    changed
-                      ? Effect.gen(function* () {
-                          const records = yield* worktrees.records();
-                          const projectPath =
-                            records.find((record) => record.worktreePath === workingDirectory)
-                              ?.projectPath ?? workingDirectory;
-                          yield* catalogs.publish({
-                            _tag: "ProjectSessionChanged",
-                            sessionId,
-                            projectPath,
-                            workingDirectory,
-                            resolved: false,
-                          });
-                        })
-                      : Effect.void,
-                  ),
+              metadata.setTitle(sessionId, title).pipe(
+                Effect.flatMap((changed) =>
+                  changed
+                    ? Effect.gen(function* () {
+                        const records = yield* worktrees.records();
+                        const projectPath =
+                          records.find((record) => record.worktreePath === workingDirectory)
+                            ?.projectPath ?? workingDirectory;
+                        yield* catalogs.publish({
+                          _tag: "ProjectSessionChanged",
+                          sessionId,
+                          projectPath,
+                          workingDirectory,
+                          resolved: false,
+                        });
+                      })
+                    : Effect.void,
                 ),
+              ),
             ),
           enterEditor: (signal) => run(vscode.enterProjectEditor(workingDirectory), { signal }),
           openInEditor: (location, signal) =>

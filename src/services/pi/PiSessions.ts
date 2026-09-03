@@ -36,7 +36,7 @@ import {
   streamWorkspaceSessions,
 } from "./runtime/session-discovery";
 import type { ReviewParentContext } from "./runtime/sidecar-runtime";
-import { PiSessionMetadataIndex } from "./PiSessionMetadataIndex";
+import { SessionMetadataStorage } from "../storage/SessionMetadataStorage";
 
 const PiSessionCapabilityProfile = Schema.TaggedUnion({
   ProjectSession: {},
@@ -713,49 +713,43 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
     }),
   );
 
-export const makePiSessionsLive = (): Layer.Layer<PiSessions, never, PiSessionMetadataIndex> =>
+export const makePiSessionsLive = (): Layer.Layer<PiSessions, never, SessionMetadataStorage> =>
   Layer.unwrap(
     Effect.gen(function* () {
-      const metadata = yield* PiSessionMetadataIndex;
+      const metadata = yield* SessionMetadataStorage;
       return makePiSessionsLayer({
         catalog: (query) =>
-          Stream.unwrap(
-            metadata
-              .titles({
-                workingDirectory: query.workingDirectory,
-                sessionDirectory: query.sessionDirectory,
-                direct: query.direct,
-              })
-              .pipe(
-                Effect.map((titles) =>
-                  streamWorkspaceSessions(query.workingDirectory, query.sessionDirectory, {
-                    direct: query.direct,
-                    titles,
-                  }),
-                ),
-              ),
+          streamWorkspaceSessions(query.workingDirectory, query.sessionDirectory, {
+            direct: query.direct,
+          }).pipe(
+            Stream.mapEffect(
+              (session) =>
+                metadata
+                  .title(session.id)
+                  .pipe(
+                    Effect.map((title) => (title === undefined ? session : { ...session, title })),
+                  ),
+              { concurrency: 16 },
+            ),
           ),
         catalogEntry: (query, sessionId) =>
-          metadata
-            .titles({
-              workingDirectory: query.workingDirectory,
-              sessionDirectory: query.sessionDirectory,
-              direct: query.direct,
-            })
-            .pipe(
-              Effect.flatMap((titles) =>
-                Effect.tryPromise({
-                  try: () =>
-                    loadWorkspaceSessionSummary(
-                      query.workingDirectory,
-                      sessionId,
-                      query.sessionDirectory,
-                      { direct: query.direct, titles },
-                    ),
-                  catch: (cause) => cause,
-                }),
-              ),
+          Effect.all([
+            Effect.tryPromise({
+              try: () =>
+                loadWorkspaceSessionSummary(
+                  query.workingDirectory,
+                  sessionId,
+                  query.sessionDirectory,
+                  { direct: query.direct },
+                ),
+              catch: (cause) => cause,
+            }),
+            metadata.title(sessionId),
+          ]).pipe(
+            Effect.map(([session, title]) =>
+              session === undefined || title === undefined ? session : { ...session, title },
             ),
+          ),
         inspect: (target) =>
           Effect.tryPromise({
             try: () =>

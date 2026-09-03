@@ -30,7 +30,6 @@ describe("ApplicationStorage filesystem integration", () => {
         schemaVersion: 1,
         projects: [],
         resolvedSessionIds: ["session-1"],
-        resolvedCakeChatSessionIds: [],
         unreadSessionIds: [],
         trustedProjectPaths: [],
       }),

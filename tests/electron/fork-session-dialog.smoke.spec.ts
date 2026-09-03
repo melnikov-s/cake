@@ -58,7 +58,6 @@ test("forks a session into a new worktree and opens the fork", async () => {
           lastOpenedAt: timestamp,
         },
       ],
-      resolvedCakeChatSessionIds: [],
       trustedProjectPaths: [],
     }),
   );

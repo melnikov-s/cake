@@ -7,7 +7,7 @@ import { makeCakeIpcServerLive } from "../ipc/server/CakeIpcServer";
 import { makePiAgentResourcesLive } from "../services/pi/live/PiAgentResourcesLive";
 import { makePiModelsLive } from "../services/pi/live/PiModelsLive";
 import { makePiSessionsLive } from "../services/pi/PiSessions";
-import { PiSessionMetadataIndexLive } from "../services/pi/PiSessionMetadataIndex";
+import { makeSessionMetadataStorageLive } from "../services/storage/SessionMetadataStorage";
 import { AgentAvailability } from "../services/pi/AgentAvailability";
 import { ProjectSessionIntegrationsLive } from "../services/pi/ProjectSessionIntegrationsLive";
 import { makeProjectSessionRuntimeOptionsLive } from "../layers/ProjectSessionRuntimeOptionsLive";
@@ -75,6 +75,12 @@ const applicationStorageLive = makeApplicationStorageLive(userData).pipe(
 );
 const applicationStateLive = ApplicationState.layer.pipe(Layer.provide(applicationStorageLive));
 const windowStateLive = makeWindowStateStorageLive(userData).pipe(Layer.provide(BootstrapLive));
+const sessionMetadataStorageLive = makeSessionMetadataStorageLive(
+  join(userData, "session-metadata"),
+);
+const sessionArchiveStorageLive = SessionArchiveStorageLive.pipe(
+  Layer.provide(sessionMetadataStorageLive),
+);
 const artifactStorageLive = makeArtifactStorageLive(join(userData, "artifacts"));
 const reviewStorageLive = makeReviewStorageLive(
   join(userData, "reviews"),
@@ -88,7 +94,7 @@ const managedWorktreesLive = ManagedWorktreesLive.pipe(
 );
 const pluginResourcesLive = PluginResources.layer;
 const piModelsLive = makePiModelsLive(cakePaths.piAgent);
-const piSessionsLive = makePiSessionsLive().pipe(Layer.provide(PiSessionMetadataIndexLive));
+const piSessionsLive = makePiSessionsLive().pipe(Layer.provide(sessionMetadataStorageLive));
 const agentAvailabilityLive = AgentAvailability.layer;
 const electronLive = makeElectronLive({
   application: app,
@@ -107,10 +113,10 @@ const baseLive = Layer.mergeAll(
   gitLive,
   worktreeStorageLive,
   managedWorktreesLive,
-  SessionArchiveStorageLive,
+  sessionArchiveStorageLive,
   SessionCatalogChanges.layer,
   pluginResourcesLive,
-  PiSessionMetadataIndexLive,
+  sessionMetadataStorageLive,
   piModelsLive,
   makePiAgentResourcesLive(cakePaths.piAgent),
   piSessionsLive,

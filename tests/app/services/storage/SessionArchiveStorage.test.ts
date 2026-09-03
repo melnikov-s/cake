@@ -1,23 +1,38 @@
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect, Stream } from "effect";
-import { afterEach, describe, expect, it } from "vitest";
+import { Effect, Layer, Stream } from "effect";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   cakeWorkspaceSessionDirectory,
   streamWorkspaceSessions,
 } from "../../../../src/services/pi/runtime/session-discovery";
 import { SessionArchiveStorage } from "../../../../src/services/storage/SessionArchiveStorage";
 import { SessionArchiveStorageLive } from "../../../../src/services/storage/SessionArchiveStorageLive";
+import {
+  makeSessionMetadataStorageLive,
+  SessionMetadataStorage,
+} from "../../../../src/services/storage/SessionMetadataStorage";
+
+let metadataRoot = "";
 
 const runArchive = <A, E>(
   use: (storage: SessionArchiveStorage["Service"]) => Effect.Effect<A, E>,
 ) =>
   Effect.runPromise(
-    Effect.flatMap(SessionArchiveStorage, use).pipe(Effect.provide(SessionArchiveStorageLive)),
+    Effect.flatMap(SessionArchiveStorage, use).pipe(
+      Effect.provide(
+        SessionArchiveStorageLive.pipe(Layer.provide(makeSessionMetadataStorageLive(metadataRoot))),
+      ),
+    ),
   );
 
 const directories: string[] = [];
+
+beforeEach(async () => {
+  metadataRoot = await mkdtemp(join(tmpdir(), "cake-session-archive-metadata-"));
+  directories.push(metadataRoot);
+});
 
 afterEach(async () => {
   await Promise.all(
@@ -52,6 +67,28 @@ async function fixture() {
 }
 
 describe("SessionArchiveStorage", () => {
+  it("preserves Cake-owned titles across resolve and restore", async () => {
+    const location = await fixture();
+    await Effect.runPromise(
+      Effect.flatMap(SessionMetadataStorage, (metadata) =>
+        metadata.setTitle("session-1", "Named session"),
+      ).pipe(Effect.provide(makeSessionMetadataStorageLive(metadataRoot))),
+    );
+
+    await runArchive((storage) => storage.resolve("session-1", location));
+    await expect(
+      runArchive((storage) => storage.resolvedEntry("session-1", location)),
+    ).resolves.toEqual(expect.objectContaining({ title: "Named session" }));
+    await runArchive((storage) => storage.restore("session-1", location));
+
+    await expect(
+      Effect.runPromise(
+        Effect.flatMap(SessionMetadataStorage, (metadata) => metadata.title("session-1")).pipe(
+          Effect.provide(makeSessionMetadataStorageLive(metadataRoot)),
+        ),
+      ),
+    ).resolves.toBe("Named session");
+  });
   it("moves a project session out of Pi's active root and restores it", async () => {
     const location = await fixture();
     await expect(runArchive((storage) => storage.resolve("session-1", location))).resolves.toBe(

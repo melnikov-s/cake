@@ -176,7 +176,6 @@ test("shows only resolve after a worktree is merged and removes the checkout", a
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
-      resolvedCakeChatSessionIds: [],
       trustedProjectPaths: [],
     }),
   );

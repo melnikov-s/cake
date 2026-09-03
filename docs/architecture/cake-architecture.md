@@ -260,12 +260,13 @@ The window Store hierarchy mirrors the product surfaces:
   stream and unloads that group's projection. After a group's one initial lazy
   metadata scan, session mutations publish scoped catalog events; they refresh
   only the affected session's filename metadata and never restart catalogs from
-  application-state revisions. Active titles come from a small
-  per-session-directory index maintained at the Pi adapter boundary, so listing
-  does not inspect transcript bodies. Session IDs are the canonical identity;
-  duplicate IDs are rejected. Resolved status derives solely from the active or
-  archived filesystem namespace, never from a persisted ID list. Resolved
-  catalogs neither read nor maintain the active title index.
+  application-state revisions. Titles come from Cake's namespace-independent,
+  per-session metadata repository, so neither active nor resolved listing opens
+  transcript bodies. Session IDs are the canonical identity; duplicate IDs are
+  rejected. Resolved status derives solely from the active or archived
+  filesystem namespace, never from a persisted ID list. Resolving and restoring
+  move only the Pi transcript; the Cake-owned title remains stable across both
+  namespaces.
 - Window-owned persistence infrastructure loads one versioned Store snapshot before
   mounting the Root Store, then watches the mounted Store tree and saves later
   snapshots through `RendererClient`. Persistence is not a Store and never

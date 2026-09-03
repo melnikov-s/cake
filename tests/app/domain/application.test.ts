@@ -6,7 +6,6 @@ import {
   forgetProjectSessions,
   removeProject,
   renameProject,
-  setCakeChatSessionResolved,
   setSessionFastMode,
   setSessionUnread,
   setUtilityModel,
@@ -100,16 +99,14 @@ describe("Application domain", () => {
     ),
   );
 
-  it.effect("preserves unread, Cake Chat, Fast mode, and forget interactions", () =>
+  it.effect("preserves unread and Fast mode forget interactions", () =>
     run(
       Effect.gen(function* () {
         yield* setSessionUnread("session-1", true);
-        yield* setCakeChatSessionResolved("cake-chat-1", true);
         yield* setSessionFastMode("session-1", true);
         const forgotten = yield* forgetProjectSessions(["session-1"]);
         assert.deepEqual(forgotten.unreadSessionIds, []);
         assert.deepEqual(forgotten.fastModeSessionIds, []);
-        assert.deepEqual(forgotten.resolvedCakeChatSessionIds, ["cake-chat-1"]);
       }),
     ),
   );

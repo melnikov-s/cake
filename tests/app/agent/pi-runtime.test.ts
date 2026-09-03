@@ -195,43 +195,6 @@ describe("Pi 0.84.0 foundation contract", () => {
     expect(systemPrompt).toContain("confirm before writing outside the worktree");
   });
 
-  it("keeps session listing alive when Pi's first-message title exceeds Cake's IPC limit", async () => {
-    const directory = await createTemporaryDirectory();
-    const sessionDir = join(directory, "sessions");
-    const workspaceSessionDir = cakeWorkspaceSessionDirectory(directory, sessionDir);
-    const timestamp = new Date().toISOString();
-    await mkdir(workspaceSessionDir, { recursive: true });
-    await writeFile(
-      join(workspaceSessionDir, "2026-01-01T00-00-00-000Z_long-title.jsonl"),
-      [
-        { type: "session", version: 3, id: "long-title", timestamp, cwd: directory },
-        {
-          type: "message",
-          id: "user-1",
-          parentId: null,
-          timestamp,
-          message: {
-            role: "user",
-            content: [{ type: "text", text: "x".repeat(2_048) }],
-            timestamp: Date.now(),
-          },
-        },
-      ]
-        .map((entry) => JSON.stringify(entry))
-        .join("\n") + "\n",
-    );
-
-    const [summary] = await Effect.runPromise(
-      streamWorkspaceSessions(directory, sessionDir, {
-        titles: new Map([["long-title", "Indexed title"]]),
-      }).pipe(Stream.runCollect),
-    );
-
-    expect(summary).toBeDefined();
-    if (!summary) throw new Error("Expected Pi to list the session fixture");
-    expect(summary.title).toBe("Indexed title");
-  });
-
   it("starts automatic naming from the initial user message", async () => {
     const directory = await createTemporaryDirectory();
     const agentDir = join(directory, "agent");
@@ -2006,13 +1969,7 @@ describe("S1 Pi runtime", () => {
     );
     expect((await second.snapshot()).tree[0]).toMatchObject({ id: "user-1", active: true });
     await second.rename("Named session");
-    expect(
-      Array.from(
-        await Effect.runPromise(
-          streamWorkspaceSessions(directory, sessionDir, { titles }).pipe(Stream.runCollect),
-        ),
-      ).find((item) => item.id === second.sessionId)?.title,
-    ).toBe("Named session");
+    expect(titles.get(second.sessionId)).toBe("Named session");
     await second.navigate("assistant-tools");
     expect((await second.snapshot()).tree[0]).toMatchObject({ id: "user-1", active: true });
     const fork = await second.fork("user-1");

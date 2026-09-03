@@ -32,7 +32,6 @@ test("promotes a staged chat immediately and leaves New Chat free for the next s
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
-      resolvedCakeChatSessionIds: [],
       trustedProjectPaths: [project],
     }),
   );

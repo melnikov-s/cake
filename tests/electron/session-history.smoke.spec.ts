@@ -59,7 +59,6 @@ test("navigates session history with back, forward, and resolve", async () => {
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
-      resolvedCakeChatSessionIds: [],
       trustedProjectPaths: [],
     }),
   );

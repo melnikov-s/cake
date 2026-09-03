@@ -1,10 +1,5 @@
 import { Effect, Layer, Option, Stream } from "effect";
-import {
-  forgetProjectSessions,
-  setCakeChatSessionResolved,
-  setSessionUnread,
-  trustProject,
-} from "../domain/application";
+import { forgetProjectSessions, setSessionUnread, trustProject } from "../domain/application";
 import * as artifacts from "../domain/artifacts";
 import * as reviews from "../domain/reviews";
 import * as sessionTerminals from "../domain/sessionTerminals";
@@ -110,7 +105,6 @@ export const makeProjectSessionLifecycleLive = (
             );
             yield* run("setCakeChatResolved", archive.resolve(sessionId, location));
           } else yield* run("setCakeChatResolved", archive.restore(sessionId, location));
-          yield* run("setCakeChatResolved", setCakeChatSessionResolved(sessionId, resolved));
           yield* catalogs.publish({ _tag: "CakeChatSessionStatusChanged", sessionId, resolved });
         },
       );

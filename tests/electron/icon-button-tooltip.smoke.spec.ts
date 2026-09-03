@@ -22,7 +22,6 @@ test("icon buttons reveal their tooltip bubble on hover and hide on leave", asyn
     JSON.stringify({
       schemaVersion: 1,
       projects: [],
-      resolvedCakeChatSessionIds: [],
       trustedProjectPaths: [],
     }),
   );
