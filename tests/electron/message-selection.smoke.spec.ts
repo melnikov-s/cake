@@ -6,7 +6,7 @@ import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/ses
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
-test("selects rendered TypeScript and opens a continuous, resizable selection chat", async () => {
+test("focuses annotation input and opens a continuous, resizable selection chat", async () => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-message-selection-smoke-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
@@ -146,25 +146,50 @@ test("selects rendered TypeScript and opens a continuous, resizable selection ch
       .toBe("UtilityModePreferences");
     await application.evaluate(({ Menu }) => {
       const buildFromTemplate = Menu.buildFromTemplate.bind(Menu);
+      let nextLabel = "Add annotation";
       Menu.buildFromTemplate = (template) => {
         const menu = buildFromTemplate(template);
         menu.popup = (options) => {
-          const item = menu.items.find((candidate) => candidate.label === "Chat about this");
-          if (!item?.click) throw new Error("Expected Chat about this menu item");
+          const item = menu.items.find((candidate) => candidate.label === nextLabel);
+          if (!item?.click) throw new Error(`Expected ${nextLabel} menu item`);
           if (!item.icon || item.icon.isEmpty())
-            throw new Error("Expected Chat about this menu item to have an icon");
+            throw new Error(`Expected ${nextLabel} menu item to have an icon`);
+          nextLabel = "Chat about this";
           item.click(item, options.window!, { triggeredByAccelerator: false });
         };
         return menu;
       };
     });
-    await page.evaluate(({ x, y }) => {
-      const target = document.elementFromPoint(x, y);
-      if (!target) throw new Error("Could not resolve selection target");
-      target.dispatchEvent(
-        new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: x, clientY: y }),
-      );
-    }, selectionTarget);
+    const openSelectionMenu = () =>
+      page.evaluate(({ x, y }) => {
+        const target = document.elementFromPoint(x, y);
+        if (!target) throw new Error("Could not resolve selection target");
+        target.dispatchEvent(
+          new MouseEvent("contextmenu", {
+            bubbles: true,
+            cancelable: true,
+            clientX: x,
+            clientY: y,
+          }),
+        );
+      }, selectionTarget);
+
+    await openSelectionMenu();
+    const annotationDialog = page.getByRole("dialog", { name: "Add annotation" });
+    const annotationInput = page.getByLabel("Annotation comment");
+    await expect(annotationDialog).toBeVisible();
+    await expect(annotationInput).toBeFocused();
+    await annotationInput.pressSequentially("Remember this type");
+    await expect(annotationInput).toHaveValue("Remember this type");
+    await expect(annotationDialog.getByRole("button", { name: "Add annotation" })).toBeEnabled();
+    await annotationInput.press("Enter");
+    await expect(annotationDialog).toHaveCount(0);
+
+    await page.mouse.dblclick(selectionTarget.x, selectionTarget.y);
+    await expect
+      .poll(() => page.evaluate(() => window.getSelection()?.toString().trim()))
+      .toBe("UtilityModePreferences");
+    await openSelectionMenu();
 
     const dialog = page.getByRole("dialog", { name: "Chat about this" });
     const input = page.getByLabel("Message about selected text");

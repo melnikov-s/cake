@@ -67,6 +67,9 @@ export function AnnotationDraftPopover({
   useEffect(() => {
     const previouslyFocused =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const focusFrame = requestAnimationFrame(() => {
+      textareaRef.current?.focus({ preventScroll: true });
+    });
     const dismiss = (event: PointerEvent) => {
       if (!(event.target instanceof Node) || !surfaceRef.current?.contains(event.target)) {
         onClose();
@@ -78,6 +81,7 @@ export function AnnotationDraftPopover({
     document.addEventListener("pointerdown", dismiss);
     document.addEventListener("keydown", keydown);
     return () => {
+      cancelAnimationFrame(focusFrame);
       document.removeEventListener("pointerdown", dismiss);
       document.removeEventListener("keydown", keydown);
       if (previouslyFocused?.isConnected) previouslyFocused.focus();
@@ -106,7 +110,6 @@ export function AnnotationDraftPopover({
       >
         <Textarea
           ref={textareaRef}
-          autoFocus
           rows={1}
           aria-label="Annotation comment"
           className="max-h-40 min-h-8 resize-none border-none bg-transparent px-2.5 py-1.5 text-xs shadow-none focus-visible:border-none focus-visible:ring-0"

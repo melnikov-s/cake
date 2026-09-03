@@ -1620,6 +1620,7 @@ describe("Transcript scrolling", () => {
       '[role="dialog"][aria-label="Add annotation"]',
     )!;
     const comment = dialog.querySelector<HTMLTextAreaElement>('[aria-label="Annotation comment"]')!;
+    expect(comment).toBe(document.activeElement);
     act(() => {
       Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(
         comment,
