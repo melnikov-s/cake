@@ -156,6 +156,7 @@ test("focuses annotation input and opens a continuous, resizable selection chat"
             throw new Error(`Expected ${nextLabel} menu item to have an icon`);
           nextLabel = "Chat about this";
           item.click(item, options.window!, { triggeredByAccelerator: false });
+          options.callback?.();
         };
         return menu;
       };

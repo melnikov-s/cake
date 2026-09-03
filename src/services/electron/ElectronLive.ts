@@ -312,19 +312,16 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
         return yield* Effect.tryPromise({
           try: () =>
             new Promise<SuccessTranscriptMenu>((resolve) => {
-              let completed = false;
-              const finish = (action?: SuccessTranscriptMenu["action"]) => {
-                if (completed) return;
-                completed = true;
-                resolve({ action });
-              };
+              let selectedAction: SuccessTranscriptMenu["action"];
               const template: MenuItemConstructorOptions[] = [{ role: "copy" }];
               if (request.canAnnotate)
                 template.push(
                   iconMenuEntry({
                     label: "Add annotation",
                     icon: options.annotationMenuIconPath,
-                    click: () => finish("add-annotation"),
+                    click: () => {
+                      selectedAction = "add-annotation";
+                    },
                   }),
                 );
               if (request.canChat)
@@ -332,11 +329,16 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
                   iconMenuEntry({
                     label: "Chat about this",
                     icon: options.chatMenuIconPath,
-                    click: () => finish("chat-about-selection"),
+                    click: () => {
+                      selectedAction = "chat-about-selection";
+                    },
                   }),
                 );
               template.push({ role: "selectAll" });
-              Menu.buildFromTemplate(template).popup({ window: owner, callback: () => finish() });
+              Menu.buildFromTemplate(template).popup({
+                window: owner,
+                callback: () => resolve({ action: selectedAction }),
+              });
             }),
           catch: electronError,
         });

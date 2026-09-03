@@ -110,6 +110,7 @@ export function AnnotationDraftPopover({
       >
         <Textarea
           ref={textareaRef}
+          autoFocus
           rows={1}
           aria-label="Annotation comment"
           className="max-h-40 min-h-8 resize-none border-none bg-transparent px-2.5 py-1.5 text-xs shadow-none focus-visible:border-none focus-visible:ring-0"
