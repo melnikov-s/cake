@@ -37,6 +37,8 @@ export interface ProjectWorkbenchStoreProps {
   onWorktreeSessionsResolved(sessionIds: readonly string[], projectPath: string): Promise<void>;
   /** Navigates the shell to an existing session by ID. */
   openSessionById(sessionId: string): Promise<void>;
+  /** Commits the session that the workbench actually displays to the application shell. */
+  onSessionShown(sessionId: string): void;
 }
 
 /** Owns active project/session activation and the project workbench workflow. */
@@ -49,7 +51,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   agentAvailability: AgentAvailabilityState = "available";
   agentAvailabilityReason: string | undefined;
   @snapshot projectPath: string | undefined;
-  @snapshot selectedSessionId: string | undefined;
+  selectedSessionId: string | undefined;
   pendingTrustPath: string | undefined;
   private pendingOpen:
     | {
@@ -252,7 +254,13 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   }
 
   /** Re-authorizes the hydrated Working Directory before loading executable project resources. */
-  async initialize() {
+  async initialize(selection?: { workspacePath: string; sessionId: string }) {
+    if (selection) {
+      this.projectPath = selection.workspacePath;
+      this.selectedSessionId = selection.sessionId;
+      if (!this.sessionRegistry.findSession(selection.sessionId))
+        this.sessionRegistry.load(selection.sessionId, selection.workspacePath);
+    }
     const path = this.projectPath;
     if (!path) return;
     const sessionId = this.selectedSessionId;
@@ -452,6 +460,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     this.closeEmbeddedEditor();
     this.projectPath = path;
     this.selectedSessionId = sessionId;
+    this.props.onSessionShown(sessionId);
     this.markSessionRead(sessionId);
     this.extensionUi.clear();
     this.commandPaneStore.dismiss();
@@ -496,6 +505,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     this.closeEmbeddedEditor();
     this.projectPath = session.workspacePath;
     this.selectedSessionId = sessionId;
+    this.props.onSessionShown(sessionId);
     this.extensionUi.clear();
     this.commandPaneStore.dismiss();
     session.composerStore.requestFocus();

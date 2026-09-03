@@ -82,7 +82,6 @@ export class RootStore extends Store<{
   async openSession(sessionId: string, messageId?: string) {
     this.projectSession(sessionId);
     this.projectWorkbenchStore.dismissSecondarySurfaces();
-    this.selectProjectSessionForShell(sessionId);
     await this.projectWorkbenchStore.openSession(sessionId);
     if (!this.projectWorkbenchStore.isActiveSession(sessionId)) return false;
     if (!messageId) return true;
@@ -102,6 +101,14 @@ export class RootStore extends Store<{
     if (this.sessionCatalogStore.find(sessionId)?.resolved)
       this.appShellStore.previewResolvedProjectSession(sessionId);
     else this.appShellStore.selectProjectSession(sessionId);
+  }
+
+  initialize() {
+    const selection = this.appShellStore.selection;
+    if (selection.kind === "project-session")
+      return this.projectWorkbenchStore.initialize(selection);
+    if (selection.kind === "workbench") return this.projectWorkbenchStore.initialize();
+    return Promise.resolve();
   }
 
   /** Opens the project or Cake Chat session addressed by a Markdown session link. */
@@ -568,6 +575,7 @@ export class RootStore extends Store<{
       openSessionById: async (sessionId) => {
         await this.openSession(sessionId);
       },
+      onSessionShown: (sessionId) => this.selectProjectSessionForShell(sessionId),
     });
   }
 

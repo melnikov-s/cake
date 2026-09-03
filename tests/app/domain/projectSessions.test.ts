@@ -269,7 +269,7 @@ describe("Project Sessions domain", () => {
         projectPath: "/project",
         resolved: false,
       });
-      yield* updates.pipe(Stream.take(2), Stream.runDrain);
+      yield* updates.pipe(Stream.take(1), Stream.runDrain);
       assert.equal(resolvedCatalogs, 0);
     }).pipe(Effect.provide(makeLayer(undefined, { onResolvedCatalog: () => resolvedCatalogs++ })));
   });
@@ -286,9 +286,9 @@ describe("Project Sessions domain", () => {
       const ready = yield* Deferred.make<void>();
       const fiber = yield* updates.pipe(
         Stream.tap((update) =>
-          update.revision === 2 ? Deferred.succeed(ready, undefined) : Effect.void,
+          update.revision === 1 ? Deferred.succeed(ready, undefined) : Effect.void,
         ),
-        Stream.take(3),
+        Stream.take(2),
         Stream.runCollect,
         Effect.forkChild,
       );
@@ -304,11 +304,11 @@ describe("Project Sessions domain", () => {
       const observed = Array.from(yield* Fiber.join(fiber));
       assert.deepEqual(
         observed.map((update) => update._tag),
-        ["Snapshot", "Event", "Event"],
+        ["Snapshot", "Event"],
       );
       assert.deepEqual(
         observed.flatMap((update) => (update._tag === "Event" ? [update.event._tag] : [])),
-        ["Upserted", "Upserted"],
+        ["Upserted"],
       );
       assert.equal(catalogScans, 1);
     }).pipe(
@@ -333,9 +333,9 @@ describe("Project Sessions domain", () => {
       const ready = yield* Deferred.make<void>();
       const fiber = yield* updates.pipe(
         Stream.tap((update) =>
-          update.revision === 2 ? Deferred.succeed(ready, undefined) : Effect.void,
+          update.revision === 1 ? Deferred.succeed(ready, undefined) : Effect.void,
         ),
-        Stream.take(3),
+        Stream.take(2),
         Stream.runCollect,
         Effect.forkChild,
       );
@@ -345,9 +345,9 @@ describe("Project Sessions domain", () => {
         workingDirectory: "/project",
       });
       const observed = Array.from(yield* Fiber.join(fiber));
-      assert.deepEqual(observed[2], {
+      assert.deepEqual(observed[1], {
         _tag: "Event",
-        revision: 3,
+        revision: 2,
         event: {
           _tag: "StatusChanged",
           sessionId: "session-1",
@@ -364,11 +364,10 @@ describe("Project Sessions domain", () => {
         projectPath: "/project",
         resolved: false,
       });
-      const observed = Array.from(yield* updates.pipe(Stream.take(2), Stream.runCollect));
-      const last = observed[1];
-      assert.equal(last?._tag, "Event");
-      const sessions =
-        last?._tag === "Event" && last.event._tag === "Upserted" ? [last.event.session] : [];
+      const observed = Array.from(yield* updates.pipe(Stream.take(1), Stream.runCollect));
+      const first = observed[0];
+      assert.equal(first?._tag, "Snapshot");
+      const sessions = first?._tag === "Snapshot" ? first.sessions : [];
       assert.deepEqual(
         sessions.map(({ sessionId, projectPath, workingDirectory }) => ({
           sessionId,

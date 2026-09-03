@@ -217,6 +217,57 @@ export const observeCatalog = Effect.fn("ProjectSessions.observeCatalog")(functi
 ) {
   const catalogs = yield* SessionCatalogChanges;
   const state = yield* getState();
+  if (!query.resolved) {
+    const initial = Stream.fromEffect(
+      Stream.unwrap(catalogForState(query, state)).pipe(
+        Stream.runCollect,
+        Effect.map((sessions) => ({
+          _tag: "InitialSnapshot" as const,
+          sessions: Array.from(sessions),
+        })),
+      ),
+    );
+    return catalogs.initialThenChanges(initial).pipe(
+      Stream.mapEffect((item) =>
+        item._tag === "InitialSnapshot"
+          ? Effect.succeed<
+              | { readonly _tag: "InitialSnapshot"; readonly sessions: ProjectSessionSummary[] }
+              | ProjectSessionCatalogEvent
+              | undefined
+            >(item)
+          : catalogEventForChange(query, item),
+      ),
+      Stream.filter(
+        (
+          item,
+        ): item is
+          | { readonly _tag: "InitialSnapshot"; readonly sessions: ProjectSessionSummary[] }
+          | ProjectSessionCatalogEvent => item !== undefined,
+      ),
+      Stream.mapError((error) =>
+        error instanceof ProjectSessionError
+          ? error
+          : new ProjectSessionError({
+              operation: "catalog",
+              message: error instanceof Error ? error.message : String(error),
+            }),
+      ),
+      Stream.mapAccum(
+        () => 0,
+        (revision, item): readonly [number, ReadonlyArray<SessionCatalogUpdate>] => {
+          const nextRevision = revision + 1;
+          return [
+            nextRevision,
+            [
+              item._tag === "InitialSnapshot"
+                ? { _tag: "Snapshot", revision: nextRevision, sessions: item.sessions }
+                : { _tag: "Event", revision: nextRevision, event: item },
+            ],
+          ];
+        },
+      ),
+    );
+  }
   const initial = Stream.unwrap(catalogForState(query, state)).pipe(
     Stream.map((session) => ({ _tag: "Initial" as const, session })),
   );

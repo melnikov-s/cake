@@ -128,7 +128,7 @@ async function bootstrap(bridge: NonNullable<typeof window.cake>) {
   });
   void nativeEvents.observe(rootStore, synchronizer);
   void rootStore.settingsStore.modelPresets.hydrate();
-  void rootStore.projectWorkbenchStore.initialize();
+  void rootStore.initialize();
   if (hydrationError)
     rootStore.toastStore.show({
       tone: "warning",

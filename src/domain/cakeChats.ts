@@ -153,6 +153,50 @@ export const observeCatalog = Effect.fn("CakeChats.observeCatalog")(function* (
   query: CakeChatCatalogQuery,
 ) {
   const catalogs = yield* SessionCatalogChanges;
+  if (!query.resolved) {
+    const initial = Stream.fromEffect(
+      Stream.unwrap(catalogForState(query)).pipe(
+        Stream.runCollect,
+        Effect.map((sessions) => ({
+          _tag: "InitialSnapshot" as const,
+          sessions: Array.from(sessions),
+        })),
+      ),
+    );
+    return catalogs.initialThenChanges(initial).pipe(
+      Stream.mapEffect((item) =>
+        item._tag === "InitialSnapshot"
+          ? Effect.succeed<
+              | { readonly _tag: "InitialSnapshot"; readonly sessions: CakeChatSummary[] }
+              | CakeChatCatalogEvent
+              | undefined
+            >(item)
+          : catalogEventForChange(query, item),
+      ),
+      Stream.filter(
+        (
+          item,
+        ): item is
+          | { readonly _tag: "InitialSnapshot"; readonly sessions: CakeChatSummary[] }
+          | CakeChatCatalogEvent => item !== undefined,
+      ),
+      Stream.mapError((error) => errorValue("catalog", error)),
+      Stream.mapAccum(
+        () => 0,
+        (revision, item): readonly [number, ReadonlyArray<CakeChatCatalogUpdate>] => {
+          const nextRevision = revision + 1;
+          return [
+            nextRevision,
+            [
+              item._tag === "InitialSnapshot"
+                ? { _tag: "Snapshot", revision: nextRevision, sessions: item.sessions }
+                : { _tag: "Event", revision: nextRevision, event: item },
+            ],
+          ];
+        },
+      ),
+    );
+  }
   const initial = Stream.unwrap(catalogForState(query)).pipe(
     Stream.map((session) => ({ _tag: "Initial" as const, session })),
   );
