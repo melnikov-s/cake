@@ -57,6 +57,7 @@ export type RendererEvent =
   | { type: "terminal-data"; terminalId: string; data: string }
   | { type: "terminal-exited"; terminalId: string; exitCode: number }
   | { type: "terminal-toggle-requested" }
+  | { type: "embedded-editor-toggle-mode-requested" }
   | { type: "embedded-editor-entered"; workspacePath: string }
   | {
       type: "embedded-editor-selection";
@@ -136,6 +137,7 @@ export function toRendererEvent(event: CakeEvent): RendererEvent | undefined {
   )
     return event;
   if (
+    event.type === "embedded-editor-toggle-mode-requested" ||
     event.type === "embedded-editor-selection" ||
     event.type === "embedded-editor-annotation-opened" ||
     event.type === "embedded-editor-back-to-agent" ||

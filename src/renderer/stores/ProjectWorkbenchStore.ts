@@ -660,6 +660,15 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     await this.embeddedEditorStore.show();
   }
 
+  /** Toggles the active Project Session between Agent and IDE presentation. */
+  async toggleIde() {
+    if (this.embeddedEditorStore.visible) {
+      this.backToAgent();
+      return;
+    }
+    await this.openIde();
+  }
+
   async openFileInIde(location: SourceLocation) {
     if (!this.activeSession || !this.projectPath) return;
     this.commandPaneStore.dismiss();

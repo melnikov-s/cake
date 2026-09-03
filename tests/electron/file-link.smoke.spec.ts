@@ -154,6 +154,51 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
         }
         return false;
       }, label);
+    const isVsCodePrimarySidebarVisible = () =>
+      application.evaluate(async ({ webContents }) => {
+        for (const contents of webContents.getAllWebContents()) {
+          if (!contents.getURL().startsWith("http://127.0.0.1:")) continue;
+          const visible = await contents.executeJavaScript(`(() => {
+            const sidebar = document.querySelector(".part.sidebar");
+            if (!(sidebar instanceof HTMLElement)) return false;
+            const bounds = sidebar.getBoundingClientRect();
+            return bounds.width > 0 && bounds.height > 0;
+          })()`);
+          if (visible) return true;
+        }
+        return false;
+      });
+    const areVsCodeTitleActionsOrdered = (leftLabel: string, rightLabel: string) =>
+      application.evaluate(
+        async ({ webContents }, [left, right]) => {
+          for (const contents of webContents.getAllWebContents()) {
+            if (!contents.getURL().startsWith("http://127.0.0.1:")) continue;
+            const ordered = await contents.executeJavaScript(`(() => {
+            const left = document.querySelector(
+              '[aria-label*="${left}"], [title*="${left}"]',
+            );
+            const right = document.querySelector(
+              '[aria-label*="${right}"], [title*="${right}"]',
+            );
+            return left instanceof HTMLElement && right instanceof HTMLElement &&
+              left.getBoundingClientRect().x < right.getBoundingClientRect().x;
+          })()`);
+            if (ordered) return true;
+          }
+          return false;
+        },
+        [leftLabel, rightLabel],
+      );
+    const toggleIdeViaMenu = () =>
+      application.evaluate(({ Menu }) => {
+        const item = Menu.getApplicationMenu()
+          ?.items.flatMap((entry) => entry.submenu?.items ?? [])
+          .find((entry) => entry.label === "Toggle Agent / VS Code");
+        if (!item) throw new Error("Toggle Agent / VS Code menu item missing");
+        if (!String(item.accelerator).includes("Shift+A"))
+          throw new Error(`Unexpected IDE toggle accelerator: ${item.accelerator}`);
+        item.click({}, undefined);
+      });
     const hasVsCodeText = (text: string) =>
       application.evaluate(async ({ webContents }, expectedText) => {
         for (const contents of webContents.getAllWebContents()) {
@@ -216,12 +261,11 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
     await expect(projectSidebarResize).toHaveAttribute("aria-valuenow", "308");
     await expect(page.getByRole("button", { name: "Back to Agent" })).toHaveCount(0);
     await expect
-      .poll(() => hasVsCodeTitleAction("Toggle Sessions Sidebar"), { timeout: 20_000 })
-      .toBe(true);
-    await expect
       .poll(() => hasVsCodeTitleAction("Toggle Chat Sidebar"), { timeout: 20_000 })
       .toBe(true);
     await expect.poll(() => hasVsCodeTitleAction("Back to Agent"), { timeout: 20_000 }).toBe(true);
+    await expect.poll(() => hasVsCodeTitleAction("Toggle Sessions Sidebar")).toBe(false);
+    await expect.poll(isVsCodePrimarySidebarVisible, { timeout: 20_000 }).toBe(false);
     await expect(page.getByRole("button", { name: /Remove src\/modelMeta\.ts/ })).toHaveCount(0);
     await expect
       .poll(() =>
@@ -238,6 +282,17 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
       )
       .toBe(true);
     await expect.poll(() => hasVsCodeTitleAction("Toggle Secondary Side Bar")).toBe(false);
+    await page
+      .locator('[data-slot="sidebar"]')
+      .getByRole("button", { name: "Toggle sidebar" })
+      .click();
+    await expect.poll(() => hasVsCodeTitleAction("Toggle Sessions Sidebar")).toBe(true);
+    await expect
+      .poll(() => areVsCodeTitleActionsOrdered("Toggle Sessions Sidebar", "Back to Agent"))
+      .toBe(true);
+    expect(await clickVsCodeTitleAction("Toggle Sessions Sidebar")).toBe(true);
+    await expect(page.locator('[data-slot="sidebar"]')).toBeVisible();
+    await expect.poll(() => hasVsCodeTitleAction("Toggle Sessions Sidebar")).toBe(false);
     await expect.poll(() => hasVsCodeText("Build with Agent")).toBe(false);
     await expect
       .poll(() => clickVsCodeText("Cake: Pending · 0 replies"), { timeout: 20_000 })
@@ -247,10 +302,13 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
     await page.getByRole("button", { name: "Project chat" }).click();
     expect(await clickVsCodeTitleAction("Toggle Chat Sidebar")).toBe(true);
     await expect.poll(() => hasVsCodeTitleAction("Back to Agent")).toBe(true);
-    expect(await clickVsCodeTitleAction("Back to Agent")).toBe(true);
+    await toggleIdeViaMenu();
     await expect(vscodeWorkspace).toBeHidden();
     await expect(page.getByText("Phase 4 — Model references")).toBeVisible();
     await expect(agentInput).toHaveValue("Keep this IDE draft");
+    await toggleIdeViaMenu();
+    await expect(vscodeWorkspace).toBeVisible();
+    expect(await clickVsCodeTitleAction("Back to Agent")).toBe(true);
 
     await emitRendererEvent(application, {
       type: "embedded-editor-entered",
@@ -290,8 +348,12 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
           workbenchWidth === bounds.width
         );
       });
-    expect(await clickVsCodeTitleAction("Toggle Sessions Sidebar")).toBe(true);
+    await page
+      .locator('[data-slot="sidebar"]')
+      .getByRole("button", { name: "Toggle sidebar" })
+      .click();
     await expect(page.locator('[data-slot="sidebar"]')).toBeHidden();
+    await expect.poll(() => hasVsCodeTitleAction("Toggle Sessions Sidebar")).toBe(true);
     await expect(vscodeWorkspace).toBeVisible();
     await expect.poll(vscodeFillsWindow).toBe(true);
     const originalContentSize = await application.evaluate(({ BrowserWindow }) =>

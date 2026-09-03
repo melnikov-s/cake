@@ -474,6 +474,7 @@ export interface CakeIpcClientService {
     >;
     readonly vscode: () => Stream.Stream<
       FocusedCakeEvent<
+        | "embedded-editor-toggle-mode-requested"
         | "embedded-editor-selection"
         | "embedded-editor-back-to-agent"
         | "embedded-editor-annotation-opened"

@@ -251,6 +251,17 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
             { role: "zoom" },
             { type: "separator" },
             {
+              label: "Toggle Agent / VS Code",
+              accelerator: "CommandOrControl+Shift+A",
+              click: () => {
+                const focused = BrowserWindow.getFocusedWindow();
+                const target =
+                  focused && windows.has(focused.id) ? focused : [...windows.values()].at(-1);
+                if (target)
+                  sendTo(target.webContents, { type: "embedded-editor-toggle-mode-requested" });
+              },
+            },
+            {
               label: "Toggle Terminal",
               accelerator: "CommandOrControl+`",
               click: () => {
@@ -599,6 +610,7 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
       focused(
         connectionId,
         "vscode",
+        "embedded-editor-toggle-mode-requested",
         "embedded-editor-selection",
         "embedded-editor-back-to-agent",
         "embedded-editor-annotation-opened",

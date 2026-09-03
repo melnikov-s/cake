@@ -62,24 +62,35 @@ function waitForWorkbenchThemeScript(theme: "light" | "dark") {
   })`;
 }
 
-function vscodeShellControlsScript(workspacePath: string) {
+function projectSidebarVisibilityScript(visible: boolean) {
+  return `(() => {
+    window.__cakeProjectSidebarVisible = ${JSON.stringify(visible)};
+    const control = document.getElementById("cake-toggle-project-sidebar");
+    if (control) control.style.display = window.__cakeProjectSidebarVisible ? "none" : "";
+  })()`;
+}
+
+function vscodeShellControlsScript(workspacePath: string, projectSidebarVisible: boolean) {
   return `(() => {
     const cakeIconMarkup = ${JSON.stringify(cakeIconMarkup)};
     const controlPrefix = ${JSON.stringify(VSCODE_SHELL_CONTROL_PREFIX)};
     const workspace = ${JSON.stringify(workspacePath)};
+    window.__cakeProjectSidebarVisible = ${JSON.stringify(projectSidebarVisible)};
     const controls = [
-      ["cake-back-to-agent", "Cake: Back to Agent", "cake", "back-to-agent"],
+      ["cake-back-to-agent", "Cake: Back to Agent", "cake", "back-to-agent", "start"],
       [
         "cake-toggle-project-sidebar",
         "Cake: Toggle Sessions Sidebar",
         "layout-sidebar-left",
         "toggle-project-sidebar",
+        "start",
       ],
       [
         "cake-toggle-chat-sidebar",
         "Cake: Toggle Chat Sidebar",
         "layout-sidebar-right",
         "toggle-chat-sidebar",
+        "end",
       ],
     ];
     const install = () => {
@@ -91,11 +102,18 @@ function vscodeShellControlsScript(workspacePath: string) {
         '[aria-label*="Toggle Secondary Side Bar"], [title*="Toggle Secondary Side Bar"]',
       );
       secondarySidebarAction?.closest(".action-item")?.remove();
-      for (const [id, label, icon, type] of controls) {
-        if (document.getElementById(id)) continue;
+      for (const [id, label, icon, type, placement] of controls) {
+        const existing = document.getElementById(id);
+        if (existing) {
+          if (id === "cake-toggle-project-sidebar")
+            existing.style.display = window.__cakeProjectSidebarVisible ? "none" : "";
+          continue;
+        }
         const item = document.createElement("li");
         item.id = id;
         item.className = "action-item";
+        if (id === "cake-toggle-project-sidebar")
+          item.style.display = window.__cakeProjectSidebarVisible ? "none" : "";
         const action = document.createElement("a");
         action.className = icon === "cake" ? "action-label" : "action-label codicon codicon-" + icon;
         if (icon === "cake") {
@@ -108,13 +126,14 @@ function vscodeShellControlsScript(workspacePath: string) {
         action.href = "#";
         action.addEventListener("click", (event) => {
           event.preventDefault();
+          if (type === "toggle-project-sidebar") item.style.display = "none";
           console.debug(controlPrefix + JSON.stringify({ type, workspace }));
         });
         action.setAttribute("role", "button");
         action.setAttribute("aria-label", label);
         action.title = label;
         item.append(action);
-        if (id === "cake-back-to-agent") actions.prepend(item);
+        if (placement === "start") actions.prepend(item);
         else actions.append(item);
       }
     };
@@ -426,7 +445,12 @@ export class VsCodeServerManager {
       // loadURL resolves before the asynchronously bootstrapped workbench applies
       // its saved color theme. Do not expose the native view during that interval.
       await view.webContents.executeJavaScript(waitForWorkbenchThemeScript(theme));
-      await view.webContents.executeJavaScript(vscodeShellControlsScript(workspacePath));
+      await view.webContents.executeJavaScript(
+        vscodeShellControlsScript(
+          workspacePath,
+          (this.requestedBounds.get(webContentsId)?.x ?? 0) > 0,
+        ),
+      );
     } catch (error) {
       this.views.delete(webContentsId);
       this.releaseViewer(resolved);
@@ -441,9 +465,15 @@ export class VsCodeServerManager {
 
   /** Positions or hides the native view for one window. Bounds are DIPs relative to the content area. */
   updateBounds(webContentsId: number, bounds: ViewBounds) {
+    const projectSidebarWasVisible = (this.requestedBounds.get(webContentsId)?.x ?? 0) > 0;
+    const projectSidebarVisible = bounds.x > 0;
     this.requestedBounds.set(webContentsId, bounds);
     const entry = this.views.get(webContentsId);
     if (!entry) return;
+    if (projectSidebarWasVisible !== projectSidebarVisible)
+      void entry.view.webContents
+        .executeJavaScript(projectSidebarVisibilityScript(projectSidebarVisible))
+        .catch(() => undefined);
     this.applyRequestedBounds(webContentsId, entry.view);
     const instance = this.servers.get(entry.workspacePath);
     if (instance) this.touch(instance);

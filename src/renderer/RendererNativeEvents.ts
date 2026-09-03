@@ -107,6 +107,11 @@ export class RendererNativeEvents implements Disposable {
           void root.terminalStore.toggle();
           return;
         }
+        if (event.type === "embedded-editor-toggle-mode-requested") {
+          if (root.appShellStore.selection.kind === "project-session")
+            void root.projectWorkbenchStore.toggleIde();
+          return;
+        }
         if (event.type === "project-session-control-requested") {
           void root.respondProjectSessionControl(event).catch((error) => {
             if (!root.signal.aborted)

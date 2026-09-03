@@ -119,6 +119,9 @@ const cakeEventSchemas = {
     exitCode: int,
   }),
   "terminal-toggle-requested": Schema.Struct({ type: Schema.Literal("terminal-toggle-requested") }),
+  "embedded-editor-toggle-mode-requested": Schema.Struct({
+    type: Schema.Literal("embedded-editor-toggle-mode-requested"),
+  }),
   "embedded-editor-selection": Schema.Struct({
     type: Schema.Literal("embedded-editor-selection"),
     workspacePath: stringMax(4_096),
@@ -181,6 +184,7 @@ export const terminalEventSchema = Schema.Union([
 
 export const embeddedEditorEventSchema = Schema.Union([
   cakeEventSchemas["renderer-events-ready"],
+  cakeEventSchemas["embedded-editor-toggle-mode-requested"],
   cakeEventSchemas["embedded-editor-selection"],
   cakeEventSchemas["embedded-editor-back-to-agent"],
   cakeEventSchemas["embedded-editor-annotation-opened"],
@@ -211,6 +215,7 @@ export const cakeEventSchema = Schema.Union([
   cakeEventSchemas["terminal-data"],
   cakeEventSchemas["terminal-exited"],
   cakeEventSchemas["terminal-toggle-requested"],
+  cakeEventSchemas["embedded-editor-toggle-mode-requested"],
   cakeEventSchemas["embedded-editor-selection"],
   cakeEventSchemas["embedded-editor-back-to-agent"],
   cakeEventSchemas["embedded-editor-annotation-opened"],
