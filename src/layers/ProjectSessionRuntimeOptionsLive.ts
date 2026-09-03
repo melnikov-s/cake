@@ -82,8 +82,11 @@ export const makeProjectSessionRuntimeOptionsLive = (
             run(lifecycle.setProjectSessionResolved(sessionId, resolved, workingDirectory)).then(
               () => undefined,
             ),
+          enterEditor: (signal) => run(vscode.enterProjectEditor(workingDirectory), { signal }),
           openInEditor: (location, signal) =>
             run(vscode.openProjectLocation(workingDirectory, location), { signal }),
+          runEditorScript: (source, input, signal) =>
+            run(vscode.runProjectScript(workingDirectory, source, input), { signal }),
           openExternal: (url) => run(electron.openExternal(url)),
         }),
       });

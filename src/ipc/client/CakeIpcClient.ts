@@ -504,7 +504,7 @@ export interface CakeIpcClientService {
         | "embedded-editor-annotation-opened"
         | "embedded-editor-toggle-chat"
         | "embedded-editor-selection-cleared"
-        | "embedded-editor-location-opened"
+        | "embedded-editor-entered"
         | "renderer-events-ready"
       >,
       TransportError

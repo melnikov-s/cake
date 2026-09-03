@@ -106,8 +106,8 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
     }
   }
 
-  /** Adopts an editor instance that main opened for an agent-directed source reveal. */
-  showAgentLocation() {
+  /** Adopts an editor instance that main opened for an agent-directed action. */
+  showAgentEditor() {
     const projectPath = this.props.projectPath();
     if (!projectPath) return;
     this.activate();

@@ -1,6 +1,5 @@
 import type { CakeEvent } from "../ipc/cake-rpc-contract";
 import type { ArtifactRecord } from "../ipc/artifact-contract";
-import type { SourceLocation } from "../ipc/source-location";
 import type { PluginAgentSnapshot } from "../ipc/plugin-agent-contract";
 import type { AgentAvailabilityEntry } from "../domain/agent-availability-data";
 
@@ -60,11 +59,7 @@ export type RendererEvent =
   | { type: "terminal-data"; terminalId: string; data: string }
   | { type: "terminal-exited"; terminalId: string; exitCode: number }
   | { type: "terminal-toggle-requested" }
-  | {
-      type: "embedded-editor-location-opened";
-      workspacePath: string;
-      location: SourceLocation;
-    }
+  | { type: "embedded-editor-entered"; workspacePath: string }
   | {
       type: "embedded-editor-selection";
       workspacePath: string;
@@ -148,7 +143,7 @@ export function toRendererEvent(event: CakeEvent): RendererEvent | undefined {
     event.type === "embedded-editor-back-to-agent" ||
     event.type === "embedded-editor-toggle-chat" ||
     event.type === "embedded-editor-selection-cleared" ||
-    event.type === "embedded-editor-location-opened"
+    event.type === "embedded-editor-entered"
   )
     return event;
   return undefined;

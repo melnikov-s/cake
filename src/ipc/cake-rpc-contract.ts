@@ -171,10 +171,9 @@ const cakeEventSchemas = {
     type: Schema.Literal("embedded-editor-selection-cleared"),
     workspacePath: stringMax(4_096),
   }),
-  "embedded-editor-location-opened": Schema.Struct({
-    type: Schema.Literal("embedded-editor-location-opened"),
+  "embedded-editor-entered": Schema.Struct({
+    type: Schema.Literal("embedded-editor-entered"),
     workspacePath: stringMax(4_096),
-    location: sourceLocationSchema,
   }),
 } as const;
 
@@ -215,7 +214,7 @@ export const embeddedEditorEventSchema = Schema.Union([
   cakeEventSchemas["embedded-editor-annotation-opened"],
   cakeEventSchemas["embedded-editor-toggle-chat"],
   cakeEventSchemas["embedded-editor-selection-cleared"],
-  cakeEventSchemas["embedded-editor-location-opened"],
+  cakeEventSchemas["embedded-editor-entered"],
 ]);
 
 export const surfaceEventSchema = Schema.Union([
@@ -245,7 +244,7 @@ export const cakeEventSchema = Schema.Union([
   cakeEventSchemas["embedded-editor-annotation-opened"],
   cakeEventSchemas["embedded-editor-toggle-chat"],
   cakeEventSchemas["embedded-editor-selection-cleared"],
-  cakeEventSchemas["embedded-editor-location-opened"],
+  cakeEventSchemas["embedded-editor-entered"],
 ]);
 
 const terminalTarget = Schema.Union([

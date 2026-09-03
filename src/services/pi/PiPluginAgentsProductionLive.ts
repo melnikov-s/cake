@@ -68,8 +68,15 @@ export const makePiPluginAgentsProductionLive = (
                     }
                   : undefined,
               vscodeControl:
-                input.visibility === "project" && base.openInEditor
-                  ? { open: base.openInEditor }
+                input.visibility === "project" &&
+                base.enterEditor &&
+                base.openInEditor &&
+                base.runEditorScript
+                  ? {
+                      enter: base.enterEditor,
+                      open: base.openInEditor,
+                      runScript: base.runEditorScript,
+                    }
                   : undefined,
               openExternal: base.openExternal,
             },

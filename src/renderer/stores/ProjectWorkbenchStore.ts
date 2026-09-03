@@ -704,8 +704,8 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       if (event.workspacePath === this.projectPath) this.embeddedEditorStore.toggleChatSidebar();
       return;
     }
-    if (event.type === "embedded-editor-location-opened") {
-      if (event.workspacePath === this.projectPath) this.embeddedEditorStore.showAgentLocation();
+    if (event.type === "embedded-editor-entered") {
+      if (event.workspacePath === this.projectPath) this.embeddedEditorStore.showAgentEditor();
       return;
     }
     if (event.type === "agent-availability-changed") {

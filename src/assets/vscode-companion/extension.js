@@ -220,6 +220,21 @@ async function setTheme(vscode, payload) {
     .update("colorTheme", themeLabel, vscode.ConfigurationTarget.Global);
 }
 
+async function runScript(vscode, payload) {
+  const source = String(payload.source || "");
+  if (source.length === 0) throw new Error("A JavaScript source body is required");
+  if (source.length > 65_536) throw new Error("JavaScript source exceeds 65536 characters");
+  const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+  const execute = new AsyncFunction("vscode", "input", "require", `"use strict";\n${source}`);
+  const value = await execute(vscode, payload.input ?? null, require);
+  if (value === undefined) return null;
+  const serialized = JSON.stringify(value);
+  if (serialized === undefined) throw new Error("The script result is not JSON-compatible");
+  if (Buffer.byteLength(serialized) > 256_000)
+    throw new Error("The script result exceeds 256000 bytes");
+  return JSON.parse(serialized);
+}
+
 function activate(context) {
   const vscode = require("vscode");
   const annotationMarker = (color) =>
@@ -346,13 +361,20 @@ function activate(context) {
     }
     readBody(request)
       .then((raw) => JSON.parse(raw))
-      .then((payload) => {
-        if (payload.type === "annotations") return updateAnnotations(vscode, payload);
-        if (payload.type === "open-source-control") return openSourceControl(vscode);
-        if (payload.type === "set-theme") return setTheme(vscode, payload);
-        return reveal(payload);
+      .then(async (payload) => {
+        if (payload.type === "script") {
+          const result = await runScript(vscode, payload);
+          response
+            .writeHead(200, { "content-type": "application/json" })
+            .end(JSON.stringify(result));
+          return;
+        }
+        if (payload.type === "annotations") await updateAnnotations(vscode, payload);
+        else if (payload.type === "open-source-control") await openSourceControl(vscode);
+        else if (payload.type === "set-theme") await setTheme(vscode, payload);
+        else await reveal(payload);
+        response.writeHead(204).end();
       })
-      .then(() => response.writeHead(204).end())
       .catch((error) => {
         response
           .writeHead(400, { "content-type": "text/plain" })

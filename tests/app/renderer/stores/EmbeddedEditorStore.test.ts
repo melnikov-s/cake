@@ -79,7 +79,7 @@ describe("EmbeddedEditorStore", () => {
   it("adopts an agent-opened editor without opening it again", async () => {
     const { client, root, store } = createHarness();
 
-    store.showAgentLocation();
+    store.showAgentEditor();
 
     expect(store.visible).toBe(true);
     expect(client.getState).not.toHaveBeenCalled();

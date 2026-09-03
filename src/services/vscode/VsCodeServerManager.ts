@@ -9,6 +9,7 @@ import { WebContentsView, BrowserWindow } from "electron";
 import { applyEdits, modify, parse as parseJsonc, type ParseError } from "jsonc-parser";
 import type { SourceLocation } from "../../ipc/source-location";
 import type { EditorAnnotationSnapshot } from "../../ipc/editor-annotation";
+import { jsonValueSchema, type JsonValue } from "../../ipc/json-contract";
 import cakeIconMarkup from "../../assets/cake-icon.svg?raw";
 import {
   downloadFile,
@@ -27,6 +28,8 @@ const IDLE_EVICT_MS = 3 * 60_000;
 const MAX_RUNNING_SERVERS = 3;
 const START_TIMEOUT = 45_000;
 const COMPANION_START_TIMEOUT = 5_000;
+const COMPANION_SCRIPT_TIMEOUT = 30_000;
+const COMPANION_SCRIPT_RESULT_BYTES = 256_000;
 // VS Code exposes editor-title actions to extensions, but those disappear when no
 // file is open and it has no public top-level title-bar contribution point. Cake
 // owns this managed web surface, so install its two shell controls alongside the
@@ -145,7 +148,8 @@ type CompanionRequest =
   | ({ type: "reveal" } & SourceLocation)
   | { type: "open-source-control" }
   | ({ type: "annotations" } & EditorAnnotationSnapshot)
-  | { type: "set-theme"; theme: "light" | "dark" };
+  | { type: "set-theme"; theme: "light" | "dark" }
+  | { type: "script"; source: string; input: JsonValue };
 
 interface BroadcastTarget {
   broadcast(
@@ -424,6 +428,47 @@ export class VsCodeServerManager {
     const port = await this.waitForCompanionPort(resolved);
     this.touch(instance);
     await postJson(port, "/", { type: "reveal", ...location }, this.bridgeToken);
+  }
+
+  /** Reports whether this workspace currently has a visible embedded editor surface. */
+  async isVisible(workspacePath: string) {
+    const resolved = await realpath(workspacePath);
+    return this.isResolvedWorkspaceVisible(resolved);
+  }
+
+  /** Waits for the renderer to acknowledge agent-directed entry into VS Code mode. */
+  async waitUntilVisible(workspacePath: string) {
+    const resolved = await realpath(workspacePath);
+    const deadline = Date.now() + COMPANION_START_TIMEOUT;
+    while (Date.now() < deadline) {
+      if (this.isResolvedWorkspaceVisible(resolved)) return;
+      await new Promise((resolvePromise) => setTimeout(resolvePromise, 25));
+    }
+    throw new Error("Cake did not finish entering VS Code mode");
+  }
+
+  private isResolvedWorkspaceVisible(workspacePath: string) {
+    return [...this.views.entries()].some(
+      ([ownerId, entry]) =>
+        entry.workspacePath === workspacePath &&
+        this.requestedBounds.get(ownerId)?.visible === true,
+    );
+  }
+
+  /** Runs trusted JavaScript in the workspace's companion extension host. */
+  async runScript(workspacePath: string, source: string, input: JsonValue): Promise<JsonValue> {
+    const resolved = await realpath(workspacePath);
+    const instance = this.servers.get(resolved);
+    if (!instance) throw new Error("The embedded editor is not running for this project yet");
+    const port = await this.waitForCompanionPort(resolved);
+    this.touch(instance);
+    return postJsonResult(
+      port,
+      "/",
+      { type: "script", source, input },
+      this.bridgeToken,
+      COMPANION_SCRIPT_TIMEOUT,
+    );
   }
 
   /** Opens VS Code's native Source Control view for the workspace. */
@@ -927,8 +972,30 @@ async function postJson(
   body: CompanionRequest,
   token: string,
 ): Promise<void> {
+  await postJsonResponse(port, requestPath, body, token, 5_000);
+}
+
+async function postJsonResult(
+  port: number,
+  requestPath: string,
+  body: CompanionRequest,
+  token: string,
+  timeout: number,
+): Promise<JsonValue> {
+  const response = await postJsonResponse(port, requestPath, body, token, timeout);
+  const parsed: unknown = response.length === 0 ? null : JSON.parse(response.toString("utf8"));
+  return Schema.decodeUnknownSync(jsonValueSchema)(parsed);
+}
+
+function postJsonResponse(
+  port: number,
+  requestPath: string,
+  body: CompanionRequest,
+  token: string,
+  timeout: number,
+): Promise<Buffer> {
   const payload = Buffer.from(JSON.stringify(body));
-  await new Promise<void>((resolvePromise, reject) => {
+  return new Promise<Buffer>((resolvePromise, reject) => {
     const request = httpRequest({
       host: "127.0.0.1",
       port,
@@ -939,23 +1006,33 @@ async function postJson(
         "content-length": payload.length,
         "x-cake-token": token,
       },
-      timeout: 5_000,
+      timeout,
     });
     request.on("response", (response) => {
       const chunks: Buffer[] = [];
-      response.on("data", (chunk: Buffer) => chunks.push(chunk));
+      let size = 0;
+      response.on("data", (chunk: Buffer) => {
+        size += chunk.length;
+        if (size > COMPANION_SCRIPT_RESULT_BYTES) {
+          response.destroy(new Error("Companion extension response was too large"));
+          return;
+        }
+        chunks.push(chunk);
+      });
       response.on("end", () => {
+        const responseBody = Buffer.concat(chunks);
         if (response.statusCode && response.statusCode >= 200 && response.statusCode < 300) {
-          resolvePromise();
+          resolvePromise(responseBody);
           return;
         }
         reject(
           new Error(
-            Buffer.concat(chunks).toString("utf8") ||
+            responseBody.toString("utf8") ||
               `Companion extension returned HTTP ${response.statusCode ?? "unknown"}`,
           ),
         );
       });
+      response.on("error", reject);
     });
     request.on("timeout", () => {
       request.destroy(new Error("Companion extension did not respond"));

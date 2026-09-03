@@ -619,7 +619,7 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
         "embedded-editor-annotation-opened",
         "embedded-editor-toggle-chat",
         "embedded-editor-selection-cleared",
-        "embedded-editor-location-opened",
+        "embedded-editor-entered",
       ),
     surfaces: (connectionId) =>
       focused(connectionId, "surfaces", "fullscreen-surface-close-requested"),

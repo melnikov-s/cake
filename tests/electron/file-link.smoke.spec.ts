@@ -244,9 +244,8 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
     await expect(agentInput).toHaveValue("Keep this IDE draft");
 
     await emitRendererEvent(application, {
-      type: "embedded-editor-location-opened",
+      type: "embedded-editor-entered",
       workspacePath: project,
-      location: { path: "src/modelMeta.ts", range: { start: { line: 0 } } },
     });
     await expect(page.getByRole("region", { name: "VS Code workspace" })).toBeVisible();
     expect(await clickVsCodeTitleAction("Back to Agent")).toBe(true);

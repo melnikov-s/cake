@@ -3,6 +3,7 @@ import type { SourceLocation } from "../../ipc/source-location";
 import type { ModelPreset, UtilityModel } from "../../ipc/session-contract";
 import type { WorktreeLandingCoordinator } from "../../ipc/worktree-contract";
 import type { JsonValue } from "../../ipc/json-contract";
+import type { VscodeActionResult } from "../vscode/VsCodeServer";
 import {
   parseArtifactInput,
   type ArtifactRecord,
@@ -81,10 +82,16 @@ export interface ProjectSessionIntegrationHostOptions {
   readonly artifactRepository?: ArtifactRepositoryPort;
   readonly reviewRepository?: ReviewRepositoryPort;
   readonly openExternal?: (url: string) => Promise<void>;
+  readonly enterEditor?: (signal: AbortSignal) => Promise<void>;
   readonly openInEditor?: (
     location: SourceLocation,
     signal: AbortSignal,
-  ) => Promise<SourceLocation>;
+  ) => Promise<VscodeActionResult<SourceLocation>>;
+  readonly runEditorScript?: (
+    source: string,
+    input: JsonValue,
+    signal: AbortSignal,
+  ) => Promise<VscodeActionResult<JsonValue>>;
   readonly isTrusted?: () => boolean;
   readonly utilityModel?: () => UtilityModel | undefined;
   readonly generateSessionTitle?: NonNullable<CakeRuntimeOptions["generateSessionTitle"]>;

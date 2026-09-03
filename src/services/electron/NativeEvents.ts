@@ -44,7 +44,7 @@ export interface NativeEventsService {
       | "embedded-editor-annotation-opened"
       | "embedded-editor-toggle-chat"
       | "embedded-editor-selection-cleared"
-      | "embedded-editor-location-opened"
+      | "embedded-editor-entered"
       | "renderer-events-ready"
     >
   >;

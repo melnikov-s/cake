@@ -1,5 +1,6 @@
 import { Context, Schema, type Effect, type Stream } from "effect";
 import type { cakeRpcPayloadSchemas, cakeRpcSuccessSchemas } from "../../ipc/cake-rpc-contract";
+import type { JsonValue } from "../../ipc/json-contract";
 import type { SourceLocation } from "../../ipc/source-location";
 
 type Payload<Type extends keyof typeof cakeRpcPayloadSchemas> =
@@ -11,6 +12,10 @@ export class VsCodeServerError extends Schema.TaggedError<VsCodeServerError>()(
   "VsCodeServerError",
   { operation: Schema.String, message: Schema.String },
 ) {}
+
+export type VscodeActionResult<Value> =
+  | { readonly status: "completed"; readonly value: Value }
+  | { readonly status: "mode-required" };
 
 export interface VsCodeServerService {
   readonly state: () => Effect.Effect<Success<"get-embedded-editor-state">>;
@@ -36,10 +41,16 @@ export interface VsCodeServerService {
   readonly updateAnnotations: (
     request: Payload<"update-embedded-editor-annotations">,
   ) => Effect.Effect<Success<"update-embedded-editor-annotations">, VsCodeServerError>;
+  readonly enterProjectEditor: (workingDirectory: string) => Effect.Effect<void, VsCodeServerError>;
   readonly openProjectLocation: (
     workingDirectory: string,
     location: SourceLocation,
-  ) => Effect.Effect<SourceLocation, VsCodeServerError>;
+  ) => Effect.Effect<VscodeActionResult<SourceLocation>, VsCodeServerError>;
+  readonly runProjectScript: (
+    workingDirectory: string,
+    source: string,
+    input: JsonValue,
+  ) => Effect.Effect<VscodeActionResult<JsonValue>, VsCodeServerError>;
   readonly closeForWindow: (ownerId: number) => Effect.Effect<void>;
   readonly backToAgentForWindow: (ownerId: number) => Effect.Effect<boolean>;
   readonly updateTheme: () => Effect.Effect<void, VsCodeServerError>;

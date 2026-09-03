@@ -142,7 +142,14 @@ export const makeProjectSessionEnvironmentLive = (
                       }) ?? Promise.resolve(),
                   }
                 : undefined,
-              vscodeControl: base.openInEditor ? { open: base.openInEditor } : undefined,
+              vscodeControl:
+                base.enterEditor && base.openInEditor && base.runEditorScript
+                  ? {
+                      enter: base.enterEditor,
+                      open: base.openInEditor,
+                      runScript: base.runEditorScript,
+                    }
+                  : undefined,
               openExternal: base.openExternal,
             },
           };

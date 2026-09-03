@@ -177,16 +177,34 @@ export const makeVsCodeServerLive = (
           );
           return { requestId: request.requestId };
         }),
-        openProjectLocation: Effect.fn("VsCodeServer.openProjectLocation")(
-          function* (workingDirectory, location) {
+        enterProjectEditor: Effect.fn("VsCodeServer.enterProjectEditor")(
+          function* (workingDirectory) {
             yield* requireAllowed(workingDirectory);
-            return yield* tryManager("openProjectLocation", async (signal) => {
+            yield* tryManager("enterProjectEditor", async (signal) => {
               signal.throwIfAborted();
               const candidates = electron.windowsForWorkspace(workingDirectory);
               const selected =
                 candidates.find(([, window]) => window.isFocused()) ?? candidates.at(0);
               if (!selected) throw new Error("No Cake window has this project open");
               const [ownerId, window] = selected;
+              await manager.open(ownerId, () => window, workingDirectory);
+              signal.throwIfAborted();
+              electron.sendTo(window.webContents, {
+                type: "embedded-editor-entered",
+                workspacePath: workingDirectory,
+              });
+              await manager.waitUntilVisible(workingDirectory);
+              signal.throwIfAborted();
+            });
+          },
+        ),
+        openProjectLocation: Effect.fn("VsCodeServer.openProjectLocation")(
+          function* (workingDirectory, location) {
+            yield* requireAllowed(workingDirectory);
+            return yield* tryManager("openProjectLocation", async (signal) => {
+              signal.throwIfAborted();
+              if (!(await manager.isVisible(workingDirectory)))
+                return { status: "mode-required" as const };
               const { workspace, target } = await resolveSourceTarget(
                 workingDirectory,
                 location.path,
@@ -196,16 +214,21 @@ export const makeVsCodeServerLive = (
                 path: relative(workspace, target).split(sep).join("/"),
               };
               signal.throwIfAborted();
-              await manager.open(ownerId, () => window, workspace);
-              signal.throwIfAborted();
               await manager.reveal(workspace, normalized);
+              return { status: "completed" as const, value: normalized };
+            });
+          },
+        ),
+        runProjectScript: Effect.fn("VsCodeServer.runProjectScript")(
+          function* (workingDirectory, source, input) {
+            yield* requireAllowed(workingDirectory);
+            return yield* tryManager("runProjectScript", async (signal) => {
               signal.throwIfAborted();
-              electron.sendTo(window.webContents, {
-                type: "embedded-editor-location-opened",
-                workspacePath: workingDirectory,
-                location: normalized,
-              });
-              return normalized;
+              if (!(await manager.isVisible(workingDirectory)))
+                return { status: "mode-required" as const };
+              const value = await manager.runScript(workingDirectory, source, input);
+              signal.throwIfAborted();
+              return { status: "completed" as const, value };
             });
           },
         ),
