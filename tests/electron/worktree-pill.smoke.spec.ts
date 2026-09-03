@@ -99,6 +99,9 @@ test("chooses an isolated worktree without disturbing the new-chat composer", as
     await expect(
       page.getByTestId("virtuoso-item-list").getByText("Build this in isolation", { exact: true }),
     ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Merge", exact: true })).toBeVisible({
+      timeout: 5_000,
+    });
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

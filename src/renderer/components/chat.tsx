@@ -142,7 +142,7 @@ export const Chat = observer(function Chat({
     const isAtBottom = () =>
       transcript !== null &&
       transcript.scrollHeight - transcript.clientHeight - transcript.scrollTop <= 2;
-    let followingBottom = true;
+    let followingBottom = isAtBottom();
     let scrollFrame: number | undefined;
     let bottomUpdatePending = false;
     const captureBottomState = () => {

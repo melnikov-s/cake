@@ -52,17 +52,19 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
   private pendingAllowDirtyTarget = false;
   private pendingResolveAfterLanding = false;
   private adoptedPauseFor: string | undefined;
-  private refreshing = false;
+  private readonly refreshingWorkspacePaths = new Set<string>();
   private observedWorkspacePath: string | undefined;
 
   constructor(props: WorktreeStore["props"]) {
     super(props);
     this.effect(() => {
       if (!this.props.enabled()) return;
+      const workspacePath = this.props.workspacePath();
+      if (!workspacePath) return;
       let active = true;
       let timer: ReturnType<typeof setTimeout> | undefined;
       const poll = async () => {
-        await this.refresh();
+        await this.refresh(workspacePath);
         if (!active || this.signal.aborted) return;
         timer = setTimeout(() => void poll(), POLL_INTERVAL_MS);
       };
@@ -82,10 +84,10 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     return this.props.isStreaming();
   }
 
-  async refresh() {
-    if (!this.props.enabled() || this.refreshing || this.signal.aborted) return;
-    const workspacePath = this.props.workspacePath();
-    if (!workspacePath) return;
+  async refresh(requestedWorkspacePath?: string) {
+    if (!this.props.enabled() || this.signal.aborted) return;
+    const workspacePath = requestedWorkspacePath ?? this.props.workspacePath();
+    if (!workspacePath || this.refreshingWorkspacePaths.has(workspacePath)) return;
     if (workspacePath !== this.observedWorkspacePath) {
       this.observedWorkspacePath = workspacePath;
       this.status = undefined;
@@ -95,7 +97,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
       this.pendingResolveAfterLanding = false;
       this.stalled = false;
     }
-    this.refreshing = true;
+    this.refreshingWorkspacePaths.add(workspacePath);
     try {
       const status = await this.managedWorktrees.status({ workspacePath });
       if (this.signal.aborted || this.props.workspacePath() !== workspacePath) return;
@@ -112,7 +114,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     } catch {
       // Transient Git or transport failures surface through the next poll.
     } finally {
-      if (!this.signal.aborted) this.refreshing = false;
+      this.refreshingWorkspacePaths.delete(workspacePath);
     }
   }
 

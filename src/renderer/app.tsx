@@ -212,6 +212,22 @@ export const App = observer(function App() {
           },
         }
       : undefined;
+  const projectComposerHeader = session ? (
+    <WorktreePill
+      creation={store.worktreeCreationStore}
+      actions={session.worktreeStore}
+      sessionId={session.sessionId}
+      projectPath={
+        root.sessionCatalogStore.projectOfManagedWorktree(session.workspacePath) ??
+        session.workspacePath
+      }
+      draft={
+        store.sessionRegistry.isTemporarySession(session.sessionId) &&
+        !store.sessionRegistry.isDraftSession(session.sessionId)
+      }
+      onConfigured={() => session.composerStore.requestFocus()}
+    />
+  ) : undefined;
 
   if (store.embeddedEditorStore.visible && session && projectTranscriptBehavior)
     return (
@@ -221,6 +237,7 @@ export const App = observer(function App() {
             editor={store.embeddedEditorStore}
             reviews={reviews}
             projectChat={session.chatStore}
+            projectComposerHeader={projectComposerHeader}
             sessionTitle={store.sessionTitle}
             transcriptBehavior={projectTranscriptBehavior}
           />
@@ -526,22 +543,7 @@ export const App = observer(function App() {
                 }
                 error={chatError ? { message: chatError, details: chatErrorDetails } : undefined}
                 composerContent={<Slot name="project-session.composer.before" />}
-                composerHeader={
-                  <WorktreePill
-                    creation={store.worktreeCreationStore}
-                    actions={session.worktreeStore}
-                    sessionId={session.sessionId}
-                    projectPath={
-                      root.sessionCatalogStore.projectOfManagedWorktree(session.workspacePath) ??
-                      session.workspacePath
-                    }
-                    draft={
-                      store.sessionRegistry.isTemporarySession(session.sessionId) &&
-                      !store.sessionRegistry.isDraftSession(session.sessionId)
-                    }
-                    onConfigured={() => session.composerStore.requestFocus()}
-                  />
-                }
+                composerHeader={projectComposerHeader}
                 pluginActions={<Slot name="project-session.composer.actions" />}
                 status={
                   <>

@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 import { observer } from "r-state-tree/react";
 import { cn } from "../lib/utils";
 import type { ChatTranscriptBehavior } from "./chat-message";
@@ -21,12 +21,14 @@ export const IdeWorkspace = observer(function IdeWorkspace({
   editor,
   reviews,
   projectChat,
+  projectComposerHeader,
   sessionTitle,
   transcriptBehavior,
 }: {
   editor: EmbeddedEditorStore;
   reviews: ReviewsStore;
   projectChat: ChatStore;
+  projectComposerHeader?: ReactNode;
   sessionTitle: string;
   transcriptBehavior: ChatTranscriptBehavior;
 }) {
@@ -108,7 +110,12 @@ export const IdeWorkspace = observer(function IdeWorkspace({
               ) : null}
             </header>
             <div className="min-h-0 flex-1">
-              <Chat className="h-full" store={chat} transcriptBehavior={transcriptBehavior} />
+              <Chat
+                className="h-full"
+                store={chat}
+                transcriptBehavior={transcriptBehavior}
+                composerHeader={contextualChat ? undefined : projectComposerHeader}
+              />
             </div>
           </aside>
         </>
