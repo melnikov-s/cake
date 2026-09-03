@@ -38,6 +38,7 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
   const [projectAction, setProjectAction] = useState<ProjectAction>();
   const [actionBusy, setActionBusy] = useState(false);
   const sessions = store.projectSessions(path, resolved);
+  const visibleSessions = sessions.slice(0, store.sessionLimit(path, resolved));
   const expanded = resolved
     ? store.isResolvedGroupExpanded(path)
     : store.isActiveGroupExpanded(path);
@@ -100,7 +101,7 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
       </div>
       {expanded && (
         <div className="flex flex-col pl-6 space-y-0.5 mt-0.5">
-          {sessions.map((session) => (
+          {visibleSessions.map((session) => (
             <SidebarSessionItem
               key={session.sessionId}
               store={store}
@@ -122,6 +123,15 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
               onMarkUnread={(sessionId, unread) => void store.setSessionUnread(sessionId, unread)}
             />
           ))}
+          {sessions.length > visibleSessions.length && (
+            <Button
+              variant="ghost"
+              className="h-7 justify-start px-2 text-xs text-muted-foreground hover:text-foreground"
+              onClick={() => store.showMoreSessions(path, resolved)}
+            >
+              Show more
+            </Button>
+          )}
         </div>
       )}
       {projectAction && (

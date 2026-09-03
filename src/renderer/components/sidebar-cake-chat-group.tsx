@@ -27,6 +27,7 @@ export const SidebarCakeChatGroup = observer(function SidebarCakeChatGroup({
   onCreateCakeChat,
 }: SidebarCakeChatGroupProps) {
   const sessions = store.cakeChatSessions(resolved);
+  const visibleSessions = sessions.slice(0, store.sessionLimit("cake-chat", resolved));
   const expanded = resolved
     ? store.isResolvedGroupExpanded("cake-chat")
     : store.isActiveGroupExpanded("cake-chat");
@@ -80,7 +81,7 @@ export const SidebarCakeChatGroup = observer(function SidebarCakeChatGroup({
       </div>
       {expanded && (
         <div className="flex flex-col pl-5 space-y-0.5 mt-0.5">
-          {sessions.map((session) => {
+          {visibleSessions.map((session) => {
             const selected =
               shell.selection.kind === "cake-chat" &&
               shell.selection.sessionId === session.sessionId;
@@ -102,6 +103,15 @@ export const SidebarCakeChatGroup = observer(function SidebarCakeChatGroup({
               />
             );
           })}
+          {sessions.length > visibleSessions.length && (
+            <Button
+              variant="ghost"
+              className="h-7 justify-start px-2 text-xs text-muted-foreground hover:text-foreground"
+              onClick={() => store.showMoreSessions("cake-chat", resolved)}
+            >
+              Show more
+            </Button>
+          )}
         </div>
       )}
     </div>

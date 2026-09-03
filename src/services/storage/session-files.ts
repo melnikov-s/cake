@@ -47,6 +47,8 @@ const metadataFromFilename = (
   };
 };
 
+const METADATA_STAT_CONCURRENCY = 32;
+
 async function* readDirectoryMetadata(
   directory: string,
 ): AsyncGenerator<SessionFileMetadata, void, void> {
@@ -57,15 +59,21 @@ async function* readDirectoryMetadata(
     if (error instanceof Error && "code" in error && error.code === "ENOENT") return;
     throw error;
   }
+  let batch: string[] = [];
+  const metadataBatch = async (names: readonly string[]) =>
+    Promise.all(
+      names.map(async (name) =>
+        metadataFromFilename(directory, name, (await stat(join(directory, name))).mtime),
+      ),
+    );
   for await (const entry of entries) {
     if (!entry.isFile() || !entry.name.endsWith(".jsonl")) continue;
-    const metadata = metadataFromFilename(
-      directory,
-      entry.name,
-      (await stat(join(directory, entry.name))).mtime,
-    );
-    if (metadata) yield metadata;
+    batch.push(entry.name);
+    if (batch.length < METADATA_STAT_CONCURRENCY) continue;
+    for (const metadata of await metadataBatch(batch)) if (metadata) yield metadata;
+    batch = [];
   }
+  for (const metadata of await metadataBatch(batch)) if (metadata) yield metadata;
 }
 
 /** Emits filesystem metadata only. Transcript contents are never opened. */

@@ -31,6 +31,7 @@ export class SidebarStore extends Store<SidebarStoreProps> {
   });
   private readonly expandedResolvedGroups: Record<string, boolean> = observable({});
   private readonly activatedResolvedCatalogs: Record<string, boolean> = observable({});
+  private readonly sessionLimits: Record<string, number> = observable({});
   resolvedLaneExpanded = false;
   now = Date.now();
 
@@ -83,6 +84,15 @@ export class SidebarStore extends Store<SidebarStoreProps> {
 
   cakeChatSessions(resolved = false) {
     return this.props.cakeChat().summaries.filter((session) => session.resolved === resolved);
+  }
+
+  sessionLimit(groupKey: string, resolved = false) {
+    return this.sessionLimits[this.limitKey(groupKey, resolved)] ?? 10;
+  }
+
+  showMoreSessions(groupKey: string, resolved = false) {
+    const key = this.limitKey(groupKey, resolved);
+    this.sessionLimits[key] = this.sessionLimit(groupKey, resolved) + 10;
   }
 
   sessionActivity(sessionId: string) {
@@ -152,5 +162,9 @@ export class SidebarStore extends Store<SidebarStoreProps> {
 
   sessionActivityTime(modified: string) {
     return formatRelativeSessionTime(modified, this.now);
+  }
+
+  private limitKey(groupKey: string, resolved: boolean) {
+    return `${resolved ? "resolved" : "active"}:${groupKey}`;
   }
 }

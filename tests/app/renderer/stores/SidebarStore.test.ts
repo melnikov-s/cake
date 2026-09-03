@@ -7,6 +7,33 @@ import type { GlobalChatStore } from "../../../../src/renderer/stores/GlobalChat
 import { SidebarStore } from "../../../../src/renderer/stores/SidebarStore";
 
 describe("SidebarStore catalog demand", () => {
+  it("reveals sessions ten at a time independently for each group and lane", () => {
+    const store = mount(
+      createStore(SidebarStore, {
+        projects: { orderedProjectPaths: [] } as unknown as ProjectCatalogStore,
+        catalog: {} as SessionCatalogStore,
+        sessions: {} as SessionRegistryStore,
+        cakeChat: () => ({}) as GlobalChatStore,
+        setSessionResolved: async () => undefined,
+        setCakeChatSessionResolved: async () => undefined,
+        deleteSession: async () => undefined,
+        deleteCakeChatSession: async () => undefined,
+        setSessionUnread: async () => undefined,
+      }),
+    );
+
+    expect(store.sessionLimit("/cake")).toBe(10);
+    store.showMoreSessions("/cake");
+    expect(store.sessionLimit("/cake")).toBe(20);
+    expect(store.sessionLimit("/pi")).toBe(10);
+    expect(store.sessionLimit("/cake", true)).toBe(10);
+
+    store.showMoreSessions("/cake", true);
+    expect(store.sessionLimit("/cake", true)).toBe(20);
+    expect(store.sessionLimit("/cake")).toBe(20);
+    store[Symbol.dispose]();
+  });
+
   it("loads resolved catalogs on first expansion and retains them for the window lifetime", () => {
     const store = mount(
       createStore(SidebarStore, {

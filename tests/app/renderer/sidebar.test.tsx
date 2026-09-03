@@ -128,6 +128,43 @@ describe("Sidebar projects", () => {
     expect(startNewSession).toHaveBeenCalledWith("/work/cake");
   });
 
+  it("shows project sessions ten at a time", () => {
+    let limit = 10;
+    const sessions = Array.from({ length: 11 }, (_, index) => ({
+      sessionId: `session-${index + 1}`,
+      title: `Session ${index + 1}`,
+      modifiedAt: new Date(index).toISOString(),
+    }));
+    const showMoreSessions = vi.fn(() => {
+      limit += 10;
+    });
+    const store = {
+      recentProjectPaths: ["/work/cake"],
+      projects: [{ path: "/work/cake", name: "Cake" }],
+      projectSessions: () => sessions,
+      sessionLimit: () => limit,
+      showMoreSessions,
+      sessionActivity: vi.fn(),
+      sessionActivityTime: vi.fn(() => "Today"),
+      nameFromPath: () => "cake",
+    } as unknown as ProjectWorkbenchStore;
+    const render = () =>
+      root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onToggle={vi.fn()} />);
+
+    act(render);
+    expect(container.querySelectorAll("[data-session-id]")).toHaveLength(10);
+    const showMore = Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find(
+      (button) => button.textContent === "Show more",
+    )!;
+    expect(showMore).not.toBeNull();
+
+    act(() => showMore.click());
+    act(render);
+    expect(showMoreSessions).toHaveBeenCalledWith("/work/cake", false);
+    expect(container.querySelectorAll("[data-session-id]")).toHaveLength(11);
+    expect(container.textContent).not.toContain("Show more");
+  });
+
   it("shows running, ready-unread, and error indicators for sessions", () => {
     const store = {
       recentProjectPaths: ["/work/cake"],
