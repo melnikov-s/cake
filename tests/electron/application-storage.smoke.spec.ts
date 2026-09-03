@@ -26,7 +26,6 @@ test("legacy Application storage migrates before normal renderer hydration", asy
     JSON.stringify({
       schemaVersion: 1,
       projects: [],
-      resolvedSessionIds: [],
       resolvedCakeChatSessionIds: [],
       unreadSessionIds: [],
       trustedProjectPaths: [],

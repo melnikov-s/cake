@@ -4,13 +4,11 @@ import { Effect, Layer } from "effect";
 import { describe } from "vitest";
 import {
   forgetProjectSessions,
-  reconcileResolvedSessions,
   removeProject,
   renameProject,
   setCakeChatSessionResolved,
   setSessionFastMode,
   setSessionUnread,
-  setSessionsResolved,
   setUtilityModel,
   setVscodeServerPath,
   touchProject,
@@ -102,17 +100,14 @@ describe("Application domain", () => {
     ),
   );
 
-  it.effect("preserves resolved, unread, Cake Chat, Fast mode, and forget interactions", () =>
+  it.effect("preserves unread, Cake Chat, Fast mode, and forget interactions", () =>
     run(
       Effect.gen(function* () {
         yield* setSessionUnread("session-1", true);
-        const resolved = yield* setSessionsResolved(["session-1", "session-1"], true);
-        assert.deepEqual(resolved.resolvedSessionIds, ["session-1"]);
-        assert.deepEqual(resolved.unreadSessionIds, []);
         yield* setCakeChatSessionResolved("cake-chat-1", true);
         yield* setSessionFastMode("session-1", true);
         const forgotten = yield* forgetProjectSessions(["session-1"]);
-        assert.deepEqual(forgotten.resolvedSessionIds, []);
+        assert.deepEqual(forgotten.unreadSessionIds, []);
         assert.deepEqual(forgotten.fastModeSessionIds, []);
         assert.deepEqual(forgotten.resolvedCakeChatSessionIds, ["cake-chat-1"]);
       }),
@@ -132,19 +127,6 @@ describe("Application domain", () => {
         assert.equal(editor.vscodeServerPath, "/opt/code-server");
         const cleared = yield* setVscodeServerPath("   ");
         assert.equal(cleared.vscodeServerPath, undefined);
-      }),
-    ),
-  );
-
-  it.effect("reconciles archived Project and Cake Chat sessions", () =>
-    run(
-      Effect.gen(function* () {
-        const state = yield* reconcileResolvedSessions(
-          ["project-2", "project-1", "project-1"],
-          ["chat-1", "chat-1"],
-        );
-        assert.deepEqual(state.resolvedSessionIds, ["project-2", "project-1"]);
-        assert.deepEqual(state.resolvedCakeChatSessionIds, ["chat-1"]);
       }),
     ),
   );

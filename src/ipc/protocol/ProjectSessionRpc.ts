@@ -5,21 +5,18 @@ import { SessionCatalogUpdate } from "../../domain/catalog-data";
 import { TurnId } from "../../domain/conversation-data";
 import {
   ProjectSessionError,
+  ProjectSessionCatalogQuery,
   ProjectSessionPreview,
   ProjectSessionPromptInput,
   ProjectSessionStartInput,
-  ProjectSessionSummary,
   ProjectSessionTarget,
   ProjectSessionUpdate,
 } from "../../domain/project-session-data";
 import { piSettingUpdateSchema } from "../session-contract";
 
 export const ProjectSessionRpc = RpcGroup.make(
-  Rpc.make("projectSessions.list", {
-    success: Schema.Array(ProjectSessionSummary),
-    error: ProjectSessionError,
-  }),
   Rpc.make("projectSessions.observeCatalog", {
+    payload: ProjectSessionCatalogQuery,
     success: SessionCatalogUpdate,
     error: ProjectSessionError,
     stream: true,

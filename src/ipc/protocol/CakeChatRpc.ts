@@ -2,10 +2,10 @@ import { Schema } from "effect";
 import { Rpc, RpcGroup } from "effect/unstable/rpc";
 import {
   CakeChatConfiguration,
+  CakeChatCatalogQuery,
   CakeChatError,
   CakeChatPreview,
   CakeChatPromptInput,
-  CakeChatSummary,
   CakeChatTarget,
   CakeChatUpdate,
 } from "../../domain/cake-chat-data";
@@ -13,11 +13,8 @@ import { CakeChatCatalogUpdate } from "../../domain/catalog-data";
 import { ConversationSnapshot, TurnId } from "../../domain/conversation-data";
 
 export const CakeChatRpc = RpcGroup.make(
-  Rpc.make("cakeChats.list", {
-    success: Schema.Array(CakeChatSummary),
-    error: CakeChatError,
-  }),
   Rpc.make("cakeChats.observeCatalog", {
+    payload: CakeChatCatalogQuery,
     success: CakeChatCatalogUpdate,
     error: CakeChatError,
     stream: true,

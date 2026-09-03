@@ -34,7 +34,6 @@ test("keeps session plugin rails beside the chat and bounds plugin-authored widt
             lastOpenedAt: new Date(0).toISOString(),
           },
         ],
-        resolvedSessionIds: [],
         trustedProjectPaths: [],
       }),
     ),

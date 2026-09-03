@@ -174,22 +174,6 @@ export const setCakeChatSessionResolved = Effect.fn("Application.setCakeChatSess
   },
 );
 
-export const setSessionsResolved = Effect.fn("Application.setSessionsResolved")(function* (
-  sessionIds: ReadonlyArray<string>,
-  resolved: boolean,
-) {
-  const changed = new Set(sessionIds);
-  return yield* update((current) => ({
-    ...current,
-    resolvedSessionIds: resolved
-      ? unique([...current.resolvedSessionIds, ...sessionIds])
-      : current.resolvedSessionIds.filter((id) => !changed.has(id)),
-    unreadSessionIds: resolved
-      ? current.unreadSessionIds.filter((id) => !changed.has(id))
-      : current.unreadSessionIds,
-  }));
-});
-
 export const setSessionUnread = Effect.fn("Application.setSessionUnread")(function* (
   sessionId: string,
   unread: boolean,
@@ -208,18 +192,7 @@ export const forgetProjectSessions = Effect.fn("Application.forgetProjectSession
   const forgotten = new Set(sessionIds);
   return yield* update((current) => ({
     ...current,
-    resolvedSessionIds: current.resolvedSessionIds.filter((id) => !forgotten.has(id)),
     unreadSessionIds: current.unreadSessionIds.filter((id) => !forgotten.has(id)),
     fastModeSessionIds: current.fastModeSessionIds.filter((id) => !forgotten.has(id)),
   }));
 });
-
-export const reconcileResolvedSessions = Effect.fn("Application.reconcileResolvedSessions")(
-  function* (projectSessionIds: ReadonlyArray<string>, cakeChatSessionIds: ReadonlyArray<string>) {
-    return yield* update((current) => ({
-      ...current,
-      resolvedSessionIds: unique(projectSessionIds),
-      resolvedCakeChatSessionIds: unique(cakeChatSessionIds),
-    }));
-  },
-);

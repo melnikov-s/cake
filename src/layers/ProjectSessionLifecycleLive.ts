@@ -1,16 +1,16 @@
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Option, Stream } from "effect";
 import {
   forgetProjectSessions,
-  reconcileResolvedSessions,
+  refreshProjection,
   setCakeChatSessionResolved,
-  setSessionsResolved,
+  setSessionUnread,
   trustProject,
 } from "../domain/application";
 import * as artifacts from "../domain/artifacts";
 import * as reviews from "../domain/reviews";
 import * as sessionTerminals from "../domain/sessionTerminals";
 import type { WorktreeRecord } from "../ipc/worktree-contract";
-import { listWorkspaceSessions } from "../services/pi/runtime/session-discovery";
+import { streamWorkspaceSessions } from "../services/pi/runtime/session-discovery";
 import { ProjectAccess } from "../services/projects/ProjectAccess";
 import { ApplicationState } from "../services/storage/ApplicationState";
 import type { ArtifactStorage } from "../services/storage/ArtifactStorage";
@@ -71,26 +71,27 @@ export const makeProjectSessionLifecycleLive = (
           Effect.provide(context),
           Effect.mapError((cause) => lifecycleError(operation, cause)),
         );
-      const list = (
+      const catalog = (
         workingDirectory: string,
         input?: { includeResolved?: boolean; cakeChat?: boolean },
-      ) =>
-        Effect.tryPromise({
-          try: () =>
-            listWorkspaceSessions(
-              workingDirectory,
-              input?.cakeChat ? options.cakeChatSessionDirectory : options.projectSessionDirectory,
-              {
-                direct: input?.cakeChat,
-                resolvedSessionDir: input?.includeResolved
-                  ? input.cakeChat
-                    ? options.resolvedCakeChatSessionDirectory
-                    : options.resolvedProjectSessionDirectory
-                  : undefined,
-              },
-            ),
-          catch: (cause) => lifecycleError("listSessions", cause),
+      ) => {
+        const location = {
+          cwd: workingDirectory,
+          activeRoot: input?.cakeChat
+            ? options.cakeChatSessionDirectory
+            : options.projectSessionDirectory,
+          resolvedRoot: input?.cakeChat
+            ? options.resolvedCakeChatSessionDirectory
+            : options.resolvedProjectSessionDirectory,
+          direct: input?.cakeChat === true,
+        };
+        const active = streamWorkspaceSessions(workingDirectory, location.activeRoot, {
+          direct: input?.cakeChat,
         });
+        return (
+          input?.includeResolved ? active.pipe(Stream.concat(archive.resolved(location))) : active
+        ).pipe(Stream.mapError((cause) => lifecycleError("catalogSessions", cause)));
+      };
       const setCakeChatResolved = Effect.fn("ProjectSessionLifecycle.setCakeChatResolved")(
         function* (sessionId: string, resolved: boolean) {
           const location = {
@@ -132,8 +133,8 @@ export const makeProjectSessionLifecycleLive = (
               resolvedRoot: options.resolvedProjectSessionDirectory,
             }),
           );
-          const remaining = yield* list(workingDirectory);
-          if (remaining.length === 0)
+          const remaining = yield* catalog(workingDirectory).pipe(Stream.runHead);
+          if (Option.isNone(remaining))
             yield* run("setProjectSessionResolved", worktrees.cleanupResolved(workingDirectory));
         } else {
           const restored = yield* run(
@@ -154,21 +155,30 @@ export const makeProjectSessionLifecycleLive = (
             }),
           );
         }
-        yield* run("setProjectSessionResolved", setSessionsResolved([sessionId], resolved));
+        if (resolved) yield* run("setProjectSessionResolved", setSessionUnread(sessionId, false));
+        yield* run("setProjectSessionResolved", refreshProjection());
       });
 
       const deleteResolvedProjectSession = Effect.fn(
         "ProjectSessionLifecycle.deleteResolvedProjectSession",
       )(function* (sessionId: string) {
-        if (!application.snapshot().resolvedSessionIds.includes(sessionId))
-          return yield* new ProjectSessionLifecycleError({
-            operation: "deleteResolvedProjectSession",
-            message: "Only resolved project sessions can be deleted",
-          });
         const workingDirectory = yield* run(
           "deleteResolvedProjectSession",
           access.resolveSessionWorkingDirectory(sessionId),
         );
+        const location = {
+          cwd: workingDirectory,
+          activeRoot: options.projectSessionDirectory,
+          resolvedRoot: options.resolvedProjectSessionDirectory,
+        };
+        if (
+          (yield* run("deleteResolvedProjectSession", archive.locate(sessionId, location))) !==
+          "resolved"
+        )
+          return yield* new ProjectSessionLifecycleError({
+            operation: "deleteResolvedProjectSession",
+            message: "Only resolved project sessions can be deleted",
+          });
         yield* run(
           "deleteResolvedProjectSession",
           artifacts.deleteSession(workingDirectory, sessionId),
@@ -177,14 +187,7 @@ export const makeProjectSessionLifecycleLive = (
           "deleteResolvedProjectSession",
           reviews.deleteSession(workingDirectory, sessionId),
         );
-        yield* run(
-          "deleteResolvedProjectSession",
-          archive.deleteResolved(sessionId, {
-            cwd: workingDirectory,
-            activeRoot: options.projectSessionDirectory,
-            resolvedRoot: options.resolvedProjectSessionDirectory,
-          }),
-        );
+        yield* run("deleteResolvedProjectSession", archive.deleteResolved(sessionId, location));
         yield* access.forgetSessionLocation(sessionId);
         yield* run("deleteResolvedProjectSession", forgetProjectSessions([sessionId]));
       });
@@ -199,26 +202,29 @@ export const makeProjectSessionLifecycleLive = (
           ];
           const forgotten: string[] = [];
           for (const workingDirectory of workingDirectories) {
-            const sessions = yield* list(workingDirectory, { includeResolved: true });
-            for (const session of sessions) {
-              yield* run(
-                "deleteProjectSessions",
-                artifacts.deleteSession(workingDirectory, session.id),
-              );
-              yield* run(
-                "deleteProjectSessions",
-                reviews.deleteSession(workingDirectory, session.id),
-              );
-              yield* run(
-                "deleteProjectSessions",
-                archive.delete(session.id, {
-                  cwd: workingDirectory,
-                  activeRoot: options.projectSessionDirectory,
-                  resolvedRoot: options.resolvedProjectSessionDirectory,
+            yield* catalog(workingDirectory, { includeResolved: true }).pipe(
+              Stream.runForEach((session) =>
+                Effect.gen(function* () {
+                  yield* run(
+                    "deleteProjectSessions",
+                    artifacts.deleteSession(workingDirectory, session.id),
+                  );
+                  yield* run(
+                    "deleteProjectSessions",
+                    reviews.deleteSession(workingDirectory, session.id),
+                  );
+                  yield* run(
+                    "deleteProjectSessions",
+                    archive.delete(session.id, {
+                      cwd: workingDirectory,
+                      activeRoot: options.projectSessionDirectory,
+                      resolvedRoot: options.resolvedProjectSessionDirectory,
+                    }),
+                  );
+                  forgotten.push(session.id);
                 }),
-              );
-              forgotten.push(session.id);
-            }
+              ),
+            );
           }
           if (forgotten.length > 0)
             yield* run("deleteProjectSessions", forgetProjectSessions(forgotten));
@@ -226,44 +232,11 @@ export const makeProjectSessionLifecycleLive = (
         },
       );
 
-      const reconcile = Effect.fn("ProjectSessionLifecycle.reconcile")(function* () {
-        const state = application.snapshot();
-        const records = yield* run("reconcile", worktrees.records());
-        for (const project of state.projects) {
-          yield* access.allow(project.path);
-          for (const record of records)
-            if (record.projectPath === project.path) yield* access.allow(record.worktreePath);
-        }
-        const workingDirectories = yield* access.allowedWorkingDirectories();
-        const projectLists = yield* Effect.forEach(workingDirectories, (workingDirectory) =>
-          list(workingDirectory, { includeResolved: true }).pipe(
-            Effect.catch(() => Effect.succeed([])),
-          ),
-        );
-        const cakeChats = yield* list(options.homeDirectory, {
-          includeResolved: true,
-          cakeChat: true,
-        }).pipe(Effect.catch(() => Effect.succeed([])));
-        const projectIds = projectLists
-          .flat()
-          .filter((session) => session.resolved)
-          .map((session) => session.id);
-        const cakeChatIds = cakeChats
-          .filter((session) => session.resolved)
-          .map((session) => session.id);
-        const changed =
-          [...state.resolvedSessionIds].sort().join("\n") !== [...projectIds].sort().join("\n") ||
-          [...state.resolvedCakeChatSessionIds].sort().join("\n") !==
-            [...cakeChatIds].sort().join("\n");
-        if (changed) yield* run("reconcile", reconcileResolvedSessions(projectIds, cakeChatIds));
-      });
-
       return ProjectSessionLifecycle.of({
         setCakeChatResolved,
         setProjectSessionResolved,
         deleteResolvedProjectSession,
         deleteProjectSessions,
-        reconcile,
       });
     }),
   );

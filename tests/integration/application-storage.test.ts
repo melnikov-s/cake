@@ -48,12 +48,11 @@ describe("ApplicationStorage filesystem integration", () => {
     );
 
     assert.equal(loaded.source, "migrated");
-    assert.deepEqual(loaded.state.resolvedSessionIds, ["session-1"]);
+    assert.ok(!("resolvedSessionIds" in loaded.state));
     const document = JSON.parse(await readFile(target, "utf8"));
     assert.equal(document.version, 1);
     assert.deepEqual(document.data, {
       ...defaultApplicationState(),
-      resolvedSessionIds: ["session-1"],
     });
     const fileInfo = await (await import("node:fs/promises")).stat(target);
     assert.equal(fileInfo.mode & 0o777, 0o600);

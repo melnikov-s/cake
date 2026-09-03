@@ -92,7 +92,7 @@ import { applyPiSetting } from "./settings-translation";
 import {
   cakePluginAuthoringSkillPath,
   cakeWorkspaceSessionDirectory,
-  listWorkspaceSessions,
+  findSessionFile,
 } from "./session-discovery";
 import { createConversationHandoff } from "./session-handoff";
 import { detectGitWorktree, worktreeSystemPrompt } from "./worktree-system-prompt";
@@ -978,19 +978,22 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
   const sessionDir = options.globalControl
     ? resolve(options.sessionDir)
     : cakeWorkspaceSessionDirectory(options.cwd, options.sessionDir);
-  const availableSessions = options.newSession
-    ? []
-    : await SessionManager.list(options.cwd, sessionDir);
   const allowedSessionRoot = sessionDir;
   let directSession: SessionManager | undefined;
   if (options.sessionFile) {
     assertSessionPath(options.sessionFile, allowedSessionRoot, "Session file");
     directSession = SessionManager.open(options.sessionFile, sessionDir, options.cwd);
   }
-  const requestedSession = options.sessionId
-    ? availableSessions.find((item) => item.id === options.sessionId)
-    : undefined;
-  if (options.sessionId && !options.newSession && !requestedSession && !directSession)
+  const requestedSessionFile =
+    options.sessionId && !options.newSession
+      ? await findSessionFile(
+          options.cwd,
+          options.sessionId,
+          options.sessionDir,
+          Boolean(options.globalControl),
+        )
+      : undefined;
+  if (options.sessionId && !options.newSession && !requestedSessionFile && !directSession)
     throw new Error("That session is no longer available");
   const sessionManager = options.newSession
     ? SessionManager.create(
@@ -999,8 +1002,8 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         options.sessionId ? { id: options.sessionId } : undefined,
       )
     : (directSession ??
-      (requestedSession
-        ? SessionManager.open(requestedSession.path, sessionDir, options.cwd)
+      (requestedSessionFile
+        ? SessionManager.open(requestedSessionFile, sessionDir, options.cwd)
         : SessionManager.continueRecent(options.cwd, sessionDir)));
   const agentSessionOptions = {
     cwd: options.cwd,
@@ -1146,13 +1149,15 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     // Resolve every asynchronous projection first. Pi can continue emitting live
     // events while these are in flight, so reading mutable session state before
     // an await would let an older snapshot overwrite newer renderer deltas.
-    const [listedSessions, models, artifacts] = await Promise.all([
+    const [sessionFile, models, artifacts] = await Promise.all([
       options.auxiliary
-        ? Promise.resolve([])
-        : listWorkspaceSessions(options.cwd, options.sessionDir, {
-            direct: Boolean(options.globalControl),
-            resolvedSessionDir: options.resolvedSessionDir,
-          }),
+        ? Promise.resolve(undefined)
+        : findSessionFile(
+            options.cwd,
+            cakeSessionId,
+            options.sessionDir,
+            Boolean(options.globalControl),
+          ),
       options.auxiliary ? Promise.resolve([]) : modelOptions(),
       options.auxiliary
         ? Promise.resolve([])
@@ -1163,7 +1168,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     // Capture all mutable Pi-owned state together after the final await. Once
     // this synchronous block starts, no live event can interleave before emit.
     const stats = session.getSessionStats();
-    const sessionListed = listedSessions.some((item) => item.id === cakeSessionId);
+    const sessionListed = sessionFile !== undefined;
     const globalSettings = settingsManager.getGlobalSettings();
     const branchParts = projectSessionEntries(session.sessionManager.getBranch(), undefined, {
       live: session.isStreaming,

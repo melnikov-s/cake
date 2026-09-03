@@ -23,7 +23,6 @@ export interface ProjectSessionLifecycleService {
     projectPath: string,
     records: ReadonlyArray<WorktreeRecord>,
   ) => Effect.Effect<void, ProjectSessionLifecycleError>;
-  readonly reconcile: () => Effect.Effect<void, ProjectSessionLifecycleError>;
 }
 
 /** Coordinates transcript archive storage with Project Session native resources. */

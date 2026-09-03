@@ -1,4 +1,5 @@
-import { Context, type Effect, Schema } from "effect";
+import { Context, type Effect, Schema, type Stream } from "effect";
+import type { SessionSummary } from "../../ipc/session-contract";
 
 export const SessionArchiveLocation = Schema.Struct({
   cwd: Schema.String,
@@ -32,5 +33,12 @@ export class SessionArchiveStorage extends Context.Service<
       sessionId: string,
       location: SessionArchiveLocation,
     ) => Effect.Effect<void, SessionArchiveStorageError>;
+    readonly locate: (
+      sessionId: string,
+      location: SessionArchiveLocation,
+    ) => Effect.Effect<"active" | "resolved" | undefined, SessionArchiveStorageError>;
+    readonly resolved: (
+      location: SessionArchiveLocation,
+    ) => Stream.Stream<SessionSummary, SessionArchiveStorageError>;
   }
 >()("cake/services/storage/SessionArchiveStorage") {}

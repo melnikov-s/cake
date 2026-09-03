@@ -59,20 +59,19 @@ test("navigates session history with back, forward, and resolve", async () => {
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
-      resolvedSessionIds: [],
       resolvedCakeChatSessionIds: [],
       trustedProjectPaths: [],
     }),
   );
   await Promise.all([
     writeFile(
-      join(sessionDirectory, `${backSessionId}.jsonl`),
+      join(sessionDirectory, `1970-01-01T00-00-00-000Z_${backSessionId}.jsonl`),
       `${sessionEntries(backSessionId, project, timestamp, "First history session")
         .map((entry) => JSON.stringify(entry))
         .join("\n")}\n`,
     ),
     writeFile(
-      join(sessionDirectory, `${forwardSessionId}.jsonl`),
+      join(sessionDirectory, `1970-01-01T00-00-01-000Z_${forwardSessionId}.jsonl`),
       `${sessionEntries(forwardSessionId, project, timestamp, "Second history session")
         .map((entry) => JSON.stringify(entry))
         .join("\n")}\n`,
@@ -108,11 +107,11 @@ test("navigates session history with back, forward, and resolve", async () => {
     await expect(back).toBeDisabled();
     await expect(forward).toBeDisabled();
 
-    await page.locator(".session-row").filter({ hasText: "First history session" }).click();
+    await page.locator(`.session-item[data-session-id='${backSessionId}'] .session-row`).click();
     await expect(activeBackSession).toHaveCount(1);
     await expect(back).toBeEnabled();
 
-    await page.locator(".session-row").filter({ hasText: "Second history session" }).click();
+    await page.locator(`.session-item[data-session-id='${forwardSessionId}'] .session-row`).click();
     await expect(activeForwardSession).toHaveCount(1);
     await expect(back).toBeEnabled();
     await expect(forward).toBeDisabled();

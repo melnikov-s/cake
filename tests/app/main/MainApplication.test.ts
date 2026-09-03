@@ -79,7 +79,7 @@ const testLayer = (input?: {
       recoveryContext: () => undefined,
       agentResources: () => ({ skills: [], prompts: [], extensions: [] }),
     }),
-    Layer.mock(ProjectSessionLifecycle, { reconcile: () => Effect.void }),
+    Layer.mock(ProjectSessionLifecycle, {}),
     Layer.mock(ProjectAccess, {
       allow: () => Effect.void,
       clearOwner: () => Effect.void,

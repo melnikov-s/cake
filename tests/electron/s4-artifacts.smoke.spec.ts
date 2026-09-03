@@ -31,7 +31,6 @@ test("presents artifacts, sorts a table, resolves a form, and isolates HTML", as
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
-      resolvedSessionIds: [],
       trustedProjectPaths: [],
     }),
   );

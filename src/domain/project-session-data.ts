@@ -23,6 +23,14 @@ export const ProjectSessionSummary = Schema.Struct({
 });
 export interface ProjectSessionSummary extends Schema.Schema.Type<typeof ProjectSessionSummary> {}
 
+export const ProjectSessionCatalogQuery = Schema.Struct({
+  projectPath: boundedPath,
+  resolved: Schema.Boolean,
+});
+export interface ProjectSessionCatalogQuery extends Schema.Schema.Type<
+  typeof ProjectSessionCatalogQuery
+> {}
+
 export const ProjectSessionPreview = Schema.Struct({
   sessionId: boundedId,
   projectPath: boundedPath,

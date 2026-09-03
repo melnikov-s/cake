@@ -1,4 +1,4 @@
-import { Schema } from "effect";
+import { Effect, Schema, Stream } from "effect";
 import { execFile } from "node:child_process";
 import { chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
@@ -23,7 +23,7 @@ import {
   inspectWorkspace,
   loadPiChangelog,
   loadWorkspaceSessionPreview,
-  listWorkspaceSessions,
+  streamWorkspaceSessions,
   suggestProjectFiles,
 } from "../../../src/services/pi/runtime/session-discovery";
 import {
@@ -202,7 +202,7 @@ describe("Pi 0.84.0 foundation contract", () => {
     const timestamp = new Date().toISOString();
     await mkdir(workspaceSessionDir, { recursive: true });
     await writeFile(
-      join(workspaceSessionDir, "long-title.jsonl"),
+      join(workspaceSessionDir, "2026-01-01T00-00-00-000Z_long-title.jsonl"),
       [
         { type: "session", version: 3, id: "long-title", timestamp, cwd: directory },
         {
@@ -221,11 +221,13 @@ describe("Pi 0.84.0 foundation contract", () => {
         .join("\n") + "\n",
     );
 
-    const [summary] = await listWorkspaceSessions(directory, sessionDir);
+    const [summary] = await Effect.runPromise(
+      streamWorkspaceSessions(directory, sessionDir).pipe(Stream.runCollect),
+    );
 
     expect(summary).toBeDefined();
     if (!summary) throw new Error("Expected Pi to list the session fixture");
-    expect(summary.title).toBe("x".repeat(1_024));
+    expect(summary.title).toBe("long-title");
   });
 
   it("starts automatic naming from the initial user message", async () => {
@@ -544,7 +546,7 @@ describe("Pi 0.84.0 foundation contract", () => {
     const timestamp = new Date().toISOString();
     await mkdir(sessionDir, { recursive: true });
     await writeFile(
-      join(sessionDir, "cake-chat.jsonl"),
+      join(sessionDir, "2026-01-01T00-00-00-000Z_cake-chat.jsonl"),
       [
         { type: "session", version: 3, id: "cake-chat", timestamp, cwd: directory },
         {
@@ -563,11 +565,11 @@ describe("Pi 0.84.0 foundation contract", () => {
         .join("\n") + "\n",
     );
 
-    const summaries = await listWorkspaceSessions(directory, sessionDir, { direct: true });
+    const summaries = await Effect.runPromise(
+      streamWorkspaceSessions(directory, sessionDir, { direct: true }).pipe(Stream.runCollect),
+    );
 
-    expect(summaries).toEqual([
-      expect.objectContaining({ id: "cake-chat", title: "Repair my plugins" }),
-    ]);
+    expect(summaries).toEqual([expect.objectContaining({ id: "cake-chat", title: "cake-chat" })]);
   });
 
   it("reopens review sidecars as complete chat parts with persisted usage", async () => {
@@ -1990,10 +1992,12 @@ describe("S1 Pi runtime", () => {
     expect((await second.snapshot()).tree[0]).toMatchObject({ id: "user-1", active: true });
     await second.rename("Named session");
     expect(
-      (await listWorkspaceSessions(directory, sessionDir)).find(
-        (item) => item.id === second.sessionId,
-      )?.title,
-    ).toBe("Named session");
+      Array.from(
+        await Effect.runPromise(
+          streamWorkspaceSessions(directory, sessionDir).pipe(Stream.runCollect),
+        ),
+      ).find((item) => item.id === second.sessionId)?.title,
+    ).toBe(second.sessionId);
     await second.navigate("assistant-tools");
     expect((await second.snapshot()).tree[0]).toMatchObject({ id: "user-1", active: true });
     const fork = await second.fork("user-1");

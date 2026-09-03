@@ -68,7 +68,6 @@ test("429 polling keeps the stop control available", async () => {
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
-      resolvedSessionIds: [],
       trustedProjectPaths: [],
     }),
   );

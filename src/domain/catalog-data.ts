@@ -47,6 +47,7 @@ export type SessionCatalogUpdate = Schema.Schema.Type<typeof SessionCatalogUpdat
 
 const CakeChatCatalogEvent = Schema.TaggedUnion({
   Replaced: { sessions: Schema.Array(CakeChatSummary) },
+  Upserted: { session: CakeChatSummary },
 });
 
 export const CakeChatCatalogUpdate = Schema.TaggedUnion({

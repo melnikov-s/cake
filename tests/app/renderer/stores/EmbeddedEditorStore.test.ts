@@ -10,7 +10,6 @@ function createHarness(annotations?: EditorAnnotationSnapshot) {
     install: vi.fn(async () => undefined),
     setServerPath: vi.fn(async () => ({
       projects: [],
-      resolvedSessionIds: [],
       resolvedCakeChatSessionIds: [],
       unreadSessionIds: [],
       trustedProjectPaths: [],
@@ -135,7 +134,6 @@ describe("EmbeddedEditorStore", () => {
           finish = () =>
             resolve({
               projects: [],
-              resolvedSessionIds: [],
               resolvedCakeChatSessionIds: [],
               unreadSessionIds: [],
               trustedProjectPaths: [],

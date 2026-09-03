@@ -5,6 +5,8 @@ import type {
   ProjectCatalogUpdate,
   SessionCatalogUpdate,
 } from "../../domain/catalog-data";
+import type { ProjectSessionCatalogQuery } from "../../domain/project-session-data";
+import type { CakeChatCatalogQuery } from "../../domain/cake-chat-data";
 import type { CakeChatCatalog } from "../models/CakeChatCatalog";
 import type { ProjectCatalog } from "../models/ProjectCatalog";
 import type { SessionCatalog } from "../models/SessionCatalog";
@@ -33,35 +35,37 @@ export function applyProjectCatalogUpdate(model: ProjectCatalog, update: Project
   applySnapshot(model, { projects });
 }
 
-export function applySessionCatalogUpdate(model: SessionCatalog, update: SessionCatalogUpdate) {
-  if (update._tag === "Event" && update.event._tag === "StatusChanged") {
-    const session = model.find(update.event.sessionId);
-    if (!session) return;
-    applySnapshot(session, {
-      ...toSnapshot(session),
-      resolved: update.event.resolved,
-      unread: update.event.unread,
-    });
-    model.sessions.sort(compareSessionSummaries);
-    return;
-  }
+export function applySessionCatalogGroupUpdate(
+  model: SessionCatalog,
+  query: ProjectSessionCatalogQuery,
+  update: SessionCatalogUpdate,
+) {
+  const belongsToGroup = (session: {
+    readonly projectPath?: string | null;
+    readonly resolved?: boolean | null;
+  }) => session.projectPath === query.projectPath && session.resolved === query.resolved;
   let sessions = model.sessions.map((session) => toSnapshot(session));
-  if (update._tag === "Snapshot") sessions = [...update.sessions];
-  else {
+  if (update._tag === "Snapshot") {
+    sessions = [...sessions.filter((session) => !belongsToGroup(session)), ...update.sessions];
+  } else {
     const event = update.event;
-    if (event._tag === "Replaced") sessions = [...event.sessions];
-    else if (event._tag === "Upserted") {
-      const index = sessions.findIndex((session) => session.sessionId === event.session.sessionId);
-      if (index >= 0) sessions[index] = event.session;
-      else sessions.push(event.session);
-    } else if (event._tag === "Removed")
+    if (event._tag === "Replaced") {
+      sessions = [...sessions.filter((session) => !belongsToGroup(session)), ...event.sessions];
+    } else if (event._tag === "Upserted") {
+      const existing = sessions.find((session) => session.sessionId === event.session.sessionId);
+      if (existing && existing.projectPath !== event.session.projectPath)
+        throw new Error(`Session ID collision: ${event.session.sessionId}`);
+      sessions = sessions.filter((session) => session.sessionId !== event.session.sessionId);
+      sessions.push(event.session);
+    } else if (event._tag === "Removed") {
       sessions = sessions.filter((session) => session.sessionId !== event.sessionId);
-    else
+    } else {
       sessions = sessions.map((session) =>
         session.sessionId === event.sessionId
           ? { ...session, resolved: event.resolved, unread: event.unread }
           : session,
       );
+    }
   }
   sessions.sort(compareSessionSummaries);
   assertUnique(
@@ -73,13 +77,35 @@ export function applySessionCatalogUpdate(model: SessionCatalog, update: Session
   applySnapshot(model, { sessions });
 }
 
-export function applyCakeChatCatalogUpdate(model: CakeChatCatalog, update: CakeChatCatalogUpdate) {
-  const sessions = update._tag === "Snapshot" ? update.sessions : update.event.sessions;
+export function applyCakeChatCatalogGroupUpdate(
+  model: CakeChatCatalog,
+  query: CakeChatCatalogQuery,
+  update: CakeChatCatalogUpdate,
+) {
+  let sessions = model.sessions.map((session) => toSnapshot(session));
+  if (update._tag === "Snapshot") {
+    sessions = [
+      ...sessions.filter((session) => session.resolved !== query.resolved),
+      ...update.sessions,
+    ];
+  } else if (update.event._tag === "Replaced") {
+    sessions = [
+      ...sessions.filter((session) => session.resolved !== query.resolved),
+      ...update.event.sessions,
+    ];
+  } else {
+    const session = update.event.session;
+    sessions = sessions.filter((candidate) => candidate.sessionId !== session.sessionId);
+    sessions.push(session);
+  }
+  sessions.sort(compareSessionSummaries);
   assertUnique(
-    sessions.map((session) => session.sessionId),
+    sessions
+      .map((session) => session.sessionId)
+      .filter((sessionId): sessionId is string => typeof sessionId === "string"),
     "Cake Chat Session ID",
   );
-  applySnapshot(model, { loaded: true, sessions: [...sessions] });
+  applySnapshot(model, { loaded: true, sessions });
 }
 
 const compareSessionSummaries = (

@@ -76,8 +76,9 @@ export const makeProjectSessionRuntimeOptionsLive = (
           fastMode: (sessionId) => application.snapshot().fastModeSessionIds.includes(sessionId),
           setFastMode: (sessionId, enabled) =>
             run(setSessionFastMode(sessionId, enabled)).then(() => undefined),
-          sessionResolved: (sessionId) =>
-            application.snapshot().resolvedSessionIds.includes(sessionId),
+          // A running Project Session is necessarily in the active namespace.
+          // Resolved sessions are opened as read-only previews without a Pi runtime.
+          sessionResolved: () => false,
           setSessionResolved: (sessionId, resolved) =>
             run(lifecycle.setProjectSessionResolved(sessionId, resolved, workingDirectory)).then(
               () => undefined,

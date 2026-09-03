@@ -170,7 +170,7 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (): Effect.
   };
 
   const adapter: PiSessionsAdapter = {
-    list: () => Effect.succeed([]),
+    catalog: () => Stream.empty,
     inspect: () => Effect.succeed(undefined),
     createRuntime: (options) =>
       Ref.update(constructedOptions, (values) => [...values, options]).pipe(

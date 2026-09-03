@@ -37,12 +37,11 @@ test("does not mount collapsed work-log activity until it is expanded", async ()
     JSON.stringify({
       schemaVersion: 1,
       projects: [{ path: project, name: "project", addedAt: timestamp, lastOpenedAt: timestamp }],
-      resolvedSessionIds: [],
       trustedProjectPaths: [],
     }),
   );
   await writeFile(
-    join(sessionDirectory, `${sessionId}.jsonl`),
+    join(sessionDirectory, `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`),
     [
       { type: "session", version: 3, id: sessionId, timestamp, cwd: project },
       {

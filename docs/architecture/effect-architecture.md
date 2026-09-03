@@ -280,9 +280,7 @@ service. Cake exposes only the Pi capabilities it actually uses.
 
 ```ts
 interface PiSessions {
-  readonly list: (
-    query: PiSessionQuery,
-  ) => Effect.Effect<ReadonlyArray<PiSessionSummary>, PiSessionError>;
+  readonly catalog: (query: PiSessionQuery) => Stream.Stream<PiSessionSummary, PiSessionError>;
 
   readonly inspect: (target: PiSessionTarget) => Effect.Effect<PiSessionSnapshot, PiSessionError>;
 
@@ -291,6 +289,11 @@ interface PiSessions {
   ) => Effect.Effect<PiSessionHandle, PiSessionError, Scope.Scope>;
 }
 ```
+
+The catalog stream reads filename and filesystem metadata only. It never opens
+transcripts. Resolved Project Sessions are not a Pi catalog concern: Cake's
+archive storage streams that namespace directly, and opens one transcript only
+for an explicit inspect, open, restore, or recovery operation.
 
 A `PiSessionHandle` exposes an observation Stream and operations such as
 prompt, steer, follow-up, abort, execute command, set model, compact, fork, and

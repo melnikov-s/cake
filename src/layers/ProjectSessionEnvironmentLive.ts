@@ -1,9 +1,9 @@
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Option, Stream } from "effect";
 import { makeSubagentControl } from "../domain/subagentControl";
 import {
   findSessionFile,
   forkWorkspaceSession,
-  listWorkspaceSessions,
+  streamWorkspaceSessions,
 } from "../services/pi/runtime/session-discovery";
 import type { PiSessions } from "../services/pi/PiSessions";
 import type { PiSessionAcquireOptions } from "../services/pi/PiSessions";
@@ -163,11 +163,14 @@ export const makeProjectSessionEnvironmentLive = (
               resolvedRoot: options.resolvedSessionDirectory,
             })
             .pipe(Effect.mapError((error) => environmentError("archive", error)));
-          const sessions = yield* Effect.tryPromise({
-            try: () => listWorkspaceSessions(location.workingDirectory, options.sessionDirectory),
-            catch: (cause) => environmentError("archive", cause),
-          });
-          if (sessions.length === 0)
+          const remaining = yield* streamWorkspaceSessions(
+            location.workingDirectory,
+            options.sessionDirectory,
+          ).pipe(
+            Stream.runHead,
+            Effect.mapError((cause) => environmentError("archive", cause)),
+          );
+          if (Option.isNone(remaining))
             yield* worktrees
               .cleanupResolved(location.workingDirectory)
               .pipe(Effect.mapError((cause) => environmentError("archive", cause)));

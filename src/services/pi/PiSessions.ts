@@ -30,9 +30,9 @@ import {
   type CakeRuntimeOptions,
 } from "./runtime/cake-runtime";
 import {
-  listWorkspaceSessions,
   loadPiChangelog,
   loadWorkspaceSessionPreview,
+  streamWorkspaceSessions,
 } from "./runtime/session-discovery";
 import type { ReviewParentContext } from "./runtime/sidecar-runtime";
 
@@ -162,7 +162,7 @@ export interface PiSessionRuntimeStatus {
 }
 
 export interface PiSessionsAdapter {
-  readonly list: (query: PiSessionQuery) => Effect.Effect<ReadonlyArray<SessionSummary>, unknown>;
+  readonly catalog: (query: PiSessionQuery) => Stream.Stream<SessionSummary, unknown>;
   readonly inspect: (target: PiSessionTarget) => Effect.Effect<SessionPreview | undefined, unknown>;
   readonly createRuntime: (options: CakeRuntimeOptions) => Effect.Effect<CakeRuntime, unknown>;
   readonly changelog: () => Effect.Effect<string, unknown>;
@@ -171,9 +171,7 @@ export interface PiSessionsAdapter {
 export class PiSessions extends Context.Service<
   PiSessions,
   {
-    readonly list: (
-      query: PiSessionQuery,
-    ) => Effect.Effect<ReadonlyArray<SessionSummary>, PiSessionError>;
+    readonly catalog: (query: PiSessionQuery) => Stream.Stream<SessionSummary, PiSessionError>;
     readonly inspect: (target: PiSessionTarget) => Effect.Effect<SessionPreview, PiSessionError>;
     readonly acquire: (
       options: PiSessionAcquireOptions,
@@ -225,6 +223,9 @@ const messageOf = (cause: unknown): string =>
 
 const sessionError = (operation: string) =>
   Effect.mapError((cause: unknown) => new PiSessionError({ operation, message: messageOf(cause) }));
+
+const sessionErrorValue = (operation: string) => (cause: unknown) =>
+  new PiSessionError({ operation, message: messageOf(cause) });
 
 const runtimeTarget = (options: PiSessionAcquireOptions): string => {
   const runtime = options.runtime;
@@ -350,12 +351,17 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
           ),
       });
 
-      const list = Effect.fn("PiSessions.list")(function* (query: PiSessionQuery) {
-        const decoded = yield* Schema.decodeUnknownEffect(PiSessionQuery)(query).pipe(
-          sessionError("list"),
+      const catalog = (query: PiSessionQuery) =>
+        Stream.unwrap(
+          Schema.decodeUnknownEffect(PiSessionQuery)(query).pipe(
+            sessionError("catalog"),
+            Effect.map((decoded) =>
+              adapter
+                .catalog(decoded)
+                .pipe(Stream.mapError(messageOf), Stream.mapError(sessionErrorValue("catalog"))),
+            ),
+          ),
         );
-        return yield* adapter.list(decoded).pipe(sessionError("list"));
-      });
 
       const inspect = Effect.fn("PiSessions.inspect")(function* (target: PiSessionTarget) {
         const decoded = yield* Schema.decodeUnknownEffect(PiSessionTarget)(target).pipe(
@@ -673,7 +679,7 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
       );
 
       return PiSessions.of({
-        list,
+        catalog,
         inspect,
         acquire,
         acquireCurrent,
@@ -688,14 +694,9 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
 
 export const makePiSessionsLive = (): Layer.Layer<PiSessions> =>
   makePiSessionsLayer({
-    list: (query) =>
-      Effect.tryPromise({
-        try: () =>
-          listWorkspaceSessions(query.workingDirectory, query.sessionDirectory, {
-            direct: query.direct,
-            resolvedSessionDir: query.resolvedSessionDirectory,
-          }),
-        catch: (cause) => cause,
+    catalog: (query) =>
+      streamWorkspaceSessions(query.workingDirectory, query.sessionDirectory, {
+        direct: query.direct,
       }),
     inspect: (target) =>
       Effect.tryPromise({

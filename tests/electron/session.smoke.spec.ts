@@ -33,7 +33,6 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
-      resolvedSessionIds: [],
       trustedProjectPaths: [],
     }),
   );

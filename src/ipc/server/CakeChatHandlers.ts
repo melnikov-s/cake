@@ -3,8 +3,7 @@ import * as cakeChats from "../../domain/cakeChats";
 import { CakeChatRpc } from "../protocol/CakeChatRpc";
 
 export const cakeChatHandlers = CakeChatRpc.of({
-  "cakeChats.list": () => cakeChats.list(),
-  "cakeChats.observeCatalog": () => Stream.unwrap(cakeChats.observeCatalog()),
+  "cakeChats.observeCatalog": (query) => Stream.unwrap(cakeChats.observeCatalog(query)),
   "cakeChats.inspect": ({ sessionId }) => cakeChats.inspect(sessionId),
   "cakeChats.open": (target) => cakeChats.open(target),
   "cakeChats.observe": (target) => Stream.unwrap(cakeChats.observe(target)),

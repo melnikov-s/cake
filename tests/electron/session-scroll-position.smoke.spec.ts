@@ -127,17 +127,16 @@ test("restores a session's virtualized transcript position after leaving and swi
     JSON.stringify({
       schemaVersion: 1,
       projects: [{ path: project, name: "project", addedAt: timestamp, lastOpenedAt: timestamp }],
-      resolvedSessionIds: [],
       trustedProjectPaths: [],
     }),
   );
   await Promise.all([
     writeFile(
-      join(sessionDirectory, `${firstSessionId}.jsonl`),
+      join(sessionDirectory, `1970-01-01T00-00-00-000Z_${firstSessionId}.jsonl`),
       sessionTranscript(firstSessionId, project, "First scroll fixture"),
     ),
     writeFile(
-      join(sessionDirectory, `${secondSessionId}.jsonl`),
+      join(sessionDirectory, `1970-01-01T00-00-01-000Z_${secondSessionId}.jsonl`),
       sessionTranscript(secondSessionId, project, "Second scroll fixture"),
     ),
   ]);

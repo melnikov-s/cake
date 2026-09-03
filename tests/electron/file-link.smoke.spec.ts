@@ -47,7 +47,6 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
     JSON.stringify({
       schemaVersion: 1,
       projects: [{ path: project, name: "project", addedAt: timestamp, lastOpenedAt: timestamp }],
-      resolvedSessionIds: [],
       trustedProjectPaths: [],
     }),
   );
@@ -76,7 +75,7 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
     })}\n`,
   );
   await writeFile(
-    join(sessionDirectory, `${sessionId}.jsonl`),
+    join(sessionDirectory, `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`),
     [
       { type: "session", version: 3, id: sessionId, timestamp, cwd: project },
       {

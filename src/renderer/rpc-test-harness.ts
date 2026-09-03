@@ -327,8 +327,6 @@ const harness = {
   getApplicationState: () => run(withClient((client) => client.application.getState())),
   listModels: () => run(withClient((client) => client.models.list())),
   listModelPresets: () => run(withClient((client) => client.modelPresets.list())),
-  listProjectSessions: () => run(withClient((client) => client.projectSessions.list())),
-  listCakeChats: () => run(withClient((client) => client.cakeChats.list())),
   invokeElectronProbe: () =>
     run(
       withClient((client) =>

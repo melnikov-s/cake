@@ -14,6 +14,7 @@ import type {
   CakeRuntimeOptions,
 } from "../../../src/services/pi/runtime/cake-runtime";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
+import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { SubagentCoordinatorLive } from "../../../src/services/subagents/SubagentCoordinator";
 import { Terminal } from "../../../src/services/terminal/Terminal";
 import type { SessionSnapshot } from "../../../src/ipc/session-contract";
@@ -98,7 +99,7 @@ const makeLayer = (initial: ApplicationStateValue = defaultApplicationState()) =
     dispose: () => undefined,
   });
   const adapter: PiSessionsAdapter = {
-    list: () => Effect.succeed([]),
+    catalog: () => Stream.empty,
     inspect: () => Effect.succeed(snapshot),
     createRuntime: (options) =>
       Effect.sync(() => {
@@ -148,6 +149,17 @@ const makeLayer = (initial: ApplicationStateValue = defaultApplicationState()) =
     layer: Layer.mergeAll(
       Layer.succeed(ApplicationState, application),
       makePiSessionsLayer(adapter),
+      Layer.succeed(
+        SessionArchiveStorage,
+        SessionArchiveStorage.of({
+          resolve: () => Effect.succeed(false),
+          restore: () => Effect.succeed(false),
+          deleteResolved: () => Effect.void,
+          delete: () => Effect.void,
+          locate: () => Effect.succeed(undefined),
+          resolved: () => Stream.empty,
+        }),
+      ),
       environment,
       SubagentCoordinatorLive,
       Layer.succeed(Terminal, terminal),
@@ -164,7 +176,8 @@ describe("Cake Chats domain", () => {
   it.effect("keeps a pending Cake Chat unmaterialized until its first prompt", () => {
     const fixture = makeLayer();
     return Effect.gen(function* () {
-      yield* cakeChats.list();
+      const updates = yield* cakeChats.observeCatalog({ resolved: false });
+      yield* updates.pipe(Stream.take(2), Stream.runDrain);
       assert.equal(fixture.created(), 0);
       const turnId = yield* cakeChats.prompt({
         sessionId: "cake-chat-1",

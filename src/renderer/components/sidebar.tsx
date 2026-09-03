@@ -115,53 +115,51 @@ export const Sidebar = observer(function Sidebar({
             />
           ))
         )}
-        {store.hasResolvedSessions && (
-          <section
-            data-slot="resolved-lane"
-            className="mt-4 border-t border-border/72 pt-2"
-            aria-label="Resolved sessions"
+        <section
+          data-slot="resolved-lane"
+          className="mt-4 border-t border-border/72 pt-2"
+          aria-label="Resolved sessions"
+        >
+          <div
+            className="flex items-center justify-between px-1.5 pt-2.5 text-xs font-medium text-muted-foreground"
+            id="resolved-lane-heading"
           >
-            <div
-              className="flex items-center justify-between px-1.5 pt-2.5 text-xs font-medium text-muted-foreground"
-              id="resolved-lane-heading"
-            >
-              <DisclosureTrigger
-                className="h-[27px] px-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
-                open={store.resolvedLaneExpanded}
-                aria-controls="resolved-lane-content"
-                aria-label={`${store.resolvedLaneExpanded ? "Collapse" : "Expand"} Resolved`}
-                onClick={() => store.toggleResolvedLane()}
-                title="Resolved"
+            <DisclosureTrigger
+              className="h-[27px] px-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
+              open={store.resolvedLaneExpanded}
+              aria-controls="resolved-lane-content"
+              aria-label={`${store.resolvedLaneExpanded ? "Collapse" : "Expand"} Resolved`}
+              onClick={() => store.toggleResolvedLane()}
+              title="Resolved"
+            />
+          </div>
+          {store.resolvedLaneExpanded && (
+            <div id="resolved-lane-content" className="mt-1">
+              <SidebarCakeChatGroup
+                store={store}
+                cakeChat={cakeChat}
+                shell={shell}
+                resolved
+                onOpenCakeChat={onOpenCakeChat}
+                onCreateCakeChat={onCreateCakeChat}
               />
-            </div>
-            {store.resolvedLaneExpanded && (
-              <div id="resolved-lane-content" className="mt-1">
-                <SidebarCakeChatGroup
+              {projectPaths.map((path) => (
+                <SidebarProjectGroup
+                  key={`resolved:${path}`}
                   store={store}
-                  cakeChat={cakeChat}
+                  projects={projects}
+                  chat={chat}
                   shell={shell}
+                  path={path}
                   resolved
-                  onOpenCakeChat={onOpenCakeChat}
-                  onCreateCakeChat={onCreateCakeChat}
+                  onCreateSession={onCreateSession}
+                  onOpenSession={onOpenSession}
+                  onRemoveProject={onRemoveProject}
                 />
-                {projectPaths.map((path) => (
-                  <SidebarProjectGroup
-                    key={`resolved:${path}`}
-                    store={store}
-                    projects={projects}
-                    chat={chat}
-                    shell={shell}
-                    path={path}
-                    resolved
-                    onCreateSession={onCreateSession}
-                    onOpenSession={onOpenSession}
-                    onRemoveProject={onRemoveProject}
-                  />
-                ))}
-              </div>
-            )}
-          </section>
-        )}
+              ))}
+            </div>
+          )}
+        </section>
       </div>
       <div className="flex min-h-[52px] items-center justify-end border-t border-border/65 px-4 py-2 text-muted-foreground">
         <div className="flex min-w-0 flex-1 items-center gap-1.5 empty:hidden">

@@ -1,5 +1,5 @@
 import { Effect, Layer } from "effect";
-import { listWorkspaceSessions } from "../pi/runtime/session-discovery";
+import { findSessionFileById } from "../storage/session-files";
 import { ApplicationState } from "../storage/ApplicationState";
 import { ManagedWorktrees } from "../worktrees/ManagedWorktrees";
 import { ProjectAccess, ProjectAccessError } from "./ProjectAccess";
@@ -57,15 +57,22 @@ export const makeProjectAccessLive = (
           [...new Set(candidates)].filter((workingDirectory) => allowed.has(workingDirectory)),
           (workingDirectory) =>
             Effect.tryPromise({
-              try: () =>
-                listWorkspaceSessions(workingDirectory, options.projectSessionDirectory, {
-                  resolvedSessionDir: options.resolvedProjectSessionDirectory,
-                }),
+              try: async () => {
+                const active = await findSessionFileById(sessionId, {
+                  workingDirectory,
+                  root: options.projectSessionDirectory,
+                });
+                const resolved = await findSessionFileById(sessionId, {
+                  workingDirectory,
+                  root: options.resolvedProjectSessionDirectory,
+                });
+                if (active && resolved)
+                  throw new Error(`Session ID collision detected: ${sessionId}`);
+                return active ?? resolved;
+              },
               catch: (cause) => accessError("resolveSessionWorkingDirectory", cause),
             }).pipe(
-              Effect.map((sessions) =>
-                sessions.some((session) => session.id === sessionId) ? workingDirectory : undefined,
-              ),
+              Effect.map((sessionFile) => (sessionFile ? workingDirectory : undefined)),
               Effect.catchTag("ProjectAccessError", () => Effect.succeed(undefined)),
             ),
           { concurrency: 8 },

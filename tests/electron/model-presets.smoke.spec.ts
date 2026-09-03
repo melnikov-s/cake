@@ -93,7 +93,6 @@ test("Model Presets use Effect RPC, persist transactionally, and preserve unreso
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
-      resolvedSessionIds: [],
       trustedProjectPaths: [],
     }),
   );

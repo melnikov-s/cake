@@ -26,20 +26,20 @@ import type { CustomizationState } from "../../plugin/plugin-contract";
 import type { PiSettingUpdate } from "../session-contract";
 import type {
   ProjectSessionError,
+  ProjectSessionCatalogQuery,
   ProjectSessionPreview,
   ProjectSessionPromptInput,
   ProjectSessionStartInput,
-  ProjectSessionSummary,
   ProjectSessionTarget,
   ProjectSessionUpdate,
 } from "../../domain/project-session-data";
 import type { ConversationSnapshot, TurnId } from "../../domain/conversation-data";
 import type {
   CakeChatConfiguration,
+  CakeChatCatalogQuery,
   CakeChatError,
   CakeChatPreview,
   CakeChatPromptInput,
-  CakeChatSummary,
   CakeChatTarget,
   CakeChatUpdate,
 } from "../../domain/cake-chat-data";
@@ -161,14 +161,9 @@ export interface CakeIpcClientService {
     readonly resolve: (id: string) => Effect.Effect<ModelSelection, ModelPresetResolutionError>;
   };
   readonly cakeChats: {
-    readonly list: () => Effect.Effect<
-      ReadonlyArray<CakeChatSummary>,
-      CakeChatError | TransportError
-    >;
-    readonly observeCatalog: () => Stream.Stream<
-      CakeChatCatalogUpdate,
-      CakeChatError | TransportError
-    >;
+    readonly observeCatalog: (
+      input: CakeChatCatalogQuery,
+    ) => Stream.Stream<CakeChatCatalogUpdate, CakeChatError | TransportError>;
     readonly inspect: (
       sessionId: string,
     ) => Effect.Effect<CakeChatPreview, CakeChatError | TransportError>;
@@ -256,14 +251,9 @@ export interface CakeIpcClientService {
     ) => Effect.Effect<DiscussionThread, DiscussionSessionError | TransportError>;
   };
   readonly projectSessions: {
-    readonly list: () => Effect.Effect<
-      ReadonlyArray<ProjectSessionSummary>,
-      ProjectSessionError | TransportError
-    >;
-    readonly observeCatalog: () => Stream.Stream<
-      SessionCatalogUpdate,
-      ProjectSessionError | TransportError
-    >;
+    readonly observeCatalog: (
+      input: ProjectSessionCatalogQuery,
+    ) => Stream.Stream<SessionCatalogUpdate, ProjectSessionError | TransportError>;
     readonly inspect: (
       target: ProjectSessionTarget,
     ) => Effect.Effect<ProjectSessionPreview, ProjectSessionError | TransportError>;
@@ -585,8 +575,7 @@ export const CakeIpcClientLive = Layer.effect(
         ),
       },
       cakeChats: {
-        list: Effect.fn("CakeIpcClient.cakeChats.list")(() => client("cakeChats.list", undefined)),
-        observeCatalog: () => client("cakeChats.observeCatalog", undefined),
+        observeCatalog: (input) => client("cakeChats.observeCatalog", input),
         inspect: Effect.fn("CakeIpcClient.cakeChats.inspect")((sessionId) =>
           client("cakeChats.inspect", { sessionId }),
         ),
@@ -658,10 +647,7 @@ export const CakeIpcClientLive = Layer.effect(
         ),
       },
       projectSessions: {
-        list: Effect.fn("CakeIpcClient.projectSessions.list")(() =>
-          client("projectSessions.list", undefined),
-        ),
-        observeCatalog: () => client("projectSessions.observeCatalog", undefined),
+        observeCatalog: (input) => client("projectSessions.observeCatalog", input),
         inspect: Effect.fn("CakeIpcClient.projectSessions.inspect")((target) =>
           client("projectSessions.inspect", target),
         ),

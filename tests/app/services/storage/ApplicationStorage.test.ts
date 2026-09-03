@@ -171,7 +171,7 @@ describe("ApplicationStorage", () => {
           Effect.gen(function* () {
             const loaded = yield* storage.load();
             assert.strictEqual(loaded.source, "migrated");
-            assert.deepStrictEqual(loaded.state.resolvedSessionIds, ["session-1"]);
+            assert.ok(!("resolvedSessionIds" in loaded.state));
             const persistedText = controls.files.get(documentPath);
             assert.ok(persistedText);
             const persisted = JSON.parse(persistedText);

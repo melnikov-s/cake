@@ -116,7 +116,6 @@ const migrateVersionZero = Effect.fn("ApplicationStorage.migrateVersionZero")((
   const vscodeServerPath = legacy.vscodeServerPath?.trim() || undefined;
   const base: ApplicationStateValue = {
     projects,
-    resolvedSessionIds: dedupe(legacy.resolvedSessionIds ?? []),
     resolvedCakeChatSessionIds: dedupe(legacy.resolvedCakeChatSessionIds ?? []),
     unreadSessionIds: dedupe(legacy.unreadSessionIds ?? []),
     trustedProjectPaths: dedupe(legacy.trustedProjectPaths ?? []),

@@ -29,7 +29,7 @@ function sidebarProps(store: ProjectWorkbenchStore) {
       showProjectContextMenu: fixture.showProjectContextMenu ?? vi.fn(),
       projectSessionCount: fixture.projectSessionCount ?? (() => fixture.projectSessions().length),
       resolvedWorktreeCount: fixture.resolvedWorktreeCount ?? (() => 0),
-      resolvedLaneExpanded: fixture.resolvedLaneExpanded ?? true,
+      resolvedLaneExpanded: fixture.resolvedLaneExpanded ?? false,
       toggleResolvedLane: fixture.toggleResolvedLane ?? vi.fn(),
       isGroupCollapsed: fixture.isGroupCollapsed ?? (() => false),
       toggleGroupCollapsed: fixture.toggleGroupCollapsed ?? vi.fn(),
@@ -575,6 +575,7 @@ describe("Sidebar projects", () => {
       nameFromPath: () => "empty",
       showMoreSessions: vi.fn(),
       hasResolvedSessions: true,
+      resolvedLaneExpanded: true,
       cakeChatSummaries: [
         {
           sessionId: "active-cake",
@@ -765,7 +766,7 @@ describe("Sidebar projects", () => {
     );
   });
 
-  it("omits the resolved lane until at least one session is resolved", () => {
+  it("keeps the resolved lane available without loading its contents", () => {
     const store = {
       recentProjectPaths: ["/work/cake"],
       projects: [{ path: "/work/cake", name: "Cake" }],
@@ -788,8 +789,8 @@ describe("Sidebar projects", () => {
       root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onToggle={vi.fn()} />),
     );
 
-    expect(container.querySelector(".resolved-lane")).toBeNull();
-    expect(container.textContent).not.toContain("Resolved");
+    expect(container.querySelector('[data-slot="resolved-lane"]')).not.toBeNull();
+    expect(container.textContent).toContain("Resolved");
   });
 
   it("collapses the resolved lane by default and expands it on request", () => {
@@ -865,6 +866,7 @@ describe("Sidebar projects", () => {
       showMoreSessions: vi.fn(),
       renameSession: vi.fn(),
       hasResolvedSessions: true,
+      resolvedLaneExpanded: true,
       setSessionResolved,
     } as unknown as ProjectWorkbenchStore;
     const props = sidebarProps(store);
@@ -1099,6 +1101,7 @@ describe("Sidebar projects", () => {
           ? [{ sessionId: "session-1", title: "Done", modifiedAt: new Date(0).toISOString() }]
           : [],
       hasResolvedSessions: true,
+      resolvedLaneExpanded: true,
       sessionLimit: () => 8,
       sessionActivity: vi.fn(),
       sessionActivityTime: vi.fn(() => "Today"),
@@ -1233,6 +1236,7 @@ describe("Sidebar projects", () => {
       chooseProject: vi.fn(),
       showMoreSessions: vi.fn(),
       hasResolvedSessions: true,
+      resolvedLaneExpanded: true,
       cakeChatSummaries: [
         {
           sessionId: "active-cake",

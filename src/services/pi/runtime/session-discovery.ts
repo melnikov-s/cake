@@ -5,7 +5,8 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { CombinedAutocompleteProvider } from "@earendil-works/pi-tui";
 import { existsSync, readFileSync } from "node:fs";
-import { basename, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
+import { Stream } from "effect";
 import {
   SESSION_TITLE_MAX_LENGTH,
   type FileSuggestion,
@@ -13,6 +14,11 @@ import {
   type SessionSummary,
 } from "../../../ipc/session-contract";
 import { projectSessionEntries } from "./session-projection";
+import {
+  findSessionFileById,
+  streamSessionFiles,
+  workingDirectorySessionPath,
+} from "../../storage/session-files";
 
 export function loadPiChangelog() {
   try {
@@ -35,9 +41,7 @@ export function inspectWorkspace(path: string) {
 
 /** Mirror Pi's documented per-workspace directory layout beneath Cake's session root. */
 export function cakeWorkspaceSessionDirectory(cwd: string, sessionRoot: string) {
-  const resolvedCwd = resolve(cwd);
-  const safePath = `--${resolvedCwd.replace(/^[/\\]/, "").replace(/[/\\:]/g, "-")}--`;
-  return join(resolve(sessionRoot), safePath);
+  return workingDirectorySessionPath(cwd, sessionRoot);
 }
 
 export function forkWorkspaceSession(sourceFile: string, cwd: string, sessionRoot: string) {
@@ -70,53 +74,30 @@ export async function suggestProjectFiles(options: {
     .map(({ value, label, description }) => ({ value, label, description }));
 }
 
-export interface ListWorkspaceSessionsOptions {
+export interface StreamWorkspaceSessionsOptions {
   direct?: boolean;
-  resolvedSessionDir?: string;
 }
 
-export async function listWorkspaceSessions(
+/** Streams cheap file metadata for active sessions without opening transcript bodies. */
+export function streamWorkspaceSessions(
   cwd: string,
   sessionDir: string,
-  options: ListWorkspaceSessionsOptions = {},
-): Promise<SessionSummary[]> {
-  const directory = options.direct
-    ? resolve(sessionDir)
-    : cakeWorkspaceSessionDirectory(cwd, sessionDir);
-  const active = (await SessionManager.list(cwd, directory)).map((item) => ({
-    item,
-    resolved: false,
-  }));
-  const archived = options.resolvedSessionDir
-    ? (
-        await SessionManager.list(
-          cwd,
-          options.direct
-            ? resolve(options.resolvedSessionDir)
-            : cakeWorkspaceSessionDirectory(cwd, options.resolvedSessionDir),
-        )
-      ).map((item) => ({ item, resolved: true }))
-    : [];
-  const sessions = [...active, ...archived];
-  const ids = sessions.map(({ item }) => item.id);
-  if (new Set(ids).size !== ids.length) {
-    console.warn(
-      `[cake] Session ID collision across active and resolved namespaces: ${ids.join(", ")}`,
-    );
-    throw new Error("Session ID collision detected across active and resolved namespaces");
-  }
-  const idsByFilename = new Map(sessions.map(({ item }) => [basename(item.path), item.id]));
-  return sessions.map(({ item, resolved }) => ({
-    id: item.id,
-    title: (item.name || item.firstMessage || "New chat").slice(0, SESSION_TITLE_MAX_LENGTH),
-    created: item.created.toISOString(),
-    modified: item.modified.toISOString(),
-    messageCount: item.messageCount,
-    parentSessionId: item.parentSessionPath
-      ? idsByFilename.get(basename(item.parentSessionPath))
-      : undefined,
-    resolved,
-  }));
+  options: StreamWorkspaceSessionsOptions = {},
+): Stream.Stream<SessionSummary, unknown> {
+  return streamSessionFiles({
+    workingDirectory: cwd,
+    root: sessionDir,
+    direct: options.direct,
+  }).pipe(
+    Stream.map((item) => ({
+      id: item.id,
+      title: item.id.slice(0, SESSION_TITLE_MAX_LENGTH),
+      created: item.createdAt,
+      modified: item.modifiedAt,
+      messageCount: 0,
+      resolved: false,
+    })),
+  );
 }
 
 export async function findSessionFile(
@@ -125,11 +106,11 @@ export async function findSessionFile(
   sessionDir: string,
   direct = false,
 ): Promise<string | undefined> {
-  const sessions = await SessionManager.list(
-    cwd,
-    direct ? resolve(sessionDir) : cakeWorkspaceSessionDirectory(cwd, sessionDir),
-  );
-  return sessions.find((session) => session.id === sessionId)?.path;
+  return findSessionFileById(sessionId, {
+    workingDirectory: cwd,
+    root: sessionDir,
+    direct,
+  });
 }
 
 export async function loadWorkspaceSessionPreview(
@@ -142,29 +123,26 @@ export async function loadWorkspaceSessionPreview(
   const activeDirectory = direct
     ? resolve(sessionDir)
     : cakeWorkspaceSessionDirectory(cwd, sessionDir);
-  const active = await SessionManager.list(cwd, activeDirectory);
-  const activeTarget = active.find((session) => session.id === sessionId);
+  const activeTarget = await findSessionFile(cwd, sessionId, sessionDir, direct);
   const resolvedDirectory = resolvedSessionDir
     ? direct
       ? resolve(resolvedSessionDir)
       : cakeWorkspaceSessionDirectory(cwd, resolvedSessionDir)
     : undefined;
-  const resolvedTarget = resolvedDirectory
-    ? (await SessionManager.list(cwd, resolvedDirectory)).find(
-        (session) => session.id === sessionId,
-      )
+  const resolvedTarget = resolvedSessionDir
+    ? await findSessionFile(cwd, sessionId, resolvedSessionDir, direct)
     : undefined;
   const target = activeTarget ?? resolvedTarget;
   if (!target) return undefined;
   const manager = SessionManager.open(
-    target.path,
+    target,
     activeTarget ? activeDirectory : resolvedDirectory!,
     cwd,
   );
   return {
     workspacePath: cwd,
     sessionId,
-    sessionFile: target.path,
+    sessionFile: target,
     parts: projectSessionEntries(manager.getBranch()),
   };
 }

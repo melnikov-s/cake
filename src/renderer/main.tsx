@@ -87,9 +87,6 @@ async function bootstrap(bridge: NonNullable<typeof window.cake>) {
     models,
   );
   nativeState.observe(rootStore);
-  await rootStore.settingsStore.modelPresets.hydrate();
-  await nativeEvents.observe(rootStore, synchronizer);
-  void rootStore.projectWorkbenchStore.initialize();
   const persistence = new WindowStatePersistence(rendererClient, (error) =>
     rootStore.toastStore.show({
       tone: "error",
@@ -102,7 +99,9 @@ async function bootstrap(bridge: NonNullable<typeof window.cake>) {
   synchronizer.observe({
     projects: rootStore.projectCatalogModel,
     sessionCatalog: rootStore.sessionCatalogModel,
+    projectSessionCatalogQueries: () => rootStore.sidebarStore.projectSessionCatalogQueries,
     cakeChatCatalog: rootStore.cakeChatCatalogModel,
+    cakeChatCatalogQueries: () => rootStore.sidebarStore.cakeChatCatalogQueries,
     projectSessions: () => {
       const blockedPath = rootStore.projectWorkbenchStore.pendingAuthorizationPath;
       return rootStore.sessionRegistry.materializedSessions
@@ -127,6 +126,9 @@ async function bootstrap(bridge: NonNullable<typeof window.cake>) {
           model: session.model,
         })),
   });
+  void nativeEvents.observe(rootStore, synchronizer);
+  void rootStore.settingsStore.modelPresets.hydrate();
+  void rootStore.projectWorkbenchStore.initialize();
   if (hydrationError)
     rootStore.toastStore.show({
       tone: "warning",

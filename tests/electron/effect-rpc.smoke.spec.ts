@@ -15,10 +15,7 @@ type RpcHarness = {
   getHomeDirectory(): Promise<string>;
   getApplicationState(): Promise<{
     projects: ReadonlyArray<unknown>;
-    resolvedSessionIds: ReadonlyArray<string>;
   }>;
-  listProjectSessions(): Promise<ReadonlyArray<unknown>>;
-  listCakeChats(): Promise<ReadonlyArray<unknown>>;
   listDiscussionSessions(): Promise<ReadonlyArray<unknown>>;
   invokeElectronProbe(): Promise<{ type: string }>;
   agentAvailability(): Promise<{ global: { state: string } }>;
@@ -99,10 +96,7 @@ test("Effect RPC crosses Electron with schemas, streams, interruption, and conne
     expect(await callHarness<string>(observer, "getHomeDirectory")).toMatch(/^\//);
     expect(await callHarness(observer, "getApplicationState")).toMatchObject({
       projects: [],
-      resolvedSessionIds: [],
     });
-    expect(await callHarness(observer, "listProjectSessions")).toEqual([]);
-    expect(await callHarness(observer, "listCakeChats")).toEqual([]);
     expect(await callHarness(observer, "listDiscussionSessions")).toEqual([]);
     expect(await callHarness<{ requestId: string }>(observer, "invokeElectronProbe")).toMatchObject(
       { requestId: expect.any(String) },

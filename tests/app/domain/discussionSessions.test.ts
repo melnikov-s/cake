@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Stream } from "effect";
 import { describe } from "vitest";
 import * as discussionSessions from "../../../src/domain/discussionSessions";
 import {
@@ -103,7 +103,7 @@ const makeLayer = () => {
     };
   };
   const adapter: PiSessionsAdapter = {
-    list: () => Effect.succeed([]),
+    catalog: () => Stream.empty,
     inspect: () => Effect.succeed(undefined),
     createRuntime: (options) =>
       Effect.sync(() => {

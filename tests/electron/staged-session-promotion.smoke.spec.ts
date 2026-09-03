@@ -32,7 +32,6 @@ test("promotes a staged chat immediately and leaves New Chat free for the next s
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
-      resolvedSessionIds: [],
       resolvedCakeChatSessionIds: [],
       trustedProjectPaths: [project],
     }),
@@ -64,9 +63,7 @@ test("promotes a staged chat immediately and leaves New Chat free for the next s
     await expect(page.locator('[data-slot="workspace-header"] strong')).toHaveText(
       "First promoted session",
     );
-    const firstSession = page
-      .locator(".session-item")
-      .filter({ hasText: "First promoted session" });
+    const firstSession = page.locator(".session-item.active");
     await expect(firstSession).toHaveCount(1, { timeout: 20_000 });
 
     const firstSessionId = await firstSession.getAttribute("data-session-id");
@@ -85,9 +82,7 @@ test("promotes a staged chat immediately and leaves New Chat free for the next s
     await expect(page.locator('[data-slot="workspace-header"] strong')).toHaveText(
       "Second promoted session",
     );
-    await expect(
-      page.locator(".session-item").filter({ hasText: "Second promoted session" }),
-    ).toHaveCount(1, { timeout: 20_000 });
+    await expect(page.locator(".session-item.active")).toHaveCount(1, { timeout: 20_000 });
 
     const firstSessionAfterPromotion = page.locator(
       `.session-item[data-session-id='${firstSessionId}']`,

@@ -39,7 +39,6 @@ test("selects and runs slash commands from the composer with the keyboard", asyn
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
-      resolvedSessionIds: [],
       trustedProjectPaths: [project],
     }),
   );

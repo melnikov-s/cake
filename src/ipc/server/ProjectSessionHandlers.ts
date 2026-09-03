@@ -20,8 +20,7 @@ const activateWorkingDirectory = (connectionId: number, workingDirectory: string
   );
 
 export const projectSessionHandlers = ProjectSessionRpc.of({
-  "projectSessions.list": () => projectSessions.list(),
-  "projectSessions.observeCatalog": () => Stream.unwrap(projectSessions.observeCatalog()),
+  "projectSessions.observeCatalog": (query) => Stream.unwrap(projectSessions.observeCatalog(query)),
   "projectSessions.inspect": (target) => projectSessions.inspect(target),
   "projectSessions.start": (input) =>
     withConnection((connectionId) =>

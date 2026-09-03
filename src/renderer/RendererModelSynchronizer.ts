@@ -1,6 +1,10 @@
 import { Effect, Schema, Stream } from "effect";
 import { effect as reactiveEffect, type Model } from "r-state-tree";
-import type { CakeChatTarget, CakeChatUpdate } from "../domain/cake-chat-data";
+import type {
+  CakeChatCatalogQuery,
+  CakeChatTarget,
+  CakeChatUpdate,
+} from "../domain/cake-chat-data";
 import type {
   CakeChatCatalogUpdate,
   DiscussionCatalogUpdate,
@@ -11,7 +15,11 @@ import type {
   DiscussionSessionTarget,
   DiscussionSessionUpdate,
 } from "../domain/discussion-session-data";
-import type { ProjectSessionTarget, ProjectSessionUpdate } from "../domain/project-session-data";
+import type {
+  ProjectSessionCatalogQuery,
+  ProjectSessionTarget,
+  ProjectSessionUpdate,
+} from "../domain/project-session-data";
 import { ProjectSessionError } from "../domain/project-session-data";
 import type { SubagentUpdate } from "../domain/subagent-data";
 import { CakeIpcClient, type CakeIpcClientService } from "../ipc/client/CakeIpcClient";
@@ -22,9 +30,9 @@ import type { Session } from "./models/Session";
 import type { SessionCatalog } from "./models/SessionCatalog";
 import type { RendererRuntime } from "./RendererRuntime";
 import {
-  applyCakeChatCatalogUpdate,
+  applyCakeChatCatalogGroupUpdate,
   applyProjectCatalogUpdate,
-  applySessionCatalogUpdate,
+  applySessionCatalogGroupUpdate,
 } from "./projections/CatalogProjection";
 import { applyArtifactUpdate } from "./projections/ArtifactProjection";
 import {
@@ -44,7 +52,9 @@ import type {
 export interface RendererModelSource {
   readonly projects: ProjectCatalog;
   readonly sessionCatalog: SessionCatalog;
+  readonly projectSessionCatalogQueries: () => ReadonlyArray<ProjectSessionCatalogQuery>;
   readonly cakeChatCatalog: CakeChatCatalog;
+  readonly cakeChatCatalogQueries?: () => ReadonlyArray<CakeChatCatalogQuery>;
   readonly projectSessions: () => ReadonlyArray<{
     readonly target: ProjectSessionTarget;
     readonly model: Session;
@@ -78,6 +88,14 @@ type StreamFactory<Update> = (client: CakeIpcClientService) => Stream.Stream<Upd
 export class RendererModelSynchronizer implements Disposable {
   private readonly subscriptions = new Map<string, Subscription>();
   private readonly models = new Map<string, Model>();
+  private readonly catalogGroups = new Map<
+    string,
+    { readonly model: SessionCatalog; readonly query: ProjectSessionCatalogQuery }
+  >();
+  private readonly cakeChatCatalogGroups = new Map<
+    string,
+    { readonly model: CakeChatCatalog; readonly query: CakeChatCatalogQuery }
+  >();
   private stopObservingSource: (() => void) | undefined;
   private disposed = false;
 
@@ -94,7 +112,9 @@ export class RendererModelSynchronizer implements Disposable {
       this.sync({
         projects: source.projects,
         sessionCatalog: source.sessionCatalog,
+        projectSessionCatalogQueries: source.projectSessionCatalogQueries(),
         cakeChatCatalog: source.cakeChatCatalog,
+        cakeChatCatalogQueries: source.cakeChatCatalogQueries?.(),
         projectSessions: source.projectSessions(),
         cakeChats: source.cakeChats(),
       });
@@ -112,30 +132,44 @@ export class RendererModelSynchronizer implements Disposable {
   sync(input: {
     readonly projects: ProjectCatalog;
     readonly sessionCatalog: SessionCatalog;
+    readonly projectSessionCatalogQueries?: ReadonlyArray<ProjectSessionCatalogQuery>;
     readonly cakeChatCatalog: CakeChatCatalog;
+    readonly cakeChatCatalogQueries?: ReadonlyArray<CakeChatCatalogQuery>;
     readonly projectSessions: ReadonlyArray<{ target: ProjectSessionTarget; model: Session }>;
     readonly cakeChats: ReadonlyArray<{ target: CakeChatTarget; model: Session }>;
   }) {
-    const active = new Set(["projects", "project-sessions", "cake-chats"]);
+    const active = new Set(["projects"]);
     this.synchronizeModel(
       "projects",
       input.projects,
       (client) => client.projects.observeCatalog(),
       (update: ProjectCatalogUpdate) => applyProjectCatalogUpdate(input.projects, update),
     );
-    this.synchronizeModel(
-      "project-sessions",
-      input.sessionCatalog,
-      (client) => client.projectSessions.observeCatalog(),
-      (update: SessionCatalogUpdate) => applySessionCatalogUpdate(input.sessionCatalog, update),
-    );
+    for (const query of input.projectSessionCatalogQueries ?? []) {
+      const key = `project-session-catalog:${query.resolved ? "resolved" : "active"}:${query.projectPath}`;
+      active.add(key);
+      this.catalogGroups.set(key, { model: input.sessionCatalog, query });
+      this.synchronizeModel(
+        key,
+        input.sessionCatalog,
+        (client) => client.projectSessions.observeCatalog(query),
+        (update: SessionCatalogUpdate) =>
+          applySessionCatalogGroupUpdate(input.sessionCatalog, query, update),
+      );
+    }
 
-    this.synchronizeModel(
-      "cake-chats",
-      input.cakeChatCatalog,
-      (client) => client.cakeChats.observeCatalog(),
-      (update: CakeChatCatalogUpdate) => applyCakeChatCatalogUpdate(input.cakeChatCatalog, update),
-    );
+    for (const query of input.cakeChatCatalogQueries ?? [{ resolved: false }]) {
+      const key = `cake-chat-catalog:${query.resolved ? "resolved" : "active"}`;
+      active.add(key);
+      this.cakeChatCatalogGroups.set(key, { model: input.cakeChatCatalog, query });
+      this.synchronizeModel(
+        key,
+        input.cakeChatCatalog,
+        (client) => client.cakeChats.observeCatalog(query),
+        (update: CakeChatCatalogUpdate) =>
+          applyCakeChatCatalogGroupUpdate(input.cakeChatCatalog, query, update),
+      );
+    }
 
     for (const { target, model } of input.projectSessions) {
       this.assertSessionIdentity(model, target.sessionId, target.workingDirectory);
@@ -213,6 +247,8 @@ export class RendererModelSynchronizer implements Disposable {
     for (const key of this.subscriptions.keys()) this.supervisor.unregister(`model:${key}`);
     this.subscriptions.clear();
     this.models.clear();
+    this.catalogGroups.clear();
+    this.cakeChatCatalogGroups.clear();
   }
 
   private synchronizeModel<Update extends RevisionedUpdate>(
@@ -266,6 +302,24 @@ export class RendererModelSynchronizer implements Disposable {
     this.supervisor.unregister(`model:${key}`);
     this.subscriptions.delete(key);
     this.models.delete(key);
+    const catalog = this.catalogGroups.get(key);
+    if (catalog) {
+      applySessionCatalogGroupUpdate(catalog.model, catalog.query, {
+        _tag: "Snapshot",
+        revision: 0,
+        sessions: [],
+      });
+      this.catalogGroups.delete(key);
+    }
+    const cakeChatCatalog = this.cakeChatCatalogGroups.get(key);
+    if (cakeChatCatalog) {
+      applyCakeChatCatalogGroupUpdate(cakeChatCatalog.model, cakeChatCatalog.query, {
+        _tag: "Snapshot",
+        revision: 0,
+        sessions: [],
+      });
+      this.cakeChatCatalogGroups.delete(key);
+    }
   }
 
   private classifyFailure(key: string, error: unknown): SynchronizationFailureAction {

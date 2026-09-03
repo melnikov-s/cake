@@ -150,12 +150,6 @@ export function makeRendererClient(runtime: RendererRuntime): RendererClient {
         ),
     },
     projectSessions: {
-      list: (options) =>
-        run(
-          "projectSessions.list",
-          withClient((client) => client.projectSessions.list()),
-          options,
-        ),
       inspect: (target, options) =>
         run(
           "projectSessions.inspect",
@@ -302,12 +296,6 @@ export function makeRendererClient(runtime: RendererRuntime): RendererClient {
         ),
     },
     cakeChats: {
-      list: (options) =>
-        run(
-          "cakeChats.list",
-          withClient((client) => client.cakeChats.list()),
-          options,
-        ),
       inspect: (sessionId, options) =>
         run(
           "cakeChats.inspect",

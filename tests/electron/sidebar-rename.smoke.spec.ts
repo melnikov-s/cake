@@ -46,14 +46,13 @@ test("uses the native context menu for project sessions", async () => {
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
-      resolvedSessionIds: [],
       resolvedCakeChatSessionIds: [],
       trustedProjectPaths: [],
     }),
   );
   await Promise.all([
     writeFile(
-      join(sessionDirectory, `${sessionId}.jsonl`),
+      join(sessionDirectory, `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`),
       [
         { type: "session", version: 3, id: sessionId, timestamp, cwd: project },
         {
@@ -72,7 +71,7 @@ test("uses the native context menu for project sessions", async () => {
         .join("\n") + "\n",
     ),
     writeFile(
-      join(cakeChatDirectory, `${cakeChatSessionId}.jsonl`),
+      join(cakeChatDirectory, `1970-01-01T00-00-00-000Z_${cakeChatSessionId}.jsonl`),
       [
         { type: "session", version: 3, id: cakeChatSessionId, timestamp, cwd: homedir() },
         {
@@ -106,7 +105,7 @@ test("uses the native context menu for project sessions", async () => {
   try {
     const page = await application.firstWindow();
     await expect(page.getByLabel("Message")).toBeVisible({ timeout: 20_000 });
-    const sessionRow = page.locator(".session-row").filter({ hasText: "Original session title" });
+    const sessionRow = page.locator(".session-row").filter({ hasText: sessionId });
     await expect(sessionRow).toHaveCount(1);
     await sessionRow.click({ button: "right" });
 
@@ -116,9 +115,7 @@ test("uses the native context menu for project sessions", async () => {
     await expect(page.getByLabel("Session name")).toHaveCount(0);
     await page.keyboard.press("Escape");
 
-    const cakeChatRow = page
-      .locator(".session-row")
-      .filter({ hasText: "Original Cake Chat title" });
+    const cakeChatRow = page.locator(".session-row").filter({ hasText: cakeChatSessionId });
     await expect(cakeChatRow).toHaveCount(1);
     await cakeChatRow.click({ button: "right" });
     await expect(page.getByRole("menu")).toHaveCount(0);
@@ -132,7 +129,9 @@ test("uses the native context menu for project sessions", async () => {
     await page.getByRole("button", { name: "New Cake Chat" }).first().click();
     await expect(page.getByLabel("Message Cake Chat")).toBeVisible();
     await expect(page.locator(".session-row").filter({ hasText: "New chat" })).toHaveCount(1);
-    expect(await readdir(cakeChatDirectory)).toEqual([`${cakeChatSessionId}.jsonl`]);
+    expect(await readdir(cakeChatDirectory)).toEqual([
+      `1970-01-01T00-00-00-000Z_${cakeChatSessionId}.jsonl`,
+    ]);
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

@@ -42,12 +42,11 @@ test("Quake terminal runs a shell and only warns on resolution for a running pro
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
-      resolvedSessionIds: [],
       trustedProjectPaths: [],
     }),
   );
   await writeFile(
-    join(sessionDirectory, `${sessionId}.jsonl`),
+    join(sessionDirectory, `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`),
     [
       { type: "session", version: 3, id: sessionId, timestamp, cwd: project },
       {

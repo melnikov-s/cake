@@ -7,7 +7,6 @@ import { Electron } from "../services/electron/Electron";
 import { ProjectSessionIntegrations } from "../services/pi/ProjectSessionIntegrations";
 import type { PiSessions } from "../services/pi/PiSessions";
 import { PluginRuntime } from "../services/plugins/PluginRuntime";
-import { ProjectSessionLifecycle } from "../services/project-sessions/ProjectSessionLifecycle";
 import { ProjectAccess } from "../services/projects/ProjectAccess";
 import { RewordingRequests } from "../services/projects/RewordingRequests";
 import { ApplicationState } from "../services/storage/ApplicationState";
@@ -38,7 +37,6 @@ type MainApplicationServices =
   | PluginRuntime
   | ProjectAccess
   | ProjectSessionIntegrations
-  | ProjectSessionLifecycle
   | RewordingRequests
   | Terminal
   | VsCodeServer;
@@ -60,7 +58,6 @@ export const MainApplication = Effect.fn("MainApplication")(function* ({
       const applicationState = yield* ApplicationState;
       const electron = yield* Electron;
       const integrations = yield* ProjectSessionIntegrations;
-      const lifecycle = yield* ProjectSessionLifecycle;
       const plugins = yield* PluginRuntime;
       const access = yield* ProjectAccess;
       const rewordingRequests = yield* RewordingRequests;
@@ -93,7 +90,6 @@ export const MainApplication = Effect.fn("MainApplication")(function* ({
       yield* vscode.refreshStatus();
       yield* Effect.sync(initializeNativeProtocols);
       yield* plugins.initializeCustomization();
-      yield* lifecycle.reconcile();
       yield* electron.start({
         startupRenderer: plugins.startupRenderer,
         trackRenderer: plugins.trackRenderer,

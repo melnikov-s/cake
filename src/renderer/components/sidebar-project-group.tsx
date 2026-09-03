@@ -40,8 +40,6 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
   const collapseKey = `${resolved ? "resolved" : "active"}:${path}`;
   const collapsed = store.isGroupCollapsed(collapseKey);
   const sessions = store.projectSessions(path, resolved);
-  if (resolved && sessions.length === 0) return null;
-  const visibleSessions = sessions.slice(0, store.sessionLimit(path, resolved));
   const empty = sessions.length === 0;
   return (
     <div data-slot="project-group" className={cn("mb-3 last:mb-0", empty && "mb-1")}>
@@ -53,7 +51,7 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
           className={cn(
             "size-5 flex items-center justify-center rounded text-muted-foreground hover:text-foreground transition-transform duration-150",
             collapsed && "-rotate-90",
-            empty && "invisible",
+            !resolved && empty && "invisible",
           )}
           aria-expanded={!collapsed}
           tooltip={collapsed ? "Expand" : "Collapse"}
@@ -98,7 +96,7 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
       </div>
       {!collapsed && (
         <div className="flex flex-col pl-6 space-y-0.5 mt-0.5">
-          {visibleSessions.map((session) => (
+          {sessions.map((session) => (
             <SidebarSessionItem
               key={session.sessionId}
               store={store}
@@ -120,17 +118,6 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
               onMarkUnread={(sessionId, unread) => void store.setSessionUnread(sessionId, unread)}
             />
           ))}
-          {sessions.length > visibleSessions.length && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-auto justify-start px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground"
-              onClick={() => store.showMoreSessions(path, resolved)}
-            >
-              Show more
-            </Button>
-          )}
         </div>
       )}
       {projectAction && (

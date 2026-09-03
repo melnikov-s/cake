@@ -1,11 +1,11 @@
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect } from "effect";
+import { Effect, Stream } from "effect";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   cakeWorkspaceSessionDirectory,
-  listWorkspaceSessions,
+  streamWorkspaceSessions,
 } from "../../../../src/services/pi/runtime/session-discovery";
 import { SessionArchiveStorage } from "../../../../src/services/storage/SessionArchiveStorage";
 import { SessionArchiveStorageLive } from "../../../../src/services/storage/SessionArchiveStorageLive";
@@ -34,7 +34,7 @@ async function fixture() {
   const timestamp = new Date().toISOString();
   await mkdir(activeDirectory, { recursive: true });
   await writeFile(
-    join(activeDirectory, "session.jsonl"),
+    join(activeDirectory, "2026-01-01T00-00-00-000Z_session-1.jsonl"),
     [
       { type: "session", version: 3, id: "session-1", timestamp, cwd },
       {
@@ -60,11 +60,13 @@ describe("SessionArchiveStorage", () => {
     await expect(runArchive((storage) => storage.resolve("session-1", location))).resolves.toBe(
       false,
     );
-    expect(await listWorkspaceSessions(location.cwd, location.activeRoot)).toEqual([]);
     expect(
-      await listWorkspaceSessions(location.cwd, location.activeRoot, {
-        resolvedSessionDir: location.resolvedRoot,
-      }),
+      await Effect.runPromise(
+        streamWorkspaceSessions(location.cwd, location.activeRoot).pipe(Stream.runCollect),
+      ),
+    ).toEqual([]);
+    expect(
+      await runArchive((storage) => storage.resolved(location).pipe(Stream.runCollect)),
     ).toEqual([expect.objectContaining({ id: "session-1", resolved: true })]);
 
     await expect(runArchive((storage) => storage.restore("session-1", location))).resolves.toBe(
@@ -73,9 +75,11 @@ describe("SessionArchiveStorage", () => {
     await expect(runArchive((storage) => storage.restore("session-1", location))).resolves.toBe(
       false,
     );
-    expect(await listWorkspaceSessions(location.cwd, location.activeRoot)).toEqual([
-      expect.objectContaining({ id: "session-1", resolved: false }),
-    ]);
+    expect(
+      await Effect.runPromise(
+        streamWorkspaceSessions(location.cwd, location.activeRoot).pipe(Stream.runCollect),
+      ),
+    ).toEqual([expect.objectContaining({ id: "session-1", resolved: false })]);
   });
 
   it("treats concurrent archive requests as one idempotent move", async () => {
@@ -86,11 +90,13 @@ describe("SessionArchiveStorage", () => {
     ]);
 
     expect(outcomes.sort()).toEqual([false, true]);
-    expect(await listWorkspaceSessions(location.cwd, location.activeRoot)).toEqual([]);
     expect(
-      await listWorkspaceSessions(location.cwd, location.activeRoot, {
-        resolvedSessionDir: location.resolvedRoot,
-      }),
+      await Effect.runPromise(
+        streamWorkspaceSessions(location.cwd, location.activeRoot).pipe(Stream.runCollect),
+      ),
+    ).toEqual([]);
+    expect(
+      await runArchive((storage) => storage.resolved(location).pipe(Stream.runCollect)),
     ).toEqual([expect.objectContaining({ id: "session-1", resolved: true })]);
   });
 
@@ -123,9 +129,7 @@ describe("SessionArchiveStorage", () => {
       runArchive((storage) => storage.deleteResolved("session-1", location)),
     ).rejects.toThrow("Cake could not find resolved session session-1");
     expect(
-      await listWorkspaceSessions(location.cwd, location.activeRoot, {
-        resolvedSessionDir: location.resolvedRoot,
-      }),
+      await runArchive((storage) => storage.resolved(location).pipe(Stream.runCollect)),
     ).toEqual([]);
   });
 });

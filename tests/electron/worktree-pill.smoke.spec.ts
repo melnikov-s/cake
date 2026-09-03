@@ -56,7 +56,6 @@ test("chooses an isolated worktree without disturbing the new-chat composer", as
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
-      resolvedSessionIds: [],
       trustedProjectPaths: [],
     }),
   );
@@ -132,7 +131,7 @@ test("shows only resolve after a worktree is merged and removes the checkout", a
   );
   await mkdir(sessionDirectory, { recursive: true });
   await writeFile(
-    join(sessionDirectory, `${sessionId}.jsonl`),
+    join(sessionDirectory, `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`),
     `${sessionEntries(sessionId, worktreePath)
       .map((entry) => JSON.stringify(entry))
       .join("\n")}\n`,
@@ -177,7 +176,6 @@ test("shows only resolve after a worktree is merged and removes the checkout", a
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
-      resolvedSessionIds: [],
       resolvedCakeChatSessionIds: [],
       trustedProjectPaths: [],
     }),

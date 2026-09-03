@@ -15,6 +15,7 @@ import type {
 } from "../../../src/services/pi/runtime/cake-runtime";
 import { makeProjectSessionEnvironmentLayer } from "../../../src/services/project-sessions/ProjectSessionEnvironment";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
+import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { SubagentCoordinatorLive } from "../../../src/services/subagents/SubagentCoordinator";
 import { Terminal } from "../../../src/services/terminal/Terminal";
 import type { SessionSnapshot } from "../../../src/ipc/session-contract";
@@ -85,11 +86,14 @@ const makeLayer = (
     onCreateRuntime?(): void;
     onArchive?(): void;
     onRestore?(): void;
-    onList?(): void;
+    onCatalog?(): void;
+    onResolvedCatalog?(): void;
     onRuntimeOptions?(newSession: boolean): void;
     sessionExists?: boolean;
+    resolvedOnDisk?: boolean;
   } = {},
 ) => {
+  let resolvedOnDisk = hooks.resolvedOnDisk ?? false;
   const application = Layer.effect(
     ApplicationState,
     Effect.gen(function* () {
@@ -114,22 +118,19 @@ const makeLayer = (
     }),
   );
   const adapter: PiSessionsAdapter = {
-    list: () =>
-      Effect.sync(() => {
-        hooks.onList?.();
-        return hooks.sessionExists === false
-          ? []
-          : [
-              {
-                id: "session-1",
-                title: "Active branch",
-                created: "2026-01-01T00:00:00.000Z",
-                modified: "2026-01-02T00:00:00.000Z",
-                messageCount: 2,
-                resolved: false,
-              },
-            ];
-      }),
+    catalog: () => {
+      hooks.onCatalog?.();
+      return hooks.sessionExists === false || resolvedOnDisk
+        ? Stream.empty
+        : Stream.make({
+            id: "session-1",
+            title: "Active branch",
+            created: "2026-01-01T00:00:00.000Z",
+            modified: "2026-01-02T00:00:00.000Z",
+            messageCount: 2,
+            resolved: false,
+          });
+    },
     inspect: () =>
       Effect.succeed({
         workspacePath: snapshot.workspacePath,
@@ -180,14 +181,45 @@ const makeLayer = (
             },
           };
         }),
-      archive: () => Effect.sync(() => hooks.onArchive?.()),
+      archive: () =>
+        Effect.sync(() => {
+          resolvedOnDisk = true;
+          hooks.onArchive?.();
+        }),
       restore: (_sessionId, location) =>
         Effect.sync(() => {
+          resolvedOnDisk = false;
           hooks.onRestore?.();
           return location;
         }),
       forkToWorkingDirectory: () => Effect.succeed("forked"),
     }),
+    Layer.succeed(
+      SessionArchiveStorage,
+      SessionArchiveStorage.of({
+        resolve: () => Effect.succeed(false),
+        restore: () => Effect.succeed(false),
+        deleteResolved: () => Effect.void,
+        delete: () => Effect.void,
+        locate: () =>
+          Effect.succeed(
+            hooks.sessionExists === false ? undefined : resolvedOnDisk ? "resolved" : "active",
+          ),
+        resolved: () => {
+          hooks.onResolvedCatalog?.();
+          return hooks.sessionExists === false || !resolvedOnDisk
+            ? Stream.empty
+            : Stream.make({
+                id: "session-1",
+                title: "session-1",
+                created: "2026-01-01T00:00:00.000Z",
+                modified: "2026-01-02T00:00:00.000Z",
+                messageCount: 0,
+                resolved: true,
+              });
+        },
+      }),
+    ),
     Layer.succeed(
       Terminal,
       Terminal.of({
@@ -205,13 +237,30 @@ const makeLayer = (
 };
 
 describe("Project Sessions domain", () => {
+  it.effect("does not touch resolved storage for an active catalog stream", () => {
+    let resolvedCatalogs = 0;
+    return Effect.gen(function* () {
+      const updates = yield* projectSessions.observeCatalog({
+        projectPath: "/project",
+        resolved: false,
+      });
+      yield* updates.pipe(Stream.take(3), Stream.runDrain);
+      assert.equal(resolvedCatalogs, 0);
+    }).pipe(Effect.provide(makeLayer(undefined, { onResolvedCatalog: () => resolvedCatalogs++ })));
+  });
+
   it.effect("observes a current catalog Snapshot followed by ordered replacement Events", () =>
     Effect.gen(function* () {
-      const updates = yield* projectSessions.observeCatalog();
+      const updates = yield* projectSessions.observeCatalog({
+        projectPath: "/project",
+        resolved: false,
+      });
       const ready = yield* Deferred.make<void>();
       const fiber = yield* updates.pipe(
-        Stream.tap(() => Deferred.succeed(ready, undefined)),
-        Stream.take(2),
+        Stream.tap((update) =>
+          update.revision === 3 ? Deferred.succeed(ready, undefined) : Effect.void,
+        ),
+        Stream.take(4),
         Stream.runCollect,
         Effect.forkChild,
       );
@@ -220,20 +269,24 @@ describe("Project Sessions domain", () => {
       const observed = Array.from(yield* Fiber.join(fiber));
       assert.deepEqual(
         observed.map((update) => update._tag),
-        ["Snapshot", "Event"],
+        ["Snapshot", "Event", "Event", "Event"],
       );
       assert.ok(observed[1]!.revision > observed[0]!.revision);
     }).pipe(Effect.provide(makeLayer())),
   );
 
-  it.effect("projects a resolve as one status event without relisting the catalog", () => {
-    let listCalls = 0;
+  it.effect("removes a resolved session from the active metadata stream", () => {
     return Effect.gen(function* () {
-      const updates = yield* projectSessions.observeCatalog();
+      const updates = yield* projectSessions.observeCatalog({
+        projectPath: "/project",
+        resolved: false,
+      });
       const ready = yield* Deferred.make<void>();
       const fiber = yield* updates.pipe(
-        Stream.tap(() => Deferred.succeed(ready, undefined)),
-        Stream.take(2),
+        Stream.tap((update) =>
+          update.revision === 3 ? Deferred.succeed(ready, undefined) : Effect.void,
+        ),
+        Stream.take(4),
         Stream.runCollect,
         Effect.forkChild,
       );
@@ -243,23 +296,44 @@ describe("Project Sessions domain", () => {
         workingDirectory: "/project",
       });
       const observed = Array.from(yield* Fiber.join(fiber));
-      assert.equal(listCalls, 1);
-      assert.deepEqual(observed[1], {
+      assert.deepEqual(observed[2], {
         _tag: "Event",
-        revision: 2,
+        revision: 3,
         event: {
-          _tag: "StatusChanged",
-          sessionId: "session-1",
-          resolved: true,
-          unread: false,
+          _tag: "Upserted",
+          session: {
+            sessionId: "session-1",
+            title: "Active branch",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            modifiedAt: "2026-01-02T00:00:00.000Z",
+            messageCount: 2,
+            resolved: false,
+            unread: false,
+            projectPath: "/project",
+            projectName: "Project",
+            workingDirectory: "/project",
+          },
         },
       });
-    }).pipe(Effect.provide(makeLayer(undefined, { onList: () => listCalls++ })));
+      assert.deepEqual(observed[3], {
+        _tag: "Event",
+        revision: 4,
+        event: { _tag: "Replaced", sessions: [] },
+      });
+    }).pipe(Effect.provide(makeLayer()));
   });
 
-  it.effect("lists Project and Working Directory associations above PiSessions", () =>
+  it.effect("streams Project and Working Directory metadata above PiSessions", () =>
     Effect.gen(function* () {
-      const sessions = yield* projectSessions.list();
+      const updates = yield* projectSessions.observeCatalog({
+        projectPath: "/project",
+        resolved: false,
+      });
+      const observed = Array.from(yield* updates.pipe(Stream.take(3), Stream.runCollect));
+      const last = observed[2];
+      assert.equal(last?._tag, "Event");
+      const sessions =
+        last?._tag === "Event" && last.event._tag === "Upserted" ? [last.event.session] : [];
       assert.deepEqual(
         sessions.map(({ sessionId, projectPath, workingDirectory }) => ({
           sessionId,
@@ -418,11 +492,11 @@ describe("Project Sessions domain", () => {
               },
             ],
             trustedProjectPaths: ["/project"],
-            resolvedSessionIds: ["session-1"],
           },
           {
             onCreateRuntime: () => runtimeConstructions++,
             onRestore: () => restores++,
+            resolvedOnDisk: true,
           },
         ),
       ),
@@ -455,11 +529,11 @@ describe("Project Sessions domain", () => {
               },
             ],
             trustedProjectPaths: ["/project"],
-            resolvedSessionIds: ["session-1"],
           },
           {
             onCreateRuntime: () => runtimeConstructions++,
             onRestore: () => restores++,
+            resolvedOnDisk: true,
           },
         ),
       ),

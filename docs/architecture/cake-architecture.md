@@ -248,10 +248,14 @@ The window Store hierarchy mirrors the product surfaces:
   from that selection. `SidebarStore` owns navigation presentation and
   filtering; neither Store opens sessions directly.
 - `ProjectCatalogStore` owns registered project records and their window-local
-  ordering. `SessionCatalogStore` owns one flat, activity-sorted session
-  projection plus cached ID and project-group indexes. Session IDs are the
-  canonical identity; duplicate IDs are rejected. Resolved status derives from
-  Cake's active or archived transcript namespace and is projected into those summaries.
+  ordering. `SessionCatalogStore` owns the currently demanded, activity-sorted
+  session metadata projection plus cached ID and project-group indexes. The
+  sidebar demands the active stream only for expanded project groups. Its
+  resolved lane and every resolved project group start collapsed, so archive
+  metadata is not read until both are expanded. Closing a group cancels its
+  stream and unloads that group's projection. Session IDs are the canonical
+  identity; duplicate IDs are rejected. Resolved status derives solely from
+  the active or archived filesystem namespace, never from a persisted ID list.
 - Window-owned persistence infrastructure loads one versioned Store snapshot before
   mounting the Root Store, then watches the mounted Store tree and saves later
   snapshots through `RendererClient`. Persistence is not a Store and never

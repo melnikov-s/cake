@@ -15,7 +15,7 @@ import {
   setSessionFastMode,
 } from "./application";
 import type { CakeChatCatalogUpdate } from "./catalog-data";
-import type { ApplicationState } from "./application-data";
+import { SessionArchiveStorage } from "../services/storage/SessionArchiveStorage";
 import { toJsonValue } from "../utils/to-json-value";
 import {
   acquire as acquireConversation,
@@ -26,6 +26,7 @@ import {
 } from "./conversations";
 import {
   CakeChatError,
+  type CakeChatCatalogQuery,
   type CakeChatEvent,
   type CakeChatPreview,
   type CakeChatPromptInput,
@@ -37,10 +38,7 @@ import {
 
 export * from "./cake-chat-data";
 
-interface CakeChatCatalogObservation {
-  readonly revision: number;
-  readonly state: ApplicationState | undefined;
-}
+type CakeChatCatalogEvent = Extract<CakeChatCatalogUpdate, { readonly _tag: "Event" }>["event"];
 
 const asError = (operation: string) =>
   Effect.mapError(
@@ -56,74 +54,85 @@ const asError = (operation: string) =>
       }),
   );
 
-const summary = (item: SessionSummary, resolvedIds: ReadonlySet<string>): CakeChatSummary => {
+const errorValue = (operation: string, error: unknown) =>
+  new CakeChatError({
+    operation,
+    message:
+      error instanceof PiSessionError || error instanceof CakeChatEnvironmentError
+        ? error.message
+        : error instanceof Error
+          ? error.message
+          : String(error),
+  });
+
+const summary = (item: SessionSummary, resolved: boolean): CakeChatSummary => {
   const projected: CakeChatSummary = {
     sessionId: item.id,
     title: item.title,
     createdAt: item.created,
     modifiedAt: item.modified,
     messageCount: item.messageCount,
-    resolved: item.resolved || resolvedIds.has(item.id),
+    resolved,
   };
   if (item.parentSessionId !== undefined)
     Object.assign(projected, { parentSessionId: item.parentSessionId });
   return projected;
 };
 
-export const list = Effect.fn("CakeChats.list")(function* () {
+const catalogForState = Effect.fn("CakeChats.catalogForState")(function* (
+  query: CakeChatCatalogQuery,
+) {
   const environment = yield* CakeChatEnvironment;
   const sessions = yield* PiSessions;
-  const state = yield* getState();
+  const archive = yield* SessionArchiveStorage;
   const location = yield* environment.location().pipe(asError("list"));
-  const resolved = new Set(state.resolvedCakeChatSessionIds);
-  const items = yield* sessions
-    .list({
-      workingDirectory: location.workingDirectory,
-      sessionDirectory: location.sessionDirectory,
-      resolvedSessionDirectory: location.resolvedSessionDirectory,
-      direct: true,
-    })
-    .pipe(asError("list"));
-  return items
-    .map((item) => summary(item, resolved))
-    .sort((left, right) => right.modifiedAt.localeCompare(left.modifiedAt));
-});
-
-/** Current-first Cake Chat catalog observation driven by main-owned application revisions. */
-export const observeCatalog = Effect.fn("CakeChats.observeCatalog")(function* () {
-  const changes = yield* observeState();
-  return changes.pipe(
-    Stream.mapAccumEffect(
-      (): CakeChatCatalogObservation => ({
-        revision: 0,
-        state: undefined,
-      }),
-      (observation, projection) => {
-        if (
-          observation.state &&
-          observation.state !== projection.state &&
-          sameIds(
-            observation.state.resolvedCakeChatSessionIds,
-            projection.state.resolvedCakeChatSessionIds,
-          )
-        )
-          return Effect.succeed([{ ...observation, state: projection.state }, []] as const);
-        return list().pipe(
-          Effect.map((sessions) => {
-            const revision = observation.revision + 1;
-            const update: CakeChatCatalogUpdate = observation.state
-              ? { _tag: "Event", revision, event: { _tag: "Replaced", sessions } }
-              : { _tag: "Snapshot", revision, sessions };
-            return [{ revision, state: projection.state }, [update]] as const;
-          }),
-        );
-      },
-    ),
+  const source: Stream.Stream<SessionSummary, unknown> = query.resolved
+    ? archive.resolved({
+        cwd: location.workingDirectory,
+        activeRoot: location.sessionDirectory,
+        resolvedRoot: location.resolvedSessionDirectory,
+        direct: true,
+      })
+    : sessions.catalog({
+        workingDirectory: location.workingDirectory,
+        sessionDirectory: location.sessionDirectory,
+        direct: true,
+      });
+  return source.pipe(
+    Stream.map((item) => summary(item, query.resolved)),
+    Stream.mapError((error) => errorValue("catalog", error)),
   );
 });
 
-const sameIds = (left: ReadonlyArray<string>, right: ReadonlyArray<string>) =>
-  left.length === right.length && left.every((id, index) => id === right[index]);
+/** Scoped Cake Chat metadata observation; resolved storage is untouched until requested. */
+export const observeCatalog = Effect.fn("CakeChats.observeCatalog")(function* (
+  query: CakeChatCatalogQuery,
+) {
+  const changes = yield* observeState();
+  const events = changes.pipe(
+    Stream.switchMap(() =>
+      Stream.make({ _tag: "Replaced", sessions: [] } satisfies CakeChatCatalogEvent).pipe(
+        Stream.concat(
+          Stream.unwrap(catalogForState(query)).pipe(
+            Stream.map((session) => ({ _tag: "Upserted" as const, session })),
+          ),
+        ),
+      ),
+    ),
+    Stream.mapAccum(
+      () => 1,
+      (revision, event): readonly [number, ReadonlyArray<CakeChatCatalogUpdate>] => [
+        revision + 1,
+        [{ _tag: "Event", revision: revision + 1, event }],
+      ],
+    ),
+  );
+  return Stream.make({
+    _tag: "Snapshot",
+    revision: 1,
+    sessions: [],
+  } satisfies CakeChatCatalogUpdate).pipe(Stream.concat(events));
+});
 
 export const inspect = Effect.fn("CakeChats.inspect")(function* (sessionId: string) {
   const environment = yield* CakeChatEnvironment;

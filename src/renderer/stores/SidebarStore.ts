@@ -5,6 +5,8 @@ import type { SessionCatalogStore } from "./SessionCatalogStore";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
 import type { GlobalChatStore } from "./GlobalChatStore";
 import { RendererClientContext } from "../client/RendererClientContext";
+import type { ProjectSessionCatalogQuery } from "../../domain/project-session-data";
+import type { CakeChatCatalogQuery } from "../../domain/cake-chat-data";
 
 export interface SidebarStoreProps {
   projects: ProjectCatalogStore;
@@ -18,15 +20,15 @@ export interface SidebarStoreProps {
   setSessionUnread(sessionId: string, unread: boolean): Promise<void>;
 }
 
-/** Owns project navigation, session pagination, and activity badges. */
+/** Owns project navigation, metadata-stream demand, and activity badges. */
 export class SidebarStore extends Store<SidebarStoreProps> {
   get electron() {
     return RendererClientContext.consume(this)!.electron;
   }
 
-  @snapshot limitsByProject: Record<string, number> = observable({});
   @snapshot collapsedGroups: Record<string, boolean> = observable({});
-  @snapshot resolvedLaneExpanded = false;
+  private readonly expandedResolvedGroups: Record<string, boolean> = observable({});
+  resolvedLaneExpanded = false;
   now = Date.now();
 
   constructor(props: SidebarStore["props"]) {
@@ -80,36 +82,40 @@ export class SidebarStore extends Store<SidebarStoreProps> {
     return this.props.cakeChat().summaries.filter((session) => session.resolved === resolved);
   }
 
-  get hasResolvedSessions() {
-    return (
-      this.cakeChatSessions(true).length > 0 ||
-      this.props.projects.recentProjectPaths.some(
-        (path) => this.projectSessions(path, true).length > 0,
-      )
-    );
-  }
-
   sessionActivity(sessionId: string) {
     const activity = this.props.sessions.findSession(sessionId)?.activity;
     if (activity) return activity;
     return this.props.catalog.find(sessionId)?.unread ? "unread" : undefined;
   }
 
-  sessionLimit(workspacePath: string, resolved = false) {
-    return this.limitsByProject[this.limitKey(workspacePath, resolved)] ?? 10;
-  }
-
-  showMoreSessions(workspacePath: string, resolved = false) {
-    const key = this.limitKey(workspacePath, resolved);
-    this.limitsByProject[key] = this.sessionLimit(workspacePath, resolved) + 10;
-  }
-
   isGroupCollapsed(groupKey: string) {
+    if (groupKey.startsWith("resolved:")) return this.expandedResolvedGroups[groupKey] !== true;
     return this.collapsedGroups[groupKey] === true;
   }
 
   toggleGroupCollapsed(groupKey: string) {
+    if (groupKey.startsWith("resolved:")) {
+      this.expandedResolvedGroups[groupKey] = this.isGroupCollapsed(groupKey);
+      return;
+    }
     this.collapsedGroups[groupKey] = !this.isGroupCollapsed(groupKey);
+  }
+
+  get projectSessionCatalogQueries(): ReadonlyArray<ProjectSessionCatalogQuery> {
+    const queries: ProjectSessionCatalogQuery[] = [];
+    for (const projectPath of this.props.projects.orderedProjectPaths) {
+      if (!this.isGroupCollapsed(`active:${projectPath}`))
+        queries.push({ projectPath, resolved: false });
+      if (this.resolvedLaneExpanded && !this.isGroupCollapsed(`resolved:${projectPath}`))
+        queries.push({ projectPath, resolved: true });
+    }
+    return queries;
+  }
+
+  get cakeChatCatalogQueries(): ReadonlyArray<CakeChatCatalogQuery> {
+    return this.resolvedLaneExpanded
+      ? [{ resolved: false }, { resolved: true }]
+      : [{ resolved: false }];
   }
 
   setSessionResolved(sessionId: string, resolved: boolean) {
@@ -139,9 +145,5 @@ export class SidebarStore extends Store<SidebarStoreProps> {
 
   sessionActivityTime(modified: string) {
     return formatRelativeSessionTime(modified, this.now);
-  }
-
-  private limitKey(workspacePath: string, resolved: boolean) {
-    return `${resolved ? "resolved" : "active"}\u0000${workspacePath}`;
   }
 }

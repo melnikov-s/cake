@@ -73,6 +73,7 @@ describe("RendererModelSynchronizer", () => {
     synchronizer.sync({
       projects,
       sessionCatalog: sessions,
+      projectSessionCatalogQueries: [{ projectPath: "/cake", resolved: false }],
       cakeChatCatalog: cakeChats,
       projectSessions: [
         { target: { sessionId: "session", workingDirectory: "/worktree" }, model: session },
@@ -128,6 +129,7 @@ describe("RendererModelSynchronizer", () => {
     synchronizer.sync({
       projects,
       sessionCatalog: sessions,
+      projectSessionCatalogQueries: [{ projectPath: "/cake", resolved: false }],
       cakeChatCatalog: cakeChats,
       projectSessions: [],
       cakeChats: [],
@@ -467,6 +469,7 @@ describe("RendererModelSynchronizer", () => {
     synchronizer.sync({
       projects,
       sessionCatalog: sessions,
+      projectSessionCatalogQueries: [{ projectPath: "/cake", resolved: false }],
       cakeChatCatalog: cakeChats,
       projectSessions: [],
       cakeChats: [],
@@ -474,6 +477,61 @@ describe("RendererModelSynchronizer", () => {
 
     await vi.waitFor(() => expect(sessions.find("newer")?.resolved).toBe(true));
     expect(sessions.sessions.map((session) => session.sessionId)).toEqual(["older", "newer"]);
+
+    synchronizer[Symbol.dispose]();
+    projects[Symbol.dispose]();
+    sessions[Symbol.dispose]();
+    cakeChats[Symbol.dispose]();
+  });
+
+  it("unloads a Project Session catalog group when its demand disappears", async () => {
+    const update: SessionCatalogUpdate = {
+      _tag: "Snapshot",
+      revision: 1,
+      sessions: [
+        {
+          sessionId: "visible",
+          title: "Visible",
+          createdAt: "2026-01-01",
+          modifiedAt: "2026-01-01",
+          messageCount: 0,
+          resolved: false,
+          unread: false,
+          projectPath: "/cake",
+          projectName: "Cake",
+          workingDirectory: "/cake",
+        },
+      ],
+    };
+    const client = {
+      ...clientWithProjectStream(() => Stream.never),
+      projectSessions: {
+        observeCatalog: () => Stream.concat(Stream.make(update), Stream.never),
+      },
+    } as unknown as CakeIpcClientService;
+    const projects = ProjectCatalog.create();
+    const sessions = SessionCatalog.create();
+    const cakeChats = CakeChatCatalog.create();
+    const synchronizer = new RendererModelSynchronizer(
+      runtimeFor(client),
+      new RendererSynchronizationSupervisor(),
+    );
+    const base = {
+      projects,
+      sessionCatalog: sessions,
+      cakeChatCatalog: cakeChats,
+      projectSessions: [],
+      cakeChats: [],
+    };
+
+    synchronizer.sync({
+      ...base,
+      projectSessionCatalogQueries: [{ projectPath: "/cake", resolved: false }],
+    });
+    await vi.waitFor(() => expect(sessions.find("visible")).toBeDefined());
+
+    synchronizer.sync({ ...base, projectSessionCatalogQueries: [] });
+    expect(sessions.find("visible")).toBeUndefined();
 
     synchronizer[Symbol.dispose]();
     projects[Symbol.dispose]();

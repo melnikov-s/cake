@@ -13,7 +13,7 @@ import {
   observeState,
   refreshProjection,
   setSessionFastMode,
-  setSessionsResolved,
+  setSessionUnread,
   trustProject,
 } from "./application";
 import type { ApplicationState } from "./application-data";
@@ -41,6 +41,7 @@ export {
 import {
   ProjectSessionError,
   type ProjectSessionPreview,
+  type ProjectSessionCatalogQuery,
   type ProjectSessionPromptInput,
   type ProjectSessionSnapshot,
   type ProjectSessionStartInput,
@@ -48,12 +49,9 @@ import {
   type ProjectSessionTarget,
   type ProjectSessionUpdate,
 } from "./project-session-data";
+import { SessionArchiveStorage } from "../services/storage/SessionArchiveStorage";
 
-interface SessionCatalogObservation {
-  readonly revision: number;
-  readonly state: ApplicationState | undefined;
-  readonly sessions: ReadonlyArray<ProjectSessionSummary> | undefined;
-}
+type SessionCatalogEvent = Extract<SessionCatalogUpdate, { readonly _tag: "Event" }>["event"];
 
 const asError = (operation: string) =>
   Effect.mapError(
@@ -72,7 +70,7 @@ const asError = (operation: string) =>
 const summary = (
   item: SessionSummary,
   location: ProjectSessionLocation,
-  resolvedIds: ReadonlySet<string>,
+  resolved: boolean,
   unreadIds: ReadonlySet<string>,
 ): ProjectSessionSummary => {
   const projected: ProjectSessionSummary = {
@@ -81,7 +79,7 @@ const summary = (
     createdAt: item.created,
     modifiedAt: item.modified,
     messageCount: item.messageCount,
-    resolved: item.resolved || resolvedIds.has(item.id),
+    resolved,
     unread: unreadIds.has(item.id),
     projectPath: location.projectPath,
     projectName: location.projectName,
@@ -94,120 +92,80 @@ const summary = (
   return projected;
 };
 
-const listForState = Effect.fn("ProjectSessions.listForState")(function* (state: ApplicationState) {
+const archiveLocation = (location: ProjectSessionLocation) => ({
+  cwd: location.workingDirectory,
+  activeRoot: location.sessionDirectory,
+  resolvedRoot: location.resolvedSessionDirectory,
+});
+
+const catalogForState = Effect.fn("ProjectSessions.catalogForState")(function* (
+  query: ProjectSessionCatalogQuery,
+  state: ApplicationState,
+) {
   const environment = yield* ProjectSessionEnvironment;
   const sessions = yield* PiSessions;
+  const archive = yield* SessionArchiveStorage;
   const locations = yield* environment.locations().pipe(asError("list"));
-  const resolved = new Set(state.resolvedSessionIds);
   const unread = new Set(state.unreadSessionIds);
-  const groups = yield* Effect.forEach(
-    locations,
-    (location) =>
-      sessions
-        .list({
-          workingDirectory: location.workingDirectory,
-          sessionDirectory: location.sessionDirectory,
-          resolvedSessionDirectory: location.resolvedSessionDirectory,
-        })
-        .pipe(
-          Effect.map((items) => items.map((item) => summary(item, location, resolved, unread))),
-          Effect.catchTag("PiSessionError", () => Effect.succeed([])),
-        ),
-    { concurrency: 8 },
-  );
-  const byId = new Map<string, ProjectSessionSummary>();
-  for (const item of groups.flat()) {
-    if (byId.has(item.sessionId))
-      return yield* new ProjectSessionError({
-        operation: "list",
-        message: `Project Session ID collision detected: ${item.sessionId}`,
-      });
-    byId.set(item.sessionId, item);
-  }
-  return [...byId.values()].sort((left, right) => right.modifiedAt.localeCompare(left.modifiedAt));
-});
-
-export const list = Effect.fn("ProjectSessions.list")(function* () {
-  return yield* listForState(yield* getState());
-});
-
-/**
- * Current-first catalog observation. Application projection revisions trigger a fresh Pi-owned
- * listing, so reconnect replaces the renderer projection without persisting a catalog copy.
- */
-export const observeCatalog = Effect.fn("ProjectSessions.observeCatalog")(function* () {
-  const changes = yield* observeState();
-  return changes.pipe(
-    Stream.mapAccumEffect(
-      (): SessionCatalogObservation => ({
-        revision: 0,
-        state: undefined,
-        sessions: undefined,
-      }),
-      (observation, projection) => {
-        const replace = () =>
-          listForState(projection.state).pipe(
-            Effect.map((sessions) => {
-              const revision = observation.revision + 1;
-              const update: SessionCatalogUpdate = observation.sessions
-                ? { _tag: "Event", revision, event: { _tag: "Replaced", sessions } }
-                : { _tag: "Snapshot", revision, sessions };
-              return [{ revision, state: projection.state, sessions }, [update]] as const;
-            }),
-          );
-        if (!observation.state || !observation.sessions) return replace();
-        if (observation.state === projection.state) return replace();
-        if (!sameProjects(observation.state.projects, projection.state.projects)) return replace();
-
-        const changed = observation.sessions.filter((session) => {
-          const resolved = projection.state.resolvedSessionIds.includes(session.sessionId);
-          const unread = projection.state.unreadSessionIds.includes(session.sessionId);
-          return session.resolved !== resolved || session.unread !== unread;
-        });
-        if (changed.length === 0)
-          return Effect.succeed([{ ...observation, state: projection.state }, []] as const);
-        if (changed.length > 1) return replace();
-
-        const [changedSession] = changed;
-        if (!changedSession)
-          return Effect.succeed([{ ...observation, state: projection.state }, []] as const);
-        const resolved = projection.state.resolvedSessionIds.includes(changedSession.sessionId);
-        const unread = projection.state.unreadSessionIds.includes(changedSession.sessionId);
-        const sessions = observation.sessions.map((session) =>
-          session.sessionId === changedSession.sessionId
-            ? { ...session, resolved, unread }
-            : session,
+  return Stream.fromIterable(
+    locations.filter((location) => location.projectPath === query.projectPath),
+  ).pipe(
+    Stream.flatMap(
+      (location) => {
+        const source: Stream.Stream<SessionSummary, unknown> = query.resolved
+          ? archive.resolved(archiveLocation(location))
+          : sessions.catalog({
+              workingDirectory: location.workingDirectory,
+              sessionDirectory: location.sessionDirectory,
+            });
+        return source.pipe(
+          Stream.map((item) => summary(item, location, query.resolved, unread)),
+          Stream.catch(() => Stream.empty),
         );
-        const revision = observation.revision + 1;
-        const update: SessionCatalogUpdate = {
-          _tag: "Event",
-          revision,
-          event: { _tag: "StatusChanged", sessionId: changedSession.sessionId, resolved, unread },
-        };
-        return Effect.succeed([{ revision, state: projection.state, sessions }, [update]] as const);
       },
+      { concurrency: 8 },
     ),
   );
 });
 
-const sameProjects = (left: ApplicationState["projects"], right: ApplicationState["projects"]) =>
-  left.length === right.length &&
-  left.every((project, index) => {
-    const other = right[index];
-    return (
-      other !== undefined &&
-      project.path === other.path &&
-      project.name === other.name &&
-      project.addedAt === other.addedAt &&
-      project.lastOpenedAt === other.lastOpenedAt
-    );
-  });
+/**
+ * A scoped current-first metadata stream. Each application projection refresh interrupts the
+ * prior filesystem walk and restarts only this requested project/state group.
+ */
+export const observeCatalog = Effect.fn("ProjectSessions.observeCatalog")(function* (
+  query: ProjectSessionCatalogQuery,
+) {
+  const changes = yield* observeState();
+  const events = changes.pipe(
+    Stream.switchMap((projection) =>
+      Stream.make({ _tag: "Replaced", sessions: [] } satisfies SessionCatalogEvent).pipe(
+        Stream.concat(
+          Stream.unwrap(catalogForState(query, projection.state)).pipe(
+            Stream.map((session) => ({ _tag: "Upserted" as const, session })),
+          ),
+        ),
+      ),
+    ),
+    Stream.mapAccum(
+      () => 1,
+      (revision, event): readonly [number, ReadonlyArray<SessionCatalogUpdate>] => [
+        revision + 1,
+        [{ _tag: "Event", revision: revision + 1, event }],
+      ],
+    ),
+  );
+  return Stream.make({
+    _tag: "Snapshot",
+    revision: 1,
+    sessions: [],
+  } satisfies SessionCatalogUpdate).pipe(Stream.concat(events));
+});
 
 const findLocation = Effect.fn("ProjectSessions.findLocation")(function* (
   target: ProjectSessionTarget,
 ) {
   const environment = yield* ProjectSessionEnvironment;
-  const sessions = yield* PiSessions;
+  const archive = yield* SessionArchiveStorage;
   const locations = yield* environment.locations().pipe(asError("resolve"));
   const candidates = target.workingDirectory
     ? locations.filter((item) => item.workingDirectory === target.workingDirectory)
@@ -218,18 +176,10 @@ const findLocation = Effect.fn("ProjectSessions.findLocation")(function* (
   const matches = yield* Effect.forEach(
     candidates,
     (location) =>
-      sessions
-        .list({
-          workingDirectory: location.workingDirectory,
-          sessionDirectory: location.sessionDirectory,
-          resolvedSessionDirectory: location.resolvedSessionDirectory,
-        })
-        .pipe(
-          Effect.map((items) =>
-            items.some((item) => item.id === target.sessionId) ? location : undefined,
-          ),
-          Effect.catchTag("PiSessionError", () => Effect.succeed(undefined)),
-        ),
+      archive.locate(target.sessionId, archiveLocation(location)).pipe(
+        Effect.map((namespace) => (namespace ? location : undefined)),
+        Effect.catchTag("SessionArchiveStorageError", () => Effect.succeed(undefined)),
+      ),
     { concurrency: 8 },
   );
   const found = matches.filter((item): item is ProjectSessionLocation => item !== undefined);
@@ -289,8 +239,11 @@ export const inspect = Effect.fn("ProjectSessions.inspect")(function* (
   target: ProjectSessionTarget,
 ) {
   const location = yield* findLocation(target);
-  const state = yield* getState();
+  const archive = yield* SessionArchiveStorage;
   const sessions = yield* PiSessions;
+  const namespace = yield* archive
+    .locate(target.sessionId, archiveLocation(location))
+    .pipe(asError("inspect"));
   const preview = yield* sessions
     .inspect({
       workingDirectory: location.workingDirectory,
@@ -305,7 +258,7 @@ export const inspect = Effect.fn("ProjectSessions.inspect")(function* (
     workingDirectory: location.workingDirectory,
     sessionFile: preview.sessionFile,
     parts: preview.parts.map(toJsonValue),
-    resolved: state.resolvedSessionIds.includes(target.sessionId),
+    resolved: namespace === "resolved",
   };
   if (location.managedWorktree !== undefined)
     Object.assign(projected, { managedWorktree: location.managedWorktree });
@@ -315,34 +268,31 @@ export const inspect = Effect.fn("ProjectSessions.inspect")(function* (
 const restoreIfResolved = Effect.fn("ProjectSessions.restoreIfResolved")(function* (
   target: ProjectSessionTarget,
 ) {
-  const state = yield* getState();
-  if (!state.resolvedSessionIds.includes(target.sessionId)) return;
   const location = yield* findLocation(target);
+  const archive = yield* SessionArchiveStorage;
+  if (
+    (yield* archive
+      .locate(target.sessionId, archiveLocation(location))
+      .pipe(asError("restore"))) !== "resolved"
+  )
+    return;
   const environment = yield* ProjectSessionEnvironment;
   const restored = yield* environment.restore(target.sessionId, location).pipe(asError("restore"));
   yield* trustProject(restored.workingDirectory).pipe(asError("restore"));
-  yield* setSessionsResolved([target.sessionId], false).pipe(asError("restore"));
+  yield* refreshProjection().pipe(asError("restore"));
 });
 
 export const open = Effect.fn("ProjectSessions.open")(function* (target: ProjectSessionTarget) {
   const location = yield* findLocation(target);
-  const sessions = yield* PiSessions;
-  const listed = yield* sessions
-    .list({
-      workingDirectory: location.workingDirectory,
-      sessionDirectory: location.sessionDirectory,
-      resolvedSessionDirectory: location.resolvedSessionDirectory,
-    })
+  const archive = yield* SessionArchiveStorage;
+  const namespace = yield* archive
+    .locate(target.sessionId, archiveLocation(location))
     .pipe(asError("open"));
-  const found = listed.find((session) => session.id === target.sessionId);
-  if (!found)
+  if (!namespace)
     return yield* new ProjectSessionError({
       operation: "open",
       message: `Cake could not find Project Session ${target.sessionId}`,
     });
-  const state = yield* getState();
-  if (found.resolved && !state.resolvedSessionIds.includes(target.sessionId))
-    yield* setSessionsResolved([target.sessionId], true).pipe(asError("open"));
   // Selection starts observation in the renderer's Model synchronizer. Opening
   // validates durable transcript state, but resolved sessions remain archived
   // and are projected as read-only previews until an explicit restore or prompt.
@@ -350,19 +300,18 @@ export const open = Effect.fn("ProjectSessions.open")(function* (target: Project
 
 const isSessionResolved = Effect.fn("ProjectSessions.isSessionResolved")(function* (
   target: ProjectSessionTarget,
-  state: ApplicationState,
 ) {
-  if (state.resolvedSessionIds.includes(target.sessionId)) return true;
   const location = yield* findLocation(target);
-  const sessions = yield* PiSessions;
-  const listed = yield* sessions
-    .list({
-      workingDirectory: location.workingDirectory,
-      sessionDirectory: location.sessionDirectory,
-      resolvedSessionDirectory: location.resolvedSessionDirectory,
-    })
+  const archive = yield* SessionArchiveStorage;
+  const namespace = yield* archive
+    .locate(target.sessionId, archiveLocation(location))
     .pipe(asError("observe"));
-  return listed.some((session) => session.id === target.sessionId && session.resolved);
+  if (!namespace)
+    return yield* new ProjectSessionError({
+      operation: "observe",
+      message: "That session is no longer available",
+    });
+  return namespace === "resolved";
 });
 
 export const observe = Effect.fn("ProjectSessions.observe")(function* (
@@ -370,7 +319,7 @@ export const observe = Effect.fn("ProjectSessions.observe")(function* (
 ) {
   const states = yield* observeState();
   const updates = states.pipe(
-    Stream.mapEffect((projection) => isSessionResolved(target, projection.state)),
+    Stream.mapEffect(() => isSessionResolved(target)),
     Stream.changes,
     Stream.switchMap((resolved) =>
       resolved
@@ -776,7 +725,8 @@ export const resolve = Effect.fn("ProjectSessions.resolve")(function* (
   yield* sessionTerminals.closeSession("project", target.sessionId).pipe(asError("resolve"));
   const environment = yield* ProjectSessionEnvironment;
   yield* environment.archive(target.sessionId, location).pipe(asError("resolve"));
-  return yield* setSessionsResolved([target.sessionId], true).pipe(asError("resolve"));
+  yield* setSessionUnread(target.sessionId, false).pipe(asError("resolve"));
+  return yield* refreshProjection().pipe(asError("resolve"));
 });
 
 export const restore = Effect.fn("ProjectSessions.restore")(function* (
@@ -786,5 +736,5 @@ export const restore = Effect.fn("ProjectSessions.restore")(function* (
   const environment = yield* ProjectSessionEnvironment;
   const restored = yield* environment.restore(target.sessionId, location).pipe(asError("restore"));
   yield* trustProject(restored.workingDirectory).pipe(asError("restore"));
-  return yield* setSessionsResolved([target.sessionId], false).pipe(asError("restore"));
+  return yield* refreshProjection().pipe(asError("restore"));
 });

@@ -58,13 +58,12 @@ test("forks a session into a new worktree and opens the fork", async () => {
           lastOpenedAt: timestamp,
         },
       ],
-      resolvedSessionIds: [],
       resolvedCakeChatSessionIds: [],
       trustedProjectPaths: [],
     }),
   );
   await writeFile(
-    join(sessionDirectory, `${sessionId}.jsonl`),
+    join(sessionDirectory, `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`),
     [
       { type: "session", version: 3, id: sessionId, timestamp, cwd: project },
       {

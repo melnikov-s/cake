@@ -43,13 +43,12 @@ test("resolves and restores the selected project session in the desktop sidebar"
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
-      resolvedSessionIds: [],
       resolvedCakeChatSessionIds: [],
       trustedProjectPaths: [],
     }),
   );
   await writeFile(
-    join(sessionDirectory, `${sessionId}.jsonl`),
+    join(sessionDirectory, `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`),
     [
       { type: "session", version: 3, id: sessionId, timestamp, cwd: project },
       {
@@ -98,10 +97,12 @@ test("resolves and restores the selected project session in the desktop sidebar"
     const resolvedToggle = page.getByRole("button", { name: "Expand Resolved" });
     await expect(resolvedToggle).toHaveAttribute("aria-expanded", "false");
     await resolvedToggle.click();
+    await resolvedLane.getByRole("button", { name: "Expand project resolved" }).last().click();
     const restoreAction = page.getByRole("button", { name: /^Restore / });
     await expect(restoreAction).toBeVisible();
     await restoreAction.click();
-    await expect(resolvedLane).toHaveCount(0);
+    await expect(restoreAction).toHaveCount(0);
+    await expect(page.locator(`[data-session-id='${sessionId}']`)).toHaveCount(1);
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });
