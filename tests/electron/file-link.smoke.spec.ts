@@ -208,7 +208,16 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
     await link.click();
     const vscodeWorkspace = page.getByRole("region", { name: "VS Code workspace" });
     await expect(vscodeWorkspace).toBeVisible();
+    await expect(page.locator('[data-slot="sidebar"]')).toBeVisible();
+    const projectSidebarResize = page.getByRole("separator", { name: "Resize project sidebar" });
+    await expect(projectSidebarResize).toHaveAttribute("aria-valuenow", "292");
+    await projectSidebarResize.focus();
+    await projectSidebarResize.press("ArrowRight");
+    await expect(projectSidebarResize).toHaveAttribute("aria-valuenow", "308");
     await expect(page.getByRole("button", { name: "Back to Agent" })).toHaveCount(0);
+    await expect
+      .poll(() => hasVsCodeTitleAction("Toggle Sessions Sidebar"), { timeout: 20_000 })
+      .toBe(true);
     await expect
       .poll(() => hasVsCodeTitleAction("Toggle Chat Sidebar"), { timeout: 20_000 })
       .toBe(true);
@@ -281,7 +290,8 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
           workbenchWidth === bounds.width
         );
       });
-    await toggleChatSidebar();
+    expect(await clickVsCodeTitleAction("Toggle Sessions Sidebar")).toBe(true);
+    await expect(page.locator('[data-slot="sidebar"]')).toBeHidden();
     await expect(vscodeWorkspace).toBeVisible();
     await expect.poll(vscodeFillsWindow).toBe(true);
     const originalContentSize = await application.evaluate(({ BrowserWindow }) =>

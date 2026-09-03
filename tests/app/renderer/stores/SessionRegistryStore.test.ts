@@ -63,6 +63,17 @@ describe("SessionRegistryStore materialization", () => {
     expect(catalog.find("session-1")?.workingDirectory).toBe("/worktree");
 
     const session = registry.materializedSessions[0]!;
+    const otherSession = registry.prepareNewSession("/project", "session-2");
+    session.enterIde();
+    session.toggleIdeChatSidebar();
+    session.setIdeChatSidebarWidth(512);
+    expect(session.ideMode).toBe(true);
+    expect(session.ideChatSidebarVisible).toBe(false);
+    expect(session.ideChatSidebarWidth).toBe(512);
+    expect(otherSession.ideMode).toBe(false);
+    expect(otherSession.ideChatSidebarVisible).toBe(true);
+    expect(otherSession.ideChatSidebarWidth).toBe(420);
+
     session.model.streaming = true;
     expect(session.activity).toBe("running");
     session.model.streaming = false;

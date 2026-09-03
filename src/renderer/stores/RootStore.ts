@@ -245,6 +245,7 @@ export class RootStore extends Store<{
     const context = this.projectWorkbenchStore.sessionContext();
     if (context) this.appShellStore.selectProjectSession(context.sessionId);
     else this.appShellStore.showWorkbench();
+    this.projectWorkbenchStore.restoreSessionPresentation();
   }
   returnToWorkbench() {
     this.showWorkbench();
@@ -256,7 +257,7 @@ export class RootStore extends Store<{
       return;
     }
     if (this.projectWorkbenchStore.embeddedEditorStore.visible) {
-      this.returnToWorkbench();
+      this.projectWorkbenchStore.backToAgent();
       return;
     }
     if (this.projectWorkbenchStore.commandPaneStore.pane)
@@ -562,6 +563,7 @@ export class RootStore extends Store<{
         await this.openSession(sessionId);
       },
       onSessionShown: (sessionId) => this.selectProjectSessionForShell(sessionId),
+      toggleProjectSidebar: () => this.sidebarStore.toggle(),
     });
   }
 

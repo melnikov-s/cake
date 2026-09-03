@@ -31,6 +31,11 @@
         "icon": "$(arrow-left)"
       },
       {
+        "command": "cake.toggleProjectSidebar",
+        "title": "Cake: Toggle Sessions Sidebar",
+        "icon": "$(layout-sidebar-left)"
+      },
+      {
         "command": "cake.toggleChatSidebar",
         "title": "Cake: Toggle Chat Sidebar",
         "icon": "$(layout-sidebar-right)"

@@ -73,6 +73,7 @@ export type RendererEvent =
       threadId: string;
     }
   | { type: "embedded-editor-toggle-chat"; workspacePath: string }
+  | { type: "embedded-editor-toggle-sidebar"; workspacePath: string }
   | { type: "embedded-editor-selection-cleared"; workspacePath: string };
 
 export function toRendererEvent(event: CakeEvent): RendererEvent | undefined {
@@ -139,6 +140,7 @@ export function toRendererEvent(event: CakeEvent): RendererEvent | undefined {
     event.type === "embedded-editor-annotation-opened" ||
     event.type === "embedded-editor-back-to-agent" ||
     event.type === "embedded-editor-toggle-chat" ||
+    event.type === "embedded-editor-toggle-sidebar" ||
     event.type === "embedded-editor-selection-cleared" ||
     event.type === "embedded-editor-entered"
   )

@@ -1,4 +1,4 @@
-import { Store, child, computed, createStore } from "r-state-tree";
+import { Store, child, computed, createStore, snapshot } from "r-state-tree";
 import type { RendererEvent } from "../RendererEvent";
 import type { Session } from "../models/Session";
 import type { ChatConfiguration, ModelPreset } from "../../ipc/session-contract";
@@ -52,8 +52,32 @@ export interface ProjectSessionStoreProps extends SessionTarget {
 
 /** Owns the view and interaction workflow for one project Pi session. */
 export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
+  /** Session-local presentation preference restored when this session is selected. */
+  @snapshot ideMode = false;
+  @snapshot ideChatSidebarVisible = true;
+  @snapshot ideChatSidebarWidth = 420;
   private artifactRequestActive = false;
   private readSettledTurnRevision = 0;
+
+  enterIde() {
+    this.ideMode = true;
+  }
+
+  leaveIde() {
+    this.ideMode = false;
+  }
+
+  toggleIdeChatSidebar() {
+    this.ideChatSidebarVisible = !this.ideChatSidebarVisible;
+  }
+
+  showIdeChatSidebar() {
+    this.ideChatSidebarVisible = true;
+  }
+
+  setIdeChatSidebarWidth(width: number) {
+    this.ideChatSidebarWidth = width;
+  }
 
   get model() {
     return this.props.model;

@@ -5,6 +5,9 @@ import { EmbeddedEditorStore } from "../../../../src/renderer/stores/EmbeddedEdi
 import type { RendererClient } from "../../../../src/renderer/client/RendererClient";
 import { mountWithRendererClient } from "../mount-with-renderer-client";
 function createHarness(annotations?: EditorAnnotationSnapshot) {
+  let ideMode = false;
+  let chatSidebarVisible = true;
+  let chatSidebarWidth = 420;
   const client = {
     getState: vi.fn(async () => ({ status: "missing" as const })),
     install: vi.fn(async () => undefined),
@@ -25,6 +28,21 @@ function createHarness(annotations?: EditorAnnotationSnapshot) {
   const { root, subject: store } = mountWithRendererClient(
     createStore(EmbeddedEditorStore, {
       projectPath: () => "/tmp/project",
+      ideMode: () => ideMode,
+      setIdeMode: (active) => {
+        ideMode = active;
+      },
+      chatSidebarVisible: () => chatSidebarVisible,
+      toggleChatSidebar: () => {
+        chatSidebarVisible = !chatSidebarVisible;
+      },
+      showChatSidebar: () => {
+        chatSidebarVisible = true;
+      },
+      chatSidebarWidth: () => chatSidebarWidth,
+      setChatSidebarWidth: (width) => {
+        chatSidebarWidth = width;
+      },
       annotations: () => annotations,
       startCakeChat,
     }),

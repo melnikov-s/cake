@@ -34,6 +34,7 @@ describe("ProjectWorkbenchStore startup selection", () => {
         onWorktreeSessionsResolved: async () => undefined,
         openSessionById: async () => undefined,
         onSessionShown,
+        toggleProjectSidebar: vi.fn(),
       }),
       { workspaces: { inspect } } as unknown as RendererClient,
     );

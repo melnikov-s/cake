@@ -37,6 +37,7 @@ export interface ProjectWorkbenchStoreProps {
   openSessionById(sessionId: string): Promise<void>;
   /** Commits the session that the workbench actually displays to the application shell. */
   onSessionShown(sessionId: string): void;
+  toggleProjectSidebar(): void;
 }
 
 /** Owns active project/session activation and the project workbench workflow. */
@@ -83,6 +84,16 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   get embeddedEditorStore(): EmbeddedEditorStore {
     return createStore(EmbeddedEditorStore, {
       projectPath: () => this.projectPath,
+      ideMode: () => this.activeSession?.ideMode ?? false,
+      setIdeMode: (active) => {
+        if (active) this.activeSession?.enterIde();
+        else this.activeSession?.leaveIde();
+      },
+      chatSidebarVisible: () => this.activeSession?.ideChatSidebarVisible ?? true,
+      toggleChatSidebar: () => this.activeSession?.toggleIdeChatSidebar(),
+      showChatSidebar: () => this.activeSession?.showIdeChatSidebar(),
+      chatSidebarWidth: () => this.activeSession?.ideChatSidebarWidth ?? 420,
+      setChatSidebarWidth: (width) => this.activeSession?.setIdeChatSidebarWidth(width),
       annotations: () => {
         const sessionId = this.selectedSessionId;
         if (!sessionId) return undefined;
@@ -436,9 +447,20 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       await this.props.onWorktreeSessionsResolved(sessionIds, projectPath);
   }
 
-  private closeEmbeddedEditor() {
+  private suspendEmbeddedEditor() {
     this.activeSession?.composerStore.setEditorContextAttachment(undefined);
-    this.embeddedEditorStore.close();
+    this.embeddedEditorStore.suspend();
+  }
+
+  /** Explicitly returns the active session to its Agent presentation. */
+  backToAgent() {
+    this.activeSession?.composerStore.setEditorContextAttachment(undefined);
+    this.embeddedEditorStore.hide();
+    this.activeSession?.composerStore.requestFocus();
+  }
+
+  restoreSessionPresentation() {
+    if (this.activeSession?.ideMode) void this.embeddedEditorStore.restore();
   }
 
   private showTemporarySession(path: string, sessionId: string, staged = false) {
@@ -447,7 +469,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     const session = staged
       ? this.sessionRegistry.prepareStagedSession(path, sessionId)
       : this.sessionRegistry.prepareNewSession(path, sessionId);
-    this.closeEmbeddedEditor();
+    this.suspendEmbeddedEditor();
     this.projectPath = path;
     this.selectedSessionId = sessionId;
     this.props.onSessionShown(sessionId);
@@ -466,7 +488,10 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       summary?.workingDirectory ?? this.sessionRegistry.findSession(sessionId)?.workspacePath;
     if (!workspacePath) throw new Error(`Cake could not find session ${sessionId}`);
     this.markSessionRead(sessionId);
-    if (workspacePath === this.projectPath && sessionId === this.session?.sessionId) return;
+    if (workspacePath === this.projectPath && sessionId === this.session?.sessionId) {
+      this.restoreSessionPresentation();
+      return;
+    }
     const cached = this.showCachedSession(sessionId);
     if (cached && this.sessionRegistry.isTemporarySession(sessionId)) return;
     try {
@@ -492,10 +517,11 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     const session = this.sessionRegistry.findSession(sessionId);
     // An identity-only registry entry must not replace the visible session.
     if (!session) return false;
-    this.closeEmbeddedEditor();
+    this.suspendEmbeddedEditor();
     this.projectPath = session.workspacePath;
     this.selectedSessionId = sessionId;
     this.props.onSessionShown(sessionId);
+    this.restoreSessionPresentation();
     this.extensionUi.clear();
     this.commandPaneStore.dismiss();
     session.composerStore.requestFocus();
@@ -562,7 +588,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     if (this.signal.aborted) return;
     this.extensionUi.clear();
     this.commandPaneStore.dismiss();
-    this.closeEmbeddedEditor();
+    this.suspendEmbeddedEditor();
     await this.refreshRegisteredProject(path, revision);
     if (this.signal.aborted || revision !== this.openRevision) return;
     if (newSession) {
@@ -641,7 +667,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   dismissSecondarySurfaces() {
     this.sessionContinuationStore.cancelPrompt();
     this.commandPaneStore.dismiss();
-    this.closeEmbeddedEditor();
+    this.suspendEmbeddedEditor();
   }
 
   sessionContext() {
@@ -698,10 +724,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       return;
     }
     if (event.type === "embedded-editor-back-to-agent") {
-      if (event.workspacePath === this.projectPath) {
-        this.closeEmbeddedEditor();
-        this.activeSession?.composerStore.requestFocus();
-      }
+      if (event.workspacePath === this.projectPath) this.backToAgent();
       return;
     }
     if (event.type === "embedded-editor-annotation-opened") {
@@ -717,6 +740,10 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     }
     if (event.type === "embedded-editor-toggle-chat") {
       if (event.workspacePath === this.projectPath) this.embeddedEditorStore.toggleChatSidebar();
+      return;
+    }
+    if (event.type === "embedded-editor-toggle-sidebar") {
+      if (event.workspacePath === this.projectPath) this.props.toggleProjectSidebar();
       return;
     }
     if (event.type === "embedded-editor-entered") {

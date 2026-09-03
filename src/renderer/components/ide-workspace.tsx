@@ -22,6 +22,10 @@ export const IdeWorkspace = observer(function IdeWorkspace({
   reviews,
   projectChat,
   projectComposerHeader,
+  projectSidebar,
+  projectSidebarVisible,
+  projectSidebarWidth,
+  onProjectSidebarWidthChange,
   sessionTitle,
   transcriptBehavior,
 }: {
@@ -29,15 +33,28 @@ export const IdeWorkspace = observer(function IdeWorkspace({
   reviews: ReviewsStore;
   projectChat: ChatStore;
   projectComposerHeader?: ReactNode;
+  projectSidebar: ReactNode;
+  projectSidebarVisible: boolean;
+  projectSidebarWidth: number;
+  onProjectSidebarWidthChange(width: number): void;
   sessionTitle: string;
   transcriptBehavior: ChatTranscriptBehavior;
 }) {
-  const [chatSidebarWidth, setChatSidebarWidth] = useState(420);
   const [resizing, setResizing] = useState(false);
-  const chatSidebarMax = Math.max(320, window.innerWidth - 480);
-  const visibleChatSidebarWidth = Math.min(chatSidebarWidth, chatSidebarMax);
-  const workspaceStyle: CSSProperties & Record<"--ide-chat-sidebar-width", string> = {
+  const chatSidebarMax = Math.max(
+    320,
+    window.innerWidth - (projectSidebarVisible ? projectSidebarWidth : 0) - 480,
+  );
+  const visibleChatSidebarWidth = Math.min(editor.chatSidebarWidth, chatSidebarMax);
+  const projectSidebarMax = Math.max(
+    220,
+    window.innerWidth - (editor.chatSidebarVisible ? visibleChatSidebarWidth : 0) - 360,
+  );
+  const visibleProjectSidebarWidth = Math.min(projectSidebarWidth, projectSidebarMax);
+  const workspaceStyle: CSSProperties &
+    Record<"--ide-chat-sidebar-width" | "--ide-project-sidebar-width", string> = {
     "--ide-chat-sidebar-width": `${visibleChatSidebarWidth}px`,
+    "--ide-project-sidebar-width": `${visibleProjectSidebarWidth}px`,
   };
   const draftAnchor = reviews.draftAnchor;
   const activeThread = reviews.activeThreadId
@@ -65,6 +82,24 @@ export const IdeWorkspace = observer(function IdeWorkspace({
       )}
       style={workspaceStyle}
     >
+      {projectSidebarVisible ? (
+        <>
+          <div className="w-[var(--ide-project-sidebar-width)] min-w-0 shrink-0">
+            {projectSidebar}
+          </div>
+          <ResizeHandle
+            className="left-[calc(var(--ide-project-sidebar-width)-5px)]"
+            label="Resize project sidebar"
+            value={visibleProjectSidebarWidth}
+            min={220}
+            max={projectSidebarMax}
+            edge="left"
+            onChange={onProjectSidebarWidthChange}
+            onResizeStart={() => setResizing(true)}
+            onResizeEnd={() => setResizing(false)}
+          />
+        </>
+      ) : null}
       <section className="min-w-0 flex-1" aria-label="VS Code workspace">
         <EmbeddedEditorPane store={editor} />
       </section>
@@ -77,7 +112,7 @@ export const IdeWorkspace = observer(function IdeWorkspace({
             min={320}
             max={chatSidebarMax}
             edge="right"
-            onChange={setChatSidebarWidth}
+            onChange={(width) => editor.setChatSidebarWidth(width)}
             onResizeStart={() => setResizing(true)}
             onResizeEnd={() => setResizing(false)}
           />

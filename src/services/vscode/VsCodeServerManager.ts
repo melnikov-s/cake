@@ -34,7 +34,7 @@ const VSCODE_BACKGROUND = { dark: "#121519", light: "#f5f7f9" } as const;
 const WORKBENCH_THEME_READY_TIMEOUT_MS = 10_000;
 // VS Code exposes editor-title actions to extensions, but those disappear when no
 // file is open and it has no public top-level title-bar contribution point. Cake
-// owns this managed web surface, so install its two shell controls alongside the
+// owns this managed web surface, so install its shell controls alongside the
 // built-in layout actions and keep them present across title-bar rerenders.
 const VSCODE_SHELL_CONTROL_PREFIX = "__CAKE_SHELL_CONTROL__";
 
@@ -69,6 +69,12 @@ function vscodeShellControlsScript(workspacePath: string) {
     const workspace = ${JSON.stringify(workspacePath)};
     const controls = [
       ["cake-back-to-agent", "Cake: Back to Agent", "cake", "back-to-agent"],
+      [
+        "cake-toggle-project-sidebar",
+        "Cake: Toggle Sessions Sidebar",
+        "layout-sidebar-left",
+        "toggle-project-sidebar",
+      ],
       [
         "cake-toggle-chat-sidebar",
         "Cake: Toggle Chat Sidebar",
@@ -152,6 +158,7 @@ const bridgeMessageSchema = Schema.Union([
     port: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 65_535 })),
   }),
   Schema.Struct({ type: Schema.Literal("back-to-agent"), ...workspaceMessage }),
+  Schema.Struct({ type: Schema.Literal("toggle-project-sidebar"), ...workspaceMessage }),
   Schema.Struct({ type: Schema.Literal("toggle-chat-sidebar"), ...workspaceMessage }),
   Schema.Struct({
     type: Schema.Literal("open-annotation"),
@@ -195,6 +202,7 @@ interface BroadcastTarget {
           threadId: string;
         }
       | { type: "embedded-editor-toggle-chat"; workspacePath: string }
+      | { type: "embedded-editor-toggle-sidebar"; workspacePath: string }
       | { type: "embedded-editor-selection-cleared"; workspacePath: string },
   ): void;
   stateChanged(state: EmbeddedEditorState & { customPath?: string }): void;
@@ -823,14 +831,18 @@ export class VsCodeServerManager {
     }
     const presentedWorkspace =
       this.presentedWorkspacePaths.get(message.value.workspace) ?? message.value.workspace;
-    if (message.value.type === "back-to-agent" || message.value.type === "toggle-chat-sidebar") {
-      this.props.broadcast({
-        type:
-          message.value.type === "back-to-agent"
-            ? "embedded-editor-back-to-agent"
-            : "embedded-editor-toggle-chat",
-        workspacePath: presentedWorkspace,
-      });
+    if (
+      message.value.type === "back-to-agent" ||
+      message.value.type === "toggle-project-sidebar" ||
+      message.value.type === "toggle-chat-sidebar"
+    ) {
+      const type =
+        message.value.type === "back-to-agent"
+          ? "embedded-editor-back-to-agent"
+          : message.value.type === "toggle-project-sidebar"
+            ? "embedded-editor-toggle-sidebar"
+            : "embedded-editor-toggle-chat";
+      this.props.broadcast({ type, workspacePath: presentedWorkspace });
       return;
     }
     if (message.value.type === "open-annotation") {

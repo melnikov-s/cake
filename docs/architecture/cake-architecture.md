@@ -240,7 +240,7 @@ The window Store hierarchy mirrors the product surfaces:
   selection: a Project Session, a Cake Chat Session, settings, or an empty
   workbench. The visible surface and every active navigation treatment derive
   from that selection. `SidebarStore` owns navigation presentation and
-  filtering; neither Store opens sessions directly.
+  filtering, visibility, and width; neither Store opens sessions directly.
 - `ProjectCatalogStore` owns registered project records and their window-local
   ordering. `SessionCatalogStore` owns the currently demanded, activity-sorted
   session metadata projection plus cached ID and project-group indexes. Active
@@ -278,9 +278,10 @@ The window Store hierarchy mirrors the product surfaces:
   `SessionContinuationStore`, `WorktreeCreationStore`, and `EmbeddedEditorStore`.
   `WorktreeCreationStore` owns both draft-composer worktree
   selection and Cake Chat's coordinated create-worktree-then-create-named-session workflow.
-  `EmbeddedEditorStore` owns IDE mode and Source Control navigation,
-  where the native VS Code
-  view occupies the source pane and Cake's shared chat occupies the right drawer.
+  `EmbeddedEditorStore` realizes the selected Project Session's IDE presentation preference and
+  owns native-editor lifecycle, bounds, and Source Control navigation. The native VS Code view
+  occupies the source pane, the ordinary Cake sidebar may occupy the left pane, and Cake's shared
+  chat occupies the right drawer.
   Each child owns its own operation
   state and lifetime; the workbench does not re-export one-for-one child APIs.
 - The root-scoped `SessionRegistryStore` preserves one keyed
@@ -305,8 +306,8 @@ The window Store hierarchy mirrors the product surfaces:
   Directory remains routing/storage context for the Pi runtime, not part of
   session identity. Cake Chat never enters this registry.
 - Each `ProjectSessionStore` owns that session's activity,
-  message composer, chat configuration, managed-worktree status and actions,
-  artifacts, and message comments. Its
+  message composer, chat configuration, session-local Agent/IDE presentation preference and IDE
+  chat-drawer geometry, managed-worktree status and actions, artifacts, and message comments. Its
   `ChatStore` is the common conversation-facing state boundary: it presents the
   draft, transcript parts, streaming state, configuration, and composer actions
   consumed by the authoritative `Chat` component.

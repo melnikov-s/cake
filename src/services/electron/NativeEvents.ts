@@ -39,6 +39,7 @@ export interface NativeEventsService {
       | "embedded-editor-back-to-agent"
       | "embedded-editor-annotation-opened"
       | "embedded-editor-toggle-chat"
+      | "embedded-editor-toggle-sidebar"
       | "embedded-editor-selection-cleared"
       | "embedded-editor-entered"
       | "renderer-events-ready"

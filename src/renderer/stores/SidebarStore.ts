@@ -26,6 +26,8 @@ export class SidebarStore extends Store<SidebarStoreProps> {
     return RendererClientContext.consume(this)!.electron;
   }
 
+  @snapshot hidden = false;
+  @snapshot width = 292;
   @snapshot private readonly expandedActiveGroups: Record<string, boolean> = observable({
     "cake-chat": true,
   });
@@ -47,6 +49,14 @@ export class SidebarStore extends Store<SidebarStoreProps> {
 
   get sessions() {
     return this.props.catalog.sessions;
+  }
+
+  toggle() {
+    this.hidden = !this.hidden;
+  }
+
+  setWidth(width: number) {
+    this.width = width;
   }
 
   showSessionContextMenu(

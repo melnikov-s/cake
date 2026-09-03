@@ -133,6 +133,14 @@ describe("VsCodeServerManager startup", () => {
     });
 
     manager["handleBridgeMessage"](
+      Buffer.from(JSON.stringify({ type: "toggle-project-sidebar", workspace: "/project" })),
+    );
+    expect(broadcast).toHaveBeenCalledWith({
+      type: "embedded-editor-toggle-sidebar",
+      workspacePath: "/project",
+    });
+
+    manager["handleBridgeMessage"](
       Buffer.from(JSON.stringify({ type: "back-to-agent", workspace: "/project" })),
     );
     expect(broadcast).toHaveBeenCalledWith({

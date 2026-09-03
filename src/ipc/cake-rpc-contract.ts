@@ -140,6 +140,10 @@ const cakeEventSchemas = {
     type: Schema.Literal("embedded-editor-toggle-chat"),
     workspacePath: stringMax(4_096),
   }),
+  "embedded-editor-toggle-sidebar": Schema.Struct({
+    type: Schema.Literal("embedded-editor-toggle-sidebar"),
+    workspacePath: stringMax(4_096),
+  }),
   "embedded-editor-selection-cleared": Schema.Struct({
     type: Schema.Literal("embedded-editor-selection-cleared"),
     workspacePath: stringMax(4_096),
@@ -181,6 +185,7 @@ export const embeddedEditorEventSchema = Schema.Union([
   cakeEventSchemas["embedded-editor-back-to-agent"],
   cakeEventSchemas["embedded-editor-annotation-opened"],
   cakeEventSchemas["embedded-editor-toggle-chat"],
+  cakeEventSchemas["embedded-editor-toggle-sidebar"],
   cakeEventSchemas["embedded-editor-selection-cleared"],
   cakeEventSchemas["embedded-editor-entered"],
 ]);
@@ -210,6 +215,7 @@ export const cakeEventSchema = Schema.Union([
   cakeEventSchemas["embedded-editor-back-to-agent"],
   cakeEventSchemas["embedded-editor-annotation-opened"],
   cakeEventSchemas["embedded-editor-toggle-chat"],
+  cakeEventSchemas["embedded-editor-toggle-sidebar"],
   cakeEventSchemas["embedded-editor-selection-cleared"],
   cakeEventSchemas["embedded-editor-entered"],
 ]);

@@ -84,8 +84,8 @@ export const App = observer(function App() {
           : extensionUi.error
             ? extensionUi.errorDetails
             : artifactInteractions?.errorDetails;
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [sidebarWidth, setSidebarWidth] = useState(292);
+  const sidebarCollapsed = sidebar.hidden;
+  const sidebarWidth = sidebar.width;
   const [commandPaneWidth, setCommandPaneWidth] = useState(420);
   const [resizingPanel, setResizingPanel] = useState(false);
   const [sessionHeaderHost, setSessionHeaderHost] = useState<HTMLDivElement | null>(null);
@@ -100,7 +100,8 @@ export const App = observer(function App() {
   const returnToWorkbench = useCallback(() => {
     root.returnToWorkbench();
   }, [root]);
-  const toggleSidebar = useCallback(() => setSidebarCollapsed((value) => !value), []);
+  const toggleSidebar = useCallback(() => sidebar.toggle(), [sidebar]);
+  const setSidebarWidth = useCallback((width: number) => sidebar.setWidth(width), [sidebar]);
   const openSettings = useCallback(() => root.showSettings(), [root]);
   const openCakeChat = useCallback(
     (sessionId?: string) => {
@@ -210,6 +211,25 @@ export const App = observer(function App() {
           },
         }
       : undefined;
+  const projectSidebar = (
+    <Sidebar
+      store={sidebar}
+      projects={projects}
+      chat={store}
+      cakeChat={root.globalChatStore}
+      shell={shell}
+      onToggle={toggleSidebar}
+      onOpenSettings={openSettings}
+      onOpenCakeChat={openCakeChat}
+      onCreateCakeChat={createCakeChat}
+      onOpenSession={openSession}
+      onCreateSession={createSession}
+      onRemoveProject={(path, deleteSessions) => root.removeProject(path, deleteSessions)}
+      onChooseProject={chooseProject}
+      onGoBack={goBack}
+      onGoForward={goForward}
+    />
+  );
   const projectComposerHeader = session ? (
     <WorktreePill
       creation={store.worktreeCreationStore}
@@ -235,6 +255,10 @@ export const App = observer(function App() {
           <IdeWorkspace
             editor={store.embeddedEditorStore}
             reviews={reviews}
+            projectSidebar={projectSidebar}
+            projectSidebarVisible={!sidebarCollapsed}
+            projectSidebarWidth={sidebarWidth}
+            onProjectSidebarWidthChange={setSidebarWidth}
             projectChat={session.chatStore}
             projectComposerHeader={projectComposerHeader}
             sessionTitle={store.sessionTitle}
@@ -259,25 +283,7 @@ export const App = observer(function App() {
       )}
       style={shellStyle}
     >
-      {!sidebarCollapsed && (
-        <Sidebar
-          store={sidebar}
-          projects={projects}
-          chat={store}
-          cakeChat={root.globalChatStore}
-          shell={shell}
-          onToggle={toggleSidebar}
-          onOpenSettings={openSettings}
-          onOpenCakeChat={openCakeChat}
-          onCreateCakeChat={createCakeChat}
-          onOpenSession={openSession}
-          onCreateSession={createSession}
-          onRemoveProject={(path, deleteSessions) => root.removeProject(path, deleteSessions)}
-          onChooseProject={chooseProject}
-          onGoBack={goBack}
-          onGoForward={goForward}
-        />
-      )}
+      {!sidebarCollapsed && projectSidebar}
       {!sidebarCollapsed && (
         <ResizeHandle
           className="left-[calc(var(--sidebar-width)-5px)] max-[820px]:left-[calc(min(var(--sidebar-width),230px)-5px)]"

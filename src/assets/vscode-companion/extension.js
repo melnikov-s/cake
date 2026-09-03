@@ -403,6 +403,9 @@ function activate(context) {
     vscode.commands.registerCommand("cake.backToAgent", () =>
       postBridge({ type: "back-to-agent" }),
     ),
+    vscode.commands.registerCommand("cake.toggleProjectSidebar", () =>
+      postBridge({ type: "toggle-project-sidebar" }),
+    ),
     vscode.commands.registerCommand("cake.toggleChatSidebar", () =>
       postBridge({ type: "toggle-chat-sidebar" }),
     ),

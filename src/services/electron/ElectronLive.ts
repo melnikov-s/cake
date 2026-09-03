@@ -603,6 +603,7 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
         "embedded-editor-back-to-agent",
         "embedded-editor-annotation-opened",
         "embedded-editor-toggle-chat",
+        "embedded-editor-toggle-sidebar",
         "embedded-editor-selection-cleared",
         "embedded-editor-entered",
       ),

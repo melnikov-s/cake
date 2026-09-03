@@ -58,8 +58,8 @@ export const EmbeddedEditorPane = observer(function EmbeddedEditorPane({
   useLayoutEffect(() => {
     const element = containerRef.current;
     if (!element) return;
-    if (!store.chatSidebarVisible) {
-      void store.reportBounds({ x: 0, y: 0, width: window.innerWidth, height: window.innerHeight });
+    if (!store.nativeViewReady) {
+      void store.reportBounds(null);
       return;
     }
     const bounds = element.getBoundingClientRect();
@@ -69,19 +69,14 @@ export const EmbeddedEditorPane = observer(function EmbeddedEditorPane({
       width: bounds.width,
       height: bounds.height,
     });
-  }, [store, store.chatSidebarVisible]);
+  }, [store, store.chatSidebarVisible, store.nativeViewReady]);
 
   useEffect(() => {
     const element = containerRef.current;
     if (!element) return;
     const report = () => {
-      if (!store.chatSidebarVisible) {
-        void store.reportBounds({
-          x: 0,
-          y: 0,
-          width: window.innerWidth,
-          height: window.innerHeight,
-        });
+      if (!store.nativeViewReady) {
+        void store.reportBounds(null);
         return;
       }
       const bounds = element.getBoundingClientRect();

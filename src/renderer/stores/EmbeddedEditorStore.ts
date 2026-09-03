@@ -9,6 +9,13 @@ import { describeError } from "../error-details";
 
 export interface EmbeddedEditorStoreProps {
   projectPath(): string | undefined;
+  ideMode(): boolean;
+  setIdeMode(active: boolean): void;
+  chatSidebarVisible(): boolean;
+  toggleChatSidebar(): void;
+  showChatSidebar(): void;
+  chatSidebarWidth(): number;
+  setChatSidebarWidth(width: number): void;
   annotations(): EditorAnnotationSnapshot | undefined;
   startCakeChat(prompt: string): Promise<void>;
 }
@@ -19,7 +26,6 @@ export interface EmbeddedEditorStoreProps {
  */
 export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
   visible = false;
-  chatSidebarVisible = true;
   status: EmbeddedEditorStatus = "missing";
   statusMessage: string | undefined;
   customPath: string | undefined;
@@ -37,6 +43,19 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
 
   get vscode() {
     return RendererClientContext.consume(this)!.vscode;
+  }
+
+  get chatSidebarVisible() {
+    return this.props.chatSidebarVisible();
+  }
+
+  get chatSidebarWidth() {
+    return this.props.chatSidebarWidth();
+  }
+
+  /** Prevents a previously selected Working Directory from flashing during a session switch. */
+  get nativeViewReady() {
+    return this.visible && this.openedWorkspace === this.props.projectPath();
   }
 
   constructor(props: EmbeddedEditorStore["props"]) {
@@ -116,19 +135,28 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
   }
 
   private activate() {
-    if (this.visible) return;
-    this.chatSidebarVisible = true;
+    this.props.setIdeMode(true);
     this.visible = true;
+  }
+
+  /** Restores the selected session's IDE presentation without changing its preference. */
+  async restore() {
+    if (!this.props.ideMode()) return;
+    this.visible = true;
+    await this.open();
   }
 
   /** Toggles only Cake's chat drawer while leaving the VS Code surface mounted. */
   toggleChatSidebar() {
-    if (!this.visible) return;
-    this.chatSidebarVisible = !this.chatSidebarVisible;
+    if (this.visible) this.props.toggleChatSidebar();
   }
 
   showChatSidebar() {
-    if (this.visible) this.chatSidebarVisible = true;
+    if (this.visible) this.props.showChatSidebar();
+  }
+
+  setChatSidebarWidth(width: number) {
+    this.props.setChatSidebarWidth(width);
   }
 
   async open() {
@@ -272,19 +300,18 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
     }
   }
 
-  hide() {
+  /** Hides the native surface while retaining the current session's IDE preference. */
+  suspend() {
     this.visible = false;
+    this.lastActivePath = undefined;
+    this.activeContextAttachment = undefined;
     void this.reportBounds(null);
   }
 
-  close() {
-    this.hide();
-    this.chatSidebarVisible = true;
-    this.openedWorkspace = undefined;
-    this.lastActivePath = undefined;
-    this.activeContextAttachment = undefined;
-    this.sentAnnotationsFingerprint = undefined;
-    this.annotationSyncPending = false;
+  /** Explicitly returns the selected session to Agent presentation. */
+  hide() {
+    this.props.setIdeMode(false);
+    this.suspend();
   }
 
   private applySnapshot(state: EmbeddedEditorStateSnapshot) {
