@@ -399,6 +399,16 @@ const isSessionResolved = Effect.fn("ProjectSessions.isSessionResolved")(functio
   target: ProjectSessionTarget,
 ) {
   const location = yield* findLocation(target);
+  const sessions = yield* PiSessions;
+  const activeRuntime = yield* sessions.currentStatus({
+    workingDirectory: location.workingDirectory,
+    sessionDirectory: location.sessionDirectory,
+    sessionId: target.sessionId,
+  });
+  // A newly started Pi runtime can accept its first turn before its JSONL file
+  // is discoverable. The live runtime is authoritative that this is an active
+  // session; consulting storage first would permanently reject observation.
+  if (activeRuntime) return false;
   const archive = yield* SessionArchiveStorage;
   const namespace = yield* archive
     .locate(target.sessionId, archiveLocation(location))

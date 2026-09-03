@@ -46,12 +46,16 @@ const snapshot: SessionSnapshot = {
   tree: [],
 };
 
-const fakeRuntime = (options: CakeRuntimeOptions): CakeRuntime => ({
+const fakeRuntime = (
+  options: CakeRuntimeOptions,
+  prompt: () => Promise<void> = async () => undefined,
+): CakeRuntime => ({
   sessionId: snapshot.sessionId,
   sessionFile: snapshot.sessionFile,
   streaming: false,
   snapshot: async () => snapshot,
   prompt: async () => {
+    await prompt();
     options.onEvent({ type: "streaming", sessionId: snapshot.sessionId, streaming: false });
   },
   compact: async () => undefined,
@@ -91,6 +95,7 @@ const makeLayer = (
     catalogModifiedAt?(): string;
     onResolvedCatalog?(): void;
     onRuntimeOptions?(newSession: boolean): void;
+    prompt?(): Promise<void>;
     sessionExists?: boolean;
     resolvedOnDisk?: boolean;
   } = {},
@@ -149,7 +154,7 @@ const makeLayer = (
     createRuntime: (options) =>
       Effect.sync(() => {
         hooks.onCreateRuntime?.();
-        return fakeRuntime(options);
+        return fakeRuntime(options, hooks.prompt);
       }),
     changelog: () => Effect.succeed("# Changelog"),
   };
@@ -442,6 +447,34 @@ describe("Project Sessions domain", () => {
       assert.match(turnId, /^[0-9a-f-]{36}$/);
     }).pipe(Effect.provide(makeLayer())),
   );
+
+  it.effect("observes a newly started runtime before its session file is discoverable", () => {
+    let finishPrompt!: () => void;
+    const prompt = new Promise<void>((resolve) => {
+      finishPrompt = resolve;
+    });
+    return Effect.gen(function* () {
+      yield* projectSessions.start({
+        sessionId: "session-1",
+        workingDirectory: "/project",
+        text: "First message",
+        attachments: [],
+        renderUserMessageAsMarkdown: false,
+      });
+
+      const updates = yield* projectSessions.observe({
+        sessionId: "session-1",
+        workingDirectory: "/project",
+      });
+      const initial = Array.from(yield* updates.pipe(Stream.take(1), Stream.runCollect));
+
+      assert.equal(initial[0]?._tag, "Snapshot");
+      finishPrompt();
+    }).pipe(
+      Effect.ensuring(Effect.sync(() => finishPrompt?.())),
+      Effect.provide(makeLayer(undefined, { sessionExists: false, prompt: () => prompt })),
+    );
+  });
 
   it.effect("never materializes a new Pi Session through observation", () => {
     const creationModes: boolean[] = [];
