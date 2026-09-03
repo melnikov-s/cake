@@ -2,6 +2,7 @@ import { useState } from "react";
 import { observer } from "r-state-tree/react";
 import type { WorktreeCreationStore } from "../stores/WorktreeCreationStore";
 import type { WorktreeStore } from "../stores/WorktreeStore";
+import type { WorktreeRecord } from "../../ipc/worktree-contract";
 import {
   Confirmation,
   ConfirmationAction,
@@ -34,6 +35,7 @@ import { cn } from "@/lib/utils";
 export interface WorktreePillProps {
   creation: WorktreeCreationStore;
   actions: WorktreeStore;
+  record?: WorktreeRecord;
   sessionId: string;
   projectPath: string;
   draft: boolean;
@@ -46,6 +48,7 @@ type ConfirmationKind = "dirty-target" | "dirty-target-resolve" | "discard-resol
 export const WorktreePill = observer(function WorktreePill({
   creation,
   actions,
+  record: knownRecord,
   sessionId,
   projectPath,
   draft,
@@ -78,6 +81,7 @@ export const WorktreePill = observer(function WorktreePill({
     return (
       <div
         data-testid="worktree-pill"
+        data-slot="worktree-pill"
         className="@container/worktree mx-4 -mb-5 flex min-w-0 flex-wrap items-center gap-1 rounded-t-[1.75rem] border border-b-0 border-border/85 bg-card px-5 pt-3 pb-8 text-xs"
       >
         <Button
@@ -171,12 +175,13 @@ export const WorktreePill = observer(function WorktreePill({
     );
   }
 
-  if (!status) return null;
+  const record = status?.record ?? knownRecord;
+  if (!record) return null;
 
-  const branch = status.record.branch.replace(/^agent\//, "");
-  const landed = status.record.state === "landed";
-  const hasUncommittedChanges = status.dirtyCount > 0;
-  const hasCommits = status.aheadCount > 0;
+  const branch = record.branch.replace(/^agent\//, "");
+  const landed = record.state === "landed";
+  const hasUncommittedChanges = (status?.dirtyCount ?? 0) > 0;
+  const hasCommits = (status?.aheadCount ?? 0) > 0;
   const hasWorkToMerge = hasUncommittedChanges || hasCommits;
   const sessionDisabledReason = actions.isSessionRunning
     ? "Wait for the session to finish before using worktree actions."
@@ -205,15 +210,16 @@ export const WorktreePill = observer(function WorktreePill({
     <>
       <div
         data-testid="worktree-pill"
+        data-slot="worktree-pill"
         className="@container/worktree mx-4 -mb-5 flex flex-col gap-1 rounded-t-[1.75rem] border border-b-0 border-border/85 bg-card px-5 pt-3 pb-8"
       >
         <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 text-xs">
           <span className="flex h-7.5 min-w-0 shrink items-center gap-1.5 px-2 text-xs font-normal text-foreground">
-            <WorktreeStatusIcon state={status.record.state} className="shrink-0" />
+            <WorktreeStatusIcon state={record.state} className="shrink-0" />
             <span className="truncate max-w-56">{branch}</span>
           </span>
           <div className="flex min-w-0 flex-wrap items-center justify-end gap-1 @max-[560px]/worktree:w-full @max-[560px]/worktree:justify-start">
-            {!landed && status.behindCount > 0 && (
+            {status && !landed && status.behindCount > 0 && (
               <WorktreePillAction
                 icon={<RebaseIcon />}
                 aria-label="Rebase"
@@ -228,7 +234,7 @@ export const WorktreePill = observer(function WorktreePill({
                     : "Rebase"}
               </WorktreePillAction>
             )}
-            {!landed && (
+            {status && !landed && (
               <>
                 <WorktreePillAction
                   icon={<MergeIcon />}
@@ -266,7 +272,7 @@ export const WorktreePill = observer(function WorktreePill({
                 </WorktreePillAction>
               </>
             )}
-            {landed && (
+            {status && landed && (
               <WorktreePillAction
                 icon={<ResolveIcon />}
                 aria-label="Resolve"
@@ -277,7 +283,7 @@ export const WorktreePill = observer(function WorktreePill({
                 {actions.phase === "resolving-session" ? "Resolving…" : "Resolve"}
               </WorktreePillAction>
             )}
-            {actions.stalled && (
+            {status && actions.stalled && (
               <>
                 <WorktreePillAction
                   icon={<RestoreIcon />}
@@ -299,7 +305,7 @@ export const WorktreePill = observer(function WorktreePill({
                 </WorktreePillAction>
               </>
             )}
-            {!landed && (
+            {status && !landed && (
               <Popover
                 open={confirmation === "discard-resolve"}
                 onOpenChange={(open) => setConfirmation(open ? "discard-resolve" : undefined)}
@@ -344,7 +350,7 @@ export const WorktreePill = observer(function WorktreePill({
           </div>
         </div>
         {actions.error && <p className="px-2 text-xs text-destructive">{actions.error}</p>}
-        {(status.targetDirty || !status.targetOnBranch) && (
+        {status && (status.targetDirty || !status.targetOnBranch) && (
           <p className="px-2 text-xs text-amber-600 dark:text-amber-400">
             {status.targetDirty
               ? "The merge target has uncommitted changes."

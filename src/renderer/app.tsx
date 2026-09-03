@@ -214,6 +214,7 @@ export const App = observer(function App() {
     <WorktreePill
       creation={store.worktreeCreationStore}
       actions={session.worktreeStore}
+      record={root.sessionCatalogStore.managedWorktree(session.workspacePath)}
       sessionId={session.sessionId}
       projectPath={
         root.sessionCatalogStore.projectOfManagedWorktree(session.workspacePath) ??
@@ -230,7 +231,7 @@ export const App = observer(function App() {
   if (store.embeddedEditorStore.visible && session && projectTranscriptBehavior)
     return (
       <>
-        <StoreProvider key={`${session.workspacePath}\u0000${session.sessionId}`} store={session}>
+        <StoreProvider key={session.sessionId} store={session}>
           <IdeWorkspace
             editor={store.embeddedEditorStore}
             reviews={reviews}
@@ -452,7 +453,7 @@ export const App = observer(function App() {
             )}
           </div>
         ) : (
-          <StoreProvider key={`${session.workspacePath}\u0000${session.sessionId}`} store={session}>
+          <StoreProvider key={session.sessionId} store={session}>
             {sessionHeaderHost &&
               createPortal(
                 <>

@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WorktreePill } from "../../../src/renderer/components/worktree-pill";
 import type { WorktreeCreationStore } from "../../../src/renderer/stores/WorktreeCreationStore";
 import type { WorktreeStore } from "../../../src/renderer/stores/WorktreeStore";
+import type { WorktreeRecord } from "../../../src/ipc/worktree-contract";
 
 function actionStore({
   aheadCount,
@@ -78,12 +79,13 @@ describe("WorktreePill", () => {
     vi.useRealTimers();
   });
 
-  function render(actions: WorktreeStore) {
+  function render(actions: WorktreeStore, record?: WorktreeRecord) {
     act(() =>
       root.render(
         <WorktreePill
           creation={creation}
           actions={actions}
+          record={record}
           sessionId="session"
           projectPath="/project"
           draft={false}
@@ -121,6 +123,24 @@ describe("WorktreePill", () => {
     render(actionStore({ aheadCount: 1, dirtyCount: 0 }));
 
     expect(candidates).not.toHaveBeenCalled();
+  });
+
+  it("keeps the known worktree visible while live status is loading", () => {
+    const actions = actionStore({ aheadCount: 0, dirtyCount: 0 });
+    actions.status = undefined;
+
+    render(actions, {
+      projectPath: "/project",
+      worktreePath: "/worktree",
+      branch: "agent/session",
+      baseBranch: "main",
+      createdAt: new Date(0).toISOString(),
+    });
+
+    expect(container.querySelector('[data-slot="worktree-pill"]')?.textContent).toContain(
+      "session",
+    );
+    expect(container.querySelectorAll("button")).toHaveLength(0);
   });
 
   it("keeps merge actions visible but disabled when there is nothing to land", () => {

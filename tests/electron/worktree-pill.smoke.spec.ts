@@ -87,6 +87,8 @@ test("chooses an isolated worktree without disturbing the new-chat composer", as
     await expect(page.getByRole("button", { name: "Choose existing worktree" })).toBeDisabled();
     await newWorktree.click();
     await expect(newWorktree).toHaveAttribute("aria-pressed", "true");
+    const initialChat = await page.locator('[data-slot="chat"]').elementHandle();
+    expect(initialChat).not.toBeNull();
     await expect(composer).toBeFocused();
     await composer.pressSequentially("Build this in isolation");
     await expect(composer).toHaveValue("Build this in isolation");
@@ -98,6 +100,13 @@ test("chooses an isolated worktree without disturbing the new-chat composer", as
     await expect(
       page.getByTestId("virtuoso-item-list").getByText("Build this in isolation", { exact: true }),
     ).toBeVisible();
+    expect(await initialChat!.evaluate((element) => element.isConnected)).toBe(true);
+    expect(
+      await initialChat!.evaluate(
+        (element) => document.querySelector('[data-slot="chat"]') === element,
+      ),
+    ).toBe(true);
+    await expect(page.locator('[data-slot="worktree-pill"]')).toBeVisible();
     const merge = page.getByRole("button", { name: "Merge", exact: true });
     await expect(merge).toBeVisible({ timeout: 5_000 });
 

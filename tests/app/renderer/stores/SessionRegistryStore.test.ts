@@ -42,18 +42,20 @@ describe("SessionRegistryStore materialization", () => {
     );
     registryRef.current = registry;
 
-    registry.prepareNewSession("/project", "session-1");
+    const stagedSession = registry.prepareNewSession("/project", "session-1");
     registry.relocateTemporarySession("session-1", "/worktree");
 
     expect(registry.materializedSessions).toEqual([]);
-    expect(registry.findSession("session-1")?.workspacePath).toBe("/worktree");
+    expect(registry.findSession("session-1")).toBe(stagedSession);
+    expect(stagedSession.workspacePath).toBe("/worktree");
 
     const invalidate = vi.spyOn(
       registry.findSession("session-1")!.stagedCommandStore,
       "invalidate",
     );
-    registry.materializeNewSession("session-1", "/worktree");
+    const materializedSession = registry.materializeNewSession("session-1", "/worktree");
 
+    expect(materializedSession).toBe(stagedSession);
     expect(invalidate).toHaveBeenCalledOnce();
     expect(registry.isTemporarySession("session-1")).toBe(false);
     expect(registry.materializedSessions).toHaveLength(1);
