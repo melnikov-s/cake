@@ -1,5 +1,5 @@
 import { Effect, Layer, Schema } from "effect";
-import { refreshProjection, setSessionFastMode } from "../domain/application";
+import { setSessionFastMode } from "../domain/application";
 import { makeSubagentControl } from "../domain/subagentControl";
 import { jsonObjectSchema } from "../ipc/json-contract";
 import type { PiSessions } from "../services/pi/PiSessions";
@@ -11,6 +11,7 @@ import { SessionArchiveStorage } from "../services/storage/SessionArchiveStorage
 import type { SubagentCoordinator } from "../services/subagents/SubagentCoordinator";
 import type { SubagentEnvironment } from "../services/subagents/SubagentEnvironment";
 import type { CakeChatEnvironment } from "../services/cake-chats/CakeChatEnvironment";
+import { SessionCatalogChanges } from "../services/session-catalogs/SessionCatalogChanges";
 import {
   CakeChatEnvironmentError,
   makeCakeChatEnvironmentLayer,
@@ -47,6 +48,7 @@ export const makeCakeChatEnvironmentLive = (
   | PluginRuntime
   | ProjectSessionLifecycle
   | SessionArchiveStorage
+  | SessionCatalogChanges
   | SubagentCoordinator
   | SubagentEnvironment
 > => {
@@ -61,12 +63,14 @@ export const makeCakeChatEnvironmentLive = (
       const application = yield* ApplicationState;
       const lifecycle = yield* ProjectSessionLifecycle;
       const metadata = yield* PiSessionMetadataIndex;
+      const catalogs = yield* SessionCatalogChanges;
       const plugins = yield* PluginRuntime;
       const storage = yield* SessionArchiveStorage;
       const context = yield* Effect.context<
         | ApplicationState
         | PiSessionMetadataIndex
         | PiSessions
+        | SessionCatalogChanges
         | SubagentCoordinator
         | SubagentEnvironment
       >();
@@ -133,7 +137,13 @@ export const makeCakeChatEnvironmentLive = (
                         )
                         .pipe(
                           Effect.flatMap((changed) =>
-                            changed ? refreshProjection() : Effect.void,
+                            changed
+                              ? catalogs.publish({
+                                  _tag: "CakeChatSessionChanged",
+                                  sessionId: input.sessionId,
+                                  resolved: false,
+                                })
+                              : Effect.void,
                           ),
                         ),
                     ),

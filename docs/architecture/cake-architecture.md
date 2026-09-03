@@ -253,7 +253,10 @@ The window Store hierarchy mirrors the product surfaces:
   sidebar demands the active stream only for expanded project groups. Its
   resolved lane and every resolved project group start collapsed, so archive
   metadata is not read until both are expanded. Closing a group cancels its
-  stream and unloads that group's projection. Active titles come from a small
+  stream and unloads that group's projection. After a group's one initial lazy
+  metadata scan, session mutations publish scoped catalog events; they refresh
+  only the affected session's filename metadata and never restart catalogs from
+  application-state revisions. Active titles come from a small
   per-session-directory index maintained at the Pi adapter boundary, so listing
   does not inspect transcript bodies. Session IDs are the canonical identity;
   duplicate IDs are rejected. Resolved status derives solely from the active or

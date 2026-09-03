@@ -35,6 +35,7 @@ import { ManagedWorktreesLive } from "../services/worktrees/ManagedWorktreesLive
 import { makeGitLive } from "../services/git/GitLive";
 import { makeWorktreeStorageLive } from "../services/storage/WorktreeStorageLive";
 import { SessionArchiveStorageLive } from "../services/storage/SessionArchiveStorageLive";
+import { SessionCatalogChanges } from "../services/session-catalogs/SessionCatalogChanges";
 import { PluginResources } from "../services/plugins/PluginResources";
 import { makePluginRuntimeLive } from "../layers/PluginRuntimeLive";
 import { loadReviewSessionProjection } from "../services/pi/runtime/sidecar-runtime";
@@ -107,6 +108,7 @@ const baseLive = Layer.mergeAll(
   worktreeStorageLive,
   managedWorktreesLive,
   SessionArchiveStorageLive,
+  SessionCatalogChanges.layer,
   pluginResourcesLive,
   PiSessionMetadataIndexLive,
   piModelsLive,

@@ -104,6 +104,7 @@ const makeLayer = () => {
   };
   const adapter: PiSessionsAdapter = {
     catalog: () => Stream.empty,
+    catalogEntry: () => Effect.succeed(undefined),
     inspect: () => Effect.succeed(undefined),
     createRuntime: (options) =>
       Effect.sync(() => {
@@ -179,7 +180,6 @@ const makeLayer = () => {
       projects,
       Layer.mock(ApplicationState, {
         snapshot: defaultApplicationState,
-        refreshProjection: () => Effect.void,
       }),
     ),
     options: runtimeOptions,

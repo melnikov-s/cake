@@ -83,6 +83,7 @@ const adapter = (
   finalizations: Ref.Ref<number>,
 ): PiSessionsAdapter => ({
   catalog: () => Stream.empty,
+  catalogEntry: () => Effect.succeed(undefined),
   inspect: () => Effect.succeed(undefined),
   createRuntime: (runtimeOptions) =>
     Ref.update(acquisitions, (count) => count + 1).pipe(
@@ -206,6 +207,7 @@ describe("PiSessions", () => {
       const finalizations = yield* Ref.make(0);
       const layer = makePiSessionsLayer({
         catalog: () => Stream.empty,
+        catalogEntry: () => Effect.succeed(undefined),
         inspect: () => Effect.succeed(undefined),
         createRuntime: (runtimeOptions) =>
           Effect.succeed(

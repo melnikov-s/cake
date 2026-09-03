@@ -1,5 +1,5 @@
 import { readdir, stat } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { Effect, Stream } from "effect";
 
 const SESSION_FILE_PATTERN = /^(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z)_(.+)\.jsonl$/;
@@ -110,4 +110,22 @@ export async function findSessionFileById(
   const matches = entries.filter((entry) => entry.isFile() && entry.name.endsWith(suffix));
   if (matches.length > 1) throw new Error(`Session ID collision detected: ${sessionId}`);
   return matches[0] ? join(directory, matches[0].name) : undefined;
+}
+
+/** Reads metadata for one exact session file without opening its transcript body. */
+export async function findSessionFileMetadataById(
+  sessionId: string,
+  input: {
+    readonly workingDirectory: string;
+    readonly root: string;
+    readonly direct?: boolean;
+  },
+): Promise<SessionFileMetadata | undefined> {
+  const path = await findSessionFileById(sessionId, input);
+  if (!path) return undefined;
+  return metadataFromFilename(
+    sessionDirectoryPath(input),
+    basename(path),
+    (await stat(path)).mtime,
+  );
 }

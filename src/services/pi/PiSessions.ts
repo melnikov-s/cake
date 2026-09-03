@@ -31,6 +31,7 @@ import {
 } from "./runtime/cake-runtime";
 import {
   loadPiChangelog,
+  loadWorkspaceSessionSummary,
   loadWorkspaceSessionPreview,
   streamWorkspaceSessions,
 } from "./runtime/session-discovery";
@@ -164,6 +165,10 @@ export interface PiSessionRuntimeStatus {
 
 export interface PiSessionsAdapter {
   readonly catalog: (query: PiSessionQuery) => Stream.Stream<SessionSummary, unknown>;
+  readonly catalogEntry: (
+    query: PiSessionQuery,
+    sessionId: string,
+  ) => Effect.Effect<SessionSummary | undefined, unknown>;
   readonly inspect: (target: PiSessionTarget) => Effect.Effect<SessionPreview | undefined, unknown>;
   readonly createRuntime: (options: CakeRuntimeOptions) => Effect.Effect<CakeRuntime, unknown>;
   readonly changelog: () => Effect.Effect<string, unknown>;
@@ -173,6 +178,10 @@ export class PiSessions extends Context.Service<
   PiSessions,
   {
     readonly catalog: (query: PiSessionQuery) => Stream.Stream<SessionSummary, PiSessionError>;
+    readonly catalogEntry: (
+      query: PiSessionQuery,
+      sessionId: string,
+    ) => Effect.Effect<SessionSummary | undefined, PiSessionError>;
     readonly inspect: (target: PiSessionTarget) => Effect.Effect<SessionPreview, PiSessionError>;
     readonly acquire: (
       options: PiSessionAcquireOptions,
@@ -374,6 +383,16 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
           operation: "inspect",
           message: `Pi Session ${decoded.sessionId} was not found`,
         });
+      });
+
+      const catalogEntry = Effect.fn("PiSessions.catalogEntry")(function* (
+        query: PiSessionQuery,
+        sessionId: string,
+      ) {
+        const decoded = yield* Schema.decodeUnknownEffect(PiSessionQuery)(query).pipe(
+          sessionError("catalogEntry"),
+        );
+        return yield* adapter.catalogEntry(decoded, sessionId).pipe(sessionError("catalogEntry"));
       });
 
       const acquire = Effect.fn("PiSessions.acquire")(function* (options: PiSessionAcquireOptions) {
@@ -681,6 +700,7 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
 
       return PiSessions.of({
         catalog,
+        catalogEntry,
         inspect,
         acquire,
         acquireCurrent,
@@ -715,6 +735,27 @@ export const makePiSessionsLive = (): Layer.Layer<PiSessions, never, PiSessionMe
                 ),
               ),
           ),
+        catalogEntry: (query, sessionId) =>
+          metadata
+            .titles({
+              workingDirectory: query.workingDirectory,
+              sessionDirectory: query.sessionDirectory,
+              direct: query.direct,
+            })
+            .pipe(
+              Effect.flatMap((titles) =>
+                Effect.tryPromise({
+                  try: () =>
+                    loadWorkspaceSessionSummary(
+                      query.workingDirectory,
+                      sessionId,
+                      query.sessionDirectory,
+                      { direct: query.direct, titles },
+                    ),
+                  catch: (cause) => cause,
+                }),
+              ),
+            ),
         inspect: (target) =>
           Effect.tryPromise({
             try: () =>

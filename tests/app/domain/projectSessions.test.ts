@@ -3,7 +3,7 @@ import { it } from "@effect/vitest";
 import { Deferred, Effect, Fiber, Layer, Stream, SubscriptionRef } from "effect";
 import { describe } from "vitest";
 import * as projectSessions from "../../../src/domain/projectSessions";
-import { getState, refreshProjection } from "../../../src/domain/application";
+import { getState } from "../../../src/domain/application";
 import {
   defaultApplicationState,
   type ApplicationState as ApplicationStateValue,
@@ -18,6 +18,7 @@ import { ApplicationState } from "../../../src/services/storage/ApplicationState
 import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { SubagentCoordinatorLive } from "../../../src/services/subagents/SubagentCoordinator";
 import { Terminal } from "../../../src/services/terminal/Terminal";
+import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import type { SessionSnapshot } from "../../../src/ipc/session-contract";
 
 const snapshot: SessionSnapshot = {
@@ -104,11 +105,6 @@ const makeLayer = (
         current: () => SubscriptionRef.get(projection).pipe(Effect.map((current) => current.state)),
         snapshot: () => SubscriptionRef.getUnsafe(projection).state,
         changes: () => SubscriptionRef.changes(projection),
-        refreshProjection: () =>
-          SubscriptionRef.update(projection, (current) => ({
-            revision: current.revision + 1,
-            state: current.state,
-          })),
         transact: (transition) =>
           SubscriptionRef.updateAndGetEffect(projection, (current) =>
             transition(current.state).pipe(
@@ -132,6 +128,17 @@ const makeLayer = (
             resolved: false,
           });
     },
+    catalogEntry: () =>
+      hooks.sessionExists === false || resolvedOnDisk
+        ? Effect.succeed(undefined)
+        : Effect.succeed({
+            id: "session-1",
+            title: "Active branch",
+            created: "2026-01-01T00:00:00.000Z",
+            modified: hooks.catalogModifiedAt?.() ?? "2026-01-02T00:00:00.000Z",
+            messageCount: 2,
+            resolved: false,
+          }),
     inspect: () =>
       Effect.succeed({
         workspacePath: snapshot.workspacePath,
@@ -148,6 +155,7 @@ const makeLayer = (
   };
   return Layer.mergeAll(
     application,
+    SessionCatalogChanges.layer,
     makePiSessionsLayer(adapter),
     SubagentCoordinatorLive,
     makeProjectSessionEnvironmentLayer({
@@ -219,6 +227,17 @@ const makeLayer = (
                 resolved: true,
               });
         },
+        resolvedEntry: () =>
+          hooks.sessionExists === false || !resolvedOnDisk
+            ? Effect.succeed(undefined)
+            : Effect.succeed({
+                id: "session-1",
+                title: "session-1",
+                created: "2026-01-01T00:00:00.000Z",
+                modified: "2026-01-02T00:00:00.000Z",
+                messageCount: 0,
+                resolved: true,
+              }),
       }),
     ),
     Layer.succeed(
@@ -250,8 +269,11 @@ describe("Project Sessions domain", () => {
     }).pipe(Effect.provide(makeLayer(undefined, { onResolvedCatalog: () => resolvedCatalogs++ })));
   });
 
-  it.effect("refreshes catalog metadata without publishing an empty replacement", () =>
-    Effect.gen(function* () {
+  it.effect("updates one catalog entry without restarting its initial scan", () => {
+    let catalogScans = 0;
+    return Effect.gen(function* () {
+      const catalogs = yield* SessionCatalogChanges;
+      const application = yield* ApplicationState;
       const updates = yield* projectSessions.observeCatalog({
         projectPath: "/project",
         resolved: false,
@@ -266,7 +288,14 @@ describe("Project Sessions domain", () => {
         Effect.forkChild,
       );
       yield* Deferred.await(ready);
-      yield* refreshProjection();
+      yield* application.transact((state) => Effect.succeed({ ...state, trustedProjectPaths: [] }));
+      yield* catalogs.publish({
+        _tag: "ProjectSessionChanged",
+        sessionId: "session-1",
+        projectPath: "/project",
+        workingDirectory: "/project",
+        resolved: false,
+      });
       const observed = Array.from(yield* Fiber.join(fiber));
       assert.deepEqual(
         observed.map((update) => update._tag),
@@ -276,19 +305,21 @@ describe("Project Sessions domain", () => {
         observed.flatMap((update) => (update._tag === "Event" ? [update.event._tag] : [])),
         ["Upserted", "Upserted"],
       );
+      assert.equal(catalogScans, 1);
     }).pipe(
       Effect.provide(
         makeLayer(undefined, {
+          onCatalog: () => catalogScans++,
           catalogModifiedAt: (() => {
             let revision = 1;
             return () => `2026-01-0${revision++}T00:00:00.000Z`;
           })(),
         }),
       ),
-    ),
-  );
+    );
+  });
 
-  it.effect("removes a resolved session from the active metadata stream", () => {
+  it.effect("moves a resolved session without restarting the active metadata stream", () => {
     return Effect.gen(function* () {
       const updates = yield* projectSessions.observeCatalog({
         projectPath: "/project",
@@ -312,7 +343,12 @@ describe("Project Sessions domain", () => {
       assert.deepEqual(observed[2], {
         _tag: "Event",
         revision: 3,
-        event: { _tag: "Removed", sessionId: "session-1" },
+        event: {
+          _tag: "StatusChanged",
+          sessionId: "session-1",
+          resolved: true,
+          unread: false,
+        },
       });
     }).pipe(Effect.provide(makeLayer()));
   });

@@ -1,7 +1,6 @@
 import { Effect, Layer, Option, Stream } from "effect";
 import {
   forgetProjectSessions,
-  refreshProjection,
   setCakeChatSessionResolved,
   setSessionUnread,
   trustProject,
@@ -22,6 +21,7 @@ import {
   ProjectSessionLifecycle,
   ProjectSessionLifecycleError,
 } from "../services/project-sessions/ProjectSessionLifecycle";
+import { SessionCatalogChanges } from "../services/session-catalogs/SessionCatalogChanges";
 
 export interface ProjectSessionLifecycleLiveOptions {
   readonly homeDirectory: string;
@@ -48,6 +48,7 @@ export const makeProjectSessionLifecycleLive = (
   | ProjectAccess
   | ReviewStorage
   | SessionArchiveStorage
+  | SessionCatalogChanges
   | Terminal
 > =>
   Layer.effect(
@@ -56,6 +57,7 @@ export const makeProjectSessionLifecycleLive = (
       const access = yield* ProjectAccess;
       const application = yield* ApplicationState;
       const archive = yield* SessionArchiveStorage;
+      const catalogs = yield* SessionCatalogChanges;
       const worktrees = yield* ManagedWorktrees;
       const context = yield* Effect.context<
         | ApplicationState
@@ -64,6 +66,7 @@ export const makeProjectSessionLifecycleLive = (
         | ProjectAccess
         | ReviewStorage
         | SessionArchiveStorage
+        | SessionCatalogChanges
         | Terminal
       >();
       const run = <A, E, R>(operation: string, effect: Effect.Effect<A, E, R>) =>
@@ -108,6 +111,7 @@ export const makeProjectSessionLifecycleLive = (
             yield* run("setCakeChatResolved", archive.resolve(sessionId, location));
           } else yield* run("setCakeChatResolved", archive.restore(sessionId, location));
           yield* run("setCakeChatResolved", setCakeChatSessionResolved(sessionId, resolved));
+          yield* catalogs.publish({ _tag: "CakeChatSessionStatusChanged", sessionId, resolved });
         },
       );
 
@@ -120,6 +124,10 @@ export const makeProjectSessionLifecycleLive = (
             "setProjectSessionResolved",
             access.resolveSessionWorkingDirectory(sessionId),
           ));
+        const projectPath =
+          (yield* run("setProjectSessionResolved", worktrees.records())).find(
+            (record) => record.worktreePath === workingDirectory,
+          )?.projectPath ?? workingDirectory;
         if (resolved) {
           yield* run(
             "setProjectSessionResolved",
@@ -156,7 +164,14 @@ export const makeProjectSessionLifecycleLive = (
           );
         }
         if (resolved) yield* run("setProjectSessionResolved", setSessionUnread(sessionId, false));
-        yield* run("setProjectSessionResolved", refreshProjection());
+        yield* catalogs.publish({
+          _tag: "ProjectSessionStatusChanged",
+          sessionId,
+          projectPath,
+          workingDirectory,
+          resolved,
+          unread: resolved ? false : application.snapshot().unreadSessionIds.includes(sessionId),
+        });
       });
 
       const deleteResolvedProjectSession = Effect.fn(
@@ -190,6 +205,7 @@ export const makeProjectSessionLifecycleLive = (
         yield* run("deleteResolvedProjectSession", archive.deleteResolved(sessionId, location));
         yield* access.forgetSessionLocation(sessionId);
         yield* run("deleteResolvedProjectSession", forgetProjectSessions([sessionId]));
+        yield* catalogs.publish({ _tag: "ProjectSessionRemoved", sessionId });
       });
 
       const deleteProjectSessions = Effect.fn("ProjectSessionLifecycle.deleteProjectSessions")(
@@ -222,6 +238,10 @@ export const makeProjectSessionLifecycleLive = (
                     }),
                   );
                   forgotten.push(session.id);
+                  yield* catalogs.publish({
+                    _tag: "ProjectSessionRemoved",
+                    sessionId: session.id,
+                  });
                 }),
               ),
             );

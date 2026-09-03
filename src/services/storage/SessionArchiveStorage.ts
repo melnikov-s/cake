@@ -40,5 +40,9 @@ export class SessionArchiveStorage extends Context.Service<
     readonly resolved: (
       location: SessionArchiveLocation,
     ) => Stream.Stream<SessionSummary, SessionArchiveStorageError>;
+    readonly resolvedEntry: (
+      sessionId: string,
+      location: SessionArchiveLocation,
+    ) => Effect.Effect<SessionSummary | undefined, SessionArchiveStorageError>;
   }
 >()("cake/services/storage/SessionArchiveStorage") {}

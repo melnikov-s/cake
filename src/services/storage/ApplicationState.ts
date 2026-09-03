@@ -22,7 +22,6 @@ export class ApplicationState extends Context.Service<
     readonly current: () => Effect.Effect<ApplicationStateValue>;
     readonly snapshot: () => ApplicationStateValue;
     readonly changes: () => Stream.Stream<ApplicationStateProjection>;
-    readonly refreshProjection: () => Effect.Effect<void>;
     readonly transact: <E>(
       transition: (current: ApplicationStateValue) => Effect.Effect<ApplicationStateValue, E>,
     ) => Effect.Effect<ApplicationStateValue, ApplicationEncodeError | ApplicationWriteError | E>;
@@ -51,12 +50,6 @@ export class ApplicationState extends Context.Service<
       const current = Effect.fn("ApplicationState.current")(() =>
         SubscriptionRef.get(projection).pipe(Effect.map((current) => current.state)),
       );
-      const refreshProjection = Effect.fn("ApplicationState.refreshProjection")(() =>
-        SubscriptionRef.update(projection, (current) => ({
-          revision: current.revision + 1,
-          state: current.state,
-        })),
-      );
       const transact = Effect.fn("ApplicationState.transact")(
         <E>(
           transition: (current: ApplicationStateValue) => Effect.Effect<ApplicationStateValue, E>,
@@ -74,7 +67,6 @@ export class ApplicationState extends Context.Service<
         current,
         snapshot: () => SubscriptionRef.getUnsafe(projection).state,
         changes: () => SubscriptionRef.changes(projection),
-        refreshProjection,
         transact,
       });
     }),

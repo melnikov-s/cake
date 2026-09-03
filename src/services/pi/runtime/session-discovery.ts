@@ -15,6 +15,7 @@ import {
 } from "../../../ipc/session-contract";
 import { projectSessionEntries } from "./session-projection";
 import {
+  findSessionFileMetadataById,
   findSessionFileById,
   streamSessionFiles,
   workingDirectorySessionPath,
@@ -26,6 +27,30 @@ export function loadPiChangelog() {
   } catch {
     return "# Changelog\n\nNo changelog entries found.";
   }
+}
+
+/** Loads cheap metadata for one active session without opening its transcript body. */
+export async function loadWorkspaceSessionSummary(
+  cwd: string,
+  sessionId: string,
+  sessionDir: string,
+  options: StreamWorkspaceSessionsOptions = {},
+): Promise<SessionSummary | undefined> {
+  const item = await findSessionFileMetadataById(sessionId, {
+    workingDirectory: cwd,
+    root: sessionDir,
+    direct: options.direct,
+  });
+  return item
+    ? {
+        id: item.id,
+        title: (options.titles?.get(item.id) ?? item.id).slice(0, SESSION_TITLE_MAX_LENGTH),
+        created: item.createdAt,
+        modified: item.modifiedAt,
+        messageCount: 0,
+        resolved: false,
+      }
+    : undefined;
 }
 
 /** Resolve the Cake source tree that matches the running authoring skill. */

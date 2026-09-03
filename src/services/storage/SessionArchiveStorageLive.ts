@@ -2,7 +2,12 @@ import { access, mkdir, rename, rm } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { Effect, Layer, Stream } from "effect";
 import { SESSION_TITLE_MAX_LENGTH } from "../../ipc/session-contract";
-import { findSessionFileById, sessionDirectoryPath, streamSessionFiles } from "./session-files";
+import {
+  findSessionFileById,
+  findSessionFileMetadataById,
+  sessionDirectoryPath,
+  streamSessionFiles,
+} from "./session-files";
 import {
   SessionArchiveStorage,
   SessionArchiveStorageError,
@@ -125,6 +130,26 @@ export const SessionArchiveStorageLive = Layer.sync(SessionArchiveStorage, () =>
       Stream.mapError((cause) => archiveError("resolved", "", cause)),
     );
 
+  const resolvedEntry = Effect.fn("SessionArchiveStorage.resolvedEntry")(function* (
+    sessionId: string,
+    location: SessionArchiveLocation,
+  ) {
+    const item = yield* Effect.tryPromise({
+      try: () => findSessionFileMetadataById(sessionId, directoryInput(location, true)),
+      catch: (cause) => archiveError("resolvedEntry", sessionId, cause),
+    });
+    return item
+      ? {
+          id: item.id,
+          title: item.id.slice(0, SESSION_TITLE_MAX_LENGTH),
+          created: item.createdAt,
+          modified: item.modifiedAt,
+          messageCount: 0,
+          resolved: true,
+        }
+      : undefined;
+  });
+
   return SessionArchiveStorage.of({
     resolve: (sessionId, location) => move(sessionId, location, true),
     restore: (sessionId, location) => move(sessionId, location, false),
@@ -132,5 +157,6 @@ export const SessionArchiveStorageLive = Layer.sync(SessionArchiveStorage, () =>
     delete: (sessionId, location) => deleteAt("delete", sessionId, location),
     locate,
     resolved,
+    resolvedEntry,
   });
 });

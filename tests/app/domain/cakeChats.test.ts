@@ -17,6 +17,7 @@ import { ApplicationState } from "../../../src/services/storage/ApplicationState
 import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { SubagentCoordinatorLive } from "../../../src/services/subagents/SubagentCoordinator";
 import { Terminal } from "../../../src/services/terminal/Terminal";
+import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import type { SessionSnapshot } from "../../../src/ipc/session-contract";
 
 const snapshot: SessionSnapshot = {
@@ -65,7 +66,6 @@ const makeLayer = (initial: ApplicationStateValue = defaultApplicationState()) =
     current: () => Effect.succeed(state),
     snapshot: () => state,
     changes: () => Stream.make({ revision: 0, state }),
-    refreshProjection: () => Effect.void,
     transact: (transition) =>
       transition(state).pipe(
         Effect.tap((next) =>
@@ -100,6 +100,7 @@ const makeLayer = (initial: ApplicationStateValue = defaultApplicationState()) =
   });
   const adapter: PiSessionsAdapter = {
     catalog: () => Stream.empty,
+    catalogEntry: () => Effect.succeed(undefined),
     inspect: () => Effect.succeed(snapshot),
     createRuntime: (options) =>
       Effect.sync(() => {
@@ -148,6 +149,7 @@ const makeLayer = (initial: ApplicationStateValue = defaultApplicationState()) =
   return {
     layer: Layer.mergeAll(
       Layer.succeed(ApplicationState, application),
+      SessionCatalogChanges.layer,
       makePiSessionsLayer(adapter),
       Layer.succeed(
         SessionArchiveStorage,
@@ -158,6 +160,7 @@ const makeLayer = (initial: ApplicationStateValue = defaultApplicationState()) =
           delete: () => Effect.void,
           locate: () => Effect.succeed(undefined),
           resolved: () => Stream.empty,
+          resolvedEntry: () => Effect.succeed(undefined),
         }),
       ),
       environment,
@@ -177,7 +180,7 @@ describe("Cake Chats domain", () => {
     const fixture = makeLayer();
     return Effect.gen(function* () {
       const updates = yield* cakeChats.observeCatalog({ resolved: false });
-      yield* updates.pipe(Stream.take(2), Stream.runDrain);
+      yield* updates.pipe(Stream.take(1), Stream.runDrain);
       assert.equal(fixture.created(), 0);
       const turnId = yield* cakeChats.prompt({
         sessionId: "cake-chat-1",

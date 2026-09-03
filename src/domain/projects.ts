@@ -9,10 +9,13 @@ import { ProjectSessionIntegrations } from "../services/pi/ProjectSessionIntegra
 import { rewordSelectionWithProjectContext } from "../services/pi/runtime/rewording-agent";
 import { inspectWorkspace } from "../services/pi/runtime/session-discovery";
 import { ProjectSessionLifecycle } from "../services/project-sessions/ProjectSessionLifecycle";
+import { ProjectSessionEnvironment } from "../services/project-sessions/ProjectSessionEnvironment";
 import { ProjectAccess } from "../services/projects/ProjectAccess";
 import { ProjectConfiguration } from "../services/projects/ProjectConfiguration";
 import { RewordingRequests } from "../services/projects/RewordingRequests";
+import { SessionCatalogChanges } from "../services/session-catalogs/SessionCatalogChanges";
 import { ApplicationState } from "../services/storage/ApplicationState";
+import { SessionArchiveStorage } from "../services/storage/SessionArchiveStorage";
 import { ManagedWorktrees } from "../services/worktrees/ManagedWorktrees";
 import { resolveRewordingWorkspace } from "../services/projects/rewording-workspace";
 import type { ProjectCatalogUpdate } from "./catalog-data";
@@ -312,10 +315,42 @@ export const setSessionUnread = Effect.fn("Projects.setSessionUnread")(function*
   _connectionId: number,
   request: Payload<"set-session-unread">,
 ) {
+  const access = yield* ProjectAccess;
+  const workingDirectory = yield* mapProjectError(
+    "setSessionUnread",
+    access.resolveSessionWorkingDirectory(request.sessionId),
+  );
+  const environment = yield* ProjectSessionEnvironment;
+  const location = (yield* mapProjectError("setSessionUnread", environment.locations())).find(
+    (candidate) => candidate.workingDirectory === workingDirectory,
+  );
+  if (!location)
+    return yield* new ProjectError({
+      operation: "setSessionUnread",
+      message: "Cake could not find that Project Session's Working Directory",
+    });
+  const archive = yield* SessionArchiveStorage;
+  const namespace = yield* mapProjectError(
+    "setSessionUnread",
+    archive.locate(request.sessionId, {
+      cwd: location.workingDirectory,
+      activeRoot: location.sessionDirectory,
+      resolvedRoot: location.resolvedSessionDirectory,
+    }),
+  );
   const state = yield* mapProjectError(
     "setSessionUnread",
     setApplicationSessionUnread(request.sessionId, request.unread),
   );
+  const catalogs = yield* SessionCatalogChanges;
+  yield* catalogs.publish({
+    _tag: "ProjectSessionStatusChanged",
+    sessionId: request.sessionId,
+    projectPath: location.projectPath,
+    workingDirectory,
+    resolved: namespace === "resolved",
+    unread: request.unread,
+  });
   return { state };
 });
 

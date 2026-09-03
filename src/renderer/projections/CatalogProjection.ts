@@ -98,7 +98,12 @@ export function applyCakeChatCatalogGroupUpdate(
     } else if (event._tag === "Upserted") {
       sessions = sessions.filter((candidate) => candidate.sessionId !== event.session.sessionId);
       sessions.push(event.session);
-    } else sessions = sessions.filter((session) => session.sessionId !== event.sessionId);
+    } else if (event._tag === "Removed")
+      sessions = sessions.filter((session) => session.sessionId !== event.sessionId);
+    else
+      sessions = sessions.map((session) =>
+        session.sessionId === event.sessionId ? { ...session, resolved: event.resolved } : session,
+      );
   }
   sessions.sort(compareSessionSummaries);
   assertUnique(

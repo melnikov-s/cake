@@ -7,17 +7,16 @@ import {
   CakeChatEnvironment,
   CakeChatEnvironmentError,
 } from "../services/cake-chats/CakeChatEnvironment";
-import {
-  getState,
-  observeState,
-  refreshProjection,
-  setCakeChatSessionResolved,
-  setSessionFastMode,
-} from "./application";
+import { getState, setCakeChatSessionResolved, setSessionFastMode } from "./application";
 import type { CakeChatCatalogUpdate } from "./catalog-data";
 import { SessionArchiveStorage } from "../services/storage/SessionArchiveStorage";
 import { toJsonValue } from "../utils/to-json-value";
-import { reconcileCatalogScans } from "../utils/reconcile-catalog-stream";
+import {
+  SessionCatalogChanges,
+  type SessionCatalogChange,
+} from "../services/session-catalogs/SessionCatalogChanges";
+
+type CakeChatCatalogEvent = Extract<CakeChatCatalogUpdate, { _tag: "Event" }>["event"];
 import {
   acquire as acquireConversation,
   observe as observeConversation,
@@ -78,6 +77,14 @@ const summary = (item: SessionSummary, resolved: boolean): CakeChatSummary => {
   return projected;
 };
 
+const publishCatalogChange = Effect.fn("CakeChats.publishCatalogChange")(function* (
+  sessionId: string,
+  resolved: boolean,
+) {
+  const catalogs = yield* SessionCatalogChanges;
+  yield* catalogs.publish({ _tag: "CakeChatSessionChanged", sessionId, resolved });
+});
+
 const catalogForState = Effect.fn("CakeChats.catalogForState")(function* (
   query: CakeChatCatalogQuery,
 ) {
@@ -103,27 +110,72 @@ const catalogForState = Effect.fn("CakeChats.catalogForState")(function* (
   );
 });
 
-/** Scoped Cake Chat metadata observation; resolved storage is untouched until requested. */
+const catalogEventForChange = Effect.fn("CakeChats.catalogEventForChange")(function* (
+  query: CakeChatCatalogQuery,
+  change: SessionCatalogChange,
+) {
+  if (change._tag === "CakeChatSessionRemoved")
+    return { _tag: "Removed", sessionId: change.sessionId } as const;
+  if (change._tag === "CakeChatSessionStatusChanged")
+    return {
+      _tag: "StatusChanged" as const,
+      sessionId: change.sessionId,
+      resolved: change.resolved,
+    };
+  if (change._tag !== "CakeChatSessionChanged") return undefined;
+  if (change.resolved !== query.resolved) return undefined;
+  const environment = yield* CakeChatEnvironment;
+  const sessions = yield* PiSessions;
+  const archive = yield* SessionArchiveStorage;
+  const location = yield* environment.location().pipe(asError("catalog"));
+  const item = change.resolved
+    ? yield* archive.resolvedEntry(change.sessionId, {
+        cwd: location.workingDirectory,
+        activeRoot: location.sessionDirectory,
+        resolvedRoot: location.resolvedSessionDirectory,
+        direct: true,
+      })
+    : yield* sessions.catalogEntry(
+        {
+          workingDirectory: location.workingDirectory,
+          sessionDirectory: location.sessionDirectory,
+          direct: true,
+        },
+        change.sessionId,
+      );
+  return item
+    ? ({ _tag: "Upserted", session: summary(item, change.resolved) } as const)
+    : ({ _tag: "Removed", sessionId: change.sessionId } as const);
+});
+
+/** Scoped Cake Chat metadata observation: one lazy scan, then targeted mutations. */
 export const observeCatalog = Effect.fn("CakeChats.observeCatalog")(function* (
   query: CakeChatCatalogQuery,
 ) {
-  const changes = yield* observeState();
-  const events = reconcileCatalogScans(changes, () => Stream.unwrap(catalogForState(query)), {
-    key: (session) => session.sessionId,
-    equals: sameCakeChatSummary,
-  }).pipe(
+  const catalogs = yield* SessionCatalogChanges;
+  const initial = Stream.unwrap(catalogForState(query)).pipe(
+    Stream.map((session) => ({ _tag: "Initial" as const, session })),
+  );
+  const events = catalogs.initialThenChanges(initial).pipe(
+    Stream.mapEffect((item) =>
+      item._tag === "Initial"
+        ? Effect.succeed<CakeChatCatalogEvent | undefined>({
+            _tag: "Upserted",
+            session: item.session,
+          })
+        : catalogEventForChange(query, item),
+    ),
+    Stream.filter((event): event is CakeChatCatalogEvent => event !== undefined),
+    Stream.mapError((error) => errorValue("catalog", error)),
     Stream.mapAccum(
       () => 1,
-      (revision, reconciliation): readonly [number, ReadonlyArray<CakeChatCatalogUpdate>] => [
+      (revision, event): readonly [number, ReadonlyArray<CakeChatCatalogUpdate>] => [
         revision + 1,
         [
           {
             _tag: "Event",
             revision: revision + 1,
-            event:
-              reconciliation._tag === "Upserted"
-                ? { _tag: "Upserted", session: reconciliation.item }
-                : { _tag: "Removed", sessionId: reconciliation.id },
+            event,
           },
         ],
       ],
@@ -135,15 +187,6 @@ export const observeCatalog = Effect.fn("CakeChats.observeCatalog")(function* (
     sessions: [],
   } satisfies CakeChatCatalogUpdate).pipe(Stream.concat(events));
 });
-
-const sameCakeChatSummary = (left: CakeChatSummary, right: CakeChatSummary) =>
-  left.sessionId === right.sessionId &&
-  left.title === right.title &&
-  left.createdAt === right.createdAt &&
-  left.modifiedAt === right.modifiedAt &&
-  left.messageCount === right.messageCount &&
-  left.parentSessionId === right.parentSessionId &&
-  left.resolved === right.resolved;
 
 export const inspect = Effect.fn("CakeChats.inspect")(function* (sessionId: string) {
   const environment = yield* CakeChatEnvironment;
@@ -204,11 +247,22 @@ type UnrevisionedCakeChatUpdate =
   | { readonly _tag: "Event"; readonly sessionId: string; readonly event: CakeChatEvent };
 
 export const observe = Effect.fn("CakeChats.observe")(function* (target: CakeChatTarget) {
-  const states = yield* observeState();
-  return states.pipe(
-    Stream.map((projection) =>
-      projection.state.resolvedCakeChatSessionIds.includes(target.sessionId),
+  const catalogs = yield* SessionCatalogChanges;
+  const initialResolved = Stream.fromEffect(getState()).pipe(
+    Stream.map((state) => ({
+      _tag: "InitialResolved" as const,
+      resolved: state.resolvedCakeChatSessionIds.includes(target.sessionId),
+    })),
+  );
+  return catalogs.initialThenChanges(initialResolved).pipe(
+    Stream.map((item) =>
+      item._tag === "InitialResolved"
+        ? item.resolved
+        : item._tag === "CakeChatSessionStatusChanged" && item.sessionId === target.sessionId
+          ? item.resolved
+          : undefined,
     ),
+    Stream.filter((resolved): resolved is boolean => resolved !== undefined),
     Stream.changes,
     Stream.switchMap((resolved) =>
       resolved
@@ -260,7 +314,11 @@ export const observe = Effect.fn("CakeChats.observe")(function* (target: CakeCha
     ),
     Stream.tap((update) =>
       update._tag === "Event" && update.event._tag === "TurnSettled"
-        ? refreshProjection()
+        ? catalogs.publish({
+            _tag: "CakeChatSessionChanged",
+            sessionId: target.sessionId,
+            resolved: false,
+          })
         : Effect.void,
     ),
     Stream.mapAccum(
@@ -359,7 +417,7 @@ export const prompt = Effect.fn("CakeChats.prompt")(function* (input: CakeChatPr
     ? handle.followUp(input.text, attachments)
     : handle.prompt(input.text, attachments, input.renderUserMessageAsMarkdown);
   const turnId = TurnId.make(yield* accepted.pipe(asError("prompt")));
-  yield* refreshProjection();
+  if (!input.newSession) yield* publishCatalogChange(input.sessionId, false);
   return turnId;
 });
 
@@ -373,7 +431,7 @@ export const compact = Effect.fn("CakeChats.compact")(function* (
   instructions?: string,
 ) {
   yield* withHandle(target, (handle) => handle.compact(instructions)).pipe(asError("compact"));
-  yield* refreshProjection();
+  yield* publishCatalogChange(target.sessionId, false);
 });
 
 export const editMessage = Effect.fn("CakeChats.editMessage")(function* (
@@ -387,7 +445,7 @@ export const editMessage = Effect.fn("CakeChats.editMessage")(function* (
       input.renderUserMessageAsMarkdown,
     ),
   ).pipe(asError("editMessage"));
-  yield* refreshProjection();
+  yield* publishCatalogChange(input.sessionId, false);
 });
 
 export const applyConfiguration = Effect.fn("CakeChats.applyConfiguration")(function* (
@@ -433,7 +491,6 @@ export const rename = Effect.fn("CakeChats.rename")(function* (
   if (!normalized)
     return yield* new CakeChatError({ operation: "rename", message: "Name is required" });
   yield* withHandle(target, (handle) => handle.rename(normalized)).pipe(asError("rename"));
-  yield* refreshProjection();
 });
 
 export const handoff = Effect.fn("CakeChats.handoff")(function* (input: {
@@ -456,7 +513,7 @@ export const handoff = Effect.fn("CakeChats.handoff")(function* (input: {
     turnId = TurnId.make(yield* next.prompt(input.prompt.trim()).pipe(asError("handoff")));
   }
   if (input.resolveSource) yield* resolve(input.target);
-  else yield* refreshProjection();
+  yield* publishCatalogChange(handedOff.sessionId, false);
   return turnId ? { sessionId: handedOff.sessionId, turnId } : { sessionId: handedOff.sessionId };
 });
 
@@ -482,12 +539,20 @@ export const resolve = Effect.fn("CakeChats.resolve")(function* (target: CakeCha
   const environment = yield* CakeChatEnvironment;
   yield* environment.archive(target.sessionId).pipe(asError("resolve"));
   yield* setCakeChatSessionResolved(target.sessionId, true).pipe(asError("resolve"));
+  const catalogs = yield* SessionCatalogChanges;
+  yield* catalogs
+    .publish({ _tag: "CakeChatSessionStatusChanged", sessionId: target.sessionId, resolved: true })
+    .pipe(asError("resolve"));
 });
 
 export const restore = Effect.fn("CakeChats.restore")(function* (target: CakeChatTarget) {
   const environment = yield* CakeChatEnvironment;
   yield* environment.restore(target.sessionId).pipe(asError("restore"));
   yield* setCakeChatSessionResolved(target.sessionId, false).pipe(asError("restore"));
+  const catalogs = yield* SessionCatalogChanges;
+  yield* catalogs
+    .publish({ _tag: "CakeChatSessionStatusChanged", sessionId: target.sessionId, resolved: false })
+    .pipe(asError("restore"));
 });
 
 export const deleteResolved = Effect.fn("CakeChats.deleteResolved")(function* (
@@ -502,6 +567,8 @@ export const deleteResolved = Effect.fn("CakeChats.deleteResolved")(function* (
   const environment = yield* CakeChatEnvironment;
   yield* environment.deleteResolved(target.sessionId).pipe(asError("deleteResolved"));
   yield* setCakeChatSessionResolved(target.sessionId, false).pipe(asError("deleteResolved"));
+  const catalogs = yield* SessionCatalogChanges;
+  yield* catalogs.publish({ _tag: "CakeChatSessionRemoved", sessionId: target.sessionId });
 });
 
 export const respondControl = Effect.fn("CakeChats.respondControl")(function* (

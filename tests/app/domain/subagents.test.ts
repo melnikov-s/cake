@@ -73,7 +73,6 @@ const applicationLayer = Layer.effect(
       current: () => SubscriptionRef.get(projection).pipe(Effect.map((value) => value.state)),
       snapshot: () => SubscriptionRef.getUnsafe(projection).state,
       changes: () => SubscriptionRef.changes(projection),
-      refreshProjection: () => Effect.void,
       transact: (transition) =>
         SubscriptionRef.updateAndGetEffect(projection, (current) =>
           transition(current.state).pipe(
@@ -171,6 +170,7 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (): Effect.
 
   const adapter: PiSessionsAdapter = {
     catalog: () => Stream.empty,
+    catalogEntry: () => Effect.succeed(undefined),
     inspect: () => Effect.succeed(undefined),
     createRuntime: (options) =>
       Ref.update(constructedOptions, (values) => [...values, options]).pipe(

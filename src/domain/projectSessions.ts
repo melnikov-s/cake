@@ -8,14 +8,7 @@ import type {
   PiSettingUpdate,
   SessionSummary,
 } from "../ipc/session-contract";
-import {
-  getState,
-  observeState,
-  refreshProjection,
-  setSessionFastMode,
-  setSessionUnread,
-  trustProject,
-} from "./application";
+import { getState, setSessionFastMode, setSessionUnread, trustProject } from "./application";
 import type { ApplicationState } from "./application-data";
 import type { SessionCatalogUpdate } from "./catalog-data";
 import { toJsonValue } from "../utils/to-json-value";
@@ -50,7 +43,12 @@ import {
   type ProjectSessionUpdate,
 } from "./project-session-data";
 import { SessionArchiveStorage } from "../services/storage/SessionArchiveStorage";
-import { reconcileCatalogScans } from "../utils/reconcile-catalog-stream";
+import {
+  SessionCatalogChanges,
+  type SessionCatalogChange,
+} from "../services/session-catalogs/SessionCatalogChanges";
+
+type ProjectSessionCatalogEvent = Extract<SessionCatalogUpdate, { _tag: "Event" }>["event"];
 
 const asError = (operation: string) =>
   Effect.mapError(
@@ -97,6 +95,44 @@ const archiveLocation = (location: ProjectSessionLocation) => ({
   resolvedRoot: location.resolvedSessionDirectory,
 });
 
+const publishCatalogChange = Effect.fn("ProjectSessions.publishCatalogChange")(function* (
+  sessionId: string,
+  location: ProjectSessionLocation,
+  resolved: boolean,
+) {
+  const catalogs = yield* SessionCatalogChanges;
+  yield* catalogs.publish({
+    _tag: "ProjectSessionChanged",
+    sessionId,
+    projectPath: location.projectPath,
+    workingDirectory: location.workingDirectory,
+    resolved,
+  });
+});
+
+const publishTargetCatalogChange = Effect.fn("ProjectSessions.publishTargetCatalogChange")(
+  function* (target: ProjectSessionTarget, resolved = false) {
+    yield* publishCatalogChange(target.sessionId, yield* findLocation(target), resolved);
+  },
+);
+
+const publishCatalogStatus = Effect.fn("ProjectSessions.publishCatalogStatus")(function* (
+  sessionId: string,
+  location: ProjectSessionLocation,
+  resolved: boolean,
+) {
+  const catalogs = yield* SessionCatalogChanges;
+  const state = yield* getState();
+  yield* catalogs.publish({
+    _tag: "ProjectSessionStatusChanged",
+    sessionId,
+    projectPath: location.projectPath,
+    workingDirectory: location.workingDirectory,
+    resolved,
+    unread: state.unreadSessionIds.includes(sessionId),
+  });
+});
+
 const catalogForState = Effect.fn("ProjectSessions.catalogForState")(function* (
   query: ProjectSessionCatalogQuery,
   state: ApplicationState,
@@ -127,34 +163,90 @@ const catalogForState = Effect.fn("ProjectSessions.catalogForState")(function* (
   );
 });
 
-/**
- * A scoped current-first metadata stream. Each application projection refresh interrupts the
- * prior filesystem walk and restarts only this requested project/state group.
- */
+const catalogEventForChange = Effect.fn("ProjectSessions.catalogEventForChange")(function* (
+  query: ProjectSessionCatalogQuery,
+  change: SessionCatalogChange,
+) {
+  if (change._tag === "ProjectSessionRemoved")
+    return { _tag: "Removed", sessionId: change.sessionId } as const;
+  if (change._tag === "ProjectSessionStatusChanged") {
+    if (change.projectPath !== query.projectPath) return undefined;
+    const environment = yield* ProjectSessionEnvironment;
+    const location = (yield* environment.locations().pipe(asError("catalog"))).find(
+      (candidate) => candidate.workingDirectory === change.workingDirectory,
+    );
+    if (!location || location.projectPath !== query.projectPath) return undefined;
+    return {
+      _tag: "StatusChanged" as const,
+      sessionId: change.sessionId,
+      resolved: change.resolved,
+      unread: change.unread,
+    };
+  }
+  if (change._tag !== "ProjectSessionChanged") return undefined;
+  if (change.projectPath !== query.projectPath) return undefined;
+  const environment = yield* ProjectSessionEnvironment;
+  const location = (yield* environment.locations().pipe(asError("catalog"))).find(
+    (candidate) => candidate.workingDirectory === change.workingDirectory,
+  );
+  if (!location || location.projectPath !== query.projectPath) return undefined;
+  if (change.resolved !== query.resolved) return undefined;
+  const sessions = yield* PiSessions;
+  const archive = yield* SessionArchiveStorage;
+  const state = yield* getState();
+  const item = change.resolved
+    ? yield* archive.resolvedEntry(change.sessionId, archiveLocation(location))
+    : yield* sessions.catalogEntry(
+        {
+          workingDirectory: location.workingDirectory,
+          sessionDirectory: location.sessionDirectory,
+        },
+        change.sessionId,
+      );
+  return item
+    ? ({
+        _tag: "Upserted",
+        session: summary(item, location, change.resolved, new Set(state.unreadSessionIds)),
+      } as const)
+    : ({ _tag: "Removed", sessionId: change.sessionId } as const);
+});
+
+/** A scoped metadata stream: one lazy initial scan followed by targeted session mutations. */
 export const observeCatalog = Effect.fn("ProjectSessions.observeCatalog")(function* (
   query: ProjectSessionCatalogQuery,
 ) {
-  const changes = yield* observeState();
-  const events = reconcileCatalogScans(
-    changes,
-    (projection) => Stream.unwrap(catalogForState(query, projection.state)),
-    {
-      key: (session) => session.sessionId,
-      equals: sameSessionSummary,
-    },
-  ).pipe(
+  const catalogs = yield* SessionCatalogChanges;
+  const state = yield* getState();
+  const initial = Stream.unwrap(catalogForState(query, state)).pipe(
+    Stream.map((session) => ({ _tag: "Initial" as const, session })),
+  );
+  const events = catalogs.initialThenChanges(initial).pipe(
+    Stream.mapEffect((item) =>
+      item._tag === "Initial"
+        ? Effect.succeed<ProjectSessionCatalogEvent | undefined>({
+            _tag: "Upserted",
+            session: item.session,
+          })
+        : catalogEventForChange(query, item),
+    ),
+    Stream.filter((event): event is ProjectSessionCatalogEvent => event !== undefined),
+    Stream.mapError((error) =>
+      error instanceof ProjectSessionError
+        ? error
+        : new ProjectSessionError({
+            operation: "catalog",
+            message: error instanceof Error ? error.message : String(error),
+          }),
+    ),
     Stream.mapAccum(
       () => 1,
-      (revision, reconciliation): readonly [number, ReadonlyArray<SessionCatalogUpdate>] => [
+      (revision, event): readonly [number, ReadonlyArray<SessionCatalogUpdate>] => [
         revision + 1,
         [
           {
             _tag: "Event",
             revision: revision + 1,
-            event:
-              reconciliation._tag === "Upserted"
-                ? { _tag: "Upserted", session: reconciliation.item }
-                : { _tag: "Removed", sessionId: reconciliation.id },
+            event,
           },
         ],
       ],
@@ -166,20 +258,6 @@ export const observeCatalog = Effect.fn("ProjectSessions.observeCatalog")(functi
     sessions: [],
   } satisfies SessionCatalogUpdate).pipe(Stream.concat(events));
 });
-
-const sameSessionSummary = (left: ProjectSessionSummary, right: ProjectSessionSummary) =>
-  left.sessionId === right.sessionId &&
-  left.title === right.title &&
-  left.createdAt === right.createdAt &&
-  left.modifiedAt === right.modifiedAt &&
-  left.messageCount === right.messageCount &&
-  left.parentSessionId === right.parentSessionId &&
-  left.resolved === right.resolved &&
-  left.unread === right.unread &&
-  left.projectPath === right.projectPath &&
-  left.projectName === right.projectName &&
-  left.workingDirectory === right.workingDirectory &&
-  JSON.stringify(left.managedWorktree) === JSON.stringify(right.managedWorktree);
 
 const findLocation = Effect.fn("ProjectSessions.findLocation")(function* (
   target: ProjectSessionTarget,
@@ -251,7 +329,6 @@ export const start = Effect.fn("ProjectSessions.start")(function* (
       .prompt(input.text, runtimeAttachments(input.attachments), input.renderUserMessageAsMarkdown)
       .pipe(asError("start")),
   );
-  yield* refreshProjection();
   return turnId;
 });
 
@@ -299,7 +376,7 @@ const restoreIfResolved = Effect.fn("ProjectSessions.restoreIfResolved")(functio
   const environment = yield* ProjectSessionEnvironment;
   const restored = yield* environment.restore(target.sessionId, location).pipe(asError("restore"));
   yield* trustProject(restored.workingDirectory).pipe(asError("restore"));
-  yield* refreshProjection().pipe(asError("restore"));
+  yield* publishCatalogStatus(target.sessionId, restored, false).pipe(asError("restore"));
 });
 
 export const open = Effect.fn("ProjectSessions.open")(function* (target: ProjectSessionTarget) {
@@ -337,9 +414,24 @@ const isSessionResolved = Effect.fn("ProjectSessions.isSessionResolved")(functio
 export const observe = Effect.fn("ProjectSessions.observe")(function* (
   target: ProjectSessionTarget,
 ) {
-  const states = yield* observeState();
-  const updates = states.pipe(
-    Stream.mapEffect(() => isSessionResolved(target)),
+  const catalogs = yield* SessionCatalogChanges;
+  const resolvedStates = catalogs
+    .initialThenChanges(
+      Stream.fromEffect(isSessionResolved(target)).pipe(
+        Stream.map((resolved) => ({ _tag: "InitialResolved" as const, resolved })),
+      ),
+    )
+    .pipe(
+      Stream.map((item) =>
+        item._tag === "InitialResolved"
+          ? item.resolved
+          : item._tag === "ProjectSessionStatusChanged" && item.sessionId === target.sessionId
+            ? item.resolved
+            : undefined,
+      ),
+      Stream.filter((resolved): resolved is boolean => resolved !== undefined),
+    );
+  const updates = resolvedStates.pipe(
     Stream.changes,
     Stream.switchMap((resolved) =>
       resolved
@@ -380,7 +472,13 @@ export const observe = Effect.fn("ProjectSessions.observe")(function* (
               return observeConversation(handle).pipe(
                 Stream.tap((update) =>
                   update._tag === "Event" && update.event._tag === "TurnSettled"
-                    ? refreshProjection()
+                    ? catalogs.publish({
+                        _tag: "ProjectSessionChanged",
+                        sessionId: target.sessionId,
+                        projectPath: location.projectPath,
+                        workingDirectory: location.workingDirectory,
+                        resolved: false,
+                      })
                     : Effect.void,
                 ),
                 Stream.map((update): ProjectSessionUpdate => {
@@ -504,7 +602,7 @@ export const prompt = Effect.fn("ProjectSessions.prompt")(function* (
       ),
     ).pipe(asError("prompt")),
   );
-  yield* refreshProjection();
+  yield* publishTargetCatalogChange(promptTarget(input));
   return turnId;
 });
 
@@ -516,7 +614,7 @@ export const steer = Effect.fn("ProjectSessions.steer")(function* (
       handle.steer(input.text, runtimeAttachments(input.attachments)),
     ).pipe(asError("steer")),
   );
-  yield* refreshProjection();
+  yield* publishTargetCatalogChange(promptTarget(input));
   return turnId;
 });
 
@@ -528,7 +626,7 @@ export const followUp = Effect.fn("ProjectSessions.followUp")(function* (
       handle.followUp(input.text, runtimeAttachments(input.attachments)),
     ).pipe(asError("followUp")),
   );
-  yield* refreshProjection();
+  yield* publishTargetCatalogChange(promptTarget(input));
   return turnId;
 });
 
@@ -647,7 +745,6 @@ export const rename = Effect.fn("ProjectSessions.rename")(function* (
   if (!normalized)
     return yield* new ProjectSessionError({ operation: "rename", message: "Name is required" });
   yield* withHandle(target, (handle) => handle.rename(normalized)).pipe(asError("rename"));
-  yield* refreshProjection();
 });
 
 export const fork = Effect.fn("ProjectSessions.fork")(function* (input: {
@@ -657,6 +754,7 @@ export const fork = Effect.fn("ProjectSessions.fork")(function* (input: {
   readonly resolveSource?: boolean;
 }) {
   const source = yield* findLocation(input.target);
+  let destination = source;
   let sessionId: string;
   if (
     input.destinationWorkingDirectory === undefined ||
@@ -669,15 +767,15 @@ export const fork = Effect.fn("ProjectSessions.fork")(function* (input: {
   } else {
     const environment = yield* ProjectSessionEnvironment;
     const locations = yield* environment.locations().pipe(asError("fork"));
-    const destination = locations.find(
+    const selectedDestination = locations.find(
       (item) => item.workingDirectory === input.destinationWorkingDirectory,
     );
-    if (!destination)
+    if (!selectedDestination)
       return yield* new ProjectSessionError({
         operation: "fork",
         message: "Cake could not find the destination Working Directory",
       });
-    if (destination.projectPath !== source.projectPath)
+    if (selectedDestination.projectPath !== source.projectPath)
       return yield* new ProjectSessionError({
         operation: "fork",
         message: "The source and destination belong to different Projects",
@@ -687,12 +785,13 @@ export const fork = Effect.fn("ProjectSessions.fork")(function* (input: {
         sessionId: input.target.sessionId,
         entryId: input.entryId,
         source,
-        destination,
+        destination: selectedDestination,
       })
       .pipe(asError("fork"));
+    destination = selectedDestination;
   }
   if (input.resolveSource) yield* resolve(input.target);
-  else yield* refreshProjection();
+  yield* publishCatalogChange(sessionId, destination, false);
   return { sessionId };
 });
 
@@ -703,6 +802,7 @@ export const handoff = Effect.fn("ProjectSessions.handoff")(function* (input: {
   readonly resolveSource?: boolean;
 }) {
   const state = yield* getState();
+  const source = yield* findLocation(input.target);
   const inheritFastMode = state.fastModeSessionIds.includes(input.target.sessionId);
   const transition = yield* withHandle(input.target, (handle) =>
     handle.handoff(input.entryId),
@@ -717,7 +817,7 @@ export const handoff = Effect.fn("ProjectSessions.handoff")(function* (input: {
       renderUserMessageAsMarkdown: false,
     });
   if (input.resolveSource) yield* resolve(input.target);
-  else yield* refreshProjection();
+  yield* publishCatalogChange(transition.sessionId, source, false);
   return { sessionId: transition.sessionId };
 });
 
@@ -746,7 +846,7 @@ export const resolve = Effect.fn("ProjectSessions.resolve")(function* (
   const environment = yield* ProjectSessionEnvironment;
   yield* environment.archive(target.sessionId, location).pipe(asError("resolve"));
   yield* setSessionUnread(target.sessionId, false).pipe(asError("resolve"));
-  return yield* refreshProjection().pipe(asError("resolve"));
+  yield* publishCatalogStatus(target.sessionId, location, true).pipe(asError("resolve"));
 });
 
 export const restore = Effect.fn("ProjectSessions.restore")(function* (
@@ -756,5 +856,5 @@ export const restore = Effect.fn("ProjectSessions.restore")(function* (
   const environment = yield* ProjectSessionEnvironment;
   const restored = yield* environment.restore(target.sessionId, location).pipe(asError("restore"));
   yield* trustProject(restored.workingDirectory).pipe(asError("restore"));
-  return yield* refreshProjection().pipe(asError("restore"));
+  yield* publishCatalogStatus(target.sessionId, restored, false).pipe(asError("restore"));
 });

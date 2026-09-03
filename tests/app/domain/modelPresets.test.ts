@@ -214,7 +214,6 @@ describe("Model Presets domain", () => {
           Stream.fromEffect(
             SynchronizedRef.get(stateRef).pipe(Effect.map((state) => ({ revision: 0, state }))),
           ),
-        refreshProjection: () => Effect.void,
         transact: (transition) => SynchronizedRef.updateAndGetEffect(stateRef, transition),
       });
       const duplicateError = yield* Effect.flip(update({ ...duplicate, name: "Changed" })).pipe(

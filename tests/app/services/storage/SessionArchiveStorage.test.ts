@@ -68,6 +68,9 @@ describe("SessionArchiveStorage", () => {
     expect(
       await runArchive((storage) => storage.resolved(location).pipe(Stream.runCollect)),
     ).toEqual([expect.objectContaining({ id: "session-1", resolved: true })]);
+    await expect(
+      runArchive((storage) => storage.resolvedEntry("session-1", location)),
+    ).resolves.toEqual(expect.objectContaining({ id: "session-1", resolved: true }));
 
     await expect(runArchive((storage) => storage.restore("session-1", location))).resolves.toBe(
       true,

@@ -1,5 +1,5 @@
 import { Effect, Layer } from "effect";
-import { refreshProjection, setSessionFastMode } from "../domain/application";
+import { setSessionFastMode } from "../domain/application";
 import { generateSessionTitle, utilityModelSelection } from "../domain/utilityWork";
 import { Electron } from "../services/electron/Electron";
 import { PluginResources } from "../services/plugins/PluginResources";
@@ -10,6 +10,7 @@ import { ManagedWorktrees } from "../services/worktrees/ManagedWorktrees";
 import type { PiModels } from "../services/pi/PiModels";
 import { ProjectSessionRuntimeOptions } from "../services/pi/ProjectSessionRuntimeOptions";
 import { PiSessionMetadataIndex } from "../services/pi/PiSessionMetadataIndex";
+import { SessionCatalogChanges } from "../services/session-catalogs/SessionCatalogChanges";
 
 export interface ProjectSessionRuntimeOptionsLiveOptions {
   readonly agentDirectory: string;
@@ -31,6 +32,7 @@ export const makeProjectSessionRuntimeOptionsLive = (
   | PiSessionMetadataIndex
   | PluginResources
   | ProjectSessionLifecycle
+  | SessionCatalogChanges
   | VsCodeServer
 > =>
   Layer.effect(
@@ -40,6 +42,7 @@ export const makeProjectSessionRuntimeOptionsLive = (
       const electron = yield* Electron;
       const lifecycle = yield* ProjectSessionLifecycle;
       const metadata = yield* PiSessionMetadataIndex;
+      const catalogs = yield* SessionCatalogChanges;
       const plugins = yield* PluginResources;
       const vscode = yield* VsCodeServer;
       const worktrees = yield* ManagedWorktrees;
@@ -49,6 +52,7 @@ export const makeProjectSessionRuntimeOptionsLive = (
         | PiModels
         | PiSessionMetadataIndex
         | ProjectSessionLifecycle
+        | SessionCatalogChanges
         | VsCodeServer
       >();
       const run = Effect.runPromiseWith(context);
@@ -102,7 +106,25 @@ export const makeProjectSessionRuntimeOptionsLive = (
                   sessionId,
                   title,
                 )
-                .pipe(Effect.flatMap((changed) => (changed ? refreshProjection() : Effect.void))),
+                .pipe(
+                  Effect.flatMap((changed) =>
+                    changed
+                      ? Effect.gen(function* () {
+                          const records = yield* worktrees.records();
+                          const projectPath =
+                            records.find((record) => record.worktreePath === workingDirectory)
+                              ?.projectPath ?? workingDirectory;
+                          yield* catalogs.publish({
+                            _tag: "ProjectSessionChanged",
+                            sessionId,
+                            projectPath,
+                            workingDirectory,
+                            resolved: false,
+                          });
+                        })
+                      : Effect.void,
+                  ),
+                ),
             ),
           enterEditor: (signal) => run(vscode.enterProjectEditor(workingDirectory), { signal }),
           openInEditor: (location, signal) =>
