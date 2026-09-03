@@ -22,6 +22,7 @@ export const worktreeStatusSchema = Schema.Struct({
   targetBranch: bounded(1, 512),
   dirtyCount: nonNegativeInt,
   aheadCount: nonNegativeInt,
+  behindCount: nonNegativeInt,
   merged: Schema.Boolean,
   targetDirty: Schema.Boolean,
   targetOnBranch: Schema.Boolean,
@@ -42,6 +43,14 @@ export const worktreeLandRequestSchema = Schema.Union([
   }),
 ]);
 export type WorktreeLandRequest = typeof worktreeLandRequestSchema.Type;
+export const worktreeRebaseOutcomeSchema = Schema.Union([
+  Schema.Struct({ outcome: Schema.Literal("rebased") }),
+  Schema.Struct({
+    outcome: Schema.Literal("resolving"),
+    files: ipcProjectionArray(Schema.String.check(Schema.isMaxLength(4_096)), 10_000),
+  }),
+]);
+export type WorktreeRebaseOutcome = typeof worktreeRebaseOutcomeSchema.Type;
 export interface WorktreeLandingCoordinator {
   proposeSquashMessage(input: {
     workspacePath: string;

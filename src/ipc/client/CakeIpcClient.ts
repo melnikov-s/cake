@@ -398,7 +398,11 @@ export interface CakeIpcClientService {
     ProjectError
   >;
   readonly managedWorktrees: RpcOperations<
-    "create-worktree" | "get-worktree-status" | "land-worktree" | "discard-worktree",
+    | "create-worktree"
+    | "get-worktree-status"
+    | "land-worktree"
+    | "rebase-worktree"
+    | "discard-worktree",
     ManagedWorktreeError
   >;
   readonly terminals: RpcOperations<
@@ -792,6 +796,9 @@ export const CakeIpcClientLive = Layer.effect(
         ),
         "land-worktree": Effect.fn("CakeIpcClient.managedWorktrees.land-worktree")((payload) =>
           client("managedWorktrees.land-worktree", payload),
+        ),
+        "rebase-worktree": Effect.fn("CakeIpcClient.managedWorktrees.rebase-worktree")((payload) =>
+          client("managedWorktrees.rebase-worktree", payload),
         ),
         "discard-worktree": Effect.fn("CakeIpcClient.managedWorktrees.discard-worktree")(
           (payload) => client("managedWorktrees.discard-worktree", payload),

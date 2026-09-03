@@ -131,6 +131,10 @@ function invokeSmokeCommand(
       return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["land-worktree"])(payload).pipe(
         Effect.flatMap(client.managedWorktrees["land-worktree"]),
       );
+    case "rebase-worktree":
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["rebase-worktree"])(payload).pipe(
+        Effect.flatMap(client.managedWorktrees["rebase-worktree"]),
+      );
     case "discard-worktree":
       return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["discard-worktree"])(payload).pipe(
         Effect.flatMap(client.managedWorktrees["discard-worktree"]),

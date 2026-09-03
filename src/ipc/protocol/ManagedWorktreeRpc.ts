@@ -4,7 +4,11 @@ import { cakeRpcPayloadSchemas, cakeRpcSuccessSchemas } from "../cake-rpc-contra
 
 type WorktreeOperation = keyof Pick<
   typeof cakeRpcPayloadSchemas,
-  "create-worktree" | "get-worktree-status" | "land-worktree" | "discard-worktree"
+  | "create-worktree"
+  | "get-worktree-status"
+  | "land-worktree"
+  | "rebase-worktree"
+  | "discard-worktree"
 >;
 
 const worktreeRpc = <Type extends WorktreeOperation>(type: Type) =>
@@ -18,5 +22,6 @@ export const ManagedWorktreeRpc = RpcGroup.make(
   worktreeRpc("create-worktree"),
   worktreeRpc("get-worktree-status"),
   worktreeRpc("land-worktree"),
+  worktreeRpc("rebase-worktree"),
   worktreeRpc("discard-worktree"),
 );

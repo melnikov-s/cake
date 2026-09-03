@@ -86,6 +86,11 @@ export const land = Effect.fn("ManagedWorktrees.land")(function* (
   return yield* (yield* ManagedWorktrees).land(workingDirectory, request);
 });
 
+export const rebase = Effect.fn("ManagedWorktrees.rebase")(function* (workingDirectory: string) {
+  yield* requireRecord(workingDirectory, new Set(["active"]));
+  return yield* (yield* ManagedWorktrees).rebase(workingDirectory);
+});
+
 export const discard = Effect.fn("ManagedWorktrees.discard")(function* (
   workingDirectory: string,
   keepBranch: boolean,

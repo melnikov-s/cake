@@ -11,10 +11,12 @@ import type { WorktreeStore } from "../../../src/renderer/stores/WorktreeStore";
 function actionStore({
   aheadCount,
   dirtyCount,
+  behindCount = 0,
   running = false,
 }: {
   aheadCount: number;
   dirtyCount: number;
+  behindCount?: number;
   running?: boolean;
 }) {
   return {
@@ -28,6 +30,7 @@ function actionStore({
       },
       targetBranch: "main",
       aheadCount,
+      behindCount,
       dirtyCount,
       merged: false,
       targetDirty: false,
@@ -42,6 +45,7 @@ function actionStore({
     stalled: false,
     error: undefined,
     commitAndMerge: vi.fn(async () => undefined),
+    rebase: vi.fn(async () => undefined),
     resolve: vi.fn(async () => undefined),
     retryLanding: vi.fn(async () => undefined),
     cancelLanding: vi.fn(),
@@ -98,11 +102,19 @@ describe("WorktreePill", () => {
   it("uses commit labels only when the worktree has uncommitted changes", () => {
     render(actionStore({ aheadCount: 1, dirtyCount: 2 }));
     expect(button("Commit & merge").disabled).toBe(false);
-    expect(button("Commit & merge & resolve").disabled).toBe(false);
+    expect(button("Merge & resolve").disabled).toBe(false);
 
     render(actionStore({ aheadCount: 1, dirtyCount: 0 }));
     expect(button("Merge").disabled).toBe(false);
     expect(button("Merge & resolve").disabled).toBe(false);
+  });
+
+  it("offers rebase only when the target branch has advanced", () => {
+    render(actionStore({ aheadCount: 1, dirtyCount: 0, behindCount: 1 }));
+    expect(button("Rebase").disabled).toBe(false);
+
+    render(actionStore({ aheadCount: 1, dirtyCount: 0 }));
+    expect(button("Rebase")).toBeUndefined();
   });
 
   it("does not derive draft worktree candidates for an existing session", () => {
@@ -128,7 +140,7 @@ describe("WorktreePill", () => {
     render(actionStore({ aheadCount: 1, dirtyCount: 1, running: true }));
 
     expect(button("Commit & merge").disabled).toBe(true);
-    expect(button("Commit & merge & resolve").disabled).toBe(true);
+    expect(button("Merge & resolve").disabled).toBe(true);
     expect(button("Discard & resolve").disabled).toBe(true);
   });
 });

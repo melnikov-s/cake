@@ -98,9 +98,17 @@ test("chooses an isolated worktree without disturbing the new-chat composer", as
     await expect(
       page.getByTestId("virtuoso-item-list").getByText("Build this in isolation", { exact: true }),
     ).toBeVisible();
-    await expect(page.getByRole("button", { name: "Merge", exact: true })).toBeVisible({
-      timeout: 5_000,
-    });
+    const merge = page.getByRole("button", { name: "Merge", exact: true });
+    await expect(merge).toBeVisible({ timeout: 5_000 });
+
+    await page.setViewportSize({ width: 420, height: 800 });
+    const pill = page.getByTestId("worktree-pill");
+    await expect
+      .poll(() => pill.evaluate((element) => element.scrollWidth <= element.clientWidth))
+      .toBe(true);
+    await expect
+      .poll(() => merge.evaluate((element) => element.clientWidth))
+      .toBeLessThanOrEqual(32);
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

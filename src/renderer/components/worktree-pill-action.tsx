@@ -10,6 +10,7 @@ export interface WorktreePillActionProps extends ButtonProps {
   popoverTrigger?: boolean;
   tone?: "default" | "destructive";
   icon?: ReactNode;
+  tooltip?: string;
 }
 
 /** Action button matching Cake's header toolbar style used in the worktree pill. */
@@ -21,8 +22,10 @@ export function WorktreePillAction({
   icon,
   popoverTrigger = false,
   tone = "default",
+  tooltip,
   variant = "ghost",
   size = "sm",
+  "aria-label": ariaLabel,
   ...props
 }: WorktreePillActionProps) {
   const { anchor, hide, show } = useTooltip();
@@ -35,19 +38,21 @@ export function WorktreePillAction({
       variant={isDestructive ? "ghost" : variant}
       size={size}
       disabled={disabled || Boolean(disabledReason)}
+      aria-label={ariaLabel ?? tooltip}
       className={cn(
-        "flex h-7.5 shrink-0 items-center gap-1.5 rounded-lg bg-transparent px-2 text-xs font-normal text-muted-foreground shadow-none transition-colors hover:bg-muted hover:text-foreground",
+        "flex h-7.5 shrink-0 items-center gap-1.5 rounded-lg bg-transparent px-2 text-xs font-normal text-muted-foreground shadow-none transition-colors hover:bg-muted hover:text-foreground @max-[430px]/worktree:w-7.5 @max-[430px]/worktree:gap-0 @max-[430px]/worktree:px-0",
         isDestructive &&
           "text-muted-foreground hover:bg-destructive/10 hover:text-destructive active:bg-destructive/15",
         className,
       )}
     >
       {icon && <span className="shrink-0">{icon}</span>}
-      <span>{children}</span>
+      <span className="@max-[430px]/worktree:sr-only">{children}</span>
     </Control>
   );
 
-  if (!disabledReason) return control;
+  const tooltipLabel = disabledReason ?? tooltip;
+  if (!tooltipLabel) return control;
 
   return (
     <span
@@ -56,7 +61,7 @@ export function WorktreePillAction({
       onMouseLeave={hide}
     >
       {control}
-      {anchor && <TooltipBubble label={disabledReason} anchor={anchor} placement="above" />}
+      {anchor && <TooltipBubble label={tooltipLabel} anchor={anchor} placement="above" />}
     </span>
   );
 }

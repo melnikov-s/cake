@@ -82,6 +82,29 @@ export const PullRequestIcon = () => (
     <path d="m13 5-3 3 3 3" />
   </Icon>
 );
+export const RebaseIcon = () => (
+  <Icon size={15}>
+    <circle cx="5" cy="5" r="2" />
+    <circle cx="5" cy="19" r="2" />
+    <path d="M5 7v10M11 8h9M17 5l3 3-3 3M20 16h-9M14 13l-3 3 3 3" />
+  </Icon>
+);
+export const MergeIcon = () => (
+  <Icon size={15}>
+    <circle cx="6" cy="5" r="2" />
+    <circle cx="18" cy="5" r="2" />
+    <circle cx="12" cy="19" r="2" />
+    <path d="M6 7v3c0 3 6 3 6 7M18 7v3c0 3-6 3-6 7" />
+  </Icon>
+);
+export const MergeResolveIcon = () => (
+  <Icon size={15}>
+    <circle cx="5" cy="5" r="2" />
+    <circle cx="14" cy="5" r="2" />
+    <path d="M5 7v2.5c0 3 4.5 3 4.5 6M14 7v2.5c0 2-2 2.7-4.5 4" />
+    <path d="m12 18 2.2 2.2L20 14.5" />
+  </Icon>
+);
 export const ChatIcon = ({ size = 16 }: { size?: number }) => (
   <Icon size={size}>
     <path d="M20 15a3 3 0 0 1-3 3H8l-5 3 1.7-5.1A7 7 0 0 1 4 13V8a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3z" />

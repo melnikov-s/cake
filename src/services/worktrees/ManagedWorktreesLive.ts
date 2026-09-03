@@ -37,6 +37,9 @@ export const ManagedWorktreesLive: Layer.Layer<ManagedWorktrees, never, Git | Wo
         land: Effect.fn("ManagedWorktrees.land")((worktreePath, request) =>
           attempt("ManagedWorktrees.land", () => engine.land(worktreePath, { request })),
         ),
+        rebase: Effect.fn("ManagedWorktrees.rebase")((worktreePath) =>
+          attempt("ManagedWorktrees.rebase", () => engine.rebase(worktreePath)),
+        ),
         discard: Effect.fn("ManagedWorktrees.discard")((worktreePath, keepBranch) =>
           attempt("ManagedWorktrees.discard", () => engine.discard(worktreePath, keepBranch)),
         ),

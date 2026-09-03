@@ -2,6 +2,7 @@ import { Context, Schema, type Effect } from "effect";
 import type {
   WorktreeLandOutcome,
   WorktreeLandRequest,
+  WorktreeRebaseOutcome,
   WorktreeRecord,
   WorktreeStatus,
 } from "../../ipc/worktree-contract";
@@ -28,6 +29,9 @@ export interface ManagedWorktreesService {
     worktreePath: string,
     request: WorktreeLandRequest,
   ) => Effect.Effect<WorktreeLandOutcome, ManagedWorktreeError>;
+  readonly rebase: (
+    worktreePath: string,
+  ) => Effect.Effect<WorktreeRebaseOutcome, ManagedWorktreeError>;
   readonly discard: (
     worktreePath: string,
     keepBranch: boolean,

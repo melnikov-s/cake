@@ -7,6 +7,7 @@ import {
   type WorktreeLandOutcome,
   type WorktreeLandRequest,
   type WorktreeLandingCoordinator,
+  type WorktreeRebaseOutcome,
   type WorktreeRecord,
   type WorktreeStatus,
 } from "../../ipc/worktree-contract";
@@ -136,29 +137,70 @@ export class ManagedWorktreeEngine implements WorktreeLandingCoordinator {
     }
     const targetPath = record.parentWorktreePath ?? record.projectPath;
     if (!existsSync(targetPath)) throw new Error("The worktree landing target no longer exists");
-    const [dirtyCount, aheadCount, merged, targetDirty, targetBranch, merging, rebasing] =
-      await Promise.all([
-        this.dirtyFileCount(record.worktreePath),
-        this.revListCount(record.worktreePath, `${record.baseBranch}..HEAD`),
-        record.state === "landed"
-          ? Promise.resolve(true)
-          : this.isAncestor(record.worktreePath, "HEAD", record.baseBranch),
-        this.dirtyFileCount(targetPath).then((count) => count > 0),
-        this.gitWithFallback(targetPath, ["rev-parse", "--abbrev-ref", "HEAD"]),
-        this.revParseExists(record.worktreePath, "MERGE_HEAD"),
-        this.rebaseInProgress(record.worktreePath),
-      ]);
+    const [
+      dirtyCount,
+      aheadCount,
+      behindCount,
+      merged,
+      targetDirty,
+      targetBranch,
+      merging,
+      rebasing,
+    ] = await Promise.all([
+      this.dirtyFileCount(record.worktreePath),
+      this.revListCount(record.worktreePath, `${record.baseBranch}..HEAD`),
+      this.revListCount(record.worktreePath, `HEAD..${record.baseBranch}`),
+      record.state === "landed"
+        ? Promise.resolve(true)
+        : this.isAncestor(record.worktreePath, "HEAD", record.baseBranch),
+      this.dirtyFileCount(targetPath).then((count) => count > 0),
+      this.gitWithFallback(targetPath, ["rev-parse", "--abbrev-ref", "HEAD"]),
+      this.revParseExists(record.worktreePath, "MERGE_HEAD"),
+      this.rebaseInProgress(record.worktreePath),
+    ]);
     return Schema.decodeUnknownSync(worktreeStatusSchema)({
       record,
       targetBranch: record.baseBranch,
       dirtyCount,
       aheadCount,
+      behindCount,
       merged,
       targetDirty,
       targetOnBranch: targetBranch === record.baseBranch,
       merging,
       rebasing,
       squashMessageReady: await this.hasFreshSquashProposal(record),
+    });
+  }
+
+  /** Replays this worktree's commits when its base branch has advanced. */
+  async rebase(worktreePath: string): Promise<WorktreeRebaseOutcome> {
+    await this.load();
+    const normalized = resolveNormalized(worktreePath);
+    const record = this.allRecords.find(
+      (entry) =>
+        (entry.state ?? "active") === "active" &&
+        resolveNormalized(entry.worktreePath) === normalized,
+    );
+    if (!record) throw new Error("Cake could not find that active worktree");
+    return this.withRepositoryLock(record.projectPath, async () => {
+      if (!existsSync(record.worktreePath)) {
+        await this.closeRecord(record, "missing");
+        throw new Error("The worktree no longer exists on disk");
+      }
+      if (await this.rebaseInProgress(record.worktreePath))
+        return { outcome: "resolving", files: await this.unmergedFiles(record.worktreePath) };
+      if ((await this.dirtyFileCount(record.worktreePath)) > 0)
+        throw new Error("The worktree has uncommitted changes. Commit or discard them first.");
+      const targetPath = record.parentWorktreePath ?? record.projectPath;
+      if (!existsSync(targetPath)) throw new Error("The worktree rebase target no longer exists");
+      const targetHead = (
+        await this.git(record.worktreePath, "rev-parse", record.baseBranch)
+      ).trim();
+      const behindCount = await this.revListCount(record.worktreePath, `HEAD..${targetHead}`);
+      if (behindCount === 0) return { outcome: "rebased" };
+      const conflicts = await this.rebaseOntoTarget(record, targetHead);
+      return conflicts ? { outcome: "resolving", files: conflicts } : { outcome: "rebased" };
     });
   }
 
@@ -294,9 +336,12 @@ export class ManagedWorktreeEngine implements WorktreeLandingCoordinator {
   }
 
   /** Returns unmerged files when the rebase stops on conflicts, or null when it completed. */
-  private async rebaseOntoTarget(record: WorktreeRecord): Promise<string[] | null> {
+  private async rebaseOntoTarget(
+    record: WorktreeRecord,
+    target: string = record.baseBranch,
+  ): Promise<string[] | null> {
     try {
-      await this.git(record.worktreePath, "rebase", record.baseBranch);
+      await this.git(record.worktreePath, "rebase", target);
       return null;
     } catch (error) {
       if (await this.rebaseInProgress(record.worktreePath))

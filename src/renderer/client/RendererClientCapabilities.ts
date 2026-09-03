@@ -230,6 +230,16 @@ export function makeRendererClientCapabilities(execute: Execute): RendererClient
             }),
           options,
         ).then((response) => response.result),
+      rebase: (input, options) =>
+        execute(
+          "managedWorktrees.rebase-worktree",
+          (client) =>
+            client.managedWorktrees["rebase-worktree"]({
+              requestId: input.operationId,
+              workspacePath: input.workspacePath,
+            }),
+          options,
+        ).then((response) => response.result),
       discard: (input, options) =>
         accepted(
           "managedWorktrees.discard-worktree",

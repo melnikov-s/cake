@@ -21,6 +21,10 @@ export const managedWorktreeHandlers = ManagedWorktreeRpc.of({
     Effect.flatMap(RendererConnection, () =>
       managedWorktrees.land(request.workspacePath, request.request),
     ).pipe(Effect.map((result) => ({ requestId: request.requestId, result }))),
+  "managedWorktrees.rebase-worktree": (request) =>
+    Effect.flatMap(RendererConnection, () => managedWorktrees.rebase(request.workspacePath)).pipe(
+      Effect.map((result) => ({ requestId: request.requestId, result })),
+    ),
   "managedWorktrees.discard-worktree": (request) =>
     Effect.flatMap(RendererConnection, () =>
       managedWorktrees.discard(request.workspacePath, request.keepBranch),

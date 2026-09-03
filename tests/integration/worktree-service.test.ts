@@ -115,7 +115,7 @@ describe("WorktreeService", { timeout: 20_000 }, () => {
 
     const clean = await worktrees.status(record.worktreePath);
     // A fresh worktree points at the base commit, so its branch is contained in main.
-    expect(clean).toMatchObject({ dirtyCount: 0, aheadCount: 0, merged: true });
+    expect(clean).toMatchObject({ dirtyCount: 0, aheadCount: 0, behindCount: 0, merged: true });
 
     await writeFile(join(record.worktreePath, "feature.ts"), "export {};\n");
     await commitAll(record.worktreePath, "feature");
@@ -155,6 +155,43 @@ describe("WorktreeService", { timeout: 20_000 }, () => {
       merged: true,
       record: { state: "landed" },
     });
+  });
+
+  it("rebases deterministically when the target branch advances", async () => {
+    const repo = await repository();
+    const worktrees = service();
+    const record = await worktrees.create(repo);
+    await writeFile(join(record.worktreePath, "feature.ts"), "export const feature = true;\n");
+    await commitAll(record.worktreePath, "feature");
+    const originalHead = (await git(record.worktreePath, "rev-parse", "HEAD")).stdout.trim();
+    await writeFile(join(repo, "main.ts"), "export const main = true;\n");
+    await commitAll(repo, "main moves");
+
+    await expect(worktrees.status(record.worktreePath)).resolves.toMatchObject({ behindCount: 1 });
+    await expect(worktrees.rebase(record.worktreePath)).resolves.toEqual({ outcome: "rebased" });
+    await expect(worktrees.status(record.worktreePath)).resolves.toMatchObject({ behindCount: 0 });
+
+    const rebasedHead = (await git(record.worktreePath, "rev-parse", "HEAD")).stdout.trim();
+    expect(rebasedHead).not.toBe(originalHead);
+    expect((await git(record.worktreePath, "log", "--format=%s", "-2")).stdout).toBe(
+      "feature\nmain moves\n",
+    );
+  });
+
+  it("pauses a standalone rebase for agent conflict resolution", async () => {
+    const repo = await repository();
+    const worktrees = service();
+    const record = await worktrees.create(repo);
+    await writeFile(join(record.worktreePath, "README.md"), "worktree\n");
+    await commitAll(record.worktreePath, "feature");
+    await writeFile(join(repo, "README.md"), "main\n");
+    await commitAll(repo, "main moves");
+
+    await expect(worktrees.rebase(record.worktreePath)).resolves.toEqual({
+      outcome: "resolving",
+      files: ["README.md"],
+    });
+    await expect(worktrees.status(record.worktreePath)).resolves.toMatchObject({ rebasing: true });
   });
 
   it("replays commits on top of an advanced target when preserving", async () => {

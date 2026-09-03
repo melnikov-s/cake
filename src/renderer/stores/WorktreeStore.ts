@@ -40,8 +40,10 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     | "idle"
     | "committing"
     | "landing"
+    | "rebasing"
     | "proposing"
     | "resolving"
+    | "resolving-rebase"
     | "resolving-session"
     | "discarding" = "idle";
   error: string | undefined;
@@ -142,6 +144,33 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     }
   }
 
+  /** Rebases onto an advanced target; conflicts are delegated to the session agent. */
+  async rebase(): Promise<void> {
+    const workspacePath = this.requiredWorkspacePath();
+    if (this.isBusy) throw new Error("A worktree operation is already in progress.");
+    if (this.props.isStreaming()) throw new Error("Wait for the current reply to finish first.");
+    this.phase = "rebasing";
+    this.stalled = false;
+    this.error = undefined;
+    try {
+      const outcome = await this.managedWorktrees.rebase({
+        operationId: crypto.randomUUID(),
+        workspacePath,
+      });
+      if (this.signal.aborted || this.props.workspacePath() !== workspacePath) return;
+      if (outcome.outcome === "resolving") {
+        this.phase = "resolving-rebase";
+        await this.requestRebaseConflictResolution(outcome.files);
+      } else {
+        this.phase = "idle";
+        await this.refresh(workspacePath);
+      }
+    } catch (error) {
+      this.fail(error);
+      throw error;
+    }
+  }
+
   /** Lands with the given strategy; conflicts and squash messages are delegated to the session agent. */
   async land(
     request: WorktreeLandRequest = { strategy: "preserve" },
@@ -231,6 +260,12 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
    * landing either completes now or pauses again with a fresh agent request.
    */
   async retryLanding() {
+    if (this.phase === "resolving-rebase") {
+      this.phase = "idle";
+      this.stalled = false;
+      await this.rebase();
+      return;
+    }
     if (this.phase === "committing") {
       const allowDirtyTarget = this.pendingAllowDirtyTarget;
       const resolveAfterLanding = this.pendingResolveAfterLanding;
@@ -253,7 +288,12 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
 
   /** Releases a paused landing back to manual control without touching Git state. */
   cancelLanding() {
-    if (this.phase !== "committing" && this.phase !== "resolving" && this.phase !== "proposing")
+    if (
+      this.phase !== "committing" &&
+      this.phase !== "resolving" &&
+      this.phase !== "resolving-rebase" &&
+      this.phase !== "proposing"
+    )
       return;
     this.phase = "idle";
     this.pendingStrategy = undefined;
@@ -268,7 +308,12 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
    * though this store was recreated.
    */
   private adoptPausedLanding(status: WorktreeStatus) {
-    if (this.phase !== "idle" || !status.record.pendingStrategy) return;
+    if (this.phase !== "idle") return;
+    if (status.rebasing && !status.record.pendingStrategy) {
+      this.phase = "resolving-rebase";
+      return;
+    }
+    if (!status.record.pendingStrategy) return;
     this.pendingStrategy = status.record.pendingStrategy;
     this.pendingAllowDirtyTarget = false;
     const pausedOnWork =
@@ -285,6 +330,19 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
    * the agent proposed a commit message for the current branch tip.
    */
   private async maybeAutoRetry(status: WorktreeStatus) {
+    if (this.phase === "resolving-rebase") {
+      if (this.props.isStreaming()) {
+        this.stalled = false;
+        return;
+      }
+      if (status.dirtyCount > 0 || status.merging || status.rebasing || status.behindCount > 0) {
+        this.stalled = true;
+        return;
+      }
+      this.phase = "idle";
+      this.stalled = false;
+      return;
+    }
     if (this.phase !== "committing" && this.phase !== "resolving" && this.phase !== "proposing")
       return;
     if (this.props.isStreaming() || !this.pendingStrategy) {
@@ -325,6 +383,34 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
           "Inspect the complete working tree, verify the change, and commit all intended work with an appropriate commit message.",
           "",
           "Do not merge, rebase, push, switch branches, or modify the target checkout. Cake will merge the committed branch after this turn finishes.",
+        ].join("\n"),
+      },
+      { signal: this.signal },
+    );
+  }
+
+  private async requestRebaseConflictResolution(files: ReadonlyArray<string>) {
+    const sessionId = this.props.sessionId();
+    if (!sessionId) throw new Error("Cake could not find the session to resolve conflicts with");
+    const listed =
+      files.length > 0
+        ? files.map((file) => `- ${file}`).join("\n")
+        : "- Run `git status` to list the conflicted files.";
+    const target = this.status?.targetBranch ?? "its target";
+    await this.projectSessions.prompt(
+      {
+        sessionId,
+        renderUserMessageAsMarkdown: false,
+        attachments: [],
+        text: [
+          `Cake tried to rebase this worktree onto ${target}, but the deterministic rebase stopped on conflicts in these files:`,
+          "",
+          listed,
+          "",
+          "Resolve each conflict, preserving the intent of both sides.",
+          "Stage the resolved files and continue with `GIT_EDITOR=true git rebase --continue` until the rebase is complete.",
+          "",
+          "Do not push, merge, switch branches, or rewrite commit messages.",
         ].join("\n"),
       },
       { signal: this.signal },

@@ -23,6 +23,7 @@ import {
 import {
   worktreeLandOutcomeSchema,
   worktreeLandRequestSchema,
+  worktreeRebaseOutcomeSchema,
   worktreeRecordSchema,
   worktreeStatusSchema,
 } from "./worktree-contract";
@@ -392,6 +393,10 @@ export const cakeRpcPayloadSchemas = {
     workspacePath: stringMax(4_096),
     request: worktreeLandRequestSchema,
   }),
+  "rebase-worktree": Schema.Struct({
+    ...requestBase,
+    workspacePath: stringMax(4_096),
+  }),
   "discard-worktree": Schema.Struct({
     ...requestBase,
     workspacePath: stringMax(4_096),
@@ -496,6 +501,10 @@ const cakeRpcResultSchemas = {
     ...requestBase,
     result: worktreeLandOutcomeSchema,
   }),
+  "worktree-rebased": Schema.Struct({
+    ...requestBase,
+    result: worktreeRebaseOutcomeSchema,
+  }),
   accepted: accepted,
   "ui-response-accepted": Schema.Struct({
     uiRequestId: uuid,
@@ -535,6 +544,7 @@ export const cakeRpcSuccessSchemas = {
   "create-worktree": cakeRpcResultSchemas["worktree-created"],
   "get-worktree-status": cakeRpcResultSchemas["worktree-status-loaded"],
   "land-worktree": cakeRpcResultSchemas["worktree-landed"],
+  "rebase-worktree": cakeRpcResultSchemas["worktree-rebased"],
   "discard-worktree": cakeRpcResultSchemas.accepted,
   "open-terminal": cakeRpcResultSchemas["terminal-opened"],
   "write-terminal": cakeRpcResultSchemas.accepted,

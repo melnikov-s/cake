@@ -20,6 +20,7 @@ import type {
 import type {
   WorktreeLandOutcome,
   WorktreeLandRequest,
+  WorktreeRebaseOutcome,
   WorktreeRecord,
   WorktreeStatus,
 } from "../../ipc/worktree-contract";
@@ -160,6 +161,10 @@ interface ManagedWorktreeCommands {
     input: { operationId: string; workspacePath: string; request: WorktreeLandRequest },
     options?: RendererCommandOptions,
   ): Promise<WorktreeLandOutcome>;
+  rebase(
+    input: { operationId: string; workspacePath: string },
+    options?: RendererCommandOptions,
+  ): Promise<WorktreeRebaseOutcome>;
   discard(
     input: { operationId: string; workspacePath: string; keepBranch: boolean },
     options?: RendererCommandOptions,

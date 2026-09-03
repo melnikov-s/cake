@@ -18,10 +18,13 @@ import {
   ChevronDownIcon,
   CloseIcon,
   FolderIcon,
+  MergeIcon,
+  MergeResolveIcon,
   PullRequestIcon,
-  RemoveIcon,
+  RebaseIcon,
   ResolveIcon,
   RestoreIcon,
+  TrashIcon,
 } from "./ui/icons";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { WorktreePillAction } from "./worktree-pill-action";
@@ -73,12 +76,16 @@ export const WorktreePill = observer(function WorktreePill({
         ? candidates.find((record) => record.worktreePath === choice.worktreePath)
         : undefined;
     return (
-      <div className="mx-4 -mb-5 flex min-w-0 items-center gap-1 overflow-x-auto rounded-t-[1.75rem] border border-b-0 border-border/85 bg-card px-5 pt-3 pb-8 text-xs">
+      <div
+        data-testid="worktree-pill"
+        className="@container/worktree mx-4 -mb-5 flex min-w-0 flex-wrap items-center gap-1 rounded-t-[1.75rem] border border-b-0 border-border/85 bg-card px-5 pt-3 pb-8 text-xs"
+      >
         <Button
           type="button"
           variant="ghost"
           size="sm"
           disabled={busy}
+          aria-label="Current checkout"
           aria-pressed={choice.kind === "current"}
           className={cn(
             "flex h-7.5 shrink-0 items-center gap-1.5 rounded-lg bg-transparent px-2 text-xs font-normal text-muted-foreground shadow-none hover:bg-muted hover:text-foreground",
@@ -87,13 +94,14 @@ export const WorktreePill = observer(function WorktreePill({
           onClick={() => choose({ kind: "current" })}
         >
           <FolderIcon />
-          <span>Current checkout</span>
+          <span className="@max-[430px]/worktree:sr-only">Current checkout</span>
         </Button>
         <Button
           type="button"
           variant="ghost"
           size="sm"
           disabled={busy}
+          aria-label="New worktree"
           aria-pressed={choice.kind === "new"}
           className={cn(
             "flex h-7.5 shrink-0 items-center gap-1.5 rounded-lg bg-transparent px-2 text-xs font-normal text-muted-foreground shadow-none hover:bg-muted hover:text-foreground",
@@ -102,7 +110,7 @@ export const WorktreePill = observer(function WorktreePill({
           onClick={() => choose({ kind: "new" })}
         >
           <BranchIcon />
-          <span>New worktree</span>
+          <span className="@max-[430px]/worktree:sr-only">New worktree</span>
         </Button>
         <Popover open={existingOpen} onOpenChange={setExistingOpen}>
           <PopoverTrigger
@@ -118,7 +126,7 @@ export const WorktreePill = observer(function WorktreePill({
             )}
           >
             <PullRequestIcon />
-            <span className="max-w-56 truncate">
+            <span className="max-w-56 truncate @max-[430px]/worktree:sr-only">
               {selectedExisting
                 ? `${selectedExisting.sessionTitle} · ${selectedExisting.branch.replace(/^agent\//, "")}`
                 : "Existing worktree"}
@@ -178,6 +186,9 @@ export const WorktreePill = observer(function WorktreePill({
   const mergeDisabledReason =
     operationDisabledReason ??
     (!hasWorkToMerge ? "There are no changes or commits to merge." : undefined);
+  const rebaseDisabledReason =
+    operationDisabledReason ??
+    (hasUncommittedChanges ? "Commit or discard changes before rebasing." : undefined);
   const mergeLabel =
     actions.phase === "committing"
       ? "Committing…"
@@ -188,23 +199,41 @@ export const WorktreePill = observer(function WorktreePill({
           : hasUncommittedChanges
             ? "Commit & merge"
             : "Merge";
-  const mergeAndResolveLabel = hasUncommittedChanges
-    ? "Commit & merge & resolve"
-    : "Merge & resolve";
+  const mergeAndResolveLabel = "Merge & resolve";
 
   return (
     <>
-      <div className="mx-4 -mb-5 flex flex-col gap-1 rounded-t-[1.75rem] border border-b-0 border-border/85 bg-card px-5 pt-3 pb-8">
-        <div className="flex min-w-0 items-center justify-between gap-2 overflow-x-auto text-xs">
+      <div
+        data-testid="worktree-pill"
+        className="@container/worktree mx-4 -mb-5 flex flex-col gap-1 rounded-t-[1.75rem] border border-b-0 border-border/85 bg-card px-5 pt-3 pb-8"
+      >
+        <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 text-xs">
           <span className="flex h-7.5 min-w-0 shrink items-center gap-1.5 px-2 text-xs font-normal text-foreground">
             <WorktreeStatusIcon state={status.record.state} className="shrink-0" />
             <span className="truncate max-w-56">{branch}</span>
           </span>
-          <div className="flex min-w-0 shrink-0 items-center gap-1">
+          <div className="flex min-w-0 flex-wrap items-center justify-end gap-1 @max-[560px]/worktree:w-full @max-[560px]/worktree:justify-start">
+            {!landed && status.behindCount > 0 && (
+              <WorktreePillAction
+                icon={<RebaseIcon />}
+                aria-label="Rebase"
+                tooltip="Rebase onto target branch"
+                disabledReason={rebaseDisabledReason}
+                onClick={() => run(actions.rebase())}
+              >
+                {actions.phase === "rebasing"
+                  ? "Rebasing…"
+                  : actions.phase === "resolving-rebase"
+                    ? "Resolving rebase…"
+                    : "Rebase"}
+              </WorktreePillAction>
+            )}
             {!landed && (
               <>
                 <WorktreePillAction
-                  icon={<CheckIcon />}
+                  icon={<MergeIcon />}
+                  aria-label={mergeLabel}
+                  tooltip={hasUncommittedChanges ? "Commit changes and merge" : "Merge worktree"}
                   disabledReason={mergeDisabledReason}
                   onClick={() => {
                     if (status.targetDirty) {
@@ -217,7 +246,13 @@ export const WorktreePill = observer(function WorktreePill({
                   {mergeLabel}
                 </WorktreePillAction>
                 <WorktreePillAction
-                  icon={<ResolveIcon />}
+                  icon={<MergeResolveIcon />}
+                  aria-label={mergeAndResolveLabel}
+                  tooltip={
+                    hasUncommittedChanges
+                      ? "Commit changes, merge, and resolve sessions"
+                      : "Merge and resolve sessions"
+                  }
                   disabledReason={mergeDisabledReason}
                   onClick={() => {
                     if (status.targetDirty) {
@@ -234,6 +269,8 @@ export const WorktreePill = observer(function WorktreePill({
             {landed && (
               <WorktreePillAction
                 icon={<ResolveIcon />}
+                aria-label="Resolve"
+                tooltip="Resolve worktree sessions"
                 disabledReason={operationDisabledReason}
                 onClick={() => run(actions.resolve())}
               >
@@ -244,6 +281,8 @@ export const WorktreePill = observer(function WorktreePill({
               <>
                 <WorktreePillAction
                   icon={<RestoreIcon />}
+                  aria-label="Retry"
+                  tooltip="Retry worktree operation"
                   disabledReason={sessionDisabledReason}
                   onClick={() => run(actions.retryLanding())}
                 >
@@ -251,6 +290,8 @@ export const WorktreePill = observer(function WorktreePill({
                 </WorktreePillAction>
                 <WorktreePillAction
                   icon={<CloseIcon size={14} />}
+                  aria-label="Dismiss"
+                  tooltip="Dismiss worktree operation"
                   disabledReason={sessionDisabledReason}
                   onClick={() => actions.cancelLanding()}
                 >
@@ -265,7 +306,9 @@ export const WorktreePill = observer(function WorktreePill({
               >
                 <WorktreePillAction
                   popoverTrigger
-                  icon={<RemoveIcon />}
+                  icon={<TrashIcon />}
+                  aria-label="Discard & resolve"
+                  tooltip="Discard worktree and resolve sessions"
                   tone="destructive"
                   disabledReason={operationDisabledReason}
                 >
