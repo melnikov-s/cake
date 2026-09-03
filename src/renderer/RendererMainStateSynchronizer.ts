@@ -1,47 +1,65 @@
-import { Effect, Schedule, Stream } from "effect";
-import { CakeIpcClient } from "../ipc/client/CakeIpcClient";
+import { Effect, Stream } from "effect";
+import { CakeIpcClient, type CakeIpcClientService } from "../ipc/client/CakeIpcClient";
 import type { RendererRuntime } from "./RendererRuntime";
 import type { RootStore } from "./stores/RootStore";
+import type { RendererSynchronizationSupervisor } from "./RendererSynchronizationSupervisor";
 
 /** Window-owned consumer for current-first main-process state projections. */
 export class RendererMainStateSynchronizer implements Disposable {
-  private readonly abort = new AbortController();
   private observing = false;
   private applicationRevision = -1;
 
-  constructor(private readonly runtime: RendererRuntime) {}
+  constructor(
+    private readonly runtime: RendererRuntime,
+    private readonly supervisor: RendererSynchronizationSupervisor,
+  ) {}
 
   observe(root: RootStore) {
     if (this.observing) return;
     this.observing = true;
-    const consume = <A>(stream: Stream.Stream<A, unknown>, apply: (value: A) => void) =>
-      stream.pipe(
-        Stream.retry(Schedule.spaced("250 millis")),
-        Stream.runForEach((value) => Effect.sync(() => apply(value))),
-      );
-    const program = Effect.flatMap(CakeIpcClient, (client) =>
-      Effect.all(
-        [
-          consume(client.application.observeState(), (projection) =>
-            this.applyApplicationState(root, projection),
+    const register = <A>(
+      key: string,
+      stream: (client: CakeIpcClientService) => Stream.Stream<A, unknown>,
+      apply: (value: A) => void,
+    ) =>
+      this.supervisor.register(`state:${key}`, {
+        run: (signal, markHealthy) =>
+          this.runtime.runPromise(
+            Effect.flatMap(CakeIpcClient, (client) =>
+              stream(client).pipe(
+                Stream.runForEach((value) =>
+                  Effect.sync(() => {
+                    markHealthy();
+                    apply(value);
+                  }),
+                ),
+              ),
+            ),
+            { signal },
           ),
-          consume(client.application.observeAgentAvailability(), (snapshot) =>
-            root.projectWorkbenchStore.applyAgentAvailability(snapshot),
-          ),
-          consume(client.plugins.observeCustomization(), (state) =>
-            root.customizationStore.applyState(state),
-          ),
-          consume(client.vscode.observeState(), (state) =>
-            root.projectWorkbenchStore.embeddedEditorStore.applyState(state),
-          ),
-        ],
-        { concurrency: "unbounded", discard: true },
-      ),
+        reportFailure: (error) =>
+          root.projectWorkbenchStore.setError(error, `Main-process ${key} synchronization`),
+      });
+    register(
+      "application",
+      (client) => client.application.observeState(),
+      (projection) => this.applyApplicationState(root, projection),
     );
-    void this.runtime.runPromise(program, { signal: this.abort.signal }).catch((error) => {
-      if (!this.abort.signal.aborted)
-        root.projectWorkbenchStore.setError(error, "Main-process state synchronization");
-    });
+    register(
+      "agent-availability",
+      (client) => client.application.observeAgentAvailability(),
+      (snapshot) => root.projectWorkbenchStore.applyAgentAvailability(snapshot),
+    );
+    register(
+      "customization",
+      (client) => client.plugins.observeCustomization(),
+      (state) => root.customizationStore.applyState(state),
+    );
+    register(
+      "vscode",
+      (client) => client.vscode.observeState(),
+      (state) => root.projectWorkbenchStore.embeddedEditorStore.applyState(state),
+    );
   }
 
   private applyApplicationState(
@@ -57,6 +75,7 @@ export class RendererMainStateSynchronizer implements Disposable {
   }
 
   [Symbol.dispose]() {
-    this.abort.abort();
+    for (const key of ["application", "agent-availability", "customization", "vscode"])
+      this.supervisor.unregister(`state:${key}`);
   }
 }

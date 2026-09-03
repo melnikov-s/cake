@@ -1,4 +1,4 @@
-import { Effect, Schema, Stream } from "effect";
+import { Effect, Stream } from "effect";
 import * as sessionTerminals from "./sessionTerminals";
 import * as subagents from "./subagents";
 import type {
@@ -18,6 +18,7 @@ import {
 } from "./application";
 import type { ApplicationState } from "./application-data";
 import type { SessionCatalogUpdate } from "./catalog-data";
+import { toJsonValue } from "../utils/to-json-value";
 import {
   TurnId,
   acquire as acquireConversation,
@@ -303,7 +304,7 @@ export const inspect = Effect.fn("ProjectSessions.inspect")(function* (
     projectPath: location.projectPath,
     workingDirectory: location.workingDirectory,
     sessionFile: preview.sessionFile,
-    parts: preview.parts.map((part) => Schema.decodeUnknownSync(Schema.Json)(part)),
+    parts: preview.parts.map(toJsonValue),
     resolved: state.resolvedSessionIds.includes(target.sessionId),
   };
   if (location.managedWorktree !== undefined)

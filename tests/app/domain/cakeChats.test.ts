@@ -22,7 +22,16 @@ const snapshot: SessionSnapshot = {
   workspacePath: "/home/user",
   sessionId: "cake-chat-1",
   sessionFile: "/cake/global/cake-chat-1.jsonl",
-  parts: [],
+  parts: [
+    {
+      id: "user-message",
+      kind: "text",
+      role: "user",
+      text: "Hello",
+      status: "complete",
+      renderAs: undefined,
+    },
+  ],
   models: [],
   thinkingLevel: "off",
   availableThinkingLevels: ["off"],
@@ -193,6 +202,13 @@ describe("Cake Chats domain", () => {
     return Effect.gen(function* () {
       const opened = yield* cakeChats.open({ sessionId: "cake-chat-1", tools: [] });
       assert.equal(opened.sessionId, "cake-chat-1");
+      assert.deepEqual(opened.parts[0], {
+        id: "user-message",
+        kind: "text",
+        role: "user",
+        text: "Hello",
+        status: "complete",
+      });
       assert.equal(fixture.created(), 0);
       assert.equal(fixture.restored(), 0);
 

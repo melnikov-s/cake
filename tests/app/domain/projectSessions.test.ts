@@ -23,7 +23,16 @@ const snapshot: SessionSnapshot = {
   workspacePath: "/project",
   sessionId: "session-1",
   sessionFile: "/sessions/session-1.jsonl",
-  parts: [],
+  parts: [
+    {
+      id: "user-message",
+      kind: "text",
+      role: "user",
+      text: "Hello",
+      status: "complete",
+      renderAs: undefined,
+    },
+  ],
   models: [],
   thinkingLevel: "off",
   availableThinkingLevels: ["off"],
@@ -384,6 +393,15 @@ describe("Project Sessions domain", () => {
       const updates = yield* projectSessions.observe({ sessionId: "session-1" });
       const preview = Array.from(yield* updates.pipe(Stream.take(1), Stream.runCollect));
       assert.equal(preview[0]?._tag, "Snapshot");
+      const first = preview[0];
+      if (first?._tag === "Snapshot")
+        assert.deepEqual(first.snapshot.conversation.parts[0], {
+          id: "user-message",
+          kind: "text",
+          role: "user",
+          text: "Hello",
+          status: "complete",
+        });
       assert.equal(runtimeConstructions, 0);
       assert.equal(restores, 0);
     }).pipe(

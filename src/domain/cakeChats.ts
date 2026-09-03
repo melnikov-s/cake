@@ -1,4 +1,4 @@
-import { Effect, Schema, Stream } from "effect";
+import { Effect, Stream, type Schema } from "effect";
 import * as sessionTerminals from "./sessionTerminals";
 import * as subagents from "./subagents";
 import type { Annotation, Attachment, SessionSummary } from "../ipc/session-contract";
@@ -16,6 +16,7 @@ import {
 } from "./application";
 import type { CakeChatCatalogUpdate } from "./catalog-data";
 import type { ApplicationState } from "./application-data";
+import { toJsonValue } from "../utils/to-json-value";
 import {
   acquire as acquireConversation,
   observe as observeConversation,
@@ -141,7 +142,7 @@ export const inspect = Effect.fn("CakeChats.inspect")(function* (sessionId: stri
   return {
     sessionId: preview.sessionId,
     sessionFile: preview.sessionFile,
-    parts: preview.parts.map((part) => Schema.decodeUnknownSync(Schema.Json)(part)),
+    parts: preview.parts.map(toJsonValue),
     resolved: state.resolvedCakeChatSessionIds.includes(sessionId),
   } satisfies CakeChatPreview;
 });

@@ -36,7 +36,12 @@ export const makeCakeIpcServerLive = (homeDirectory: string) => {
     ...workspaceHandlers,
   });
 
-  return RpcServer.layer(CakeRpc, { spanPrefix: "CakeIpcServer" }).pipe(
+  return RpcServer.layer(CakeRpc, {
+    spanPrefix: "CakeIpcServer",
+    // A defect in one request must remain correlated with that request. Sending
+    // it as a connection-wide fatal defect tears down every renderer Stream.
+    disableFatalDefects: true,
+  }).pipe(
     Layer.provide(
       Layer.mergeAll(handlers, RendererConnectionMiddlewareLive, ElectronRpcServerProtocolLive),
     ),

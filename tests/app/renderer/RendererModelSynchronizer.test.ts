@@ -1,4 +1,4 @@
-import { Effect, Queue, Stream } from "effect";
+import { Effect, Queue, Schema, Stream } from "effect";
 import { describe, expect, it, vi } from "vitest";
 import type { ProjectCatalogUpdate, SessionCatalogUpdate } from "../../../src/domain/catalog-data";
 import { TurnId, type ConversationSnapshot } from "../../../src/domain/conversation-data";
@@ -8,6 +8,7 @@ import {
 } from "../../../src/domain/project-session-data";
 import { CakeIpcClient, type CakeIpcClientService } from "../../../src/ipc/client/CakeIpcClient";
 import { RendererModelSynchronizer } from "../../../src/renderer/RendererModelSynchronizer";
+import { RendererSynchronizationSupervisor } from "../../../src/renderer/RendererSynchronizationSupervisor";
 import type { RendererRuntime } from "../../../src/renderer/RendererRuntime";
 import { ProjectCatalog } from "../../../src/renderer/models/ProjectCatalog";
 import { CakeChatCatalog } from "../../../src/renderer/models/CakeChatCatalog";
@@ -64,7 +65,10 @@ describe("RendererModelSynchronizer", () => {
     const sessions = SessionCatalog.create();
     const cakeChats = CakeChatCatalog.create();
     const session = Session.create({ sessionId: "session", workingDirectory: "/project" });
-    const synchronizer = new RendererModelSynchronizer(runtimeFor(client));
+    const synchronizer = new RendererModelSynchronizer(
+      runtimeFor(client),
+      new RendererSynchronizationSupervisor(),
+    );
 
     synchronizer.sync({
       projects,
@@ -116,7 +120,10 @@ describe("RendererModelSynchronizer", () => {
     const projects = ProjectCatalog.create();
     const sessions = SessionCatalog.create();
     const cakeChats = CakeChatCatalog.create();
-    const synchronizer = new RendererModelSynchronizer(runtimeFor(client));
+    const synchronizer = new RendererModelSynchronizer(
+      runtimeFor(client),
+      new RendererSynchronizationSupervisor(),
+    );
 
     synchronizer.sync({
       projects,
@@ -195,7 +202,10 @@ describe("RendererModelSynchronizer", () => {
     const sessions = SessionCatalog.create();
     const cakeChats = CakeChatCatalog.create();
     const session = Session.create({ sessionId: "session", workingDirectory: "/cake" });
-    const synchronizer = new RendererModelSynchronizer(runtimeFor(client));
+    const synchronizer = new RendererModelSynchronizer(
+      runtimeFor(client),
+      new RendererSynchronizationSupervisor(),
+    );
 
     synchronizer.sync({
       projects,
@@ -255,7 +265,10 @@ describe("RendererModelSynchronizer", () => {
     const sessions = SessionCatalog.create();
     const cakeChats = CakeChatCatalog.create();
     const session = Session.create({ sessionId: "session", workingDirectory: "/cake" });
-    const synchronizer = new RendererModelSynchronizer(runtimeFor(client));
+    const synchronizer = new RendererModelSynchronizer(
+      runtimeFor(client),
+      new RendererSynchronizationSupervisor(),
+    );
 
     synchronizer.sync({
       projects,
@@ -370,7 +383,10 @@ describe("RendererModelSynchronizer", () => {
     const projects = ProjectCatalog.create();
     const sessions = SessionCatalog.create();
     const cakeChats = CakeChatCatalog.create();
-    const synchronizer = new RendererModelSynchronizer(runtimeFor(client));
+    const synchronizer = new RendererModelSynchronizer(
+      runtimeFor(client),
+      new RendererSynchronizationSupervisor(),
+    );
 
     synchronizer.sync({
       projects,
@@ -443,7 +459,10 @@ describe("RendererModelSynchronizer", () => {
     const projects = ProjectCatalog.create();
     const sessions = SessionCatalog.create();
     const cakeChats = CakeChatCatalog.create();
-    const synchronizer = new RendererModelSynchronizer(runtimeFor(client));
+    const synchronizer = new RendererModelSynchronizer(
+      runtimeFor(client),
+      new RendererSynchronizationSupervisor(),
+    );
 
     synchronizer.sync({
       projects,
@@ -489,7 +508,10 @@ describe("RendererModelSynchronizer", () => {
     const sessions = SessionCatalog.create();
     const cakeChats = CakeChatCatalog.create();
     const session = Session.create({ sessionId: "archived", workingDirectory: "/cake" });
-    const synchronizer = new RendererModelSynchronizer(runtimeFor(client));
+    const synchronizer = new RendererModelSynchronizer(
+      runtimeFor(client),
+      new RendererSynchronizationSupervisor(),
+    );
 
     try {
       synchronizer.sync({
@@ -515,6 +537,53 @@ describe("RendererModelSynchronizer", () => {
       sessions[Symbol.dispose]();
       cakeChats[Symbol.dispose]();
       session[Symbol.dispose]();
+      consoleError.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not retry a deterministic schema failure", async () => {
+    vi.useFakeTimers();
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    let observations = 0;
+    let schemaError: unknown;
+    try {
+      Schema.decodeUnknownSync(Schema.Json)(undefined);
+    } catch (error) {
+      schemaError = error;
+    }
+    const client = clientWithProjectStream(() => {
+      observations += 1;
+      return Stream.fail(schemaError);
+    });
+    const projects = ProjectCatalog.create();
+    const sessions = SessionCatalog.create();
+    const cakeChats = CakeChatCatalog.create();
+    const synchronizer = new RendererModelSynchronizer(
+      runtimeFor(client),
+      new RendererSynchronizationSupervisor(),
+    );
+
+    try {
+      synchronizer.sync({
+        projects,
+        sessionCatalog: sessions,
+        cakeChatCatalog: cakeChats,
+        projectSessions: [],
+        cakeChats: [],
+      });
+
+      await vi.waitFor(() => expect(observations).toBe(1));
+      await vi.waitFor(() => expect(consoleError.mock.calls[0]?.[1]).toBe(schemaError));
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      expect(observations).toBe(1);
+      expect(consoleError).toHaveBeenCalledOnce();
+    } finally {
+      synchronizer[Symbol.dispose]();
+      projects[Symbol.dispose]();
+      sessions[Symbol.dispose]();
+      cakeChats[Symbol.dispose]();
       consoleError.mockRestore();
       vi.useRealTimers();
     }

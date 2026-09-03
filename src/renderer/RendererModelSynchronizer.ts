@@ -36,6 +36,10 @@ import {
   applyDiscussionUpdate,
 } from "./projections/DiscussionProjection";
 import { applySubagentUpdate } from "./projections/SubagentProjection";
+import type {
+  RendererSynchronizationSupervisor,
+  SynchronizationFailureAction,
+} from "./RendererSynchronizationSupervisor";
 
 export interface RendererModelSource {
   readonly projects: ProjectCatalog;
@@ -57,11 +61,11 @@ interface RevisionedUpdate {
 }
 
 interface Subscription {
-  abort: AbortController;
   generation: number;
   revision: number | undefined;
-  retryTimer: ReturnType<typeof setTimeout> | undefined;
 }
+
+class RevisionGapError extends Error {}
 
 type StreamFactory<Update> = (client: CakeIpcClientService) => Stream.Stream<Update, unknown>;
 
@@ -77,7 +81,10 @@ export class RendererModelSynchronizer implements Disposable {
   private stopObservingSource: (() => void) | undefined;
   private disposed = false;
 
-  constructor(private readonly runtime: RendererRuntime) {}
+  constructor(
+    private readonly runtime: RendererRuntime,
+    private readonly supervisor: RendererSynchronizationSupervisor,
+  ) {}
 
   /** Watches loaded Models from renderer infrastructure, outside the Store tree. */
   observe(source: RendererModelSource) {
@@ -203,10 +210,7 @@ export class RendererModelSynchronizer implements Disposable {
     this.disposed = true;
     this.stopObservingSource?.();
     this.stopObservingSource = undefined;
-    for (const subscription of this.subscriptions.values()) {
-      subscription.abort.abort();
-      if (subscription.retryTimer) clearTimeout(subscription.retryTimer);
-    }
+    for (const key of this.subscriptions.keys()) this.supervisor.unregister(`model:${key}`);
     this.subscriptions.clear();
     this.models.clear();
   }
@@ -230,82 +234,48 @@ export class RendererModelSynchronizer implements Disposable {
     apply: (update: Update) => void,
   ) {
     if (this.disposed || this.subscriptions.has(key)) return;
-    const subscription: Subscription = {
-      abort: new AbortController(),
-      generation: 0,
-      revision: undefined,
-      retryTimer: undefined,
-    };
+    const subscription: Subscription = { generation: 0, revision: undefined };
     this.subscriptions.set(key, subscription);
-    this.start(key, subscription, stream, apply);
+    this.supervisor.register(`model:${key}`, {
+      run: (signal, markHealthy) => {
+        subscription.generation += 1;
+        subscription.revision = undefined;
+        const generation = subscription.generation;
+        const consume = Effect.flatMap(CakeIpcClient, (client) =>
+          stream(client).pipe(
+            Stream.runForEach((update) =>
+              Effect.sync(() => {
+                const decision = this.accept(subscription, generation, update);
+                if (decision === "restart") throw new RevisionGapError();
+                if (decision === "apply") {
+                  markHealthy();
+                  apply(update);
+                }
+              }),
+            ),
+          ),
+        );
+        return this.runtime.runPromise(consume, { signal });
+      },
+      classifyFailure: (error) => this.classifyFailure(key, error),
+      reportFailure: (error) => this.reportFailure(key, error),
+    });
   }
 
   private stop(key: string) {
-    const subscription = this.subscriptions.get(key);
-    subscription?.abort.abort();
-    if (subscription?.retryTimer) clearTimeout(subscription.retryTimer);
+    this.supervisor.unregister(`model:${key}`);
     this.subscriptions.delete(key);
     this.models.delete(key);
   }
 
-  private start<Update extends RevisionedUpdate>(
-    key: string,
-    subscription: Subscription,
-    stream: StreamFactory<Update>,
-    apply: (update: Update) => void,
-  ) {
-    subscription.abort.abort();
-    if (subscription.retryTimer) clearTimeout(subscription.retryTimer);
-    subscription.retryTimer = undefined;
-    subscription.abort = new AbortController();
-    subscription.generation += 1;
-    subscription.revision = undefined;
-    const generation = subscription.generation;
-    const consume = Effect.flatMap(CakeIpcClient, (client) =>
-      stream(client).pipe(
-        Stream.runForEach((update) =>
-          Effect.sync(() => {
-            const decision = this.accept(subscription, generation, update);
-            if (decision === "restart") {
-              this.scheduleRestart(key, subscription, generation, stream, apply);
-              return;
-            }
-            if (decision === "apply") apply(update);
-          }),
-        ),
-      ),
-    );
-    void this.runtime.runPromise(consume, { signal: subscription.abort.signal }).catch((error) => {
-      if (
-        !this.disposed &&
-        this.subscriptions.get(key) === subscription &&
-        generation === subscription.generation &&
-        !subscription.abort.signal.aborted
-      ) {
-        if (isUnavailableProjectSessionObservation(key, error)) {
-          this.stop(key);
-          return;
-        }
-        console.error(`[cake.renderer] ${key} synchronization failed`, error);
-        this.scheduleRestart(key, subscription, generation, stream, apply);
-      }
-    });
+  private classifyFailure(key: string, error: unknown): SynchronizationFailureAction {
+    return isUnavailableProjectSessionObservation(key, error) ? "stop" : "retry";
   }
 
-  private scheduleRestart<Update extends RevisionedUpdate>(
-    key: string,
-    subscription: Subscription,
-    generation: number,
-    stream: StreamFactory<Update>,
-    apply: (update: Update) => void,
-  ) {
-    if (subscription.retryTimer || generation !== subscription.generation) return;
-    subscription.abort.abort();
-    subscription.retryTimer = setTimeout(() => {
-      subscription.retryTimer = undefined;
-      if (!this.disposed && this.subscriptions.get(key) === subscription)
-        this.start(key, subscription, stream, apply);
-    }, 250);
+  private reportFailure(key: string, error: unknown) {
+    if (error instanceof RevisionGapError || isUnavailableProjectSessionObservation(key, error))
+      return;
+    console.error(`[cake.renderer] ${key} synchronization failed`, error);
   }
 
   private accept(subscription: Subscription, generation: number, update: RevisionedUpdate) {
