@@ -60,7 +60,11 @@ describe("createConversationHandoff", () => {
     source.appendMessage({ role: "user", content: "Unrelated tangent", timestamp: 3 });
     source.appendMessage(assistant([{ type: "text", text: "Later response" }]));
 
-    const result = createConversationHandoff(source, selectedId);
+    const result = createConversationHandoff(source, selectedId, {
+      provider: "openai",
+      modelId: "gpt-test",
+      thinkingLevel: "high",
+    });
     const handedOff = SessionManager.open(result.sessionFile, sessionDir, "/project");
     const entries = handedOff.getBranch();
     const messages = entries.flatMap((entry) => (entry.type === "message" ? [entry.message] : []));
@@ -84,6 +88,8 @@ describe("createConversationHandoff", () => {
     expect(preamble).toContain("verify the current state on disk");
     const context = handedOff.buildSessionContext();
     expect(JSON.stringify(context.messages[0])).toContain("handoff from a previous Cake session");
+    expect(context.model).toEqual({ provider: "openai", modelId: "gpt-test" });
+    expect(context.thinkingLevel).toBe("high");
     expect(messages.map((message) => message.role)).toEqual(["user", "assistant", "assistant"]);
     expect(messages).not.toContainEqual(expect.objectContaining({ role: "toolResult" }));
     expect(serializedContent).not.toContain("toolCall");

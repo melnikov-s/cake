@@ -12,6 +12,7 @@ import {
   observeState,
   refreshProjection,
   setCakeChatSessionResolved,
+  setSessionFastMode,
 } from "./application";
 import type { CakeChatCatalogUpdate } from "./catalog-data";
 import type { ApplicationState } from "./application-data";
@@ -385,18 +386,19 @@ export const handoff = Effect.fn("CakeChats.handoff")(function* (input: {
   readonly prompt?: string;
   readonly resolveSource?: boolean;
 }) {
-  const configuration = yield* withHandle(input.target, (handle) => handle.configuration()).pipe(
-    asError("handoff"),
-  );
+  const state = yield* getState();
+  const inheritFastMode = state.fastModeSessionIds.includes(input.target.sessionId);
   const handedOff = yield* withHandle(input.target, (handle) => handle.handoff(input.entryId)).pipe(
     asError("handoff"),
   );
-  const target = { ...input.target, sessionId: handedOff.sessionId };
-  const next = yield* acquireTarget(target, false);
-  if (configuration) yield* next.applyConfiguration(configuration).pipe(asError("handoff"));
+  if (inheritFastMode)
+    yield* setSessionFastMode(handedOff.sessionId, true).pipe(asError("handoff"));
   let turnId: TurnId | undefined;
-  if (input.prompt?.trim())
+  if (input.prompt?.trim()) {
+    const target = { ...input.target, sessionId: handedOff.sessionId };
+    const next = yield* acquireTarget(target, false);
     turnId = TurnId.make(yield* next.prompt(input.prompt.trim()).pipe(asError("handoff")));
+  }
   if (input.resolveSource) yield* resolve(input.target);
   else yield* refreshProjection();
   return turnId ? { sessionId: handedOff.sessionId, turnId } : { sessionId: handedOff.sessionId };

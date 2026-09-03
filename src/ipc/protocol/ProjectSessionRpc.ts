@@ -2,7 +2,7 @@ import { Schema } from "effect";
 import { Rpc, RpcGroup } from "effect/unstable/rpc";
 import { CakeChatConfiguration } from "../../domain/cake-chat-data";
 import { SessionCatalogUpdate } from "../../domain/catalog-data";
-import { ConversationSnapshot, TurnId } from "../../domain/conversation-data";
+import { TurnId } from "../../domain/conversation-data";
 import {
   ProjectSessionError,
   ProjectSessionPreview,
@@ -36,7 +36,6 @@ export const ProjectSessionRpc = RpcGroup.make(
   }),
   Rpc.make("projectSessions.open", {
     payload: ProjectSessionTarget,
-    success: ConversationSnapshot,
     error: ProjectSessionError,
   }),
   Rpc.make("projectSessions.observe", {

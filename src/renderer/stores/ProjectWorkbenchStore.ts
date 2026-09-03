@@ -455,14 +455,16 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     if (workspacePath === this.projectPath && sessionId === this.session?.sessionId) return;
     const cached = this.showCachedSession(sessionId);
     if (cached && this.sessionRegistry.isTemporarySession(sessionId)) return;
-    if (!cached) this.sessionRegistry.load(sessionId, workspacePath);
     try {
       await this.client.projectSessions.open(
         { sessionId, workingDirectory: workspacePath },
         { signal: this.signal },
       );
       if (this.signal.aborted || revision !== this.openRevision) return;
-      if (!cached) this.showCachedSession(sessionId);
+      if (!cached) {
+        this.sessionRegistry.load(sessionId, workspacePath);
+        this.showCachedSession(sessionId);
+      }
       this.props.projects.recordOpened(
         this.props.catalog.projectOfManagedWorktree(workspacePath) ?? workspacePath,
       );

@@ -131,7 +131,6 @@ export interface PiSessionHandle {
   readonly applyConfiguration: (
     configuration: ChatConfiguration,
   ) => Effect.Effect<void, PiSessionError>;
-  readonly configuration: () => Effect.Effect<ChatConfiguration | undefined, PiSessionError>;
   readonly setModel: (provider: string, modelId: string) => Effect.Effect<void, PiSessionError>;
   readonly setFastMode: (enabled: boolean) => Effect.Effect<void, PiSessionError>;
   readonly setThinkingLevel: (level: ThinkingLevel) => Effect.Effect<void, PiSessionError>;
@@ -532,11 +531,6 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
                 ),
           applyConfiguration: (configuration) =>
             call("applyConfiguration", (runtime) => runtime.applyConfiguration(configuration)),
-          configuration: () =>
-            Effect.try({
-              try: () => shared.runtime.currentConfiguration?.(),
-              catch: (cause) => cause,
-            }).pipe(sessionError("configuration")),
           setModel: (provider, modelId) =>
             call("setModel", (runtime) => runtime.setModel(provider, modelId)),
           setFastMode: (enabled) =>

@@ -12,6 +12,7 @@ import {
   getState,
   observeState,
   refreshProjection,
+  setSessionFastMode,
   setSessionsResolved,
   trustProject,
 } from "./application";
@@ -21,7 +22,6 @@ import {
   TurnId,
   acquire as acquireConversation,
   observe as observeConversation,
-  projectSnapshot,
 } from "./conversations";
 import { PiSessionError, PiSessions, type PiSessionHandle } from "../services/pi/PiSessions";
 import {
@@ -311,15 +311,30 @@ export const inspect = Effect.fn("ProjectSessions.inspect")(function* (
 });
 
 export const open = Effect.fn("ProjectSessions.open")(function* (target: ProjectSessionTarget) {
-  let location = yield* findLocation(target);
+  const location = yield* findLocation(target);
+  const sessions = yield* PiSessions;
+  const listed = yield* sessions
+    .list({
+      workingDirectory: location.workingDirectory,
+      sessionDirectory: location.sessionDirectory,
+      resolvedSessionDirectory: location.resolvedSessionDirectory,
+    })
+    .pipe(asError("open"));
+  const found = listed.find((session) => session.id === target.sessionId);
+  if (!found)
+    return yield* new ProjectSessionError({
+      operation: "open",
+      message: `Cake could not find Project Session ${target.sessionId}`,
+    });
   const state = yield* getState();
-  if (state.resolvedSessionIds.includes(target.sessionId)) {
+  if (found.resolved || state.resolvedSessionIds.includes(target.sessionId)) {
     const environment = yield* ProjectSessionEnvironment;
-    location = yield* environment.restore(target.sessionId, location).pipe(asError("open"));
+    yield* environment.restore(target.sessionId, location).pipe(asError("open"));
     yield* setSessionsResolved([target.sessionId], false).pipe(asError("open"));
   }
-  const handle = yield* acquireTarget(location, target.sessionId, false);
-  return projectSnapshot(yield* handle.snapshot().pipe(asError("open")));
+  // Selection starts observation in the renderer's Model synchronizer. Opening
+  // validates/restores durable transcript state, but it must not eagerly acquire
+  // a second request-scoped runtime or build a snapshot the caller discards.
 });
 
 export const observe = Effect.fn("ProjectSessions.observe")(function* (
@@ -640,19 +655,13 @@ export const handoff = Effect.fn("ProjectSessions.handoff")(function* (input: {
   readonly prompt?: string;
   readonly resolveSource?: boolean;
 }) {
+  const state = yield* getState();
+  const inheritFastMode = state.fastModeSessionIds.includes(input.target.sessionId);
   const transition = yield* withHandle(input.target, (handle) =>
-    Effect.gen(function* () {
-      const configuration = yield* handle.configuration();
-      const handedOff = yield* handle.handoff(input.entryId);
-      return { configuration, sessionId: handedOff.sessionId };
-    }),
+    handle.handoff(input.entryId),
   ).pipe(asError("handoff"));
-  const nextTarget = { sessionId: transition.sessionId };
-  const configuration = transition.configuration;
-  if (configuration)
-    yield* withHandle(nextTarget, (handle) => handle.applyConfiguration(configuration)).pipe(
-      asError("handoff"),
-    );
+  if (inheritFastMode)
+    yield* setSessionFastMode(transition.sessionId, true).pipe(asError("handoff"));
   if (input.prompt?.trim())
     yield* prompt({
       sessionId: transition.sessionId,

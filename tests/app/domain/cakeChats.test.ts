@@ -34,8 +34,8 @@ const snapshot: SessionSnapshot = {
   tree: [],
 };
 
-const makeLayer = () => {
-  let state: ApplicationStateValue = defaultApplicationState();
+const makeLayer = (initial: ApplicationStateValue = defaultApplicationState()) => {
+  let state = initial;
   let created = 0;
   let archived = 0;
   const toolCounts: number[] = [];
@@ -141,6 +141,7 @@ const makeLayer = () => {
     ),
     created: () => created,
     archived: () => archived,
+    state: () => state,
     toolCounts: () => toolCounts,
   };
 };
@@ -160,6 +161,22 @@ describe("Cake Chats domain", () => {
       });
       assert.match(turnId, /^[0-9a-f-]{36}$/);
       assert.equal(fixture.created(), 1);
+    }).pipe(Effect.provide(fixture.layer));
+  });
+
+  it.effect("handoffs without constructing a destination runtime and copies Fast mode", () => {
+    const fixture = makeLayer({
+      ...defaultApplicationState(),
+      fastModeSessionIds: ["cake-chat-1"],
+    });
+    return Effect.gen(function* () {
+      const result = yield* cakeChats.handoff({
+        target: { sessionId: "cake-chat-1", tools: [] },
+        entryId: "assistant-entry",
+      });
+      assert.equal(result.sessionId, "handoff");
+      assert.equal(fixture.created(), 1);
+      assert.deepEqual(fixture.state().fastModeSessionIds, ["cake-chat-1", "handoff"]);
     }).pipe(Effect.provide(fixture.layer));
   });
 

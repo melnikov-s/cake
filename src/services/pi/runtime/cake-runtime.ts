@@ -618,8 +618,6 @@ export interface CakeRuntime {
   getReviewParentContext?(): ReviewParentContext;
   recordReviewRun(run: ReviewRunEntry): void;
   snapshot(): Promise<SessionSnapshot>;
-  /** Returns the active model configuration without performing snapshot discovery or auth checks. */
-  currentConfiguration?(): ChatConfiguration | undefined;
   notifySubagentCompletion?(result: JsonValue): Promise<void>;
   prompt(
     text: string,
@@ -2108,15 +2106,6 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       }
       return session.abort();
     },
-    currentConfiguration() {
-      if (!session.model) return undefined;
-      return {
-        provider: session.model.provider,
-        modelId: session.model.id,
-        thinkingLevel: session.thinkingLevel,
-        fastMode: fastModeEnabled(),
-      };
-    },
     async setModel(provider, modelId) {
       const model = modelRuntime.getModel(provider, modelId);
       if (!model) throw new Error(`Unknown model ${provider}/${modelId}`);
@@ -2257,7 +2246,14 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       return { sessionId: forked.getSessionId(), sessionFile };
     },
     async handoff(entryId) {
-      return createConversationHandoff(session.sessionManager, entryId);
+      const configuration = session.model
+        ? {
+            provider: session.model.provider,
+            modelId: session.model.id,
+            thinkingLevel: session.thinkingLevel,
+          }
+        : undefined;
+      return createConversationHandoff(session.sessionManager, entryId, configuration);
     },
     async navigate(entryId) {
       const result = await session.navigateTree(entryId, { summarize: false });

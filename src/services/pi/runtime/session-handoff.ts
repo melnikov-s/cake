@@ -53,7 +53,15 @@ function handoffPreamble(
  * elided, the session opens with a handoff orientation preamble so the model
  * knows the transcript is abridged and where the full original lives.
  */
-export function createConversationHandoff(source: SessionManager, assistantEntryId: string) {
+export function createConversationHandoff(
+  source: SessionManager,
+  assistantEntryId: string,
+  configuration?: {
+    readonly provider: string;
+    readonly modelId: string;
+    readonly thinkingLevel: string;
+  },
+) {
   const selected = source.getEntry(assistantEntryId);
   if (
     selected?.type !== "message" ||
@@ -98,6 +106,14 @@ export function createConversationHandoff(source: SessionManager, assistantEntry
       timestamp: message.timestamp,
     };
     target.appendMessage(transferred);
+  }
+
+  // Pi owns executable session configuration. Persist it directly in the new
+  // transcript so opening a handoff does not require booting a destination
+  // runtime merely to append the same model and thinking-level entries.
+  if (configuration) {
+    target.appendModelChange(configuration.provider, configuration.modelId);
+    target.appendThinkingLevelChange(configuration.thinkingLevel);
   }
 
   const sessionFile = target.getSessionFile();

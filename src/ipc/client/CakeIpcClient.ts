@@ -272,7 +272,7 @@ export interface CakeIpcClientService {
     ) => Effect.Effect<TurnId, ProjectSessionError | TransportError>;
     readonly open: (
       target: ProjectSessionTarget,
-    ) => Effect.Effect<ConversationSnapshot, ProjectSessionError | TransportError>;
+    ) => Effect.Effect<void, ProjectSessionError | TransportError>;
     readonly observe: (
       target: ProjectSessionTarget,
     ) => Stream.Stream<ProjectSessionUpdate, ProjectSessionError | TransportError>;

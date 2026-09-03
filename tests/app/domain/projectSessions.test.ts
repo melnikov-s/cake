@@ -3,7 +3,7 @@ import { it } from "@effect/vitest";
 import { Deferred, Effect, Fiber, Layer, Stream, SubscriptionRef } from "effect";
 import { describe } from "vitest";
 import * as projectSessions from "../../../src/domain/projectSessions";
-import { refreshProjection } from "../../../src/domain/application";
+import { getState, refreshProjection } from "../../../src/domain/application";
 import {
   defaultApplicationState,
   type ApplicationState as ApplicationStateValue,
@@ -77,6 +77,7 @@ const makeLayer = (
     onArchive?(): void;
     onList?(): void;
     onRuntimeOptions?(newSession: boolean): void;
+    sessionExists?: boolean;
   } = {},
 ) => {
   const application = Layer.effect(
@@ -106,16 +107,18 @@ const makeLayer = (
     list: () =>
       Effect.sync(() => {
         hooks.onList?.();
-        return [
-          {
-            id: "session-1",
-            title: "Active branch",
-            created: "2026-01-01T00:00:00.000Z",
-            modified: "2026-01-02T00:00:00.000Z",
-            messageCount: 2,
-            resolved: false,
-          },
-        ];
+        return hooks.sessionExists === false
+          ? []
+          : [
+              {
+                id: "session-1",
+                title: "Active branch",
+                created: "2026-01-01T00:00:00.000Z",
+                modified: "2026-01-02T00:00:00.000Z",
+                messageCount: 2,
+                resolved: false,
+              },
+            ];
       }),
     inspect: () =>
       Effect.succeed({
@@ -160,6 +163,10 @@ const makeLayer = (
               sessionId,
               newSession,
               requestUi: async () => undefined,
+              fastMode: {
+                get: () => initial.fastModeSessionIds.includes(sessionId),
+                set: async () => undefined,
+              },
             },
           };
         }),
@@ -250,6 +257,39 @@ describe("Project Sessions domain", () => {
     }).pipe(Effect.provide(makeLayer())),
   );
 
+  it.effect("handoffs without constructing a destination runtime and copies Fast mode", () => {
+    let runtimeConstructions = 0;
+    return Effect.gen(function* () {
+      const result = yield* projectSessions.handoff({
+        target: { sessionId: "session-1", workingDirectory: "/project" },
+        entryId: "assistant-entry",
+      });
+      assert.equal(result.sessionId, "handoff");
+      assert.equal(runtimeConstructions, 1);
+      const state = yield* getState();
+      assert.deepEqual(state.fastModeSessionIds, ["session-1", "handoff"]);
+    }).pipe(
+      Effect.provide(
+        makeLayer(
+          {
+            ...defaultApplicationState(),
+            projects: [
+              {
+                path: "/project",
+                name: "Project",
+                addedAt: "2026-01-01T00:00:00.000Z",
+                lastOpenedAt: "2026-01-01T00:00:00.000Z",
+              },
+            ],
+            trustedProjectPaths: ["/project"],
+            fastModeSessionIds: ["session-1"],
+          },
+          { onCreateRuntime: () => runtimeConstructions++ },
+        ),
+      ),
+    );
+  });
+
   it.effect("resolves a located idle session without constructing a Pi runtime", () => {
     let runtimeConstructions = 0;
     let archives = 0;
@@ -303,24 +343,38 @@ describe("Project Sessions domain", () => {
     );
   });
 
-  it.effect("opens an untrusted Working Directory with local executable resources disabled", () =>
-    Effect.gen(function* () {
-      const opened = yield* projectSessions.open({ sessionId: "session-1" });
-      assert.equal(opened.sessionId, "session-1");
+  it.effect("activates an unresolved session without constructing a Pi runtime", () => {
+    let runtimeConstructions = 0;
+    return Effect.gen(function* () {
+      yield* projectSessions.open({ sessionId: "session-1" });
+      assert.equal(runtimeConstructions, 0);
     }).pipe(
       Effect.provide(
-        makeLayer({
-          ...defaultApplicationState(),
-          projects: [
-            {
-              path: "/project",
-              name: "Project",
-              addedAt: "2026-01-01T00:00:00.000Z",
-              lastOpenedAt: "2026-01-01T00:00:00.000Z",
-            },
-          ],
-        }),
+        makeLayer(
+          {
+            ...defaultApplicationState(),
+            projects: [
+              {
+                path: "/project",
+                name: "Project",
+                addedAt: "2026-01-01T00:00:00.000Z",
+                lastOpenedAt: "2026-01-01T00:00:00.000Z",
+              },
+            ],
+          },
+          { onCreateRuntime: () => runtimeConstructions++ },
+        ),
       ),
-    ),
+    );
+  });
+
+  it.effect("rejects an unresolved session that is missing from its Working Directory", () =>
+    Effect.gen(function* () {
+      const error = yield* projectSessions
+        .open({ sessionId: "missing", workingDirectory: "/project" })
+        .pipe(Effect.flip);
+      assert.equal(error.operation, "open");
+      assert.match(error.message, /could not find Project Session missing/);
+    }).pipe(Effect.provide(makeLayer(undefined, { sessionExists: false }))),
   );
 });
