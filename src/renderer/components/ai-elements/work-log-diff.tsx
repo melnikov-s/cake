@@ -9,11 +9,13 @@ export function WorkLogDiff({
   streaming,
   onOpenSourceLocation,
   workspacePath,
+  headerClassName,
 }: {
   parts: readonly UiPart[];
   streaming: boolean;
   onOpenSourceLocation?: (location: SourceLocation) => void | Promise<void>;
   workspacePath?: string;
+  headerClassName?: string;
 }) {
   const changes = workLogChanges(parts);
   if (changes.length === 0)
@@ -32,6 +34,7 @@ export function WorkLogDiff({
           filePath={toWorkspaceRelativePath(change.path, workspacePath)}
           label={streaming ? "Streaming changes" : "File changes"}
           onOpenSourceLocation={onOpenSourceLocation}
+          headerClassName={headerClassName}
         />
       ))}
     </div>

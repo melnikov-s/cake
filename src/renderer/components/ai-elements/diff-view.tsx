@@ -76,6 +76,7 @@ export function DiffView({
   onOpenSourceLocation,
   highlightCode = true,
   className,
+  headerClassName,
 }: {
   diff: string;
   filePath?: string;
@@ -83,6 +84,7 @@ export function DiffView({
   onOpenSourceLocation?: (location: SourceLocation) => void | Promise<void>;
   highlightCode?: boolean;
   className?: string;
+  headerClassName?: string;
 }) {
   const lines = useMemo(() => parseDiff(diff), [diff]);
   const source = useMemo(
@@ -107,12 +109,17 @@ export function DiffView({
   return (
     <section
       className={cn(
-        "overflow-hidden rounded-lg border border-border/80 bg-card/60 font-mono text-[11px]",
+        "overflow-clip rounded-lg border border-border/80 bg-card/60 font-mono text-[11px]",
         className,
       )}
       aria-label={`${label}${filePath ? ` to ${filePath}` : ""}`}
     >
-      <header className="sticky top-0 z-10 flex min-h-[31px] items-center justify-between gap-3 border-b border-border/70 bg-card/90 px-2.5 py-1 text-[10px] text-muted-foreground">
+      <header
+        className={cn(
+          "sticky top-0 z-10 flex min-h-[31px] items-center justify-between gap-3 border-b border-border/70 bg-card/90 px-2.5 py-1 text-[10px] text-muted-foreground",
+          headerClassName,
+        )}
+      >
         <div className="group/path flex min-w-0 items-center gap-1">
           {filePath && onOpenSourceLocation ? (
             <Button

@@ -157,7 +157,7 @@ export const ActivityGroup = observer(function ActivityGroup({
         >
           {showDiff ? (
             <div>
-              <div className="mb-2 overflow-hidden rounded-lg border border-border bg-card/60">
+              <div className="sticky top-0 z-20 mb-2 overflow-hidden rounded-lg border border-border bg-card">
                 <DisclosureTrigger
                   className="px-3 py-2 hover:bg-muted/50"
                   open={activityStripOpen}
@@ -174,22 +174,23 @@ export const ActivityGroup = observer(function ActivityGroup({
                     </span>
                   }
                 />
-                {activityStripOpen && logElement && (
-                  <VirtualizedConversation
-                    className="space-y-2 border-t border-border bg-muted/20 p-2.5"
-                    customScrollParent={logElement}
-                    data={workLogItems}
-                    computeItemKey={(_index, item) => item.id}
-                    followOutput={isStreaming ? "auto" : false}
-                    itemContent={(_index, item) => renderWorkLogItem(item, true)}
-                  />
-                )}
               </div>
+              {activityStripOpen && logElement && (
+                <VirtualizedConversation
+                  className="mb-2 space-y-2 rounded-lg border border-border bg-muted/20 p-2.5"
+                  customScrollParent={logElement}
+                  data={workLogItems}
+                  computeItemKey={(_index, item) => item.id}
+                  followOutput={isStreaming ? "auto" : false}
+                  itemContent={(_index, item) => renderWorkLogItem(item, true)}
+                />
+              )}
               <WorkLogDiff
                 parts={parts}
                 streaming={activityIsRunning}
                 onOpenSourceLocation={behavior.openSourceLocation}
                 workspacePath={behavior.workspacePath}
+                headerClassName="top-[42px]"
               />
             </div>
           ) : (
