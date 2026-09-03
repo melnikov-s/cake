@@ -10,6 +10,7 @@ import { ChatStore } from "./ChatStore";
 import type { GlobalChatStore } from "./GlobalChatStore";
 import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
+import { OptimisticUserMessagesStore } from "./OptimisticUserMessagesStore";
 
 export interface CakeChatSessionStoreProps {
   sessionId: string;
@@ -28,11 +29,6 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
   errorDetails: string | undefined;
   editingEntryId: string | undefined;
   editingDraftSession = false;
-  private readonly pendingSubmissions = new Map<
-    string,
-    { text: string; attachments: Attachment[]; editingEntryId?: string }
-  >();
-
   constructor(props: CakeChatSessionStore["props"]) {
     super(props);
     this.effect(() => () => {
@@ -53,7 +49,7 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
   }
   get parts() {
     const staged = this.props.collection.draftSessionPrompt(this.sessionId);
-    if (!staged || this.editingDraftSession) return this.model.uiParts;
+    if (!staged || this.editingDraftSession) return this.optimisticUserMessages.parts;
     return [
       {
         id: `draft-${this.sessionId}-text`,
@@ -90,6 +86,13 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
     return `cake-chat-configuration:${this.sessionId}`;
   }
 
+  @child
+  get optimisticUserMessages(): OptimisticUserMessagesStore {
+    return createStore(OptimisticUserMessagesStore, {
+      canonicalParts: () => this.model.uiParts,
+    });
+  }
+
   async submit(text: string, renderUserMessageAsMarkdown = false) {
     text = text.trim();
     const attachments = this.attachments.slice();
@@ -104,7 +107,6 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       const entryId = this.editingEntryId;
       this.editingEntryId = undefined;
       const operationId = this.props.operations.start(this.promptOwner);
-      this.pendingSubmissions.set(operationId, { text, attachments, editingEntryId: entryId });
       this.attachments.splice(0);
       try {
         await this.client.cakeChats.editMessage(
@@ -117,12 +119,10 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
           },
           { signal: this.signal },
         );
-        this.pendingSubmissions.delete(operationId);
         this.props.operations.finish(operationId);
         return true;
       } catch (error) {
         if (!this.signal.aborted) {
-          this.pendingSubmissions.delete(operationId);
           this.editingEntryId = entryId;
           this.attachments.push(...attachments);
           this.props.operations.finish(operationId);
@@ -192,7 +192,13 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       }
     }
     const operationId = this.props.operations.start(this.promptOwner);
-    this.pendingSubmissions.set(operationId, { text, attachments });
+    this.optimisticUserMessages.add(
+      operationId,
+      text,
+      attachments,
+      "sending",
+      renderUserMessageAsMarkdown,
+    );
     this.attachments.splice(0);
     try {
       const newSession = this.props.collection.newSessionRequest(this.sessionId);
@@ -205,12 +211,11 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       if (newSession !== undefined) Object.assign(input, { newSession });
       await this.client.cakeChats.prompt(input, { signal: this.signal });
       this.props.collection.markSessionStarted(this.sessionId);
-      this.pendingSubmissions.delete(operationId);
       this.props.operations.finish(operationId);
       return true;
     } catch (error) {
+      this.optimisticUserMessages.remove(operationId);
       if (this.signal.aborted) return false;
-      this.pendingSubmissions.delete(operationId);
       this.attachments.push(...attachments);
       this.props.operations.finish(operationId);
       this.reportError(error);

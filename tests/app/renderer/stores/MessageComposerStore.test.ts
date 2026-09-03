@@ -20,10 +20,30 @@ class HarnessStore extends Store<{ client: RendererClient; model: Session }> {
   }
 
   @child get composer() {
+    const materializeNewSession = vi.fn(() => {
+      this.props.model.parts.push(
+        Message.create({
+          id: "canonical-user-1",
+          kind: "text",
+          role: "user",
+          text: "First message",
+          status: "streaming",
+        }),
+      );
+      this.props.model.parts[0]!.update({
+        id: "canonical-user-1",
+        kind: "text",
+        role: "user",
+        text: "First message",
+        status: "complete",
+      });
+    });
     const registry = {
-      findModel: () => this.props.model,
+      findModel: () => {
+        throw new Error("Optimistic transcript reconciliation must not query the registry");
+      },
       projectNewSessionSubmission: vi.fn(),
-      materializeNewSession: vi.fn(),
+      materializeNewSession,
       cancelNewSessionSubmission: vi.fn(),
     } as unknown as SessionRegistryStore;
     return createStore(MessageComposerStore, {
@@ -57,32 +77,14 @@ class HarnessStore extends Store<{ client: RendererClient; model: Session }> {
 describe("MessageComposerStore", () => {
   it("reconciles the first optimistic message when its canonical part completes in place", async () => {
     const model = Session.create({ sessionId: "session-1", workingDirectory: "/project" });
-    const start = vi.fn(async () => {
-      model.parts.push(
-        Message.create({
-          id: "canonical-user-1",
-          kind: "text",
-          role: "user",
-          text: "First message",
-          status: "streaming",
-        }),
-      );
-      await Promise.resolve();
-      model.parts[0]!.update({
-        id: "canonical-user-1",
-        kind: "text",
-        role: "user",
-        text: "First message",
-        status: "complete",
-      });
-    });
+    const start = vi.fn(async () => "turn-1");
     const client = { projectSessions: { start } } as unknown as RendererClient;
     const root = mount(createStore(HarnessStore, { client, model }));
 
     await root.composer.submit();
 
     expect(start).toHaveBeenCalledOnce();
-    expect(root.composer.pendingUserMessages).toEqual([]);
+    expect(root.composer.optimisticUserMessages.pending).toEqual([]);
     expect(root.composer.parts).toEqual([
       expect.objectContaining({
         id: "canonical-user-1",

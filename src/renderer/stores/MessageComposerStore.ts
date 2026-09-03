@@ -1,4 +1,4 @@
-import { Store, observable, snapshot } from "r-state-tree";
+import { Store, child, createStore, observable, snapshot } from "r-state-tree";
 import type {
   Annotation,
   Attachment,
@@ -19,16 +19,7 @@ import { describeError } from "../error-details";
 import { pastedImageAttachments } from "../pasted-image-attachments";
 import { RendererClientContext } from "../client/RendererClientContext";
 import type { WorktreeDraftChoice } from "./WorktreeCreationStore";
-
-interface PendingUserMessage {
-  operationId: string;
-  sessionId: string;
-  canonicalPartCount: number;
-  expectedOccurrence: number;
-  text: string;
-  attachments: Attachment[];
-  parts: UiPart[];
-}
+import { OptimisticUserMessagesStore } from "./OptimisticUserMessagesStore";
 
 /** A prompt held locally while the session streams, shown as a chip above the composer. */
 export interface QueuedPrompt {
@@ -68,7 +59,6 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
   @snapshot attachments: Attachment[] = observable([]);
   @snapshot annotations: Annotation[] = observable([]);
   @snapshot editorContextAttachment: Extract<Attachment, { kind: "source" }> | undefined;
-  pendingUserMessages: PendingUserMessage[] = observable([]);
   queuedPrompts: QueuedPrompt[] = observable([]);
   focusRequestRevision = 0;
   error: string | undefined;
@@ -85,18 +75,12 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
         if (previousStreaming && !streaming) this.drainQueue();
       },
     );
-    this.effect(() => {
-      const sessionId = this.props.sessionId();
-      if (!sessionId) return;
-      const reconciledOperationIds = this.pendingUserMessages
-        .filter(
-          (pending) =>
-            pending.sessionId === sessionId &&
-            this.userMessageOccurrenceCount(sessionId, pending.text, pending.parts) >=
-              pending.expectedOccurrence,
-        )
-        .map((pending) => pending.operationId);
-      for (const operationId of reconciledOperationIds) this.removePendingUserMessage(operationId);
+  }
+
+  @child
+  get optimisticUserMessages(): OptimisticUserMessagesStore {
+    return createStore(OptimisticUserMessagesStore, {
+      canonicalParts: this.props.canonicalParts,
     });
   }
 
@@ -124,25 +108,7 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     if (!sessionId) return canonical;
     const staged = this.props.sessionRegistry.draftSessionPrompt?.(sessionId);
     if (staged && !this.editingDraftSession) return this.draftParts(sessionId, staged);
-    const pendingParts = this.pendingUserMessages
-      .filter((pending) => pending.sessionId === sessionId)
-      .filter(
-        (pending) =>
-          this.userMessageOccurrenceCount(pending.sessionId, pending.text, pending.parts) <
-          pending.expectedOccurrence,
-      );
-    if (pendingParts.length === 0) return canonical;
-    const parts = [...canonical];
-    let offset = 0;
-    for (const pending of pendingParts) {
-      parts.splice(
-        Math.min(pending.canonicalPartCount + offset, parts.length),
-        0,
-        ...pending.parts,
-      );
-      offset += pending.parts.length;
-    }
-    return parts;
+    return this.optimisticUserMessages.parts;
   }
 
   async addAttachments() {
@@ -550,7 +516,6 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     const operationId = this.props.operations.start(this.props.operationOwner);
     this.addPendingUserMessage(
       operationId,
-      sessionId,
       text,
       attachments,
       "prompt",
@@ -749,7 +714,6 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     const operationId = this.props.operations.start(this.props.operationOwner);
     this.addPendingUserMessage(
       operationId,
-      sessionId,
       text,
       attachments,
       delivery,
@@ -824,7 +788,7 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
   receive(event: RendererEvent) {
     if (event.type === "agent-availability-changed" && event.availability.state === "unavailable") {
       for (const operationId of this.activeOperations.slice()) this.finishOperation(operationId);
-      this.pendingUserMessages.splice(0);
+      this.optimisticUserMessages.clear();
       return;
     }
     if (
@@ -833,10 +797,7 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
       this.activeOperations.includes(event.operationId)
     ) {
       if (event.type === "operation-failed") {
-        const pending = this.pendingUserMessages.find(
-          (message) => message.operationId === event.operationId,
-        );
-        this.removePendingUserMessage(event.operationId);
+        const pending = this.optimisticUserMessages.remove(event.operationId);
         if (pending && !this.props.draft().trim()) {
           this.props.setDraft(pending.text);
           this.restoreAttachments(pending.attachments);
@@ -854,132 +815,28 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
 
   private addPendingUserMessage(
     operationId: string,
-    sessionId: string,
     text: string,
     attachments: Attachment[],
     delivery: "prompt" | "steer" | "follow-up",
     renderUserMessageAsMarkdown: boolean,
   ) {
-    const attachmentParts = attachments.flatMap((attachment, index): UiPart[] => {
-      if (attachment.kind === "image")
-        return [
-          {
-            id: `optimistic-user-${operationId}-attachment-${index}`,
-            kind: "attachment" as const,
-            name: attachment.name,
-            mediaType: attachment.mimeType,
-            attachmentKind: "image" as const,
-            data: attachment.data,
-          },
-        ];
-      if (attachment.kind === "source")
-        return [
-          {
-            id: `optimistic-user-${operationId}-attachment-${index}`,
-            kind: "attachment" as const,
-            name: attachment.name,
-            mediaType: "text/plain",
-            attachmentKind: "source" as const,
-            location: attachment.location,
-          },
-        ];
-      if (attachment.kind === "annotation")
-        return [
-          {
-            id: `optimistic-user-${operationId}-annotation-${index}`,
-            kind: "annotation" as const,
-            annotations: attachment.annotations,
-          },
-        ];
-      return [];
-    });
     const deliveryState =
       delivery === "steer"
         ? ("steering" as const)
         : delivery === "follow-up"
           ? ("queued" as const)
           : ("sending" as const);
-    const parts: UiPart[] = [
-      ...(text
-        ? [
-            {
-              id: `optimistic-user-${operationId}`,
-              kind: "text" as const,
-              role: "user" as const,
-              text,
-              status: "complete" as const,
-              renderAs: renderUserMessageAsMarkdown ? ("markdown" as const) : undefined,
-              deliveryState,
-            },
-          ]
-        : []),
-      ...attachmentParts,
-    ];
-    const firstAttachment =
-      attachmentParts[0]?.kind === "attachment" ? attachmentParts[0] : undefined;
-    const earlierPendingCount = this.pendingUserMessages.filter(
-      (pending) =>
-        pending.sessionId === sessionId &&
-        pending.text === text &&
-        (Boolean(text) ||
-          pending.parts.some(
-            (part) =>
-              part.kind === "attachment" &&
-              firstAttachment !== undefined &&
-              part.attachmentKind === firstAttachment.attachmentKind &&
-              part.data === firstAttachment.data,
-          )),
-    ).length;
-    this.pendingUserMessages.push({
+    const pendingId = this.optimisticUserMessages.add(
       operationId,
-      sessionId,
-      canonicalPartCount: this.props.sessionRegistry.findModel(sessionId)?.uiParts.length ?? 0,
-      expectedOccurrence:
-        this.userMessageOccurrenceCount(sessionId, text, parts) + earlierPendingCount + 1,
       text,
-      attachments: attachments.map((attachment) => ({ ...attachment })),
-      parts,
-    });
+      attachments,
+      deliveryState,
+      renderUserMessageAsMarkdown,
+    );
+    return pendingId;
   }
 
   private removePendingUserMessage(operationId: string) {
-    const index = this.pendingUserMessages.findIndex(
-      (pending) => pending.operationId === operationId,
-    );
-    if (index >= 0) this.pendingUserMessages.splice(index, 1);
-  }
-
-  private userMessageOccurrenceCount(sessionId: string, text: string, parts: UiPart[] = []) {
-    const canonical = this.props.sessionRegistry.findModel(sessionId)?.uiParts ?? [];
-    if (text)
-      return canonical.filter(
-        (part) =>
-          part.kind === "text" &&
-          part.role === "user" &&
-          part.status === "complete" &&
-          part.text === text,
-      ).length;
-    const annotation = parts.find(
-      (part): part is Extract<UiPart, { kind: "annotation" }> => part.kind === "annotation",
-    );
-    if (annotation) {
-      const ids = annotation.annotations.map((item) => item.id).join("\u0000");
-      return canonical.filter(
-        (part) =>
-          part.kind === "annotation" &&
-          part.annotations.map((item) => item.id).join("\u0000") === ids,
-      ).length;
-    }
-    const attachment = parts.find(
-      (part): part is Extract<UiPart, { kind: "attachment" }> => part.kind === "attachment",
-    );
-    return attachment?.data
-      ? canonical.filter(
-          (part) =>
-            part.kind === "attachment" &&
-            part.attachmentKind === attachment.attachmentKind &&
-            part.data === attachment.data,
-        ).length
-      : 0;
+    this.optimisticUserMessages.remove(operationId);
   }
 }

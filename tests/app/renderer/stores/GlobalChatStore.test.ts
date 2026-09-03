@@ -5,8 +5,58 @@ import { CakeChatCatalog } from "../../../../src/renderer/models/CakeChatCatalog
 import { GlobalChatStore } from "../../../../src/renderer/stores/GlobalChatStore";
 import { mountWithRendererClient } from "../mount-with-renderer-client";
 import { RendererModels } from "../../../../src/renderer/RendererModels";
+import { Message } from "../../../../src/renderer/models/Message";
 
 describe("GlobalChatStore", () => {
+  it("uses the shared optimistic message lifecycle for the first Cake Chat message", async () => {
+    let acceptPrompt!: () => void;
+    const prompt = vi.fn(
+      () =>
+        new Promise<string>((resolve) => {
+          acceptPrompt = () => resolve("turn-1");
+        }),
+    );
+    const catalog = CakeChatCatalog.create({ loaded: true, sessions: [] });
+    const models = new RendererModels();
+    const { root, subject: store } = mountWithRendererClient(
+      createStore(GlobalChatStore, {
+        catalog,
+        sessionModel: (sessionId) => models.cakeChat(sessionId),
+        tools: () => [],
+      }),
+      { cakeChats: { prompt } } as unknown as RendererClient,
+    );
+    const session = store.activeSession!;
+
+    const submission = session.submit("Hello Cake");
+    expect(session.parts).toEqual([
+      expect.objectContaining({ text: "Hello Cake", deliveryState: "sending" }),
+    ]);
+
+    acceptPrompt();
+    await submission;
+    expect(session.parts).toEqual([
+      expect.objectContaining({ text: "Hello Cake", deliveryState: "sending" }),
+    ]);
+
+    session.model.parts.push(
+      Message.create({
+        id: "canonical-user-1",
+        kind: "text",
+        role: "user",
+        text: "Hello Cake",
+        status: "complete",
+      }),
+    );
+    expect(session.optimisticUserMessages.pending).toEqual([]);
+    expect(session.parts).toEqual([
+      expect.objectContaining({ id: "canonical-user-1", deliveryState: undefined }),
+    ]);
+    root[Symbol.dispose]();
+    catalog[Symbol.dispose]();
+    models[Symbol.dispose]();
+  });
+
   it("keeps the latest selection when session opens finish out of order", async () => {
     let finishFirst!: () => void;
     let finishSecond!: () => void;
