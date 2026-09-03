@@ -87,6 +87,7 @@ const makeLayer = (
     onArchive?(): void;
     onRestore?(): void;
     onCatalog?(): void;
+    catalogModifiedAt?(): string;
     onResolvedCatalog?(): void;
     onRuntimeOptions?(newSession: boolean): void;
     sessionExists?: boolean;
@@ -126,7 +127,7 @@ const makeLayer = (
             id: "session-1",
             title: "Active branch",
             created: "2026-01-01T00:00:00.000Z",
-            modified: "2026-01-02T00:00:00.000Z",
+            modified: hooks.catalogModifiedAt?.() ?? "2026-01-02T00:00:00.000Z",
             messageCount: 2,
             resolved: false,
           });
@@ -244,12 +245,12 @@ describe("Project Sessions domain", () => {
         projectPath: "/project",
         resolved: false,
       });
-      yield* updates.pipe(Stream.take(3), Stream.runDrain);
+      yield* updates.pipe(Stream.take(2), Stream.runDrain);
       assert.equal(resolvedCatalogs, 0);
     }).pipe(Effect.provide(makeLayer(undefined, { onResolvedCatalog: () => resolvedCatalogs++ })));
   });
 
-  it.effect("observes a current catalog Snapshot followed by ordered replacement Events", () =>
+  it.effect("refreshes catalog metadata without publishing an empty replacement", () =>
     Effect.gen(function* () {
       const updates = yield* projectSessions.observeCatalog({
         projectPath: "/project",
@@ -258,9 +259,9 @@ describe("Project Sessions domain", () => {
       const ready = yield* Deferred.make<void>();
       const fiber = yield* updates.pipe(
         Stream.tap((update) =>
-          update.revision === 3 ? Deferred.succeed(ready, undefined) : Effect.void,
+          update.revision === 2 ? Deferred.succeed(ready, undefined) : Effect.void,
         ),
-        Stream.take(4),
+        Stream.take(3),
         Stream.runCollect,
         Effect.forkChild,
       );
@@ -269,10 +270,22 @@ describe("Project Sessions domain", () => {
       const observed = Array.from(yield* Fiber.join(fiber));
       assert.deepEqual(
         observed.map((update) => update._tag),
-        ["Snapshot", "Event", "Event", "Event"],
+        ["Snapshot", "Event", "Event"],
       );
-      assert.ok(observed[1]!.revision > observed[0]!.revision);
-    }).pipe(Effect.provide(makeLayer())),
+      assert.deepEqual(
+        observed.flatMap((update) => (update._tag === "Event" ? [update.event._tag] : [])),
+        ["Upserted", "Upserted"],
+      );
+    }).pipe(
+      Effect.provide(
+        makeLayer(undefined, {
+          catalogModifiedAt: (() => {
+            let revision = 1;
+            return () => `2026-01-0${revision++}T00:00:00.000Z`;
+          })(),
+        }),
+      ),
+    ),
   );
 
   it.effect("removes a resolved session from the active metadata stream", () => {
@@ -284,9 +297,9 @@ describe("Project Sessions domain", () => {
       const ready = yield* Deferred.make<void>();
       const fiber = yield* updates.pipe(
         Stream.tap((update) =>
-          update.revision === 3 ? Deferred.succeed(ready, undefined) : Effect.void,
+          update.revision === 2 ? Deferred.succeed(ready, undefined) : Effect.void,
         ),
-        Stream.take(4),
+        Stream.take(3),
         Stream.runCollect,
         Effect.forkChild,
       );
@@ -299,26 +312,7 @@ describe("Project Sessions domain", () => {
       assert.deepEqual(observed[2], {
         _tag: "Event",
         revision: 3,
-        event: {
-          _tag: "Upserted",
-          session: {
-            sessionId: "session-1",
-            title: "Active branch",
-            createdAt: "2026-01-01T00:00:00.000Z",
-            modifiedAt: "2026-01-02T00:00:00.000Z",
-            messageCount: 2,
-            resolved: false,
-            unread: false,
-            projectPath: "/project",
-            projectName: "Project",
-            workingDirectory: "/project",
-          },
-        },
-      });
-      assert.deepEqual(observed[3], {
-        _tag: "Event",
-        revision: 4,
-        event: { _tag: "Replaced", sessions: [] },
+        event: { _tag: "Removed", sessionId: "session-1" },
       });
     }).pipe(Effect.provide(makeLayer()));
   });
@@ -329,8 +323,8 @@ describe("Project Sessions domain", () => {
         projectPath: "/project",
         resolved: false,
       });
-      const observed = Array.from(yield* updates.pipe(Stream.take(3), Stream.runCollect));
-      const last = observed[2];
+      const observed = Array.from(yield* updates.pipe(Stream.take(2), Stream.runCollect));
+      const last = observed[1];
       assert.equal(last?._tag, "Event");
       const sessions =
         last?._tag === "Event" && last.event._tag === "Upserted" ? [last.event.session] : [];

@@ -17,6 +17,7 @@ import {
 import type { CakeChatCatalogUpdate } from "./catalog-data";
 import { SessionArchiveStorage } from "../services/storage/SessionArchiveStorage";
 import { toJsonValue } from "../utils/to-json-value";
+import { reconcileCatalogScans } from "../utils/reconcile-catalog-stream";
 import {
   acquire as acquireConversation,
   observe as observeConversation,
@@ -37,8 +38,6 @@ import {
 } from "./cake-chat-data";
 
 export * from "./cake-chat-data";
-
-type CakeChatCatalogEvent = Extract<CakeChatCatalogUpdate, { readonly _tag: "Event" }>["event"];
 
 const asError = (operation: string) =>
   Effect.mapError(
@@ -109,21 +108,24 @@ export const observeCatalog = Effect.fn("CakeChats.observeCatalog")(function* (
   query: CakeChatCatalogQuery,
 ) {
   const changes = yield* observeState();
-  const events = changes.pipe(
-    Stream.switchMap(() =>
-      Stream.make({ _tag: "Replaced", sessions: [] } satisfies CakeChatCatalogEvent).pipe(
-        Stream.concat(
-          Stream.unwrap(catalogForState(query)).pipe(
-            Stream.map((session) => ({ _tag: "Upserted" as const, session })),
-          ),
-        ),
-      ),
-    ),
+  const events = reconcileCatalogScans(changes, () => Stream.unwrap(catalogForState(query)), {
+    key: (session) => session.sessionId,
+    equals: sameCakeChatSummary,
+  }).pipe(
     Stream.mapAccum(
       () => 1,
-      (revision, event): readonly [number, ReadonlyArray<CakeChatCatalogUpdate>] => [
+      (revision, reconciliation): readonly [number, ReadonlyArray<CakeChatCatalogUpdate>] => [
         revision + 1,
-        [{ _tag: "Event", revision: revision + 1, event }],
+        [
+          {
+            _tag: "Event",
+            revision: revision + 1,
+            event:
+              reconciliation._tag === "Upserted"
+                ? { _tag: "Upserted", session: reconciliation.item }
+                : { _tag: "Removed", sessionId: reconciliation.id },
+          },
+        ],
       ],
     ),
   );
@@ -133,6 +135,15 @@ export const observeCatalog = Effect.fn("CakeChats.observeCatalog")(function* (
     sessions: [],
   } satisfies CakeChatCatalogUpdate).pipe(Stream.concat(events));
 });
+
+const sameCakeChatSummary = (left: CakeChatSummary, right: CakeChatSummary) =>
+  left.sessionId === right.sessionId &&
+  left.title === right.title &&
+  left.createdAt === right.createdAt &&
+  left.modifiedAt === right.modifiedAt &&
+  left.messageCount === right.messageCount &&
+  left.parentSessionId === right.parentSessionId &&
+  left.resolved === right.resolved;
 
 export const inspect = Effect.fn("CakeChats.inspect")(function* (sessionId: string) {
   const environment = yield* CakeChatEnvironment;

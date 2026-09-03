@@ -88,15 +88,17 @@ export function applyCakeChatCatalogGroupUpdate(
       ...sessions.filter((session) => session.resolved !== query.resolved),
       ...update.sessions,
     ];
-  } else if (update.event._tag === "Replaced") {
-    sessions = [
-      ...sessions.filter((session) => session.resolved !== query.resolved),
-      ...update.event.sessions,
-    ];
   } else {
-    const session = update.event.session;
-    sessions = sessions.filter((candidate) => candidate.sessionId !== session.sessionId);
-    sessions.push(session);
+    const event = update.event;
+    if (event._tag === "Replaced") {
+      sessions = [
+        ...sessions.filter((session) => session.resolved !== query.resolved),
+        ...event.sessions,
+      ];
+    } else if (event._tag === "Upserted") {
+      sessions = sessions.filter((candidate) => candidate.sessionId !== event.session.sessionId);
+      sessions.push(event.session);
+    } else sessions = sessions.filter((session) => session.sessionId !== event.sessionId);
   }
   sessions.sort(compareSessionSummaries);
   assertUnique(

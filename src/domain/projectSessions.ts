@@ -50,8 +50,7 @@ import {
   type ProjectSessionUpdate,
 } from "./project-session-data";
 import { SessionArchiveStorage } from "../services/storage/SessionArchiveStorage";
-
-type SessionCatalogEvent = Extract<SessionCatalogUpdate, { readonly _tag: "Event" }>["event"];
+import { reconcileCatalogScans } from "../utils/reconcile-catalog-stream";
 
 const asError = (operation: string) =>
   Effect.mapError(
@@ -136,21 +135,28 @@ export const observeCatalog = Effect.fn("ProjectSessions.observeCatalog")(functi
   query: ProjectSessionCatalogQuery,
 ) {
   const changes = yield* observeState();
-  const events = changes.pipe(
-    Stream.switchMap((projection) =>
-      Stream.make({ _tag: "Replaced", sessions: [] } satisfies SessionCatalogEvent).pipe(
-        Stream.concat(
-          Stream.unwrap(catalogForState(query, projection.state)).pipe(
-            Stream.map((session) => ({ _tag: "Upserted" as const, session })),
-          ),
-        ),
-      ),
-    ),
+  const events = reconcileCatalogScans(
+    changes,
+    (projection) => Stream.unwrap(catalogForState(query, projection.state)),
+    {
+      key: (session) => session.sessionId,
+      equals: sameSessionSummary,
+    },
+  ).pipe(
     Stream.mapAccum(
       () => 1,
-      (revision, event): readonly [number, ReadonlyArray<SessionCatalogUpdate>] => [
+      (revision, reconciliation): readonly [number, ReadonlyArray<SessionCatalogUpdate>] => [
         revision + 1,
-        [{ _tag: "Event", revision: revision + 1, event }],
+        [
+          {
+            _tag: "Event",
+            revision: revision + 1,
+            event:
+              reconciliation._tag === "Upserted"
+                ? { _tag: "Upserted", session: reconciliation.item }
+                : { _tag: "Removed", sessionId: reconciliation.id },
+          },
+        ],
       ],
     ),
   );
@@ -160,6 +166,20 @@ export const observeCatalog = Effect.fn("ProjectSessions.observeCatalog")(functi
     sessions: [],
   } satisfies SessionCatalogUpdate).pipe(Stream.concat(events));
 });
+
+const sameSessionSummary = (left: ProjectSessionSummary, right: ProjectSessionSummary) =>
+  left.sessionId === right.sessionId &&
+  left.title === right.title &&
+  left.createdAt === right.createdAt &&
+  left.modifiedAt === right.modifiedAt &&
+  left.messageCount === right.messageCount &&
+  left.parentSessionId === right.parentSessionId &&
+  left.resolved === right.resolved &&
+  left.unread === right.unread &&
+  left.projectPath === right.projectPath &&
+  left.projectName === right.projectName &&
+  left.workingDirectory === right.workingDirectory &&
+  JSON.stringify(left.managedWorktree) === JSON.stringify(right.managedWorktree);
 
 const findLocation = Effect.fn("ProjectSessions.findLocation")(function* (
   target: ProjectSessionTarget,
