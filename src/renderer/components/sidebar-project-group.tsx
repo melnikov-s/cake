@@ -38,7 +38,9 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
   const [projectAction, setProjectAction] = useState<ProjectAction>();
   const [actionBusy, setActionBusy] = useState(false);
   const sessions = store.projectSessions(path, resolved);
-  const expanded = !resolved || store.isResolvedGroupExpanded(path);
+  const expanded = resolved
+    ? store.isResolvedGroupExpanded(path)
+    : store.isActiveGroupExpanded(path);
   const empty = sessions.length === 0;
   return (
     <div data-slot="project-group" className={cn("mb-3 last:mb-0", empty && "mb-1")}>
@@ -46,20 +48,22 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
         className="group/proj flex h-8 w-full items-center gap-1 px-1 select-none text-muted-foreground"
         title={path}
       >
-        {resolved && (
-          <IconButton
-            className={cn(
-              "size-5 flex items-center justify-center rounded text-muted-foreground hover:text-foreground transition-transform duration-150",
-              !expanded && "-rotate-90",
-            )}
-            aria-expanded={expanded}
-            tooltip={expanded ? "Collapse" : "Expand"}
-            ariaLabel={`${expanded ? "Collapse" : "Expand"} ${projects.nameForPath(path)} resolved`}
-            onClick={() => store.toggleResolvedGroupExpanded(path)}
-          >
-            <ChevronIcon />
-          </IconButton>
-        )}
+        <IconButton
+          className={cn(
+            "size-5 flex items-center justify-center rounded text-muted-foreground hover:text-foreground transition-transform duration-150",
+            !expanded && "-rotate-90",
+          )}
+          aria-expanded={expanded}
+          tooltip={expanded ? "Collapse" : "Expand"}
+          ariaLabel={`${expanded ? "Collapse" : "Expand"} ${projects.nameForPath(path)}${resolved ? " resolved" : ""}`}
+          onClick={() =>
+            resolved
+              ? store.toggleResolvedGroupExpanded(path)
+              : store.toggleActiveGroupExpanded(path)
+          }
+        >
+          <ChevronIcon />
+        </IconButton>
         <Button
           data-slot="project-label"
           variant="ghost"

@@ -13,6 +13,7 @@ export class SessionSummary extends Model {
   projectPath = "";
   projectName = "";
   workingDirectory = "";
+  worktreeName: string | undefined;
   managedWorktree: ManagedWorktreeContext | undefined;
   pending = false;
   draft = false;

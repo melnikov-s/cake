@@ -8,7 +8,7 @@ import {
   streamWorkspaceSessions,
 } from "../../../../src/services/pi/runtime/session-discovery";
 import { SessionArchiveStorage } from "../../../../src/services/storage/SessionArchiveStorage";
-import { SessionArchiveStorageLive } from "../../../../src/services/storage/SessionArchiveStorageLive";
+import { makeSessionArchiveStorageLive } from "../../../../src/services/storage/SessionArchiveStorageLive";
 import {
   makeSessionMetadataStorageLive,
   SessionMetadataStorage,
@@ -22,7 +22,9 @@ const runArchive = <A, E>(
   Effect.runPromise(
     Effect.flatMap(SessionArchiveStorage, use).pipe(
       Effect.provide(
-        SessionArchiveStorageLive.pipe(Layer.provide(makeSessionMetadataStorageLive(metadataRoot))),
+        makeSessionArchiveStorageLive(join(metadataRoot, "archive")).pipe(
+          Layer.provide(makeSessionMetadataStorageLive(metadataRoot)),
+        ),
       ),
     ),
   );
@@ -67,6 +69,85 @@ async function fixture() {
 }
 
 describe("SessionArchiveStorage", () => {
+  it("lazily indexes legacy project archives from filename metadata", async () => {
+    const location = await fixture();
+    await Effect.runPromise(
+      Effect.flatMap(SessionMetadataStorage, (metadata) =>
+        metadata.setTitle("session-1", "Legacy resolved session"),
+      ).pipe(Effect.provide(makeSessionMetadataStorageLive(metadataRoot))),
+    );
+    await runArchive((storage) => storage.resolve("session-1", location));
+
+    await expect(
+      runArchive((storage) => storage.projectMigrationComplete("/projects/cake")),
+    ).resolves.toBe(false);
+    await expect(
+      runArchive((storage) =>
+        storage
+          .migrateProject("/projects/cake", "Cake", [{ location, worktreeName: "legacy-worktree" }])
+          .pipe(Stream.runCollect),
+      ),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        sessionId: "session-1",
+        title: "Legacy resolved session",
+        worktreeName: "legacy-worktree",
+      }),
+    ]);
+    await expect(
+      runArchive((storage) => storage.projectMigrationComplete("/projects/cake")),
+    ).resolves.toBe(true);
+    await expect(
+      runArchive((storage) =>
+        storage.migrateProject("/projects/cake", "Cake", [{ location }]).pipe(Stream.runCollect),
+      ),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        sessionId: "session-1",
+        title: "Legacy resolved session",
+        worktreeName: "legacy-worktree",
+      }),
+    ]);
+  });
+
+  it("lists named project archives from Cake metadata and restores with one file move", async () => {
+    const location = await fixture();
+    await Effect.runPromise(
+      Effect.flatMap(SessionMetadataStorage, (metadata) =>
+        metadata.setTitle("session-1", "Indexed project session"),
+      ).pipe(Effect.provide(makeSessionMetadataStorageLive(metadataRoot))),
+    );
+
+    await runArchive((storage) =>
+      storage.resolveProject("session-1", location, {
+        projectPath: "/projects/cake",
+        projectName: "Cake",
+        worktreeName: "archive-index",
+      }),
+    );
+    await expect(
+      runArchive((storage) => storage.resolvedProjects("/projects/cake").pipe(Stream.runCollect)),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        sessionId: "session-1",
+        title: "Indexed project session",
+        worktreeName: "archive-index",
+      }),
+    ]);
+
+    await expect(runArchive((storage) => storage.restoreProject("session-1"))).resolves.toEqual(
+      expect.objectContaining({ sessionId: "session-1" }),
+    );
+    await expect(
+      runArchive((storage) => storage.resolvedProjects("/projects/cake").pipe(Stream.runCollect)),
+    ).resolves.toEqual([]);
+    expect(
+      await Effect.runPromise(
+        streamWorkspaceSessions(location.cwd, location.activeRoot).pipe(Stream.runCollect),
+      ),
+    ).toEqual([expect.objectContaining({ id: "session-1" })]);
+  });
+
   it("preserves Cake-owned titles across resolve and restore", async () => {
     const location = await fixture();
     await Effect.runPromise(

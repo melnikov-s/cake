@@ -31,6 +31,8 @@ function sidebarProps(store: ProjectWorkbenchStore) {
       resolvedWorktreeCount: fixture.resolvedWorktreeCount ?? (() => 0),
       resolvedLaneExpanded: fixture.resolvedLaneExpanded ?? false,
       toggleResolvedLane: fixture.toggleResolvedLane ?? vi.fn(),
+      isActiveGroupExpanded: fixture.isActiveGroupExpanded ?? (() => true),
+      toggleActiveGroupExpanded: fixture.toggleActiveGroupExpanded ?? vi.fn(),
       isResolvedGroupExpanded: fixture.isResolvedGroupExpanded ?? (() => false),
       toggleResolvedGroupExpanded: fixture.toggleResolvedGroupExpanded ?? vi.fn(),
       sessionActivity: fixture.sessionActivity,
@@ -89,7 +91,7 @@ describe("Sidebar projects", () => {
     container.remove();
   });
 
-  it("keeps active project sessions expanded without a disclosure control", () => {
+  it("keeps active project sessions expanded with an independent disclosure control", () => {
     const startNewSession = vi.fn();
     const store = {
       recentProjectPaths: ["/work/cake"],
@@ -116,7 +118,7 @@ describe("Sidebar projects", () => {
       root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onToggle={vi.fn()} />),
     );
 
-    expect(container.querySelector('[aria-label="Collapse Cake"]')).toBeNull();
+    expect(container.querySelector('[aria-label="Collapse Cake"]')).not.toBeNull();
     expect(container.querySelector('[aria-label="Expand Cake"]')).toBeNull();
     expect(container.textContent).toContain("Add project collapsing");
 
@@ -539,7 +541,7 @@ describe("Sidebar projects", () => {
     );
     expect(container.querySelector(".sidebar input")).toBeNull();
     expect(container.textContent).toContain("Repair the sidebar");
-    expect(container.querySelector('[aria-label="Collapse Cake Chat"]')).toBeNull();
+    expect(container.querySelector('[aria-label="Collapse Cake Chat"]')).not.toBeNull();
     expect(container.querySelector('[aria-label="Expand Cake Chat"]')).toBeNull();
     act(() => container.querySelector<HTMLButtonElement>('[aria-label="New Cake Chat"]')!.click());
     expect(props.onCreateCakeChat).toHaveBeenCalledOnce();
@@ -556,7 +558,7 @@ describe("Sidebar projects", () => {
               {
                 sessionId: "resolved-project",
                 title: "Finished work",
-                managedWorktree: { branch: "agent/resolved-feature", baseBranch: "main" },
+                worktreeName: "resolved-feature",
               },
             ]
           : [],
@@ -627,6 +629,9 @@ describe("Sidebar projects", () => {
     expect(container.querySelector('[data-session-id="resolved-project"]')?.textContent).toContain(
       "resolved-feature",
     );
+    expect(
+      container.querySelector('[data-session-id="resolved-project"] [data-worktree-state]'),
+    ).toBeNull();
 
     const emptyProject = container.querySelector<HTMLElement>('[data-slot="project-group"]');
     expect(emptyProject).not.toBeNull();

@@ -30,6 +30,13 @@ describe("SidebarStore catalog demand", () => {
     ]);
     expect(store.cakeChatCatalogQueries).toEqual([{ resolved: false }]);
 
+    store.toggleActiveGroupExpanded("/cake");
+    expect(store.isActiveGroupExpanded("/cake")).toBe(false);
+    expect(store.projectSessionCatalogQueries).toEqual([
+      { projectPath: "/cake", resolved: false },
+      { projectPath: "/pi", resolved: false },
+    ]);
+
     store.toggleResolvedLane();
     store.toggleResolvedGroupExpanded("/cake");
 
@@ -38,6 +45,9 @@ describe("SidebarStore catalog demand", () => {
       { projectPath: "/cake", resolved: true },
       { projectPath: "/pi", resolved: false },
     ]);
+    expect(store.cakeChatCatalogQueries).toEqual([{ resolved: false }]);
+
+    store.toggleResolvedGroupExpanded("cake-chat");
     expect(store.cakeChatCatalogQueries).toEqual([{ resolved: false }, { resolved: true }]);
 
     store[Symbol.dispose]();

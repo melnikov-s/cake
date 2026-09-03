@@ -16,6 +16,7 @@ export interface SidebarSessionItemProps {
     title: string;
     modifiedAt: string;
     draft?: boolean;
+    worktreeName?: string;
     managedWorktree?: Pick<
       WorktreeRecord,
       "branch" | "baseBranch" | "parentWorktreePath" | "state"
@@ -52,7 +53,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
     activity === "running" ? "Running" : activity === "error" ? "Error" : "Ready, unread";
   const branch = session.draft
     ? undefined
-    : session.managedWorktree?.branch.replace(/^agent\//, "");
+    : (session.worktreeName ?? session.managedWorktree?.branch.replace(/^agent\//, ""));
   const baseBranch = session.managedWorktree?.baseBranch.replace(/^agent\//, "");
   const showBaseBranch = baseBranch !== undefined && baseBranch !== "main";
   const commitRename = () => {
@@ -131,10 +132,12 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
               >
                 {branch && (
                   <>
-                    <WorktreeStatusIcon
-                      state={session.managedWorktree!.state}
-                      className="shrink-0"
-                    />
+                    {session.managedWorktree && (
+                      <WorktreeStatusIcon
+                        state={session.managedWorktree.state}
+                        className="shrink-0"
+                      />
+                    )}
                     <span className="truncate">{branch}</span>
                     {showBaseBranch && (
                       <>

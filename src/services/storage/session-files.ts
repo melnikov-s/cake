@@ -1,6 +1,6 @@
-import { readdir, stat } from "node:fs/promises";
+import { opendir, readdir, stat } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
-import { Effect, Stream } from "effect";
+import { Stream } from "effect";
 
 const SESSION_FILE_PATTERN = /^(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z)_(.+)\.jsonl$/;
 
@@ -47,32 +47,26 @@ const metadataFromFilename = (
   };
 };
 
-const readDirectoryMetadata = async (directory: string): Promise<SessionFileMetadata[]> => {
+async function* readDirectoryMetadata(
+  directory: string,
+): AsyncGenerator<SessionFileMetadata, void, void> {
   let entries;
   try {
-    entries = await readdir(directory, { withFileTypes: true });
+    entries = await opendir(directory);
   } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") return [];
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return;
     throw error;
   }
-  const metadata = await Promise.all(
-    entries
-      .filter((entry) => entry.isFile() && entry.name.endsWith(".jsonl"))
-      .map(async (entry) =>
-        metadataFromFilename(
-          directory,
-          entry.name,
-          (await stat(join(directory, entry.name))).mtime,
-        ),
-      ),
-  );
-  return metadata
-    .filter((item): item is SessionFileMetadata => item !== undefined)
-    .sort(
-      (left, right) =>
-        right.modifiedAt.localeCompare(left.modifiedAt) || left.id.localeCompare(right.id),
+  for await (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith(".jsonl")) continue;
+    const metadata = metadataFromFilename(
+      directory,
+      entry.name,
+      (await stat(join(directory, entry.name))).mtime,
     );
-};
+    if (metadata) yield metadata;
+  }
+}
 
 /** Emits filesystem metadata only. Transcript contents are never opened. */
 export function streamSessionFiles(input: {
@@ -81,12 +75,7 @@ export function streamSessionFiles(input: {
   readonly direct?: boolean;
 }): Stream.Stream<SessionFileMetadata, unknown> {
   const directory = sessionDirectoryPath(input);
-  return Stream.unwrap(
-    Effect.tryPromise({
-      try: () => readDirectoryMetadata(directory),
-      catch: (cause) => cause,
-    }).pipe(Effect.map(Stream.fromIterable)),
-  );
+  return Stream.fromAsyncIterable(readDirectoryMetadata(directory), (cause) => cause);
 }
 
 /** Resolves one exact session file by filename metadata without reading any transcript. */

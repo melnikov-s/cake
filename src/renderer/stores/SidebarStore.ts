@@ -1,4 +1,4 @@
-import { Store, observable } from "r-state-tree";
+import { Store, observable, snapshot } from "r-state-tree";
 import { formatRelativeSessionTime } from "../../utils/format-relative-session-time";
 import type { ProjectCatalogStore } from "./ProjectCatalogStore";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
@@ -26,6 +26,9 @@ export class SidebarStore extends Store<SidebarStoreProps> {
     return RendererClientContext.consume(this)!.electron;
   }
 
+  @snapshot private readonly expandedActiveGroups: Record<string, boolean> = observable({
+    "cake-chat": true,
+  });
   private readonly expandedResolvedGroups: Record<string, boolean> = observable({});
   resolvedLaneExpanded = false;
   now = Date.now();
@@ -87,6 +90,14 @@ export class SidebarStore extends Store<SidebarStoreProps> {
     return this.props.catalog.find(sessionId)?.unread ? "unread" : undefined;
   }
 
+  isActiveGroupExpanded(groupKey: string) {
+    return this.expandedActiveGroups[groupKey] !== false;
+  }
+
+  toggleActiveGroupExpanded(groupKey: string) {
+    this.expandedActiveGroups[groupKey] = !this.isActiveGroupExpanded(groupKey);
+  }
+
   isResolvedGroupExpanded(groupKey: string) {
     return this.expandedResolvedGroups[groupKey] === true;
   }
@@ -106,7 +117,7 @@ export class SidebarStore extends Store<SidebarStoreProps> {
   }
 
   get cakeChatCatalogQueries(): ReadonlyArray<CakeChatCatalogQuery> {
-    return this.resolvedLaneExpanded
+    return this.resolvedLaneExpanded && this.isResolvedGroupExpanded("cake-chat")
       ? [{ resolved: false }, { resolved: true }]
       : [{ resolved: false }];
   }

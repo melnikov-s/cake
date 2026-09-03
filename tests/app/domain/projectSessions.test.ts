@@ -94,10 +94,13 @@ const makeLayer = (
     onCatalog?(): void;
     catalogModifiedAt?(): string;
     onResolvedCatalog?(): void;
+    onMigrateProject?(): void;
+    onLocations?(): void;
     onRuntimeOptions?(newSession: boolean): void;
     prompt?(): Promise<void>;
     sessionExists?: boolean;
     resolvedOnDisk?: boolean;
+    migrationComplete?: boolean;
   } = {},
 ) => {
   let resolvedOnDisk = hooks.resolvedOnDisk ?? false;
@@ -164,8 +167,9 @@ const makeLayer = (
     makePiSessionsLayer(adapter),
     SubagentCoordinatorLive,
     makeProjectSessionEnvironmentLayer({
-      locations: () =>
-        Effect.succeed([
+      locations: () => {
+        hooks.onLocations?.();
+        return Effect.succeed([
           {
             projectPath: "/project",
             projectName: "Project",
@@ -173,7 +177,8 @@ const makeLayer = (
             sessionDirectory: "/sessions",
             resolvedSessionDirectory: "/resolved-sessions",
           },
-        ]),
+        ]);
+      },
       runtimeOptions: ({ location, sessionId, newSession }) =>
         Effect.sync(() => {
           hooks.onRuntimeOptions?.(newSession);
@@ -243,6 +248,59 @@ const makeLayer = (
                 messageCount: 0,
                 resolved: true,
               }),
+        resolveProject: () => Effect.succeed(false),
+        restoreProject: () => Effect.succeed(undefined),
+        deleteResolvedProject: () => Effect.void,
+        resolvedProjects: (projectPath) => {
+          hooks.onResolvedCatalog?.();
+          return hooks.sessionExists === false || !resolvedOnDisk
+            ? Stream.empty
+            : Stream.make({
+                version: 1 as const,
+                sessionId: "session-1",
+                title: "session-1",
+                projectPath,
+                projectName: "Project",
+                workingDirectory: "/project",
+                activeRoot: "/sessions",
+                resolvedRoot: "/resolved-sessions",
+                createdAt: "2026-01-01T00:00:00.000Z",
+                modifiedAt: "2026-01-02T00:00:00.000Z",
+              });
+        },
+        projectMigrationComplete: () => Effect.succeed(hooks.migrationComplete ?? true),
+        migrateProject: (projectPath) => {
+          hooks.onMigrateProject?.();
+          return hooks.sessionExists === false || !resolvedOnDisk
+            ? Stream.empty
+            : Stream.make({
+                version: 1 as const,
+                sessionId: "session-1",
+                title: "session-1",
+                projectPath,
+                projectName: "Project",
+                workingDirectory: "/project",
+                activeRoot: "/sessions",
+                resolvedRoot: "/resolved-sessions",
+                createdAt: "2026-01-01T00:00:00.000Z",
+                modifiedAt: "2026-01-02T00:00:00.000Z",
+              });
+        },
+        resolvedProjectEntry: () =>
+          hooks.sessionExists === false || !resolvedOnDisk
+            ? Effect.succeed(undefined)
+            : Effect.succeed({
+                version: 1 as const,
+                sessionId: "session-1",
+                title: "session-1",
+                projectPath: "/project",
+                projectName: "Project",
+                workingDirectory: "/project",
+                activeRoot: "/sessions",
+                resolvedRoot: "/resolved-sessions",
+                createdAt: "2026-01-01T00:00:00.000Z",
+                modifiedAt: "2026-01-02T00:00:00.000Z",
+              }),
       }),
     ),
     Layer.succeed(
@@ -262,6 +320,53 @@ const makeLayer = (
 };
 
 describe("Project Sessions domain", () => {
+  it.effect("loads resolved metadata without consulting Pi or project environments", () => {
+    let piCatalogs = 0;
+    let locations = 0;
+    return Effect.gen(function* () {
+      const updates = yield* projectSessions.observeCatalog({
+        projectPath: "/project",
+        resolved: true,
+      });
+      const first = yield* updates.pipe(Stream.take(1), Stream.runCollect);
+      assert.equal(first[0]?._tag, "Snapshot");
+      assert.equal(piCatalogs, 0);
+      assert.equal(locations, 0);
+    }).pipe(
+      Effect.provide(
+        makeLayer(undefined, {
+          resolvedOnDisk: true,
+          onCatalog: () => piCatalogs++,
+          onLocations: () => locations++,
+        }),
+      ),
+    );
+  });
+
+  it.effect("lazily migrates legacy resolved metadata when its project is expanded", () => {
+    let locations = 0;
+    let migrations = 0;
+    return Effect.gen(function* () {
+      const updates = yield* projectSessions.observeCatalog({
+        projectPath: "/project",
+        resolved: true,
+      });
+      const first = yield* updates.pipe(Stream.take(1), Stream.runCollect);
+      assert.equal(first[0]?._tag, "Snapshot");
+      assert.equal(locations, 1);
+      assert.equal(migrations, 1);
+    }).pipe(
+      Effect.provide(
+        makeLayer(undefined, {
+          resolvedOnDisk: true,
+          migrationComplete: false,
+          onLocations: () => locations++,
+          onMigrateProject: () => migrations++,
+        }),
+      ),
+    );
+  });
+
   it.effect("does not touch resolved storage for an active catalog stream", () => {
     let resolvedCatalogs = 0;
     return Effect.gen(function* () {
@@ -349,10 +454,8 @@ describe("Project Sessions domain", () => {
         _tag: "Event",
         revision: 2,
         event: {
-          _tag: "StatusChanged",
+          _tag: "Removed",
           sessionId: "session-1",
-          resolved: true,
-          unread: false,
         },
       });
     }).pipe(Effect.provide(makeLayer()));

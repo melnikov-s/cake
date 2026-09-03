@@ -1,5 +1,5 @@
-import { Effect, Layer, Option, Stream } from "effect";
-import { forgetProjectSessions, setSessionUnread, trustProject } from "../domain/application";
+import { Effect, Layer, Stream } from "effect";
+import { forgetProjectSessions, setSessionUnread } from "../domain/application";
 import * as artifacts from "../domain/artifacts";
 import * as reviews from "../domain/reviews";
 import * as sessionTerminals from "../domain/sessionTerminals";
@@ -9,7 +9,10 @@ import { ProjectAccess } from "../services/projects/ProjectAccess";
 import { ApplicationState } from "../services/storage/ApplicationState";
 import type { ArtifactStorage } from "../services/storage/ArtifactStorage";
 import type { ReviewStorage } from "../services/storage/ReviewStorage";
-import { SessionArchiveStorage } from "../services/storage/SessionArchiveStorage";
+import {
+  SessionArchiveStorage,
+  type ProjectSessionArchiveContext,
+} from "../services/storage/SessionArchiveStorage";
 import type { Terminal } from "../services/terminal/Terminal";
 import { ManagedWorktrees } from "../services/worktrees/ManagedWorktrees";
 import {
@@ -69,27 +72,10 @@ export const makeProjectSessionLifecycleLive = (
           Effect.provide(context),
           Effect.mapError((cause) => lifecycleError(operation, cause)),
         );
-      const catalog = (
-        workingDirectory: string,
-        input?: { includeResolved?: boolean; cakeChat?: boolean },
-      ) => {
-        const location = {
-          cwd: workingDirectory,
-          activeRoot: input?.cakeChat
-            ? options.cakeChatSessionDirectory
-            : options.projectSessionDirectory,
-          resolvedRoot: input?.cakeChat
-            ? options.resolvedCakeChatSessionDirectory
-            : options.resolvedProjectSessionDirectory,
-          direct: input?.cakeChat === true,
-        };
-        const active = streamWorkspaceSessions(workingDirectory, location.activeRoot, {
-          direct: input?.cakeChat,
-        });
-        return (
-          input?.includeResolved ? active.pipe(Stream.concat(archive.resolved(location))) : active
-        ).pipe(Stream.mapError((cause) => lifecycleError("catalogSessions", cause)));
-      };
+      const catalog = (workingDirectory: string) =>
+        streamWorkspaceSessions(workingDirectory, options.projectSessionDirectory).pipe(
+          Stream.mapError((cause) => lifecycleError("catalogSessions", cause)),
+        );
       const setCakeChatResolved = Effect.fn("ProjectSessionLifecycle.setCakeChatResolved")(
         function* (sessionId: string, resolved: boolean) {
           const location = {
@@ -118,10 +104,15 @@ export const makeProjectSessionLifecycleLive = (
             "setProjectSessionResolved",
             access.resolveSessionWorkingDirectory(sessionId),
           ));
-        const projectPath =
-          (yield* run("setProjectSessionResolved", worktrees.records())).find(
-            (record) => record.worktreePath === workingDirectory,
-          )?.projectPath ?? workingDirectory;
+        const records = yield* run("setProjectSessionResolved", worktrees.records());
+        const worktree = records.find((record) => record.worktreePath === workingDirectory);
+        const projectPath = worktree?.projectPath ?? workingDirectory;
+        const projectName =
+          application.snapshot().projects.find((project) => project.path === projectPath)?.name ??
+          projectPath;
+        const archiveContext: ProjectSessionArchiveContext = worktree
+          ? { projectPath, projectName, worktreeName: worktree.branch.replace(/^agent\//, "") }
+          : { projectPath, projectName };
         if (resolved) {
           yield* run(
             "setProjectSessionResolved",
@@ -129,34 +120,17 @@ export const makeProjectSessionLifecycleLive = (
           );
           yield* run(
             "setProjectSessionResolved",
-            archive.resolve(sessionId, {
-              cwd: workingDirectory,
-              activeRoot: options.projectSessionDirectory,
-              resolvedRoot: options.resolvedProjectSessionDirectory,
-            }),
+            archive.resolveProject(
+              sessionId,
+              {
+                cwd: workingDirectory,
+                activeRoot: options.projectSessionDirectory,
+                resolvedRoot: options.resolvedProjectSessionDirectory,
+              },
+              archiveContext,
+            ),
           );
-          const remaining = yield* catalog(workingDirectory).pipe(Stream.runHead);
-          if (Option.isNone(remaining))
-            yield* run("setProjectSessionResolved", worktrees.cleanupResolved(workingDirectory));
-        } else {
-          const restored = yield* run(
-            "setProjectSessionResolved",
-            worktrees.restoreResolved(workingDirectory),
-          );
-          if (restored) {
-            yield* access.allow(restored.worktreePath);
-            if (application.snapshot().trustedProjectPaths.includes(restored.projectPath))
-              yield* run("setProjectSessionResolved", trustProject(restored.worktreePath));
-          }
-          yield* run(
-            "setProjectSessionResolved",
-            archive.restore(sessionId, {
-              cwd: workingDirectory,
-              activeRoot: options.projectSessionDirectory,
-              resolvedRoot: options.resolvedProjectSessionDirectory,
-            }),
-          );
-        }
+        } else yield* run("setProjectSessionResolved", archive.restoreProject(sessionId));
         if (resolved) yield* run("setProjectSessionResolved", setSessionUnread(sessionId, false));
         yield* catalogs.publish({
           _tag: "ProjectSessionStatusChanged",
@@ -166,37 +140,37 @@ export const makeProjectSessionLifecycleLive = (
           resolved,
           unread: resolved ? false : application.snapshot().unreadSessionIds.includes(sessionId),
         });
+        if (!resolved)
+          yield* catalogs.publish({
+            _tag: "ProjectSessionChanged",
+            sessionId,
+            projectPath,
+            workingDirectory,
+            resolved: false,
+          });
       });
 
       const deleteResolvedProjectSession = Effect.fn(
         "ProjectSessionLifecycle.deleteResolvedProjectSession",
       )(function* (sessionId: string) {
-        const workingDirectory = yield* run(
+        const entry = yield* run(
           "deleteResolvedProjectSession",
-          access.resolveSessionWorkingDirectory(sessionId),
+          archive.resolvedProjectEntry(sessionId),
         );
-        const location = {
-          cwd: workingDirectory,
-          activeRoot: options.projectSessionDirectory,
-          resolvedRoot: options.resolvedProjectSessionDirectory,
-        };
-        if (
-          (yield* run("deleteResolvedProjectSession", archive.locate(sessionId, location))) !==
-          "resolved"
-        )
+        if (!entry)
           return yield* new ProjectSessionLifecycleError({
             operation: "deleteResolvedProjectSession",
             message: "Only resolved project sessions can be deleted",
           });
         yield* run(
           "deleteResolvedProjectSession",
-          artifacts.deleteSession(workingDirectory, sessionId),
+          artifacts.deleteSession(entry.workingDirectory, sessionId),
         );
         yield* run(
           "deleteResolvedProjectSession",
-          reviews.deleteSession(workingDirectory, sessionId),
+          reviews.deleteSession(entry.workingDirectory, sessionId),
         );
-        yield* run("deleteResolvedProjectSession", archive.deleteResolved(sessionId, location));
+        yield* run("deleteResolvedProjectSession", archive.deleteResolvedProject(sessionId));
         yield* access.forgetSessionLocation(sessionId);
         yield* run("deleteResolvedProjectSession", forgetProjectSessions([sessionId]));
         yield* catalogs.publish({ _tag: "ProjectSessionRemoved", sessionId });
@@ -211,18 +185,23 @@ export const makeProjectSessionLifecycleLive = (
               .map((record) => record.worktreePath),
           ];
           const forgotten: string[] = [];
+          const deleteRelated = Effect.fn("ProjectSessionLifecycle.deleteRelated")(function* (
+            workingDirectory: string,
+            sessionId: string,
+          ) {
+            yield* run(
+              "deleteProjectSessions",
+              artifacts.deleteSession(workingDirectory, sessionId),
+            );
+            yield* run("deleteProjectSessions", reviews.deleteSession(workingDirectory, sessionId));
+            forgotten.push(sessionId);
+            yield* catalogs.publish({ _tag: "ProjectSessionRemoved", sessionId });
+          });
           for (const workingDirectory of workingDirectories) {
-            yield* catalog(workingDirectory, { includeResolved: true }).pipe(
+            yield* catalog(workingDirectory).pipe(
               Stream.runForEach((session) =>
                 Effect.gen(function* () {
-                  yield* run(
-                    "deleteProjectSessions",
-                    artifacts.deleteSession(workingDirectory, session.id),
-                  );
-                  yield* run(
-                    "deleteProjectSessions",
-                    reviews.deleteSession(workingDirectory, session.id),
-                  );
+                  yield* deleteRelated(workingDirectory, session.id);
                   yield* run(
                     "deleteProjectSessions",
                     archive.delete(session.id, {
@@ -231,15 +210,19 @@ export const makeProjectSessionLifecycleLive = (
                       resolvedRoot: options.resolvedProjectSessionDirectory,
                     }),
                   );
-                  forgotten.push(session.id);
-                  yield* catalogs.publish({
-                    _tag: "ProjectSessionRemoved",
-                    sessionId: session.id,
-                  });
                 }),
               ),
             );
           }
+          yield* archive.resolvedProjects(projectPath).pipe(
+            Stream.runForEach((entry) =>
+              Effect.gen(function* () {
+                yield* deleteRelated(entry.workingDirectory, entry.sessionId);
+                yield* run("deleteProjectSessions", archive.deleteResolvedProject(entry.sessionId));
+              }),
+            ),
+            Effect.mapError((cause) => lifecycleError("deleteProjectSessions", cause)),
+          );
           if (forgotten.length > 0)
             yield* run("deleteProjectSessions", forgetProjectSessions(forgotten));
           yield* Effect.forEach(forgotten, (sessionId) => access.forgetSessionLocation(sessionId));

@@ -27,8 +27,9 @@ export const SidebarCakeChatGroup = observer(function SidebarCakeChatGroup({
   onCreateCakeChat,
 }: SidebarCakeChatGroupProps) {
   const sessions = store.cakeChatSessions(resolved);
-  if (resolved && sessions.length === 0) return null;
-  const expanded = !resolved || store.isResolvedGroupExpanded("cake-chat");
+  const expanded = resolved
+    ? store.isResolvedGroupExpanded("cake-chat")
+    : store.isActiveGroupExpanded("cake-chat");
   const empty = sessions.length === 0;
   return (
     <div data-slot="cake-chat-group" className={cn("mb-3 last:mb-0", empty && "mb-1")}>
@@ -36,20 +37,22 @@ export const SidebarCakeChatGroup = observer(function SidebarCakeChatGroup({
         className="group/proj flex h-8 w-full items-center gap-1 px-1 select-none text-muted-foreground"
         title="Cake Chat"
       >
-        {resolved && (
-          <IconButton
-            className={cn(
-              "size-5 flex items-center justify-center rounded text-muted-foreground hover:text-foreground transition-transform duration-150",
-              !expanded && "-rotate-90",
-            )}
-            aria-expanded={expanded}
-            tooltip={expanded ? "Collapse" : "Expand"}
-            ariaLabel={`${expanded ? "Collapse" : "Expand"} Cake Chat resolved`}
-            onClick={() => store.toggleResolvedGroupExpanded("cake-chat")}
-          >
-            <ChevronIcon />
-          </IconButton>
-        )}
+        <IconButton
+          className={cn(
+            "size-5 flex items-center justify-center rounded text-muted-foreground hover:text-foreground transition-transform duration-150",
+            !expanded && "-rotate-90",
+          )}
+          aria-expanded={expanded}
+          tooltip={expanded ? "Collapse" : "Expand"}
+          ariaLabel={`${expanded ? "Collapse" : "Expand"} Cake Chat${resolved ? " resolved" : ""}`}
+          onClick={() =>
+            resolved
+              ? store.toggleResolvedGroupExpanded("cake-chat")
+              : store.toggleActiveGroupExpanded("cake-chat")
+          }
+        >
+          <ChevronIcon />
+        </IconButton>
         <Button
           data-slot="project-label"
           variant="ghost"

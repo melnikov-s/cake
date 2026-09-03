@@ -57,6 +57,12 @@ export function applySessionCatalogGroupUpdate(
         throw new Error(`Session ID collision: ${event.session.sessionId}`);
       sessions = sessions.filter((session) => session.sessionId !== event.session.sessionId);
       sessions.push(event.session);
+    } else if (event._tag === "UpsertedBatch") {
+      const incomingIds = new Set(event.sessions.map((session) => session.sessionId));
+      sessions = sessions.filter(
+        (session) => !session.sessionId || !incomingIds.has(session.sessionId),
+      );
+      sessions.push(...event.sessions);
     } else if (event._tag === "Removed") {
       sessions = sessions.filter((session) => session.sessionId !== event.sessionId);
     } else {

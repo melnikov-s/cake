@@ -19,6 +19,7 @@ export const ProjectSessionSummary = Schema.Struct({
   projectPath: boundedPath,
   projectName: Schema.String,
   workingDirectory: boundedPath,
+  worktreeName: Schema.optionalKey(Schema.String),
   managedWorktree: Schema.optionalKey(ManagedWorktreeContext),
 });
 export interface ProjectSessionSummary extends Schema.Schema.Type<typeof ProjectSessionSummary> {}
@@ -38,6 +39,7 @@ export const ProjectSessionPreview = Schema.Struct({
   sessionFile: boundedPath,
   parts: Schema.Array(Schema.Json),
   resolved: Schema.Boolean,
+  worktreeName: Schema.optionalKey(Schema.String),
   managedWorktree: Schema.optionalKey(ManagedWorktreeContext),
 });
 export interface ProjectSessionPreview extends Schema.Schema.Type<typeof ProjectSessionPreview> {}
@@ -47,6 +49,7 @@ export const ProjectSessionSnapshot = Schema.Struct({
   projectName: Schema.String,
   resolved: Schema.Boolean,
   unread: Schema.Boolean,
+  worktreeName: Schema.optionalKey(Schema.String),
   managedWorktree: Schema.optionalKey(ManagedWorktreeContext),
   conversation: ConversationSnapshot,
 });

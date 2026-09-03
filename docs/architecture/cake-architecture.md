@@ -243,20 +243,31 @@ The window Store hierarchy mirrors the product surfaces:
   filtering; neither Store opens sessions directly.
 - `ProjectCatalogStore` owns registered project records and their window-local
   ordering. `SessionCatalogStore` owns the currently demanded, activity-sorted
-  session metadata projection plus cached ID and project-group indexes. The
-  sidebar demands the active stream only for expanded project groups. Its
-  resolved lane and every resolved project group start collapsed, so archive
-  metadata is not read until both are expanded. Closing a group cancels its
-  stream and unloads that group's projection. After a group's one initial lazy
-  metadata scan, session mutations publish scoped catalog events; they refresh
+  session metadata projection plus cached ID and project-group indexes. Active
+  project streams remain demanded while their groups are visually collapsed, so
+  expanding a group never restarts discovery or clears its projection. Its
+  active discovery reads only the Project root and active or landed Managed
+  Worktrees; finished, discarded, and missing worktrees never participate in
+  startup. Metadata arrives in bounded batches. The resolved lane and every
+  resolved project group start collapsed, so archive metadata is not read until
+  both are expanded. Closing a resolved group cancels its stream and unloads
+  that group's projection. After a group's one initial lazy metadata scan,
+  session mutations publish scoped catalog events; they refresh
   only the affected session's filename metadata and never restart catalogs from
   application-state revisions. Titles come from Cake's namespace-independent,
   per-session metadata repository, so neither active nor resolved listing opens
   transcript bodies. Session IDs are the canonical identity; duplicate IDs are
   rejected. Resolved status derives solely from the active or archived
-  filesystem namespace, never from a persisted ID list. Resolving and restoring
-  move only the Pi transcript; the Cake-owned title remains stable across both
-  namespaces.
+  filesystem namespace, never from a persisted ID list. A Project Session's
+  resolved navigation record stores only bounded Cake-owned display and routing
+  metadata, including its title, Project, original Working Directory, and
+  historical worktree name. Resolved browsing reads those records without Pi,
+  Git, or Managed Worktree discovery. Existing archives are indexed once, only
+  when their resolved Project group is first expanded; that migration reads
+  filename metadata and Cake titles without opening transcript bodies. Resolving
+  and restoring move only the Pi transcript between namespaces; restoring never
+  recreates or reopens a Git worktree, and the Cake-owned title remains stable
+  across both namespaces.
 - Window-owned persistence infrastructure loads one versioned Store snapshot before
   mounting the Root Store, then watches the mounted Store tree and saves later
   snapshots through `RendererClient`. Persistence is not a Store and never

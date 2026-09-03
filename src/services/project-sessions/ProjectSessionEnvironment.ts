@@ -33,10 +33,9 @@ export class ProjectSessionEnvironmentError extends Schema.TaggedError<ProjectSe
 ) {}
 
 export interface ProjectSessionEnvironmentService {
-  readonly locations: () => Effect.Effect<
-    ReadonlyArray<ProjectSessionLocation>,
-    ProjectSessionEnvironmentError
-  >;
+  readonly locations: (options?: {
+    readonly includeInactive?: boolean;
+  }) => Effect.Effect<ReadonlyArray<ProjectSessionLocation>, ProjectSessionEnvironmentError>;
   readonly runtimeOptions: (input: {
     readonly location: ProjectSessionLocation;
     readonly sessionId: string;

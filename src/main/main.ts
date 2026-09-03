@@ -33,7 +33,7 @@ import { makeReviewStorageLive } from "../services/storage/ReviewStorageLive";
 import { ManagedWorktreesLive } from "../services/worktrees/ManagedWorktreesLive";
 import { makeGitLive } from "../services/git/GitLive";
 import { makeWorktreeStorageLive } from "../services/storage/WorktreeStorageLive";
-import { SessionArchiveStorageLive } from "../services/storage/SessionArchiveStorageLive";
+import { makeSessionArchiveStorageLive } from "../services/storage/SessionArchiveStorageLive";
 import { SessionCatalogChanges } from "../services/session-catalogs/SessionCatalogChanges";
 import { loadReviewSessionProjection } from "../services/pi/runtime/sidecar-runtime";
 import { makeInlineWidgetsLive } from "../services/widgets/InlineWidgetsLive";
@@ -68,9 +68,9 @@ const windowStateLive = makeWindowStateStorageLive(userData).pipe(Layer.provide(
 const sessionMetadataStorageLive = makeSessionMetadataStorageLive(
   join(userData, "session-metadata"),
 );
-const sessionArchiveStorageLive = SessionArchiveStorageLive.pipe(
-  Layer.provide(sessionMetadataStorageLive),
-);
+const sessionArchiveStorageLive = makeSessionArchiveStorageLive(
+  join(userData, "resolved-project-metadata"),
+).pipe(Layer.provide(sessionMetadataStorageLive));
 const artifactStorageLive = makeArtifactStorageLive(join(userData, "artifacts"));
 const reviewStorageLive = makeReviewStorageLive(
   join(userData, "reviews"),

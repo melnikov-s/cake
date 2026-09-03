@@ -25,6 +25,7 @@ export type ProjectCatalogUpdate = Schema.Schema.Type<typeof ProjectCatalogUpdat
 const SessionCatalogEvent = Schema.TaggedUnion({
   Replaced: { sessions: Schema.Array(ProjectSessionSummary) },
   Upserted: { session: ProjectSessionSummary },
+  UpsertedBatch: { sessions: Schema.Array(ProjectSessionSummary) },
   Removed: { sessionId: ProjectSessionSummary.fields.sessionId },
   StatusChanged: {
     sessionId: ProjectSessionSummary.fields.sessionId,
