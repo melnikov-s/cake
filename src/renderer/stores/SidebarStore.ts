@@ -1,4 +1,4 @@
-import { Store, observable, snapshot } from "r-state-tree";
+import { Store, observable } from "r-state-tree";
 import { formatRelativeSessionTime } from "../../utils/format-relative-session-time";
 import type { ProjectCatalogStore } from "./ProjectCatalogStore";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
@@ -26,7 +26,6 @@ export class SidebarStore extends Store<SidebarStoreProps> {
     return RendererClientContext.consume(this)!.electron;
   }
 
-  @snapshot collapsedGroups: Record<string, boolean> = observable({});
   private readonly expandedResolvedGroups: Record<string, boolean> = observable({});
   resolvedLaneExpanded = false;
   now = Date.now();
@@ -88,25 +87,19 @@ export class SidebarStore extends Store<SidebarStoreProps> {
     return this.props.catalog.find(sessionId)?.unread ? "unread" : undefined;
   }
 
-  isGroupCollapsed(groupKey: string) {
-    if (groupKey.startsWith("resolved:")) return this.expandedResolvedGroups[groupKey] !== true;
-    return this.collapsedGroups[groupKey] === true;
+  isResolvedGroupExpanded(groupKey: string) {
+    return this.expandedResolvedGroups[groupKey] === true;
   }
 
-  toggleGroupCollapsed(groupKey: string) {
-    if (groupKey.startsWith("resolved:")) {
-      this.expandedResolvedGroups[groupKey] = this.isGroupCollapsed(groupKey);
-      return;
-    }
-    this.collapsedGroups[groupKey] = !this.isGroupCollapsed(groupKey);
+  toggleResolvedGroupExpanded(groupKey: string) {
+    this.expandedResolvedGroups[groupKey] = !this.isResolvedGroupExpanded(groupKey);
   }
 
   get projectSessionCatalogQueries(): ReadonlyArray<ProjectSessionCatalogQuery> {
     const queries: ProjectSessionCatalogQuery[] = [];
     for (const projectPath of this.props.projects.orderedProjectPaths) {
-      if (!this.isGroupCollapsed(`active:${projectPath}`))
-        queries.push({ projectPath, resolved: false });
-      if (this.resolvedLaneExpanded && !this.isGroupCollapsed(`resolved:${projectPath}`))
+      queries.push({ projectPath, resolved: false });
+      if (this.resolvedLaneExpanded && this.isResolvedGroupExpanded(projectPath))
         queries.push({ projectPath, resolved: true });
     }
     return queries;

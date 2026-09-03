@@ -28,8 +28,7 @@ export const SidebarCakeChatGroup = observer(function SidebarCakeChatGroup({
 }: SidebarCakeChatGroupProps) {
   const sessions = store.cakeChatSessions(resolved);
   if (resolved && sessions.length === 0) return null;
-  const collapseKey = `${resolved ? "resolved" : "active"}:cake-chat`;
-  const collapsed = store.isGroupCollapsed(collapseKey);
+  const expanded = !resolved || store.isResolvedGroupExpanded("cake-chat");
   const empty = sessions.length === 0;
   return (
     <div data-slot="cake-chat-group" className={cn("mb-3 last:mb-0", empty && "mb-1")}>
@@ -37,28 +36,31 @@ export const SidebarCakeChatGroup = observer(function SidebarCakeChatGroup({
         className="group/proj flex h-8 w-full items-center gap-1 px-1 select-none text-muted-foreground"
         title="Cake Chat"
       >
-        <IconButton
-          className={cn(
-            "size-5 flex items-center justify-center rounded text-muted-foreground hover:text-foreground transition-transform duration-150",
-            collapsed && "-rotate-90",
-            empty && "invisible",
-          )}
-          aria-expanded={!collapsed}
-          tooltip={collapsed ? "Expand" : "Collapse"}
-          ariaLabel={`${collapsed ? "Expand" : "Collapse"} Cake Chat${resolved ? " resolved" : ""}`}
-          onClick={() => store.toggleGroupCollapsed(collapseKey)}
-        >
-          <ChevronIcon />
-        </IconButton>
+        {resolved && (
+          <IconButton
+            className={cn(
+              "size-5 flex items-center justify-center rounded text-muted-foreground hover:text-foreground transition-transform duration-150",
+              !expanded && "-rotate-90",
+            )}
+            aria-expanded={expanded}
+            tooltip={expanded ? "Collapse" : "Expand"}
+            ariaLabel={`${expanded ? "Collapse" : "Expand"} Cake Chat resolved`}
+            onClick={() => store.toggleResolvedGroupExpanded("cake-chat")}
+          >
+            <ChevronIcon />
+          </IconButton>
+        )}
         <Button
           data-slot="project-label"
           variant="ghost"
           className="h-7 min-w-0 flex-1 justify-start gap-2 px-1 text-xs font-medium text-inherit hover:text-foreground"
           type="button"
           aria-label={
-            collapsed ? `Expand Cake Chat${resolved ? " resolved" : ""}` : "New Cake Chat"
+            resolved ? `${expanded ? "Collapse" : "Expand"} Cake Chat resolved` : "New Cake Chat"
           }
-          onClick={() => (resolved ? store.toggleGroupCollapsed(collapseKey) : onCreateCakeChat())}
+          onClick={() =>
+            resolved ? store.toggleResolvedGroupExpanded("cake-chat") : onCreateCakeChat()
+          }
         >
           <CakeIcon />
           <span className="truncate">Cake Chat</span>
@@ -73,7 +75,7 @@ export const SidebarCakeChatGroup = observer(function SidebarCakeChatGroup({
           </IconButton>
         )}
       </div>
-      {!collapsed && (
+      {expanded && (
         <div className="flex flex-col pl-5 space-y-0.5 mt-0.5">
           {sessions.map((session) => {
             const selected =

@@ -37,9 +37,8 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
 }: SidebarProjectGroupProps) {
   const [projectAction, setProjectAction] = useState<ProjectAction>();
   const [actionBusy, setActionBusy] = useState(false);
-  const collapseKey = `${resolved ? "resolved" : "active"}:${path}`;
-  const collapsed = store.isGroupCollapsed(collapseKey);
   const sessions = store.projectSessions(path, resolved);
+  const expanded = !resolved || store.isResolvedGroupExpanded(path);
   const empty = sessions.length === 0;
   return (
     <div data-slot="project-group" className={cn("mb-3 last:mb-0", empty && "mb-1")}>
@@ -47,19 +46,20 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
         className="group/proj flex h-8 w-full items-center gap-1 px-1 select-none text-muted-foreground"
         title={path}
       >
-        <IconButton
-          className={cn(
-            "size-5 flex items-center justify-center rounded text-muted-foreground hover:text-foreground transition-transform duration-150",
-            collapsed && "-rotate-90",
-            !resolved && empty && "invisible",
-          )}
-          aria-expanded={!collapsed}
-          tooltip={collapsed ? "Expand" : "Collapse"}
-          ariaLabel={`${collapsed ? "Expand" : "Collapse"} ${projects.nameForPath(path)}${resolved ? " resolved" : ""}`}
-          onClick={() => store.toggleGroupCollapsed(collapseKey)}
-        >
-          <ChevronIcon />
-        </IconButton>
+        {resolved && (
+          <IconButton
+            className={cn(
+              "size-5 flex items-center justify-center rounded text-muted-foreground hover:text-foreground transition-transform duration-150",
+              !expanded && "-rotate-90",
+            )}
+            aria-expanded={expanded}
+            tooltip={expanded ? "Collapse" : "Expand"}
+            ariaLabel={`${expanded ? "Collapse" : "Expand"} ${projects.nameForPath(path)} resolved`}
+            onClick={() => store.toggleResolvedGroupExpanded(path)}
+          >
+            <ChevronIcon />
+          </IconButton>
+        )}
         <Button
           data-slot="project-label"
           variant="ghost"
@@ -67,11 +67,11 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
           type="button"
           aria-label={
             resolved
-              ? `${collapsed ? "Expand" : "Collapse"} ${projects.nameForPath(path)} resolved`
+              ? `${expanded ? "Collapse" : "Expand"} ${projects.nameForPath(path)} resolved`
               : `Start new chat in ${projects.nameFromPath(path)}`
           }
           onClick={() =>
-            resolved ? store.toggleGroupCollapsed(collapseKey) : onCreateSession(path)
+            resolved ? store.toggleResolvedGroupExpanded(path) : onCreateSession(path)
           }
           onContextMenu={(event) => {
             event.preventDefault();
@@ -94,7 +94,7 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
           </IconButton>
         )}
       </div>
-      {!collapsed && (
+      {expanded && (
         <div className="flex flex-col pl-6 space-y-0.5 mt-0.5">
           {sessions.map((session) => (
             <SidebarSessionItem
