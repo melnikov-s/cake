@@ -6,31 +6,26 @@ import { RendererSynchronizationSupervisor } from "../../../src/renderer/Rendere
 describe("RendererSynchronizationSupervisor", () => {
   afterEach(() => vi.useRealTimers());
 
-  it("does not retry a local or decoded remote schema failure", async () => {
+  it("backs off and recovers after a schema failure", async () => {
     vi.useFakeTimers();
     const supervisor = new RendererSynchronizationSupervisor();
     const reportFailure = vi.fn();
+    const healthy = new Promise<void>(() => undefined);
     const run = vi
       .fn<() => Promise<void>>()
       .mockRejectedValueOnce(schemaError())
-      .mockRejectedValueOnce(
-        Object.assign(new Error("Expected JSON value"), { name: "SchemaError" }),
-      );
+      .mockReturnValue(healthy);
 
-    supervisor.register("local", { run, reportFailure });
+    supervisor.register("stream", { run, reportFailure });
     await Promise.resolve();
     await Promise.resolve();
     expect(reportFailure).toHaveBeenCalledOnce();
-    await vi.advanceTimersByTimeAsync(60_000);
     expect(run).toHaveBeenCalledOnce();
 
-    const remoteRun = vi
-      .fn<() => Promise<void>>()
-      .mockRejectedValue(Object.assign(new Error("Expected JSON value"), { name: "SchemaError" }));
-    supervisor.register("remote", { run: remoteRun, reportFailure });
-    await vi.waitFor(() => expect(remoteRun).toHaveBeenCalledOnce());
-    await vi.advanceTimersByTimeAsync(60_000);
-    expect(remoteRun).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(249);
+    expect(run).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(run).toHaveBeenCalledTimes(2);
     supervisor[Symbol.dispose]();
   });
 

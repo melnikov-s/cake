@@ -1,4 +1,3 @@
-import { Predicate, Schema } from "effect";
 import { RpcClientError } from "effect/unstable/rpc";
 
 const initialRetryDelayMs = 250;
@@ -111,11 +110,6 @@ export class RendererSynchronizationSupervisor implements Disposable {
       active.abort.signal.aborted
     )
       return;
-    if (isDeterministicSynchronizationError(error)) {
-      this.reportOnce(active, error);
-      this.unregister(key);
-      return;
-    }
     if (error instanceof RpcClientError.RpcClientError) {
       this.scheduleConnectionReconnect(active, error);
       return;
@@ -166,7 +160,3 @@ export class RendererSynchronizationSupervisor implements Disposable {
 
 const retryDelay = (attempt: number) =>
   Math.min(initialRetryDelayMs * 2 ** attempt, maximumRetryDelayMs);
-
-const isDeterministicSynchronizationError = (error: unknown) =>
-  error instanceof Schema.SchemaError ||
-  (Predicate.hasProperty(error, "name") && error.name === "SchemaError");

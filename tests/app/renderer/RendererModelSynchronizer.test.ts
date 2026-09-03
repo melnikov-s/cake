@@ -600,7 +600,7 @@ describe("RendererModelSynchronizer", () => {
     }
   });
 
-  it("does not retry a deterministic schema failure", async () => {
+  it("recovers a Project Session subscription after a schema failure", async () => {
     vi.useFakeTimers();
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
     let observations = 0;
@@ -610,13 +610,62 @@ describe("RendererModelSynchronizer", () => {
     } catch (error) {
       schemaError = error;
     }
-    const client = clientWithProjectStream(() => {
-      observations += 1;
-      return Stream.fail(schemaError);
-    });
+    const update: ProjectSessionUpdate = {
+      _tag: "Snapshot",
+      revision: 1,
+      snapshot: {
+        identity: {
+          _tag: "ProjectSession",
+          sessionId: "session",
+          projectPath: "/cake",
+          workingDirectory: "/cake",
+        },
+        projectName: "Cake",
+        resolved: false,
+        unread: false,
+        conversation: {
+          workingDirectory: "/cake",
+          sessionId: "session",
+          sessionFile: "/cake/session.jsonl",
+          parts: [
+            {
+              id: "user-message",
+              kind: "text",
+              role: "user",
+              text: "hello",
+              status: "complete",
+            },
+          ],
+          models: [],
+          thinkingLevel: "off",
+          availableThinkingLevels: ["off"],
+          streaming: false,
+          diagnostics: [],
+          commands: [],
+          compatibility: { resources: [], diagnostics: [] },
+          extensionUi: { statuses: [] },
+          tree: [],
+        },
+      },
+    };
+    const client = {
+      ...clientWithProjectStream(() => Stream.never),
+      projectSessions: {
+        observeCatalog: () => Stream.concat(Stream.make(emptySessionCatalog), Stream.never),
+        observe: () => {
+          observations += 1;
+          return observations === 1
+            ? Stream.fail(schemaError)
+            : Stream.concat(Stream.make(update), Stream.never);
+        },
+      },
+      discussionSessions: { observeCatalog: () => Stream.never },
+      subagents: { observe: () => Stream.never },
+    } as unknown as CakeIpcClientService;
     const projects = ProjectCatalog.create();
     const sessions = SessionCatalog.create();
     const cakeChats = CakeChatCatalog.create();
+    const session = Session.create({ sessionId: "session", workingDirectory: "/cake" });
     const synchronizer = new RendererModelSynchronizer(
       runtimeFor(client),
       new RendererSynchronizationSupervisor(),
@@ -627,21 +676,31 @@ describe("RendererModelSynchronizer", () => {
         projects,
         sessionCatalog: sessions,
         cakeChatCatalog: cakeChats,
-        projectSessions: [],
+        projectSessions: [
+          { target: { sessionId: "session", workingDirectory: "/cake" }, model: session },
+        ],
         cakeChats: [],
       });
 
       await vi.waitFor(() => expect(observations).toBe(1));
       await vi.waitFor(() => expect(consoleError.mock.calls[0]?.[1]).toBe(schemaError));
-      await vi.advanceTimersByTimeAsync(60_000);
+      await vi.advanceTimersByTimeAsync(250);
 
-      expect(observations).toBe(1);
+      await vi.waitFor(() =>
+        expect(session.uiParts[0]).toMatchObject({
+          kind: "text",
+          role: "user",
+          text: "hello",
+        }),
+      );
+      expect(observations).toBe(2);
       expect(consoleError).toHaveBeenCalledOnce();
     } finally {
       synchronizer[Symbol.dispose]();
       projects[Symbol.dispose]();
       sessions[Symbol.dispose]();
       cakeChats[Symbol.dispose]();
+      session[Symbol.dispose]();
       consoleError.mockRestore();
       vi.useRealTimers();
     }
