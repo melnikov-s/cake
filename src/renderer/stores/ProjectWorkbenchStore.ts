@@ -369,6 +369,21 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     };
   }
 
+  /** Creates and saves a Cake-owned draft without starting a Pi Session. */
+  async createDraftSession(
+    path: string,
+    name: string,
+    initialPrompt: string,
+    configuration?: ChatConfiguration,
+  ) {
+    const sessionId = crypto.randomUUID();
+    this.showTemporarySession(path, sessionId);
+    this.sessionRegistry.setPendingName(sessionId, name);
+    if (configuration) this.sessionRegistry.setPendingConfiguration(sessionId, configuration);
+    await this.sessionRegistry.createDraftSession(sessionId, initialPrompt, []);
+    return sessionId;
+  }
+
   /** Creates, names, and starts a session in a workspace Cake has already authorized. */
   async createSession(
     path: string,

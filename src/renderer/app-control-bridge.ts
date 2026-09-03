@@ -84,6 +84,21 @@ const appControlArgumentSchemas = {
     ),
     markdown: Schema.optionalKey(Schema.Boolean),
   }),
+  create_draft_session: Schema.Struct({
+    workspacePath: bounded(1, 4_096),
+    name: trimmed(1, 500),
+    initialPrompt: trimmed(1, 100_000),
+    model: Schema.optionalKey(
+      Schema.Struct({
+        provider: trimmed(1, 256),
+        modelId: trimmed(1, 512),
+        thinkingLevel: thinkingLevelSchema.pipe(
+          Schema.withDecodingDefaultKey(Effect.succeed("off" as const)),
+        ),
+        fastMode: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
+      }),
+    ),
+  }),
   send_session_message: Schema.Struct({
     ...sessionIdTargetSchema.fields,
     text: trimmed(1, 100_000),
@@ -137,6 +152,7 @@ const appControlInvocationSchema = Schema.Union([
   invocation("get_session_status"),
   invocation("open_session"),
   invocation("create_session"),
+  invocation("create_draft_session"),
   invocation("send_session_message"),
   invocation("abort_session"),
   invocation("rename_session"),
@@ -156,6 +172,7 @@ type SessionSummaryView = Pick<
   | "modifiedAt"
   | "messageCount"
   | "resolved"
+  | "draft"
 > & { managedWorktree?: SessionSummary["managedWorktree"] };
 
 export interface AppControlHost {
@@ -172,6 +189,12 @@ export interface AppControlHost {
     model?: ChatConfiguration;
     worktreeName?: string;
   }): Promise<{ workspacePath: string; sessionId: string; managedWorktree?: WorktreeRecord }>;
+  createDraftSession(input: {
+    workspacePath: string;
+    name: string;
+    initialPrompt: string;
+    model?: ChatConfiguration;
+  }): Promise<{ workspacePath: string; sessionId: string }>;
   sendSessionMessage(
     sessionId: string,
     text: string,
@@ -243,6 +266,7 @@ export interface AppControlSession {
   modified: string;
   messageCount: number;
   resolved: boolean;
+  draft: boolean;
   managedWorktree?: SessionSummaryView["managedWorktree"];
   activity?: "running" | "unread" | "error";
 }
@@ -303,6 +327,13 @@ export type AppControlResult =
       sessionId: string;
       status: "started";
       managedWorktree?: WorktreeRecord;
+    }
+  | {
+      ok: true;
+      name: "create_draft_session";
+      workspacePath: string;
+      sessionId: string;
+      status: "saved-draft";
     }
   | {
       ok: true;
@@ -398,6 +429,12 @@ const modelControlOperations = [
     "sessions",
     "Create, configure, name, open, and send the initial prompt to a project session, optionally with an exact model or in a new managed worktree.",
     appControlArgumentSchemas.create_session,
+  ),
+  operation(
+    "sessions.create-draft",
+    "sessions",
+    "Create, configure, name, open, and save an initial prompt as a Cake-owned draft without starting a Pi session.",
+    appControlArgumentSchemas.create_draft_session,
   ),
   operation(
     "sessions.send",
@@ -496,6 +533,7 @@ const commandToLegacyName = {
   "sessions.info": "get_session_status",
   "sessions.open": "open_session",
   "sessions.create": "create_session",
+  "sessions.create-draft": "create_draft_session",
   "sessions.send": "send_session_message",
   "sessions.abort": "abort_session",
   "customizations.state": "get_customization_state",
@@ -750,6 +788,8 @@ export class AppControlBridge {
         ),
       };
     if (invocation.name === "create_session") return this.createSession(invocation.arguments);
+    if (invocation.name === "create_draft_session")
+      return this.createDraftSession(invocation.arguments);
     if (invocation.name === "set_sessions_resolved")
       return this.setSessionsResolved(invocation.arguments);
     if (invocation.name === "set_cake_chat_sessions_resolved")
@@ -859,6 +899,26 @@ export class AppControlBridge {
     return result;
   }
 
+  private async createDraftSession(
+    input: typeof appControlArgumentSchemas.create_draft_session.Type,
+  ): Promise<AppControlResult> {
+    if (!this.host.projects().some((project) => project.path === input.workspacePath)) {
+      return {
+        ok: false,
+        name: "create_draft_session",
+        error: "Cake could not find that project.",
+      };
+    }
+    const created = await this.host.createDraftSession(input);
+    return {
+      ok: true,
+      name: "create_draft_session",
+      workspacePath: created.workspacePath,
+      sessionId: created.sessionId,
+      status: "saved-draft",
+    };
+  }
+
   private async setSessionsResolved({
     sessionIds,
     resolved,
@@ -914,6 +974,7 @@ export class AppControlBridge {
       modified: session.modifiedAt,
       messageCount: session.messageCount,
       resolved: session.resolved,
+      draft: session.draft,
     };
     const resultWithWorktree = session.managedWorktree
       ? { ...result, managedWorktree: session.managedWorktree }

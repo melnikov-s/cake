@@ -126,6 +126,23 @@ export class RootStore extends Store<{
     if (sessionId) this.selectProjectSessionForShell(sessionId);
   }
 
+  async createDraftSession(input: {
+    workspacePath: string;
+    name: string;
+    initialPrompt: string;
+    model?: ChatConfiguration;
+  }) {
+    this.showEmptyWorkbench();
+    const sessionId = await this.projectWorkbenchStore.createDraftSession(
+      input.workspacePath,
+      input.name,
+      input.initialPrompt,
+      input.model,
+    );
+    this.selectProjectSessionForShell(sessionId);
+    return { workspacePath: input.workspacePath, sessionId };
+  }
+
   async createPromptedSession(input: {
     workspacePath: string;
     name: string;
@@ -579,6 +596,7 @@ export class RootStore extends Store<{
       sessionActivity: (sessionId) => this.sidebarStore.sessionActivity(sessionId),
       openSession: (sessionId, messageId) => this.openSession(sessionId, messageId),
       createSession: (input) => this.createPromptedSession(input),
+      createDraftSession: (input) => this.createDraftSession(input),
       sendSessionMessage: (sessionId, text, delivery) =>
         this.appControlOperationStore.run(() => {
           const command =
