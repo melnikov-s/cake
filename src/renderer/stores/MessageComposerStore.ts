@@ -85,13 +85,19 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
         if (previousStreaming && !streaming) this.drainQueue();
       },
     );
-    this.reaction(
-      () => this.props.canonicalParts().length,
-      () => {
-        const sessionId = this.props.sessionId();
-        if (sessionId) this.reconcile(sessionId);
-      },
-    );
+    this.effect(() => {
+      const sessionId = this.props.sessionId();
+      if (!sessionId) return;
+      const reconciledOperationIds = this.pendingUserMessages
+        .filter(
+          (pending) =>
+            pending.sessionId === sessionId &&
+            this.userMessageOccurrenceCount(sessionId, pending.text, pending.parts) >=
+              pending.expectedOccurrence,
+        )
+        .map((pending) => pending.operationId);
+      for (const operationId of reconciledOperationIds) this.removePendingUserMessage(operationId);
+    });
   }
 
   get client() {
@@ -812,18 +818,6 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
         }
       }
       return false;
-    }
-  }
-
-  reconcile(sessionId: string) {
-    for (let index = this.pendingUserMessages.length - 1; index >= 0; index -= 1) {
-      const pending = this.pendingUserMessages[index]!;
-      if (
-        pending.sessionId === sessionId &&
-        this.userMessageOccurrenceCount(sessionId, pending.text, pending.parts) >=
-          pending.expectedOccurrence
-      )
-        this.pendingUserMessages.splice(index, 1);
     }
   }
 
