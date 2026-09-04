@@ -5,6 +5,7 @@ import type { ChatConfiguration } from "../../ipc/session-contract";
 import type { RendererClient } from "../client/RendererClient";
 import { RendererClientContext } from "../client/RendererClientContext";
 import { ActiveProjectSessionContext } from "../context/ActiveProjectSessionContext";
+import { SettingsSessionContext } from "../context/SettingsSessionContext";
 import type { SessionHistoryEntry } from "./AppShellStore";
 import { SessionRegistryStore } from "./SessionRegistryStore";
 import { ProjectWorkbenchStore } from "./ProjectWorkbenchStore";
@@ -51,6 +52,27 @@ export class RootStore extends Store<{
     return context
       ? { sessionId: context.sessionId, workingDirectory: context.workspacePath }
       : undefined;
+  }
+
+  [SettingsSessionContext.provide]() {
+    const active = this.appShellStore.activeConversation;
+    if (active?.kind === "project-session") {
+      const context = this.projectWorkbenchStore.sessionContext();
+      return context?.sessionId === active.sessionId
+        ? {
+            kind: "project-session" as const,
+            sessionId: context.sessionId,
+            workingDirectory: context.workspacePath,
+          }
+        : undefined;
+    }
+    if (active?.kind === "cake-chat") {
+      const session = this.globalChatStore.findSession(active.sessionId);
+      return session
+        ? { kind: "cake-chat" as const, ...this.globalChatStore.target(active.sessionId) }
+        : undefined;
+    }
+    return undefined;
   }
   private readonly respondedCakeChatControlIds = new Set<string>();
   private readonly respondedProjectSessionControlIds = new Set<string>();
@@ -267,6 +289,11 @@ export class RootStore extends Store<{
     this.projectWorkbenchStore.restoreSessionPresentation();
   }
   returnToWorkbench() {
+    const active = this.appShellStore.activeConversation;
+    if (active?.kind === "cake-chat") {
+      this.appShellStore.selectCakeChat(active.sessionId);
+      return;
+    }
     this.showWorkbench();
     this.projectWorkbenchStore.activeSession?.composerStore.requestFocus();
   }
@@ -546,6 +573,17 @@ export class RootStore extends Store<{
   get settingsStore(): SettingsStore {
     return createStore(SettingsStore, {
       operations: this.sessionOperationCoordinator,
+      activeSession: () => {
+        const active = this.appShellStore.activeConversation;
+        if (active?.kind === "project-session") {
+          const session = this.projectWorkbenchStore.activeSession;
+          return session?.sessionId === active.sessionId ? session : undefined;
+        }
+        return active?.kind === "cake-chat"
+          ? this.globalChatStore.findSession(active.sessionId)
+          : undefined;
+      },
+      workbenchError: () => this.projectWorkbenchStore.error,
     });
   }
 

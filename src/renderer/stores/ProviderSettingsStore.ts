@@ -1,7 +1,7 @@
 import { Store, observable } from "r-state-tree";
 import type { PiSettingUpdate } from "../../ipc/session-contract";
 import { RendererClientContext } from "../client/RendererClientContext";
-import { ActiveProjectSessionContext } from "../context/ActiveProjectSessionContext";
+import { SettingsSessionContext } from "../context/SettingsSessionContext";
 import { describeError } from "../error-details";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 
@@ -22,7 +22,7 @@ export class ProviderSettingsStore extends Store<ProviderSettingsStoreProps> {
   }
 
   get activeSession() {
-    return ActiveProjectSessionContext.consume(this);
+    return SettingsSessionContext.consume(this);
   }
 
   get activeOperations() {
@@ -35,14 +35,30 @@ export class ProviderSettingsStore extends Store<ProviderSettingsStoreProps> {
   }
 
   async setPiSetting(update: PiSettingUpdate) {
-    await this.run((sessionId) =>
-      this.client.projectSessions.setPiSetting({ sessionId, update }, { signal: this.signal }),
+    await this.run((target) =>
+      target.kind === "project-session"
+        ? this.client.projectSessions.setPiSetting(
+            { sessionId: target.sessionId, update },
+            { signal: this.signal },
+          )
+        : this.client.cakeChats.setPiSetting(
+            { sessionId: target.sessionId, tools: target.tools, update },
+            { signal: this.signal },
+          ),
     );
   }
 
   async reloadPi() {
-    await this.run((sessionId) =>
-      this.client.projectSessions.reload({ sessionId }, { signal: this.signal }),
+    await this.run((target) =>
+      target.kind === "project-session"
+        ? this.client.projectSessions.reload(
+            { sessionId: target.sessionId },
+            { signal: this.signal },
+          )
+        : this.client.cakeChats.reload(
+            { sessionId: target.sessionId, tools: target.tools },
+            { signal: this.signal },
+          ),
     );
   }
 
@@ -66,10 +82,17 @@ export class ProviderSettingsStore extends Store<ProviderSettingsStoreProps> {
     const operationId = this.startOperation();
     this.providerOperations[operationId] = { provider, kind: "login" };
     try {
-      await this.client.projectSessions.login(
-        { sessionId: this.requireSessionId(), provider, authType },
-        { signal: this.signal },
-      );
+      const target = this.requireSession();
+      if (target.kind === "project-session")
+        await this.client.projectSessions.login(
+          { sessionId: target.sessionId, provider, authType },
+          { signal: this.signal },
+        );
+      else
+        await this.client.cakeChats.login(
+          { sessionId: target.sessionId, tools: target.tools, provider, authType },
+          { signal: this.signal },
+        );
     } catch (error) {
       if (!this.signal.aborted) this.reportError(error);
     } finally {
@@ -83,10 +106,17 @@ export class ProviderSettingsStore extends Store<ProviderSettingsStoreProps> {
     const operationId = this.startOperation();
     this.providerOperations[operationId] = { provider, kind: "logout" };
     try {
-      await this.client.projectSessions.logout(
-        { sessionId: this.requireSessionId(), provider },
-        { signal: this.signal },
-      );
+      const target = this.requireSession();
+      if (target.kind === "project-session")
+        await this.client.projectSessions.logout(
+          { sessionId: target.sessionId, provider },
+          { signal: this.signal },
+        );
+      else
+        await this.client.cakeChats.logout(
+          { sessionId: target.sessionId, tools: target.tools, provider },
+          { signal: this.signal },
+        );
     } catch (error) {
       if (!this.signal.aborted) this.reportError(error);
     } finally {
@@ -101,18 +131,18 @@ export class ProviderSettingsStore extends Store<ProviderSettingsStoreProps> {
     )?.kind;
   }
 
-  private requireSessionId() {
+  private requireSession() {
     const context = this.activeSession;
-    if (!context) throw new Error("No active Project Session");
-    return context.sessionId;
+    if (!context) throw new Error("No active chat");
+    return context;
   }
 
-  private async run(command: (sessionId: string) => Promise<void>) {
+  private async run(command: (target: NonNullable<typeof this.activeSession>) => Promise<void>) {
     if (this.signal.aborted) return;
     this.clearError();
     const operationId = this.startOperation();
     try {
-      await command(this.requireSessionId());
+      await command(this.requireSession());
     } catch (error) {
       if (!this.signal.aborted) this.reportError(error);
     } finally {

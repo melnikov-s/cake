@@ -6,7 +6,7 @@ import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/ses
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
-test("uses the native context menu for project sessions", async () => {
+test("uses native session menus and preserves Cake Chat settings context", async () => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-sidebar-rename-smoke-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
@@ -141,6 +141,13 @@ test("uses the native context menu for project sessions", async () => {
     await cakeChatRow.click();
     await expect(page.getByLabel("Message Cake Chat")).toBeVisible();
     await expect(page.getByText("Original Cake Chat title", { exact: true })).toBeVisible();
+
+    await page.getByRole("button", { name: "Open settings" }).click();
+    await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+    await expect(page.getByText("Auto-compact", { exact: true })).toBeVisible();
+    await expect(page.getByText("Open a chat to load Pi’s settings.")).toHaveCount(0);
+    await page.getByRole("button", { name: "Back to chat" }).click();
+    await expect(page.getByLabel("Message Cake Chat")).toBeVisible();
 
     await page.getByRole("button", { name: "New Cake Chat" }).first().click();
     await expect(page.getByLabel("Message Cake Chat")).toBeVisible();

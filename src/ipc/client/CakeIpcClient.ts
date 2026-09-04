@@ -203,6 +203,21 @@ export interface CakeIpcClientService {
     readonly setFastMode: (
       input: CakeChatTarget & { readonly enabled: boolean },
     ) => Effect.Effect<void, CakeChatError | TransportError>;
+    readonly setPiSetting: (
+      input: CakeChatTarget & { readonly update: PiSettingUpdate },
+    ) => Effect.Effect<void, CakeChatError | TransportError>;
+    readonly reload: (
+      target: CakeChatTarget,
+    ) => Effect.Effect<void, CakeChatError | TransportError>;
+    readonly login: (
+      input: CakeChatTarget & {
+        readonly provider: string;
+        readonly authType: "api_key" | "oauth";
+      },
+    ) => Effect.Effect<void, CakeChatError | TransportError>;
+    readonly logout: (
+      input: CakeChatTarget & { readonly provider: string },
+    ) => Effect.Effect<void, CakeChatError | TransportError>;
     readonly rename: (
       input: CakeChatTarget & { readonly name: string },
     ) => Effect.Effect<void, CakeChatError | TransportError>;
@@ -615,6 +630,18 @@ export const CakeIpcClientLive = Layer.effect(
         ),
         setFastMode: Effect.fn("CakeIpcClient.cakeChats.setFastMode")((input) =>
           client("cakeChats.setFastMode", input),
+        ),
+        setPiSetting: Effect.fn("CakeIpcClient.cakeChats.setPiSetting")((input) =>
+          client("cakeChats.setPiSetting", input),
+        ),
+        reload: Effect.fn("CakeIpcClient.cakeChats.reload")((target) =>
+          client("cakeChats.reload", target),
+        ),
+        login: Effect.fn("CakeIpcClient.cakeChats.login")((input) =>
+          client("cakeChats.login", input),
+        ),
+        logout: Effect.fn("CakeIpcClient.cakeChats.logout")((input) =>
+          client("cakeChats.logout", input),
         ),
         rename: Effect.fn("CakeIpcClient.cakeChats.rename")((input) =>
           client("cakeChats.rename", input),

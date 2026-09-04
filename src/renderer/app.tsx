@@ -384,7 +384,7 @@ export const App = observer(function App() {
         </header>
         {surface === "settings" ? (
           <div className="h-full min-h-0 w-full overflow-y-auto [scrollbar-gutter:stable_both-edges]">
-            <SettingsPage store={store} settings={settings} configuration={chatConfiguration} />
+            <SettingsPage settings={settings} />
           </div>
         ) : globalChat ? (
           cakeChatSession ? (

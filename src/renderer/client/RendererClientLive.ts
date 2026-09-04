@@ -396,6 +396,30 @@ export function makeRendererClient(runtime: RendererRuntime): RendererClient {
           withClient((client) => client.cakeChats.setFastMode(input)),
           options,
         ),
+      setPiSetting: (input, options) =>
+        run(
+          "cakeChats.setPiSetting",
+          withClient((client) => client.cakeChats.setPiSetting(input)),
+          options,
+        ),
+      reload: (target, options) =>
+        run(
+          "cakeChats.reload",
+          withClient((client) => client.cakeChats.reload(target)),
+          options,
+        ),
+      login: (input, options) =>
+        run(
+          "cakeChats.login",
+          withClient((client) => client.cakeChats.login(input)),
+          options,
+        ),
+      logout: (input, options) =>
+        run(
+          "cakeChats.logout",
+          withClient((client) => client.cakeChats.logout(input)),
+          options,
+        ),
       rename: (input, options) =>
         run(
           "cakeChats.rename",

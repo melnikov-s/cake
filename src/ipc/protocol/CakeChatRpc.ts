@@ -11,6 +11,7 @@ import {
 } from "../../domain/cake-chat-data";
 import { CakeChatCatalogUpdate } from "../../domain/catalog-data";
 import { ConversationSnapshot, TurnId } from "../../domain/conversation-data";
+import { piSettingUpdateSchema } from "../session-contract";
 
 export const CakeChatRpc = RpcGroup.make(
   Rpc.make("cakeChats.observeCatalog", {
@@ -71,6 +72,23 @@ export const CakeChatRpc = RpcGroup.make(
   }),
   Rpc.make("cakeChats.setFastMode", {
     payload: { ...CakeChatTarget.fields, enabled: Schema.Boolean },
+    error: CakeChatError,
+  }),
+  Rpc.make("cakeChats.setPiSetting", {
+    payload: { ...CakeChatTarget.fields, update: piSettingUpdateSchema },
+    error: CakeChatError,
+  }),
+  Rpc.make("cakeChats.reload", { payload: CakeChatTarget, error: CakeChatError }),
+  Rpc.make("cakeChats.login", {
+    payload: {
+      ...CakeChatTarget.fields,
+      provider: Schema.String,
+      authType: Schema.Literals(["api_key", "oauth"]),
+    },
+    error: CakeChatError,
+  }),
+  Rpc.make("cakeChats.logout", {
+    payload: { ...CakeChatTarget.fields, provider: Schema.String },
     error: CakeChatError,
   }),
   Rpc.make("cakeChats.rename", {

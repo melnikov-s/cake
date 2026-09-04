@@ -19,6 +19,11 @@ export const cakeChatHandlers = CakeChatRpc.of({
     cakeChats.setModel(target, provider, modelId),
   "cakeChats.setThinkingLevel": ({ level, ...target }) => cakeChats.setThinkingLevel(target, level),
   "cakeChats.setFastMode": ({ enabled, ...target }) => cakeChats.setFastMode(target, enabled),
+  "cakeChats.setPiSetting": ({ update, ...target }) => cakeChats.setPiSetting(target, update),
+  "cakeChats.reload": (target) => cakeChats.reload(target),
+  "cakeChats.login": ({ provider, authType, ...target }) =>
+    cakeChats.login(target, provider, authType),
+  "cakeChats.logout": ({ provider, ...target }) => cakeChats.logout(target, provider),
   "cakeChats.rename": ({ name, ...target }) => cakeChats.rename(target, name),
   "cakeChats.handoff": ({ entryId, prompt, resolveSource, ...target }) => {
     const input: Parameters<typeof cakeChats.handoff>[0] = { target, entryId };

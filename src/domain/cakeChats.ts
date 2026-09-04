@@ -1,7 +1,12 @@
 import { Effect, Stream, type Schema } from "effect";
 import * as sessionTerminals from "./sessionTerminals";
 import * as subagents from "./subagents";
-import type { Annotation, Attachment, SessionSummary } from "../ipc/session-contract";
+import type {
+  Annotation,
+  Attachment,
+  PiSettingUpdate,
+  SessionSummary,
+} from "../ipc/session-contract";
 import { PiSessionError, PiSessions, type PiSessionHandle } from "../services/pi/PiSessions";
 import {
   CakeChatEnvironment,
@@ -546,6 +551,32 @@ export const setFastMode = Effect.fn("CakeChats.setFastMode")(function* (
   enabled: boolean,
 ) {
   yield* withHandle(target, (handle) => handle.setFastMode(enabled)).pipe(asError("setFastMode"));
+});
+
+export const setPiSetting = Effect.fn("CakeChats.setPiSetting")(function* (
+  target: CakeChatTarget,
+  update: PiSettingUpdate,
+) {
+  yield* withHandle(target, (handle) => handle.setPiSetting(update)).pipe(asError("setPiSetting"));
+});
+
+export const reload = Effect.fn("CakeChats.reload")(function* (target: CakeChatTarget) {
+  yield* withHandle(target, (handle) => handle.reload()).pipe(asError("reload"));
+});
+
+export const login = Effect.fn("CakeChats.login")(function* (
+  target: CakeChatTarget,
+  provider: string,
+  authType: "api_key" | "oauth",
+) {
+  yield* withHandle(target, (handle) => handle.login(provider, authType)).pipe(asError("login"));
+});
+
+export const logout = Effect.fn("CakeChats.logout")(function* (
+  target: CakeChatTarget,
+  provider: string,
+) {
+  yield* withHandle(target, (handle) => handle.logout(provider)).pipe(asError("logout"));
 });
 
 export const rename = Effect.fn("CakeChats.rename")(function* (

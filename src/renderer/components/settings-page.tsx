@@ -29,28 +29,22 @@ import { SettingsToggle } from "./settings/settings-toggle";
 import { SettingsAppearanceSection } from "./settings-appearance-section";
 import { SettingsEmbeddedEditorSection } from "./settings-embedded-editor-section";
 import { SettingsProvidersSection } from "./settings-providers-section";
-import type { ChatConfigurationStore } from "../stores/ChatConfigurationStore";
-import type { ProjectWorkbenchStore } from "../stores/ProjectWorkbenchStore";
 import type { SettingsStore } from "../stores/SettingsStore";
 
 export const SettingsPage = observer(function SettingsPage({
-  store,
   settings,
-  configuration,
 }: {
-  store: ProjectWorkbenchStore;
   settings: SettingsStore;
-  configuration?: ChatConfigurationStore;
 }) {
-  const pi = store.session?.piSettings;
-  const authNotice = store.activeSession?.canonicalParts.find(
-    (part) => part.kind === "notice" && part.id === "auth-status",
-  );
+  const session = settings.activeSession;
+  const configuration = settings.configuration;
+  const pi = settings.piSettings;
+  const authNotice = settings.authNotice;
   const providers = settings.providers;
   const utility = settings.utilityModel;
   const appearance = settings.appearance;
-  const error = settings.error ?? configuration?.error ?? store.error;
-  const providerGroups = configuration?.modelsByProvider ?? [];
+  const error = settings.error;
+  const providerGroups = settings.providerGroups;
   const utilityModel = utility.model;
   return (
     <div className="mx-auto max-w-4xl px-6 py-8 pb-16">
@@ -95,7 +89,7 @@ export const SettingsPage = observer(function SettingsPage({
             </p>
           </div>
         </header>
-        {store.session && configuration ? (
+        {session && configuration ? (
           <div className="flex items-center justify-between gap-6 text-sm">
             <span className="flex min-w-0 flex-1 flex-col gap-0.5">
               <strong className="text-xs font-medium text-foreground">Model configuration</strong>
@@ -352,7 +346,7 @@ export const SettingsPage = observer(function SettingsPage({
             variant="outline"
             size="sm"
             type="button"
-            disabled={!store.session}
+            disabled={!session}
             onClick={() => void providers.reloadPi()}
           >
             {pi?.reloadPending ? "Reload queued" : "Reload Pi"}
@@ -566,7 +560,7 @@ export const SettingsPage = observer(function SettingsPage({
       <SettingsProvidersSection
         providers={providers}
         providerGroups={providerGroups}
-        hasSession={Boolean(store.session)}
+        hasSession={Boolean(session)}
       />
       <SettingsAppearanceSection appearance={appearance} />
       <SettingsEmbeddedEditorSection settings={settings.embeddedEditor} />
