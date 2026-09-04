@@ -182,8 +182,10 @@ test("does not mount collapsed work-log activity until it is expanded", async ()
     const pinnedFileHeaderBox = await fileHeader.boundingBox();
     expect(scrolledActivityBox).not.toBeNull();
     expect(pinnedFileHeaderBox).not.toBeNull();
-    expect(scrolledActivityBox!.y).toBeLessThan(initialContentBox!.y);
-    expect(Math.abs(pinnedFileHeaderBox!.y - initialContentBox!.y)).toBeLessThanOrEqual(1);
+    expect(Math.abs(scrolledActivityBox!.y - initialContentBox!.y)).toBeLessThanOrEqual(1);
+    expect(
+      Math.abs(pinnedFileHeaderBox!.y - (scrolledActivityBox!.y + scrolledActivityBox!.height)),
+    ).toBeLessThanOrEqual(1);
 
     await content.evaluate((element) => element.scrollTo({ top: 0 }));
     await activityToggle.click();
