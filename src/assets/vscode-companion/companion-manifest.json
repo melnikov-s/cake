@@ -42,7 +42,7 @@
       }
     ]
   },
-  "activationEvents": ["onStartupFinished"],
+  "activationEvents": ["*"],
   "engines": {
     "vscode": "^1.80.0"
   }

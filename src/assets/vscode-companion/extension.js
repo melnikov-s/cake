@@ -235,11 +235,12 @@ async function runScript(vscode, payload) {
   return JSON.parse(serialized);
 }
 
-function activate(context) {
+async function activate(context) {
   const vscode = require("vscode");
-  // Cake owns this embedded workbench's initial layout. Users can reopen the
-  // Explorer normally, but it should not consume editor space at startup.
-  void vscode.commands.executeCommand("workbench.action.closeSidebar").then(undefined, () => {});
+  // Cake owns this embedded workbench's initial layout. Run this during eager
+  // activation and finish closing the Explorer before startup work continues.
+  // Users can still reopen it normally afterward.
+  await vscode.commands.executeCommand("workbench.action.closeSidebar").then(undefined, () => {});
   const annotationMarker = (color) =>
     vscode.Uri.parse(
       `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 14 14"><path d="M2 2h10v7H7l-3 3V9H2z" fill="${color}"/></svg>`)}`,

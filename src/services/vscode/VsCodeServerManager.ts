@@ -31,18 +31,24 @@ const COMPANION_START_TIMEOUT = 5_000;
 const COMPANION_SCRIPT_TIMEOUT = 30_000;
 const COMPANION_SCRIPT_RESULT_BYTES = 256_000;
 const VSCODE_BACKGROUND = { dark: "#121519", light: "#f5f7f9" } as const;
-const WORKBENCH_THEME_READY_TIMEOUT_MS = 10_000;
+const WORKBENCH_LAYOUT_READY_TIMEOUT_MS = 10_000;
 // VS Code exposes editor-title actions to extensions, but those disappear when no
 // file is open and it has no public top-level title-bar contribution point. Cake
 // owns this managed web surface, so install its shell controls alongside the
 // built-in layout actions and keep them present across title-bar rerenders.
 const VSCODE_SHELL_CONTROL_PREFIX = "__CAKE_SHELL_CONTROL__";
 
-function waitForWorkbenchThemeScript(theme: "light" | "dark") {
+function waitForWorkbenchLayoutScript(theme: "light" | "dark") {
   const themeClass = theme === "dark" ? "vs-dark" : "vs";
   return `new Promise((resolve) => {
-    const matches = () => Boolean(document.querySelector(".monaco-workbench.${themeClass}"));
-    if (matches()) return resolve(true);
+    let timeout;
+    const matches = () => {
+      const workbench = document.querySelector(".monaco-workbench.${themeClass}");
+      const sidebar = document.querySelector(".monaco-workbench .part.sidebar");
+      if (!(workbench instanceof HTMLElement) || !(sidebar instanceof HTMLElement)) return false;
+      const bounds = sidebar.getBoundingClientRect();
+      return bounds.width === 0 || bounds.height === 0;
+    };
     const observer = new MutationObserver(() => {
       if (!matches()) return;
       observer.disconnect();
@@ -51,14 +57,19 @@ function waitForWorkbenchThemeScript(theme: "light" | "dark") {
     });
     observer.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ["class"],
+      attributeFilter: ["class", "style"],
       childList: true,
       subtree: true,
     });
-    const timeout = setTimeout(() => {
+    timeout = setTimeout(() => {
       observer.disconnect();
       resolve(false);
-    }, ${WORKBENCH_THEME_READY_TIMEOUT_MS});
+    }, ${WORKBENCH_LAYOUT_READY_TIMEOUT_MS});
+    if (matches()) {
+      observer.disconnect();
+      clearTimeout(timeout);
+      resolve(true);
+    }
   })`;
 }
 
@@ -467,8 +478,9 @@ export class VsCodeServerManager {
       const authSuffix = instance.flavor === "openvscode" ? `/?tkn=${instance.token}` : "/";
       await view.webContents.loadURL(`http://127.0.0.1:${instance.port}${authSuffix}`);
       // loadURL resolves before the asynchronously bootstrapped workbench applies
-      // its saved color theme. Do not expose the native view during that interval.
-      await view.webContents.executeJavaScript(waitForWorkbenchThemeScript(theme));
+      // its saved theme and before Cake's companion closes VS Code's primary sidebar.
+      // Keep the unattached native view out of sight until both are reflected in the DOM.
+      await view.webContents.executeJavaScript(waitForWorkbenchLayoutScript(theme));
       await view.webContents.executeJavaScript(
         vscodeShellControlsScript(
           workspacePath,
