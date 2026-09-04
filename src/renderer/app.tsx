@@ -34,6 +34,7 @@ import { WorkLogControls } from "@/components/work-log-controls";
 import { Sidebar } from "@/components/sidebar";
 import { ErrorNotice } from "@/components/error-notice";
 import { SessionContinuationDialog } from "@/components/session-continuation-dialog";
+import { SessionSplitLayout } from "@/components/session-split-layout";
 import { ArtifactsPanel } from "@/components/artifacts-panel";
 import { UiDialog } from "@/components/ui-dialog";
 import { CommandPane } from "@/components/command-pane";
@@ -44,6 +45,7 @@ import { cn } from "@/lib/utils";
 import type { SourceLocation } from "../ipc/source-location";
 import { toWorkspaceRelativePath } from "../utils/workspace-relative-path";
 import { RootStore } from "./stores/RootStore";
+import type { SessionPaneNode } from "./stores/SessionLayoutStore";
 
 export const App = observer(function App() {
   const root = useStore(RootStore);
@@ -153,6 +155,18 @@ export const App = observer(function App() {
     const navigateSessionHistory = (event: globalThis.KeyboardEvent) => {
       if (event.defaultPrevented) return;
       const mac = /Mac/.test(navigator.userAgent);
+      let paneDirection: "left" | "right" | "above" | "below" | undefined;
+      if (event.altKey && (mac ? event.metaKey : event.ctrlKey)) {
+        if (event.key === "ArrowLeft") paneDirection = "left";
+        else if (event.key === "ArrowRight") paneDirection = "right";
+        else if (event.key === "ArrowUp") paneDirection = "above";
+        else if (event.key === "ArrowDown") paneDirection = "below";
+      }
+      if (paneDirection) {
+        event.preventDefault();
+        root.focusAdjacentSessionPane(paneDirection);
+        return;
+      }
       const back = mac
         ? event.metaKey && event.key === "["
         : event.altKey && event.key === "ArrowLeft";
@@ -168,44 +182,43 @@ export const App = observer(function App() {
     return () => window.removeEventListener("keydown", navigateSessionHistory);
   }, [root]);
 
-  const openSourceLocation = useCallback(
-    (location: SourceLocation) => {
-      if (!session) return;
+  const projectTranscriptBehaviorFor = (paneSession: NonNullable<typeof session>) => ({
+    workspacePath: paneSession.workspacePath,
+    onFork: (entryId: string) => {
+      root.focusSessionPane(root.sessionLayoutStore.paneForSession(paneSession.sessionId)!.paneId);
+      void store.sessionContinuationStore.forkAt(entryId);
+    },
+    onHandoff: (entryId: string) => {
+      root.focusSessionPane(root.sessionLayoutStore.paneForSession(paneSession.sessionId)!.paneId);
+      void store.sessionContinuationStore.handoffAt(entryId);
+    },
+    openSourceLocation: (location: SourceLocation) => {
+      root.focusSessionPane(root.sessionLayoutStore.paneForSession(paneSession.sessionId)!.paneId);
       void store
         .openFileInIde({
           ...location,
-          path: toWorkspaceRelativePath(location.path, session.workspacePath),
+          path: toWorkspaceRelativePath(location.path, paneSession.workspacePath),
         })
         .catch(() => undefined);
     },
-    [session, store],
-  );
-
-  const projectTranscriptBehavior = session
-    ? {
-        workspacePath: session.workspacePath,
-        onFork: (entryId: string) => {
-          void store.sessionContinuationStore.forkAt(entryId);
-        },
-        onHandoff: (entryId: string) => {
-          void store.sessionContinuationStore.handoffAt(entryId);
-        },
-        openSourceLocation,
-        onOpenReviewRun: (threadId?: string) => {
-          if (threadId) void store.openReviewThread(threadId);
-        },
-        waitingForUser: Boolean(extensionUi.request || artifactInteractions?.request),
-        messageComments: session.messageCommentsStore,
-        subagents: session.subagentActivityStore,
-        showSelectionContextMenu: (input: { canChat: boolean; canAnnotate: boolean }) =>
-          root.showTranscriptSelectionContextMenu(input),
-        inlineWidgets: root.inlineWidgetStore,
-        artifacts: {
-          records: session.model.artifacts.map((artifact) => artifact.value),
-          interaction: session.artifactInteractionStore,
-        },
-      }
-    : undefined;
+    onOpenReviewRun: (threadId?: string) => {
+      root.focusSessionPane(root.sessionLayoutStore.paneForSession(paneSession.sessionId)!.paneId);
+      if (threadId) void store.openReviewThread(threadId);
+    },
+    waitingForUser:
+      paneSession.sessionId === root.sessionLayoutStore.focusedSessionId &&
+      Boolean(extensionUi.request || paneSession.artifactInteractionStore.request),
+    messageComments: paneSession.messageCommentsStore,
+    subagents: paneSession.subagentActivityStore,
+    showSelectionContextMenu: (input: { canChat: boolean; canAnnotate: boolean }) =>
+      root.showTranscriptSelectionContextMenu(input),
+    inlineWidgets: root.inlineWidgetStore,
+    artifacts: {
+      records: paneSession.model.artifacts.map((artifact) => artifact.value),
+      interaction: paneSession.artifactInteractionStore,
+    },
+  });
+  const projectTranscriptBehavior = session ? projectTranscriptBehaviorFor(session) : undefined;
   const cakeChatTranscriptBehavior =
     globalChat && cakeChatSession
       ? {
@@ -258,6 +271,89 @@ export const App = observer(function App() {
       onConfigured={() => session.composerStore.requestFocus()}
     />
   ) : undefined;
+  const renderProjectPane = (pane: SessionPaneNode) => {
+    const sessionId = pane.history[pane.historyCursor];
+    const paneSession = sessionId ? store.sessionRegistry.findSession(sessionId) : undefined;
+    if (!paneSession) return <LoadingState label="Opening session" />;
+    const temporary = store.sessionRegistry.isTemporarySession(paneSession.sessionId);
+    const draft = store.sessionRegistry.isDraftSession(paneSession.sessionId);
+    const configurationMode = draft
+      ? paneSession.composerStore.editingDraftSession
+        ? "edit-draft"
+        : "activate-draft"
+      : temporary
+        ? "new-session"
+        : undefined;
+    const paneError = store.contextError(paneSession.sessionId);
+    const focused = root.sessionLayoutStore.focusedSessionId === paneSession.sessionId;
+    const errorMessage =
+      paneError?.message ??
+      paneSession.composerStore.error ??
+      paneSession.configurationStore.error ??
+      paneSession.artifactInteractionStore.error;
+    const errorDetails = paneError
+      ? paneError.details
+      : (paneSession.composerStore.errorDetails ??
+        paneSession.configurationStore.errorDetails ??
+        paneSession.artifactInteractionStore.errorDetails);
+    return (
+      <StoreProvider key={pane.paneId} store={paneSession}>
+        <Chat
+          store={paneSession.chatStore}
+          transcriptBehavior={projectTranscriptBehaviorFor(paneSession)}
+          empty={
+            <div className="grid min-h-[calc(100vh-360px)] place-items-center content-center p-8 text-center">
+              <h1 className="font-display text-xl font-semibold tracking-tight">
+                What should we build in{" "}
+                <em>{root.projectCatalogStore.nameForPath(paneSession.workspacePath)}</em>?
+              </h1>
+              <p className="mt-3 max-w-[420px] text-sm leading-relaxed text-muted-foreground">
+                Describe a task, ask a question, or choose another session from the sidebar.
+              </p>
+            </div>
+          }
+          footer={
+            <ArtifactsPanel
+              session={paneSession}
+              inlineWidgets={root.inlineWidgetStore}
+              onOpenSourceLocation={(location) =>
+                projectTranscriptBehaviorFor(paneSession).openSourceLocation(location)
+              }
+            />
+          }
+          error={errorMessage ? { message: errorMessage, details: errorDetails } : undefined}
+          composerHeader={
+            <WorktreePill
+              creation={store.worktreeCreationStore}
+              actions={paneSession.worktreeStore}
+              record={root.sessionCatalogStore.managedWorktree(paneSession.workspacePath)}
+              sessionId={paneSession.sessionId}
+              projectPath={
+                root.sessionCatalogStore.projectOfManagedWorktree(paneSession.workspacePath) ??
+                paneSession.workspacePath
+              }
+              configurationMode={configurationMode}
+              onConfigured={() => paneSession.composerStore.requestFocus()}
+            />
+          }
+          status={
+            focused && extensionUi.statuses.length > 0 ? (
+              <div
+                className="mx-auto mt-1.5 flex w-full max-w-[51.25rem] gap-2.5 overflow-x-auto font-mono text-[10px] text-muted-foreground pointer-events-auto"
+                role="status"
+              >
+                {extensionUi.statuses.map((status) => (
+                  <span key={status.key} className="whitespace-nowrap">
+                    <strong className="text-foreground">{status.key}</strong> {status.text}
+                  </span>
+                ))}
+              </div>
+            ) : undefined
+          }
+        />
+      </StoreProvider>
+    );
+  };
 
   if (store.embeddedEditorStore.visible && session && projectTranscriptBehavior)
     return (
@@ -486,97 +582,59 @@ export const App = observer(function App() {
             </div>
           )
         ) : (
-          <StoreProvider key={session.sessionId} store={session}>
+          <>
             {sessionHeaderHost &&
               createPortal(
-                <>
-                  <div className="flex shrink-0 items-center gap-1">
+                <div className="flex shrink-0 items-center gap-1">
+                  <Button
+                    className="h-7.5 shrink-0 gap-1.5 rounded-lg px-2 text-xs font-normal [app-region:no-drag]"
+                    variant="ghost"
+                    size="sm"
+                    aria-label="Open VS Code"
+                    onClick={() => void store.openIde()}
+                  >
+                    <VsCodeIcon />
+                    <span>VS Code</span>
+                  </Button>
+                  <Button
+                    className={cn(
+                      "h-7.5 shrink-0 gap-1.5 rounded-lg px-2 text-xs font-normal [app-region:no-drag]",
+                      store.commandPaneStore.pane === "tree" && "bg-muted text-foreground",
+                    )}
+                    variant="ghost"
+                    size="sm"
+                    aria-label="Session tree"
+                    aria-pressed={store.commandPaneStore.pane === "tree"}
+                    onClick={() => store.commandPaneStore.toggle("tree")}
+                  >
+                    <TreeIcon />
+                    <span>Tree</span>
+                  </Button>
+                  {store.activeSessionExists && (
                     <Button
                       className="h-7.5 shrink-0 gap-1.5 rounded-lg px-2 text-xs font-normal [app-region:no-drag]"
                       variant="ghost"
                       size="sm"
-                      aria-label="Open VS Code"
-                      onClick={() => void store.openIde()}
+                      aria-label="Open workspace changes in VS Code"
+                      onClick={() => void store.openWorkspaceChanges()}
                     >
-                      <VsCodeIcon />
-                      <span>VS Code</span>
+                      <ChangesIcon />
+                      <span>Changes</span>
                     </Button>
-                    <Button
-                      className={cn(
-                        "h-7.5 shrink-0 gap-1.5 rounded-lg px-2 text-xs font-normal [app-region:no-drag]",
-                        store.commandPaneStore.pane === "tree" && "bg-muted text-foreground",
-                      )}
-                      variant="ghost"
-                      size="sm"
-                      aria-label="Session tree"
-                      aria-pressed={store.commandPaneStore.pane === "tree"}
-                      onClick={() => store.commandPaneStore.toggle("tree")}
-                    >
-                      <TreeIcon />
-                      <span>Tree</span>
-                    </Button>
-                    {store.activeSessionExists && (
-                      <Button
-                        className="h-7.5 shrink-0 gap-1.5 rounded-lg px-2 text-xs font-normal [app-region:no-drag]"
-                        variant="ghost"
-                        size="sm"
-                        aria-label="Open workspace changes in VS Code"
-                        onClick={() => void store.openWorkspaceChanges()}
-                      >
-                        <ChangesIcon />
-                        <span>Changes</span>
-                      </Button>
-                    )}
-                    <WorkLogControls store={session.chatStore} />
-                  </div>
-                </>,
+                  )}
+                  <WorkLogControls store={session.chatStore} />
+                </div>,
                 sessionHeaderHost,
               )}
-            <div className="h-full min-h-0 min-w-0 overflow-hidden">
-              <Chat
-                store={session.chatStore}
-                transcriptBehavior={projectTranscriptBehavior}
-                empty={
-                  <div className="grid min-h-[calc(100vh-330px)] place-items-center content-center text-center p-10">
-                    <span className="grid size-14 rotate-3 place-items-center rounded-bl-[14px] rounded-br-[20px] rounded-tl-[20px] rounded-tr-[14px] border border-border bg-card/75 shadow-[0_20px_70px_-30px_hsl(var(--shadow)/0.5)]">
-                      <span className="grid size-[27px] select-none place-items-center rounded-bl-[6px] rounded-br-[9px] rounded-tl-[9px] rounded-tr-[6px] bg-foreground text-sm font-black tracking-tighter text-background -rotate-2">
-                        C
-                      </span>
-                    </span>
-                    <h1 className="mt-5 font-display text-2xl font-semibold tracking-tight">
-                      What should we build in <em>{store.projectName}</em>?
-                    </h1>
-                    <p className="mt-3 max-w-[470px] text-sm leading-relaxed text-muted-foreground">
-                      Describe a task, ask a question, or type <code>/</code> for commands.
-                    </p>
-                  </div>
-                }
-                footer={
-                  <ArtifactsPanel
-                    session={session}
-                    inlineWidgets={root.inlineWidgetStore}
-                    onOpenSourceLocation={openSourceLocation}
-                  />
-                }
-                error={chatError ? { message: chatError, details: chatErrorDetails } : undefined}
-                composerHeader={projectComposerHeader}
-                status={
-                  extensionUi.statuses.length > 0 ? (
-                    <div
-                      className="mx-auto mt-1.5 flex w-full max-w-[51.25rem] gap-2.5 overflow-x-auto font-mono text-[10px] text-muted-foreground pointer-events-auto"
-                      role="status"
-                    >
-                      {extensionUi.statuses.map((status) => (
-                        <span key={status.key} className="whitespace-nowrap">
-                          <strong className="text-foreground">{status.key}</strong> {status.text}
-                        </span>
-                      ))}
-                    </div>
-                  ) : undefined
-                }
-              />
-            </div>
-          </StoreProvider>
+            <SessionSplitLayout
+              store={root.sessionLayoutStore}
+              title={(sessionId) => root.sessionCatalogStore.find(sessionId)?.title ?? "New chat"}
+              renderPane={renderProjectPane}
+              onFocus={(paneId) => root.focusSessionPane(paneId)}
+              onSplit={(axis) => root.splitFocusedSession(axis)}
+              onClose={(paneId) => root.closeSessionPane(paneId)}
+            />
+          </>
         )}
         {terminal.docked && <QuakeTerminal store={terminal} />}
       </section>

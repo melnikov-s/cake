@@ -60,6 +60,22 @@ function registryFixture(
 }
 
 describe("SessionRegistryStore materialization", () => {
+  it("retains independent staged chats for multiple panes", () => {
+    const fixture = registryFixture();
+    const first = fixture.registry.prepareStagedSession("/project", "staged-1");
+    const second = fixture.registry.prepareStagedSession("/project", "staged-2");
+
+    expect(first).not.toBe(second);
+    expect(fixture.registry.isStagedSession("staged-1")).toBe(true);
+    expect(fixture.registry.isStagedSession("staged-2")).toBe(true);
+
+    fixture.registry.removeSession("staged-1");
+    expect(fixture.registry.isStagedSession("staged-1")).toBe(false);
+    expect(fixture.registry.isStagedSession("staged-2")).toBe(true);
+
+    fixture.dispose();
+  });
+
   it("keeps a relocated composer unmaterialized until its Pi Session has started", () => {
     const fixture = registryFixture();
     const { registry } = fixture;

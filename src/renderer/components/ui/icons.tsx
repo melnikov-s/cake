@@ -176,6 +176,20 @@ export const SidebarIcon = () => (
     <path d="M9 4v16" />
   </Icon>
 );
+export const SplitRightIcon = () => (
+  <Icon>
+    <rect x="3.5" y="4" width="17" height="16" rx="3" />
+    <path d="M12 4v16" />
+    <path d="m15 9 3 3-3 3" />
+  </Icon>
+);
+export const SplitDownIcon = () => (
+  <Icon>
+    <rect x="3.5" y="4" width="17" height="16" rx="3" />
+    <path d="M3.5 12h17" />
+    <path d="m9 15 3 3 3-3" />
+  </Icon>
+);
 export const ChevronIcon = ({ className }: { className?: string }) => (
   <Icon size={13} className={className}>
     <path d="m8 10 4 4 4-4" />

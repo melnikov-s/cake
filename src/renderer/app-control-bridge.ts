@@ -141,6 +141,24 @@ type SessionSummaryView = Pick<
 
 export interface AppControlHost {
   currentSession(): { workspacePath: string; sessionId: string } | undefined;
+  sessionLayout?(originSessionId?: string): {
+    focusedSessionId?: string;
+    originSessionId?: string;
+    panes: Array<{
+      paneId: string;
+      sessionId: string;
+      number: number;
+      focused: boolean;
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    }>;
+    neighbors?: Record<
+      "left" | "right" | "above" | "below",
+      Array<{ paneId: string; sessionId: string }>
+    >;
+  };
   projects(): readonly ProjectRecord[];
   sessions(): readonly SessionSummaryView[];
   cakeChatSessions(): readonly CakeChatSummary[];
@@ -195,6 +213,7 @@ export interface AppControlSession {
 
 export interface AppControlState {
   currentSession?: { workspacePath: string; sessionId: string };
+  sessionLayout?: ReturnType<NonNullable<AppControlHost["sessionLayout"]>>;
   projectCount: number;
   sessionCount: number;
   projects: Array<{ path: string; name: string; sessionCount: number }>;
@@ -305,7 +324,7 @@ const modelControlOperations = [
   operation(
     "app.state",
     "app",
-    "Inspect Cake's current selection and project and session summaries.",
+    "Inspect Cake's current selection, split-pane layout, directional neighbors, and project and session summaries.",
     appControlArgumentSchemas.get_app_state,
   ),
   operation(
@@ -424,7 +443,7 @@ export class AppControlBridge {
     return listAppControlTools();
   }
 
-  getAppState(): AppControlState {
+  getAppState(originSessionId?: string): AppControlState {
     const sessions = this.sortedSessions();
     const state = {
       projectCount: this.host.projects().length,
@@ -441,19 +460,27 @@ export class AppControlBridge {
       recentSessions: sessions.map((session) => this.toControlSession(session)),
     };
     const currentSession = this.host.currentSession();
-    return currentSession ? { ...state, currentSession } : state;
+    const sessionLayout = this.host.sessionLayout?.(originSessionId);
+    return {
+      ...state,
+      ...(currentSession ? { currentSession } : null),
+      ...(sessionLayout ? { sessionLayout } : null),
+    };
   }
 
-  async invoke(untrustedInput: unknown): Promise<JsonValue> {
-    return toJsonValue(await this.invokeResult(untrustedInput));
+  async invoke(untrustedInput: unknown, originSessionId?: string): Promise<JsonValue> {
+    return toJsonValue(await this.invokeResult(untrustedInput, originSessionId));
   }
 
-  private async invokeResult(untrustedInput: unknown): Promise<AppControlResult> {
+  private async invokeResult(
+    untrustedInput: unknown,
+    originSessionId?: string,
+  ): Promise<AppControlResult> {
     const gatewayInvocation = Schema.decodeUnknownSync(
       Schema.Struct({ name: Schema.String, arguments: jsonObjectSchema }),
     )(untrustedInput);
     if (gatewayInvocation.name === "sessions.list") {
-      const state = this.getAppState();
+      const state = this.getAppState(originSessionId);
       return toStrictJson({
         ok: true,
         command: "sessions.list",
@@ -511,7 +538,7 @@ export class AppControlBridge {
       legacyName ? { name: legacyName, arguments: gatewayInvocation.arguments } : gatewayInvocation,
     );
     if (invocation.name === "get_app_state")
-      return { ok: true, name: invocation.name, state: this.getAppState() };
+      return { ok: true, name: invocation.name, state: this.getAppState(originSessionId) };
     if (invocation.name === "create_session") return this.createSession(invocation.arguments);
     if (invocation.name === "create_draft_session")
       return this.createDraftSession(invocation.arguments);

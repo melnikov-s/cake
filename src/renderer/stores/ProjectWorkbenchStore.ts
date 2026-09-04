@@ -43,6 +43,7 @@ export interface ProjectWorkbenchStoreProps {
   enterIdeSidebarMode(): void;
   leaveIdeSidebarMode(): void;
   projectSidebarWidth(): number;
+  paneNumber?(sessionId: string): number | undefined;
 }
 
 /** Owns active project/session activation and the project workbench workflow. */
@@ -226,6 +227,10 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     return this.projectPath ? this.props.projects.nameForPath(this.projectPath) : "No workspace";
   }
 
+  paneNumber(sessionId: string) {
+    return this.props.paneNumber?.(sessionId);
+  }
+
   private markSessionRead(sessionId: string) {
     this.sessionRegistry.findSession(sessionId)?.markRead();
     // Opening a session also settles a user-marked unread reminder.
@@ -360,10 +365,12 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   }
 
   async startNewSession(path = this.projectPath) {
-    const staged = this.sessionRegistry.stagedSession();
-    if (staged) {
-      this.openRevision += 1;
-      this.showCachedSession(staged.sessionId);
+    if (
+      this.activeSession &&
+      this.sessionRegistry.isTemporarySession(this.activeSession.sessionId) &&
+      !this.sessionRegistry.isDraftSession(this.activeSession.sessionId)
+    ) {
+      this.activeSession.composerStore.requestFocus();
       return;
     }
     if (!path) {
@@ -512,7 +519,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       this.restoreSessionPresentation();
       return;
     }
-    const cached = this.showCachedSession(sessionId);
+    const cached = this.showLoadedSession(sessionId);
     if (cached && this.sessionRegistry.isTemporarySession(sessionId)) return;
     try {
       await this.client.projectSessions.open(
@@ -522,7 +529,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       if (this.signal.aborted || revision !== this.openRevision) return;
       if (!cached) {
         this.sessionRegistry.load(sessionId, workspacePath);
-        this.showCachedSession(sessionId);
+        this.showLoadedSession(sessionId);
       }
       this.props.projects.recordOpened(
         this.props.catalog.projectOfManagedWorktree(workspacePath) ?? workspacePath,
@@ -533,7 +540,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     }
   }
 
-  private showCachedSession(sessionId: string) {
+  showLoadedSession(sessionId: string) {
     const session = this.sessionRegistry.findSession(sessionId);
     // An identity-only registry entry must not replace the visible session.
     if (!session) return false;

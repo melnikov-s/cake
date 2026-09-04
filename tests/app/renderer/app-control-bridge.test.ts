@@ -50,6 +50,52 @@ describe("AppControlBridge", () => {
     expect(target.tools.every((tool) => !("guidance" in tool))).toBe(true);
   });
 
+  it("describes the live pane layout relative to the calling project session", async () => {
+    const sessionLayout = vi.fn((originSessionId?: string) => ({
+      focusedSessionId: "session-b",
+      originSessionId,
+      panes: [
+        {
+          paneId: "pane-a",
+          sessionId: "session-a",
+          number: 1,
+          focused: false,
+          x: 0,
+          y: 0,
+          width: 0.5,
+          height: 1,
+        },
+        {
+          paneId: "pane-b",
+          sessionId: "session-b",
+          number: 2,
+          focused: true,
+          x: 0.5,
+          y: 0,
+          width: 0.5,
+          height: 1,
+        },
+      ],
+    }));
+    const bridge = new AppControlBridge(createHost({ sessionLayout }));
+
+    await expect(
+      bridge.invoke({ name: "app.state", arguments: {} }, "session-a"),
+    ).resolves.toMatchObject({
+      state: {
+        sessionLayout: {
+          focusedSessionId: "session-b",
+          originSessionId: "session-a",
+          panes: [
+            { sessionId: "session-a", x: 0, width: 0.5 },
+            { sessionId: "session-b", x: 0.5, width: 0.5 },
+          ],
+        },
+      },
+    });
+    expect(sessionLayout).toHaveBeenCalledWith("session-a");
+  });
+
   it("creates a saved draft without starting a Pi session", async () => {
     const createDraftSession = vi.fn(async () => ({
       workspacePath: "/projects/cake",

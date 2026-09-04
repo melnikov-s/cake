@@ -110,6 +110,7 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
                 shell.selection.kind === "project-session" &&
                 shell.selection.sessionId === session.sessionId
               }
+              paneNumber={chat.paneNumber?.(session.sessionId)}
               resolved={resolved}
               activity={store.sessionActivity(session.sessionId)}
               onOpen={onOpenSession}

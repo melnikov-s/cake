@@ -23,6 +23,7 @@ export interface SidebarSessionItemProps {
     >;
   };
   selected: boolean;
+  paneNumber?: number;
   resolved: boolean;
   activity?: "running" | "unread" | "error";
   onOpen(sessionId: string): void;
@@ -38,6 +39,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
   store,
   session,
   selected,
+  paneNumber,
   resolved,
   activity,
   onOpen,
@@ -116,10 +118,19 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
           }}
           label={<span className="session-title min-w-0 truncate">{session.title}</span>}
           badge={
-            session.draft && (
-              <Badge variant="outline" size="xs" className="text-muted-foreground">
-                Draft
-              </Badge>
+            (session.draft || paneNumber !== undefined) && (
+              <span className="flex items-center gap-1">
+                {session.draft && (
+                  <Badge variant="outline" size="xs" className="text-muted-foreground">
+                    Draft
+                  </Badge>
+                )}
+                {paneNumber !== undefined && (
+                  <Badge variant={selected ? "default" : "outline"} size="xs">
+                    {paneNumber}
+                  </Badge>
+                )}
+              </span>
             )
           }
           description={

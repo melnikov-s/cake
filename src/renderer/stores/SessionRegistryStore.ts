@@ -24,6 +24,7 @@ export interface SessionRegistryStoreProps {
   reviews(): ReviewsStore;
   canSubmit(sessionId: string): boolean;
   isActive(sessionId: string): boolean;
+  isVisible?(sessionId: string): boolean;
   openCommandPane(pane: "changelog" | "tree" | "resources"): Promise<void>;
   persistNow(): Promise<void>;
   projectName(workspacePath: string): string;
@@ -66,8 +67,8 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     string,
     { fallbackTitle?: string; createdAt: string; modifiedAt: string }
   > = observable({});
-  /** The one unsent, unsaved project chat. Explicit drafts are not staged chats. */
-  @snapshot private stagedSessionId: string | undefined;
+  /** Unsent, unsaved project chats retained by independent session panes. */
+  @snapshot private readonly stagedSessionIds: string[] = observable([]);
   private readonly sessionsById = new Map<string, ProjectSessionStore>();
   private readonly submittingSessionIds: string[] = observable([]);
   /** Process-local LRU. Selected and running sessions are pinned outside this idle budget. */
@@ -139,6 +140,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
         this.isObservableSession(session) &&
         (recent.has(session.sessionId) ||
           this.props.isActive(session.sessionId) ||
+          this.props.isVisible?.(session.sessionId) ||
           this.isRunning(session)),
     );
   }
@@ -196,7 +198,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
       this.retainObservation(sessionId);
       removeValue(this.temporarySessionIds, sessionId);
       removeValue(this.submittingSessionIds, sessionId);
-      if (this.stagedSessionId === sessionId) this.stagedSessionId = undefined;
+      removeValue(this.stagedSessionIds, sessionId);
       delete this.pendingConfigurationsBySession[sessionId];
       delete this.draftSessionsById[sessionId];
       addUnique(this.unlistedNewSessionIds, sessionId);
@@ -224,24 +226,14 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     return session;
   }
 
-  /** Returns the window's existing staged chat instead of creating a second one. */
   prepareStagedSession(workspacePath: string, sessionId: string) {
-    if (this.stagedSessionId) {
-      const staged = this.findSession(this.stagedSessionId);
-      if (staged) return staged;
-      this.stagedSessionId = undefined;
-    }
     const session = this.prepareNewSession(workspacePath, sessionId);
-    this.stagedSessionId = sessionId;
+    addUnique(this.stagedSessionIds, sessionId);
     return session;
   }
 
-  stagedSession() {
-    return this.stagedSessionId ? this.findSession(this.stagedSessionId) : undefined;
-  }
-
   isStagedSession(sessionId: string) {
-    return this.stagedSessionId === sessionId;
+    return this.stagedSessionIds.includes(sessionId);
   }
 
   isTemporarySession(sessionId: string) {
@@ -269,7 +261,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
       resolved: false,
     };
     this.ensurePendingSummaryMetadata(sessionId);
-    if (this.stagedSessionId === sessionId) this.stagedSessionId = undefined;
+    removeValue(this.stagedSessionIds, sessionId);
     await this.props.persistNow();
   }
 
@@ -343,7 +335,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     if (index >= 0) this.targets.splice(index, 1);
     this.sessionsById.delete(sessionId);
     removeValue(this.temporarySessionIds, sessionId);
-    if (this.stagedSessionId === sessionId) this.stagedSessionId = undefined;
+    removeValue(this.stagedSessionIds, sessionId);
     removeValue(this.unlistedNewSessionIds, sessionId);
     removeValue(this.materializedSessionIds, sessionId);
     removeValue(this.recentObservationSessionIds, sessionId);
@@ -380,7 +372,11 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     }
     const idleIds = this.recentObservationSessionIds.filter((sessionId) => {
       const session = this.findSession(sessionId)!;
-      return !this.props.isActive(sessionId) && !this.isRunning(session);
+      return (
+        !this.props.isActive(sessionId) &&
+        !this.props.isVisible?.(sessionId) &&
+        !this.isRunning(session)
+      );
     });
     while (idleIds.length > IDLE_OBSERVATION_LIMIT) {
       const sessionId = idleIds.shift()!;

@@ -23,6 +23,7 @@ import { AppControlOperationStore } from "./AppControlOperationStore";
 import { ProjectCatalogStore } from "./ProjectCatalogStore";
 import { ToastStore } from "./ToastStore";
 import { TerminalStore, type TerminalTarget } from "./TerminalStore";
+import { SessionLayoutStore, type SessionSplitAxis } from "./SessionLayoutStore";
 import { resolveDraftUpdate } from "../../utils/resolve-draft-update";
 import type { RendererModels } from "../RendererModels";
 
@@ -108,6 +109,7 @@ export class RootStore extends Store<{
   async openSession(sessionId: string, messageId?: string) {
     this.requireProjectSessionWorkingDirectory(sessionId);
     this.projectWorkbenchStore.dismissSecondarySurfaces();
+    this.sessionLayoutStore.focusSession(sessionId);
     await this.projectWorkbenchStore.openSession(sessionId);
     if (this.projectWorkbenchStore.activeSession?.sessionId !== sessionId) return false;
     if (!messageId) return true;
@@ -131,11 +133,13 @@ export class RootStore extends Store<{
 
   initialize() {
     const selection = this.appShellStore.selection;
-    if (selection.kind === "project-session")
+    if (selection.kind === "project-session") {
+      this.sessionLayoutStore.ensureSession(selection.sessionId);
       return this.projectWorkbenchStore.initialize({
         sessionId: selection.sessionId,
         workspacePath: this.requireProjectSessionWorkingDirectory(selection.sessionId),
       });
+    }
     if (selection.kind === "workbench") return this.projectWorkbenchStore.initialize();
     return Promise.resolve();
   }
@@ -215,7 +219,7 @@ export class RootStore extends Store<{
             }
           : undefined;
     const result = appInvocation
-      ? await this.appControl.invoke(appInvocation).catch((error) => ({
+      ? await this.appControl.invoke(appInvocation, request.sessionId).catch((error) => ({
           ok: false as const,
           name: appInvocation.name,
           error: error instanceof Error ? error.message : String(error),
@@ -271,10 +275,58 @@ export class RootStore extends Store<{
   }
 
   navigateBack() {
-    void this.navigateToHistoryEntry(this.appShellStore.goBack());
+    const sessionId =
+      this.appShellStore.surface === "workbench" && this.sessionLayoutStore.goBack();
+    if (sessionId) void this.openSession(sessionId);
+    else void this.navigateToHistoryEntry(this.appShellStore.goBack());
   }
   navigateForward() {
-    void this.navigateToHistoryEntry(this.appShellStore.goForward());
+    const sessionId =
+      this.appShellStore.surface === "workbench" && this.sessionLayoutStore.goForward();
+    if (sessionId) void this.openSession(sessionId);
+    else void this.navigateToHistoryEntry(this.appShellStore.goForward());
+  }
+
+  focusSessionPane(paneId: string) {
+    const sessionId = this.sessionLayoutStore.focusPane(paneId);
+    if (!sessionId || this.projectWorkbenchStore.activeSessionId === sessionId) return;
+    this.selectProjectSessionForShell(sessionId);
+    this.projectWorkbenchStore.showLoadedSession(sessionId);
+  }
+
+  focusAdjacentSessionPane(direction: "left" | "right" | "above" | "below") {
+    const sessionId = this.sessionLayoutStore.focusedSessionId;
+    const target = sessionId
+      ? this.sessionLayoutStore.neighbors(sessionId)[direction][0]
+      : undefined;
+    if (target) this.focusSessionPane(target.paneId);
+  }
+
+  splitFocusedSession(axis: SessionSplitAxis) {
+    const source = this.projectWorkbenchStore.activeSession;
+    if (!source || !this.sessionLayoutStore.canSplit) return;
+    const sessionId = crypto.randomUUID();
+    const session = this.sessionRegistry.prepareStagedSession(source.workspacePath, sessionId);
+    if (!this.sessionLayoutStore.splitFocused(sessionId, axis)) {
+      this.sessionRegistry.removeSession(sessionId);
+      return;
+    }
+    this.selectProjectSessionForShell(sessionId);
+    this.projectWorkbenchStore.showLoadedSession(sessionId);
+    void session.stagedCommandStore.load(source.workspacePath);
+  }
+
+  closeSessionPane(paneId: string) {
+    const result = this.sessionLayoutStore.closePane(paneId);
+    if (!result) return;
+    for (const sessionId of result.removedSessionIds) {
+      if (this.sessionRegistry.isTemporarySession(sessionId))
+        this.sessionRegistry.removeSession(sessionId);
+    }
+    if (result.focusedSessionId) {
+      this.selectProjectSessionForShell(result.focusedSessionId);
+      this.projectWorkbenchStore.showLoadedSession(result.focusedSessionId);
+    }
   }
   private async navigateToHistoryEntry(entry: SessionHistoryEntry | undefined) {
     if (!entry) return;
@@ -437,8 +489,14 @@ export class RootStore extends Store<{
     const activeProjectPath = activeSessionId
       ? this.sessionCatalogStore.find(activeSessionId)?.projectPath
       : undefined;
+    this.sessionLayoutStore.removeSessions(sessionIds);
     for (const sessionId of sessionIds) this.sessionRegistry.removeSession(sessionId);
     await this.forgetResolvedSessions(sessionIds, fallbackProjectPath ?? activeProjectPath);
+  }
+
+  @child
+  get sessionLayoutStore(): SessionLayoutStore {
+    return createStore(SessionLayoutStore);
   }
 
   @child
@@ -453,6 +511,7 @@ export class RootStore extends Store<{
       isActive: (sessionId) =>
         this.appShellStore.selection.kind === "project-session" &&
         this.appShellStore.selection.sessionId === sessionId,
+      isVisible: (sessionId) => this.sessionLayoutStore.hasSession(sessionId),
       openCommandPane: (pane) => this.projectWorkbenchStore.commandPaneStore.open(pane),
       persistNow: () => this.props.flushWindowState(),
       projectName: (workspacePath) => this.projectCatalogStore.nameForPath(workspacePath),
@@ -626,11 +685,15 @@ export class RootStore extends Store<{
         const active = this.appShellStore.activeConversation;
         return active?.kind === "project-session" ? active.sessionId : undefined;
       },
-      selectSession: (sessionId) => this.selectProjectSessionForShell(sessionId),
+      selectSession: (sessionId) => {
+        this.sessionLayoutStore.showSession(sessionId);
+        this.selectProjectSessionForShell(sessionId);
+      },
       toggleProjectSidebar: () => this.sidebarStore.toggle(),
       enterIdeSidebarMode: () => this.sidebarStore.enterIdeMode(),
       leaveIdeSidebarMode: () => this.sidebarStore.leaveIdeMode(),
       projectSidebarWidth: () => this.sidebarStore.width,
+      paneNumber: (sessionId) => this.sessionLayoutStore.paneNumber(sessionId),
     });
   }
 
@@ -699,6 +762,20 @@ export class RootStore extends Store<{
               sessionId: this.projectWorkbenchStore.activeSessionId,
             }
           : undefined,
+      sessionLayout: (originSessionId) => {
+        const relativeSessionId =
+          originSessionId && this.sessionLayoutStore.hasSession(originSessionId)
+            ? originSessionId
+            : this.sessionLayoutStore.focusedSessionId;
+        return {
+          focusedSessionId: this.sessionLayoutStore.focusedSessionId,
+          ...(relativeSessionId ? { originSessionId: relativeSessionId } : null),
+          panes: this.sessionLayoutStore.panePlacements.map((pane) => ({ ...pane })),
+          ...(relativeSessionId
+            ? { neighbors: this.sessionLayoutStore.neighbors(relativeSessionId) }
+            : null),
+        };
+      },
       projects: () => this.projectCatalogStore.projects,
       sessions: () => this.sessionCatalogStore.sessions,
       cakeChatSessions: () => this.globalChatStore.summaries,

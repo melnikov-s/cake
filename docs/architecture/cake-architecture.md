@@ -288,6 +288,14 @@ The window Store hierarchy mirrors the product surfaces:
 - `ProjectWorkbenchStore` coordinates project activation and its focused
   workflow children: `CommandPaneStore`, `SessionManagementStore`,
   `SessionContinuationStore`, `WorktreeCreationStore`, and `EmbeddedEditorStore`.
+  The root-scoped `SessionLayoutStore` owns the persisted binary split tree, divider
+  ratios, focused pane, and per-pane session navigation. Splitting is relative to the focused pane
+  and prepares an unsent Project Session in the same Working Directory. The single
+  project sidebar targets the focused pane; selecting a session already visible in
+  another pane focuses that pane rather than duplicating it. Every visible pane pins
+  its Project Session for observation. Terminal, command-pane, extension UI, and
+  embedded-editor operations target the focused pane. Embedded VS Code temporarily
+  replaces the split presentation without destroying its layout.
   `WorktreeCreationStore` owns both staged-session disposition and worktree
   selection and Cake Chat's coordinated create-worktree-then-create-named-session workflow.
   Fork and handoff are continuation workflows rather than permanent Working Directory bindings:
@@ -308,11 +316,12 @@ The window Store hierarchy mirrors the product surfaces:
   session and every session running in the current process are pinned for observation;
   up to 20 additional idle sessions remain observed in a process-local LRU. Selecting,
   opening, or starting a session refreshes that retention, and eviction stops its live
-  observation while preserving its loaded Store and Model for later reuse. The window has exactly one
-  unsent, unsaved project chat. It is staged renderer state, not a session: it does
-  not enter the session catalog or navigation history, and repeatedly choosing New
-  Chat reopens the same staged composer with its text, attachments, configuration,
-  and Working Directory intact. Cake persists that staged input continuously in window state.
+  observation while preserving its loaded Store and Model for later reuse. Each
+  visible split pane may contain an unsent, unsaved project chat. It is staged
+  renderer state, not a session: it does not enter Pi's session catalog, and choosing
+  New Chat while that pane is focused reopens its composer with its text, attachments,
+  configuration, and Working Directory intact. Cake persists staged pane input
+  continuously in window state.
   The first submitted prompt promotes the existing renderer Store identity to an ordinary
   Pi Session only after main accepts the start command. Promotion keeps the optimistic
   message visible, immediately clears the staged slot so New Chat can create another
@@ -388,6 +397,7 @@ flowchart TD
   Root --> Settings["SettingsStore"]
   Persistence["Window snapshot persistence (infrastructure)"] -. watches .-> Root
   Workbench -. selects from .-> Registry
+  Root --> Layout["SessionLayoutStore"]
   Workbench --> IDE["EmbeddedEditorStore"]
   Registry --> Session["ProjectSessionStore (one per loaded target)"]
   Session --> Model["Session"]
