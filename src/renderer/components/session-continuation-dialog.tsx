@@ -1,4 +1,4 @@
-import type { FormEvent } from "react";
+import { useEffect, useRef, type FormEvent } from "react";
 import { observer } from "r-state-tree/react";
 import {
   Confirmation,
@@ -14,6 +14,7 @@ import { Input } from "./ui/input";
 import { Switch } from "./ui/switch";
 import type {
   SessionContinuationDestination,
+  SessionContinuationPrompt,
   SessionContinuationStore,
 } from "../stores/SessionContinuationStore";
 
@@ -44,12 +45,77 @@ const destinations: ReadonlyArray<{
   },
 ];
 
+function destinationIsVisible(
+  prompt: SessionContinuationPrompt,
+  destination: SessionContinuationDestination,
+) {
+  return destination !== "project-root" || prompt.workspacePath !== prompt.projectPath;
+}
+
+function destinationIsSelectable(
+  prompt: SessionContinuationPrompt,
+  destination: SessionContinuationDestination,
+) {
+  return (
+    destinationIsVisible(prompt, destination) &&
+    (destination !== "branch-worktree" || prompt.canBranchFromCurrentWorktree)
+  );
+}
+
 export const SessionContinuationDialog = observer(function SessionContinuationDialog({
   store,
 }: {
   store: SessionContinuationStore;
 }) {
+  const destinationRefs = useRef(
+    new Map<SessionContinuationDestination, HTMLButtonElement>(),
+  ).current;
+  const worktreeNameRef = useRef<HTMLInputElement>(null);
   const prompt = store.prompt;
+
+  useEffect(() => {
+    if (!prompt) return;
+    const selectableDestinations = destinations.filter((destination) =>
+      destinationIsSelectable(prompt, destination.value),
+    );
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        store.cancelPrompt();
+        return;
+      }
+      if (event.key === "Enter") {
+        if (![...destinationRefs.values()].some((element) => element === document.activeElement)) {
+          return;
+        }
+        event.preventDefault();
+        void store.confirmPrompt();
+        return;
+      }
+      if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+      event.preventDefault();
+      const currentIndex = selectableDestinations.findIndex(
+        (destination) => destination.value === prompt.destination,
+      );
+      const direction = event.key === "ArrowDown" ? 1 : -1;
+      const nextIndex =
+        (currentIndex + direction + selectableDestinations.length) % selectableDestinations.length;
+      const nextDestination = selectableDestinations[nextIndex]?.value;
+      if (!nextDestination) return;
+      store.selectDestination(nextDestination);
+      requestAnimationFrame(() => {
+        if (nextDestination === "branch-worktree" || nextDestination === "new-worktree") {
+          worktreeNameRef.current?.focus();
+        } else {
+          destinationRefs.get(nextDestination)?.focus();
+        }
+      });
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [destinationRefs, prompt, store]);
+
   if (!prompt) return null;
 
   const isFork = prompt.kind === "fork";
@@ -57,6 +123,9 @@ export const SessionContinuationDialog = observer(function SessionContinuationDi
     prompt.destination === "branch-worktree" || prompt.destination === "new-worktree";
   const title = isFork ? "Fork this conversation" : "Hand off this conversation";
   const action = isFork ? "Fork conversation" : "Hand off conversation";
+  const visibleDestinations = destinations.filter((destination) =>
+    destinationIsVisible(prompt, destination.value),
+  );
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -78,12 +147,17 @@ export const SessionContinuationDialog = observer(function SessionContinuationDi
               Choose where the new conversation should make its changes.
             </ConfirmationDescription>
             <div className="mt-4 grid gap-2" role="group" aria-label="Working directory">
-              {destinations.map((destination) => {
+              {visibleDestinations.map((destination) => {
                 const unavailable =
                   destination.value === "branch-worktree" && !prompt.canBranchFromCurrentWorktree;
                 return (
                   <ActionCard
+                    ref={(element) => {
+                      if (element) destinationRefs.set(destination.value, element);
+                      else destinationRefs.delete(destination.value);
+                    }}
                     key={destination.value}
+                    autoFocus={prompt.destination === destination.value}
                     aria-pressed={prompt.destination === destination.value}
                     aria-label={destination.title}
                     title={destination.title}
@@ -107,6 +181,7 @@ export const SessionContinuationDialog = observer(function SessionContinuationDi
               <label className="mt-3 block text-sm font-medium">
                 Worktree name
                 <Input
+                  ref={worktreeNameRef}
                   className="mt-1.5"
                   size="lg"
                   value={prompt.worktreeName}

@@ -134,13 +134,30 @@ test("forks and hands off sessions across working directories", async () => {
     ).toBeDisabled();
     await expect(
       dialog.getByRole("button", { name: "Use the project root (no worktree)" }),
-    ).toBeVisible();
+    ).toHaveCount(0);
     await expect(dialog.getByLabel("Worktree name")).toHaveCount(0);
     await expect(
       dialog.getByRole("switch", { name: "Resolve the parent conversation after forking" }),
     ).not.toBeChecked();
 
-    await dialog.getByRole("button", { name: "Create a new worktree" }).click();
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+    await fork.click({ force: true });
+    const existingDestination = dialog.getByRole("button", {
+      name: "Use the current working directory",
+    });
+    const newWorktreeDestination = dialog.getByRole("button", {
+      name: "Create a new worktree",
+    });
+    await expect(existingDestination).toBeFocused();
+    await page.keyboard.press("ArrowDown");
+    await expect(newWorktreeDestination).toHaveAttribute("aria-pressed", "true");
+    await expect(dialog.getByLabel("Worktree name")).toBeFocused();
+    await page.keyboard.press("ArrowUp");
+    await expect(existingDestination).toHaveAttribute("aria-pressed", "true");
+    await expect(existingDestination).toBeFocused();
+    await page.keyboard.press("ArrowDown");
+
     const name = dialog.getByLabel("Worktree name");
     await expect(name).toBeVisible();
     await expect(name).toBeFocused();
@@ -151,7 +168,8 @@ test("forks and hands off sessions across working directories", async () => {
       .getByRole("switch", { name: "Resolve the parent conversation after forking" })
       .click();
 
-    await dialog.getByRole("button", { name: "Fork conversation" }).click();
+    await newWorktreeDestination.focus();
+    await page.keyboard.press("Enter");
     await expect(dialog).toHaveCount(0);
     // The forked conversation opens in its new worktree (the worktree pill shows its
     // branch) instead of failing with "Cake could not find that session". The forked
