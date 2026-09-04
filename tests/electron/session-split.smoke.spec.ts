@@ -51,11 +51,14 @@ test("splits project chats while retaining independent drafts and pane focus", a
     const page = await application.firstWindow();
     const panes = page.locator('[data-slot="session-pane"]');
     await expect(panes).toHaveCount(1, { timeout: 20_000 });
+    await expect(panes.nth(0).getByRole("button", { name: "Close pane" })).toHaveCount(0);
+    await expect(page.locator('[data-slot="workspace-header"]')).toHaveCount(1);
     const firstInput = panes.nth(0).getByLabel("Message");
     await firstInput.fill("left draft");
 
     await panes.nth(0).getByRole("button", { name: "Split right" }).click();
     await expect(panes).toHaveCount(2);
+    await expect(page.locator('[data-slot="workspace-header"]')).toHaveCount(2);
     await expect(panes.nth(1)).toHaveAttribute("data-focused", "true");
     const secondInput = panes.nth(1).getByLabel("Message");
     await expect(secondInput).toBeFocused();
@@ -69,6 +72,17 @@ test("splits project chats while retaining independent drafts and pane focus", a
     const focusedPane = page.locator('[data-slot="session-pane"][data-focused="true"]');
     await focusedPane.getByRole("button", { name: "Split down" }).click();
     await expect(panes).toHaveCount(3);
+
+    const rightPane = panes.nth(2);
+    await rightPane.locator('[data-slot="chat"]').click({ position: { x: 24, y: 80 } });
+    await expect(rightPane).toHaveAttribute("data-focused", "true");
+
+    await panes.nth(0).locator("header").click();
+    await page.keyboard.press(
+      process.platform === "darwin" ? "Meta+Alt+ArrowRight" : "Control+Alt+ArrowRight",
+    );
+    await expect(rightPane).toHaveAttribute("data-focused", "true");
+
     await focusedPane.getByRole("button", { name: "Close pane" }).click();
     await expect(panes).toHaveCount(2);
   } finally {

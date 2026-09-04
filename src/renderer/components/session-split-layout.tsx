@@ -15,6 +15,8 @@ interface SessionSplitLayoutProps {
   store: SessionLayoutStore;
   node?: SessionLayoutNode;
   title(sessionId: string): string;
+  headerClassName?(pane: SessionPaneNode): string | undefined;
+  renderHeader(pane: SessionPaneNode): ReactNode;
   renderPane(pane: SessionPaneNode): ReactNode;
   onFocus(paneId: string): void;
   onSplit(axis: SessionSplitAxis): void;
@@ -25,6 +27,8 @@ export const SessionSplitLayout = observer(function SessionSplitLayout({
   store,
   node = store.layout,
   title,
+  headerClassName,
+  renderHeader,
   renderPane,
   onFocus,
   onSplit,
@@ -53,6 +57,7 @@ export const SessionSplitLayout = observer(function SessionSplitLayout({
     if (!sessionId) return null;
     const pane = store.panes.find((candidate) => candidate.paneId === node.paneId);
     const focused = pane?.focused ?? false;
+    const multiplePanes = store.panes.length > 1;
     return (
       <section
         data-slot="session-pane"
@@ -60,31 +65,34 @@ export const SessionSplitLayout = observer(function SessionSplitLayout({
         data-session-id={sessionId}
         data-focused={focused ? "true" : "false"}
         className={cn(
-          "group/pane relative grid h-full min-h-0 min-w-0 grid-rows-[36px_minmax(0,1fr)] overflow-hidden border border-transparent bg-background",
-          focused &&
-            "border-accent/70 shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--accent)_18%,transparent)]",
+          "group/pane relative grid h-full min-h-0 min-w-0 grid-rows-[52px_minmax(0,1fr)] overflow-hidden border border-transparent bg-background",
+          multiplePanes &&
+            focused &&
+            "border-accent/40 shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--accent)_10%,transparent)]",
         )}
-        onPointerDown={() => onFocus(node.paneId)}
+        onPointerDownCapture={() => onFocus(node.paneId)}
         onFocusCapture={() => onFocus(node.paneId)}
       >
         <header
+          data-slot="workspace-header"
           className={cn(
-            "flex min-w-0 items-center gap-2 border-b border-border/60 bg-muted/25 px-2 text-xs text-muted-foreground",
-            focused && "bg-muted/45 text-foreground",
+            "relative flex h-[52px] min-w-0 items-center gap-3 overflow-hidden border-b border-border/65 px-5 [app-region:drag]",
+            multiplePanes && "bg-muted/20",
+            multiplePanes && focused && "bg-muted/35",
+            headerClassName?.(node),
           )}
         >
-          <span className="grid size-5 shrink-0 place-items-center rounded bg-muted font-mono text-[10px] font-semibold">
-            {pane?.number}
-          </span>
-          <strong className="min-w-0 flex-1 truncate font-medium">{title(sessionId)}</strong>
-          <div
-            className={cn(
-              "flex shrink-0 items-center gap-0.5 transition-opacity",
-              !focused && "opacity-0 group-hover/pane:opacity-100 focus-within:opacity-100",
-            )}
-          >
+          {multiplePanes && (
+            <span className="grid size-5 shrink-0 place-items-center rounded bg-muted font-mono text-[10px] font-semibold text-muted-foreground">
+              {pane?.number}
+            </span>
+          )}
+          <strong className="min-w-0 flex-1 truncate text-[13px] font-semibold">
+            {title(sessionId)}
+          </strong>
+          <div className="flex min-w-0 shrink-0 items-center gap-1 [app-region:no-drag]">
+            {renderHeader(node)}
             <IconButton
-              className="size-6"
               tooltip="Split right"
               disabled={!store.canSplit}
               onClick={() => onSplit("x")}
@@ -92,21 +100,17 @@ export const SessionSplitLayout = observer(function SessionSplitLayout({
               <SplitRightIcon />
             </IconButton>
             <IconButton
-              className="size-6"
               tooltip="Split down"
               disabled={!store.canSplit}
               onClick={() => onSplit("y")}
             >
               <SplitDownIcon />
             </IconButton>
-            <IconButton
-              className="size-6"
-              tooltip="Close pane"
-              disabled={store.panes.length <= 1}
-              onClick={() => onClose(node.paneId)}
-            >
-              <CloseIcon size={14} />
-            </IconButton>
+            {multiplePanes && (
+              <IconButton tooltip="Close pane" onClick={() => onClose(node.paneId)}>
+                <CloseIcon size={14} />
+              </IconButton>
+            )}
           </div>
         </header>
         <div className="h-full min-h-0 min-w-0 overflow-hidden">{renderPane(node)}</div>
@@ -133,7 +137,16 @@ export const SessionSplitLayout = observer(function SessionSplitLayout({
       style={style}
     >
       <SessionSplitLayout
-        {...{ store, title, renderPane, onFocus, onSplit, onClose }}
+        {...{
+          store,
+          title,
+          headerClassName,
+          renderHeader,
+          renderPane,
+          onFocus,
+          onSplit,
+          onClose,
+        }}
         node={node.first}
       />
       <div className="relative z-30 bg-border/35">
@@ -148,7 +161,16 @@ export const SessionSplitLayout = observer(function SessionSplitLayout({
         />
       </div>
       <SessionSplitLayout
-        {...{ store, title, renderPane, onFocus, onSplit, onClose }}
+        {...{
+          store,
+          title,
+          headerClassName,
+          renderHeader,
+          renderPane,
+          onFocus,
+          onSplit,
+          onClose,
+        }}
         node={node.second}
       />
     </div>

@@ -62,6 +62,7 @@ export const App = observer(function App() {
   const shell = root.appShellStore;
   const terminal = root.terminalStore;
   const surface = shell.surface;
+  const projectSessionVisible = surface === "workbench" && Boolean(session);
   const globalChat = surface === "global-chat" ? root.globalChatStore : undefined;
   const cakeChatSession =
     globalChat && shell.selection.kind === "cake-chat" && shell.selection.sessionId
@@ -272,6 +273,88 @@ export const App = observer(function App() {
       onConfigured={() => session.composerStore.requestFocus()}
     />
   ) : undefined;
+  const renderProjectPaneHeader = (pane: SessionPaneNode) => {
+    const sessionId = pane.history[pane.historyCursor];
+    const paneSession = sessionId ? store.sessionRegistry.findSession(sessionId) : undefined;
+    if (!paneSession) return null;
+    const focusPane = () => root.focusSessionPane(pane.paneId);
+    const focused = root.sessionLayoutStore.focusedPaneId === pane.paneId;
+    const firstPane = root.sessionLayoutStore.panes[0]?.paneId === pane.paneId;
+    return (
+      <>
+        {firstPane && (
+          <IconButton
+            className={cn(
+              "absolute left-[84px] top-[9px] z-20 size-7 place-items-center rounded-lg bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground",
+              sidebarCollapsed ? "grid" : "hidden max-[620px]:grid",
+            )}
+            data-slot="header-sidebar-toggle"
+            tooltip="Toggle sidebar"
+            onClick={toggleSidebar}
+          >
+            <SidebarIcon />
+          </IconButton>
+        )}
+        <Button
+          className="h-7.5 shrink-0 gap-1.5 rounded-lg px-2 text-xs font-normal"
+          variant="ghost"
+          size="sm"
+          aria-label="Open VS Code"
+          onClick={() => {
+            focusPane();
+            void store.openIde();
+          }}
+        >
+          <VsCodeIcon />
+          <span>VS Code</span>
+        </Button>
+        <Button
+          className={cn(
+            "h-7.5 shrink-0 gap-1.5 rounded-lg px-2 text-xs font-normal",
+            focused && store.commandPaneStore.pane === "tree" && "bg-muted text-foreground",
+          )}
+          variant="ghost"
+          size="sm"
+          aria-label="Session tree"
+          aria-pressed={focused && store.commandPaneStore.pane === "tree"}
+          onClick={() => {
+            focusPane();
+            store.commandPaneStore.toggle("tree");
+          }}
+        >
+          <TreeIcon />
+          <span>Tree</span>
+        </Button>
+        {!store.sessionRegistry.isTemporarySession(paneSession.sessionId) && (
+          <Button
+            className="h-7.5 shrink-0 gap-1.5 rounded-lg px-2 text-xs font-normal"
+            variant="ghost"
+            size="sm"
+            aria-label="Open workspace changes in VS Code"
+            onClick={() => {
+              focusPane();
+              void store.openWorkspaceChanges();
+            }}
+          >
+            <ChangesIcon />
+            <span>Changes</span>
+          </Button>
+        )}
+        <WorkLogControls store={paneSession.chatStore} />
+        <IconButton
+          tooltip={`Terminal (${terminalToggleAcceleratorHint})`}
+          disabled={!terminal.available}
+          aria-pressed={focused && terminal.open}
+          onClick={() => {
+            focusPane();
+            void terminal.toggle();
+          }}
+        >
+          <TerminalIcon />
+        </IconButton>
+      </>
+    );
+  };
   const renderProjectPane = (pane: SessionPaneNode) => {
     const sessionId = pane.history[pane.historyCursor];
     const paneSession = sessionId ? store.sessionRegistry.findSession(sessionId) : undefined;
@@ -408,7 +491,12 @@ export const App = observer(function App() {
       )}
       <section
         data-slot="workspace"
-        className="relative col-start-2 grid h-full min-h-0 min-w-0 grid-rows-[52px_minmax(0,1fr)_auto] overflow-hidden [contain:inline-size]"
+        className={cn(
+          "relative col-start-2 grid h-full min-h-0 min-w-0 overflow-hidden [contain:inline-size]",
+          projectSessionVisible
+            ? "grid-rows-[minmax(0,1fr)_auto]"
+            : "grid-rows-[52px_minmax(0,1fr)_auto]",
+        )}
         data-session-id={
           shell.selection.kind === "cake-chat"
             ? shell.selection.sessionId
@@ -430,63 +518,65 @@ export const App = observer(function App() {
             <SettingsIcon />
           </IconButton>
         )}
-        <header
-          data-slot="workspace-header"
-          className={cn(
-            "relative flex h-[52px] w-full max-w-full min-w-0 items-center justify-between overflow-hidden border-b border-border/65 px-5 [app-region:drag] max-[620px]:pl-[84px]",
-            sidebarCollapsed && surface !== "settings" && "pl-[124px]",
-            surface === "settings" && "pl-[84px]",
-          )}
-        >
-          <div className="flex w-0 min-w-0 flex-1 items-center gap-3">
-            <IconButton
-              className={cn(
-                "absolute left-[84px] top-[9px] z-20 size-7 place-items-center rounded-lg bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground [app-region:no-drag]",
-                surface === "settings"
-                  ? "hidden"
-                  : sidebarCollapsed
-                    ? "grid"
-                    : "hidden max-[620px]:grid",
-              )}
-              data-slot="header-sidebar-toggle"
-              tooltip="Toggle sidebar"
-              onClick={toggleSidebar}
-            >
-              <SidebarIcon />
-            </IconButton>
-            {surface === "settings" && (
-              <IconButton
-                className="grid size-7 place-items-center rounded-lg bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground [app-region:no-drag]"
-                tooltip="Back to chat"
-                onClick={returnToWorkbench}
-              >
-                <BackIcon />
-              </IconButton>
+        {!projectSessionVisible && (
+          <header
+            data-slot="workspace-header"
+            className={cn(
+              "relative flex h-[52px] w-full max-w-full min-w-0 items-center justify-between overflow-hidden border-b border-border/65 px-5 [app-region:drag] max-[620px]:pl-[84px]",
+              sidebarCollapsed && surface !== "settings" && "pl-[124px]",
+              surface === "settings" && "pl-[84px]",
             )}
-            <strong className="block min-w-0 max-w-full truncate text-[13px] font-semibold">
-              {surface === "settings"
-                ? "Settings"
-                : surface === "global-chat"
-                  ? "Cake Chat"
-                  : (extensionUi.title ??
-                    (session ? `[${store.projectName}] ${store.sessionTitle}` : "Cake"))}
-            </strong>
-          </div>
-          <div className="flex min-w-0 shrink-0 items-center gap-1.5 [app-region:no-drag]">
-            <div
-              className="flex min-w-0 shrink-0 items-center gap-1.5"
-              ref={setSessionHeaderHost}
-            />
-            <IconButton
-              tooltip={`Terminal (${terminalToggleAcceleratorHint})`}
-              disabled={!terminal.available}
-              aria-pressed={terminal.open}
-              onClick={() => void terminal.toggle()}
-            >
-              <TerminalIcon />
-            </IconButton>
-          </div>
-        </header>
+          >
+            <div className="flex w-0 min-w-0 flex-1 items-center gap-3">
+              <IconButton
+                className={cn(
+                  "absolute left-[84px] top-[9px] z-20 size-7 place-items-center rounded-lg bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground [app-region:no-drag]",
+                  surface === "settings"
+                    ? "hidden"
+                    : sidebarCollapsed
+                      ? "grid"
+                      : "hidden max-[620px]:grid",
+                )}
+                data-slot="header-sidebar-toggle"
+                tooltip="Toggle sidebar"
+                onClick={toggleSidebar}
+              >
+                <SidebarIcon />
+              </IconButton>
+              {surface === "settings" && (
+                <IconButton
+                  className="grid size-7 place-items-center rounded-lg bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground [app-region:no-drag]"
+                  tooltip="Back to chat"
+                  onClick={returnToWorkbench}
+                >
+                  <BackIcon />
+                </IconButton>
+              )}
+              <strong className="block min-w-0 max-w-full truncate text-[13px] font-semibold">
+                {surface === "settings"
+                  ? "Settings"
+                  : surface === "global-chat"
+                    ? "Cake Chat"
+                    : (extensionUi.title ??
+                      (session ? `[${store.projectName}] ${store.sessionTitle}` : "Cake"))}
+              </strong>
+            </div>
+            <div className="flex min-w-0 shrink-0 items-center gap-1.5 [app-region:no-drag]">
+              <div
+                className="flex min-w-0 shrink-0 items-center gap-1.5"
+                ref={setSessionHeaderHost}
+              />
+              <IconButton
+                tooltip={`Terminal (${terminalToggleAcceleratorHint})`}
+                disabled={!terminal.available}
+                aria-pressed={terminal.open}
+                onClick={() => void terminal.toggle()}
+              >
+                <TerminalIcon />
+              </IconButton>
+            </div>
+          </header>
+        )}
         {surface === "settings" ? (
           <div className="h-full min-h-0 w-full overflow-hidden">
             <SettingsPage settings={settings} />
@@ -583,59 +673,26 @@ export const App = observer(function App() {
             </div>
           )
         ) : (
-          <>
-            {sessionHeaderHost &&
-              createPortal(
-                <div className="flex shrink-0 items-center gap-1">
-                  <Button
-                    className="h-7.5 shrink-0 gap-1.5 rounded-lg px-2 text-xs font-normal [app-region:no-drag]"
-                    variant="ghost"
-                    size="sm"
-                    aria-label="Open VS Code"
-                    onClick={() => void store.openIde()}
-                  >
-                    <VsCodeIcon />
-                    <span>VS Code</span>
-                  </Button>
-                  <Button
-                    className={cn(
-                      "h-7.5 shrink-0 gap-1.5 rounded-lg px-2 text-xs font-normal [app-region:no-drag]",
-                      store.commandPaneStore.pane === "tree" && "bg-muted text-foreground",
-                    )}
-                    variant="ghost"
-                    size="sm"
-                    aria-label="Session tree"
-                    aria-pressed={store.commandPaneStore.pane === "tree"}
-                    onClick={() => store.commandPaneStore.toggle("tree")}
-                  >
-                    <TreeIcon />
-                    <span>Tree</span>
-                  </Button>
-                  {store.activeSessionExists && (
-                    <Button
-                      className="h-7.5 shrink-0 gap-1.5 rounded-lg px-2 text-xs font-normal [app-region:no-drag]"
-                      variant="ghost"
-                      size="sm"
-                      aria-label="Open workspace changes in VS Code"
-                      onClick={() => void store.openWorkspaceChanges()}
-                    >
-                      <ChangesIcon />
-                      <span>Changes</span>
-                    </Button>
-                  )}
-                  <WorkLogControls store={session.chatStore} />
-                </div>,
-                sessionHeaderHost,
-              )}
-            <SessionSplitLayout
-              store={root.sessionLayoutStore}
-              title={(sessionId) => root.sessionCatalogStore.find(sessionId)?.title ?? "New chat"}
-              renderPane={renderProjectPane}
-              onFocus={(paneId) => root.focusSessionPane(paneId)}
-              onSplit={(axis) => root.splitFocusedSession(axis)}
-              onClose={(paneId) => root.closeSessionPane(paneId)}
-            />
-          </>
+          <SessionSplitLayout
+            store={root.sessionLayoutStore}
+            title={(sessionId) => {
+              const summary = root.sessionCatalogStore.find(sessionId);
+              const projectName = summary
+                ? root.projectCatalogStore.nameForPath(summary.projectPath)
+                : store.projectName;
+              return `[${projectName}] ${summary?.title ?? "New chat"}`;
+            }}
+            headerClassName={(pane) =>
+              root.sessionLayoutStore.panes[0]?.paneId === pane.paneId
+                ? cn("max-[620px]:pl-[84px]", sidebarCollapsed && "pl-[124px]")
+                : undefined
+            }
+            renderHeader={renderProjectPaneHeader}
+            renderPane={renderProjectPane}
+            onFocus={(paneId) => root.focusSessionPane(paneId)}
+            onSplit={(axis) => root.splitFocusedSession(axis)}
+            onClose={(paneId) => root.closeSessionPane(paneId)}
+          />
         )}
         {terminal.docked && <QuakeTerminal store={terminal} />}
       </section>
