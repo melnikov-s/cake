@@ -282,7 +282,7 @@ The window Store hierarchy mirrors the product surfaces:
 - `ProjectWorkbenchStore` coordinates project activation and its focused
   workflow children: `CommandPaneStore`, `SessionManagementStore`,
   `SessionContinuationStore`, `WorktreeCreationStore`, and `EmbeddedEditorStore`.
-  `WorktreeCreationStore` owns both draft-composer worktree
+  `WorktreeCreationStore` owns both staged-session disposition and worktree
   selection and Cake Chat's coordinated create-worktree-then-create-named-session workflow.
   Fork and handoff are continuation workflows rather than permanent Working Directory bindings:
   both default to the parent's current Working Directory and can instead target a child Managed
@@ -313,12 +313,15 @@ The window Store hierarchy mirrors the product surfaces:
   composer, and retains a renderer-local pending catalog summary until the authoritative
   Pi-backed catalog projection catches up. It must not wait for catalog discovery or replace
   the visible Store with a newly synchronized instance. An explicitly
-  saved draft is different: it becomes a cataloged pseudo-session, stages its initial
-  message and attachments in Cake window state, projects them through the shared
-  `Chat`, and carries draft and resolved presentation metadata until activation.
-  Saving the staged chat as a draft also frees New Chat to create one new staged
-  composer. Activation clears the draft state and uses the ordinary first-prompt
-  path; Pi remains the transcript authority once the session starts. The Working
+  saved draft is different: choosing Draft beside the staged chat's checkout choices
+  and submitting creates a cataloged pseudo-session, stages its initial message and
+  attachments in Cake window state, projects them through the shared `Chat`, and
+  carries draft and resolved presentation metadata until activation. Saving the
+  staged chat as a draft also frees New Chat to create one new staged composer. A
+  saved draft has no message input; its composer surface contains only checkout and
+  model selection plus the activation action. Activation clears the draft state and
+  uses the ordinary first-prompt path; Pi remains the transcript authority once the
+  session starts. The Working
   Directory remains routing/storage context for the Pi runtime, not part of
   session identity. Cake Chat never enters this registry.
 - Each `ProjectSessionStore` owns that session's activity,

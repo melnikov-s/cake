@@ -18,7 +18,7 @@ export const ChatComposer = observer(function ChatComposer({
 }: {
   configuration?: ChatConfigurationStore;
   onSubmit(event: FormEvent): void;
-  input: ReactNode;
+  input?: ReactNode;
   children?: ReactNode;
   header?: ReactNode;
   toolbarLeading?: ReactNode;

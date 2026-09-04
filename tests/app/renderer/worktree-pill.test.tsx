@@ -55,8 +55,10 @@ function actionStore({
 }
 
 const candidates = vi.fn(() => []);
+const select = vi.fn();
 const creation = {
   choice: () => ({ kind: "current" }),
+  select,
   candidates,
   preparingSessionId: undefined,
 } as unknown as WorktreeCreationStore;
@@ -67,6 +69,7 @@ describe("WorktreePill", () => {
 
   beforeEach(() => {
     candidates.mockClear();
+    select.mockClear();
     Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
     container = document.createElement("div");
     document.body.appendChild(container);
@@ -79,7 +82,11 @@ describe("WorktreePill", () => {
     vi.useRealTimers();
   });
 
-  function render(actions: WorktreeStore, record?: WorktreeRecord) {
+  function render(
+    actions: WorktreeStore,
+    record?: WorktreeRecord,
+    configurationMode?: "new-session" | "activate-draft" | "edit-draft",
+  ) {
     act(() =>
       root.render(
         <WorktreePill
@@ -88,7 +95,7 @@ describe("WorktreePill", () => {
           record={record}
           sessionId="session"
           projectPath="/project"
-          draft={false}
+          configurationMode={configurationMode}
           onConfigured={vi.fn()}
         />,
       ),
@@ -123,6 +130,15 @@ describe("WorktreePill", () => {
     render(actionStore({ aheadCount: 1, dirtyCount: 0 }));
 
     expect(candidates).not.toHaveBeenCalled();
+  });
+
+  it("offers draft as the final choice for a new session", () => {
+    render(actionStore({ aheadCount: 0, dirtyCount: 0 }), undefined, "new-session");
+
+    const draft = button("Draft");
+    expect(draft).toBe(container.querySelector("button:last-child"));
+    act(() => draft.click());
+    expect(select).toHaveBeenCalledWith("session", { kind: "draft" });
   });
 
   it("keeps the known worktree visible while live status is loading", () => {

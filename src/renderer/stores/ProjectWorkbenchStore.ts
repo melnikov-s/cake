@@ -417,6 +417,10 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     this.worktreeCreationStore.select(sessionId, choice);
   }
 
+  sessionCreationChoice(sessionId: string) {
+    return this.worktreeCreationStore.choice(sessionId);
+  }
+
   draftActivationCandidates(sessionId: string) {
     const session = this.sessionRegistry.findSession(sessionId);
     if (!session) return [];

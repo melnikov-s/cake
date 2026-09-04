@@ -5,7 +5,6 @@ import { ShellCommand } from "@/components/ai-elements/shell-command";
 import { Source } from "@/components/ai-elements/source";
 import { Tool, ToolRunTimer } from "@/components/ai-elements/tool";
 import { AnnotationSummary } from "@/components/annotation-summary";
-import { DraftActivationMenu } from "@/components/draft-activation-menu";
 import { IconButton } from "@/components/ui/icon-button";
 import { EditIcon, MarkdownIcon } from "@/components/ui/icons";
 import { ArtifactHost } from "@/components/artifact-host";
@@ -70,7 +69,6 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
           {part.entryId === behavior.store.lastEditableUserEntryId &&
             behavior.store.canEditLastUserMessage && (
               <>
-                {part.draft && <DraftActivationMenu store={behavior.store} />}
                 <IconButton
                   className="pointer-events-none opacity-0 transition-opacity group-hover/msg:pointer-events-auto group-hover/msg:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
                   tooltip="Edit message"

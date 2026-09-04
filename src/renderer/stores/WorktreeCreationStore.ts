@@ -7,7 +7,8 @@ import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordin
 export type WorktreeDraftChoice =
   | { kind: "current" }
   | { kind: "new"; baseWorktreePath?: string }
-  | { kind: "reuse"; worktreePath: string };
+  | { kind: "reuse"; worktreePath: string }
+  | { kind: "draft" };
 
 export type ExistingWorktreeCandidate = WorktreeRecord & { sessionTitle: string };
 
@@ -85,6 +86,7 @@ export class WorktreeCreationStore extends Store<WorktreeCreationStoreProps> {
   ): Promise<boolean> {
     const choice = this.choice(sessionId);
     if (choice.kind === "current") return true;
+    if (choice.kind === "draft") return false;
     if (this.preparingSessionId) return false;
     this.preparingSessionId = sessionId;
     const operationId = this.props.operations.start("project-workbench");

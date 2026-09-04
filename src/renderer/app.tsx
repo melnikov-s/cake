@@ -230,6 +230,17 @@ export const App = observer(function App() {
       onGoForward={goForward}
     />
   );
+  const sessionIsTemporary = session
+    ? store.sessionRegistry.isTemporarySession(session.sessionId)
+    : false;
+  const sessionIsDraft = session ? store.sessionRegistry.isDraftSession(session.sessionId) : false;
+  const worktreeConfigurationMode = sessionIsDraft
+    ? session?.composerStore.editingDraftSession
+      ? "edit-draft"
+      : "activate-draft"
+    : sessionIsTemporary
+      ? "new-session"
+      : undefined;
   const projectComposerHeader = session ? (
     <WorktreePill
       creation={store.worktreeCreationStore}
@@ -240,10 +251,7 @@ export const App = observer(function App() {
         root.sessionCatalogStore.projectOfManagedWorktree(session.workspacePath) ??
         session.workspacePath
       }
-      draft={
-        store.sessionRegistry.isTemporarySession(session.sessionId) &&
-        !store.sessionRegistry.isDraftSession(session.sessionId)
-      }
+      configurationMode={worktreeConfigurationMode}
       onConfigured={() => session.composerStore.requestFocus()}
     />
   ) : undefined;

@@ -37,6 +37,7 @@ export interface SessionRegistryStoreProps {
   ): { path: string; configuration?: ChatConfiguration; name?: string } | undefined;
   prepareNewSession?(sessionId: string, firstUserMessage: string): Promise<boolean>;
   configureDraftActivation?(sessionId: string, choice: WorktreeDraftChoice): void;
+  sessionCreationChoice?(sessionId: string): WorktreeDraftChoice;
   draftActivationCandidates?(sessionId: string): ExistingWorktreeCandidate[];
   onWorktreeLanded: WorktreeStoreProps["onLanded"];
   onWorktreeDiscarded: WorktreeStoreProps["onDiscarded"];
@@ -98,6 +99,8 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
           Promise.resolve(true),
         configureDraftActivation: (choice) =>
           this.props.configureDraftActivation?.(target.sessionId, choice),
+        sessionCreationChoice: () =>
+          this.props.sessionCreationChoice?.(target.sessionId) ?? { kind: "current" },
         draftActivationCandidates: () =>
           this.props.draftActivationCandidates?.(target.sessionId) ?? [],
         onWorktreeLanded: this.props.onWorktreeLanded,

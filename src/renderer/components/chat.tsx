@@ -129,6 +129,7 @@ export const Chat = observer(function Chat({
     text: string;
   }>();
   const composerVisible = store.composerVisible;
+  const activatingDraft = store.isDraftSession && !store.editingMessage;
   useLayoutEffect(() => {
     const layout = layoutRef.current;
     const dock = composerDockRef.current;
@@ -255,48 +256,55 @@ export const Chat = observer(function Chat({
         }
         onSubmit={(event) => {
           event.preventDefault();
-          void store.submit();
+          if (activatingDraft) void store.activateDraft();
+          else void store.submit();
         }}
         input={
-          <ChatComposerInput
-            store={store}
-            inputRef={composerInputRef}
-            onReword={(selection) => void reword(selection)}
-            onPromptedReword={setPromptedSelection}
-          />
+          activatingDraft ? undefined : (
+            <ChatComposerInput
+              store={store}
+              inputRef={composerInputRef}
+              onReword={(selection) => void reword(selection)}
+              onPromptedReword={setPromptedSelection}
+            />
+          )
         }
         toolbarLeading={
-          <>
-            {store.canAttach && (
-              <IconButton tooltip="Attach files" onClick={() => void store.addAttachments()}>
-                <PaperclipIcon />
-              </IconButton>
-            )}
-            {store.canAttach && store.configuration && (
-              <div className="mx-0.5 h-4 w-px bg-border/60" aria-hidden="true" />
-            )}
-          </>
+          !activatingDraft && (
+            <>
+              {store.canAttach && (
+                <IconButton tooltip="Attach files" onClick={() => void store.addAttachments()}>
+                  <PaperclipIcon />
+                </IconButton>
+              )}
+              {store.canAttach && store.configuration && (
+                <div className="mx-0.5 h-4 w-px bg-border/60" aria-hidden="true" />
+              )}
+            </>
+          )
         }
         toolbarActions={
           <>
-            <Usage store={store} />
-            {pluginActions}
+            {!activatingDraft && <Usage store={store} />}
+            {!activatingDraft && pluginActions}
             <ChatSubmitAction store={store} />
           </>
         }
       >
-        <QueuedPrompts store={store} />
-        {store.rewording && (
+        {!activatingDraft && <QueuedPrompts store={store} />}
+        {!activatingDraft && store.rewording && (
           <div className="px-2 pb-2 text-xs text-muted-foreground" role="status">
             Rewording selection…
           </div>
         )}
-        {composerContent}
-        <AnnotationSummary
-          annotations={store.annotations}
-          onRemove={(id) => store.removeAnnotation(id)}
-        />
-        {store.attachments.length > 0 && (
+        {!activatingDraft && composerContent}
+        {!activatingDraft && (
+          <AnnotationSummary
+            annotations={store.annotations}
+            onRemove={(id) => store.removeAnnotation(id)}
+          />
+        )}
+        {!activatingDraft && store.attachments.length > 0 && (
           <div className="flex flex-wrap gap-1.5 px-1.5 pb-1.5 pt-0.5">
             {store.attachments.map((attachment, index) =>
               attachment.kind === "annotation" ? null : attachment.kind === "source" ? (

@@ -50,6 +50,7 @@ export interface MessageComposerStoreProps {
     | undefined;
   prepareNewSession?(firstUserMessage: string): Promise<boolean>;
   configureDraftActivation?(choice: WorktreeDraftChoice): void;
+  sessionCreationChoice?(): WorktreeDraftChoice;
 }
 
 /** Owns attachments, the local prompt queue, optimistic immediate prompts, and prompt delivery. */
@@ -242,8 +243,18 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
       const sessionId = this.props.sessionId();
       if (!sessionId) return;
       await this.props.sessionRegistry.updateDraftSession(sessionId, text, attachments);
-      this.clearComposer();
       this.editingDraftSession = false;
+      const choice = this.props.sessionCreationChoice?.() ?? { kind: "draft" };
+      if (choice.kind !== "draft") {
+        await this.activateDraftSession(choice);
+        return;
+      }
+      this.clearComposer();
+      this.props.configureDraftActivation?.({ kind: "current" });
+      return;
+    }
+    if (this.props.sessionCreationChoice?.().kind === "draft") {
+      await this.createDraftSession();
       return;
     }
     const command = text.toLocaleLowerCase();
@@ -365,6 +376,7 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     if (!text && attachments.length === 0) return false;
     await this.props.sessionRegistry.createDraftSession(sessionId, text, attachments);
     this.clearComposer();
+    this.props.configureDraftActivation?.({ kind: "current" });
     if (text)
       void this.client.workspaces
         .generateSessionTitle(text, { signal: this.signal })
@@ -376,10 +388,10 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     return true;
   }
 
-  async activateDraftSession(choice: WorktreeDraftChoice = { kind: "current" }) {
+  async activateDraftSession(choice?: WorktreeDraftChoice) {
     const sessionId = this.props.sessionId();
-    if (!sessionId) return false;
-    this.props.configureDraftActivation?.(choice);
+    if (!sessionId || choice?.kind === "draft") return false;
+    if (choice) this.props.configureDraftActivation?.(choice);
     const staged = this.props.sessionRegistry.activateDraftSession(sessionId);
     if (!staged) return false;
     this.props.setDraft(staged.text);
@@ -396,6 +408,7 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
       this.props.setDraft(staged.text);
       this.restoreAttachments(staged.attachments);
       this.editingDraftSession = true;
+      this.props.configureDraftActivation?.({ kind: "draft" });
       this.requestFocus();
       return false;
     }

@@ -38,28 +38,27 @@ export interface WorktreePillProps {
   record?: WorktreeRecord;
   sessionId: string;
   projectPath: string;
-  draft: boolean;
+  configurationMode?: "new-session" | "activate-draft" | "edit-draft";
   onConfigured(): void;
 }
 
 type ConfirmationKind = "dirty-target" | "dirty-target-resolve" | "discard-resolve";
 
-/** Horizontal checkout choices for drafts and deterministic worktree actions for running sessions. */
+/** Horizontal session-start choices and deterministic worktree actions for running sessions. */
 export const WorktreePill = observer(function WorktreePill({
   creation,
   actions,
   record: knownRecord,
   sessionId,
   projectPath,
-  draft,
+  configurationMode,
   onConfigured,
 }: WorktreePillProps) {
   const [existingOpen, setExistingOpen] = useState(false);
   const [confirmation, setConfirmation] = useState<ConfirmationKind>();
   const choice = creation.choice(sessionId);
-  // Existing-worktree choices only belong to an unsent draft. Avoid subscribing every
-  // ordinary session render to the full session catalog just to produce an unused list.
-  const candidates = draft ? creation.candidates(projectPath) : [];
+  // Session-start choices are the only surface that needs the full worktree candidate list.
+  const candidates = configurationMode ? creation.candidates(projectPath) : [];
   const status = actions.status;
   const busy = actions.isBusy || creation.preparingSessionId === sessionId;
 
@@ -73,7 +72,7 @@ export const WorktreePill = observer(function WorktreePill({
     void operation.catch(() => undefined);
   };
 
-  if (draft) {
+  if (configurationMode) {
     const selectedExisting =
       choice.kind === "reuse"
         ? candidates.find((record) => record.worktreePath === choice.worktreePath)
@@ -171,6 +170,23 @@ export const WorktreePill = observer(function WorktreePill({
             })}
           </PopoverContent>
         </Popover>
+        {configurationMode !== "activate-draft" && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={busy}
+            aria-label="Draft"
+            aria-pressed={choice.kind === "draft"}
+            className={cn(
+              "ml-auto flex h-7.5 shrink-0 items-center rounded-lg bg-transparent px-2 text-xs font-normal text-muted-foreground shadow-none hover:bg-muted hover:text-foreground",
+              choice.kind === "draft" && "bg-muted text-foreground",
+            )}
+            onClick={() => choose({ kind: "draft" })}
+          >
+            Draft
+          </Button>
+        )}
       </div>
     );
   }

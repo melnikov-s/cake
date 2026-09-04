@@ -439,6 +439,8 @@ export class RootStore extends Store<{
         this.projectWorkbenchStore.prepareNewSession(sessionId, firstUserMessage),
       configureDraftActivation: (sessionId, choice) =>
         this.projectWorkbenchStore.configureDraftActivation(sessionId, choice),
+      sessionCreationChoice: (sessionId) =>
+        this.projectWorkbenchStore.sessionCreationChoice(sessionId),
       draftActivationCandidates: (sessionId) =>
         this.projectWorkbenchStore.draftActivationCandidates(sessionId),
       onWorktreeLanded: (record) => {

@@ -405,10 +405,9 @@ describe("Chat", () => {
     expect(store.draft).toBe("");
   });
 
-  it("opens the draft action when the send button is held", async () => {
-    vi.useFakeTimers();
+  it("replaces the input with an activation action for a saved draft", async () => {
     const submit = vi.fn(async () => true);
-    const createDraft = vi.fn(async () => true);
+    const activateDraft = vi.fn(async () => true);
     store = mount(
       createStore(ChatStore, {
         id: () => "draft-chat",
@@ -421,25 +420,17 @@ describe("Chat", () => {
         inputLabel: () => "Message",
         canSubmit: (draft) => Boolean(draft.trim()),
         submit,
-        createDraft,
-        canCreateDraft: () => true,
+        activateDraft,
+        isDraftSession: () => true,
       }),
     );
-    store.setDraft("Plan this work");
     act(() => root.render(<Chat store={store!} />));
 
-    const send = container.querySelector<HTMLButtonElement>(
-      '[aria-label="Send · hold to save as draft"]',
-    )!;
-    act(() => {
-      send.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, button: 0 }));
-      vi.advanceTimersByTime(600);
-    });
+    expect(container.querySelector('[aria-label="Message"]')).toBeNull();
+    const activate = container.querySelector<HTMLButtonElement>('[aria-label="Activate draft"]')!;
+    await act(async () => activate.click());
 
-    const createDraftAction = document.body.querySelector<HTMLButtonElement>('[role="menuitem"]')!;
-    expect(createDraftAction.textContent).toBe("Create draft");
-    await act(async () => createDraftAction.click());
-    expect(createDraft).toHaveBeenCalledOnce();
+    expect(activateDraft).toHaveBeenCalledOnce();
     expect(submit).not.toHaveBeenCalled();
   });
 

@@ -31,9 +31,8 @@ export interface ChatStoreProps {
     options?: { renderUserMessageAsMarkdown?: boolean },
   ): Promise<boolean | void>;
   setUserMessageMarkdown?(entryId: string, renderAsMarkdown: boolean): Promise<void>;
-  createDraft?(): Promise<boolean>;
-  canCreateDraft?(): boolean;
   activateDraft?(choice?: WorktreeDraftChoice): Promise<boolean>;
+  sessionCreationChoice?(): WorktreeDraftChoice;
   draftActivationCandidates?(): ExistingWorktreeCandidate[];
   editLastUserMessage?(entryId: string): boolean | undefined;
   isDraftSession?(): boolean;
@@ -224,8 +223,11 @@ export class ChatStore extends Store<ChatStoreProps> {
   get canSubmit() {
     return !this.submittingLocally && this.props.canSubmit(this.draft);
   }
-  get canCreateDraft() {
-    return Boolean(this.props.createDraft) && Boolean(this.props.canCreateDraft?.());
+  get canActivateDraft() {
+    return Boolean(this.props.activateDraft) && !this.submittingLocally;
+  }
+  get submitsAsDraft() {
+    return this.props.sessionCreationChoice?.().kind === "draft";
   }
   get isDraftSession() {
     return this.props.isDraftSession?.() ?? false;
@@ -480,9 +482,6 @@ export class ChatStore extends Store<ChatStoreProps> {
     this.props.removeQueuedPrompt?.(id);
   }
 
-  createDraft() {
-    return this.props.createDraft?.() ?? Promise.resolve(false);
-  }
   get draftActivationCandidates() {
     return this.props.draftActivationCandidates?.();
   }

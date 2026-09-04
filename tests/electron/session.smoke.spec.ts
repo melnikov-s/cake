@@ -136,15 +136,15 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
     await expect(newChatComposer).toBeFocused();
     await expect(page.locator(".session-item")).toHaveCount(sessionCountBeforeNewChat);
 
-    const draftSendButton = page.getByRole("button", { name: "Send · hold to save as draft" });
+    const draftChoice = page.getByRole("button", { name: "Draft", exact: true });
+    await draftChoice.click();
+    await expect(draftChoice).toHaveAttribute("aria-pressed", "true");
+    const draftSendButton = page.getByRole("button", { name: "Create draft" });
     await expect(draftSendButton).toBeEnabled();
-    await draftSendButton.dispatchEvent("pointerdown", { button: 0 });
-    const createDraftAction = page.getByRole("menuitem", { name: "Create draft" });
-    await expect(createDraftAction).toBeVisible();
-    await createDraftAction.click();
+    await draftSendButton.click();
     await expect(page.getByText("Immediate draft", { exact: true })).toBeVisible();
     await expect(page.getByText("Draft", { exact: true })).toBeVisible();
-    await expect(newChatComposer).toHaveValue("");
+    await expect(page.getByLabel("Message")).toHaveCount(0);
     // An explicitly saved draft is the pseudo-session that belongs in the sidebar.
     await expect(page.locator(".session-item")).toHaveCount(sessionCountBeforeNewChat + 1);
     await expect(page.locator('[data-slot="workspace-header"] strong')).toHaveText("New chat");
@@ -195,6 +195,9 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
       composerCentered: true,
       conversationCentered: true,
     });
+
+    await page.locator(".session-item").filter({ hasNotText: "Draft" }).first().click();
+    await expect(page.getByLabel("Message")).toBeVisible();
 
     const rendererCapabilities = await page.evaluate(() => ({
       require: typeof Reflect.get(window, "require"),

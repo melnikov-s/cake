@@ -69,10 +69,14 @@ test("restores, edits, resolves, and activates a project draft session", async (
     await expect(page.getByText("Draft", { exact: true })).toBeVisible();
     const draftSidebarItem = page.locator(`[data-session-id="${sessionId}"]`);
     await expect(draftSidebarItem.getByText("main", { exact: true })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Current checkout" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "New worktree" })).toHaveCount(0);
+    await expect(page.getByLabel("Message")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Current checkout" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "New worktree" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Draft", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Activate draft" })).toBeVisible();
     await page.getByRole("button", { name: "Resolve Planned work" }).click();
     await page.getByRole("button", { name: "Expand Resolved" }).click();
+    await page.getByRole("button", { name: "Expand project resolved" }).last().click();
     await expect(page.getByRole("button", { name: "Restore Planned work" })).toBeVisible();
     await page.getByRole("button", { name: "Restore Planned work" }).click();
 
@@ -81,12 +85,17 @@ test("restores, edits, resolves, and activates a project draft session", async (
     const composer = page.getByLabel("Message");
     await expect(composer).toBeFocused();
     await expect(composer).toHaveValue("Original plan");
+    await expect(page.getByRole("button", { name: "Draft", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     await composer.fill("Edited plan");
     await page.getByRole("button", { name: "Save draft" }).click();
     await expect(page.getByText("Edited plan", { exact: true })).toBeVisible();
+    await expect(page.getByLabel("Message")).toHaveCount(0);
 
+    await page.getByRole("button", { name: "Current checkout" }).click();
     await page.getByRole("button", { name: "Activate draft" }).click();
-    await page.getByRole("menuitem", { name: "Activate in current checkout" }).click();
     await expect(page.getByText("Draft", { exact: true })).toHaveCount(0);
     await expect(page.getByText("Edited plan", { exact: true })).toBeVisible();
   } finally {

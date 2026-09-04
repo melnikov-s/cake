@@ -41,6 +41,7 @@ export interface ProjectSessionStoreProps extends SessionTarget {
     | undefined;
   prepareNewSession(firstUserMessage: string): Promise<boolean>;
   configureDraftActivation(choice: WorktreeDraftChoice): void;
+  sessionCreationChoice(): WorktreeDraftChoice;
   draftActivationCandidates(): ExistingWorktreeCandidate[];
   onWorktreeLanded(record: Parameters<WorktreeStoreProps["onLanded"]>[0]): Promise<void> | void;
   onWorktreeDiscarded(
@@ -211,6 +212,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       newSessionRequest: this.props.newSessionRequest,
       prepareNewSession: (firstUserMessage) => this.props.prepareNewSession(firstUserMessage),
       configureDraftActivation: (choice) => this.props.configureDraftActivation(choice),
+      sessionCreationChoice: this.props.sessionCreationChoice,
     });
   }
 
@@ -281,11 +283,8 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
           { sessionId: this.sessionId, entryId, renderAsMarkdown },
           { signal: this.signal },
         ),
-      createDraft: () => this.composerStore.createDraftSession(),
-      canCreateDraft: () =>
-        this.props.registry.isTemporarySession(this.sessionId) &&
-        !this.props.registry.isDraftSession(this.sessionId),
       activateDraft: (choice) => this.composerStore.activateDraftSession(choice),
+      sessionCreationChoice: this.props.sessionCreationChoice,
       draftActivationCandidates: this.props.draftActivationCandidates,
       editLastUserMessage: (entryId) =>
         this.composerStore.beginEditMessage(
