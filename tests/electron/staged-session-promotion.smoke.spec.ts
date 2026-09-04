@@ -61,7 +61,7 @@ test("promotes a staged chat immediately and leaves New Chat free for the next s
     await composer.fill("First promoted session");
     await page.getByRole("button", { name: "Send" }).click();
     await expect(page.locator('[data-slot="workspace-header"] strong')).toHaveText(
-      "First promoted session",
+      "[project] First promoted session",
     );
     const firstSession = page.locator(".session-item.active");
     await expect(firstSession).toHaveCount(1, { timeout: 20_000 });
@@ -73,14 +73,16 @@ test("promotes a staged chat immediately and leaves New Chat free for the next s
     await stop.click();
     await page.getByRole("button", { name: "New chat in project", exact: true }).click();
     await expect(page.locator(".session-item.active")).toHaveCount(0);
-    await expect(page.locator('[data-slot="workspace-header"] strong')).toHaveText("New chat");
+    await expect(page.locator('[data-slot="workspace-header"] strong')).toHaveText(
+      "[project] New chat",
+    );
     await expect(composer).toHaveValue("");
     await expect(composer).toBeFocused();
 
     await composer.fill("Second promoted session");
     await page.getByRole("button", { name: "Send" }).click();
     await expect(page.locator('[data-slot="workspace-header"] strong')).toHaveText(
-      "Second promoted session",
+      "[project] Second promoted session",
     );
     await expect(page.locator(".session-item.active")).toHaveCount(1, { timeout: 20_000 });
 

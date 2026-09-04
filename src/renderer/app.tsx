@@ -15,7 +15,6 @@ import { DialogBackdrop } from "@/components/ui/dialog";
 import { IconButton } from "@/components/ui/icon-button";
 import {
   BackIcon,
-  BrowseIcon,
   ChangesIcon,
   ChatIcon,
   FolderIcon,
@@ -23,6 +22,7 @@ import {
   SidebarIcon,
   TerminalIcon,
   TreeIcon,
+  VsCodeIcon,
 } from "@/components/ui/icons";
 import { LoadingState } from "@/components/ui/loading-state";
 import { ResizeHandle } from "@/components/ui/resize-handle";
@@ -270,10 +270,11 @@ export const App = observer(function App() {
             projectChat={session.chatStore}
             projectComposerHeader={projectComposerHeader}
             sessionTitle={store.sessionTitle}
+            terminalDock={terminal.docked ? <QuakeTerminal store={terminal} /> : undefined}
             transcriptBehavior={projectTranscriptBehavior}
           />
         </StoreProvider>
-        <QuakeTerminal store={terminal} />
+        {!terminal.docked && <QuakeTerminal store={terminal} />}
       </>
     );
   const shellStyle: CSSProperties & Record<"--sidebar-width" | "--right-pane-width", string> = {
@@ -307,7 +308,7 @@ export const App = observer(function App() {
       )}
       <section
         data-slot="workspace"
-        className="relative col-start-2 grid h-full min-h-0 min-w-0 grid-rows-[52px_minmax(0,1fr)] overflow-hidden [contain:inline-size]"
+        className="relative col-start-2 grid h-full min-h-0 min-w-0 grid-rows-[52px_minmax(0,1fr)_auto] overflow-hidden [contain:inline-size]"
         data-session-id={
           shell.selection.kind === "cake-chat"
             ? shell.selection.sessionId
@@ -362,13 +363,9 @@ export const App = observer(function App() {
                 ? "Settings"
                 : surface === "global-chat"
                   ? "Cake Chat"
-                  : (extensionUi.title ?? (session ? store.sessionTitle : "Cake"))}
+                  : (extensionUi.title ??
+                    (session ? `[${store.projectName}] ${store.sessionTitle}` : "Cake"))}
             </strong>
-            {surface === "workbench" && store.projectPath && (
-              <span className="truncate font-mono text-[10px] text-muted-foreground max-[820px]:hidden">
-                {store.projectPath}
-              </span>
-            )}
           </div>
           <div className="flex min-w-0 shrink-0 items-center gap-1.5 [app-region:no-drag]">
             <div
@@ -472,38 +469,41 @@ export const App = observer(function App() {
               createPortal(
                 <>
                   <div className="flex shrink-0 items-center gap-1">
-                    <button
-                      className="flex h-7.5 shrink-0 items-center gap-1.5 rounded-lg bg-transparent px-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground [app-region:no-drag]"
-                      type="button"
+                    <Button
+                      className="h-7.5 shrink-0 gap-1.5 rounded-lg px-2 text-xs font-normal [app-region:no-drag]"
+                      variant="ghost"
+                      size="sm"
                       aria-label="Open VS Code"
                       onClick={() => void store.openIde()}
                     >
-                      <BrowseIcon />
+                      <VsCodeIcon />
                       <span>VS Code</span>
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       className={cn(
-                        "flex h-7.5 shrink-0 items-center gap-1.5 rounded-lg bg-transparent px-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground [app-region:no-drag]",
+                        "h-7.5 shrink-0 gap-1.5 rounded-lg px-2 text-xs font-normal [app-region:no-drag]",
                         store.commandPaneStore.pane === "tree" && "bg-muted text-foreground",
                       )}
-                      type="button"
+                      variant="ghost"
+                      size="sm"
                       aria-label="Session tree"
                       aria-pressed={store.commandPaneStore.pane === "tree"}
                       onClick={() => store.commandPaneStore.toggle("tree")}
                     >
                       <TreeIcon />
                       <span>Tree</span>
-                    </button>
+                    </Button>
                     {store.activeSessionExists && (
-                      <button
-                        className="flex h-7.5 shrink-0 items-center gap-1.5 rounded-lg bg-transparent px-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground [app-region:no-drag]"
-                        type="button"
+                      <Button
+                        className="h-7.5 shrink-0 gap-1.5 rounded-lg px-2 text-xs font-normal [app-region:no-drag]"
+                        variant="ghost"
+                        size="sm"
                         aria-label="Open workspace changes in VS Code"
                         onClick={() => void store.openWorkspaceChanges()}
                       >
                         <ChangesIcon />
                         <span>Changes</span>
-                      </button>
+                      </Button>
                     )}
                     <WorkLogControls store={session.chatStore} />
                   </div>
@@ -556,6 +556,7 @@ export const App = observer(function App() {
             </div>
           </StoreProvider>
         )}
+        {terminal.docked && <QuakeTerminal store={terminal} />}
       </section>
       <CommandPane store={store} extensionUi={extensionUi} />
       {store.commandPaneStore.pane && (
@@ -634,7 +635,7 @@ export const App = observer(function App() {
           </button>
         ))}
       </ToastHost>
-      <QuakeTerminal store={terminal} />
+      {!terminal.docked && <QuakeTerminal store={terminal} />}
       {store.agentAvailability === "unavailable" && store.projectPath && (
         <div className="fixed bottom-4 right-4 z-40 flex items-center gap-3 rounded-xl border border-border bg-card p-2.5 px-3 text-xs shadow-lg">
           <span>{store.agentAvailabilityReason ?? "The coding agent is unavailable."}</span>

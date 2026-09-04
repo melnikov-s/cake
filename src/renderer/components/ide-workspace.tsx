@@ -27,6 +27,7 @@ export const IdeWorkspace = observer(function IdeWorkspace({
   projectSidebarWidth,
   onProjectSidebarWidthChange,
   sessionTitle,
+  terminalDock,
   transcriptBehavior,
 }: {
   editor: EmbeddedEditorStore;
@@ -38,6 +39,7 @@ export const IdeWorkspace = observer(function IdeWorkspace({
   projectSidebarWidth: number;
   onProjectSidebarWidthChange(width: number): void;
   sessionTitle: string;
+  terminalDock?: ReactNode;
   transcriptBehavior: ChatTranscriptBehavior;
 }) {
   const [resizing, setResizing] = useState(false);
@@ -100,61 +102,66 @@ export const IdeWorkspace = observer(function IdeWorkspace({
           />
         </>
       ) : null}
-      <section className="min-w-0 flex-1" aria-label="VS Code workspace">
-        <EmbeddedEditorPane store={editor} />
-      </section>
-      {editor.chatSidebarVisible ? (
-        <>
-          <ResizeHandle
-            className="right-[calc(var(--ide-chat-sidebar-width)-5px)]"
-            label="Resize current session sidebar"
-            value={visibleChatSidebarWidth}
-            min={320}
-            max={chatSidebarMax}
-            edge="right"
-            onChange={(width) => editor.setChatSidebarWidth(width)}
-            onResizeStart={() => setResizing(true)}
-            onResizeEnd={() => setResizing(false)}
-          />
-          <aside className="flex w-[var(--ide-chat-sidebar-width)] min-w-0 flex-col border-l border-border bg-background shadow-[-12px_0_32px_color-mix(in_oklab,var(--foreground)_8%,transparent)]">
-            <header
-              className={cn(
-                "flex select-none items-center justify-between gap-3 border-b border-border px-3 [-webkit-app-region:drag]",
-                contextualAnchor ? "h-14" : "h-[35px]",
-              )}
-            >
-              <div className="min-w-0">
-                <strong className="block truncate text-xs">
-                  {contextualAnchor ? "Chat about selection" : sessionTitle}
-                </strong>
-                {contextualAnchor ? (
-                  <span className="block truncate font-mono text-[11px] text-muted-foreground">
-                    {anchorTitle(contextualAnchor)}
-                  </span>
-                ) : null}
-              </div>
-              {contextualAnchor ? (
-                <Button
-                  className="[-webkit-app-region:no-drag]"
-                  variant="ghost"
-                  size="sm"
-                  onClick={closeContext}
-                >
-                  Project chat
-                </Button>
-              ) : null}
-            </header>
-            <div className="min-h-0 flex-1">
-              <Chat
-                className="h-full"
-                store={chat}
-                transcriptBehavior={transcriptBehavior}
-                composerHeader={contextualChat ? undefined : projectComposerHeader}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <div className="flex min-h-0 min-w-0 flex-1">
+          <section className="min-w-0 flex-1" aria-label="VS Code workspace">
+            <EmbeddedEditorPane store={editor} />
+          </section>
+          {editor.chatSidebarVisible ? (
+            <>
+              <ResizeHandle
+                className="right-[calc(var(--ide-chat-sidebar-width)-5px)]"
+                label="Resize current session sidebar"
+                value={visibleChatSidebarWidth}
+                min={320}
+                max={chatSidebarMax}
+                edge="right"
+                onChange={(width) => editor.setChatSidebarWidth(width)}
+                onResizeStart={() => setResizing(true)}
+                onResizeEnd={() => setResizing(false)}
               />
-            </div>
-          </aside>
-        </>
-      ) : null}
+              <aside className="flex w-[var(--ide-chat-sidebar-width)] min-w-0 flex-col border-l border-border bg-background shadow-[-12px_0_32px_color-mix(in_oklab,var(--foreground)_8%,transparent)]">
+                <header
+                  className={cn(
+                    "flex select-none items-center justify-between gap-3 border-b border-border px-3 [-webkit-app-region:drag]",
+                    contextualAnchor ? "h-14" : "h-[35px]",
+                  )}
+                >
+                  <div className="min-w-0">
+                    <strong className="block truncate text-xs">
+                      {contextualAnchor ? "Chat about selection" : sessionTitle}
+                    </strong>
+                    {contextualAnchor ? (
+                      <span className="block truncate font-mono text-[11px] text-muted-foreground">
+                        {anchorTitle(contextualAnchor)}
+                      </span>
+                    ) : null}
+                  </div>
+                  {contextualAnchor ? (
+                    <Button
+                      className="[-webkit-app-region:no-drag]"
+                      variant="ghost"
+                      size="sm"
+                      onClick={closeContext}
+                    >
+                      Project chat
+                    </Button>
+                  ) : null}
+                </header>
+                <div className="min-h-0 flex-1">
+                  <Chat
+                    className="h-full"
+                    store={chat}
+                    transcriptBehavior={transcriptBehavior}
+                    composerHeader={contextualChat ? undefined : projectComposerHeader}
+                  />
+                </div>
+              </aside>
+            </>
+          ) : null}
+        </div>
+        {terminalDock}
+      </div>
     </main>
   );
 });

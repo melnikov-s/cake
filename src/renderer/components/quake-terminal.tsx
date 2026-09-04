@@ -11,7 +11,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { DialogBackdrop } from "@/components/ui/dialog";
 import { IconButton } from "@/components/ui/icon-button";
-import { CloseIcon, TerminalIcon } from "@/components/ui/icons";
+import {
+  CloseIcon,
+  DockBottomIcon,
+  MoveTopIcon,
+  PlusIcon,
+  TerminalIcon,
+} from "@/components/ui/icons";
 import { ResizeHandle } from "@/components/ui/resize-handle";
 import { TerminalView } from "@/components/ui/terminal-view";
 import { terminalToggleAcceleratorHint } from "@/lib/platform";
@@ -39,24 +45,86 @@ export const QuakeTerminal = observer(function QuakeTerminal({ store }: { store:
     <>
       <section
         className={cn(
-          "fixed inset-x-0 top-0 z-[100] flex min-h-[220px] flex-col border-b border-border bg-background shadow-[0_20px_60px_-24px_hsl(var(--shadow)/0.7)] transition-transform duration-180 ease-out",
-          store.open ? "translate-y-0" : "-translate-y-full pointer-events-none",
+          "flex min-h-[220px] flex-col bg-background",
+          store.docked
+            ? "relative z-30 w-full border-t border-border"
+            : "fixed inset-x-0 top-0 z-[100] border-b border-border shadow-[0_20px_60px_-24px_hsl(var(--shadow)/0.7)] transition-transform duration-180 ease-out",
+          store.open
+            ? "translate-y-0"
+            : store.docked
+              ? "hidden"
+              : "-translate-y-full pointer-events-none",
         )}
         style={style}
         aria-label="Terminal"
         aria-hidden={!store.open}
       >
-        <header className="flex h-10 shrink-0 items-center gap-2 border-b border-border/70 pl-20 pr-2 [app-region:drag]">
-          <TerminalIcon />
-          <strong className="text-xs font-semibold">{active?.shell ?? "Terminal"}</strong>
-          {target && (
-            <span className="min-w-0 flex-1 truncate font-mono text-[10px] text-muted-foreground">
-              {target.kind === "project" ? target.workspacePath : "~"}
-            </span>
+        <header
+          className={cn(
+            "flex h-10 shrink-0 items-center gap-1 border-b border-border/70 pr-2 [app-region:drag]",
+            store.docked ? "pl-2" : "pl-20",
           )}
-          <span className="font-mono text-[10px] text-muted-foreground">
+        >
+          <span className="mr-1 grid shrink-0 place-items-center text-muted-foreground">
+            <TerminalIcon />
+          </span>
+          <div
+            className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [app-region:no-drag]"
+            role="tablist"
+            aria-label="Terminal tabs"
+          >
+            {store.activeEntries.map((entry, index) => {
+              const isActive = entry.key === active?.key;
+              const label = entry.shell ?? (entry.opening ? "Starting…" : "Terminal");
+              return (
+                <div key={entry.key} className="flex shrink-0 items-center rounded-md bg-muted/35">
+                  <Button
+                    className={cn(
+                      "h-7 rounded-md px-2 font-mono text-[11px] font-medium",
+                      isActive && "bg-muted text-foreground",
+                    )}
+                    variant="ghost"
+                    size="sm"
+                    role="tab"
+                    aria-selected={isActive}
+                    onClick={() => store.activate(entry.key)}
+                  >
+                    {label}
+                    {store.activeEntries.length > 1 ? ` ${index + 1}` : ""}
+                  </Button>
+                  {isActive && store.activeEntries.length > 1 && (
+                    <IconButton
+                      className="mr-0.5 size-6"
+                      tooltip={`Close ${label} tab`}
+                      onClick={() => void store.closeTab(entry.key)}
+                    >
+                      <CloseIcon size={12} />
+                    </IconButton>
+                  )}
+                </div>
+              );
+            })}
+            <IconButton
+              className="size-7 shrink-0"
+              tooltip="New terminal tab (⌘T)"
+              disabled={!target}
+              onClick={() => void store.newTab()}
+            >
+              <PlusIcon />
+            </IconButton>
+          </div>
+          <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
             {terminalToggleAcceleratorHint}
           </span>
+          {store.docked ? (
+            <IconButton tooltip="Move terminal to top" onClick={() => store.moveToTop()}>
+              <MoveTopIcon />
+            </IconButton>
+          ) : (
+            <IconButton tooltip="Pin terminal to bottom" onClick={() => store.dock()}>
+              <DockBottomIcon />
+            </IconButton>
+          )}
           <IconButton tooltip="Hide terminal" onClick={() => store.hide()}>
             <CloseIcon size={16} />
           </IconButton>
@@ -77,6 +145,7 @@ export const QuakeTerminal = observer(function QuakeTerminal({ store }: { store:
                   <TerminalView
                     active={isActive && store.open}
                     onData={(data) => store.write(entry.key, data)}
+                    onNewTab={() => void store.newTab()}
                     onResize={(cols, rows) => store.resize(entry.key, cols, rows)}
                     subscribe={(listener) => store.subscribeData(entry.key, listener)}
                   />
@@ -93,12 +162,12 @@ export const QuakeTerminal = observer(function QuakeTerminal({ store }: { store:
           })}
         </div>
         <ResizeHandle
-          className="-bottom-[5px]"
+          className={store.docked ? "-top-[5px]" : "-bottom-[5px]"}
           label="Resize terminal"
           value={height}
           min={220}
           max={maxHeight}
-          edge="top"
+          edge={store.docked ? "bottom" : "top"}
           onChange={setHeight}
         />
       </section>

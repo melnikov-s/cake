@@ -147,7 +147,9 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
     await expect(page.getByLabel("Message")).toHaveCount(0);
     // An explicitly saved draft is the pseudo-session that belongs in the sidebar.
     await expect(page.locator(".session-item")).toHaveCount(sessionCountBeforeNewChat + 1);
-    await expect(page.locator('[data-slot="workspace-header"] strong')).toHaveText("New chat");
+    await expect(page.locator('[data-slot="workspace-header"] strong')).toHaveText(
+      "[project] New chat",
+    );
     await expect(page.getByLabel("Back to chat")).toHaveCount(0);
     await page.evaluate(() => {
       const longTitle = `Investigate-${"very-long-session-name-".repeat(500)}`;

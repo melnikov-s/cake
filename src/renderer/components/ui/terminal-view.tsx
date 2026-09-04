@@ -7,6 +7,7 @@ export interface TerminalViewProps {
   className?: string;
   active?: boolean;
   onData(data: string): void;
+  onNewTab(): void;
   onResize(cols: number, rows: number): void;
   subscribe(listener: (data: string) => void): () => void;
 }
@@ -26,14 +27,15 @@ export function TerminalView({
   className,
   active = true,
   onData,
+  onNewTab,
   onResize,
   subscribe,
 }: TerminalViewProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal>(null);
   const fitRef = useRef<FitAddon>(null);
-  const callbacksRef = useRef({ onData, onResize, subscribe });
-  callbacksRef.current = { onData, onResize, subscribe };
+  const callbacksRef = useRef({ onData, onNewTab, onResize, subscribe });
+  callbacksRef.current = { onData, onNewTab, onResize, subscribe };
 
   useEffect(() => {
     const host = hostRef.current;
@@ -53,6 +55,13 @@ export function TerminalView({
     fitRef.current = fit;
     terminal.loadAddon(fit);
     terminal.open(host);
+    terminal.attachCustomKeyEventHandler((event) => {
+      if (event.type !== "keydown" || !event.metaKey || event.key.toLowerCase() !== "t")
+        return true;
+      event.preventDefault();
+      callbacksRef.current.onNewTab();
+      return false;
+    });
     const fitTerminal = () => {
       if (!host.isConnected || host.clientWidth === 0 || host.clientHeight === 0) return;
       fit.fit();

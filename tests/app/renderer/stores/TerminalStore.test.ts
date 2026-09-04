@@ -85,9 +85,30 @@ describe("TerminalStore", () => {
     finishOpen({ terminalId, shell: "zsh" });
     await opening;
     const output: string[] = [];
-    store.subscribeData("project:one", (data) => output.push(data));
+    store.subscribeData(store.activeEntry!.key, (data) => output.push(data));
 
     expect(output).toEqual(["prompt> "]);
+  });
+
+  it("opens and switches independent tabs for the active session", async () => {
+    const open = vi.fn(async () => ({ terminalId: crypto.randomUUID(), shell: "zsh" }));
+    const store = mountTerminal(() => projectTarget("one"), { open });
+
+    await store.toggle();
+    const firstKey = store.activeEntry!.key;
+    await store.newTab();
+    const secondKey = store.activeEntry!.key;
+
+    expect(store.activeEntries).toHaveLength(2);
+    expect(secondKey).not.toBe(firstKey);
+    expect(open).toHaveBeenCalledTimes(2);
+    store.activate(firstKey);
+    expect(store.activeEntry?.key).toBe(firstKey);
+
+    store.dock();
+    expect(store.docked).toBe(true);
+    store.moveToTop();
+    expect(store.docked).toBe(false);
   });
 
   it("requires confirmation and closes terminals with running programs before resolution", async () => {

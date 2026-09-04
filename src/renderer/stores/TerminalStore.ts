@@ -28,7 +28,9 @@ export class TerminalStore extends Store<{
   }
 
   open = false;
+  docked = false;
   entries: TerminalEntry[] = [];
+  activeEntryKeys: Record<string, string> = {};
   resolutionRequest: { runningProgramCount: number } | undefined;
   private pendingResolution: PendingResolution | undefined;
   private readonly dataListeners = new Map<string, Set<(data: string) => void>>();
@@ -75,9 +77,18 @@ export class TerminalStore extends Store<{
     return Boolean(this.activeTarget && this.terminals.open);
   }
 
+  get activeEntries() {
+    const target = this.activeTarget;
+    if (!target) return [];
+    const targetKey = this.targetKey(target);
+    return this.entries.filter((entry) => this.targetKey(entry.target) === targetKey);
+  }
+
   get activeEntry() {
     const target = this.activeTarget;
-    return target ? this.entries.find((entry) => entry.key === this.targetKey(target)) : undefined;
+    if (!target) return undefined;
+    const activeKey = this.activeEntryKeys[this.targetKey(target)];
+    return this.activeEntries.find((entry) => entry.key === activeKey) ?? this.activeEntries.at(-1);
   }
 
   async toggle() {
@@ -94,25 +105,92 @@ export class TerminalStore extends Store<{
     this.open = false;
   }
 
+  dock() {
+    this.docked = true;
+  }
+
+  moveToTop() {
+    this.docked = false;
+  }
+
+  activate(key: string) {
+    const entry = this.entries.find((candidate) => candidate.key === key);
+    if (!entry || this.targetKey(entry.target) !== this.activeTargetKey) return;
+    this.setActiveEntry(entry.target, key);
+  }
+
+  async newTab(cols = 80, rows = 24) {
+    const target = this.activeTarget;
+    if (!target) return;
+    this.open = true;
+    await this.start(target, cols, rows, true);
+  }
+
+  async closeTab(key: string) {
+    const entry = this.entries.find((candidate) => candidate.key === key);
+    if (!entry) return;
+    if (entry.terminalId) await this.terminals.close(entry.terminalId).catch(() => undefined);
+    const targetKey = this.targetKey(entry.target);
+    const remaining = this.entries.filter(
+      (candidate) => candidate.key !== key && this.targetKey(candidate.target) === targetKey,
+    );
+    this.entries = this.entries.filter((candidate) => candidate.key !== key);
+    this.dataListeners.delete(key);
+    this.bufferedData.delete(key);
+    const next = remaining.at(-1);
+    if (next) this.setActiveEntry(next.target, next.key);
+    else {
+      const activeEntryKeys = { ...this.activeEntryKeys };
+      delete activeEntryKeys[targetKey];
+      this.activeEntryKeys = activeEntryKeys;
+      if (targetKey === this.activeTargetKey) this.open = false;
+    }
+  }
+
   async restart(key: string, cols: number, rows: number) {
     const entry = this.entries.find((candidate) => candidate.key === key);
     if (entry) await this.start(entry.target, cols, rows);
   }
 
+  private get activeTargetKey() {
+    return this.activeTarget ? this.targetKey(this.activeTarget) : undefined;
+  }
+
   private async ensureCurrent(cols = 80, rows = 24) {
     const target = this.activeTarget;
     if (!target) return;
-    const entry = this.entries.find((candidate) => candidate.key === this.targetKey(target));
+    const entry = this.activeEntry;
     if (!entry || (!entry.terminalId && !entry.opening)) await this.start(target, cols, rows);
   }
 
-  private async start(target: TerminalTarget, cols: number, rows: number) {
+  private async start(target: TerminalTarget, cols: number, rows: number, forceNew = false) {
     const openTerminal = this.terminals.open;
     if (!openTerminal) return;
-    const key = this.targetKey(target);
-    const current = this.entries.find((entry) => entry.key === key);
-    if (current?.opening || current?.terminalId) return;
+    const current = this.activeEntry;
+    if (!forceNew && current && this.targetKey(current.target) === this.targetKey(target)) {
+      if (current.opening || current.terminalId) return;
+      return this.restartEntry(current, cols, rows);
+    }
+    const key = `${this.targetKey(target)}:${crypto.randomUUID()}`;
     this.setEntry({ key, target, opening: true });
+    this.setActiveEntry(target, key);
+    await this.openEntry(key, target, cols, rows);
+  }
+
+  private async restartEntry(entry: TerminalEntry, cols: number, rows: number) {
+    this.setEntry({
+      ...entry,
+      terminalId: undefined,
+      shell: undefined,
+      opening: true,
+      error: undefined,
+    });
+    await this.openEntry(entry.key, entry.target, cols, rows);
+  }
+
+  private async openEntry(key: string, target: TerminalTarget, cols: number, rows: number) {
+    const openTerminal = this.terminals.open;
+    if (!openTerminal) return;
     try {
       const opened = await openTerminal({ target, cols, rows });
       if (this.signal.aborted) {
@@ -162,13 +240,12 @@ export class TerminalStore extends Store<{
       return;
     }
     if (event.type === "terminal-data") {
+      this.bufferedData.set(
+        entry.key,
+        `${this.bufferedData.get(entry.key) ?? ""}${event.data}`.slice(-1_000_000),
+      );
       const listeners = this.dataListeners.get(entry.key);
       if (listeners?.size) for (const listener of listeners) listener(event.data);
-      else
-        this.bufferedData.set(
-          entry.key,
-          `${this.bufferedData.get(entry.key) ?? ""}${event.data}`.slice(-1_000_000),
-        );
       return;
     }
     this.updateEntry(entry.key, {
@@ -183,10 +260,7 @@ export class TerminalStore extends Store<{
     listeners.add(listener);
     this.dataListeners.set(key, listeners);
     const buffered = this.bufferedData.get(key);
-    if (buffered) {
-      listener(buffered);
-      this.bufferedData.delete(key);
-    }
+    if (buffered) listener(buffered);
     return () => {
       listeners.delete(listener);
       if (listeners.size === 0) this.dataListeners.delete(key);
@@ -196,7 +270,7 @@ export class TerminalStore extends Store<{
   async prepareResolution(targets: readonly Pick<TerminalTarget, "kind" | "sessionId">[]) {
     const targetKeys = new Set(targets.map((target) => `${target.kind}:${target.sessionId}`));
     const terminals = this.entries.flatMap((entry) =>
-      entry.terminalId && targetKeys.has(entry.key)
+      entry.terminalId && targetKeys.has(this.targetKey(entry.target))
         ? [{ key: entry.key, terminalId: entry.terminalId }]
         : [],
     );
@@ -222,7 +296,7 @@ export class TerminalStore extends Store<{
   discardResolvedSessions(targets: readonly Pick<TerminalTarget, "kind" | "sessionId">[]) {
     const targetKeys = new Set(targets.map((target) => `${target.kind}:${target.sessionId}`));
     const keys = this.entries
-      .filter((entry) => targetKeys.has(entry.key))
+      .filter((entry) => targetKeys.has(this.targetKey(entry.target)))
       .map((entry) => entry.key);
     if (keys.length > 0) void this.closeKeys(keys);
   }
@@ -256,7 +330,17 @@ export class TerminalStore extends Store<{
       ),
     );
     const keySet = new Set(keys);
+    const removedTargetKeys = new Set(
+      this.entries
+        .filter((entry) => keySet.has(entry.key))
+        .map((entry) => this.targetKey(entry.target)),
+    );
     this.entries = this.entries.filter((entry) => !keySet.has(entry.key));
+    this.activeEntryKeys = Object.fromEntries(
+      Object.entries(this.activeEntryKeys).filter(
+        ([targetKey, entryKey]) => !removedTargetKeys.has(targetKey) || !keySet.has(entryKey),
+      ),
+    );
     for (const key of keys) {
       this.dataListeners.delete(key);
       this.bufferedData.delete(key);
@@ -265,6 +349,10 @@ export class TerminalStore extends Store<{
 
   private targetKey(target: Pick<TerminalTarget, "kind" | "sessionId">) {
     return `${target.kind}:${target.sessionId}`;
+  }
+
+  private setActiveEntry(target: TerminalTarget, key: string) {
+    this.activeEntryKeys = { ...this.activeEntryKeys, [this.targetKey(target)]: key };
   }
 
   private setEntry(entry: TerminalEntry) {

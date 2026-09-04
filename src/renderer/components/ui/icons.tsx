@@ -247,15 +247,26 @@ export const TerminalIcon = () => (
     <path d="m7.5 9 3 3-3 3M13 15h3.5" />
   </Icon>
 );
+export const VsCodeIcon = () => (
+  <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M17.5 2.3 9.2 10 4.4 6.3 2 7.7v8.6l2.4 1.4 4.8-3.7 8.3 7.7 4.5-2.2v-15zM4.7 14.5v-5l2.9 2.5zm12.6 2.2L11.1 12l6.2-4.7z" />
+  </svg>
+);
+export const DockBottomIcon = () => (
+  <Icon>
+    <rect x="3.5" y="4" width="17" height="16" rx="2.5" />
+    <path d="M4 14h16M9 17h6" />
+  </Icon>
+);
+export const MoveTopIcon = () => (
+  <Icon>
+    <rect x="3.5" y="4" width="17" height="16" rx="2.5" />
+    <path d="M4 10h16M9 7h6" />
+  </Icon>
+);
 export const ChangesIcon = () => (
   <Icon size={15}>
     <path d="M4 7h10M4 17h10M17 4v6M14 7l3 3 3-3M17 14v6M14 17l3 3 3-3" />
-  </Icon>
-);
-export const BrowseIcon = () => (
-  <Icon size={15}>
-    <path d="M4 5.5h6l1.8 2H20v11H4z" />
-    <path d="M4 9h16" />
   </Icon>
 );
 export const TreeIcon = () => (

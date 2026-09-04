@@ -29,14 +29,6 @@ export class TerminalManager {
     cols: number,
     rows: number,
   ) {
-    const existing = [...this.terminals.entries()].find(
-      ([, terminal]) =>
-        terminal.ownerId === ownerId &&
-        terminal.kind === target.kind &&
-        terminal.sessionId === target.sessionId,
-    );
-    if (existing) return { terminalId: existing[0], shell: basename(existing[1].process.process) };
-
     const shell =
       process.env.SHELL ||
       (process.platform === "win32"

@@ -99,38 +99,70 @@ test("Quake terminal runs a shell and only warns on resolution for a running pro
     await expect(panel).toHaveAttribute("aria-hidden", "true");
     await page.getByRole("button", { name: /^Terminal \(/ }).click();
     await expect(panel).toHaveAttribute("aria-hidden", "false");
-    await expect(panel.locator(".xterm-screen")).toBeVisible();
-    await panel.locator(".xterm-screen").click();
+    await expect(panel.locator(".xterm-screen:visible")).toBeVisible();
+    await panel.locator(".xterm-screen:visible").click();
     await page.keyboard.type("printf CAKE_TERMINAL_OK");
     await page.keyboard.press("Enter");
-    await expect(panel.locator(".xterm-rows")).toContainText("CAKE_TERMINAL_OK", {
+    await expect(panel.locator(".xterm-rows:visible")).toContainText("CAKE_TERMINAL_OK", {
       timeout: 10_000,
     });
+
+    await page.keyboard.press("Meta+t");
+    await expect(panel.getByRole("tab")).toHaveCount(2);
+
+    await page.getByRole("button", { name: "Pin terminal to bottom" }).click();
+    const workspace = page.locator('[data-slot="workspace"]');
+    const sidebar = page.locator('[data-slot="sidebar"]');
+    const dockedBounds = await panel.boundingBox();
+    const workspaceBounds = await workspace.boundingBox();
+    const sidebarBounds = await sidebar.boundingBox();
+    expect(dockedBounds).not.toBeNull();
+    expect(workspaceBounds).not.toBeNull();
+    expect(sidebarBounds).not.toBeNull();
+    expect(dockedBounds!.x).toBeGreaterThanOrEqual(workspaceBounds!.x);
+    expect(dockedBounds!.x).toBeGreaterThanOrEqual(sidebarBounds!.x + sidebarBounds!.width - 1);
+    expect(dockedBounds!.width).toBeLessThanOrEqual(workspaceBounds!.width + 1);
+    expect(dockedBounds!.y + dockedBounds!.height).toBeLessThanOrEqual(
+      workspaceBounds!.y + workspaceBounds!.height + 1,
+    );
+
+    await panel.locator(".xterm-screen:visible").click();
+    await page.keyboard.press("Meta+t");
+    await expect(panel.getByRole("tab")).toHaveCount(3);
+    await page.getByRole("button", { name: "Move terminal to top" }).click();
+    await expect(page.getByRole("button", { name: "Pin terminal to bottom" })).toBeVisible();
 
     await toggleTerminalViaMenu();
     await expect(panel).toHaveAttribute("aria-hidden", "true");
     await toggleTerminalViaMenu();
     await expect(panel).toHaveAttribute("aria-hidden", "false");
-    await expect(panel.locator(".xterm-rows")).toContainText("CAKE_TERMINAL_OK");
+    await panel.getByRole("tab").first().click();
+    await expect(panel.locator(".xterm-rows:visible")).toContainText("CAKE_TERMINAL_OK");
 
-    await panel.locator(".xterm-screen").click();
+    await panel.getByRole("tab").last().click();
+    await panel.locator(".xterm-screen:visible").click();
     await page.keyboard.type("sleep 60");
     await page.keyboard.press("Enter");
+    await expect(panel.locator(".xterm-rows:visible")).toContainText("sleep 60");
+    await page.waitForTimeout(250);
     await toggleTerminalViaMenu();
     await expect(panel).toHaveAttribute("aria-hidden", "true");
     const resolveAction = page.locator(
       `.session-item[data-session-id='${sessionId}'] .session-resolve-action`,
     );
     await resolveAction.click();
-    await expect(page.getByText("Resolve and stop running program?")).toBeVisible();
+    await expect(page.getByText(/Resolve and stop running programs?\?/)).toBeVisible();
     await page.getByRole("button", { name: "Cancel" }).click();
 
     await toggleTerminalViaMenu();
-    await panel.locator(".xterm-screen").click();
-    await page.keyboard.press("Control+C");
+    for (let index = 0; index < 3; index++) {
+      await panel.getByRole("tab").nth(index).click();
+      await panel.locator(".xterm-screen:visible").click();
+      await page.keyboard.press("Control+C");
+    }
     await page.keyboard.type("printf CAKE_TERMINAL_IDLE");
     await page.keyboard.press("Enter");
-    await expect(panel.locator(".xterm-rows")).toContainText("CAKE_TERMINAL_IDLE");
+    await expect(panel.locator(".xterm-rows:visible")).toContainText("CAKE_TERMINAL_IDLE");
     await toggleTerminalViaMenu();
     await expect(panel).toHaveAttribute("aria-hidden", "true");
     await resolveAction.click();
