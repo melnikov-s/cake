@@ -64,6 +64,31 @@ describe("AppShellStore session history", () => {
     shell[Symbol.dispose]();
   });
 
+  it("skips resolved sessions when stepping backward and forward", () => {
+    const resolution = observable({ projectB: false, cakeChat: false });
+    const shell = createShell(undefined, {
+      project: (sessionId) => (sessionId === "b" ? resolution.projectB : false),
+      cakeChat: (sessionId) => (sessionId === "cake-1" ? resolution.cakeChat : false),
+    });
+    shell.selectProjectSession("a");
+    shell.selectProjectSession("b");
+    shell.selectCakeChat("cake-1");
+    shell.selectProjectSession("c");
+
+    resolution.projectB = true;
+    resolution.cakeChat = true;
+
+    expect(shell.canGoBack).toBe(true);
+    expect(shell.goBack()).toEqual({ kind: "project-session", sessionId: "a" });
+    shell.selectProjectSession("a");
+    expect(shell.canGoBack).toBe(false);
+    expect(shell.canGoForward).toBe(true);
+    expect(shell.goForward()).toEqual({ kind: "project-session", sessionId: "c" });
+    shell.selectProjectSession("c");
+    expect(shell.canGoForward).toBe(false);
+    shell[Symbol.dispose]();
+  });
+
   it("does not duplicate history when the current session is reselected", () => {
     const shell = createShell();
     shell.selectProjectSession("a");

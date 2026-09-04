@@ -69,31 +69,45 @@ export class AppShellStore extends Store<AppShellStoreProps> {
   }
 
   get canGoBack() {
-    return this.sessionHistoryCursor > 0;
+    return this.historyCursorInDirection(-1) !== undefined;
   }
 
   get canGoForward() {
-    return (
-      this.sessionHistoryCursor >= 0 && this.sessionHistoryCursor < this.sessionHistory.length - 1
-    );
+    return this.historyCursorInDirection(1) !== undefined;
   }
 
-  /** Steps the history cursor back; the caller must navigate to the returned entry. */
+  /** Steps the history cursor back to the next unresolved entry. */
   goBack(): SessionHistoryEntry | undefined {
-    if (!this.canGoBack) return undefined;
-    const cursor = this.sessionHistoryCursor - 1;
+    const cursor = this.historyCursorInDirection(-1);
+    if (cursor === undefined) return undefined;
     const entry = this.sessionHistory[cursor]!;
     this.pendingTraversal = { entry, cursor };
     return entry;
   }
 
-  /** Steps the history cursor forward; the caller must navigate to the returned entry. */
+  /** Steps the history cursor forward to the next unresolved entry. */
   goForward(): SessionHistoryEntry | undefined {
-    if (!this.canGoForward) return undefined;
-    const cursor = this.sessionHistoryCursor + 1;
+    const cursor = this.historyCursorInDirection(1);
+    if (cursor === undefined) return undefined;
     const entry = this.sessionHistory[cursor]!;
     this.pendingTraversal = { entry, cursor };
     return entry;
+  }
+
+  private historyCursorInDirection(direction: -1 | 1): number | undefined {
+    for (
+      let cursor = this.sessionHistoryCursor + direction;
+      cursor >= 0 && cursor < this.sessionHistory.length;
+      cursor += direction
+    ) {
+      const entry = this.sessionHistory[cursor]!;
+      const resolved =
+        entry.kind === "project-session"
+          ? this.props.projectSessionResolved(entry.sessionId)
+          : this.props.cakeChatSessionResolved(entry.sessionId);
+      if (resolved !== true) return cursor;
+    }
+    return undefined;
   }
 
   /**
