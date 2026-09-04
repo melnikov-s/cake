@@ -240,6 +240,13 @@ export const cakeRpcPayloadSchemas = {
   "open-external-url": Schema.Struct({
     url: stringMax(8_192),
   }),
+  "show-notification": Schema.Struct({
+    title: bounded(1, 256),
+    body: bounded(1, 2_000),
+    level: Schema.Literals(["info", "success", "warning", "error"]),
+    id: Schema.optionalKey(bounded(1, 512)),
+    groupId: Schema.optionalKey(bounded(1, 512)),
+  }),
   "show-transcript-selection-context-menu": Schema.Struct({
     canChat: Schema.Boolean,
     canAnnotate: Schema.Boolean,
@@ -455,6 +462,7 @@ const cakeRpcResultSchemas = {
     path: Schema.optional(stringMax(4_096)),
   }),
   "external-url-opened": Schema.Struct({}),
+  "notification-shown": Schema.Struct({}),
   "transcript-selection-context-menu-closed": Schema.Struct({
     action: Schema.optional(Schema.Literals(["chat-about-selection", "add-annotation"])),
   }),
@@ -542,6 +550,7 @@ const cakeRpcResultSchemas = {
 export const cakeRpcSuccessSchemas = {
   "choose-project": cakeRpcResultSchemas["project-chosen"],
   "open-external-url": cakeRpcResultSchemas["external-url-opened"],
+  "show-notification": cakeRpcResultSchemas["notification-shown"],
   "show-transcript-selection-context-menu":
     cakeRpcResultSchemas["transcript-selection-context-menu-closed"],
   "show-composer-context-menu": cakeRpcResultSchemas["composer-context-menu-closed"],

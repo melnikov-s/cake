@@ -974,7 +974,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       {
         command: "notifications.send",
         topic: "notifications",
-        summary: "Send a bounded user notification through Cake's normal notification surface.",
+        summary: "Send a bounded native system notification through the operating system.",
         inputSchema: Schema.Struct({
           title: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
           body: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(2_000)),
@@ -991,8 +991,9 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
             },
           },
         ],
-        result: "A sent status after Cake accepts the notification.",
+        result: "A queued status after Cake accepts the notification for debounced delivery.",
         limitations: [
+          "Notifications are debounced per calling session, so only the latest message in a burst is delivered.",
           "Notifications do not impersonate user input or enter another session transcript.",
         ],
         execute: invokeAppControl("notifications.send"),

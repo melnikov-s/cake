@@ -22,6 +22,7 @@ import { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorS
 import { AppControlOperationStore } from "./AppControlOperationStore";
 import { ProjectCatalogStore } from "./ProjectCatalogStore";
 import { ProjectSettingsStore } from "./ProjectSettingsStore";
+import { NotificationStore } from "./NotificationStore";
 import { ToastStore } from "./ToastStore";
 import { TerminalStore, type TerminalTarget } from "./TerminalStore";
 import { SessionLayoutStore, type SessionSplitAxis } from "./SessionLayoutStore";
@@ -597,6 +598,18 @@ export class RootStore extends Store<{
   }
 
   @child
+  get notificationStore(): NotificationStore {
+    return createStore(NotificationStore, {
+      onError: (error) =>
+        this.toastStore.show({
+          tone: "error",
+          title: "Notification failed",
+          message: error instanceof Error ? error.message : String(error),
+        }),
+    });
+  }
+
+  @child
   get sessionCatalogStore(): SessionCatalogStore {
     return createStore(SessionCatalogStore, {
       model: this.sessionCatalogModel,
@@ -899,13 +912,7 @@ export class RootStore extends Store<{
             { signal: this.signal },
           ),
         ),
-      showNotification: ({ title, body, level, source }) =>
-        this.toastStore.show({
-          tone: level === "success" ? "info" : level,
-          title: source ? `${title} · ${source.title}` : title,
-          message: body,
-          coalesceKey: source ? `notification:${source.sessionId}:${title}` : undefined,
-        }),
+      showNotification: (input) => this.notificationStore.enqueue(input),
       showAgentAction: ({ source, message, targetSessionId, targetKind, coalesceKey }) => {
         const action =
           targetSessionId && targetKind

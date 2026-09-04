@@ -36,6 +36,10 @@ export interface ElectronService {
     connectionId: number,
     request: Payload<"open-external-url">,
   ) => Effect.Effect<Success<"open-external-url">, ElectronError>;
+  readonly showNotification: (
+    connectionId: number,
+    request: Payload<"show-notification">,
+  ) => Effect.Effect<Success<"show-notification">, ElectronError>;
   readonly showTranscriptSelectionContextMenu: (
     connectionId: number,
     request: Payload<"show-transcript-selection-context-menu">,

@@ -16,6 +16,10 @@ export const electronHandlers = ElectronRpc.of({
     withConnection((connectionId) =>
       Effect.flatMap(Electron, (service) => service.openExternalUrl(connectionId, request)),
     ),
+  "electron.show-notification": (request) =>
+    withConnection((connectionId) =>
+      Effect.flatMap(Electron, (service) => service.showNotification(connectionId, request)),
+    ),
   "electron.show-transcript-selection-context-menu": (request) =>
     withConnection((connectionId) =>
       Effect.flatMap(Electron, (service) =>

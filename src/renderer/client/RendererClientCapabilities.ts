@@ -48,6 +48,12 @@ export function makeRendererClientCapabilities(execute: Execute): RendererClient
           (client) => client.electron["open-external-url"]({ url }),
           options,
         ).then(() => undefined),
+      showNotification: (input, options) =>
+        execute(
+          "electron.show-notification",
+          (client) => client.electron["show-notification"]({ ...input }),
+          options,
+        ).then(() => undefined),
       showTranscriptSelectionContextMenu: (input, options) =>
         execute(
           "electron.show-transcript-selection-context-menu",

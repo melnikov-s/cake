@@ -34,7 +34,7 @@ function createHost(overrides: Partial<AppControlHost> = {}): AppControlHost {
     setSessionsResolved: async () => 0,
     setCakeChatSessionsResolved: async () => 0,
     setSessionModel: async () => undefined,
-    showNotification: () => undefined,
+    showNotification: async () => undefined,
     showAgentAction: () => undefined,
     ...overrides,
   };
@@ -125,7 +125,7 @@ describe("AppControlBridge", () => {
   });
 
   it("routes attributed notifications through the application host without a receipt", async () => {
-    const showNotification = vi.fn();
+    const showNotification = vi.fn(async () => undefined);
     const showAgentAction = vi.fn();
     const source = {
       kind: "project-session" as const,
@@ -142,7 +142,7 @@ describe("AppControlBridge", () => {
         },
         source,
       ),
-    ).resolves.toEqual({ ok: true, name: "send_notification", status: "sent" });
+    ).resolves.toEqual({ ok: true, name: "send_notification", status: "queued" });
     expect(showNotification).toHaveBeenCalledWith({
       title: "Build progress",
       body: "Tests reached 80%.",

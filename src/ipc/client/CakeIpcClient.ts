@@ -414,6 +414,7 @@ export interface CakeIpcClientService {
   readonly electron: RpcOperations<
     | "choose-project"
     | "open-external-url"
+    | "show-notification"
     | "show-transcript-selection-context-menu"
     | "show-composer-context-menu"
     | "show-session-context-menu"
@@ -797,6 +798,9 @@ export const CakeIpcClientLive = Layer.effect(
         ),
         "open-external-url": Effect.fn("CakeIpcClient.electron.open-external-url")((payload) =>
           client("electron.open-external-url", payload),
+        ),
+        "show-notification": Effect.fn("CakeIpcClient.electron.show-notification")((payload) =>
+          client("electron.show-notification", payload),
         ),
         "show-transcript-selection-context-menu": Effect.fn(
           "CakeIpcClient.electron.show-transcript-selection-context-menu",

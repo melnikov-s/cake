@@ -57,6 +57,16 @@ type TerminalTarget =
 interface ElectronCommands {
   chooseProject(options?: RendererCommandOptions): Promise<string | undefined>;
   openExternalUrl(url: string, options?: RendererCommandOptions): Promise<void>;
+  showNotification(
+    input: {
+      title: string;
+      body: string;
+      level: "info" | "success" | "warning" | "error";
+      id?: string;
+      groupId?: string;
+    },
+    options?: RendererCommandOptions,
+  ): Promise<void>;
   showTranscriptSelectionContextMenu(
     input: { canChat: boolean; canAnnotate: boolean },
     options?: RendererCommandOptions,

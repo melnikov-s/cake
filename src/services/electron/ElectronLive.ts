@@ -5,6 +5,7 @@ import {
   dialog,
   Menu,
   nativeImage,
+  Notification,
   shell,
   webContents,
   type App,
@@ -307,6 +308,26 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
           if (url.protocol !== "https:" && url.protocol !== "http:")
             throw new Error("External links must use HTTP or HTTPS");
           await shell.openExternal(url.href);
+          return {};
+        },
+        catch: electronError,
+      });
+    }),
+    showNotification: Effect.fn("Electron.showNotification")(function* (connectionId, request) {
+      yield* Effect.try({
+        try: () => requireRendererConnection(connectionId),
+        catch: electronError,
+      });
+      return yield* Effect.try({
+        try: () => {
+          if (!Notification.isSupported())
+            throw new Error("Native system notifications are not supported");
+          new Notification({
+            title: request.title,
+            body: request.body,
+            id: request.id,
+            groupId: request.groupId,
+          }).show();
           return {};
         },
         catch: electronError,

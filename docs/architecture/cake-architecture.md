@@ -248,7 +248,12 @@ The window Store hierarchy mirrors the product surfaces:
 
 - `RootStore` composes the window and translates application intents. Window-owned
   renderer infrastructure routes non-authoritative native lifecycle events to
-  their focused owners outside the Store tree.
+  their focused owners outside the Store tree. `NotificationStore` owns transient
+  agent-notification delivery: it applies one three-second trailing debounce per
+  calling Cake Session, keeps only the latest item in each burst, and assigns a
+  stable native group and notification identity per Session. Agent-selected levels
+  do not bypass this policy. Electron then delivers the result through the operating
+  system notification center rather than Cake's in-window toast stack.
 - `AppShellStore` owns the window's one mutually exclusive application
   selection: a Project Session, a Cake Chat Session, settings, or an empty
   workbench. A Project Session selection stores only its globally unique Session

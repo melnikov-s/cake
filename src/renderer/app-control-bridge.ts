@@ -241,7 +241,7 @@ export interface AppControlHost {
     body: string;
     level: "info" | "success" | "warning" | "error";
     source?: AgentControlSource;
-  }): void;
+  }): Promise<void>;
   showAgentAction(input: {
     source: AgentControlSource;
     message: string;
@@ -343,7 +343,7 @@ export type AppControlResult =
       modelId: string;
       status: "changing";
     }
-  | { ok: true; name: "send_notification"; status: "sent" }
+  | { ok: true; name: "send_notification"; status: "queued" }
   | {
       ok: true;
       name: "report_agent_action";
@@ -458,7 +458,7 @@ const modelControlOperations = [
   operation(
     "notifications.send",
     "notifications",
-    "Send a bounded notification to the invoking Cake window without adding user input.",
+    "Send a bounded native system notification without adding user input.",
     appControlArgumentSchemas.send_notification,
   ),
   operation(
@@ -612,13 +612,13 @@ export class AppControlBridge {
     if (invocation.name === "get_app_state")
       return { ok: true, name: invocation.name, state: this.getAppState(source?.sessionId) };
     if (invocation.name === "send_notification") {
-      this.host.showNotification({
+      await this.host.showNotification({
         title: invocation.arguments.title,
         body: invocation.arguments.body,
         level: invocation.arguments.level,
         source,
       });
-      return { ok: true, name: invocation.name, status: "sent" };
+      return { ok: true, name: invocation.name, status: "queued" };
     }
     if (invocation.name === "report_agent_action") {
       const result: Extract<AppControlResult, { name: "report_agent_action" }> = {
