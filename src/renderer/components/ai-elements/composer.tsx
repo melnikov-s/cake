@@ -27,11 +27,16 @@ export function ComposerInput({ className, ...props }: ComponentProps<"textarea"
   );
 }
 
-export function ComposerToolbar({ className, ...props }: ComponentProps<"div">) {
+export function ComposerToolbar({
+  className,
+  separated = true,
+  ...props
+}: ComponentProps<"div"> & { separated?: boolean }) {
   return (
     <div
       className={cn(
-        "flex flex-wrap items-center justify-between gap-2 border-t border-border/70 pt-3",
+        "flex flex-wrap items-center justify-between gap-2",
+        separated && "border-t border-border/70 pt-3",
         className,
       )}
       {...props}

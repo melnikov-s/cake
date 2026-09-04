@@ -270,6 +270,7 @@ export const Chat = observer(function Chat({
             />
           )
         }
+        toolbarSeparated={!activatingDraft}
         toolbarLeading={
           !activatingDraft && (
             <>

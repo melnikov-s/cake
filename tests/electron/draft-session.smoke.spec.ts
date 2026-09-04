@@ -74,6 +74,8 @@ test("restores, edits, resolves, and activates a project draft session", async (
     await expect(page.getByRole("button", { name: "New worktree" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Draft", exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Activate draft" })).toBeVisible();
+    const draftToolbar = page.locator('[data-slot="composer-toolbar"]');
+    await expect(draftToolbar).toHaveCSS("border-top-width", "0px");
     await page.getByRole("button", { name: "Resolve Planned work" }).click();
     await page.getByRole("button", { name: "Expand Resolved" }).click();
     await page.getByRole("button", { name: "Expand project resolved" }).last().click();

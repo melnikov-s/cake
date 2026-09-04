@@ -14,6 +14,7 @@ export const ChatComposer = observer(function ChatComposer({
   header,
   toolbarLeading,
   toolbarActions,
+  toolbarSeparated = true,
   className,
 }: {
   configuration?: ChatConfigurationStore;
@@ -23,6 +24,7 @@ export const ChatComposer = observer(function ChatComposer({
   header?: ReactNode;
   toolbarLeading?: ReactNode;
   toolbarActions: ReactNode;
+  toolbarSeparated?: boolean;
   className?: string;
 }) {
   return (
@@ -39,7 +41,11 @@ export const ChatComposer = observer(function ChatComposer({
       >
         {children}
         {input}
-        <ComposerToolbar className="flex min-w-0 items-center justify-between gap-3 px-1.5 py-1">
+        <ComposerToolbar
+          data-slot="composer-toolbar"
+          separated={toolbarSeparated}
+          className="flex min-w-0 items-center justify-between gap-3 px-1.5 py-1"
+        >
           <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
             {toolbarLeading}
             {configuration && <ChatConfigurationSelector configuration={configuration} />}
