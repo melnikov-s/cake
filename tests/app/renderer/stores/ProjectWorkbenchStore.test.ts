@@ -108,4 +108,52 @@ describe("ProjectWorkbenchStore startup selection", () => {
     root[Symbol.dispose]();
     operations[Symbol.dispose]();
   });
+
+  it("logs session-open failures instead of surfacing them to the user", async () => {
+    const error = new Error("Cake could not find Project Session session-1");
+    const open = vi.fn(async () => Promise.reject(error));
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const operations = mount(createStore(SessionOperationCoordinatorStore));
+    const registry = {
+      findSession: () => undefined,
+    } as unknown as SessionRegistryStore;
+    const catalog = {
+      find: (sessionId: string) => ({
+        sessionId,
+        workingDirectory: "/project",
+        unread: false,
+      }),
+    } as SessionCatalogStore;
+    const { root, subject: store } = mountWithRendererClient(
+      createStore(ProjectWorkbenchStore, {
+        sessionRegistry: registry,
+        operations,
+        projects: {} as ProjectCatalogStore,
+        reviews: () => ({}) as ReviewsStore,
+        extensionUi: () => ({}) as ExtensionUiStore,
+        catalog,
+        startCakeChat: async () => undefined,
+        onWorktreeSessionsResolved: async () => undefined,
+        openSessionById: async () => undefined,
+        onSessionShown: vi.fn(),
+        toggleProjectSidebar: vi.fn(),
+        enterIdeSidebarMode: vi.fn(),
+        leaveIdeSidebarMode: vi.fn(),
+        projectSidebarWidth: () => 292,
+      }),
+      { projectSessions: { open } } as unknown as RendererClient,
+    );
+
+    await store.openSession("session-1");
+
+    expect(consoleError).toHaveBeenCalledWith(
+      "[cake.renderer] Opening Project Session failed",
+      error,
+    );
+    expect(store.contextError(undefined)).toBeUndefined();
+
+    consoleError.mockRestore();
+    root[Symbol.dispose]();
+    operations[Symbol.dispose]();
+  });
 });

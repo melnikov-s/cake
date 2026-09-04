@@ -519,7 +519,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       );
     } catch (error) {
       if (!this.signal.aborted && revision === this.openRevision)
-        this.setError(error, "Opening Project Session");
+        console.error("[cake.renderer] Opening Project Session failed", error);
     }
   }
 
