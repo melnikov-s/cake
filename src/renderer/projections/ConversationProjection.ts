@@ -3,7 +3,11 @@ import { applySnapshot, batch, toSnapshot } from "r-state-tree";
 import type { CakeChatUpdate } from "../../domain/cake-chat-data";
 import type { ConversationEvent } from "../../domain/conversation-data";
 import type { ProjectSessionUpdate } from "../../domain/project-session-data";
-import { extensionUiEventSchema, uiPartSchema } from "../../ipc/session-contract";
+import {
+  extensionUiEventSchema,
+  sessionUsageSchema,
+  uiPartSchema,
+} from "../../ipc/session-contract";
 import { toSessionSnapshot } from "../../utils/session-snapshot";
 import type { Session } from "../models/Session";
 import { applyPartUpdate, removePart } from "./SessionPartProjection";
@@ -83,6 +87,8 @@ function applyConversationEvent(model: Session, event: ConversationEvent) {
       applyPartUpdate(model.parts, Schema.decodeUnknownSync(uiPartSchema)(event.part));
     else if (event._tag === "PartRemoved") removePart(model.parts, event.partId);
     else if (event._tag === "StreamingChanged") model.streaming = event.streaming;
+    else if (event._tag === "UsageUpdated")
+      model.usage = Schema.decodeUnknownSync(sessionUsageSchema)(event.usage);
     else if (event._tag === "TurnAccepted") {
       if (!model.activeTurnIds.includes(event.turnId)) model.activeTurnIds.push(event.turnId);
     } else if (event._tag === "TurnSettled") {

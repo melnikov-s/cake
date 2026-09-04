@@ -46,6 +46,7 @@ export const ConversationEvent = Schema.TaggedUnion({
   PartUpdated: { sessionId: boundedId, part: Schema.Json },
   PartRemoved: { sessionId: boundedId, partId: boundedId },
   StreamingChanged: { sessionId: boundedId, streaming: Schema.Boolean },
+  UsageUpdated: { sessionId: boundedId, usage: Schema.Json },
   ExtensionUi: { sessionId: boundedId, event: Schema.Json },
   TurnAccepted: { sessionId: boundedId, turnId: TurnId, delivery: Schema.String },
   TurnSettled: {

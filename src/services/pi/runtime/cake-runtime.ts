@@ -21,6 +21,7 @@ import type {
   ExtensionUiIntent,
   ResourceDiagnostic,
   SessionSnapshot,
+  SessionUsage,
   ThinkingLevel,
   ModelPreset,
   ToolOutputContent,
@@ -242,6 +243,7 @@ export type CakeRuntimeEvent =
   | { type: "part-updated"; sessionId: string; part: UiPart }
   | { type: "part-removed"; sessionId: string; partId: string }
   | { type: "streaming"; sessionId: string; streaming: boolean }
+  | { type: "usage-updated"; sessionId: string; usage: SessionUsage }
   | { type: "extension-ui"; sessionId: string; event: ExtensionUiEvent };
 
 export interface CakeRuntimeOptions {
@@ -1189,6 +1191,8 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
   let reloadInFlight: Promise<void> | undefined;
   let sessionNamingInFlight = false;
   const sessionNamingController = new AbortController();
+  let usageUpdateTimer: ReturnType<typeof setTimeout> | undefined;
+  let lastUsageUpdateAt = 0;
   const generateTitle = options.generateSessionTitle;
   const initialCatalog = compatibilityCatalog(
     resourceLoader,
@@ -1280,6 +1284,38 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     return [...extensionCommands, ...templateCommands, ...skillCommands];
   }
 
+  function currentUsage(): SessionUsage {
+    const stats = session.getSessionStats();
+    return {
+      tokens: stats.tokens,
+      cost: stats.cost,
+      context: stats.contextUsage
+        ? {
+            tokens: stats.contextUsage.tokens,
+            contextWindow: stats.contextUsage.contextWindow,
+            percent: stats.contextUsage.percent,
+          }
+        : undefined,
+    };
+  }
+
+  function publishUsageUpdate() {
+    if (usageUpdateTimer !== undefined) {
+      clearTimeout(usageUpdateTimer);
+      usageUpdateTimer = undefined;
+    }
+    if (disposed) return;
+    lastUsageUpdateAt = Date.now();
+    options.onEvent({ type: "usage-updated", sessionId: cakeSessionId, usage: currentUsage() });
+  }
+
+  function scheduleUsageUpdate() {
+    if (disposed || usageUpdateTimer !== undefined) return;
+    const delay = Math.max(0, 250 - (Date.now() - lastUsageUpdateAt));
+    if (delay === 0) publishUsageUpdate();
+    else usageUpdateTimer = setTimeout(publishUsageUpdate, delay);
+  }
+
   async function makeSnapshot(
     onCaptured?: (snapshot: SessionSnapshot) => void,
   ): Promise<SessionSnapshot> {
@@ -1304,7 +1340,6 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
 
     // Capture all mutable Pi-owned state together after the final await. Once
     // this synchronous block starts, no live event can interleave before emit.
-    const stats = session.getSessionStats();
     const sessionListed = sessionFile !== undefined;
     const globalSettings = settingsManager.getGlobalSettings();
     const branchParts = projectSessionEntries(session.sessionManager.getBranch(), undefined, {
@@ -1380,17 +1415,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
             const parsed = Schema.decodeUnknownOption(slashCommandSchema)(command);
             return Option.isSome(parsed) ? [parsed.value] : [];
           }),
-      usage: {
-        tokens: stats.tokens,
-        cost: stats.cost,
-        context: stats.contextUsage
-          ? {
-              tokens: stats.contextUsage.tokens,
-              contextWindow: stats.contextUsage.contextWindow,
-              percent: stats.contextUsage.percent,
-            }
-          : undefined,
-      },
+      usage: currentUsage(),
       compatibility: catalog,
       extensionUi: {
         title: extensionUiState.title,
@@ -1789,6 +1814,16 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     }
     for (const part of projectLiveMessage(event)) {
       options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part });
+    }
+    if (event.type === "message_update" && event.message.role === "assistant") {
+      // Pi estimates trailing context from its live message state. Coalesce the
+      // high-frequency stream while still keeping Cake's gauge live during output.
+      scheduleUsageUpdate();
+    }
+    if (event.type === "message_end") {
+      // Pi persists finalized messages after notifying subscribers. Publish in
+      // a microtask so billed totals and context include the completed message.
+      queueMicrotask(publishUsageUpdate);
     }
     if (event.type === "tool_execution_start") {
       const call = {
@@ -2460,6 +2495,8 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       if (disposed) return disposePromise;
       disposed = true;
       sessionNamingController.abort();
+      if (usageUpdateTimer !== undefined) clearTimeout(usageUpdateTimer);
+      usageUpdateTimer = undefined;
       responseRetries.cancel();
       unsubscribe();
       const finish = async () => {

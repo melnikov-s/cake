@@ -28,8 +28,8 @@ function formatCompactTokenCount(tokens: number | null | undefined) {
   return `${Number(value.toFixed(decimals))}${suffix}`;
 }
 
-// Observer-wrapped: reads ChatStore.usage (an observable props getter), so usage
-// updates at the end of a turn re-render the gauge even while Chat itself is idle.
+// Observer-wrapped: reads ChatStore.usage (an observable props getter), so live
+// usage events re-render the gauge even while Chat itself is otherwise idle.
 const Usage = observer(function Usage({ store }: { store: ChatStore }) {
   const usage = store.usage;
   const { anchor, hide, show } = useTooltip();

@@ -292,6 +292,13 @@ describe("Pi 0.84.0 foundation contract", () => {
           ),
         { timeout: 1_000 },
       );
+      await vi.waitFor(
+        () => expect(events.some((event) => event.type === "usage-updated")).toBe(true),
+        { timeout: 1_000 },
+      );
+      expect(events.some((event) => event.type === "streaming" && event.streaming === false)).toBe(
+        false,
+      );
       await vi.waitFor(() => expect(generateTitle).toHaveBeenCalledOnce(), { timeout: 1_000 });
       expect(setTitle).toHaveBeenCalledWith("Investigate session naming");
       expect(generateTitle).toHaveBeenCalledWith(

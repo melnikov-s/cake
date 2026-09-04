@@ -478,6 +478,11 @@ const observeTurn = Effect.fn("Subagents.observeTurn")(function* (
             ...current,
             streaming: event.streaming,
           }));
+        else if (event.type === "usage-updated")
+          yield* mutateHandle(handleId, (current) => ({
+            ...current,
+            usage: jsonValue(event.usage),
+          }));
         else if (event.type === "turn-settled") {
           const settlement: { outcome: string; message?: string } =
             event.message === undefined

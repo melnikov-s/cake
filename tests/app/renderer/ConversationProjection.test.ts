@@ -41,7 +41,7 @@ function snapshot(extensionUi: ConversationSnapshot["extensionUi"]): ProjectSess
   };
 }
 
-describe("ConversationProjection extension UI state", () => {
+describe("ConversationProjection", () => {
   it("hydrates current extension status and title from a snapshot", () => {
     const session = Session.create({ sessionId: "session", workingDirectory: "/cake" });
 
@@ -74,6 +74,32 @@ describe("ConversationProjection extension UI state", () => {
     });
 
     expect(session.extensionUi.statuses).toEqual([{ key: "fixture", text: "ready" }]);
+    session[Symbol.dispose]();
+  });
+
+  it("applies usage updates without replacing the conversation snapshot", () => {
+    const session = Session.create({ sessionId: "session", workingDirectory: "/cake" });
+    applyProjectSessionUpdate(session, "session", snapshot({ statuses: [] }));
+    applyProjectSessionUpdate(session, "session", {
+      _tag: "Event",
+      revision: 2,
+      sessionId: "session",
+      event: {
+        _tag: "UsageUpdated",
+        sessionId: "session",
+        usage: {
+          tokens: { input: 12, output: 3, cacheRead: 4, cacheWrite: 5, total: 24 },
+          cost: 0.01,
+          context: { tokens: 1_024, contextWindow: 4_096, percent: 25 },
+        },
+      },
+    });
+
+    expect(session.usage?.context).toEqual({
+      tokens: 1_024,
+      contextWindow: 4_096,
+      percent: 25,
+    });
     session[Symbol.dispose]();
   });
 });
