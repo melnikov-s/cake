@@ -168,6 +168,17 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
         }
         return false;
       });
+    const vsCodeTitleActionX = (label: string) =>
+      application.evaluate(async ({ webContents }, actionLabel) => {
+        for (const contents of webContents.getAllWebContents()) {
+          if (!contents.getURL().startsWith("http://127.0.0.1:")) continue;
+          const x = await contents.executeJavaScript(`document.querySelector(
+            '[aria-label*="${actionLabel}"], [title*="${actionLabel}"]',
+          )?.getBoundingClientRect().x`);
+          if (typeof x === "number") return x;
+        }
+        return undefined;
+      }, label);
     const areVsCodeTitleActionsOrdered = (leftLabel: string, rightLabel: string) =>
       application.evaluate(
         async ({ webContents }, [left, right]) => {
@@ -290,6 +301,24 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
     await expect
       .poll(() => areVsCodeTitleActionsOrdered("Toggle Sessions Sidebar", "Back to Agent"))
       .toBe(true);
+    await expect
+      .poll(async () => {
+        const x = await vsCodeTitleActionX("Toggle Sessions Sidebar");
+        return x === undefined ? Number.POSITIVE_INFINITY : Math.abs(x - 274);
+      })
+      .toBeLessThan(4);
+
+    expect(await clickVsCodeTitleAction("Back to Agent")).toBe(true);
+    await expect(vscodeWorkspace).toBeHidden();
+    await expect(page.locator('[data-slot="sidebar"]')).toBeVisible();
+
+    await link.click();
+    await expect(vscodeWorkspace).toBeVisible();
+    await page
+      .locator('[data-slot="sidebar"]')
+      .getByRole("button", { name: "Toggle sidebar" })
+      .click();
+    await expect.poll(() => hasVsCodeTitleAction("Toggle Sessions Sidebar")).toBe(true);
     expect(await clickVsCodeTitleAction("Toggle Sessions Sidebar")).toBe(true);
     await expect(page.locator('[data-slot="sidebar"]')).toBeVisible();
     await expect.poll(() => hasVsCodeTitleAction("Toggle Sessions Sidebar")).toBe(false);

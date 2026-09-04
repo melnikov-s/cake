@@ -84,7 +84,7 @@ export const App = observer(function App() {
           : extensionUi.error
             ? extensionUi.errorDetails
             : artifactInteractions?.errorDetails;
-  const sidebarCollapsed = sidebar.hidden;
+  const sidebarCollapsed = !sidebar.visible;
   const sidebarWidth = sidebar.width;
   const [commandPaneWidth, setCommandPaneWidth] = useState(420);
   const [resizingPanel, setResizingPanel] = useState(false);

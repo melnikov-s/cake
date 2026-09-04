@@ -44,6 +44,9 @@ describe("ProjectWorkbenchStore startup selection", () => {
         openSessionById: async () => undefined,
         onSessionShown,
         toggleProjectSidebar: vi.fn(),
+        enterIdeSidebarMode: vi.fn(),
+        leaveIdeSidebarMode: vi.fn(),
+        projectSidebarWidth: () => 292,
       }),
       { projectSessions: { open } } as unknown as RendererClient,
     );
@@ -83,6 +86,9 @@ describe("ProjectWorkbenchStore startup selection", () => {
         openSessionById: async () => undefined,
         onSessionShown,
         toggleProjectSidebar: vi.fn(),
+        enterIdeSidebarMode: vi.fn(),
+        leaveIdeSidebarMode: vi.fn(),
+        projectSidebarWidth: () => 292,
       }),
       { workspaces: { inspect } } as unknown as RendererClient,
     );

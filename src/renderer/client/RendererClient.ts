@@ -199,7 +199,14 @@ interface VsCodeCommands {
   ): Promise<ApplicationState>;
   open(workingDirectory: string, options?: RendererCommandOptions): Promise<void>;
   updateBounds(
-    input: { visible: boolean; x: number; y: number; width: number; height: number },
+    input: {
+      visible: boolean;
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+      projectSidebarWidth: number;
+    },
     options?: RendererCommandOptions,
   ): Promise<void>;
   reveal(

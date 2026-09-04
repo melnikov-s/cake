@@ -62,20 +62,28 @@ function waitForWorkbenchThemeScript(theme: "light" | "dark") {
   })`;
 }
 
-function projectSidebarVisibilityScript(visible: boolean) {
+function projectSidebarVisibilityScript(visible: boolean, projectSidebarWidth: number) {
   return `(() => {
     window.__cakeProjectSidebarVisible = ${JSON.stringify(visible)};
+    window.__cakeProjectSidebarWidth = ${JSON.stringify(projectSidebarWidth)};
     const control = document.getElementById("cake-toggle-project-sidebar");
-    if (control) control.style.display = window.__cakeProjectSidebarVisible ? "none" : "";
+    if (!control) return;
+    control.style.display = window.__cakeProjectSidebarVisible ? "none" : "flex";
+    control.style.left = Math.max(84, window.__cakeProjectSidebarWidth - 34) + "px";
   })()`;
 }
 
-function vscodeShellControlsScript(workspacePath: string, projectSidebarVisible: boolean) {
+function vscodeShellControlsScript(
+  workspacePath: string,
+  projectSidebarVisible: boolean,
+  projectSidebarWidth: number,
+) {
   return `(() => {
     const cakeIconMarkup = ${JSON.stringify(cakeIconMarkup)};
     const controlPrefix = ${JSON.stringify(VSCODE_SHELL_CONTROL_PREFIX)};
     const workspace = ${JSON.stringify(workspacePath)};
     window.__cakeProjectSidebarVisible = ${JSON.stringify(projectSidebarVisible)};
+    window.__cakeProjectSidebarWidth = ${JSON.stringify(projectSidebarWidth)};
     const controls = [
       ["cake-back-to-agent", "Cake: Back to Agent", "cake", "back-to-agent", "start"],
       [
@@ -105,15 +113,24 @@ function vscodeShellControlsScript(workspacePath: string, projectSidebarVisible:
       for (const [id, label, icon, type, placement] of controls) {
         const existing = document.getElementById(id);
         if (existing) {
-          if (id === "cake-toggle-project-sidebar")
-            existing.style.display = window.__cakeProjectSidebarVisible ? "none" : "";
+          if (id === "cake-toggle-project-sidebar") {
+            existing.style.display = window.__cakeProjectSidebarVisible ? "none" : "flex";
+            existing.style.left = Math.max(84, window.__cakeProjectSidebarWidth - 34) + "px";
+          }
           continue;
         }
         const item = document.createElement("li");
         item.id = id;
         item.className = "action-item";
-        if (id === "cake-toggle-project-sidebar")
-          item.style.display = window.__cakeProjectSidebarVisible ? "none" : "";
+        if (id === "cake-toggle-project-sidebar") {
+          item.style.display = window.__cakeProjectSidebarVisible ? "none" : "flex";
+          item.style.position = "fixed";
+          item.style.left = Math.max(84, window.__cakeProjectSidebarWidth - 34) + "px";
+          item.style.top = "0";
+          item.style.zIndex = "10";
+          item.style.height = "35px";
+          item.style.alignItems = "center";
+        }
         const action = document.createElement("a");
         action.className = icon === "cake" ? "action-label" : "action-label codicon codicon-" + icon;
         if (icon === "cake") {
@@ -261,7 +278,14 @@ interface ViewEntry {
   view: WebContentsView;
 }
 
-type ViewBounds = { visible: boolean; x: number; y: number; width: number; height: number };
+type ViewBounds = {
+  visible: boolean;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  projectSidebarWidth: number;
+};
 
 /** The sideloaded companion extension's package.json contract. */
 export interface CompanionManifest {
@@ -449,6 +473,7 @@ export class VsCodeServerManager {
         vscodeShellControlsScript(
           workspacePath,
           (this.requestedBounds.get(webContentsId)?.x ?? 0) > 0,
+          this.requestedBounds.get(webContentsId)?.projectSidebarWidth ?? 292,
         ),
       );
     } catch (error) {
@@ -465,14 +490,20 @@ export class VsCodeServerManager {
 
   /** Positions or hides the native view for one window. Bounds are DIPs relative to the content area. */
   updateBounds(webContentsId: number, bounds: ViewBounds) {
-    const projectSidebarWasVisible = (this.requestedBounds.get(webContentsId)?.x ?? 0) > 0;
+    const previousBounds = this.requestedBounds.get(webContentsId);
+    const projectSidebarWasVisible = (previousBounds?.x ?? 0) > 0;
     const projectSidebarVisible = bounds.x > 0;
     this.requestedBounds.set(webContentsId, bounds);
     const entry = this.views.get(webContentsId);
     if (!entry) return;
-    if (projectSidebarWasVisible !== projectSidebarVisible)
+    if (
+      projectSidebarWasVisible !== projectSidebarVisible ||
+      previousBounds?.projectSidebarWidth !== bounds.projectSidebarWidth
+    )
       void entry.view.webContents
-        .executeJavaScript(projectSidebarVisibilityScript(projectSidebarVisible))
+        .executeJavaScript(
+          projectSidebarVisibilityScript(projectSidebarVisible, bounds.projectSidebarWidth),
+        )
         .catch(() => undefined);
     this.applyRequestedBounds(webContentsId, entry.view);
     const instance = this.servers.get(entry.workspacePath);

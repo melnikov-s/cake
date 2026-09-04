@@ -79,6 +79,7 @@ describe("VsCodeServerManager startup", () => {
       y: 62.2,
       width: 901.8,
       height: 700.6,
+      projectSidebarWidth: 292,
     });
     manager["applyRequestedBounds"](17, view as never);
 
@@ -89,10 +90,21 @@ describe("VsCodeServerManager startup", () => {
   it("routes a native close back to the agent while the editor view is visible", () => {
     const broadcast = vi.fn();
     manager = createManager({ root: "/unused", broadcast });
-    const view = { setVisible: vi.fn(), setBounds: vi.fn() };
+    const view = {
+      setVisible: vi.fn(),
+      setBounds: vi.fn(),
+      webContents: { executeJavaScript: vi.fn(async () => undefined) },
+    };
     manager["views"].set(17, { workspacePath: "/real/project", view: view as never });
     manager["presentedWorkspacePaths"].set("/real/project", "/linked/project");
-    manager.updateBounds(17, { visible: true, x: 0, y: 0, width: 900, height: 700 });
+    manager.updateBounds(17, {
+      visible: true,
+      x: 0,
+      y: 0,
+      width: 900,
+      height: 700,
+      projectSidebarWidth: 292,
+    });
 
     expect(manager.backToAgentForWindow(17)).toBe(true);
     expect(view.setVisible).toHaveBeenLastCalledWith(false);

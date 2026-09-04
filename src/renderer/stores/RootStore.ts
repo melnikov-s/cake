@@ -526,6 +526,7 @@ export class RootStore extends Store<{
       deleteCakeChatSession: (sessionId) => this.deleteCakeChatSession(sessionId),
       setSessionUnread: (sessionId, unread) =>
         this.projectWorkbenchStore.sessionManagementStore.setSessionUnread(sessionId, unread),
+      embeddedEditorSettings: this.settingsStore.embeddedEditor,
     });
   }
 
@@ -579,6 +580,9 @@ export class RootStore extends Store<{
       },
       onSessionShown: (sessionId) => this.selectProjectSessionForShell(sessionId),
       toggleProjectSidebar: () => this.sidebarStore.toggle(),
+      enterIdeSidebarMode: () => this.sidebarStore.enterIdeMode(),
+      leaveIdeSidebarMode: () => this.sidebarStore.leaveIdeMode(),
+      projectSidebarWidth: () => this.sidebarStore.width,
     });
   }
 

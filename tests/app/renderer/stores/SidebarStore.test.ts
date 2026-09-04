@@ -5,6 +5,10 @@ import type { SessionCatalogStore } from "../../../../src/renderer/stores/Sessio
 import type { SessionRegistryStore } from "../../../../src/renderer/stores/SessionRegistryStore";
 import type { GlobalChatStore } from "../../../../src/renderer/stores/GlobalChatStore";
 import { SidebarStore } from "../../../../src/renderer/stores/SidebarStore";
+import type { EmbeddedEditorSettingsStore } from "../../../../src/renderer/stores/EmbeddedEditorSettingsStore";
+
+const embeddedEditorSettings = (sidebarAutoHide: "never" | "always" | "below-width" = "never") =>
+  ({ sidebarAutoHide, sidebarAutoHideWidth: 1440 }) as EmbeddedEditorSettingsStore;
 
 describe("SidebarStore catalog demand", () => {
   it("reveals sessions ten at a time independently for each group and lane", () => {
@@ -19,6 +23,7 @@ describe("SidebarStore catalog demand", () => {
         deleteSession: async () => undefined,
         deleteCakeChatSession: async () => undefined,
         setSessionUnread: async () => undefined,
+        embeddedEditorSettings: embeddedEditorSettings(),
       }),
     );
 
@@ -31,6 +36,64 @@ describe("SidebarStore catalog demand", () => {
     store.showMoreSessions("/cake", true);
     expect(store.sessionLimit("/cake", true)).toBe(20);
     expect(store.sessionLimit("/cake")).toBe(20);
+    store[Symbol.dispose]();
+  });
+
+  it("treats sidebar visibility inside VS Code as a temporary override", () => {
+    const store = mount(
+      createStore(SidebarStore, {
+        projects: { orderedProjectPaths: [] } as unknown as ProjectCatalogStore,
+        catalog: {} as SessionCatalogStore,
+        sessions: {} as SessionRegistryStore,
+        cakeChat: () => ({}) as GlobalChatStore,
+        setSessionResolved: async () => undefined,
+        setCakeChatSessionResolved: async () => undefined,
+        deleteSession: async () => undefined,
+        deleteCakeChatSession: async () => undefined,
+        setSessionUnread: async () => undefined,
+        embeddedEditorSettings: embeddedEditorSettings("always"),
+      }),
+    );
+
+    expect(store.visible).toBe(true);
+    store.enterIdeMode(1920);
+    expect(store.visible).toBe(false);
+    store.toggle();
+    expect(store.visible).toBe(true);
+    store.toggle();
+    expect(store.visible).toBe(false);
+    store.leaveIdeMode();
+    expect(store.visible).toBe(true);
+
+    store.toggle();
+    store.enterIdeMode(1920);
+    store.toggle();
+    expect(store.visible).toBe(true);
+    store.leaveIdeMode();
+    expect(store.visible).toBe(false);
+    store[Symbol.dispose]();
+  });
+
+  it("auto-hides below the configured window width", () => {
+    const store = mount(
+      createStore(SidebarStore, {
+        projects: { orderedProjectPaths: [] } as unknown as ProjectCatalogStore,
+        catalog: {} as SessionCatalogStore,
+        sessions: {} as SessionRegistryStore,
+        cakeChat: () => ({}) as GlobalChatStore,
+        setSessionResolved: async () => undefined,
+        setCakeChatSessionResolved: async () => undefined,
+        deleteSession: async () => undefined,
+        deleteCakeChatSession: async () => undefined,
+        setSessionUnread: async () => undefined,
+        embeddedEditorSettings: embeddedEditorSettings("below-width"),
+      }),
+    );
+
+    store.enterIdeMode(1280);
+    expect(store.visible).toBe(false);
+    store.updateIdeViewportWidth(1728);
+    expect(store.visible).toBe(true);
     store[Symbol.dispose]();
   });
 
@@ -48,6 +111,7 @@ describe("SidebarStore catalog demand", () => {
         deleteSession: async () => undefined,
         deleteCakeChatSession: async () => undefined,
         setSessionUnread: async () => undefined,
+        embeddedEditorSettings: embeddedEditorSettings(),
       }),
     );
 

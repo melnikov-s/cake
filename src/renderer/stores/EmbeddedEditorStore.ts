@@ -18,6 +18,9 @@ export interface EmbeddedEditorStoreProps {
   setChatSidebarWidth(width: number): void;
   annotations(): EditorAnnotationSnapshot | undefined;
   startCakeChat(prompt: string): Promise<void>;
+  enterProjectSidebarMode(): void;
+  leaveProjectSidebarMode(): void;
+  projectSidebarWidth(): number;
 }
 
 /**
@@ -51,6 +54,10 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
 
   get chatSidebarWidth() {
     return this.props.chatSidebarWidth();
+  }
+
+  get projectSidebarWidth() {
+    return this.props.projectSidebarWidth();
   }
 
   /** Prevents a previously selected Working Directory from flashing during a session switch. */
@@ -136,13 +143,14 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
 
   private activate() {
     this.props.setIdeMode(true);
+    if (!this.visible) this.props.enterProjectSidebarMode();
     this.visible = true;
   }
 
   /** Restores the selected session's IDE presentation without changing its preference. */
   async restore() {
     if (!this.props.ideMode()) return;
-    this.visible = true;
+    this.activate();
     await this.open();
   }
 
@@ -245,8 +253,15 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
   async reportBounds(bounds: { x: number; y: number; width: number; height: number } | null) {
     const revision = ++this.boundsRevision;
     const payload = bounds
-      ? { visible: true, ...bounds }
-      : { visible: false, x: 0, y: 0, width: 0, height: 0 };
+      ? { visible: true, projectSidebarWidth: this.projectSidebarWidth, ...bounds }
+      : {
+          visible: false,
+          x: 0,
+          y: 0,
+          width: 0,
+          height: 0,
+          projectSidebarWidth: this.projectSidebarWidth,
+        };
     try {
       await this.vscode.updateBounds(payload, { signal: this.signal });
     } catch {
@@ -302,6 +317,7 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
 
   /** Hides the native surface while retaining the current session's IDE preference. */
   suspend() {
+    if (this.visible) this.props.leaveProjectSidebarMode();
     this.visible = false;
     this.lastActivePath = undefined;
     this.activeContextAttachment = undefined;

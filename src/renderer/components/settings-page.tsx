@@ -27,6 +27,7 @@ function projectTrust(value: string) {
 }
 import { SettingsToggle } from "./settings/settings-toggle";
 import { SettingsAppearanceSection } from "./settings-appearance-section";
+import { SettingsEmbeddedEditorSection } from "./settings-embedded-editor-section";
 import { SettingsProvidersSection } from "./settings-providers-section";
 import type { ChatConfigurationStore } from "../stores/ChatConfigurationStore";
 import type { ProjectWorkbenchStore } from "../stores/ProjectWorkbenchStore";
@@ -568,6 +569,7 @@ export const SettingsPage = observer(function SettingsPage({
         hasSession={Boolean(store.session)}
       />
       <SettingsAppearanceSection appearance={appearance} />
+      <SettingsEmbeddedEditorSection settings={settings.embeddedEditor} />
     </div>
   );
 });

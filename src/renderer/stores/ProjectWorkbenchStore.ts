@@ -38,6 +38,9 @@ export interface ProjectWorkbenchStoreProps {
   /** Commits the session that the workbench actually displays to the application shell. */
   onSessionShown(sessionId: string): void;
   toggleProjectSidebar(): void;
+  enterIdeSidebarMode(): void;
+  leaveIdeSidebarMode(): void;
+  projectSidebarWidth(): number;
 }
 
 /** Owns active project/session activation and the project workbench workflow. */
@@ -104,6 +107,9 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
         );
       },
       startCakeChat: (prompt) => this.props.startCakeChat(prompt),
+      enterProjectSidebarMode: () => this.props.enterIdeSidebarMode(),
+      leaveProjectSidebarMode: () => this.props.leaveIdeSidebarMode(),
+      projectSidebarWidth: () => this.props.projectSidebarWidth(),
     });
   }
 

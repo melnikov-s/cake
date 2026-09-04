@@ -5,6 +5,7 @@ import { ModelPresetSettingsStore } from "./ModelPresetSettingsStore";
 import { ProviderSettingsStore } from "./ProviderSettingsStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import { UtilityModelSettingsStore } from "./UtilityModelSettingsStore";
+import { EmbeddedEditorSettingsStore } from "./EmbeddedEditorSettingsStore";
 
 export interface SettingsStoreProps {
   operations: SessionOperationCoordinatorStore;
@@ -17,6 +18,9 @@ export class SettingsStore extends Store<SettingsStoreProps> {
   }
   @child get utilityModel(): UtilityModelSettingsStore {
     return createStore(UtilityModelSettingsStore);
+  }
+  @child get embeddedEditor(): EmbeddedEditorSettingsStore {
+    return createStore(EmbeddedEditorSettingsStore);
   }
   @child get modelPresets(): ModelPresetSettingsStore {
     return createStore(ModelPresetSettingsStore);

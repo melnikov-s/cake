@@ -7,6 +7,7 @@ import type { GlobalChatStore } from "./GlobalChatStore";
 import { RendererClientContext } from "../client/RendererClientContext";
 import type { ProjectSessionCatalogQuery } from "../../domain/project-session-data";
 import type { CakeChatCatalogQuery } from "../../domain/cake-chat-data";
+import type { EmbeddedEditorSettingsStore } from "./EmbeddedEditorSettingsStore";
 
 export interface SidebarStoreProps {
   projects: ProjectCatalogStore;
@@ -18,6 +19,7 @@ export interface SidebarStoreProps {
   deleteSession(sessionId: string): Promise<void>;
   deleteCakeChatSession(sessionId: string): Promise<void>;
   setSessionUnread(sessionId: string, unread: boolean): Promise<void>;
+  embeddedEditorSettings: EmbeddedEditorSettingsStore;
 }
 
 /** Owns project navigation, metadata-stream demand, and activity badges. */
@@ -28,6 +30,10 @@ export class SidebarStore extends Store<SidebarStoreProps> {
 
   @snapshot hidden = false;
   @snapshot width = 292;
+  private ideActive = false;
+  private ideHidden: boolean | undefined;
+  private ideVisibilityManuallySet = false;
+  private ideViewportWidth = Number.POSITIVE_INFINITY;
   @snapshot private readonly expandedActiveGroups: Record<string, boolean> = observable({
     "cake-chat": true,
   });
@@ -45,6 +51,24 @@ export class SidebarStore extends Store<SidebarStoreProps> {
       }, 60_000);
       return () => clearInterval(timer);
     });
+    this.effect(() => {
+      const browserWindow = globalThis.window;
+      if (!browserWindow) return;
+      const updateViewportWidth = () => this.updateIdeViewportWidth(browserWindow.innerWidth);
+      browserWindow.addEventListener("resize", updateViewportWidth);
+      return () => browserWindow.removeEventListener("resize", updateViewportWidth);
+    });
+    this.reaction(
+      () => [
+        this.props.embeddedEditorSettings.sidebarAutoHide,
+        this.props.embeddedEditorSettings.sidebarAutoHideWidth,
+      ],
+      () => this.applyIdeAutoHide(),
+    );
+  }
+
+  get visible() {
+    return !(this.ideActive ? (this.ideHidden ?? this.hidden) : this.hidden);
   }
 
   get sessions() {
@@ -52,7 +76,42 @@ export class SidebarStore extends Store<SidebarStoreProps> {
   }
 
   toggle() {
+    if (this.ideActive) {
+      this.ideHidden = this.visible;
+      this.ideVisibilityManuallySet = true;
+      return;
+    }
     this.hidden = !this.hidden;
+  }
+
+  enterIdeMode(viewportWidth = globalThis.window?.innerWidth ?? Number.POSITIVE_INFINITY) {
+    if (this.ideActive) return;
+    this.ideActive = true;
+    this.ideViewportWidth = viewportWidth;
+    this.ideVisibilityManuallySet = false;
+    this.applyIdeAutoHide();
+  }
+
+  leaveIdeMode() {
+    this.ideActive = false;
+    this.ideHidden = undefined;
+    this.ideVisibilityManuallySet = false;
+  }
+
+  updateIdeViewportWidth(width: number) {
+    this.ideViewportWidth = width;
+    this.applyIdeAutoHide();
+  }
+
+  private applyIdeAutoHide() {
+    if (!this.ideActive || this.ideVisibilityManuallySet) return;
+    const settings = this.props.embeddedEditorSettings;
+    this.ideHidden =
+      settings.sidebarAutoHide === "always" ||
+      (settings.sidebarAutoHide === "below-width" &&
+        this.ideViewportWidth < settings.sidebarAutoHideWidth)
+        ? true
+        : undefined;
   }
 
   setWidth(width: number) {

@@ -25,6 +25,8 @@ function createHarness(annotations?: EditorAnnotationSnapshot) {
   const startCakeChat = vi.fn(async (prompt: string) => {
     void prompt;
   });
+  const enterProjectSidebarMode = vi.fn();
+  const leaveProjectSidebarMode = vi.fn();
   const { root, subject: store } = mountWithRendererClient(
     createStore(EmbeddedEditorStore, {
       projectPath: () => "/tmp/project",
@@ -45,10 +47,20 @@ function createHarness(annotations?: EditorAnnotationSnapshot) {
       },
       annotations: () => annotations,
       startCakeChat,
+      enterProjectSidebarMode,
+      leaveProjectSidebarMode,
+      projectSidebarWidth: () => 292,
     }),
     { vscode: client } as unknown as RendererClient,
   );
-  return { client, root, store, startCakeChat };
+  return {
+    client,
+    root,
+    store,
+    startCakeChat,
+    enterProjectSidebarMode,
+    leaveProjectSidebarMode,
+  };
 }
 
 function stateEvent(status: "missing" | "downloading" | "starting" | "ready" | "failed") {
@@ -61,10 +73,12 @@ describe("EmbeddedEditorStore", () => {
   });
 
   it("shows and hides the IDE while retaining the running editor", async () => {
-    const { client, root, store } = createHarness();
+    const { client, root, store, enterProjectSidebarMode, leaveProjectSidebarMode } =
+      createHarness();
 
     await store.show();
     expect(store.visible).toBe(true);
+    expect(enterProjectSidebarMode).toHaveBeenCalledTimes(1);
     expect(store.chatSidebarVisible).toBe(true);
     expect(client.getState).not.toHaveBeenCalled();
     expect(client.open).toHaveBeenCalledWith("/tmp/project", expect.any(Object));
@@ -77,6 +91,7 @@ describe("EmbeddedEditorStore", () => {
 
     store.hide();
     expect(store.visible).toBe(false);
+    expect(leaveProjectSidebarMode).toHaveBeenCalledTimes(1);
     await vi.waitFor(() =>
       expect(client.updateBounds).toHaveBeenCalledWith(
         {
@@ -85,6 +100,7 @@ describe("EmbeddedEditorStore", () => {
           y: 0,
           width: 0,
           height: 0,
+          projectSidebarWidth: 292,
         },
         expect.any(Object),
       ),
@@ -244,6 +260,7 @@ describe("EmbeddedEditorStore", () => {
         y: 0,
         width: 0,
         height: 0,
+        projectSidebarWidth: 292,
       },
       expect.any(Object),
     );

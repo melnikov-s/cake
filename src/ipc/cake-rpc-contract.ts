@@ -323,6 +323,10 @@ export const cakeRpcPayloadSchemas = {
       Schema.isGreaterThanOrEqualTo(0),
       Schema.isLessThanOrEqualTo(100_000),
     ),
+    projectSidebarWidth: Schema.Number.check(
+      Schema.isGreaterThanOrEqualTo(0),
+      Schema.isLessThanOrEqualTo(100_000),
+    ),
   }),
   "reveal-in-embedded-editor": Schema.Struct({
     ...requestBase,
