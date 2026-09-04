@@ -2,6 +2,7 @@ import { Store, computed, observable } from "r-state-tree";
 import type { SessionCatalog } from "../models/SessionCatalog";
 import type { SessionSummary } from "../models/SessionSummary";
 import type { WorktreeRecord } from "../../ipc/worktree-contract";
+import { compareSessionSummariesForSidebar } from "../../utils/session-summary-order";
 
 export interface PendingSessionSummary {
   sessionId: string;
@@ -37,7 +38,7 @@ export class SessionCatalogStore extends Store<{
       ),
     ].sort((left, right) => {
       if (left.resolved !== right.resolved) return left.resolved ? 1 : -1;
-      return right.modifiedAt.localeCompare(left.modifiedAt);
+      return compareSessionSummariesForSidebar(left, right);
     });
   }
 

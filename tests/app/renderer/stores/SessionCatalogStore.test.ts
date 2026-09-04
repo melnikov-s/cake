@@ -60,6 +60,28 @@ describe("SessionCatalogStore indexes", () => {
     store[Symbol.dispose]();
   });
 
+  it("pins saved drafts above newer active sessions", () => {
+    const model = SessionCatalog.create({
+      sessions: [
+        session("newest", "2026-01-03T00:00:00.000Z"),
+        {
+          ...session("draft", "2026-01-01T00:00:00.000Z"),
+          messageCount: 0,
+          draft: true,
+        },
+        { ...session("new-chat", "2026-01-02T00:00:00.000Z"), messageCount: 0 },
+      ],
+    });
+    const store = mount(createStore(SessionCatalogStore, { model }));
+
+    expect(store.projectSessions("/project").map((current) => current.sessionId)).toEqual([
+      "draft",
+      "new-chat",
+      "newest",
+    ]);
+    store[Symbol.dispose]();
+  });
+
   it("lets a renderer-local managed-worktree update override the projected record", () => {
     const model = SessionCatalog.create({
       sessions: [session("session", "2026-01-01T00:00:00.000Z", worktree())],

@@ -2,17 +2,19 @@
 interface OrderableSessionSummary {
   messageCount: number;
   modifiedAt: string;
+  draft?: boolean;
 }
 
 /**
- * Sidebar list order for session summaries: sessions with no submitted
- * messages ("New chat") are always pinned to the top, newest first; every
- * other session follows by latest activity.
+ * Sidebar list order for session summaries: saved drafts are always pinned
+ * above other sessions. Unsubmitted sessions ("New chat") follow, then every
+ * other session by latest activity. Each pinned group is newest first.
  */
 export function compareSessionSummariesForSidebar(
   left: OrderableSessionSummary,
   right: OrderableSessionSummary,
 ): number {
+  if (Boolean(left.draft) !== Boolean(right.draft)) return left.draft ? -1 : 1;
   const leftUnsubmitted = left.messageCount === 0;
   const rightUnsubmitted = right.messageCount === 0;
   if (leftUnsubmitted !== rightUnsubmitted) return leftUnsubmitted ? -1 : 1;
