@@ -97,13 +97,18 @@ const summary = (
   return projected;
 };
 
-const archivedLocation = (entry: ProjectSessionArchiveMetadata): ProjectSessionLocation => ({
-  projectPath: entry.projectPath,
-  projectName: entry.projectName,
-  workingDirectory: entry.workingDirectory,
-  sessionDirectory: entry.activeRoot,
-  resolvedSessionDirectory: entry.resolvedRoot,
-});
+const archivedLocation = (entry: ProjectSessionArchiveMetadata): ProjectSessionLocation => {
+  const location: ProjectSessionLocation = {
+    projectPath: entry.projectPath,
+    projectName: entry.projectName,
+    workingDirectory: entry.workingDirectory,
+    sessionDirectory: entry.activeRoot,
+    resolvedSessionDirectory: entry.resolvedRoot,
+  };
+  if (entry.worktreeName !== undefined)
+    Object.assign(location, { worktreeName: entry.worktreeName });
+  return location;
+};
 
 const archivedSummary = (
   entry: ProjectSessionArchiveMetadata,
@@ -662,6 +667,37 @@ const withHandle = Effect.fn("ProjectSessions.withHandle")(function* <A, E>(
   return yield* use(handle);
 });
 
+const withContinuationSource = Effect.fn("ProjectSessions.withContinuationSource")(function* <
+  A,
+  E,
+  R,
+>(
+  target: ProjectSessionTarget,
+  operation: "fork" | "handoff",
+  use: (location: ProjectSessionLocation) => Effect.Effect<A, E, R>,
+) {
+  const source = yield* findLocation(target);
+  const archive = yield* SessionArchiveStorage;
+  const namespace = yield* archive
+    .locate(target.sessionId, archiveLocation(source))
+    .pipe(asError(operation));
+  if (namespace !== "resolved")
+    return { result: yield* use(source), source, sourceWasResolved: false };
+
+  // Resolved transcripts are read-only. Move the source back only for the
+  // duration of the copy operation, then archive it again without publishing
+  // an intermediate active state. The new transcript stays in the active
+  // namespace while the source remains resolved from the user's perspective.
+  const environment = yield* ProjectSessionEnvironment;
+  const restored = yield* environment.restore(target.sessionId, source).pipe(asError(operation));
+  const result = yield* use(restored).pipe(
+    Effect.ensuring(
+      environment.archive(target.sessionId, restored).pipe(asError(operation), Effect.orDie),
+    ),
+  );
+  return { result, source: restored, sourceWasResolved: true };
+});
+
 const runtimeAttachments = (
   values: ProjectSessionPromptInput["attachments"],
 ): ReadonlyArray<Attachment> =>
@@ -898,46 +934,53 @@ export const fork = Effect.fn("ProjectSessions.fork")(function* (input: {
   readonly destinationWorkingDirectory?: string;
   readonly resolveSource?: boolean;
 }) {
-  const source = yield* findLocation(input.target);
-  let destination = source;
-  let sessionId: string;
-  if (
-    input.destinationWorkingDirectory === undefined ||
-    input.destinationWorkingDirectory === source.workingDirectory
-  ) {
-    const result = yield* withHandle(input.target, (handle) => handle.fork(input.entryId)).pipe(
-      asError("fork"),
-    );
-    sessionId = result.sessionId;
-  } else {
-    const environment = yield* ProjectSessionEnvironment;
-    const locations = yield* environment.locations().pipe(asError("fork"));
-    const selectedDestination = locations.find(
-      (item) => item.workingDirectory === input.destinationWorkingDirectory,
-    );
-    if (!selectedDestination)
-      return yield* new ProjectSessionError({
-        operation: "fork",
-        message: "Cake could not find the destination Working Directory",
-      });
-    if (selectedDestination.projectPath !== source.projectPath)
-      return yield* new ProjectSessionError({
-        operation: "fork",
-        message: "The source and destination belong to different Projects",
-      });
-    sessionId = yield* environment
-      .forkToWorkingDirectory({
-        sessionId: input.target.sessionId,
-        entryId: input.entryId,
-        source,
-        destination: selectedDestination,
-      })
-      .pipe(asError("fork"));
-    destination = selectedDestination;
-  }
-  if (input.resolveSource) yield* resolve(input.target);
-  yield* publishCatalogChange(sessionId, destination, false);
-  return { sessionId };
+  const continuation = yield* withContinuationSource(input.target, "fork", (source) =>
+    Effect.gen(function* () {
+      let destination = source;
+      let sessionId: string;
+      if (
+        input.destinationWorkingDirectory === undefined ||
+        input.destinationWorkingDirectory === source.workingDirectory
+      ) {
+        const handle = yield* acquireTarget(source, input.target.sessionId, false);
+        const result = yield* handle.fork(input.entryId).pipe(asError("fork"));
+        sessionId = result.sessionId;
+      } else {
+        const environment = yield* ProjectSessionEnvironment;
+        const locations = yield* environment.locations().pipe(asError("fork"));
+        const selectedDestination = locations.find(
+          (item) => item.workingDirectory === input.destinationWorkingDirectory,
+        );
+        if (!selectedDestination)
+          return yield* new ProjectSessionError({
+            operation: "fork",
+            message: "Cake could not find the destination Working Directory",
+          });
+        if (selectedDestination.projectPath !== source.projectPath)
+          return yield* new ProjectSessionError({
+            operation: "fork",
+            message: "The source and destination belong to different Projects",
+          });
+        sessionId = yield* environment
+          .forkToWorkingDirectory({
+            sessionId: input.target.sessionId,
+            entryId: input.entryId,
+            source,
+            destination: selectedDestination,
+          })
+          .pipe(asError("fork"));
+        destination = selectedDestination;
+      }
+      return { sessionId, destination };
+    }),
+  );
+  if (input.resolveSource && !continuation.sourceWasResolved) yield* resolve(input.target);
+  yield* publishCatalogChange(
+    continuation.result.sessionId,
+    continuation.result.destination,
+    false,
+  );
+  return { sessionId: continuation.result.sessionId };
 });
 
 export const handoff = Effect.fn("ProjectSessions.handoff")(function* (input: {
@@ -947,23 +990,25 @@ export const handoff = Effect.fn("ProjectSessions.handoff")(function* (input: {
   readonly resolveSource?: boolean;
 }) {
   const state = yield* getState();
-  const source = yield* findLocation(input.target);
   const inheritFastMode = state.fastModeSessionIds.includes(input.target.sessionId);
-  const transition = yield* withHandle(input.target, (handle) =>
-    handle.handoff(input.entryId),
-  ).pipe(asError("handoff"));
+  const continuation = yield* withContinuationSource(input.target, "handoff", (source) =>
+    Effect.gen(function* () {
+      const handle = yield* acquireTarget(source, input.target.sessionId, false);
+      return yield* handle.handoff(input.entryId).pipe(asError("handoff"));
+    }),
+  );
   if (inheritFastMode)
-    yield* setSessionFastMode(transition.sessionId, true).pipe(asError("handoff"));
+    yield* setSessionFastMode(continuation.result.sessionId, true).pipe(asError("handoff"));
   if (input.prompt?.trim())
     yield* prompt({
-      sessionId: transition.sessionId,
+      sessionId: continuation.result.sessionId,
       text: input.prompt.trim(),
       attachments: [],
       renderUserMessageAsMarkdown: false,
     });
-  if (input.resolveSource) yield* resolve(input.target);
-  yield* publishCatalogChange(transition.sessionId, source, false);
-  return { sessionId: transition.sessionId };
+  if (input.resolveSource && !continuation.sourceWasResolved) yield* resolve(input.target);
+  yield* publishCatalogChange(continuation.result.sessionId, continuation.source, false);
+  return { sessionId: continuation.result.sessionId };
 });
 
 export const resolve = Effect.fn("ProjectSessions.resolve")(function* (

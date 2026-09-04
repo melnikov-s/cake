@@ -601,6 +601,70 @@ describe("Project Sessions domain", () => {
     );
   });
 
+  it.effect(
+    "forks a resolved session into an active copy while keeping its source resolved",
+    () => {
+      let runtimeConstructions = 0;
+      let restores = 0;
+      let archives = 0;
+      return Effect.gen(function* () {
+        const target = { sessionId: "session-1", workingDirectory: "/project" };
+        const result = yield* projectSessions.fork({
+          target,
+          entryId: "assistant-entry",
+        });
+        const source = yield* projectSessions.inspect(target);
+
+        assert.equal(result.sessionId, "forked");
+        assert.equal(source.resolved, true);
+        assert.equal(runtimeConstructions, 1);
+        assert.equal(restores, 1);
+        assert.equal(archives, 1);
+      }).pipe(
+        Effect.provide(
+          makeLayer(defaultApplicationState(), {
+            resolvedOnDisk: true,
+            onCreateRuntime: () => runtimeConstructions++,
+            onRestore: () => restores++,
+            onArchive: () => archives++,
+          }),
+        ),
+      );
+    },
+  );
+
+  it.effect(
+    "handoffs a resolved session into an active copy while keeping its source resolved",
+    () => {
+      let runtimeConstructions = 0;
+      let restores = 0;
+      let archives = 0;
+      return Effect.gen(function* () {
+        const target = { sessionId: "session-1", workingDirectory: "/project" };
+        const result = yield* projectSessions.handoff({
+          target,
+          entryId: "assistant-entry",
+        });
+        const source = yield* projectSessions.inspect(target);
+
+        assert.equal(result.sessionId, "handoff");
+        assert.equal(source.resolved, true);
+        assert.equal(runtimeConstructions, 1);
+        assert.equal(restores, 1);
+        assert.equal(archives, 1);
+      }).pipe(
+        Effect.provide(
+          makeLayer(defaultApplicationState(), {
+            resolvedOnDisk: true,
+            onCreateRuntime: () => runtimeConstructions++,
+            onRestore: () => restores++,
+            onArchive: () => archives++,
+          }),
+        ),
+      );
+    },
+  );
+
   it.effect("resolves a located idle session without constructing a Pi runtime", () => {
     let runtimeConstructions = 0;
     let archives = 0;

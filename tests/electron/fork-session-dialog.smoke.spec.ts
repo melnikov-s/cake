@@ -160,6 +160,26 @@ test("forks a session into a new worktree and opens the fork", async () => {
     await expect(composer).toHaveValue("Continue in the fork");
     await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
     await expect(page.getByText("Cake could not find that session")).toHaveCount(0);
+
+    // Continue from the now-resolved parent. Handoff should create and open an
+    // active copy without restoring the parent in the sidebar.
+    await page.getByRole("button", { name: "Expand Resolved" }).click();
+    await page.getByRole("button", { name: "Expand project resolved" }).last().click();
+    const resolvedParent = page.locator(
+      `[data-slot="resolved-lane"] [data-session-id="${sessionId}"]`,
+    );
+    await expect(resolvedParent).toBeVisible();
+    await resolvedParent.locator(".session-row").click();
+    const handoff = page.getByRole("button", {
+      name: "Hand off response without tool history into new chat",
+    });
+    await expect(handoff).toBeVisible();
+    await handoff.click({ force: true });
+
+    await expect(page.getByText("Here is the plan.")).toBeVisible();
+    await expect(page.getByRole("combobox", { name: "Message" })).toBeVisible();
+    await expect(page.getByText("Cake could not find that session")).toHaveCount(0);
+    await expect(resolvedParent).toBeVisible();
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

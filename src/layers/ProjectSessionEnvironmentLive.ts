@@ -14,7 +14,10 @@ import {
 import type { SubagentCoordinator } from "../services/subagents/SubagentCoordinator";
 import type { SubagentEnvironment } from "../services/subagents/SubagentEnvironment";
 import { ManagedWorktrees } from "../services/worktrees/ManagedWorktrees";
-import type { ProjectSessionEnvironment } from "../services/project-sessions/ProjectSessionEnvironment";
+import type {
+  ProjectSessionEnvironment,
+  ProjectSessionLocation,
+} from "../services/project-sessions/ProjectSessionEnvironment";
 import {
   makeProjectSessionEnvironmentLayer,
   ProjectSessionEnvironmentError,
@@ -173,10 +176,12 @@ export const makeProjectSessionEnvironmentLive = (
             projectPath: location.projectPath,
             projectName: location.projectName,
           };
-          const resolvedContext = location.managedWorktree
+          const worktreeName =
+            location.managedWorktree?.branch.replace(/^agent\//, "") ?? location.worktreeName;
+          const resolvedContext = worktreeName
             ? {
                 ...archiveContext,
-                worktreeName: location.managedWorktree.branch.replace(/^agent\//, ""),
+                worktreeName,
               }
             : archiveContext;
           yield* archive
@@ -195,15 +200,17 @@ export const makeProjectSessionEnvironmentLive = (
           const restored = yield* archive
             .restoreProject(sessionId)
             .pipe(Effect.mapError((error) => environmentError("restore", error)));
-          return restored
-            ? {
-                projectPath: restored.projectPath,
-                projectName: restored.projectName,
-                workingDirectory: restored.workingDirectory,
-                sessionDirectory: restored.activeRoot,
-                resolvedSessionDirectory: restored.resolvedRoot,
-              }
-            : location;
+          if (!restored) return location;
+          const restoredLocation: ProjectSessionLocation = {
+            projectPath: restored.projectPath,
+            projectName: restored.projectName,
+            workingDirectory: restored.workingDirectory,
+            sessionDirectory: restored.activeRoot,
+            resolvedSessionDirectory: restored.resolvedRoot,
+          };
+          if (restored.worktreeName !== undefined)
+            Object.assign(restoredLocation, { worktreeName: restored.worktreeName });
+          return restoredLocation;
         }),
         forkToWorkingDirectory: Effect.fn("ProjectSessionEnvironment.forkToWorkingDirectory")(
           function* ({ sessionId, source, destination }) {

@@ -24,6 +24,7 @@ export const ProjectSessionLocation = Schema.Struct({
   sessionDirectory: Schema.String,
   resolvedSessionDirectory: Schema.String,
   managedWorktree: Schema.optionalKey(ManagedWorktreeContext),
+  worktreeName: Schema.optionalKey(Schema.String),
 });
 export interface ProjectSessionLocation extends Schema.Schema.Type<typeof ProjectSessionLocation> {}
 
