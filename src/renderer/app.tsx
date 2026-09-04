@@ -65,7 +65,9 @@ export const App = observer(function App() {
     globalChat && shell.selection.kind === "cake-chat" && shell.selection.sessionId
       ? globalChat.findSession(shell.selection.sessionId)
       : undefined;
-  const workbenchError = store.contextError(session?.sessionId);
+  const selectedProjectSessionId =
+    shell.selection.kind === "project-session" ? shell.selection.sessionId : undefined;
+  const workbenchError = store.contextError(session?.sessionId ?? selectedProjectSessionId);
   const chatError =
     workbenchError?.message ??
     composer?.error ??
@@ -431,44 +433,58 @@ export const App = observer(function App() {
             </div>
           )
         ) : !session ? (
-          <div className="grid h-full min-h-0 min-w-0 place-items-center content-center overflow-y-auto p-10 text-center">
-            <span className="grid size-14 rotate-3 place-items-center rounded-bl-[14px] rounded-br-[20px] rounded-tl-[20px] rounded-tr-[14px] border border-border bg-card/75 shadow-[0_20px_70px_-30px_hsl(var(--shadow)/0.5)]">
-              <span className="grid size-[27px] select-none place-items-center rounded-bl-[6px] rounded-br-[9px] rounded-tl-[9px] rounded-tr-[6px] bg-foreground text-sm font-black tracking-tighter text-background -rotate-2">
-                C
-              </span>
-            </span>
-            <h1 className="mt-5 font-display text-3xl font-semibold tracking-tight">
-              What should we build?
-            </h1>
-            <p className="mt-3 max-w-[470px] text-sm leading-relaxed text-muted-foreground">
-              Open a project for durable workspace chats, or start a one-off chat from your home
-              directory.
-            </p>
-            <div className="mt-6 flex gap-2.5">
-              <Button
-                size="lg"
-                disabled={store.agentAvailability !== "available" || store.isBusy}
-                onClick={() => void root.chooseProject()}
-              >
-                <FolderIcon /> Open project
-              </Button>
-              <Button
-                size="lg"
-                variant="outline"
-                disabled={store.agentAvailability !== "available" || store.isBusy}
-                onClick={() => void root.startOneOffChat()}
-              >
-                <ChatIcon /> One-off chat
-              </Button>
+          selectedProjectSessionId ? (
+            <div className="grid h-full min-h-0 min-w-0 place-items-center content-center overflow-y-auto p-10 text-center">
+              {chatError ? (
+                <ErrorNotice
+                  title="Could not open session"
+                  message={chatError}
+                  details={chatErrorDetails}
+                />
+              ) : (
+                <LoadingState label="Opening session" />
+              )}
             </div>
-            {chatError && (
-              <ErrorNotice
-                title="Operation failed"
-                message={chatError}
-                details={chatErrorDetails}
-              />
-            )}
-          </div>
+          ) : (
+            <div className="grid h-full min-h-0 min-w-0 place-items-center content-center overflow-y-auto p-10 text-center">
+              <span className="grid size-14 rotate-3 place-items-center rounded-bl-[14px] rounded-br-[20px] rounded-tl-[20px] rounded-tr-[14px] border border-border bg-card/75 shadow-[0_20px_70px_-30px_hsl(var(--shadow)/0.5)]">
+                <span className="grid size-[27px] select-none place-items-center rounded-bl-[6px] rounded-br-[9px] rounded-tl-[9px] rounded-tr-[6px] bg-foreground text-sm font-black tracking-tighter text-background -rotate-2">
+                  C
+                </span>
+              </span>
+              <h1 className="mt-5 font-display text-3xl font-semibold tracking-tight">
+                What should we build?
+              </h1>
+              <p className="mt-3 max-w-[470px] text-sm leading-relaxed text-muted-foreground">
+                Open a project for durable workspace chats, or start a one-off chat from your home
+                directory.
+              </p>
+              <div className="mt-6 flex gap-2.5">
+                <Button
+                  size="lg"
+                  disabled={store.agentAvailability !== "available" || store.isBusy}
+                  onClick={() => void root.chooseProject()}
+                >
+                  <FolderIcon /> Open project
+                </Button>
+                <Button
+                  size="lg"
+                  variant="outline"
+                  disabled={store.agentAvailability !== "available" || store.isBusy}
+                  onClick={() => void root.startOneOffChat()}
+                >
+                  <ChatIcon /> One-off chat
+                </Button>
+              </div>
+              {chatError && (
+                <ErrorNotice
+                  title="Operation failed"
+                  message={chatError}
+                  details={chatErrorDetails}
+                />
+              )}
+            </div>
+          )
         ) : (
           <StoreProvider key={session.sessionId} store={session}>
             {sessionHeaderHost &&

@@ -109,7 +109,7 @@ export class RootStore extends Store<{
     this.requireProjectSessionWorkingDirectory(sessionId);
     this.projectWorkbenchStore.dismissSecondarySurfaces();
     await this.projectWorkbenchStore.openSession(sessionId);
-    if (!this.projectWorkbenchStore.isActiveSession(sessionId)) return false;
+    if (this.projectWorkbenchStore.activeSession?.sessionId !== sessionId) return false;
     if (!messageId) return true;
     const session = this.sessionRegistry.findSession(sessionId);
     if (!session) return false;
@@ -622,7 +622,11 @@ export class RootStore extends Store<{
       openSessionById: async (sessionId) => {
         await this.openSession(sessionId);
       },
-      onSessionShown: (sessionId) => this.selectProjectSessionForShell(sessionId),
+      activeSessionId: () => {
+        const active = this.appShellStore.activeConversation;
+        return active?.kind === "project-session" ? active.sessionId : undefined;
+      },
+      selectSession: (sessionId) => this.selectProjectSessionForShell(sessionId),
       toggleProjectSidebar: () => this.sidebarStore.toggle(),
       enterIdeSidebarMode: () => this.sidebarStore.enterIdeMode(),
       leaveIdeSidebarMode: () => this.sidebarStore.leaveIdeMode(),
@@ -689,10 +693,10 @@ export class RootStore extends Store<{
     });
     this.appControl = new AppControlBridge({
       currentSession: () =>
-        this.projectWorkbenchStore.projectPath && this.projectWorkbenchStore.selectedSessionId
+        this.projectWorkbenchStore.projectPath && this.projectWorkbenchStore.activeSessionId
           ? {
               workspacePath: this.projectWorkbenchStore.projectPath,
-              sessionId: this.projectWorkbenchStore.selectedSessionId,
+              sessionId: this.projectWorkbenchStore.activeSessionId,
             }
           : undefined,
       projects: () => this.projectCatalogStore.projects,
