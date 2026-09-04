@@ -643,7 +643,10 @@ export interface CakeRuntime {
   logout(provider: string): Promise<void>;
   rename(name: string): Promise<void>;
   fork(entryId: string): Promise<{ sessionId: string; sessionFile: string }>;
-  handoff(entryId: string): Promise<{ sessionId: string; sessionFile: string }>;
+  handoff(
+    entryId: string,
+    destination?: { readonly workingDirectory: string; readonly sessionRoot: string },
+  ): Promise<{ sessionId: string; sessionFile: string }>;
   navigate(entryId: string): Promise<void>;
   dispose(): void | Promise<void>;
 }
@@ -2328,7 +2331,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       const forked = SessionManager.open(sessionFile, options.sessionDir, options.cwd);
       return { sessionId: forked.getSessionId(), sessionFile };
     },
-    async handoff(entryId) {
+    async handoff(entryId, destination) {
       const configuration = session.model
         ? {
             provider: session.model.provider,
@@ -2336,7 +2339,20 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
             thinkingLevel: session.thinkingLevel,
           }
         : undefined;
-      return createConversationHandoff(session.sessionManager, entryId, configuration);
+      return createConversationHandoff(
+        session.sessionManager,
+        entryId,
+        configuration,
+        destination
+          ? {
+              workingDirectory: destination.workingDirectory,
+              sessionDirectory: cakeWorkspaceSessionDirectory(
+                destination.workingDirectory,
+                destination.sessionRoot,
+              ),
+            }
+          : undefined,
+      );
     },
     async navigate(entryId) {
       const result = await session.navigateTree(entryId, { summarize: false });

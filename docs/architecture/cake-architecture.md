@@ -284,6 +284,11 @@ The window Store hierarchy mirrors the product surfaces:
   `SessionContinuationStore`, `WorktreeCreationStore`, and `EmbeddedEditorStore`.
   `WorktreeCreationStore` owns both draft-composer worktree
   selection and Cake Chat's coordinated create-worktree-then-create-named-session workflow.
+  Fork and handoff are continuation workflows rather than permanent Working Directory bindings:
+  both default to the parent's current Working Directory and can instead target a child Managed
+  Worktree based on the current worktree, the Project root with no Managed Worktree, or a new
+  Managed Worktree based on the Project's default branch. Resolving the parent is an independent,
+  explicit choice for every destination; an already resolved parent remains resolved.
   `EmbeddedEditorStore` realizes the selected Project Session's IDE presentation preference and
   owns native-editor lifecycle, bounds, and Source Control navigation. The native VS Code view
   occupies the source pane, the ordinary Cake sidebar may occupy the left pane, and Cake's shared

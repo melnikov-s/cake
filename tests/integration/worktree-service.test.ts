@@ -96,6 +96,20 @@ describe("WorktreeService", { timeout: 20_000 }, () => {
     expect(existsSync(record.worktreePath)).toBe(true);
   });
 
+  it("branches a child worktree from a landed worktree", async () => {
+    const repo = await repository();
+    const worktrees = service();
+    const parent = await worktrees.create(repo, undefined, "landed-parent");
+    await worktrees.land(parent.worktreePath, { request: { strategy: "preserve" } });
+
+    const child = await worktrees.create(repo, parent.worktreePath, "continued-child");
+
+    expect(child.parentWorktreePath).toBe(parent.worktreePath);
+    expect(child.baseBranch).toBe(parent.branch);
+    await worktrees.discard(child.worktreePath, false);
+    await worktrees.discard(parent.worktreePath, false);
+  });
+
   it("persists records across service instances", async () => {
     const repo = await repository();
     const storage = join(

@@ -3,28 +3,45 @@ import { suggestedWorktreeName } from "../../utils/worktree-name";
 import { RendererClientContext } from "../client/RendererClientContext";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 
+export type SessionContinuationDestination =
+  | "existing"
+  | "branch-worktree"
+  | "project-root"
+  | "new-worktree";
+
 export interface SessionContinuationStoreProps {
   operations: SessionOperationCoordinatorStore;
-  createWorktree(workspacePath: string, name: string): Promise<string>;
-  sessionContext(): { sessionId: string; workspacePath: string } | undefined;
+  createWorktree(projectPath: string, name: string, baseWorktreePath?: string): Promise<string>;
+  sessionContext():
+    | {
+        sessionId: string;
+        projectPath: string;
+        workspacePath: string;
+        canBranchFromCurrentWorktree: boolean;
+      }
+    | undefined;
   sessionTitle(): string;
   closeCommandPane(): void;
   openSession(sessionId: string, workingDirectory: string): Promise<void>;
   reportError(error: unknown): void;
 }
 
-export interface ForkSessionPrompt {
+export interface SessionContinuationPrompt {
+  kind: "fork" | "handoff";
   sessionId: string;
   entryId: string;
+  projectPath: string;
   workspacePath: string;
-  destination: "existing" | "new-worktree";
+  canBranchFromCurrentWorktree: boolean;
+  destination: SessionContinuationDestination;
   worktreeName: string;
+  continuationPrompt?: string;
   resolveParent: boolean;
 }
 
 /** Owns full-context forks and clean-context handoffs into replacement sessions. */
 export class SessionContinuationStore extends Store<SessionContinuationStoreProps> {
-  prompt: ForkSessionPrompt | undefined;
+  prompt: SessionContinuationPrompt | undefined;
   private activeOperationId: string | undefined;
 
   get client() {
@@ -32,25 +49,17 @@ export class SessionContinuationStore extends Store<SessionContinuationStoreProp
   }
 
   forkAt(entryId: string) {
-    const context = this.props.sessionContext();
-    if (!context || this.signal.aborted || this.prompt || this.activeOperationId) return;
-    this.props.closeCommandPane();
-    this.prompt = {
-      ...context,
-      entryId,
-      destination: "existing",
-      worktreeName: suggestedWorktreeName(this.props.sessionTitle()),
-      resolveParent: false,
-    };
+    return this.requestContinuation("fork", entryId);
   }
 
-  selectDestination(destination: ForkSessionPrompt["destination"]) {
-    if (this.prompt)
-      this.prompt = {
-        ...this.prompt,
-        destination,
-        resolveParent: destination === "new-worktree" && this.prompt.resolveParent,
-      };
+  async handoffAt(entryId: string, prompt?: string, resolveSource = false) {
+    return this.requestContinuation("handoff", entryId, prompt, resolveSource);
+  }
+
+  selectDestination(destination: SessionContinuationDestination) {
+    if (!this.prompt) return;
+    if (destination === "branch-worktree" && !this.prompt.canBranchFromCurrentWorktree) return;
+    this.prompt = { ...this.prompt, destination };
   }
 
   setWorktreeName(worktreeName: string) {
@@ -58,8 +67,7 @@ export class SessionContinuationStore extends Store<SessionContinuationStoreProp
   }
 
   setResolveParent(resolveParent: boolean) {
-    if (this.prompt?.destination === "new-worktree")
-      this.prompt = { ...this.prompt, resolveParent };
+    if (this.prompt) this.prompt = { ...this.prompt, resolveParent };
   }
 
   cancelPrompt() {
@@ -70,56 +78,37 @@ export class SessionContinuationStore extends Store<SessionContinuationStoreProp
     const prompt = this.prompt;
     if (!prompt) return;
     const worktreeName = prompt.worktreeName.trim();
-    if (prompt.destination === "new-worktree" && !/^[a-z0-9][a-z0-9-]{0,62}$/.test(worktreeName))
-      return;
+    const createsWorktree =
+      prompt.destination === "branch-worktree" || prompt.destination === "new-worktree";
+    if (createsWorktree && !/^[a-z0-9][a-z0-9-]{0,62}$/.test(worktreeName)) return;
     this.prompt = undefined;
     let destinationWorkingDirectory: string | undefined;
     try {
-      if (prompt.destination === "new-worktree")
-        destinationWorkingDirectory = await this.props.createWorktree(
-          prompt.workspacePath,
-          worktreeName,
-        );
+      switch (prompt.destination) {
+        case "existing":
+          destinationWorkingDirectory = prompt.workspacePath;
+          break;
+        case "project-root":
+          destinationWorkingDirectory = prompt.projectPath;
+          break;
+        case "branch-worktree":
+          destinationWorkingDirectory = await this.props.createWorktree(
+            prompt.projectPath,
+            worktreeName,
+            prompt.workspacePath,
+          );
+          break;
+        case "new-worktree":
+          destinationWorkingDirectory = await this.props.createWorktree(
+            prompt.projectPath,
+            worktreeName,
+          );
+          break;
+      }
       if (this.signal.aborted) return;
-      await this.dispatchFork(
-        prompt.sessionId,
-        prompt.entryId,
-        prompt.resolveParent,
-        destinationWorkingDirectory,
-      );
+      await this.dispatchContinuation(prompt, destinationWorkingDirectory);
     } catch (error) {
       if (!this.signal.aborted) this.props.reportError(error);
-    }
-  }
-
-  async handoffAt(entryId: string, prompt?: string, resolveSource = false) {
-    const context = this.props.sessionContext();
-    if (!context) {
-      this.props.reportError("There is no active session to hand off");
-      return false;
-    }
-    if (this.signal.aborted || this.prompt || this.activeOperationId) return false;
-    this.props.closeCommandPane();
-    const operationId = this.props.operations.start("project-workbench");
-    this.activeOperationId = operationId;
-    try {
-      const result = await this.client.projectSessions.handoff(
-        {
-          sessionId: context.sessionId,
-          entryId,
-          prompt: prompt?.trim() || undefined,
-          resolveSource,
-        },
-        { signal: this.signal },
-      );
-      if (!this.signal.aborted)
-        await this.props.openSession(result.sessionId, context.workspacePath);
-      return !this.signal.aborted;
-    } catch (error) {
-      if (!this.signal.aborted) this.props.reportError(error);
-      return false;
-    } finally {
-      this.clearActiveOperation();
     }
   }
 
@@ -128,31 +117,61 @@ export class SessionContinuationStore extends Store<SessionContinuationStoreProp
     this.prompt = undefined;
   }
 
+  private requestContinuation(
+    kind: SessionContinuationPrompt["kind"],
+    entryId: string,
+    continuationPrompt?: string,
+    resolveParent = false,
+  ) {
+    const context = this.props.sessionContext();
+    if (!context) {
+      this.props.reportError(
+        `There is no active session to ${kind === "fork" ? "fork" : "hand off"}`,
+      );
+      return false;
+    }
+    if (this.signal.aborted || this.prompt || this.activeOperationId) return false;
+    this.props.closeCommandPane();
+    this.prompt = {
+      ...context,
+      kind,
+      entryId,
+      destination: "existing",
+      worktreeName: suggestedWorktreeName(this.props.sessionTitle()),
+      continuationPrompt: continuationPrompt?.trim() || undefined,
+      resolveParent,
+    };
+    return true;
+  }
+
   private clearActiveOperation() {
     if (this.activeOperationId) this.props.operations.finish(this.activeOperationId);
     this.activeOperationId = undefined;
   }
 
-  private async dispatchFork(
-    sessionId: string,
-    entryId: string,
-    resolveSource: boolean,
-    destinationWorkingDirectory?: string,
+  private async dispatchContinuation(
+    prompt: SessionContinuationPrompt,
+    destinationWorkingDirectory: string,
   ) {
     const operationId = this.props.operations.start("project-workbench");
     this.activeOperationId = operationId;
     try {
-      const input = {
-        sessionId,
-        entryId,
-        resolveSource,
+      const target = {
+        sessionId: prompt.sessionId,
+        workingDirectory: prompt.workspacePath,
+        entryId: prompt.entryId,
+        resolveSource: prompt.resolveParent,
         destinationWorkingDirectory,
       };
-      const result = await this.client.projectSessions.fork(input, { signal: this.signal });
-      const workingDirectory =
-        destinationWorkingDirectory ?? this.props.sessionContext()?.workspacePath;
-      if (!this.signal.aborted && workingDirectory)
-        await this.props.openSession(result.sessionId, workingDirectory);
+      const result =
+        prompt.kind === "fork"
+          ? await this.client.projectSessions.fork(target, { signal: this.signal })
+          : await this.client.projectSessions.handoff(
+              { ...target, prompt: prompt.continuationPrompt },
+              { signal: this.signal },
+            );
+      if (!this.signal.aborted)
+        await this.props.openSession(result.sessionId, destinationWorkingDirectory);
     } catch (error) {
       if (!this.signal.aborted) this.props.reportError(error);
     } finally {

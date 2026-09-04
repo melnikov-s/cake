@@ -91,9 +91,17 @@ export const projectSessionHandlers = ProjectSessionRpc.of({
   "projectSessions.login": ({ provider, authType, ...target }) =>
     projectSessions.login(target, provider, authType),
   "projectSessions.logout": ({ provider, ...target }) => projectSessions.logout(target, provider),
-  "projectSessions.handoff": ({ entryId, prompt, resolveSource, ...target }) => {
+  "projectSessions.handoff": ({
+    entryId,
+    prompt,
+    destinationWorkingDirectory,
+    resolveSource,
+    ...target
+  }) => {
     const input: Parameters<typeof projectSessions.handoff>[0] = { target, entryId };
     if (prompt !== undefined) Object.assign(input, { prompt });
+    if (destinationWorkingDirectory !== undefined)
+      Object.assign(input, { destinationWorkingDirectory });
     if (resolveSource !== undefined) Object.assign(input, { resolveSource });
     return projectSessions.handoff(input);
   },

@@ -119,6 +119,29 @@ describe("createConversationHandoff", () => {
     ).toBe(false);
   });
 
+  it("writes the handoff into a different Working Directory", async () => {
+    const sourceSessionDir = await mkdtemp(join(tmpdir(), "cake-handoff-source-"));
+    const destinationSessionDir = await mkdtemp(join(tmpdir(), "cake-handoff-destination-"));
+    temporaryDirectories.push(sourceSessionDir, destinationSessionDir);
+    const source = SessionManager.create("/project", sourceSessionDir);
+    source.appendMessage({ role: "user", content: "Hello", timestamp: 1 });
+    const selectedId = source.appendMessage(assistant([{ type: "text", text: "Plain answer" }]));
+
+    const result = createConversationHandoff(source, selectedId, undefined, {
+      workingDirectory: "/project-worktree",
+      sessionDirectory: destinationSessionDir,
+    });
+    const handedOff = SessionManager.open(
+      result.sessionFile,
+      destinationSessionDir,
+      "/project-worktree",
+    );
+
+    expect(result.sessionFile.startsWith(destinationSessionDir)).toBe(true);
+    expect(handedOff.getCwd()).toBe("/project-worktree");
+    expect(handedOff.getHeader()?.parentSession).toBe(source.getSessionFile());
+  });
+
   it("rejects non-assistant handoff targets", async () => {
     const sessionDir = await mkdtemp(join(tmpdir(), "cake-handoff-"));
     temporaryDirectories.push(sessionDir);

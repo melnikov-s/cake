@@ -54,6 +54,10 @@ const snapshot: SessionSnapshot = {
 const fakeRuntime = (
   options: CakeRuntimeOptions,
   prompt: () => Promise<void> = async () => undefined,
+  onHandoff?: (destination?: {
+    readonly workingDirectory: string;
+    readonly sessionRoot: string;
+  }) => void,
 ): CakeRuntime => ({
   sessionId: snapshot.sessionId,
   sessionFile: snapshot.sessionFile,
@@ -75,7 +79,10 @@ const fakeRuntime = (
   logout: async () => undefined,
   rename: async () => undefined,
   fork: async () => ({ sessionId: "forked", sessionFile: "/sessions/forked.jsonl" }),
-  handoff: async () => ({ sessionId: "handoff", sessionFile: "/sessions/handoff.jsonl" }),
+  handoff: async (_entryId, destination) => {
+    onHandoff?.(destination);
+    return { sessionId: "handoff", sessionFile: "/sessions/handoff.jsonl" };
+  },
   navigate: async () => undefined,
   dispose: () => undefined,
 });
@@ -106,6 +113,10 @@ const makeLayer = (
     locations?: ReadonlyArray<ProjectSessionLocation>;
     onRuntimeOptions?(newSession: boolean): void;
     prompt?(): Promise<void>;
+    onHandoff?(destination?: {
+      readonly workingDirectory: string;
+      readonly sessionRoot: string;
+    }): void;
     sessionExists?: boolean;
     resolvedOnDisk?: boolean;
     migrationComplete?: boolean;
@@ -166,7 +177,7 @@ const makeLayer = (
     createRuntime: (options) =>
       Effect.sync(() => {
         hooks.onCreateRuntime?.();
-        return fakeRuntime(options, hooks.prompt);
+        return fakeRuntime(options, hooks.prompt, hooks.onHandoff);
       }),
     changelog: () => Effect.succeed("# Changelog"),
   };
@@ -597,6 +608,49 @@ describe("Project Sessions domain", () => {
           },
           { onCreateRuntime: () => runtimeConstructions++ },
         ),
+      ),
+    );
+  });
+
+  it.effect("handoffs into another Working Directory", () => {
+    let handoffDestination:
+      | { readonly workingDirectory: string; readonly sessionRoot: string }
+      | undefined;
+    return Effect.gen(function* () {
+      const result = yield* projectSessions.handoff({
+        target: { sessionId: "session-1", workingDirectory: "/project" },
+        entryId: "assistant-entry",
+        destinationWorkingDirectory: "/project-worktree",
+      });
+
+      assert.equal(result.sessionId, "handoff");
+      assert.deepEqual(handoffDestination, {
+        workingDirectory: "/project-worktree",
+        sessionRoot: "/sessions",
+      });
+    }).pipe(
+      Effect.provide(
+        makeLayer(defaultApplicationState(), {
+          locations: [
+            {
+              projectPath: "/project",
+              projectName: "Project",
+              workingDirectory: "/project",
+              sessionDirectory: "/sessions",
+              resolvedSessionDirectory: "/resolved-sessions",
+            },
+            {
+              projectPath: "/project",
+              projectName: "Project",
+              workingDirectory: "/project-worktree",
+              sessionDirectory: "/sessions",
+              resolvedSessionDirectory: "/resolved-sessions",
+            },
+          ],
+          onHandoff: (destination) => {
+            handoffDestination = destination;
+          },
+        }),
       ),
     );
   });

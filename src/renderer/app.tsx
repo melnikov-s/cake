@@ -33,7 +33,7 @@ import { WorktreePill } from "@/components/worktree-pill";
 import { WorkLogControls } from "@/components/work-log-controls";
 import { Sidebar } from "@/components/sidebar";
 import { ErrorNotice } from "@/components/error-notice";
-import { ForkSessionDialog } from "@/components/fork-session-dialog";
+import { SessionContinuationDialog } from "@/components/session-continuation-dialog";
 import { ArtifactsPanel } from "@/components/artifacts-panel";
 import { UiDialog } from "@/components/ui-dialog";
 import { CommandPane } from "@/components/command-pane";
@@ -592,7 +592,7 @@ export const App = observer(function App() {
           </Confirmation>
         </DialogBackdrop>
       )}
-      <ForkSessionDialog store={store.sessionContinuationStore} />
+      <SessionContinuationDialog store={store.sessionContinuationStore} />
       {extensionUi.request && (
         <DialogBackdrop>
           <UiDialog

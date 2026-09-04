@@ -61,6 +61,7 @@ export function createConversationHandoff(
     readonly modelId: string;
     readonly thinkingLevel: string;
   },
+  destination?: { readonly workingDirectory: string; readonly sessionDirectory: string },
 ) {
   const selected = source.getEntry(assistantEntryId);
   if (
@@ -73,7 +74,11 @@ export function createConversationHandoff(
   const parentSession = source.getSessionFile();
   if (!parentSession) throw new Error("The current session is not persisted");
 
-  const target = SessionManager.create(source.getCwd(), source.getSessionDir(), { parentSession });
+  const target = SessionManager.create(
+    destination?.workingDirectory ?? source.getCwd(),
+    destination?.sessionDirectory ?? source.getSessionDir(),
+    { parentSession },
+  );
   const strippedToolActivity = countStrippedToolActivity(source, assistantEntryId);
   if (strippedToolActivity > 0)
     target.appendCustomMessageEntry(

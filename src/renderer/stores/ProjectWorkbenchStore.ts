@@ -133,12 +133,10 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   get sessionContinuationStore(): SessionContinuationStore {
     return createStore(SessionContinuationStore, {
       operations: this.props.operations,
-      createWorktree: async (workspacePath, name) => {
-        const projectPath =
-          this.props.catalog.projectOfManagedWorktree(workspacePath) ?? workspacePath;
+      createWorktree: async (projectPath, name, baseWorktreePath) => {
         const record = await this.worktreeCreationStore.create(projectPath, {
           name,
-          baseWorktreePath: projectPath === workspacePath ? undefined : workspacePath,
+          baseWorktreePath,
         });
         return record.worktreePath;
       },
@@ -684,7 +682,20 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
 
   sessionContext() {
     if (!this.projectPath || !this.session) return undefined;
-    return { workspacePath: this.projectPath, sessionId: this.session.sessionId };
+    const summary = this.props.catalog.find(this.session.sessionId);
+    const managedWorktree = this.props.catalog.managedWorktree(this.projectPath);
+    return {
+      workspacePath: this.projectPath,
+      projectPath:
+        summary?.projectPath ??
+        managedWorktree?.projectPath ??
+        this.props.catalog.projectOfManagedWorktree(this.projectPath) ??
+        this.projectPath,
+      sessionId: this.session.sessionId,
+      canBranchFromCurrentWorktree:
+        managedWorktree !== undefined &&
+        ["active", "landed"].includes(managedWorktree.state ?? "active"),
+    };
   }
 
   openingSession(sessionId: string) {

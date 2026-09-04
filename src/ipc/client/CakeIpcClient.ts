@@ -334,6 +334,7 @@ export interface CakeIpcClientService {
       input: ProjectSessionTarget & {
         readonly entryId: string;
         readonly prompt?: string;
+        readonly destinationWorkingDirectory?: string;
         readonly resolveSource?: boolean;
       },
     ) => Effect.Effect<{ readonly sessionId: string }, ProjectSessionError | TransportError>;

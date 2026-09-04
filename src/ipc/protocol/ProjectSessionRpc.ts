@@ -132,6 +132,7 @@ export const ProjectSessionRpc = RpcGroup.make(
       ...ProjectSessionTarget.fields,
       entryId: Schema.String,
       prompt: Schema.optional(Schema.String),
+      destinationWorkingDirectory: Schema.optional(Schema.String),
       resolveSource: Schema.optional(Schema.Boolean),
     },
     success: Schema.Struct({ sessionId: Schema.String }),

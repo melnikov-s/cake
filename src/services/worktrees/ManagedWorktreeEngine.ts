@@ -81,7 +81,7 @@ export class ManagedWorktreeEngine implements WorktreeLandingCoordinator {
     const parent = baseWorktreePath
       ? this.allRecords.find(
           (entry) =>
-            (entry.state ?? "active") === "active" &&
+            ["active", "landed"].includes(entry.state ?? "active") &&
             resolveNormalized(entry.worktreePath) === resolveNormalized(baseWorktreePath),
         )
       : undefined;

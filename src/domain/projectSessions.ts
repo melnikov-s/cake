@@ -987,28 +987,67 @@ export const handoff = Effect.fn("ProjectSessions.handoff")(function* (input: {
   readonly target: ProjectSessionTarget;
   readonly entryId: string;
   readonly prompt?: string;
+  readonly destinationWorkingDirectory?: string;
   readonly resolveSource?: boolean;
 }) {
   const state = yield* getState();
   const inheritFastMode = state.fastModeSessionIds.includes(input.target.sessionId);
   const continuation = yield* withContinuationSource(input.target, "handoff", (source) =>
     Effect.gen(function* () {
+      let destination = source;
+      if (
+        input.destinationWorkingDirectory !== undefined &&
+        input.destinationWorkingDirectory !== source.workingDirectory
+      ) {
+        const environment = yield* ProjectSessionEnvironment;
+        const locations = yield* environment.locations().pipe(asError("handoff"));
+        const selectedDestination = locations.find(
+          (item) => item.workingDirectory === input.destinationWorkingDirectory,
+        );
+        if (!selectedDestination)
+          return yield* new ProjectSessionError({
+            operation: "handoff",
+            message: "Cake could not find the destination Working Directory",
+          });
+        if (selectedDestination.projectPath !== source.projectPath)
+          return yield* new ProjectSessionError({
+            operation: "handoff",
+            message: "The source and destination belong to different Projects",
+          });
+        destination = selectedDestination;
+      }
       const handle = yield* acquireTarget(source, input.target.sessionId, false);
-      return yield* handle.handoff(input.entryId).pipe(asError("handoff"));
+      const result = yield* handle
+        .handoff(
+          input.entryId,
+          destination === source
+            ? undefined
+            : {
+                workingDirectory: destination.workingDirectory,
+                sessionRoot: destination.sessionDirectory,
+              },
+        )
+        .pipe(asError("handoff"));
+      return { result, destination };
     }),
   );
   if (inheritFastMode)
-    yield* setSessionFastMode(continuation.result.sessionId, true).pipe(asError("handoff"));
+    yield* setSessionFastMode(continuation.result.result.sessionId, true).pipe(asError("handoff"));
   if (input.prompt?.trim())
     yield* prompt({
-      sessionId: continuation.result.sessionId,
+      sessionId: continuation.result.result.sessionId,
+      workingDirectory: continuation.result.destination.workingDirectory,
       text: input.prompt.trim(),
       attachments: [],
       renderUserMessageAsMarkdown: false,
     });
   if (input.resolveSource && !continuation.sourceWasResolved) yield* resolve(input.target);
-  yield* publishCatalogChange(continuation.result.sessionId, continuation.source, false);
-  return { sessionId: continuation.result.sessionId };
+  yield* publishCatalogChange(
+    continuation.result.result.sessionId,
+    continuation.result.destination,
+    false,
+  );
+  return { sessionId: continuation.result.result.sessionId };
 });
 
 export const resolve = Effect.fn("ProjectSessions.resolve")(function* (
