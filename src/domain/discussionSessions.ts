@@ -257,6 +257,12 @@ export const observe = Effect.fn("DiscussionSessions.observe")(function* (
 export const prompt = Effect.fn("DiscussionSessions.prompt")(function* (
   input: DiscussionSessionPromptInput,
 ) {
+  const annotations = input.annotations ?? [];
+  if (!input.text.trim() && annotations.length === 0)
+    return yield* new DiscussionSessionError({
+      operation: "prompt",
+      message: "A Discussion Session prompt cannot be empty",
+    });
   const environment = yield* DiscussionSessionEnvironment;
   let record = yield* environment
     .get(input.workingDirectory, input.parentSessionId, input.threadId)
@@ -268,8 +274,9 @@ export const prompt = Effect.fn("DiscussionSessions.prompt")(function* (
     yield* prepared.handle.setModel(input.model.provider, input.model.id).pipe(asError("prompt"));
   if (input.thinkingLevel)
     yield* prepared.handle.setThinkingLevel(input.thinkingLevel).pipe(asError("prompt"));
+  const attachments = annotations.length > 0 ? [{ kind: "annotation" as const, annotations }] : [];
   const turnId = TurnId.make(
-    yield* prepared.handle.prompt(input.text.trim()).pipe(asError("prompt")),
+    yield* prepared.handle.prompt(input.text.trim(), attachments).pipe(asError("prompt")),
   );
   return { turnId, thread: projectThread(prepared.record) };
 });

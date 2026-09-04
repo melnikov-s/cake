@@ -1,6 +1,11 @@
 import { Store, child, createStore, observable, snapshot } from "r-state-tree";
 import type { Session } from "../models/Session";
-import type { Attachment, ModelPreset, SessionSnapshot } from "../../ipc/session-contract";
+import type {
+  Annotation,
+  Attachment,
+  ModelPreset,
+  SessionSnapshot,
+} from "../../ipc/session-contract";
 import { parsePiBuiltinCommand } from "../../ipc/session-contract";
 import { pastedImageAttachments } from "../pasted-image-attachments";
 import { describeError } from "../error-details";
@@ -25,6 +30,7 @@ export interface CakeChatSessionStoreProps {
 /** Owns the independent draft, attachments, configuration, and turn policy for one Cake Chat session. */
 export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
   @snapshot attachments: Attachment[] = observable([]);
+  @snapshot annotations: Annotation[] = observable([]);
   error: string | undefined;
   errorDetails: string | undefined;
   editingEntryId: string | undefined;
@@ -60,20 +66,28 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
         status: "complete" as const,
         draft: true,
       },
-      ...staged.attachments.flatMap((attachment, index): SessionSnapshot["parts"] =>
-        attachment.kind === "image"
-          ? [
-              {
-                id: `draft-${this.sessionId}-attachment-${index}`,
-                kind: "attachment",
-                name: attachment.name,
-                mediaType: attachment.mimeType,
-                attachmentKind: "image",
-                data: attachment.data,
-              },
-            ]
-          : [],
-      ),
+      ...staged.attachments.flatMap((attachment, index): SessionSnapshot["parts"] => {
+        if (attachment.kind === "image")
+          return [
+            {
+              id: `draft-${this.sessionId}-attachment-${index}`,
+              kind: "attachment",
+              name: attachment.name,
+              mediaType: attachment.mimeType,
+              attachmentKind: "image",
+              data: attachment.data,
+            },
+          ];
+        if (attachment.kind === "annotation")
+          return [
+            {
+              id: `draft-${this.sessionId}-annotation-${index}`,
+              kind: "annotation",
+              annotations: attachment.annotations,
+            },
+          ];
+        return [];
+      }),
     ];
   }
   get streaming() {
@@ -95,11 +109,16 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
 
   async submit(text: string, renderUserMessageAsMarkdown = false) {
     text = text.trim();
-    const attachments = this.attachments.slice();
+    const annotations = this.annotations.slice();
+    const attachments: Attachment[] = [
+      ...this.attachments.filter((attachment) => attachment.kind !== "annotation"),
+      ...(annotations.length > 0 ? [{ kind: "annotation" as const, annotations }] : []),
+    ];
     if (!text && attachments.length === 0) return false;
     if (this.editingDraftSession) {
       this.props.collection.updateDraftSession(this.sessionId, text, attachments);
       this.attachments.splice(0);
+      this.annotations.splice(0);
       this.editingDraftSession = false;
       return true;
     }
@@ -108,6 +127,7 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       this.editingEntryId = undefined;
       const operationId = this.props.operations.start(this.promptOwner);
       this.attachments.splice(0);
+      this.annotations.splice(0);
       try {
         await this.client.cakeChats.editMessage(
           {
@@ -124,7 +144,7 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       } catch (error) {
         if (!this.signal.aborted) {
           this.editingEntryId = entryId;
-          this.attachments.push(...attachments);
+          this.restoreAttachments(attachments);
           this.props.operations.finish(operationId);
           this.reportError(error);
         }
@@ -133,7 +153,7 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
     }
     const builtin = parsePiBuiltinCommand(text);
     if (builtin?.name === "handoff" || builtin?.name === "handoffandresolve") {
-      if (this.attachments.length > 0) {
+      if (this.attachments.length > 0 || this.annotations.length > 0) {
         this.reportError(new Error("Remove attachments before using /handoff"));
         return false;
       }
@@ -200,6 +220,7 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       renderUserMessageAsMarkdown,
     );
     this.attachments.splice(0);
+    this.annotations.splice(0);
     try {
       const newSession = this.props.collection.newSessionRequest(this.sessionId);
       const input = {
@@ -216,7 +237,7 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
     } catch (error) {
       this.optimisticUserMessages.remove(operationId);
       if (this.signal.aborted) return false;
-      this.attachments.push(...attachments);
+      this.restoreAttachments(attachments);
       this.props.operations.finish(operationId);
       this.reportError(error);
       return false;
@@ -225,11 +246,17 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
 
   async createDraftSession() {
     const text = this.chatStore.draft.trim();
-    const attachments = this.attachments.slice();
+    const attachments: Attachment[] = [
+      ...this.attachments.filter((attachment) => attachment.kind !== "annotation"),
+      ...(this.annotations.length > 0
+        ? [{ kind: "annotation" as const, annotations: this.annotations.slice() }]
+        : []),
+    ];
     if (!text && attachments.length === 0) return false;
     if (!this.props.collection.createDraftSession(this.sessionId, text, attachments)) return false;
     this.chatStore.setDraft("");
     this.attachments.splice(0);
+    this.annotations.splice(0);
     if (text)
       void this.client.workspaces
         .generateSessionTitle(text, { signal: this.signal })
@@ -245,7 +272,7 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
     const staged = this.props.collection.activateDraftSession(this.sessionId);
     if (!staged) return false;
     this.chatStore.setDraft(staged.text);
-    this.attachments.splice(0, this.attachments.length, ...staged.attachments);
+    this.restoreAttachments(staged.attachments);
     return this.chatStore.submit();
   }
 
@@ -254,7 +281,7 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
     const staged = this.props.collection.draftSessionPrompt(this.sessionId);
     if (staged && entryId === `draft:${this.sessionId}`) {
       this.chatStore.setDraft(staged.text);
-      this.attachments.splice(0, this.attachments.length, ...staged.attachments);
+      this.restoreAttachments(staged.attachments);
       this.editingDraftSession = true;
       return false;
     }
@@ -274,23 +301,27 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       .findIndex((part) => part.kind === "text" && part.role === "assistant");
     const end =
       nextAssistantOffset < 0 ? this.model.uiParts.length : textIndex + 1 + nextAssistantOffset;
-    const images = this.model.uiParts.slice(textIndex + 1, end).flatMap((part): Attachment[] =>
-      part.kind === "attachment" && part.attachmentKind === "image" && part.data
-        ? [
+    const messageAttachments = this.model.uiParts
+      .slice(textIndex + 1, end)
+      .flatMap((part): Attachment[] => {
+        if (part.kind === "attachment" && part.attachmentKind === "image" && part.data)
+          return [
             {
               kind: "image",
               name: part.name,
               mimeType: part.mediaType,
               data: part.data,
             },
-          ]
-        : [],
-    );
+          ];
+        if (part.kind === "annotation")
+          return [{ kind: "annotation", annotations: part.annotations }];
+        return [];
+      });
     this.chatStore.setDraft(
       this.model.tree.find((entry) => entry.id === entryId)?.editorText ??
         (userPart.kind === "text" ? userPart.text : userPart.content),
     );
-    this.attachments.splice(0, this.attachments.length, ...images);
+    this.restoreAttachments(messageAttachments);
     this.editingEntryId = entryId;
     return userPart.kind === "text" && userPart.renderAs === "markdown";
   }
@@ -308,6 +339,40 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
 
   removeAttachment(index: number) {
     this.attachments.splice(index, 1);
+  }
+
+  addAnnotation(annotation: Omit<Annotation, "id">) {
+    if (this.annotations.length >= 100) {
+      this.reportError(new Error("A message can include at most 100 annotations"));
+      return;
+    }
+    this.annotations.push({ id: crypto.randomUUID(), ...annotation });
+  }
+
+  updateAnnotation(id: string, update: Partial<Omit<Annotation, "id">>) {
+    const index = this.annotations.findIndex((annotation) => annotation.id === id);
+    const annotation = this.annotations[index];
+    if (index >= 0 && annotation) this.annotations.splice(index, 1, { ...annotation, ...update });
+  }
+
+  removeAnnotation(id: string) {
+    const index = this.annotations.findIndex((annotation) => annotation.id === id);
+    if (index >= 0) this.annotations.splice(index, 1);
+  }
+
+  private restoreAttachments(attachments: readonly Attachment[]) {
+    this.attachments.splice(
+      0,
+      this.attachments.length,
+      ...attachments.filter((attachment) => attachment.kind !== "annotation"),
+    );
+    this.annotations.splice(
+      0,
+      this.annotations.length,
+      ...attachments.flatMap((attachment) =>
+        attachment.kind === "annotation" ? attachment.annotations : [],
+      ),
+    );
   }
 
   @child
@@ -359,7 +424,8 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       commands: () => this.model.commands,
       placeholder: () => "Ask Cake to find or control a task…",
       inputLabel: () => "Message Cake Chat",
-      canSubmit: (draft) => Boolean(draft.trim() || this.attachments.length > 0),
+      canSubmit: (draft) =>
+        Boolean(draft.trim() || this.attachments.length > 0 || this.annotations.length > 0),
       submit: (draft, options) => this.submit(draft, options?.renderUserMessageAsMarkdown ?? false),
       setUserMessageMarkdown: (entryId, renderAsMarkdown) =>
         this.client.cakeChats.setUserMessageMarkdown(
@@ -376,6 +442,10 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       editingMessage: () => Boolean(this.editingEntryId || this.editingDraftSession),
       abort: () => this.abort(),
       attachments: () => this.attachments,
+      annotations: () => this.annotations,
+      addAnnotation: (annotation) => this.addAnnotation(annotation),
+      updateAnnotation: (id, update) => this.updateAnnotation(id, update),
+      removeAnnotation: (id) => this.removeAnnotation(id),
       addPastedImages: (files) => this.addPastedImages(files),
       removeAttachment: (index) => this.removeAttachment(index),
       showComposerContextMenu: (selection, x, y) =>

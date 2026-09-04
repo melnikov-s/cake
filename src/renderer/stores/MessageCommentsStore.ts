@@ -1,5 +1,6 @@
-import { Store, child, createStore } from "r-state-tree";
+import { Store, child, createStore, observable } from "r-state-tree";
 import type { ReviewAnchor } from "../../ipc/review-contract";
+import type { Annotation } from "../../ipc/session-contract";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
 import type { ReviewsStore } from "./ReviewsStore";
 import { ChatStore } from "./ChatStore";
@@ -25,6 +26,7 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
   draftSelection: MessageSelectionAnchor | undefined;
   createdThreadId: string | undefined;
   draftFocusRequestRevision = 0;
+  readonly draftAnnotations: Annotation[] = observable([]);
 
   get threads() {
     const context = this.props.context();
@@ -56,6 +58,7 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
 
   prepareDraft(selection: MessageSelectionAnchor) {
     this.draftChatStore.setDraft("");
+    this.draftAnnotations.splice(0);
     this.draftSelection = selection;
     this.createdThreadId = undefined;
     this.draftFocusRequestRevision += 1;
@@ -88,7 +91,7 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
       inputLabel: () => "Message about selected text",
       focusRequestRevision: () => this.draftFocusRequestRevision,
       canSubmit: (draft) =>
-        Boolean(this.draftSelection && draft.trim()) &&
+        Boolean(this.draftSelection && (draft.trim() || this.draftAnnotations.length)) &&
         !this.draftThread?.pending &&
         (!this.createdThreadId || !this.threadStreaming(this.createdThreadId)),
       submit: async (draft) => {
@@ -96,11 +99,19 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
         if (!this.createdThreadId) {
           const threadId = await this.createThread(this.draftSelection, draft);
           this.createdThreadId = threadId;
+          if (threadId) this.draftAnnotations.splice(0);
           return Boolean(threadId);
         }
-        const reviews = this.props.reviews();
-        return reviews.replyThread(this.createdThreadId, draft);
+        const submitted = await this.props
+          .reviews()
+          .replyThread(this.createdThreadId, draft, this.draftAnnotations);
+        if (submitted) this.draftAnnotations.splice(0);
+        return submitted;
       },
+      annotations: () => this.draftAnnotations,
+      addAnnotation: (annotation) => this.addAnnotation(annotation),
+      updateAnnotation: (id, update) => this.updateAnnotation(id, update),
+      removeAnnotation: (id) => this.removeAnnotation(id),
       error: () => ({
         message: this.props.reviews().error,
         details: this.props.reviews().errorDetails,
@@ -109,9 +120,13 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
     });
   }
 
-  async createThread(selection: MessageSelectionAnchor, body: string) {
+  async createThread(
+    selection: MessageSelectionAnchor,
+    body: string,
+    annotations: readonly Annotation[] = this.draftAnnotations,
+  ) {
     const context = this.props.context();
-    if (!context || !body.trim()) return undefined;
+    if (!context || (!body.trim() && annotations.length === 0)) return undefined;
     const anchor: ReviewAnchor = {
       path: `session:${context.sessionId}/message/${selection.messageId}`,
       view: "message",
@@ -126,6 +141,23 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
       startOffset: selection.startOffset,
       endOffset: selection.endOffset,
     };
-    return this.props.reviews().createThread(anchor, body);
+    return this.props.reviews().createThread(anchor, body, annotations);
+  }
+
+  private addAnnotation(annotation: Omit<Annotation, "id">) {
+    if (this.draftAnnotations.length >= 100) return;
+    this.draftAnnotations.push({ id: crypto.randomUUID(), ...annotation });
+  }
+
+  private updateAnnotation(id: string, update: Partial<Omit<Annotation, "id">>) {
+    const index = this.draftAnnotations.findIndex((annotation) => annotation.id === id);
+    const annotation = this.draftAnnotations[index];
+    if (index >= 0 && annotation)
+      this.draftAnnotations.splice(index, 1, { ...annotation, ...update });
+  }
+
+  private removeAnnotation(id: string) {
+    const index = this.draftAnnotations.findIndex((annotation) => annotation.id === id);
+    if (index >= 0) this.draftAnnotations.splice(index, 1);
   }
 }

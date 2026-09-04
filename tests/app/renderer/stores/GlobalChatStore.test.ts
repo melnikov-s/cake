@@ -57,6 +57,56 @@ describe("GlobalChatStore", () => {
     models[Symbol.dispose]();
   });
 
+  it("submits transcript annotations from Cake Chat", async () => {
+    const prompt = vi.fn(async () => "turn-1");
+    const catalog = CakeChatCatalog.create({ loaded: true, sessions: [] });
+    const models = new RendererModels();
+    const { root, subject: store } = mountWithRendererClient(
+      createStore(GlobalChatStore, {
+        catalog,
+        sessionModel: (sessionId) => models.cakeChat(sessionId),
+        tools: () => [],
+      }),
+      { cakeChats: { prompt } } as unknown as RendererClient,
+    );
+    const session = store.activeSession!;
+
+    session.chatStore.addAnnotation({
+      messageId: "assistant-1",
+      entryId: "entry-1",
+      selectedText: "important detail",
+      startOffset: 6,
+      endOffset: 22,
+      contextBefore: "An ",
+      contextAfter: " follows.",
+      comment: "Explain this",
+    });
+    await session.chatStore.submit();
+
+    expect(prompt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: "",
+        attachments: [
+          {
+            kind: "annotation",
+            annotations: [
+              expect.objectContaining({
+                messageId: "assistant-1",
+                selectedText: "important detail",
+                comment: "Explain this",
+              }),
+            ],
+          },
+        ],
+      }),
+      expect.any(Object),
+    );
+    expect(session.chatStore.annotations).toEqual([]);
+    root[Symbol.dispose]();
+    catalog[Symbol.dispose]();
+    models[Symbol.dispose]();
+  });
+
   it("keeps the latest selection when session opens finish out of order", async () => {
     let finishFirst!: () => void;
     let finishSecond!: () => void;

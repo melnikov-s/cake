@@ -81,9 +81,30 @@ export interface DiscussionSessionCreateInput extends Schema.Schema.Type<
   typeof DiscussionSessionCreateInput
 > {}
 
+const DiscussionAnnotation = Schema.Struct({
+  id: Schema.String.check(Schema.isUUID()),
+  messageId: boundedId,
+  entryId: Schema.optionalKey(boundedId),
+  selectedText: boundedText.check(Schema.isMinLength(1)),
+  startOffset: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  endOffset: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  contextBefore: boundedText,
+  contextAfter: boundedText,
+  comment: Schema.optionalKey(boundedText),
+}).check(
+  Schema.makeFilter((annotation) =>
+    annotation.endOffset > annotation.startOffset
+      ? undefined
+      : "Annotation end offset must follow its start offset",
+  ),
+);
+
 export const DiscussionSessionPromptInput = Schema.Struct({
   ...DiscussionSessionTarget.fields,
-  text: boundedText.check(Schema.isMinLength(1)),
+  text: boundedText,
+  annotations: Schema.optionalKey(
+    Schema.Array(DiscussionAnnotation).check(Schema.isMaxLength(100)),
+  ),
   model: Schema.optionalKey(Schema.Struct({ provider: Schema.String, id: Schema.String })),
   thinkingLevel: Schema.optionalKey(ThinkingLevel),
 });

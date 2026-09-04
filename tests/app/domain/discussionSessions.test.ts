@@ -65,6 +65,7 @@ const makeLayer = () => {
     updatedAt: "2026-01-01T00:00:00.000Z",
   };
   const runtimeOptions: CakeRuntimeOptions[] = [];
+  const prompts: Parameters<CakeRuntime["prompt"]>[] = [];
   let preparedContexts = 0;
   const runtime = (options: CakeRuntimeOptions): CakeRuntime => {
     const sessionId = options.sessionId ?? "generated";
@@ -83,7 +84,8 @@ const makeLayer = () => {
             leafId: "leaf-1",
           }),
       snapshot: async () => makeSnapshot(sessionId, sessionFile),
-      prompt: async () => {
+      prompt: async (...input) => {
+        prompts.push(input);
         options.onEvent({ type: "streaming", sessionId, streaming: false });
       },
       setUserMessageMarkdown: async () => undefined,
@@ -184,6 +186,7 @@ const makeLayer = () => {
       }),
     ),
     options: runtimeOptions,
+    prompts,
     preparedContexts: () => preparedContexts,
     record: () => record,
   };
@@ -199,6 +202,55 @@ describe("Discussion Sessions domain", () => {
       });
       assert.equal(threads.length, 1);
       assert.deepEqual(threads[0]?.parts, fixture.record().pendingParts);
+    }).pipe(Effect.provide(fixture.layer));
+  });
+
+  it.effect("sends annotations as Discussion Session prompt attachments", () => {
+    const fixture = makeLayer();
+    return Effect.gen(function* () {
+      yield* discussionSessions.prompt({
+        parentSessionId: "parent-1",
+        workingDirectory: "/project",
+        threadId: "thread-1",
+        text: "",
+        annotations: [
+          {
+            id: "91f94663-4a8c-4d54-a3ce-531245f89477",
+            messageId: "assistant-1",
+            entryId: "entry-1",
+            selectedText: "important detail",
+            startOffset: 4,
+            endOffset: 20,
+            contextBefore: "An ",
+            contextAfter: " follows.",
+            comment: "Explain this",
+          },
+        ],
+      });
+      yield* Effect.yieldNow;
+
+      assert.deepEqual(fixture.prompts.at(-1)?.slice(0, 3), [
+        "",
+        "prompt",
+        [
+          {
+            kind: "annotation",
+            annotations: [
+              {
+                id: "91f94663-4a8c-4d54-a3ce-531245f89477",
+                messageId: "assistant-1",
+                entryId: "entry-1",
+                selectedText: "important detail",
+                startOffset: 4,
+                endOffset: 20,
+                contextBefore: "An ",
+                contextAfter: " follows.",
+                comment: "Explain this",
+              },
+            ],
+          },
+        ],
+      ]);
     }).pipe(Effect.provide(fixture.layer));
   });
 
