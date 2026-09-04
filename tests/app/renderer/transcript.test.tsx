@@ -1,17 +1,27 @@
 /**
  * @vitest-environment jsdom
  */
-import React, { act, forwardRef, useEffect, useImperativeHandle, useRef } from "react";
+import React, {
+  act,
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
+} from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createStore, mount, observable } from "r-state-tree";
 import type { Annotation, UiPart } from "../../../src/ipc/session-contract";
 
-const { scrollToIndex, virtualizedLifecycle, virtualizedProps } = vi.hoisted(() => ({
-  scrollToIndex: vi.fn(),
-  virtualizedLifecycle: vi.fn(),
-  virtualizedProps: { current: undefined as undefined | Record<string, unknown> },
-}));
+const { scrollToIndex, virtualizedLayout, virtualizedLifecycle, virtualizedProps } = vi.hoisted(
+  () => ({
+    scrollToIndex: vi.fn(),
+    virtualizedLayout: vi.fn(),
+    virtualizedLifecycle: vi.fn(),
+    virtualizedProps: { current: undefined as undefined | Record<string, unknown> },
+  }),
+);
 
 vi.mock("@/components/ai-elements/conversation", () => ({
   Conversation: ({ children }: { children: React.ReactNode }) => <section>{children}</section>,
@@ -34,6 +44,9 @@ vi.mock("@/components/ai-elements/conversation", () => ({
         }),
       scrollToIndex,
     }));
+    useLayoutEffect(() => {
+      virtualizedLayout(scrollerRef.current, props.data);
+    }, [props.data]);
     useEffect(() => {
       props.scrollerRef?.(scrollerRef.current);
       virtualizedLifecycle("mounted");
@@ -330,6 +343,7 @@ describe("Transcript scrolling", () => {
     document.body.appendChild(container);
     root = createRoot(container);
     scrollToIndex.mockClear();
+    virtualizedLayout.mockReset();
     virtualizedLifecycle.mockClear();
   });
 
@@ -409,6 +423,70 @@ describe("Transcript scrolling", () => {
     const message = container.querySelector<HTMLElement>('[data-slot="message-content"]')!;
     expect(message.classList.contains("whitespace-pre-wrap")).toBe(false);
     expect(message.querySelector("h1")?.textContent).toBe("A heading");
+  });
+
+  it("keeps following when a newly appended loading item temporarily changes bottom geometry", () => {
+    const user: UiPart = {
+      id: "user-1",
+      kind: "text",
+      role: "user",
+      text: "Start",
+      status: "complete",
+    };
+
+    act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([user])} />));
+    const transcript = container.querySelector<HTMLElement>(".transcript")!;
+    Object.defineProperties(transcript, {
+      scrollHeight: { configurable: true, value: 1_000 },
+      clientHeight: { configurable: true, value: 200 },
+    });
+    transcript.scrollTop = 800;
+    act(() => transcript.dispatchEvent(new Event("scroll")));
+    scrollToIndex.mockClear();
+
+    // Virtuoso measures appended items in a child layout effect. That can emit
+    // an intermediate scroll event before ChatTranscript's layout effect runs.
+    virtualizedLayout.mockImplementationOnce((scroller: HTMLElement) => {
+      Object.defineProperty(scroller, "scrollHeight", { configurable: true, value: 1_100 });
+      scroller.dispatchEvent(new Event("scroll"));
+    });
+    act(() =>
+      root.render(<TestTranscript sessionId="session-1" store={storeWith([user], true)} />),
+    );
+
+    expect(container.querySelector('[data-slot="loading-state"]')).not.toBeNull();
+    expect(scrollToIndex).toHaveBeenCalledWith({ index: 1, align: "end", behavior: "auto" });
+    const followOutput = virtualizedProps.current?.followOutput as () => "auto" | false;
+    expect(followOutput()).toBe("auto");
+  });
+
+  it("does not follow a newly appended loading item after the user scrolls away", () => {
+    const user: UiPart = {
+      id: "user-1",
+      kind: "text",
+      role: "user",
+      text: "Start",
+      status: "complete",
+    };
+
+    act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([user])} />));
+    const transcript = container.querySelector<HTMLElement>(".transcript")!;
+    Object.defineProperties(transcript, {
+      scrollHeight: { configurable: true, value: 1_000 },
+      clientHeight: { configurable: true, value: 200 },
+    });
+    transcript.scrollTop = 300;
+    act(() => transcript.dispatchEvent(new Event("scroll")));
+    scrollToIndex.mockClear();
+
+    act(() =>
+      root.render(<TestTranscript sessionId="session-1" store={storeWith([user], true)} />),
+    );
+
+    expect(container.querySelector('[data-slot="loading-state"]')).not.toBeNull();
+    expect(scrollToIndex).not.toHaveBeenCalled();
+    const followOutput = virtualizedProps.current?.followOutput as () => "auto" | false;
+    expect(followOutput()).toBe(false);
   });
 
   it("continues following a response for as long as the transcript is at the bottom", () => {

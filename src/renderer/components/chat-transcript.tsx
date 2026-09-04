@@ -74,6 +74,12 @@ export const ChatTranscript = observer(function ChatTranscript({
   const bottomStateRef = useRef({ storeId: store.id, pinned: restoredScrollState === undefined });
   if (bottomStateRef.current.storeId !== store.id)
     bottomStateRef.current = { storeId: store.id, pinned: restoredScrollState === undefined };
+  // Snapshot the pre-render position. Child layout and measurement effects may
+  // temporarily report "not at bottom" after adding an item but before this
+  // component has had a chance to preserve bottom-following.
+  const followBottomForRender = bottomStateRef.current.pinned;
+  const preserveBottomDuringCommitRef = useRef(false);
+  preserveBottomDuringCommitRef.current = followBottomForRender;
   const [draftAnchor, setDraftAnchor] = useState<MessageCommentAnchorRect>();
   const [annotationDraft, setAnnotationDraft] = useState<TranscriptSelectionCapture>();
   const visibleParts = store.hideThinking
@@ -185,13 +191,17 @@ export const ChatTranscript = observer(function ChatTranscript({
     };
   }, [store]);
   const followStreamingOutput = useCallback(() => {
-    if (!bottomStateRef.current.pinned) return false;
+    if (!bottomStateRef.current.pinned && !preserveBottomDuringCommitRef.current) return false;
     return "auto" as const;
   }, []);
   useLayoutEffect(() => {
     // Content can grow inside a stable virtual item, which does not consistently
-    // trigger Virtuoso's item-count-based followOutput.
-    if (!bottomStateRef.current.pinned) return;
+    // trigger Virtuoso's item-count-based followOutput. Preserve the position
+    // from before this render so an appended item's intermediate measurements
+    // cannot accidentally cancel bottom-following.
+    preserveBottomDuringCommitRef.current = false;
+    if (!followBottomForRender) return;
+    bottomStateRef.current.pinned = true;
     scrollToLatest();
     const frame = requestAnimationFrame(scrollToLatest);
     return () => cancelAnimationFrame(frame);

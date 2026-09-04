@@ -344,6 +344,16 @@ The window Store hierarchy mirrors the product surfaces:
   substitute a parallel transcript, message, input, or composer implementation.
   React mounts the Project Session as the nearest provider around the active
   session surface.
+- **Bottom-following is a chat contract, not a heuristic.** If the transcript is
+  at the bottom immediately before content or layout changes, `Chat` must keep it
+  at the bottom through every subsequent change. This includes adding, removing,
+  replacing, streaming, or resizing messages, work logs, loading indicators,
+  errors, footers, and the composer. Transient measurements while an item is
+  mounting must not cancel bottom-following. If the user has scrolled away from
+  the bottom, none of those changes may move the transcript. Returning to the
+  bottom resumes automatic following. Submitting a message always moves the
+  transcript to the bottom and resumes automatic following, regardless of its
+  prior position. These rules apply identically to every surface using `Chat`.
 - The Cake Chat collection owns one keyed `CakeChatSessionStore` per loaded
   meta-session. Each session retains its own draft, attachments, configuration,
   transcript projection, and streaming state while another Cake Chat session is
