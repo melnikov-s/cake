@@ -335,6 +335,7 @@ export class RootStore extends Store<{
     this.appShellStore.showSettings();
   }
   showModelPresetSettings() {
+    this.settingsStore.selectPage("models");
     this.settingsStore.modelPresets.requestSection();
     this.showSettings();
   }

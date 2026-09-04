@@ -144,6 +144,7 @@ test("uses native session menus and preserves Cake Chat settings context", async
 
     await page.getByRole("button", { name: "Open settings" }).click();
     await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+    await page.getByRole("button", { name: /Agent/ }).click();
     await expect(page.getByText("Auto-compact", { exact: true })).toBeVisible();
     await expect(page.getByText("Open a chat to load Pi’s settings.")).toHaveCount(0);
     await page.getByRole("button", { name: "Back to chat" }).click();

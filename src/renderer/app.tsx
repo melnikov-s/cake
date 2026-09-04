@@ -85,6 +85,7 @@ export const App = observer(function App() {
             ? extensionUi.errorDetails
             : artifactInteractions?.errorDetails;
   const sidebarCollapsed = !sidebar.visible;
+  const projectSidebarVisible = !sidebarCollapsed && surface !== "settings";
   const sidebarWidth = sidebar.width;
   const [commandPaneWidth, setCommandPaneWidth] = useState(420);
   const [resizingPanel, setResizingPanel] = useState(false);
@@ -278,7 +279,7 @@ export const App = observer(function App() {
       </>
     );
   const shellStyle: CSSProperties & Record<"--sidebar-width" | "--right-pane-width", string> = {
-    "--sidebar-width": sidebarCollapsed ? "0px" : `${Math.min(sidebarWidth, sidebarMax)}px`,
+    "--sidebar-width": projectSidebarVisible ? `${Math.min(sidebarWidth, sidebarMax)}px` : "0px",
     "--right-pane-width": store.commandPaneStore.pane
       ? `${Math.min(commandPaneWidth, commandPaneMax)}px`
       : "0px",
@@ -292,8 +293,8 @@ export const App = observer(function App() {
       )}
       style={shellStyle}
     >
-      {!sidebarCollapsed && projectSidebar}
-      {!sidebarCollapsed && (
+      {projectSidebarVisible && projectSidebar}
+      {projectSidebarVisible && (
         <ResizeHandle
           className="left-[calc(var(--sidebar-width)-5px)] max-[820px]:left-[calc(min(var(--sidebar-width),230px)-5px)]"
           label="Resize project sidebar"
@@ -317,31 +318,36 @@ export const App = observer(function App() {
               : undefined
         }
       >
-        <IconButton
-          className={cn(
-            "absolute bottom-[9.5px] left-4 z-20 hidden size-8 place-items-center rounded-lg bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground max-[620px]:grid",
-            sidebarCollapsed && "grid",
-            surface === "settings" && "bg-sidebar-hover text-foreground",
-          )}
-          data-slot="workspace-settings"
-          tooltip="Open settings"
-          aria-current={surface === "settings" ? "page" : undefined}
-          onClick={() => root.showSettings()}
-        >
-          <SettingsIcon />
-        </IconButton>
+        {surface !== "settings" && (
+          <IconButton
+            className={cn(
+              "absolute bottom-[9.5px] left-4 z-20 hidden size-8 place-items-center rounded-lg bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground max-[620px]:grid",
+              sidebarCollapsed && "grid",
+            )}
+            data-slot="workspace-settings"
+            tooltip="Open settings"
+            onClick={() => root.showSettings()}
+          >
+            <SettingsIcon />
+          </IconButton>
+        )}
         <header
           data-slot="workspace-header"
           className={cn(
             "relative flex h-[52px] w-full max-w-full min-w-0 items-center justify-between overflow-hidden border-b border-border/65 px-5 [app-region:drag] max-[620px]:pl-[84px]",
-            sidebarCollapsed && "pl-[124px]",
+            sidebarCollapsed && surface !== "settings" && "pl-[124px]",
+            surface === "settings" && "pl-[84px]",
           )}
         >
           <div className="flex w-0 min-w-0 flex-1 items-center gap-3">
             <IconButton
               className={cn(
                 "absolute left-[84px] top-[9px] z-20 size-7 place-items-center rounded-lg bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground [app-region:no-drag]",
-                sidebarCollapsed ? "grid" : "hidden max-[620px]:grid",
+                surface === "settings"
+                  ? "hidden"
+                  : sidebarCollapsed
+                    ? "grid"
+                    : "hidden max-[620px]:grid",
               )}
               data-slot="header-sidebar-toggle"
               tooltip="Toggle sidebar"
@@ -383,7 +389,7 @@ export const App = observer(function App() {
           </div>
         </header>
         {surface === "settings" ? (
-          <div className="h-full min-h-0 w-full overflow-y-auto [scrollbar-gutter:stable_both-edges]">
+          <div className="h-full min-h-0 w-full overflow-hidden">
             <SettingsPage settings={settings} />
           </div>
         ) : globalChat ? (

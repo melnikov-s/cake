@@ -104,11 +104,15 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
       });
     await page.getByRole("button", { name: "Toggle sidebar" }).click();
     await page.getByRole("complementary").getByLabel("Open settings").click();
+    await expect(page.locator('[data-slot="sidebar"]')).toHaveCount(0);
+    await expect(page.getByLabel("Settings sections")).toBeVisible();
+    await page.getByRole("button", { name: /Agent/ }).click();
     await expect(
       page
         .getByRole("region", { name: "Agent behavior" })
         .getByText("Open a chat to load Pi’s settings."),
     ).toBeVisible();
+    await page.getByRole("button", { name: "Network & privacy" }).click();
     await expect(
       page.getByRole("region", { name: "Network" }).getByText("Open a chat to load Pi’s settings."),
     ).toBeVisible();
@@ -117,7 +121,9 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
         .getByRole("region", { name: "Safety & privacy" })
         .getByText("Open a chat to load Pi’s settings."),
     ).toBeVisible();
+    await page.getByRole("button", { name: "Appearance" }).click();
     await expect(page.getByLabel("Color theme")).toHaveValue("system");
+    await page.getByRole("button", { name: "Back to chat" }).click();
     const sessionCountBeforeNewChat = await page.locator(".session-item").count();
     await page.getByRole("button", { name: "New chat in project", exact: true }).click();
     const newChatComposer = page.getByLabel("Message");
@@ -131,6 +137,7 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
     // away and choosing New Chat again must recover the exact in-progress input.
     await page.getByRole("complementary").getByLabel("Open settings").click();
     await expect(page.getByRole("heading", { name: "Settings", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Back to chat" }).click();
     await page.getByRole("button", { name: "New chat in project", exact: true }).click();
     await expect(newChatComposer).toHaveValue("Immediate draft");
     await expect(newChatComposer).toBeFocused();

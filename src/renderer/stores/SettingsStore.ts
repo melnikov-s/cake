@@ -9,6 +9,15 @@ import type { CakeChatSessionStore } from "./CakeChatSessionStore";
 import { UtilityModelSettingsStore } from "./UtilityModelSettingsStore";
 import { EmbeddedEditorSettingsStore } from "./EmbeddedEditorSettingsStore";
 
+export type SettingsPageId =
+  | "models"
+  | "providers"
+  | "agent"
+  | "runtime"
+  | "network"
+  | "appearance"
+  | "editor";
+
 export interface SettingsStoreProps {
   operations: SessionOperationCoordinatorStore;
   activeSession(): ProjectSessionStore | CakeChatSessionStore | undefined;
@@ -17,6 +26,8 @@ export interface SettingsStoreProps {
 
 /** Coordinates the focused workflows presented by the settings surface. */
 export class SettingsStore extends Store<SettingsStoreProps> {
+  activePage: SettingsPageId = "models";
+
   @child get appearance(): AppearanceSettingsStore {
     return createStore(AppearanceSettingsStore);
   }
@@ -68,6 +79,10 @@ export class SettingsStore extends Store<SettingsStoreProps> {
       this.utilityModel.errorDetails ??
       this.modelPresets.errorDetails
     );
+  }
+
+  selectPage(page: SettingsPageId) {
+    this.activePage = page;
   }
 
   applyApplicationState(revision: number, state: ApplicationState) {
