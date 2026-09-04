@@ -2237,6 +2237,19 @@ describe("Transcript scrolling", () => {
     );
     expect(document.body.querySelector('[role="dialog"]')).toBeNull();
     expect(document.body.style.overflow).toBe("");
+
+    const streamingMessage = expandButtons[1]!.closest<HTMLElement>('[data-slot="message"]')!;
+    act(() => streamingMessage.dispatchEvent(new MouseEvent("mouseover", { bubbles: true })));
+    act(() =>
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Enter",
+          bubbles: true,
+          ...(/Mac/.test(navigator.userAgent) ? { metaKey: true } : { altKey: true }),
+        }),
+      ),
+    );
+    expect(document.body.querySelector('[role="dialog"]')?.textContent).toContain("Working");
   });
 
   it("renders submitted image attachments from Pi's persisted base64 block", () => {

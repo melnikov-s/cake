@@ -5,12 +5,14 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type MouseEventHandler,
   type ReactNode,
   type RefObject,
 } from "react";
 import { observer } from "r-state-tree/react";
 import { Markdown } from "@/components/ai-elements/markdown";
 import { cn } from "@/lib/utils";
+import { isMacPlatform } from "@/lib/platform";
 import { Message, MessageContent, MessageLabel } from "@/components/ai-elements/message";
 import { FullscreenButton, FullscreenSurface } from "@/components/fullscreen-surface";
 import { IconButton } from "@/components/ui/icon-button";
@@ -57,9 +59,14 @@ export const ChatTextMessage = forwardRef<
     part: Extract<UiPart, { kind: "text" }>;
     contentRef?: RefObject<HTMLDivElement | null>;
     children?: ReactNode;
+    onMouseEnter?: MouseEventHandler<HTMLElement>;
+    onMouseLeave?: MouseEventHandler<HTMLElement>;
     onOpenSourceLocation?(location: SourceLocation): void;
   }
->(function ChatTextMessage({ part, contentRef, children, onOpenSourceLocation }, ref) {
+>(function ChatTextMessage(
+  { part, contentRef, children, onMouseEnter, onMouseLeave, onOpenSourceLocation },
+  ref,
+) {
   const assistant = part.role === "assistant";
   // A steered or queued prompt is not yet accepted into the conversation;
   // render it with a distinct pending treatment until Pi delivers it.
@@ -78,6 +85,8 @@ export const ChatTextMessage = forwardRef<
   return (
     <Message
       ref={ref}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
       className={cn(
         assistant ? "group/msg relative mr-auto w-full" : "group/msg ml-auto w-[min(88%,42rem)]",
         pending && "opacity-75",
@@ -296,11 +305,24 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
   >({});
   const messageRef = useRef<HTMLElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const hoveredRef = useRef(false);
   const commentThreads = behavior.messageComments?.threadsForMessage(part.id) ?? [];
   const draftAnnotations = behavior.store.annotations.filter(
     (annotation) => annotation.messageId === part.id,
   );
+  const openFullscreen = useCallback(() => setFullscreen(true), []);
   const closeFullscreen = useCallback(() => setFullscreen(false), []);
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const platformModifier = isMacPlatform ? event.metaKey : event.altKey;
+      if (!hoveredRef.current || event.key !== "Enter" || !platformModifier) return;
+      event.preventDefault();
+      event.stopPropagation();
+      openFullscreen();
+    };
+    window.addEventListener("keydown", onKeyDown, { capture: true });
+    return () => window.removeEventListener("keydown", onKeyDown, { capture: true });
+  }, [openFullscreen]);
   useEffect(() => {
     if (!copied) return;
     const timeout = window.setTimeout(() => setCopied(false), 1_500);
@@ -424,12 +446,14 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
       ref={messageRef}
       part={part}
       contentRef={contentRef}
+      onMouseEnter={() => (hoveredRef.current = true)}
+      onMouseLeave={() => (hoveredRef.current = false)}
       onOpenSourceLocation={behavior.openSourceLocation}
     >
       <FullscreenButton
         className="absolute -top-1.5 right-0 grid size-7 place-items-center rounded-md bg-transparent p-0 text-muted-foreground opacity-0 hover:bg-muted hover:text-foreground group-hover/msg:opacity-100 group-focus-within/msg:opacity-100 transition-opacity"
         label="View response fullscreen"
-        onClick={() => setFullscreen(true)}
+        onClick={openFullscreen}
       />
       {commentThreads.map(
         (thread, index) =>

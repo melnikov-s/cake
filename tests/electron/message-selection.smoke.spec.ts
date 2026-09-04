@@ -125,6 +125,12 @@ test("focuses annotation input and opens a continuous, resizable selection chat"
     await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible();
     expect(page.isClosed()).toBe(false);
 
+    await page.getByText("The settings shape is explicit:").hover();
+    await page.keyboard.press(process.platform === "darwin" ? "Meta+Enter" : "Alt+Enter");
+    await expect(page.getByRole("dialog", { name: "Cake" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog", { name: "Cake" })).toHaveCount(0);
+
     await code.scrollIntoViewIfNeeded();
     const selectionTarget = await code.evaluate((element, selectedText) => {
       const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
