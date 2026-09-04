@@ -9,7 +9,7 @@ import {
 
 function createHost(overrides: Partial<AppControlHost> = {}): AppControlHost {
   return {
-    currentSession: () => undefined,
+    currentSelection: () => ({ kind: "workbench" }),
     projects: () => [],
     sessions: () => [],
     cakeChatSessions: () => [],
@@ -34,6 +34,8 @@ function createHost(overrides: Partial<AppControlHost> = {}): AppControlHost {
     setSessionsResolved: async () => 0,
     setCakeChatSessionsResolved: async () => 0,
     setSessionModel: async () => undefined,
+    showNotification: () => undefined,
+    showAgentAction: () => undefined,
     ...overrides,
   };
 }
@@ -47,6 +49,7 @@ describe("AppControlBridge", () => {
 
     expect(() => Schema.decodeUnknownSync(CakeChatTarget)(target)).not.toThrow();
     expect(target.tools.some((tool) => tool.command === "sessions.create-draft")).toBe(true);
+    expect(target.tools.some((tool) => tool.command === "notifications.send")).toBe(true);
     expect(target.tools.every((tool) => !("guidance" in tool))).toBe(true);
   });
 
@@ -80,7 +83,10 @@ describe("AppControlBridge", () => {
     const bridge = new AppControlBridge(createHost({ sessionLayout }));
 
     await expect(
-      bridge.invoke({ name: "app.state", arguments: {} }, "session-a"),
+      bridge.invoke(
+        { name: "app.state", arguments: {} },
+        { kind: "project-session", sessionId: "session-a", title: "Origin" },
+      ),
     ).resolves.toMatchObject({
       state: {
         sessionLayout: {
@@ -96,13 +102,98 @@ describe("AppControlBridge", () => {
     expect(sessionLayout).toHaveBeenCalledWith("session-a");
   });
 
+  it("reports the complete current Cake selection", async () => {
+    const bridge = new AppControlBridge(
+      createHost({
+        currentSelection: () => ({
+          kind: "cake-chat",
+          sessionId: "cake-chat-1",
+          title: "Release planning",
+        }),
+      }),
+    );
+
+    await expect(bridge.invoke({ name: "app.state", arguments: {} })).resolves.toMatchObject({
+      state: {
+        selection: {
+          kind: "cake-chat",
+          sessionId: "cake-chat-1",
+          title: "Release planning",
+        },
+      },
+    });
+  });
+
+  it("routes attributed notifications through the application host without a receipt", async () => {
+    const showNotification = vi.fn();
+    const showAgentAction = vi.fn();
+    const source = {
+      kind: "project-session" as const,
+      sessionId: "source-1",
+      title: "Build monitor",
+    };
+    const bridge = new AppControlBridge(createHost({ showNotification, showAgentAction }));
+
+    await expect(
+      bridge.invoke(
+        {
+          name: "notifications.send",
+          arguments: { title: "Build progress", body: "Tests reached 80%." },
+        },
+        source,
+      ),
+    ).resolves.toEqual({ ok: true, name: "send_notification", status: "sent" });
+    expect(showNotification).toHaveBeenCalledWith({
+      title: "Build progress",
+      body: "Tests reached 80%.",
+      level: "info",
+      source,
+    });
+    expect(showAgentAction).not.toHaveBeenCalled();
+  });
+
+  it("turns completed calling-session actions into attributed receipts", async () => {
+    const showAgentAction = vi.fn();
+    const source = {
+      kind: "cake-chat" as const,
+      sessionId: "source-1",
+      title: "Release planning",
+    };
+    const bridge = new AppControlBridge(createHost({ showAgentAction }));
+
+    await expect(
+      bridge.invoke(
+        {
+          name: "agent.action",
+          arguments: { action: "set-model", detail: "openai/gpt-5" },
+        },
+        source,
+      ),
+    ).resolves.toEqual({
+      ok: true,
+      name: "report_agent_action",
+      action: "set-model",
+      detail: "openai/gpt-5",
+    });
+    expect(showAgentAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source,
+        message: "Changed this session’s model to openai/gpt-5",
+        targetSessionId: "source-1",
+        targetKind: "cake-chat",
+      }),
+    );
+  });
+
   it("creates a saved draft without starting a Pi session", async () => {
     const createDraftSession = vi.fn(async () => ({
       workspacePath: "/projects/cake",
       sessionId: "draft-1",
     }));
+    const showAgentAction = vi.fn();
     const bridge = new AppControlBridge(
       createHost({
+        showAgentAction,
         projects: () => [
           {
             path: "/projects/cake",
@@ -116,19 +207,23 @@ describe("AppControlBridge", () => {
     );
 
     await expect(
-      bridge.invoke({
-        name: "sessions.create-draft",
-        arguments: {
-          workspacePath: "/projects/cake",
-          name: "Draft session",
-          initialPrompt: "Implement this later",
+      bridge.invoke(
+        {
+          name: "sessions.create-draft",
+          arguments: {
+            workspacePath: "/projects/cake",
+            name: "Draft session",
+            initialPrompt: "Implement this later",
+          },
         },
-      }),
+        { kind: "project-session", sessionId: "source-1", title: "Source session" },
+      ),
     ).resolves.toEqual({
       ok: true,
       name: "create_draft_session",
       workspacePath: "/projects/cake",
       sessionId: "draft-1",
+      title: "Draft session",
       status: "saved-draft",
     });
     expect(createDraftSession).toHaveBeenCalledWith({
@@ -136,6 +231,13 @@ describe("AppControlBridge", () => {
       name: "Draft session",
       initialPrompt: "Implement this later",
     });
+    expect(showAgentAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: { kind: "project-session", sessionId: "source-1", title: "Source session" },
+        message: "Created draft “Draft session”",
+        targetSessionId: "draft-1",
+      }),
+    );
   });
 
   it("compacts and schedules messages for sessions in another project", async () => {

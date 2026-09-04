@@ -1,4 +1,5 @@
 import { Store, child, createStore, snapshot } from "r-state-tree";
+import type { ProjectSessionStartInput } from "../../domain/project-session-data";
 import type { SourceLocation } from "../../ipc/source-location";
 import type { ChatConfiguration } from "../../ipc/session-contract";
 import { reviewThreadAnnotations } from "../../utils/review-thread-annotations";
@@ -393,7 +394,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     };
   }
 
-  /** Creates and saves a Cake-owned draft without starting a Pi Session. */
+  /** Creates and saves a Cake-owned draft in the background without changing selection. */
   async createDraftSession(
     path: string,
     name: string,
@@ -401,14 +402,19 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     configuration?: ChatConfiguration,
   ) {
     const sessionId = crypto.randomUUID();
-    this.showTemporarySession(path, sessionId);
+    this.sessionRegistry.prepareNewSession(path, sessionId);
     this.sessionRegistry.setPendingName(sessionId, name);
     if (configuration) this.sessionRegistry.setPendingConfiguration(sessionId, configuration);
-    await this.sessionRegistry.createDraftSession(sessionId, initialPrompt, []);
-    return sessionId;
+    try {
+      await this.sessionRegistry.createDraftSession(sessionId, initialPrompt, []);
+      return sessionId;
+    } catch (error) {
+      this.sessionRegistry.removeSession(sessionId);
+      throw error;
+    }
   }
 
-  /** Creates, names, and starts a session in a workspace Cake has already authorized. */
+  /** Creates, names, and starts a session in the background without changing selection. */
   async createSession(
     path: string,
     name: string,
@@ -417,16 +423,36 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     renderUserMessageAsMarkdown = true,
   ) {
     const sessionId = crypto.randomUUID();
-    this.showTemporarySession(path, sessionId);
+    this.sessionRegistry.prepareNewSession(path, sessionId);
     this.sessionRegistry.setPendingName(sessionId, name);
     if (configuration) this.sessionRegistry.setPendingConfiguration(sessionId, configuration);
-    const session = this.sessionRegistry.findSession(sessionId);
-    if (!session) throw new Error("Cake could not prepare the new session.");
-    const submitted = await session.chatStore.submit(initialPrompt, {
-      renderUserMessageAsMarkdown,
-    });
-    if (!submitted) throw new Error("Cake could not submit the new session's initial prompt.");
-    return sessionId;
+    const input: ProjectSessionStartInput = configuration
+      ? {
+          sessionId,
+          workingDirectory: path,
+          text: initialPrompt,
+          renderUserMessageAsMarkdown,
+          attachments: [],
+          name,
+          configuration,
+        }
+      : {
+          sessionId,
+          workingDirectory: path,
+          text: initialPrompt,
+          renderUserMessageAsMarkdown,
+          attachments: [],
+          name,
+        };
+    this.sessionRegistry.projectNewSessionSubmission(sessionId, name);
+    try {
+      await this.client.projectSessions.start(input, { signal: this.signal });
+      this.sessionRegistry.materializeNewSession(sessionId, path);
+      return sessionId;
+    } catch (error) {
+      this.sessionRegistry.removeSession(sessionId);
+      throw error;
+    }
   }
 
   configureDraftActivation(sessionId: string, choice: WorktreeDraftChoice) {

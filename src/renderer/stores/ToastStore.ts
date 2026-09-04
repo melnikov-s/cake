@@ -5,12 +5,16 @@ export interface Toast {
   tone: "info" | "warning" | "error";
   title: string;
   message: string;
+  action?: { label: string; run(): void | Promise<void> };
+  coalesceKey?: string;
 }
 
 export interface ToastInput {
   tone?: Toast["tone"];
   title: string;
   message: string;
+  action?: Toast["action"];
+  coalesceKey?: string;
 }
 
 const MAX_TOASTS = 4;
@@ -30,14 +34,23 @@ export class ToastStore extends Store {
   }
 
   show(toast: ToastInput) {
-    const id = crypto.randomUUID();
-    this.toasts.push({
+    const existing = toast.coalesceKey
+      ? this.toasts.find((item) => item.coalesceKey === toast.coalesceKey)
+      : undefined;
+    const id = existing?.id ?? crypto.randomUUID();
+    const next: Toast = {
       id,
       tone: toast.tone ?? "info",
       title: toast.title,
       message: toast.message,
-    });
+    };
+    if (toast.action) next.action = toast.action;
+    if (toast.coalesceKey) next.coalesceKey = toast.coalesceKey;
+    if (existing) this.toasts.splice(this.toasts.indexOf(existing), 1, next);
+    else this.toasts.push(next);
     if (this.toasts.length > MAX_TOASTS) this.dismiss(this.toasts[0]!.id);
+    const previousTimer = this.timers.get(id);
+    if (previousTimer) clearTimeout(previousTimer);
     this.timers.set(
       id,
       setTimeout(() => {
@@ -45,6 +58,12 @@ export class ToastStore extends Store {
         this.dismiss(id);
       }, TOAST_TIMEOUT_MS),
     );
+  }
+
+  runAction(id: string) {
+    const action = this.toasts.find((toast) => toast.id === id)?.action;
+    this.dismiss(id);
+    if (action) void action.run();
   }
 
   dismiss(id: string) {

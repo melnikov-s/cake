@@ -13,7 +13,7 @@ import { SidebarStore } from "./SidebarStore";
 import { ReviewsStore } from "./ReviewsStore";
 import { SettingsStore } from "./SettingsStore";
 import { ExtensionUiStore } from "./ExtensionUiStore";
-import { AppControlBridge } from "../app-control-bridge";
+import { AppControlBridge, type AgentControlSource } from "../app-control-bridge";
 import { GlobalChatStore } from "./GlobalChatStore";
 import { AppShellStore } from "./AppShellStore";
 import { InlineWidgetStore } from "./InlineWidgetStore";
@@ -175,15 +175,31 @@ export class RootStore extends Store<{
     initialPrompt: string;
     model?: ChatConfiguration;
   }) {
-    this.showEmptyWorkbench();
     const sessionId = await this.projectWorkbenchStore.createDraftSession(
       input.workspacePath,
       input.name,
       input.initialPrompt,
       input.model,
     );
-    this.selectProjectSessionForShell(sessionId);
     return { workspacePath: input.workspacePath, sessionId };
+  }
+
+  private projectControlSource(sessionId: string): AgentControlSource {
+    return {
+      kind: "project-session",
+      sessionId,
+      title: this.sessionCatalogStore.find(sessionId)?.title ?? "Agent session",
+    };
+  }
+
+  private cakeChatControlSource(sessionId: string): AgentControlSource {
+    return {
+      kind: "cake-chat",
+      sessionId,
+      title:
+        this.globalChatStore.summaries.find((session) => session.sessionId === sessionId)?.title ??
+        "Cake Chat",
+    };
   }
 
   async respondProjectSessionControl(request: ProjectSessionControlRequest) {
@@ -220,11 +236,13 @@ export class RootStore extends Store<{
             }
           : undefined;
     const result = appInvocation
-      ? await this.appControl.invoke(appInvocation, request.sessionId).catch((error) => ({
-          ok: false as const,
-          name: appInvocation.name,
-          error: error instanceof Error ? error.message : String(error),
-        }))
+      ? await this.appControl
+          .invoke(appInvocation, this.projectControlSource(request.sessionId))
+          .catch((error) => ({
+            ok: false as const,
+            name: appInvocation.name,
+            error: error instanceof Error ? error.message : String(error),
+          }))
       : {
           ok: false as const,
           name: "sessions.create-draft",
@@ -246,7 +264,6 @@ export class RootStore extends Store<{
     worktreeName?: string;
     markdown?: boolean;
   }) {
-    this.showEmptyWorkbench();
     const managedWorktree = input.worktreeName
       ? await this.projectWorkbenchStore.worktreeCreationStore.create(input.workspacePath, {
           name: input.worktreeName,
@@ -761,13 +778,45 @@ export class RootStore extends Store<{
           }
     });
     this.appControl = new AppControlBridge({
-      currentSession: () =>
-        this.projectWorkbenchStore.projectPath && this.projectWorkbenchStore.activeSessionId
-          ? {
-              workspacePath: this.projectWorkbenchStore.projectPath,
-              sessionId: this.projectWorkbenchStore.activeSessionId,
-            }
-          : undefined,
+      currentSelection: () => {
+        const selection = this.appShellStore.selection;
+        if (selection.kind === "project-session") {
+          if (
+            this.sessionRegistry.isTemporarySession(selection.sessionId) &&
+            !this.sessionRegistry.isDraftSession(selection.sessionId)
+          )
+            return { kind: "new-project-chat" as const };
+          const summary = this.sessionCatalogStore.find(selection.sessionId);
+          const workspacePath = this.projectSessionWorkingDirectory(selection.sessionId) ?? "";
+          return {
+            kind: "project-session" as const,
+            sessionId: selection.sessionId,
+            title: summary?.title ?? "New chat",
+            workspacePath,
+            workspaceName:
+              summary?.projectName ?? this.projectCatalogStore.nameForPath(workspacePath),
+          };
+        }
+        if (selection.kind === "cake-chat") {
+          if (
+            !selection.sessionId ||
+            (this.globalChatStore.isPendingSession(selection.sessionId) &&
+              !this.globalChatStore.isDraftSession(selection.sessionId))
+          )
+            return { kind: "new-cake-chat" as const };
+          return {
+            kind: "cake-chat" as const,
+            sessionId: selection.sessionId,
+            title:
+              this.globalChatStore.summaries.find(
+                (session) => session.sessionId === selection.sessionId,
+              )?.title ?? "Cake Chat",
+          };
+        }
+        if (selection.kind === "settings")
+          return { kind: "settings" as const, page: this.settingsStore.activePage };
+        return { kind: "workbench" as const };
+      },
       sessionLayout: (originSessionId) => {
         const relativeSessionId =
           originSessionId && this.sessionLayoutStore.hasSession(originSessionId)
@@ -850,6 +899,31 @@ export class RootStore extends Store<{
             { signal: this.signal },
           ),
         ),
+      showNotification: ({ title, body, level, source }) =>
+        this.toastStore.show({
+          tone: level === "success" ? "info" : level,
+          title: source ? `${title} · ${source.title}` : title,
+          message: body,
+          coalesceKey: source ? `notification:${source.sessionId}:${title}` : undefined,
+        }),
+      showAgentAction: ({ source, message, targetSessionId, targetKind, coalesceKey }) => {
+        const action =
+          targetSessionId && targetKind
+            ? {
+                label: "View",
+                run: async () => {
+                  if (targetKind === "cake-chat") await this.openCakeChat(targetSessionId);
+                  else await this.openSession(targetSessionId);
+                },
+              }
+            : undefined;
+        this.toastStore.show({
+          title: `Agent action · ${source.title}`,
+          message,
+          action,
+          coalesceKey: `agent:${source.sessionId}:${coalesceKey}`,
+        });
+      },
     });
     this.effect(() => {
       untracked(() => void this.globalChatStore.initialize());
@@ -857,11 +931,13 @@ export class RootStore extends Store<{
   }
 
   private async respondCakeChatControl(request: CakeChatControlRequest) {
-    const result = await this.appControl.invoke(request.invocation).catch((error) => ({
-      ok: false as const,
-      name: request.invocation.name,
-      error: error instanceof Error ? error.message : String(error),
-    }));
+    const result = await this.appControl
+      .invoke(request.invocation, this.cakeChatControlSource(request.sessionId))
+      .catch((error) => ({
+        ok: false as const,
+        name: request.invocation.name,
+        error: error instanceof Error ? error.message : String(error),
+      }));
     try {
       await this.client.cakeChats.respondControl(request.controlRequestId, result, {
         signal: this.signal,

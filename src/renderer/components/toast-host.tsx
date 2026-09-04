@@ -1,6 +1,7 @@
 import { observer } from "r-state-tree/react";
 import type { ReactNode } from "react";
 import type { ToastStore } from "../stores/ToastStore";
+import { Button } from "./ui/button";
 import { Callout } from "./ui/callout";
 
 /**
@@ -23,11 +24,16 @@ export const ToastHost = observer(function ToastHost({
           variant={
             toast.tone === "error" ? "error" : toast.tone === "warning" ? "warning" : "default"
           }
-          className="cursor-pointer shadow-lg"
-          onClick={() => store.dismiss(toast.id)}
+          className="shadow-lg"
+          onClick={toast.action ? undefined : () => store.dismiss(toast.id)}
         >
           <strong>{toast.title}</strong>
           <span>{toast.message}</span>
+          {toast.action && (
+            <Button size="sm" variant="ghost" onClick={() => store.runAction(toast.id)}>
+              {toast.action.label}
+            </Button>
+          )}
         </Callout>
       ))}
       {children}

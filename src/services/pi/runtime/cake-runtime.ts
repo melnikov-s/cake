@@ -693,6 +693,21 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     current?: RuntimeOperationApi;
   }
   const operationApi: RuntimeOperationApiReference = {};
+  const reportAgentAction = async (
+    action: "compact" | "rename" | "resolve" | "restore" | "set-model",
+    detail?: string,
+  ) => {
+    const input: JsonObject = detail ? { action, detail } : { action };
+    const signal = new AbortController().signal;
+    try {
+      if (options.currentSessionControl?.invokeAppControl)
+        await options.currentSessionControl.invokeAppControl("agent.action", input, signal);
+      else if (options.globalControl)
+        await options.globalControl.invoke({ name: "agent.action", arguments: input }, signal);
+    } catch {
+      // The completed agent action remains authoritative when its transient receipt cannot render.
+    }
+  };
   const localOperations = (): CakeOperationDefinition[] => {
     const api = () => {
       if (!operationApi.current) throw new Error("The Cake session is not ready");
@@ -706,6 +721,15 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         return api().invokeAppControl(command, input as JsonObject, context.signal);
       };
     const operations: CakeOperationDefinition[] = [
+      {
+        command: "app.state",
+        topic: "app",
+        summary: "Inspect the invoking Cake window's current selection and session summaries.",
+        inputSchema: empty,
+        examples: [{}],
+        result: "The current application selection, projects, and bounded session summaries.",
+        execute: (_input, context) => api().invokeAppControl("app.state", {}, context.signal),
+      },
       {
         command: "session.info",
         topic: "sessions",
@@ -971,29 +995,14 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         limitations: [
           "Notifications do not impersonate user input or enter another session transcript.",
         ],
-        async execute(input, context) {
-          // SAFETY: CakeOperationRegistry parsed input with this operation's schema.
-          const value = input as {
-            title: string;
-            body: string;
-            level: "info" | "success" | "warning" | "error";
-          };
-          // SAFETY: createCakeGatewayExtension supplies Pi's validated tool execution context.
-          const runtime = context.runtime as {
-            ui?: { notify(message: string, level: "info" | "warning" | "error"): void };
-          };
-          if (!runtime.ui) throw new Error("Cake notifications are unavailable in this runtime");
-          runtime.ui.notify(
-            `${value.title}: ${value.body}`,
-            value.level === "success" ? "info" : value.level,
-          );
-          return { status: "sent" };
-        },
+        execute: invokeAppControl("notifications.send"),
       },
     ];
     return operations.filter(
       (operation) =>
         (operation.command !== "session.resolve" || options.currentSessionControl !== undefined) &&
+        (!["app.state", "notifications.send"].includes(operation.command) ||
+          options.currentSessionControl?.invokeAppControl !== undefined) &&
         (operation.command !== "session.create-draft" ||
           options.currentSessionControl?.createDraftSession !== undefined) &&
         (!operation.command.startsWith("sessions.") ||
@@ -1784,6 +1793,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       resolveOnSettle = false;
       try {
         await options.currentSessionControl?.setResolved(true);
+        await reportAgentAction("resolve");
       } catch (error) {
         if (disposed) return;
         options.onEvent({
@@ -2085,6 +2095,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     },
     async compact(instructions) {
       await runCompact(instructions);
+      await reportAgentAction("compact");
       return { status: "compacted" };
     },
     async rename(title) {
@@ -2093,9 +2104,11 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         session.sessionManager.getSessionName() ?? title.trim(),
       );
       await emitSnapshot();
+      const committedTitle = session.sessionManager.getSessionName() ?? title.trim();
+      await reportAgentAction("rename", committedTitle);
       return {
         sessionId: cakeSessionId,
-        title: session.sessionManager.getSessionName() ?? title.trim(),
+        title: committedTitle,
       };
     },
     async createDraftSession(input, signal) {
@@ -2121,6 +2134,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       }
       resolveOnSettle = false;
       await options.currentSessionControl.setResolved(resolved);
+      await reportAgentAction(resolved ? "resolve" : "restore");
       return { sessionId: cakeSessionId, resolved, resolveOnSettle: false };
     },
     async setModel(provider, modelId, reasoning) {
@@ -2130,6 +2144,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       currentModel = session.model;
       if (reasoning) session.setThinkingLevel(reasoning);
       await emitSnapshot();
+      await reportAgentAction("set-model", `${provider}/${modelId}`);
       return {
         provider,
         id: modelId,

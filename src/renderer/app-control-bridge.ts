@@ -101,6 +101,17 @@ const appControlArgumentSchemas = {
     provider: trimmed(1, 100),
     modelId: trimmed(1, 200),
   }),
+  send_notification: Schema.Struct({
+    title: trimmed(1, 256),
+    body: trimmed(1, 2_000),
+    level: Schema.Literals(["info", "success", "warning", "error"]).pipe(
+      Schema.withDecodingDefaultKey(Effect.succeed("info" as const)),
+    ),
+  }),
+  report_agent_action: Schema.Struct({
+    action: Schema.Literals(["compact", "rename", "resolve", "restore", "set-model"]),
+    detail: Schema.optionalKey(trimmed(1, 500)),
+  }),
 } as const;
 
 function invocation<Name extends keyof typeof appControlArgumentSchemas>(name: Name) {
@@ -124,6 +135,8 @@ const appControlInvocationSchema = Schema.Union([
   invocation("set_sessions_resolved"),
   invocation("set_cake_chat_sessions_resolved"),
   invocation("set_session_model"),
+  invocation("send_notification"),
+  invocation("report_agent_action"),
 ]);
 
 type AppControlInvocation = typeof appControlInvocationSchema.Type;
@@ -139,8 +152,35 @@ type SessionSummaryView = Pick<
   | "draft"
 > & { managedWorktree?: SessionSummary["managedWorktree"] };
 
+type AppControlSelection =
+  | { kind: "workbench" }
+  | { kind: "new-project-chat" }
+  | {
+      kind: "project-session";
+      workspacePath: string;
+      workspaceName: string;
+      sessionId: string;
+      title: string;
+    }
+  | { kind: "new-cake-chat" }
+  | { kind: "cake-chat"; sessionId: string; title: string }
+  | { kind: "settings"; page: string };
+
+export interface AgentControlSource {
+  kind: "project-session" | "cake-chat";
+  sessionId: string;
+  title: string;
+}
+
+interface AgentActionReceipt {
+  message: string;
+  targetSessionId?: string;
+  targetKind?: "project-session" | "cake-chat";
+  coalesceKey: string;
+}
+
 export interface AppControlHost {
-  currentSession(): { workspacePath: string; sessionId: string } | undefined;
+  currentSelection(): AppControlSelection;
   sessionLayout?(originSessionId?: string): {
     focusedSessionId?: string;
     originSessionId?: string;
@@ -196,6 +236,19 @@ export interface AppControlHost {
   setSessionsResolved(sessionIds: readonly string[], resolved: boolean): Promise<number>;
   setCakeChatSessionsResolved(sessionIds: readonly string[], resolved: boolean): Promise<number>;
   setSessionModel(sessionId: string, provider: string, modelId: string): Promise<void>;
+  showNotification(input: {
+    title: string;
+    body: string;
+    level: "info" | "success" | "warning" | "error";
+    source?: AgentControlSource;
+  }): void;
+  showAgentAction(input: {
+    source: AgentControlSource;
+    message: string;
+    targetSessionId?: string;
+    targetKind?: "project-session" | "cake-chat";
+    coalesceKey: string;
+  }): void;
 }
 
 export interface AppControlSession {
@@ -212,7 +265,7 @@ export interface AppControlSession {
 }
 
 export interface AppControlState {
-  currentSession?: { workspacePath: string; sessionId: string };
+  selection: AppControlSelection;
   sessionLayout?: ReturnType<NonNullable<AppControlHost["sessionLayout"]>>;
   projectCount: number;
   sessionCount: number;
@@ -236,6 +289,7 @@ export type AppControlResult =
       name: "create_session";
       workspacePath: string;
       sessionId: string;
+      title: string;
       status: "started";
       managedWorktree?: WorktreeRecord;
     }
@@ -244,6 +298,7 @@ export type AppControlResult =
       name: "create_draft_session";
       workspacePath: string;
       sessionId: string;
+      title: string;
       status: "saved-draft";
     }
   | {
@@ -287,6 +342,13 @@ export type AppControlResult =
       provider: string;
       modelId: string;
       status: "changing";
+    }
+  | { ok: true; name: "send_notification"; status: "sent" }
+  | {
+      ok: true;
+      name: "report_agent_action";
+      action: "compact" | "rename" | "resolve" | "restore" | "set-model";
+      detail?: string;
     }
   | {
       ok: true;
@@ -348,13 +410,13 @@ const modelControlOperations = [
   operation(
     "sessions.create",
     "sessions",
-    "Create, configure, name, open, and send the initial prompt to a project session, optionally with an exact model or in a new managed worktree.",
+    "Create, configure, name, and start a project session in the background, optionally with an exact model or in a new managed worktree.",
     appControlArgumentSchemas.create_session,
   ),
   operation(
     "sessions.create-draft",
     "sessions",
-    "Create, configure, name, open, and save an initial prompt as a Cake-owned draft without starting a Pi session.",
+    "Create, configure, name, and save an initial prompt as a background Cake-owned draft without starting a Pi session.",
     appControlArgumentSchemas.create_draft_session,
   ),
   operation(
@@ -394,6 +456,12 @@ const modelControlOperations = [
     appControlArgumentSchemas.abort_session,
   ),
   operation(
+    "notifications.send",
+    "notifications",
+    "Send a bounded notification to the invoking Cake window without adding user input.",
+    appControlArgumentSchemas.send_notification,
+  ),
+  operation(
     "sessions.resolve",
     "sessions",
     "Idempotently resolve or restore explicit project or Cake Chat targets.",
@@ -413,6 +481,8 @@ const commandToLegacyName = {
   "sessions.scheduled": "list_scheduled_messages",
   "sessions.cancel-scheduled": "cancel_scheduled_message",
   "sessions.abort": "abort_session",
+  "notifications.send": "send_notification",
+  "agent.action": "report_agent_action",
 } as const;
 
 function operation(command: string, topic: string, summary: string, schema: Schema.Constraint) {
@@ -445,7 +515,8 @@ export class AppControlBridge {
 
   getAppState(originSessionId?: string): AppControlState {
     const sessions = this.sortedSessions();
-    const state = {
+    const state: AppControlState = {
+      selection: this.host.currentSelection(),
       projectCount: this.host.projects().length,
       sessionCount: sessions.length,
       projects: this.host.projects().map((project) => ({
@@ -459,28 +530,29 @@ export class AppControlBridge {
         .map((session) => this.toControlSession(session)),
       recentSessions: sessions.map((session) => this.toControlSession(session)),
     };
-    const currentSession = this.host.currentSession();
     const sessionLayout = this.host.sessionLayout?.(originSessionId);
-    return {
-      ...state,
-      ...(currentSession ? { currentSession } : null),
-      ...(sessionLayout ? { sessionLayout } : null),
-    };
+    if (sessionLayout) state.sessionLayout = sessionLayout;
+    return state;
   }
 
-  async invoke(untrustedInput: unknown, originSessionId?: string): Promise<JsonValue> {
-    return toJsonValue(await this.invokeResult(untrustedInput, originSessionId));
+  async invoke(untrustedInput: unknown, source?: AgentControlSource): Promise<JsonValue> {
+    const result = await this.invokeResult(untrustedInput, source);
+    if (source && result.ok && result.name !== "send_notification") {
+      const receipt = this.agentActionReceipt(result, source);
+      if (receipt) this.host.showAgentAction({ source, ...receipt });
+    }
+    return toJsonValue(result);
   }
 
   private async invokeResult(
     untrustedInput: unknown,
-    originSessionId?: string,
+    source?: AgentControlSource,
   ): Promise<AppControlResult> {
     const gatewayInvocation = Schema.decodeUnknownSync(
       Schema.Struct({ name: Schema.String, arguments: jsonObjectSchema }),
     )(untrustedInput);
     if (gatewayInvocation.name === "sessions.list") {
-      const state = this.getAppState(originSessionId);
+      const state = this.getAppState(source?.sessionId);
       return toStrictJson({
         ok: true,
         command: "sessions.list",
@@ -538,7 +610,25 @@ export class AppControlBridge {
       legacyName ? { name: legacyName, arguments: gatewayInvocation.arguments } : gatewayInvocation,
     );
     if (invocation.name === "get_app_state")
-      return { ok: true, name: invocation.name, state: this.getAppState(originSessionId) };
+      return { ok: true, name: invocation.name, state: this.getAppState(source?.sessionId) };
+    if (invocation.name === "send_notification") {
+      this.host.showNotification({
+        title: invocation.arguments.title,
+        body: invocation.arguments.body,
+        level: invocation.arguments.level,
+        source,
+      });
+      return { ok: true, name: invocation.name, status: "sent" };
+    }
+    if (invocation.name === "report_agent_action") {
+      const result: Extract<AppControlResult, { name: "report_agent_action" }> = {
+        ok: true,
+        name: invocation.name,
+        action: invocation.arguments.action,
+      };
+      if (invocation.arguments.detail) result.detail = invocation.arguments.detail;
+      return result;
+    }
     if (invocation.name === "create_session") return this.createSession(invocation.arguments);
     if (invocation.name === "create_draft_session")
       return this.createDraftSession(invocation.arguments);
@@ -578,12 +668,12 @@ export class AppControlBridge {
 
     if (invocation.name === "get_session_status") {
       const activity = this.host.sessionActivity(sessionId);
-      const current = this.host.currentSession();
+      const current = this.host.currentSelection();
       return {
         ok: true,
         name: invocation.name,
         session: this.toControlSession(known),
-        selected: current?.workspacePath === workspacePath && current?.sessionId === sessionId,
+        selected: current.kind === "project-session" && current.sessionId === sessionId,
         status: activity ?? "idle",
       };
     }
@@ -667,6 +757,136 @@ export class AppControlBridge {
     };
   }
 
+  private agentActionReceipt(
+    result: Extract<AppControlResult, { ok: true }>,
+    source: AgentControlSource,
+  ): AgentActionReceipt | undefined {
+    const projectTitle = (sessionId: string) =>
+      this.host.sessions().find((session) => session.sessionId === sessionId)?.title ?? "Session";
+    const projectTarget = (sessionId: string) => ({
+      targetSessionId: sessionId,
+      targetKind: "project-session" as const,
+    });
+    const resolutionReceipt = (
+      message: string,
+      coalesceKey: string,
+      target?: { sessionId: string; kind: "project-session" | "cake-chat" },
+    ) => {
+      const receipt: AgentActionReceipt = { message, coalesceKey };
+      if (target) {
+        receipt.targetSessionId = target.sessionId;
+        receipt.targetKind = target.kind;
+      }
+      return receipt;
+    };
+    if (result.name === "report_agent_action") {
+      const messages = {
+        compact: "Compacted this session",
+        rename: `Renamed this session${result.detail ? ` to “${result.detail}”` : ""}`,
+        resolve: "Resolved this session",
+        restore: "Restored this session",
+        "set-model": `Changed this session’s model${result.detail ? ` to ${result.detail}` : ""}`,
+      } as const;
+      return {
+        message: messages[result.action],
+        targetSessionId: source.sessionId,
+        targetKind: source.kind,
+        coalesceKey: `current:${result.action}:${result.detail ?? ""}`,
+      };
+    }
+    if (result.name === "open_session")
+      return {
+        message: `Opened “${projectTitle(result.opened.sessionId)}”`,
+        coalesceKey: `open:${result.opened.sessionId}`,
+      };
+    if (result.name === "create_session")
+      return {
+        message: `Created and started “${result.title}”`,
+        ...projectTarget(result.sessionId),
+        coalesceKey: `create:${result.sessionId}`,
+      };
+    if (result.name === "create_draft_session")
+      return {
+        message: `Created draft “${result.title}”`,
+        ...projectTarget(result.sessionId),
+        coalesceKey: `draft:${result.sessionId}`,
+      };
+    if (result.name === "send_session_message")
+      return {
+        message: `${result.delivery === "queue" ? "Queued a message for" : result.delivery === "steer" ? "Steered" : "Sent a message to"} “${projectTitle(result.target.sessionId)}”`,
+        ...projectTarget(result.target.sessionId),
+        coalesceKey: `send:${result.target.sessionId}:${result.delivery}`,
+      };
+    if (result.name === "compact_session")
+      return {
+        message: `Compacted “${projectTitle(result.target.sessionId)}”`,
+        ...projectTarget(result.target.sessionId),
+        coalesceKey: `compact:${result.target.sessionId}`,
+      };
+    if (result.name === "schedule_session_message")
+      return {
+        message: `Scheduled a message for “${projectTitle(result.target.sessionId)}”`,
+        ...projectTarget(result.target.sessionId),
+        coalesceKey: `schedule:${result.target.sessionId}`,
+      };
+    if (result.name === "cancel_scheduled_message")
+      return { message: "Cancelled a scheduled message", coalesceKey: `cancel:${result.id}` };
+    if (result.name === "abort_session")
+      return {
+        message: `Stopped “${projectTitle(result.target.sessionId)}”`,
+        ...projectTarget(result.target.sessionId),
+        coalesceKey: `abort:${result.target.sessionId}`,
+      };
+    if (result.name === "rename_session")
+      return {
+        message: `Renamed session to “${result.title}”`,
+        ...projectTarget(result.target.sessionId),
+        coalesceKey: `rename:${result.target.sessionId}`,
+      };
+    if (result.name === "set_session_resolved")
+      return {
+        message: `${result.resolved ? "Resolved" : "Restored"} “${projectTitle(result.target.sessionId)}”`,
+        ...projectTarget(result.target.sessionId),
+        coalesceKey: `resolve:${result.target.sessionId}:${result.resolved}`,
+      };
+    if (result.name === "set_session_model")
+      return {
+        message: `Changed the model for “${projectTitle(result.target.sessionId)}”`,
+        ...projectTarget(result.target.sessionId),
+        coalesceKey: `model:${result.target.sessionId}`,
+      };
+    if (result.name === "set_sessions_resolved")
+      return resolutionReceipt(
+        `${result.resolved ? "Resolved" : "Restored"} ${result.sessionCount} project ${result.sessionCount === 1 ? "session" : "sessions"}`,
+        `resolve-project:${result.sessionIds.join(",")}:${result.resolved}`,
+        result.sessionIds.length === 1
+          ? { sessionId: result.sessionIds[0]!, kind: "project-session" }
+          : undefined,
+      );
+    if (result.name === "set_cake_chat_sessions_resolved")
+      return resolutionReceipt(
+        `${result.resolved ? "Resolved" : "Restored"} ${result.sessionCount} Cake Chat ${result.sessionCount === 1 ? "session" : "sessions"}`,
+        `resolve-cake:${result.sessionIds.join(",")}:${result.resolved}`,
+        result.sessionIds.length === 1
+          ? { sessionId: result.sessionIds[0]!, kind: "cake-chat" }
+          : undefined,
+      );
+    if (result.name === "sessions.resolve") {
+      const target = result.targets.length === 1 ? result.targets[0] : undefined;
+      return resolutionReceipt(
+        `${result.resolved ? "Resolved" : "Restored"} ${result.sessionCount} ${result.sessionCount === 1 ? "session" : "sessions"}`,
+        `resolve:${result.targets.map((item) => `${item.kind}:${item.sessionId}`).join(",")}:${result.resolved}`,
+        target
+          ? {
+              sessionId: target.sessionId,
+              kind: target.kind === "cake-chat" ? "cake-chat" : "project-session",
+            }
+          : undefined,
+      );
+    }
+    return undefined;
+  }
+
   private sortedSessions() {
     return [...this.host.sessions()].sort((left, right) =>
       right.modifiedAt.localeCompare(left.modifiedAt),
@@ -689,6 +909,7 @@ export class AppControlBridge {
       name: "create_session",
       workspacePath: created.workspacePath,
       sessionId: created.sessionId,
+      title: input.name,
       status: "started",
     };
     if (created.managedWorktree) result.managedWorktree = created.managedWorktree;
@@ -711,6 +932,7 @@ export class AppControlBridge {
       name: "create_draft_session",
       workspacePath: created.workspacePath,
       sessionId: created.sessionId,
+      title: input.name,
       status: "saved-draft",
     };
   }

@@ -20,6 +20,32 @@ describe("ToastStore", () => {
     store[Symbol.dispose]();
   });
 
+  it("coalesces matching agent notifications and refreshes their timeout", () => {
+    const store = mount(createStore(ToastStore));
+    store.show({ title: "Build", message: "50%", coalesceKey: "build" });
+    vi.advanceTimersByTime(4_000);
+    store.show({ title: "Build", message: "50%", coalesceKey: "build" });
+
+    expect(store.toasts).toHaveLength(1);
+    vi.advanceTimersByTime(4_001);
+    expect(store.toasts).toHaveLength(1);
+    vi.advanceTimersByTime(3_999);
+    expect(store.toasts).toHaveLength(0);
+    store[Symbol.dispose]();
+  });
+
+  it("runs an optional action and dismisses the toast", () => {
+    const store = mount(createStore(ToastStore));
+    const run = vi.fn();
+    store.show({ title: "Created", message: "Draft", action: { label: "View", run } });
+
+    store.runAction(store.toasts[0]!.id);
+
+    expect(run).toHaveBeenCalledOnce();
+    expect(store.toasts).toHaveLength(0);
+    store[Symbol.dispose]();
+  });
+
   it("auto-dismisses a toast after the timeout", () => {
     const store = mount(createStore(ToastStore));
     store.show({ title: "Hello", message: "World" });
