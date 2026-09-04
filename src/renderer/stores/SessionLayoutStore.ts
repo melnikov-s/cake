@@ -85,8 +85,11 @@ export class SessionLayoutStore extends Store {
     return this.panes.find((pane) => pane.sessionId === sessionId);
   }
 
+  /** The session's visible pane number, omitted when there is no split to distinguish. */
   paneNumber(sessionId: string) {
-    return this.paneForSession(sessionId)?.number;
+    const panes = this.panes;
+    if (panes.length <= 1) return undefined;
+    return panes.find((pane) => pane.sessionId === sessionId)?.number;
   }
 
   neighbors(sessionId: string) {

@@ -42,6 +42,21 @@ describe("SessionLayoutStore", () => {
     vi.restoreAllMocks();
   });
 
+  it("only exposes pane numbers while the layout is split", () => {
+    const store = mount(createStore(SessionLayoutStore));
+    store.ensureSession("session-a");
+    expect(store.paneNumber("session-a")).toBeUndefined();
+
+    store.splitFocused("session-b", "x");
+    expect(store.paneNumber("session-a")).toBe(1);
+    expect(store.paneNumber("session-b")).toBe(2);
+
+    store.closePane(store.focusedPaneId!);
+    expect(store.paneNumber("session-a")).toBeUndefined();
+
+    store[Symbol.dispose]();
+  });
+
   it("uses the focused pane for navigation and focuses an already visible session", () => {
     const store = mount(createStore(SessionLayoutStore));
     store.ensureSession("session-a");
