@@ -109,7 +109,7 @@ describe("WorktreeService decision logic", () => {
   it("persists records across service instances", async () => {
     const { service, record, storage } = await setup();
     await expect(service.records()).resolves.toEqual([record]);
-    await expect(readFile(storage, "utf8")).resolves.toContain("agent/widget");
+    await expect(readFile(storage, "utf8")).resolves.toContain(record.branch);
     await expect(
       new ManagedWorktreeEngine(
         makeTestWorktreeStorageRepository(storage),
@@ -246,6 +246,7 @@ describe("WorktreeService decision logic", () => {
     ]);
     const next = await service.create(record.projectPath, undefined, "next");
     directories.push(next.worktreePath);
-    expect(next).toMatchObject({ branch: "agent/next", state: "active" });
+    expect(next).toMatchObject({ state: "active" });
+    expect(next.branch).toMatch(/^agent\/next-[a-f0-9]{6}$/);
   });
 });

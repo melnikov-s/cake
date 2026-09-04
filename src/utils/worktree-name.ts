@@ -6,6 +6,5 @@ export function suggestedWorktreeName(title: string) {
     .replace(/^-+|-+$/g, "")
     .slice(0, 48)
     .replace(/-+$/g, "");
-  const suffix = crypto.randomUUID().slice(0, 6);
-  return `${slug || "conversation"}-${suffix}`;
+  return slug || "conversation";
 }

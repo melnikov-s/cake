@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, realpath } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
@@ -96,12 +97,11 @@ export class ManagedWorktreeEngine implements WorktreeLandingCoordinator {
     const startPoint = parent?.branch ?? baseBranch;
     const baseCommit = (await this.git(root, "rev-parse", startPoint)).trim();
     const slug = slugify(basename(root));
-    const id = `${Date.now().toString(36)}${Math.random().toString(16).slice(2, 6)}`;
-    const name = worktreeName ?? `${slug}-${id}`;
-    if (worktreeName && !/^[a-z0-9][a-z0-9-]{0,62}$/.test(name))
-      throw new Error("Invalid worktree name");
-    const branch = `agent/${name}`;
+    const requestedName = worktreeName ?? slug;
+    if (!/^[a-z0-9][a-z0-9-]{0,62}$/.test(requestedName)) throw new Error("Invalid worktree name");
     const worktreesDir = join(dirname(root), `.${slug}-worktrees`);
+    const name = await this.availableWorktreeName(root, worktreesDir, requestedName);
+    const branch = `agent/${name}`;
     const worktreePath = join(worktreesDir, name);
     await mkdir(worktreesDir, { recursive: true });
     await this.git(root, "worktree", "add", "-b", branch, worktreePath, baseCommit);
@@ -508,6 +508,20 @@ export class ManagedWorktreeEngine implements WorktreeLandingCoordinator {
     });
   }
 
+  private async availableWorktreeName(
+    repositoryRoot: string,
+    worktreesDirectory: string,
+    requestedName: string,
+  ): Promise<string> {
+    const namePrefix = requestedName.slice(0, 56).replace(/-+$/g, "") || "worktree";
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      const name = `${namePrefix}-${randomUUID().slice(0, 6)}`;
+      const branchExists = await this.revParseExists(repositoryRoot, `refs/heads/agent/${name}`);
+      if (!branchExists && !existsSync(join(worktreesDirectory, name))) return name;
+    }
+    throw new Error("Cake could not generate a unique worktree name");
+  }
+
   private async withRepositoryLock<T>(
     projectPath: string,
     operation: () => Promise<T>,
@@ -701,7 +715,12 @@ export class ManagedWorktreeEngine implements WorktreeLandingCoordinator {
 }
 
 function slugify(value: string): string {
-  return value.replace(/[^a-zA-Z0-9-_]+/g, "-").replace(/^-+|-+$/g, "") || "worktree";
+  return (
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9-_]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "worktree"
+  );
 }
 
 function resolveNormalized(path: string): string {

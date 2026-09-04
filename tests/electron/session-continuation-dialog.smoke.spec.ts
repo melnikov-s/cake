@@ -144,7 +144,7 @@ test("forks and hands off sessions across working directories", async () => {
     const name = dialog.getByLabel("Worktree name");
     await expect(name).toBeVisible();
     await expect(name).toBeFocused();
-    await expect(name).toHaveValue(/^plan-the-focused-fix-[a-f0-9]{6}$/);
+    await expect(name).toHaveValue("plan-the-focused-fix");
     await name.fill("focused-fix");
     await expect(name).toHaveValue("focused-fix");
     await dialog
@@ -156,12 +156,14 @@ test("forks and hands off sessions across working directories", async () => {
     // The forked conversation opens in its new worktree (the worktree pill shows its
     // branch) instead of failing with "Cake could not find that session". The forked
     // transcript carries the parent's content.
-    await expect(page.getByText("focused-fix").first()).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText(/^focused-fix-[a-f0-9]{6}$/).first()).toBeVisible({
+      timeout: 30_000,
+    });
     await expect(page.getByText("Here is the plan.")).toBeVisible();
     await expect(page.getByRole("button", { name: "Start new chat in project" })).toHaveCount(1);
-    await expect(page.getByRole("button", { name: "Start new chat in focused-fix" })).toHaveCount(
-      0,
-    );
+    await expect(
+      page.getByRole("button", { name: /^Start new chat in focused-fix-[a-f0-9]{6}$/ }),
+    ).toHaveCount(0);
 
     // Preview hydration happens before the workspace runtime finishes opening. Wait
     // until the composer can submit so a late session-open failure cannot race this check.

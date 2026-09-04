@@ -87,13 +87,19 @@ describe("WorktreeService", { timeout: 20_000 }, () => {
     await worktrees.discard(record.worktreePath, false);
   });
 
-  it("uses an explicit worktree name for its branch and checkout", async () => {
+  it("adds unique suffixes when the same explicit worktree name is reused", async () => {
     const repo = await repository();
-    const record = await service().create(repo, undefined, "focused-fix");
+    const worktrees = service();
+    const first = await worktrees.create(repo, undefined, "focused-fix");
+    const second = await worktrees.create(repo, undefined, "focused-fix");
 
-    expect(record.branch).toBe("agent/focused-fix");
-    expect(record.worktreePath).toMatch(/\/focused-fix$/);
-    expect(existsSync(record.worktreePath)).toBe(true);
+    expect(first.branch).toMatch(/^agent\/focused-fix-[a-f0-9]{6}$/);
+    expect(second.branch).toMatch(/^agent\/focused-fix-[a-f0-9]{6}$/);
+    expect(second.branch).not.toBe(first.branch);
+    expect(first.worktreePath).toMatch(/\/focused-fix-[a-f0-9]{6}$/);
+    expect(second.worktreePath).toMatch(/\/focused-fix-[a-f0-9]{6}$/);
+    expect(existsSync(first.worktreePath)).toBe(true);
+    expect(existsSync(second.worktreePath)).toBe(true);
   });
 
   it("branches a child worktree from a landed worktree", async () => {
