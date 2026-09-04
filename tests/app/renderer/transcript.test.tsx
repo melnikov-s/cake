@@ -489,6 +489,92 @@ describe("Transcript scrolling", () => {
     expect(followOutput()).toBe(false);
   });
 
+  it("stops following as soon as wheel input begins, before scroll position changes", () => {
+    const initialParts: UiPart[] = [
+      { id: "user-1", kind: "text", role: "user", text: "Explain", status: "complete" },
+      {
+        id: "assistant-1",
+        kind: "text",
+        role: "assistant",
+        text: "A long answer",
+        status: "streaming",
+      },
+    ];
+
+    act(() =>
+      root.render(<TestTranscript sessionId="session-1" store={storeWith(initialParts, true)} />),
+    );
+    const transcript = container.querySelector<HTMLElement>(".transcript")!;
+    const followOutput = virtualizedProps.current?.followOutput as () => "auto" | false;
+    expect(followOutput()).toBe("auto");
+
+    act(() => transcript.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -100 })));
+    expect(followOutput()).toBe(false);
+    scrollToIndex.mockClear();
+
+    const updatedParts: UiPart[] = [
+      initialParts[0]!,
+      {
+        id: "assistant-1",
+        kind: "text",
+        role: "assistant",
+        text: "A long answer with more text",
+        status: "streaming",
+      },
+    ];
+    act(() =>
+      root.render(<TestTranscript sessionId="session-1" store={storeWith(updatedParts, true)} />),
+    );
+
+    expect(scrollToIndex).not.toHaveBeenCalled();
+  });
+
+  it("stops following wheel input in a non-virtualized transcript", () => {
+    const initialParts: UiPart[] = [
+      {
+        id: "assistant-1",
+        kind: "text",
+        role: "assistant",
+        text: "A long answer",
+        status: "streaming",
+      },
+    ];
+
+    act(() =>
+      root.render(
+        <Transcript parts={initialParts} sessionId="session-1" isStreaming virtualized={false} />,
+      ),
+    );
+    const transcript = container.querySelector<HTMLElement>(".transcript")!;
+    Object.defineProperties(transcript, {
+      scrollHeight: { configurable: true, value: 1_000 },
+      clientHeight: { configurable: true, value: 200 },
+    });
+    transcript.scrollTop = 300;
+    act(() => transcript.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -100 })));
+
+    act(() =>
+      root.render(
+        <Transcript
+          parts={[
+            {
+              id: "assistant-1",
+              kind: "text",
+              role: "assistant",
+              text: "A long answer with more text",
+              status: "streaming",
+            },
+          ]}
+          sessionId="session-1"
+          isStreaming
+          virtualized={false}
+        />,
+      ),
+    );
+
+    expect(transcript.scrollTop).toBe(300);
+  });
+
   it("continues following a response for as long as the transcript is at the bottom", () => {
     const parts: UiPart[] = [
       { id: "user-1", kind: "text", role: "user", text: "Explain", status: "complete" },

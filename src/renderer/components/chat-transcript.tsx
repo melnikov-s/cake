@@ -166,10 +166,16 @@ export const ChatTranscript = observer(function ChatTranscript({
     virtualScrollerRef.current = scroller instanceof HTMLElement ? scroller : null;
   }, []);
   useEffect(() => {
-    const scroller = virtualScrollerRef.current;
+    const scroller = virtualScrollerRef.current ?? staticTranscriptRef.current;
     if (!scroller) return;
     let pendingScrollState = store.transcriptScrollState;
     let saveTimer: ReturnType<typeof setTimeout> | undefined;
+    const cancelBottomFollowing = () => {
+      // Scroll input arrives before the browser updates scrollTop. Cancel here so
+      // a streaming render cannot pull the transcript back to the bottom first.
+      bottomStateRef.current.pinned = false;
+      preserveBottomDuringCommitRef.current = false;
+    };
     const commitScrollState = () => {
       saveTimer = undefined;
       if (pendingScrollState) store.setTranscriptScrollState(pendingScrollState);
@@ -183,13 +189,21 @@ export const ChatTranscript = observer(function ChatTranscript({
         saveTimer = setTimeout(commitScrollState, 100);
       });
     };
+    scroller.addEventListener("wheel", cancelBottomFollowing, { passive: true });
+    scroller.addEventListener("touchmove", cancelBottomFollowing, { passive: true });
+    scroller.addEventListener("pointerdown", cancelBottomFollowing, { passive: true });
+    scroller.addEventListener("keydown", cancelBottomFollowing);
     scroller.addEventListener("scroll", captureScrollState, { passive: true });
     return () => {
+      scroller.removeEventListener("wheel", cancelBottomFollowing);
+      scroller.removeEventListener("touchmove", cancelBottomFollowing);
+      scroller.removeEventListener("pointerdown", cancelBottomFollowing);
+      scroller.removeEventListener("keydown", cancelBottomFollowing);
       scroller.removeEventListener("scroll", captureScrollState);
       if (saveTimer !== undefined) clearTimeout(saveTimer);
       if (pendingScrollState) store.setTranscriptScrollState(pendingScrollState);
     };
-  }, [store]);
+  }, [store, virtualized]);
   const followStreamingOutput = useCallback(() => {
     if (!bottomStateRef.current.pinned && !preserveBottomDuringCommitRef.current) return false;
     return "auto" as const;
