@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { AppShellStore } from "../../../../src/renderer/stores/AppShellStore";
 
 const createShell = (
-  markProjectSessionRead: (sessionId: string) => void = () => undefined,
+  onProjectSessionDeparted: (sessionId: string) => void = () => undefined,
   resolved: {
     project(sessionId: string): boolean | undefined;
     cakeChat(sessionId: string): boolean | undefined;
@@ -13,20 +13,20 @@ const createShell = (
     createStore(AppShellStore, {
       projectSessionResolved: resolved.project,
       cakeChatSessionResolved: resolved.cakeChat,
-      markProjectSessionRead,
+      onProjectSessionDeparted,
     }),
   );
 
 describe("AppShellStore session history", () => {
-  it("marks a Project Session read when navigating away from it", () => {
-    const marked: string[] = [];
-    const shell = createShell((sessionId) => marked.push(sessionId));
+  it("notifies a Project Session when navigating away from it", () => {
+    const departed: string[] = [];
+    const shell = createShell((sessionId) => departed.push(sessionId));
 
     shell.selectProjectSession("a");
     shell.selectProjectSession("b");
     shell.showSettings();
 
-    expect(marked).toEqual(["a", "b"]);
+    expect(departed).toEqual(["a", "b"]);
     shell[Symbol.dispose]();
   });
 

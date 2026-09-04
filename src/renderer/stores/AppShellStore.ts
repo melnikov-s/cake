@@ -21,7 +21,7 @@ export type SessionHistoryEntry =
 export interface AppShellStoreProps {
   projectSessionResolved(sessionId: string): boolean | undefined;
   cakeChatSessionResolved(sessionId: string): boolean | undefined;
-  markProjectSessionRead(sessionId: string): void;
+  onProjectSessionDeparted(sessionId: string): void;
 }
 
 const sameSessionEntry = (left: SessionHistoryEntry, right: SessionHistoryEntry) =>
@@ -196,7 +196,7 @@ export class AppShellStore extends Store<AppShellStoreProps> {
 
   private markDepartingProjectSession(nextSessionId?: string) {
     if (this.selection.kind === "project-session" && this.selection.sessionId !== nextSessionId)
-      this.props.markProjectSessionRead(this.selection.sessionId);
+      this.props.onProjectSessionDeparted(this.selection.sessionId);
   }
   /**
    * Records a visit to the top of the history, truncating any forward branch. A pending

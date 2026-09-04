@@ -725,8 +725,8 @@ export class RootStore extends Store<{
     return createStore(AppShellStore, {
       projectSessionResolved: (sessionId) => this.sessionCatalogModel.find(sessionId)?.resolved,
       cakeChatSessionResolved: (sessionId) => this.cakeChatCatalogModel.find(sessionId)?.resolved,
-      markProjectSessionRead: (sessionId) =>
-        this.sessionRegistry.findSession(sessionId)?.markRead(),
+      onProjectSessionDeparted: (sessionId) =>
+        this.sessionRegistry.findSession(sessionId)?.depart(),
     });
   }
 

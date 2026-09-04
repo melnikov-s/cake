@@ -91,6 +91,17 @@ test("restores, edits, resolves, and activates a project draft session", async (
       "aria-pressed",
       "true",
     );
+
+    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Settings", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Back to chat" }).click();
+    await expect(page.getByLabel("Message")).toHaveCount(0);
+    await expect(page.getByText("Original plan", { exact: true })).toBeVisible();
+
+    await page.getByText("Original plan", { exact: true }).hover();
+    await page.getByRole("button", { name: "Edit latest prompt" }).click();
+    await expect(composer).toBeFocused();
+    await expect(composer).toHaveValue("Original plan");
     await composer.fill("Edited plan");
     await page.getByRole("button", { name: "Save draft" }).click();
     await expect(page.getByText("Edited plan", { exact: true })).toBeVisible();

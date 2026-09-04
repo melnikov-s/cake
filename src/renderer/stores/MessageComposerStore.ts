@@ -433,6 +433,13 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     return true;
   }
 
+  cancelDraftEdit() {
+    if (!this.editingDraftSession) return;
+    this.editingDraftSession = false;
+    this.clearComposer();
+    this.props.configureDraftActivation?.({ kind: "current" });
+  }
+
   beginEditMessage(entryId: string, editorText?: string) {
     const sessionId = this.props.sessionId();
     if (!sessionId || this.props.isStreaming()) return;

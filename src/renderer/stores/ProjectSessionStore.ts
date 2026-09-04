@@ -157,6 +157,11 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
     this.readSettledTurnRevision = this.model.settledTurnRevision;
   }
 
+  depart() {
+    this.markRead();
+    this.composerStore.cancelDraftEdit();
+  }
+
   private get latestTurnErrored() {
     for (let index = this.model.parts.length - 1; index >= 0; index -= 1) {
       const part = this.model.parts[index]!;
