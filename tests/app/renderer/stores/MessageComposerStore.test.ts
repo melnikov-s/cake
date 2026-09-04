@@ -10,6 +10,7 @@ import { SessionOperationCoordinatorStore } from "../../../../src/renderer/store
 
 class HarnessStore extends Store<{ client: RendererClient; model: Session }> {
   draft = "First message";
+  submissionOrder: string[] = [];
 
   [RendererClientContext.provide]() {
     return this.props.client;
@@ -42,7 +43,7 @@ class HarnessStore extends Store<{ client: RendererClient; model: Session }> {
       findModel: () => {
         throw new Error("Optimistic transcript reconciliation must not query the registry");
       },
-      projectNewSessionSubmission: vi.fn(),
+      projectNewSessionSubmission: vi.fn(() => this.submissionOrder.push("projected")),
       materializeNewSession,
       cancelNewSessionSubmission: vi.fn(),
     } as unknown as SessionRegistryStore;
@@ -67,7 +68,10 @@ class HarnessStore extends Store<{ client: RendererClient; model: Session }> {
       operations: this.operations,
       operationOwner: "composer:session-1",
       newSessionRequest: () => ({ path: "/project" }),
-      prepareNewSession: async () => true,
+      prepareNewSession: async () => {
+        this.submissionOrder.push("prepared");
+        return true;
+      },
     });
   }
 }
@@ -82,6 +86,7 @@ describe("MessageComposerStore", () => {
     await root.composer.submit();
 
     expect(start).toHaveBeenCalledOnce();
+    expect(root.submissionOrder).toEqual(["projected", "prepared"]);
     expect(root.composer.optimisticUserMessages.pending).toEqual([]);
     expect(root.composer.parts).toEqual([
       expect.objectContaining({

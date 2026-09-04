@@ -432,6 +432,7 @@ export interface CakeIpcClientService {
     | "load-staged-slash-commands"
     | "register-project"
     | "rename-project"
+    | "set-project-settings"
     | "remove-project"
     | "delete-session"
     | "set-session-unread"
@@ -842,6 +843,9 @@ export const CakeIpcClientLive = Layer.effect(
         ),
         "rename-project": Effect.fn("CakeIpcClient.workspaces.rename-project")((payload) =>
           client("workspaces.rename-project", payload),
+        ),
+        "set-project-settings": Effect.fn("CakeIpcClient.workspaces.set-project-settings")(
+          (payload) => client("workspaces.set-project-settings", payload),
         ),
         "remove-project": Effect.fn("CakeIpcClient.workspaces.remove-project")((payload) =>
           client("workspaces.remove-project", payload),

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { observer } from "r-state-tree/react";
 import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
-import { ChevronIcon, FolderIcon, PlusIcon } from "./ui/icons";
+import { ChevronIcon, FolderIcon, PlusIcon, SettingsIcon } from "./ui/icons";
 import { IconButton } from "./ui/icon-button";
 import { SidebarSessionItem } from "./sidebar-session-item";
 import type { AppShellStore } from "../stores/AppShellStore";
@@ -21,6 +21,7 @@ export interface SidebarProjectGroupProps {
   onCreateSession(workspacePath: string): void;
   onOpenSession(sessionId: string): void;
   onRemoveProject(path: string, deleteSessions: boolean): Promise<boolean>;
+  onOpenSettings(path: string): void;
 }
 
 /** One project section in the sidebar: header row plus its visible session rows. */
@@ -34,6 +35,7 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
   onCreateSession,
   onOpenSession,
   onRemoveProject,
+  onOpenSettings,
 }: SidebarProjectGroupProps) {
   const [projectAction, setProjectAction] = useState<ProjectAction>();
   const [actionBusy, setActionBusy] = useState(false);
@@ -81,7 +83,8 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
           onContextMenu={(event) => {
             event.preventDefault();
             void store.showProjectContextMenu(path, event.clientX, event.clientY).then((action) => {
-              if (action) setProjectAction(action);
+              if (action === "settings") onOpenSettings(path);
+              else if (action) setProjectAction(action);
             });
           }}
         >
@@ -89,14 +92,24 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
           <span className="truncate">{projects.nameForPath(path)}</span>
         </Button>
         {!resolved && (
-          <IconButton
-            className="size-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-sidebar-hover opacity-0 group-hover/proj:opacity-100 focus-visible:opacity-100 transition-opacity"
-            tooltip="New chat"
-            ariaLabel={`New chat in ${projects.nameFromPath(path)}`}
-            onClick={() => onCreateSession(path)}
-          >
-            <PlusIcon />
-          </IconButton>
+          <>
+            <IconButton
+              className="size-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-sidebar-hover opacity-0 group-hover/proj:opacity-100 focus-visible:opacity-100 transition-opacity"
+              tooltip="Project settings"
+              ariaLabel={`Open settings for ${projects.nameFromPath(path)}`}
+              onClick={() => onOpenSettings(path)}
+            >
+              <SettingsIcon />
+            </IconButton>
+            <IconButton
+              className="size-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-sidebar-hover opacity-0 group-hover/proj:opacity-100 focus-visible:opacity-100 transition-opacity"
+              tooltip="New chat"
+              ariaLabel={`New chat in ${projects.nameFromPath(path)}`}
+              onClick={() => onCreateSession(path)}
+            >
+              <PlusIcon />
+            </IconButton>
+          </>
         )}
       </div>
       {expanded && (

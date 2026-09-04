@@ -147,6 +147,12 @@ export function makeRendererClientCapabilities(execute: Execute): RendererClient
           (client) => client.workspaces["rename-project"]({ path, name }),
           options,
         ).then((response) => response.state),
+      setProjectSettings: (path, settings, options) =>
+        execute(
+          "workspaces.set-project-settings",
+          (client) => client.workspaces["set-project-settings"]({ path, settings }),
+          options,
+        ).then((response) => response.state),
       removeProject: (path, deleteSessions, options) =>
         execute(
           "workspaces.remove-project",

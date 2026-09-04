@@ -63,6 +63,10 @@ function sidebarProps(store: ProjectWorkbenchStore) {
     onGoBack: fixture.goBack ?? vi.fn(),
     onGoForward: fixture.goForward ?? vi.fn(),
     shell: { selection: { kind: "workbench" } } as any,
+    projectSettings: {
+      projectPath: undefined,
+      open: fixture.openProjectSettings ?? vi.fn(),
+    } as any,
   };
 }
 
@@ -453,6 +457,38 @@ describe("Sidebar projects", () => {
     );
 
     expect(startNewSession).toHaveBeenCalledWith("/work/cake");
+  });
+
+  it("opens project settings from the hover action and context menu", async () => {
+    const openProjectSettings = vi.fn();
+    const showProjectContextMenu = vi.fn(async () => "settings" as const);
+    const store = {
+      recentProjectPaths: ["/work/cake"],
+      projects: [{ path: "/work/cake", name: "Cake" }],
+      projectSessions: () => [],
+      sessionLimit: () => 8,
+      sessionActivity: vi.fn(),
+      nameFromPath: () => "cake",
+      showProjectContextMenu,
+      openProjectSettings,
+      showMoreSessions: vi.fn(),
+    } as unknown as ProjectWorkbenchStore;
+    const props = sidebarProps(store);
+    act(() => root.render(<Sidebar {...props} onOpenSettings={vi.fn()} onToggle={vi.fn()} />));
+
+    act(() =>
+      container.querySelector<HTMLButtonElement>('[aria-label="Open settings for cake"]')!.click(),
+    );
+    expect(openProjectSettings).toHaveBeenCalledWith("/work/cake");
+
+    await act(async () => {
+      container
+        .querySelector<HTMLButtonElement>('[aria-label="Start new chat in cake"]')!
+        .dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 12, clientY: 34 }));
+      await Promise.resolve();
+    });
+    expect(showProjectContextMenu).toHaveBeenCalledWith("/work/cake", 12, 34);
+    expect(openProjectSettings).toHaveBeenCalledTimes(2);
   });
 
   it("removes a project from its context menu and offers permanent session deletion", async () => {

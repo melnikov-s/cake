@@ -26,11 +26,27 @@ const IsoTimestamp = Schema.String.check(
   Schema.isPattern(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/),
 );
 
+const DEFAULT_WORKTREE_CREATE_COMMAND =
+  "git worktree add -b {branchName} {worktreePath} {baseCommit}";
+
+export const ProjectSettings = Schema.Struct({
+  worktreeCreateCommand: boundedString(16_384),
+  worktreeSetupCommands: boundedString(65_536),
+});
+
+export interface ProjectSettings extends Schema.Schema.Type<typeof ProjectSettings> {}
+
+export const defaultProjectSettings = (): ProjectSettings => ({
+  worktreeCreateCommand: DEFAULT_WORKTREE_CREATE_COMMAND,
+  worktreeSetupCommands: "",
+});
+
 export const ProjectRecord = Schema.Struct({
   path: nonEmptyBoundedString(4_096),
   name: nonEmptyBoundedString(512),
   addedAt: IsoTimestamp,
   lastOpenedAt: IsoTimestamp,
+  settings: Schema.optionalKey(ProjectSettings),
 });
 
 const SessionIds = boundedArray(boundedString(256), 10_000).check(Schema.isUnique());

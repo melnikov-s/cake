@@ -2,6 +2,7 @@ import { DateTime, Effect, Schema } from "effect";
 import {
   ApplicationState as ApplicationStateSchema,
   type ApplicationState,
+  type ProjectSettings,
   type UtilityModel,
 } from "./application-data";
 import { ApplicationState as ApplicationStateOwner } from "../services/storage/ApplicationState";
@@ -87,6 +88,18 @@ export const renameProject = Effect.fn("Application.renameProject")(function* (
     ...current,
     projects: current.projects.map((project) =>
       project.path === path && nextName ? { ...project, name: nextName } : project,
+    ),
+  }));
+});
+
+export const setProjectSettings = Effect.fn("Application.setProjectSettings")(function* (
+  path: string,
+  settings: ProjectSettings,
+) {
+  return yield* update((current) => ({
+    ...current,
+    projects: current.projects.map((project) =>
+      project.path === path ? { ...project, settings } : project,
     ),
   }));
 });

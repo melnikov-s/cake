@@ -1,4 +1,5 @@
 import { Context, Schema, type Effect } from "effect";
+import type { ProjectSettings } from "../../domain/application-data";
 import type {
   WorktreeLandOutcome,
   WorktreeLandRequest,
@@ -21,6 +22,7 @@ export interface ManagedWorktreesService {
     projectPath: string,
     baseWorktreePath?: string,
     worktreeName?: string,
+    settings?: ProjectSettings,
   ) => Effect.Effect<WorktreeRecord, ManagedWorktreeError>;
   readonly status: (
     worktreePath: string,

@@ -1,4 +1,5 @@
 import { Effect } from "effect";
+import { defaultProjectSettings } from "./application-data";
 import { getState, trustProject } from "./application";
 import { generateWorktreeName, utilityModelSelection } from "./utilityWork";
 import type { WorktreeLandRequest } from "../ipc/worktree-contract";
@@ -62,6 +63,8 @@ export const create = Effect.fn("ManagedWorktrees.create")(function* (input: {
     input.projectPath,
     input.baseWorktreePath,
     worktreeName,
+    state.projects.find((project) => project.path === input.projectPath)?.settings ??
+      defaultProjectSettings(),
   );
   const access = yield* ProjectAccess;
   yield* access

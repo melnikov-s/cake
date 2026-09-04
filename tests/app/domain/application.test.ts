@@ -6,6 +6,7 @@ import {
   forgetProjectSessions,
   removeProject,
   renameProject,
+  setProjectSettings,
   setSessionFastMode,
   setSessionUnread,
   setUtilityModel,
@@ -68,6 +69,14 @@ describe("Application domain", () => {
         yield* trustProject("/work/cake");
         const renamed = yield* renameProject("/work/cake", "  Cake desktop  ");
         assert.equal(renamed.projects[0]?.name, "Cake desktop");
+        const configured = yield* setProjectSettings("/work/cake", {
+          worktreeCreateCommand: "custom-worktree {worktreeName} {worktreePath}",
+          worktreeSetupCommands: "pnpm install",
+        });
+        assert.deepEqual(configured.projects[0]?.settings, {
+          worktreeCreateCommand: "custom-worktree {worktreeName} {worktreePath}",
+          worktreeSetupCommands: "pnpm install",
+        });
         const removed = yield* removeProject("/work/cake");
         assert.deepEqual(removed.projects, []);
         assert.deepEqual(removed.trustedProjectPaths, []);

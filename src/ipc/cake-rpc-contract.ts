@@ -11,6 +11,7 @@ import {
   repairedInlineWidgetSchema,
 } from "./inline-widget-contract";
 import { jsonValueSchema } from "./json-contract";
+import { ProjectSettings } from "../domain/application-data";
 import { ProjectSessionControlRequest } from "../domain/project-session-data";
 import {
   applicationStateSchema,
@@ -379,6 +380,10 @@ export const cakeRpcPayloadSchemas = {
     path: stringMax(4_096),
     name: bounded(1, 512),
   }),
+  "set-project-settings": Schema.Struct({
+    path: bounded(1, 4_096),
+    settings: ProjectSettings,
+  }),
   "remove-project": Schema.Struct({
     path: stringMax(4_096),
     deleteSessions: Schema.Boolean,
@@ -468,7 +473,9 @@ const cakeRpcResultSchemas = {
     ),
   }),
   "project-context-menu-closed": Schema.Struct({
-    action: Schema.optional(Schema.Literals(["remove-project", "delete-resolved-worktrees"])),
+    action: Schema.optional(
+      Schema.Literals(["settings", "remove-project", "delete-resolved-worktrees"]),
+    ),
   }),
   "embedded-editor-state-loaded": Schema.Struct({
     status: Schema.Literals(["missing", "downloading", "starting", "ready", "failed"]),
@@ -550,6 +557,7 @@ export const cakeRpcSuccessSchemas = {
   "load-staged-slash-commands": cakeRpcResultSchemas["slash-commands-loaded"],
   "register-project": cakeRpcResultSchemas["application-state-updated"],
   "rename-project": cakeRpcResultSchemas["application-state-updated"],
+  "set-project-settings": cakeRpcResultSchemas["application-state-updated"],
   "remove-project": cakeRpcResultSchemas["application-state-updated"],
   "delete-session": cakeRpcResultSchemas["application-state-updated"],
   "set-session-unread": cakeRpcResultSchemas["application-state-updated"],

@@ -25,6 +25,7 @@ import {
   observeState,
   removeProject,
   renameProject,
+  setProjectSettings as setApplicationProjectSettings,
   setSessionUnread as setApplicationSessionUnread,
   setUtilityModel as setApplicationUtilityModel,
   trustProject,
@@ -265,6 +266,19 @@ export const rename = Effect.fn("Projects.rename")(function* (
   yield* requireAllowed(request.path);
   return {
     state: yield* mapProjectError("renameProject", renameProject(request.path, request.name)),
+  };
+});
+
+export const setProjectSettings = Effect.fn("Projects.setProjectSettings")(function* (
+  _connectionId: number,
+  request: Payload<"set-project-settings">,
+) {
+  yield* requireAllowed(request.path);
+  return {
+    state: yield* mapProjectError(
+      "setProjectSettings",
+      setApplicationProjectSettings(request.path, request.settings),
+    ),
   };
 });
 

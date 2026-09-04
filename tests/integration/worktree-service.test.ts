@@ -44,6 +44,12 @@ function service(
     async (workingDirectory, arguments_) =>
       (await execFileAsync("git", [...arguments_], { cwd: workingDirectory, maxBuffer: 4_000_000 }))
         .stdout,
+    async (workingDirectory, script) => {
+      await execFileAsync("/bin/sh", ["-lc", `set -e\n${script}`], {
+        cwd: workingDirectory,
+        maxBuffer: 4_000_000,
+      });
+    },
   );
 }
 
@@ -71,6 +77,16 @@ describe("WorktreeService", { timeout: 20_000 }, () => {
     expect(record.worktreePath).toContain(".cake-worktree-repo");
     expect(record.worktreePath.startsWith(repo)).toBe(false);
     expect(existsSync(join(record.worktreePath, "README.md"))).toBe(true);
+  });
+
+  it("runs project-specific creation and setup commands before returning", async () => {
+    const repo = await repository();
+    const record = await service().create(repo, undefined, "configured", {
+      worktreeCreateCommand: "git worktree add -b {branchName} {worktreePath} {baseCommit}",
+      worktreeSetupCommands: "printf ready > {worktreePath}/.cake-setup",
+    });
+
+    await expect(readFile(join(record.worktreePath, ".cake-setup"), "utf8")).resolves.toBe("ready");
   });
 
   it("preserves the registered project path when Git resolves through a filesystem alias", async () => {

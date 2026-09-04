@@ -17,6 +17,7 @@ export function applyProjectCatalogUpdate(model: ProjectCatalog, update: Project
     name: project.name,
     addedAt: project.addedAt,
     lastOpenedAt: project.lastOpenedAt,
+    settings: { ...project.settings },
   }));
   if (update._tag === "Snapshot") projects = [...update.projects];
   else {

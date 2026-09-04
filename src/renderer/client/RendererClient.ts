@@ -1,4 +1,5 @@
 import type { Effect } from "effect";
+import type { ProjectSettings } from "../../domain/application-data";
 import type { CakeIpcClientService } from "../../ipc/client/CakeIpcClient";
 import type { EditorAnnotationSnapshot } from "../../ipc/editor-annotation";
 import type {
@@ -71,7 +72,7 @@ interface ElectronCommands {
   showProjectContextMenu(
     input: { path: string; x: number; y: number; resolvedWorktreeCount: number },
     options?: RendererCommandOptions,
-  ): Promise<"remove-project" | "delete-resolved-worktrees" | undefined>;
+  ): Promise<"settings" | "remove-project" | "delete-resolved-worktrees" | undefined>;
   setFullscreenSurfaceOpen(
     surfaceId: string,
     open: boolean,
@@ -118,6 +119,11 @@ interface WorkspaceCommands {
   renameProject(
     path: string,
     name: string,
+    options?: RendererCommandOptions,
+  ): Promise<ApplicationState>;
+  setProjectSettings(
+    path: string,
+    settings: ProjectSettings,
     options?: RendererCommandOptions,
   ): Promise<ApplicationState>;
   removeProject(

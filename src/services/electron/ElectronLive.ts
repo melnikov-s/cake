@@ -468,6 +468,8 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
                 resolve({ action });
               };
               Menu.buildFromTemplate([
+                { label: "Project Settings…", click: () => finish("settings") },
+                { type: "separator" },
                 { label: "Copy Project Path", click: () => clipboard.writeText(request.path) },
                 { type: "separator" },
                 {
@@ -640,5 +642,5 @@ type SuccessSessionMenu = {
   readonly action?: "rename" | "mark-unread" | "resolve" | "unresolve" | "delete";
 };
 type SuccessProjectMenu = {
-  readonly action?: "remove-project" | "delete-resolved-worktrees";
+  readonly action?: "settings" | "remove-project" | "delete-resolved-worktrees";
 };

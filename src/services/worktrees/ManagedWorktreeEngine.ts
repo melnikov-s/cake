@@ -12,8 +12,12 @@ import {
   type WorktreeRecord,
   type WorktreeStatus,
 } from "../../ipc/worktree-contract";
+import type { ProjectSettings } from "../../domain/application-data";
 import type { GitRunner } from "../git/Git";
 import type { WorktreeStorageRepository } from "../storage/WorktreeStorage";
+import { renderWorktreeCommand } from "./worktree-command-template";
+
+export type WorktreeCommandRunner = (workingDirectory: string, script: string) => Promise<void>;
 
 interface LandOptions {
   request: WorktreeLandRequest;
@@ -49,6 +53,7 @@ export class ManagedWorktreeEngine implements WorktreeLandingCoordinator {
   constructor(
     private readonly storage: WorktreeStorageRepository,
     private readonly gitRunner: GitRunner,
+    private readonly commandRunner?: WorktreeCommandRunner,
   ) {}
 
   async records(): Promise<WorktreeRecord[]> {
@@ -64,12 +69,13 @@ export class ManagedWorktreeEngine implements WorktreeLandingCoordinator {
     projectPath: string,
     baseWorktreePath?: string,
     worktreeName?: string,
+    settings?: ProjectSettings,
   ): Promise<WorktreeRecord> {
     await this.load();
     const registeredProjectPath = resolveNormalized(projectPath);
     const root = await realpath(await this.repositoryRoot(projectPath));
     return this.withRepositoryLock(root, () =>
-      this.createRecord(root, registeredProjectPath, baseWorktreePath, worktreeName),
+      this.createRecord(root, registeredProjectPath, baseWorktreePath, worktreeName, settings),
     );
   }
 
@@ -78,6 +84,7 @@ export class ManagedWorktreeEngine implements WorktreeLandingCoordinator {
     registeredProjectPath: string,
     baseWorktreePath?: string,
     worktreeName?: string,
+    settings?: ProjectSettings,
   ): Promise<WorktreeRecord> {
     const parent = baseWorktreePath
       ? this.allRecords.find(
@@ -104,7 +111,43 @@ export class ManagedWorktreeEngine implements WorktreeLandingCoordinator {
     const branch = `agent/${name}`;
     const worktreePath = join(worktreesDir, name);
     await mkdir(worktreesDir, { recursive: true });
-    await this.git(root, "worktree", "add", "-b", branch, worktreePath, baseCommit);
+    const variables = {
+      projectPath: registeredProjectPath,
+      worktreePath,
+      worktreeName: name,
+      branchName: branch,
+      baseBranch,
+      baseCommit,
+    };
+    try {
+      if (settings?.worktreeCreateCommand.trim()) {
+        if (!this.commandRunner) throw new Error("Worktree command execution is unavailable");
+        await this.commandRunner(
+          root,
+          renderWorktreeCommand(settings.worktreeCreateCommand, variables),
+        );
+        if (!existsSync(worktreePath))
+          throw new Error("The worktree creation command did not create {worktreePath}");
+        const createdBranch = (
+          await this.git(worktreePath, "rev-parse", "--abbrev-ref", "HEAD")
+        ).trim();
+        if (createdBranch !== branch)
+          throw new Error(
+            `The worktree creation command checked out ${createdBranch}, not ${branch}`,
+          );
+      } else await this.git(root, "worktree", "add", "-b", branch, worktreePath, baseCommit);
+      if (settings?.worktreeSetupCommands.trim()) {
+        if (!this.commandRunner) throw new Error("Worktree setup command execution is unavailable");
+        await this.commandRunner(
+          worktreePath,
+          renderWorktreeCommand(settings.worktreeSetupCommands, variables),
+        );
+      }
+    } catch (error) {
+      await this.git(root, "worktree", "remove", "--force", worktreePath).catch(() => undefined);
+      await this.git(root, "branch", "-D", branch).catch(() => undefined);
+      throw error;
+    }
     const recordBase = {
       projectPath: registeredProjectPath,
       worktreePath,

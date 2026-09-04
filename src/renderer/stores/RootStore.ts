@@ -21,6 +21,7 @@ import { SessionCatalogStore } from "./SessionCatalogStore";
 import { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import { AppControlOperationStore } from "./AppControlOperationStore";
 import { ProjectCatalogStore } from "./ProjectCatalogStore";
+import { ProjectSettingsStore } from "./ProjectSettingsStore";
 import { ToastStore } from "./ToastStore";
 import { TerminalStore, type TerminalTarget } from "./TerminalStore";
 import { SessionLayoutStore, type SessionSplitAxis } from "./SessionLayoutStore";
@@ -592,6 +593,11 @@ export class RootStore extends Store<{
       sessions: this.sessionCatalogStore,
       model: this.projectCatalogModel,
     });
+  }
+
+  @child
+  get projectSettingsStore(): ProjectSettingsStore {
+    return createStore(ProjectSettingsStore, { projects: this.projectCatalogStore });
   }
 
   @child

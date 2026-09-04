@@ -5,11 +5,13 @@ import { IconButton } from "./ui/icon-button";
 import { BackIcon, FolderPlusIcon, ForwardIcon, SettingsIcon, SidebarIcon } from "./ui/icons";
 import { SidebarCakeChatGroup } from "./sidebar-cake-chat-group";
 import { SidebarProjectGroup } from "./sidebar-project-group";
+import { ProjectSettingsDialog } from "./project-settings-dialog";
 import type { ProjectWorkbenchStore } from "../stores/ProjectWorkbenchStore";
 import type { ProjectCatalogStore } from "../stores/ProjectCatalogStore";
 import type { SidebarStore } from "../stores/SidebarStore";
 import type { GlobalChatStore } from "../stores/GlobalChatStore";
 import type { AppShellStore } from "../stores/AppShellStore";
+import type { ProjectSettingsStore } from "../stores/ProjectSettingsStore";
 
 export const Sidebar = observer(function Sidebar({
   store,
@@ -17,6 +19,7 @@ export const Sidebar = observer(function Sidebar({
   chat,
   cakeChat,
   shell,
+  projectSettings,
   onOpenSettings,
   onOpenCakeChat,
   onCreateCakeChat,
@@ -33,6 +36,7 @@ export const Sidebar = observer(function Sidebar({
   chat: ProjectWorkbenchStore;
   cakeChat: GlobalChatStore;
   shell: AppShellStore;
+  projectSettings: ProjectSettingsStore;
   onOpenSettings: () => void;
   onOpenCakeChat(sessionId?: string): void;
   onCreateCakeChat(): void;
@@ -109,6 +113,7 @@ export const Sidebar = observer(function Sidebar({
               onCreateSession={onCreateSession}
               onOpenSession={onOpenSession}
               onRemoveProject={onRemoveProject}
+              onOpenSettings={(path) => projectSettings.open(path)}
             />
           ))
         )}
@@ -152,6 +157,7 @@ export const Sidebar = observer(function Sidebar({
                   onCreateSession={onCreateSession}
                   onOpenSession={onOpenSession}
                   onRemoveProject={onRemoveProject}
+                  onOpenSettings={(path) => projectSettings.open(path)}
                 />
               ))}
             </div>
@@ -172,6 +178,7 @@ export const Sidebar = observer(function Sidebar({
           <SettingsIcon />
         </IconButton>
       </div>
+      <ProjectSettingsDialog store={projectSettings} />
     </aside>
   );
 });

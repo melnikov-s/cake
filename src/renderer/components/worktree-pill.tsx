@@ -27,6 +27,7 @@ import {
   RestoreIcon,
   TrashIcon,
 } from "./ui/icons";
+import { LoadingState } from "./ui/loading-state";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { WorktreePillAction } from "./worktree-pill-action";
 import { WorktreeStatusIcon } from "./worktree-status-icon";
@@ -83,6 +84,15 @@ export const WorktreePill = observer(function WorktreePill({
         data-slot="worktree-pill"
         className="@container/worktree mx-4 -mb-5 flex min-w-0 flex-wrap items-center gap-1 rounded-t-[1.75rem] border border-b-0 border-border/85 bg-card px-5 pt-3 pb-8 text-xs"
       >
+        {creation.preparingSessionId === sessionId && (
+          <div className="mb-1 w-full" data-testid="worktree-creation-progress">
+            <LoadingState
+              label="Creating worktree and running setup commands"
+              variant="Dots"
+              startedAt={creation.preparingStartedAt}
+            />
+          </div>
+        )}
         <Button
           type="button"
           variant="ghost"

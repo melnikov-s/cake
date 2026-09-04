@@ -87,7 +87,7 @@ const reviewStorageLive = makeReviewStorageLive(
 const gitLive = makeGitLive();
 const worktreeStorageLive = makeWorktreeStorageLive(cakePaths.worktrees);
 const managedWorktreesLive = ManagedWorktreesLive.pipe(
-  Layer.provide(Layer.merge(gitLive, worktreeStorageLive)),
+  Layer.provide(Layer.mergeAll(gitLive, worktreeStorageLive, BootstrapLive)),
 );
 const piModelsLive = makePiModelsLive(cakePaths.piAgent);
 const piSessionsLive = makePiSessionsLive().pipe(Layer.provide(sessionMetadataStorageLive));

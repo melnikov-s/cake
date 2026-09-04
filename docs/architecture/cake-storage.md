@@ -34,8 +34,9 @@ replaces that root for tests and alternate installations.
 │       └── resolved-sessions/
 ```
 
-Cake-owned durable domain data and configuration live beneath `state/` so they
-move together with Pi sessions when `CAKE_HOME` changes. Electron's
+Cake-owned durable domain data and configuration—including registered Projects
+and each Project's managed-worktree creation and setup commands—live beneath
+`state/` so they move together with Pi sessions when `CAKE_HOME` changes. Electron's
 `app.getPath("userData")`, with `CAKE_ELECTRON_USER_DATA` as its test override,
 contains only window/renderer presentation state and machine-local Electron or
 embedded-editor data. `CakePaths` resolves durable Cake locations in main;

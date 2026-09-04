@@ -35,6 +35,7 @@ export const WorkspaceRpc = RpcGroup.make(
   workspaceRpc("workspaces.load-staged-slash-commands", "load-staged-slash-commands"),
   workspaceRpc("workspaces.register-project", "register-project"),
   workspaceRpc("workspaces.rename-project", "rename-project"),
+  workspaceRpc("workspaces.set-project-settings", "set-project-settings"),
   workspaceRpc("workspaces.remove-project", "remove-project"),
   workspaceRpc("workspaces.delete-session", "delete-session"),
   workspaceRpc("workspaces.set-session-unread", "set-session-unread"),

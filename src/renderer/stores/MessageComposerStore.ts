@@ -758,8 +758,11 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
       renderUserMessageAsMarkdown,
     );
     try {
+      const pendingNewSession = this.props.newSessionRequest?.();
+      if (pendingNewSession)
+        this.props.sessionRegistry.projectNewSessionSubmission(sessionId, text);
       if (
-        this.props.newSessionRequest?.() &&
+        pendingNewSession &&
         !(await (this.props.prepareNewSession?.(text) ?? Promise.resolve(true)))
       ) {
         this.removePendingUserMessage(operationId);
@@ -785,7 +788,6 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
         if (newSession.configuration !== undefined)
           Object.assign(input, { configuration: newSession.configuration });
         if (newSession.name !== undefined) Object.assign(input, { name: newSession.name });
-        this.props.sessionRegistry.projectNewSessionSubmission(sessionId, newSession.name ?? text);
         await this.client.projectSessions.start(input, { signal: this.signal });
         this.props.sessionRegistry.materializeNewSession(sessionId, newSession.path);
       } else {

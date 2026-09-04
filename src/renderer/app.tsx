@@ -234,6 +234,7 @@ export const App = observer(function App() {
       chat={store}
       cakeChat={root.globalChatStore}
       shell={shell}
+      projectSettings={root.projectSettingsStore}
       onToggle={toggleSidebar}
       onOpenSettings={openSettings}
       onOpenCakeChat={openCakeChat}

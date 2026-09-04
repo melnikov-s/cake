@@ -27,6 +27,7 @@ export class WorktreeCreationStore extends Store<WorktreeCreationStoreProps> {
 
   private readonly choicesBySession: Record<string, WorktreeDraftChoice> = observable({});
   preparingSessionId: string | undefined;
+  preparingStartedAt: number | undefined;
 
   choice(sessionId: string): WorktreeDraftChoice {
     return this.choicesBySession[sessionId] ?? { kind: "current" };
@@ -89,6 +90,7 @@ export class WorktreeCreationStore extends Store<WorktreeCreationStoreProps> {
     if (choice.kind === "draft") return false;
     if (this.preparingSessionId) return false;
     this.preparingSessionId = sessionId;
+    this.preparingStartedAt = Date.now();
     const operationId = this.props.operations.start("project-workbench");
     try {
       let workspacePath: string;
@@ -120,7 +122,10 @@ export class WorktreeCreationStore extends Store<WorktreeCreationStoreProps> {
       if (!this.signal.aborted) this.props.reportError(error);
       return false;
     } finally {
-      if (!this.signal.aborted) this.preparingSessionId = undefined;
+      if (!this.signal.aborted) {
+        this.preparingSessionId = undefined;
+        this.preparingStartedAt = undefined;
+      }
       this.props.operations.finish(operationId);
     }
   }
