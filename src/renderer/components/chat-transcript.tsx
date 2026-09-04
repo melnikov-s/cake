@@ -54,6 +54,7 @@ export const ChatTranscript = observer(function ChatTranscript({
   footer,
   error: errorOverride,
   virtualized = true,
+  scrollToBottomRequest = 0,
   renderChat,
 }: {
   store: ChatStore;
@@ -62,6 +63,7 @@ export const ChatTranscript = observer(function ChatTranscript({
   footer?: ReactNode;
   error?: { message: string; details?: string; title?: string };
   virtualized?: boolean;
+  scrollToBottomRequest?: number;
   renderChat(store: ChatStore): ReactNode;
 }) {
   const virtuosoRef = useRef<VirtualizedConversationHandle>(null);
@@ -119,6 +121,13 @@ export const ChatTranscript = observer(function ChatTranscript({
     if (staticTranscriptRef.current)
       staticTranscriptRef.current.scrollTop = staticTranscriptRef.current.scrollHeight;
   }, []);
+  const handledScrollToBottomRequestRef = useRef(scrollToBottomRequest);
+  useLayoutEffect(() => {
+    if (handledScrollToBottomRequestRef.current === scrollToBottomRequest) return;
+    handledScrollToBottomRequestRef.current = scrollToBottomRequest;
+    bottomStateRef.current.pinned = true;
+    scrollToLatest();
+  }, [scrollToBottomRequest, scrollToLatest]);
   const messageNavigationRequest = store.messageNavigationRequest;
   const messageNavigationItemIndex = messageNavigationRequest
     ? items.findIndex((item) =>

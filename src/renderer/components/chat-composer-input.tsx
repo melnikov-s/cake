@@ -16,11 +16,13 @@ export const ChatComposerInput = observer(function ChatComposerInput({
   inputRef,
   onReword,
   onPromptedReword,
+  onSubmit,
 }: {
   store: ChatStore;
   inputRef: RefObject<HTMLTextAreaElement | null>;
   onReword(selection: ComposerSelection): void;
   onPromptedReword(selection: ComposerSelection): void;
+  onSubmit(value: string): Promise<void>;
 }) {
   return (
     <SlashCommandCombobox
@@ -72,9 +74,7 @@ export const ChatComposerInput = observer(function ChatComposerInput({
         event.preventDefault();
         void store.addPastedImages(images);
       }}
-      onSubmit={async (value) => {
-        await store.submit(value);
-      }}
+      onSubmit={onSubmit}
       onEscape={store.canStop ? () => void store.abort() : undefined}
     />
   );

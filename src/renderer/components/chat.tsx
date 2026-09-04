@@ -123,6 +123,7 @@ export const Chat = observer(function Chat({
   const layoutRef = useRef<HTMLDivElement>(null);
   const composerDockRef = useRef<HTMLDivElement>(null);
   const composerInputRef = useRef<HTMLTextAreaElement>(null);
+  const [scrollToBottomRequest, setScrollToBottomRequest] = useState(0);
   const [promptedSelection, setPromptedSelection] = useState<{
     draft: string;
     start: number;
@@ -131,6 +132,10 @@ export const Chat = observer(function Chat({
   }>();
   const composerVisible = store.composerVisible;
   const activatingDraft = store.isDraftSession && !store.editingMessage;
+  const submitMessage = async (value?: string) => {
+    if (store.canSubmit) setScrollToBottomRequest((request) => request + 1);
+    await store.submit(value);
+  };
   useLayoutEffect(() => {
     const layout = layoutRef.current;
     const dock = composerDockRef.current;
@@ -258,7 +263,7 @@ export const Chat = observer(function Chat({
         onSubmit={(event) => {
           event.preventDefault();
           if (activatingDraft) void store.activateDraft();
-          else void store.submit();
+          else void submitMessage();
         }}
         input={
           activatingDraft ? undefined : (
@@ -267,6 +272,7 @@ export const Chat = observer(function Chat({
               inputRef={composerInputRef}
               onReword={(selection) => void reword(selection)}
               onPromptedReword={setPromptedSelection}
+              onSubmit={(value) => submitMessage(value)}
             />
           )
         }
@@ -382,6 +388,7 @@ export const Chat = observer(function Chat({
         footer={footer}
         error={error}
         virtualized={!compact}
+        scrollToBottomRequest={scrollToBottomRequest}
         renderChat={renderNestedChat}
       />
       {!composerVisible && store.scheduledMessages.length > 0 && (
