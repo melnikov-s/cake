@@ -22,6 +22,7 @@ import {
   type MessageCommentAnchorRect,
 } from "@/components/message-comment-popover";
 import { workLogChanges } from "../../utils/turn-diff";
+import type { BottomFollowController } from "../lib/bottom-follow-controller";
 import type { ChatStore } from "../stores/ChatStore";
 import {
   ActivityGroup,
@@ -54,7 +55,7 @@ export const ChatTranscript = observer(function ChatTranscript({
   footer,
   error: errorOverride,
   virtualized = true,
-  scrollToBottomRequest = 0,
+  scrollController,
   renderChat,
 }: {
   store: ChatStore;
@@ -63,7 +64,7 @@ export const ChatTranscript = observer(function ChatTranscript({
   footer?: ReactNode;
   error?: { message: string; details?: string; title?: string };
   virtualized?: boolean;
-  scrollToBottomRequest?: number;
+  scrollController: BottomFollowController;
   renderChat(store: ChatStore): ReactNode;
 }) {
   const virtuosoRef = useRef<VirtualizedConversationHandle>(null);
@@ -71,15 +72,6 @@ export const ChatTranscript = observer(function ChatTranscript({
   const staticTranscriptRef = useRef<HTMLDivElement>(null);
   const pendingSelectionRef = useRef<TranscriptSelectionCapture | undefined>(undefined);
   const restoredScrollState = useMemo(() => store.transcriptScrollState, [store]);
-  const bottomStateRef = useRef({ storeId: store.id, pinned: restoredScrollState === undefined });
-  if (bottomStateRef.current.storeId !== store.id)
-    bottomStateRef.current = { storeId: store.id, pinned: restoredScrollState === undefined };
-  // Snapshot the pre-render position. Child layout and measurement effects may
-  // temporarily report "not at bottom" after adding an item but before this
-  // component has had a chance to preserve bottom-following.
-  const followBottomForRender = bottomStateRef.current.pinned;
-  const preserveBottomDuringCommitRef = useRef(false);
-  preserveBottomDuringCommitRef.current = followBottomForRender;
   const [draftAnchor, setDraftAnchor] = useState<MessageCommentAnchorRect>();
   const [annotationDraft, setAnnotationDraft] = useState<TranscriptSelectionCapture>();
   const visibleParts = store.hideThinking
@@ -127,13 +119,20 @@ export const ChatTranscript = observer(function ChatTranscript({
     if (staticTranscriptRef.current)
       staticTranscriptRef.current.scrollTop = staticTranscriptRef.current.scrollHeight;
   }, []);
-  const handledScrollToBottomRequestRef = useRef(scrollToBottomRequest);
+  const setStaticScroller = useCallback(
+    (scroller: HTMLDivElement | null) => {
+      staticTranscriptRef.current = scroller;
+      scrollController.connectScroller(scroller ?? undefined);
+    },
+    [scrollController],
+  );
   useLayoutEffect(() => {
-    if (handledScrollToBottomRequestRef.current === scrollToBottomRequest) return;
-    handledScrollToBottomRequestRef.current = scrollToBottomRequest;
-    bottomStateRef.current.pinned = true;
-    scrollToLatest();
-  }, [scrollToBottomRequest, scrollToLatest]);
+    scrollController.setAlignBottom(scrollToLatest);
+    if (restoredScrollState === undefined) scrollController.layoutChanged();
+    else scrollController.changePosition(() => undefined);
+    return () => scrollController.setAlignBottom(undefined);
+  }, [restoredScrollState, scrollController, scrollToLatest]);
+  useLayoutEffect(() => scrollController.layoutChanged());
   const messageNavigationRequest = store.messageNavigationRequest;
   const messageNavigationItemIndex = messageNavigationRequest
     ? items.findIndex((item) =>
@@ -144,82 +143,49 @@ export const ChatTranscript = observer(function ChatTranscript({
     : -1;
   const hasOpeningScrollTarget =
     restoredScrollState !== undefined || messageNavigationItemIndex >= 0;
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!messageNavigationRequest || messageNavigationItemIndex < 0) return;
-    bottomStateRef.current.pinned = false;
-    virtuosoRef.current?.scrollToIndex({
-      index: messageNavigationItemIndex,
-      align: "center",
-      behavior: "auto",
+    scrollController.changePosition(() => {
+      virtuosoRef.current?.scrollToIndex({
+        index: messageNavigationItemIndex,
+        align: "center",
+        behavior: "auto",
+      });
+      staticTranscriptRef.current
+        ?.querySelector<HTMLElement>(`[data-transcript-item-index="${messageNavigationItemIndex}"]`)
+        ?.scrollIntoView({ block: "center" });
     });
-    staticTranscriptRef.current
-      ?.querySelector<HTMLElement>(`[data-transcript-item-index="${messageNavigationItemIndex}"]`)
-      ?.scrollIntoView({ block: "center" });
-  }, [messageNavigationItemIndex, messageNavigationRequest]);
-  useEffect(() => {
-    if (hasOpeningScrollTarget) return;
-    scrollToLatest();
-    const frame = requestAnimationFrame(scrollToLatest);
-    return () => cancelAnimationFrame(frame);
-  }, [hasOpeningScrollTarget, scrollToLatest]);
-  const setVirtualScroller = useCallback((scroller: HTMLElement | null | Window) => {
-    virtualScrollerRef.current = scroller instanceof HTMLElement ? scroller : null;
-  }, []);
+  }, [messageNavigationItemIndex, messageNavigationRequest, scrollController]);
+  const setVirtualScroller = useCallback(
+    (scroller: HTMLElement | null | Window) => {
+      virtualScrollerRef.current = scroller instanceof HTMLElement ? scroller : null;
+      scrollController.connectScroller(virtualScrollerRef.current ?? undefined);
+    },
+    [scrollController],
+  );
   useEffect(() => {
     const scroller = virtualScrollerRef.current ?? staticTranscriptRef.current;
     if (!scroller) return;
     let pendingScrollState = store.transcriptScrollState;
     let saveTimer: ReturnType<typeof setTimeout> | undefined;
-    const cancelBottomFollowing = () => {
-      // Scroll input arrives before the browser updates scrollTop. Cancel here so
-      // a streaming render cannot pull the transcript back to the bottom first.
-      bottomStateRef.current.pinned = false;
-      preserveBottomDuringCommitRef.current = false;
-    };
     const commitScrollState = () => {
       saveTimer = undefined;
       if (pendingScrollState) store.setTranscriptScrollState(pendingScrollState);
     };
     const captureScrollState = () => {
-      bottomStateRef.current.pinned =
-        scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop <= 2;
       virtuosoRef.current?.getState((state) => {
         pendingScrollState = state;
         if (saveTimer !== undefined) clearTimeout(saveTimer);
         saveTimer = setTimeout(commitScrollState, 100);
       });
     };
-    scroller.addEventListener("wheel", cancelBottomFollowing, { passive: true });
-    scroller.addEventListener("touchmove", cancelBottomFollowing, { passive: true });
-    scroller.addEventListener("pointerdown", cancelBottomFollowing, { passive: true });
-    scroller.addEventListener("keydown", cancelBottomFollowing);
     scroller.addEventListener("scroll", captureScrollState, { passive: true });
     return () => {
-      scroller.removeEventListener("wheel", cancelBottomFollowing);
-      scroller.removeEventListener("touchmove", cancelBottomFollowing);
-      scroller.removeEventListener("pointerdown", cancelBottomFollowing);
-      scroller.removeEventListener("keydown", cancelBottomFollowing);
       scroller.removeEventListener("scroll", captureScrollState);
       if (saveTimer !== undefined) clearTimeout(saveTimer);
       if (pendingScrollState) store.setTranscriptScrollState(pendingScrollState);
     };
   }, [store, virtualized]);
-  const followStreamingOutput = useCallback(() => {
-    if (!bottomStateRef.current.pinned && !preserveBottomDuringCommitRef.current) return false;
-    return "auto" as const;
-  }, []);
-  useLayoutEffect(() => {
-    // Content can grow inside a stable virtual item, which does not consistently
-    // trigger Virtuoso's item-count-based followOutput. Preserve the position
-    // from before this render so an appended item's intermediate measurements
-    // cannot accidentally cancel bottom-following.
-    preserveBottomDuringCommitRef.current = false;
-    if (!followBottomForRender) return;
-    bottomStateRef.current.pinned = true;
-    scrollToLatest();
-    const frame = requestAnimationFrame(scrollToLatest);
-    return () => cancelAnimationFrame(frame);
-  });
   useEffect(() => {
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "o") {
@@ -329,12 +295,7 @@ export const ChatTranscript = observer(function ChatTranscript({
       )}
     >
       {item.kind === "activity-group" ? (
-        <ActivityGroup
-          groupId={item.id}
-          parts={item.parts}
-          behavior={transcriptBehavior}
-          isStreaming={store.streaming}
-        />
+        <ActivityGroup groupId={item.id} parts={item.parts} behavior={transcriptBehavior} />
       ) : item.kind === "source-group" ? (
         <div className="flex flex-wrap items-center gap-2" data-slot="source-group">
           {item.parts.map((part) => (
@@ -356,7 +317,10 @@ export const ChatTranscript = observer(function ChatTranscript({
     return (
       <>
         {selectionOverlays}
-        <div className="transcript h-full w-full max-w-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto px-6 pt-[42px] pb-[210px] [scrollbar-gutter:stable_both-edges] max-[620px]:px-4">
+        <div
+          ref={setStaticScroller}
+          className="transcript h-full w-full max-w-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto px-6 pt-[42px] pb-[210px] [scrollbar-gutter:stable_both-edges] max-[620px]:px-4"
+        >
           <Conversation>
             {empty}
             {showAssistantLoading && <LoadingState startedAt={store.loadingStartedAt} />}
@@ -377,7 +341,7 @@ export const ChatTranscript = observer(function ChatTranscript({
       <>
         {selectionOverlays}
         <div
-          ref={staticTranscriptRef}
+          ref={setStaticScroller}
           className="transcript h-full w-full max-w-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable_both-edges]"
         >
           <TranscriptList>
@@ -409,7 +373,7 @@ export const ChatTranscript = observer(function ChatTranscript({
           hasOpeningScrollTarget ? undefined : { index: items.length - 1, align: "end" }
         }
         restoreStateFrom={restoredScrollState}
-        followOutput={followStreamingOutput}
+        followOutput={false}
         scrollerRef={setVirtualScroller}
         components={{
           List: TranscriptList,

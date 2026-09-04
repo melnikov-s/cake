@@ -365,16 +365,18 @@ The window Store hierarchy mirrors the product surfaces:
   substitute a parallel transcript, message, input, or composer implementation.
   React mounts the Project Session as the nearest provider around the active
   session surface.
-- **Bottom-following is a chat contract, not a heuristic.** If the transcript is
-  at the bottom immediately before content or layout changes, `Chat` must keep it
-  at the bottom through every subsequent change. This includes adding, removing,
-  replacing, streaming, or resizing messages, work logs, loading indicators,
-  errors, footers, and the composer. Transient measurements while an item is
-  mounting must not cancel bottom-following. If the user has scrolled away from
-  the bottom, none of those changes may move the transcript. Returning to the
-  bottom resumes automatic following. Submitting a message always moves the
-  transcript to the bottom and resumes automatic following, regardless of its
-  prior position. These rules apply identically to every surface using `Chat`.
+- **Bottom-following is derived from transcript geometry, not application
+  state.** `Chat` caches whether its scroll container was at the bottom before a
+  content or layout change. When it was, `Chat` preserves the bottom across
+  adding, removing, replacing, streaming, or resizing messages, work logs,
+  loading indicators, errors, footers, and the composer. Explicit user scroll
+  input immediately invalidates pending alignment before the browser updates the
+  DOM; subsequent user scrolling derives whether following resumes from the
+  actual scroll position. Navigating to a message likewise derives behavior from
+  the resulting DOM position rather than assigning a semantic mode. Submitting a
+  message is the only operation that forces an arbitrary scroll position to the
+  bottom. Transcript follow state does not belong in a Store or Model. These
+  rules apply identically to every surface using `Chat`.
 - The Cake Chat collection owns one keyed `CakeChatSessionStore` per loaded
   meta-session. Each session retains its own draft, attachments, configuration,
   transcript projection, and streaming state while another Cake Chat session is

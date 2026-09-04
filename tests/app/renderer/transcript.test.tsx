@@ -7,6 +7,7 @@ import React, {
   useEffect,
   useImperativeHandle,
   useLayoutEffect,
+  useMemo,
   useRef,
 } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -73,6 +74,7 @@ import {
   groupTranscriptParts,
   type ChatTranscriptBehavior,
 } from "../../../src/renderer/components/chat-transcript";
+import { BottomFollowController } from "../../../src/renderer/lib/bottom-follow-controller";
 import { MessageCommentsStore } from "../../../src/renderer/stores/MessageCommentsStore";
 import type { ChatConfigurationStore } from "../../../src/renderer/stores/ChatConfigurationStore";
 import { ChatStore } from "../../../src/renderer/stores/ChatStore";
@@ -143,6 +145,8 @@ function Transcript({
   removeAnnotation?(id: string): void;
   virtualized?: boolean;
 }) {
+  const scrollController = useMemo(() => new BottomFollowController(), [sessionId]);
+  useEffect(() => () => scrollController.dispose(), [scrollController]);
   const {
     workLogViewMode = "auto",
     workLogsExpansion: initialExpansion = "collapsed",
@@ -264,6 +268,7 @@ function Transcript({
       footer={footer}
       error={error ? { message: error, details: errorDetails, title: errorTitle } : undefined}
       virtualized={virtualized}
+      scrollController={scrollController}
       renderChat={(nestedStore) => <Chat store={nestedStore} embedded compact />}
     />
   );
@@ -362,8 +367,7 @@ describe("Transcript scrolling", () => {
 
     expect(virtualizedProps.current?.initialTopMostItemIndex).toEqual({ index: 1, align: "end" });
     expect(scrollToIndex).toHaveBeenCalledWith({ index: 1, align: "end", behavior: "auto" });
-    const followOutput = virtualizedProps.current?.followOutput as () => "auto" | false;
-    expect(followOutput()).toBe("auto");
+    expect(virtualizedProps.current?.followOutput).toBe(false);
   });
 
   it("lays consecutive sources out together in a wrapping horizontal group", () => {
@@ -425,7 +429,7 @@ describe("Transcript scrolling", () => {
     expect(message.querySelector("h1")?.textContent).toBe("A heading");
   });
 
-  it("keeps following when a newly appended loading item temporarily changes bottom geometry", () => {
+  it("keeps following when a newly appended loading item temporarily changes bottom geometry", async () => {
     const user: UiPart = {
       id: "user-1",
       kind: "text",
@@ -455,9 +459,10 @@ describe("Transcript scrolling", () => {
     );
 
     expect(container.querySelector('[data-slot="loading-state"]')).not.toBeNull();
-    expect(scrollToIndex).toHaveBeenCalledWith({ index: 1, align: "end", behavior: "auto" });
-    const followOutput = virtualizedProps.current?.followOutput as () => "auto" | false;
-    expect(followOutput()).toBe("auto");
+    await waitFor(() =>
+      expect(scrollToIndex).toHaveBeenCalledWith({ index: 1, align: "end", behavior: "auto" }),
+    );
+    expect(virtualizedProps.current?.followOutput).toBe(false);
   });
 
   it("does not follow a newly appended loading item after the user scrolls away", () => {
@@ -476,6 +481,7 @@ describe("Transcript scrolling", () => {
       clientHeight: { configurable: true, value: 200 },
     });
     transcript.scrollTop = 300;
+    act(() => transcript.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -100 })));
     act(() => transcript.dispatchEvent(new Event("scroll")));
     scrollToIndex.mockClear();
 
@@ -485,8 +491,7 @@ describe("Transcript scrolling", () => {
 
     expect(container.querySelector('[data-slot="loading-state"]')).not.toBeNull();
     expect(scrollToIndex).not.toHaveBeenCalled();
-    const followOutput = virtualizedProps.current?.followOutput as () => "auto" | false;
-    expect(followOutput()).toBe(false);
+    expect(virtualizedProps.current?.followOutput).toBe(false);
   });
 
   it("stops following as soon as wheel input begins, before scroll position changes", () => {
@@ -505,11 +510,9 @@ describe("Transcript scrolling", () => {
       root.render(<TestTranscript sessionId="session-1" store={storeWith(initialParts, true)} />),
     );
     const transcript = container.querySelector<HTMLElement>(".transcript")!;
-    const followOutput = virtualizedProps.current?.followOutput as () => "auto" | false;
-    expect(followOutput()).toBe("auto");
+    expect(virtualizedProps.current?.followOutput).toBe(false);
 
     act(() => transcript.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -100 })));
-    expect(followOutput()).toBe(false);
     scrollToIndex.mockClear();
 
     const updatedParts: UiPart[] = [
@@ -575,7 +578,7 @@ describe("Transcript scrolling", () => {
     expect(transcript.scrollTop).toBe(300);
   });
 
-  it("continues following a response for as long as the transcript is at the bottom", () => {
+  it("continues following a response for as long as the transcript is at the bottom", async () => {
     const parts: UiPart[] = [
       { id: "user-1", kind: "text", role: "user", text: "Explain", status: "complete" },
       {
@@ -593,15 +596,43 @@ describe("Transcript scrolling", () => {
       scrollHeight: { configurable: true, value: 1_000 },
       clientHeight: { configurable: true, value: 200 },
     });
-    const followOutput = virtualizedProps.current?.followOutput as () => "auto" | false;
-
-    expect(followOutput()).toBe("auto");
+    expect(virtualizedProps.current?.followOutput).toBe(false);
     transcript.scrollTop = 300;
+    act(() => transcript.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -100 })));
     act(() => transcript.dispatchEvent(new Event("scroll")));
-    expect(followOutput()).toBe(false);
+    scrollToIndex.mockClear();
+
+    act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith(parts, true)} />));
+    expect(scrollToIndex).not.toHaveBeenCalled();
+
+    act(() => transcript.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: 100 })));
     transcript.scrollTop = 800;
     act(() => transcript.dispatchEvent(new Event("scroll")));
-    expect(followOutput()).toBe("auto");
+    scrollToIndex.mockClear();
+
+    act(() =>
+      root.render(
+        <TestTranscript
+          sessionId="session-1"
+          store={storeWith(
+            [
+              parts[0]!,
+              {
+                id: "assistant-1",
+                kind: "text",
+                role: "assistant",
+                text: "A long answer with another streamed chunk",
+                status: "streaming",
+              },
+            ],
+            true,
+          )}
+        />,
+      ),
+    );
+    await waitFor(() =>
+      expect(scrollToIndex).toHaveBeenCalledWith({ index: 2, align: "end", behavior: "auto" }),
+    );
   });
 
   it("renders a review notification at its persisted transcript position", () => {
@@ -741,6 +772,7 @@ describe("Transcript scrolling", () => {
       clientHeight: { configurable: true, value: 200 },
     });
     transcript.scrollTop = 300;
+    act(() => transcript.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -100 })));
     act(() => transcript.dispatchEvent(new Event("scroll")));
     scrollToIndex.mockClear();
     act(() =>
@@ -846,7 +878,7 @@ describe("Transcript scrolling", () => {
     expect(container.querySelector(".loading-state")).toBeNull();
   });
 
-  it("keeps the transcript following a streaming work log as its stable item grows", () => {
+  it("keeps the transcript following a streaming work log as its stable item grows", async () => {
     const rectSpy = vi
       .spyOn(HTMLElement.prototype, "getBoundingClientRect")
       .mockImplementation(function (this: HTMLElement) {
@@ -884,7 +916,9 @@ describe("Transcript scrolling", () => {
       ),
     );
 
-    expect(scrollToIndex).toHaveBeenCalledWith({ index: 2, align: "end", behavior: "auto" });
+    await waitFor(() =>
+      expect(scrollToIndex).toHaveBeenCalledWith({ index: 2, align: "end", behavior: "auto" }),
+    );
     rectSpy.mockRestore();
   });
 
@@ -912,6 +946,7 @@ describe("Transcript scrolling", () => {
       clientHeight: { configurable: true, value: 200 },
     });
     transcript.scrollTop = 300;
+    act(() => transcript.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -100 })));
     act(() => transcript.dispatchEvent(new Event("scroll")));
     scrollToIndex.mockClear();
 
@@ -924,7 +959,7 @@ describe("Transcript scrolling", () => {
     expect(scrollToIndex).not.toHaveBeenCalled();
   });
 
-  it("keeps the streaming work log scrolled to its latest entry", () => {
+  it("keeps the streaming work log scrolled to its latest entry", async () => {
     const first: UiPart = {
       id: "reasoning-1",
       kind: "reasoning",
@@ -960,7 +995,7 @@ describe("Transcript scrolling", () => {
       ),
     );
 
-    expect(log.scrollTop).toBe(600);
+    await waitFor(() => expect(log.scrollTop).toBe(600));
   });
 
   it("does not move a streaming work log after the user scrolls away from the bottom", () => {
@@ -990,6 +1025,7 @@ describe("Transcript scrolling", () => {
       scrollHeight: { configurable: true, value: 480 },
     });
     log.scrollTop = 100;
+    act(() => log.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -100 })));
     act(() => log.dispatchEvent(new Event("scroll", { bubbles: true })));
 
     act(() =>

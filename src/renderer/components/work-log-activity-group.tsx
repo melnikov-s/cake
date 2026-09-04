@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { observer } from "r-state-tree/react";
 import { diffStats } from "@/components/ai-elements/diff-view";
 import { VirtualizedConversation } from "@/components/ai-elements/conversation";
@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { DisclosureTrigger } from "@/components/ui/disclosure-trigger";
 import { formatElapsed } from "@/components/ui/loading-state";
 import { cn } from "@/lib/utils";
+import { BottomFollowController } from "../lib/bottom-follow-controller";
 import type { UiPart } from "../../ipc/session-contract";
 import { toolDiff, workLogChanges } from "../../utils/turn-diff";
 import { combineSubagentWorkLogParts } from "../subagent-work-log";
@@ -18,12 +19,10 @@ export const ActivityGroup = observer(function ActivityGroup({
   groupId,
   parts,
   behavior,
-  isStreaming,
 }: {
   groupId: string;
   parts: UiPart[];
   behavior: CanonicalTranscriptBehavior;
-  isStreaming: boolean;
 }) {
   const changes = workLogChanges(parts);
   const hasDiff = changes.length > 0;
@@ -32,12 +31,26 @@ export const ActivityGroup = observer(function ActivityGroup({
   const open = behavior.store.workLogGroupOpen(groupId, hasDiff);
   const [activityStripOpen, setActivityStripOpen] = useState(false);
   const [logElement, setLogElement] = useState<HTMLDivElement | null>(null);
+  const activityVersion = JSON.stringify(parts);
   const logRef = useRef<HTMLDivElement>(null);
-  const attachLog = useCallback((element: HTMLDivElement | null) => {
-    logRef.current = element;
-    setLogElement(element);
-  }, []);
-  const logIsAtBottomRef = useRef(true);
+  const scrollController = useMemo(() => new BottomFollowController(), [groupId]);
+  const attachLog = useCallback(
+    (element: HTMLDivElement | null) => {
+      logRef.current = element;
+      setLogElement(element);
+      scrollController.connectScroller(element ?? undefined);
+    },
+    [scrollController],
+  );
+  useEffect(() => () => scrollController.dispose(), [scrollController]);
+  useLayoutEffect(() => {
+    scrollController.setAlignBottom(() => {
+      const log = logRef.current;
+      if (open && log) log.scrollTop = log.scrollHeight;
+    });
+    scrollController.layoutChanged();
+    return () => scrollController.setAlignBottom(undefined);
+  }, [activityVersion, open, scrollController]);
   const workLogItems = combineSubagentWorkLogParts(parts);
   const tools = workLogItems.filter(
     (part) => part.kind === "tool" || part.kind === "subagent-work-log",
@@ -81,7 +94,6 @@ export const ActivityGroup = observer(function ActivityGroup({
   const activityStripLabel = elapsedLabel
     ? `${activityCountLabel} · ${elapsedLabel}`
     : activityCountLabel;
-  const activityVersion = JSON.stringify(parts);
   const live = behavior.store.liveWorkPossible;
   const renderWorkLogItem = (item: (typeof workLogItems)[number], omitToolDiff = false) => (
     <div className="min-w-0">
@@ -106,18 +118,6 @@ export const ActivityGroup = observer(function ActivityGroup({
       )}
     </div>
   );
-  useLayoutEffect(() => {
-    if (!isStreaming) return;
-    const followLatestContent = () => {
-      if (open && logRef.current && logIsAtBottomRef.current)
-        logRef.current.scrollTop = logRef.current.scrollHeight;
-    };
-    followLatestContent();
-    // Nested virtualization and streamed Markdown can settle after layout effects.
-    // Follow once more after that layout so the inner container sees the final size.
-    const frame = requestAnimationFrame(followLatestContent);
-    return () => cancelAnimationFrame(frame);
-  }, [activityVersion, isStreaming, open]);
   if (tools === 0 && !reasoningHasContent)
     return (
       <div
@@ -154,10 +154,6 @@ export const ActivityGroup = observer(function ActivityGroup({
             showDiff ? "p-0" : "p-3 pt-2.5",
           )}
           ref={attachLog}
-          onScroll={(event) => {
-            const log = event.currentTarget;
-            logIsAtBottomRef.current = log.scrollHeight - log.clientHeight - log.scrollTop <= 1;
-          }}
         >
           {showDiff ? (
             <div>
@@ -185,7 +181,7 @@ export const ActivityGroup = observer(function ActivityGroup({
                   customScrollParent={logElement}
                   data={workLogItems}
                   computeItemKey={(_index, item) => item.id}
-                  followOutput={isStreaming ? "auto" : false}
+                  followOutput={false}
                   itemContent={(_index, item) => renderWorkLogItem(item, true)}
                 />
               )}
@@ -205,7 +201,7 @@ export const ActivityGroup = observer(function ActivityGroup({
                 customScrollParent={logElement}
                 data={workLogItems}
                 computeItemKey={(_index, item) => item.id}
-                followOutput={isStreaming ? "auto" : false}
+                followOutput={false}
                 itemContent={(_index, item) => renderWorkLogItem(item)}
               />
             )
