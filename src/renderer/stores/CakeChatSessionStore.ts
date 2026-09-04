@@ -16,6 +16,7 @@ import type { GlobalChatStore } from "./GlobalChatStore";
 import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import { OptimisticUserMessagesStore } from "./OptimisticUserMessagesStore";
+import { shouldRenderMarkdown } from "../../utils/markdown";
 
 export interface CakeChatSessionStoreProps {
   sessionId: string;
@@ -64,6 +65,7 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
         entryId: `draft:${this.sessionId}`,
         text: staged.text,
         status: "complete" as const,
+        renderAs: shouldRenderMarkdown(staged.text) ? ("markdown" as const) : undefined,
         draft: true,
       },
       ...staged.attachments.flatMap((attachment, index): SessionSnapshot["parts"] => {

@@ -76,6 +76,57 @@ class HarnessStore extends Store<{ client: RendererClient; model: Session }> {
   }
 }
 
+class DraftHarnessStore extends Store<{ client: RendererClient }> {
+  draft = "";
+  private staged: { text: string; attachments: []; resolved: boolean } | undefined = {
+    text: "# Draft heading",
+    attachments: [],
+    resolved: false,
+  };
+
+  [RendererClientContext.provide]() {
+    return this.props.client;
+  }
+
+  @child get operations() {
+    return createStore(SessionOperationCoordinatorStore);
+  }
+
+  @child get composer() {
+    const registry = {
+      draftSessionPrompt: () => this.staged,
+      activateDraftSession: () => {
+        const staged = this.staged;
+        this.staged = undefined;
+        return staged;
+      },
+      projectNewSessionSubmission: vi.fn(),
+      cancelNewSessionSubmission: vi.fn(),
+    } as unknown as SessionRegistryStore;
+    return createStore(MessageComposerStore, {
+      sessionRegistry: registry,
+      reviews: () => {
+        throw new Error("ReviewsStore is not used by this test");
+      },
+      projectPath: () => "/project",
+      sessionId: () => "draft-session",
+      canonicalParts: () => [],
+      draft: () => this.draft,
+      setDraft: (value) => {
+        this.draft = value;
+      },
+      canSubmit: () => true,
+      isStreaming: () => false,
+      openCommandPane: async () => undefined,
+      selectModel: async () => undefined,
+      renameSession: async () => undefined,
+      handoffSession: async () => false,
+      operations: this.operations,
+      operationOwner: "composer:draft-session",
+    });
+  }
+}
+
 describe("MessageComposerStore", () => {
   it("reconciles the first optimistic message when its canonical part completes in place", async () => {
     const model = Session.create({ sessionId: "session-1", workingDirectory: "/project" });
@@ -98,5 +149,30 @@ describe("MessageComposerStore", () => {
 
     root[Symbol.dispose]();
     model[Symbol.dispose]();
+  });
+
+  it("renders and activates detected Markdown in a saved draft", async () => {
+    const prompt = vi.fn(async () => "turn-1");
+    const client = { projectSessions: { prompt } } as unknown as RendererClient;
+    const root = mount(createStore(DraftHarnessStore, { client }));
+
+    expect(root.composer.parts).toEqual([
+      expect.objectContaining({
+        text: "# Draft heading",
+        renderAs: "markdown",
+        draft: true,
+      }),
+    ]);
+
+    await root.composer.activateDraftSession({ kind: "current" });
+
+    expect(prompt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: "# Draft heading",
+        renderUserMessageAsMarkdown: true,
+      }),
+      expect.anything(),
+    );
+    root[Symbol.dispose]();
   });
 });

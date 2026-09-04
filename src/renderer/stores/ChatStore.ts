@@ -91,6 +91,9 @@ export class ChatStore extends Store<ChatStoreProps> {
   readonly workLogItemOverrides = observable(new Map<string, boolean>());
   readonly workLogGroupOverrides = observable(new Map<string, boolean>());
   readonly updatingUserMessagePresentation = observable(new Set<string>());
+  private readonly requestedUserMessagePresentation = observable(
+    new Map<string, { requested: boolean; projectedAtRequest: boolean }>(),
+  );
   submittingLocally = false;
   rewording = false;
   rewordError: string | undefined;
@@ -129,6 +132,26 @@ export class ChatStore extends Store<ChatStoreProps> {
     this.reaction(
       () => this.scheduledMessages.length > 0,
       (active) => this.updateScheduledMessageTick(active),
+    );
+    this.reaction(
+      () => ({
+        requested: [...this.requestedUserMessagePresentation],
+        actual: this.props
+          .parts()
+          .flatMap((part) =>
+            part.kind === "text" && part.role === "user" && part.entryId
+              ? [[part.entryId, part.renderAs === "markdown"] as const]
+              : [],
+          ),
+      }),
+      ({ requested, actual }) => {
+        const actualByEntryId = new Map(actual);
+        for (const [entryId, presentation] of requested) {
+          const projected = actualByEntryId.get(entryId);
+          if (projected === presentation.requested && projected !== presentation.projectedAtRequest)
+            this.requestedUserMessagePresentation.delete(entryId);
+        }
+      },
     );
     this.effect(() => {
       untracked(() => this.updateScheduledMessageTick(this.scheduledMessages.length > 0));
@@ -274,14 +297,33 @@ export class ChatStore extends Store<ChatStoreProps> {
   get canToggleUserMessageMarkdown() {
     return Boolean(this.props.setUserMessageMarkdown);
   }
+  userMessageRendersAsMarkdown(entryId: string, projectedRenderAsMarkdown: boolean) {
+    return (
+      this.requestedUserMessagePresentation.get(entryId)?.requested ?? projectedRenderAsMarkdown
+    );
+  }
   async setUserMessageMarkdown(entryId: string, renderAsMarkdown: boolean) {
     if (!this.props.setUserMessageMarkdown || this.updatingUserMessagePresentation.has(entryId))
       return;
+    const projectedRenderAsMarkdown = this.props
+      .parts()
+      .some(
+        (part) =>
+          part.kind === "text" &&
+          part.role === "user" &&
+          part.entryId === entryId &&
+          part.renderAs === "markdown",
+      );
+    this.requestedUserMessagePresentation.set(entryId, {
+      requested: renderAsMarkdown,
+      projectedAtRequest: projectedRenderAsMarkdown,
+    });
     this.updatingUserMessagePresentation.add(entryId);
     this.userMessagePresentationError = undefined;
     try {
       await this.props.setUserMessageMarkdown(entryId, renderAsMarkdown);
     } catch (error) {
+      this.requestedUserMessagePresentation.delete(entryId);
       if (!this.signal.aborted)
         this.userMessagePresentationError = error instanceof Error ? error.message : String(error);
     } finally {

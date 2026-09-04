@@ -92,7 +92,7 @@ describe("Chat", () => {
             entryId: "user-entry",
             kind: "text",
             role: "user",
-            text: "Can you check this?",
+            text: "# Can you check this?",
             status: "complete",
             deliveryState: "queued",
           },
@@ -112,8 +112,9 @@ describe("Chat", () => {
 
     act(() => root.render(<Chat store={store!} />));
 
-    expect(container.textContent).toContain("Can you check this?");
+    expect(container.textContent).toContain("# Can you check this?");
     expect(container.querySelector('[data-slot="message-content"]')).not.toBeNull();
+    expect(container.querySelector('[data-slot="message-content"] h1')).toBeNull();
     expect(container.querySelector('[aria-label="Churning in progress"]')).not.toBeNull();
     expect(container.querySelector('[aria-label="Model configuration"]')?.textContent).toContain(
       "GPT",
@@ -126,6 +127,22 @@ describe("Chat", () => {
     expect(renderMarkdown?.className).toContain("group-hover/msg:opacity-100");
     await act(async () => renderMarkdown?.click());
     expect(setUserMessageMarkdown).toHaveBeenCalledWith("user-entry", true);
+    const renderPlain = container.querySelector<HTMLButtonElement>(
+      '[aria-label="Render as plain text"]',
+    );
+    expect(renderPlain?.getAttribute("aria-pressed")).toBe("true");
+    expect(container.querySelector('[data-slot="message-content"] h1')?.textContent).toBe(
+      "Can you check this?",
+    );
+
+    await act(async () => renderPlain?.click());
+    expect(setUserMessageMarkdown).toHaveBeenLastCalledWith("user-entry", false);
+    expect(
+      container
+        .querySelector<HTMLButtonElement>('[aria-label="Render as Markdown"]')
+        ?.getAttribute("aria-pressed"),
+    ).toBe("false");
+    expect(container.querySelector('[data-slot="message-content"] h1')).toBeNull();
 
     // While streaming, the send icon becomes a stop icon and submits are hidden.
     expect(container.querySelector<HTMLButtonElement>('[aria-label="Send"]')).toBeNull();

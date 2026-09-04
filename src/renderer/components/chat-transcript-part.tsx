@@ -40,26 +40,36 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
   live?: boolean;
   omitToolDiff?: boolean;
 }) {
+  const userMessageRendersAsMarkdown =
+    part.kind === "text" && part.role === "user" && part.entryId
+      ? behavior.store.userMessageRendersAsMarkdown(part.entryId, part.renderAs === "markdown")
+      : false;
   if (part.kind === "text")
     return part.role === "assistant" ? (
       <AssistantTextMessage part={part} behavior={behavior} />
     ) : (
-      <ChatTextMessage part={part} onOpenSourceLocation={behavior.openSourceLocation}>
+      <ChatTextMessage
+        part={{
+          ...part,
+          renderAs: userMessageRendersAsMarkdown ? "markdown" : undefined,
+        }}
+        onOpenSourceLocation={behavior.openSourceLocation}
+      >
         <div className="ml-auto flex min-h-[30px] items-center gap-2" aria-label="User actions">
           {part.entryId && behavior.store.canToggleUserMessageMarkdown && !part.draft && (
             <IconButton
               className="pointer-events-none opacity-0 transition-opacity group-hover/msg:pointer-events-auto group-hover/msg:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
-              tooltip={part.renderAs === "markdown" ? "Render as plain text" : "Render as Markdown"}
+              tooltip={userMessageRendersAsMarkdown ? "Render as plain text" : "Render as Markdown"}
               ariaLabel={
-                part.renderAs === "markdown" ? "Render as plain text" : "Render as Markdown"
+                userMessageRendersAsMarkdown ? "Render as plain text" : "Render as Markdown"
               }
-              aria-pressed={part.renderAs === "markdown"}
+              aria-pressed={userMessageRendersAsMarkdown}
               disabled={behavior.store.updatingUserMessagePresentation.has(part.entryId)}
               onClick={() => {
                 if (part.entryId)
                   void behavior.store.setUserMessageMarkdown(
                     part.entryId,
-                    part.renderAs !== "markdown",
+                    !userMessageRendersAsMarkdown,
                   );
               }}
             >

@@ -21,6 +21,7 @@ import { RendererClientContext } from "../client/RendererClientContext";
 import type { WorktreeDraftChoice } from "./WorktreeCreationStore";
 import { OptimisticUserMessagesStore } from "./OptimisticUserMessagesStore";
 import { parseScheduledMessage } from "../../utils/scheduled-message-time";
+import { shouldRenderMarkdown } from "../../utils/markdown";
 
 /** A prompt held locally while the session streams, shown as a chip above the composer. */
 export interface QueuedPrompt {
@@ -429,7 +430,7 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     if (!staged) return false;
     this.props.setDraft(staged.text);
     this.restoreAttachments(staged.attachments);
-    await this.submit();
+    await this.submit(undefined, shouldRenderMarkdown(staged.text));
     return true;
   }
 
@@ -682,6 +683,7 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
         entryId,
         text: staged.text,
         status: "complete" as const,
+        renderAs: shouldRenderMarkdown(staged.text) ? ("markdown" as const) : undefined,
         draft: true,
       },
       ...staged.attachments.flatMap((attachment, index): UiPart[] => {
