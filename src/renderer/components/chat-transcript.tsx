@@ -68,10 +68,10 @@ export const ChatTranscript = observer(function ChatTranscript({
   const virtualScrollerRef = useRef<HTMLElement | null>(null);
   const staticTranscriptRef = useRef<HTMLDivElement>(null);
   const pendingSelectionRef = useRef<TranscriptSelectionCapture | undefined>(undefined);
-  const followTurnRef = useRef<string | undefined>(undefined);
-  const followOutputRef = useRef(true);
-  const latestUserRef = useRef<{ storeId: string; partId?: string } | undefined>(undefined);
   const restoredScrollState = useMemo(() => store.transcriptScrollState, [store]);
+  const bottomStateRef = useRef({ storeId: store.id, pinned: restoredScrollState === undefined });
+  if (bottomStateRef.current.storeId !== store.id)
+    bottomStateRef.current = { storeId: store.id, pinned: restoredScrollState === undefined };
   const [draftAnchor, setDraftAnchor] = useState<MessageCommentAnchorRect>();
   const [annotationDraft, setAnnotationDraft] = useState<TranscriptSelectionCapture>();
   const visibleParts = store.hideThinking
@@ -102,32 +102,6 @@ export const ChatTranscript = observer(function ChatTranscript({
       : []),
     ...(showAssistantLoading ? [{ kind: "loading-state" as const, id: "loading-state" }] : []),
   ];
-  const streamingWorkLogVersion = store.streaming
-    ? JSON.stringify(
-        visibleParts.filter((part) => part.kind === "reasoning" || part.kind === "tool"),
-      )
-    : "";
-  const latestUserPartIndex = visibleParts.findLastIndex(
-    (part) =>
-      (part.kind === "text" && part.role === "user") ||
-      part.kind === "skill" ||
-      part.kind === "command" ||
-      part.kind === "annotation" ||
-      (part.kind === "attachment" && part.attachmentKind === "image"),
-  );
-  const latestUserPartId = visibleParts[latestUserPartIndex]?.id;
-  const firstResponsePartId =
-    latestUserPartIndex >= 0 ? visibleParts[latestUserPartIndex + 1]?.id : undefined;
-  const responseStartItemId = items.find((item) =>
-    item.kind === "activity-group" || item.kind === "source-group"
-      ? item.parts.some((part) => part.id === firstResponsePartId)
-      : item.id === firstResponsePartId,
-  )?.id;
-  const followKey = `${store.id}:${latestUserPartId ?? ""}`;
-  if (followTurnRef.current !== followKey) {
-    followTurnRef.current = followKey;
-    followOutputRef.current = true;
-  }
   const itemCountRef = useRef(items.length);
   itemCountRef.current = items.length;
   const transcriptBehavior: CanonicalTranscriptBehavior = {
@@ -157,7 +131,7 @@ export const ChatTranscript = observer(function ChatTranscript({
     restoredScrollState !== undefined || messageNavigationItemIndex >= 0;
   useEffect(() => {
     if (!messageNavigationRequest || messageNavigationItemIndex < 0) return;
-    followOutputRef.current = false;
+    bottomStateRef.current.pinned = false;
     virtuosoRef.current?.scrollToIndex({
       index: messageNavigationItemIndex,
       align: "center",
@@ -173,21 +147,6 @@ export const ChatTranscript = observer(function ChatTranscript({
     const frame = requestAnimationFrame(scrollToLatest);
     return () => cancelAnimationFrame(frame);
   }, [hasOpeningScrollTarget, scrollToLatest]);
-  useEffect(() => {
-    const previous = latestUserRef.current;
-    latestUserRef.current = { storeId: store.id, partId: latestUserPartId };
-    if (
-      !latestUserPartId ||
-      !previous ||
-      previous.storeId !== store.id ||
-      previous.partId === latestUserPartId
-    )
-      return;
-    store.setTranscriptScrollState(undefined);
-    scrollToLatest();
-    const frame = requestAnimationFrame(scrollToLatest);
-    return () => cancelAnimationFrame(frame);
-  }, [latestUserPartId, scrollToLatest, store]);
   const setVirtualScroller = useCallback((scroller: HTMLElement | null | Window) => {
     virtualScrollerRef.current = scroller instanceof HTMLElement ? scroller : null;
   }, []);
@@ -201,73 +160,33 @@ export const ChatTranscript = observer(function ChatTranscript({
       if (pendingScrollState) store.setTranscriptScrollState(pendingScrollState);
     };
     const captureScrollState = () => {
+      bottomStateRef.current.pinned =
+        scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop <= 2;
       virtuosoRef.current?.getState((state) => {
         pendingScrollState = state;
         if (saveTimer !== undefined) clearTimeout(saveTimer);
         saveTimer = setTimeout(commitScrollState, 100);
       });
     };
-    const stopFollowing = () => {
-      followOutputRef.current = false;
-    };
-    const stopFollowingForScrollbar = (event: PointerEvent) => {
-      // Native scrollbar pointer events target the scrolling element itself. Do
-      // not depend on a fixed scrollbar width: overlay scrollbars and stable
-      // gutters place the thumb differently across platforms.
-      if (event.target === scroller) stopFollowing();
-    };
-    const stopFollowingForKeyboard = (event: KeyboardEvent) => {
-      if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(event.key))
-        stopFollowing();
-    };
     scroller.addEventListener("scroll", captureScrollState, { passive: true });
-    scroller.addEventListener("wheel", stopFollowing, { passive: true });
-    scroller.addEventListener("touchmove", stopFollowing, { passive: true });
-    scroller.addEventListener("pointerdown", stopFollowingForScrollbar);
-    scroller.addEventListener("keydown", stopFollowingForKeyboard);
     return () => {
       scroller.removeEventListener("scroll", captureScrollState);
-      scroller.removeEventListener("wheel", stopFollowing);
-      scroller.removeEventListener("touchmove", stopFollowing);
-      scroller.removeEventListener("pointerdown", stopFollowingForScrollbar);
-      scroller.removeEventListener("keydown", stopFollowingForKeyboard);
       if (saveTimer !== undefined) clearTimeout(saveTimer);
       if (pendingScrollState) store.setTranscriptScrollState(pendingScrollState);
     };
   }, [store]);
-  const responseHasRoomToFollow = useCallback(() => {
-    if (!followOutputRef.current) return false;
-    const scroller = virtualScrollerRef.current;
-    const responseStart = scroller?.querySelector<HTMLElement>("[data-response-start]");
-    if (
-      scroller &&
-      responseStart &&
-      responseStart.getBoundingClientRect().top <= scroller.getBoundingClientRect().top + 1
-    ) {
-      followOutputRef.current = false;
-      return false;
-    }
-    return true;
+  const followStreamingOutput = useCallback(() => {
+    if (!bottomStateRef.current.pinned) return false;
+    return "auto" as const;
   }, []);
-  const followStreamingOutput = useCallback(
-    (isAtBottom: boolean) => {
-      if (!isAtBottom || !responseHasRoomToFollow()) return false;
-      return "auto" as const;
-    },
-    [responseHasRoomToFollow],
-  );
-  const followStreamingWorkLog = useCallback(() => {
-    // A work log grows inside one stable virtual item, so Virtuoso's ordinary
-    // item-count-driven followOutput path does not consistently run for it.
-    if (!responseHasRoomToFollow()) return;
-    scrollToLatest();
-  }, [responseHasRoomToFollow, scrollToLatest]);
   useLayoutEffect(() => {
-    if (!streamingWorkLogVersion) return;
-    followStreamingWorkLog();
-    const frame = requestAnimationFrame(followStreamingWorkLog);
+    // Content can grow inside a stable virtual item, which does not consistently
+    // trigger Virtuoso's item-count-based followOutput.
+    if (!bottomStateRef.current.pinned) return;
+    scrollToLatest();
+    const frame = requestAnimationFrame(scrollToLatest);
     return () => cancelAnimationFrame(frame);
-  }, [followStreamingWorkLog, streamingWorkLogVersion]);
+  });
   useEffect(() => {
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "o") {
@@ -371,7 +290,6 @@ export const ChatTranscript = observer(function ChatTranscript({
       key={item.id}
       data-slot="transcript-item"
       data-transcript-item-index={index}
-      data-response-start={item.id === responseStartItemId ? "" : undefined}
       className={cn(
         "min-w-0 pb-5 in-[.chat-layout-compact]:pb-3.5",
         errorNoticeFollowsUser(items, index) && "pt-3",

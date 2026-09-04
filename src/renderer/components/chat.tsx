@@ -144,24 +144,10 @@ export const Chat = observer(function Chat({
       transcript.scrollHeight - transcript.clientHeight - transcript.scrollTop <= 2;
     let followingBottom = isAtBottom();
     let scrollFrame: number | undefined;
-    let bottomUpdatePending = false;
     const captureBottomState = () => {
-      if (!bottomUpdatePending && isAtBottom()) followingBottom = true;
-    };
-    const stopFollowing = () => {
-      followingBottom = false;
-      bottomUpdatePending = false;
-      if (scrollFrame !== undefined) cancelAnimationFrame(scrollFrame);
-      scrollFrame = undefined;
-    };
-    const stopFollowingForScrollbar = (event: PointerEvent) => {
-      if (event.target === transcript) stopFollowing();
+      followingBottom = isAtBottom();
     };
     transcript?.addEventListener("scroll", captureBottomState, { passive: true });
-    transcript?.addEventListener("wheel", stopFollowing, { passive: true });
-    transcript?.addEventListener("touchmove", stopFollowing, { passive: true });
-    transcript?.addEventListener("pointerdown", stopFollowingForScrollbar);
-    transcript?.addEventListener("keydown", stopFollowing);
     const updateInset = () => {
       const composerTop = dock
         .querySelector<HTMLElement>(".workbench-composer")
@@ -172,11 +158,9 @@ export const Chat = observer(function Chat({
           : layout.getBoundingClientRect().bottom - composerTop;
       layout.style.setProperty("--composer-dock-height", `${inset}px`);
       if (followingBottom && transcript) {
-        bottomUpdatePending = true;
         if (scrollFrame !== undefined) cancelAnimationFrame(scrollFrame);
         scrollFrame = requestAnimationFrame(() => {
           transcript.scrollTop = transcript.scrollHeight;
-          bottomUpdatePending = false;
           followingBottom = isAtBottom();
         });
       }
@@ -188,10 +172,6 @@ export const Chat = observer(function Chat({
     return () => {
       resizeObserver?.disconnect();
       transcript?.removeEventListener("scroll", captureBottomState);
-      transcript?.removeEventListener("wheel", stopFollowing);
-      transcript?.removeEventListener("touchmove", stopFollowing);
-      transcript?.removeEventListener("pointerdown", stopFollowingForScrollbar);
-      transcript?.removeEventListener("keydown", stopFollowing);
       if (scrollFrame !== undefined) cancelAnimationFrame(scrollFrame);
     };
   }, [composerVisible, embedded]);
