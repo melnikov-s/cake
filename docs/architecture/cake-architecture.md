@@ -49,6 +49,7 @@ Every durable concept has one authority.
 | Utility-model selection                                          | Cake application preferences, referencing a Pi provider/model             | Run only explicitly configured, bounded background completions through Pi's model runtime |
 | Application-level Cake Chat transcripts                          | Their dedicated Pi Sessions                                               | Present them as Cake-wide meta-sessions and route curated controls                        |
 | Projects, window selection and view state                        | Cake                                                                      | Persist application and window metadata without copying Pi history                        |
+| Scheduled Project Session messages                               | Cake                                                                      | Persist delivery intent until it becomes an ordinary Pi user message                      |
 | Resolved-session status                                          | Cake-managed active/archive transcript location                           | Keep resolved transcripts read-only and restore them before Pi opens them                 |
 | Reviews and inline discussions                                   | Cake workflow services, with Pi sidecar-session references where relevant | Persist anchors and workflow metadata without copying Pi transcripts                      |
 | Rich artifacts                                                   | Cake artifact repository plus Pi transcript pointers/fallbacks            | Persist and render bounded, versioned artifact data                                       |
@@ -67,6 +68,11 @@ replace the complete transcript projection. Compaction entries remain visible
 as durable timeline events. Steering and follow-up queues are transient Pi
 runtime state: Cake overlays `queue_update` projections while messages wait and
 removes them when Pi consumes the corresponding user message into the branch.
+Scheduled messages are different: Cake owns each durable, cancellable delivery
+intent until its deadline. The destination session projects that pending intent
+beside its composer. At the deadline Cake restores the Project Session when
+necessary and submits an ordinary prompt, or a follow-up when its runtime is
+busy; after acceptance, Pi again becomes the sole message authority.
 
 All inline threads—code reviews and assistant-message discussions—run as
 independent lightweight Pi Sessions using the same runtime pipeline. Their
@@ -325,7 +331,7 @@ The window Store hierarchy mirrors the product surfaces:
   Directory remains routing/storage context for the Pi runtime, not part of
   session identity. Cake Chat never enters this registry.
 - Each `ProjectSessionStore` owns that session's activity,
-  message composer, chat configuration, session-local Agent/IDE presentation preference and IDE
+  message composer, projected scheduled-message controls, chat configuration, session-local Agent/IDE presentation preference and IDE
   chat-drawer geometry, managed-worktree status and actions, artifacts, and message comments. Its
   `ChatStore` is the common conversation-facing state boundary: it presents the
   draft, transcript parts, streaming state, configuration, and composer actions

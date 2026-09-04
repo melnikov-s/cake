@@ -292,6 +292,7 @@ export interface CakeRuntimeOptions {
       input: { name: string; initialPrompt: string; model?: ChatConfiguration },
       signal: AbortSignal,
     ): Promise<JsonValue>;
+    invokeAppControl?(command: string, input: JsonObject, signal: AbortSignal): Promise<JsonValue>;
   };
   vscodeControl?: VscodeControl;
   worktreeLandingControl?: WorktreeLandingControl;
@@ -682,6 +683,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       input: { name: string; initialPrompt: string; model?: ChatConfiguration },
       signal: AbortSignal,
     ): Promise<JsonValue>;
+    invokeAppControl(command: string, input: JsonObject, signal: AbortSignal): Promise<JsonValue>;
     setModel(provider: string, modelId: string, reasoning?: ThinkingLevel): Promise<JsonValue>;
     setResolved(resolved: boolean): Promise<JsonValue>;
   }
@@ -695,6 +697,12 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       return operationApi.current;
     };
     const empty = Schema.Struct({});
+    const invokeAppControl =
+      (command: string): CakeOperationDefinition["execute"] =>
+      (input, context) => {
+        // SAFETY: CakeOperationRegistry decoded input with the operation's object schema.
+        return api().invokeAppControl(command, input as JsonObject, context.signal);
+      };
     const operations: CakeOperationDefinition[] = [
       {
         command: "session.info",
@@ -776,6 +784,88 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
             context.signal,
           );
         },
+      },
+      {
+        command: "sessions.list",
+        topic: "sessions",
+        summary: "List Project Sessions across all registered Cake projects.",
+        inputSchema: empty,
+        examples: [{}],
+        result:
+          "Project Session identities, projects, paths, titles, activity, and resolution state.",
+        execute: (_input, context) => api().invokeAppControl("sessions.list", {}, context.signal),
+      },
+      {
+        command: "sessions.send",
+        topic: "sessions",
+        summary: "Send a message to an explicitly targeted Project Session in any Cake project.",
+        inputSchema: Schema.Struct({
+          sessionId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+          text: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(100_000))),
+          delivery: Schema.optionalKey(Schema.Literals(["prompt", "queue", "steer"])),
+        }),
+        examples: [{ input: { sessionId: "target-session-id", text: "Review the API changes." } }],
+        result:
+          "The target and accepted delivery mode. Queue maps to Pi's follow-up delivery internally.",
+        execute: invokeAppControl("sessions.send"),
+      },
+      {
+        command: "sessions.compact",
+        topic: "sessions",
+        summary: "Compact an explicitly targeted Project Session.",
+        inputSchema: Schema.Struct({
+          sessionId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+          instructions: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(262_144))),
+        }),
+        examples: [{ input: { sessionId: "target-session-id" } }],
+        result: "A completed compaction status.",
+        execute: invokeAppControl("sessions.compact"),
+      },
+      {
+        command: "sessions.schedule",
+        topic: "sessions",
+        summary:
+          "Schedule a message to an explicitly targeted Project Session at an ISO timestamp.",
+        inputSchema: Schema.Struct({
+          sessionId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+          text: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(100_000))),
+          sendAt: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
+        }),
+        examples: [
+          {
+            input: {
+              sessionId: "target-session-id",
+              text: "Check the build result.",
+              sendAt: "2030-01-01T12:00:00.000Z",
+            },
+          },
+        ],
+        result: "The durable scheduled message and its ID.",
+        execute: invokeAppControl("sessions.schedule"),
+      },
+      {
+        command: "sessions.scheduled",
+        topic: "sessions",
+        summary: "List durable scheduled messages, optionally for one Project Session.",
+        inputSchema: Schema.Struct({
+          sessionId: Schema.optionalKey(
+            Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+          ),
+        }),
+        examples: [{}],
+        result: "Scheduled message IDs, destinations, text, and send times.",
+        execute: invokeAppControl("sessions.scheduled"),
+      },
+      {
+        command: "sessions.cancel-scheduled",
+        topic: "sessions",
+        summary: "Cancel one scheduled message by ID.",
+        inputSchema: Schema.Struct({
+          id: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+        }),
+        examples: [{ input: { id: "scheduled-message-id" } }],
+        result: "A cancellation status.",
+        execute: invokeAppControl("sessions.cancel-scheduled"),
       },
       {
         command: "session.resolve",
@@ -903,7 +993,9 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       (operation) =>
         (operation.command !== "session.resolve" || options.currentSessionControl !== undefined) &&
         (operation.command !== "session.create-draft" ||
-          options.currentSessionControl?.createDraftSession !== undefined),
+          options.currentSessionControl?.createDraftSession !== undefined) &&
+        (!operation.command.startsWith("sessions.") ||
+          options.currentSessionControl?.invokeAppControl !== undefined),
     );
   };
   let fastMode = options.fastMode?.get() ?? false;
@@ -1975,6 +2067,11 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       if (!options.currentSessionControl?.createDraftSession)
         throw new Error("This Cake runtime cannot create project draft sessions");
       return options.currentSessionControl.createDraftSession(input, signal);
+    },
+    async invokeAppControl(command, input, signal) {
+      if (!options.currentSessionControl?.invokeAppControl)
+        throw new Error("Cross-session Cake controls are unavailable in this runtime");
+      return options.currentSessionControl.invokeAppControl(command, input, signal);
     },
     async setResolved(resolved) {
       if (!options.currentSessionControl)

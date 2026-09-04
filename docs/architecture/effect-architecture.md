@@ -437,7 +437,8 @@ Every asynchronous intent separately declares a concurrency policy:
 - independent execution.
 
 Examples include serializing Pi turns per session, bounding Subagent Sessions,
-and rejecting concurrent landing of the same Managed Worktree. A loading flag
+serializing durable scheduled-message mutations, and rejecting concurrent
+landing of the same Managed Worktree. A loading flag
 is presentation state, not a concurrency policy.
 
 ## Filesystem, Git, worktrees, VS Code, and terminals
@@ -485,6 +486,7 @@ service:
 ```text
 ApplicationStorage
 WindowStateStorage
+ScheduledMessageStorage
 WorktreeStorage
 ReviewStorage
 ArtifactStorage

@@ -427,6 +427,11 @@ export const piBuiltinSlashCommands = [
   { name: "model", description: "Switch model", argumentHint: "<provider/model>" },
   { name: "name", description: "Rename the current session" },
   {
+    name: "schedule",
+    description: "Schedule a message to this session",
+    argumentHint: "<10s|5m|2h|1d|ISO time> <message>",
+  },
+  {
     name: "handoff",
     description: "Continue in a new session without tool history",
     argumentHint: "[first instruction]",

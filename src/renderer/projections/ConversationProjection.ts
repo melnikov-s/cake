@@ -62,6 +62,7 @@ function applyConversationSnapshot(
     activeTurnIds: preserveActiveTurns ? current.activeTurnIds : [],
     reviewThreads: current.reviewThreads,
     subagentActivities: current.subagentActivities,
+    scheduledMessages: current.scheduledMessages,
     releasedSubagentHandleIds: current.releasedSubagentHandleIds,
     backgroundWorkActive: current.backgroundWorkActive,
     controlRequests: current.controlRequests,

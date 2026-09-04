@@ -9,6 +9,7 @@ import { ReviewThread } from "./ReviewThread";
 import { ResourceDiagnostic } from "./ResourceDiagnostic";
 import { SessionTreeEntry } from "./SessionTreeEntry";
 import { SubagentActivity } from "./SubagentActivity";
+import { ScheduledMessage } from "./ScheduledMessage";
 import { ExtensionUi } from "./ExtensionUi";
 
 export class Session extends Model {
@@ -37,6 +38,7 @@ export class Session extends Model {
   @child(Artifact) artifacts: Artifact[] = observable([]);
   @child(ReviewThread) reviewThreads: ReviewThread[] = observable([]);
   @child(SubagentActivity) subagentActivities: SubagentActivity[] = observable([]);
+  @child(ScheduledMessage) scheduledMessages: ScheduledMessage[] = observable([]);
   releasedSubagentHandleIds: string[] = observable([]);
   backgroundWorkActive = false;
   @child(ExtensionUi) extensionUi = ExtensionUi.create();

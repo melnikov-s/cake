@@ -667,6 +667,36 @@ const withHandle = Effect.fn("ProjectSessions.withHandle")(function* <A, E>(
   return yield* use(handle);
 });
 
+/** Delivers an unattended message now, queueing it as a follow-up when the target is busy. */
+export const sendAutomatically = Effect.fn("ProjectSessions.sendAutomatically")(function* (
+  input: ProjectSessionPromptInput,
+) {
+  yield* restoreIfResolved(promptTarget(input));
+  const turnId = TurnId.make(
+    yield* withHandle(promptTarget(input), (handle) =>
+      handle
+        .snapshot()
+        .pipe(
+          Effect.flatMap((snapshot) =>
+            snapshot.streaming
+              ? handle.followUp(
+                  input.text,
+                  runtimeAttachments(input.attachments),
+                  input.renderUserMessageAsMarkdown,
+                )
+              : handle.prompt(
+                  input.text,
+                  runtimeAttachments(input.attachments),
+                  input.renderUserMessageAsMarkdown,
+                ),
+          ),
+        ),
+    ).pipe(asError("sendAutomatically")),
+  );
+  yield* publishTargetCatalogChange(promptTarget(input));
+  return turnId;
+});
+
 const withContinuationSource = Effect.fn("ProjectSessions.withContinuationSource")(function* <
   A,
   E,

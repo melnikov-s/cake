@@ -5,10 +5,10 @@ import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordin
 export class AppControlOperationStore extends Store<{
   operations: SessionOperationCoordinatorStore;
 }> {
-  async run(action: (operationId: string) => Promise<void>) {
+  async run<A>(action: (operationId: string) => Promise<A>): Promise<A> {
     const operationId = this.props.operations.start("app-control");
     try {
-      await action(operationId);
+      return await action(operationId);
     } finally {
       this.props.operations.finish(operationId);
     }

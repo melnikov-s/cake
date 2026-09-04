@@ -8,6 +8,7 @@ import {
 import type { CakeChatSummary } from "../domain/cake-chat-data";
 import type { SessionSummary } from "./models/SessionSummary";
 import type { WorktreeRecord } from "../ipc/worktree-contract";
+import type { ScheduledMessage } from "../domain/scheduled-message-data";
 
 const bounded = (minimum: number, maximum: number) =>
   Schema.String.check(Schema.isMinLength(minimum), Schema.isMaxLength(maximum));
@@ -60,8 +61,21 @@ const appControlArgumentSchemas = {
   send_session_message: Schema.Struct({
     ...sessionIdTargetSchema.fields,
     text: trimmed(1, 100_000),
-    delivery: Schema.optionalKey(Schema.Literals(["prompt", "follow-up", "steer"])),
+    delivery: Schema.optionalKey(Schema.Literals(["prompt", "queue", "steer"])),
   }),
+  compact_session: Schema.Struct({
+    ...sessionIdTargetSchema.fields,
+    instructions: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(262_144))),
+  }),
+  schedule_session_message: Schema.Struct({
+    ...sessionIdTargetSchema.fields,
+    text: trimmed(1, 100_000),
+    sendAt: bounded(1, 64),
+  }),
+  list_scheduled_messages: Schema.Struct({
+    sessionId: Schema.optionalKey(bounded(1, 256)),
+  }),
+  cancel_scheduled_message: Schema.Struct({ id: bounded(1, 256) }),
   abort_session: sessionIdTargetSchema,
   rename_session: Schema.Struct({ ...sessionIdTargetSchema.fields, title: trimmed(1, 500) }),
   set_session_resolved: Schema.Struct({
@@ -100,6 +114,10 @@ const appControlInvocationSchema = Schema.Union([
   invocation("create_session"),
   invocation("create_draft_session"),
   invocation("send_session_message"),
+  invocation("compact_session"),
+  invocation("schedule_session_message"),
+  invocation("list_scheduled_messages"),
+  invocation("cancel_scheduled_message"),
   invocation("abort_session"),
   invocation("rename_session"),
   invocation("set_session_resolved"),
@@ -146,6 +164,14 @@ export interface AppControlHost {
     text: string,
     delivery: "prompt" | "follow-up" | "steer",
   ): Promise<void>;
+  compactSession(sessionId: string, instructions?: string): Promise<void>;
+  scheduleSessionMessage(input: {
+    targetSessionId: string;
+    text: string;
+    sendAt: string;
+  }): Promise<ScheduledMessage>;
+  listScheduledMessages(sessionId?: string): Promise<readonly ScheduledMessage[]>;
+  cancelScheduledMessage(id: string): Promise<void>;
   abortSession(sessionId: string): Promise<void>;
   renameSession(sessionId: string, title: string): Promise<void>;
   setSessionResolved(sessionId: string, resolved: boolean): Promise<void>;
@@ -205,9 +231,19 @@ export type AppControlResult =
       ok: true;
       name: "send_session_message";
       target: SessionTarget;
-      delivery: "prompt" | "follow-up" | "steer";
+      delivery: "prompt" | "queue" | "steer";
       status: "sent";
     }
+  | { ok: true; name: "compact_session"; target: SessionTarget; status: "compacted" }
+  | {
+      ok: true;
+      name: "schedule_session_message";
+      target: SessionTarget;
+      scheduledMessage: ScheduledMessage;
+      status: "scheduled";
+    }
+  | { ok: true; name: "list_scheduled_messages"; messages: readonly ScheduledMessage[] }
+  | { ok: true; name: "cancel_scheduled_message"; id: string; status: "cancelled" }
   | { ok: true; name: "abort_session"; target: SessionTarget; status: "stopping" }
   | { ok: true; name: "rename_session"; target: SessionTarget; title: string }
   | { ok: true; name: "set_session_resolved"; target: SessionTarget; resolved: boolean }
@@ -305,8 +341,32 @@ const modelControlOperations = [
   operation(
     "sessions.send",
     "sessions",
-    "Send a message to one explicitly targeted session without opening it.",
+    "Send, queue, or steer a message to one explicitly targeted session without opening it.",
     appControlArgumentSchemas.send_session_message,
+  ),
+  operation(
+    "sessions.compact",
+    "sessions",
+    "Compact one explicitly targeted Project Session through Pi's normal compaction mechanism.",
+    appControlArgumentSchemas.compact_session,
+  ),
+  operation(
+    "sessions.schedule",
+    "sessions",
+    "Schedule a message for one explicitly targeted Project Session at an ISO timestamp.",
+    appControlArgumentSchemas.schedule_session_message,
+  ),
+  operation(
+    "sessions.scheduled",
+    "sessions",
+    "List scheduled messages, optionally filtered to one Project Session.",
+    appControlArgumentSchemas.list_scheduled_messages,
+  ),
+  operation(
+    "sessions.cancel-scheduled",
+    "sessions",
+    "Cancel one scheduled message by its ID.",
+    appControlArgumentSchemas.cancel_scheduled_message,
   ),
   operation(
     "sessions.abort",
@@ -329,6 +389,10 @@ const commandToLegacyName = {
   "sessions.create": "create_session",
   "sessions.create-draft": "create_draft_session",
   "sessions.send": "send_session_message",
+  "sessions.compact": "compact_session",
+  "sessions.schedule": "schedule_session_message",
+  "sessions.scheduled": "list_scheduled_messages",
+  "sessions.cancel-scheduled": "cancel_scheduled_message",
   "sessions.abort": "abort_session",
 } as const;
 
@@ -455,6 +519,28 @@ export class AppControlBridge {
       return this.setSessionsResolved(invocation.arguments);
     if (invocation.name === "set_cake_chat_sessions_resolved")
       return this.setCakeChatSessionsResolved(invocation.arguments);
+    if (invocation.name === "list_scheduled_messages") {
+      if (invocation.arguments.sessionId && !this.knownSession(invocation.arguments.sessionId))
+        return {
+          ok: false,
+          name: invocation.name,
+          error: "Cake could not find that session.",
+        };
+      return {
+        ok: true,
+        name: invocation.name,
+        messages: await this.host.listScheduledMessages(invocation.arguments.sessionId),
+      };
+    }
+    if (invocation.name === "cancel_scheduled_message") {
+      await this.host.cancelScheduledMessage(invocation.arguments.id);
+      return {
+        ok: true,
+        name: invocation.name,
+        id: invocation.arguments.id,
+        status: "cancelled",
+      };
+    }
 
     const { sessionId } = invocation.arguments;
     const known = this.knownSession(sessionId);
@@ -494,9 +580,31 @@ export class AppControlBridge {
     if (invocation.name === "send_session_message") {
       const delivery =
         invocation.arguments.delivery ??
-        (this.host.sessionActivity(sessionId) === "running" ? "follow-up" : "prompt");
-      await this.host.sendSessionMessage(sessionId, invocation.arguments.text, delivery);
+        (this.host.sessionActivity(sessionId) === "running" ? "queue" : "prompt");
+      await this.host.sendSessionMessage(
+        sessionId,
+        invocation.arguments.text,
+        delivery === "queue" ? "follow-up" : delivery,
+      );
       return { ok: true, name: invocation.name, target, delivery, status: "sent" };
+    }
+    if (invocation.name === "compact_session") {
+      await this.host.compactSession(sessionId, invocation.arguments.instructions);
+      return { ok: true, name: invocation.name, target, status: "compacted" };
+    }
+    if (invocation.name === "schedule_session_message") {
+      const scheduledMessage = await this.host.scheduleSessionMessage({
+        targetSessionId: sessionId,
+        text: invocation.arguments.text,
+        sendAt: invocation.arguments.sendAt,
+      });
+      return {
+        ok: true,
+        name: invocation.name,
+        target,
+        scheduledMessage,
+        status: "scheduled",
+      };
     }
     if (invocation.name === "abort_session") {
       if (this.host.sessionActivity(sessionId) !== "running") {

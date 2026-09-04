@@ -8,6 +8,7 @@ import { ChatSubmitAction } from "@/components/chat-submit-action";
 import { ImagePreview } from "@/components/image-preview";
 import { ChatTranscript, type ChatTranscriptBehavior } from "@/components/chat-transcript";
 import { QueuedPrompts } from "@/components/queued-prompts";
+import { ScheduledPrompts } from "@/components/scheduled-prompts";
 import { RewordPromptDialog } from "@/components/reword-prompt-dialog";
 import { SourceAttachment } from "@/components/source-attachment";
 import { SubagentStatus } from "@/components/subagent-status";
@@ -291,6 +292,7 @@ export const Chat = observer(function Chat({
           </>
         }
       >
+        {!activatingDraft && <ScheduledPrompts store={store} />}
         {!activatingDraft && <QueuedPrompts store={store} />}
         {!activatingDraft && store.rewording && (
           <div className="px-2 pb-2 text-xs text-muted-foreground" role="status">
@@ -381,6 +383,11 @@ export const Chat = observer(function Chat({
         virtualized={!compact}
         renderChat={renderNestedChat}
       />
+      {!composerVisible && store.scheduledMessages.length > 0 && (
+        <div className="border-t border-border bg-background px-6 py-2 max-[620px]:px-2.5">
+          <ScheduledPrompts store={store} />
+        </div>
+      )}
       {composer}
     </div>
   );

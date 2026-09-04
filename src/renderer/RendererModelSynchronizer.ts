@@ -22,6 +22,7 @@ import type {
 } from "../domain/project-session-data";
 import { ProjectSessionError } from "../domain/project-session-data";
 import type { SubagentUpdate } from "../domain/subagent-data";
+import type { ScheduledMessageUpdate } from "../domain/scheduled-message-data";
 import { CakeIpcClient, type CakeIpcClientService } from "../ipc/client/CakeIpcClient";
 import type { ArtifactRecord } from "../ipc/artifact-contract";
 import type { CakeChatCatalog } from "./models/CakeChatCatalog";
@@ -44,6 +45,7 @@ import {
   applyDiscussionUpdate,
 } from "./projections/DiscussionProjection";
 import { applySubagentUpdate } from "./projections/SubagentProjection";
+import { applyScheduledMessageUpdate } from "./projections/ScheduledMessageProjection";
 import type {
   RendererSynchronizationSupervisor,
   SynchronizationFailureAction,
@@ -181,6 +183,15 @@ export class RendererModelSynchronizer implements Disposable {
         (client) => client.projectSessions.observe(target),
         (update: ProjectSessionUpdate) =>
           applyProjectSessionUpdate(model, target.sessionId, update),
+      );
+
+      const scheduledMessagesKey = `scheduled-messages:${target.sessionId}`;
+      active.add(scheduledMessagesKey);
+      this.synchronizeModel(
+        scheduledMessagesKey,
+        model,
+        (client) => client.scheduledMessages.observe(target.sessionId),
+        (update: ScheduledMessageUpdate) => applyScheduledMessageUpdate(model, update),
       );
 
       const discussionCatalogKey = `discussion-catalog:${target.sessionId}`;

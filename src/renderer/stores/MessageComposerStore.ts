@@ -20,6 +20,7 @@ import { pastedImageAttachments } from "../pasted-image-attachments";
 import { RendererClientContext } from "../client/RendererClientContext";
 import type { WorktreeDraftChoice } from "./WorktreeCreationStore";
 import { OptimisticUserMessagesStore } from "./OptimisticUserMessagesStore";
+import { parseScheduledMessage } from "../../utils/scheduled-message-time";
 
 /** A prompt held locally while the session streams, shown as a chip above the composer. */
 export interface QueuedPrompt {
@@ -308,6 +309,38 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
       this.props.setDraft("");
       await this.renameSession(builtin.args);
       return;
+    }
+    if (builtin?.name === "schedule") {
+      if (
+        this.attachments.length > 0 ||
+        this.annotations.length > 0 ||
+        this.editorContextAttachment
+      ) {
+        this.reportError(new Error("Remove attachments before using /schedule"));
+        return false;
+      }
+      const sessionId = this.props.sessionId();
+      if (!sessionId || this.props.sessionRegistry.isTemporarySession(sessionId)) {
+        this.reportError(new Error("Scheduling requires an existing conversation"));
+        return false;
+      }
+      try {
+        const scheduled = parseScheduledMessage(builtin.args);
+        await this.client.scheduledMessages.schedule(
+          {
+            targetSessionId: sessionId,
+            text: scheduled.text,
+            sendAt: scheduled.sendAt,
+            createdBySessionId: sessionId,
+          },
+          { signal: this.signal },
+        );
+        if (!this.signal.aborted) this.props.setDraft("");
+        return !this.signal.aborted;
+      } catch (error) {
+        if (!this.signal.aborted) this.reportError(error);
+        return false;
+      }
     }
     const sessionId = this.props.sessionId();
     if (!sessionId) return;

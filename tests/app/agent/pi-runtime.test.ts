@@ -2171,6 +2171,7 @@ export default function (pi) {
         expect.objectContaining({ name: "compact", source: "builtin" }),
         expect.objectContaining({ name: "model", source: "builtin" }),
         expect.objectContaining({ name: "name", source: "builtin" }),
+        expect.objectContaining({ name: "schedule", source: "builtin" }),
         expect.objectContaining({ name: "cake-compat", source: "extension" }),
         expect.objectContaining({ name: "fixture-prompt", source: "prompt" }),
         expect.objectContaining({ name: "skill:fixture-skill", source: "skill" }),

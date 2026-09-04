@@ -149,6 +149,26 @@ export function makeRendererClient(runtime: RendererRuntime): RendererClient {
           options,
         ),
     },
+    scheduledMessages: {
+      list: (targetSessionId, options) =>
+        run(
+          "scheduledMessages.list",
+          withClient((client) => client.scheduledMessages.list(targetSessionId)),
+          options,
+        ),
+      schedule: (input, options) =>
+        run(
+          "scheduledMessages.schedule",
+          withClient((client) => client.scheduledMessages.schedule(input)),
+          options,
+        ),
+      cancel: (id, options) =>
+        run(
+          "scheduledMessages.cancel",
+          withClient((client) => client.scheduledMessages.cancel(id)),
+          options,
+        ),
+    },
     projectSessions: {
       inspect: (target, options) =>
         run(

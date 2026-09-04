@@ -144,6 +144,11 @@ export const makeProjectSessionEnvironmentLive = (
                     { _tag: "CreateDraft", ...input },
                     signal,
                   ),
+                invokeAppControl: (command, input, signal) =>
+                  runtimeIntegrations.requestApplicationControl(
+                    { _tag: "InvokeAppControl", command, input },
+                    signal,
+                  ),
               },
               sessionMetadata: {
                 setTitle: (title) =>

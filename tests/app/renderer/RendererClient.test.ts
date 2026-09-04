@@ -19,6 +19,7 @@ describe("RendererClient", () => {
       "windowState",
       "models",
       "modelPresets",
+      "scheduledMessages",
       "projectSessions",
       "cakeChats",
       "discussionSessions",
@@ -33,6 +34,7 @@ describe("RendererClient", () => {
       "inlineWidgets",
       "foundation",
     ]);
+    expect("observe" in client.scheduledMessages).toBe(false);
     expect("observe" in client.projectSessions).toBe(false);
     expect("observe" in client.cakeChats).toBe(false);
     expect("observe" in client.discussionSessions).toBe(false);

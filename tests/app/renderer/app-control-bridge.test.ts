@@ -22,6 +22,12 @@ function createHost(overrides: Partial<AppControlHost> = {}): AppControlHost {
       throw new Error("not used");
     },
     sendSessionMessage: async () => undefined,
+    compactSession: async () => undefined,
+    scheduleSessionMessage: async () => {
+      throw new Error("not used");
+    },
+    listScheduledMessages: async () => [],
+    cancelScheduledMessage: async () => undefined,
     abortSession: async () => undefined,
     renameSession: async () => undefined,
     setSessionResolved: async () => undefined,
@@ -83,6 +89,74 @@ describe("AppControlBridge", () => {
       workspacePath: "/projects/cake",
       name: "Draft session",
       initialPrompt: "Implement this later",
+    });
+  });
+
+  it("compacts and schedules messages for sessions in another project", async () => {
+    const sendSessionMessage = vi.fn(async () => undefined);
+    const compactSession = vi.fn(async () => undefined);
+    const scheduleSessionMessage = vi.fn(async (input) => ({
+      id: "8de1a807-dc99-49ee-8d35-7a3ed20bef06",
+      ...input,
+      createdAt: "2026-09-04T12:00:00.000Z",
+    }));
+    const host = createHost({
+      sessions: () => [
+        {
+          workingDirectory: "/projects/other",
+          projectName: "Other",
+          sessionId: "session-2",
+          title: "Other project session",
+          modifiedAt: "2026-09-04T12:00:00.000Z",
+          messageCount: 2,
+          resolved: false,
+          draft: false,
+        },
+      ],
+      sendSessionMessage,
+      compactSession,
+      scheduleSessionMessage,
+    });
+    const bridge = new AppControlBridge(host);
+
+    await expect(
+      bridge.invoke({
+        name: "sessions.send",
+        arguments: { sessionId: "session-2", text: "Queue this", delivery: "queue" },
+      }),
+    ).resolves.toMatchObject({
+      ok: true,
+      name: "send_session_message",
+      delivery: "queue",
+      status: "sent",
+    });
+    await expect(
+      bridge.invoke({
+        name: "sessions.compact",
+        arguments: { sessionId: "session-2", instructions: "Keep decisions" },
+      }),
+    ).resolves.toMatchObject({ ok: true, name: "compact_session", status: "compacted" });
+    await expect(
+      bridge.invoke({
+        name: "sessions.schedule",
+        arguments: {
+          sessionId: "session-2",
+          text: "Review this",
+          sendAt: "2030-01-01T12:00:00.000Z",
+        },
+      }),
+    ).resolves.toMatchObject({
+      ok: true,
+      name: "schedule_session_message",
+      status: "scheduled",
+      scheduledMessage: { targetSessionId: "session-2", text: "Review this" },
+    });
+    expect(sendSessionMessage).toHaveBeenCalledWith("session-2", "Queue this", "follow-up");
+    expect(compactSession).toHaveBeenCalledWith("session-2", "Keep decisions");
+    expect(scheduleSessionMessage).toHaveBeenCalledWith({
+      targetSessionId: "session-2",
+      text: "Review this",
+      sendAt: "2030-01-01T12:00:00.000Z",
     });
   });
 

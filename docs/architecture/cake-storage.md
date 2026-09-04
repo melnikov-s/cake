@@ -13,6 +13,7 @@ replaces that root for tests and alternate installations.
 ~/.cake/
 ├── state/
 │   ├── application.json
+│   ├── scheduled-messages.json
 │   ├── worktrees.json
 │   ├── session-metadata/
 │   ├── resolved-project-metadata/
@@ -168,6 +169,12 @@ atomically moves the transcript to the matching Cake-managed archive root;
 restoring or messaging it moves it back before Pi opens it. Archive location is
 Cake's resolution fact, while Pi remains the transcript-format and session
 engine authority.
+
+Scheduled Project Session messages are Cake-owned delivery intents stored in
+`state/scheduled-messages.json`. They remain visible and cancellable until their
+deadline. Once Cake submits one through the normal Project Session prompt or
+follow-up operation, it removes the intent and Pi owns the resulting user
+message and turn.
 
 Discussion Sessions and Cake Chat Sessions use their narrower Pi roots. Cake
 stores review/message anchors and sidecar references, while sidecar replies

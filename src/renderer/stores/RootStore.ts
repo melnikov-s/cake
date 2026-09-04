@@ -171,28 +171,33 @@ export class RootStore extends Store<{
         ? (this.sessionCatalogStore.projectOfManagedWorktree(sourceWorkingDirectory) ??
           sourceWorkingDirectory)
         : undefined);
-    const result = projectPath
-      ? await this.appControl
-          .invoke({
-            name: "sessions.create-draft",
-            arguments: request.invocation.model
-              ? {
-                  workspacePath: projectPath,
-                  name: request.invocation.name,
-                  initialPrompt: request.invocation.initialPrompt,
-                  model: request.invocation.model,
-                }
-              : {
-                  workspacePath: projectPath,
-                  name: request.invocation.name,
-                  initialPrompt: request.invocation.initialPrompt,
-                },
-          })
-          .catch((error) => ({
-            ok: false as const,
-            name: "sessions.create-draft",
-            error: error instanceof Error ? error.message : String(error),
-          }))
+    const invocation = request.invocation;
+    const appInvocation =
+      invocation._tag === "InvokeAppControl"
+        ? { name: invocation.command, arguments: invocation.input }
+        : projectPath
+          ? {
+              name: "sessions.create-draft",
+              arguments: invocation.model
+                ? {
+                    workspacePath: projectPath,
+                    name: invocation.name,
+                    initialPrompt: invocation.initialPrompt,
+                    model: invocation.model,
+                  }
+                : {
+                    workspacePath: projectPath,
+                    name: invocation.name,
+                    initialPrompt: invocation.initialPrompt,
+                  },
+            }
+          : undefined;
+    const result = appInvocation
+      ? await this.appControl.invoke(appInvocation).catch((error) => ({
+          ok: false as const,
+          name: appInvocation.name,
+          error: error instanceof Error ? error.message : String(error),
+        }))
       : {
           ok: false as const,
           name: "sessions.create-draft",
@@ -677,6 +682,20 @@ export class RootStore extends Store<{
             { signal: this.signal },
           ).then(() => undefined);
         }),
+      compactSession: (sessionId, instructions) =>
+        this.appControlOperationStore.run(() =>
+          this.client.projectSessions.compact({ sessionId, instructions }, { signal: this.signal }),
+        ),
+      scheduleSessionMessage: (input) =>
+        this.appControlOperationStore.run(() =>
+          this.client.scheduledMessages.schedule(input, { signal: this.signal }),
+        ),
+      listScheduledMessages: (sessionId) =>
+        this.client.scheduledMessages.list(sessionId, { signal: this.signal }),
+      cancelScheduledMessage: (id) =>
+        this.appControlOperationStore.run(() =>
+          this.client.scheduledMessages.cancel(id, { signal: this.signal }),
+        ),
       abortSession: (sessionId) =>
         this.appControlOperationStore.run(() =>
           this.client.projectSessions.abort({ sessionId }, { signal: this.signal }),

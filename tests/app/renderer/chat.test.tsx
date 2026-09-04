@@ -38,6 +38,7 @@ vi.mock("@/components/ai-elements/conversation", async () => {
 import { Chat } from "../../../src/renderer/components/chat";
 import type { ChatConfigurationStore } from "../../../src/renderer/stores/ChatConfigurationStore";
 import { ChatStore } from "../../../src/renderer/stores/ChatStore";
+import { ScheduledMessage } from "../../../src/renderer/models/ScheduledMessage";
 
 describe("Chat", () => {
   let container: HTMLDivElement;
@@ -133,6 +134,46 @@ describe("Chat", () => {
     await act(async () => stop.click());
     expect(abort).toHaveBeenCalled();
     expect(submit).not.toHaveBeenCalled();
+  });
+
+  it("shows a scheduled message countdown and allows cancellation", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime("2026-09-04T12:00:00.000Z");
+    const cancelScheduledMessage = vi.fn(async () => undefined);
+    const message = ScheduledMessage.create({
+      id: "8de1a807-dc99-49ee-8d35-7a3ed20bef06",
+      targetSessionId: "shared-chat",
+      text: "Check the build",
+      sendAt: "2026-09-04T12:02:00.000Z",
+      createdAt: "2026-09-04T11:59:00.000Z",
+    });
+    store = mount(
+      createStore(ChatStore, {
+        id: () => "shared-chat",
+        parts: () => [],
+        streaming: () => false,
+        submitting: () => false,
+        configuration: () => undefined,
+        commands: () => [],
+        placeholder: () => "Message",
+        inputLabel: () => "Message",
+        canSubmit: () => false,
+        submit: async () => false,
+        scheduledMessages: () => [message],
+        cancelScheduledMessage,
+      }),
+    );
+
+    act(() => root.render(<Chat store={store!} />));
+
+    expect(container.textContent).toContain("Check the build");
+    expect(container.textContent).toContain("sends in 2m");
+    const cancel = container.querySelector<HTMLButtonElement>(
+      '[aria-label="Cancel scheduled message: Check the build"]',
+    );
+    await act(async () => cancel?.click());
+    expect(cancelScheduledMessage).toHaveBeenCalledWith(message.id);
+    message[Symbol.dispose]();
   });
 
   it("shows source references as removable VS Code context", async () => {

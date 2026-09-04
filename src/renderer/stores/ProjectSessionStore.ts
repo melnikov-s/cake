@@ -321,6 +321,9 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       steerQueuedPrompt: (id) => this.composerStore.steerQueuedPrompt(id),
       editQueuedPrompt: (id) => this.composerStore.editQueuedPrompt(id),
       removeQueuedPrompt: (id) => this.composerStore.removeQueuedPrompt(id),
+      scheduledMessages: () => this.model.scheduledMessages,
+      cancelScheduledMessage: (id) =>
+        this.client.scheduledMessages.cancel(id, { signal: this.signal }),
       hideThinking: () => Boolean(this.model.piSettings?.hideThinkingBlock),
       error: () => ({
         message:

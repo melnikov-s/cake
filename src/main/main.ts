@@ -23,6 +23,8 @@ import { makeSubagentEnvironmentLive } from "../layers/SubagentEnvironmentLive";
 import { makeApplicationStorageLive } from "../services/storage/ApplicationStorage";
 import { ApplicationState } from "../services/storage/ApplicationState";
 import { makeWindowStateStorageLive } from "../services/storage/WindowStateStorage";
+import { makeScheduledMessageStorageLive } from "../services/storage/ScheduledMessageStorage";
+import { ScheduledMessages } from "../services/scheduled-messages/ScheduledMessages";
 import { makeWorkspaceFilesLive } from "../services/filesystem/WorkspaceFilesLive";
 import { Electron } from "../services/electron/Electron";
 import { makeElectronLive } from "../services/electron/ElectronLive";
@@ -44,6 +46,7 @@ import {
 import { resolveCakePaths } from "../config/CakePaths";
 import { BootstrapLive } from "./BootstrapLive";
 import { MainApplication } from "./MainApplication";
+import * as scheduledMessages from "../domain/scheduledMessages";
 import cakeIconPath from "../assets/cake.png?asset";
 import annotationMenuIconPath from "../assets/menu-annotation.png?asset";
 import chatMenuIconPath from "../assets/menu-chat.png?asset";
@@ -65,6 +68,12 @@ const applicationStorageLive = makeApplicationStorageLive(cakePaths.state).pipe(
 );
 const applicationStateLive = ApplicationState.layer.pipe(Layer.provide(applicationStorageLive));
 const windowStateLive = makeWindowStateStorageLive(userData).pipe(Layer.provide(BootstrapLive));
+const scheduledMessageStorageLive = makeScheduledMessageStorageLive(cakePaths.state).pipe(
+  Layer.provide(BootstrapLive),
+);
+const scheduledMessagesLive = ScheduledMessages.layer.pipe(
+  Layer.provide(scheduledMessageStorageLive),
+);
 const sessionMetadataStorageLive = makeSessionMetadataStorageLive(cakePaths.sessionMetadata);
 const sessionArchiveStorageLive = makeSessionArchiveStorageLive(
   cakePaths.resolvedProjectMetadata,
@@ -95,6 +104,7 @@ const electronLive = makeElectronLive({
 const baseLive = Layer.mergeAll(
   applicationStateLive,
   windowStateLive,
+  scheduledMessagesLive,
   artifactStorageLive,
   reviewStorageLive,
   gitLive,
@@ -187,12 +197,19 @@ const cakeSessionLive = Layer.mergeAll(
 const workspaceFilesLive = makeWorkspaceFilesLive(cakePaths.piAgent).pipe(
   Layer.provide(runtimeLive),
 );
-const servicesLive = Layer.mergeAll(
+const servicesWithoutScheduledWorkerLive = Layer.mergeAll(
   runtimeLive,
   subagentEnvironmentLive,
   cakeSessionLive,
   workspaceFilesLive,
 );
+const scheduledMessageWorkerLive = Layer.effectDiscard(
+  Effect.gen(function* () {
+    yield* scheduledMessages.initialize().pipe(Effect.orDie);
+    yield* scheduledMessages.runWorker.pipe(Effect.forkScoped);
+  }),
+).pipe(Layer.provide(servicesWithoutScheduledWorkerLive));
+const servicesLive = Layer.merge(servicesWithoutScheduledWorkerLive, scheduledMessageWorkerLive);
 const serverLive = makeCakeIpcServerLive(homedir()).pipe(Layer.provide(servicesLive));
 const MainLive: Layer.Layer<Layer.Success<typeof servicesLive>, never, never> = Layer.merge(
   servicesLive,

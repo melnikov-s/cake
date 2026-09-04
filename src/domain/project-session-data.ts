@@ -62,6 +62,10 @@ export const ProjectSessionUpdate = Schema.TaggedUnion({
 export type ProjectSessionUpdate = Schema.Schema.Type<typeof ProjectSessionUpdate>;
 
 export const ProjectSessionControlInvocation = Schema.TaggedUnion({
+  InvokeAppControl: {
+    command: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+    input: Schema.Record(Schema.String, Schema.Json),
+  },
   CreateDraft: {
     name: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(500)),
     initialPrompt: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(100_000)),

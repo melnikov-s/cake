@@ -12,6 +12,7 @@ import type {
 } from "../../ipc/session-contract";
 import { workLogGroupKeys } from "../../utils/work-log-groups";
 import type { QueuedPrompt } from "./MessageComposerStore";
+import type { ScheduledMessage } from "../models/ScheduledMessage";
 import type { ChatConfigurationStore } from "./ChatConfigurationStore";
 import type { ExistingWorktreeCandidate, WorktreeDraftChoice } from "./WorktreeCreationStore";
 
@@ -53,6 +54,8 @@ export interface ChatStoreProps {
   steerQueuedPrompt?(id: string): void;
   editQueuedPrompt?(id: string): boolean | undefined;
   removeQueuedPrompt?(id: string): void;
+  scheduledMessages?(): readonly ScheduledMessage[];
+  cancelScheduledMessage?(id: string): Promise<void>;
   composerVisible?(): boolean;
   showComposerContextMenu?(
     selection: string,
@@ -92,6 +95,7 @@ export class ChatStore extends Store<ChatStoreProps> {
   rewording = false;
   rewordError: string | undefined;
   userMessagePresentationError: string | undefined;
+  scheduledMessageError: string | undefined;
   loadingStartedAt: number | undefined;
   readonly workLogTimers = observable(new Map<string, WorkLogTimerState>());
   transcriptScrollState: StateSnapshot | undefined;
@@ -102,6 +106,8 @@ export class ChatStore extends Store<ChatStoreProps> {
   private workLogTickNow = 0;
   private workLogTickInterval: ReturnType<typeof setInterval> | undefined;
   private changedFilesChurning: boolean | undefined;
+  private scheduledMessageNow = Date.now();
+  private scheduledMessageTickInterval: ReturnType<typeof setInterval> | undefined;
 
   constructor(props: ChatStore["props"]) {
     super(props);
@@ -120,7 +126,17 @@ export class ChatStore extends Store<ChatStoreProps> {
           .flatMap((part) => (part.kind === "tool" ? [{ id: part.id, state: part.state }] : [])),
       () => this.syncWorkLogTimers(),
     );
-    this.effect(() => () => this.stopWorkLogTick());
+    this.reaction(
+      () => this.scheduledMessages.length > 0,
+      (active) => this.updateScheduledMessageTick(active),
+    );
+    this.effect(() => {
+      untracked(() => this.updateScheduledMessageTick(this.scheduledMessages.length > 0));
+      return () => {
+        this.stopWorkLogTick();
+        this.stopScheduledMessageTick();
+      };
+    });
   }
 
   private get workLogTimingActive() {
@@ -290,6 +306,41 @@ export class ChatStore extends Store<ChatStoreProps> {
   get canRemoveQueuedPrompt() {
     return Boolean(this.props.removeQueuedPrompt);
   }
+  get scheduledMessages(): readonly ScheduledMessage[] {
+    return this.props.scheduledMessages?.() ?? [];
+  }
+  get canCancelScheduledMessage() {
+    return Boolean(this.props.cancelScheduledMessage);
+  }
+  scheduledMessageRemainingMs(sendAt: string) {
+    return Math.max(0, Date.parse(sendAt) - this.scheduledMessageNow);
+  }
+  async cancelScheduledMessage(id: string) {
+    if (!this.props.cancelScheduledMessage) return;
+    this.scheduledMessageError = undefined;
+    try {
+      await this.props.cancelScheduledMessage(id);
+    } catch (error) {
+      if (!this.signal.aborted)
+        this.scheduledMessageError = error instanceof Error ? error.message : String(error);
+    }
+  }
+  private updateScheduledMessageTick(active: boolean) {
+    if (!active) {
+      this.stopScheduledMessageTick();
+      return;
+    }
+    if (this.scheduledMessageTickInterval !== undefined) return;
+    this.scheduledMessageNow = Date.now();
+    this.scheduledMessageTickInterval = setInterval(() => {
+      this.scheduledMessageNow = Date.now();
+    }, 1_000);
+  }
+  private stopScheduledMessageTick() {
+    if (this.scheduledMessageTickInterval === undefined) return;
+    clearInterval(this.scheduledMessageTickInterval);
+    this.scheduledMessageTickInterval = undefined;
+  }
   get composerVisible() {
     return this.props.composerVisible?.() ?? true;
   }
@@ -317,6 +368,11 @@ export class ChatStore extends Store<ChatStoreProps> {
       return {
         message: this.userMessagePresentationError,
         title: "Could not change message formatting",
+      };
+    if (this.scheduledMessageError)
+      return {
+        message: this.scheduledMessageError,
+        title: "Could not cancel scheduled message",
       };
     return this.props.error?.();
   }

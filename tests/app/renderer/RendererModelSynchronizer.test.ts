@@ -33,6 +33,13 @@ function clientWithProjectStream(
 ): CakeIpcClientService {
   return {
     projects: { observeCatalog },
+    scheduledMessages: {
+      observe: () =>
+        Stream.concat(
+          Stream.make({ _tag: "Snapshot" as const, revision: 1, messages: [] }),
+          Stream.never,
+        ),
+    },
     projectSessions: {
       observeCatalog: () => Stream.concat(Stream.make(emptySessionCatalog), Stream.never),
     },

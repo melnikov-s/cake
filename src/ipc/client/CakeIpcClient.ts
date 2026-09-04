@@ -58,6 +58,12 @@ import type {
 } from "../../domain/catalog-data";
 import type { SubagentError, SubagentHandleId, SubagentUpdate } from "../../domain/subagent-data";
 import type {
+  ScheduleMessageInput,
+  ScheduledMessage,
+  ScheduledMessageError,
+  ScheduledMessageUpdate,
+} from "../../domain/scheduled-message-data";
+import type {
   DefaultModelPresetNotFoundError,
   DuplicateModelPresetIdError,
   ModelPresetCreateInput,
@@ -251,6 +257,18 @@ export interface CakeIpcClientService {
     readonly setResolved: (
       target: DiscussionSessionTarget & { readonly resolved: boolean },
     ) => Effect.Effect<DiscussionThread, DiscussionSessionError | TransportError>;
+  };
+  readonly scheduledMessages: {
+    readonly observe: (
+      targetSessionId: string,
+    ) => Stream.Stream<ScheduledMessageUpdate, ScheduledMessageError | TransportError>;
+    readonly list: (
+      targetSessionId?: string,
+    ) => Effect.Effect<ReadonlyArray<ScheduledMessage>, ScheduledMessageError | TransportError>;
+    readonly schedule: (
+      input: ScheduleMessageInput,
+    ) => Effect.Effect<ScheduledMessage, ScheduledMessageError | TransportError>;
+    readonly cancel: (id: string) => Effect.Effect<void, ScheduledMessageError | TransportError>;
   };
   readonly projectSessions: {
     readonly observeCatalog: (
@@ -635,6 +653,18 @@ export const CakeIpcClientLive = Layer.effect(
         ),
         setResolved: Effect.fn("CakeIpcClient.discussionSessions.setResolved")((target) =>
           client("discussionSessions.setResolved", target),
+        ),
+      },
+      scheduledMessages: {
+        observe: (targetSessionId) => client("scheduledMessages.observe", { targetSessionId }),
+        list: Effect.fn("CakeIpcClient.scheduledMessages.list")((targetSessionId) =>
+          client("scheduledMessages.list", targetSessionId ? { targetSessionId } : {}),
+        ),
+        schedule: Effect.fn("CakeIpcClient.scheduledMessages.schedule")((input) =>
+          client("scheduledMessages.schedule", input),
+        ),
+        cancel: Effect.fn("CakeIpcClient.scheduledMessages.cancel")((id) =>
+          client("scheduledMessages.cancel", { id }),
         ),
       },
       projectSessions: {
