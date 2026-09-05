@@ -60,24 +60,31 @@ describe("SessionCatalogStore indexes", () => {
     store[Symbol.dispose]();
   });
 
-  it("pins saved drafts above newer active sessions", () => {
+  it("pins saved drafts but does not mistake lightweight Pi metadata for unsent sessions", () => {
     const model = SessionCatalog.create({
       sessions: [
-        session("newest", "2026-01-03T00:00:00.000Z"),
+        { ...session("older-pi-session", "2026-01-01T00:00:00.000Z"), messageCount: 0 },
         {
-          ...session("draft", "2026-01-01T00:00:00.000Z"),
+          ...session("draft", "2025-12-31T00:00:00.000Z"),
           messageCount: 0,
           draft: true,
         },
-        { ...session("new-chat", "2026-01-02T00:00:00.000Z"), messageCount: 0 },
       ],
     });
-    const store = mount(createStore(SessionCatalogStore, { model }));
+    const pending = [
+      {
+        ...session("activating-session", "2026-01-03T00:00:00.000Z"),
+        pending: true as const,
+      },
+    ];
+    const store = mount(
+      createStore(SessionCatalogStore, { model, pendingSessions: () => pending }),
+    );
 
     expect(store.projectSessions("/project").map((current) => current.sessionId)).toEqual([
       "draft",
-      "new-chat",
-      "newest",
+      "activating-session",
+      "older-pi-session",
     ]);
     store[Symbol.dispose]();
   });

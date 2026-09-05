@@ -452,6 +452,7 @@ export const start = Effect.fn("ProjectSessions.start")(function* (
       .prompt(input.text, runtimeAttachments(input.attachments), input.renderUserMessageAsMarkdown)
       .pipe(asError("start")),
   );
+  yield* publishCatalogChange(input.sessionId, location, false).pipe(asError("start"));
   return turnId;
 });
 

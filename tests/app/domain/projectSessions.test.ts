@@ -793,6 +793,37 @@ describe("Project Sessions domain", () => {
     }).pipe(Effect.provide(makeLayer())),
   );
 
+  it.effect("publishes an authoritative catalog update when a new session starts", () =>
+    Effect.gen(function* () {
+      const updates = yield* projectSessions.observeCatalog({
+        projectPath: "/project",
+        resolved: false,
+      });
+      const ready = yield* Deferred.make<void>();
+      const fiber = yield* updates.pipe(
+        Stream.tap((update) =>
+          update.revision === 1 ? Deferred.succeed(ready, undefined) : Effect.void,
+        ),
+        Stream.take(2),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      yield* Deferred.await(ready);
+
+      yield* projectSessions.start({
+        sessionId: "session-1",
+        workingDirectory: "/project",
+        text: "First message",
+        attachments: [],
+        renderUserMessageAsMarkdown: false,
+      });
+
+      const observed = Array.from(yield* Fiber.join(fiber));
+      assert.equal(observed[1]?._tag, "Event");
+      assert.equal(observed[1]?._tag === "Event" ? observed[1].event._tag : undefined, "Upserted");
+    }).pipe(Effect.provide(makeLayer())),
+  );
+
   it.effect("observes a newly started runtime before its session file is discoverable", () => {
     let finishPrompt!: () => void;
     const prompt = new Promise<void>((resolve) => {

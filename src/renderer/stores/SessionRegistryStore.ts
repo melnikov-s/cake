@@ -201,7 +201,9 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
       removeValue(this.stagedSessionIds, sessionId);
       delete this.pendingConfigurationsBySession[sessionId];
       delete this.draftSessionsById[sessionId];
-      addUnique(this.unlistedNewSessionIds, sessionId);
+      if (this.props.catalog?.authoritativeSessionIds.includes(sessionId))
+        this.clearPendingSummary(sessionId);
+      else addUnique(this.unlistedNewSessionIds, sessionId);
       return session;
     });
   }
@@ -419,14 +421,17 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     this.updatePendingSummaryMetadata(sessionId);
   }
 
+  private clearPendingSummary(sessionId: string) {
+    removeValue(this.unlistedNewSessionIds, sessionId);
+    delete this.pendingNamesBySession[sessionId];
+    delete this.pendingSummaryMetadataBySession[sessionId];
+  }
+
   private reconcileAuthoritativeSessions(sessionIds: readonly string[]) {
     const authoritative = new Set(sessionIds);
     for (let index = this.unlistedNewSessionIds.length - 1; index >= 0; index -= 1) {
       const sessionId = this.unlistedNewSessionIds[index]!;
-      if (!authoritative.has(sessionId)) continue;
-      this.unlistedNewSessionIds.splice(index, 1);
-      delete this.pendingNamesBySession[sessionId];
-      delete this.pendingSummaryMetadataBySession[sessionId];
+      if (authoritative.has(sessionId)) this.clearPendingSummary(sessionId);
     }
   }
 

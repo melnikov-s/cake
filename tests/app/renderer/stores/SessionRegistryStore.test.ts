@@ -1,4 +1,4 @@
-import { createStore, mount, type StoreSnapshot } from "r-state-tree";
+import { applySnapshot, createStore, mount, type StoreSnapshot } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
 import { SessionCatalog } from "../../../../src/renderer/models/SessionCatalog";
 import { SessionSummary } from "../../../../src/renderer/models/SessionSummary";
@@ -120,6 +120,61 @@ describe("SessionRegistryStore materialization", () => {
     session.markRead();
     expect(session.activity).toBeUndefined();
 
+    fixture.dispose();
+  });
+
+  it("clears the pending summary when authority arrives after materialization", () => {
+    const fixture = registryFixture();
+    const { catalogModel, registry } = fixture;
+    registry.prepareNewSession("/project", "session-1");
+    registry.projectNewSessionSubmission("session-1", "Newest session");
+    registry.materializeNewSession("session-1", "/project");
+    expect(fixture.catalog.find("session-1")).toMatchObject({ pending: true });
+
+    catalogModel.sessions.push(
+      SessionSummary.create({
+        sessionId: "session-1",
+        title: "Newest session",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        modifiedAt: "2026-01-01T00:00:01.000Z",
+        messageCount: 0,
+        resolved: false,
+        unread: false,
+        projectPath: "/project",
+        projectName: "project",
+        workingDirectory: "/project",
+      }),
+    );
+    applySnapshot(catalogModel, { sessions: [] });
+
+    expect(fixture.catalog.sessions).toEqual([]);
+    fixture.dispose();
+  });
+
+  it("does not retain a hidden pending summary when authority wins before materialization", () => {
+    const fixture = registryFixture();
+    const { catalogModel, registry } = fixture;
+    registry.prepareNewSession("/project", "session-1");
+    registry.projectNewSessionSubmission("session-1", "Newest session");
+    catalogModel.sessions.push(
+      SessionSummary.create({
+        sessionId: "session-1",
+        title: "Newest session",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        modifiedAt: "2026-01-01T00:00:01.000Z",
+        messageCount: 0,
+        resolved: false,
+        unread: false,
+        projectPath: "/project",
+        projectName: "project",
+        workingDirectory: "/project",
+      }),
+    );
+
+    registry.materializeNewSession("session-1", "/project");
+    applySnapshot(catalogModel, { sessions: [] });
+
+    expect(fixture.catalog.sessions).toEqual([]);
     fixture.dispose();
   });
 
