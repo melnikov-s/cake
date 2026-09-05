@@ -85,6 +85,21 @@ test("splits project chats while retaining independent drafts and pane focus", a
 
     await focusedPane.getByRole("button", { name: "Close pane" }).click();
     await expect(panes).toHaveCount(2);
+
+    await page.getByRole("button", { name: "New Cake Chat" }).first().click();
+    await expect(panes).toHaveCount(1);
+    const firstCakeInput = panes.nth(0).getByLabel("Message Cake Chat");
+    await firstCakeInput.fill("first Cake Chat draft");
+
+    await panes.nth(0).getByRole("button", { name: "Split right" }).click();
+    await expect(panes).toHaveCount(2);
+    const secondCakeInput = panes.nth(1).getByLabel("Message Cake Chat");
+    await expect(secondCakeInput).toBeFocused();
+    await secondCakeInput.fill("second Cake Chat draft");
+
+    await panes.nth(0).locator("header").click();
+    await expect(firstCakeInput).toHaveValue("first Cake Chat draft");
+    await expect(secondCakeInput).toHaveValue("second Cake Chat draft");
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

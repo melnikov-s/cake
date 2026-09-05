@@ -9,7 +9,7 @@ import { ProjectSettingsDialog } from "./project-settings-dialog";
 import type { ProjectWorkbenchStore } from "../stores/ProjectWorkbenchStore";
 import type { ProjectCatalogStore } from "../stores/ProjectCatalogStore";
 import type { SidebarStore } from "../stores/SidebarStore";
-import type { GlobalChatStore } from "../stores/GlobalChatStore";
+import type { CakeChatCollectionStore } from "../stores/CakeChatCollectionStore";
 import type { AppShellStore } from "../stores/AppShellStore";
 import type { ProjectSettingsStore } from "../stores/ProjectSettingsStore";
 
@@ -34,7 +34,7 @@ export const Sidebar = observer(function Sidebar({
   store: SidebarStore;
   projects: ProjectCatalogStore;
   chat: ProjectWorkbenchStore;
-  cakeChat: GlobalChatStore;
+  cakeChat: CakeChatCollectionStore;
   shell: AppShellStore;
   projectSettings: ProjectSettingsStore;
   onOpenSettings: () => void;

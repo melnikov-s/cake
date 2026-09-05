@@ -100,10 +100,10 @@ async function bootstrap(bridge: NonNullable<typeof window.cake>) {
         }));
     },
     cakeChats: () =>
-      rootStore.globalChatStore.loadedSessions
-        .filter((session) => !rootStore.globalChatStore.isPendingSession(session.sessionId))
+      rootStore.cakeChatCollectionStore.loadedSessions
+        .filter((session) => !rootStore.cakeChatCollectionStore.isPendingSession(session.sessionId))
         .map((session) => ({
-          target: rootStore.globalChatStore.target(session.sessionId),
+          target: rootStore.cakeChatCollectionStore.target(session.sessionId),
           model: session.model,
         })),
   });

@@ -28,6 +28,7 @@ const sessionNavigationTargetSchema = Schema.Struct({
 const emptyArgumentsSchema = Schema.Struct({});
 const appControlArgumentSchemas = {
   get_app_state: emptyArgumentsSchema,
+  split_view: Schema.Struct({ direction: Schema.Literals(["right", "down"]) }),
   get_session_status: sessionIdTargetSchema,
   open_session: sessionNavigationTargetSchema,
   create_session: Schema.Struct({
@@ -141,6 +142,7 @@ function invocation<Name extends keyof typeof appControlArgumentSchemas>(name: N
 
 const appControlInvocationSchema = Schema.Union([
   invocation("get_app_state"),
+  invocation("split_view"),
   invocation("get_session_status"),
   invocation("open_session"),
   invocation("create_session"),
@@ -221,7 +223,7 @@ interface SessionCoordinationHost {
 export interface AppControlHost {
   sessionCoordination: SessionCoordinationHost;
   currentSelection(): AppControlSelection;
-  sessionLayout?(originSessionId?: string): {
+  sessionLayout?(source?: AgentControlSource): {
     focusedSessionId?: string;
     originSessionId?: string;
     panes: Array<{
@@ -277,6 +279,10 @@ export interface AppControlHost {
   setSessionsResolved(sessionIds: readonly string[], resolved: boolean): Promise<number>;
   setCakeChatSessionsResolved(sessionIds: readonly string[], resolved: boolean): Promise<number>;
   setSessionModel(sessionId: string, provider: string, modelId: string): Promise<void>;
+  splitView(
+    source: AgentControlSource,
+    direction: "right" | "down",
+  ): { kind: "project-session" | "cake-chat"; paneId: string; sessionId: string } | undefined;
   showNotification(input: {
     title: string;
     body: string;
@@ -331,6 +337,14 @@ interface CoordinationThreadView {
 
 export type AppControlResult =
   | { ok: true; name: "get_app_state"; state: AppControlState }
+  | {
+      ok: true;
+      name: "split_view";
+      direction: "right" | "down";
+      kind: "project-session" | "cake-chat";
+      paneId: string;
+      sessionId: string;
+    }
   | {
       ok: true;
       name: "get_session_status";
@@ -461,6 +475,12 @@ const modelControlOperations = [
     appControlArgumentSchemas.get_app_state,
   ),
   operation(
+    "app.split",
+    "app",
+    "Split the calling conversation pane to the right or down and open a new chat in it.",
+    appControlArgumentSchemas.split_view,
+  ),
+  operation(
     "sessions.list",
     "sessions",
     "List all project sessions, ordered by recency, and attention-worthy project sessions.",
@@ -560,6 +580,7 @@ const modelControlOperations = [
 
 const commandToLegacyName = {
   "app.state": "get_app_state",
+  "app.split": "split_view",
   "sessions.info": "get_session_status",
   "sessions.open": "open_session",
   "sessions.create": "create_session",
@@ -605,7 +626,7 @@ export class AppControlBridge {
     return listAppControlTools();
   }
 
-  getAppState(originSessionId?: string): AppControlState {
+  getAppState(source?: AgentControlSource): AppControlState {
     const sessions = this.sortedSessions();
     const state: AppControlState = {
       selection: this.host.currentSelection(),
@@ -622,7 +643,7 @@ export class AppControlBridge {
         .map((session) => this.toControlSession(session)),
       recentSessions: sessions.map((session) => this.toControlSession(session)),
     };
-    const sessionLayout = this.host.sessionLayout?.(originSessionId);
+    const sessionLayout = this.host.sessionLayout?.(source);
     if (sessionLayout) state.sessionLayout = sessionLayout;
     return state;
   }
@@ -644,7 +665,7 @@ export class AppControlBridge {
       Schema.Struct({ name: Schema.String, arguments: jsonObjectSchema }),
     )(untrustedInput);
     if (gatewayInvocation.name === "sessions.list") {
-      const state = this.getAppState(source?.sessionId);
+      const state = this.getAppState(source);
       return toStrictJson({
         ok: true,
         command: "sessions.list",
@@ -702,7 +723,28 @@ export class AppControlBridge {
       legacyName ? { name: legacyName, arguments: gatewayInvocation.arguments } : gatewayInvocation,
     );
     if (invocation.name === "get_app_state")
-      return { ok: true, name: invocation.name, state: this.getAppState(source?.sessionId) };
+      return { ok: true, name: invocation.name, state: this.getAppState(source) };
+    if (invocation.name === "split_view") {
+      if (!source)
+        return {
+          ok: false,
+          name: invocation.name,
+          error: "Cake can only split a pane for a calling conversation.",
+        };
+      const split = this.host.splitView(source, invocation.arguments.direction);
+      if (!split)
+        return {
+          ok: false,
+          name: invocation.name,
+          error: "Cake could not split that conversation pane.",
+        };
+      return {
+        ok: true,
+        name: invocation.name,
+        direction: invocation.arguments.direction,
+        ...split,
+      };
+    }
     if (invocation.name === "send_notification") {
       await this.host.showNotification({
         title: invocation.arguments.title,
@@ -1075,6 +1117,13 @@ export class AppControlBridge {
         coalesceKey: `current:${result.action}:${result.detail ?? ""}`,
       };
     }
+    if (result.name === "split_view")
+      return {
+        message: `Split this chat ${result.direction === "right" ? "to the right" : "down"}`,
+        targetSessionId: result.sessionId,
+        targetKind: result.kind,
+        coalesceKey: `split:${result.paneId}`,
+      };
     if (result.name === "open_session")
       return {
         message: `Opened “${projectTitle(result.opened.sessionId)}”`,

@@ -310,7 +310,7 @@ const migrateLegacyWindowState = Effect.fn("WindowStateStorage.migrateLegacy")(f
         },
         children: { sessions: sessionChildren },
       },
-      globalChatStore: {
+      cakeChatCollectionStore: {
         state: {
           selectedSessionId: selectedCakeChatId,
           targets: cakeChatTargets,

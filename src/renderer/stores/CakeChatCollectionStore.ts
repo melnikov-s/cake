@@ -5,6 +5,7 @@ import type { Attachment, ChatConfiguration, ModelPreset } from "../../ipc/sessi
 import type { CakeChatSummary } from "../../domain/cake-chat-data";
 import { compareSessionSummariesForSidebar } from "../../utils/session-summary-order";
 import { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
+import { SessionLayoutStore, type SessionSplitAxis } from "./SessionLayoutStore";
 import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import { CakeChatSessionStore } from "./CakeChatSessionStore";
 import { describeError } from "../error-details";
@@ -41,7 +42,7 @@ interface PendingCakeChatSession {
   messageCount: number;
 }
 
-export interface GlobalChatStoreProps {
+export interface CakeChatCollectionStoreProps {
   catalog: CakeChatCatalog;
   sessionModel(sessionId: string): Session;
   tools(): ReadonlyArray<CakeControlTool>;
@@ -53,7 +54,7 @@ export interface GlobalChatStoreProps {
 }
 
 /** Owns the Cake Chat session collection, selection, and per-session Store instances. */
-export class GlobalChatStore extends Store<GlobalChatStoreProps> {
+export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps> {
   @snapshot selectedSessionId: string | undefined;
   hydrated = false;
   error: string | undefined;
@@ -69,6 +70,11 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
   @child
   get operations(): SessionOperationCoordinatorStore {
     return createStore(SessionOperationCoordinatorStore);
+  }
+
+  @child
+  get sessionLayoutStore(): SessionLayoutStore {
+    return createStore(SessionLayoutStore);
   }
 
   get client() {
@@ -133,12 +139,22 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
     try {
       this.reconcileAuthoritativeSessions();
       this.hydrated = true;
-      const pending = this.pendingSessions.find((session) => !session.started);
-      if (pending) this.selectSession(pending.sessionId);
-      else {
-        const recent = this.summaries.find((summary) => !summary.resolved);
-        if (recent) await this.open(recent.sessionId);
-        else this.prepareNewSession();
+      const restored = this.selectedSessionId
+        ? this.summaries.find(
+            (summary) => summary.sessionId === this.selectedSessionId && !summary.resolved,
+          )
+        : undefined;
+      if (restored) {
+        if (this.isPendingSession(restored.sessionId)) this.selectSession(restored.sessionId);
+        else await this.open(restored.sessionId);
+      } else {
+        const pending = this.pendingSessions.find((session) => !session.started);
+        if (pending) this.selectSession(pending.sessionId);
+        else {
+          const recent = this.summaries.find((summary) => !summary.resolved);
+          if (recent) await this.open(recent.sessionId);
+          else this.prepareNewSession();
+        }
       }
     } catch (error) {
       if (!this.signal.aborted) this.reportError(error, "Cake Chat could not load sessions");
@@ -151,9 +167,9 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
 
   async open(sessionId?: string) {
     if (!sessionId) return;
-    const revision = ++this.selectionRevision;
     if (!this.targets.includes(sessionId)) this.targets.push(sessionId);
-    this.selectedSessionId = sessionId;
+    this.selectSession(sessionId);
+    const revision = this.selectionRevision;
     try {
       await this.client.cakeChats.open(this.target(sessionId), { signal: this.signal });
     } catch (error) {
@@ -169,6 +185,34 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
     const session = pending ?? this.prepareNewSession();
     this.selectSession(session.sessionId);
     if (prompt?.trim()) await session.submit(prompt);
+  }
+
+  focusPane(paneId: string) {
+    const sessionId = this.sessionLayoutStore.focusPane(paneId);
+    if (sessionId) this.selectSession(sessionId);
+    return sessionId;
+  }
+
+  splitFocused(axis: SessionSplitAxis) {
+    if (!this.sessionLayoutStore.canSplit) return undefined;
+    const session = this.createPendingSession();
+    const paneId = this.sessionLayoutStore.splitFocused(session.sessionId, axis);
+    if (!paneId) {
+      this.removeSession(session.sessionId);
+      return undefined;
+    }
+    this.selectSession(session.sessionId);
+    session.requestFocus();
+    return { paneId, sessionId: session.sessionId };
+  }
+
+  closePane(paneId: string) {
+    const result = this.sessionLayoutStore.closePane(paneId);
+    if (!result) return undefined;
+    for (const sessionId of result.removedSessionIds)
+      if (this.isPendingSession(sessionId)) this.removeSession(sessionId);
+    if (result.focusedSessionId) this.selectSession(result.focusedSessionId);
+    return result;
   }
 
   isPendingSession(sessionId: string) {
@@ -407,6 +451,12 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
   private prepareNewSession(sessionId: string = crypto.randomUUID(), name?: string) {
     const existing = this.pendingSessions.find((session) => !session.started);
     if (existing) return this.findSession(existing.sessionId)!;
+    const session = this.createPendingSession(sessionId, name);
+    this.selectSession(sessionId);
+    return session;
+  }
+
+  private createPendingSession(sessionId: string = crypto.randomUUID(), name?: string) {
     const now = new Date().toISOString();
     this.targets.push(sessionId);
     this.pendingSessions.push({
@@ -417,7 +467,6 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
       modifiedAt: now,
       messageCount: 0,
     });
-    this.selectSession(sessionId);
     return this.findSession(sessionId)!;
   }
 
@@ -433,9 +482,14 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
   private selectSession(sessionId: string | undefined) {
     this.selectionRevision += 1;
     this.selectedSessionId = sessionId;
+    if (sessionId) {
+      if (this.sessionLayoutStore.layout) this.sessionLayoutStore.showSession(sessionId);
+      else this.sessionLayoutStore.ensureSession(sessionId);
+    }
   }
 
   private removeSession(sessionId: string) {
+    this.sessionLayoutStore.removeSessions([sessionId]);
     const targetIndex = this.targets.indexOf(sessionId);
     if (targetIndex >= 0) this.targets.splice(targetIndex, 1);
     const pendingIndex = this.pendingSessions.findIndex(
@@ -480,7 +534,7 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
     if (index >= 0) this.pendingSessions.splice(index, 1);
   }
 
-  constructor(props: GlobalChatStore["props"]) {
+  constructor(props: CakeChatCollectionStore["props"]) {
     super(props);
     this.effect(() => {
       if (this.props.catalog.loaded) {

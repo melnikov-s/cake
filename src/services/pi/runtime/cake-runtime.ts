@@ -741,6 +741,16 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         execute: (_input, context) => api().invokeAppControl("app.state", {}, context.signal),
       },
       {
+        command: "app.split",
+        topic: "app",
+        summary: "Split the calling conversation pane and open a new chat in it.",
+        guidance: ["Splits are relative to the calling conversation's pane."],
+        inputSchema: Schema.Struct({ direction: Schema.Literals(["right", "down"]) }),
+        examples: [{ input: { direction: "right" } }],
+        result: "The new pane and conversation identity.",
+        execute: invokeAppControl("app.split"),
+      },
+      {
         command: "session.info",
         topic: "sessions",
         summary:
@@ -1053,7 +1063,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     return operations.filter(
       (operation) =>
         (operation.command !== "session.resolve" || options.currentSessionControl !== undefined) &&
-        (!["app.state", "notifications.send"].includes(operation.command) ||
+        (!["app.state", "app.split", "notifications.send"].includes(operation.command) ||
           options.currentSessionControl?.invokeAppControl !== undefined) &&
         (operation.command !== "session.create-draft" ||
           options.currentSessionControl?.createDraftSession !== undefined) &&

@@ -2,12 +2,12 @@ import { applySnapshot, createStore, toSnapshot } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
 import type { RendererClient } from "../../../../src/renderer/client/RendererClient";
 import { CakeChatCatalog } from "../../../../src/renderer/models/CakeChatCatalog";
-import { GlobalChatStore } from "../../../../src/renderer/stores/GlobalChatStore";
+import { CakeChatCollectionStore } from "../../../../src/renderer/stores/CakeChatCollectionStore";
 import { mountWithRendererClient } from "../mount-with-renderer-client";
 import { RendererModels } from "../../../../src/renderer/RendererModels";
 import { Message } from "../../../../src/renderer/models/Message";
 
-describe("GlobalChatStore", () => {
+describe("CakeChatCollectionStore", () => {
   it("uses the shared optimistic message lifecycle for the first Cake Chat message", async () => {
     let acceptPrompt!: () => void;
     const prompt = vi.fn(
@@ -19,7 +19,7 @@ describe("GlobalChatStore", () => {
     const catalog = CakeChatCatalog.create({ loaded: true, sessions: [] });
     const models = new RendererModels();
     const { root, subject: store } = mountWithRendererClient(
-      createStore(GlobalChatStore, {
+      createStore(CakeChatCollectionStore, {
         catalog,
         sessionModel: (sessionId) => models.cakeChat(sessionId),
         tools: () => [],
@@ -57,12 +57,40 @@ describe("GlobalChatStore", () => {
     models[Symbol.dispose]();
   });
 
+  it("splits Cake Chat into independently focused pending sessions", () => {
+    const catalog = CakeChatCatalog.create({ loaded: true, sessions: [] });
+    const models = new RendererModels();
+    const { root, subject: store } = mountWithRendererClient(
+      createStore(CakeChatCollectionStore, {
+        catalog,
+        sessionModel: (sessionId) => models.cakeChat(sessionId),
+        tools: () => [],
+      }),
+      {} as RendererClient,
+    );
+    const firstSessionId = store.sessionId!;
+
+    const split = store.splitFocused("x");
+
+    expect(split?.sessionId).not.toBe(firstSessionId);
+    expect(store.sessionLayoutStore.panes).toHaveLength(2);
+    expect(store.sessionLayoutStore.focusedSessionId).toBe(split?.sessionId);
+    expect(store.loadedSessions).toHaveLength(2);
+
+    store.focusPane(store.sessionLayoutStore.panes[0]!.paneId);
+    expect(store.sessionId).toBe(firstSessionId);
+
+    root[Symbol.dispose]();
+    catalog[Symbol.dispose]();
+    models[Symbol.dispose]();
+  });
+
   it("submits transcript annotations from Cake Chat", async () => {
     const prompt = vi.fn(async () => "turn-1");
     const catalog = CakeChatCatalog.create({ loaded: true, sessions: [] });
     const models = new RendererModels();
     const { root, subject: store } = mountWithRendererClient(
-      createStore(GlobalChatStore, {
+      createStore(CakeChatCollectionStore, {
         catalog,
         sessionModel: (sessionId) => models.cakeChat(sessionId),
         tools: () => [],
@@ -122,7 +150,7 @@ describe("GlobalChatStore", () => {
     const catalog = CakeChatCatalog.create({ loaded: true, sessions: [] });
     const models = new RendererModels();
     const { root, subject: store } = mountWithRendererClient(
-      createStore(GlobalChatStore, {
+      createStore(CakeChatCollectionStore, {
         catalog,
         sessionModel: (sessionId) => models.cakeChat(sessionId),
         tools: () => [],
@@ -152,7 +180,7 @@ describe("GlobalChatStore", () => {
     const catalog = CakeChatCatalog.create({ loaded: false, sessions: [] });
     const models = new RendererModels();
     const { root, subject: store } = mountWithRendererClient(
-      createStore(GlobalChatStore, {
+      createStore(CakeChatCollectionStore, {
         catalog,
         sessionModel: (sessionId) => models.cakeChat(sessionId),
         tools: () => [],

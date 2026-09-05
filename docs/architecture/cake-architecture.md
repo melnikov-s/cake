@@ -314,14 +314,16 @@ The window Store hierarchy mirrors the product surfaces:
 - `ProjectWorkbenchStore` coordinates project activation and its focused
   workflow children: `CommandPaneStore`, `SessionManagementStore`,
   `SessionContinuationStore`, `WorktreeCreationStore`, and `EmbeddedEditorStore`.
-  The root-scoped `SessionLayoutStore` owns the persisted binary split tree, divider
-  ratios, focused pane, and per-pane session navigation. Splitting is relative to the focused pane
-  and prepares an unsent Project Session in the same Working Directory. The single
-  project sidebar targets the focused pane; selecting a session already visible in
-  another pane focuses that pane rather than duplicating it. Every visible pane pins
-  its Project Session for observation. Terminal, command-pane, extension UI, and
-  embedded-editor operations target the focused pane. Embedded VS Code temporarily
-  replaces the split presentation without destroying its layout.
+  `SessionLayoutStore` owns a persisted binary split tree, divider ratios, focused pane,
+  and per-pane session navigation. Root owns the Project Session layout, while the Cake Chat
+  collection owns an independent instance for its meta-sessions. Splitting is relative to the
+  focused pane and prepares an unsent conversation: a Project Session in the same Working
+  Directory or a Cake Chat Session with Cake-wide controls. The single sidebar targets the
+  focused pane; selecting a session already visible in another pane focuses that pane rather than
+  duplicating it. Every visible pane pins its conversation for observation. Terminal,
+  command-pane, extension UI, and embedded-editor operations target the focused pane where those
+  capabilities apply. Embedded VS Code temporarily replaces the Project Session split
+  presentation without destroying its layout.
   `WorktreeCreationStore` owns both staged-session disposition and worktree
   selection and Cake Chat's coordinated create-worktree-then-create-named-session workflow.
   Fork and handoff are continuation workflows rather than permanent Working Directory bindings:
@@ -391,13 +393,15 @@ The window Store hierarchy mirrors the product surfaces:
   message is the only operation that forces an arbitrary scroll position to the
   bottom. Transcript follow state does not belong in a Store or Model. These
   rules apply identically to every surface using `Chat`.
-- The Cake Chat collection owns one keyed `CakeChatSessionStore` per loaded
+- The Cake Chat collection owns its `SessionLayoutStore` and one keyed
+  `CakeChatSessionStore` per loaded
   meta-session. Each session retains its own draft, attachments, configuration,
   transcript projection, and streaming state while another Cake Chat session is
   selected. Like a new project chat, a new Cake Chat begins as one renderer-owned
   pending session and creates its Pi runtime on the first prompt; its identity and
   draft may be restored from window state without implying that a transcript file
-  exists. Persisted Cake Chat sessions keep live runtimes as they are opened. The
+  exists. Each visible Cake Chat pane may hold its own pending conversation and retains an
+  independent composer. Persisted Cake Chat sessions keep live runtimes as they are opened. The
   window's renderer Model owner retains each projected `Session` independently of
   Store or React lifetimes and disposes Models only after Model synchronization has
   stopped. Project and Cake Chat session Stores receive those Models rather than
@@ -407,7 +411,7 @@ The window Store hierarchy mirrors the product surfaces:
   existence.
 
 UI and application controls invoke semantic `RootStore` intents such as
-`openSession`, `createSession`, or `showGlobalChat`. The root performs any
+`openSession`, `createSession`, or `showCakeChat`. The root performs any
 required shell transition and delegates the workflow to its cohesive owner, so
 callers do not assemble cross-Store navigation recipes.
 
@@ -420,6 +424,7 @@ flowchart TD
   Root --> Registry["SessionRegistryStore"]
   Root --> Workbench["ProjectWorkbenchStore"]
   Root --> CakeChat["Cake Chat collection Store"]
+  CakeChat --> CakeLayout["SessionLayoutStore"]
   CakeChat --> CakeSession["CakeChatSessionStore per loaded meta-session"]
   CakeSession --> MetaChat["ChatStore"]
   Root --> Settings["SettingsStore"]

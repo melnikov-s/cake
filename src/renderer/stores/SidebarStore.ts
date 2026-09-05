@@ -3,7 +3,7 @@ import { formatRelativeSessionTime } from "../../utils/format-relative-session-t
 import type { ProjectCatalogStore } from "./ProjectCatalogStore";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
-import type { GlobalChatStore } from "./GlobalChatStore";
+import type { CakeChatCollectionStore } from "./CakeChatCollectionStore";
 import { RendererClientContext } from "../client/RendererClientContext";
 import type { ProjectSessionCatalogQuery } from "../../domain/project-session-data";
 import type { CakeChatCatalogQuery } from "../../domain/cake-chat-data";
@@ -13,7 +13,7 @@ export interface SidebarStoreProps {
   projects: ProjectCatalogStore;
   catalog: SessionCatalogStore;
   sessions: SessionRegistryStore;
-  cakeChat(): GlobalChatStore;
+  cakeChat(): CakeChatCollectionStore;
   setSessionResolved(sessionId: string, resolved: boolean): Promise<void>;
   setCakeChatSessionResolved(sessionId: string, resolved: boolean): Promise<void>;
   deleteSession(sessionId: string): Promise<void>;

@@ -1,5 +1,5 @@
 import { observer } from "r-state-tree/react";
-import type { GlobalChatStore } from "../stores/GlobalChatStore";
+import type { CakeChatCollectionStore } from "../stores/CakeChatCollectionStore";
 import type { AppShellStore } from "../stores/AppShellStore";
 import type { SidebarStore } from "../stores/SidebarStore";
 import { cn } from "../lib/utils";
@@ -10,7 +10,7 @@ import { SidebarSessionItem } from "./sidebar-session-item";
 
 export interface SidebarCakeChatGroupProps {
   store: SidebarStore;
-  cakeChat: GlobalChatStore;
+  cakeChat: CakeChatCollectionStore;
   shell: AppShellStore;
   resolved: boolean;
   onOpenCakeChat(sessionId?: string): void;

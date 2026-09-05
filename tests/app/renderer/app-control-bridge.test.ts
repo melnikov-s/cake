@@ -41,6 +41,7 @@ function createHost(overrides: Partial<AppControlHost> = {}): AppControlHost {
     setSessionsResolved: async () => 0,
     setCakeChatSessionsResolved: async () => 0,
     setSessionModel: async () => undefined,
+    splitView: () => undefined,
     showNotification: async () => undefined,
     showAgentAction: () => undefined,
     ...overrides,
@@ -55,15 +56,16 @@ describe("AppControlBridge", () => {
     };
 
     expect(() => Schema.decodeUnknownSync(CakeChatTarget)(target)).not.toThrow();
+    expect(target.tools.some((tool) => tool.command === "app.split")).toBe(true);
     expect(target.tools.some((tool) => tool.command === "sessions.create-draft")).toBe(true);
     expect(target.tools.some((tool) => tool.command === "notifications.send")).toBe(true);
     expect(target.tools.every((tool) => !("guidance" in tool))).toBe(true);
   });
 
   it("describes the live pane layout relative to the calling project session", async () => {
-    const sessionLayout = vi.fn((originSessionId?: string) => ({
+    const sessionLayout = vi.fn((source?: { sessionId: string }) => ({
       focusedSessionId: "session-b",
-      originSessionId,
+      originSessionId: source?.sessionId,
       panes: [
         {
           paneId: "pane-a",
@@ -106,7 +108,33 @@ describe("AppControlBridge", () => {
         },
       },
     });
-    expect(sessionLayout).toHaveBeenCalledWith("session-a");
+    expect(sessionLayout).toHaveBeenCalledWith({
+      kind: "project-session",
+      sessionId: "session-a",
+      title: "Origin",
+    });
+  });
+
+  it("splits the calling Cake Chat pane through the application control", async () => {
+    const splitView = vi.fn(() => ({
+      kind: "cake-chat" as const,
+      paneId: "pane-new",
+      sessionId: "chat-new",
+    }));
+    const bridge = new AppControlBridge(createHost({ splitView }));
+    const source = { kind: "cake-chat" as const, sessionId: "chat-a", title: "Cake Chat" };
+
+    await expect(
+      bridge.invoke({ name: "app.split", arguments: { direction: "right" } }, source),
+    ).resolves.toMatchObject({
+      ok: true,
+      name: "split_view",
+      direction: "right",
+      kind: "cake-chat",
+      paneId: "pane-new",
+      sessionId: "chat-new",
+    });
+    expect(splitView).toHaveBeenCalledWith(source, "right");
   });
 
   it("reports the complete current Cake selection", async () => {

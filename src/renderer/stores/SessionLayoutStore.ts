@@ -36,7 +36,7 @@ export interface SessionPanePlacement extends SessionPane {
   readonly height: number;
 }
 
-/** Owns the persisted Project Session split tree, pane focus, and per-pane navigation. */
+/** Owns one persisted conversation split tree, pane focus, and per-pane navigation. */
 export class SessionLayoutStore extends Store {
   @snapshot layout: SessionLayoutNode | undefined;
   @snapshot focusedPaneId: string | undefined;

@@ -12,7 +12,7 @@ import { describeError } from "../error-details";
 import { RendererClientContext } from "../client/RendererClientContext";
 import { ChatConfigurationStore } from "./ChatConfigurationStore";
 import { ChatStore } from "./ChatStore";
-import type { GlobalChatStore } from "./GlobalChatStore";
+import type { CakeChatCollectionStore } from "./CakeChatCollectionStore";
 import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import { OptimisticUserMessagesStore } from "./OptimisticUserMessagesStore";
@@ -21,7 +21,7 @@ import { shouldRenderMarkdown } from "../../utils/markdown";
 export interface CakeChatSessionStoreProps {
   sessionId: string;
   model: Session;
-  collection: GlobalChatStore;
+  collection: CakeChatCollectionStore;
   operations: SessionOperationCoordinatorStore;
   modelPresets(): readonly ModelPreset[];
   openModelPresetSettings(): void;
@@ -36,6 +36,7 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
   errorDetails: string | undefined;
   editingEntryId: string | undefined;
   editingDraftSession = false;
+  focusRequestRevision = 0;
   constructor(props: CakeChatSessionStore["props"]) {
     super(props);
     this.effect(() => () => {
@@ -107,6 +108,10 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
     return createStore(OptimisticUserMessagesStore, {
       canonicalParts: () => this.model.uiParts,
     });
+  }
+
+  requestFocus() {
+    this.focusRequestRevision += 1;
   }
 
   async submit(text: string, renderUserMessageAsMarkdown = false) {
@@ -426,6 +431,7 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       commands: () => this.model.commands,
       placeholder: () => "Ask Cake to find or control a task…",
       inputLabel: () => "Message Cake Chat",
+      focusRequestRevision: () => this.focusRequestRevision,
       canSubmit: (draft) =>
         Boolean(draft.trim() || this.attachments.length > 0 || this.annotations.length > 0),
       submit: (draft, options) => this.submit(draft, options?.renderUserMessageAsMarkdown ?? false),

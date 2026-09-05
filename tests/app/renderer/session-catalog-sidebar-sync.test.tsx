@@ -46,7 +46,7 @@ function sidebar(root: RootStore) {
       store={root.sidebarStore}
       projects={root.projectCatalogStore}
       chat={root.projectWorkbenchStore}
-      cakeChat={root.globalChatStore}
+      cakeChat={root.cakeChatCollectionStore}
       shell={root.appShellStore}
       projectSettings={root.projectSettingsStore}
       onOpenSettings={() => undefined}

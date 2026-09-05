@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { ProjectCatalogStore } from "../../../../src/renderer/stores/ProjectCatalogStore";
 import type { SessionCatalogStore } from "../../../../src/renderer/stores/SessionCatalogStore";
 import type { SessionRegistryStore } from "../../../../src/renderer/stores/SessionRegistryStore";
-import type { GlobalChatStore } from "../../../../src/renderer/stores/GlobalChatStore";
+import type { CakeChatCollectionStore } from "../../../../src/renderer/stores/CakeChatCollectionStore";
 import { SidebarStore } from "../../../../src/renderer/stores/SidebarStore";
 import type { EmbeddedEditorSettingsStore } from "../../../../src/renderer/stores/EmbeddedEditorSettingsStore";
 
@@ -17,7 +17,7 @@ describe("SidebarStore catalog demand", () => {
         projects: { orderedProjectPaths: [] } as unknown as ProjectCatalogStore,
         catalog: {} as SessionCatalogStore,
         sessions: {} as SessionRegistryStore,
-        cakeChat: () => ({}) as GlobalChatStore,
+        cakeChat: () => ({}) as CakeChatCollectionStore,
         setSessionResolved: async () => undefined,
         setCakeChatSessionResolved: async () => undefined,
         deleteSession: async () => undefined,
@@ -45,7 +45,7 @@ describe("SidebarStore catalog demand", () => {
         projects: { orderedProjectPaths: [] } as unknown as ProjectCatalogStore,
         catalog: {} as SessionCatalogStore,
         sessions: {} as SessionRegistryStore,
-        cakeChat: () => ({}) as GlobalChatStore,
+        cakeChat: () => ({}) as CakeChatCollectionStore,
         setSessionResolved: async () => undefined,
         setCakeChatSessionResolved: async () => undefined,
         deleteSession: async () => undefined,
@@ -80,7 +80,7 @@ describe("SidebarStore catalog demand", () => {
         projects: { orderedProjectPaths: [] } as unknown as ProjectCatalogStore,
         catalog: {} as SessionCatalogStore,
         sessions: {} as SessionRegistryStore,
-        cakeChat: () => ({}) as GlobalChatStore,
+        cakeChat: () => ({}) as CakeChatCollectionStore,
         setSessionResolved: async () => undefined,
         setCakeChatSessionResolved: async () => undefined,
         deleteSession: async () => undefined,
@@ -105,7 +105,7 @@ describe("SidebarStore catalog demand", () => {
         } as ProjectCatalogStore,
         catalog: {} as SessionCatalogStore,
         sessions: {} as SessionRegistryStore,
-        cakeChat: () => ({}) as GlobalChatStore,
+        cakeChat: () => ({}) as CakeChatCollectionStore,
         setSessionResolved: async () => undefined,
         setCakeChatSessionResolved: async () => undefined,
         deleteSession: async () => undefined,

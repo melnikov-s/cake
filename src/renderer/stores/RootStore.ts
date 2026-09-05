@@ -14,7 +14,7 @@ import { ReviewsStore } from "./ReviewsStore";
 import { SettingsStore } from "./SettingsStore";
 import { ExtensionUiStore } from "./ExtensionUiStore";
 import { AppControlBridge, type AgentControlSource } from "../app-control-bridge";
-import { GlobalChatStore } from "./GlobalChatStore";
+import { CakeChatCollectionStore } from "./CakeChatCollectionStore";
 import { AppShellStore } from "./AppShellStore";
 import { InlineWidgetStore } from "./InlineWidgetStore";
 import { SessionCatalogStore } from "./SessionCatalogStore";
@@ -71,9 +71,9 @@ export class RootStore extends Store<{
         : undefined;
     }
     if (active?.kind === "cake-chat") {
-      const session = this.globalChatStore.findSession(active.sessionId);
+      const session = this.cakeChatCollectionStore.findSession(active.sessionId);
       return session
-        ? { kind: "cake-chat" as const, ...this.globalChatStore.target(active.sessionId) }
+        ? { kind: "cake-chat" as const, ...this.cakeChatCollectionStore.target(active.sessionId) }
         : undefined;
     }
     return undefined;
@@ -153,7 +153,7 @@ export class RootStore extends Store<{
       await this.openSession(sessionId);
       return;
     }
-    if (this.globalChatStore.summaries.some((session) => session.sessionId === sessionId)) {
+    if (this.cakeChatCollectionStore.summaries.some((session) => session.sessionId === sessionId)) {
       await this.openCakeChat(sessionId);
       return;
     }
@@ -204,8 +204,8 @@ export class RootStore extends Store<{
       kind: "cake-chat",
       sessionId,
       title:
-        this.globalChatStore.summaries.find((session) => session.sessionId === sessionId)?.title ??
-        "Cake Chat",
+        this.cakeChatCollectionStore.summaries.find((session) => session.sessionId === sessionId)
+          ?.title ?? "Cake Chat",
     };
   }
 
@@ -320,6 +320,13 @@ export class RootStore extends Store<{
   }
 
   focusAdjacentSessionPane(direction: "left" | "right" | "above" | "below") {
+    if (this.appShellStore.selection.kind === "cake-chat") {
+      const layout = this.cakeChatCollectionStore.sessionLayoutStore;
+      const sessionId = layout.focusedSessionId;
+      const target = sessionId ? layout.neighbors(sessionId)[direction][0] : undefined;
+      if (target) this.focusCakeChatPane(target.paneId);
+      return;
+    }
     const sessionId = this.sessionLayoutStore.focusedSessionId;
     const target = sessionId
       ? this.sessionLayoutStore.neighbors(sessionId)[direction][0]
@@ -332,13 +339,31 @@ export class RootStore extends Store<{
     if (!source || !this.sessionLayoutStore.canSplit) return;
     const sessionId = crypto.randomUUID();
     const session = this.sessionRegistry.prepareStagedSession(source.workspacePath, sessionId);
-    if (!this.sessionLayoutStore.splitFocused(sessionId, axis)) {
+    const paneId = this.sessionLayoutStore.splitFocused(sessionId, axis);
+    if (!paneId) {
       this.sessionRegistry.removeSession(sessionId);
       return;
     }
     this.selectProjectSessionForShell(sessionId);
     this.projectWorkbenchStore.showLoadedSession(sessionId);
     void session.stagedCommandStore.load(source.workspacePath);
+    return { paneId, sessionId };
+  }
+
+  focusCakeChatPane(paneId: string) {
+    const sessionId = this.cakeChatCollectionStore.focusPane(paneId);
+    if (sessionId) this.appShellStore.selectCakeChat(sessionId);
+  }
+
+  splitFocusedCakeChat(axis: SessionSplitAxis) {
+    const result = this.cakeChatCollectionStore.splitFocused(axis);
+    if (result) this.appShellStore.selectCakeChat(result.sessionId);
+    return result;
+  }
+
+  closeCakeChatPane(paneId: string) {
+    const result = this.cakeChatCollectionStore.closePane(paneId);
+    if (result?.focusedSessionId) this.appShellStore.selectCakeChat(result.focusedSessionId);
   }
 
   closeSessionPane(paneId: string) {
@@ -386,22 +411,22 @@ export class RootStore extends Store<{
     if (this.projectWorkbenchStore.commandPaneStore.pane)
       this.projectWorkbenchStore.commandPaneStore.close();
   }
-  showGlobalChat(sessionId = this.globalChatStore.sessionId) {
+  showCakeChat(sessionId = this.cakeChatCollectionStore.sessionId) {
     this.projectWorkbenchStore.dismissSecondarySurfaces();
     this.appShellStore.selectCakeChat(sessionId);
   }
   async openCakeChat(sessionId?: string) {
     this.projectWorkbenchStore.dismissSecondarySurfaces();
-    if (sessionId && this.globalChatStore.isSessionResolved(sessionId))
+    if (sessionId && this.cakeChatCollectionStore.isSessionResolved(sessionId))
       this.appShellStore.previewResolvedCakeChat(sessionId);
     else this.appShellStore.selectCakeChat(sessionId);
-    if (sessionId) await this.globalChatStore.openSession(sessionId);
+    if (sessionId) await this.cakeChatCollectionStore.openSession(sessionId);
   }
   async startCakeChat(prompt?: string) {
     this.projectWorkbenchStore.dismissSecondarySurfaces();
     this.appShellStore.selectCakeChat();
-    await this.globalChatStore.startNewSession(prompt);
-    this.appShellStore.selectCakeChat(this.globalChatStore.sessionId);
+    await this.cakeChatCollectionStore.startNewSession(prompt);
+    this.appShellStore.selectCakeChat(this.cakeChatCollectionStore.sessionId);
   }
   showTranscriptSelectionContextMenu(input: { canChat: boolean; canAnnotate: boolean }) {
     return this.client.electron.showTranscriptSelectionContextMenu(input, { signal: this.signal });
@@ -466,17 +491,18 @@ export class RootStore extends Store<{
 
   private async deleteCakeChatSession(sessionId: string) {
     const wasSelected = this.appShellStore.activeConversation?.sessionId === sessionId;
-    await this.globalChatStore.deleteSession(sessionId);
-    if (this.globalChatStore.summaries.some((session) => session.sessionId === sessionId)) return;
+    await this.cakeChatCollectionStore.deleteSession(sessionId);
+    if (this.cakeChatCollectionStore.summaries.some((session) => session.sessionId === sessionId))
+      return;
     await this.forgetResolvedSessions([sessionId]);
     if (wasSelected && this.appShellStore.activeConversation?.sessionId === sessionId)
-      this.showGlobalChat();
+      this.showCakeChat();
   }
 
   private async resolveCakeChatSession(sessionId: string, resolved: boolean) {
-    await this.globalChatStore.resolveSession(sessionId, resolved);
+    await this.cakeChatCollectionStore.resolveSession(sessionId, resolved);
     if (!resolved) return;
-    if (this.globalChatStore.isSessionResolved(sessionId)) {
+    if (this.cakeChatCollectionStore.isSessionResolved(sessionId)) {
       await this.forgetResolvedSessions([sessionId]);
       return;
     }
@@ -484,7 +510,7 @@ export class RootStore extends Store<{
       this.appShellStore.activeConversation?.kind === "cake-chat" &&
       this.appShellStore.activeConversation.sessionId === sessionId
     ) {
-      this.appShellStore.selectCakeChat(this.globalChatStore.sessionId);
+      this.appShellStore.selectCakeChat(this.cakeChatCollectionStore.sessionId);
     }
   }
 
@@ -585,7 +611,7 @@ export class RootStore extends Store<{
         : undefined;
     }
     if (selection.kind === "cake-chat" && selection.sessionId) {
-      if (this.globalChatStore.isSessionResolved(selection.sessionId)) return undefined;
+      if (this.cakeChatCollectionStore.isSessionResolved(selection.sessionId)) return undefined;
       return { kind: "cake-chat", sessionId: selection.sessionId };
     }
     return undefined;
@@ -659,7 +685,7 @@ export class RootStore extends Store<{
       projects: this.projectCatalogStore,
       catalog: this.sessionCatalogStore,
       sessions: this.sessionRegistry,
-      cakeChat: () => this.globalChatStore,
+      cakeChat: () => this.cakeChatCollectionStore,
       setSessionResolved: (sessionId, resolved) => this.resolveProjectSession(sessionId, resolved),
       setCakeChatSessionResolved: (sessionId, resolved) =>
         this.resolveCakeChatSession(sessionId, resolved),
@@ -689,7 +715,7 @@ export class RootStore extends Store<{
           return session?.sessionId === active.sessionId ? session : undefined;
         }
         return active?.kind === "cake-chat"
-          ? this.globalChatStore.findSession(active.sessionId)
+          ? this.cakeChatCollectionStore.findSession(active.sessionId)
           : undefined;
       },
       workbenchError: () => this.projectWorkbenchStore.error,
@@ -747,8 +773,8 @@ export class RootStore extends Store<{
   }
 
   @child
-  get globalChatStore(): GlobalChatStore {
-    return createStore(GlobalChatStore, {
+  get cakeChatCollectionStore(): CakeChatCollectionStore {
+    return createStore(CakeChatCollectionStore, {
       catalog: this.cakeChatCatalogModel,
       sessionModel: (sessionId) => this.props.models.cakeChat(sessionId),
       tools: () => this.appControl.listTools(),
@@ -796,7 +822,7 @@ export class RootStore extends Store<{
         ),
     );
     this.effect(() => {
-      for (const session of this.globalChatStore.loadedSessions)
+      for (const session of this.cakeChatCollectionStore.loadedSessions)
         for (const request of session.model.controlRequests)
           if (!this.respondedCakeChatControlIds.has(request.controlRequestId)) {
             this.respondedCakeChatControlIds.add(request.controlRequestId);
@@ -827,15 +853,15 @@ export class RootStore extends Store<{
         if (selection.kind === "cake-chat") {
           if (
             !selection.sessionId ||
-            (this.globalChatStore.isPendingSession(selection.sessionId) &&
-              !this.globalChatStore.isDraftSession(selection.sessionId))
+            (this.cakeChatCollectionStore.isPendingSession(selection.sessionId) &&
+              !this.cakeChatCollectionStore.isDraftSession(selection.sessionId))
           )
             return { kind: "new-cake-chat" as const };
           return {
             kind: "cake-chat" as const,
             sessionId: selection.sessionId,
             title:
-              this.globalChatStore.summaries.find(
+              this.cakeChatCollectionStore.summaries.find(
                 (session) => session.sessionId === selection.sessionId,
               )?.title ?? "Cake Chat",
           };
@@ -844,23 +870,25 @@ export class RootStore extends Store<{
           return { kind: "settings" as const, page: this.settingsStore.activePage };
         return { kind: "workbench" as const };
       },
-      sessionLayout: (originSessionId) => {
+      sessionLayout: (source) => {
+        const layout =
+          source?.kind === "cake-chat"
+            ? this.cakeChatCollectionStore.sessionLayoutStore
+            : this.sessionLayoutStore;
         const relativeSessionId =
-          originSessionId && this.sessionLayoutStore.hasSession(originSessionId)
-            ? originSessionId
-            : this.sessionLayoutStore.focusedSessionId;
+          source?.sessionId && layout.hasSession(source.sessionId)
+            ? source.sessionId
+            : layout.focusedSessionId;
         return {
-          focusedSessionId: this.sessionLayoutStore.focusedSessionId,
+          focusedSessionId: layout.focusedSessionId,
           ...(relativeSessionId ? { originSessionId: relativeSessionId } : null),
-          panes: this.sessionLayoutStore.panePlacements.map((pane) => ({ ...pane })),
-          ...(relativeSessionId
-            ? { neighbors: this.sessionLayoutStore.neighbors(relativeSessionId) }
-            : null),
+          panes: layout.panePlacements.map((pane) => ({ ...pane })),
+          ...(relativeSessionId ? { neighbors: layout.neighbors(relativeSessionId) } : null),
         };
       },
       projects: () => this.projectCatalogStore.projects,
       sessions: () => this.sessionCatalogStore.sessions,
-      cakeChatSessions: () => this.globalChatStore.summaries,
+      cakeChatSessions: () => this.cakeChatCollectionStore.summaries,
       sessionActivity: (sessionId) => this.sidebarStore.sessionActivity(sessionId),
       openSession: (sessionId, messageId) => this.openSession(sessionId, messageId),
       createSession: (input) => this.createPromptedSession(input),
@@ -916,7 +944,7 @@ export class RootStore extends Store<{
         return count;
       },
       setCakeChatSessionsResolved: async (sessionIds, resolved) => {
-        const count = await this.globalChatStore.resolveSessions(sessionIds, resolved);
+        const count = await this.cakeChatCollectionStore.resolveSessions(sessionIds, resolved);
         if (resolved) await this.forgetResolvedSessions(sessionIds);
         return count;
       },
@@ -927,6 +955,23 @@ export class RootStore extends Store<{
             { signal: this.signal },
           ),
         ),
+      splitView: (source, direction) => {
+        const axis = direction === "right" ? "x" : "y";
+        if (source.kind === "cake-chat") {
+          const pane = this.cakeChatCollectionStore.sessionLayoutStore.paneForSession(
+            source.sessionId,
+          );
+          if (!pane) return undefined;
+          this.focusCakeChatPane(pane.paneId);
+          const split = this.splitFocusedCakeChat(axis);
+          return split ? { kind: source.kind, ...split } : undefined;
+        }
+        const pane = this.sessionLayoutStore.paneForSession(source.sessionId);
+        if (!pane) return undefined;
+        this.focusSessionPane(pane.paneId);
+        const split = this.splitFocusedSession(axis);
+        return split ? { kind: source.kind, ...split } : undefined;
+      },
       showNotification: (input) => this.notificationStore.enqueue(input),
       showAgentAction: ({ source, message, targetSessionId, targetKind, coalesceKey }) => {
         const action =
@@ -948,7 +993,7 @@ export class RootStore extends Store<{
       },
     });
     this.effect(() => {
-      untracked(() => void this.globalChatStore.initialize());
+      untracked(() => void this.cakeChatCollectionStore.initialize());
     });
   }
 
@@ -966,7 +1011,7 @@ export class RootStore extends Store<{
       });
     } catch (error) {
       if (!this.signal.aborted)
-        this.globalChatStore.reportError(
+        this.cakeChatCollectionStore.reportError(
           error,
           `Cake Chat control response: ${request.invocation.name}`,
         );

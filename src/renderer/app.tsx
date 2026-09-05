@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
-import { createPortal } from "react-dom";
 import { observer, StoreProvider, useStore } from "r-state-tree/react";
 import {
   Confirmation,
@@ -63,11 +62,13 @@ export const App = observer(function App() {
   const terminal = root.terminalStore;
   const surface = shell.surface;
   const projectSessionVisible = surface === "workbench" && Boolean(session);
-  const globalChat = surface === "global-chat" ? root.globalChatStore : undefined;
+  const cakeChatCollection = surface === "cake-chat" ? root.cakeChatCollectionStore : undefined;
   const cakeChatSession =
-    globalChat && shell.selection.kind === "cake-chat" && shell.selection.sessionId
-      ? globalChat.findSession(shell.selection.sessionId)
+    cakeChatCollection && shell.selection.kind === "cake-chat" && shell.selection.sessionId
+      ? cakeChatCollection.findSession(shell.selection.sessionId)
       : undefined;
+  const conversationPaneVisible =
+    projectSessionVisible || Boolean(cakeChatCollection && cakeChatSession);
   const selectedProjectSessionId =
     shell.selection.kind === "project-session" ? shell.selection.sessionId : undefined;
   const workbenchError = store.contextError(session?.sessionId ?? selectedProjectSessionId);
@@ -94,7 +95,6 @@ export const App = observer(function App() {
   const sidebarWidth = sidebar.width;
   const [commandPaneWidth, setCommandPaneWidth] = useState(420);
   const [resizingPanel, setResizingPanel] = useState(false);
-  const [sessionHeaderHost, setSessionHeaderHost] = useState<HTMLDivElement | null>(null);
   const sidebarMax = Math.max(
     240,
     window.innerWidth - (store.commandPaneStore.pane ? commandPaneWidth : 0) - 360,
@@ -220,20 +220,82 @@ export const App = observer(function App() {
     },
   });
   const projectTranscriptBehavior = session ? projectTranscriptBehaviorFor(session) : undefined;
-  const cakeChatTranscriptBehavior =
-    globalChat && cakeChatSession
-      ? {
-          onHandoff: (entryId: string) => {
-            void globalChat.handoff(cakeChatSession.sessionId, entryId);
-          },
-        }
-      : undefined;
+  const cakeChatTranscriptBehaviorFor = (paneSession: NonNullable<typeof cakeChatSession>) => ({
+    onHandoff: (entryId: string) => {
+      const pane = cakeChatCollection?.sessionLayoutStore.paneForSession(paneSession.sessionId);
+      if (pane) root.focusCakeChatPane(pane.paneId);
+      void cakeChatCollection?.handoff(paneSession.sessionId, entryId);
+    },
+  });
+  const renderCakeChatPaneHeader = (pane: SessionPaneNode) => {
+    const sessionId = pane.history[pane.historyCursor];
+    const paneSession = sessionId ? cakeChatCollection?.findSession(sessionId) : undefined;
+    if (!paneSession || !cakeChatCollection) return null;
+    const firstPane = cakeChatCollection.sessionLayoutStore.panes[0]?.paneId === pane.paneId;
+    return (
+      <>
+        {firstPane && (
+          <IconButton
+            className={cn(
+              "absolute left-[84px] top-[9px] z-20 size-7 place-items-center rounded-lg bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground",
+              sidebarCollapsed ? "grid" : "hidden max-[620px]:grid",
+            )}
+            data-slot="header-sidebar-toggle"
+            tooltip="Toggle sidebar"
+            onClick={toggleSidebar}
+          >
+            <SidebarIcon />
+          </IconButton>
+        )}
+        <WorkLogControls store={paneSession.chatStore} />
+        <IconButton
+          tooltip={`Terminal (${terminalToggleAcceleratorHint})`}
+          disabled={!terminal.available}
+          aria-pressed={paneSession.sessionId === cakeChatCollection.sessionId && terminal.open}
+          onClick={() => {
+            root.focusCakeChatPane(pane.paneId);
+            void terminal.toggle();
+          }}
+        >
+          <TerminalIcon />
+        </IconButton>
+      </>
+    );
+  };
+  const renderCakeChatPane = (pane: SessionPaneNode) => {
+    const sessionId = pane.history[pane.historyCursor];
+    const paneSession = sessionId ? cakeChatCollection?.findSession(sessionId) : undefined;
+    if (!paneSession) return <LoadingState label="Opening Cake Chat" />;
+    return (
+      <StoreProvider key={pane.paneId} store={paneSession}>
+        <Chat
+          store={paneSession.chatStore}
+          transcriptBehavior={cakeChatTranscriptBehaviorFor(paneSession)}
+          empty={
+            <div className="grid min-h-[calc(100vh-330px)] place-items-center content-center p-10 text-center">
+              <span className="grid size-14 rotate-3 place-items-center rounded-bl-[14px] rounded-br-[20px] rounded-tl-[20px] rounded-tr-[14px] border border-border bg-card/75 shadow-[0_20px_70px_-30px_hsl(var(--shadow)/0.5)]">
+                <span className="grid size-[27px] select-none place-items-center rounded-bl-[6px] rounded-br-[9px] rounded-tl-[9px] rounded-tr-[6px] bg-foreground text-sm font-black tracking-tighter text-background -rotate-2">
+                  C
+                </span>
+              </span>
+              <h1 className="mt-5 font-display text-2xl font-semibold tracking-tight">
+                What can I help you find or do?
+              </h1>
+              <p className="mt-3 max-w-[470px] text-sm leading-relaxed text-muted-foreground">
+                Ask about your tasks, open one, or delegate work to it.
+              </p>
+            </div>
+          }
+        />
+      </StoreProvider>
+    );
+  };
   const projectSidebar = (
     <Sidebar
       store={sidebar}
       projects={projects}
       chat={store}
-      cakeChat={root.globalChatStore}
+      cakeChat={root.cakeChatCollectionStore}
       shell={shell}
       projectSettings={root.projectSettingsStore}
       onToggle={toggleSidebar}
@@ -493,7 +555,7 @@ export const App = observer(function App() {
         data-slot="workspace"
         className={cn(
           "relative col-start-2 grid h-full min-h-0 min-w-0 overflow-hidden [contain:inline-size]",
-          projectSessionVisible
+          conversationPaneVisible
             ? "grid-rows-[minmax(0,1fr)_auto]"
             : "grid-rows-[52px_minmax(0,1fr)_auto]",
         )}
@@ -518,7 +580,7 @@ export const App = observer(function App() {
             <SettingsIcon />
           </IconButton>
         )}
-        {!projectSessionVisible && (
+        {!conversationPaneVisible && (
           <header
             data-slot="workspace-header"
             className={cn(
@@ -555,17 +617,13 @@ export const App = observer(function App() {
               <strong className="block min-w-0 max-w-full truncate text-[13px] font-semibold">
                 {surface === "settings"
                   ? "Settings"
-                  : surface === "global-chat"
+                  : surface === "cake-chat"
                     ? "Cake Chat"
                     : (extensionUi.title ??
                       (session ? `[${store.projectName}] ${store.sessionTitle}` : "Cake"))}
               </strong>
             </div>
             <div className="flex min-w-0 shrink-0 items-center gap-1.5 [app-region:no-drag]">
-              <div
-                className="flex min-w-0 shrink-0 items-center gap-1.5"
-                ref={setSessionHeaderHost}
-              />
               <IconButton
                 tooltip={`Terminal (${terminalToggleAcceleratorHint})`}
                 disabled={!terminal.available}
@@ -581,36 +639,25 @@ export const App = observer(function App() {
           <div className="h-full min-h-0 w-full overflow-hidden">
             <SettingsPage settings={settings} />
           </div>
-        ) : globalChat ? (
+        ) : cakeChatCollection ? (
           cakeChatSession ? (
-            <div className="grid h-full min-h-0 min-w-0">
-              {sessionHeaderHost &&
-                createPortal(
-                  <div className="flex shrink-0 items-center gap-1">
-                    <WorkLogControls store={cakeChatSession.chatStore} />
-                  </div>,
-                  sessionHeaderHost,
-                )}
-              <Chat
-                store={cakeChatSession.chatStore}
-                transcriptBehavior={cakeChatTranscriptBehavior}
-                empty={
-                  <div className="grid min-h-[calc(100vh-330px)] place-items-center content-center text-center p-10">
-                    <span className="grid size-14 rotate-3 place-items-center rounded-bl-[14px] rounded-br-[20px] rounded-tl-[20px] rounded-tr-[14px] border border-border bg-card/75 shadow-[0_20px_70px_-30px_hsl(var(--shadow)/0.5)]">
-                      <span className="grid size-[27px] select-none place-items-center rounded-bl-[6px] rounded-br-[9px] rounded-tl-[9px] rounded-tr-[6px] bg-foreground text-sm font-black tracking-tighter text-background -rotate-2">
-                        C
-                      </span>
-                    </span>
-                    <h1 className="mt-5 font-display text-2xl font-semibold tracking-tight">
-                      What can I help you find or do?
-                    </h1>
-                    <p className="mt-3 max-w-[470px] text-sm leading-relaxed text-muted-foreground">
-                      Ask about your tasks, open one, or delegate work to it.
-                    </p>
-                  </div>
-                }
-              />
-            </div>
+            <SessionSplitLayout
+              store={cakeChatCollection.sessionLayoutStore}
+              title={(sessionId) =>
+                cakeChatCollection.summaries.find((summary) => summary.sessionId === sessionId)
+                  ?.title ?? "New chat"
+              }
+              headerClassName={(pane) =>
+                cakeChatCollection.sessionLayoutStore.panes[0]?.paneId === pane.paneId
+                  ? cn("max-[620px]:pl-[84px]", sidebarCollapsed && "pl-[124px]")
+                  : undefined
+              }
+              renderHeader={renderCakeChatPaneHeader}
+              renderPane={renderCakeChatPane}
+              onFocus={(paneId) => root.focusCakeChatPane(paneId)}
+              onSplit={(axis) => root.splitFocusedCakeChat(axis)}
+              onClose={(paneId) => root.closeCakeChatPane(paneId)}
+            />
           ) : (
             <div className="flex h-screen flex-col items-center justify-center gap-3.5 bg-background text-muted-foreground">
               <span className="grid size-[27px] select-none place-items-center rounded-bl-[6px] rounded-br-[9px] rounded-tl-[9px] rounded-tr-[6px] bg-foreground text-sm font-black tracking-tighter text-background -rotate-2">
