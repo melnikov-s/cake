@@ -94,7 +94,6 @@ describe("Chat", () => {
             role: "user",
             text: "# Can you check this?",
             status: "complete",
-            deliveryState: "queued",
           },
         ],
         streaming: () => true,
@@ -151,6 +150,58 @@ describe("Chat", () => {
     await act(async () => stop.click());
     expect(abort).toHaveBeenCalled();
     expect(submit).not.toHaveBeenCalled();
+  });
+
+  it("keeps queued messages beside the composer and dequeues them in bulk", async () => {
+    const dequeuePrompts = vi.fn(async () => undefined);
+    store = mount(
+      createStore(ChatStore, {
+        id: () => "queued-chat",
+        parts: () => [
+          {
+            id: "queued-transcript-part",
+            kind: "text",
+            role: "user",
+            text: "From another session",
+            status: "complete",
+            deliveryState: "queued",
+          },
+        ],
+        streaming: () => true,
+        submitting: () => false,
+        configuration: () => undefined,
+        commands: () => [],
+        placeholder: () => "Message",
+        inputLabel: () => "Message",
+        canSubmit: () => false,
+        submit: async () => false,
+        queuedPrompts: () => [
+          {
+            id: "queued-transcript-part",
+            text: "From another session",
+            attachments: [],
+            renderUserMessageAsMarkdown: false,
+          },
+        ],
+        dequeuePrompts,
+      }),
+    );
+
+    act(() => root.render(<Chat store={store!} />));
+
+    expect(container.querySelector(".transcript")?.textContent).not.toContain(
+      "From another session",
+    );
+    expect(container.textContent).toContain("From another session");
+    expect(container.querySelector('[aria-label^="Queued:"]')).not.toBeNull();
+    expect(container.querySelector('[aria-label^="Edit queued prompt"]')).toBeNull();
+
+    await act(async () => {
+      container
+        .querySelector<HTMLButtonElement>('[aria-label^="Cancel and edit all queued messages"]')!
+        .click();
+    });
+    expect(dequeuePrompts).toHaveBeenCalledOnce();
   });
 
   it("shows a scheduled message countdown and allows cancellation", async () => {

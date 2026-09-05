@@ -8,7 +8,12 @@ import { MessageComposerStore } from "../../../../src/renderer/stores/MessageCom
 import type { SessionRegistryStore } from "../../../../src/renderer/stores/SessionRegistryStore";
 import { SessionOperationCoordinatorStore } from "../../../../src/renderer/stores/SessionOperationCoordinatorStore";
 
-class HarnessStore extends Store<{ client: RendererClient; model: Session }> {
+class HarnessStore extends Store<{
+  client: RendererClient;
+  model: Session;
+  existing?: boolean;
+  streaming?: boolean;
+}> {
   draft = "First message";
   submissionOrder: string[] = [];
 
@@ -60,14 +65,14 @@ class HarnessStore extends Store<{ client: RendererClient; model: Session }> {
         this.draft = value;
       },
       canSubmit: () => true,
-      isStreaming: () => false,
+      isStreaming: () => this.props.streaming ?? false,
       openCommandPane: async () => undefined,
       selectModel: async () => undefined,
       renameSession: async () => undefined,
       handoffSession: async () => false,
       operations: this.operations,
       operationOwner: "composer:session-1",
-      newSessionRequest: () => ({ path: "/project" }),
+      newSessionRequest: () => (this.props.existing ? undefined : { path: "/project" }),
       prepareNewSession: async () => {
         this.submissionOrder.push("prepared");
         return true;
@@ -128,6 +133,41 @@ class DraftHarnessStore extends Store<{ client: RendererClient }> {
 }
 
 describe("MessageComposerStore", () => {
+  it("restores all dequeued messages to the composer", () => {
+    const model = Session.create({ sessionId: "session-1", workingDirectory: "/project" });
+    const root = mount(
+      createStore(HarnessStore, { client: {} as RendererClient, model, existing: true }),
+    );
+
+    root.composer.restoreDequeuedMessages(["External steering", "External follow-up"]);
+
+    expect(root.draft).toBe("External steering\n\nExternal follow-up\n\nFirst message");
+
+    root[Symbol.dispose]();
+    model[Symbol.dispose]();
+  });
+
+  it("sends streaming input directly to Pi's follow-up queue without transcript optimism", async () => {
+    const model = Session.create({ sessionId: "session-1", workingDirectory: "/project" });
+    const followUp = vi.fn(async () => "turn-2");
+    const client = { projectSessions: { followUp } } as unknown as RendererClient;
+    const root = mount(
+      createStore(HarnessStore, { client, model, existing: true, streaming: true }),
+    );
+
+    await root.composer.submit();
+
+    expect(followUp).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: "session-1", text: "First message" }),
+      expect.objectContaining({ signal: root.composer.signal }),
+    );
+    expect(root.composer.optimisticUserMessages.pending).toEqual([]);
+    expect(root.composer.parts).toEqual([]);
+
+    root[Symbol.dispose]();
+    model[Symbol.dispose]();
+  });
+
   it("reconciles the first optimistic message when its canonical part completes in place", async () => {
     const model = Session.create({ sessionId: "session-1", workingDirectory: "/project" });
     const start = vi.fn(async () => "turn-1");

@@ -927,6 +927,12 @@ export class RootStore extends Store<{
         this.appControlOperationStore.run(() =>
           this.client.scheduledMessages.cancel(id, { signal: this.signal }),
         ),
+      listPendingMessages: (sessionId) =>
+        this.client.projectSessions.listQueuedMessages({ sessionId }, { signal: this.signal }),
+      dequeuePendingMessages: (sessionId) =>
+        this.appControlOperationStore.run(() =>
+          this.client.projectSessions.clearQueue({ sessionId }, { signal: this.signal }),
+        ),
       abortSession: (sessionId) =>
         this.appControlOperationStore.run(() =>
           this.client.projectSessions.abort({ sessionId }, { signal: this.signal }),

@@ -60,6 +60,8 @@ function fakeRuntime(
       });
       return snapshot;
     },
+    listQueuedMessages: async () => ({ steering: [], followUp: [] }),
+    clearQueue: async () => ({ steering: [], followUp: [] }),
     prompt: async () => undefined,
     setUserMessageMarkdown: async () => undefined,
     compact: async () => undefined,

@@ -26,6 +26,16 @@ export function formatElapsed(milliseconds: number) {
   return `${Math.floor(total / 60)}m ${(total % 60).toFixed(1)}s`;
 }
 
+export function LoadingSpinner({ label = "Pending" }: { label?: string }) {
+  return (
+    <span
+      className="size-3 rounded-full border border-muted-foreground/35 border-t-foreground motion-safe:animate-spin"
+      role="status"
+      aria-label={label}
+    />
+  );
+}
+
 export function LoadingState({
   label = "Churning",
   variant = "Drive",

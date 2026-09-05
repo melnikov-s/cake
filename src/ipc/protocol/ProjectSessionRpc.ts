@@ -9,6 +9,7 @@ import {
   ProjectSessionPreview,
   ProjectSessionPromptInput,
   ProjectSessionStartInput,
+  QueuedProjectSessionMessages,
   ProjectSessionTarget,
   ProjectSessionUpdate,
 } from "../../domain/project-session-data";
@@ -58,6 +59,16 @@ export const ProjectSessionRpc = RpcGroup.make(
   }),
   Rpc.make("projectSessions.abort", {
     payload: ProjectSessionTarget,
+    error: ProjectSessionError,
+  }),
+  Rpc.make("projectSessions.listQueuedMessages", {
+    payload: ProjectSessionTarget,
+    success: QueuedProjectSessionMessages,
+    error: ProjectSessionError,
+  }),
+  Rpc.make("projectSessions.clearQueue", {
+    payload: ProjectSessionTarget,
+    success: QueuedProjectSessionMessages,
     error: ProjectSessionError,
   }),
   Rpc.make("projectSessions.compact", {

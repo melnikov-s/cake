@@ -70,6 +70,8 @@ export const projectSessionHandlers = ProjectSessionRpc.of({
       ),
     ),
   "projectSessions.abort": (target) => projectSessions.abort(target),
+  "projectSessions.listQueuedMessages": (target) => projectSessions.listQueuedMessages(target),
+  "projectSessions.clearQueue": (target) => projectSessions.clearQueue(target),
   "projectSessions.compact": ({ instructions, ...target }) =>
     projectSessions.compact(target, instructions),
   "projectSessions.editMessage": (input) => projectSessions.editMessage(input),

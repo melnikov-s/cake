@@ -835,6 +835,20 @@ export const followUp = Effect.fn("ProjectSessions.followUp")(function* (
   return turnId;
 });
 
+export const listQueuedMessages = Effect.fn("ProjectSessions.listQueuedMessages")(function* (
+  target: ProjectSessionTarget,
+) {
+  return yield* withHandle(target, (handle) => handle.listQueuedMessages()).pipe(
+    asError("listQueuedMessages"),
+  );
+});
+
+export const clearQueue = Effect.fn("ProjectSessions.clearQueue")(function* (
+  target: ProjectSessionTarget,
+) {
+  return yield* withHandle(target, (handle) => handle.clearQueue()).pipe(asError("clearQueue"));
+});
+
 export const getChangelog = Effect.fn("ProjectSessions.getChangelog")(function* (
   target: ProjectSessionTarget,
 ) {

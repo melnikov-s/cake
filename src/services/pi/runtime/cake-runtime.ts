@@ -624,6 +624,8 @@ export interface CakeRuntime {
     attachments: Attachment[],
     renderUserMessageAsMarkdown?: boolean,
   ): Promise<void>;
+  listQueuedMessages(): Promise<{ steering: string[]; followUp: string[] }>;
+  clearQueue(): Promise<{ steering: string[]; followUp: string[] }>;
   editMessage?(
     entryId: string,
     text: string,
@@ -2365,6 +2367,41 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
           );
         }
       }
+    },
+    async listQueuedMessages() {
+      return {
+        steering: [
+          ...session.getSteeringMessages(),
+          ...compactionQueue
+            .filter((message) => message.delivery === "steer")
+            .map((message) => message.text),
+        ],
+        followUp: [
+          ...session.getFollowUpMessages(),
+          ...compactionQueue
+            .filter((message) => message.delivery === "follow-up")
+            .map((message) => message.text),
+        ],
+      };
+    },
+    async clearQueue() {
+      const queued = session.clearQueue();
+      const steering = [
+        ...queued.steering,
+        ...compactionQueue
+          .filter((message) => message.delivery === "steer")
+          .map((message) => message.text),
+      ];
+      const followUp = [
+        ...queued.followUp,
+        ...compactionQueue
+          .filter((message) => message.delivery === "follow-up")
+          .map((message) => message.text),
+      ];
+      compactionQueue = [];
+      syncQueuedParts();
+      await emitSnapshot();
+      return { steering, followUp };
     },
     async setUserMessageMarkdown(entryId, renderAsMarkdown) {
       if (disposed) throw new Error("The Cake runtime has been disposed");

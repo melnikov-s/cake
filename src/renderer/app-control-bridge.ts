@@ -15,6 +15,7 @@ import type {
   CrossSessionDeliveryStatus,
   CrossSessionMessageMetadata,
 } from "../domain/cross-session-coordination";
+import type { QueuedProjectSessionMessages } from "../domain/project-session-data";
 
 const bounded = (minimum: number, maximum: number) =>
   Schema.String.check(Schema.isMinLength(minimum), Schema.isMaxLength(maximum));
@@ -98,6 +99,8 @@ const appControlArgumentSchemas = {
     sessionId: Schema.optionalKey(bounded(1, 256)),
   }),
   cancel_scheduled_message: Schema.Struct({ id: bounded(1, 256) }),
+  list_pending_messages: sessionIdTargetSchema,
+  dequeue_pending_messages: sessionIdTargetSchema,
   abort_session: sessionIdTargetSchema,
   rename_session: Schema.Struct({ ...sessionIdTargetSchema.fields, title: trimmed(1, 500) }),
   set_session_resolved: Schema.Struct({
@@ -155,6 +158,8 @@ const appControlInvocationSchema = Schema.Union([
   invocation("schedule_session_message"),
   invocation("list_scheduled_messages"),
   invocation("cancel_scheduled_message"),
+  invocation("list_pending_messages"),
+  invocation("dequeue_pending_messages"),
   invocation("abort_session"),
   invocation("rename_session"),
   invocation("set_session_resolved"),
@@ -273,6 +278,8 @@ export interface AppControlHost {
   }): Promise<ScheduledMessage>;
   listScheduledMessages(sessionId?: string): Promise<readonly ScheduledMessage[]>;
   cancelScheduledMessage(id: string): Promise<void>;
+  listPendingMessages(sessionId: string): Promise<QueuedProjectSessionMessages>;
+  dequeuePendingMessages(sessionId: string): Promise<QueuedProjectSessionMessages>;
   abortSession(sessionId: string): Promise<void>;
   renameSession(sessionId: string, title: string): Promise<void>;
   setSessionResolved(sessionId: string, resolved: boolean): Promise<void>;
@@ -403,6 +410,11 @@ export type AppControlResult =
     }
   | { ok: true; name: "list_scheduled_messages"; messages: readonly ScheduledMessage[] }
   | { ok: true; name: "cancel_scheduled_message"; id: string; status: "cancelled" }
+  | {
+      ok: true;
+      name: "list_pending_messages" | "dequeue_pending_messages";
+      messages: QueuedProjectSessionMessages;
+    }
   | { ok: true; name: "abort_session"; target: SessionTarget; status: "stopping" }
   | { ok: true; name: "rename_session"; target: SessionTarget; title: string }
   | { ok: true; name: "set_session_resolved"; target: SessionTarget; resolved: boolean }
@@ -559,6 +571,18 @@ const modelControlOperations = [
     appControlArgumentSchemas.cancel_scheduled_message,
   ),
   operation(
+    "sessions.pending",
+    "sessions",
+    "List all steering and follow-up messages currently queued in one explicitly targeted Project Session.",
+    appControlArgumentSchemas.list_pending_messages,
+  ),
+  operation(
+    "sessions.dequeue",
+    "sessions",
+    "Clear and return all steering and follow-up messages queued in one explicitly targeted Project Session. To edit queued content, dequeue it, modify the returned text, then use sessions.send.",
+    appControlArgumentSchemas.dequeue_pending_messages,
+  ),
+  operation(
     "sessions.abort",
     "sessions",
     "Stop one explicitly targeted running session.",
@@ -593,6 +617,8 @@ const commandToLegacyName = {
   "sessions.schedule": "schedule_session_message",
   "sessions.scheduled": "list_scheduled_messages",
   "sessions.cancel-scheduled": "cancel_scheduled_message",
+  "sessions.pending": "list_pending_messages",
+  "sessions.dequeue": "dequeue_pending_messages",
   "sessions.abort": "abort_session",
   "notifications.send": "send_notification",
   "agent.action": "report_agent_action",
@@ -836,6 +862,18 @@ export class AppControlBridge {
     const workspacePath = known.workingDirectory;
     const target = { workspacePath, sessionId };
 
+    if (invocation.name === "list_pending_messages")
+      return {
+        ok: true,
+        name: invocation.name,
+        messages: await this.host.listPendingMessages(sessionId),
+      };
+    if (invocation.name === "dequeue_pending_messages")
+      return {
+        ok: true,
+        name: invocation.name,
+        messages: await this.host.dequeuePendingMessages(sessionId),
+      };
     if (invocation.name === "get_session_status") {
       const activity = this.host.sessionActivity(sessionId);
       const current = this.host.currentSelection();

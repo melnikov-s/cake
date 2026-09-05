@@ -29,6 +29,7 @@ import type {
   ProjectSessionPreview,
   ProjectSessionPromptInput,
   ProjectSessionStartInput,
+  QueuedProjectSessionMessages,
   ProjectSessionTarget,
   ProjectSessionUpdate,
 } from "../../domain/project-session-data";
@@ -313,6 +314,12 @@ export interface CakeIpcClientService {
     readonly abort: (
       target: ProjectSessionTarget,
     ) => Effect.Effect<void, ProjectSessionError | TransportError>;
+    readonly listQueuedMessages: (
+      target: ProjectSessionTarget,
+    ) => Effect.Effect<QueuedProjectSessionMessages, ProjectSessionError | TransportError>;
+    readonly clearQueue: (
+      target: ProjectSessionTarget,
+    ) => Effect.Effect<QueuedProjectSessionMessages, ProjectSessionError | TransportError>;
     readonly compact: (
       input: ProjectSessionTarget & { readonly instructions?: string },
     ) => Effect.Effect<void, ProjectSessionError | TransportError>;
@@ -719,6 +726,12 @@ export const CakeIpcClientLive = Layer.effect(
         ),
         abort: Effect.fn("CakeIpcClient.projectSessions.abort")((target) =>
           client("projectSessions.abort", target),
+        ),
+        listQueuedMessages: Effect.fn("CakeIpcClient.projectSessions.listQueuedMessages")(
+          (target) => client("projectSessions.listQueuedMessages", target),
+        ),
+        clearQueue: Effect.fn("CakeIpcClient.projectSessions.clearQueue")((target) =>
+          client("projectSessions.clearQueue", target),
         ),
         compact: Effect.fn("CakeIpcClient.projectSessions.compact")((input) =>
           client("projectSessions.compact", input),

@@ -84,6 +84,8 @@ const makeLayer = (
     sessionFile: snapshot.sessionFile,
     streaming: false,
     snapshot: async () => snapshot,
+    listQueuedMessages: async () => ({ steering: [], followUp: [] }),
+    clearQueue: async () => ({ steering: [], followUp: [] }),
     prompt: async () => {
       options.onEvent({ type: "streaming", sessionId: snapshot.sessionId, streaming: false });
     },

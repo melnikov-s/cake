@@ -143,6 +143,14 @@ const Attachment = Schema.Union([
   }),
 ]);
 
+export const QueuedProjectSessionMessages = Schema.Struct({
+  steering: Schema.Array(boundedText),
+  followUp: Schema.Array(boundedText),
+});
+export interface QueuedProjectSessionMessages extends Schema.Schema.Type<
+  typeof QueuedProjectSessionMessages
+> {}
+
 export const ProjectSessionPromptInput = Schema.Struct({
   sessionId: boundedId,
   workingDirectory: Schema.optionalKey(boundedPath),

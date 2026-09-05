@@ -84,6 +84,8 @@ const makeLayer = () => {
             leafId: "leaf-1",
           }),
       snapshot: async () => makeSnapshot(sessionId, sessionFile),
+      listQueuedMessages: async () => ({ steering: [], followUp: [] }),
+      clearQueue: async () => ({ steering: [], followUp: [] }),
       prompt: async (...input) => {
         prompts.push(input);
         options.onEvent({ type: "streaming", sessionId, streaming: false });

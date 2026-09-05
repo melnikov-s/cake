@@ -212,6 +212,18 @@ export function makeRendererClient(runtime: RendererRuntime): RendererClient {
           withClient((client) => client.projectSessions.abort(target)),
           options,
         ),
+      listQueuedMessages: (target, options) =>
+        run(
+          "projectSessions.listQueuedMessages",
+          withClient((client) => client.projectSessions.listQueuedMessages(target)),
+          options,
+        ),
+      clearQueue: (target, options) =>
+        run(
+          "projectSessions.clearQueue",
+          withClient((client) => client.projectSessions.clearQueue(target)),
+          options,
+        ),
       compact: (input, options) =>
         run(
           "projectSessions.compact",

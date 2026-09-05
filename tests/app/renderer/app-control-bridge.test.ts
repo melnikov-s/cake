@@ -35,6 +35,8 @@ function createHost(overrides: Partial<AppControlHost> = {}): AppControlHost {
     },
     listScheduledMessages: async () => [],
     cancelScheduledMessage: async () => undefined,
+    listPendingMessages: async () => ({ steering: [], followUp: [] }),
+    dequeuePendingMessages: async () => ({ steering: [], followUp: [] }),
     abortSession: async () => undefined,
     renameSession: async () => undefined,
     setSessionResolved: async () => undefined,
@@ -556,6 +558,40 @@ describe("AppControlBridge", () => {
     await expect(
       bridge.invoke({ name: "sessions.reply", arguments: { text: "Too late" } }, source),
     ).resolves.toMatchObject({ ok: false, error: "That session thread is closed." });
+  });
+
+  it("lists and dequeues another session's pending messages in bulk", async () => {
+    const messages = { steering: ["Change direction"], followUp: ["Do this next"] };
+    const listPendingMessages = vi.fn(async () => messages);
+    const dequeuePendingMessages = vi.fn(async () => messages);
+    const bridge = new AppControlBridge(
+      createHost({
+        sessions: () => [
+          {
+            workingDirectory: "/projects/cake",
+            projectName: "Cake",
+            sessionId: "session-1",
+            title: "Session",
+            modifiedAt: "2026-09-04T12:00:00.000Z",
+            messageCount: 1,
+            resolved: false,
+            draft: false,
+          },
+        ],
+        listPendingMessages,
+        dequeuePendingMessages,
+      }),
+    );
+
+    await expect(
+      bridge.invoke({ name: "sessions.pending", arguments: { sessionId: "session-1" } }),
+    ).resolves.toMatchObject({ ok: true, messages });
+    await expect(
+      bridge.invoke({ name: "sessions.dequeue", arguments: { sessionId: "session-1" } }),
+    ).resolves.toMatchObject({ ok: true, messages });
+
+    expect(listPendingMessages).toHaveBeenCalledWith("session-1");
+    expect(dequeuePendingMessages).toHaveBeenCalledWith("session-1");
   });
 
   it("includes the managed worktree associated with each listed session", async () => {

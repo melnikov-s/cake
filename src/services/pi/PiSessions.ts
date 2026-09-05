@@ -13,6 +13,7 @@ import {
   Scope,
   Stream,
 } from "effect";
+import type { QueuedProjectSessionMessages } from "../../domain/project-session-data";
 import { jsonValueSchema } from "../../ipc/json-contract";
 import type {
   Attachment,
@@ -118,6 +119,8 @@ export interface PiSessionHandle {
     attachments?: ReadonlyArray<Attachment>,
     renderUserMessageAsMarkdown?: boolean,
   ) => Effect.Effect<string, PiSessionError>;
+  readonly listQueuedMessages: () => Effect.Effect<QueuedProjectSessionMessages, PiSessionError>;
+  readonly clearQueue: () => Effect.Effect<QueuedProjectSessionMessages, PiSessionError>;
   readonly editMessage: (
     entryId: string,
     text: string,
@@ -510,6 +513,9 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
             startTurn("steer", text, attachments, markdown),
           followUp: (text, attachments = [], markdown = false) =>
             startTurn("follow-up", text, attachments, markdown),
+          listQueuedMessages: () =>
+            call("listQueuedMessages", (runtime) => runtime.listQueuedMessages()),
+          clearQueue: () => call("clearQueue", (runtime) => runtime.clearQueue()),
           editMessage: (entryId, text, attachments, renderUserMessageAsMarkdown) =>
             shared.runtime.editMessage
               ? call(
