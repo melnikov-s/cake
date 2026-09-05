@@ -290,6 +290,10 @@ export interface CakeRuntimeOptions {
   currentSessionControl?: {
     resolved(): boolean;
     setResolved(resolved: boolean): Promise<void>;
+    createSession?(
+      input: { name: string; initialPrompt: string; model: ChatConfiguration },
+      signal: AbortSignal,
+    ): Promise<JsonValue>;
     createDraftSession?(
       input: { name: string; initialPrompt: string; model?: ChatConfiguration },
       signal: AbortSignal,
@@ -683,6 +687,10 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     contextStatus(): JsonValue;
     compact(instructions?: string): Promise<JsonValue>;
     rename(title: string): Promise<JsonValue>;
+    createSession(
+      input: { name: string; initialPrompt: string; model?: ChatConfiguration },
+      signal: AbortSignal,
+    ): Promise<JsonValue>;
     createDraftSession(
       input: { name: string; initialPrompt: string; model?: ChatConfiguration },
       signal: AbortSignal,
@@ -780,6 +788,57 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         execute: (input) => {
           // SAFETY: CakeOperationRegistry parsed input with this operation's schema.
           return api().rename((input as { title: string }).title);
+        },
+      },
+      {
+        command: "session.create",
+        topic: "sessions",
+        summary: "Create, name, and start a Project Session in the calling session's project.",
+        guidance: [
+          "This operation derives the project from the calling session and never accepts a workspacePath or sessionId.",
+          "When model is omitted, the new session inherits the calling session's current model, thinking level, and Fast mode setting.",
+        ],
+        inputSchema: Schema.Struct({
+          name: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(500))),
+          initialPrompt: Schema.Trim.pipe(
+            Schema.check(Schema.isMinLength(1), Schema.isMaxLength(100_000)),
+          ),
+          model: Schema.optionalKey(
+            Schema.Struct({
+              provider: Schema.Trim.pipe(
+                Schema.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+              ),
+              modelId: Schema.Trim.pipe(
+                Schema.check(Schema.isMinLength(1), Schema.isMaxLength(512)),
+              ),
+              thinkingLevel: Schema.Literals([
+                "off",
+                "minimal",
+                "low",
+                "medium",
+                "high",
+                "xhigh",
+                "max",
+              ]).pipe(Schema.withDecodingDefaultKey(Effect.succeed("off" as const))),
+              fastMode: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
+            }),
+          ),
+        }),
+        examples: [
+          {
+            input: {
+              name: "Authentication follow-up",
+              initialPrompt: "Review the authentication flow and implement the next changes.",
+            },
+          },
+        ],
+        result: "The started session ID and the Project path used to create it.",
+        execute: (input, context) => {
+          // SAFETY: CakeOperationRegistry parsed input with this operation's schema.
+          return api().createSession(
+            input as { name: string; initialPrompt: string; model?: ChatConfiguration },
+            context.signal,
+          );
         },
       },
       {
@@ -1067,6 +1126,8 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         (operation.command !== "session.resolve" || options.currentSessionControl !== undefined) &&
         (!["app.state", "app.split", "notifications.send"].includes(operation.command) ||
           options.currentSessionControl?.invokeAppControl !== undefined) &&
+        (operation.command !== "session.create" ||
+          options.currentSessionControl?.createSession !== undefined) &&
         (operation.command !== "session.create-draft" ||
           options.currentSessionControl?.createDraftSession !== undefined) &&
         (!operation.command.startsWith("sessions.") ||
@@ -2174,6 +2235,24 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         sessionId: cakeSessionId,
         title: committedTitle,
       };
+    },
+    async createSession(input, signal) {
+      if (!options.currentSessionControl?.createSession)
+        throw new Error("This Cake runtime cannot create project sessions");
+      const model = session.model;
+      if (!model) throw new Error("The calling session does not have a model to inherit");
+      return options.currentSessionControl.createSession(
+        {
+          ...input,
+          model: input.model ?? {
+            provider: model.provider,
+            modelId: model.id,
+            thinkingLevel: session.thinkingLevel,
+            fastMode: fastModeEnabled(),
+          },
+        },
+        signal,
+      );
     },
     async createDraftSession(input, signal) {
       if (!options.currentSessionControl?.createDraftSession)

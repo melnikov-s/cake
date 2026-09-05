@@ -67,6 +67,16 @@ export const ProjectSessionControlInvocation = Schema.TaggedUnion({
     command: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
     input: Schema.Record(Schema.String, Schema.Json),
   },
+  CreateSession: {
+    name: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(500)),
+    initialPrompt: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(100_000)),
+    model: Schema.Struct({
+      provider: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+      modelId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(512)),
+      thinkingLevel: ThinkingLevel,
+      fastMode: Schema.Boolean,
+    }),
+  },
   CreateDraft: {
     name: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(500)),
     initialPrompt: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(100_000)),

@@ -139,6 +139,11 @@ export const makeProjectSessionEnvironmentLive = (
                 resolved: () => base.sessionResolved?.(sessionId) ?? false,
                 setResolved: (resolved) =>
                   base.setSessionResolved?.(sessionId, resolved) ?? Promise.resolve(),
+                createSession: (input, signal) =>
+                  runtimeIntegrations.requestApplicationControl(
+                    { _tag: "CreateSession", ...input },
+                    signal,
+                  ),
                 createDraftSession: (input, signal) =>
                   runtimeIntegrations.requestApplicationControl(
                     { _tag: "CreateDraft", ...input },

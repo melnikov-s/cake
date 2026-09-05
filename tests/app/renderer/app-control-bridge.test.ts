@@ -222,6 +222,57 @@ describe("AppControlBridge", () => {
     );
   });
 
+  it("creates and starts a session with an exact model configuration", async () => {
+    const createSession = vi.fn(async () => ({
+      workspacePath: "/projects/cake",
+      sessionId: "session-new",
+    }));
+    const bridge = new AppControlBridge(
+      createHost({
+        projects: () => [
+          {
+            path: "/projects/cake",
+            name: "Cake",
+            addedAt: "2026-03-01T12:00:00.000Z",
+            lastOpenedAt: "2026-03-01T12:00:00.000Z",
+          },
+        ],
+        createSession,
+      }),
+    );
+    const model = {
+      provider: "openai",
+      modelId: "gpt-5",
+      thinkingLevel: "high" as const,
+      fastMode: true,
+    };
+
+    await expect(
+      bridge.invoke({
+        name: "sessions.create",
+        arguments: {
+          workspacePath: "/projects/cake",
+          name: "Implementation session",
+          initialPrompt: "Implement the approved changes",
+          model,
+        },
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      name: "create_session",
+      workspacePath: "/projects/cake",
+      sessionId: "session-new",
+      title: "Implementation session",
+      status: "started",
+    });
+    expect(createSession).toHaveBeenCalledWith({
+      workspacePath: "/projects/cake",
+      name: "Implementation session",
+      initialPrompt: "Implement the approved changes",
+      model,
+    });
+  });
+
   it("creates a saved draft without starting a Pi session", async () => {
     const createDraftSession = vi.fn(async () => ({
       workspacePath: "/projects/cake",

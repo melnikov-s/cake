@@ -52,6 +52,63 @@ describe("ProjectSessionIntegrationHost application controls", () => {
     host[Symbol.dispose]();
   });
 
+  it("carries an exact model configuration for a started child session", async () => {
+    let request: Extract<CakeEvent, { type: "project-session-control-requested" }> | undefined;
+    const host = new ProjectSessionIntegrationHost({
+      workspacePath: "/projects/cake",
+      agentDir: "/agent",
+      sessionDir: "/sessions",
+      emit: vi.fn(),
+      emitApplicationControl: (event) => {
+        request = event;
+      },
+    });
+    const model = {
+      provider: "openai",
+      modelId: "gpt-5",
+      thinkingLevel: "high" as const,
+      fastMode: true,
+    };
+
+    const pending = host
+      .projectSessionRuntimeIntegrations("source-session")
+      .requestApplicationControl(
+        {
+          _tag: "CreateSession",
+          name: "Implementation session",
+          initialPrompt: "Implement the approved changes.",
+          model,
+        },
+        new AbortController().signal,
+      );
+
+    expect(request).toEqual({
+      type: "project-session-control-requested",
+      sessionId: "source-session",
+      controlRequestId: expect.any(String),
+      invocation: {
+        _tag: "CreateSession",
+        name: "Implementation session",
+        initialPrompt: "Implement the approved changes.",
+        model,
+      },
+    });
+    expect(() => Schema.decodeUnknownSync(cakeEventSchema)(request)).not.toThrow();
+    if (!request) throw new Error("Expected a control request");
+    host.dispatch({
+      type: "respond-project-session-control",
+      controlRequestId: request.controlRequestId,
+      result: { ok: true, sessionId: "child-session", status: "started" },
+    });
+
+    await expect(pending).resolves.toEqual({
+      ok: true,
+      sessionId: "child-session",
+      status: "started",
+    });
+    host[Symbol.dispose]();
+  });
+
   it("settles a pending request when its tool call is aborted", async () => {
     const controller = new AbortController();
     const host = new ProjectSessionIntegrationHost({

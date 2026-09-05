@@ -227,7 +227,8 @@ export class RootStore extends Store<{
         ? { name: invocation.command, arguments: invocation.input }
         : projectPath
           ? {
-              name: "sessions.create-draft",
+              name:
+                invocation._tag === "CreateSession" ? "sessions.create" : "sessions.create-draft",
               arguments: invocation.model
                 ? {
                     workspacePath: projectPath,
@@ -252,7 +253,7 @@ export class RootStore extends Store<{
           }))
       : {
           ok: false as const,
-          name: "sessions.create-draft",
+          name: invocation._tag === "CreateSession" ? "sessions.create" : "sessions.create-draft",
           error: "Cake could not find the calling Project Session.",
         };
     await this.client.projectSessions.respondControl(
