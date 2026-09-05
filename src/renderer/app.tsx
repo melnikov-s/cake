@@ -33,11 +33,10 @@ import { WorkLogControls } from "@/components/work-log-controls";
 import { Sidebar } from "@/components/sidebar";
 import { ErrorNotice } from "@/components/error-notice";
 import { SessionContinuationDialog } from "@/components/session-continuation-dialog";
-import { SessionSplitLayout } from "@/components/session-split-layout";
+import { ConversationSplitLayout } from "@/components/conversation-split-layout";
 import { ArtifactsPanel } from "@/components/artifacts-panel";
 import { UiDialog } from "@/components/ui-dialog";
 import { CommandPane } from "@/components/command-pane";
-import { Chat } from "@/components/chat";
 import { QuakeTerminal } from "@/components/quake-terminal";
 import { terminalToggleAcceleratorHint } from "@/lib/platform";
 import { cn } from "@/lib/utils";
@@ -227,10 +226,11 @@ export const App = observer(function App() {
       void cakeChatCollection?.handoff(paneSession.sessionId, entryId);
     },
   });
-  const renderCakeChatPaneHeader = (pane: SessionPaneNode) => {
-    const sessionId = pane.history[pane.historyCursor];
-    const paneSession = sessionId ? cakeChatCollection?.findSession(sessionId) : undefined;
-    if (!paneSession || !cakeChatCollection) return null;
+  const renderCakeChatPaneHeader = (
+    pane: SessionPaneNode,
+    paneSession: NonNullable<typeof cakeChatSession>,
+  ) => {
+    if (!cakeChatCollection) return null;
     const firstPane = cakeChatCollection.sessionLayoutStore.panes[0]?.paneId === pane.paneId;
     return (
       <>
@@ -262,34 +262,24 @@ export const App = observer(function App() {
       </>
     );
   };
-  const renderCakeChatPane = (pane: SessionPaneNode) => {
-    const sessionId = pane.history[pane.historyCursor];
-    const paneSession = sessionId ? cakeChatCollection?.findSession(sessionId) : undefined;
-    if (!paneSession) return <LoadingState label="Opening Cake Chat" />;
-    return (
-      <StoreProvider key={pane.paneId} store={paneSession}>
-        <Chat
-          store={paneSession.chatStore}
-          transcriptBehavior={cakeChatTranscriptBehaviorFor(paneSession)}
-          empty={
-            <div className="grid min-h-[calc(100vh-330px)] place-items-center content-center p-10 text-center">
-              <span className="grid size-14 rotate-3 place-items-center rounded-bl-[14px] rounded-br-[20px] rounded-tl-[20px] rounded-tr-[14px] border border-border bg-card/75 shadow-[0_20px_70px_-30px_hsl(var(--shadow)/0.5)]">
-                <span className="grid size-[27px] select-none place-items-center rounded-bl-[6px] rounded-br-[9px] rounded-tl-[9px] rounded-tr-[6px] bg-foreground text-sm font-black tracking-tighter text-background -rotate-2">
-                  C
-                </span>
-              </span>
-              <h1 className="mt-5 font-display text-2xl font-semibold tracking-tight">
-                What can I help you find or do?
-              </h1>
-              <p className="mt-3 max-w-[470px] text-sm leading-relaxed text-muted-foreground">
-                Ask about your tasks, open one, or delegate work to it.
-              </p>
-            </div>
-          }
-        />
-      </StoreProvider>
-    );
-  };
+  const cakeChatProps = (paneSession: NonNullable<typeof cakeChatSession>) => ({
+    transcriptBehavior: cakeChatTranscriptBehaviorFor(paneSession),
+    empty: (
+      <div className="grid min-h-[calc(100vh-330px)] place-items-center content-center p-10 text-center">
+        <span className="grid size-14 rotate-3 place-items-center rounded-bl-[14px] rounded-br-[20px] rounded-tl-[20px] rounded-tr-[14px] border border-border bg-card/75 shadow-[0_20px_70px_-30px_hsl(var(--shadow)/0.5)]">
+          <span className="grid size-[27px] select-none place-items-center rounded-bl-[6px] rounded-br-[9px] rounded-tl-[9px] rounded-tr-[6px] bg-foreground text-sm font-black tracking-tighter text-background -rotate-2">
+            C
+          </span>
+        </span>
+        <h1 className="mt-5 font-display text-2xl font-semibold tracking-tight">
+          What can I help you find or do?
+        </h1>
+        <p className="mt-3 max-w-[470px] text-sm leading-relaxed text-muted-foreground">
+          Ask about your tasks, open one, or delegate work to it.
+        </p>
+      </div>
+    ),
+  });
   const projectSidebar = (
     <Sidebar
       store={sidebar}
@@ -335,10 +325,10 @@ export const App = observer(function App() {
       onConfigured={() => session.composerStore.requestFocus()}
     />
   ) : undefined;
-  const renderProjectPaneHeader = (pane: SessionPaneNode) => {
-    const sessionId = pane.history[pane.historyCursor];
-    const paneSession = sessionId ? store.sessionRegistry.findSession(sessionId) : undefined;
-    if (!paneSession) return null;
+  const renderProjectPaneHeader = (
+    pane: SessionPaneNode,
+    paneSession: NonNullable<typeof session>,
+  ) => {
     const focusPane = () => root.focusSessionPane(pane.paneId);
     const focused = root.sessionLayoutStore.focusedPaneId === pane.paneId;
     const firstPane = root.sessionLayoutStore.panes[0]?.paneId === pane.paneId;
@@ -417,10 +407,7 @@ export const App = observer(function App() {
       </>
     );
   };
-  const renderProjectPane = (pane: SessionPaneNode) => {
-    const sessionId = pane.history[pane.historyCursor];
-    const paneSession = sessionId ? store.sessionRegistry.findSession(sessionId) : undefined;
-    if (!paneSession) return <LoadingState label="Opening session" />;
+  const projectChatProps = (paneSession: NonNullable<typeof session>) => {
     const temporary = store.sessionRegistry.isTemporarySession(paneSession.sessionId);
     const draft = store.sessionRegistry.isDraftSession(paneSession.sessionId);
     const configurationMode = draft
@@ -442,63 +429,57 @@ export const App = observer(function App() {
       : (paneSession.composerStore.errorDetails ??
         paneSession.configurationStore.errorDetails ??
         paneSession.artifactInteractionStore.errorDetails);
-    return (
-      <StoreProvider key={pane.paneId} store={paneSession}>
-        <Chat
-          store={paneSession.chatStore}
-          transcriptBehavior={projectTranscriptBehaviorFor(paneSession)}
-          empty={
-            <div className="grid min-h-[calc(100vh-360px)] place-items-center content-center p-8 text-center">
-              <h1 className="font-display text-xl font-semibold tracking-tight">
-                What should we build in{" "}
-                <em>{root.projectCatalogStore.nameForPath(paneSession.workspacePath)}</em>?
-              </h1>
-              <p className="mt-3 max-w-[420px] text-sm leading-relaxed text-muted-foreground">
-                Describe a task, ask a question, or choose another session from the sidebar.
-              </p>
-            </div>
-          }
-          footer={
-            <ArtifactsPanel
-              session={paneSession}
-              inlineWidgets={root.inlineWidgetStore}
-              onOpenSourceLocation={(location) =>
-                projectTranscriptBehaviorFor(paneSession).openSourceLocation(location)
-              }
-            />
-          }
-          error={errorMessage ? { message: errorMessage, details: errorDetails } : undefined}
-          composerHeader={
-            <WorktreePill
-              creation={store.worktreeCreationStore}
-              actions={paneSession.worktreeStore}
-              record={root.sessionCatalogStore.managedWorktree(paneSession.workspacePath)}
-              sessionId={paneSession.sessionId}
-              projectPath={
-                root.sessionCatalogStore.projectOfManagedWorktree(paneSession.workspacePath) ??
-                paneSession.workspacePath
-              }
-              configurationMode={configurationMode}
-              onConfigured={() => paneSession.composerStore.requestFocus()}
-            />
-          }
-          status={
-            focused && extensionUi.statuses.length > 0 ? (
-              <div
-                className="mx-auto mt-1.5 flex w-full max-w-[51.25rem] gap-2.5 overflow-x-auto font-mono text-[10px] text-muted-foreground pointer-events-auto"
-                role="status"
-              >
-                {extensionUi.statuses.map((status) => (
-                  <span key={status.key} className="whitespace-nowrap">
-                    <strong className="text-foreground">{status.key}</strong> {status.text}
-                  </span>
-                ))}
-              </div>
-            ) : undefined
+    return {
+      transcriptBehavior: projectTranscriptBehaviorFor(paneSession),
+      empty: (
+        <div className="grid min-h-[calc(100vh-360px)] place-items-center content-center p-8 text-center">
+          <h1 className="font-display text-xl font-semibold tracking-tight">
+            What should we build in{" "}
+            <em>{root.projectCatalogStore.nameForPath(paneSession.workspacePath)}</em>?
+          </h1>
+          <p className="mt-3 max-w-[420px] text-sm leading-relaxed text-muted-foreground">
+            Describe a task, ask a question, or choose another session from the sidebar.
+          </p>
+        </div>
+      ),
+      footer: (
+        <ArtifactsPanel
+          session={paneSession}
+          inlineWidgets={root.inlineWidgetStore}
+          onOpenSourceLocation={(location) =>
+            projectTranscriptBehaviorFor(paneSession).openSourceLocation(location)
           }
         />
-      </StoreProvider>
-    );
+      ),
+      error: errorMessage ? { message: errorMessage, details: errorDetails } : undefined,
+      composerHeader: (
+        <WorktreePill
+          creation={store.worktreeCreationStore}
+          actions={paneSession.worktreeStore}
+          record={root.sessionCatalogStore.managedWorktree(paneSession.workspacePath)}
+          sessionId={paneSession.sessionId}
+          projectPath={
+            root.sessionCatalogStore.projectOfManagedWorktree(paneSession.workspacePath) ??
+            paneSession.workspacePath
+          }
+          configurationMode={configurationMode}
+          onConfigured={() => paneSession.composerStore.requestFocus()}
+        />
+      ),
+      status:
+        focused && extensionUi.statuses.length > 0 ? (
+          <div
+            className="mx-auto mt-1.5 flex w-full max-w-[51.25rem] gap-2.5 overflow-x-auto font-mono text-[10px] text-muted-foreground pointer-events-auto"
+            role="status"
+          >
+            {extensionUi.statuses.map((status) => (
+              <span key={status.key} className="whitespace-nowrap">
+                <strong className="text-foreground">{status.key}</strong> {status.text}
+              </span>
+            ))}
+          </div>
+        ) : undefined,
+    };
   };
 
   if (store.embeddedEditorStore.visible && session && projectTranscriptBehavior)
@@ -641,19 +622,21 @@ export const App = observer(function App() {
           </div>
         ) : cakeChatCollection ? (
           cakeChatSession ? (
-            <SessionSplitLayout
+            <ConversationSplitLayout
               store={cakeChatCollection.sessionLayoutStore}
+              findSession={(sessionId) => cakeChatCollection.findSession(sessionId)}
+              chatProps={cakeChatProps}
               title={(sessionId) =>
                 cakeChatCollection.summaries.find((summary) => summary.sessionId === sessionId)
                   ?.title ?? "New chat"
               }
+              loadingLabel="Opening Cake Chat"
               headerClassName={(pane) =>
                 cakeChatCollection.sessionLayoutStore.panes[0]?.paneId === pane.paneId
                   ? cn("max-[620px]:pl-[84px]", sidebarCollapsed && "pl-[124px]")
                   : undefined
               }
               renderHeader={renderCakeChatPaneHeader}
-              renderPane={renderCakeChatPane}
               onFocus={(paneId) => root.focusCakeChatPane(paneId)}
               onSplit={(axis) => root.splitFocusedCakeChat(axis)}
               onClose={(paneId) => root.closeCakeChatPane(paneId)}
@@ -720,8 +703,10 @@ export const App = observer(function App() {
             </div>
           )
         ) : (
-          <SessionSplitLayout
+          <ConversationSplitLayout
             store={root.sessionLayoutStore}
+            findSession={(sessionId) => store.sessionRegistry.findSession(sessionId)}
+            chatProps={projectChatProps}
             title={(sessionId) => {
               const summary = root.sessionCatalogStore.find(sessionId);
               const projectName = summary
@@ -729,13 +714,13 @@ export const App = observer(function App() {
                 : store.projectName;
               return `[${projectName}] ${summary?.title ?? "New chat"}`;
             }}
+            loadingLabel="Opening session"
             headerClassName={(pane) =>
               root.sessionLayoutStore.panes[0]?.paneId === pane.paneId
                 ? cn("max-[620px]:pl-[84px]", sidebarCollapsed && "pl-[124px]")
                 : undefined
             }
             renderHeader={renderProjectPaneHeader}
-            renderPane={renderProjectPane}
             onFocus={(paneId) => root.focusSessionPane(paneId)}
             onSplit={(axis) => root.splitFocusedSession(axis)}
             onClose={(paneId) => root.closeSessionPane(paneId)}
