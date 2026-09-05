@@ -78,6 +78,21 @@ describe("BottomFollowController", () => {
     expect(alignBottom).toHaveBeenCalledTimes(2);
   });
 
+  it("corrects cached follow state from pre-layout geometry", () => {
+    vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation(() => 1);
+    const { controller, scroller } = createController();
+    const alignBottom = vi.fn();
+    controller.setAlignBottom(alignBottom);
+
+    // Virtualized restoration can move without user input after the controller
+    // initially observed bottom geometry.
+    scroller.scrollTop = 300;
+    controller.capturePositionBeforeLayout();
+    controller.layoutChanged();
+
+    expect(alignBottom).not.toHaveBeenCalled();
+  });
+
   it("forces the bottom immediately on submission", () => {
     vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation(() => 1);
     const { controller, scroller } = createController();

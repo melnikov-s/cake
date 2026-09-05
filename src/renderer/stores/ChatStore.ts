@@ -270,7 +270,10 @@ export class ChatStore extends Store<ChatStoreProps> {
     return this.props.inputLabel();
   }
   get canSubmit() {
-    return !this.submittingLocally && this.props.canSubmit(this.draft);
+    return this.canSubmitValue();
+  }
+  canSubmitValue(value = this.draft) {
+    return !this.submittingLocally && this.props.canSubmit(value);
   }
   get canActivateDraft() {
     return Boolean(this.props.activateDraft) && !this.submittingLocally;

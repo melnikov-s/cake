@@ -135,7 +135,7 @@ export const Chat = observer(function Chat({
   const composerVisible = store.composerVisible;
   const activatingDraft = store.isDraftSession && !store.editingMessage;
   const submitMessage = async (value?: string) => {
-    if (store.canSubmit) scrollController.forceFollow();
+    if (store.canSubmitValue(value)) scrollController.forceFollow();
     await store.submit(value);
   };
   useLayoutEffect(() => {

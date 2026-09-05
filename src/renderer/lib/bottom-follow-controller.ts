@@ -59,6 +59,23 @@ export class BottomFollowController {
     }
   }
 
+  /**
+   * Captures geometry during render, before React can commit a layout change.
+   * This also corrects positions restored asynchronously by a virtualizer,
+   * whose programmatic scroll events are intentionally not treated as user input.
+   */
+  capturePositionBeforeLayout() {
+    if (
+      !this.scroller ||
+      this.alignmentFrame !== undefined ||
+      this.positionFrame !== undefined ||
+      this.userScrollActive ||
+      this.scrollbarPointerActive
+    )
+      return;
+    this.lastMeasuredAtBottom = this.isAtBottom();
+  }
+
   /** Preserve bottom only when the DOM was at bottom before the layout changed. */
   layoutChanged() {
     if (!this.lastMeasuredAtBottom || this.positionFrame !== undefined) return;
@@ -67,6 +84,7 @@ export class BottomFollowController {
 
   /** Submission explicitly moves to bottom, regardless of current geometry. */
   forceFollow() {
+    this.invalidatePendingAlignment();
     this.clearUserScrollWindow();
     this.cancelPositionMeasurement();
     this.lastMeasuredAtBottom = true;

@@ -465,6 +465,31 @@ describe("Transcript scrolling", () => {
     expect(virtualizedProps.current?.followOutput).toBe(false);
   });
 
+  it("does not follow an unrelated rerender when the transcript geometry is away from bottom", () => {
+    const user: UiPart = {
+      id: "user-1",
+      kind: "text",
+      role: "user",
+      text: "Start",
+      status: "complete",
+    };
+
+    act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([user])} />));
+    const transcript = container.querySelector<HTMLElement>(".transcript")!;
+    Object.defineProperties(transcript, {
+      scrollHeight: { configurable: true, value: 1_000 },
+      clientHeight: { configurable: true, value: 200 },
+    });
+    // A restored virtualized position is programmatic, so it need not be
+    // preceded by wheel or pointer input.
+    transcript.scrollTop = 300;
+    scrollToIndex.mockClear();
+
+    act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([user])} />));
+
+    expect(scrollToIndex).not.toHaveBeenCalled();
+  });
+
   it("does not follow a newly appended loading item after the user scrolls away", () => {
     const user: UiPart = {
       id: "user-1",

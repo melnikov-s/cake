@@ -205,6 +205,17 @@ test("restores a session's virtualized transcript position after leaving and swi
     await expect(firstSession).toHaveClass(/active/);
 
     await expectRestoredAnchor(transcript, savedAnchor);
+
+    // Another session settling rerenders the application shell. Exercise the
+    // same parent-render boundary after Virtuoso has restored this transcript.
+    await page.getByRole("complementary").getByRole("button", { name: "Toggle sidebar" }).click();
+    await expect
+      .poll(() =>
+        transcript.evaluate(
+          (element) => element.scrollHeight - element.clientHeight - element.scrollTop,
+        ),
+      )
+      .toBeGreaterThan(500);
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

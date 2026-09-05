@@ -74,6 +74,10 @@ export const ChatTranscript = observer(function ChatTranscript({
   const restoredScrollState = useMemo(() => store.transcriptScrollState, [store]);
   const [draftAnchor, setDraftAnchor] = useState<MessageCommentAnchorRect>();
   const [annotationDraft, setAnnotationDraft] = useState<TranscriptSelectionCapture>();
+  // Render is the last point at which the mounted transcript still has its
+  // pre-commit geometry. Parent updates (for example, another session settling)
+  // must not turn an asynchronously restored position back into bottom-following.
+  scrollController.capturePositionBeforeLayout();
   const visibleParts = store.hideThinking
     ? store.parts.filter((part) => part.kind !== "reasoning")
     : store.parts;
