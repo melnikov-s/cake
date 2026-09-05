@@ -7,6 +7,7 @@ import {
 import { createHash } from "node:crypto";
 import { Option, Schema } from "effect";
 import { artifactPointerSchema, type ArtifactPointer } from "../../../ipc/artifact-contract";
+import { parseCrossSessionMessage } from "../../../domain/cross-session-coordination";
 import {
   attachmentSchema,
   toolOutputContentArraySchema,
@@ -208,7 +209,10 @@ function partsFromMessage(
 
   if (role === "user") {
     const parts: UiPart[] = [];
-    const parsedContext = parseContextAttachmentBlocks(textFromContent(content));
+    const crossSession = parseCrossSessionMessage(textFromContent(content));
+    const parsedContext = parseContextAttachmentBlocks(
+      crossSession?.text ?? textFromContent(content),
+    );
     const text = parsedContext.text;
     const skill = parseSkillBlock(text);
     if (skill) {
@@ -228,6 +232,7 @@ function partsFromMessage(
           text: skill.userMessage,
           status: "complete",
           renderAs: renderUserMessageAsMarkdown ? "markdown" : undefined,
+          crossSession: crossSession?.metadata,
         });
     } else if (text)
       parts.push({
@@ -238,6 +243,7 @@ function partsFromMessage(
         text,
         status: "complete",
         renderAs: renderUserMessageAsMarkdown ? "markdown" : undefined,
+        crossSession: crossSession?.metadata,
       });
     parsedContext.attachments.forEach((attachment, index) => {
       if (attachment.kind === "annotation") {
@@ -492,6 +498,8 @@ export function projectQueuedMessages(
     const occurrences = new Map<string, number>();
     return messages.flatMap((text): UiPart[] => {
       if (!text) return [];
+      const crossSession = parseCrossSessionMessage(text);
+      const visibleText = crossSession?.text ?? text;
       const occurrence = (occurrences.get(text) ?? 0) + 1;
       occurrences.set(text, occurrence);
       const digest = createHash("sha256")
@@ -503,9 +511,10 @@ export function projectQueuedMessages(
           id: `${idPrefix}-${digest}-${occurrence}`,
           kind: "text",
           role: "user",
-          text,
+          text: visibleText,
           status: "complete",
           deliveryState,
+          crossSession: crossSession?.metadata,
         },
       ];
     });

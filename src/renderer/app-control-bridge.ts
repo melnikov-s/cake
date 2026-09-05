@@ -9,6 +9,12 @@ import type { CakeChatSummary } from "../domain/cake-chat-data";
 import type { SessionSummary } from "./models/SessionSummary";
 import type { WorktreeRecord } from "../ipc/worktree-contract";
 import type { ScheduledMessage } from "../domain/scheduled-message-data";
+import type {
+  CoordinationMessage,
+  CoordinationThread,
+  CrossSessionDeliveryStatus,
+  CrossSessionMessageMetadata,
+} from "../domain/cross-session-coordination";
 
 const bounded = (minimum: number, maximum: number) =>
   Schema.String.check(Schema.isMinLength(minimum), Schema.isMaxLength(maximum));
@@ -62,6 +68,21 @@ const appControlArgumentSchemas = {
     ...sessionIdTargetSchema.fields,
     text: trimmed(1, 100_000),
     delivery: Schema.optionalKey(Schema.Literals(["prompt", "queue", "steer"])),
+    threadId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
+    maxMessages: Schema.optionalKey(
+      Schema.Int.check(Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(1_000)),
+    ),
+  }),
+  reply_session_message: Schema.Struct({
+    text: trimmed(1, 100_000),
+    delivery: Schema.optionalKey(Schema.Literals(["prompt", "queue", "steer"])),
+    threadId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
+  }),
+  get_session_thread: Schema.Struct({
+    threadId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
+  }),
+  close_session_thread: Schema.Struct({
+    threadId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
   }),
   compact_session: Schema.Struct({
     ...sessionIdTargetSchema.fields,
@@ -125,6 +146,9 @@ const appControlInvocationSchema = Schema.Union([
   invocation("create_session"),
   invocation("create_draft_session"),
   invocation("send_session_message"),
+  invocation("reply_session_message"),
+  invocation("get_session_thread"),
+  invocation("close_session_thread"),
   invocation("compact_session"),
   invocation("schedule_session_message"),
   invocation("list_scheduled_messages"),
@@ -170,6 +194,8 @@ export interface AgentControlSource {
   kind: "project-session" | "cake-chat";
   sessionId: string;
   title: string;
+  projectName?: string;
+  workingDirectory?: string;
 }
 
 interface AgentActionReceipt {
@@ -179,7 +205,21 @@ interface AgentActionReceipt {
   coalesceKey: string;
 }
 
+interface SessionCoordinationHost {
+  create(
+    sourceSessionId: string,
+    targetSessionId: string,
+    maxMessages?: number,
+  ): CoordinationThread;
+  get(threadId: string): CoordinationThread | undefined;
+  find(sessionId: string, explicitThreadId?: string): CoordinationThread | undefined;
+  record(thread: CoordinationThread, message: CoordinationMessage): void;
+  refresh(thread: CoordinationThread): void;
+  close(thread: CoordinationThread): void;
+}
+
 export interface AppControlHost {
+  sessionCoordination: SessionCoordinationHost;
   currentSelection(): AppControlSelection;
   sessionLayout?(originSessionId?: string): {
     focusedSessionId?: string;
@@ -221,7 +261,8 @@ export interface AppControlHost {
     sessionId: string,
     text: string,
     delivery: "prompt" | "follow-up" | "steer",
-  ): Promise<void>;
+    crossSession?: CrossSessionMessageMetadata,
+  ): Promise<string>;
   compactSession(sessionId: string, instructions?: string): Promise<void>;
   scheduleSessionMessage(input: {
     targetSessionId: string;
@@ -274,6 +315,20 @@ export interface AppControlState {
   recentSessions: AppControlSession[];
 }
 
+interface CoordinationThreadView {
+  threadId: string;
+  state: "open" | "closed";
+  participants: Array<{
+    sessionId: string;
+    title: string;
+    projectName: string;
+    workingDirectory: string;
+  }>;
+  messageCount: number;
+  maxMessages?: number;
+  messages: CoordinationMessage[];
+}
+
 export type AppControlResult =
   | { ok: true; name: "get_app_state"; state: AppControlState }
   | {
@@ -303,10 +358,26 @@ export type AppControlResult =
     }
   | {
       ok: true;
-      name: "send_session_message";
+      name: "send_session_message" | "reply_session_message";
       target: SessionTarget;
+      targetTitle: string;
+      messageId: string;
+      threadId?: string;
+      messageNumber?: number;
+      maxMessages?: number;
       delivery: "prompt" | "queue" | "steer";
-      status: "sent";
+      status: CrossSessionDeliveryStatus;
+    }
+  | {
+      ok: true;
+      name: "get_session_thread";
+      thread: CoordinationThreadView;
+    }
+  | {
+      ok: true;
+      name: "close_session_thread";
+      thread: CoordinationThreadView;
+      status: "closed";
     }
   | { ok: true; name: "compact_session"; target: SessionTarget; status: "compacted" }
   | {
@@ -422,8 +493,26 @@ const modelControlOperations = [
   operation(
     "sessions.send",
     "sessions",
-    "Send, queue, or steer a message to one explicitly targeted session without opening it.",
+    "Send, queue, or steer a correlated message to one explicitly targeted session. The result is a visible delivery receipt; optional maxMessages bounds the exchange.",
     appControlArgumentSchemas.send_session_message,
+  ),
+  operation(
+    "sessions.reply",
+    "sessions",
+    "Reply to the originating session in the current open coordination thread without supplying a session ID.",
+    appControlArgumentSchemas.reply_session_message,
+  ),
+  operation(
+    "sessions.thread",
+    "sessions",
+    "Inspect the current coordination thread, correlated messages, delivery states, participants, and optional message limit.",
+    appControlArgumentSchemas.get_session_thread,
+  ),
+  operation(
+    "sessions.close-thread",
+    "sessions",
+    "Close the current coordination thread. Further replies are rejected; late arrivals remain attributed to the closed exchange.",
+    appControlArgumentSchemas.close_session_thread,
   ),
   operation(
     "sessions.compact",
@@ -476,6 +565,9 @@ const commandToLegacyName = {
   "sessions.create": "create_session",
   "sessions.create-draft": "create_draft_session",
   "sessions.send": "send_session_message",
+  "sessions.reply": "reply_session_message",
+  "sessions.thread": "get_session_thread",
+  "sessions.close-thread": "close_session_thread",
   "sessions.compact": "compact_session",
   "sessions.schedule": "schedule_session_message",
   "sessions.scheduled": "list_scheduled_messages",
@@ -658,6 +750,42 @@ export class AppControlBridge {
         status: "cancelled",
       };
     }
+    if (invocation.name === "reply_session_message") {
+      if (!source)
+        return { ok: false, name: invocation.name, error: "Reply requires a calling session." };
+      const thread = this.findThread(source.sessionId, invocation.arguments.threadId);
+      if (!thread)
+        return { ok: false, name: invocation.name, error: "There is no matching session thread." };
+      if (thread.state === "closed")
+        return { ok: false, name: invocation.name, error: "That session thread is closed." };
+      const targetSessionId = thread.participants.find((id) => id !== source.sessionId);
+      if (!targetSessionId)
+        return { ok: false, name: invocation.name, error: "The thread has no reply target." };
+      return this.sendCrossSessionMessage(
+        invocation.name,
+        targetSessionId,
+        invocation.arguments.text,
+        invocation.arguments.delivery,
+        source,
+        thread,
+      );
+    }
+    if (invocation.name === "get_session_thread" || invocation.name === "close_session_thread") {
+      if (!source)
+        return {
+          ok: false,
+          name: invocation.name,
+          error: "Thread access requires a calling session.",
+        };
+      const thread = this.findThread(source.sessionId, invocation.arguments.threadId);
+      if (!thread)
+        return { ok: false, name: invocation.name, error: "There is no matching session thread." };
+      if (invocation.name === "close_session_thread") this.host.sessionCoordination.close(thread);
+      const view = this.threadView(thread);
+      return invocation.name === "close_session_thread"
+        ? { ok: true, name: invocation.name, thread: view, status: "closed" }
+        : { ok: true, name: invocation.name, thread: view };
+    }
 
     const { sessionId } = invocation.arguments;
     const known = this.knownSession(sessionId);
@@ -695,15 +823,69 @@ export class AppControlBridge {
       };
     }
     if (invocation.name === "send_session_message") {
-      const delivery =
-        invocation.arguments.delivery ??
-        (this.host.sessionActivity(sessionId) === "running" ? "queue" : "prompt");
-      await this.host.sendSessionMessage(
+      if (!source) {
+        const delivery =
+          invocation.arguments.delivery ??
+          (this.host.sessionActivity(sessionId) === "running" ? "queue" : "prompt");
+        const turnId = await this.host.sendSessionMessage(
+          sessionId,
+          invocation.arguments.text,
+          delivery === "queue" ? "follow-up" : delivery,
+        );
+        return {
+          ok: true,
+          name: invocation.name,
+          target,
+          targetTitle: known.title,
+          messageId: turnId,
+          delivery,
+          status: delivery === "queue" ? "queued" : "accepted",
+        };
+      }
+      let thread = invocation.arguments.threadId
+        ? this.host.sessionCoordination.get(invocation.arguments.threadId)
+        : undefined;
+      if (invocation.arguments.threadId && !thread)
+        return {
+          ok: false,
+          name: invocation.name,
+          error: "Cake could not find that session thread.",
+        };
+      if (thread && !thread.participants.includes(source.sessionId))
+        return {
+          ok: false,
+          name: invocation.name,
+          error: "The calling session is not in that thread.",
+        };
+      if (thread?.state === "closed")
+        return { ok: false, name: invocation.name, error: "That session thread is closed." };
+      if (
+        thread &&
+        invocation.arguments.maxMessages !== undefined &&
+        invocation.arguments.maxMessages !== thread.maxMessages
+      )
+        return {
+          ok: false,
+          name: invocation.name,
+          error: "The existing thread has a different message limit.",
+        };
+      if (!thread) {
+        thread = this.host.sessionCoordination.create(
+          source.sessionId,
+          sessionId,
+          invocation.arguments.maxMessages,
+        );
+      }
+      if (!thread.participants.includes(sessionId))
+        return { ok: false, name: invocation.name, error: "The target is not in that thread." };
+      return this.sendCrossSessionMessage(
+        invocation.name,
         sessionId,
         invocation.arguments.text,
-        delivery === "queue" ? "follow-up" : delivery,
+        invocation.arguments.delivery,
+        source,
+        thread,
       );
-      return { ok: true, name: invocation.name, target, delivery, status: "sent" };
     }
     if (invocation.name === "compact_session") {
       await this.host.compactSession(sessionId, invocation.arguments.instructions);
@@ -754,6 +936,105 @@ export class AppControlBridge {
       provider: invocation.arguments.provider,
       modelId: invocation.arguments.modelId,
       status: "changing",
+    };
+  }
+
+  private findThread(sessionId: string, explicitThreadId?: string) {
+    return this.host.sessionCoordination.find(sessionId, explicitThreadId);
+  }
+
+  private async sendCrossSessionMessage(
+    name: "send_session_message" | "reply_session_message",
+    targetSessionId: string,
+    text: string,
+    requestedDelivery: "prompt" | "queue" | "steer" | undefined,
+    source: AgentControlSource,
+    thread: CoordinationThread,
+  ): Promise<AppControlResult> {
+    const target = this.knownSession(targetSessionId);
+    if (!target)
+      return { ok: false, name, error: "Cake could not find the thread's target session." };
+    if (targetSessionId === source.sessionId)
+      return { ok: false, name, error: "A session thread requires two different sessions." };
+    if (thread.maxMessages !== undefined && thread.messages.length >= thread.maxMessages) {
+      this.host.sessionCoordination.close(thread);
+      return { ok: false, name, error: "That session thread reached its message limit." };
+    }
+    const delivery =
+      requestedDelivery ??
+      (this.host.sessionActivity(targetSessionId) === "running" ? "queue" : "prompt");
+    const messageId = crypto.randomUUID();
+    const sequence = thread.messages.length + 1;
+    const metadata: CrossSessionMessageMetadata = {
+      version: 1,
+      messageId,
+      threadId: thread.threadId,
+      sequence,
+      sender: {
+        sessionId: source.sessionId,
+        title: source.title,
+        kind: source.kind,
+        ...(source.projectName ? { projectName: source.projectName } : null),
+        ...(source.workingDirectory ? { workingDirectory: source.workingDirectory } : null),
+      },
+      ...(thread.maxMessages !== undefined ? { maxMessages: thread.maxMessages } : null),
+    };
+    const message: CoordinationMessage = {
+      messageId,
+      senderSessionId: source.sessionId,
+      targetSessionId,
+      turnId: messageId,
+      delivery,
+      status: delivery === "queue" ? "queued" : "accepted",
+    };
+    // Reserve the sequence before crossing the async boundary so simultaneous
+    // participants cannot receive the same message number or exceed the limit.
+    this.host.sessionCoordination.record(thread, message);
+    try {
+      message.turnId = await this.host.sendSessionMessage(
+        targetSessionId,
+        text,
+        delivery === "queue" ? "follow-up" : delivery,
+        metadata,
+      );
+    } catch (error) {
+      message.status = "failed";
+      throw error;
+    }
+    if (thread.maxMessages !== undefined && sequence >= thread.maxMessages)
+      this.host.sessionCoordination.close(thread);
+    return {
+      ok: true,
+      name,
+      target: { workspacePath: target.workingDirectory, sessionId: targetSessionId },
+      targetTitle: target.title,
+      messageId,
+      threadId: thread.threadId,
+      messageNumber: sequence,
+      maxMessages: thread.maxMessages,
+      delivery,
+      status: message.status,
+    };
+  }
+
+  private threadView(thread: CoordinationThread): CoordinationThreadView {
+    this.host.sessionCoordination.refresh(thread);
+    const participants = thread.participants.map((sessionId) => {
+      const session = this.knownSession(sessionId);
+      return {
+        sessionId,
+        title: session?.title ?? "Session",
+        projectName: session?.projectName ?? "Unknown project",
+        workingDirectory: session?.workingDirectory ?? "Unknown working directory",
+      };
+    });
+    return {
+      threadId: thread.threadId,
+      state: thread.state,
+      participants,
+      messageCount: thread.messages.length,
+      maxMessages: thread.maxMessages,
+      messages: thread.messages.map((message) => ({ ...message })),
     };
   }
 
@@ -811,11 +1092,16 @@ export class AppControlBridge {
         ...projectTarget(result.sessionId),
         coalesceKey: `draft:${result.sessionId}`,
       };
-    if (result.name === "send_session_message")
+    if (result.name === "send_session_message" || result.name === "reply_session_message")
       return {
-        message: `${result.delivery === "queue" ? "Queued a message for" : result.delivery === "steer" ? "Steered" : "Sent a message to"} “${projectTitle(result.target.sessionId)}”`,
+        message: `${result.status === "queued" ? "Queued" : "Accepted"} message ${result.messageNumber ? `${result.messageNumber}${result.maxMessages ? `/${result.maxMessages}` : ""} for` : "for"} “${result.targetTitle}”`,
         ...projectTarget(result.target.sessionId),
-        coalesceKey: `send:${result.target.sessionId}:${result.delivery}`,
+        coalesceKey: `send:${result.messageId}:${result.status}`,
+      };
+    if (result.name === "close_session_thread")
+      return {
+        message: `Closed session exchange after ${result.thread.messageCount} messages`,
+        coalesceKey: `thread-close:${result.thread.threadId}`,
       };
     if (result.name === "compact_session")
       return {

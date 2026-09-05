@@ -692,6 +692,16 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
   interface RuntimeOperationApiReference {
     current?: RuntimeOperationApi;
   }
+  const crossSessionReceiptSchema = Schema.Struct({
+    ok: Schema.Literal(true),
+    name: Schema.Literals(["send_session_message", "reply_session_message"]),
+    targetTitle: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(1_024)),
+    messageId: Schema.String.check(Schema.isUUID(4)),
+    threadId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
+    messageNumber: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThan(0))),
+    maxMessages: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThan(0))),
+    status: Schema.Literals(["accepted", "queued", "delivered", "processing", "answered"]),
+  });
   const operationApi: RuntimeOperationApiReference = {};
   const reportAgentAction = async (
     action: "compact" | "rename" | "resolve" | "restore" | "set-model",
@@ -829,11 +839,52 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
           sessionId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
           text: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(100_000))),
           delivery: Schema.optionalKey(Schema.Literals(["prompt", "queue", "steer"])),
+          threadId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
+          maxMessages: Schema.optionalKey(
+            Schema.Int.check(Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(1_000)),
+          ),
         }),
         examples: [{ input: { sessionId: "target-session-id", text: "Review the API changes." } }],
         result:
-          "The target and accepted delivery mode. Queue maps to Pi's follow-up delivery internally.",
+          "A visible correlated receipt with target label, thread and message IDs, count, delivery state, and accepted delivery mode.",
         execute: invokeAppControl("sessions.send"),
+      },
+      {
+        command: "sessions.reply",
+        topic: "sessions",
+        summary:
+          "Reply to the originating session in the current open exchange without carrying its session ID.",
+        inputSchema: Schema.Struct({
+          text: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(100_000))),
+          delivery: Schema.optionalKey(Schema.Literals(["prompt", "queue", "steer"])),
+          threadId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
+        }),
+        examples: [{ input: { text: "I agree; here is one caveat." } }],
+        result: "A correlated delivery receipt for the safely bound reply target.",
+        execute: invokeAppControl("sessions.reply"),
+      },
+      {
+        command: "sessions.thread",
+        topic: "sessions",
+        summary: "Inspect participants, message count, limit, closure, and delivery states.",
+        inputSchema: Schema.Struct({
+          threadId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
+        }),
+        examples: [{ input: {} }],
+        result: "The current Cake coordination thread projection.",
+        execute: invokeAppControl("sessions.thread"),
+      },
+      {
+        command: "sessions.close-thread",
+        topic: "sessions",
+        summary:
+          "Close the current exchange so queued or late arrivals cannot cause an automatic reply.",
+        inputSchema: Schema.Struct({
+          threadId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
+        }),
+        examples: [{ input: {} }],
+        result: "A closed thread receipt and final message count.",
+        execute: invokeAppControl("sessions.close-thread"),
       },
       {
         command: "sessions.compact",
@@ -2120,7 +2171,23 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     async invokeAppControl(command, input, signal) {
       if (!options.currentSessionControl?.invokeAppControl)
         throw new Error("Cross-session Cake controls are unavailable in this runtime");
-      return options.currentSessionControl.invokeAppControl(command, input, signal);
+      const result = await options.currentSessionControl.invokeAppControl(command, input, signal);
+      const receipt = Schema.decodeUnknownOption(crossSessionReceiptSchema)(result);
+      if (Option.isSome(receipt)) {
+        const count = receipt.value.messageNumber
+          ? ` ${receipt.value.messageNumber}${receipt.value.maxMessages ? `/${receipt.value.maxMessages}` : ""}`
+          : "";
+        await session.sendCustomMessage(
+          {
+            customType: "Cross-session delivery",
+            content: `${receipt.value.status === "queued" ? "Queued" : "Accepted"} message${count} for “${receipt.value.targetTitle}”`,
+            display: true,
+            details: result,
+          },
+          { triggerTurn: false },
+        );
+      }
+      return result;
     },
     async setResolved(resolved) {
       if (!options.currentSessionControl)

@@ -43,6 +43,7 @@ import {
   type ProjectSessionUpdate,
 } from "./project-session-data";
 import { SessionArchiveStorage } from "../services/storage/SessionArchiveStorage";
+import { encodeCrossSessionMessage } from "./cross-session-coordination";
 import type { ProjectSessionArchiveMetadata } from "../services/storage/SessionArchiveStorage";
 import {
   SessionCatalogChanges,
@@ -792,7 +793,7 @@ export const prompt = Effect.fn("ProjectSessions.prompt")(function* (
   const turnId = TurnId.make(
     yield* withHandle(promptTarget(input), (handle) =>
       handle.prompt(
-        input.text,
+        input.crossSession ? encodeCrossSessionMessage(input.text, input.crossSession) : input.text,
         runtimeAttachments(input.attachments),
         input.renderUserMessageAsMarkdown,
       ),
@@ -808,7 +809,7 @@ export const steer = Effect.fn("ProjectSessions.steer")(function* (
   const turnId = TurnId.make(
     yield* withHandle(promptTarget(input), (handle) =>
       handle.steer(
-        input.text,
+        input.crossSession ? encodeCrossSessionMessage(input.text, input.crossSession) : input.text,
         runtimeAttachments(input.attachments),
         input.renderUserMessageAsMarkdown,
       ),
@@ -824,7 +825,7 @@ export const followUp = Effect.fn("ProjectSessions.followUp")(function* (
   const turnId = TurnId.make(
     yield* withHandle(promptTarget(input), (handle) =>
       handle.followUp(
-        input.text,
+        input.crossSession ? encodeCrossSessionMessage(input.text, input.crossSession) : input.text,
         runtimeAttachments(input.attachments),
         input.renderUserMessageAsMarkdown,
       ),

@@ -5,6 +5,7 @@ import {
   type ProjectRecord as ProjectRecordType,
 } from "../domain/application-data";
 import { artifactRecordSchema } from "./artifact-contract";
+import { CrossSessionMessageMetadata } from "../domain/cross-session-coordination";
 import { ipcProjectionArray, ipcProjectionString } from "./projection";
 import { sourceLocationSchema } from "./source-location";
 
@@ -217,6 +218,7 @@ export const uiPartSchema = Schema.Union([
     renderAs: Schema.optional(Schema.Literal("markdown")),
     deliveryState: Schema.optional(Schema.Literals(["sending", "queued", "steering"])),
     draft: Schema.optional(Schema.Boolean),
+    crossSession: Schema.optional(CrossSessionMessageMetadata),
   }),
   Schema.Struct({
     ...partBase,

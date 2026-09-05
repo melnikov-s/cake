@@ -94,6 +94,10 @@ function applyConversationEvent(model: Session, event: ConversationEvent) {
     } else if (event._tag === "TurnSettled") {
       const index = model.activeTurnIds.indexOf(event.turnId);
       if (index >= 0) model.activeTurnIds.splice(index, 1);
+      const previous = model.settledTurns.findIndex((turn) => turn.turnId === event.turnId);
+      if (previous >= 0) model.settledTurns.splice(previous, 1);
+      model.settledTurns.push({ turnId: event.turnId, outcome: event.outcome });
+      if (model.settledTurns.length > 100) model.settledTurns.splice(0, 1);
       model.settledTurnRevision += 1;
     } else if (event._tag === "ExtensionUi")
       applyExtensionUiEvent(model, Schema.decodeUnknownSync(extensionUiEventSchema)(event.event));

@@ -9,6 +9,7 @@ type AttachmentKind = Extract<UiPart, { kind: "attachment" }>["attachmentKind"];
 type NoticeTone = Extract<UiPart, { kind: "notice" }>["tone"];
 type DeliveryState = Extract<UiPart, { kind: "text" }>["deliveryState"];
 type TextRenderAs = Extract<UiPart, { kind: "text" }>["renderAs"];
+type CrossSessionMetadata = Extract<UiPart, { kind: "text" }>["crossSession"];
 
 export class Message extends Model {
   @id id = "";
@@ -20,6 +21,7 @@ export class Message extends Model {
   status: PartStatus | undefined;
   deliveryState: DeliveryState | undefined;
   renderAs: TextRenderAs | undefined;
+  crossSession: CrossSessionMetadata | undefined;
   name: string | undefined;
   command: string | undefined;
   excludeFromContext: boolean | undefined;
@@ -57,6 +59,7 @@ export class Message extends Model {
         this.status = part.status;
         this.deliveryState = part.deliveryState;
         this.renderAs = part.renderAs;
+        this.crossSession = part.crossSession;
         return true;
       case "skill":
         this.name = part.name;
@@ -129,6 +132,7 @@ export class Message extends Model {
           status: this.status as TextStatus,
           deliveryState: this.deliveryState,
           renderAs: this.renderAs,
+          crossSession: this.crossSession,
         };
       case "skill":
         return { id: this.id, kind: this.kind, name: this.name!, content: this.content! };

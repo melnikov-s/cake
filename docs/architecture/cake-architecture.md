@@ -50,6 +50,7 @@ Every durable concept has one authority.
 | Application-level Cake Chat transcripts                                     | Their dedicated Pi Sessions                                               | Present them as Cake-wide meta-sessions and route curated controls                        |
 | Projects and per-Project worktree settings, window selection and view state | Cake                                                                      | Persist application and window metadata without copying Pi history                        |
 | Scheduled Project Session messages                                          | Cake                                                                      | Persist delivery intent until it becomes an ordinary Pi user message                      |
+| Cross-session coordination threads and delivery correlation                 | Cake                                                                      | Bind participants, limits, closure, and acknowledgements without copying transcript text  |
 | Resolved-session status                                                     | Cake-managed active/archive transcript location                           | Keep resolved transcripts read-only and restore them before Pi opens them                 |
 | Reviews and inline discussions                                              | Cake workflow services, with Pi sidecar-session references where relevant | Persist anchors and workflow metadata without copying Pi transcripts                      |
 | Rich artifacts                                                              | Cake artifact repository plus Pi transcript pointers/fallbacks            | Persist and render bounded, versioned artifact data                                       |
@@ -73,6 +74,19 @@ intent until its deadline. The destination session projects that pending intent
 beside its composer. At the deadline Cake restores the Project Session when
 necessary and submits an ordinary prompt, or a follow-up when its runtime is
 busy; after acceptance, Pi again becomes the sole message authority.
+
+Cross-session coordination is a lightweight Cake-owned workflow over ordinary
+Pi messages. A window-scoped `SessionCoordinationStore` binds two participants,
+correlates message and thread IDs, tracks an optional message limit, and closes
+an exchange. Sender identity and correlation metadata travel with the ordinary
+Pi user message and are schema-validated when projected; Cake does not persist
+or replay a second copy of its text. `accepted` means Cake/Pi accepted the turn,
+`queued` means it is waiting as Pi follow-up input, `processing` means Pi has
+consumed it into an active turn, and `answered` means that turn settled with a
+projected response. Closing prevents further coordinated replies. It does not
+silently abort unrelated destination work; an already consumed or otherwise
+uncancellable late arrival remains visibly attributed to the closed exchange
+and never causes autonomous continuation.
 
 All inline threads—code reviews and assistant-message discussions—run as
 independent lightweight Pi Sessions using the same runtime pipeline. Their

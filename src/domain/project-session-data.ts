@@ -2,6 +2,7 @@ import { Schema } from "effect";
 import { ThinkingLevel } from "../services/pi/model-data";
 import { ManagedWorktreeContext } from "../services/project-sessions/ProjectSessionEnvironment";
 import { CakeSessionIdentity, ConversationEvent, ConversationSnapshot } from "./conversation-data";
+import { CrossSessionMessageMetadata } from "./cross-session-coordination";
 
 const boundedId = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
 const boundedPath = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4_096));
@@ -148,6 +149,7 @@ export const ProjectSessionPromptInput = Schema.Struct({
   text: boundedText,
   attachments: Schema.Array(Attachment).check(Schema.isMaxLength(20)),
   renderUserMessageAsMarkdown: Schema.Boolean,
+  crossSession: Schema.optionalKey(CrossSessionMessageMetadata),
 });
 export interface ProjectSessionPromptInput extends Schema.Schema.Type<
   typeof ProjectSessionPromptInput

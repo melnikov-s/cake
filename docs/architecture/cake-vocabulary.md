@@ -92,6 +92,13 @@ stable handle, capability profile, concurrency, recursion, retention, and
 visibility policy. It is never a Project Session and does not expose its
 backing Pi Session identity to the renderer.
 
+### Coordination Thread
+
+A lightweight Cake-owned binding between two Cake Sessions. It owns participant
+routing, correlated message IDs, optional message limits, delivery projection,
+and closure state. It does not own or copy either Pi transcript, and it never
+implies autonomous delegation.
+
 ### Turn
 
 One user request and the resulting agent activity until it settles.
@@ -99,7 +106,9 @@ One user request and the resulting agent activity until it settles.
 ### Message
 
 A durable transcript entry in a Pi Session. Streaming parts update a Message;
-they are not separate Messages.
+they are not separate Messages. A cross-session message remains an ordinary Pi
+user Message carrying validated Cake coordination metadata; its Cake message ID
+correlates delivery state but is not a second transcript identity.
 
 ### Session handle
 

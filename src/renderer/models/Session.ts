@@ -29,6 +29,12 @@ export class Session extends Model {
   activeTurnIds: string[] = observable([]);
   /** Window-local ordering marker for turn settlements observed after this Model was created. */
   @transient settledTurnRevision = 0;
+  /** Bounded window-local acknowledgement projection for correlated coordination turns. */
+  @transient
+  settledTurns: Array<{
+    turnId: string;
+    outcome: "complete" | "failed" | "aborted";
+  }> = observable([]);
   diagnostics: string[] = observable([]);
   commands: SessionSnapshot["commands"] = observable([]);
   usage: SessionSnapshot["usage"] = undefined;

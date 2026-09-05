@@ -72,8 +72,12 @@ export const ChatTextMessage = forwardRef<
   // render it with a distinct pending treatment until Pi delivers it.
   const pending =
     !assistant && (part.deliveryState === "queued" || part.deliveryState === "steering");
+  const senderLabel = part.crossSession
+    ? `${part.crossSession.sender.title} · session message · ${part.crossSession.sequence}${part.crossSession.maxMessages ? `/${part.crossSession.maxMessages}` : ""}`
+    : undefined;
   const userLabel =
-    part.deliveryState === "queued"
+    senderLabel ??
+    (part.deliveryState === "queued"
       ? "You · pending"
       : part.deliveryState === "steering"
         ? "You · pending steer"
@@ -81,7 +85,7 @@ export const ChatTextMessage = forwardRef<
           ? "You · sending"
           : part.draft
             ? "You · draft"
-            : "You";
+            : "You");
   return (
     <Message
       ref={ref}

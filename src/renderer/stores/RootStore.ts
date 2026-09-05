@@ -26,6 +26,7 @@ import { NotificationStore } from "./NotificationStore";
 import { ToastStore } from "./ToastStore";
 import { TerminalStore, type TerminalTarget } from "./TerminalStore";
 import { SessionLayoutStore, type SessionSplitAxis } from "./SessionLayoutStore";
+import { SessionCoordinationStore } from "./SessionCoordinationStore";
 import { resolveDraftUpdate } from "../../utils/resolve-draft-update";
 import type { RendererModels } from "../RendererModels";
 
@@ -186,10 +187,15 @@ export class RootStore extends Store<{
   }
 
   private projectControlSource(sessionId: string): AgentControlSource {
+    const summary = this.sessionCatalogStore.find(sessionId);
+    const loaded = this.sessionRegistry.findSession(sessionId);
     return {
       kind: "project-session",
       sessionId,
-      title: this.sessionCatalogStore.find(sessionId)?.title ?? "Agent session",
+      title: summary?.title ?? "Agent session",
+      projectName: summary?.projectName ?? "Unknown project",
+      workingDirectory:
+        summary?.workingDirectory ?? loaded?.workspacePath ?? "Unknown working directory",
     };
   }
 
@@ -641,6 +647,13 @@ export class RootStore extends Store<{
   }
 
   @child
+  get sessionCoordinationStore(): SessionCoordinationStore {
+    return createStore(SessionCoordinationStore, {
+      sessionById: (sessionId) => this.sessionRegistry.findSession(sessionId)?.model,
+    });
+  }
+
+  @child
   get sidebarStore(): SidebarStore {
     return createStore(SidebarStore, {
       projects: this.projectCatalogStore,
@@ -791,6 +804,7 @@ export class RootStore extends Store<{
           }
     });
     this.appControl = new AppControlBridge({
+      sessionCoordination: this.sessionCoordinationStore,
       currentSelection: () => {
         const selection = this.appShellStore.selection;
         if (selection.kind === "project-session") {
@@ -851,7 +865,7 @@ export class RootStore extends Store<{
       openSession: (sessionId, messageId) => this.openSession(sessionId, messageId),
       createSession: (input) => this.createPromptedSession(input),
       createDraftSession: (input) => this.createDraftSession(input),
-      sendSessionMessage: (sessionId, text, delivery) =>
+      sendSessionMessage: (sessionId, text, delivery, crossSession) =>
         this.appControlOperationStore.run(() => {
           this.retainProjectSessionObservation(sessionId);
           const command =
@@ -866,9 +880,10 @@ export class RootStore extends Store<{
               text,
               renderUserMessageAsMarkdown: false,
               attachments: [],
+              ...(crossSession ? { crossSession } : null),
             },
             { signal: this.signal },
-          ).then(() => undefined);
+          );
         }),
       compactSession: (sessionId, instructions) =>
         this.appControlOperationStore.run(() =>

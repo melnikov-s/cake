@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { createStore, mount } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
 import { CakeChatTarget } from "../../../src/domain/cake-chat-data";
 import {
@@ -6,9 +7,15 @@ import {
   type AppControlHost,
   listAppControlTools,
 } from "../../../src/renderer/app-control-bridge";
+import { Message } from "../../../src/renderer/models/Message";
+import { Session } from "../../../src/renderer/models/Session";
+import { SessionCoordinationStore } from "../../../src/renderer/stores/SessionCoordinationStore";
 
 function createHost(overrides: Partial<AppControlHost> = {}): AppControlHost {
   return {
+    sessionCoordination: mount(
+      createStore(SessionCoordinationStore, { sessionById: () => undefined }),
+    ),
     currentSelection: () => ({ kind: "workbench" }),
     projects: () => [],
     sessions: () => [],
@@ -21,7 +28,7 @@ function createHost(overrides: Partial<AppControlHost> = {}): AppControlHost {
     createDraftSession: async () => {
       throw new Error("not used");
     },
-    sendSessionMessage: async () => undefined,
+    sendSessionMessage: async () => "turn-1",
     compactSession: async () => undefined,
     scheduleSessionMessage: async () => {
       throw new Error("not used");
@@ -241,7 +248,7 @@ describe("AppControlBridge", () => {
   });
 
   it("compacts and schedules messages for sessions in another project", async () => {
-    const sendSessionMessage = vi.fn(async () => undefined);
+    const sendSessionMessage = vi.fn(async () => "turn-1");
     const compactSession = vi.fn(async () => undefined);
     const scheduleSessionMessage = vi.fn(async (input) => ({
       id: "8de1a807-dc99-49ee-8d35-7a3ed20bef06",
@@ -276,7 +283,9 @@ describe("AppControlBridge", () => {
       ok: true,
       name: "send_session_message",
       delivery: "queue",
-      status: "sent",
+      status: "queued",
+      targetTitle: "Other project session",
+      messageId: "turn-1",
     });
     await expect(
       bridge.invoke({
@@ -306,6 +315,219 @@ describe("AppControlBridge", () => {
       text: "Review this",
       sendAt: "2030-01-01T12:00:00.000Z",
     });
+  });
+
+  it("keeps duplicate-title targets disambiguated by project and working directory", async () => {
+    const sessions = [
+      {
+        workingDirectory: "/projects/alpha",
+        projectName: "Alpha",
+        sessionId: "session-a",
+        title: "Review",
+        modifiedAt: "2026-03-02T13:00:00.000Z",
+        messageCount: 3,
+        resolved: false,
+        draft: false,
+      },
+      {
+        workingDirectory: "/projects/beta/.worktrees/review",
+        projectName: "Beta",
+        sessionId: "session-b",
+        title: "Review",
+        modifiedAt: "2026-03-01T13:00:00.000Z",
+        messageCount: 7,
+        resolved: false,
+        draft: false,
+      },
+    ];
+    const bridge = new AppControlBridge(createHost({ sessions: () => sessions }));
+
+    await expect(bridge.invoke({ name: "sessions.list", arguments: {} })).resolves.toMatchObject({
+      sessions: [
+        { sessionId: "session-a", workspaceName: "Alpha", workspacePath: "/projects/alpha" },
+        {
+          sessionId: "session-b",
+          workspaceName: "Beta",
+          workspacePath: "/projects/beta/.worktrees/review",
+        },
+      ],
+    });
+  });
+
+  it("attaches sender metadata and routes replies through the thread binding", async () => {
+    const sendSessionMessage = vi
+      .fn()
+      .mockResolvedValueOnce("turn-b")
+      .mockResolvedValueOnce("turn-a");
+    const showAgentAction = vi.fn();
+    const sessions = [
+      {
+        workingDirectory: "/projects/alpha",
+        projectName: "Alpha",
+        sessionId: "session-a",
+        title: "Review",
+        modifiedAt: "2026-03-02T13:00:00.000Z",
+        messageCount: 3,
+        resolved: false,
+        draft: false,
+      },
+      {
+        workingDirectory: "/projects/beta",
+        projectName: "Beta",
+        sessionId: "session-b",
+        title: "Review",
+        modifiedAt: "2026-03-01T13:00:00.000Z",
+        messageCount: 7,
+        resolved: false,
+        draft: false,
+      },
+    ];
+    const bridge = new AppControlBridge(
+      createHost({ sessions: () => sessions, sendSessionMessage, showAgentAction }),
+    );
+    const sourceA = {
+      kind: "project-session" as const,
+      sessionId: "session-a",
+      title: "Review",
+      projectName: "Alpha",
+      workingDirectory: "/projects/alpha",
+    };
+    const first = await bridge.invoke(
+      {
+        name: "sessions.send",
+        arguments: { sessionId: "session-b", text: "First", maxMessages: 3 },
+      },
+      sourceA,
+    );
+    expect(first).toMatchObject({
+      status: "accepted",
+      targetTitle: "Review",
+      messageNumber: 1,
+      maxMessages: 3,
+    });
+    const threadId = (first as { threadId: string }).threadId;
+    expect(sendSessionMessage).toHaveBeenNthCalledWith(
+      1,
+      "session-b",
+      "First",
+      "prompt",
+      expect.objectContaining({
+        threadId,
+        sequence: 1,
+        sender: {
+          kind: "project-session",
+          sessionId: "session-a",
+          title: "Review",
+          projectName: "Alpha",
+          workingDirectory: "/projects/alpha",
+        },
+      }),
+    );
+
+    await expect(
+      bridge.invoke(
+        { name: "sessions.reply", arguments: { text: "Second" } },
+        {
+          kind: "project-session",
+          sessionId: "session-b",
+          title: "Review",
+          projectName: "Beta",
+          workingDirectory: "/projects/beta",
+        },
+      ),
+    ).resolves.toMatchObject({ target: { sessionId: "session-a" }, messageNumber: 2, threadId });
+    expect(sendSessionMessage).toHaveBeenNthCalledWith(
+      2,
+      "session-a",
+      "Second",
+      "prompt",
+      expect.objectContaining({ threadId, sequence: 2 }),
+    );
+    expect(showAgentAction).toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.stringContaining("Accepted message 2/3") }),
+    );
+  });
+
+  it("tracks queued acknowledgements, enforces the limit, and rejects late continuation", async () => {
+    const sendSessionMessage = vi.fn(async () => "turn-b");
+    const targetSession = Session.create({ sessionId: "session-b" });
+    const sessionCoordination = mount(
+      createStore(SessionCoordinationStore, {
+        sessionById: (sessionId) => (sessionId === "session-b" ? targetSession : undefined),
+      }),
+    );
+    const bridge = new AppControlBridge(
+      createHost({
+        sessionCoordination,
+        sessions: () => [
+          {
+            workingDirectory: "/a",
+            projectName: "A",
+            sessionId: "session-a",
+            title: "A",
+            modifiedAt: "2026-03-02T13:00:00.000Z",
+            messageCount: 1,
+            resolved: false,
+            draft: false,
+          },
+          {
+            workingDirectory: "/b",
+            projectName: "B",
+            sessionId: "session-b",
+            title: "B",
+            modifiedAt: "2026-03-01T13:00:00.000Z",
+            messageCount: 1,
+            resolved: false,
+            draft: false,
+          },
+        ],
+        sessionActivity: (sessionId) => (sessionId === "session-b" ? "running" : undefined),
+        sendSessionMessage,
+      }),
+    );
+    const source = { kind: "project-session" as const, sessionId: "session-a", title: "A" };
+    const sent = await bridge.invoke(
+      {
+        name: "sessions.send",
+        arguments: { sessionId: "session-b", text: "Only message", maxMessages: 1 },
+      },
+      source,
+    );
+    expect(sent).toMatchObject({ status: "queued", delivery: "queue", messageNumber: 1 });
+    expect(sendSessionMessage).toHaveBeenCalledWith(
+      "session-b",
+      "Only message",
+      "follow-up",
+      expect.any(Object),
+    );
+    const sentMessageId = (sent as { messageId: string }).messageId;
+    const sentThreadId = (sent as { threadId: string }).threadId;
+    targetSession.parts.push(
+      Message.create({
+        id: "projected-message",
+        kind: "text",
+        role: "user",
+        text: "Only message",
+        status: "complete",
+        crossSession: {
+          version: 1,
+          messageId: sentMessageId,
+          threadId: sentThreadId,
+          sequence: 1,
+          maxMessages: 1,
+          sender: { kind: "project-session", sessionId: "session-a", title: "A" },
+        },
+      }),
+    );
+    targetSession.activeTurnIds.push("turn-b");
+    await expect(
+      bridge.invoke({ name: "sessions.thread", arguments: {} }, source),
+    ).resolves.toMatchObject({
+      thread: { state: "closed", messageCount: 1, messages: [{ status: "processing" }] },
+    });
+    await expect(
+      bridge.invoke({ name: "sessions.reply", arguments: { text: "Too late" } }, source),
+    ).resolves.toMatchObject({ ok: false, error: "That session thread is closed." });
   });
 
   it("includes the managed worktree associated with each listed session", async () => {
