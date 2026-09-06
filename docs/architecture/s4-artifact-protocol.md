@@ -44,10 +44,12 @@ schema-validated response or cancellation. Its `view` is either a Cake-rendered
 form definition or a sandboxed HTML/React widget. The form view is preferred for
 ordinary fields; custom code is for genuinely visual interactions.
 
-Only internal request artifacts may use request mode. A pending request has a
-unique request ID and exactly one terminal settlement. Values are checked in the
-renderer before transport and again at the Pi boundary. Invalid values keep the
-request open. User cancellation, Pi abort signals, Cake Session replacement, session-runtime
+Only internal request artifacts may use request mode. In a form select, the
+first listed option is the agent's recommended option and Cake selects it by
+default; the user may choose another listed option or enter freeform text. A
+pending request has a unique request ID and exactly one terminal settlement.
+Values are checked in the renderer before transport and again at the Pi boundary.
+Invalid values keep the request open. User cancellation, Pi abort signals, Cake Session replacement, session-runtime
 Scope disposal, and loss of the final owning renderer connection all settle it
 as cancelled. Late or mismatched responses are ignored.
 

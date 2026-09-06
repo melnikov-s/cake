@@ -146,7 +146,15 @@ export function toolArtifactId(value: unknown) {
   const request = Reflect.get(value, "request");
   const requestId =
     typeof request === "object" && request !== null ? Reflect.get(request, "id") : undefined;
-  return typeof requestId === "string" ? requestId : undefined;
+  if (typeof requestId === "string") return requestId;
+  const input = Reflect.get(value, "input");
+  const nestedRequest =
+    typeof input === "object" && input !== null ? Reflect.get(input, "request") : undefined;
+  const nestedRequestId =
+    typeof nestedRequest === "object" && nestedRequest !== null
+      ? Reflect.get(nestedRequest, "id")
+      : undefined;
+  return typeof nestedRequestId === "string" ? nestedRequestId : undefined;
 }
 
 export function textFromContent(content: unknown): string {
@@ -533,6 +541,7 @@ export function projectSessionEntries(
 ) {
   const projected: UiPart[] = [];
   const indexes = new Map<string, number>();
+  const syntheticArtifactPartIds = new Set<string>();
   const append = (part: UiPart) => {
     const existingIndex = indexes.get(part.id);
     if (existingIndex === undefined) {
@@ -661,9 +670,11 @@ export function projectSessionEntries(
         !projected.some(
           (part) => part.kind === "tool" && part.artifactId === pointer.value.artifactId,
         )
-      )
+      ) {
+        const id = `entry-${entry.id}-artifact`;
+        syntheticArtifactPartIds.add(id);
         append({
-          id: `entry-${entry.id}-artifact`,
+          id,
           kind: "tool",
           name: "cake",
           command: "requests.open",
@@ -671,6 +682,7 @@ export function projectSessionEntries(
           artifactId: pointer.value.artifactId,
           state: "success",
         });
+      }
       continue;
     }
     if (entry.customType === reviewRunEntryType) {
@@ -686,7 +698,20 @@ export function projectSessionEntries(
     for (const [index, part] of projected.entries())
       if (part.kind === "tool" && part.state === "running")
         projected[index] = { ...part, state: "interrupted" };
-  return projected;
+  const linkedArtifactIds = new Set(
+    projected.flatMap((part) =>
+      part.kind === "tool" && part.artifactId && !syntheticArtifactPartIds.has(part.id)
+        ? [part.artifactId]
+        : [],
+    ),
+  );
+  return projected.filter(
+    (part) =>
+      !syntheticArtifactPartIds.has(part.id) ||
+      part.kind !== "tool" ||
+      !part.artifactId ||
+      !linkedArtifactIds.has(part.artifactId),
+  );
 }
 
 export function imageContent(attachments: Attachment[]) {

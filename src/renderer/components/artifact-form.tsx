@@ -32,6 +32,16 @@ function answersRecord(value: JsonValue | undefined): Record<string, ArtifactFor
   return Option.isSome(parsed) ? { ...parsed.value } : null;
 }
 
+function initialFormValues(fields: ReadonlyArray<ArtifactFormField>) {
+  return Object.fromEntries(
+    fields.flatMap((field) =>
+      field.type === "select" && field.options?.[0]
+        ? [[field.id, field.options[0].value] as const]
+        : [],
+    ),
+  );
+}
+
 /** Shared answer form for form artifacts and form-view request artifacts.
  *  Select fields render every option as a radio row plus a deterministic
  *  "Other" row with a free-text input, the actions are the static Skip/Submit
@@ -50,7 +60,9 @@ export function ArtifactForm({
   onSubmit?: (value: JsonValue) => void;
   onSkip?: () => void;
 }) {
-  const [values, setValues] = useState<Record<string, ArtifactFormValue>>({});
+  const [values, setValues] = useState<Record<string, ArtifactFormValue>>(() =>
+    initialFormValues(fields),
+  );
   const [localAnswers, setLocalAnswers] = useState<Record<string, ArtifactFormValue> | null>(null);
   const [customRows, setCustomRows] = useState<ReadonlySet<string>>(new Set());
   const otherInputs = useRef(new Map<string, HTMLInputElement>());

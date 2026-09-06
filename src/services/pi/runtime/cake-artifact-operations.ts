@@ -90,7 +90,7 @@ export function createCakeArtifactOperations(
         "Open one schema-validated form or sandboxed request widget and wait for submission or cancellation.",
       guidance: [
         "Prefer forms for interviews, questionnaires, multiple decisions, and structured configuration; use normal conversation for simple one-off questions.",
-        "Form fields are optional, so response schemas must accept an empty object. Selects accept listed choices or freeform text.",
+        "Form fields are optional, so response schemas must accept an empty object. Selects accept listed choices or freeform text. Put the recommended select option first; Cake auto-selects it.",
       ],
       inputSchema: Schema.Struct({ request: cakeRequestV1Schema }),
       examples: [

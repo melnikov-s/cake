@@ -1251,6 +1251,71 @@ describe("Pi 0.84.0 foundation contract", () => {
     expect(projectSessionEntries([], [pointer])).toEqual([]);
   });
 
+  it("renders a submitted request artifact only once at its tool-call position", () => {
+    const pointer = {
+      type: "custom",
+      id: "request-pointer",
+      parentId: null,
+      timestamp: new Date(0).toISOString(),
+      customType: "cake.artifact/v1",
+      data: {
+        protocol: "cake.artifact/v1",
+        artifactId: "request-1",
+        sessionId: "session-1",
+        revision: 1,
+        kind: "request",
+        digest: "a".repeat(64),
+        fallback: { markdown: "Choose." },
+      },
+    } as never;
+    const entries = [
+      pointer,
+      {
+        type: "message",
+        id: "assistant-tool-call",
+        parentId: null,
+        timestamp: new Date(0).toISOString(),
+        message: {
+          role: "assistant",
+          content: [
+            {
+              type: "toolCall",
+              id: "request-call",
+              name: "cake",
+              arguments: {
+                command: "requests.open",
+                input: { request: { id: "request-1" } },
+              },
+            },
+          ],
+        },
+      },
+      {
+        type: "message",
+        id: "request-result",
+        parentId: null,
+        timestamp: new Date(0).toISOString(),
+        message: {
+          role: "toolResult",
+          toolCallId: "request-call",
+          toolName: "cake",
+          details: {
+            protocol: "cake.operation/v1",
+            command: "requests.open",
+            result: { artifactId: "request-1", cancelled: false, value: { choice: "first" } },
+          },
+          content: [],
+          isError: false,
+        },
+      },
+    ] as never;
+
+    const parts = projectSessionEntries(entries);
+    expect(parts.filter((part) => part.kind === "tool" && part.artifactId === "request-1")).toEqual(
+      [expect.objectContaining({ id: "tool-request-call", state: "success" })],
+    );
+  });
+
   it("projects bash tool calls as commands instead of JSON arguments", () => {
     const project = createLiveMessageProjector();
     const message = {

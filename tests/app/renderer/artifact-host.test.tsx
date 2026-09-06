@@ -221,14 +221,14 @@ describe("ArtifactHost", () => {
       'input[aria-label="Choice other option"]',
     )!;
     expect(radios).toHaveLength(2);
+    expect(radios[0]!.checked).toBe(true);
     expect(customInput).not.toBeNull();
     expect(container.querySelector("form")).not.toBeNull();
-    act(() => {
-      radios[0]!.click();
+    act(() =>
       (container.querySelector("form") as HTMLFormElement).dispatchEvent(
         new Event("submit", { bubbles: true, cancelable: true }),
-      );
-    });
+      ),
+    );
     expect(submit).toHaveBeenCalledWith({ choice: "listed" });
     expect((container.querySelector('input[type="radio"]') as HTMLInputElement).disabled).toBe(
       true,
