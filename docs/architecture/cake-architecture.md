@@ -217,7 +217,9 @@ if the session is manually named while it is running. Failures are silent and
 leave Pi's first-message session-list title as the display fallback for active
 sessions. Configuring a utility model later makes an unnamed active session
 eligible after its next interaction; already named sessions are never
-regenerated automatically.
+regenerated automatically. A handoff inherits the source session's current title in both Pi's
+session-name metadata and Cake's session-title repository, so continuation never triggers a new
+title generation pass.
 
 When the first prompt will create a managed worktree, Cake also attempts a
 bounded utility completion before creating the checkout or Pi Session. The

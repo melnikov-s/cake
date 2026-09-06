@@ -358,8 +358,8 @@ export const makeProjectSessionEnvironmentLive = (
                   ),
               },
               sessionMetadata: {
-                setTitle: (title) =>
-                  base.setSessionTitleMetadata?.(sessionId, title) ?? Promise.resolve(),
+                setTitle: (targetSessionId, title) =>
+                  base.setSessionTitleMetadata?.(targetSessionId, title) ?? Promise.resolve(),
               },
               worktreeLandingControl: location.managedWorktree
                 ? {

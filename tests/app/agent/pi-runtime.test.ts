@@ -36,7 +36,7 @@ import {
   toolResultContent,
 } from "../../../src/services/pi/runtime/session-projection";
 import { loadReviewSessionProjection } from "../../../src/services/pi/runtime/sidecar-runtime";
-import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
+import { SessionManager, type AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import {
   sessionSnapshotSchema,
   type ExtensionUiIntent,
@@ -253,9 +253,9 @@ describe("Pi 0.84.0 foundation contract", () => {
     const generateTitle = vi.fn(async ({ firstUserMessage }: { firstUserMessage: string }) => {
       return firstUserMessage === "Investigate session naming" ? "Generated title" : "Unexpected";
     });
-    const setTitle = vi.fn(async (title: string) => {
-      void title;
-    });
+    const setTitle = vi.fn<(sessionId: string, title: string) => Promise<void>>(
+      async () => undefined,
+    );
     const sessionDir = join(directory, "sessions");
     try {
       const runtime = await createCakeRuntime({
@@ -300,7 +300,7 @@ describe("Pi 0.84.0 foundation contract", () => {
         false,
       );
       await vi.waitFor(() => expect(generateTitle).toHaveBeenCalledOnce(), { timeout: 1_000 });
-      expect(setTitle).toHaveBeenCalledWith("Investigate session naming");
+      expect(setTitle).toHaveBeenCalledWith(runtime.sessionId, "Investigate session naming");
       expect(generateTitle).toHaveBeenCalledWith(
         expect.objectContaining({ firstUserMessage: "Investigate session naming" }),
       );
@@ -310,7 +310,7 @@ describe("Pi 0.84.0 foundation contract", () => {
         const sessionText = await readFile(runtime.sessionFile, "utf8");
         expect(sessionText).toContain('"name":"Generated title"');
       });
-      expect(setTitle).toHaveBeenCalledWith("Generated title");
+      expect(setTitle).toHaveBeenCalledWith(runtime.sessionId, "Generated title");
       const entries = (await readFile(runtime.sessionFile, "utf8"))
         .trim()
         .split("\n")
@@ -1707,6 +1707,60 @@ describe("S1 Pi runtime", () => {
     expect((await runtime.snapshot()).piSettings?.reloadPending).toBe(false);
   });
 
+  it("preserves a handoff title in Pi and Cake metadata", async () => {
+    const directory = await createTemporaryDirectory();
+    const agentDir = join(directory, "agent");
+    const sessionDir = join(directory, "sessions");
+    const source = SessionManager.create(
+      directory,
+      cakeWorkspaceSessionDirectory(directory, sessionDir),
+    );
+    source.appendMessage({ role: "user", content: "Investigate this", timestamp: Date.now() });
+    const assistantEntryId = source.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: "Investigation complete" }],
+      api: "anthropic-messages",
+      provider: "anthropic",
+      model: "fixture",
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+      stopReason: "stop",
+      timestamp: Date.now(),
+    });
+    source.appendSessionInfo("Investigate session handoff");
+    const setTitle = vi.fn<(sessionId: string, title: string) => Promise<void>>(
+      async () => undefined,
+    );
+    const runtime = await createCakeRuntime({
+      cwd: directory,
+      agentDir,
+      sessionDir,
+      sessionId: source.getSessionId(),
+      trusted: false,
+      sessionMetadata: { setTitle },
+      requestUi: async () => undefined,
+      onEvent: () => undefined,
+    });
+    runtimes.push(runtime);
+    setTitle.mockClear();
+
+    const handedOff = await runtime.handoff(assistantEntryId);
+    const target = SessionManager.open(
+      handedOff.sessionFile,
+      cakeWorkspaceSessionDirectory(directory, sessionDir),
+      directory,
+    );
+
+    expect(target.getSessionName()).toBe("Investigate session handoff");
+    expect(setTitle).toHaveBeenCalledWith(handedOff.sessionId, "Investigate session handoff");
+  });
+
   it("creates and reopens an authoritative persistent Pi session", async () => {
     const directory = await createTemporaryDirectory();
     const agentDir = join(directory, "agent");
@@ -2002,8 +2056,8 @@ describe("S1 Pi runtime", () => {
       sessionDir,
       trusted: false,
       sessionMetadata: {
-        setTitle: async (title) => {
-          titles.set(first.sessionId, title);
+        setTitle: async (sessionId, title) => {
+          titles.set(sessionId, title);
         },
       },
       requestUi: async () => undefined,

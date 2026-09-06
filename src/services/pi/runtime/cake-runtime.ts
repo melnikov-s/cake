@@ -286,7 +286,7 @@ export interface CakeRuntimeOptions {
     signal?: AbortSignal;
   }): Promise<string>;
   sessionMetadata?: {
-    setTitle(title: string): Promise<void>;
+    setTitle(sessionId: string, title: string): Promise<void>;
   };
   currentSessionControl?: {
     resolved(): boolean;
@@ -1677,7 +1677,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
 
   const loadedSessionTitle = activeSessionTitle();
   if (!options.newSession && loadedSessionTitle !== "New chat")
-    await options.sessionMetadata?.setTitle(loadedSessionTitle);
+    await options.sessionMetadata?.setTitle(cakeSessionId, loadedSessionTitle);
 
   function emitSnapshotInBackground() {
     void emitSnapshot().catch(() => undefined);
@@ -1768,7 +1768,10 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       .find(Boolean);
     const userText = firstUserMessage || currentUserMessage.trim();
     if (!userText) return;
-    await options.sessionMetadata?.setTitle(userText.slice(0, SESSION_TITLE_MAX_LENGTH));
+    await options.sessionMetadata?.setTitle(
+      cakeSessionId,
+      userText.slice(0, SESSION_TITLE_MAX_LENGTH),
+    );
 
     const utilityModel = options.utilityModel?.();
     if (!utilityModel || !generateTitle) return;
@@ -1784,6 +1787,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       const normalizedTitle = title.trim().slice(0, SESSION_TITLE_MAX_LENGTH);
       session.setSessionName(normalizedTitle);
       await options.sessionMetadata?.setTitle(
+        cakeSessionId,
         session.sessionManager.getSessionName() ?? normalizedTitle,
       );
       await emitSnapshot();
@@ -2322,6 +2326,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       const normalizedTitle = title.trim().slice(0, SESSION_TITLE_MAX_LENGTH);
       session.setSessionName(normalizedTitle);
       await options.sessionMetadata?.setTitle(
+        cakeSessionId,
         session.sessionManager.getSessionName() ?? normalizedTitle,
       );
       await emitSnapshot();
@@ -2816,6 +2821,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       const normalizedName = name.trim().slice(0, SESSION_TITLE_MAX_LENGTH);
       session.setSessionName(normalizedName);
       await options.sessionMetadata?.setTitle(
+        cakeSessionId,
         session.sessionManager.getSessionName() ?? normalizedName,
       );
       await emitSnapshot();
@@ -2834,7 +2840,8 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
             thinkingLevel: session.thinkingLevel,
           }
         : undefined;
-      return createConversationHandoff(
+      const title = activeSessionTitle();
+      const handedOff = createConversationHandoff(
         session.sessionManager,
         entryId,
         configuration,
@@ -2847,7 +2854,10 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
               ),
             }
           : undefined,
+        title,
       );
+      await options.sessionMetadata?.setTitle(handedOff.sessionId, title);
+      return handedOff;
     },
     async navigate(entryId) {
       const result = await session.navigateTree(entryId, { summarize: false });

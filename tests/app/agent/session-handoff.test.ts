@@ -38,6 +38,7 @@ describe("createConversationHandoff", () => {
     const sessionDir = await mkdtemp(join(tmpdir(), "cake-handoff-"));
     temporaryDirectories.push(sessionDir);
     const source = SessionManager.create("/project", sessionDir);
+    source.appendSessionInfo("Investigate session handoff");
     source.appendMessage({ role: "user", content: "Investigate this", timestamp: 1 });
     source.appendMessage(
       assistant([
@@ -73,6 +74,7 @@ describe("createConversationHandoff", () => {
       .flatMap((message) => ("content" in message ? [JSON.stringify(message.content)] : []))
       .join("\n");
     expect(handedOff.getHeader()?.parentSession).toBe(source.getSessionFile());
+    expect(handedOff.getSessionName()).toBe("Investigate session handoff");
     // The orientation preamble is the first entry, before any copied dialogue.
     expect(entries[0]).toMatchObject({
       type: "custom_message",

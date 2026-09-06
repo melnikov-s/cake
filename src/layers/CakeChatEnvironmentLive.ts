@@ -120,14 +120,14 @@ export const makeCakeChatEnvironmentLive = (
                     ),
                 },
                 sessionMetadata: {
-                  setTitle: (title: string) =>
+                  setTitle: (sessionId: string, title: string) =>
                     run(
-                      metadata.setTitle(input.sessionId, title).pipe(
+                      metadata.setTitle(sessionId, title).pipe(
                         Effect.flatMap((changed) =>
                           changed
                             ? catalogs.publish({
                                 _tag: "CakeChatSessionChanged",
-                                sessionId: input.sessionId,
+                                sessionId,
                                 resolved: false,
                               })
                             : Effect.void,

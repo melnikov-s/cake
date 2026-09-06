@@ -62,6 +62,7 @@ export function createConversationHandoff(
     readonly thinkingLevel: string;
   },
   destination?: { readonly workingDirectory: string; readonly sessionDirectory: string },
+  title?: string,
 ) {
   const selected = source.getEntry(assistantEntryId);
   if (
@@ -79,6 +80,7 @@ export function createConversationHandoff(
     destination?.sessionDirectory ?? source.getSessionDir(),
     { parentSession },
   );
+  const inheritedTitle = title ?? source.getSessionName();
   const strippedToolActivity = countStrippedToolActivity(source, assistantEntryId);
   if (strippedToolActivity > 0)
     target.appendCustomMessageEntry(
@@ -120,6 +122,7 @@ export function createConversationHandoff(
     target.appendModelChange(configuration.provider, configuration.modelId);
     target.appendThinkingLevelChange(configuration.thinkingLevel);
   }
+  if (inheritedTitle) target.appendSessionInfo(inheritedTitle);
 
   const sessionFile = target.getSessionFile();
   if (!sessionFile) throw new Error("Cake could not persist the handoff session");
