@@ -40,7 +40,7 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
   const [projectAction, setProjectAction] = useState<ProjectAction>();
   const [actionBusy, setActionBusy] = useState(false);
   const sessions = store.projectSessions(path, resolved);
-  const visibleSessions = sessions.slice(0, store.sessionLimit(path, resolved));
+  const visibleSessions = store.visibleProjectSessions(path, resolved);
   const expanded = resolved
     ? store.isResolvedGroupExpanded(path)
     : store.isActiveGroupExpanded(path);
@@ -125,8 +125,10 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
               }
               paneNumber={chat.paneNumber?.(session.sessionId)}
               resolved={resolved}
-              activity={store.sessionActivity(session.sessionId)}
+              activity={store.sessionActivityForDisplay(session)}
               onOpen={onOpenSession}
+              onToggleFamily={(sessionId) => store.toggleFamilyCollapsed(sessionId)}
+              familyCollapsed={store.isFamilyCollapsed(session.sessionId)}
               onRename={(sessionId, name) =>
                 void chat.sessionManagementStore.renameSession(sessionId, name)
               }

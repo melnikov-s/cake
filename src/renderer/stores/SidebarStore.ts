@@ -1,5 +1,6 @@
 import { Store, observable, snapshot } from "r-state-tree";
 import { formatRelativeSessionTime } from "../../utils/format-relative-session-time";
+import { compareSessionSummariesForSidebar } from "../../utils/session-summary-order";
 import type { ProjectCatalogStore } from "./ProjectCatalogStore";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
@@ -40,6 +41,7 @@ export class SidebarStore extends Store<SidebarStoreProps> {
   private readonly expandedResolvedGroups: Record<string, boolean> = observable({});
   private readonly activatedResolvedCatalogs: Record<string, boolean> = observable({});
   private readonly sessionLimits: Record<string, number> = observable({});
+  @snapshot private readonly collapsedFamilies: Record<string, boolean> = observable({});
   resolvedLaneExpanded = false;
   now = Date.now();
 
@@ -124,8 +126,16 @@ export class SidebarStore extends Store<SidebarStoreProps> {
     y: number,
     resolved: boolean,
     unread?: boolean,
+    familyChild?: boolean,
   ) {
-    return this.electron.showSessionContextMenu({ sessionId, x, y, resolved, unread });
+    return this.electron.showSessionContextMenu({
+      sessionId,
+      x,
+      y,
+      resolved,
+      unread,
+      familyChild,
+    });
   }
 
   showProjectContextMenu(path: string, x: number, y: number) {
@@ -146,9 +156,63 @@ export class SidebarStore extends Store<SidebarStoreProps> {
   }
 
   projectSessions(workspacePath: string, resolved = false) {
-    return this.props.catalog
+    const sessions = this.props.catalog
       .projectSessions(workspacePath)
       .filter((item) => item.resolved === resolved);
+    const byId = new Map(sessions.map((session) => [session.sessionId, session]));
+    const roots = sessions.filter(
+      (session) =>
+        !session.familyParentSessionId ||
+        session.familyParentSessionId === session.sessionId ||
+        !byId.has(session.familyParentSessionId),
+    );
+    const latestActivity = (session: (typeof sessions)[number]) => {
+      const members = session.familyChildSessionIds
+        ? [
+            session,
+            ...session.familyChildSessionIds.flatMap((id) => (byId.get(id) ? [byId.get(id)!] : [])),
+          ]
+        : [session];
+      return members.reduce(
+        (latest, member) => (member.modifiedAt > latest ? member.modifiedAt : latest),
+        session.modifiedAt,
+      );
+    };
+    roots.sort((left, right) =>
+      compareSessionSummariesForSidebar(
+        { modifiedAt: latestActivity(left), draft: left.draft },
+        { modifiedAt: latestActivity(right), draft: right.draft },
+      ),
+    );
+    return roots.flatMap((root) => {
+      if (!root.familyChildSessionIds || this.isFamilyCollapsed(root.sessionId)) return [root];
+      const children = root.familyChildSessionIds
+        .flatMap((id) => (byId.get(id) ? [byId.get(id)!] : []))
+        .sort((left, right) => (left.familyChildOrder ?? 0) - (right.familyChildOrder ?? 0));
+      return [root, ...children];
+    });
+  }
+
+  visibleProjectSessions(workspacePath: string, resolved = false) {
+    const sessions = this.projectSessions(workspacePath, resolved);
+    const limit = this.sessionLimit(workspacePath, resolved);
+    if (sessions.length <= limit) return sessions;
+    let end = limit;
+    while (
+      end < sessions.length &&
+      sessions[end]?.familyParentSessionId &&
+      sessions[end]!.familyParentSessionId !== sessions[end]!.sessionId
+    )
+      end += 1;
+    return sessions.slice(0, end);
+  }
+
+  isFamilyCollapsed(parentSessionId: string) {
+    return this.collapsedFamilies[parentSessionId] === true;
+  }
+
+  toggleFamilyCollapsed(parentSessionId: string) {
+    this.collapsedFamilies[parentSessionId] = !this.isFamilyCollapsed(parentSessionId);
   }
 
   cakeChatSessions(resolved = false) {
@@ -168,6 +232,22 @@ export class SidebarStore extends Store<SidebarStoreProps> {
     const activity = this.props.sessions.findSession(sessionId)?.activity;
     if (activity) return activity;
     return this.props.catalog.find(sessionId)?.unread ? "unread" : undefined;
+  }
+
+  sessionActivityForDisplay(session: {
+    sessionId: string;
+    familyChildSessionIds?: readonly string[];
+  }) {
+    const own = this.sessionActivity(session.sessionId);
+    if (!session.familyChildSessionIds) return own;
+    const activities = [
+      own,
+      ...session.familyChildSessionIds.map((id) => this.sessionActivity(id)),
+    ];
+    if (activities.includes("running")) return "running";
+    if (activities.includes("error")) return "error";
+    if (activities.includes("unread")) return "unread";
+    return undefined;
   }
 
   isActiveGroupExpanded(groupKey: string) {

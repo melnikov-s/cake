@@ -17,6 +17,10 @@ export interface PendingSessionSummary {
   projectName: string;
   workingDirectory: string;
   managedWorktree?: WorktreeRecord;
+  familyId?: string;
+  familyParentSessionId?: string;
+  familyChildSessionIds?: readonly string[];
+  familyChildOrder?: number;
   pending: true;
   draft: boolean;
 }

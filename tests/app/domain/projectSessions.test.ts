@@ -21,6 +21,7 @@ import {
 } from "../../../src/services/project-sessions/ProjectSessionEnvironment";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
+import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import { SubagentCoordinatorLive } from "../../../src/services/subagents/SubagentCoordinator";
 import { Terminal } from "../../../src/services/terminal/Terminal";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
@@ -186,6 +187,14 @@ const makeLayer = (
   return Layer.mergeAll(
     application,
     SessionCatalogChanges.layer,
+    Layer.succeed(
+      SessionFamilyStorage,
+      SessionFamilyStorage.of({
+        list: () => Effect.succeed([]),
+        familyForMember: () => Effect.succeed(undefined),
+        addChild: () => Effect.die("Unexpected family child creation"),
+      }),
+    ),
     makePiSessionsLayer(adapter),
     SubagentCoordinatorLive,
     makeProjectSessionEnvironmentLayer({

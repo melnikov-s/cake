@@ -13,6 +13,7 @@ export interface CakePaths {
   piGlobalChatResolvedSessions: string;
   state: string;
   sessionMetadata: string;
+  sessionFamilies: string;
   resolvedProjectMetadata: string;
   artifacts: string;
   reviews: string;
@@ -43,6 +44,7 @@ export function resolveCakePaths(options: ResolveCakePathsOptions = {}): CakePat
     piGlobalChatResolvedSessions: join(piAgent, "global-chat", "resolved-sessions"),
     state,
     sessionMetadata: join(state, "session-metadata"),
+    sessionFamilies: join(state, "session-families.json"),
     resolvedProjectMetadata: join(state, "resolved-project-metadata"),
     artifacts: join(state, "artifacts"),
     reviews: join(state, "reviews"),

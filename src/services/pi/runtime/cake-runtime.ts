@@ -289,6 +289,9 @@ export interface CakeRuntimeOptions {
   };
   currentSessionControl?: {
     resolved(): boolean;
+    canResolve?(): boolean;
+    familyInfo?(): JsonValue;
+    deferResolution?: boolean;
     setResolved(resolved: boolean): Promise<void>;
     createSession?(
       input: { name: string; initialPrompt: string; model: ChatConfiguration },
@@ -298,6 +301,16 @@ export interface CakeRuntimeOptions {
       input: { name: string; initialPrompt: string; model?: ChatConfiguration },
       signal: AbortSignal,
     ): Promise<JsonValue>;
+    createChildSession?(
+      input: {
+        requestId: string;
+        title: string;
+        initialPrompt: string;
+        model: ChatConfiguration;
+      },
+      signal: AbortSignal,
+    ): Promise<JsonValue>;
+    routeFamilyMessage?(input: JsonObject, signal: AbortSignal): Promise<JsonValue | undefined>;
     invokeAppControl?(command: string, input: JsonObject, signal: AbortSignal): Promise<JsonValue>;
   };
   vscodeControl?: VscodeControl;
@@ -695,6 +708,16 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       input: { name: string; initialPrompt: string; model?: ChatConfiguration },
       signal: AbortSignal,
     ): Promise<JsonValue>;
+    createChildSession(
+      input: {
+        title: string;
+        initialPrompt: string;
+        model?: { provider: string; modelId: string };
+        thinkingLevel?: ThinkingLevel;
+      },
+      requestId: string,
+      signal: AbortSignal,
+    ): Promise<JsonValue>;
     invokeAppControl(command: string, input: JsonObject, signal: AbortSignal): Promise<JsonValue>;
     setModel(provider: string, modelId: string, reasoning?: ThinkingLevel): Promise<JsonValue>;
     setResolved(resolved: boolean): Promise<JsonValue>;
@@ -840,6 +863,60 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
             context.signal,
           );
         },
+      },
+      {
+        command: "sessions.create-child",
+        topic: "sessions",
+        summary: "Create and start a full child Project Session in the calling session's family.",
+        guidance: [
+          "The calling session becomes the family parent when it creates its first child.",
+          "Children inherit the exact Project and Working Directory, share mutable files, and start in the background.",
+          "A child cannot create another child; it must ask its parent for further delegation.",
+        ],
+        inputSchema: Schema.Struct({
+          title: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(500))),
+          initialPrompt: Schema.Trim.pipe(
+            Schema.check(Schema.isMinLength(1), Schema.isMaxLength(100_000)),
+          ),
+          model: Schema.optionalKey(
+            Schema.Struct({
+              provider: Schema.Trim.pipe(
+                Schema.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+              ),
+              modelId: Schema.Trim.pipe(
+                Schema.check(Schema.isMinLength(1), Schema.isMaxLength(512)),
+              ),
+            }),
+          ),
+          thinkingLevel: Schema.optionalKey(
+            Schema.Literals(["off", "minimal", "low", "medium", "high", "xhigh", "max"]),
+          ),
+        }),
+        examples: [
+          {
+            input: {
+              title: "Storage implementation",
+              initialPrompt: "Implement the storage slice and message me when it is ready.",
+            },
+          },
+        ],
+        result: "The stable child session identity and initial-turn launch outcome.",
+        limitations: [
+          "V1 families have one level and fixed Working Directory bindings.",
+          "This operation does not create or select a different worktree.",
+        ],
+        execute: (input, context) =>
+          // SAFETY: CakeOperationRegistry parsed input with this operation's schema.
+          api().createChildSession(
+            input as {
+              title: string;
+              initialPrompt: string;
+              model?: { provider: string; modelId: string };
+              thinkingLevel?: ThinkingLevel;
+            },
+            context.toolCallId,
+            context.signal,
+          ),
       },
       {
         command: "session.create-draft",
@@ -1123,14 +1200,19 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     ];
     return operations.filter(
       (operation) =>
-        (operation.command !== "session.resolve" || options.currentSessionControl !== undefined) &&
+        (operation.command !== "session.resolve" ||
+          (options.currentSessionControl !== undefined &&
+            options.currentSessionControl.canResolve?.() !== false)) &&
         (!["app.state", "app.split", "notifications.send"].includes(operation.command) ||
           options.currentSessionControl?.invokeAppControl !== undefined) &&
         (operation.command !== "session.create" ||
           options.currentSessionControl?.createSession !== undefined) &&
         (operation.command !== "session.create-draft" ||
           options.currentSessionControl?.createDraftSession !== undefined) &&
+        (operation.command !== "sessions.create-child" ||
+          options.currentSessionControl?.createChildSession !== undefined) &&
         (!operation.command.startsWith("sessions.") ||
+          operation.command === "sessions.create-child" ||
           options.currentSessionControl?.invokeAppControl !== undefined),
     );
   };
@@ -2183,7 +2265,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
 
   operationApi.current = {
     info() {
-      return Schema.decodeUnknownSync(jsonValueSchema)({
+      const info: JsonObject = {
         sessionId: cakeSessionId,
         title: activeSessionTitle(),
         workspacePath: options.cwd,
@@ -2193,7 +2275,11 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
           id: session.model?.id ?? "unknown",
           reasoning: session.thinkingLevel,
         },
-      });
+      };
+      const family = options.currentSessionControl?.familyInfo?.();
+      return Schema.decodeUnknownSync(jsonValueSchema)(
+        family === undefined ? info : { ...info, family },
+      );
     },
     usage() {
       const stats = session.getSessionStats();
@@ -2259,10 +2345,37 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         throw new Error("This Cake runtime cannot create project draft sessions");
       return options.currentSessionControl.createDraftSession(input, signal);
     },
+    async createChildSession(input, requestId, signal) {
+      if (!options.currentSessionControl?.createChildSession)
+        throw new Error("This Project Session cannot create child sessions");
+      const current = session.model;
+      if (!current) throw new Error("The calling session does not have a model to inherit");
+      return options.currentSessionControl.createChildSession(
+        {
+          requestId,
+          title: input.title,
+          initialPrompt: input.initialPrompt,
+          model: {
+            provider: input.model?.provider ?? current.provider,
+            modelId: input.model?.modelId ?? current.id,
+            thinkingLevel: input.thinkingLevel ?? session.thinkingLevel,
+            fastMode: fastModeEnabled(),
+          },
+        },
+        signal,
+      );
+    },
     async invokeAppControl(command, input, signal) {
-      if (!options.currentSessionControl?.invokeAppControl)
-        throw new Error("Cross-session Cake controls are unavailable in this runtime");
-      const result = await options.currentSessionControl.invokeAppControl(command, input, signal);
+      const familyResult =
+        command === "sessions.send"
+          ? await options.currentSessionControl?.routeFamilyMessage?.(input, signal)
+          : undefined;
+      let result = familyResult;
+      if (result === undefined) {
+        const invoke = options.currentSessionControl?.invokeAppControl;
+        if (!invoke) throw new Error("Cross-session Cake controls are unavailable in this runtime");
+        result = await invoke(command, input, signal);
+      }
       const receipt = Schema.decodeUnknownOption(crossSessionReceiptSchema)(result);
       if (Option.isSome(receipt)) {
         const count = receipt.value.messageNumber
@@ -2283,7 +2396,11 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     async setResolved(resolved) {
       if (!options.currentSessionControl)
         throw new Error("This Cake runtime cannot change session resolution");
-      if (resolved && session.isStreaming) {
+      if (
+        resolved &&
+        session.isStreaming &&
+        options.currentSessionControl.deferResolution !== false
+      ) {
         resolveOnSettle = true;
         return {
           sessionId: cakeSessionId,

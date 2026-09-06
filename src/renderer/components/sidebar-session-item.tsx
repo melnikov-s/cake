@@ -5,7 +5,7 @@ import { cn } from "../lib/utils";
 import { Badge } from "./ui/badge";
 import { IconButton } from "./ui/icon-button";
 import { NavItem } from "./ui/nav-item";
-import { ResolveIcon, RestoreIcon } from "./ui/icons";
+import { ChevronIcon, ResolveIcon, RestoreIcon } from "./ui/icons";
 import type { SidebarStore } from "../stores/SidebarStore";
 import { WorktreeStatusIcon } from "./worktree-status-icon";
 
@@ -21,12 +21,16 @@ export interface SidebarSessionItemProps {
       WorktreeRecord,
       "branch" | "baseBranch" | "parentWorktreePath" | "state"
     >;
+    familyParentSessionId?: string;
+    familyChildSessionIds?: readonly string[];
   };
   selected: boolean;
   paneNumber?: number;
   resolved: boolean;
   activity?: "running" | "unread" | "error";
   onOpen(sessionId: string): void;
+  onToggleFamily?(sessionId: string): void;
+  familyCollapsed?: boolean;
   onRename(sessionId: string, name: string): void;
   onResolve(sessionId: string, resolved: boolean): void;
   onDelete(sessionId: string): void;
@@ -43,6 +47,8 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
   resolved,
   activity,
   onOpen,
+  onToggleFamily,
+  familyCollapsed,
   onRename,
   onResolve,
   onDelete,
@@ -50,7 +56,10 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
 }: SidebarSessionItemProps) {
   const [renamingValue, setRenamingValue] = useState<string | null>(null);
   const unread = activity === "unread";
-  const canResolve = !activity;
+  const isFamilyParent = Boolean(session.familyChildSessionIds?.length);
+  const isFamilyChild =
+    Boolean(session.familyParentSessionId) && session.familyParentSessionId !== session.sessionId;
+  const canResolve = !activity && !isFamilyChild;
   const activityLabel =
     activity === "running" ? "Running" : activity === "error" ? "Error" : "Ready, unread";
   const branch = session.draft
@@ -70,6 +79,8 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
       data-session-id={session.sessionId}
       className={cn(
         "session-item group relative flex min-h-11 w-full items-center rounded-md py-1 text-xs select-none transition-colors",
+        isFamilyChild &&
+          "ml-3 w-[calc(100%-0.75rem)] pl-3 before:absolute before:inset-y-0 before:left-0 before:w-px before:bg-border after:absolute after:left-0 after:top-1/2 after:h-px after:w-2 after:bg-border",
         selected
           ? "active bg-sidebar-active text-primary font-semibold"
           : "text-muted-foreground hover:bg-sidebar-hover hover:text-foreground",
@@ -77,6 +88,20 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
         selected && canResolve && "has-session-action",
       )}
     >
+      {isFamilyParent && renamingValue === null && (
+        <IconButton
+          className={cn(
+            "ml-0.5 size-5 shrink-0 text-muted-foreground transition-transform",
+            familyCollapsed && "-rotate-90",
+          )}
+          tooltip={familyCollapsed ? "Expand child sessions" : "Collapse child sessions"}
+          ariaLabel={`${familyCollapsed ? "Expand" : "Collapse"} children of ${session.title}`}
+          aria-expanded={!familyCollapsed}
+          onClick={() => onToggleFamily?.(session.sessionId)}
+        >
+          <ChevronIcon />
+        </IconButton>
+      )}
       {renamingValue !== null ? (
         <input
           className="session-rename-input w-full h-7 rounded-md border border-accent/50 bg-background px-2 text-xs text-foreground outline-none focus:ring-1 focus:ring-accent"
@@ -99,21 +124,30 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
             event.preventDefault();
             const { clientX, clientY } = event;
             requestAnimationFrame(() => {
-              void store
-                .showSessionContextMenu(
-                  session.sessionId,
-                  clientX,
-                  clientY,
-                  resolved,
-                  onMarkUnread ? unread : undefined,
-                )
-                .then((action) => {
-                  if (action === "rename") setRenamingValue(session.title);
-                  else if (action === "mark-unread") onMarkUnread?.(session.sessionId, true);
-                  else if (action === "resolve") onResolve(session.sessionId, true);
-                  else if (action === "unresolve") onResolve(session.sessionId, false);
-                  else if (action === "delete") onDelete(session.sessionId);
-                });
+              const menu = isFamilyChild
+                ? store.showSessionContextMenu(
+                    session.sessionId,
+                    clientX,
+                    clientY,
+                    resolved,
+                    onMarkUnread ? unread : undefined,
+                    true,
+                  )
+                : store.showSessionContextMenu(
+                    session.sessionId,
+                    clientX,
+                    clientY,
+                    resolved,
+                    onMarkUnread ? unread : undefined,
+                  );
+              void menu.then((action) => {
+                if (action === "rename") setRenamingValue(session.title);
+                else if (action === "mark-unread") onMarkUnread?.(session.sessionId, true);
+                else if (action === "resolve" && !isFamilyChild) onResolve(session.sessionId, true);
+                else if (action === "unresolve" && !isFamilyChild)
+                  onResolve(session.sessionId, false);
+                else if (action === "delete" && !isFamilyChild) onDelete(session.sessionId);
+              });
             });
           }}
           label={<span className="session-title min-w-0 truncate">{session.title}</span>}

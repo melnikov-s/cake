@@ -15,6 +15,10 @@ export class SessionSummary extends Model {
   workingDirectory = "";
   worktreeName: string | undefined;
   managedWorktree: ManagedWorktreeContext | undefined;
+  familyId: string | undefined;
+  familyParentSessionId: string | undefined;
+  familyChildSessionIds: readonly string[] | undefined;
+  familyChildOrder: number | undefined;
   pending = false;
   draft = false;
 }

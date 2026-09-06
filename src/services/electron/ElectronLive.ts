@@ -433,28 +433,30 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
                 completed = true;
                 resolve({ action });
               };
+              const copyId = {
+                label: "Copy Session ID",
+                click: () => clipboard.writeText(request.sessionId),
+              };
+              const activeItems = [
+                { label: "Rename", click: () => finish("rename") },
+                ...(request.unread === false
+                  ? [{ label: "Mark as Unread", click: () => finish("mark-unread") } as const]
+                  : []),
+                copyId,
+              ];
               const menu = Menu.buildFromTemplate(
-                request.resolved
-                  ? [
-                      { label: "Unresolve", click: () => finish("unresolve") },
-                      {
-                        label: "Copy Session ID",
-                        click: () => clipboard.writeText(request.sessionId),
-                      },
-                      { type: "separator" },
-                      { label: "Delete", click: () => finish("delete") },
-                    ]
-                  : [
-                      { label: "Rename", click: () => finish("rename") },
-                      ...(request.unread === false
-                        ? [{ label: "Mark as Unread", click: () => finish("mark-unread") } as const]
-                        : []),
-                      {
-                        label: "Copy Session ID",
-                        click: () => clipboard.writeText(request.sessionId),
-                      },
-                      { label: "Resolve", click: () => finish("resolve") },
-                    ],
+                request.familyChild
+                  ? request.resolved
+                    ? [copyId]
+                    : activeItems
+                  : request.resolved
+                    ? [
+                        { label: "Unresolve", click: () => finish("unresolve") },
+                        copyId,
+                        { type: "separator" },
+                        { label: "Delete", click: () => finish("delete") },
+                      ]
+                    : [...activeItems, { label: "Resolve", click: () => finish("resolve") }],
               );
               openSessionContextMenus.add(menu);
               menu.popup({

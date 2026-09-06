@@ -76,7 +76,14 @@ interface ElectronCommands {
     options?: RendererCommandOptions,
   ): Promise<"reword" | "reword-with-prompt" | undefined>;
   showSessionContextMenu(
-    input: { sessionId: string; x: number; y: number; resolved: boolean; unread?: boolean },
+    input: {
+      sessionId: string;
+      x: number;
+      y: number;
+      resolved: boolean;
+      unread?: boolean;
+      familyChild?: boolean;
+    },
     options?: RendererCommandOptions,
   ): Promise<"rename" | "mark-unread" | "resolve" | "unresolve" | "delete" | undefined>;
   showProjectContextMenu(

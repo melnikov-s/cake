@@ -8,6 +8,7 @@ import { makePiAgentResourcesLive } from "../services/pi/live/PiAgentResourcesLi
 import { makePiModelsLive } from "../services/pi/live/PiModelsLive";
 import { makePiSessionsLive } from "../services/pi/PiSessions";
 import { makeSessionMetadataStorageLive } from "../services/storage/SessionMetadataStorage";
+import { makeSessionFamilyStorageLive } from "../services/storage/SessionFamilyStorage";
 import { AgentAvailability } from "../services/pi/AgentAvailability";
 import { ProjectSessionIntegrationsLive } from "../services/pi/ProjectSessionIntegrationsLive";
 import { makeProjectSessionRuntimeOptionsLive } from "../layers/ProjectSessionRuntimeOptionsLive";
@@ -75,6 +76,9 @@ const scheduledMessagesLive = ScheduledMessages.layer.pipe(
   Layer.provide(scheduledMessageStorageLive),
 );
 const sessionMetadataStorageLive = makeSessionMetadataStorageLive(cakePaths.sessionMetadata);
+const sessionFamilyStorageLive = makeSessionFamilyStorageLive(cakePaths.sessionFamilies).pipe(
+  Layer.provide(BootstrapLive),
+);
 const sessionArchiveStorageLive = makeSessionArchiveStorageLive(
   cakePaths.resolvedProjectMetadata,
 ).pipe(Layer.provide(sessionMetadataStorageLive));
@@ -113,6 +117,7 @@ const baseLive = Layer.mergeAll(
   sessionArchiveStorageLive,
   SessionCatalogChanges.layer,
   sessionMetadataStorageLive,
+  sessionFamilyStorageLive,
   piModelsLive,
   makePiAgentResourcesLive(cakePaths.piAgent),
   piSessionsLive,

@@ -68,7 +68,7 @@ export function applySessionCatalogGroupUpdate(
       sessions = sessions.filter((session) => session.sessionId !== event.sessionId);
     } else {
       sessions = sessions.map((session) =>
-        session.sessionId === event.sessionId
+        session.sessionId === event.sessionId && belongsToGroup(session)
           ? { ...session, resolved: event.resolved, unread: event.unread }
           : session,
       );

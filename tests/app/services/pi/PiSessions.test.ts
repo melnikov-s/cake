@@ -195,6 +195,7 @@ describe("PiSessions", () => {
       yield* sessions.acquire(options()).pipe(Effect.provideService(Scope.Scope, owner));
       assert.deepEqual(yield* sessions.currentStatus(target), {
         streaming: false,
+        pending: false,
         persisted: true,
       });
       assert.equal(yield* Ref.get(acquisitions), 1);

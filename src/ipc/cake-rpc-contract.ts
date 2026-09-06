@@ -275,6 +275,7 @@ export const cakeRpcPayloadSchemas = {
     y: coordinate,
     resolved: Schema.Boolean,
     unread: Schema.optional(Schema.Boolean),
+    familyChild: Schema.optional(Schema.Boolean),
   }),
   "show-project-context-menu": Schema.Struct({
     path: bounded(1, 4_096),

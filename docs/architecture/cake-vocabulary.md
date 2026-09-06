@@ -92,6 +92,14 @@ stable handle, capability profile, concurrency, recursion, retention, and
 visibility policy. It is never a Project Session and does not expose its
 backing Pi Session identity to the renderer.
 
+### Session Family
+
+A durable Cake-owned, one-level relationship among ordinary Project Sessions. A
+Session Family has exactly one parent Project Session and zero or more direct
+child Project Sessions in stable creation order. Every member remains an
+independent Pi Session with its own transcript, runtime, context, and model
+configuration. Family identity and membership are not Pi transcript ancestry.
+
 ### Coordination Thread
 
 A lightweight Cake-owned binding between two Cake Sessions. It owns participant

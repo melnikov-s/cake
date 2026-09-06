@@ -181,7 +181,13 @@ type SessionSummaryView = Pick<
   | "messageCount"
   | "resolved"
   | "draft"
-> & { managedWorktree?: SessionSummary["managedWorktree"] };
+> &
+  Partial<
+    Pick<
+      SessionSummary,
+      "familyId" | "familyParentSessionId" | "familyChildSessionIds" | "familyChildOrder"
+    >
+  > & { managedWorktree?: SessionSummary["managedWorktree"] };
 
 type AppControlSelection =
   | { kind: "workbench" }
@@ -315,6 +321,10 @@ export interface AppControlSession {
   resolved: boolean;
   draft: boolean;
   managedWorktree?: SessionSummaryView["managedWorktree"];
+  familyId?: string;
+  familyParentSessionId?: string;
+  familyChildSessionIds?: readonly string[];
+  familyChildOrder?: number;
   activity?: "running" | "unread" | "error";
 }
 
@@ -1370,7 +1380,16 @@ export class AppControlBridge {
     const resultWithWorktree = session.managedWorktree
       ? { ...result, managedWorktree: session.managedWorktree }
       : result;
-    return activity ? { ...resultWithWorktree, activity } : resultWithWorktree;
+    const resultWithFamily = session.familyId
+      ? {
+          ...resultWithWorktree,
+          familyId: session.familyId,
+          familyParentSessionId: session.familyParentSessionId,
+          familyChildSessionIds: session.familyChildSessionIds,
+          familyChildOrder: session.familyChildOrder,
+        }
+      : resultWithWorktree;
+    return activity ? { ...resultWithFamily, activity } : resultWithFamily;
   }
 }
 

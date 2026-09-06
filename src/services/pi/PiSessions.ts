@@ -99,6 +99,11 @@ export interface PiSessionAcquireOptions {
   readonly runtime: Omit<CakeRuntimeOptions, "onEvent">;
   /** Finalizes Cake-owned integrations when the final shared runtime lease is released. */
   readonly onRelease?: Effect.Effect<void, unknown>;
+  readonly onTurnSettled?: (event: {
+    readonly sessionId: string;
+    readonly turnId: string;
+    readonly outcome: "complete" | "failed" | "aborted";
+  }) => Effect.Effect<void, unknown>;
 }
 
 export interface PiSessionHandle {
@@ -167,6 +172,7 @@ export interface PiSessionHandle {
 
 export interface PiSessionRuntimeStatus {
   readonly streaming: boolean;
+  readonly pending: boolean;
   readonly persisted: boolean;
 }
 
@@ -200,6 +206,9 @@ export class PiSessions extends Context.Service<
     readonly currentStatus: (
       target: Pick<PiSessionTarget, "workingDirectory" | "sessionId" | "sessionDirectory">,
     ) => Effect.Effect<PiSessionRuntimeStatus | undefined>;
+    readonly currentTurnIds: (
+      target: Pick<PiSessionTarget, "workingDirectory" | "sessionId" | "sessionDirectory">,
+    ) => Effect.Effect<ReadonlyArray<string>>;
     readonly refreshModels: () => Effect.Effect<void, PiSessionError>;
     readonly reloadWorkingDirectory: (
       workingDirectory: string,
@@ -268,7 +277,8 @@ const runtimeFingerprint = (options: PiSessionAcquireOptions): string => {
     tools: runtime.tools ? [...runtime.tools].sort() : undefined,
     auxiliary: runtime.auxiliary ?? false,
     slashCommands: runtime.slashCommands,
-    additionalSystemPrompt: runtime.additionalSystemPrompt,
+    // Relationship context is regenerated on acquisition and may change when a
+    // standalone session is promoted. It does not redefine the live Pi runtime.
     hasGlobalControl: runtime.globalControl !== undefined,
     hasAgentControl: runtime.agentControl !== undefined,
   });
@@ -489,6 +499,12 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
               };
               if (message !== undefined) Object.assign(event, { message });
               yield* PubSub.publish(retained.events, event);
+              if (key.options.onTurnSettled)
+                yield* key.options.onTurnSettled({
+                  sessionId: retained.runtime.sessionId,
+                  turnId,
+                  outcome,
+                });
             }
           });
           const run = runtimeOperation(delivery, () =>
@@ -637,6 +653,18 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
         } satisfies PiSessionHandle;
       });
 
+      const currentTurnIds = Effect.fn("PiSessions.currentTurnIds")(function* (
+        target: Pick<PiSessionTarget, "workingDirectory" | "sessionId" | "sessionDirectory">,
+      ) {
+        const shared = [...activeRuntimes].find(
+          (candidate) =>
+            candidate.workingDirectory === target.workingDirectory &&
+            candidate.sessionDirectory === target.sessionDirectory &&
+            candidate.runtime.sessionId === target.sessionId,
+        );
+        return shared ? [...(yield* Ref.get(shared.activeTurns)).keys()] : [];
+      });
+
       const refreshModels = Effect.fn("PiSessions.refreshModels")(function* () {
         yield* Effect.forEach(
           activeRuntimes,
@@ -695,22 +723,23 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
         return yield* acquire(options);
       });
 
-      const currentStatus = Effect.fn("PiSessions.currentStatus")(
-        (target: Pick<PiSessionTarget, "workingDirectory" | "sessionId" | "sessionDirectory">) =>
-          Effect.sync(() => {
-            const shared = [...activeRuntimes].find(
-              (candidate) =>
-                candidate.workingDirectory === target.workingDirectory &&
-                candidate.sessionDirectory === target.sessionDirectory &&
-                candidate.runtime.sessionId === target.sessionId,
-            );
-            if (!shared) return undefined;
-            return {
-              streaming: shared.runtime.streaming,
-              persisted: shared.runtime.sessionFile.length > 0,
-            };
-          }),
-      );
+      const currentStatus = Effect.fn("PiSessions.currentStatus")(function* (
+        target: Pick<PiSessionTarget, "workingDirectory" | "sessionId" | "sessionDirectory">,
+      ) {
+        const shared = [...activeRuntimes].find(
+          (candidate) =>
+            candidate.workingDirectory === target.workingDirectory &&
+            candidate.sessionDirectory === target.sessionDirectory &&
+            candidate.runtime.sessionId === target.sessionId,
+        );
+        if (!shared) return undefined;
+        const queued = yield* Effect.promise(() => shared.runtime.listQueuedMessages());
+        return {
+          streaming: shared.runtime.streaming,
+          pending: queued.steering.length > 0 || queued.followUp.length > 0,
+          persisted: shared.runtime.sessionFile.length > 0,
+        };
+      });
 
       return PiSessions.of({
         catalog,
@@ -719,6 +748,7 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
         acquire,
         acquireCurrent,
         currentStatus,
+        currentTurnIds,
         refreshModels,
         reloadWorkingDirectory,
         reloadAll,

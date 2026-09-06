@@ -43,6 +43,7 @@ import {
   type ProjectSessionUpdate,
 } from "./project-session-data";
 import { SessionArchiveStorage } from "../services/storage/SessionArchiveStorage";
+import { SessionFamilyStorage, type SessionFamily } from "../services/storage/SessionFamilyStorage";
 import { encodeCrossSessionMessage } from "./cross-session-coordination";
 import type { ProjectSessionArchiveMetadata } from "../services/storage/SessionArchiveStorage";
 import {
@@ -75,6 +76,7 @@ const summary = (
   location: ProjectSessionLocation,
   resolved: boolean,
   unreadIds: ReadonlySet<string>,
+  family?: SessionFamily,
 ): ProjectSessionSummary => {
   const projected: ProjectSessionSummary = {
     sessionId: item.id,
@@ -95,8 +97,25 @@ const summary = (
       managedWorktree: location.managedWorktree,
       worktreeName: location.managedWorktree.branch.replace(/^agent\//, ""),
     });
+  applyFamilySummary(projected, family);
   return projected;
 };
+
+function applyFamilySummary(projected: ProjectSessionSummary, family?: SessionFamily) {
+  if (!family) return;
+  Object.assign(projected, {
+    familyId: family.familyId,
+    familyParentSessionId: family.parentSessionId,
+  });
+  if (projected.sessionId === family.parentSessionId)
+    Object.assign(projected, {
+      familyChildSessionIds: family.children.map((child) => child.sessionId),
+    });
+  else {
+    const order = family.children.findIndex((child) => child.sessionId === projected.sessionId);
+    if (order >= 0) Object.assign(projected, { familyChildOrder: order });
+  }
+}
 
 const archivedLocation = (entry: ProjectSessionArchiveMetadata): ProjectSessionLocation => {
   const location: ProjectSessionLocation = {
@@ -114,6 +133,7 @@ const archivedLocation = (entry: ProjectSessionArchiveMetadata): ProjectSessionL
 const archivedSummary = (
   entry: ProjectSessionArchiveMetadata,
   unreadIds: ReadonlySet<string>,
+  family?: SessionFamily,
 ): ProjectSessionSummary => {
   const projected: ProjectSessionSummary = {
     sessionId: entry.sessionId,
@@ -128,6 +148,7 @@ const archivedSummary = (
     workingDirectory: entry.workingDirectory,
   };
   if (entry.worktreeName) Object.assign(projected, { worktreeName: entry.worktreeName });
+  applyFamilySummary(projected, family);
   return projected;
 };
 
@@ -182,6 +203,14 @@ const catalogForState = Effect.fn("ProjectSessions.catalogForState")(function* (
   state: ApplicationState,
 ) {
   const archive = yield* SessionArchiveStorage;
+  const familyStorage = yield* SessionFamilyStorage;
+  const families = yield* familyStorage.list().pipe(asError("list"));
+  const familyByMember = new Map(
+    families.flatMap((family) => [
+      [family.parentSessionId, family] as const,
+      ...family.children.map((child) => [child.sessionId, family] as const),
+    ]),
+  );
   const unread = new Set(state.unreadSessionIds);
   if (query.resolved) {
     const migrationComplete = yield* archive
@@ -215,7 +244,7 @@ const catalogForState = Effect.fn("ProjectSessions.catalogForState")(function* (
       );
     }
     return source.pipe(
-      Stream.map((entry) => archivedSummary(entry, unread)),
+      Stream.map((entry) => archivedSummary(entry, unread, familyByMember.get(entry.sessionId))),
       Stream.mapError(
         (error) => new ProjectSessionError({ operation: "list", message: error.message }),
       ),
@@ -234,7 +263,7 @@ const catalogForState = Effect.fn("ProjectSessions.catalogForState")(function* (
           sessionDirectory: location.sessionDirectory,
         });
         return source.pipe(
-          Stream.map((item) => summary(item, location, false, unread)),
+          Stream.map((item) => summary(item, location, false, unread, familyByMember.get(item.id))),
           Stream.catch(() => Stream.empty),
         );
       },
@@ -261,6 +290,9 @@ const catalogEventForChange = Effect.fn("ProjectSessions.catalogEventForChange")
       return { _tag: "Removed", sessionId: change.sessionId } as const;
     if (query.resolved) {
       const archive = yield* SessionArchiveStorage;
+      const family = yield* Effect.flatMap(SessionFamilyStorage, (storage) =>
+        storage.familyForMember(change.sessionId),
+      ).pipe(asError("catalog"));
       const entry = yield* archive.resolvedProjectEntry(change.sessionId).pipe(asError("catalog"));
       return entry
         ? ({
@@ -268,6 +300,7 @@ const catalogEventForChange = Effect.fn("ProjectSessions.catalogEventForChange")
             session: archivedSummary(
               entry,
               change.unread ? new Set([change.sessionId]) : new Set(),
+              family,
             ),
           } as const)
         : undefined;
@@ -286,10 +319,13 @@ const catalogEventForChange = Effect.fn("ProjectSessions.catalogEventForChange")
   if (change.resolved) {
     if (!query.resolved) return undefined;
     const entry = yield* archive.resolvedProjectEntry(change.sessionId).pipe(asError("catalog"));
+    const family = yield* Effect.flatMap(SessionFamilyStorage, (storage) =>
+      storage.familyForMember(change.sessionId),
+    ).pipe(asError("catalog"));
     return entry
       ? ({
           _tag: "Upserted",
-          session: archivedSummary(entry, new Set(state.unreadSessionIds)),
+          session: archivedSummary(entry, new Set(state.unreadSessionIds), family),
         } as const)
       : ({ _tag: "Removed", sessionId: change.sessionId } as const);
   }
@@ -300,6 +336,9 @@ const catalogEventForChange = Effect.fn("ProjectSessions.catalogEventForChange")
   );
   if (!location || location.projectPath !== query.projectPath) return undefined;
   const sessions = yield* PiSessions;
+  const family = yield* Effect.flatMap(SessionFamilyStorage, (storage) =>
+    storage.familyForMember(change.sessionId),
+  ).pipe(asError("catalog"));
   const item = yield* sessions.catalogEntry(
     {
       workingDirectory: location.workingDirectory,
@@ -310,7 +349,7 @@ const catalogEventForChange = Effect.fn("ProjectSessions.catalogEventForChange")
   return item
     ? ({
         _tag: "Upserted",
-        session: summary(item, location, false, new Set(state.unreadSessionIds)),
+        session: summary(item, location, false, new Set(state.unreadSessionIds), family),
       } as const)
     : ({ _tag: "Removed", sessionId: change.sessionId } as const);
 });
@@ -498,6 +537,14 @@ const restoreIfResolved = Effect.fn("ProjectSessions.restoreIfResolved")(functio
       .pipe(asError("restore"))) !== "resolved"
   )
     return;
+  const family = yield* Effect.flatMap(SessionFamilyStorage, (storage) =>
+    storage.familyForMember(target.sessionId),
+  ).pipe(asError("restore"));
+  if (family)
+    return yield* new ProjectSessionError({
+      operation: "restore",
+      message: `Session Family ${family.familyId} is resolved; restore it explicitly from parent ${family.parentSessionId} before messaging`,
+    });
   const environment = yield* ProjectSessionEnvironment;
   const restored = yield* environment.restore(target.sessionId, location).pipe(asError("restore"));
   yield* trustProject(restored.workingDirectory).pipe(asError("restore"));
@@ -980,6 +1027,14 @@ export const fork = Effect.fn("ProjectSessions.fork")(function* (input: {
   readonly destinationWorkingDirectory?: string;
   readonly resolveSource?: boolean;
 }) {
+  const family = yield* Effect.flatMap(SessionFamilyStorage, (storage) =>
+    storage.familyForMember(input.target.sessionId),
+  ).pipe(asError("fork"));
+  if (family && input.resolveSource)
+    return yield* new ProjectSessionError({
+      operation: "fork",
+      message: "Forks from Session Family members must leave the source family active",
+    });
   const continuation = yield* withContinuationSource(input.target, "fork", (source) =>
     Effect.gen(function* () {
       let destination = source;
@@ -1036,6 +1091,14 @@ export const handoff = Effect.fn("ProjectSessions.handoff")(function* (input: {
   readonly destinationWorkingDirectory?: string;
   readonly resolveSource?: boolean;
 }) {
+  const family = yield* Effect.flatMap(SessionFamilyStorage, (storage) =>
+    storage.familyForMember(input.target.sessionId),
+  ).pipe(asError("handoff"));
+  if (family)
+    return yield* new ProjectSessionError({
+      operation: "handoff",
+      message: "Session Family members cannot be handed off or relocated",
+    });
   const state = yield* getState();
   const inheritFastMode = state.fastModeSessionIds.includes(input.target.sessionId);
   const continuation = yield* withContinuationSource(input.target, "handoff", (source) =>
@@ -1099,41 +1162,72 @@ export const handoff = Effect.fn("ProjectSessions.handoff")(function* (input: {
 export const resolve = Effect.fn("ProjectSessions.resolve")(function* (
   target: ProjectSessionTarget,
 ) {
-  // A compound "Discard & resolve" removes the Git worktree first. Its Pi
-  // transcript still lives under the historical Working Directory namespace,
-  // so resolution must retain inactive Managed Worktrees as routing metadata.
-  const location = yield* findLocation(target, { includeInactive: true });
+  const family = yield* Effect.flatMap(SessionFamilyStorage, (storage) =>
+    storage.familyForMember(target.sessionId),
+  ).pipe(asError("resolve"));
+  if (family && family.parentSessionId !== target.sessionId)
+    return yield* new ProjectSessionError({
+      operation: "resolve",
+      message: "Only the Session Family parent can resolve the family",
+    });
+  const memberIds = family
+    ? [family.parentSessionId, ...family.children.map((child) => child.sessionId)]
+    : [target.sessionId];
+  const members = yield* Effect.forEach(memberIds, (sessionId) =>
+    findLocation({ sessionId }, { includeInactive: true }).pipe(
+      Effect.map((location) => ({ sessionId, location })),
+    ),
+  );
   const sessions = yield* PiSessions;
-  const status = yield* sessions.currentStatus({
-    workingDirectory: location.workingDirectory,
-    sessionDirectory: location.sessionDirectory,
-    sessionId: target.sessionId,
-  });
-  if (status?.streaming)
+  const activeMembers: string[] = [];
+  for (const member of members) {
+    const status = yield* sessions.currentStatus({
+      workingDirectory: member.location.workingDirectory,
+      sessionDirectory: member.location.sessionDirectory,
+      sessionId: member.sessionId,
+    });
+    if (status?.streaming || status?.pending) activeMembers.push(member.sessionId);
+    if (status && !status.persisted)
+      return yield* new ProjectSessionError({
+        operation: "resolve",
+        message: `Cake cannot resolve empty Project Session ${member.sessionId}`,
+      });
+  }
+  if (activeMembers.length > 0)
     return yield* new ProjectSessionError({
       operation: "resolve",
-      message: "Cake cannot resolve a Project Session while its turn is active",
+      message: `Cake cannot resolve this family while these sessions are active: ${activeMembers.join(", ")}`,
     });
-  if (status && !status.persisted)
-    return yield* new ProjectSessionError({
-      operation: "resolve",
-      message: "Cake cannot resolve an empty Project Session",
-    });
-  yield* subagents.releaseParent(target.sessionId).pipe(asError("resolve"));
-  yield* sessionTerminals.closeSession("project", target.sessionId).pipe(asError("resolve"));
   const environment = yield* ProjectSessionEnvironment;
-  yield* environment.archive(target.sessionId, location).pipe(asError("resolve"));
-  yield* setSessionUnread(target.sessionId, false).pipe(asError("resolve"));
-  yield* publishCatalogStatus(target.sessionId, location, true).pipe(asError("resolve"));
+  for (const member of members) {
+    yield* subagents.releaseParent(member.sessionId).pipe(asError("resolve"));
+    yield* sessionTerminals.closeSession("project", member.sessionId).pipe(asError("resolve"));
+    yield* environment.archive(member.sessionId, member.location).pipe(asError("resolve"));
+    yield* setSessionUnread(member.sessionId, false).pipe(asError("resolve"));
+    yield* publishCatalogStatus(member.sessionId, member.location, true).pipe(asError("resolve"));
+  }
 });
 
 export const restore = Effect.fn("ProjectSessions.restore")(function* (
   target: ProjectSessionTarget,
 ) {
-  const location = yield* findLocation(target);
+  const family = yield* Effect.flatMap(SessionFamilyStorage, (storage) =>
+    storage.familyForMember(target.sessionId),
+  ).pipe(asError("restore"));
+  if (family && family.parentSessionId !== target.sessionId)
+    return yield* new ProjectSessionError({
+      operation: "restore",
+      message: "Only the Session Family parent can restore the family",
+    });
+  const memberIds = family
+    ? [family.parentSessionId, ...family.children.map((child) => child.sessionId)]
+    : [target.sessionId];
   const environment = yield* ProjectSessionEnvironment;
-  const restored = yield* environment.restore(target.sessionId, location).pipe(asError("restore"));
-  yield* trustProject(restored.workingDirectory).pipe(asError("restore"));
-  yield* publishCatalogStatus(target.sessionId, restored, false).pipe(asError("restore"));
-  yield* publishCatalogChange(target.sessionId, restored, false).pipe(asError("restore"));
+  for (const sessionId of memberIds) {
+    const location = yield* findLocation({ sessionId });
+    const restored = yield* environment.restore(sessionId, location).pipe(asError("restore"));
+    yield* trustProject(restored.workingDirectory).pipe(asError("restore"));
+    yield* publishCatalogStatus(sessionId, restored, false).pipe(asError("restore"));
+    yield* publishCatalogChange(sessionId, restored, false).pipe(asError("restore"));
+  }
 });

@@ -1,8 +1,8 @@
-import { Effect, Layer } from "effect";
+import { DateTime, Effect, Layer, Schema } from "effect";
 import { makeSubagentControl } from "../domain/subagentControl";
 import { findSessionFile, forkWorkspaceSession } from "../services/pi/runtime/session-discovery";
-import type { PiSessions } from "../services/pi/PiSessions";
-import type { PiSessionAcquireOptions } from "../services/pi/PiSessions";
+import { PiSessions, type PiSessionAcquireOptions } from "../services/pi/PiSessions";
+import { PiModels } from "../services/pi/PiModels";
 import { ProjectSessionIntegrations } from "../services/pi/ProjectSessionIntegrations";
 import { ProjectSessionRuntimeOptions } from "../services/pi/ProjectSessionRuntimeOptions";
 import { ProjectAccess } from "../services/projects/ProjectAccess";
@@ -16,18 +16,31 @@ import type { SubagentEnvironment } from "../services/subagents/SubagentEnvironm
 import { ManagedWorktrees } from "../services/worktrees/ManagedWorktrees";
 import type {
   ProjectSessionEnvironment,
+  ProjectSessionEnvironmentService,
   ProjectSessionLocation,
 } from "../services/project-sessions/ProjectSessionEnvironment";
 import {
   makeProjectSessionEnvironmentLayer,
   ProjectSessionEnvironmentError,
 } from "../services/project-sessions/ProjectSessionEnvironment";
+import { SessionFamilyStorage } from "../services/storage/SessionFamilyStorage";
+import { SessionCatalogChanges } from "../services/session-catalogs/SessionCatalogChanges";
+import { toJsonValue } from "../utils/to-json-value";
+import { encodeCrossSessionMessage } from "../domain/cross-session-coordination";
 
 export interface ProjectSessionEnvironmentLiveOptions {
   readonly agentDirectory: string;
   readonly sessionDirectory: string;
   readonly resolvedSessionDirectory: string;
 }
+
+const FamilyMessageInput = Schema.Struct({
+  sessionId: Schema.String,
+  text: Schema.String,
+  delivery: Schema.optionalKey(Schema.Literals(["prompt", "queue", "steer"])),
+  threadId: Schema.optionalKey(Schema.String),
+  maxMessages: Schema.optionalKey(Schema.Int),
+});
 
 const environmentError = (operation: string, cause: unknown) =>
   new ProjectSessionEnvironmentError({
@@ -42,11 +55,14 @@ export const makeProjectSessionEnvironmentLive = (
   never,
   | ApplicationState
   | ManagedWorktrees
+  | PiModels
   | PiSessions
   | ProjectAccess
   | ProjectSessionIntegrations
   | ProjectSessionRuntimeOptions
   | SessionArchiveStorage
+  | SessionCatalogChanges
+  | SessionFamilyStorage
   | SubagentCoordinator
   | SubagentEnvironment
 > =>
@@ -56,16 +72,27 @@ export const makeProjectSessionEnvironmentLive = (
       const application = yield* ApplicationState;
       const archive = yield* SessionArchiveStorage;
       const integrations = yield* ProjectSessionIntegrations;
+      const models = yield* PiModels;
       const projectRuntime = yield* ProjectSessionRuntimeOptions;
+      const sessions = yield* PiSessions;
+      const families = yield* SessionFamilyStorage;
+      const catalogs = yield* SessionCatalogChanges;
       const worktrees = yield* ManagedWorktrees;
       const context = yield* Effect.context<
-        ApplicationState | PiSessions | SubagentCoordinator | SubagentEnvironment
+        | ApplicationState
+        | PiModels
+        | PiSessions
+        | SessionCatalogChanges
+        | SessionFamilyStorage
+        | SubagentCoordinator
+        | SubagentEnvironment
       >();
       const run = Effect.runPromiseWith(context);
       const agentControl = makeSubagentControl({
         runEffect: (effect, signal) => run(effect, { signal }),
       });
-      return makeProjectSessionEnvironmentLayer({
+      const acceptedParentMessages = new Set<string>();
+      const environmentService: ProjectSessionEnvironmentService = {
         locations: Effect.fn("ProjectSessionEnvironment.locations")(function* (locationOptions) {
           const records = yield* worktrees
             .records()
@@ -114,16 +141,57 @@ export const makeProjectSessionEnvironmentLive = (
             .projectSessionRuntimeIntegrations(location.workingDirectory, sessionId)
             .pipe(Effect.mapError((cause) => environmentError("runtimeOptions", cause)));
           const base = projectRuntime.forWorkingDirectory(location.workingDirectory);
+          const family = yield* families
+            .familyForMember(sessionId)
+            .pipe(Effect.mapError((cause) => environmentError("runtimeOptions", cause)));
+          const isChild =
+            family?.parentSessionId !== undefined && family.parentSessionId !== sessionId;
+          const relationshipPrompt = isChild
+            ? `## Session family\n\nThis is a full child Project Session in family ${family.familyId}. Its parent is ${family.parentSessionId}. Message the parent through ordinary Cake session messaging and ask it for any further full-session delegation. The Cake Working Directory is fixed at ${family.workingDirectory}; family members share mutable files, uncommitted changes, and Git index state. Coordinate concurrent edits. You cannot create children, resolve independently, detach, or relocate this session.`
+            : `## Session families\n\nThis Project Session can create full child Project Sessions with \`sessions.create-child\`. Children inherit this exact Cake Working Directory and share mutable files, uncommitted changes, and Git index state. Give each child its assignment in the initial prompt, instruct it to message back, and coordinate sequencing and concurrent edits. Discover and message children through the ordinary Cake session operations. Resolving a family applies to every member and requires every member to be inactive.`;
           const getRuntimeOptions = () => runtimeOptions;
           const runtimeOptions: PiSessionAcquireOptions = {
             profile: { _tag: "ProjectSession" },
             onRelease: integrations.releaseSession(sessionId),
+            onTurnSettled: isChild
+              ? (event) =>
+                  Effect.scoped(
+                    Effect.gen(function* () {
+                      const correlation = `${sessionId}:${event.turnId}`;
+                      if (acceptedParentMessages.delete(correlation)) return;
+                      const parentOptions = yield* environmentService.runtimeOptions({
+                        location,
+                        sessionId: family.parentSessionId,
+                        newSession: false,
+                      });
+                      const parent = yield* sessions.acquire(parentOptions);
+                      const parentSnapshot = yield* parent.snapshot();
+                      const outcome =
+                        event.outcome === "failed"
+                          ? "stopped with an error"
+                          : event.outcome === "aborted"
+                            ? "was aborted"
+                            : "stopped";
+                      const notice = `Child session ${sessionId} ${outcome} without sending a response to its parent.`;
+                      if (parentSnapshot.streaming) yield* parent.followUp(notice, [], false);
+                      else yield* parent.prompt(notice, [], false);
+                      yield* catalogs.publish({
+                        _tag: "ProjectSessionChanged",
+                        sessionId: family.parentSessionId,
+                        projectPath: location.projectPath,
+                        workingDirectory: location.workingDirectory,
+                        resolved: false,
+                      });
+                    }),
+                  )
+              : undefined,
             runtime: {
               ...runtimeIntegrations,
               agentControl: agentControl(getRuntimeOptions, location.workingDirectory),
               cwd: location.workingDirectory,
               trusted: base.isTrusted?.() ?? false,
               agentDir: base.agentDir,
+              additionalSystemPrompt: relationshipPrompt,
               sessionDir: base.sessionDir,
               resolvedSessionDir: base.resolvedSessionDir,
               newSession,
@@ -137,6 +205,25 @@ export const makeProjectSessionEnvironmentLive = (
               },
               currentSessionControl: {
                 resolved: () => base.sessionResolved?.(sessionId) ?? false,
+                canResolve: () => !isChild,
+                familyInfo: family
+                  ? () => {
+                      const info = {
+                        familyId: family.familyId,
+                        parentSessionId: family.parentSessionId,
+                        role: isChild ? "child" : "parent",
+                      };
+                      return toJsonValue(
+                        isChild
+                          ? info
+                          : {
+                              ...info,
+                              childSessionIds: family.children.map((child) => child.sessionId),
+                            },
+                      );
+                    }
+                  : undefined,
+                deferResolution: family === undefined,
                 setResolved: (resolved) =>
                   base.setSessionResolved?.(sessionId, resolved) ?? Promise.resolve(),
                 createSession: (input, signal) =>
@@ -148,6 +235,240 @@ export const makeProjectSessionEnvironmentLive = (
                   runtimeIntegrations.requestApplicationControl(
                     { _tag: "CreateDraft", ...input },
                     signal,
+                  ),
+                createChildSession: isChild
+                  ? undefined
+                  : (input, signal) =>
+                      run(
+                        Effect.scoped(
+                          Effect.gen(function* () {
+                            const validatedModel = yield* models
+                              .resolve(input.model)
+                              .pipe(
+                                Effect.mapError((cause) => environmentError("createChild", cause)),
+                              );
+                            const existingFamily = yield* families
+                              .familyForMember(sessionId)
+                              .pipe(
+                                Effect.mapError((cause) => environmentError("createChild", cause)),
+                              );
+                            if (existingFamily && existingFamily.parentSessionId !== sessionId)
+                              return yield* environmentError(
+                                "createChild",
+                                "A child Project Session cannot create children; ask its parent",
+                              );
+                            const createdAt = DateTime.formatIso(yield* DateTime.now);
+                            const childReservation = {
+                              familyId: existingFamily?.familyId ?? crypto.randomUUID(),
+                              parentSessionId: sessionId,
+                              childSessionId: crypto.randomUUID(),
+                              requestId: input.requestId,
+                              projectPath: location.projectPath,
+                              workingDirectory: location.workingDirectory,
+                              createdAt,
+                            };
+                            const reservation = location.managedWorktree
+                              ? {
+                                  ...childReservation,
+                                  managedWorktreePath: location.managedWorktree.worktreePath,
+                                }
+                              : childReservation;
+                            const reserved = yield* families
+                              .addChild(reservation)
+                              .pipe(
+                                Effect.mapError((cause) => environmentError("createChild", cause)),
+                              );
+                            yield* catalogs.publish({
+                              _tag: "ProjectSessionChanged",
+                              sessionId,
+                              projectPath: location.projectPath,
+                              workingDirectory: location.workingDirectory,
+                              resolved: false,
+                            });
+                            const child = reserved.children.find(
+                              (candidate) => candidate.requestId === input.requestId,
+                            );
+                            if (!child)
+                              return yield* environmentError(
+                                "createChild",
+                                "The durable child reservation could not be recovered",
+                              );
+                            const target = {
+                              workingDirectory: location.workingDirectory,
+                              sessionDirectory: location.sessionDirectory,
+                              sessionId: child.sessionId,
+                            };
+                            const active = yield* sessions.currentStatus(target);
+                            const persisted = active
+                              ? undefined
+                              : yield* sessions
+                                  .catalogEntry(
+                                    {
+                                      workingDirectory: location.workingDirectory,
+                                      sessionDirectory: location.sessionDirectory,
+                                    },
+                                    child.sessionId,
+                                  )
+                                  .pipe(
+                                    Effect.mapError((cause) =>
+                                      environmentError("createChild", cause),
+                                    ),
+                                  );
+                            if (active?.streaming || persisted)
+                              return toJsonValue({
+                                familyId: reserved.familyId,
+                                parentSessionId: sessionId,
+                                childSessionId: child.sessionId,
+                                launch: { status: "already-started" },
+                              });
+                            const launch = yield* Effect.result(
+                              Effect.gen(function* () {
+                                const childOptions = yield* environmentService.runtimeOptions({
+                                  location,
+                                  sessionId: child.sessionId,
+                                  newSession: true,
+                                });
+                                const handle = yield* sessions.acquire(childOptions);
+                                yield* handle.applyConfiguration(validatedModel);
+                                yield* handle.rename(input.title);
+                                const turnId = yield* handle.prompt(input.initialPrompt, [], false);
+                                yield* catalogs.publish({
+                                  _tag: "ProjectSessionChanged",
+                                  sessionId: child.sessionId,
+                                  projectPath: location.projectPath,
+                                  workingDirectory: location.workingDirectory,
+                                  resolved: false,
+                                });
+                                return turnId;
+                              }),
+                            );
+                            return toJsonValue(
+                              launch._tag === "Success"
+                                ? {
+                                    familyId: reserved.familyId,
+                                    parentSessionId: sessionId,
+                                    childSessionId: child.sessionId,
+                                    launch: { status: "accepted", turnId: launch.success },
+                                  }
+                                : {
+                                    familyId: reserved.familyId,
+                                    parentSessionId: sessionId,
+                                    childSessionId: child.sessionId,
+                                    launch: {
+                                      status: "failed",
+                                      message: String(launch.failure),
+                                    },
+                                  },
+                            );
+                          }),
+                        ),
+                        { signal },
+                      ),
+                routeFamilyMessage: (untrustedInput, signal) =>
+                  run(
+                    Effect.scoped(
+                      Effect.gen(function* () {
+                        const input = yield* Schema.decodeUnknownEffect(FamilyMessageInput)(
+                          untrustedInput,
+                        ).pipe(
+                          Effect.mapError((cause) => environmentError("familyMessage", cause)),
+                        );
+                        const family = yield* families
+                          .familyForMember(sessionId)
+                          .pipe(
+                            Effect.mapError((cause) => environmentError("familyMessage", cause)),
+                          );
+                        if (!family) return undefined;
+                        const memberIds = new Set([
+                          family.parentSessionId,
+                          ...family.children.map((child) => child.sessionId),
+                        ]);
+                        if (!memberIds.has(input.sessionId)) return undefined;
+                        const namespace = yield* archive
+                          .locate(input.sessionId, {
+                            cwd: family.workingDirectory,
+                            activeRoot: options.sessionDirectory,
+                            resolvedRoot: options.resolvedSessionDirectory,
+                          })
+                          .pipe(
+                            Effect.mapError((cause) => environmentError("familyMessage", cause)),
+                          );
+                        if (namespace === "resolved")
+                          return yield* environmentError(
+                            "familyMessage",
+                            `Session Family ${family.familyId} is resolved; restore it explicitly before messaging`,
+                          );
+                        if (!namespace)
+                          return yield* environmentError(
+                            "familyMessage",
+                            `Family member ${input.sessionId} could not be found`,
+                          );
+                        const destinationOptions = yield* environmentService.runtimeOptions({
+                          location,
+                          sessionId: input.sessionId,
+                          newSession: false,
+                        });
+                        const destination = yield* sessions.acquire(destinationOptions);
+                        const snapshot = yield* destination.snapshot();
+                        const messageId = crypto.randomUUID();
+                        const threadId = input.threadId ?? crypto.randomUUID();
+                        const messageMetadata = {
+                          version: 1 as const,
+                          messageId,
+                          threadId,
+                          sequence: 1,
+                          sender: {
+                            sessionId,
+                            title: `Project Session ${sessionId}`,
+                            kind: "project-session" as const,
+                            projectName: location.projectName,
+                            workingDirectory: location.workingDirectory,
+                          },
+                        };
+                        const encoded = encodeCrossSessionMessage(
+                          input.text,
+                          input.maxMessages === undefined
+                            ? messageMetadata
+                            : { ...messageMetadata, maxMessages: input.maxMessages },
+                        );
+                        const delivery = input.delivery ?? "prompt";
+                        const queued = delivery === "queue" || snapshot.streaming;
+                        const turnId = yield* delivery === "steer"
+                          ? destination.steer(encoded, [], false)
+                          : queued
+                            ? destination.followUp(encoded, [], false)
+                            : destination.prompt(encoded, [], false);
+                        if (
+                          family.parentSessionId !== sessionId &&
+                          input.sessionId === family.parentSessionId
+                        ) {
+                          const sourceTurnIds = yield* sessions.currentTurnIds({
+                            workingDirectory: location.workingDirectory,
+                            sessionDirectory: location.sessionDirectory,
+                            sessionId,
+                          });
+                          for (const sourceTurnId of sourceTurnIds)
+                            acceptedParentMessages.add(`${sessionId}:${sourceTurnId}`);
+                        }
+                        yield* catalogs.publish({
+                          _tag: "ProjectSessionChanged",
+                          sessionId: input.sessionId,
+                          projectPath: location.projectPath,
+                          workingDirectory: location.workingDirectory,
+                          resolved: false,
+                        });
+                        return toJsonValue({
+                          ok: true,
+                          name: "send_session_message",
+                          targetTitle: `Project Session ${input.sessionId}`,
+                          messageId,
+                          threadId,
+                          turnId,
+                          status: queued ? "queued" : "accepted",
+                        });
+                      }),
+                    ),
+                    { signal },
                   ),
                 invokeAppControl: (command, input, signal) =>
                   runtimeIntegrations.requestApplicationControl(
@@ -246,6 +567,7 @@ export const makeProjectSessionEnvironmentLive = (
             return forked.sessionId;
           },
         ),
-      });
+      };
+      return makeProjectSessionEnvironmentLayer(environmentService);
     }),
   );

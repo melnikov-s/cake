@@ -15,6 +15,7 @@ describe("resolveCakePaths", () => {
       piGlobalChatResolvedSessions: "/Users/fixture/.cake/pi/global-chat/resolved-sessions",
       state: "/Users/fixture/.cake/state",
       sessionMetadata: "/Users/fixture/.cake/state/session-metadata",
+      sessionFamilies: "/Users/fixture/.cake/state/session-families.json",
       resolvedProjectMetadata: "/Users/fixture/.cake/state/resolved-project-metadata",
       artifacts: "/Users/fixture/.cake/state/artifacts",
       reviews: "/Users/fixture/.cake/state/reviews",

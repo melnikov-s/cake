@@ -4,6 +4,7 @@ import * as artifacts from "../domain/artifacts";
 import * as reviews from "../domain/reviews";
 import * as sessionTerminals from "../domain/sessionTerminals";
 import type { WorktreeRecord } from "../ipc/worktree-contract";
+import { PiSessions } from "../services/pi/PiSessions";
 import { streamWorkspaceSessions } from "../services/pi/runtime/session-discovery";
 import { ProjectAccess } from "../services/projects/ProjectAccess";
 import { ApplicationState } from "../services/storage/ApplicationState";
@@ -20,6 +21,7 @@ import {
   ProjectSessionLifecycleError,
 } from "../services/project-sessions/ProjectSessionLifecycle";
 import { SessionCatalogChanges } from "../services/session-catalogs/SessionCatalogChanges";
+import { SessionFamilyStorage } from "../services/storage/SessionFamilyStorage";
 
 export interface ProjectSessionLifecycleLiveOptions {
   readonly homeDirectory: string;
@@ -43,10 +45,12 @@ export const makeProjectSessionLifecycleLive = (
   | ApplicationState
   | ArtifactStorage
   | ManagedWorktrees
+  | PiSessions
   | ProjectAccess
   | ReviewStorage
   | SessionArchiveStorage
   | SessionCatalogChanges
+  | SessionFamilyStorage
   | Terminal
 > =>
   Layer.effect(
@@ -56,15 +60,19 @@ export const makeProjectSessionLifecycleLive = (
       const application = yield* ApplicationState;
       const archive = yield* SessionArchiveStorage;
       const catalogs = yield* SessionCatalogChanges;
+      const families = yield* SessionFamilyStorage;
+      const sessions = yield* PiSessions;
       const worktrees = yield* ManagedWorktrees;
       const context = yield* Effect.context<
         | ApplicationState
         | ArtifactStorage
         | ManagedWorktrees
+        | PiSessions
         | ProjectAccess
         | ReviewStorage
         | SessionArchiveStorage
         | SessionCatalogChanges
+        | SessionFamilyStorage
         | Terminal
       >();
       const run = <A, E, R>(operation: string, effect: Effect.Effect<A, E, R>) =>
@@ -95,15 +103,9 @@ export const makeProjectSessionLifecycleLive = (
         },
       );
 
-      const setProjectSessionResolved = Effect.fn(
-        "ProjectSessionLifecycle.setProjectSessionResolved",
-      )(function* (sessionId: string, resolved: boolean, knownWorkingDirectory?: string) {
-        const workingDirectory =
-          knownWorkingDirectory ??
-          (yield* run(
-            "setProjectSessionResolved",
-            access.resolveSessionWorkingDirectory(sessionId),
-          ));
+      const setOneProjectSessionResolved = Effect.fn(
+        "ProjectSessionLifecycle.setOneProjectSessionResolved",
+      )(function* (sessionId: string, resolved: boolean, workingDirectory: string) {
         const records = yield* run("setProjectSessionResolved", worktrees.records());
         const worktree = records.find((record) => record.worktreePath === workingDirectory);
         const projectPath = worktree?.projectPath ?? workingDirectory;
@@ -130,8 +132,8 @@ export const makeProjectSessionLifecycleLive = (
               archiveContext,
             ),
           );
+          yield* run("setProjectSessionResolved", setSessionUnread(sessionId, false));
         } else yield* run("setProjectSessionResolved", archive.restoreProject(sessionId));
-        if (resolved) yield* run("setProjectSessionResolved", setSessionUnread(sessionId, false));
         yield* catalogs.publish({
           _tag: "ProjectSessionStatusChanged",
           sessionId,
@@ -150,9 +152,59 @@ export const makeProjectSessionLifecycleLive = (
           });
       });
 
+      const setProjectSessionResolved = Effect.fn(
+        "ProjectSessionLifecycle.setProjectSessionResolved",
+      )(function* (sessionId: string, resolved: boolean, knownWorkingDirectory?: string) {
+        const family = yield* families
+          .familyForMember(sessionId)
+          .pipe(Effect.mapError((cause) => lifecycleError("setProjectSessionResolved", cause)));
+        if (family && family.parentSessionId !== sessionId)
+          return yield* new ProjectSessionLifecycleError({
+            operation: "setProjectSessionResolved",
+            message: `${resolved ? "Restore" : "Resolve"} is available only on the family parent`,
+          });
+        const workingDirectory =
+          family?.workingDirectory ??
+          knownWorkingDirectory ??
+          (yield* run(
+            "setProjectSessionResolved",
+            access.resolveSessionWorkingDirectory(sessionId),
+          ));
+        const memberIds = family
+          ? [family.parentSessionId, ...family.children.map((child) => child.sessionId)]
+          : [sessionId];
+        if (resolved) {
+          const activeMembers: string[] = [];
+          for (const memberId of memberIds) {
+            const status = yield* sessions.currentStatus({
+              workingDirectory,
+              sessionDirectory: options.projectSessionDirectory,
+              sessionId: memberId,
+            });
+            if (status?.streaming || status?.pending) activeMembers.push(memberId);
+          }
+          if (activeMembers.length > 0)
+            return yield* new ProjectSessionLifecycleError({
+              operation: "setProjectSessionResolved",
+              message: `Cake cannot resolve this family while these sessions are active: ${activeMembers.join(", ")}`,
+            });
+        }
+        for (const memberId of memberIds)
+          yield* setOneProjectSessionResolved(memberId, resolved, workingDirectory);
+      });
+
       const deleteResolvedProjectSession = Effect.fn(
         "ProjectSessionLifecycle.deleteResolvedProjectSession",
       )(function* (sessionId: string) {
+        if (
+          yield* families
+            .familyForMember(sessionId)
+            .pipe(Effect.mapError((cause) => lifecycleError("deleteResolvedProjectSession", cause)))
+        )
+          return yield* new ProjectSessionLifecycleError({
+            operation: "deleteResolvedProjectSession",
+            message: "Individual Session Family members cannot be deleted",
+          });
         const entry = yield* run(
           "deleteResolvedProjectSession",
           archive.resolvedProjectEntry(sessionId),

@@ -50,6 +50,7 @@ Every durable concept has one authority.
 | Application-level Cake Chat transcripts                                     | Their dedicated Pi Sessions                                               | Present them as Cake-wide meta-sessions and route curated controls                        |
 | Projects and per-Project worktree settings, window selection and view state | Cake                                                                      | Persist application and window metadata without copying Pi history                        |
 | Scheduled Project Session messages                                          | Cake                                                                      | Persist delivery intent until it becomes an ordinary Pi user message                      |
+| Session Family membership, fixed Working Directory, and creation order      | Cake                                                                      | Group independent Project Sessions without copying their transcripts                      |
 | Cross-session coordination threads and delivery correlation                 | Cake                                                                      | Bind participants, limits, closure, and acknowledgements without copying transcript text  |
 | Resolved-session status                                                     | Cake-managed active/archive transcript location                           | Keep resolved transcripts read-only and restore them before Pi opens them                 |
 | Reviews and inline discussions                                              | Cake workflow services, with Pi sidecar-session references where relevant | Persist anchors and workflow metadata without copying Pi transcripts                      |
@@ -490,3 +491,5 @@ privileges.
   compatibility.
 - `docs/architecture/s4-artifact-protocol.md`: durable artifact and sandbox
   contract.
+- `docs/architecture/session-family-contract.md`: Project Session family,
+  communication, and aggregate lifecycle invariants.

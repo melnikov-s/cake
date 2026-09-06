@@ -13,6 +13,10 @@ function sidebarProps(store: ProjectWorkbenchStore) {
   return {
     store: {
       projectSessions: fixture.projectSessions,
+      visibleProjectSessions:
+        fixture.visibleProjectSessions ??
+        ((path: string, resolved = false) =>
+          fixture.projectSessions(path, resolved).slice(0, fixture.sessionLimit(path, resolved))),
       cakeChatSessions: (resolved = false) =>
         (fixture.cakeChatSummaries ?? []).filter(
           (session: { resolved?: boolean }) => Boolean(session.resolved) === resolved,
@@ -36,6 +40,11 @@ function sidebarProps(store: ProjectWorkbenchStore) {
       isResolvedGroupExpanded: fixture.isResolvedGroupExpanded ?? (() => false),
       toggleResolvedGroupExpanded: fixture.toggleResolvedGroupExpanded ?? vi.fn(),
       sessionActivity: fixture.sessionActivity,
+      sessionActivityForDisplay:
+        fixture.sessionActivityForDisplay ??
+        ((session: { sessionId: string }) => fixture.sessionActivity(session.sessionId)),
+      isFamilyCollapsed: fixture.isFamilyCollapsed ?? (() => false),
+      toggleFamilyCollapsed: fixture.toggleFamilyCollapsed ?? vi.fn(),
       sessionActivityTime: fixture.sessionActivityTime ?? (() => ""),
     } as any,
     projects: {

@@ -16,6 +16,7 @@ replaces that root for tests and alternate installations.
 │   ├── scheduled-messages.json
 │   ├── worktrees.json
 │   ├── session-metadata/
+│   ├── session-families.json
 │   ├── resolved-project-metadata/
 │   ├── artifacts/
 │   └── reviews/
@@ -170,6 +171,11 @@ atomically moves the transcript to the matching Cake-managed archive root;
 restoring or messaging it moves it back before Pi opens it. Archive location is
 Cake's resolution fact, while Pi remains the transcript-format and session
 engine authority.
+
+Session Family identity, parent membership, direct-child creation order, fixed
+Project and Working Directory bindings, and creation correlation are Cake-owned
+and stored in `state/session-families.json`. The document never stores messages,
+assignments, transcript history, or a competing resolved-state list.
 
 Scheduled Project Session messages are Cake-owned delivery intents stored in
 `state/scheduled-messages.json`. They remain visible and cancellable until their
