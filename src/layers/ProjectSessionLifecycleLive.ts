@@ -1,3 +1,4 @@
+import { transition } from "../domain/sessionFamilies";
 import { Effect, Layer, Stream } from "effect";
 import { forgetProjectSessions, setSessionUnread } from "../domain/application";
 import * as artifacts from "../domain/artifacts";
@@ -161,36 +162,59 @@ export const makeProjectSessionLifecycleLive = (
         if (family && family.parentSessionId !== sessionId)
           return yield* new ProjectSessionLifecycleError({
             operation: "setProjectSessionResolved",
-            message: `${resolved ? "Restore" : "Resolve"} is available only on the family parent`,
+            message: `${resolved ? "Resolve" : "Restore"} is available only on the family parent`,
           });
-        const workingDirectory =
-          family?.workingDirectory ??
-          knownWorkingDirectory ??
-          (yield* run(
-            "setProjectSessionResolved",
-            access.resolveSessionWorkingDirectory(sessionId),
-          ));
-        const memberIds = family
-          ? [family.parentSessionId, ...family.children.map((child) => child.sessionId)]
-          : [sessionId];
-        if (resolved) {
-          const activeMembers: string[] = [];
-          for (const memberId of memberIds) {
-            const status = yield* sessions.currentStatus({
-              workingDirectory,
-              sessionDirectory: options.projectSessionDirectory,
-              sessionId: memberId,
-            });
-            if (status?.streaming || status?.pending) activeMembers.push(memberId);
-          }
-          if (activeMembers.length > 0)
-            return yield* new ProjectSessionLifecycleError({
-              operation: "setProjectSessionResolved",
-              message: `Cake cannot resolve this family while these sessions are active: ${activeMembers.join(", ")}`,
-            });
+        if (family) {
+          yield* transition(
+            family,
+            resolved,
+            options.projectSessionDirectory,
+            (memberId, targetResolved) =>
+              setOneProjectSessionResolved(memberId, targetResolved, family.workingDirectory),
+          ).pipe(
+            Effect.provideService(SessionFamilyStorage, families),
+            Effect.provideService(PiSessions, sessions),
+            Effect.mapError((cause) => lifecycleError("setProjectSessionResolved", cause)),
+          );
+          return;
         }
-        for (const memberId of memberIds)
-          yield* setOneProjectSessionResolved(memberId, resolved, workingDirectory);
+        yield* families
+          .withMemberLock(
+            sessionId,
+            Effect.gen(function* () {
+              if (yield* families.familyForMember(sessionId))
+                return yield* new ProjectSessionLifecycleError({
+                  operation: "setProjectSessionResolved",
+                  message: "The session became a family parent; retry the family operation",
+                });
+              const workingDirectory =
+                knownWorkingDirectory ??
+                (yield* run(
+                  "setProjectSessionResolved",
+                  access.resolveSessionWorkingDirectory(sessionId),
+                ));
+              const memberIds = [sessionId];
+              if (resolved) {
+                const activeMembers: string[] = [];
+                for (const memberId of memberIds) {
+                  const status = yield* sessions.currentStatus({
+                    workingDirectory,
+                    sessionDirectory: options.projectSessionDirectory,
+                    sessionId: memberId,
+                  });
+                  if (status?.streaming || status?.pending) activeMembers.push(memberId);
+                }
+                if (activeMembers.length > 0)
+                  return yield* new ProjectSessionLifecycleError({
+                    operation: "setProjectSessionResolved",
+                    message: `Cake cannot resolve this family while these sessions are active: ${activeMembers.join(", ")}`,
+                  });
+              }
+              for (const memberId of memberIds)
+                yield* setOneProjectSessionResolved(memberId, resolved, workingDirectory);
+            }),
+          )
+          .pipe(Effect.mapError((cause) => lifecycleError("setProjectSessionResolved", cause)));
       });
 
       const deleteResolvedProjectSession = Effect.fn(

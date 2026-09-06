@@ -1,39 +1,11 @@
 import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
 import { describe } from "vitest";
-import { Effect, FileSystem, Layer, Path, PlatformError } from "effect";
-import {
-  SessionFamilyStorage,
-  makeSessionFamilyStorageLive,
-} from "../../../../src/services/storage/SessionFamilyStorage";
+import { Effect } from "effect";
+import { familyStorageHarness } from "../../helpers/familyStorageHarness";
+import { SessionFamilyStorage } from "../../../../src/services/storage/SessionFamilyStorage";
 
-const failure = (method: string) =>
-  PlatformError.systemError({ _tag: "Unknown", module: "SessionFamilyStorageTest", method });
-
-const testLayer = () => {
-  const files = new Map<string, string>();
-  const fileSystem = FileSystem.makeNoop({
-    exists: (path) => Effect.succeed(files.has(path)),
-    readFileString: (path) => {
-      const value = files.get(path);
-      return value === undefined ? Effect.fail(failure("readFileString")) : Effect.succeed(value);
-    },
-    writeFileString: (path, content) => Effect.sync(() => files.set(path, content)),
-    chmod: () => Effect.void,
-    rename: (source, target) =>
-      Effect.gen(function* () {
-        const value = files.get(source);
-        if (value === undefined) return yield* Effect.fail(failure("rename"));
-        files.set(target, value);
-        files.delete(source);
-      }),
-    remove: (path) => Effect.sync(() => files.delete(path)),
-  });
-  return makeSessionFamilyStorageLive("state/session-families.json").pipe(
-    Layer.provide(Layer.succeed(FileSystem.FileSystem)(fileSystem)),
-    Layer.provide(Path.layer),
-  );
-};
+const testLayer = () => familyStorageHarness().layer;
 
 const child = (requestId: string, childSessionId: string) => ({
   familyId: crypto.randomUUID(),
@@ -47,6 +19,28 @@ const child = (requestId: string, childSessionId: string) => ({
 });
 
 describe("SessionFamilyStorage", () => {
+  it.effect("migrates membership-only storage without losing existing families", () => {
+    const files = new Map([
+      ["state/session-families.json", JSON.stringify({ version: 1, data: { families: [] } })],
+    ]);
+    return Effect.gen(function* () {
+      const storage = yield* SessionFamilyStorage;
+      assert.deepEqual(yield* storage.state(), { families: [], transitions: [], turns: [] });
+      yield* storage.addChild(child("request", "child"));
+      yield* storage.recordTurn({
+        sessionId: "child",
+        parentSessionId: "parent",
+        turnId: "turn",
+        reported: false,
+      });
+      yield* storage.reportTurns("child", ["turn"]);
+      yield* storage.settleTurn("turn", "complete");
+      assert.deepEqual((yield* storage.state()).turns, []);
+      assert.equal((yield* storage.list()).length, 1);
+      assert.equal(JSON.parse(files.get("state/session-families.json") ?? "{}").version, 2);
+    }).pipe(Effect.provide(familyStorageHarness(files).layer));
+  });
+
   it.effect("serializes concurrent first-child creation into one family", () =>
     Effect.gen(function* () {
       const storage = yield* SessionFamilyStorage;

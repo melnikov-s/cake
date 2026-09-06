@@ -1,7 +1,18 @@
-import { Context, Effect, FileSystem, Layer, Path, Schema, Semaphore } from "effect";
+import {
+  Context,
+  Effect,
+  FileSystem,
+  Layer,
+  Path,
+  Schema,
+  Semaphore,
+  RcMap,
+  Scope,
+  Exit,
+} from "effect";
 import { atomicWriteFile, type AtomicFileStage } from "./internal/atomicFile";
 
-const DOCUMENT_VERSION = 1;
+const DOCUMENT_VERSION = 2;
 const BoundedId = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
 const BoundedPath = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4_096));
 
@@ -23,7 +34,22 @@ export const SessionFamily = Schema.Struct({
 });
 export interface SessionFamily extends Schema.Schema.Type<typeof SessionFamily> {}
 
-export const SessionFamilyDocument = Schema.Struct({ families: Schema.Array(SessionFamily) });
+const FamilyTransition = Schema.Struct({ parentSessionId: BoundedId, resolved: Schema.Boolean });
+const FamilyTurn = Schema.Struct({
+  sessionId: BoundedId,
+  parentSessionId: BoundedId,
+  turnId: BoundedId,
+  reported: Schema.Boolean,
+  deliveryTurnId: Schema.optionalKey(BoundedId),
+  replyMessageIds: Schema.optionalKey(Schema.Array(BoundedId)),
+  outcome: Schema.optionalKey(Schema.Literals(["complete", "failed", "aborted"])),
+});
+export interface FamilyTurn extends Schema.Schema.Type<typeof FamilyTurn> {}
+export const SessionFamilyDocument = Schema.Struct({
+  families: Schema.Array(SessionFamily),
+  transitions: Schema.Array(FamilyTransition),
+  turns: Schema.Array(FamilyTurn),
+});
 export interface SessionFamilyDocument extends Schema.Schema.Type<typeof SessionFamilyDocument> {}
 
 export class SessionFamilyStorageError extends Schema.TaggedError<SessionFamilyStorageError>()(
@@ -34,6 +60,40 @@ export class SessionFamilyStorageError extends Schema.TaggedError<SessionFamilyS
 export class SessionFamilyStorage extends Context.Service<
   SessionFamilyStorage,
   {
+    readonly state: () => Effect.Effect<SessionFamilyDocument, SessionFamilyStorageError>;
+    readonly withMemberLock: <A, E, R>(
+      sessionId: string,
+      effect: Effect.Effect<A, E, R>,
+    ) => Effect.Effect<A, E | SessionFamilyStorageError, R>;
+    readonly beginTransition: (
+      parentSessionId: string,
+      resolved: boolean,
+    ) => Effect.Effect<void, SessionFamilyStorageError>;
+    readonly finishTransition: (
+      parentSessionId: string,
+    ) => Effect.Effect<void, SessionFamilyStorageError>;
+    readonly recordTurn: (turn: FamilyTurn) => Effect.Effect<void, SessionFamilyStorageError>;
+    readonly settleTurn: (
+      turnId: string,
+      outcome: "complete" | "failed" | "aborted",
+    ) => Effect.Effect<void, SessionFamilyStorageError>;
+    readonly prepareReply: (
+      sessionId: string,
+      turnIds: ReadonlyArray<string>,
+      messageId: string,
+    ) => Effect.Effect<void, SessionFamilyStorageError>;
+    readonly reportTurns: (
+      sessionId: string,
+      turnIds: ReadonlyArray<string>,
+    ) => Effect.Effect<void, SessionFamilyStorageError>;
+    readonly markNoticeAttempt: (
+      turnId: string,
+      deliveryTurnId: string,
+    ) => Effect.Effect<void, SessionFamilyStorageError>;
+    readonly completeNotice: (turnId: string) => Effect.Effect<void, SessionFamilyStorageError>;
+    readonly removeUnmaterializedChild: (
+      sessionId: string,
+    ) => Effect.Effect<void, SessionFamilyStorageError>;
     readonly list: () => Effect.Effect<ReadonlyArray<SessionFamily>, SessionFamilyStorageError>;
     readonly familyForMember: (
       sessionId: string,
@@ -92,7 +152,7 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
             .exists(documentPath)
             .pipe(Effect.mapError((e) => storageError("load", e))))
         )
-          return { families: [] } satisfies SessionFamilyDocument;
+          return { families: [], transitions: [], turns: [] } satisfies SessionFamilyDocument;
         const text = yield* fileSystem
           .readFileString(documentPath)
           .pipe(Effect.mapError((e) => storageError("load", e)));
@@ -103,14 +163,24 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
         const envelope = yield* Schema.decodeUnknownEffect(StoredEnvelope)(parsed).pipe(
           Effect.mapError((cause) => storageError("load", cause)),
         );
-        if (envelope.version !== DOCUMENT_VERSION)
+        if (envelope.version !== 1 && envelope.version !== DOCUMENT_VERSION)
           return yield* storageError(
             "load",
             `Unsupported session family document version ${envelope.version}`,
           );
-        const document = yield* Schema.decodeUnknownEffect(SessionFamilyDocument)(
-          envelope.data,
-        ).pipe(Effect.mapError((cause) => storageError("load", cause)));
+        const data =
+          envelope.version === 1
+            ? {
+                ...(yield* Schema.decodeUnknownEffect(
+                  Schema.Struct({ families: Schema.Array(SessionFamily) }),
+                )(envelope.data).pipe(Effect.mapError((cause) => storageError("migrate", cause)))),
+                transitions: [],
+                turns: [],
+              }
+            : envelope.data;
+        const document = yield* Schema.decodeUnknownEffect(SessionFamilyDocument)(data).pipe(
+          Effect.mapError((cause) => storageError("load", cause)),
+        );
         return yield* Effect.try({
           try: () => validateDocument(document),
           catch: (cause) => storageError("load", cause),
@@ -122,7 +192,10 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
       const saveUnlocked = Effect.fn("SessionFamilyStorage.saveUnlocked")(function* (
         document: SessionFamilyDocument,
       ) {
-        const validated = validateDocument(document);
+        const validated = yield* Effect.try({
+          try: () => validateDocument(document),
+          catch: (cause) => storageError("save", cause),
+        });
         const data = yield* Schema.encodeEffect(SessionFamilyDocument)(validated).pipe(
           Effect.mapError((cause) => storageError("save", cause)),
         );
@@ -214,12 +287,145 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
                   candidate.familyId === childOwner.familyId ? family : candidate,
                 )
               : [...document.families, family];
-            yield* saveUnlocked({ families });
+            yield* saveUnlocked({ ...document, families });
             return family;
           }),
         );
       });
 
-      return SessionFamilyStorage.of({ list, familyForMember, addChild });
+      const state = Effect.fn("SessionFamilyStorage.state")(() =>
+        lock.withPermits(1)(loadUnlocked()),
+      );
+      const memberLocks = yield* RcMap.make({
+        lookup: (parentSessionId: string) =>
+          Semaphore.make(1).pipe(
+            Effect.withSpan("SessionFamilyStorage.lock", { attributes: { parentSessionId } }),
+          ),
+      });
+      const withMemberLock: SessionFamilyStorage["Service"]["withMemberLock"] = (
+        sessionId,
+        effect,
+      ) =>
+        Effect.acquireUseRelease(
+          Scope.make(),
+          (leaseScope) =>
+            Effect.gen(function* () {
+              const family = yield* familyForMember(sessionId);
+              const memberLock = yield* RcMap.get(
+                memberLocks,
+                family?.parentSessionId ?? sessionId,
+              ).pipe(Effect.provideService(Scope.Scope, leaseScope));
+              return yield* memberLock.withPermits(1)(effect);
+            }),
+          (leaseScope) => Scope.close(leaseScope, Exit.void),
+        );
+      const update = Effect.fn("SessionFamilyStorage.update")(
+        (change: (document: SessionFamilyDocument) => SessionFamilyDocument) =>
+          lock.withPermits(1)(
+            Effect.gen(function* () {
+              const document = yield* loadUnlocked();
+              yield* saveUnlocked(change(document));
+            }),
+          ),
+      );
+      const beginTransition = Effect.fn("SessionFamilyStorage.beginTransition")(
+        (parentSessionId: string, resolved: boolean) =>
+          update((document) => ({
+            ...document,
+            transitions: [
+              ...document.transitions.filter((item) => item.parentSessionId !== parentSessionId),
+              { parentSessionId, resolved },
+            ],
+          })),
+      );
+      const finishTransition = Effect.fn("SessionFamilyStorage.finishTransition")(
+        (parentSessionId: string) =>
+          update((document) => ({
+            ...document,
+            transitions: document.transitions.filter(
+              (item) => item.parentSessionId !== parentSessionId,
+            ),
+          })),
+      );
+      const recordTurn = Effect.fn("SessionFamilyStorage.recordTurn")((turn: FamilyTurn) =>
+        update((document) => ({
+          ...document,
+          turns: document.turns.some((item) => item.turnId === turn.turnId)
+            ? document.turns
+            : [...document.turns, turn],
+        })),
+      );
+      const settleTurn = Effect.fn("SessionFamilyStorage.settleTurn")(
+        (turnId: string, outcome: "complete" | "failed" | "aborted") =>
+          update((document) => ({
+            ...document,
+            turns: document.turns.flatMap((turn) =>
+              turn.turnId !== turnId ? [turn] : turn.reported ? [] : [{ ...turn, outcome }],
+            ),
+          })),
+      );
+      const prepareReply = Effect.fn("SessionFamilyStorage.prepareReply")(
+        (sessionId: string, turnIds: ReadonlyArray<string>, messageId: string) =>
+          update((document) => ({
+            ...document,
+            turns: document.turns.map((turn) =>
+              turn.sessionId === sessionId && turnIds.includes(turn.turnId)
+                ? { ...turn, replyMessageIds: [...(turn.replyMessageIds ?? []), messageId] }
+                : turn,
+            ),
+          })),
+      );
+      const reportTurns = Effect.fn("SessionFamilyStorage.reportTurns")(
+        (sessionId: string, turnIds: ReadonlyArray<string>) =>
+          update((document) => ({
+            ...document,
+            turns: document.turns.map((turn) =>
+              turn.sessionId === sessionId && turnIds.includes(turn.turnId)
+                ? { ...turn, reported: true }
+                : turn,
+            ),
+          })),
+      );
+      const markNoticeAttempt = Effect.fn("SessionFamilyStorage.markNoticeAttempt")(
+        (turnId: string, deliveryTurnId: string) =>
+          update((document) => ({
+            ...document,
+            turns: document.turns.map((turn) =>
+              turn.turnId === turnId ? { ...turn, deliveryTurnId } : turn,
+            ),
+          })),
+      );
+      const completeNotice = Effect.fn("SessionFamilyStorage.completeNotice")((turnId: string) =>
+        update((document) => ({
+          ...document,
+          turns: document.turns.filter((turn) => turn.turnId !== turnId),
+        })),
+      );
+      const removeUnmaterializedChild = Effect.fn("SessionFamilyStorage.removeUnmaterializedChild")(
+        (sessionId: string) =>
+          update((document) => ({
+            ...document,
+            families: document.families.map((family) => ({
+              ...family,
+              children: family.children.filter((child) => child.sessionId !== sessionId),
+            })),
+          })),
+      );
+      return SessionFamilyStorage.of({
+        list,
+        familyForMember,
+        addChild,
+        state,
+        withMemberLock,
+        beginTransition,
+        finishTransition,
+        recordTurn,
+        settleTurn,
+        reportTurns,
+        prepareReply,
+        markNoticeAttempt,
+        completeNotice,
+        removeUnmaterializedChild,
+      });
     }),
   );

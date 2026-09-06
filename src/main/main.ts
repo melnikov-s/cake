@@ -1,3 +1,4 @@
+import * as sessionFamilies from "../domain/sessionFamilies";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { Cause, Effect, Exit, Layer, ManagedRuntime, Schema } from "effect";
@@ -214,7 +215,19 @@ const scheduledMessageWorkerLive = Layer.effectDiscard(
     yield* scheduledMessages.runWorker.pipe(Effect.forkScoped);
   }),
 ).pipe(Layer.provide(servicesWithoutScheduledWorkerLive));
-const servicesLive = Layer.merge(servicesWithoutScheduledWorkerLive, scheduledMessageWorkerLive);
+const familyRecoveryLive = Layer.effectDiscard(
+  Effect.gen(function* () {
+    yield* sessionFamilies
+      .initialize(cakePaths.piSessions, cakePaths.piResolvedSessions)
+      .pipe(Effect.orDie);
+    yield* sessionFamilies.runWorker.pipe(Effect.forkScoped);
+  }),
+).pipe(Layer.provide(servicesWithoutScheduledWorkerLive));
+const servicesLive = Layer.mergeAll(
+  servicesWithoutScheduledWorkerLive,
+  scheduledMessageWorkerLive,
+  familyRecoveryLive,
+);
 const serverLive = makeCakeIpcServerLive(homedir()).pipe(Layer.provide(servicesLive));
 const MainLive: Layer.Layer<Layer.Success<typeof servicesLive>, never, never> = Layer.merge(
   servicesLive,

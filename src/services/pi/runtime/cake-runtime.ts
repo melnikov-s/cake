@@ -8,6 +8,7 @@ import {
   type InlineExtension,
   type SlashCommandInfo,
 } from "@earendil-works/pi-coding-agent";
+import { RuntimeTurnCompletion } from "./RuntimeTurnCompletion";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
@@ -631,6 +632,7 @@ export interface CakeRuntime {
   readonly sessionFile: string;
   /** Returns Pi's live turn state without assembling a SessionSnapshot. */
   readonly streaming: boolean;
+  executingTurnIds?(): ReadonlyArray<string>;
   getReviewParentContext?(): ReviewParentContext;
   recordReviewRun(run: ReviewRunEntry): void;
   snapshot(): Promise<SessionSnapshot>;
@@ -640,6 +642,7 @@ export interface CakeRuntime {
     delivery: "prompt" | "steer" | "follow-up",
     attachments: Attachment[],
     renderUserMessageAsMarkdown?: boolean,
+    turnId?: string,
   ): Promise<void>;
   listQueuedMessages(): Promise<{ steering: string[]; followUp: string[] }>;
   clearQueue(): Promise<{ steering: string[]; followUp: string[] }>;
@@ -1805,11 +1808,13 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
   // manual compaction, so Cake holds them here and delivers them when the
   // compaction_end event reports the session is available again.
   let compactionQueue: {
+    turnId?: string;
     text: string;
     attachments: Attachment[];
     delivery: "steer" | "follow-up";
     renderUserMessageAsMarkdown: boolean;
   }[] = [];
+  const turnCompletions = new RuntimeTurnCompletion();
   const pendingUserPresentations: {
     content: string;
     renderUserMessageAsMarkdown: boolean;
@@ -2175,6 +2180,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     }
     if (event.type === "message_end" && event.message.role === "user") {
       const content = textFromContent(event.message.content);
+      turnCompletions.consume(content);
       const presentationIndex = pendingUserPresentations.findIndex(
         (candidate) => candidate.content === content,
       );
@@ -2206,6 +2212,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     }
     if (event.type === "agent_settled") {
       options.onEvent({ type: "streaming", sessionId: cakeSessionId, streaming: false });
+      turnCompletions.settle();
       void finishSettledTurn();
     }
   });
@@ -2237,6 +2244,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
             await deliverTrackedUserMessage(content, item.renderUserMessageAsMarkdown, () =>
               withResponseRetries(() => session.prompt(content, { images, source: "interactive" })),
             );
+            if (item.turnId) turnCompletions.finishHandledInput(item.turnId);
             continue;
           } catch (error) {
             // A turn may have started between the check and this call.
@@ -2475,7 +2483,8 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       );
     },
     compact: (instructions) => runCompact(instructions),
-    async prompt(text, delivery, attachments, renderUserMessageAsMarkdown = false) {
+    executingTurnIds: () => turnCompletions.executingIds(),
+    async prompt(text, delivery, attachments, renderUserMessageAsMarkdown = false, turnId) {
       if (disposed) throw new Error("The Cake runtime has been disposed");
       // A real user submission starts a fresh bounded recovery budget.
       userAbortRequested = false;
@@ -2519,49 +2528,72 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         return;
       }
       if (!session.isStreaming && reloadCompleted < reloadRequested) await drainReloads();
-      if (session.isCompacting) {
-        // Pi rejects prompts during compaction. Hold the message with its
-        // delivery intent and deliver it when compaction finishes instead of
-        // failing the submission.
-        compactionQueue.push({
-          text,
-          attachments,
-          // A plain "prompt" intent degrades to a follow-up when it has to
-          // wait behind compaction; steering intent is preserved.
-          delivery: delivery === "steer" ? "steer" : "follow-up",
-          renderUserMessageAsMarkdown,
-        });
-        syncQueuedParts();
-        return;
-      }
-      const content = promptText(text, attachments);
-      const images = imageContent(attachments);
-      if (delivery === "steer")
-        await deliverTrackedUserMessage(content, renderUserMessageAsMarkdown, () =>
-          session.steer(content, images),
-        );
-      else if (delivery === "follow-up")
-        await deliverTrackedUserMessage(content, renderUserMessageAsMarkdown, () =>
-          session.followUp(content, images),
-        );
-      else if (session.isStreaming) {
-        // The renderer may see a stale idle snapshot while a turn is still
-        // running. Queue the message instead of failing the submission.
-        await deliverTrackedUserMessage(content, renderUserMessageAsMarkdown, () =>
-          session.followUp(content, images),
-        );
-      } else {
-        try {
+      const completion = turnId
+        ? turnCompletions.track(
+            turnId,
+            promptText(text, attachments),
+            (delivery === "prompt" && !session.isStreaming) || text.startsWith("/"),
+          )
+        : undefined;
+      try {
+        if (session.isCompacting) {
+          // Pi rejects prompts during compaction. Hold the message with its
+          // delivery intent and deliver it when compaction finishes instead of
+          // failing the submission.
+          compactionQueue.push({
+            turnId,
+            text,
+            attachments,
+            // A plain "prompt" intent degrades to a follow-up when it has to
+            // wait behind compaction; steering intent is preserved.
+            delivery: delivery === "steer" ? "steer" : "follow-up",
+            renderUserMessageAsMarkdown,
+          });
+          syncQueuedParts();
+          await completion;
+          return;
+        }
+        const content = promptText(text, attachments);
+        const images = imageContent(attachments);
+        if (delivery === "steer")
           await deliverTrackedUserMessage(content, renderUserMessageAsMarkdown, () =>
-            withResponseRetries(() => session.prompt(content, { images, source: "interactive" })),
+            session.steer(content, images),
           );
-        } catch (error) {
-          // The turn may have started between the check and this call.
-          if (!isAlreadyProcessingError(error)) throw error;
+        else if (delivery === "follow-up")
           await deliverTrackedUserMessage(content, renderUserMessageAsMarkdown, () =>
             session.followUp(content, images),
           );
+        else if (session.isStreaming) {
+          // The renderer may see a stale idle snapshot while a turn is still
+          // running. Queue the message instead of failing the submission.
+          await deliverTrackedUserMessage(content, renderUserMessageAsMarkdown, () =>
+            session.followUp(content, images),
+          );
+        } else {
+          try {
+            await deliverTrackedUserMessage(content, renderUserMessageAsMarkdown, () =>
+              withResponseRetries(() => session.prompt(content, { images, source: "interactive" })),
+            );
+          } catch (error) {
+            // The turn may have started between the check and this call.
+            if (!isAlreadyProcessingError(error)) throw error;
+            await deliverTrackedUserMessage(content, renderUserMessageAsMarkdown, () =>
+              session.followUp(content, images),
+            );
+          }
         }
+        // Pi extensions may handle input without creating a user message or run.
+        if (
+          turnId &&
+          !session.isStreaming &&
+          !session.isCompacting &&
+          session.getSteeringMessages().length === 0 &&
+          session.getFollowUpMessages().length === 0
+        )
+          turnCompletions.finishHandledInput(turnId);
+        await completion;
+      } finally {
+        if (turnId) turnCompletions.forget(turnId);
       }
     },
     async listQueuedMessages() {
@@ -2582,6 +2614,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     },
     async clearQueue() {
       const queued = session.clearQueue();
+      turnCompletions.cancel(true);
       const steering = [
         ...queued.steering,
         ...compactionQueue
@@ -2637,6 +2670,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       );
     },
     abort: () => {
+      turnCompletions.cancel();
       userAbortRequested = true;
       turnRecoveryContinuations = 0;
       removeRecoveryNotice();
@@ -2820,6 +2854,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     dispose() {
       if (disposed) return disposePromise;
       disposed = true;
+      turnCompletions.cancel();
       sessionNamingController.abort();
       if (usageUpdateTimer !== undefined) clearTimeout(usageUpdateTimer);
       usageUpdateTimer = undefined;

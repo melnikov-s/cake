@@ -1,3 +1,4 @@
+import { ProjectSessionLifecycle } from "../../../src/services/project-sessions/ProjectSessionLifecycle";
 import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
 import { Deferred, Effect, Fiber, Layer, Queue, Stream, SubscriptionRef } from "effect";
@@ -187,14 +188,23 @@ const makeLayer = (
   return Layer.mergeAll(
     application,
     SessionCatalogChanges.layer,
-    Layer.succeed(
-      SessionFamilyStorage,
-      SessionFamilyStorage.of({
-        list: () => Effect.succeed([]),
-        familyForMember: () => Effect.succeed(undefined),
-        addChild: () => Effect.die("Unexpected family child creation"),
-      }),
-    ),
+    Layer.mock(ProjectSessionLifecycle, {}),
+    Layer.succeed(SessionFamilyStorage, {
+      list: () => Effect.succeed([]),
+      familyForMember: () => Effect.succeed(undefined),
+      addChild: () => Effect.die("Unexpected family child creation"),
+      state: () => Effect.succeed({ families: [], transitions: [], turns: [] }),
+      withMemberLock: (_id, effect) => effect,
+      beginTransition: () => Effect.void,
+      finishTransition: () => Effect.void,
+      recordTurn: () => Effect.void,
+      settleTurn: () => Effect.void,
+      reportTurns: () => Effect.void,
+      prepareReply: () => Effect.void,
+      markNoticeAttempt: () => Effect.void,
+      completeNotice: () => Effect.void,
+      removeUnmaterializedChild: () => Effect.void,
+    }),
     makePiSessionsLayer(adapter),
     SubagentCoordinatorLive,
     makeProjectSessionEnvironmentLayer({

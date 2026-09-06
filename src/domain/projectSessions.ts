@@ -1,3 +1,4 @@
+import { ProjectSessionLifecycle } from "../services/project-sessions/ProjectSessionLifecycle";
 import { Effect, Stream } from "effect";
 import * as sessionTerminals from "./sessionTerminals";
 import * as subagents from "./subagents";
@@ -1170,42 +1171,49 @@ export const resolve = Effect.fn("ProjectSessions.resolve")(function* (
       operation: "resolve",
       message: "Only the Session Family parent can resolve the family",
     });
-  const memberIds = family
-    ? [family.parentSessionId, ...family.children.map((child) => child.sessionId)]
-    : [target.sessionId];
-  const members = yield* Effect.forEach(memberIds, (sessionId) =>
-    findLocation({ sessionId }, { includeInactive: true }).pipe(
-      Effect.map((location) => ({ sessionId, location })),
-    ),
-  );
-  const sessions = yield* PiSessions;
-  const activeMembers: string[] = [];
-  for (const member of members) {
-    const status = yield* sessions.currentStatus({
-      workingDirectory: member.location.workingDirectory,
-      sessionDirectory: member.location.sessionDirectory,
-      sessionId: member.sessionId,
-    });
-    if (status?.streaming || status?.pending) activeMembers.push(member.sessionId);
-    if (status && !status.persisted)
-      return yield* new ProjectSessionError({
-        operation: "resolve",
-        message: `Cake cannot resolve empty Project Session ${member.sessionId}`,
-      });
+  if (family) {
+    const lifecycle = yield* ProjectSessionLifecycle;
+    return yield* lifecycle
+      .setProjectSessionResolved(target.sessionId, true)
+      .pipe(asError("resolve"));
   }
-  if (activeMembers.length > 0)
-    return yield* new ProjectSessionError({
-      operation: "resolve",
-      message: `Cake cannot resolve this family while these sessions are active: ${activeMembers.join(", ")}`,
-    });
-  const environment = yield* ProjectSessionEnvironment;
-  for (const member of members) {
-    yield* subagents.releaseParent(member.sessionId).pipe(asError("resolve"));
-    yield* sessionTerminals.closeSession("project", member.sessionId).pipe(asError("resolve"));
-    yield* environment.archive(member.sessionId, member.location).pipe(asError("resolve"));
-    yield* setSessionUnread(member.sessionId, false).pipe(asError("resolve"));
-    yield* publishCatalogStatus(member.sessionId, member.location, true).pipe(asError("resolve"));
-  }
+  const storage = yield* SessionFamilyStorage;
+  return yield* storage
+    .withMemberLock(
+      target.sessionId,
+      Effect.gen(function* () {
+        if (yield* storage.familyForMember(target.sessionId))
+          return yield* new ProjectSessionError({
+            operation: "resolve",
+            message: "The session became a family parent; retry the family operation",
+          });
+        const location = yield* findLocation(target, { includeInactive: true });
+        const sessions = yield* PiSessions;
+        const status = yield* sessions.currentStatus({
+          workingDirectory: location.workingDirectory,
+          sessionDirectory: location.sessionDirectory,
+          sessionId: target.sessionId,
+        });
+        if (status?.streaming || status?.pending)
+          return yield* new ProjectSessionError({
+            operation: "resolve",
+            message:
+              "Cake cannot resolve a Project Session while its turn is active or input is pending",
+          });
+        if (status && !status.persisted)
+          return yield* new ProjectSessionError({
+            operation: "resolve",
+            message: "Cake cannot resolve an empty Project Session",
+          });
+        const environment = yield* ProjectSessionEnvironment;
+        yield* subagents.releaseParent(target.sessionId).pipe(asError("resolve"));
+        yield* sessionTerminals.closeSession("project", target.sessionId).pipe(asError("resolve"));
+        yield* environment.archive(target.sessionId, location).pipe(asError("resolve"));
+        yield* setSessionUnread(target.sessionId, false).pipe(asError("resolve"));
+        yield* publishCatalogStatus(target.sessionId, location, true).pipe(asError("resolve"));
+      }),
+    )
+    .pipe(asError("resolve"));
 });
 
 export const restore = Effect.fn("ProjectSessions.restore")(function* (
@@ -1219,15 +1227,31 @@ export const restore = Effect.fn("ProjectSessions.restore")(function* (
       operation: "restore",
       message: "Only the Session Family parent can restore the family",
     });
-  const memberIds = family
-    ? [family.parentSessionId, ...family.children.map((child) => child.sessionId)]
-    : [target.sessionId];
-  const environment = yield* ProjectSessionEnvironment;
-  for (const sessionId of memberIds) {
-    const location = yield* findLocation({ sessionId });
-    const restored = yield* environment.restore(sessionId, location).pipe(asError("restore"));
-    yield* trustProject(restored.workingDirectory).pipe(asError("restore"));
-    yield* publishCatalogStatus(sessionId, restored, false).pipe(asError("restore"));
-    yield* publishCatalogChange(sessionId, restored, false).pipe(asError("restore"));
+  if (family) {
+    const lifecycle = yield* ProjectSessionLifecycle;
+    return yield* lifecycle
+      .setProjectSessionResolved(target.sessionId, false)
+      .pipe(asError("restore"));
   }
+  const storage = yield* SessionFamilyStorage;
+  return yield* storage
+    .withMemberLock(
+      target.sessionId,
+      Effect.gen(function* () {
+        if (yield* storage.familyForMember(target.sessionId))
+          return yield* new ProjectSessionError({
+            operation: "restore",
+            message: "The session became a family parent; retry the family operation",
+          });
+        const environment = yield* ProjectSessionEnvironment;
+        const location = yield* findLocation(target);
+        const restored = yield* environment
+          .restore(target.sessionId, location)
+          .pipe(asError("restore"));
+        yield* trustProject(restored.workingDirectory).pipe(asError("restore"));
+        yield* publishCatalogStatus(target.sessionId, restored, false).pipe(asError("restore"));
+        yield* publishCatalogChange(target.sessionId, restored, false).pipe(asError("restore"));
+      }),
+    )
+    .pipe(asError("restore"));
 });

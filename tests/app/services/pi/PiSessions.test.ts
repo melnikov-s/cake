@@ -5,81 +5,10 @@ import { describe } from "vitest";
 import {
   makePiSessionsLayer,
   PiSessions,
-  type PiSessionAcquireOptions,
   type PiSessionsAdapter,
+  type PiSessionAcquireOptions,
 } from "../../../../src/services/pi/PiSessions";
-import type {
-  CakeRuntime,
-  CakeRuntimeOptions,
-} from "../../../../src/services/pi/runtime/cake-runtime";
-import type { SessionSnapshot } from "../../../../src/ipc/session-contract";
-
-const snapshot: SessionSnapshot = {
-  workspacePath: "/project",
-  sessionId: "session-1",
-  sessionFile: "/sessions/session-1.jsonl",
-  parts: [],
-  models: [],
-  thinkingLevel: "off",
-  availableThinkingLevels: ["off"],
-  streaming: false,
-  diagnostics: [],
-  commands: [],
-  compatibility: { resources: [], diagnostics: [] },
-  extensionUi: { statuses: [] },
-  tree: [],
-};
-
-const options = (overrides: Partial<PiSessionAcquireOptions["runtime"]> = {}) =>
-  ({
-    profile: { _tag: "ProjectSession" },
-    runtime: {
-      cwd: "/project",
-      trusted: true,
-      agentDir: "/agent",
-      sessionDir: "/sessions",
-      sessionId: "session-1",
-      requestUi: async () => undefined,
-      ...overrides,
-    },
-  }) satisfies PiSessionAcquireOptions;
-
-function fakeRuntime(
-  runtimeOptions: CakeRuntimeOptions,
-  onDispose: () => void | Promise<void>,
-): CakeRuntime {
-  return {
-    sessionId: snapshot.sessionId,
-    sessionFile: snapshot.sessionFile,
-    streaming: false,
-    snapshot: async () => {
-      runtimeOptions.onEvent({
-        type: "streaming",
-        sessionId: snapshot.sessionId,
-        streaming: true,
-      });
-      return snapshot;
-    },
-    listQueuedMessages: async () => ({ steering: [], followUp: [] }),
-    clearQueue: async () => ({ steering: [], followUp: [] }),
-    prompt: async () => undefined,
-    setUserMessageMarkdown: async () => undefined,
-    compact: async () => undefined,
-    abort: async () => undefined,
-    setModel: async () => undefined,
-    setThinkingLevel: async () => undefined,
-    applyConfiguration: async () => undefined,
-    setPiSetting: async () => undefined,
-    recordReviewRun: () => undefined,
-    login: async () => undefined,
-    logout: async () => undefined,
-    rename: async () => undefined,
-    fork: async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" }),
-    handoff: async () => ({ sessionId: "handoff", sessionFile: "/sessions/handoff.jsonl" }),
-    navigate: async () => undefined,
-    dispose: onDispose,
-  };
-}
+import { options, fakeRuntime } from "../../helpers/piRuntimeFixture";
 
 const adapter = (
   acquisitions: Ref.Ref<number>,
@@ -100,6 +29,100 @@ const adapter = (
 });
 
 describe("PiSessions", () => {
+  it.effect("delivers one aborted settlement even when the prompt finishes afterward", () =>
+    Effect.gen(function* () {
+      const started = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      const returned = yield* Deferred.make<void>();
+      const outcomes: string[] = [];
+      const layer = makePiSessionsLayer({
+        catalog: () => Stream.empty,
+        catalogEntry: () => Effect.succeed(undefined),
+        inspect: () => Effect.succeed(undefined),
+        changelog: () => Effect.succeed(""),
+        createRuntime: (runtimeOptions) =>
+          Effect.succeed({
+            ...fakeRuntime(runtimeOptions, () => undefined),
+            prompt: () =>
+              Effect.runPromise(
+                Effect.gen(function* () {
+                  yield* Deferred.succeed(started, undefined);
+                  yield* Deferred.await(release);
+                  yield* Deferred.succeed(returned, undefined);
+                }),
+              ),
+            abort: () =>
+              Effect.runPromise(Deferred.succeed(release, undefined)).then(() => undefined),
+          }),
+      });
+      const context = yield* Layer.build(layer);
+      const sessions = Context.get(context, PiSessions);
+      const handle = yield* sessions.acquire({
+        ...options(),
+        onTurnSettled: (event) =>
+          Effect.sync(() => {
+            outcomes.push(event.outcome);
+          }),
+      });
+      yield* handle.prompt("work");
+      yield* Deferred.await(started);
+      yield* handle.abort();
+      yield* Deferred.await(returned);
+      assert.deepEqual(outcomes, ["aborted"]);
+    }),
+  );
+
+  it.effect("counts unconsumed input as active but permits resolution once execution settles", () =>
+    Effect.gen(function* () {
+      const entered = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      let executingIds: string[] = [];
+      let settle = () => undefined;
+      const layer = makePiSessionsLayer({
+        catalog: () => Stream.empty,
+        catalogEntry: () => Effect.succeed(undefined),
+        inspect: () => Effect.succeed(undefined),
+        changelog: () => Effect.succeed(""),
+        createRuntime: (runtimeOptions) => {
+          settle = () => {
+            runtimeOptions.onEvent({ type: "streaming", sessionId: "session-1", streaming: false });
+          };
+          return Effect.succeed({
+            ...fakeRuntime(runtimeOptions, () => undefined),
+            executingTurnIds: () => executingIds,
+            prompt: (_text, _images, _mode, _presentation, turnId) =>
+              Effect.runPromise(
+                Effect.gen(function* () {
+                  executingIds = turnId ? [turnId] : [];
+                  yield* Deferred.succeed(entered, undefined);
+                  yield* Deferred.await(release);
+                }),
+              ),
+          });
+        },
+      });
+      const context = yield* Layer.build(layer);
+      const sessions = Context.get(context, PiSessions);
+      const handle = yield* sessions.acquire(options());
+      yield* handle.prompt("work");
+      yield* Deferred.await(entered);
+      const target = {
+        workingDirectory: "/project",
+        sessionDirectory: "/sessions",
+        sessionId: "session-1",
+      };
+      assert.equal((yield* sessions.currentStatus(target))?.streaming, true);
+      const consumedIds = executingIds;
+      executingIds = [];
+      settle();
+      assert.equal((yield* sessions.currentStatus(target))?.streaming, true);
+      executingIds = consumedIds;
+      settle();
+      assert.equal((yield* sessions.currentStatus(target))?.streaming, false);
+      yield* Deferred.succeed(release, undefined);
+    }),
+  );
+
   it.effect("shares one keyed runtime and finalizes it after the last Scope releases", () =>
     Effect.gen(function* () {
       const acquisitions = yield* Ref.make(0);

@@ -95,6 +95,48 @@ async function createFixtureRuntime(directory: string, onEvent = vi.fn()) {
 }
 
 describe("response retry and recovery", () => {
+  it("settles correlated follow-up input only after Pi consumes it", async () => {
+    const directory = await createTemporaryDirectory();
+    let started: () => void = () => undefined;
+    const firstStarted = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    let finishFirst: () => void = () => {
+      throw new Error("First request has not started");
+    };
+    const provider = await registerFixtureProvider(directory, (index, response) => {
+      response.writeHead(200, { "content-type": "text/event-stream" });
+      response.write(sseChunk({ role: "assistant", content: index === 1 ? "First" : "Second" }));
+      const finish = () => {
+        response.write(sseChunk({}, "stop"));
+        response.end("data: [DONE]\n\n");
+      };
+      if (index === 1) {
+        finishFirst = finish;
+        started();
+      } else finish();
+    });
+    const { runtime } = await createFixtureRuntime(directory);
+    const first = runtime.prompt("First assignment", "prompt", [], false, "first-turn");
+    await firstStarted;
+    let settled = false;
+    const second = runtime
+      .prompt("Second assignment", "follow-up", [], false, "second-turn")
+      .then(() => {
+        settled = true;
+      });
+    await vi.waitFor(async () =>
+      expect((await runtime.listQueuedMessages()).followUp).toHaveLength(1),
+    );
+    expect(settled).toBe(false);
+    expect(runtime.executingTurnIds?.()).toEqual(["first-turn"]);
+    finishFirst();
+    await Promise.all([first, second]);
+    expect(provider.requestCount()).toBe(2);
+    expect(settled).toBe(true);
+    expect(runtime.executingTurnIds?.()).toEqual([]);
+  });
+
   it("leaves provider errors to Pi and removes intermediate retry messages", async () => {
     const directory = await createTemporaryDirectory();
     const provider = await registerFixtureProvider(directory, (requestIndex, response) => {

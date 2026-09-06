@@ -50,6 +50,20 @@ acceptance produces one factual notice to the parent. Stop-all suppresses this
 reactivation path. Delivery intent survives restart and is idempotent by child
 and turn ID.
 
+Pi input acceptance and execution settlement are separate boundaries. Queued
+input retains its turn lease until Pi consumes the input and the run settles;
+queue insertion alone never triggers a stopped-child notice. Explicit abort
+uses the same outcome callback once, even if the original prompt subsequently
+returns. Only consumed input IDs count when correlating a child's reply.
+
+Family storage version 2 persists pending turns, accepted parent-reply
+correlation, notice attempts, and lifecycle journals. The delivery worker
+retries already-due notices; it does not monitor assignments or decide what the
+parent should do. A notice is acknowledged only when its correlated message is
+projected from the parent transcript. Live turn IDs and queued input prevent
+duplicate delivery before that acknowledgement. Startup reports interrupted
+turns and removes reservations that never materialized a Pi transcript.
+
 ## Aggregate lifecycle
 
 Only the parent can resolve or restore. Resolve requires every member to be
@@ -63,6 +77,14 @@ recoverable journal. Transcript namespace remains the resolved-state authority;
 the journal records only incomplete work. Individual member delete, handoff,
 relocation, and resolve/restore paths reject family members. Ordinary forks are
 standalone and never inherit membership.
+
+`sessionFamilies` is the shared main-process domain for creation, admission,
+lifecycle transitions, and outcome delivery. The existing Project Session
+environment wires its runtime callbacks; both resolution entry points use the
+same lifecycle policy. Per-parent admission locks cover initial creation and
+the complete archive/restore operation. Startup replays incomplete journals
+before the RPC server is exposed. An incomplete journal continues to block new
+work until recovery succeeds.
 
 ## Projection
 

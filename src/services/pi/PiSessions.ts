@@ -99,6 +99,10 @@ export interface PiSessionAcquireOptions {
   readonly runtime: Omit<CakeRuntimeOptions, "onEvent">;
   /** Finalizes Cake-owned integrations when the final shared runtime lease is released. */
   readonly onRelease?: Effect.Effect<void, unknown>;
+  readonly admitTurn?: (
+    turnId: string,
+    accept: Effect.Effect<void>,
+  ) => Effect.Effect<void, unknown>;
   readonly onTurnSettled?: (event: {
     readonly sessionId: string;
     readonly turnId: string;
@@ -209,6 +213,9 @@ export class PiSessions extends Context.Service<
     readonly currentTurnIds: (
       target: Pick<PiSessionTarget, "workingDirectory" | "sessionId" | "sessionDirectory">,
     ) => Effect.Effect<ReadonlyArray<string>>;
+    readonly executingTurnIds: (
+      target: Pick<PiSessionTarget, "workingDirectory" | "sessionId" | "sessionDirectory">,
+    ) => Effect.Effect<ReadonlyArray<string>>;
     readonly refreshModels: () => Effect.Effect<void, PiSessionError>;
     readonly reloadWorkingDirectory: (
       workingDirectory: string,
@@ -226,6 +233,7 @@ interface SharedRuntime {
   readonly runtime: CakeRuntime;
   readonly events: PubSub.PubSub<PiSessionEvent>;
   readonly activeTurns: Ref.Ref<ReadonlyMap<string, "prompt" | "steer" | "follow-up">>;
+  readonly settledInputIds: Set<string>;
 }
 
 class RuntimeKey implements Equal.Equal {
@@ -330,9 +338,14 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
               const activeTurns = yield* Ref.make<
                 ReadonlyMap<string, "prompt" | "steer" | "follow-up">
               >(new Map());
+              const settledInputIds = new Set<string>();
+              let currentRuntime: CakeRuntime | undefined = undefined;
               const runtime = yield* adapter.createRuntime({
                 ...key.options.runtime,
                 onEvent(event) {
+                  if (event.type === "streaming" && !event.streaming)
+                    for (const id of currentRuntime?.executingTurnIds?.() ?? [])
+                      settledInputIds.add(id);
                   const projected: PiSessionEvent =
                     event.type === "snapshot"
                       ? { type: "snapshot-updated", snapshot: event.snapshot }
@@ -340,7 +353,9 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
                   PubSub.publishUnsafe(events, projected);
                 },
               });
+              currentRuntime = runtime;
               const shared = {
+                settledInputIds,
                 fingerprint: key.fingerprint,
                 workingDirectory: key.options.runtime.cwd,
                 sessionDirectory: key.options.runtime.sessionDir,
@@ -473,15 +488,8 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
             Effect.provideService(Scope.Scope, turnScope),
             sessionError(delivery),
           );
-          yield* Ref.update(retained.activeTurns, (turns) => new Map(turns).set(turnId, delivery));
-          yield* PubSub.publish(retained.events, {
-            type: "turn-accepted",
-            sessionId: retained.runtime.sessionId,
-            turnId,
-            delivery,
-          });
           const settle = Effect.fn("PiSessions.settleTurn")(function* (
-            outcome: "complete" | "failed",
+            outcome: "complete" | "failed" | "aborted",
             message?: string,
           ) {
             const active = yield* Ref.modify(retained.activeTurns, (turns) => {
@@ -490,6 +498,7 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
               next.delete(turnId);
               return [true, next] as const;
             });
+            retained.settledInputIds.delete(turnId);
             if (active) {
               const event: PiSessionEvent = {
                 type: "turn-settled",
@@ -508,7 +517,7 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
             }
           });
           const run = runtimeOperation(delivery, () =>
-            retained.runtime.prompt(text, delivery, [...attachments], markdown),
+            retained.runtime.prompt(text, delivery, [...attachments], markdown, turnId),
           ).pipe(
             Effect.matchEffect({
               onSuccess: () => settle("complete"),
@@ -516,7 +525,26 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
             }),
             Effect.ensuring(Scope.close(turnScope, Exit.void)),
           );
-          yield* run.pipe(Effect.forkIn(layerScope));
+          const accept = Effect.gen(function* () {
+            yield* Ref.update(retained.activeTurns, (turns) =>
+              new Map(turns).set(turnId, delivery),
+            );
+            yield* PubSub.publish(retained.events, {
+              type: "turn-accepted",
+              sessionId: retained.runtime.sessionId,
+              turnId,
+              delivery,
+            });
+            yield* run.pipe(Effect.forkIn(layerScope));
+          });
+          yield* (options.admitTurn ? options.admitTurn(turnId, accept) : accept).pipe(
+            Effect.mapError(
+              (cause) => new PiSessionError({ operation: delivery, message: String(cause) }),
+            ),
+            Effect.onExit((exit) =>
+              Exit.isFailure(exit) ? Scope.close(turnScope, Exit.void) : Effect.void,
+            ),
+          );
           return turnId;
         });
 
@@ -556,15 +584,31 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
             ),
           abort: Effect.fn("PiSessions.abort")(function* () {
             const active = yield* Ref.getAndSet(shared.activeTurns, new Map());
+            shared.settledInputIds.clear();
             yield* call("abort", (runtime) => runtime.abort());
             yield* Effect.forEach(
               active,
               ([turnId]) =>
-                PubSub.publish(shared.events, {
-                  type: "turn-settled",
-                  sessionId: shared.runtime.sessionId,
-                  turnId,
-                  outcome: "aborted",
+                Effect.gen(function* () {
+                  yield* PubSub.publish(shared.events, {
+                    type: "turn-settled",
+                    sessionId: shared.runtime.sessionId,
+                    turnId,
+                    outcome: "aborted",
+                  });
+                  if (options.onTurnSettled)
+                    yield* options
+                      .onTurnSettled({
+                        sessionId: shared.runtime.sessionId,
+                        turnId,
+                        outcome: "aborted",
+                      })
+                      .pipe(
+                        Effect.mapError(
+                          (cause) =>
+                            new PiSessionError({ operation: "abort", message: String(cause) }),
+                        ),
+                      );
                 }),
               { discard: true },
             );
@@ -665,6 +709,18 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
         return shared ? [...(yield* Ref.get(shared.activeTurns)).keys()] : [];
       });
 
+      const executingTurnIds = Effect.fn("PiSessions.executingTurnIds")(function* (
+        target: Pick<PiSessionTarget, "workingDirectory" | "sessionId" | "sessionDirectory">,
+      ) {
+        const shared = [...activeRuntimes].find(
+          (candidate) =>
+            candidate.workingDirectory === target.workingDirectory &&
+            candidate.sessionDirectory === target.sessionDirectory &&
+            candidate.runtime.sessionId === target.sessionId,
+        );
+        return yield* Effect.sync(() => shared?.runtime.executingTurnIds?.() ?? []);
+      });
+
       const refreshModels = Effect.fn("PiSessions.refreshModels")(function* () {
         yield* Effect.forEach(
           activeRuntimes,
@@ -735,7 +791,11 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
         if (!shared) return undefined;
         const queued = yield* Effect.promise(() => shared.runtime.listQueuedMessages());
         return {
-          streaming: shared.runtime.streaming,
+          streaming:
+            shared.runtime.streaming ||
+            [...(yield* Ref.get(shared.activeTurns)).keys()].some(
+              (id) => !shared.settledInputIds.has(id),
+            ),
           pending: queued.steering.length > 0 || queued.followUp.length > 0,
           persisted: shared.runtime.sessionFile.length > 0,
         };
@@ -749,6 +809,7 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
         acquireCurrent,
         currentStatus,
         currentTurnIds,
+        executingTurnIds,
         refreshModels,
         reloadWorkingDirectory,
         reloadAll,
