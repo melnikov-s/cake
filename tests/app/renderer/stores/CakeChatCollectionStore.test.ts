@@ -85,6 +85,32 @@ describe("CakeChatCollectionStore", () => {
     models[Symbol.dispose]();
   });
 
+  it("deletes a resolved draft without calling the Cake Chat backend", async () => {
+    const deleteResolved = vi.fn(async () => undefined);
+    const catalog = CakeChatCatalog.create({ loaded: true, sessions: [] });
+    const models = new RendererModels();
+    const { root, subject: store } = mountWithRendererClient(
+      createStore(CakeChatCollectionStore, {
+        catalog,
+        sessionModel: (sessionId) => models.cakeChat(sessionId),
+        tools: () => [],
+      }),
+      { cakeChats: { deleteResolved } } as unknown as RendererClient,
+    );
+    const sessionId = store.sessionId!;
+    store.createDraftSession(sessionId, "Planned work", []);
+    await store.resolveSession(sessionId, true);
+
+    await store.deleteSession(sessionId);
+
+    expect(deleteResolved).not.toHaveBeenCalled();
+    expect(store.summaries.some((session) => session.sessionId === sessionId)).toBe(false);
+    expect(store.sessionId).toBeUndefined();
+    root[Symbol.dispose]();
+    catalog[Symbol.dispose]();
+    models[Symbol.dispose]();
+  });
+
   it("submits transcript annotations from Cake Chat", async () => {
     const prompt = vi.fn(async () => "turn-1");
     const catalog = CakeChatCatalog.create({ loaded: true, sessions: [] });

@@ -178,6 +178,20 @@ describe("SessionRegistryStore materialization", () => {
     fixture.dispose();
   });
 
+  it("deletes a resolved draft from renderer-owned state", async () => {
+    const fixture = registryFixture();
+    const { registry } = fixture;
+    registry.prepareNewSession("/project", "draft-1");
+    await registry.createDraftSession("draft-1", "Planned work", []);
+    registry.setDraftSessionResolved("draft-1", true);
+
+    await expect(registry.deleteResolvedDraftSession("draft-1")).resolves.toBe(true);
+
+    expect(registry.isDraftSession("draft-1")).toBe(false);
+    expect(fixture.catalog.find("draft-1")).toBeUndefined();
+    fixture.dispose();
+  });
+
   it("does not turn persisted loaded sessions into startup observation demand", () => {
     const fixture = registryFixture({
       state: {

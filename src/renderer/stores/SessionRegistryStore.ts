@@ -294,6 +294,13 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     return true;
   }
 
+  async deleteResolvedDraftSession(sessionId: string) {
+    if (!this.draftSessionsById[sessionId]?.resolved) return false;
+    this.removeSession(sessionId);
+    await this.props.persistNow();
+    return true;
+  }
+
   relocateTemporarySession(sessionId: string, workspacePath: string) {
     if (!this.temporarySessionIds.includes(sessionId))
       throw new Error("Only an unsent session can choose another worktree.");

@@ -65,6 +65,10 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
   async deleteSession(sessionId: string) {
     if (!this.props.catalog.find(sessionId)?.resolved || this.signal.aborted) return;
     try {
+      if (this.props.registry.isDraftSession(sessionId)) {
+        await this.props.registry.deleteResolvedDraftSession(sessionId);
+        return;
+      }
       await this.client.workspaces.deleteSession(sessionId, { signal: this.signal });
       if (!this.signal.aborted) this.props.registry.removeSession(sessionId);
     } catch (error) {

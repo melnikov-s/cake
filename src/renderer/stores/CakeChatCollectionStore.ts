@@ -374,6 +374,11 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
   async deleteSession(sessionId: string) {
     if (!this.isSessionResolved(sessionId) || this.signal.aborted) return;
     try {
+      if (this.isDraftSession(sessionId)) {
+        this.removeSession(sessionId);
+        if (this.selectedSessionId === sessionId) this.selectSession(undefined);
+        return;
+      }
       await this.resolutionQueue;
       await this.client.cakeChats.deleteResolved(this.target(sessionId), {
         signal: this.signal,
