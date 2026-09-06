@@ -1,9 +1,10 @@
 import { Store } from "r-state-tree";
 import { RendererClientContext } from "../client/RendererClientContext";
 
-export type TerminalTarget =
-  | { kind: "project"; sessionId: string; workspacePath: string }
-  | { kind: "cake-chat"; sessionId: string };
+export interface TerminalTarget {
+  workingDirectory: string;
+  label: string;
+}
 
 export interface TerminalEntry {
   key: string;
@@ -14,12 +15,13 @@ export interface TerminalEntry {
   error?: string;
 }
 
-interface PendingResolution {
+interface PendingRetirement {
+  workingDirectories: string[];
   keys: string[];
   finish(proceed: boolean): void;
 }
 
-/** Owns the window's lazy, in-memory terminal collection, keyed by Cake session. */
+/** Owns the window's lazy, in-memory terminal collections, keyed by Working Directory. */
 export class TerminalStore extends Store<{
   activeTarget(): TerminalTarget | undefined;
   toggleAcceleratorHint(): string;
@@ -34,7 +36,8 @@ export class TerminalStore extends Store<{
   entries: TerminalEntry[] = [];
   activeEntryKeys: Record<string, string> = {};
   resolutionRequest: { runningProgramCount: number } | undefined;
-  private pendingResolution: PendingResolution | undefined;
+  private pendingRetirement: PendingRetirement | undefined;
+  private retiringDirectories: readonly string[] = [];
   private readonly dataListeners = new Map<string, Set<(data: string) => void>>();
   private readonly bufferedData = new Map<string, string>();
   private readonly orphanEvents = new Map<
@@ -63,7 +66,7 @@ export class TerminalStore extends Store<{
     this.effect(() => {
       const terminals = this.terminals;
       return () => {
-        this.pendingResolution?.finish(false);
+        this.pendingRetirement?.finish(false);
         for (const entry of this.entries) {
           if (entry.terminalId) void terminals.close(entry.terminalId).catch(() => undefined);
         }
@@ -174,6 +177,7 @@ export class TerminalStore extends Store<{
   }
 
   private async start(target: TerminalTarget, cols: number, rows: number, forceNew = false) {
+    if (this.retiringDirectories.includes(target.workingDirectory) || this.signal.aborted) return;
     const openTerminal = this.terminals.open;
     if (!openTerminal) return;
     const current = this.activeEntry;
@@ -202,9 +206,14 @@ export class TerminalStore extends Store<{
     const openTerminal = this.terminals.open;
     if (!openTerminal) return;
     try {
-      const opened = await openTerminal({ target, cols, rows });
-      if (this.signal.aborted) {
-        await this.terminals.close(opened.terminalId);
+      const opened = await openTerminal({
+        target: { workingDirectory: target.workingDirectory },
+        cols,
+        rows,
+      });
+      if (this.signal.aborted || !this.entries.some((entry) => entry.key === key)) {
+        this.orphanEvents.delete(opened.terminalId);
+        await this.terminals.close(opened.terminalId).catch(() => undefined);
         return;
       }
       this.setEntry({ key, target, opening: false, ...opened });
@@ -212,6 +221,7 @@ export class TerminalStore extends Store<{
       this.orphanEvents.delete(opened.terminalId);
       for (const event of orphaned ?? []) this.receive(event);
     } catch (error) {
+      if (this.signal.aborted || !this.entries.some((entry) => entry.key === key)) return;
       this.setEntry({
         key,
         target,
@@ -277,66 +287,70 @@ export class TerminalStore extends Store<{
     };
   }
 
-  async prepareResolution(targets: readonly Pick<TerminalTarget, "kind" | "sessionId">[]) {
-    const targetKeys = new Set(targets.map((target) => `${target.kind}:${target.sessionId}`));
-    const terminals = this.entries.flatMap((entry) =>
-      entry.terminalId && targetKeys.has(this.targetKey(entry.target))
-        ? [{ key: entry.key, terminalId: entry.terminalId }]
-        : [],
-    );
-    if (terminals.length === 0) return true;
-    if (this.pendingResolution) return false;
-
-    const statuses = await Promise.allSettled(
-      terminals.map(({ terminalId }) => this.terminals.status(terminalId)),
-    );
-    const keys = terminals.flatMap((terminal, index) => {
-      const status = statuses[index];
-      return status?.status === "fulfilled" && status.value.runningProgram ? [terminal.key] : [];
-    });
-    if (keys.length === 0) return true;
-    if (this.pendingResolution) return false;
-
-    return new Promise<boolean>((finish) => {
-      this.pendingResolution = { keys, finish };
-      this.resolutionRequest = { runningProgramCount: keys.length };
-    });
-  }
-
-  discardResolvedSessions(targets: readonly Pick<TerminalTarget, "kind" | "sessionId">[]) {
-    const targetKeys = new Set(targets.map((target) => `${target.kind}:${target.sessionId}`));
-    const keys = this.entries
-      .filter((entry) => targetKeys.has(this.targetKey(entry.target)))
-      .map((entry) => entry.key);
-    if (keys.length > 0) void this.closeKeys(keys);
+  async prepareWorkingDirectoryRetirement(workingDirectories: readonly string[]) {
+    const directories = [...new Set(workingDirectories)];
+    if (directories.length === 0) return true;
+    if (this.retiringDirectories.length > 0 || this.signal.aborted) return false;
+    this.retiringDirectories = directories;
+    try {
+      // Main inspects the same all-window collection that retirement will close.
+      // A failed inspection must not be interpreted as an idle shell.
+      const statuses = await Promise.all(
+        directories.map((directory) => this.terminals.workingDirectoryStatus(directory)),
+      );
+      if (this.signal.aborted) return false;
+      const runningProgramCount = statuses.reduce(
+        (total, status) => total + status.runningProgramCount,
+        0,
+      );
+      const keys = this.entries
+        .filter((entry) => directories.includes(entry.target.workingDirectory))
+        .map((entry) => entry.key);
+      if (runningProgramCount === 0) {
+        await this.closeWorkingDirectories(directories, keys);
+        return true;
+      }
+      return await new Promise<boolean>((finish) => {
+        this.pendingRetirement = { workingDirectories: directories, keys, finish };
+        this.resolutionRequest = { runningProgramCount };
+      });
+    } finally {
+      this.retiringDirectories = [];
+    }
   }
 
   cancelResolution() {
-    this.finishResolution(false);
+    this.finishRetirement(false);
   }
 
   async confirmResolution() {
-    const pending = this.pendingResolution;
+    const pending = this.pendingRetirement;
     if (!pending) return;
-    this.pendingResolution = undefined;
+    this.pendingRetirement = undefined;
     this.resolutionRequest = undefined;
-    await this.closeKeys(pending.keys);
-    pending.finish(true);
+    try {
+      await this.closeWorkingDirectories(pending.workingDirectories, pending.keys);
+      pending.finish(true);
+    } catch {
+      pending.finish(false);
+    }
   }
 
-  private finishResolution(proceed: boolean) {
-    const pending = this.pendingResolution;
+  private finishRetirement(proceed: boolean) {
+    const pending = this.pendingRetirement;
     if (!pending) return;
-    this.pendingResolution = undefined;
+    this.pendingRetirement = undefined;
     this.resolutionRequest = undefined;
     pending.finish(proceed);
   }
 
-  private async closeKeys(keys: readonly string[]) {
-    const closing = this.entries.filter((entry) => keys.includes(entry.key));
-    await Promise.allSettled(
-      closing.map((entry) =>
-        entry.terminalId ? this.terminals.close(entry.terminalId) : Promise.resolve(),
+  private async closeWorkingDirectories(
+    workingDirectories: readonly string[],
+    keys: readonly string[],
+  ) {
+    await Promise.all(
+      workingDirectories.map((workingDirectory) =>
+        this.terminals.closeWorkingDirectory(workingDirectory),
       ),
     );
     const keySet = new Set(keys);
@@ -357,8 +371,8 @@ export class TerminalStore extends Store<{
     }
   }
 
-  private targetKey(target: Pick<TerminalTarget, "kind" | "sessionId">) {
-    return `${target.kind}:${target.sessionId}`;
+  private targetKey(target: Pick<TerminalTarget, "workingDirectory">) {
+    return target.workingDirectory;
   }
 
   private setActiveEntry(target: TerminalTarget, key: string) {

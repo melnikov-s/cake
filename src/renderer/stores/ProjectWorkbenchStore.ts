@@ -18,12 +18,12 @@ import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordin
 import { describeError } from "../error-details";
 import { RendererClientContext } from "../client/RendererClientContext";
 import { CommandPaneStore } from "./CommandPaneStore";
-import { SessionManagementStore, type SessionManagementStoreProps } from "./SessionManagementStore";
+import { SessionManagementStore } from "./SessionManagementStore";
 import { SessionContinuationStore } from "./SessionContinuationStore";
 import { WorktreeCreationStore, type WorktreeDraftChoice } from "./WorktreeCreationStore";
 
 export interface ProjectWorkbenchStoreProps {
-  prepareSessionResolution?: SessionManagementStoreProps["prepareResolution"];
+  prepareWorkingDirectoryRetirement(workingDirectory: string): Promise<boolean>;
   sessionRegistry: SessionRegistryStore;
   operations: SessionOperationCoordinatorStore;
   projects: ProjectCatalogStore;
@@ -133,7 +133,6 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       operations: this.props.operations,
       catalog: this.props.catalog,
       registry: this.sessionRegistry,
-      prepareResolution: this.props.prepareSessionResolution,
       reportError: (error) => this.setError(error),
     });
   }
@@ -479,7 +478,15 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     return this.worktreeCreationStore.prepare(sessionId, projectPath, firstUserMessage);
   }
 
-  async resolveWorktreeWorkspace(workspacePath: string) {
+  async resolveWorktreeWorkspace(
+    workspacePath: string,
+    options?: { workingDirectoryRetired?: boolean },
+  ) {
+    if (
+      !options?.workingDirectoryRetired &&
+      !(await this.props.prepareWorkingDirectoryRetirement(workspacePath))
+    )
+      return;
     const projectPath = this.props.catalog.projectOfManagedWorktree(workspacePath) ?? workspacePath;
     const sessionIds = this.props.catalog.sessions
       .filter((session) => session.workingDirectory === workspacePath && !session.resolved)

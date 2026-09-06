@@ -1,5 +1,4 @@
 import { Effect, Stream, type Schema } from "effect";
-import * as sessionTerminals from "./sessionTerminals";
 import * as subagents from "./subagents";
 import {
   SESSION_TITLE_MAX_LENGTH,
@@ -632,7 +631,6 @@ export const resolve = Effect.fn("CakeChats.resolve")(function* (target: CakeCha
       message: "Cake Chat cannot resolve an empty session before it has been persisted",
     });
   yield* subagents.releaseParent(target.sessionId).pipe(asError("resolve"));
-  yield* sessionTerminals.closeSession("cake-chat", target.sessionId).pipe(asError("resolve"));
   const environment = yield* CakeChatEnvironment;
   yield* environment.archive(target.sessionId).pipe(asError("resolve"));
   const catalogs = yield* SessionCatalogChanges;

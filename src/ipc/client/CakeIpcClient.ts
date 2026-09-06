@@ -464,7 +464,8 @@ export interface CakeIpcClientService {
     | "write-terminal"
     | "resize-terminal"
     | "get-terminal-status"
-    | "close-terminal",
+    | "close-terminal"
+    | "close-working-directory-terminals",
     TerminalError
   >;
   readonly vscode: RpcOperations<
@@ -924,6 +925,9 @@ export const CakeIpcClientLive = Layer.effect(
         "close-terminal": Effect.fn("CakeIpcClient.terminals.close-terminal")((payload) =>
           client("terminals.close-terminal", payload),
         ),
+        "close-working-directory-terminals": Effect.fn(
+          "CakeIpcClient.terminals.close-working-directory-terminals",
+        )((payload) => client("terminals.close-working-directory-terminals", payload)),
       },
       vscode: {
         observeState: () => client("vscode.observeState", undefined),

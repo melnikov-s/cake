@@ -40,6 +40,7 @@ function registryFixture(
       handoffSession: async () => false,
       onWorktreeLanded: () => undefined,
       onWorktreeDiscarded: () => undefined,
+      prepareWorkingDirectoryRetirement: async () => true,
       onResolveWorktree: () => undefined,
     }),
     snapshot ? { snapshot } : undefined,

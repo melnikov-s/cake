@@ -42,6 +42,7 @@ export interface SessionRegistryStoreProps {
   draftActivationCandidates?(sessionId: string): ExistingWorktreeCandidate[];
   onWorktreeLanded: WorktreeStoreProps["onLanded"];
   onWorktreeDiscarded: WorktreeStoreProps["onDiscarded"];
+  prepareWorkingDirectoryRetirement: WorktreeStoreProps["prepareWorkingDirectoryRetirement"];
   onResolveWorktree: WorktreeStoreProps["onResolveWorkspace"];
   settings?(): AppearanceSettingsStore | undefined;
 }
@@ -106,6 +107,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
           this.props.draftActivationCandidates?.(target.sessionId) ?? [],
         onWorktreeLanded: this.props.onWorktreeLanded,
         onWorktreeDiscarded: this.props.onWorktreeDiscarded,
+        prepareWorkingDirectoryRetirement: this.props.prepareWorkingDirectoryRetirement,
         onResolveWorktree: this.props.onResolveWorktree,
         settings: () => this.props.settings?.(),
       }),

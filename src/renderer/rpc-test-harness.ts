@@ -159,6 +159,10 @@ function invokeSmokeCommand(
       return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["close-terminal"])(payload).pipe(
         Effect.flatMap(client.terminals["close-terminal"]),
       );
+    case "close-working-directory-terminals":
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["close-working-directory-terminals"])(
+        payload,
+      ).pipe(Effect.flatMap(client.terminals["close-working-directory-terminals"]));
     case "get-embedded-editor-state":
       return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["get-embedded-editor-state"])(
         payload,

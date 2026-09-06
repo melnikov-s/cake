@@ -226,14 +226,9 @@ export const cakeEventSchema = Schema.Union([
   cakeEventSchemas["embedded-editor-entered"],
 ]);
 
-const terminalTarget = Schema.Union([
-  Schema.Struct({
-    kind: Schema.Literal("project"),
-    sessionId: bounded(1, 256),
-    workspacePath: bounded(1, 4_096),
-  }),
-  Schema.Struct({ kind: Schema.Literal("cake-chat"), sessionId: bounded(1, 256) }),
-]);
+const terminalTarget = Schema.Struct({
+  workingDirectory: bounded(1, 4_096),
+});
 
 export const cakeRpcPayloadSchemas = {
   "choose-project": Schema.Struct({}),
@@ -302,11 +297,15 @@ export const cakeRpcPayloadSchemas = {
   }),
   "get-terminal-status": Schema.Struct({
     ...requestBase,
-    terminalId: uuid,
+    workingDirectory: bounded(1, 4_096),
   }),
   "close-terminal": Schema.Struct({
     ...requestBase,
     terminalId: uuid,
+  }),
+  "close-working-directory-terminals": Schema.Struct({
+    ...requestBase,
+    workingDirectory: bounded(1, 4_096),
   }),
   "set-vscode-server-path": Schema.Struct({
     path: Schema.optional(stringMax(4_096)),
@@ -507,7 +506,7 @@ const cakeRpcResultSchemas = {
   }),
   "terminal-status": Schema.Struct({
     ...requestBase,
-    runningProgram: Schema.Boolean,
+    runningProgramCount: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
   }),
   "attachments-chosen": Schema.Struct({
     attachments: Schema.Array(attachmentSchema).check(Schema.isMaxLength(20)),
@@ -595,6 +594,7 @@ export const cakeRpcSuccessSchemas = {
   "resize-terminal": cakeRpcResultSchemas.accepted,
   "get-terminal-status": cakeRpcResultSchemas["terminal-status"],
   "close-terminal": cakeRpcResultSchemas.accepted,
+  "close-working-directory-terminals": cakeRpcResultSchemas.accepted,
   "get-embedded-editor-state": cakeRpcResultSchemas["embedded-editor-state-loaded"],
   "install-embedded-editor": cakeRpcResultSchemas.accepted,
   "set-vscode-server-path": cakeRpcResultSchemas["application-state-updated"],

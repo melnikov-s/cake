@@ -1,4 +1,4 @@
-import { createStore } from "r-state-tree";
+import { createStore, observable } from "r-state-tree";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RendererClient } from "../../../../src/renderer/client/RendererClient";
 import { TerminalStore, type TerminalTarget } from "../../../../src/renderer/stores/TerminalStore";
@@ -6,11 +6,10 @@ import { mountWithRendererClient } from "../mount-with-renderer-client";
 
 const stores: Disposable[] = [];
 
-const projectTarget = (sessionId: string): TerminalTarget => ({
-  kind: "project",
-  sessionId,
-  workspacePath: `/workspace/${sessionId}`,
-});
+const workingDirectoryTarget = (
+  workingDirectory: string,
+  label = workingDirectory,
+): TerminalTarget => ({ workingDirectory, label });
 
 function mountTerminal(
   activeTarget: () => TerminalTarget | undefined,
@@ -22,8 +21,9 @@ function mountTerminal(
     },
     write: async () => undefined,
     resize: async () => undefined,
-    status: async () => ({ runningProgram: false }),
+    workingDirectoryStatus: async () => ({ runningProgramCount: 0 }),
     close: async () => undefined,
+    closeWorkingDirectory: async () => undefined,
     ...commands,
   };
   const mounted = mountWithRendererClient(
@@ -45,32 +45,117 @@ afterEach(() => {
 });
 
 describe("TerminalStore", () => {
-  it("lazily retains an independent terminal for each Cake session", async () => {
-    let target: TerminalTarget = projectTarget("one");
+  it("closes a late open response instead of resurrecting a retired tab", async () => {
+    let finishOpen!: (value: { terminalId: string; shell: string }) => void;
+    const close = vi.fn(async () => undefined);
+    const store = mountTerminal(() => workingDirectoryTarget("/workspace/one"), {
+      open: () =>
+        new Promise((resolve) => {
+          finishOpen = resolve;
+        }),
+      close,
+    });
+    const opening = store.toggle();
+    await store.prepareWorkingDirectoryRetirement(["/workspace/one"]);
+    finishOpen({ terminalId: "late-terminal", shell: "zsh" });
+    await opening;
+    expect(store.entries).toHaveLength(0);
+    expect(close).toHaveBeenCalledWith("late-terminal");
+  });
+
+  it("does not restore an error tab when a retired open fails", async () => {
+    let failOpen!: (error: Error) => void;
+    const store = mountTerminal(() => workingDirectoryTarget("/workspace/one"), {
+      open: () =>
+        new Promise((_resolve, reject) => {
+          failOpen = reject;
+        }),
+    });
+    const opening = store.toggle();
+    await store.prepareWorkingDirectoryRetirement(["/workspace/one"]);
+    failOpen(new Error("Directory removed"));
+    await opening;
+    expect(store.entries).toHaveLength(0);
+  });
+
+  it("warns about other windows even when this window has no terminals", async () => {
+    const closeWorkingDirectory = vi.fn(async () => undefined);
+    const store = mountTerminal(() => workingDirectoryTarget("/workspace/one"), {
+      workingDirectoryStatus: async () => ({ runningProgramCount: 2 }),
+      closeWorkingDirectory,
+    });
+    const retiring = store.prepareWorkingDirectoryRetirement(["/workspace/one"]);
+    await vi.waitFor(() => expect(store.resolutionRequest?.runningProgramCount).toBe(2));
+    expect(closeWorkingDirectory).not.toHaveBeenCalled();
+    store.cancelResolution();
+    await expect(retiring).resolves.toBe(false);
+    expect(closeWorkingDirectory).not.toHaveBeenCalled();
+  });
+
+  it("blocks new tabs and repeated retirement while inspecting or confirming", async () => {
+    let finishStatus!: (value: { runningProgramCount: number }) => void;
+    const open = vi.fn(async () => ({ terminalId: crypto.randomUUID(), shell: "zsh" }));
+    const store = mountTerminal(() => workingDirectoryTarget("/workspace/one"), {
+      open,
+      workingDirectoryStatus: () =>
+        new Promise((resolve) => {
+          finishStatus = resolve;
+        }),
+    });
+    const retiring = store.prepareWorkingDirectoryRetirement(["/workspace/one"]);
+    await store.newTab();
+    await expect(store.prepareWorkingDirectoryRetirement(["/workspace/one"])).resolves.toBe(false);
+    finishStatus({ runningProgramCount: 1 });
+    await vi.waitFor(() => expect(store.resolutionRequest).toBeDefined());
+    await store.newTab();
+    expect(open).not.toHaveBeenCalled();
+    store.cancelResolution();
+    await retiring;
+    await store.newTab();
+    expect(open).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not close terminals if their status could not be inspected", async () => {
+    const closeWorkingDirectory = vi.fn(async () => undefined);
+    const store = mountTerminal(() => workingDirectoryTarget("/workspace/one"), {
+      workingDirectoryStatus: async () => {
+        throw new Error("Inspection failed");
+      },
+      closeWorkingDirectory,
+    });
+    await expect(store.prepareWorkingDirectoryRetirement(["/workspace/one"])).rejects.toThrow(
+      "Inspection failed",
+    );
+    expect(closeWorkingDirectory).not.toHaveBeenCalled();
+  });
+
+  it("shares terminals between sessions in one Working Directory and separates worktrees", async () => {
+    const activity = observable({
+      target: workingDirectoryTarget("/workspace/shared", "Session one"),
+    });
     const open = vi.fn(async () => ({ terminalId: crypto.randomUUID(), shell: "zsh" }));
     const close = vi.fn(async () => undefined);
-    const store = mountTerminal(() => target, { open, close });
+    const store = mountTerminal(() => activity.target, { open, close });
 
     expect(open).not.toHaveBeenCalled();
     await store.toggle();
     const firstTerminalId = store.activeEntry?.terminalId;
-    await store.toggle();
-    await store.toggle();
+    activity.target = workingDirectoryTarget("/workspace/shared", "Session two");
     expect(store.activeEntry?.terminalId).toBe(firstTerminalId);
 
-    store.hide();
-    target = projectTarget("two");
-    await store.toggle();
+    activity.target = workingDirectoryTarget("/workspace/other", "Other worktree");
+    await vi.waitFor(() => expect(open).toHaveBeenCalledTimes(2));
 
+    expect(store.open).toBe(true);
     expect(store.entries).toHaveLength(2);
     expect(open).toHaveBeenCalledTimes(2);
     expect(open).toHaveBeenNthCalledWith(1, {
-      target: projectTarget("one"),
+      target: { workingDirectory: "/workspace/shared" },
       cols: 80,
       rows: 24,
     });
     expect(open).toHaveBeenNthCalledWith(2, {
-      target: projectTarget("two"),
+      target: { workingDirectory: "/workspace/other" },
       cols: 80,
       rows: 24,
     });
@@ -80,7 +165,7 @@ describe("TerminalStore", () => {
   it("buffers shell output that arrives before the open response", async () => {
     let finishOpen!: (value: { terminalId: string; shell: string }) => void;
     const terminalId = crypto.randomUUID();
-    const store = mountTerminal(() => projectTarget("one"), {
+    const store = mountTerminal(() => workingDirectoryTarget("/workspace/one"), {
       open: () =>
         new Promise((resolve) => {
           finishOpen = resolve;
@@ -97,9 +182,9 @@ describe("TerminalStore", () => {
     expect(output).toEqual(["prompt> "]);
   });
 
-  it("opens and switches independent tabs for the active session", async () => {
+  it("opens and switches independent tabs for the active Working Directory", async () => {
     const open = vi.fn(async () => ({ terminalId: crypto.randomUUID(), shell: "zsh" }));
-    const store = mountTerminal(() => projectTarget("one"), { open });
+    const store = mountTerminal(() => workingDirectoryTarget("/workspace/one"), { open });
 
     await store.toggle();
     const firstKey = store.activeEntry!.key;
@@ -118,38 +203,39 @@ describe("TerminalStore", () => {
     expect(store.docked).toBe(false);
   });
 
-  it("requires confirmation and closes terminals with running programs before resolution", async () => {
-    const close = vi.fn(async () => undefined);
-    const store = mountTerminal(() => projectTarget("one"), {
+  it("requires confirmation and closes terminals before retiring a Working Directory", async () => {
+    const closeWorkingDirectory = vi.fn(async () => undefined);
+    const store = mountTerminal(() => workingDirectoryTarget("/workspace/one"), {
       open: async () => ({ terminalId: crypto.randomUUID(), shell: "zsh" }),
-      status: async () => ({ runningProgram: true }),
-      close,
+      workingDirectoryStatus: async () => ({ runningProgramCount: 1 }),
+      closeWorkingDirectory,
     });
     await store.toggle();
 
-    const prepared = store.prepareResolution([{ kind: "project", sessionId: "one" }]);
+    const prepared = store.prepareWorkingDirectoryRetirement(["/workspace/one"]);
     await vi.waitFor(() => {
       expect(store.resolutionRequest).toEqual({ runningProgramCount: 1 });
     });
     await store.confirmResolution();
 
     await expect(prepared).resolves.toBe(true);
-    expect(close).toHaveBeenCalledOnce();
+    expect(closeWorkingDirectory).toHaveBeenCalledWith("/workspace/one");
     expect(store.entries).toHaveLength(0);
   });
 
-  it("resolves without confirmation when the terminal is waiting at its shell prompt", async () => {
-    const status = vi.fn(async () => ({ runningProgram: false }));
-    const store = mountTerminal(() => projectTarget("one"), {
+  it("retires without confirmation when terminals are waiting at their shell prompts", async () => {
+    const workingDirectoryStatus = vi.fn(async () => ({ runningProgramCount: 0 }));
+    const closeWorkingDirectory = vi.fn(async () => undefined);
+    const store = mountTerminal(() => workingDirectoryTarget("/workspace/one"), {
       open: async () => ({ terminalId: crypto.randomUUID(), shell: "zsh" }),
-      status,
+      workingDirectoryStatus,
+      closeWorkingDirectory,
     });
     await store.toggle();
-
-    await expect(store.prepareResolution([{ kind: "project", sessionId: "one" }])).resolves.toBe(
-      true,
-    );
-    expect(status).toHaveBeenCalledWith(store.activeEntry?.terminalId);
+    await expect(store.prepareWorkingDirectoryRetirement(["/workspace/one"])).resolves.toBe(true);
+    expect(workingDirectoryStatus).toHaveBeenCalledWith("/workspace/one");
+    expect(closeWorkingDirectory).toHaveBeenCalledWith("/workspace/one");
     expect(store.resolutionRequest).toBeUndefined();
+    expect(store.entries).toHaveLength(0);
   });
 });

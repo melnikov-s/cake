@@ -55,7 +55,6 @@ export interface CakeChatCollectionStoreProps {
   defaultConfiguration?(): ChatConfiguration | undefined;
   openModelPresetSettings?(): void;
   settings?(): AppearanceSettingsStore | undefined;
-  prepareSessionResolution?(sessionIds: readonly string[]): Promise<boolean>;
 }
 
 /** Owns the Cake Chat session collection, selection, and per-session Store instances. */
@@ -359,7 +358,6 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
 
   /** Resolution commands are queued; the catalog stream remains the only projection writer. */
   async resolveSession(sessionId: string, resolved: boolean) {
-    if (resolved && !(await (this.props.prepareSessionResolution?.([sessionId]) ?? true))) return;
     if (this.signal.aborted) return;
     if (this.isDraftSession(sessionId)) {
       this.updatePending(sessionId, (pending) => ({
@@ -402,7 +400,6 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
 
   async resolveSessions(sessionIds: readonly string[], resolved: boolean) {
     const ids = [...sessionIds];
-    if (resolved && !(await (this.props.prepareSessionResolution?.(ids) ?? true))) return 0;
     if (this.signal.aborted) return 0;
     const persistedIds = ids.filter((sessionId) => {
       if (this.isDraftSession(sessionId)) {

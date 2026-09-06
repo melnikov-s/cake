@@ -17,7 +17,11 @@ export interface WorktreeStoreProps {
   isStreaming(): boolean;
   onLanded(record: WorktreeRecord): Promise<void> | void;
   onDiscarded(record: WorktreeRecord): Promise<void> | void;
-  onResolveWorkspace(workspacePath: string): Promise<void> | void;
+  prepareWorkingDirectoryRetirement(workingDirectory: string): Promise<boolean>;
+  onResolveWorkspace(
+    workspacePath: string,
+    options?: { workingDirectoryRetired?: boolean },
+  ): Promise<void> | void;
 }
 
 /**
@@ -287,6 +291,11 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     this.phase = "discarding";
     this.error = undefined;
     try {
+      if (!(await this.props.prepareWorkingDirectoryRetirement(workspacePath))) {
+        if (!this.signal.aborted) this.phase = "idle";
+        return;
+      }
+      if (this.signal.aborted) return;
       await this.managedWorktrees.discard({
         operationId: crypto.randomUUID(),
         workspacePath,
@@ -300,7 +309,8 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
       this.pendingResolveAfterLanding = false;
       this.stalled = false;
       if (record) await this.props.onDiscarded({ ...record, state: "discarded" });
-      if (resolve) await this.props.onResolveWorkspace(workspacePath);
+      if (resolve)
+        await this.props.onResolveWorkspace(workspacePath, { workingDirectoryRetired: true });
     } catch (error) {
       this.fail(error);
       throw error;

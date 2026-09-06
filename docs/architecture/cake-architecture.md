@@ -323,9 +323,13 @@ The window Store hierarchy mirrors the product surfaces:
   focused pane and prepares an unsent conversation: a Project Session in the same Working
   Directory or a Cake Chat Session with Cake-wide controls. The single sidebar targets the
   focused pane; selecting a session already visible in another pane focuses that pane rather than
-  duplicating it. Every visible pane pins its conversation for observation. Terminal,
-  command-pane, extension UI, and embedded-editor operations target the focused pane where those
-  capabilities apply. Embedded VS Code temporarily replaces the Project Session split
+  duplicating it. Every visible pane pins its conversation for observation. Command-pane,
+  extension UI, and embedded-editor operations target the focused pane where those capabilities
+  apply. The window-level terminal dock spans the workbench and follows the focused Project
+  Session pane's Working Directory. Its tab collections are keyed by canonical Working Directory,
+  so sessions in one checkout share terminals while different Managed Worktrees remain isolated.
+  Resolving one session preserves those terminals; retiring or discarding the Working Directory
+  closes the complete collection. Embedded VS Code temporarily replaces the Project Session split
   presentation without destroying its layout.
   `WorktreeCreationStore` owns both staged-session disposition and worktree
   selection and Cake Chat's coordinated create-worktree-then-create-named-session workflow.

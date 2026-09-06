@@ -2,7 +2,7 @@ import type { Event } from "electron";
 import { Cause, Deferred, Effect, Queue, Stream } from "effect";
 import { initialize } from "../domain/application";
 import { initializeRegisteredProjectAccess } from "../domain/projects";
-import * as sessionTerminals from "../domain/sessionTerminals";
+import * as workingDirectoryTerminals from "../domain/workingDirectoryTerminals";
 import { Electron } from "../services/electron/Electron";
 import { ProjectSessionIntegrations } from "../services/pi/ProjectSessionIntegrations";
 import type { PiSessions } from "../services/pi/PiSessions";
@@ -74,7 +74,7 @@ export const MainApplication = Effect.fn("MainApplication")(function* ({
       }) {
         yield* Effect.all(
           [
-            sessionTerminals.closeOwner(ownerId),
+            workingDirectoryTerminals.closeOwner(ownerId),
             vscode.closeForWindow(ownerId),
             access.clearOwner(ownerId),
             rewordingRequests.disposeOwner(ownerId),

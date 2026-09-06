@@ -9,7 +9,6 @@ export interface SessionManagementStoreProps {
   operations: SessionOperationCoordinatorStore;
   catalog: SessionCatalogStore;
   registry: SessionRegistryStore;
-  prepareResolution?(sessionIds: readonly string[]): Promise<boolean>;
   reportError(error: unknown): void;
 }
 
@@ -44,7 +43,6 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
     if (this.resolvingSessionIds.has(sessionId)) return false;
     this.resolvingSessionIds.add(sessionId);
     try {
-      if (resolved && !(await (this.props.prepareResolution?.([sessionId]) ?? true))) return false;
       if (this.signal.aborted) return false;
       if (this.props.registry.setDraftSessionResolved(sessionId, resolved)) return true;
       if (resolved && this.props.registry.isTemporarySession(sessionId)) {
@@ -87,7 +85,6 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
   }
 
   async resolveSessionsById(sessionIds: readonly string[], resolved: boolean) {
-    if (resolved && !(await (this.props.prepareResolution?.(sessionIds) ?? true))) return 0;
     if (this.signal.aborted) return 0;
     let resolvedCount = 0;
     for (const sessionId of sessionIds) {

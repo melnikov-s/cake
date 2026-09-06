@@ -4,6 +4,7 @@ import { getState, trustProject } from "./application";
 import { generateWorktreeName, utilityModelSelection } from "./utilityWork";
 import type { WorktreeLandRequest } from "../ipc/worktree-contract";
 import { ProjectAccess } from "../services/projects/ProjectAccess";
+import { Terminal } from "../services/terminal/Terminal";
 import { ManagedWorktreeError, ManagedWorktrees } from "../services/worktrees/ManagedWorktrees";
 
 const policyError = (operation: string, cause: unknown) =>
@@ -115,5 +116,8 @@ export const discard = Effect.fn("ManagedWorktrees.discard")(function* (
   keepBranch: boolean,
 ) {
   yield* requireRecord(workingDirectory, new Set(["active", "landed"]));
+  yield* (yield* Terminal)
+    .closeWorkingDirectory(workingDirectory)
+    .pipe(Effect.mapError((cause) => policyError("ManagedWorktrees.discard", cause)));
   yield* (yield* ManagedWorktrees).discard(workingDirectory, keepBranch);
 });

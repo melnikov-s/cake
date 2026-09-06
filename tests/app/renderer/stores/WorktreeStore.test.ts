@@ -217,6 +217,7 @@ describe("WorktreeStore", () => {
         isStreaming: () => false,
         onLanded: vi.fn(),
         onDiscarded: vi.fn(),
+        prepareWorkingDirectoryRetirement: async () => true,
         onResolveWorkspace: vi.fn(),
       }),
       {
@@ -243,6 +244,35 @@ describe("WorktreeStore", () => {
     root[Symbol.dispose]();
   });
 
+  it("does not discard a worktree when terminal retirement is cancelled", async () => {
+    const discard = vi.fn(async () => undefined);
+    const prepareWorkingDirectoryRetirement = vi.fn(async () => false);
+    const { root, subject: store } = mountWithRendererClient(
+      createStore(WorktreeStore, {
+        workspacePath: () => "/worktree",
+        sessionId: () => "session-1",
+        enabled: () => true,
+        isStreaming: () => false,
+        onLanded: vi.fn(),
+        onDiscarded: vi.fn(),
+        prepareWorkingDirectoryRetirement,
+        onResolveWorkspace: vi.fn(),
+      }),
+      {
+        managedWorktrees: {
+          status: vi.fn(async () => worktreeStatus("/worktree")),
+          discard,
+        },
+      } as unknown as RendererClient,
+    );
+
+    await store.discard(false);
+
+    expect(prepareWorkingDirectoryRetirement).toHaveBeenCalledWith("/worktree");
+    expect(discard).not.toHaveBeenCalled();
+    root[Symbol.dispose]();
+  });
+
   it("refreshes immediately when a new session moves into its created worktree", async () => {
     const activity = observable({ workspacePath: "/project" });
     let finishProjectRefresh!: (status: WorktreeStatus | undefined) => void;
@@ -262,6 +292,7 @@ describe("WorktreeStore", () => {
         isStreaming: () => false,
         onLanded: vi.fn(),
         onDiscarded: vi.fn(),
+        prepareWorkingDirectoryRetirement: async () => true,
         onResolveWorkspace: vi.fn(),
       }),
       { managedWorktrees: { status } } as unknown as RendererClient,

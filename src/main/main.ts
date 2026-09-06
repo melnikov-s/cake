@@ -133,7 +133,7 @@ const projectAccessLive = makeProjectAccessLive({
   resolvedProjectSessionDirectory: cakePaths.piResolvedSessions,
 }).pipe(Layer.provide(baseLive));
 const accessLive = Layer.merge(baseLive, projectAccessLive);
-const terminalLive = makeTerminalLive({ homeDirectory: homedir() }).pipe(Layer.provide(accessLive));
+const terminalLive = makeTerminalLive().pipe(Layer.provide(accessLive));
 const vscodeLive = makeVsCodeServerLive({
   root: join(userData, "vscode-editor"),
   companionManifest,

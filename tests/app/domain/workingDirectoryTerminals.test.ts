@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
 import { Effect, Layer, Stream } from "effect";
 import { describe } from "vitest";
-import * as sessionTerminals from "../../../src/domain/sessionTerminals";
+import * as workingDirectoryTerminals from "../../../src/domain/workingDirectoryTerminals";
 import { Terminal, type TerminalEvent } from "../../../src/services/terminal/Terminal";
 
 const ownerId = 41;
@@ -17,16 +17,16 @@ const makeLayer = () => {
   const terminal = Terminal.of({
     open: (receivedOwnerId, target, cols, rows) =>
       Effect.sync(() => {
-        calls.push(`open:${receivedOwnerId}:${target.kind}:${cols}x${rows}`);
+        calls.push(`open:${receivedOwnerId}:${target.workingDirectory}:${cols}x${rows}`);
         return { terminalId, shell: "zsh" };
       }),
     write: (receivedOwnerId, receivedTerminalId, data) =>
       Effect.sync(() => calls.push(`write:${receivedOwnerId}:${receivedTerminalId}:${data}`)),
     resize: () => Effect.void,
-    hasRunningProgram: () => Effect.succeed(true),
+    runningProgramCount: () => Effect.succeed(2),
     close: () => Effect.void,
-    closeSession: (kind, sessionId) =>
-      Effect.sync(() => calls.push(`closeSession:${kind}:${sessionId}`)),
+    closeWorkingDirectory: (workingDirectory) =>
+      Effect.sync(() => calls.push(`closeWorkingDirectory:${workingDirectory}`)),
     closeOwner: (receivedOwnerId) => Effect.sync(() => calls.push(`closeOwner:${receivedOwnerId}`)),
     events: (receivedOwnerId) => {
       calls.push(`events:${receivedOwnerId}`);
@@ -36,34 +36,37 @@ const makeLayer = () => {
   return { calls, layer: Layer.succeed(Terminal, terminal) };
 };
 
-describe("Session Terminals domain", () => {
-  it.effect("associates terminal commands and cleanup with their renderer and Cake Session", () => {
+describe("Working Directory terminals domain", () => {
+  it.effect("associates terminal commands with their renderer and Working Directory", () => {
     const fixture = makeLayer();
     return Effect.gen(function* () {
-      const opened = yield* sessionTerminals.open(ownerId, {
+      const opened = yield* workingDirectoryTerminals.open(ownerId, {
         requestId: "open-request",
-        target: { kind: "project", sessionId: "session-1", workspacePath: "/project" },
+        target: { workingDirectory: "/project" },
         cols: 80,
         rows: 24,
       });
-      yield* sessionTerminals.write(ownerId, {
+      yield* workingDirectoryTerminals.write(ownerId, {
         requestId: "write-request",
         terminalId,
         data: "pwd\r",
       });
-      const status = yield* sessionTerminals.status(ownerId, {
+      const status = yield* workingDirectoryTerminals.status({
         requestId: "status-request",
-        terminalId,
+        workingDirectory: "/project",
       });
-      yield* sessionTerminals.closeSession("project", "session-1");
-      yield* sessionTerminals.closeOwner(ownerId);
+      yield* workingDirectoryTerminals.closeWorkingDirectory({
+        requestId: "close-directory-request",
+        workingDirectory: "/project",
+      });
+      yield* workingDirectoryTerminals.closeOwner(ownerId);
 
       assert.deepEqual(opened, { requestId: "open-request", terminalId, shell: "zsh" });
-      assert.deepEqual(status, { requestId: "status-request", runningProgram: true });
+      assert.deepEqual(status, { requestId: "status-request", runningProgramCount: 2 });
       assert.deepEqual(fixture.calls, [
-        "open:41:project:80x24",
+        "open:41:/project:80x24",
         `write:41:${terminalId}:pwd\r`,
-        "closeSession:project:session-1",
+        "closeWorkingDirectory:/project",
         "closeOwner:41",
       ]);
     }).pipe(Effect.provide(fixture.layer));
@@ -72,7 +75,7 @@ describe("Session Terminals domain", () => {
   it.effect("projects only the requested renderer owner's event stream", () => {
     const fixture = makeLayer();
     return Effect.gen(function* () {
-      const stream = yield* sessionTerminals.events(ownerId);
+      const stream = yield* workingDirectoryTerminals.events(ownerId);
       const events = yield* Stream.runCollect(stream);
       assert.deepEqual(Array.from(events), [
         { type: "terminal-data", terminalId, data: "ready" },

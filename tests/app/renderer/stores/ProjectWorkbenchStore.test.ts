@@ -23,6 +23,7 @@ function mountWorkbench(
   const operations = mount(createStore(SessionOperationCoordinatorStore));
   const mounted = mountWithRendererClient(
     createStore(ProjectWorkbenchStore, {
+      prepareWorkingDirectoryRetirement: async () => true,
       sessionRegistry: registry,
       operations,
       projects: {} as ProjectCatalogStore,

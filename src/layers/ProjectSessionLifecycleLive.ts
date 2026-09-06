@@ -3,7 +3,6 @@ import { Effect, Layer, Stream } from "effect";
 import { forgetProjectSessions, setSessionUnread } from "../domain/application";
 import * as artifacts from "../domain/artifacts";
 import * as reviews from "../domain/reviews";
-import * as sessionTerminals from "../domain/sessionTerminals";
 import type { WorktreeRecord } from "../ipc/worktree-contract";
 import { PiSessions } from "../services/pi/PiSessions";
 import { streamWorkspaceSessions } from "../services/pi/runtime/session-discovery";
@@ -15,7 +14,6 @@ import {
   SessionArchiveStorage,
   type ProjectSessionArchiveContext,
 } from "../services/storage/SessionArchiveStorage";
-import type { Terminal } from "../services/terminal/Terminal";
 import { ManagedWorktrees } from "../services/worktrees/ManagedWorktrees";
 import {
   ProjectSessionLifecycle,
@@ -52,7 +50,6 @@ export const makeProjectSessionLifecycleLive = (
   | SessionArchiveStorage
   | SessionCatalogChanges
   | SessionFamilyStorage
-  | Terminal
 > =>
   Layer.effect(
     ProjectSessionLifecycle,
@@ -74,7 +71,6 @@ export const makeProjectSessionLifecycleLive = (
         | SessionArchiveStorage
         | SessionCatalogChanges
         | SessionFamilyStorage
-        | Terminal
       >();
       const run = <A, E, R>(operation: string, effect: Effect.Effect<A, E, R>) =>
         effect.pipe(
@@ -93,13 +89,8 @@ export const makeProjectSessionLifecycleLive = (
             resolvedRoot: options.resolvedCakeChatSessionDirectory,
             direct: true as const,
           };
-          if (resolved) {
-            yield* run(
-              "setCakeChatResolved",
-              sessionTerminals.closeSession("cake-chat", sessionId),
-            );
-            yield* run("setCakeChatResolved", archive.resolve(sessionId, location));
-          } else yield* run("setCakeChatResolved", archive.restore(sessionId, location));
+          if (resolved) yield* run("setCakeChatResolved", archive.resolve(sessionId, location));
+          else yield* run("setCakeChatResolved", archive.restore(sessionId, location));
           yield* catalogs.publish({ _tag: "CakeChatSessionStatusChanged", sessionId, resolved });
         },
       );
@@ -117,10 +108,6 @@ export const makeProjectSessionLifecycleLive = (
           ? { projectPath, projectName, worktreeName: worktree.branch.replace(/^agent\//, "") }
           : { projectPath, projectName };
         if (resolved) {
-          yield* run(
-            "setProjectSessionResolved",
-            sessionTerminals.closeSession("project", sessionId),
-          );
           yield* run(
             "setProjectSessionResolved",
             archive.resolveProject(

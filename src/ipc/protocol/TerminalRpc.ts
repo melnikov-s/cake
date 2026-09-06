@@ -8,7 +8,12 @@ import {
 
 type TerminalOperation = keyof Pick<
   typeof cakeRpcPayloadSchemas,
-  "open-terminal" | "get-terminal-status" | "write-terminal" | "resize-terminal" | "close-terminal"
+  | "open-terminal"
+  | "get-terminal-status"
+  | "write-terminal"
+  | "resize-terminal"
+  | "close-terminal"
+  | "close-working-directory-terminals"
 >;
 
 const terminalRpc = <Type extends TerminalOperation>(type: Type) =>
@@ -24,5 +29,6 @@ export const TerminalRpc = RpcGroup.make(
   terminalRpc("write-terminal"),
   terminalRpc("resize-terminal"),
   terminalRpc("close-terminal"),
+  terminalRpc("close-working-directory-terminals"),
   Rpc.make("terminals.observeEvents", { success: terminalEventSchema, stream: true }),
 );

@@ -325,16 +325,16 @@ export function makeRendererClientCapabilities(execute: Execute): RendererClient
           options,
         );
       },
-      status: (terminalId, options) => {
+      workingDirectoryStatus: (workingDirectory, options) => {
         const requestId = crypto.randomUUID();
         return execute(
           "terminals.get-terminal-status",
-          (client) => client.terminals["get-terminal-status"]({ requestId, terminalId }),
+          (client) => client.terminals["get-terminal-status"]({ requestId, workingDirectory }),
           options,
         ).then((response) => {
           const status = response;
           if (status.requestId !== requestId) throw new Error("Cake returned the wrong terminal");
-          return { runningProgram: status.runningProgram };
+          return { runningProgramCount: status.runningProgramCount };
         });
       },
       close: (terminalId, options) => {
@@ -343,6 +343,19 @@ export function makeRendererClientCapabilities(execute: Execute): RendererClient
           "terminals.close-terminal",
           (client) => client.terminals["close-terminal"]({ requestId, terminalId }),
           { requestId, terminalId }.requestId,
+          options,
+        );
+      },
+      closeWorkingDirectory: (workingDirectory, options) => {
+        const requestId = crypto.randomUUID();
+        return accepted(
+          "terminals.close-working-directory-terminals",
+          (client) =>
+            client.terminals["close-working-directory-terminals"]({
+              requestId,
+              workingDirectory,
+            }),
+          requestId,
           options,
         );
       },

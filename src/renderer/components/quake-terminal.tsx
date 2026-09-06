@@ -65,9 +65,17 @@ export const QuakeTerminal = observer(function QuakeTerminal({ store }: { store:
             store.docked ? "pl-2" : "pl-20",
           )}
         >
-          <span className="mr-1 grid shrink-0 place-items-center text-muted-foreground">
+          <span className="grid shrink-0 place-items-center text-muted-foreground">
             <TerminalIcon />
           </span>
+          {target && (
+            <span
+              className="mr-2 max-w-52 shrink-0 truncate text-xs font-medium text-foreground"
+              title={target.workingDirectory}
+            >
+              Terminal · {target.label}
+            </span>
+          )}
           <div
             className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [app-region:no-drag]"
             role="tablist"
@@ -185,20 +193,20 @@ export const QuakeTerminal = observer(function QuakeTerminal({ store }: { store:
           >
             <ConfirmationRequest>
               <ConfirmationTitle id={resolutionTitleId}>
-                Resolve and stop running{" "}
+                Retire and stop running{" "}
                 {store.resolutionRequest.runningProgramCount === 1 ? "program" : "programs"}?
               </ConfirmationTitle>
               <ConfirmationDescription>
                 {store.resolutionRequest.runningProgramCount === 1
-                  ? "This session’s terminal has a running program. Resolving it will stop the program and close the shell."
-                  : `${store.resolutionRequest.runningProgramCount} sessions have running programs in their terminals. Resolving them will stop the programs and close the shells.`}
+                  ? "This Working Directory has a running terminal program. Continuing will stop it and close this directory’s terminals in every Cake window."
+                  : `These Working Directories have ${store.resolutionRequest.runningProgramCount} running terminal programs across Cake windows. Continuing will stop them and close those directories’ terminals in every window.`}
               </ConfirmationDescription>
               <ConfirmationActions>
                 <ConfirmationAction variant="outline" onClick={() => store.cancelResolution()}>
                   Cancel
                 </ConfirmationAction>
                 <ConfirmationAction onClick={() => void store.confirmResolution()}>
-                  Resolve and stop
+                  Continue and stop
                 </ConfirmationAction>
               </ConfirmationActions>
             </ConfirmationRequest>

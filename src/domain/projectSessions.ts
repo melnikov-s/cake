@@ -1,6 +1,5 @@
 import { ProjectSessionLifecycle } from "../services/project-sessions/ProjectSessionLifecycle";
 import { Effect, Stream } from "effect";
-import * as sessionTerminals from "./sessionTerminals";
 import * as subagents from "./subagents";
 import {
   SESSION_TITLE_MAX_LENGTH,
@@ -1208,7 +1207,6 @@ export const resolve = Effect.fn("ProjectSessions.resolve")(function* (
           });
         const environment = yield* ProjectSessionEnvironment;
         yield* subagents.releaseParent(target.sessionId).pipe(asError("resolve"));
-        yield* sessionTerminals.closeSession("project", target.sessionId).pipe(asError("resolve"));
         yield* environment.archive(target.sessionId, location).pipe(asError("resolve"));
         yield* setSessionUnread(target.sessionId, false).pipe(asError("resolve"));
         yield* publishCatalogStatus(target.sessionId, location, true).pipe(asError("resolve"));

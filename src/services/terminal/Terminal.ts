@@ -5,11 +5,9 @@ export class TerminalError extends Schema.TaggedError<TerminalError>()("Terminal
   message: Schema.String,
 }) {}
 
-export type TerminalSessionKind = "project" | "cake-chat";
-
-export type TerminalSessionTarget =
-  | { readonly kind: "project"; readonly sessionId: string; readonly workspacePath: string }
-  | { readonly kind: "cake-chat"; readonly sessionId: string };
+export interface TerminalWorkingDirectoryTarget {
+  readonly workingDirectory: string;
+}
 
 export type TerminalEvent =
   | { readonly type: "terminal-data"; readonly terminalId: string; readonly data: string }
@@ -18,7 +16,7 @@ export type TerminalEvent =
 export interface TerminalService {
   readonly open: (
     ownerId: number,
-    target: TerminalSessionTarget,
+    target: TerminalWorkingDirectoryTarget,
     cols: number,
     rows: number,
   ) => Effect.Effect<{ readonly terminalId: string; readonly shell: string }, TerminalError>;
@@ -33,15 +31,9 @@ export interface TerminalService {
     cols: number,
     rows: number,
   ) => Effect.Effect<void, TerminalError>;
-  readonly hasRunningProgram: (
-    ownerId: number,
-    terminalId: string,
-  ) => Effect.Effect<boolean, TerminalError>;
+  readonly runningProgramCount: (workingDirectory: string) => Effect.Effect<number, TerminalError>;
   readonly close: (ownerId: number, terminalId: string) => Effect.Effect<void, TerminalError>;
-  readonly closeSession: (
-    kind: TerminalSessionKind,
-    sessionId: string,
-  ) => Effect.Effect<void, TerminalError>;
+  readonly closeWorkingDirectory: (workingDirectory: string) => Effect.Effect<void, TerminalError>;
   readonly closeOwner: (ownerId: number) => Effect.Effect<void, TerminalError>;
   readonly events: (ownerId: number) => Stream.Stream<TerminalEvent>;
 }

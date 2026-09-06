@@ -107,7 +107,7 @@ utilityWork
 managedWorktrees
 reviews
 artifacts
-sessionTerminals
+workingDirectoryTerminals
 ```
 
 Shared conversation functions live in `conversations`; Project Sessions, Cake
@@ -445,8 +445,9 @@ Main process Scope
 │   └── VS Code Server
 ├── active Cake Session resource Scopes
 │   ├── Pi Session Runtime and listener
-│   ├── session-bound extensions and Cake tools
-│   └── associated Terminal handles
+│   └── session-bound extensions and Cake tools
+├── renderer-window Terminal resources
+│   └── handles grouped by canonical Working Directory
 └── operation Scopes
 ```
 
@@ -503,11 +504,22 @@ URLs, Source Control commands, source navigation, and Cake review annotations.
 Cake does not hide it behind a generic editor abstraction.
 
 `Terminal` owns PTY creation, input, resize, output Stream, exit, and cleanup.
-The `sessionTerminals` domain module associates one or more Terminal handles
-with a Cake Session. That association has an explicit Cake Session resource
-Scope and is not inferred from renderer visibility or from whether one consumer
-currently holds the Pi Session Runtime. Quake-style visibility is renderer
-Store state; hiding the surface does not terminate the PTY.
+The `workingDirectoryTerminals` domain module associates one or more Terminal handles
+with a canonical Working Directory inside their renderer-window resource Scope. Project
+Sessions using the same Working Directory therefore share one terminal-tab collection,
+while sessions in different Managed Worktrees see independent collections. The visible
+collection follows the focused conversation pane. Resolving one Project Session does not
+terminate a PTY. Retiring or discarding its Working Directory closes every associated PTY
+before the checkout is removed; renderer disconnection closes that renderer's remaining
+PTYs. Retirement confirmation counts running terminal programs across every window,
+matching the collection that cleanup closes. Inspection failures abort retirement rather
+than assuming an idle shell. Main retains the canonical identity captured at open so
+cleanup does not require a still-existing checkout; closing a directory invalidates
+already-started opens. The renderer likewise rejects late open results for removed tabs
+and prevents new local tabs during retirement. These identities and operation generations
+are process/window-lifetime resource bookkeeping, never persisted state.
+Quake-style visibility is renderer Store state, and hiding the surface does not
+terminate the PTY.
 
 `Electron` owns concrete native capabilities such as windows, dialogs, external
 URLs, filesystem reveal, and application lifecycle. A renderer Store may call
@@ -655,7 +667,7 @@ src/
 │   ├── managedWorktrees.ts
 │   ├── reviews.ts
 │   ├── artifacts.ts
-│   └── sessionTerminals.ts
+│   └── workingDirectoryTerminals.ts
 ├── layers/                   # Production composition adapters joining domains to callback APIs
 ├── config/                   # Decoded process configuration values
 ├── ipc/

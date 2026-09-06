@@ -685,26 +685,31 @@ export class RootStore extends Store<{
         });
       },
       onWorktreeDiscarded: (record) => this.sessionCatalogStore.noteManagedWorktree(record),
-      onResolveWorktree: (workspacePath) =>
-        this.projectWorkbenchStore.resolveWorktreeWorkspace(workspacePath),
+      prepareWorkingDirectoryRetirement: (workingDirectory) =>
+        this.terminalStore.prepareWorkingDirectoryRetirement([workingDirectory]),
+      onResolveWorktree: (workspacePath, options) =>
+        this.projectWorkbenchStore.resolveWorktreeWorkspace(workspacePath, options),
       settings: () => this.settingsStore.appearance,
     });
   }
 
   private activeTerminalTarget(): TerminalTarget | undefined {
     const selection = this.appShellStore.selection;
-    if (selection.kind === "project-session") {
-      if (this.sessionCatalogStore.find(selection.sessionId)?.resolved) return undefined;
-      const workspacePath = this.projectSessionWorkingDirectory(selection.sessionId);
-      return workspacePath
-        ? { kind: "project", sessionId: selection.sessionId, workspacePath }
-        : undefined;
-    }
-    if (selection.kind === "cake-chat" && selection.sessionId) {
-      if (this.cakeChatCollectionStore.isSessionResolved(selection.sessionId)) return undefined;
-      return { kind: "cake-chat", sessionId: selection.sessionId };
-    }
-    return undefined;
+    if (selection.kind !== "project-session") return undefined;
+    const summary = this.sessionCatalogStore.find(selection.sessionId);
+    if (summary?.resolved) return undefined;
+    const workingDirectory = this.projectSessionWorkingDirectory(selection.sessionId);
+    if (!workingDirectory) return undefined;
+    const projectName =
+      summary?.projectName || this.projectCatalogStore.nameForPath(workingDirectory);
+    const worktreeName =
+      summary && "worktreeName" in summary
+        ? summary.worktreeName
+        : summary?.managedWorktree?.branch.replace(/^agent\//, "");
+    return {
+      workingDirectory,
+      label: worktreeName ? `${projectName} · ${worktreeName}` : projectName,
+    };
   }
 
   @child
@@ -832,10 +837,8 @@ export class RootStore extends Store<{
   @child
   get projectWorkbenchStore(): ProjectWorkbenchStore {
     return createStore(ProjectWorkbenchStore, {
-      prepareSessionResolution: (sessionIds) =>
-        this.terminalStore.prepareResolution(
-          sessionIds.map((sessionId) => ({ kind: "project", sessionId })),
-        ),
+      prepareWorkingDirectoryRetirement: (workingDirectory) =>
+        this.terminalStore.prepareWorkingDirectoryRetirement([workingDirectory]),
       sessionRegistry: this.sessionRegistry,
       operations: this.sessionOperationCoordinator,
       projects: this.projectCatalogStore,
@@ -875,10 +878,6 @@ export class RootStore extends Store<{
       defaultConfiguration: () => this.settingsStore.modelPresets.defaultConfiguration,
       openModelPresetSettings: () => this.showModelPresetSettings(),
       settings: () => this.settingsStore.appearance,
-      prepareSessionResolution: (sessionIds) =>
-        this.terminalStore.prepareResolution(
-          sessionIds.map((sessionId) => ({ kind: "cake-chat", sessionId })),
-        ),
     });
   }
 
@@ -894,26 +893,6 @@ export class RootStore extends Store<{
 
   constructor(props: RootStore["props"]) {
     super(props);
-    this.reaction(
-      () => [
-        ...this.sessionCatalogModel.sessions.map((session) => ({
-          kind: "project" as const,
-          sessionId: session.sessionId,
-          resolved: session.resolved,
-        })),
-        ...this.cakeChatCatalogModel.sessions.map((session) => ({
-          kind: "cake-chat" as const,
-          sessionId: session.sessionId,
-          resolved: session.resolved,
-        })),
-      ],
-      (sessions) =>
-        this.terminalStore.discardResolvedSessions(
-          sessions
-            .filter((session) => session.resolved)
-            .map(({ kind, sessionId }) => ({ kind, sessionId })),
-        ),
-    );
     this.effect(() => {
       for (const session of this.cakeChatCollectionStore.loadedSessions)
         for (const request of session.model.controlRequests)

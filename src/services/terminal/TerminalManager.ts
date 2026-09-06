@@ -2,33 +2,24 @@ import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import { basename } from "node:path";
 import { spawn, type IPty } from "node-pty";
-import type { TerminalSessionKind } from "./Terminal";
-
 export type TerminalManagerEvent =
   | { type: "data"; ownerId: number; terminalId: string; data: string }
   | { type: "exit"; ownerId: number; terminalId: string; exitCode: number };
 
 interface TerminalProcess {
   ownerId: number;
-  kind: TerminalSessionKind;
-  sessionId: string;
+  workingDirectory: string;
   shell: string;
   process: IPty;
 }
 
-/** Owns lazy session-scoped pseudo terminals and guarantees process cleanup. */
+/** Owns lazy Working Directory-scoped pseudo terminals and guarantees process cleanup. */
 export class TerminalManager {
   private readonly terminals = new Map<string, TerminalProcess>();
 
   constructor(private readonly emit: (event: TerminalManagerEvent) => void) {}
 
-  open(
-    ownerId: number,
-    target: { kind: TerminalSessionKind; sessionId: string },
-    cwd: string,
-    cols: number,
-    rows: number,
-  ) {
+  open(ownerId: number, workingDirectory: string, cols: number, rows: number) {
     const shell =
       process.env.SHELL ||
       (process.platform === "win32"
@@ -41,12 +32,12 @@ export class TerminalManager {
       name: "xterm-256color",
       cols,
       rows,
-      cwd: cwd || homedir(),
+      cwd: workingDirectory || homedir(),
       env: { ...process.env, TERM: "xterm-256color", COLORTERM: "truecolor" },
     });
     this.terminals.set(terminalId, {
       ownerId,
-      ...target,
+      workingDirectory,
       shell: normalizeProcessName(shell),
       process: terminal,
     });
@@ -74,9 +65,16 @@ export class TerminalManager {
     this.owned(ownerId, terminalId).process.resize(cols, rows);
   }
 
-  hasRunningProgram(ownerId: number, terminalId: string) {
-    const terminal = this.owned(ownerId, terminalId);
-    return normalizeProcessName(terminal.process.process) !== terminal.shell;
+  runningProgramCount(workingDirectory: string) {
+    let count = 0;
+    for (const terminal of this.terminals.values()) {
+      if (
+        terminal.workingDirectory === workingDirectory &&
+        normalizeProcessName(terminal.process.process) !== terminal.shell
+      )
+        count += 1;
+    }
+    return count;
   }
 
   close(ownerId: number, terminalId: string) {
@@ -85,9 +83,9 @@ export class TerminalManager {
     terminal.process.kill();
   }
 
-  closeSession(kind: TerminalSessionKind, sessionId: string) {
+  closeWorkingDirectory(workingDirectory: string) {
     for (const [terminalId, terminal] of this.terminals) {
-      if (terminal.kind !== kind || terminal.sessionId !== sessionId) continue;
+      if (terminal.workingDirectory !== workingDirectory) continue;
       this.terminals.delete(terminalId);
       terminal.process.kill();
     }

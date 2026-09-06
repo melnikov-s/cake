@@ -50,9 +50,7 @@ export interface EmbeddedEditorStateSnapshot {
   readonly customPath?: string;
 }
 
-type TerminalTarget =
-  | { readonly kind: "project"; readonly sessionId: string; readonly workspacePath: string }
-  | { readonly kind: "cake-chat"; readonly sessionId: string };
+type TerminalTarget = { readonly workingDirectory: string };
 
 interface ElectronCommands {
   chooseProject(options?: RendererCommandOptions): Promise<string | undefined>;
@@ -214,11 +212,12 @@ interface TerminalCommands {
     rows: number,
     options?: RendererCommandOptions,
   ): Promise<void>;
-  status(
-    terminalId: string,
+  workingDirectoryStatus(
+    workingDirectory: string,
     options?: RendererCommandOptions,
-  ): Promise<{ runningProgram: boolean }>;
+  ): Promise<{ runningProgramCount: number }>;
   close(terminalId: string, options?: RendererCommandOptions): Promise<void>;
+  closeWorkingDirectory(workingDirectory: string, options?: RendererCommandOptions): Promise<void>;
 }
 
 interface VsCodeCommands {
