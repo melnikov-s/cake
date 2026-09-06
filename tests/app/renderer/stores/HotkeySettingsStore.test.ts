@@ -41,9 +41,9 @@ describe("HotkeySettingsStore", () => {
     store.clear("toggle-terminal");
     expect(store.bindingFor("toggle-terminal")).toBe("");
     store.reset("toggle-terminal");
-    expect(store.bindingFor("toggle-terminal")).toBe("Mod+Shift+T");
+    expect(store.bindingFor("toggle-terminal")).toBe("Mod+`");
     store.assign("toggle-terminal", "Mod+Y");
     store.resetAll();
-    expect(store.bindingFor("toggle-terminal")).toBe("Mod+Shift+T");
+    expect(store.bindingFor("toggle-terminal")).toBe("Mod+`");
   });
 });

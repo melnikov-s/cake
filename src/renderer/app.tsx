@@ -155,7 +155,11 @@ export const App = observer(function App() {
     const runHotkey = (event: globalThis.KeyboardEvent) => {
       if (event.defaultPrevented) return;
       const target = event.target;
-      if (target instanceof Element && target.closest('[data-slot="hotkey-recorder"]')) return;
+      if (
+        document.querySelector('[data-slot="hotkey-recorder"][data-recording="true"]') ||
+        (target instanceof Element && target.closest('[data-slot="hotkey-recorder"]'))
+      )
+        return;
       const action = settings.hotkeys.actionForEvent(event);
       if (!action) return;
       if (action === "new-terminal-tab" && target instanceof Element && target.closest(".xterm"))

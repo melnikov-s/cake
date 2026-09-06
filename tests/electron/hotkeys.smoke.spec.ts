@@ -49,20 +49,36 @@ test("remaps application hotkeys from Settings", async () => {
   try {
     const page = await application.firstWindow();
     await expect(page.getByLabel("Message")).toBeVisible({ timeout: 20_000 });
+    await page.waitForTimeout(1_000);
     await page.getByRole("complementary").getByLabel("Open settings", { exact: true }).click();
     await page.getByRole("button", { name: "Hotkeys" }).click();
     await expect(page.getByRole("heading", { name: "Hotkeys" })).toBeVisible();
 
     const modifier = process.platform === "darwin" ? "Meta" : "Control";
+    const terminalShortcut = page.getByRole("button", { name: "Toggle terminal shortcut" });
+    await expect(terminalShortcut).toContainText(process.platform === "darwin" ? "⌘`" : "Ctrl+`");
+
+    await page.getByRole("button", { name: "Back to chat" }).click();
+    const terminal = page.locator('section[aria-label="Terminal"]');
+    await expect(terminal).toHaveAttribute("aria-hidden", "true");
+    await page.keyboard.press(`${modifier}+Backquote`);
+    await expect(terminal).toHaveAttribute("aria-hidden", "false");
+    await page.keyboard.press(`${modifier}+Backquote`);
+    await expect(terminal).toHaveAttribute("aria-hidden", "true");
+
+    await page.getByRole("complementary").getByLabel("Open settings", { exact: true }).click();
+    await page.getByRole("button", { name: "Hotkeys" }).click();
     const sidebarShortcut = page.getByRole("button", { name: "Toggle sidebar shortcut" });
     await sidebarShortcut.click();
+    await expect(sidebarShortcut).toBeFocused();
+    await page.evaluate(() => (document.activeElement as HTMLElement).blur());
     await page.keyboard.press(`${modifier}+Shift+B`);
     await expect(sidebarShortcut).toContainText(
       process.platform === "darwin" ? "⌘⇧B" : "Ctrl+Shift+B",
     );
 
-    const terminalShortcut = page.getByRole("button", { name: "Toggle terminal shortcut" });
     await terminalShortcut.click();
+    await expect(terminalShortcut).toBeFocused();
     await page.keyboard.press(`${modifier}+Shift+Y`);
     await expect(terminalShortcut).toContainText(
       process.platform === "darwin" ? "⌘⇧Y" : "Ctrl+Shift+Y",
@@ -75,7 +91,6 @@ test("remaps application hotkeys from Settings", async () => {
     await page.keyboard.press(`${modifier}+Shift+B`);
     await expect(page.locator('[data-slot="sidebar"]')).toBeVisible();
 
-    const terminal = page.locator('section[aria-label="Terminal"]');
     await expect(terminal).toHaveAttribute("aria-hidden", "true");
     await page.keyboard.press(`${modifier}+Shift+Y`);
     await expect(terminal).toHaveAttribute("aria-hidden", "false");

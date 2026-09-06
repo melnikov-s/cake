@@ -1,4 +1,4 @@
-import { useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 import { hotkeyFromKeyboardEvent, formatHotkey } from "@/lib/hotkeys";
 import { Button } from "./button";
 import { cn } from "@/lib/utils";
@@ -22,27 +22,41 @@ export function HotkeyRecorder({
   onReset,
 }: HotkeyRecorderProps) {
   const [recording, setRecording] = useState(false);
-  const keyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+  const container = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
     if (!recording) return;
-    event.preventDefault();
-    event.stopPropagation();
-    if (event.key === "Escape") {
+    const keyDown = (event: globalThis.KeyboardEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.key === "Escape") {
+        setRecording(false);
+        return;
+      }
+      if (event.key === "Backspace" || event.key === "Delete") {
+        onClear();
+        setRecording(false);
+        return;
+      }
+      const binding = hotkeyFromKeyboardEvent(event);
+      if (!binding) return;
+      onChange(binding);
       setRecording(false);
-      return;
-    }
-    if (event.key === "Backspace" || event.key === "Delete") {
-      onClear();
-      setRecording(false);
-      return;
-    }
-    const binding = hotkeyFromKeyboardEvent(event.nativeEvent);
-    if (!binding) return;
-    onChange(binding);
-    setRecording(false);
-  };
+    };
+    const pointerDown = (event: PointerEvent) => {
+      if (event.target instanceof Node && !container.current?.contains(event.target))
+        setRecording(false);
+    };
+    window.addEventListener("keydown", keyDown, { capture: true });
+    window.addEventListener("pointerdown", pointerDown, { capture: true });
+    return () => {
+      window.removeEventListener("keydown", keyDown, { capture: true });
+      window.removeEventListener("pointerdown", pointerDown, { capture: true });
+    };
+  }, [onChange, onClear, recording]);
 
   return (
-    <div className="flex shrink-0 items-center gap-1.5">
+    <div ref={container} className="flex shrink-0 items-center gap-1.5">
       <Button
         variant="outline"
         size="sm"
@@ -54,9 +68,11 @@ export function HotkeyRecorder({
           recording && "border-ring bg-muted ring-2 ring-ring/25",
           !value && "text-muted-foreground",
         )}
-        onClick={() => setRecording(true)}
-        onBlur={() => setRecording(false)}
-        onKeyDown={keyDown}
+        onClick={(event) => {
+          event.currentTarget.focus();
+          setRecording(true);
+        }}
+        data-recording={recording ? "true" : undefined}
       >
         {recording ? "Press shortcut…" : formatHotkey(value)}
       </Button>
@@ -65,7 +81,10 @@ export function HotkeyRecorder({
         size="sm"
         className="px-2 text-[11px]"
         disabled={value === defaultValue}
-        onClick={onReset}
+        onClick={() => {
+          onReset();
+          setRecording(false);
+        }}
       >
         Reset
       </Button>
@@ -74,7 +93,10 @@ export function HotkeyRecorder({
         size="sm"
         className="px-2 text-[11px]"
         disabled={!value}
-        onClick={onClear}
+        onClick={() => {
+          onClear();
+          setRecording(false);
+        }}
       >
         Clear
       </Button>
