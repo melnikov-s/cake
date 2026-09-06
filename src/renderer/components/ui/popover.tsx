@@ -14,6 +14,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { Button, type ButtonProps } from "./button";
+import { IconButton, type IconButtonProps } from "./icon-button";
 import { cn } from "@/lib/utils";
 
 type PopoverSide = "top" | "right" | "bottom" | "left";
@@ -76,6 +77,27 @@ export function PopoverTrigger({
   const { contentId, open, setOpen, triggerRef } = usePopoverContext("PopoverTrigger");
   return (
     <Button
+      {...props}
+      ref={triggerRef}
+      aria-controls={contentId}
+      aria-expanded={open}
+      aria-haspopup={ariaHasPopup}
+      onClick={(event) => {
+        onClick?.(event);
+        if (!event.defaultPrevented) setOpen(!open);
+      }}
+    />
+  );
+}
+
+export function PopoverIconTrigger({
+  onClick,
+  "aria-haspopup": ariaHasPopup = "dialog",
+  ...props
+}: IconButtonProps) {
+  const { contentId, open, setOpen, triggerRef } = usePopoverContext("PopoverIconTrigger");
+  return (
+    <IconButton
       {...props}
       ref={triggerRef}
       aria-controls={contentId}

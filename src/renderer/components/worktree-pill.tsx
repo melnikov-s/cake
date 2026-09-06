@@ -13,6 +13,7 @@ import {
 } from "./ai-elements/confirmation";
 import { Button } from "./ui/button";
 import { DialogBackdrop } from "./ui/dialog";
+import { IconButton } from "./ui/icon-button";
 import {
   BranchIcon,
   CautionIcon,
@@ -29,7 +30,7 @@ import {
   TrashIcon,
 } from "./ui/icons";
 import { LoadingState } from "./ui/loading-state";
-import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import { Popover, PopoverContent, PopoverIconTrigger } from "./ui/popover";
 import { TooltipBubble, useTooltip } from "./ui/tooltip";
 import { WorktreePillAction } from "./worktree-pill-action";
 import { WorktreeStatusIcon } from "./worktree-status-icon";
@@ -96,59 +97,53 @@ export const WorktreePill = observer(function WorktreePill({
             />
           </div>
         )}
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
+        <IconButton
           disabled={busy}
-          aria-label="Current checkout"
+          tooltip="Current checkout"
           aria-pressed={choice.kind === "current"}
           className={cn(
-            "flex h-7.5 shrink-0 items-center gap-1.5 rounded-lg bg-transparent px-2 text-xs font-normal text-muted-foreground shadow-none hover:bg-muted hover:text-foreground",
-            choice.kind === "current" && "bg-muted text-foreground",
+            "flex h-7.5 w-auto shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs font-normal shadow-none @max-[460px]/worktree:w-7.5 @max-[460px]/worktree:gap-0 @max-[460px]/worktree:px-0",
+            choice.kind === "current" &&
+              "bg-muted text-foreground aria-pressed:bg-muted aria-pressed:text-foreground",
           )}
           onClick={() => choose({ kind: "current" })}
         >
           <FolderIcon />
-          <span className="@max-[430px]/worktree:sr-only">Current checkout</span>
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
+          <span className="@max-[460px]/worktree:sr-only">Current checkout</span>
+        </IconButton>
+        <IconButton
           disabled={busy}
-          aria-label="New worktree"
+          tooltip="New worktree"
           aria-pressed={choice.kind === "new"}
           className={cn(
-            "flex h-7.5 shrink-0 items-center gap-1.5 rounded-lg bg-transparent px-2 text-xs font-normal text-muted-foreground shadow-none hover:bg-muted hover:text-foreground",
-            choice.kind === "new" && "bg-muted text-foreground",
+            "flex h-7.5 w-auto shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs font-normal shadow-none @max-[460px]/worktree:w-7.5 @max-[460px]/worktree:gap-0 @max-[460px]/worktree:px-0",
+            choice.kind === "new" &&
+              "bg-muted text-foreground aria-pressed:bg-muted aria-pressed:text-foreground",
           )}
           onClick={() => choose({ kind: "new" })}
         >
           <BranchIcon />
-          <span className="@max-[430px]/worktree:sr-only">New worktree</span>
-        </Button>
+          <span className="@max-[460px]/worktree:sr-only">New worktree</span>
+        </IconButton>
         <Popover open={existingOpen} onOpenChange={setExistingOpen}>
-          <PopoverTrigger
-            type="button"
-            variant="ghost"
-            size="sm"
+          <PopoverIconTrigger
             disabled={busy || candidates.length === 0}
-            aria-label="Choose existing worktree"
+            tooltip="Choose existing worktree"
             aria-haspopup="menu"
             className={cn(
-              "flex h-7.5 shrink-0 items-center gap-1.5 rounded-lg bg-transparent px-2 text-xs font-normal text-muted-foreground shadow-none hover:bg-muted hover:text-foreground",
-              choice.kind === "reuse" && "bg-muted text-foreground",
+              "flex h-7.5 w-auto shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs font-normal shadow-none @max-[460px]/worktree:w-7.5 @max-[460px]/worktree:gap-0 @max-[460px]/worktree:px-0",
+              choice.kind === "reuse" &&
+                "bg-muted text-foreground aria-expanded:bg-muted aria-expanded:text-foreground",
             )}
           >
             <PullRequestIcon />
-            <span className="max-w-56 truncate @max-[430px]/worktree:sr-only">
+            <span className="max-w-56 truncate @max-[460px]/worktree:sr-only">
               {selectedExisting
                 ? `${selectedExisting.sessionTitle} · ${selectedExisting.branch.replace(/^agent\//, "")}`
                 : "Existing worktree"}
             </span>
             <ChevronDownIcon size={12} />
-          </PopoverTrigger>
+          </PopoverIconTrigger>
           <PopoverContent
             align="start"
             side="top"

@@ -28,6 +28,7 @@ test("chooses an isolated worktree without disturbing the new-chat composer", as
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-worktree-pill-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
+  const cakeHome = join(temporaryRoot, "cake-home");
   await Promise.all([mkdir(userData, { recursive: true }), mkdir(project, { recursive: true })]);
   await execFileAsync("git", ["init", "-b", "main"], { cwd: project });
   await execFileAsync("git", ["config", "user.email", "cake@example.test"], { cwd: project });
@@ -84,8 +85,24 @@ test("chooses an isolated worktree without disturbing the new-chat composer", as
     await expect(composer).toBeVisible({ timeout: 20_000 });
     const newWorktree = page.getByRole("button", { name: "New worktree" });
     await expect(newWorktree).toBeVisible({ timeout: 5_000 });
-    await expect(page.getByRole("button", { name: "Current checkout" })).toBeVisible();
+    const currentCheckout = page.getByRole("button", { name: "Current checkout" });
+    await expect(currentCheckout).toBeVisible();
     await expect(page.getByRole("button", { name: "Choose existing worktree" })).toBeDisabled();
+
+    await page.setViewportSize({ width: 520, height: 800 });
+    const configurationPill = page.getByTestId("worktree-pill");
+    await expect
+      .poll(() =>
+        configurationPill.evaluate((element) => element.scrollWidth <= element.clientWidth),
+      )
+      .toBe(true);
+    await expect
+      .poll(() => currentCheckout.evaluate((element) => element.clientWidth))
+      .toBeLessThanOrEqual(32);
+    await expect(currentCheckout).toHaveAttribute("title", "Current checkout");
+    await currentCheckout.hover();
+    await expect(page.getByRole("tooltip", { name: "Current checkout" })).toBeVisible();
+
     await newWorktree.click();
     await expect(newWorktree).toHaveAttribute("aria-pressed", "true");
     const initialChat = await page.locator('[data-slot="chat"]').elementHandle();
