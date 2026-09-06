@@ -29,6 +29,7 @@ import { SessionLayoutStore, type SessionSplitAxis } from "./SessionLayoutStore"
 import { SessionCoordinationStore } from "./SessionCoordinationStore";
 import { resolveDraftUpdate } from "../../utils/resolve-draft-update";
 import type { RendererModels } from "../RendererModels";
+import { formatHotkey, type HotkeyActionId } from "../lib/hotkeys";
 
 export class RootStore extends Store<{
   rendererClient: RendererClient;
@@ -335,6 +336,94 @@ export class RootStore extends Store<{
     if (target) this.focusSessionPane(target.paneId);
   }
 
+  focusSessionPaneNumber(number: number) {
+    if (this.appShellStore.selection.kind === "cake-chat") {
+      const pane = this.cakeChatCollectionStore.sessionLayoutStore.panes[number - 1];
+      if (pane) this.focusCakeChatPane(pane.paneId);
+      return;
+    }
+    const pane = this.sessionLayoutStore.panes[number - 1];
+    if (pane) this.focusSessionPane(pane.paneId);
+  }
+
+  handleHotkey(action: HotkeyActionId) {
+    const selection = this.appShellStore.selection;
+    const projectSelected = selection.kind === "project-session";
+    const chat =
+      selection.kind === "cake-chat"
+        ? selection.sessionId
+          ? this.cakeChatCollectionStore.findSession(selection.sessionId)?.chatStore
+          : undefined
+        : projectSelected
+          ? this.projectWorkbenchStore.activeSession?.chatStore
+          : undefined;
+    switch (action) {
+      case "toggle-agent-editor":
+        if (projectSelected) void this.projectWorkbenchStore.toggleIde();
+        break;
+      case "open-editor":
+        if (projectSelected) void this.projectWorkbenchStore.openIde();
+        break;
+      case "open-changes":
+        if (projectSelected) void this.projectWorkbenchStore.openWorkspaceChanges();
+        break;
+      case "toggle-terminal":
+        void this.terminalStore.toggle();
+        break;
+      case "new-terminal-tab":
+        if (this.terminalStore.open) void this.terminalStore.newTab();
+        break;
+      case "toggle-sidebar":
+        this.sidebarStore.toggle();
+        break;
+      case "toggle-session-tree":
+        if (projectSelected) this.projectWorkbenchStore.commandPaneStore.toggle("tree");
+        break;
+      case "split-right":
+      case "split-down": {
+        const axis = action === "split-right" ? "x" : "y";
+        if (selection.kind === "cake-chat") this.splitFocusedCakeChat(axis);
+        else if (projectSelected) this.splitFocusedSession(axis);
+        break;
+      }
+      case "focus-left":
+        this.focusAdjacentSessionPane("left");
+        break;
+      case "focus-right":
+        this.focusAdjacentSessionPane("right");
+        break;
+      case "focus-above":
+        this.focusAdjacentSessionPane("above");
+        break;
+      case "focus-below":
+        this.focusAdjacentSessionPane("below");
+        break;
+      case "focus-pane-1":
+      case "focus-pane-2":
+      case "focus-pane-3":
+      case "focus-pane-4":
+        this.focusSessionPaneNumber(Number(action.at(-1)));
+        break;
+      case "history-back":
+        this.navigateBack();
+        break;
+      case "history-forward":
+        this.navigateForward();
+        break;
+      case "toggle-work-logs":
+        chat?.cycleWorkLogsExpansion();
+        break;
+      case "cycle-work-log-view":
+        chat?.cycleWorkLogViewMode();
+        break;
+      case "open-hovered-message":
+        break;
+      case "open-settings":
+        this.showSettings();
+        break;
+    }
+  }
+
   splitFocusedSession(axis: SessionSplitAxis) {
     const source = this.projectWorkbenchStore.activeSession;
     if (!source || !this.sessionLayoutStore.canSplit) return;
@@ -622,6 +711,9 @@ export class RootStore extends Store<{
   get terminalStore(): TerminalStore {
     return createStore(TerminalStore, {
       activeTarget: () => this.activeTerminalTarget(),
+      toggleAcceleratorHint: () =>
+        formatHotkey(this.settingsStore.hotkeys.bindingFor("toggle-terminal")),
+      newTabHotkey: () => this.settingsStore.hotkeys.bindingFor("new-terminal-tab"),
     });
   }
 

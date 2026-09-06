@@ -14,6 +14,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createStore, mount, observable } from "r-state-tree";
 import type { Annotation, UiPart } from "../../../src/ipc/session-contract";
+import { cakeHotkeyEventName } from "../../../src/renderer/lib/hotkeys";
 
 const { scrollToIndex, virtualizedLayout, virtualizedLifecycle, virtualizedProps } = vi.hoisted(
   () => ({
@@ -2387,15 +2388,7 @@ describe("Transcript scrolling", () => {
 
     const streamingMessage = expandButtons[1]!.closest<HTMLElement>('[data-slot="message"]')!;
     act(() => streamingMessage.dispatchEvent(new MouseEvent("mouseover", { bubbles: true })));
-    act(() =>
-      window.dispatchEvent(
-        new KeyboardEvent("keydown", {
-          key: "Enter",
-          bubbles: true,
-          ...(/Mac/.test(navigator.userAgent) ? { metaKey: true } : { altKey: true }),
-        }),
-      ),
-    );
+    act(() => window.dispatchEvent(new CustomEvent(cakeHotkeyEventName)));
     expect(document.body.querySelector('[role="dialog"]')?.textContent).toContain("Working");
   });
 

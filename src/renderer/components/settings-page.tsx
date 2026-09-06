@@ -29,6 +29,7 @@ function projectTrust(value: string) {
 import { SettingsToggle } from "./settings/settings-toggle";
 import { SettingsAppearanceSection } from "./settings-appearance-section";
 import { SettingsEmbeddedEditorSection } from "./settings-embedded-editor-section";
+import { SettingsHotkeysSection } from "./settings-hotkeys-section";
 import { SettingsProvidersSection } from "./settings-providers-section";
 import type { SettingsStore } from "../stores/SettingsStore";
 
@@ -112,6 +113,12 @@ export const SettingsPage = observer(function SettingsPage({
                 onClick={() => settings.selectPage("appearance")}
               />
               <NavItem
+                label="Hotkeys"
+                description="Keyboard shortcuts"
+                active={activePage === "hotkeys"}
+                onClick={() => settings.selectPage("hotkeys")}
+              />
+              <NavItem
                 label="VS Code"
                 active={activePage === "editor"}
                 onClick={() => settings.selectPage("editor")}
@@ -137,11 +144,14 @@ export const SettingsPage = observer(function SettingsPage({
                         ? "Network & privacy"
                         : activePage === "appearance"
                           ? "Appearance"
-                          : "VS Code"}
+                          : activePage === "hotkeys"
+                            ? "Hotkeys"
+                            : "VS Code"}
             </h2>
             <p className="mt-1.5 text-xs text-muted-foreground">
-              Configure the same Pi runtime used by the CLI. These preferences are saved by Pi and
-              follow you across projects.
+              {activePage === "hotkeys"
+                ? "Customize Cake's application shortcuts. Changes take effect immediately."
+                : "Configure the same Pi runtime used by the CLI. Pi preferences follow you across projects."}
             </p>
           </div>
           {error && (
@@ -711,6 +721,7 @@ export const SettingsPage = observer(function SettingsPage({
             />
           )}
           {activePage === "appearance" && <SettingsAppearanceSection appearance={appearance} />}
+          {activePage === "hotkeys" && <SettingsHotkeysSection hotkeys={settings.hotkeys} />}
           {activePage === "editor" && (
             <SettingsEmbeddedEditorSection settings={settings.embeddedEditor} />
           )}

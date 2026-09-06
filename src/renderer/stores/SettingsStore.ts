@@ -8,6 +8,7 @@ import type { ProjectSessionStore } from "./ProjectSessionStore";
 import type { CakeChatSessionStore } from "./CakeChatSessionStore";
 import { UtilityModelSettingsStore } from "./UtilityModelSettingsStore";
 import { EmbeddedEditorSettingsStore } from "./EmbeddedEditorSettingsStore";
+import { HotkeySettingsStore } from "./HotkeySettingsStore";
 
 export type SettingsPageId =
   | "models"
@@ -16,6 +17,7 @@ export type SettingsPageId =
   | "runtime"
   | "network"
   | "appearance"
+  | "hotkeys"
   | "editor";
 
 export interface SettingsStoreProps {
@@ -36,6 +38,9 @@ export class SettingsStore extends Store<SettingsStoreProps> {
   }
   @child get embeddedEditor(): EmbeddedEditorSettingsStore {
     return createStore(EmbeddedEditorSettingsStore);
+  }
+  @child get hotkeys(): HotkeySettingsStore {
+    return createStore(HotkeySettingsStore);
   }
   @child get modelPresets(): ModelPresetSettingsStore {
     return createStore(ModelPresetSettingsStore);

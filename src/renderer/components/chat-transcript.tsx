@@ -190,20 +190,6 @@ export const ChatTranscript = observer(function ChatTranscript({
       if (pendingScrollState) store.setTranscriptScrollState(pendingScrollState);
     };
   }, [store, virtualized]);
-  useEffect(() => {
-    const onKeyDown = (event: globalThis.KeyboardEvent) => {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "o") {
-        event.preventDefault();
-        if (event.shiftKey) {
-          store.cycleWorkLogViewMode();
-        } else {
-          store.cycleWorkLogsExpansion();
-        }
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [store]);
   const error = errorOverride ?? store.error;
   // Right-clicking any selection inside this conversation keeps the native
   // Electron edit menu. The capture is held until that menu sends its

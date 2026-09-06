@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/icons";
 import { ResizeHandle } from "@/components/ui/resize-handle";
 import { TerminalView } from "@/components/ui/terminal-view";
-import { terminalToggleAcceleratorHint } from "@/lib/platform";
+import { formatHotkey } from "@/lib/hotkeys";
 import { cn } from "@/lib/utils";
 import type { TerminalStore } from "../stores/TerminalStore";
 
@@ -106,7 +106,7 @@ export const QuakeTerminal = observer(function QuakeTerminal({ store }: { store:
             })}
             <IconButton
               className="size-7 shrink-0"
-              tooltip="New terminal tab (⌘T)"
+              tooltip={`New terminal tab (${formatHotkey(store.newTabHotkey)})`}
               disabled={!target}
               onClick={() => void store.newTab()}
             >
@@ -114,7 +114,7 @@ export const QuakeTerminal = observer(function QuakeTerminal({ store }: { store:
             </IconButton>
           </div>
           <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
-            {terminalToggleAcceleratorHint}
+            {store.toggleAcceleratorHint}
           </span>
           {store.docked ? (
             <IconButton tooltip="Move terminal to top" onClick={() => store.moveToTop()}>
@@ -146,6 +146,7 @@ export const QuakeTerminal = observer(function QuakeTerminal({ store }: { store:
                     active={isActive && store.open}
                     onData={(data) => store.write(entry.key, data)}
                     onNewTab={() => void store.newTab()}
+                    newTabHotkey={store.newTabHotkey}
                     onResize={(cols, rows) => store.resize(entry.key, cols, rows)}
                     subscribe={(listener) => store.subscribeData(entry.key, listener)}
                   />

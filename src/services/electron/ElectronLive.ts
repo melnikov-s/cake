@@ -251,7 +251,6 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
             { type: "separator" },
             {
               label: "Toggle Agent / VS Code",
-              accelerator: "CommandOrControl+Shift+A",
               click: () => {
                 const focused = BrowserWindow.getFocusedWindow();
                 const target =
@@ -262,7 +261,6 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
             },
             {
               label: "Toggle Terminal",
-              accelerator: "CommandOrControl+`",
               click: () => {
                 const focused = BrowserWindow.getFocusedWindow();
                 const target =

@@ -11,8 +11,8 @@ import {
 } from "react";
 import { observer } from "r-state-tree/react";
 import { Markdown } from "@/components/ai-elements/markdown";
+import { cakeHotkeyEventName } from "@/lib/hotkeys";
 import { cn } from "@/lib/utils";
-import { isMacPlatform } from "@/lib/platform";
 import { Message, MessageContent, MessageLabel } from "@/components/ai-elements/message";
 import { FullscreenButton, FullscreenSurface } from "@/components/fullscreen-surface";
 import { IconButton } from "@/components/ui/icon-button";
@@ -317,15 +317,11 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
   const openFullscreen = useCallback(() => setFullscreen(true), []);
   const closeFullscreen = useCallback(() => setFullscreen(false), []);
   useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      const platformModifier = isMacPlatform ? event.metaKey : event.altKey;
-      if (!hoveredRef.current || event.key !== "Enter" || !platformModifier) return;
-      event.preventDefault();
-      event.stopPropagation();
-      openFullscreen();
+    const onHotkey = () => {
+      if (hoveredRef.current) openFullscreen();
     };
-    window.addEventListener("keydown", onKeyDown, { capture: true });
-    return () => window.removeEventListener("keydown", onKeyDown, { capture: true });
+    window.addEventListener(cakeHotkeyEventName, onHotkey);
+    return () => window.removeEventListener(cakeHotkeyEventName, onHotkey);
   }, [openFullscreen]);
   useEffect(() => {
     if (!copied) return;

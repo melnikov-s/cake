@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
+import { hotkeyFromKeyboardEvent } from "@/lib/hotkeys";
 import { cn } from "@/lib/utils";
 
 export interface TerminalViewProps {
@@ -8,6 +9,7 @@ export interface TerminalViewProps {
   active?: boolean;
   onData(data: string): void;
   onNewTab(): void;
+  newTabHotkey: string;
   onResize(cols: number, rows: number): void;
   subscribe(listener: (data: string) => void): () => void;
 }
@@ -28,14 +30,15 @@ export function TerminalView({
   active = true,
   onData,
   onNewTab,
+  newTabHotkey,
   onResize,
   subscribe,
 }: TerminalViewProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal>(null);
   const fitRef = useRef<FitAddon>(null);
-  const callbacksRef = useRef({ onData, onNewTab, onResize, subscribe });
-  callbacksRef.current = { onData, onNewTab, onResize, subscribe };
+  const callbacksRef = useRef({ onData, onNewTab, newTabHotkey, onResize, subscribe });
+  callbacksRef.current = { onData, onNewTab, newTabHotkey, onResize, subscribe };
 
   useEffect(() => {
     const host = hostRef.current;
@@ -56,7 +59,10 @@ export function TerminalView({
     terminal.loadAddon(fit);
     terminal.open(host);
     terminal.attachCustomKeyEventHandler((event) => {
-      if (event.type !== "keydown" || !event.metaKey || event.key.toLowerCase() !== "t")
+      if (
+        event.type !== "keydown" ||
+        hotkeyFromKeyboardEvent(event) !== callbacksRef.current.newTabHotkey
+      )
         return true;
       event.preventDefault();
       callbacksRef.current.onNewTab();

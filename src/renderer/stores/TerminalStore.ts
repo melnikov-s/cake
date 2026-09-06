@@ -22,6 +22,8 @@ interface PendingResolution {
 /** Owns the window's lazy, in-memory terminal collection, keyed by Cake session. */
 export class TerminalStore extends Store<{
   activeTarget(): TerminalTarget | undefined;
+  toggleAcceleratorHint(): string;
+  newTabHotkey(): string;
 }> {
   get terminals() {
     return RendererClientContext.consume(this)!.terminals;
@@ -71,6 +73,14 @@ export class TerminalStore extends Store<{
 
   get activeTarget() {
     return this.props.activeTarget();
+  }
+
+  get toggleAcceleratorHint() {
+    return this.props.toggleAcceleratorHint();
+  }
+
+  get newTabHotkey() {
+    return this.props.newTabHotkey();
   }
 
   get available() {

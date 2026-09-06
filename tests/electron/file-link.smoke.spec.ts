@@ -206,8 +206,6 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
           ?.items.flatMap((entry) => entry.submenu?.items ?? [])
           .find((entry) => entry.label === "Toggle Agent / VS Code");
         if (!item) throw new Error("Toggle Agent / VS Code menu item missing");
-        if (!String(item.accelerator).includes("Shift+A"))
-          throw new Error(`Unexpected IDE toggle accelerator: ${item.accelerator}`);
         item.click({}, undefined);
       });
     const hasVsCodeText = (text: string) =>

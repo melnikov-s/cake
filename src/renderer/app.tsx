@@ -38,7 +38,7 @@ import { ArtifactsPanel } from "@/components/artifacts-panel";
 import { UiDialog } from "@/components/ui-dialog";
 import { CommandPane } from "@/components/command-pane";
 import { QuakeTerminal } from "@/components/quake-terminal";
-import { terminalToggleAcceleratorHint } from "@/lib/platform";
+import { cakeHotkeyEventName } from "@/lib/hotkeys";
 import { cn } from "@/lib/utils";
 import type { SourceLocation } from "../ipc/source-location";
 import { toWorkspaceRelativePath } from "../utils/workspace-relative-path";
@@ -152,35 +152,22 @@ export const App = observer(function App() {
   }, [root]);
 
   useEffect(() => {
-    const navigateSessionHistory = (event: globalThis.KeyboardEvent) => {
+    const runHotkey = (event: globalThis.KeyboardEvent) => {
       if (event.defaultPrevented) return;
-      const mac = /Mac/.test(navigator.userAgent);
-      let paneDirection: "left" | "right" | "above" | "below" | undefined;
-      if (event.altKey && (mac ? event.metaKey : event.ctrlKey)) {
-        if (event.key === "ArrowLeft") paneDirection = "left";
-        else if (event.key === "ArrowRight") paneDirection = "right";
-        else if (event.key === "ArrowUp") paneDirection = "above";
-        else if (event.key === "ArrowDown") paneDirection = "below";
-      }
-      if (paneDirection) {
-        event.preventDefault();
-        root.focusAdjacentSessionPane(paneDirection);
+      const target = event.target;
+      if (target instanceof Element && target.closest('[data-slot="hotkey-recorder"]')) return;
+      const action = settings.hotkeys.actionForEvent(event);
+      if (!action) return;
+      if (action === "new-terminal-tab" && target instanceof Element && target.closest(".xterm"))
         return;
-      }
-      const back = mac
-        ? event.metaKey && event.key === "["
-        : event.altKey && event.key === "ArrowLeft";
-      const forward = mac
-        ? event.metaKey && event.key === "]"
-        : event.altKey && event.key === "ArrowRight";
-      if (!back && !forward) return;
       event.preventDefault();
-      if (back) root.navigateBack();
-      else root.navigateForward();
+      if (action === "open-hovered-message")
+        window.dispatchEvent(new CustomEvent(cakeHotkeyEventName, { detail: action }));
+      else root.handleHotkey(action);
     };
-    window.addEventListener("keydown", navigateSessionHistory);
-    return () => window.removeEventListener("keydown", navigateSessionHistory);
-  }, [root]);
+    window.addEventListener("keydown", runHotkey, { capture: true });
+    return () => window.removeEventListener("keydown", runHotkey, { capture: true });
+  }, [root, settings.hotkeys]);
 
   const projectTranscriptBehaviorFor = (paneSession: NonNullable<typeof session>) => ({
     workspacePath: paneSession.workspacePath,
@@ -249,7 +236,7 @@ export const App = observer(function App() {
         )}
         <WorkLogControls store={paneSession.chatStore} />
         <IconButton
-          tooltip={`Terminal (${terminalToggleAcceleratorHint})`}
+          tooltip={`Terminal (${terminal.toggleAcceleratorHint})`}
           disabled={!terminal.available}
           aria-pressed={paneSession.sessionId === cakeChatCollection.sessionId && terminal.open}
           onClick={() => {
@@ -394,7 +381,7 @@ export const App = observer(function App() {
         )}
         <WorkLogControls store={paneSession.chatStore} />
         <IconButton
-          tooltip={`Terminal (${terminalToggleAcceleratorHint})`}
+          tooltip={`Terminal (${terminal.toggleAcceleratorHint})`}
           disabled={!terminal.available}
           aria-pressed={focused && terminal.open}
           onClick={() => {
@@ -606,7 +593,7 @@ export const App = observer(function App() {
             </div>
             <div className="flex min-w-0 shrink-0 items-center gap-1.5 [app-region:no-drag]">
               <IconButton
-                tooltip={`Terminal (${terminalToggleAcceleratorHint})`}
+                tooltip={`Terminal (${terminal.toggleAcceleratorHint})`}
                 disabled={!terminal.available}
                 aria-pressed={terminal.open}
                 onClick={() => void terminal.toggle()}

@@ -26,9 +26,16 @@ function mountTerminal(
     close: async () => undefined,
     ...commands,
   };
-  const mounted = mountWithRendererClient(createStore(TerminalStore, { activeTarget }), {
-    terminals,
-  } as unknown as RendererClient);
+  const mounted = mountWithRendererClient(
+    createStore(TerminalStore, {
+      activeTarget,
+      toggleAcceleratorHint: () => "Ctrl+`",
+      newTabHotkey: () => "Mod+T",
+    }),
+    {
+      terminals,
+    } as unknown as RendererClient,
+  );
   stores.push(mounted.root);
   return mounted.subject;
 }
