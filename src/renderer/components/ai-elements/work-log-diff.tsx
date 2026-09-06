@@ -1,6 +1,6 @@
 import type { UiPart } from "../../../ipc/session-contract";
 import type { SourceLocation } from "../../../ipc/source-location";
-import { workLogChanges } from "../../../utils/turn-diff";
+import { workLogChangeChunks } from "../../../utils/turn-diff";
 import { toWorkspaceRelativePath } from "../../../utils/workspace-relative-path";
 import { DiffView } from "./diff-view";
 
@@ -19,7 +19,7 @@ export function WorkLogDiff({
   changeClassName?: string;
   headerClassName?: string;
 }) {
-  const changes = workLogChanges(parts);
+  const changes = workLogChangeChunks(parts);
   if (changes.length === 0)
     return streaming ? (
       <div className="p-3 font-mono text-[11px] text-muted-foreground" role="status">
@@ -31,7 +31,7 @@ export function WorkLogDiff({
     <div className="grid" aria-label="Streaming file diff">
       {changes.map((change) => (
         <DiffView
-          key={change.path}
+          key={change.id}
           diff={change.diff}
           filePath={toWorkspaceRelativePath(change.path, workspacePath)}
           label={streaming ? "Streaming changes" : "File changes"}

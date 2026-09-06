@@ -161,7 +161,14 @@ export const ActivityGroup = observer(function ActivityGroup({
                 <DisclosureTrigger
                   className="px-3 py-2 hover:bg-muted/50"
                   open={activityStripOpen}
-                  onClick={() => setActivityStripOpen((val) => !val)}
+                  onClick={() => {
+                    if (activityStripOpen) {
+                      setActivityStripOpen(false);
+                      return;
+                    }
+                    setActivityStripOpen(true);
+                    scrollController.changePosition(() => logRef.current?.scrollTo({ top: 0 }));
+                  }}
                   badge={
                     <Badge variant="outline" size="xs" className="text-muted-foreground">
                       Activity

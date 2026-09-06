@@ -187,8 +187,18 @@ test("does not mount collapsed work-log activity until it is expanded", async ()
       Math.abs(pinnedFileHeaderBox!.y - (scrolledActivityBox!.y + scrolledActivityBox!.height)),
     ).toBeLessThanOrEqual(1);
 
-    await content.evaluate((element) => element.scrollTo({ top: 0 }));
     await activityToggle.click();
+    await expect(log.locator('[data-slot="tool"]')).toHaveCount(1);
+    await expect.poll(() => content.evaluate((element) => element.scrollTop)).toBe(0);
+
+    await content.evaluate((element) => element.scrollTo({ top: 100 }));
+    const scrollTopBeforeHidingActivity = await content.evaluate((element) => element.scrollTop);
+    expect(scrollTopBeforeHidingActivity).toBeGreaterThan(0);
+    await content.getByRole("button", { name: /Hide steps/ }).click();
+    await expect(log.locator('[data-slot="tool"]')).toHaveCount(0);
+    expect(await content.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+
+    await content.getByRole("button", { name: /View steps/ }).click();
     await expect(log.locator('[data-slot="tool"]')).toHaveCount(1);
 
     await log.locator(":scope > summary").click();
