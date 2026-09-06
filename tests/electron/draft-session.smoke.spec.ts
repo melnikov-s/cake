@@ -76,6 +76,17 @@ test("restores, edits, resolves, and activates a project draft session", async (
     await expect(page.getByRole("button", { name: "Activate draft" })).toBeVisible();
     const draftToolbar = page.locator('[data-slot="composer-toolbar"]');
     await expect(draftToolbar).toHaveCSS("border-top-width", "0px");
+
+    const panes = page.locator('[data-slot="session-pane"]');
+    await panes.nth(0).getByRole("button", { name: "Split right" }).click();
+    await expect(panes).toHaveCount(2);
+    await panes.nth(0).getByRole("button", { name: "Close pane" }).click();
+    await expect(panes).toHaveCount(1);
+    await expect(draftSidebarItem).toBeVisible();
+    await draftSidebarItem.click();
+    await expect(page.getByText("Original plan", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Activate draft" })).toBeVisible();
+
     await page.getByRole("button", { name: "Resolve Planned work" }).click();
     await page.getByRole("button", { name: "Expand Resolved" }).click();
     await page.getByRole("button", { name: "Expand project resolved" }).last().click();

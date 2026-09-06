@@ -371,7 +371,7 @@ export class RootStore extends Store<{
     const result = this.sessionLayoutStore.closePane(paneId);
     if (!result) return;
     for (const sessionId of result.removedSessionIds) {
-      if (this.sessionRegistry.isTemporarySession(sessionId))
+      if (this.sessionRegistry.isStagedSession(sessionId))
         this.sessionRegistry.removeSession(sessionId);
     }
     if (result.focusedSessionId) {
