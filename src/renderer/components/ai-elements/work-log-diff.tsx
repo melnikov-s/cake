@@ -30,15 +30,16 @@ export function WorkLogDiff({
   return (
     <div className="grid" aria-label="Streaming file diff">
       {changes.map((change) => (
-        <DiffView
-          key={change.id}
-          diff={change.diff}
-          filePath={toWorkspaceRelativePath(change.path, workspacePath)}
-          label={streaming ? "Streaming changes" : "File changes"}
-          onOpenSourceLocation={onOpenSourceLocation}
-          className={changeClassName}
-          headerClassName={headerClassName}
-        />
+        <div className="contents" data-part-id={change.id} key={change.id}>
+          <DiffView
+            diff={change.diff}
+            filePath={toWorkspaceRelativePath(change.path, workspacePath)}
+            label={streaming ? "Streaming changes" : "File changes"}
+            onOpenSourceLocation={onOpenSourceLocation}
+            className={changeClassName}
+            headerClassName={headerClassName}
+          />
+        </div>
       ))}
     </div>
   );

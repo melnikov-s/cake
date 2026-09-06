@@ -1796,6 +1796,47 @@ describe("Transcript scrolling", () => {
     comments[Symbol.dispose]();
   });
 
+  it("offers annotation and chat actions for a selection in the work-log diff", () => {
+    const contextMenu = mountedContextMenuAction();
+    const editPart: UiPart = {
+      id: "tool-edit-selection",
+      kind: "tool",
+      name: "edit",
+      input: JSON.stringify({
+        path: "src/app.ts",
+        edits: [{ oldText: "old", newText: "fresh" }],
+      }),
+      filePath: "src/app.ts",
+      state: "success",
+    };
+
+    act(() =>
+      root.render(
+        <Transcript
+          parts={[editPart]}
+          sessionId="session-1"
+          isStreaming={false}
+          behavior={{
+            messageComments: {} as MessageCommentsStore,
+            showSelectionContextMenu: contextMenu.showSelectionContextMenu,
+            workLogsExpansion: "expanded",
+          }}
+          addAnnotation={vi.fn()}
+          empty={<div />}
+        />,
+      ),
+    );
+
+    const diff = container.querySelector<HTMLElement>('[aria-label="Code changes"]')!;
+    selectWithin(diff, "fresh");
+    rightClick(diff);
+
+    expect(contextMenu.showSelectionContextMenu).toHaveBeenCalledWith({
+      canChat: true,
+      canAnnotate: true,
+    });
+  });
+
   it("adds an annotated transcript selection to the composer", async () => {
     const addAnnotation = vi.fn();
     const contextMenu = mountedContextMenuAction();
