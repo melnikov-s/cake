@@ -38,7 +38,7 @@ is the Cake-home artifact repository, and the v1 inline protocol cap is
 
 ## Tools and interaction lifecycle
 
-The built-in `cake` gateway exposes `requests.open`, which accepts one
+The built-in `cake` gateway exposes `interview.open`, which accepts one
 `cake.request/v1`, persists it at the tool-call position, and waits for one
 schema-validated response or cancellation. Its `view` is either a Cake-rendered
 form definition or a sandboxed HTML/React widget. The form view is preferred for

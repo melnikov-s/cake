@@ -115,6 +115,20 @@ describe("SessionRegistryStore materialization", () => {
 
     session.model.streaming = true;
     expect(session.activity).toBe("running");
+    session.receive({
+      type: "artifact-requested",
+      operationId: "interview-operation",
+      artifactRequestId: "interview-request",
+      record: {
+        artifact: { sessionId: "session-1", id: "interview", revision: 1 },
+      },
+    } as never);
+    expect(session.activity).toBe("waiting");
+    session.receive({
+      type: "agent-availability-changed",
+      availability: { state: "unavailable" },
+    });
+    expect(session.activity).toBe("running");
     session.model.streaming = false;
     session.model.settledTurnRevision += 1;
     expect(session.activity).toBe("unread");

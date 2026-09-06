@@ -102,9 +102,12 @@ describe("Pi 0.84.0 foundation contract", () => {
     expect(systemPrompt).toContain("Use `$...$` for inline math and `$$...$$` for display math");
     expect(systemPrompt).toContain("Raw HTML and JSX are not supported");
     expect(systemPrompt).toContain("Call `cake widgets`");
-    expect(systemPrompt).toContain("Call `cake requests`");
+    expect(systemPrompt).toContain("call `cake interview`");
+    expect(systemPrompt).toContain("Present recommended defaults first");
+    expect(systemPrompt).toContain("Ask one question at a time only when later questions depend");
     expect(systemPrompt).toContain("Call `cake models.list`");
-    expect(systemPrompt).toContain("Use `cake subagents` only for user-requested delegation");
+    expect(systemPrompt).toContain("`cake subagents` creates private, hidden, bounded workers");
+    expect(systemPrompt).toContain("use `sessions.create-child`");
     expect(systemPrompt).toContain("PowerPoint presentations, PDFs, spreadsheets");
     expect(systemPrompt).toContain("use Markdown links with absolute paths so Cake can open them");
     expect(systemPrompt).toContain("cake://session/<session-id>");
@@ -1244,7 +1247,7 @@ describe("Pi 0.84.0 foundation contract", () => {
         id: "entry-request-pointer-artifact",
         kind: "tool",
         name: "cake",
-        command: "requests.open",
+        command: "interview.open",
         artifactId: "request-1",
       }),
     ]);
@@ -1283,7 +1286,7 @@ describe("Pi 0.84.0 foundation contract", () => {
               id: "request-call",
               name: "cake",
               arguments: {
-                command: "requests.open",
+                command: "interview.open",
                 input: { request: { id: "request-1" } },
               },
             },
@@ -1301,7 +1304,7 @@ describe("Pi 0.84.0 foundation contract", () => {
           toolName: "cake",
           details: {
             protocol: "cake.operation/v1",
-            command: "requests.open",
+            command: "interview.open",
             result: { artifactId: "request-1", cancelled: false, value: { choice: "first" } },
           },
           content: [],
@@ -1476,8 +1479,9 @@ describe("S1 Pi runtime", () => {
     expect(tools.filter((tool) => tool === "cake")).toHaveLength(1);
     expect(tools).not.toEqual(expect.arrayContaining(["agent_open", "agent_prompt", "agent_wait"]));
     expect(parentContext?.systemPrompt).toContain(
-      "Use `cake subagents` only for user-requested delegation",
+      "Never use it when the user asks for a child session",
     );
+    expect(parentContext?.systemPrompt).toContain("use `sessions.create-child`");
   });
 
   it("keeps auxiliary runtime snapshots limited to turn execution data", async () => {

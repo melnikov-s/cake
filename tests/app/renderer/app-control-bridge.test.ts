@@ -562,7 +562,7 @@ describe("AppControlBridge", () => {
             draft: false,
           },
         ],
-        sessionActivity: (sessionId) => (sessionId === "session-b" ? "running" : undefined),
+        sessionActivity: (sessionId) => (sessionId === "session-b" ? "waiting" : undefined),
         sendSessionMessage,
       }),
     );

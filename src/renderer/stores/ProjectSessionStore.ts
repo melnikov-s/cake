@@ -21,6 +21,7 @@ import { WorktreeStore, type WorktreeStoreProps } from "./WorktreeStore";
 import { StagedSessionCommandStore } from "./StagedSessionCommandStore";
 import { RendererClientContext } from "../client/RendererClientContext";
 import type { ExistingWorktreeCandidate, WorktreeDraftChoice } from "./WorktreeCreationStore";
+import type { SessionActivity } from "../session-activity";
 
 export interface SessionTarget {
   workspacePath: string;
@@ -152,7 +153,8 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   }
 
   @computed
-  get activity(): "running" | "unread" | "error" | undefined {
+  get activity(): SessionActivity | undefined {
+    if (this.artifactRequestActive) return "waiting";
     if (this.isStreaming) return "running";
     if (this.props.isActive() || this.model.settledTurnRevision <= this.readSettledTurnRevision)
       return undefined;

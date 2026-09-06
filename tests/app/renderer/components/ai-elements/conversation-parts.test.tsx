@@ -268,16 +268,16 @@ describe("Cake-owned conversation components", () => {
           id: "cake-requests-open",
           kind: "tool",
           name: "cake",
-          command: "requests.open",
-          input: JSON.stringify({ command: "requests.open", input: { request: {} } }),
+          command: "interview.open",
+          input: JSON.stringify({ command: "interview.open", input: { request: {} } }),
           state: "success",
         }}
       />,
     );
     expect(topic).toContain('title="requests"');
     expect(topic).not.toContain('title="requests requests"');
-    expect(operation).toContain('title="requests.open"');
-    expect(operation).not.toContain('title="requests.open requests.open"');
+    expect(operation).toContain('title="interview.open"');
+    expect(operation).not.toContain('title="interview.open interview.open"');
   });
 
   it("renders bash commands as highlighted shell code instead of JSON", () => {

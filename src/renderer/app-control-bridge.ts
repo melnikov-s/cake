@@ -17,6 +17,7 @@ import type {
   CrossSessionMessageMetadata,
 } from "../domain/cross-session-coordination";
 import type { QueuedProjectSessionMessages } from "../domain/project-session-data";
+import { isActiveSessionActivity, type SessionActivity } from "./session-activity";
 
 const bounded = (minimum: number, maximum: number) =>
   Schema.String.check(Schema.isMinLength(minimum), Schema.isMaxLength(maximum));
@@ -259,7 +260,7 @@ export interface AppControlHost {
   projects(): readonly ProjectRecord[];
   sessions(): readonly SessionSummaryView[];
   cakeChatSessions(): readonly CakeChatSummary[];
-  sessionActivity(sessionId: string): "running" | "unread" | "error" | undefined;
+  sessionActivity(sessionId: string): SessionActivity | undefined;
   openSession(sessionId: string, messageId?: string): Promise<boolean | void>;
   createSession(input: {
     workspacePath: string;
@@ -329,7 +330,7 @@ export interface AppControlSession {
   familyParentSessionId?: string;
   familyChildSessionIds?: readonly string[];
   familyChildOrder?: number;
-  activity?: "running" | "unread" | "error";
+  activity?: SessionActivity;
 }
 
 export interface AppControlState {
@@ -371,7 +372,7 @@ export type AppControlResult =
       name: "get_session_status";
       session: AppControlSession;
       selected: boolean;
-      status: "running" | "unread" | "error" | "idle";
+      status: SessionActivity | "idle";
     }
   | { ok: true; name: "open_session"; opened: SessionTarget & { messageId?: string } }
   | {
@@ -920,7 +921,7 @@ export class AppControlBridge {
       if (!source) {
         const delivery =
           invocation.arguments.delivery ??
-          (this.host.sessionActivity(sessionId) === "running" ? "queue" : "prompt");
+          (isActiveSessionActivity(this.host.sessionActivity(sessionId)) ? "queue" : "prompt");
         const turnId = await this.host.sendSessionMessage(
           sessionId,
           invocation.arguments.text,
@@ -1000,7 +1001,7 @@ export class AppControlBridge {
       };
     }
     if (invocation.name === "abort_session") {
-      if (this.host.sessionActivity(sessionId) !== "running") {
+      if (!isActiveSessionActivity(this.host.sessionActivity(sessionId))) {
         return {
           ok: false,
           name: invocation.name,
@@ -1056,7 +1057,7 @@ export class AppControlBridge {
     }
     const delivery =
       requestedDelivery ??
-      (this.host.sessionActivity(targetSessionId) === "running" ? "queue" : "prompt");
+      (isActiveSessionActivity(this.host.sessionActivity(targetSessionId)) ? "queue" : "prompt");
     const messageId = crypto.randomUUID();
     const sequence = thread.messages.length + 1;
     const metadata: CrossSessionMessageMetadata = {

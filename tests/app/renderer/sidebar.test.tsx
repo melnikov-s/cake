@@ -178,20 +178,27 @@ describe("Sidebar projects", () => {
     expect(container.textContent).not.toContain("Show more");
   });
 
-  it("shows running, ready-unread, and error indicators for sessions", () => {
+  it("shows waiting, running, ready-unread, and error indicators for sessions", () => {
     const store = {
       recentProjectPaths: ["/work/cake"],
       projectPath: "/work/cake",
       projects: [{ path: "/work/cake", name: "Cake" }],
       session: { sessionId: "running" },
       projectSessions: () => [
+        { sessionId: "waiting", title: "Needs an answer" },
         { sessionId: "running", title: "Still working" },
         { sessionId: "ready", title: "Finished in background" },
         { sessionId: "error", title: "Failed in background" },
       ],
       sessionLimit: () => 8,
       sessionActivity: (id: string) =>
-        id === "running" ? "running" : id === "error" ? "error" : "unread",
+        id === "waiting"
+          ? "waiting"
+          : id === "running"
+            ? "running"
+            : id === "error"
+              ? "error"
+              : "unread",
       sessionDisplayTitle,
       chatReviewCommentCountForSession: vi.fn(() => 0),
       nameFromPath: () => "cake",
@@ -208,6 +215,9 @@ describe("Sidebar projects", () => {
       root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onToggle={vi.fn()} />),
     );
 
+    expect(
+      container.querySelector('[data-session-id="waiting"] [aria-label="Waiting for your answer"]'),
+    ).not.toBeNull();
     expect(
       container.querySelector('[data-session-id="running"] [aria-label="Running"]'),
     ).not.toBeNull();

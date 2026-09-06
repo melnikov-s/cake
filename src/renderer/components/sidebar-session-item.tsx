@@ -9,6 +9,8 @@ import { NavItem } from "./ui/nav-item";
 import { ChevronIcon, ResolveIcon, RestoreIcon } from "./ui/icons";
 import type { SidebarStore } from "../stores/SidebarStore";
 import { WorktreeStatusIcon } from "./worktree-status-icon";
+import type { SessionActivity } from "../session-activity";
+import { StatusDot } from "./ui/status-dot";
 
 export interface SidebarSessionItemProps {
   store: SidebarStore;
@@ -28,7 +30,7 @@ export interface SidebarSessionItemProps {
   selected: boolean;
   paneNumber?: number;
   resolved: boolean;
-  activity?: "running" | "unread" | "error";
+  activity?: SessionActivity;
   onOpen(sessionId: string): void;
   onToggleFamily?(sessionId: string): void;
   familyCollapsed?: boolean;
@@ -62,7 +64,13 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
     Boolean(session.familyParentSessionId) && session.familyParentSessionId !== session.sessionId;
   const canResolve = !activity && !isFamilyChild;
   const activityLabel =
-    activity === "running" ? "Running" : activity === "error" ? "Error" : "Ready, unread";
+    activity === "waiting"
+      ? "Waiting for your answer"
+      : activity === "running"
+        ? "Running"
+        : activity === "error"
+          ? "Error"
+          : "Ready, unread";
   const branch = session.draft
     ? undefined
     : (session.worktreeName ?? session.managedWorktree?.branch.replace(/^agent\//, ""));
@@ -212,20 +220,24 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
           trailing={
             <div className="session-meta relative flex h-full w-14 shrink-0 items-center justify-center">
               {activity ? (
-                <i
+                <StatusDot
+                  status={
+                    activity === "waiting"
+                      ? "attention"
+                      : activity === "unread"
+                        ? "success"
+                        : activity
+                  }
                   className={cn(
-                    "session-status size-2 rounded-full shrink-0",
+                    "session-status size-2",
+                    activity === "waiting" && "session-status-waiting ring-2 ring-attention/20",
                     activity === "running" &&
-                      cn(
-                        "session-status-running animate-pulse",
-                        selected ? "bg-primary" : "bg-accent",
-                      ),
-                    activity === "unread" &&
-                      "session-status-unread bg-emerald-500 ring-2 ring-emerald-500/20",
-                    activity === "error" &&
-                      "session-status-error bg-destructive ring-2 ring-destructive/20",
+                      cn("session-status-running", selected && "bg-primary"),
+                    activity === "unread" && "session-status-unread ring-2 ring-success/20",
+                    activity === "error" && "session-status-error ring-2 ring-destructive/20",
                   )}
                   role="img"
+                  aria-hidden={undefined}
                   aria-label={activityLabel}
                   title={activityLabel}
                 />

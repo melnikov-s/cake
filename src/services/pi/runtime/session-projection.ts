@@ -677,7 +677,7 @@ export function projectSessionEntries(
           id,
           kind: "tool",
           name: "cake",
-          command: "requests.open",
+          command: "interview.open",
           input: "",
           artifactId: pointer.value.artifactId,
           state: "success",

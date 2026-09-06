@@ -16,6 +16,7 @@ const statusDotVariants = cva("inline-block shrink-0 rounded-full", {
       stopped: "bg-destructive",
       interrupted: "bg-[oklch(0.6_0.09_70)]",
       accent: "bg-accent",
+      attention: "bg-attention",
     },
     size: {
       default: "size-[7px]",

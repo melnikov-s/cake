@@ -84,13 +84,14 @@ export function createCakeArtifactOperations(
 
   const operations: CakeOperationDefinition[] = [
     {
-      command: "requests.open",
-      topic: "requests",
+      command: "interview.open",
+      topic: "interview",
       summary:
-        "Open one schema-validated form or sandboxed request widget and wait for submission or cancellation.",
+        "Open one schema-validated interview form or sandboxed request widget and wait for submission or cancellation.",
       guidance: [
-        "Prefer forms for interviews, questionnaires, multiple decisions, and structured configuration; use normal conversation for simple one-off questions.",
-        "Form fields are optional, so response schemas must accept an empty object. Selects accept listed choices or freeform text. Put the recommended select option first; Cake auto-selects it.",
+        "When requirements gathering involves multiple questions or design decisions, use an interview. Present recommended defaults first. Collect independent answers in one structured form.",
+        "Ask one question at a time only when later questions depend on earlier answers or the user wants to discuss each decision. Use chat for follow-up questions that depend on submitted answers.",
+        "Form fields are optional, so response schemas must accept an empty object. Selects accept listed choices or freeform text. Put the recommended select option first; Cake auto-selects it and always adds the freeform option, so do not list an Other option.",
       ],
       inputSchema: Schema.Struct({ request: cakeRequestV1Schema }),
       examples: [

@@ -9,6 +9,7 @@ import { RendererClientContext } from "../client/RendererClientContext";
 import type { ProjectSessionCatalogQuery } from "../../domain/project-session-data";
 import type { CakeChatCatalogQuery } from "../../domain/cake-chat-data";
 import type { EmbeddedEditorSettingsStore } from "./EmbeddedEditorSettingsStore";
+import type { SessionActivity } from "../session-activity";
 
 export interface SidebarStoreProps {
   projects: ProjectCatalogStore;
@@ -228,7 +229,7 @@ export class SidebarStore extends Store<SidebarStoreProps> {
     this.sessionLimits[key] = this.sessionLimit(groupKey, resolved) + 10;
   }
 
-  sessionActivity(sessionId: string) {
+  sessionActivity(sessionId: string): SessionActivity | undefined {
     const activity = this.props.sessions.findSession(sessionId)?.activity;
     if (activity) return activity;
     return this.props.catalog.find(sessionId)?.unread ? "unread" : undefined;
@@ -244,6 +245,7 @@ export class SidebarStore extends Store<SidebarStoreProps> {
       own,
       ...session.familyChildSessionIds.map((id) => this.sessionActivity(id)),
     ];
+    if (activities.includes("waiting")) return "waiting";
     if (activities.includes("running")) return "running";
     if (activities.includes("error")) return "error";
     if (activities.includes("unread")) return "unread";

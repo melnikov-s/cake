@@ -8,7 +8,7 @@ import {
 
 const CAKE_OPERATION_PROTOCOL = "cake.operation/v1" as const;
 export const cakeToolDescription =
-  'Access Cake-native capabilities unavailable through files or the shell: inspect and arrange the app, manage sessions and context, inspect model presets, communicate with other sessions, enter and control embedded VS Code, delegate to subagents, request structured user input, create interactive visual widgets, and send notifications. Call with {} for help. For a topic protocol, set command to the exact topic name, for example {"command":"vscode"}; do not put the topic in input.';
+  'Access Cake-native capabilities unavailable through files or the shell: inspect and arrange the app, manage sessions and context, inspect model presets, communicate with other sessions, enter and control embedded VS Code, delegate to subagents, conduct structured user interviews, create interactive visual widgets, and send notifications. Call with {} for help. For a topic protocol, set command to the exact topic name, for example {"command":"vscode"}; do not put the topic in input.';
 
 const commandSchema = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)).annotate({
   description: "Exact topic or operation command. Omit for the help index.",
@@ -59,7 +59,7 @@ const cakeTopics = [
   { name: "sessions", summary: "Inspect, manage, or communicate with sessions." },
   { name: "context", summary: "Inspect context use or compact the current session." },
   { name: "models", summary: "List configured model presets." },
-  { name: "requests", summary: "Collect structured user input through interactive forms." },
+  { name: "interview", summary: "Gather requirements through structured user interviews." },
   { name: "widgets", summary: "Create interactive or highly visual presentations." },
   { name: "vscode", summary: "Enter and control embedded VS Code." },
   { name: "subagents", summary: "Delegate explicitly requested work." },

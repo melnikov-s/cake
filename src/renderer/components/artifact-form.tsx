@@ -32,19 +32,29 @@ function answersRecord(value: JsonValue | undefined): Record<string, ArtifactFor
   return Option.isSome(parsed) ? { ...parsed.value } : null;
 }
 
+function listedOptions(field: ArtifactFormField) {
+  return field.options?.filter(
+    (option) =>
+      option.value.trim().toLowerCase() !== "other" &&
+      option.label
+        .trim()
+        .toLowerCase()
+        .replace(/(?:\.{3}|…)$/, "") !== "other",
+  );
+}
+
 function initialFormValues(fields: ReadonlyArray<ArtifactFormField>) {
   return Object.fromEntries(
-    fields.flatMap((field) =>
-      field.type === "select" && field.options?.[0]
-        ? [[field.id, field.options[0].value] as const]
-        : [],
-    ),
+    fields.flatMap((field) => {
+      const recommended = field.type === "select" ? listedOptions(field)?.[0] : undefined;
+      return recommended ? [[field.id, recommended.value] as const] : [];
+    }),
   );
 }
 
 /** Shared answer form for form artifacts and form-view request artifacts.
- *  Select fields render every option as a radio row plus a deterministic
- *  "Other" row with a free-text input, the actions are the static Skip/Submit
+ *  Select fields render listed options as radio rows plus one deterministic
+ *  freeform "Other" row (discarding a redundant listed Other option), the actions are the static Skip/Submit
  *  pair, and once an answer has been submitted the form stays visible but
  *  disabled with the submitted values so it cannot be submitted again. */
 export function ArtifactForm({
@@ -73,12 +83,12 @@ export function ArtifactForm({
   const isCustomRow = (field: ArtifactFormField) => {
     if (customRows.has(field.id)) return true;
     const text = String(shown[field.id] ?? "");
-    return text !== "" && !field.options?.some((option) => option.value === text);
+    return text !== "" && !listedOptions(field)?.some((option) => option.value === text);
   };
   const selectCustomRow = (field: ArtifactFormField) => {
     setCustomRows((rows) => (rows.has(field.id) ? rows : new Set(rows).add(field.id)));
     setValues((current) =>
-      field.options?.some((option) => option.value === current[field.id])
+      listedOptions(field)?.some((option) => option.value === current[field.id])
         ? { ...current, [field.id]: "" }
         : current,
     );
@@ -128,7 +138,7 @@ export function ArtifactForm({
               />
             ) : field.type === "select" ? (
               <div aria-label={field.label} className="grid gap-1" role="radiogroup">
-                {field.options?.map((option) => (
+                {listedOptions(field)?.map((option) => (
                   <label
                     key={option.value}
                     className={cn(

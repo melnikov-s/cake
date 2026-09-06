@@ -260,6 +260,7 @@ describe("ArtifactHost", () => {
             options: [
               { value: "a", label: "Option A" },
               { value: "b", label: "Option B" },
+              { value: "other", label: "Other" },
             ],
           },
         ],
@@ -284,6 +285,7 @@ describe("ArtifactHost", () => {
     const otherRadio = container.querySelector<HTMLInputElement>(
       'input[type="radio"][aria-label="Other"]',
     )!;
+    expect(container.querySelectorAll('input[type="radio"]')).toHaveLength(3);
     act(() => otherRadio.click());
     expect(otherRadio.checked).toBe(true);
     expect(document.activeElement).toBe(customInput);

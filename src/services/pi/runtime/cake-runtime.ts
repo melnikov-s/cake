@@ -127,13 +127,14 @@ import {
 } from "./session-projection";
 
 export const piRuntimeVersion = "0.84.0" as const;
-const cakeMediumSystemPrompt = `You are Cake’s agent in a browser-based desktop app, not a terminal. Use \`cake subagents\` only for user-requested delegation or parallel work. Call \`cake models.list\` to see configured model preset names and model IDs.
+const cakeMediumSystemPrompt = `You are Cake’s agent in a browser-based desktop app, not a terminal. \`cake subagents\` creates private, hidden, bounded workers—not full Project Sessions. Never use it when the user asks for a child session, related session, or Session Family member. In a Project Session, use \`sessions.create-child\` for that. Use \`cake subagents\` only when the user explicitly asks for subagents, delegation, or parallel worker tasks. Call \`cake models.list\` to see configured model preset names and model IDs.
 
 Link another Cake session as \`[<title, truncated to 80 characters>](cake://session/<session-id>)\`; never show a bare session ID as the label.
 
 Cake renders CommonMark/GitHub-Flavored Markdown, not MDX, with fenced code blocks, Mermaid diagrams, and KaTeX math. Use \`$...$\` for inline math and \`$$...$$\` for display math; do not use \`\\(...\\)\` or \`\\[...\\]\` as math delimiters. Raw HTML and JSX are not supported.`;
 
-const cakeProjectInteractionPrompt = `Use Cake's Markdown, media, and interactive HTML/React widgets to communicate richly. Call \`cake widgets\` when interactivity or visuals help, especially when requested. Call \`cake requests\` to conduct interviews or present interactive forms, questionnaires, choices, and confirmations; prefer them to tedious text-only back-and-forth.`;
+const cakeInterviewSystemPrompt = `When requirements gathering involves multiple questions or design decisions, call \`cake interview\`. Present recommended defaults first. Collect independent answers in one structured form. Ask one question at a time only when later questions depend on earlier answers or the user wants to discuss each decision; use chat for follow-up questions that depend on submitted answers.`;
+const cakeProjectInteractionPrompt = `Use Cake's Markdown, media, and interactive HTML/React widgets to communicate richly. Call \`cake widgets\` when interactivity or visuals help, especially when requested. ${cakeInterviewSystemPrompt}`;
 
 const cakeChatSystemPrompt = `## Cake Chat
 
@@ -210,7 +211,7 @@ Cake Chat exposes the user-facing Pi slash commands \`/compact\`, \`/model\`, \`
 
 ### Interaction policy
 
-Keep the conversation primary. Prefer Markdown, tables, code blocks, and Mermaid when they communicate the result clearly. Use structured requests when a form or explicit choice is better than repeated conversational questioning. Use subagents only when the user explicitly requests delegation or parallel work.
+Keep the conversation primary. Prefer Markdown, tables, code blocks, and Mermaid when they communicate the result clearly. ${cakeInterviewSystemPrompt} Use subagents only when the user explicitly requests delegation or parallel work.
 
 Earlier messages are part of the conversation; resolve follow-up references from them. Refresh live application state when it may have changed. Ask for clarification when the requested target or intended action is genuinely ambiguous.`;
 
@@ -437,6 +438,7 @@ function createAgentControlOperations(
   });
   const handleSchema = Schema.Struct({ handleId: Schema.String.check(Schema.isUUID()) });
   const guidance = [
+    "Subagents are private, hidden, bounded workers—not full Project Sessions. A request for a child session, related session, or Session Family member is not subagent delegation; use sessions.create-child instead.",
     "Use subagents only when the user explicitly requested delegation, subagents, or parallel agent work.",
     "Use subagents.run for ordinary single-task delegation so the result returns in the same tool call. Use subagents.start only for explicitly background work; Cake automatically delivers its completion, so do not poll it.",
     "subagents.wait is an optional synchronization barrier for background work, not a required completion mechanism.",
@@ -872,6 +874,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         topic: "sessions",
         summary: "Create and start a full child Project Session in the calling session's family.",
         guidance: [
+          "Use this operation—not cake subagents—when the user asks for a child session, full child Project Session, related session, or Session Family member.",
           "The calling session becomes the family parent when it creates its first child.",
           "Children inherit the exact Project and Working Directory, share mutable files, and start in the background.",
           "A child cannot create another child; it must ask its parent for further delegation.",
