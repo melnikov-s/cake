@@ -1,7 +1,7 @@
 import { realpath } from "node:fs/promises";
 import { relative, sep } from "node:path";
 import { BrowserWindow } from "electron";
-import { Effect, Layer, SubscriptionRef } from "effect";
+import { Effect, Layer, Queue, Stream, SubscriptionRef } from "effect";
 import { ApplicationState } from "../storage/ApplicationState";
 import { ProjectAccess } from "../projects/ProjectAccess";
 import { CAKE_TITLE_BAR_HEIGHT, Electron, VSCODE_TITLE_BAR_HEIGHT } from "../electron/Electron";
@@ -41,6 +41,15 @@ export const makeVsCodeServerLive = (
         status: "missing" as const,
         ...(initialCustomPath ? { customPath: initialCustomPath } : null),
       });
+      // VsCodeServerManager reports state synchronously from imperative manager
+      // methods. Queue every transition losslessly and let this Layer's Scope
+      // own the ordered Effect consumer.
+      const stateChanges =
+        yield* Queue.unbounded<ReturnType<VsCodeServerManager["snapshotState"]>>();
+      yield* Stream.fromQueue(stateChanges).pipe(
+        Stream.runForEach((state) => SubscriptionRef.set(editorState, state)),
+        Effect.forkScoped,
+      );
       const manager = new VsCodeServerManager({
         root: options.root,
         companionManifest: options.companionManifest,
@@ -49,7 +58,9 @@ export const makeVsCodeServerLive = (
         customPath: () => applicationState.snapshot().vscodeServerPath,
         preferredTheme: options.preferredTheme,
         broadcast: electron.broadcast,
-        stateChanged: (state) => Effect.runSync(SubscriptionRef.set(editorState, state)),
+        stateChanged: (state) => {
+          Queue.offerUnsafe(stateChanges, state);
+        },
       });
       const tryManager = <A>(operation: string, execute: (signal: AbortSignal) => Promise<A>) =>
         Effect.tryPromise({
@@ -235,9 +246,7 @@ export const makeVsCodeServerLive = (
         closeForWindow: Effect.fn("VsCodeServer.closeForWindow")((ownerId) =>
           Effect.sync(() => manager.closeForWindow(ownerId)),
         ),
-        backToAgentForWindow: Effect.fn("VsCodeServer.backToAgentForWindow")((ownerId) =>
-          Effect.sync(() => manager.backToAgentForWindow(ownerId)),
-        ),
+        backToAgentForWindow: (ownerId) => manager.backToAgentForWindow(ownerId),
         updateTheme,
       });
     }),

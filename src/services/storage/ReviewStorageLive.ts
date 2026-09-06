@@ -291,13 +291,11 @@ const makeReviewStorage = (
     const service = ReviewStorage.of({
       changes: () => SubscriptionRef.changes(revision),
       agentSessionDirectory: (workingDirectory, sessionId, threadId) =>
-        Effect.sync(() => repository.agentSessionDirectory(workingDirectory, sessionId, threadId)),
+        repository.agentSessionDirectory(workingDirectory, sessionId, threadId),
       reviewContextPath: (workingDirectory, sessionId) =>
-        Effect.sync(() => repository.reviewContextPath(workingDirectory, sessionId)),
+        repository.reviewContextPath(workingDirectory, sessionId),
       discussionParentContextPath: (workingDirectory, sessionId, threadId) =>
-        Effect.sync(() =>
-          repository.discussionParentContextPath(workingDirectory, sessionId, threadId),
-        ),
+        repository.discussionParentContextPath(workingDirectory, sessionId, threadId),
       deleteSession: Effect.fn("ReviewStorage.deleteSession")((workingDirectory, sessionId) =>
         changed(
           attempt("deleteSession", () => repository.deleteSession(workingDirectory, sessionId)),
@@ -346,35 +344,11 @@ const makeReviewStorage = (
           ),
       ),
     });
-    const paths = {
-      agentSessionDirectory: (workingDirectory: string, sessionId: string, threadId: string) =>
-        repository.agentSessionDirectory(workingDirectory, sessionId, threadId),
-      reviewContextPath: (workingDirectory: string, sessionId: string) =>
-        repository.reviewContextPath(workingDirectory, sessionId),
-      discussionParentContextPath: (
-        workingDirectory: string,
-        sessionId: string,
-        threadId: string,
-      ) => repository.discussionParentContextPath(workingDirectory, sessionId, threadId),
-    };
-    return { service, paths } as const;
+    return service;
   });
-
-export const makeReviewStorageTestAdapter = (
-  root: string,
-  piSessionRoot: string,
-  loadSession?: ReviewSessionLoader,
-) => {
-  const { service, paths } = Effect.runSync(makeReviewStorage(root, piSessionRoot, loadSession));
-  return { service, paths, layer: Layer.succeed(ReviewStorage, service) } as const;
-};
 
 export const makeReviewStorageLive = (
   root: string,
   piSessionRoot: string,
   loadSession?: ReviewSessionLoader,
-) =>
-  Layer.effect(
-    ReviewStorage,
-    Effect.map(makeReviewStorage(root, piSessionRoot, loadSession), ({ service }) => service),
-  );
+) => Layer.effect(ReviewStorage, makeReviewStorage(root, piSessionRoot, loadSession));

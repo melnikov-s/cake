@@ -260,20 +260,27 @@ void mainRuntime
   });
 
 if (process.env.CAKE_ELECTRON_SMOKE === "1") {
+  const reportSmokeFailure = (operation: string, defect: Error) => {
+    console.error(`[cake.smoke] ${operation} failed`, defect);
+  };
   Object.assign(globalThis, {
     cakeSmokeEmitRendererEvent(input: CakeEvent) {
-      void mainRuntime.runPromise(
-        Effect.flatMap(Electron, (electron) =>
-          Effect.sync(() => electron.broadcast(Schema.decodeUnknownSync(cakeEventSchema)(input))),
-        ),
-      );
+      void mainRuntime
+        .runPromise(
+          Effect.flatMap(Electron, (electron) =>
+            Effect.sync(() => electron.broadcast(Schema.decodeUnknownSync(cakeEventSchema)(input))),
+          ),
+        )
+        .catch((defect) => reportSmokeFailure("emit renderer event", defect));
     },
     cakeSmokeResetPi() {
-      void mainRuntime.runPromise(
-        Effect.flatMap(AgentAvailability, (availability) =>
-          availability.setGlobal({ state: "unavailable", reason: "Pi runtime stopped" }),
-        ),
-      );
+      void mainRuntime
+        .runPromise(
+          Effect.flatMap(AgentAvailability, (availability) =>
+            availability.setGlobal({ state: "unavailable", reason: "Pi runtime stopped" }),
+          ),
+        )
+        .catch((defect) => reportSmokeFailure("reset Pi availability", defect));
     },
   });
 }

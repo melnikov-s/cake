@@ -12,16 +12,13 @@ export interface ReviewStorageService {
     workingDirectory: string,
     sessionId: string,
     threadId: string,
-  ) => Effect.Effect<string>;
-  readonly reviewContextPath: (
-    workingDirectory: string,
-    sessionId: string,
-  ) => Effect.Effect<string>;
+  ) => string;
+  readonly reviewContextPath: (workingDirectory: string, sessionId: string) => string;
   readonly discussionParentContextPath: (
     workingDirectory: string,
     sessionId: string,
     threadId: string,
-  ) => Effect.Effect<string>;
+  ) => string;
   readonly deleteSession: (
     workingDirectory: string,
     sessionId: string,

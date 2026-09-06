@@ -138,7 +138,8 @@ const makeLayer = (
             requestUi: async () => undefined,
             globalControl: {
               tools: [],
-              invoke: (request, signal) => invoke(input.sessionId, request, signal),
+              invoke: (request, signal) =>
+                Effect.runPromise(invoke(input.sessionId, request, signal)),
             },
           },
         };

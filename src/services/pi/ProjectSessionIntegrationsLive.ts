@@ -32,8 +32,8 @@ export const ProjectSessionIntegrationsLive: Layer.Layer<
     const electron = yield* Electron;
     const reviews = yield* ReviewStorage;
     const runtimeOptions = yield* ProjectSessionRuntimeOptions;
-    const context = yield* Effect.context<ArtifactStorage>();
-    const run = Effect.runPromiseWith(context);
+    const artifactContext = yield* Effect.context<ArtifactStorage>();
+    const runArtifact = Effect.runPromiseWith(artifactContext);
     const sessions = new Map<string, SessionIntegration>();
     const rendererConnections = new Map<string, number>();
 
@@ -67,17 +67,18 @@ export const ProjectSessionIntegrationsLive: Layer.Layer<
           electron.sendTo(electron.requireRendererConnection(connectionId), event);
         },
         artifactRepository: {
-          upsert: (directory, artifact) => run(artifacts.upsert(directory, artifact)),
+          // Pi's artifact hooks are Promise callbacks. Keep the only execution
+          // adapter at this host boundary and provide only ArtifactStorage.
+          upsert: (directory, artifact) => runArtifact(artifacts.upsert(directory, artifact)),
           get: (directory, targetSessionId, artifactId) =>
-            run(artifacts.get(directory, targetSessionId, artifactId)),
+            runArtifact(artifacts.get(directory, targetSessionId, artifactId)),
           listSession: (directory, targetSessionId) =>
-            run(artifacts.listSession(directory, targetSessionId)),
+            runArtifact(artifacts.listSession(directory, targetSessionId)),
           linkSession: (record, targetSessionId) =>
-            run(artifacts.linkSession(record, targetSessionId)),
+            runArtifact(artifacts.linkSession(record, targetSessionId)),
         },
         reviewRepository: {
-          reviewContextPath: (directory, targetSessionId) =>
-            Effect.runSync(reviews.reviewContextPath(directory, targetSessionId)),
+          reviewContextPath: reviews.reviewContextPath,
         },
       });
       const integration = { sessionId, workingDirectory, host } satisfies SessionIntegration;

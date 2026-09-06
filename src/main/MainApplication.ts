@@ -1,6 +1,5 @@
 import type { Event } from "electron";
-import { Deferred, Effect } from "effect";
-import type * as Cause from "effect/Cause";
+import { Cause, Deferred, Effect, Queue, Stream } from "effect";
 import { initialize } from "../domain/application";
 import { initializeRegisteredProjectAccess } from "../domain/projects";
 import * as sessionTerminals from "../domain/sessionTerminals";
@@ -62,8 +61,43 @@ export const MainApplication = Effect.fn("MainApplication")(function* ({
       const access = yield* ProjectAccess;
       const rewordingRequests = yield* RewordingRequests;
       const vscode = yield* VsCodeServer;
-      const context = yield* Effect.context<MainApplicationServices>();
-      const run = Effect.runPromiseWith(context);
+      const windowClosed = yield* Queue.unbounded<{
+        readonly ownerId: number;
+        readonly workingDirectory: string | undefined;
+      }>();
+      const handleWindowClosed = Effect.fn("MainApplication.handleWindowClosed")(function* ({
+        ownerId,
+        workingDirectory,
+      }: {
+        readonly ownerId: number;
+        readonly workingDirectory: string | undefined;
+      }) {
+        yield* Effect.all(
+          [
+            sessionTerminals.closeOwner(ownerId),
+            vscode.closeForWindow(ownerId),
+            access.clearOwner(ownerId),
+            rewordingRequests.disposeOwner(ownerId),
+            ...(workingDirectory ? [integrations.cancelPendingRequests(workingDirectory)] : []),
+          ],
+          { concurrency: "unbounded", discard: true },
+        );
+      });
+      yield* Stream.fromQueue(windowClosed).pipe(
+        Stream.runForEach((event) =>
+          handleWindowClosed(event).pipe(
+            Effect.catchCause((cause) =>
+              Cause.hasInterrupts(cause)
+                ? Effect.failCause(cause)
+                : Effect.logError("Window cleanup failed", Cause.pretty(cause)),
+            ),
+            // Window cleanup operations were independent before this queue;
+            // retain that concurrency, including across different windows.
+            Effect.forkScoped,
+          ),
+        ),
+        Effect.forkScoped,
+      );
 
       yield* Effect.addFinalizer(() => electron.stop());
       const shutdownRequested = yield* Deferred.make<void>();
@@ -91,25 +125,11 @@ export const MainApplication = Effect.fn("MainApplication")(function* ({
       yield* vscode.refreshStatus();
       yield* Effect.sync(initializeNativeProtocols);
       yield* electron.start({
-        closeTerminalOwner: (ownerId) => {
-          void run(sessionTerminals.closeOwner(ownerId));
-        },
-        closeEditorForWindow: (ownerId) => {
-          void run(vscode.closeForWindow(ownerId));
-        },
-        backToAgentForWindow: (ownerId) => Effect.runSync(vscode.backToAgentForWindow(ownerId)),
+        backToAgentForWindow: vscode.backToAgentForWindow,
         onWindowClosed: (ownerId, workingDirectory) => {
-          void run(
-            Effect.gen(function* () {
-              yield* access.clearOwner(ownerId);
-              yield* rewordingRequests.disposeOwner(ownerId);
-              if (workingDirectory) yield* integrations.cancelPendingRequests(workingDirectory);
-            }),
-          );
+          Queue.offerUnsafe(windowClosed, { ownerId, workingDirectory });
         },
-        allowProjectPath: (path) => {
-          Effect.runSync(access.allow(path));
-        },
+        allowProjectPath: access.allow,
         hasUtilityModel: () => Boolean(applicationState.snapshot().utilityModel),
       });
       yield* Effect.logInfo("Cake main application started");

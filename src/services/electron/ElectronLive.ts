@@ -200,8 +200,6 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
       fullscreenSurfaces.delete(ownerId);
       nativeEventListeners.delete(ownerId);
       if (applicationQuitting) return;
-      lifecycle().closeEditorForWindow(ownerId);
-      lifecycle().closeTerminalOwner(ownerId);
       lifecycle().onWindowClosed(ownerId, workingDirectory);
     });
     void loadRenderer(window);
@@ -291,15 +289,15 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
       });
       const owner = BrowserWindow.fromWebContents(sender);
       if (!owner) return {};
-      return yield* Effect.tryPromise({
+      const path = yield* Effect.tryPromise({
         try: async () => {
           const result = await dialog.showOpenDialog(owner, { properties: ["openDirectory"] });
-          const path = result.canceled ? undefined : result.filePaths[0];
-          if (path) lifecycle().allowProjectPath(path);
-          return { path };
+          return result.canceled ? undefined : result.filePaths[0];
         },
         catch: electronError,
       });
+      if (path) yield* lifecycle().allowProjectPath(path);
+      return { path };
     }),
     openExternalUrl: Effect.fn("Electron.openExternalUrl")(function* (_connectionId, request) {
       return yield* Effect.tryPromise({

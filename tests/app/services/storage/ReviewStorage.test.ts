@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, Fiber, Stream } from "effect";
 import { afterEach, describe, expect, it } from "vitest";
-import { makeReviewStorageTestAdapter } from "../../../../src/services/storage/ReviewStorageLive";
+import { makeReviewStorageTestAdapter } from "./ReviewStorageTestAdapter";
 
 const directories: string[] = [];
 afterEach(async () =>

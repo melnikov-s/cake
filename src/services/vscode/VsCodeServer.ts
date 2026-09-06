@@ -52,7 +52,8 @@ export interface VsCodeServerService {
     input: JsonValue,
   ) => Effect.Effect<VscodeActionResult<JsonValue>, VsCodeServerError>;
   readonly closeForWindow: (ownerId: number) => Effect.Effect<void>;
-  readonly backToAgentForWindow: (ownerId: number) => Effect.Effect<boolean>;
+  /** Immediate native close-veto callback; Electron requires the boolean synchronously. */
+  readonly backToAgentForWindow: (ownerId: number) => boolean;
   readonly updateTheme: () => Effect.Effect<void, VsCodeServerError>;
 }
 

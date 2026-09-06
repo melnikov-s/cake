@@ -101,19 +101,18 @@ export const makeDiscussionSessionEnvironmentLive = (
               );
           },
         ),
-        location: Effect.fn("DiscussionSessionEnvironment.location")(function* (record) {
-          const sessionDirectory = yield* storage.agentSessionDirectory(
-            record.workingDirectory,
-            record.parentSessionId,
-            record.id,
-          );
-          return {
+        location: Effect.fn("DiscussionSessionEnvironment.location")((record) =>
+          Effect.succeed({
             agentDirectory: options.agentDirectory,
-            sessionDirectory,
+            sessionDirectory: storage.agentSessionDirectory(
+              record.workingDirectory,
+              record.parentSessionId,
+              record.id,
+            ),
             parentSessionDirectory: options.parentSessionDirectory,
             trusted: application.snapshot().trustedProjectPaths.includes(record.workingDirectory),
-          };
-        }),
+          }),
+        ),
         prepareParentContext: Effect.fn("DiscussionSessionEnvironment.prepareParentContext")(
           function* (record, parent) {
             const stored = yield* storage
@@ -124,7 +123,7 @@ export const makeDiscussionSessionEnvironmentLive = (
                 operation: "prepareParentContext",
                 message: "That Discussion Session no longer exists",
               });
-            const target = yield* storage.discussionParentContextPath(
+            const target = storage.discussionParentContextPath(
               record.workingDirectory,
               record.parentSessionId,
               record.id,

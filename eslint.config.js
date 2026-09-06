@@ -4,17 +4,13 @@ import tseslint from "typescript-eslint";
 // These are imperative framework/SDK adapters, not domain execution sites.
 // Keep this list explicit so a new boundary requires an architecture decision.
 const effectExecutionBoundaries = [
-  "src/main/main.ts", // Process entry point and Electron smoke hooks.
-  "src/main/MainApplication.ts", // Electron lifecycle callbacks.
-  "src/renderer/RendererRuntime.ts", // All renderer commands and subscriptions.
-  "src/layers/CakeChatEnvironmentLive.ts", // Pi tool callbacks.
-  "src/layers/ProjectSessionEnvironmentLive.ts", // Pi tool callbacks.
-  "src/layers/ProjectSessionRuntimeOptionsLive.ts", // Pi runtime callbacks.
-  "src/services/cake-chats/CakeChatEnvironment.ts", // Pi application controls.
-  "src/services/pi/ProjectSessionIntegrationsLive.ts", // Pi repository callbacks.
-  "src/services/worktrees/ManagedWorktreeEngineAdapter.ts", // Promise worktree engine.
-  "src/services/vscode/VsCodeServerLive.ts", // Synchronous manager state callback.
-  "src/services/storage/ReviewStorageLive.ts", // Synchronous test adapter factory.
+  "src/main/main.ts", // Process entry point, runtime disposal, and Electron smoke hooks.
+  "src/renderer/RendererRuntime.ts", // The one window-owned renderer runtime.
+  "src/layers/CakeChatEnvironmentLive.ts", // Final Promise callbacks supplied to Pi.
+  "src/layers/ProjectSessionEnvironmentLive.ts", // Final family/tool Promise callbacks supplied to Pi.
+  "src/layers/ProjectSessionRuntimeOptionsLive.ts", // Final Project Session callbacks supplied to Pi.
+  "src/services/pi/ProjectSessionIntegrationsLive.ts", // Artifact repository Promise callbacks supplied to Pi.
+  "src/services/worktrees/ManagedWorktreeEngineAdapter.ts", // Existing imperative worktree engine port.
 ];
 const executionApi = "/^run(Fork|Callback|Promise|Sync)(Exit)?(With)?$/";
 

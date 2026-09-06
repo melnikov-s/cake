@@ -1,13 +1,13 @@
 import { EventEmitter } from "node:events";
 import type { Event } from "electron";
 import { it } from "@effect/vitest";
-import { Effect, Fiber, Layer } from "effect";
+import { Deferred, Effect, Fiber, Layer } from "effect";
 import { describe, expect, vi } from "vitest";
 import { defaultApplicationState } from "../../../src/domain/application-data";
 import type { ApplicationState as ApplicationStateValue } from "../../../src/domain/application-data";
 import type { WorktreeRecord } from "../../../src/ipc/worktree-contract";
 import { MainApplication } from "../../../src/main/MainApplication";
-import { Electron } from "../../../src/services/electron/Electron";
+import { Electron, type ElectronWindowLifecycle } from "../../../src/services/electron/Electron";
 import { PiSessions } from "../../../src/services/pi/PiSessions";
 import { ProjectSessionIntegrations } from "../../../src/services/pi/ProjectSessionIntegrations";
 import { ProjectSessionLifecycle } from "../../../src/services/project-sessions/ProjectSessionLifecycle";
@@ -52,6 +52,12 @@ const testLayer = (input?: {
   readonly applicationState?: ApplicationStateValue;
   readonly worktrees?: ReadonlyArray<WorktreeRecord>;
   readonly allow?: (path: string) => void;
+  readonly start?: (lifecycle: ElectronWindowLifecycle) => void;
+  readonly closeTerminalOwner?: (ownerId: number) => void;
+  readonly closeEditorForWindow?: (ownerId: number) => void;
+  readonly clearOwner?: (ownerId: number) => void;
+  readonly disposeRewordingOwner?: (ownerId: number) => void;
+  readonly cancelPendingRequests?: (workingDirectory: string) => void;
 }) => {
   const state = input?.applicationState ?? defaultApplicationState();
   return Layer.mergeAll(
@@ -60,7 +66,7 @@ const testLayer = (input?: {
       snapshot: () => state,
     }),
     Layer.mock(Electron, {
-      start: () => Effect.void,
+      start: (lifecycle) => Effect.sync(() => input?.start?.(lifecycle)),
       stop: () => Effect.sync(() => input?.stop?.()),
       sendTo: () => {},
       broadcast: () => {},
@@ -76,22 +82,27 @@ const testLayer = (input?: {
     Layer.mock(ProjectSessionLifecycle, {}),
     Layer.mock(ProjectAccess, {
       allow: (path) => Effect.sync(() => input?.allow?.(path)),
-      clearOwner: () => Effect.void,
+      clearOwner: (ownerId) => Effect.sync(() => input?.clearOwner?.(ownerId)),
       rememberSessionLocation: () => Effect.void,
     }),
     Layer.mock(RewordingRequests, {
       acquire: () => Effect.succeed(new AbortController()),
       release: () => Effect.void,
-      disposeOwner: () => Effect.void,
+      disposeOwner: (ownerId) => Effect.sync(() => input?.disposeRewordingOwner?.(ownerId)),
     }),
-    Layer.mock(ProjectSessionIntegrations, { cancelPendingRequests: () => Effect.void }),
+    Layer.mock(ProjectSessionIntegrations, {
+      cancelPendingRequests: (workingDirectory) =>
+        Effect.sync(() => input?.cancelPendingRequests?.(workingDirectory)),
+    }),
     Layer.mock(ManagedWorktrees, { records: () => Effect.succeed(input?.worktrees ?? []) }),
     Layer.mock(PiSessions, {}),
-    Layer.mock(Terminal, {}),
+    Layer.mock(Terminal, {
+      closeOwner: (ownerId) => Effect.sync(() => input?.closeTerminalOwner?.(ownerId)),
+    }),
     Layer.mock(VsCodeServer, {
       refreshStatus: () => Effect.void,
-      closeForWindow: () => Effect.void,
-      backToAgentForWindow: () => Effect.succeed(false),
+      closeForWindow: (ownerId) => Effect.sync(() => input?.closeEditorForWindow?.(ownerId)),
+      backToAgentForWindow: () => false,
     }),
   );
 };
@@ -171,6 +182,50 @@ describe("MainApplication", () => {
       expect(allow).toHaveBeenCalledWith("/projects/cake");
       expect(allow).toHaveBeenCalledWith("/worktrees/cake-feature");
       expect(allow).not.toHaveBeenCalledWith("/worktrees/not-registered");
+    }),
+  );
+
+  it.effect("owns native window cleanup inside the application Scope", () =>
+    Effect.gen(function* () {
+      const application = new TestApplication();
+      const operations: string[] = [];
+      let lifecycle: ElectronWindowLifecycle | undefined;
+      const started = yield* Deferred.make<void>();
+      const cleaned = yield* Deferred.make<void>();
+      const record = (operation: string) => {
+        operations.push(operation);
+        if (operations.length === 5) Deferred.doneUnsafe(cleaned, Effect.void);
+      };
+      const fiber = yield* Effect.forkChild(
+        program(
+          application,
+          testLayer({
+            start: (value) => {
+              lifecycle = value;
+              Deferred.doneUnsafe(started, Effect.void);
+            },
+            closeTerminalOwner: (ownerId) => record(`terminal:${ownerId}`),
+            closeEditorForWindow: (ownerId) => record(`editor:${ownerId}`),
+            clearOwner: (ownerId) => record(`access:${ownerId}`),
+            disposeRewordingOwner: (ownerId) => record(`rewording:${ownerId}`),
+            cancelPendingRequests: (workingDirectory) => record(`requests:${workingDirectory}`),
+          }),
+        ),
+      );
+      yield* Deferred.await(started);
+      lifecycle?.onWindowClosed(17, "/projects/cake");
+      yield* Deferred.await(cleaned);
+      expect(operations.toSorted()).toEqual(
+        [
+          "terminal:17",
+          "editor:17",
+          "access:17",
+          "rewording:17",
+          "requests:/projects/cake",
+        ].toSorted(),
+      );
+      application.emit("window-all-closed");
+      yield* Fiber.join(fiber);
     }),
   );
 

@@ -48,7 +48,7 @@ export interface CakeChatEnvironmentOperations {
       sessionId: string,
       input: { readonly name: string; readonly arguments: JsonValue },
       signal: AbortSignal,
-    ) => Promise<JsonValue>,
+    ) => Effect.Effect<JsonValue>,
   ) => Effect.Effect<PiSessionAcquireOptions, CakeChatEnvironmentError>;
   readonly archive: (sessionId: string) => Effect.Effect<void, CakeChatEnvironmentError>;
   readonly restore: (sessionId: string) => Effect.Effect<void, CakeChatEnvironmentError>;
@@ -94,12 +94,11 @@ export const makeCakeChatEnvironmentLayer = (operations: CakeChatEnvironmentOper
         );
       });
 
-      const context = yield* Effect.context<never>();
       const invoke = (
         sessionId: string,
         invocation: { readonly name: string; readonly arguments: JsonValue },
         signal: AbortSignal,
-      ) => Effect.runPromiseWith(context)(requestControl(sessionId, invocation, signal));
+      ) => requestControl(sessionId, invocation, signal);
 
       const toolsBySessionId = new Map<string, ReadonlyArray<CakeControlTool>>();
       const runtimeOptions = Effect.fn("CakeChatEnvironment.runtimeOptions")(function* (

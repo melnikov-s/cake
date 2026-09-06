@@ -19,11 +19,9 @@ type Success<Type extends keyof typeof cakeRpcSuccessSchemas> =
   (typeof cakeRpcSuccessSchemas)[Type]["Type"];
 
 export interface ElectronWindowLifecycle {
-  readonly closeTerminalOwner: (ownerId: number) => void;
-  readonly closeEditorForWindow: (ownerId: number) => void;
   readonly backToAgentForWindow: (ownerId: number) => boolean;
   readonly onWindowClosed: (ownerId: number, workingDirectory: string | undefined) => void;
-  readonly allowProjectPath: (path: string) => void;
+  readonly allowProjectPath: (path: string) => Effect.Effect<void>;
   readonly hasUtilityModel: () => boolean;
 }
 

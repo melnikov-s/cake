@@ -148,8 +148,10 @@ export const makeCakeChatEnvironmentLive = (
                           : Schema.decodeUnknownSync(jsonObjectSchema)(example.input),
                     })),
                   })),
+                  // Pi requires a Promise callback; execute the Cake-owned
+                  // control Effect only at this final runtime adapter.
                   invoke: (invocation: Parameters<typeof invoke>[1], signal: AbortSignal) =>
-                    invoke(input.sessionId, invocation, signal),
+                    run(invoke(input.sessionId, invocation, signal), { signal }),
                 },
               },
             };

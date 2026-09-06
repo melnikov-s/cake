@@ -166,10 +166,18 @@ MainLive
 ```
 
 `MainApplication` is the Effect program for Electron startup, window lifecycle,
-RPC registration, and shutdown. `src/main/main.ts` is the visible composition
-root: it imports and assembles `MainLive`, creates the one process runtime, and
-starts that program. Ordinary Layers are the default composition mechanism. Cake does not introduce
-an OpenCode-style custom Layer graph until concrete composition or replacement
+RPC registration, and shutdown. Asynchronous native window-close notifications
+enter a process-scoped queue. The independent cleanup operations retain bounded
+lifetime without being serialized, and different windows also clean up
+independently; shutdown interrupts the scoped consumer and its in-flight
+children. Native close-veto callbacks that require an
+immediate result remain synchronous, and synchronous manager notifications are
+queued into their owning Layer's ordered Effect consumer.
+
+`src/main/main.ts` is the visible composition root: it imports and assembles
+`MainLive`, creates the one process runtime, and starts that program. Ordinary
+Layers are the default composition mechanism. Cake does not introduce an
+OpenCode-style custom Layer graph until concrete composition or replacement
 problems justify it.
 
 A minimal bootstrap Layer can start the application shell without loading
@@ -192,13 +200,18 @@ failures; command error presentation remains in `RendererClient`, and Stream
 recovery remains in the synchronization supervisor.
 
 ESLint restricts Effect execution APIs to the explicit boundary files listed in
-`eslint.config.js`. Main bootstrap and imperative Electron, Pi, VS Code, and
-worktree callbacks may execute Effects; domain functions and RPC handlers
-compose them. Runtime construction is restricted to `main.ts` and
-`RendererRuntime.ts`. Tests may create and execute their own runtimes. The
-synchronous ReviewStorage test adapter is an explicit exception in production
-source. `Stream.runForEach` and other Stream consumers construct Effects and
-are not runtime execution APIs.
+`eslint.config.js`. The main process entry point executes `MainApplication` and
+owns runtime disposal. Composition adapters execute only the Promise callbacks
+that Pi requires, using the narrow dependency Context captured when the adapter
+is built and forwarding Pi's `AbortSignal`. The existing imperative Managed
+Worktree engine has one explicitly listed adapter while that engine remains a
+Promise contract. Domain functions, RPC handlers, Cake-owned environment
+services, Electron lifecycle processing, and VS Code state propagation compose
+Effects instead of executing them. Runtime construction is restricted to
+`main.ts` and `RendererRuntime.ts`. Tests may execute Effects in test
+infrastructure; the ReviewStorage test constructor therefore lives under
+`tests/`, not production source. `Stream.runForEach` and other Stream consumers
+construct Effects and are not runtime execution APIs.
 
 ```text
 RendererRuntime
