@@ -1,5 +1,5 @@
 import { observer } from "r-state-tree/react";
-import { RemoveIcon } from "@/components/ui/icons";
+import { EditIcon, RemoveIcon, SteerIcon } from "@/components/ui/icons";
 import { IconButton } from "@/components/ui/icon-button";
 import { LoadingSpinner } from "@/components/ui/loading-state";
 import type { ChatStore } from "../stores/ChatStore";
@@ -13,7 +13,7 @@ export const QueuedPrompts = observer(function QueuedPrompts({ store }: { store:
       role="list"
       aria-label="Queued prompts"
     >
-      {store.queuedPrompts.map((entry, index) => {
+      {store.queuedPrompts.map((entry) => {
         const label =
           entry.text ||
           `${entry.attachments.length} attachment${entry.attachments.length === 1 ? "" : "s"}`;
@@ -26,16 +26,50 @@ export const QueuedPrompts = observer(function QueuedPrompts({ store }: { store:
             <span className="min-w-0 flex-1 truncate" title={label}>
               {label}
             </span>
-            <div className="flex shrink-0 items-center gap-1">
-              <LoadingSpinner label={`Queued: ${label}`} />
-              {index === 0 && store.canDequeuePrompts && (
-                <IconButton
-                  tooltip="Cancel and edit all queued messages"
-                  ariaLabel={`Cancel and edit all queued messages: ${label}`}
-                  onClick={() => void store.dequeuePrompts()}
-                >
-                  <RemoveIcon />
-                </IconButton>
+            <div className="flex shrink-0 items-center gap-0.5">
+              {entry.state === "steering" ? (
+                <>
+                  <LoadingSpinner label={`Steering: ${label}`} />
+                  {store.canCancelSteering && (
+                    <IconButton
+                      tooltip="Cancel steering"
+                      ariaLabel={`Cancel steering: ${label}`}
+                      onClick={() => void store.cancelSteering()}
+                    >
+                      <RemoveIcon />
+                    </IconButton>
+                  )}
+                </>
+              ) : (
+                <>
+                  {store.canSteerQueuedPrompt && (
+                    <IconButton
+                      tooltip="Send now as steering"
+                      ariaLabel={`Send now as steering: ${label}`}
+                      onClick={() => store.steerQueuedPrompt(entry.id)}
+                    >
+                      <SteerIcon />
+                    </IconButton>
+                  )}
+                  {store.canEditQueuedPrompt && (
+                    <IconButton
+                      tooltip="Edit"
+                      ariaLabel={`Edit queued prompt: ${label}`}
+                      onClick={() => store.editQueuedPrompt(entry.id)}
+                    >
+                      <EditIcon />
+                    </IconButton>
+                  )}
+                  {store.canRemoveQueuedPrompt && (
+                    <IconButton
+                      tooltip="Remove"
+                      ariaLabel={`Remove queued prompt: ${label}`}
+                      onClick={() => store.removeQueuedPrompt(entry.id)}
+                    >
+                      <RemoveIcon />
+                    </IconButton>
+                  )}
+                </>
               )}
             </div>
           </div>

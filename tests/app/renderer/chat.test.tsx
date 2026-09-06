@@ -152,21 +152,15 @@ describe("Chat", () => {
     expect(submit).not.toHaveBeenCalled();
   });
 
-  it("keeps queued messages beside the composer and dequeues them in bulk", async () => {
-    const dequeuePrompts = vi.fn(async () => undefined);
+  it("keeps queue controls and shows cancellable progress only while steering", async () => {
+    const steerQueuedPrompt = vi.fn();
+    const editQueuedPrompt = vi.fn();
+    const removeQueuedPrompt = vi.fn();
+    const cancelSteering = vi.fn(async () => undefined);
     store = mount(
       createStore(ChatStore, {
         id: () => "queued-chat",
-        parts: () => [
-          {
-            id: "queued-transcript-part",
-            kind: "text",
-            role: "user",
-            text: "From another session",
-            status: "complete",
-            deliveryState: "queued",
-          },
-        ],
+        parts: () => [],
         streaming: () => true,
         submitting: () => false,
         configuration: () => undefined,
@@ -177,31 +171,46 @@ describe("Chat", () => {
         submit: async () => false,
         queuedPrompts: () => [
           {
-            id: "queued-transcript-part",
-            text: "From another session",
+            id: "queued",
+            text: "Do this next",
             attachments: [],
             renderUserMessageAsMarkdown: false,
+            state: "queued",
+          },
+          {
+            id: "steering",
+            text: "Change direction",
+            attachments: [],
+            renderUserMessageAsMarkdown: false,
+            state: "steering",
           },
         ],
-        dequeuePrompts,
+        steerQueuedPrompt,
+        editQueuedPrompt,
+        removeQueuedPrompt,
+        cancelSteering,
       }),
     );
 
     act(() => root.render(<Chat store={store!} />));
 
-    expect(container.querySelector(".transcript")?.textContent).not.toContain(
-      "From another session",
-    );
-    expect(container.textContent).toContain("From another session");
-    expect(container.querySelector('[aria-label^="Queued:"]')).not.toBeNull();
-    expect(container.querySelector('[aria-label^="Edit queued prompt"]')).toBeNull();
+    expect(
+      container.querySelector('[aria-label="Send now as steering: Do this next"]'),
+    ).not.toBeNull();
+    expect(
+      container.querySelector('[aria-label="Edit queued prompt: Do this next"]'),
+    ).not.toBeNull();
+    expect(
+      container.querySelector('[aria-label="Remove queued prompt: Do this next"]'),
+    ).not.toBeNull();
+    expect(container.querySelector('[aria-label="Steering: Change direction"]')).not.toBeNull();
 
     await act(async () => {
       container
-        .querySelector<HTMLButtonElement>('[aria-label^="Cancel and edit all queued messages"]')!
+        .querySelector<HTMLButtonElement>('[aria-label="Cancel steering: Change direction"]')!
         .click();
     });
-    expect(dequeuePrompts).toHaveBeenCalledOnce();
+    expect(cancelSteering).toHaveBeenCalledOnce();
   });
 
   it("shows a scheduled message countdown and allows cancellation", async () => {

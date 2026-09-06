@@ -23,6 +23,14 @@ import { OptimisticUserMessagesStore } from "./OptimisticUserMessagesStore";
 import { parseScheduledMessage } from "../../utils/scheduled-message-time";
 import { shouldRenderMarkdown } from "../../utils/markdown";
 
+/** A prompt held locally while the session streams, shown as a chip above the composer. */
+export interface QueuedPrompt {
+  id: string;
+  text: string;
+  attachments: Attachment[];
+  renderUserMessageAsMarkdown: boolean;
+}
+
 export interface MessageComposerStoreProps {
   sessionRegistry: SessionRegistryStore;
   reviews(): ReviewsStore;
@@ -47,16 +55,28 @@ export interface MessageComposerStoreProps {
   sessionCreationChoice?(): WorktreeDraftChoice;
 }
 
-/** Owns attachments, optimistic immediate prompts, and prompt delivery. */
+/** Owns attachments, the local prompt queue, optimistic immediate prompts, and prompt delivery. */
 export class MessageComposerStore extends Store<MessageComposerStoreProps> {
   @snapshot attachments: Attachment[] = observable([]);
   @snapshot annotations: Annotation[] = observable([]);
   @snapshot editorContextAttachment: Extract<Attachment, { kind: "source" }> | undefined;
+  queuedPrompts: QueuedPrompt[] = observable([]);
   focusRequestRevision = 0;
   error: string | undefined;
   errorDetails: string | undefined;
   editingEntryId: string | undefined;
   editingDraftSession = false;
+  private drainingQueue = false;
+
+  constructor(props: MessageComposerStore["props"]) {
+    super(props);
+    this.reaction(
+      () => this.props.isStreaming(),
+      (streaming, previousStreaming) => {
+        if (previousStreaming && !streaming) this.drainQueue();
+      },
+    );
+  }
 
   @child
   get optimisticUserMessages(): OptimisticUserMessagesStore {
@@ -352,6 +372,21 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
       await this.deliverEdit(entryId, text, attachments, sessionId, renderUserMessageAsMarkdown);
       return;
     }
+    if (deliveryOverride === undefined && this.props.isStreaming()) {
+      // While streaming, submissions queue locally and stay editable above the composer.
+      if (text || explicitAttachments.length > 0 || annotations.length > 0) {
+        this.props.setDraft("");
+        this.attachments.splice(0);
+        this.annotations.splice(0);
+        this.queuedPrompts.push({
+          id: crypto.randomUUID(),
+          text,
+          attachments,
+          renderUserMessageAsMarkdown,
+        });
+      }
+      return;
+    }
     if (text || explicitAttachments.length > 0 || annotations.length > 0) {
       this.props.setDraft("");
       this.attachments.splice(0);
@@ -359,7 +394,7 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
       await this.deliver(
         text,
         attachments,
-        deliveryOverride ?? (this.props.isStreaming() ? "follow-up" : "prompt"),
+        deliveryOverride ?? "prompt",
         sessionId,
         true,
         renderUserMessageAsMarkdown,
@@ -447,11 +482,16 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     return userPart.kind === "text" && userPart.renderAs === "markdown";
   }
 
-  restoreDequeuedMessages(queuedText: readonly string[]) {
-    const text = queuedText.filter((value) => value.trim()).join("\n\n");
-    const currentDraft = this.props.draft();
-    this.props.setDraft([text, currentDraft].filter((value) => value.trim()).join("\n\n"));
-    this.requestFocus();
+  removeQueuedPrompt(id: string) {
+    const index = this.queuedPrompts.findIndex((entry) => entry.id === id);
+    if (index >= 0) this.queuedPrompts.splice(index, 1);
+  }
+
+  async cancelSteering() {
+    const sessionId = this.props.sessionId();
+    if (!sessionId) return;
+    await this.client.projectSessions.clearQueue({ sessionId }, { signal: this.signal });
+    if (!this.signal.aborted) this.optimisticUserMessages.removeByDeliveryState("steering");
   }
 
   private async renameSession(name: string) {
@@ -467,6 +507,56 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
       if (this.signal.aborted) return;
       this.reportError(error);
     }
+  }
+
+  editQueuedPrompt(id: string) {
+    const entry = this.takeQueuedPrompt(id);
+    if (!entry) return;
+    this.props.setDraft(entry.text);
+    for (const attachment of entry.attachments) {
+      if (attachment.kind === "annotation") this.annotations.push(...attachment.annotations);
+      else this.attachments.push(attachment);
+    }
+    this.requestFocus();
+    return entry.renderUserMessageAsMarkdown;
+  }
+
+  steerQueuedPrompt(id: string) {
+    const entry = this.takeQueuedPrompt(id);
+    if (!entry) return;
+    void this.deliverQueued(entry, this.props.isStreaming() ? "steer" : "prompt");
+  }
+
+  private takeQueuedPrompt(id: string) {
+    const index = this.queuedPrompts.findIndex((entry) => entry.id === id);
+    return index >= 0 ? this.queuedPrompts.splice(index, 1)[0] : undefined;
+  }
+
+  private drainQueue() {
+    if (this.drainingQueue || this.props.isStreaming()) return;
+    const entry = this.queuedPrompts[0];
+    if (!entry) return;
+    this.drainingQueue = true;
+    this.queuedPrompts.splice(0, 1);
+    void this.deliverQueued(entry, "prompt").finally(() => {
+      if (!this.signal.aborted) this.drainingQueue = false;
+    });
+  }
+
+  private async deliverQueued(entry: QueuedPrompt, delivery: "prompt" | "steer") {
+    const sessionId = this.props.sessionId();
+    const delivered =
+      sessionId !== undefined && (entry.text || entry.attachments.length > 0)
+        ? await this.deliver(
+            entry.text,
+            entry.attachments.slice(),
+            delivery,
+            sessionId,
+            false,
+            entry.renderUserMessageAsMarkdown,
+          )
+        : false;
+    if (!delivered && !this.signal.aborted) this.queuedPrompts.unshift(entry);
   }
 
   private async deliverEdit(
@@ -642,7 +732,7 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
   private async deliver(
     text: string,
     attachments: Attachment[],
-    delivery: "prompt" | "steer" | "follow-up",
+    delivery: "prompt" | "steer",
     sessionId: string,
     restoreOnError: boolean,
     renderUserMessageAsMarkdown: boolean,
@@ -676,14 +766,13 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
       }
     }
     const operationId = this.props.operations.start(this.props.operationOwner);
-    if (delivery !== "follow-up")
-      this.addPendingUserMessage(
-        operationId,
-        text,
-        attachments,
-        delivery,
-        renderUserMessageAsMarkdown,
-      );
+    this.addPendingUserMessage(
+      operationId,
+      text,
+      attachments,
+      delivery,
+      renderUserMessageAsMarkdown,
+    );
     try {
       const pendingNewSession = this.props.newSessionRequest?.();
       if (pendingNewSession)
@@ -721,9 +810,7 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
         const command =
           delivery === "steer"
             ? this.client.projectSessions.steer
-            : delivery === "follow-up"
-              ? this.client.projectSessions.followUp
-              : this.client.projectSessions.prompt;
+            : this.client.projectSessions.prompt;
         const promptInput: ProjectSessionPromptInput = {
           sessionId,
           text,

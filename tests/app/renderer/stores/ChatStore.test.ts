@@ -24,16 +24,69 @@ function createChatStore(
 }
 
 describe("ChatStore empty-composer submit", () => {
-  it("keeps an empty-composer submit as a no-op", async () => {
+  it("steers the head of the prompt queue when submitting an empty composer", async () => {
+    const steerQueuedPrompt = vi.fn();
     const submit = vi.fn(() => Promise.resolve(true));
     const store = createChatStore(submit, {
-      // Real surfaces reject an empty draft.
+      queuedPrompts: () => [
+        {
+          id: "first",
+          text: "First",
+          attachments: [],
+          renderUserMessageAsMarkdown: false,
+          state: "queued",
+        },
+        {
+          id: "second",
+          text: "Second",
+          attachments: [],
+          renderUserMessageAsMarkdown: false,
+          state: "queued",
+        },
+      ],
+      steerQueuedPrompt,
+    });
+
+    await expect(store.submit("")).resolves.toBe(true);
+
+    expect(steerQueuedPrompt).toHaveBeenCalledWith("first");
+    expect(submit).not.toHaveBeenCalled();
+    store[Symbol.dispose]();
+  });
+
+  it("keeps an empty-composer submit as a no-op without queued prompts", async () => {
+    const submit = vi.fn(() => Promise.resolve(true));
+    const store = createChatStore(submit, {
       canSubmit: (draft) => draft.trim().length > 0,
     });
 
     await expect(store.submit("")).resolves.toBe(false);
 
     expect(submit).not.toHaveBeenCalled();
+    store[Symbol.dispose]();
+  });
+
+  it("prefers the draft over the queue when the composer has content", async () => {
+    const steerQueuedPrompt = vi.fn();
+    const submit = vi.fn(() => Promise.resolve(true));
+    const store = createChatStore(submit, {
+      queuedPrompts: () => [
+        {
+          id: "first",
+          text: "First",
+          attachments: [],
+          renderUserMessageAsMarkdown: false,
+          state: "queued",
+        },
+      ],
+      steerQueuedPrompt,
+    });
+    store.setDraft("New instruction");
+
+    await expect(store.submit()).resolves.toBe(true);
+
+    expect(steerQueuedPrompt).not.toHaveBeenCalled();
+    expect(submit).toHaveBeenCalled();
     store[Symbol.dispose]();
   });
 });

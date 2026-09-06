@@ -14,12 +14,10 @@ import { workLogGroupKeys } from "../../utils/work-log-groups";
 import type { ScheduledMessage } from "../models/ScheduledMessage";
 import type { ChatConfigurationStore } from "./ChatConfigurationStore";
 import type { ExistingWorktreeCandidate, WorktreeDraftChoice } from "./WorktreeCreationStore";
+import type { QueuedPrompt as ComposerQueuedPrompt } from "./MessageComposerStore";
 
-export interface QueuedPrompt {
-  id: string;
-  text: string;
-  attachments: Attachment[];
-  renderUserMessageAsMarkdown: boolean;
+export interface QueuedPrompt extends ComposerQueuedPrompt {
+  state: "queued" | "steering";
 }
 
 export interface ChatStoreProps {
@@ -57,7 +55,10 @@ export interface ChatStoreProps {
   focusRequestRevision?(): number;
   usage?(): SessionSnapshot["usage"];
   queuedPrompts?(): readonly QueuedPrompt[];
-  dequeuePrompts?(): Promise<void>;
+  steerQueuedPrompt?(id: string): void;
+  editQueuedPrompt?(id: string): boolean | undefined;
+  removeQueuedPrompt?(id: string): void;
+  cancelSteering?(): Promise<void>;
   scheduledMessages?(): readonly ScheduledMessage[];
   cancelScheduledMessage?(id: string): Promise<void>;
   composerVisible?(): boolean;
@@ -238,11 +239,7 @@ export class ChatStore extends Store<ChatStoreProps> {
   get parts() {
     return this.props
       .parts()
-      .filter(
-        (part) =>
-          part.kind !== "text" ||
-          (part.deliveryState !== "queued" && part.deliveryState !== "steering"),
-      );
+      .filter((part) => part.kind !== "text" || part.deliveryState !== "steering");
   }
   get streaming() {
     return this.props.streaming();
@@ -352,8 +349,17 @@ export class ChatStore extends Store<ChatStoreProps> {
   get queuedPrompts(): readonly QueuedPrompt[] {
     return this.props.queuedPrompts?.() ?? [];
   }
-  get canDequeuePrompts() {
-    return Boolean(this.props.dequeuePrompts);
+  get canSteerQueuedPrompt() {
+    return Boolean(this.props.steerQueuedPrompt);
+  }
+  get canEditQueuedPrompt() {
+    return Boolean(this.props.editQueuedPrompt);
+  }
+  get canRemoveQueuedPrompt() {
+    return Boolean(this.props.removeQueuedPrompt);
+  }
+  get canCancelSteering() {
+    return Boolean(this.props.cancelSteering);
   }
   get scheduledMessages(): readonly ScheduledMessage[] {
     return this.props.scheduledMessages?.() ?? [];
@@ -549,6 +555,13 @@ export class ChatStore extends Store<ChatStoreProps> {
 
   async submit(value = this.draft, options?: { renderUserMessageAsMarkdown?: boolean }) {
     if (value !== this.draft) this.setDraft(value);
+    // Submitting an empty composer while prompts are queued steers the head of
+    // the queue immediately, so "type + Enter, Enter" remains keyboard-only.
+    const queued = this.queuedPrompts.find((entry) => entry.state === "queued");
+    if (!value.trim() && this.attachments.length === 0 && this.annotations.length === 0 && queued) {
+      this.steerQueuedPrompt(queued.id);
+      return true;
+    }
     if (!this.props.canSubmit(value) || this.submittingLocally) return false;
     this.submittingLocally = true;
     const submittedRevision = this.draftRevision;
@@ -565,8 +578,17 @@ export class ChatStore extends Store<ChatStoreProps> {
     }
   }
 
-  dequeuePrompts() {
-    return this.props.dequeuePrompts?.() ?? Promise.resolve();
+  steerQueuedPrompt(id: string) {
+    this.props.steerQueuedPrompt?.(id);
+  }
+  editQueuedPrompt(id: string) {
+    this.props.editQueuedPrompt?.(id);
+  }
+  removeQueuedPrompt(id: string) {
+    this.props.removeQueuedPrompt?.(id);
+  }
+  cancelSteering() {
+    return this.props.cancelSteering?.() ?? Promise.resolve();
   }
 
   get draftActivationCandidates() {

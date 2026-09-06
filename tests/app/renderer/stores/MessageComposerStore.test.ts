@@ -133,21 +133,7 @@ class DraftHarnessStore extends Store<{ client: RendererClient }> {
 }
 
 describe("MessageComposerStore", () => {
-  it("restores all dequeued messages to the composer", () => {
-    const model = Session.create({ sessionId: "session-1", workingDirectory: "/project" });
-    const root = mount(
-      createStore(HarnessStore, { client: {} as RendererClient, model, existing: true }),
-    );
-
-    root.composer.restoreDequeuedMessages(["External steering", "External follow-up"]);
-
-    expect(root.draft).toBe("External steering\n\nExternal follow-up\n\nFirst message");
-
-    root[Symbol.dispose]();
-    model[Symbol.dispose]();
-  });
-
-  it("sends streaming input directly to Pi's follow-up queue without transcript optimism", async () => {
+  it("keeps streaming input in the local editable queue by default", async () => {
     const model = Session.create({ sessionId: "session-1", workingDirectory: "/project" });
     const followUp = vi.fn(async () => "turn-2");
     const client = { projectSessions: { followUp } } as unknown as RendererClient;
@@ -157,11 +143,37 @@ describe("MessageComposerStore", () => {
 
     await root.composer.submit();
 
-    expect(followUp).toHaveBeenCalledWith(
-      expect.objectContaining({ sessionId: "session-1", text: "First message" }),
-      expect.objectContaining({ signal: root.composer.signal }),
-    );
+    expect(followUp).not.toHaveBeenCalled();
+    expect(root.composer.queuedPrompts).toEqual([
+      expect.objectContaining({ text: "First message" }),
+    ]);
     expect(root.composer.optimisticUserMessages.pending).toEqual([]);
+
+    root[Symbol.dispose]();
+    model[Symbol.dispose]();
+  });
+
+  it("shows an active steer until it is cancelled", async () => {
+    const model = Session.create({ sessionId: "session-1", workingDirectory: "/project" });
+    const steer = vi.fn(async () => "turn-2");
+    const clearQueue = vi.fn(async () => ({ steering: ["First message"], followUp: [] }));
+    const client = { projectSessions: { steer, clearQueue } } as unknown as RendererClient;
+    const root = mount(
+      createStore(HarnessStore, { client, model, existing: true, streaming: true }),
+    );
+
+    await root.composer.submit();
+    root.composer.steerQueuedPrompt(root.composer.queuedPrompts[0]!.id);
+
+    expect(steer).toHaveBeenCalledOnce();
+    expect(root.composer.queuedPrompts).toEqual([]);
+    expect(root.composer.parts).toEqual([
+      expect.objectContaining({ text: "First message", deliveryState: "steering" }),
+    ]);
+
+    await root.composer.cancelSteering();
+
+    expect(clearQueue).toHaveBeenCalledOnce();
     expect(root.composer.parts).toEqual([]);
 
     root[Symbol.dispose]();

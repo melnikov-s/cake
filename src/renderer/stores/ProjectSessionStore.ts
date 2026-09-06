@@ -322,29 +322,31 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
           { signal: this.signal },
         ),
       usage: () => this.model.usage,
-      queuedPrompts: () =>
-        this.model.uiParts.flatMap((part) =>
-          part.kind === "text" &&
-          part.role === "user" &&
-          (part.deliveryState === "queued" || part.deliveryState === "steering")
-            ? [
-                {
-                  id: part.id,
-                  text: part.text,
-                  attachments: [],
-                  renderUserMessageAsMarkdown: part.renderAs === "markdown",
-                },
-              ]
-            : [],
-        ),
-      dequeuePrompts: async () => {
-        const queued = await this.client.projectSessions.clearQueue(
-          { sessionId: this.sessionId },
-          { signal: this.signal },
-        );
-        if (!this.signal.aborted)
-          this.composerStore.restoreDequeuedMessages([...queued.steering, ...queued.followUp]);
+      queuedPrompts: () => {
+        return [
+          ...this.composerStore.queuedPrompts.map((entry) => ({
+            ...entry,
+            state: "queued" as const,
+          })),
+          ...this.composerStore.parts.flatMap((part) =>
+            part.kind === "text" && part.role === "user" && part.deliveryState === "steering"
+              ? [
+                  {
+                    id: part.id,
+                    text: part.text,
+                    attachments: [],
+                    renderUserMessageAsMarkdown: part.renderAs === "markdown",
+                    state: "steering" as const,
+                  },
+                ]
+              : [],
+          ),
+        ];
       },
+      steerQueuedPrompt: (id) => this.composerStore.steerQueuedPrompt(id),
+      editQueuedPrompt: (id) => this.composerStore.editQueuedPrompt(id),
+      removeQueuedPrompt: (id) => this.composerStore.removeQueuedPrompt(id),
+      cancelSteering: () => this.composerStore.cancelSteering(),
       scheduledMessages: () => this.model.scheduledMessages,
       cancelScheduledMessage: (id) =>
         this.client.scheduledMessages.cancel(id, { signal: this.signal }),

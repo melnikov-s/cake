@@ -130,6 +130,15 @@ export class OptimisticUserMessagesStore extends Store<OptimisticUserMessagesSto
       : undefined;
   }
 
+  removeByDeliveryState(deliveryState: "sending" | "steering" | "queued") {
+    const ids = this.pending
+      .filter((message) =>
+        message.parts.some((part) => part.kind === "text" && part.deliveryState === deliveryState),
+      )
+      .map((message) => message.id);
+    for (const id of ids) this.remove(id);
+  }
+
   clear() {
     this.pending.splice(0);
   }
