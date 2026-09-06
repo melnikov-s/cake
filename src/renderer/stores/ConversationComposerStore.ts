@@ -1,26 +1,13 @@
 import { Store, child, createStore, observable, snapshot } from "r-state-tree";
-import type {
-  Annotation,
-  Attachment,
-  ChatConfiguration,
-  FileSuggestion,
-  UiPart,
-} from "../../ipc/session-contract";
+import type { Annotation, Attachment, FileSuggestion, UiPart } from "../../ipc/session-contract";
 import { parsePiBuiltinCommand } from "../../ipc/session-contract";
-import type {
-  ProjectSessionPromptInput,
-  ProjectSessionStartInput,
-} from "../../domain/project-session-data";
 import type { RendererEvent } from "../RendererEvent";
-import type { SessionRegistryStore } from "./SessionRegistryStore";
-import type { ReviewsStore } from "./ReviewsStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import { describeError } from "../error-details";
 import { pastedImageAttachments } from "../pasted-image-attachments";
 import { RendererClientContext } from "../client/RendererClientContext";
 import type { WorktreeDraftChoice } from "./WorktreeCreationStore";
 import { OptimisticUserMessagesStore } from "./OptimisticUserMessagesStore";
-import { parseScheduledMessage } from "../../utils/scheduled-message-time";
 import { shouldRenderMarkdown } from "../../utils/markdown";
 
 /** A prompt held locally while the session streams, shown as a chip above the composer. */
@@ -31,32 +18,60 @@ export interface QueuedPrompt {
   renderUserMessageAsMarkdown: boolean;
 }
 
-export interface MessageComposerStoreProps {
-  sessionRegistry: SessionRegistryStore;
-  reviews(): ReviewsStore;
-  projectPath(): string | undefined;
+export interface ComposerDeliveryInput {
+  sessionId: string;
+  text: string;
+  attachments: Attachment[];
+  delivery: "prompt" | "steer";
+  renderUserMessageAsMarkdown: boolean;
+}
+
+interface DraftPrompt {
+  text: string;
+  attachments: Attachment[];
+}
+
+export interface ConversationComposerStoreProps {
+  projectPath?(): string | undefined;
   sessionId(): string | undefined;
   canonicalParts(): UiPart[];
   draft(): string;
   setDraft(value: string): void;
   canSubmit(): boolean;
   isStreaming(): boolean;
-  openCommandPane(pane: "changelog" | "tree" | "resources"): Promise<void>;
-  selectModel(value: string): Promise<void>;
-  renameSession(name: string): Promise<void>;
+  queueWhileStreaming?(): boolean;
+  openCommandPane?(pane: "changelog" | "tree" | "resources"): Promise<void>;
+  selectModel(value: string): Promise<boolean | void>;
+  renameSession(name: string): Promise<boolean | void>;
   handoffSession(entryId: string, prompt?: string, resolveSource?: boolean): Promise<boolean>;
+  deliver(input: ComposerDeliveryInput): Promise<boolean | void>;
+  editMessage(input: Omit<ComposerDeliveryInput, "delivery"> & { entryId: string }): Promise<void>;
+  compact(sessionId: string, instructions?: string): Promise<void>;
+  clearQueue?(): Promise<void>;
+  scheduleMessage?(sessionId: string, args: string): Promise<boolean>;
   operations: SessionOperationCoordinatorStore;
   operationOwner: string;
-  newSessionRequest?():
-    | { path: string; configuration?: ChatConfiguration; name?: string }
-    | undefined;
-  prepareNewSession?(firstUserMessage: string): Promise<boolean>;
+  draftSessionPrompt?(sessionId: string): DraftPrompt | undefined;
+  isDeferredSession?(sessionId: string): boolean;
+  createDraftSession?(
+    sessionId: string,
+    text: string,
+    attachments: Attachment[],
+  ): boolean | Promise<boolean | void>;
+  updateDraftSession?(
+    sessionId: string,
+    text: string,
+    attachments: Attachment[],
+  ): boolean | Promise<boolean | void>;
+  activateDraftSession?(sessionId: string): DraftPrompt | undefined;
+  applyGeneratedDraftName?(sessionId: string, title: string): void;
   configureDraftActivation?(choice: WorktreeDraftChoice): void;
   sessionCreationChoice?(): WorktreeDraftChoice;
+  editorText?(entryId: string): string | undefined;
 }
 
 /** Owns attachments, the local prompt queue, optimistic immediate prompts, and prompt delivery. */
-export class MessageComposerStore extends Store<MessageComposerStoreProps> {
+export class ConversationComposerStore extends Store<ConversationComposerStoreProps> {
   @snapshot attachments: Attachment[] = observable([]);
   @snapshot annotations: Annotation[] = observable([]);
   @snapshot editorContextAttachment: Extract<Attachment, { kind: "source" }> | undefined;
@@ -68,7 +83,7 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
   editingDraftSession = false;
   private drainingQueue = false;
 
-  constructor(props: MessageComposerStore["props"]) {
+  constructor(props: ConversationComposerStore["props"]) {
     super(props);
     this.reaction(
       () => this.props.isStreaming(),
@@ -107,7 +122,7 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     const canonical = this.props.canonicalParts();
     const sessionId = this.props.sessionId();
     if (!sessionId) return canonical;
-    const staged = this.props.sessionRegistry.draftSessionPrompt?.(sessionId);
+    const staged = this.props.draftSessionPrompt?.(sessionId);
     if (staged && !this.editingDraftSession) return this.draftParts(sessionId, staged);
     return this.optimisticUserMessages.parts;
   }
@@ -218,7 +233,7 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
   }
 
   suggestFiles(prefix: string): Promise<ReadonlyArray<FileSuggestion>> {
-    const projectPath = this.props.projectPath();
+    const projectPath = this.props.projectPath?.();
     return projectPath
       ? this.client.filesystem.suggestFiles(projectPath, prefix, { signal: this.signal })
       : Promise.resolve([]);
@@ -244,7 +259,7 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
       const attachments = this.submissionAttachments();
       const sessionId = this.props.sessionId();
       if (!sessionId) return;
-      await this.props.sessionRegistry.updateDraftSession(sessionId, text, attachments);
+      await this.props.updateDraftSession?.(sessionId, text, attachments);
       this.editingDraftSession = false;
       const choice = this.props.sessionCreationChoice?.() ?? { kind: "draft" };
       if (choice.kind !== "draft") {
@@ -260,18 +275,25 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
       return;
     }
     const command = text.toLocaleLowerCase();
-    if (command === "/tree" || command === "/resources" || command === "/changelog") {
+    if (
+      this.props.openCommandPane &&
+      (command === "/tree" || command === "/resources" || command === "/changelog")
+    ) {
       this.props.setDraft("");
       await this.props.openCommandPane(
         command === "/tree" ? "tree" : command === "/changelog" ? "changelog" : "resources",
       );
-      return;
+      return true;
     }
     const builtin = parsePiBuiltinCommand(text);
     if (builtin?.name === "handoff" || builtin?.name === "handoffandresolve") {
-      if (this.attachments.length > 0 || this.editorContextAttachment) {
+      if (
+        this.attachments.length > 0 ||
+        this.annotations.length > 0 ||
+        this.editorContextAttachment
+      ) {
         this.reportError(new Error("Remove attachments before using /handoff"));
-        return;
+        return false;
       }
       const assistantPart = this.props
         .canonicalParts()
@@ -285,33 +307,31 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
       const entryId = assistantPart?.kind === "text" ? assistantPart.entryId : undefined;
       if (!entryId) {
         this.reportError(new Error("Handoff requires a completed assistant response"));
-        return;
+        return false;
       }
-      if (
-        await this.props.handoffSession(
-          entryId,
-          builtin.args || undefined,
-          builtin.name === "handoffandresolve",
-        )
-      )
-        this.props.setDraft("");
-      return;
+      const handedOff = await this.props.handoffSession(
+        entryId,
+        builtin.args || undefined,
+        builtin.name === "handoffandresolve",
+      );
+      if (handedOff && this.props.draft().trim() === text) this.props.setDraft("");
+      return handedOff;
     }
     if (builtin?.name === "model") {
       if (builtin.args.indexOf("/") < 1) {
         this.reportError(new Error("Usage: /model <provider/model>"));
-        return;
+        return false;
       }
-      this.props.setDraft("");
-      await this.props.selectModel(builtin.args);
-      return;
+      const selected = (await this.props.selectModel(builtin.args)) !== false;
+      if (selected && this.props.draft().trim() === text) this.props.setDraft("");
+      return selected;
     }
     if (builtin?.name === "name") {
-      this.props.setDraft("");
-      await this.renameSession(builtin.args);
-      return;
+      const renamed = await this.renameSession(builtin.args);
+      if (renamed && this.props.draft().trim() === text) this.props.setDraft("");
+      return renamed;
     }
-    if (builtin?.name === "schedule") {
+    if (builtin?.name === "schedule" && this.props.scheduleMessage) {
       if (
         this.attachments.length > 0 ||
         this.annotations.length > 0 ||
@@ -321,23 +341,14 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
         return false;
       }
       const sessionId = this.props.sessionId();
-      if (!sessionId || this.props.sessionRegistry.isTemporarySession(sessionId)) {
+      if (!sessionId || this.props.isDeferredSession?.(sessionId)) {
         this.reportError(new Error("Scheduling requires an existing conversation"));
         return false;
       }
       try {
-        const scheduled = parseScheduledMessage(builtin.args);
-        await this.client.scheduledMessages.schedule(
-          {
-            targetSessionId: sessionId,
-            text: scheduled.text,
-            sendAt: scheduled.sendAt,
-            createdBySessionId: sessionId,
-          },
-          { signal: this.signal },
-        );
-        if (!this.signal.aborted) this.props.setDraft("");
-        return !this.signal.aborted;
+        const scheduled = await this.props.scheduleMessage(sessionId, builtin.args);
+        if (scheduled && !this.signal.aborted) this.props.setDraft("");
+        return scheduled && !this.signal.aborted;
       } catch (error) {
         if (!this.signal.aborted) this.reportError(error);
         return false;
@@ -369,10 +380,13 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
       const entryId = this.editingEntryId;
       this.editingEntryId = undefined;
       this.clearComposer();
-      await this.deliverEdit(entryId, text, attachments, sessionId, renderUserMessageAsMarkdown);
-      return;
+      return this.deliverEdit(entryId, text, attachments, sessionId, renderUserMessageAsMarkdown);
     }
-    if (deliveryOverride === undefined && this.props.isStreaming()) {
+    if (
+      deliveryOverride === undefined &&
+      this.props.isStreaming() &&
+      (this.props.queueWhileStreaming?.() ?? false)
+    ) {
       // While streaming, submissions queue locally and stay editable above the composer.
       if (text || explicitAttachments.length > 0 || annotations.length > 0) {
         this.props.setDraft("");
@@ -391,7 +405,7 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
       this.props.setDraft("");
       this.attachments.splice(0);
       this.annotations.splice(0);
-      await this.deliver(
+      return this.deliver(
         text,
         attachments,
         deliveryOverride ?? "prompt",
@@ -404,34 +418,33 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
 
   async createDraftSession() {
     const sessionId = this.props.sessionId();
-    if (!sessionId || !this.props.sessionRegistry.isTemporarySession?.(sessionId)) return false;
+    if (!sessionId || !this.props.isDeferredSession?.(sessionId) || !this.props.createDraftSession)
+      return false;
     const text = this.props.draft().trim();
     const attachments = this.submissionAttachments();
     if (!text && attachments.length === 0) return false;
-    await this.props.sessionRegistry.createDraftSession(sessionId, text, attachments);
+    if ((await this.props.createDraftSession(sessionId, text, attachments)) === false) return false;
     this.clearComposer();
     this.props.configureDraftActivation?.({ kind: "current" });
     if (text)
       void this.client.workspaces
         .generateSessionTitle(text, { signal: this.signal })
         .then((title) => {
-          if (title && !this.signal.aborted)
-            this.props.sessionRegistry.applyGeneratedDraftName(sessionId, title);
+          if (title && !this.signal.aborted) this.props.applyGeneratedDraftName?.(sessionId, title);
         })
         .catch(() => undefined);
     return true;
   }
 
-  async activateDraftSession(choice?: WorktreeDraftChoice) {
+  async activateDraftSession(choice?: WorktreeDraftChoice): Promise<boolean> {
     const sessionId = this.props.sessionId();
     if (!sessionId || choice?.kind === "draft") return false;
     if (choice) this.props.configureDraftActivation?.(choice);
-    const staged = this.props.sessionRegistry.activateDraftSession(sessionId);
+    const staged = this.props.activateDraftSession?.(sessionId);
     if (!staged) return false;
     this.props.setDraft(staged.text);
     this.restoreAttachments(staged.attachments);
-    await this.submit(undefined, shouldRenderMarkdown(staged.text));
-    return true;
+    return (await this.submit(undefined, shouldRenderMarkdown(staged.text))) !== false;
   }
 
   cancelDraftEdit() {
@@ -441,10 +454,10 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     this.props.configureDraftActivation?.({ kind: "current" });
   }
 
-  beginEditMessage(entryId: string, editorText?: string) {
+  beginEditMessage(entryId: string) {
     const sessionId = this.props.sessionId();
     if (!sessionId || this.props.isStreaming()) return;
-    const staged = this.props.sessionRegistry.draftSessionPrompt?.(sessionId);
+    const staged = this.props.draftSessionPrompt?.(sessionId);
     if (staged && entryId === `draft:${sessionId}`) {
       this.props.setDraft(staged.text);
       this.restoreAttachments(staged.attachments);
@@ -474,7 +487,8 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     const end = nextAssistantOffset < 0 ? parts.length : userPartIndex + 1 + nextAssistantOffset;
     const turnParts = parts.slice(lastAssistantIndex + 1, end);
     this.props.setDraft(
-      editorText ?? (userPart.kind === "text" ? userPart.text : userPart.content),
+      this.props.editorText?.(entryId) ??
+        (userPart.kind === "text" ? userPart.text : userPart.content),
     );
     this.restoreAttachments(this.attachmentsFromParts(turnParts));
     this.editingEntryId = entryId;
@@ -488,24 +502,23 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
   }
 
   async cancelSteering() {
-    const sessionId = this.props.sessionId();
-    if (!sessionId) return;
-    await this.client.projectSessions.clearQueue({ sessionId }, { signal: this.signal });
+    if (!this.props.clearQueue) return;
+    await this.props.clearQueue();
     if (!this.signal.aborted) this.optimisticUserMessages.removeByDeliveryState("steering");
   }
 
   private async renameSession(name: string) {
     if (!name.trim()) {
       this.reportError(new Error("Usage: /name <title>"));
-      return;
+      return false;
     }
     this.error = undefined;
     this.errorDetails = undefined;
     try {
-      await this.props.renameSession(name.trim());
+      return (await this.props.renameSession(name.trim())) !== false;
     } catch (error) {
-      if (this.signal.aborted) return;
-      this.reportError(error);
+      if (!this.signal.aborted) this.reportError(error);
+      return false;
     }
   }
 
@@ -575,16 +588,13 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
       renderUserMessageAsMarkdown,
     );
     try {
-      await this.client.projectSessions.editMessage(
-        {
-          sessionId,
-          entryId,
-          text,
-          attachments,
-          renderUserMessageAsMarkdown,
-        },
-        { signal: this.signal },
-      );
+      await this.props.editMessage({
+        sessionId,
+        entryId,
+        text,
+        attachments,
+        renderUserMessageAsMarkdown,
+      });
       this.finishOperation(operationId);
       return true;
     } catch (error) {
@@ -744,10 +754,7 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
       // Compaction is a session operation, not a prompt: no optimistic user message.
       const operationId = this.props.operations.start(this.props.operationOwner);
       try {
-        await this.client.projectSessions.compact(
-          { sessionId, instructions: builtin.args || undefined },
-          { signal: this.signal },
-        );
+        await this.props.compact(sessionId, builtin.args || undefined);
         this.finishOperation(operationId);
         if (this.signal.aborted) {
           this.finishOperation(operationId);
@@ -761,7 +768,7 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
         }
         this.reportError(error);
         this.finishOperation(operationId);
-        if (restoreOnError && !this.props.draft().trim()) this.props.setDraft(text);
+        if (restoreOnError) this.restoreSubmission(text, attachments);
         return false;
       }
     }
@@ -774,55 +781,22 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
       renderUserMessageAsMarkdown,
     );
     try {
-      const pendingNewSession = this.props.newSessionRequest?.();
-      if (pendingNewSession)
-        this.props.sessionRegistry.projectNewSessionSubmission(sessionId, text);
-      if (
-        pendingNewSession &&
-        !(await (this.props.prepareNewSession?.(text) ?? Promise.resolve(true)))
-      ) {
+      const delivered = await this.props.deliver({
+        sessionId,
+        text,
+        attachments,
+        delivery,
+        renderUserMessageAsMarkdown,
+      });
+      if (delivered === false) {
         this.removePendingUserMessage(operationId);
         this.finishOperation(operationId);
-        if (restoreOnError) {
-          if (!this.props.draft().trim()) this.props.setDraft(text);
-          for (const attachment of attachments) {
-            if (attachment.kind === "annotation") this.annotations.push(...attachment.annotations);
-            else this.attachments.push(attachment);
-          }
-        }
+        if (restoreOnError) this.restoreSubmission(text, attachments);
         return false;
-      }
-      const newSession = this.props.newSessionRequest?.();
-      if (newSession) {
-        const input: ProjectSessionStartInput = {
-          sessionId,
-          workingDirectory: newSession.path,
-          text,
-          renderUserMessageAsMarkdown,
-          attachments,
-        };
-        if (newSession.configuration !== undefined)
-          Object.assign(input, { configuration: newSession.configuration });
-        if (newSession.name !== undefined) Object.assign(input, { name: newSession.name });
-        await this.client.projectSessions.start(input, { signal: this.signal });
-        this.props.sessionRegistry.materializeNewSession(sessionId, newSession.path);
-      } else {
-        const command =
-          delivery === "steer"
-            ? this.client.projectSessions.steer
-            : this.client.projectSessions.prompt;
-        const promptInput: ProjectSessionPromptInput = {
-          sessionId,
-          text,
-          renderUserMessageAsMarkdown,
-          attachments,
-        };
-        await command(promptInput, { signal: this.signal });
       }
       this.finishOperation(operationId);
       return !this.signal.aborted;
     } catch (error) {
-      this.props.sessionRegistry.cancelNewSessionSubmission(sessionId);
       if (this.signal.aborted) {
         this.finishOperation(operationId);
         return false;
@@ -830,14 +804,17 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
       this.removePendingUserMessage(operationId);
       this.reportError(error);
       this.finishOperation(operationId);
-      if (restoreOnError) {
-        if (!this.props.draft().trim()) this.props.setDraft(text);
-        for (const attachment of attachments) {
-          if (attachment.kind === "annotation") this.annotations.push(...attachment.annotations);
-          else this.attachments.push(attachment);
-        }
-      }
+      if (restoreOnError) this.restoreSubmission(text, attachments);
       return false;
+    }
+  }
+
+  private restoreSubmission(text: string, attachments: readonly Attachment[]) {
+    if (!this.props.draft().trim()) this.props.setDraft(text);
+    // A failed send must not discard context added for the next message while awaiting delivery.
+    for (const attachment of attachments) {
+      if (attachment.kind === "annotation") this.annotations.push(...attachment.annotations);
+      else if (attachment !== this.editorContextAttachment) this.attachments.push(attachment);
     }
   }
 

@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { SESSION_TITLE_MAX_LENGTH } from "../ipc/session-contract";
 import { ThinkingLevel } from "../services/pi/model-data";
 import { CakeSessionIdentity, ConversationEvent, ConversationSnapshot } from "./conversation-data";
 
@@ -26,7 +27,7 @@ export interface CakeControlTool extends Schema.Schema.Type<typeof CakeControlTo
 
 export const CakeChatSummary = Schema.Struct({
   sessionId: boundedId,
-  title: Schema.String,
+  title: Schema.String.check(Schema.isMaxLength(SESSION_TITLE_MAX_LENGTH)),
   createdAt: Schema.String,
   modifiedAt: Schema.String,
   messageCount: Schema.Int,

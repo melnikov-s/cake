@@ -89,13 +89,22 @@ test("splits project chats while retaining independent drafts and pane focus", a
     await page.getByRole("button", { name: "New Cake Chat" }).first().click();
     await expect(panes).toHaveCount(1);
     const firstCakeInput = panes.nth(0).getByLabel("Message Cake Chat");
+    await expect(firstCakeInput).toBeFocused();
     await firstCakeInput.fill("first Cake Chat draft");
+    await expect(panes.nth(0).getByRole("button", { name: "Send" })).toBeEnabled();
 
     await panes.nth(0).getByRole("button", { name: "Split right" }).click();
     await expect(panes).toHaveCount(2);
     const secondCakeInput = panes.nth(1).getByLabel("Message Cake Chat");
     await expect(secondCakeInput).toBeFocused();
+    await secondCakeInput.pressSequentially("/model invalid");
+    await panes.nth(1).getByRole("button", { name: "Send" }).click();
+    await expect(
+      panes.nth(1).getByText("Usage: /model <provider/model>", { exact: true }),
+    ).toBeVisible();
+    await expect(secondCakeInput).toHaveValue("/model invalid");
     await secondCakeInput.fill("second Cake Chat draft");
+    await expect(panes.nth(1).getByRole("button", { name: "Send" })).toBeEnabled();
 
     await panes.nth(0).locator("header").click();
     await expect(firstCakeInput).toHaveValue("first Cake Chat draft");

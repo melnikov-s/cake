@@ -5,7 +5,12 @@ import type { ChatConfiguration, ModelPreset } from "../../ipc/session-contract"
 import type { SessionRegistryStore } from "./SessionRegistryStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { ReviewsStore } from "./ReviewsStore";
-import { MessageComposerStore } from "./MessageComposerStore";
+import { ConversationComposerStore, type ComposerDeliveryInput } from "./ConversationComposerStore";
+import type {
+  ProjectSessionPromptInput,
+  ProjectSessionStartInput,
+} from "../../domain/project-session-data";
+import { parseScheduledMessage } from "../../utils/scheduled-message-time";
 import { ChatConfigurationStore } from "./ChatConfigurationStore";
 import { ChatStore } from "./ChatStore";
 import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
@@ -196,10 +201,8 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   }
 
   @child
-  get composerStore(): MessageComposerStore {
-    return createStore(MessageComposerStore, {
-      sessionRegistry: this.props.registry,
-      reviews: this.props.reviews,
+  get composerStore(): ConversationComposerStore {
+    return createStore(ConversationComposerStore, {
       projectPath: () => this.workspacePath,
       sessionId: () => this.sessionId,
       canonicalParts: () => this.canonicalParts,
@@ -207,18 +210,100 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       setDraft: (value) => this.chatStore.setDraft(value),
       canSubmit: () => this.canSubmit,
       isStreaming: () => this.isStreaming,
+      queueWhileStreaming: () => true,
       openCommandPane: (pane) => this.props.openCommandPane(pane),
-      selectModel: (value) => this.configurationStore.selectModel(value),
+      selectModel: async (value) => {
+        await this.configurationStore.selectModel(value);
+        return !this.signal.aborted && !this.configurationStore.error;
+      },
       renameSession: (name) => this.props.renameSession(name),
       handoffSession: (entryId, prompt, resolveSource) =>
         this.props.handoffSession(entryId, prompt, resolveSource),
+      deliver: (input) => this.deliverComposerMessage(input),
+      editMessage: (input) =>
+        this.client.projectSessions.editMessage(input, { signal: this.signal }),
+      compact: (sessionId, instructions) =>
+        this.client.projectSessions.compact({ sessionId, instructions }, { signal: this.signal }),
+      clearQueue: async () => {
+        await this.client.projectSessions.clearQueue(
+          { sessionId: this.sessionId },
+          { signal: this.signal },
+        );
+      },
+      scheduleMessage: (sessionId, args) => this.scheduleMessage(sessionId, args),
       operations: this.props.operations,
       operationOwner: this.composerOwner,
-      newSessionRequest: this.props.newSessionRequest,
-      prepareNewSession: (firstUserMessage) => this.props.prepareNewSession(firstUserMessage),
+      draftSessionPrompt: (sessionId) => this.props.registry.draftSessionPrompt(sessionId),
+      isDeferredSession: (sessionId) => this.props.registry.isTemporarySession(sessionId),
+      createDraftSession: async (sessionId, text, attachments) => {
+        await this.props.registry.createDraftSession(sessionId, text, attachments);
+        return true;
+      },
+      updateDraftSession: async (sessionId, text, attachments) => {
+        await this.props.registry.updateDraftSession(sessionId, text, attachments);
+        return true;
+      },
+      activateDraftSession: (sessionId) => this.props.registry.activateDraftSession(sessionId),
+      applyGeneratedDraftName: (sessionId, title) =>
+        this.props.registry.applyGeneratedDraftName(sessionId, title),
       configureDraftActivation: (choice) => this.props.configureDraftActivation(choice),
       sessionCreationChoice: this.props.sessionCreationChoice,
+      editorText: (entryId) => this.model.tree.find((entry) => entry.id === entryId)?.editorText,
     });
+  }
+
+  private async deliverComposerMessage(input: ComposerDeliveryInput) {
+    const pendingNewSession = this.props.newSessionRequest();
+    if (pendingNewSession)
+      this.props.registry.projectNewSessionSubmission(input.sessionId, input.text);
+    try {
+      if (pendingNewSession && !(await this.props.prepareNewSession(input.text))) return false;
+      const newSession = this.props.newSessionRequest();
+      if (newSession) {
+        const startInput: ProjectSessionStartInput = {
+          sessionId: input.sessionId,
+          workingDirectory: newSession.path,
+          text: input.text,
+          renderUserMessageAsMarkdown: input.renderUserMessageAsMarkdown,
+          attachments: input.attachments,
+        };
+        if (newSession.configuration !== undefined)
+          Object.assign(startInput, { configuration: newSession.configuration });
+        if (newSession.name !== undefined) Object.assign(startInput, { name: newSession.name });
+        await this.client.projectSessions.start(startInput, { signal: this.signal });
+        this.props.registry.materializeNewSession(input.sessionId, newSession.path);
+      } else {
+        const command =
+          input.delivery === "steer"
+            ? this.client.projectSessions.steer
+            : this.client.projectSessions.prompt;
+        const promptInput: ProjectSessionPromptInput = {
+          sessionId: input.sessionId,
+          text: input.text,
+          renderUserMessageAsMarkdown: input.renderUserMessageAsMarkdown,
+          attachments: input.attachments,
+        };
+        await command(promptInput, { signal: this.signal });
+      }
+      return true;
+    } catch (error) {
+      this.props.registry.cancelNewSessionSubmission(input.sessionId);
+      throw error;
+    }
+  }
+
+  private async scheduleMessage(sessionId: string, args: string) {
+    const scheduled = parseScheduledMessage(args);
+    await this.client.scheduledMessages.schedule(
+      {
+        targetSessionId: sessionId,
+        text: scheduled.text,
+        sendAt: scheduled.sendAt,
+        createdBySessionId: sessionId,
+      },
+      { signal: this.signal },
+    );
+    return !this.signal.aborted;
   }
 
   @child
@@ -291,11 +376,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       activateDraft: (choice) => this.composerStore.activateDraftSession(choice),
       sessionCreationChoice: this.props.sessionCreationChoice,
       draftActivationCandidates: this.props.draftActivationCandidates,
-      editLastUserMessage: (entryId) =>
-        this.composerStore.beginEditMessage(
-          entryId,
-          this.model.tree.find((entry) => entry.id === entryId)?.editorText,
-        ),
+      editLastUserMessage: (entryId) => this.composerStore.beginEditMessage(entryId),
       isDraftSession: () => this.props.registry.isDraftSession(this.sessionId),
       editingMessage: () =>
         Boolean(this.composerStore.editingEntryId || this.composerStore.editingDraftSession),

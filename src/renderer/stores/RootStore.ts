@@ -1031,7 +1031,9 @@ export class RootStore extends Store<{
           this.client.projectSessions.abort({ sessionId }, { signal: this.signal }),
         ),
       renameSession: (sessionId, title) =>
-        this.projectWorkbenchStore.sessionManagementStore.renameSession(sessionId, title),
+        this.cakeChatCollectionStore.summaries.some((session) => session.sessionId === sessionId)
+          ? this.cakeChatCollectionStore.renameSession(sessionId, title).then(() => undefined)
+          : this.projectWorkbenchStore.sessionManagementStore.renameSession(sessionId, title),
       setSessionResolved: (sessionId, resolved) => this.resolveProjectSession(sessionId, resolved),
       setSessionsResolved: async (sessionIds, resolved) => {
         const count = await this.projectWorkbenchStore.sessionManagementStore.resolveSessionsById(

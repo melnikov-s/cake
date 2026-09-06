@@ -1,6 +1,7 @@
 import { Effect, Schema } from "effect";
 import { jsonObjectSchema, jsonValueSchema, type JsonValue } from "../ipc/json-contract";
 import {
+  SESSION_TITLE_MAX_LENGTH,
   thinkingLevelSchema,
   type ChatConfiguration,
   type ProjectRecord,
@@ -102,7 +103,10 @@ const appControlArgumentSchemas = {
   list_pending_messages: sessionIdTargetSchema,
   dequeue_pending_messages: sessionIdTargetSchema,
   abort_session: sessionIdTargetSchema,
-  rename_session: Schema.Struct({ ...sessionIdTargetSchema.fields, title: trimmed(1, 500) }),
+  rename_session: Schema.Struct({
+    ...sessionIdTargetSchema.fields,
+    title: trimmed(1, SESSION_TITLE_MAX_LENGTH),
+  }),
   set_session_resolved: Schema.Struct({
     ...sessionIdTargetSchema.fields,
     resolved: Schema.Boolean,

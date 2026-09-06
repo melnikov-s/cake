@@ -1,5 +1,6 @@
 import { applySnapshot, createStore, toSnapshot } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
+import { SESSION_TITLE_MAX_LENGTH } from "../../../../src/ipc/session-contract";
 import type { RendererClient } from "../../../../src/renderer/client/RendererClient";
 import { CakeChatCatalog } from "../../../../src/renderer/models/CakeChatCatalog";
 import { CakeChatCollectionStore } from "../../../../src/renderer/stores/CakeChatCollectionStore";
@@ -8,6 +9,93 @@ import { RendererModels } from "../../../../src/renderer/RendererModels";
 import { Message } from "../../../../src/renderer/models/Message";
 
 describe("CakeChatCollectionStore", () => {
+  it.each(["/model invalid", "/handoff continue", "/name"])(
+    "retains rejected Cake Chat command %s for correction",
+    async (command) => {
+      const catalog = CakeChatCatalog.create({ loaded: true, sessions: [] });
+      const models = new RendererModels();
+      const { root, subject: store } = mountWithRendererClient(
+        createStore(CakeChatCollectionStore, {
+          catalog,
+          sessionModel: (sessionId) => models.cakeChat(sessionId),
+          tools: () => [],
+        }),
+        {} as RendererClient,
+      );
+      const session = store.activeSession!;
+      const submitted = await session.chatStore.submit(command);
+      expect(submitted).toBe(false);
+      expect(session.chatStore.draft).toBe(command);
+      expect(session.composerStore.error).toBeDefined();
+      root[Symbol.dispose]();
+      catalog[Symbol.dispose]();
+      models[Symbol.dispose]();
+    },
+  );
+
+  it.each([
+    ["/model provider/model", "setModel"],
+    ["/compact", "compact"],
+    ["Hello Cake", "prompt"],
+    ["/name New title", "rename"],
+  ] as const)("retains %s when %s fails", async (text, operation) => {
+    const fail = vi.fn(async () => {
+      throw new Error("Request failed");
+    });
+    const catalog = CakeChatCatalog.create({ loaded: true, sessions: [] });
+    const models = new RendererModels();
+    const { root, subject: store } = mountWithRendererClient(
+      createStore(CakeChatCollectionStore, {
+        catalog,
+        sessionModel: (sessionId) => models.cakeChat(sessionId),
+        tools: () => [],
+      }),
+      { cakeChats: { [operation]: fail } } as unknown as RendererClient,
+    );
+    const session = store.activeSession!;
+    store.markSessionStarted(session.sessionId);
+    const image = {
+      kind: "image" as const,
+      name: "context.png",
+      mimeType: "image/png",
+      data: "image",
+    };
+    session.composerStore.attachments.push(image);
+    expect(await session.chatStore.submit(text)).toBe(false);
+    expect(session.composerStore.attachments).toEqual([image]);
+    expect(fail).toHaveBeenCalledOnce();
+    expect(session.chatStore.draft).toBe(text);
+    expect(session.composerStore.optimisticUserMessages.pending).toEqual([]);
+    expect(session.composerStore.activeOperations).toEqual([]);
+    root[Symbol.dispose]();
+    catalog[Symbol.dispose]();
+    models[Symbol.dispose]();
+  });
+
+  it("reports failed saved-draft activation and retains its content for retry", async () => {
+    const prompt = vi.fn(async () => {
+      throw new Error("Send failed");
+    });
+    const catalog = CakeChatCatalog.create({ loaded: true, sessions: [] });
+    const models = new RendererModels();
+    const { root, subject: store } = mountWithRendererClient(
+      createStore(CakeChatCollectionStore, {
+        catalog,
+        sessionModel: (sessionId) => models.cakeChat(sessionId),
+        tools: () => [],
+      }),
+      { cakeChats: { prompt } } as unknown as RendererClient,
+    );
+    const session = store.activeSession!;
+    store.createDraftSession(session.sessionId, "Saved message", []);
+    expect(await session.chatStore.activateDraft()).toBe(false);
+    expect(session.chatStore.draft).toBe("Saved message");
+    expect(session.composerStore.optimisticUserMessages.pending).toEqual([]);
+    root[Symbol.dispose]();
+    catalog[Symbol.dispose]();
+    models[Symbol.dispose]();
+  });
+
   it("uses the shared optimistic message lifecycle for the first Cake Chat message", async () => {
     let acceptPrompt!: () => void;
     const prompt = vi.fn(
@@ -28,14 +116,15 @@ describe("CakeChatCollectionStore", () => {
     );
     const session = store.activeSession!;
 
-    const submission = session.submit("Hello Cake");
-    expect(session.parts).toEqual([
+    session.chatStore.setDraft("Hello Cake");
+    const submission = session.chatStore.submit();
+    expect(session.composerStore.parts).toEqual([
       expect.objectContaining({ text: "Hello Cake", deliveryState: "sending" }),
     ]);
 
     acceptPrompt();
     await submission;
-    expect(session.parts).toEqual([
+    expect(session.composerStore.parts).toEqual([
       expect.objectContaining({ text: "Hello Cake", deliveryState: "sending" }),
     ]);
 
@@ -48,8 +137,8 @@ describe("CakeChatCollectionStore", () => {
         status: "complete",
       }),
     );
-    expect(session.optimisticUserMessages.pending).toEqual([]);
-    expect(session.parts).toEqual([
+    expect(session.composerStore.optimisticUserMessages.pending).toEqual([]);
+    expect(session.composerStore.parts).toEqual([
       expect.objectContaining({ id: "canonical-user-1", deliveryState: undefined }),
     ]);
     root[Symbol.dispose]();
@@ -80,6 +169,58 @@ describe("CakeChatCollectionStore", () => {
     store.focusPane(store.sessionLayoutStore.panes[0]!.paneId);
     expect(store.sessionId).toBe(firstSessionId);
 
+    root[Symbol.dispose]();
+    catalog[Symbol.dispose]();
+    models[Symbol.dispose]();
+  });
+
+  it("uses the shared composer command handling to rename Cake Chat", async () => {
+    const catalog = CakeChatCatalog.create({ loaded: true, sessions: [] });
+    const models = new RendererModels();
+    const { root, subject: store } = mountWithRendererClient(
+      createStore(CakeChatCollectionStore, {
+        catalog,
+        sessionModel: (sessionId) => models.cakeChat(sessionId),
+        tools: () => [],
+      }),
+      {} as RendererClient,
+    );
+    const session = store.activeSession!;
+
+    await session.chatStore.submit("/name Shared composer title");
+
+    expect(store.summaries).toMatchObject([
+      { sessionId: session.sessionId, title: "Shared composer title" },
+    ]);
+    root[Symbol.dispose]();
+    catalog[Symbol.dispose]();
+    models[Symbol.dispose]();
+  });
+
+  it("caps Cake Chat titles when renaming", async () => {
+    const rename = vi.fn(async () => undefined);
+    const catalog = CakeChatCatalog.create({ loaded: true, sessions: [] });
+    const models = new RendererModels();
+    const { root, subject: store } = mountWithRendererClient(
+      createStore(CakeChatCollectionStore, {
+        catalog,
+        sessionModel: (sessionId) => models.cakeChat(sessionId),
+        tools: () => [],
+      }),
+      { cakeChats: { rename } } as unknown as RendererClient,
+    );
+    const sessionId = store.sessionId!;
+    store.markSessionStarted(sessionId);
+
+    await store.renameSession(sessionId, "x".repeat(SESSION_TITLE_MAX_LENGTH + 20));
+
+    expect(rename).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId,
+        name: "x".repeat(SESSION_TITLE_MAX_LENGTH),
+      }),
+      expect.anything(),
+    );
     root[Symbol.dispose]();
     catalog[Symbol.dispose]();
     models[Symbol.dispose]();
@@ -220,7 +361,7 @@ describe("CakeChatCollectionStore", () => {
     const session = store.activeSession;
     expect(session).toBeDefined();
 
-    await session!.submit("Hello Cake");
+    await session!.chatStore.submit("Hello Cake");
 
     expect(prompt).toHaveBeenNthCalledWith(
       1,
@@ -255,7 +396,7 @@ describe("CakeChatCollectionStore", () => {
     ]);
     expect(toSnapshot(store)).toMatchObject({ state: { pendingSessions: [] } });
 
-    await session!.submit("Follow up");
+    await session!.chatStore.submit("Follow up");
 
     expect(prompt).toHaveBeenNthCalledWith(
       2,

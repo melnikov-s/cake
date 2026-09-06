@@ -4,8 +4,7 @@ import type { RendererClient } from "../../../../src/renderer/client/RendererCli
 import { RendererClientContext } from "../../../../src/renderer/client/RendererClientContext";
 import { Message } from "../../../../src/renderer/models/Message";
 import { Session } from "../../../../src/renderer/models/Session";
-import { MessageComposerStore } from "../../../../src/renderer/stores/MessageComposerStore";
-import type { SessionRegistryStore } from "../../../../src/renderer/stores/SessionRegistryStore";
+import { ConversationComposerStore } from "../../../../src/renderer/stores/ConversationComposerStore";
 import { SessionOperationCoordinatorStore } from "../../../../src/renderer/stores/SessionOperationCoordinatorStore";
 
 class HarnessStore extends Store<{
@@ -44,19 +43,7 @@ class HarnessStore extends Store<{
         status: "complete",
       });
     });
-    const registry = {
-      findModel: () => {
-        throw new Error("Optimistic transcript reconciliation must not query the registry");
-      },
-      projectNewSessionSubmission: vi.fn(() => this.submissionOrder.push("projected")),
-      materializeNewSession,
-      cancelNewSessionSubmission: vi.fn(),
-    } as unknown as SessionRegistryStore;
-    return createStore(MessageComposerStore, {
-      sessionRegistry: registry,
-      reviews: () => {
-        throw new Error("ReviewsStore is not used by this test");
-      },
+    return createStore(ConversationComposerStore, {
       projectPath: () => "/project",
       sessionId: () => "session-1",
       canonicalParts: () => this.props.model.uiParts,
@@ -66,17 +53,31 @@ class HarnessStore extends Store<{
       },
       canSubmit: () => true,
       isStreaming: () => this.props.streaming ?? false,
+      queueWhileStreaming: () => true,
       openCommandPane: async () => undefined,
       selectModel: async () => undefined,
       renameSession: async () => undefined,
       handoffSession: async () => false,
+      deliver: async (input) => {
+        if (this.props.existing) {
+          const command =
+            input.delivery === "steer"
+              ? this.props.client.projectSessions.steer
+              : this.props.client.projectSessions.prompt;
+          await command(input);
+          return;
+        }
+        this.submissionOrder.push("projected", "prepared");
+        await this.props.client.projectSessions.start({ ...input, workingDirectory: "/project" });
+        materializeNewSession();
+      },
+      editMessage: async () => undefined,
+      compact: async () => undefined,
+      clearQueue: async () => {
+        await this.props.client.projectSessions.clearQueue({ sessionId: "session-1" });
+      },
       operations: this.operations,
       operationOwner: "composer:session-1",
-      newSessionRequest: () => (this.props.existing ? undefined : { path: "/project" }),
-      prepareNewSession: async () => {
-        this.submissionOrder.push("prepared");
-        return true;
-      },
     });
   }
 }
@@ -98,21 +99,7 @@ class DraftHarnessStore extends Store<{ client: RendererClient }> {
   }
 
   @child get composer() {
-    const registry = {
-      draftSessionPrompt: () => this.staged,
-      activateDraftSession: () => {
-        const staged = this.staged;
-        this.staged = undefined;
-        return staged;
-      },
-      projectNewSessionSubmission: vi.fn(),
-      cancelNewSessionSubmission: vi.fn(),
-    } as unknown as SessionRegistryStore;
-    return createStore(MessageComposerStore, {
-      sessionRegistry: registry,
-      reviews: () => {
-        throw new Error("ReviewsStore is not used by this test");
-      },
+    return createStore(ConversationComposerStore, {
       projectPath: () => "/project",
       sessionId: () => "draft-session",
       canonicalParts: () => [],
@@ -126,14 +113,71 @@ class DraftHarnessStore extends Store<{ client: RendererClient }> {
       selectModel: async () => undefined,
       renameSession: async () => undefined,
       handoffSession: async () => false,
+      deliver: async (input) => {
+        await this.props.client.projectSessions.prompt({
+          sessionId: input.sessionId,
+          text: input.text,
+          attachments: input.attachments,
+          renderUserMessageAsMarkdown: input.renderUserMessageAsMarkdown,
+        });
+      },
+      editMessage: async () => undefined,
+      compact: async () => undefined,
+      draftSessionPrompt: () => this.staged,
+      isDeferredSession: () => true,
+      activateDraftSession: () => {
+        const staged = this.staged;
+        this.staged = undefined;
+        return staged;
+      },
       operations: this.operations,
       operationOwner: "composer:draft-session",
     });
   }
 }
 
-describe("MessageComposerStore", () => {
-  it("keeps streaming input in the local editable queue by default", async () => {
+describe("ConversationComposerStore", () => {
+  it("preserves the next message's context when an in-flight send fails", async () => {
+    let rejectPrompt!: (error: Error) => void;
+    const prompt = vi.fn(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectPrompt = reject;
+        }),
+    );
+    const client = { projectSessions: { prompt } } as unknown as RendererClient;
+    const model = Session.create({ sessionId: "session-1", workingDirectory: "/project" });
+    const root = mount(createStore(HarnessStore, { client, model, existing: true }));
+    const sentImage = {
+      kind: "image" as const,
+      name: "sent.png",
+      mimeType: "image/png",
+      data: "sent",
+    };
+    const nextImage = { ...sentImage, name: "next.png", data: "next" };
+    const nextContext = {
+      kind: "source" as const,
+      name: "next.ts",
+      location: { path: "/project/next.ts", range: { start: { line: 1 }, end: { line: 2 } } },
+    };
+    root.composer.attachments.push(sentImage);
+    const submission = root.composer.submit();
+    root.draft = "Next message";
+    root.composer.attachments.push(nextImage);
+    root.composer.editorContextAttachment = nextContext;
+    rejectPrompt(new Error("Send failed"));
+    await submission;
+
+    expect(root.draft).toBe("Next message");
+    expect(root.composer.attachments).toEqual([nextImage, sentImage]);
+    expect(root.composer.editorContextAttachment).toEqual(nextContext);
+    expect(root.composer.optimisticUserMessages.pending).toEqual([]);
+    expect(root.composer.activeOperations).toEqual([]);
+    root[Symbol.dispose]();
+    model[Symbol.dispose]();
+  });
+
+  it("keeps streaming project input in the local editable queue when configured", async () => {
     const model = Session.create({ sessionId: "session-1", workingDirectory: "/project" });
     const followUp = vi.fn(async () => "turn-2");
     const client = { projectSessions: { followUp } } as unknown as RendererClient;
@@ -223,7 +267,6 @@ describe("MessageComposerStore", () => {
         text: "# Draft heading",
         renderUserMessageAsMarkdown: true,
       }),
-      expect.anything(),
     );
     root[Symbol.dispose]();
   });

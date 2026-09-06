@@ -1,11 +1,12 @@
 import { Effect, Stream, type Schema } from "effect";
 import * as sessionTerminals from "./sessionTerminals";
 import * as subagents from "./subagents";
-import type {
-  Annotation,
-  Attachment,
-  PiSettingUpdate,
-  SessionSummary,
+import {
+  SESSION_TITLE_MAX_LENGTH,
+  type Annotation,
+  type Attachment,
+  type PiSettingUpdate,
+  type SessionSummary,
 } from "../ipc/session-contract";
 import { PiSessionError, PiSessions, type PiSessionHandle } from "../services/pi/PiSessions";
 import {
@@ -583,7 +584,7 @@ export const rename = Effect.fn("CakeChats.rename")(function* (
   target: CakeChatTarget,
   name: string,
 ) {
-  const normalized = name.trim();
+  const normalized = name.trim().slice(0, SESSION_TITLE_MAX_LENGTH);
   if (!normalized)
     return yield* new CakeChatError({ operation: "rename", message: "Name is required" });
   yield* withHandle(target, (handle) => handle.rename(normalized)).pipe(asError("rename"));

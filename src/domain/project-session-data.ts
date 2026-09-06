@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { SESSION_TITLE_MAX_LENGTH } from "../ipc/session-contract";
 import { ThinkingLevel } from "../services/pi/model-data";
 import { ManagedWorktreeContext } from "../services/project-sessions/ProjectSessionEnvironment";
 import { CakeSessionIdentity, ConversationEvent, ConversationSnapshot } from "./conversation-data";
@@ -10,7 +11,7 @@ const boundedText = Schema.String.check(Schema.isMaxLength(262_144));
 
 export const ProjectSessionSummary = Schema.Struct({
   sessionId: boundedId,
-  title: Schema.String,
+  title: Schema.String.check(Schema.isMaxLength(SESSION_TITLE_MAX_LENGTH)),
   createdAt: Schema.String,
   modifiedAt: Schema.String,
   messageCount: Schema.Int,

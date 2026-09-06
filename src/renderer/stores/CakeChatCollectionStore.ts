@@ -1,7 +1,12 @@
 import { Store, child, createStore, observable, snapshot } from "r-state-tree";
 import { RendererClientContext } from "../client/RendererClientContext";
 import type { JsonObject } from "../../ipc/json-contract";
-import type { Attachment, ChatConfiguration, ModelPreset } from "../../ipc/session-contract";
+import {
+  SESSION_TITLE_MAX_LENGTH,
+  type Attachment,
+  type ChatConfiguration,
+  type ModelPreset,
+} from "../../ipc/session-contract";
 import type { CakeChatSummary } from "../../domain/cake-chat-data";
 import { compareSessionSummariesForSidebar } from "../../utils/session-summary-order";
 import { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
@@ -184,7 +189,7 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
     const pending = pendingSession ? this.findSession(pendingSession.sessionId) : undefined;
     const session = pending ?? this.prepareNewSession();
     this.selectSession(session.sessionId);
-    if (prompt?.trim()) await session.submit(prompt);
+    if (prompt?.trim()) await session.chatStore.submit(prompt);
   }
 
   focusPane(paneId: string) {
@@ -282,7 +287,7 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
     if (!this.isDraftSession(sessionId) || this.pendingSessionFor(sessionId)?.name) return;
     this.updatePending(sessionId, (pending) => ({
       ...pending,
-      name,
+      name: name.trim().slice(0, SESSION_TITLE_MAX_LENGTH),
       modifiedAt: new Date().toISOString(),
     }));
   }
@@ -330,7 +335,7 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
   }
 
   async renameSession(sessionId: string, name: string) {
-    name = name.trim();
+    name = name.trim().slice(0, SESSION_TITLE_MAX_LENGTH);
     if (!name) return false;
     if (this.isPendingSession(sessionId)) {
       this.updatePending(sessionId, (pending) => ({
@@ -506,7 +511,7 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
   private pendingSummary(pending: PendingCakeChatSession): CakeChatSummaryProjection {
     return {
       sessionId: pending.sessionId,
-      title: pending.name ?? "New chat",
+      title: pending.name?.slice(0, SESSION_TITLE_MAX_LENGTH) ?? "New chat",
       createdAt: pending.createdAt,
       modifiedAt: pending.modifiedAt,
       messageCount: pending.messageCount,

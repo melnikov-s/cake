@@ -2,12 +2,13 @@ import { ProjectSessionLifecycle } from "../services/project-sessions/ProjectSes
 import { Effect, Stream } from "effect";
 import * as sessionTerminals from "./sessionTerminals";
 import * as subagents from "./subagents";
-import type {
-  Annotation,
-  Attachment,
-  ChatConfiguration,
-  PiSettingUpdate,
-  SessionSummary,
+import {
+  SESSION_TITLE_MAX_LENGTH,
+  type Annotation,
+  type Attachment,
+  type ChatConfiguration,
+  type PiSettingUpdate,
+  type SessionSummary,
 } from "../ipc/session-contract";
 import { getState, setSessionFastMode, setSessionUnread, trustProject } from "./application";
 import type { ApplicationState } from "./application-data";
@@ -1016,7 +1017,7 @@ export const rename = Effect.fn("ProjectSessions.rename")(function* (
   target: ProjectSessionTarget,
   name: string,
 ) {
-  const normalized = name.trim();
+  const normalized = name.trim().slice(0, SESSION_TITLE_MAX_LENGTH);
   if (!normalized)
     return yield* new ProjectSessionError({ operation: "rename", message: "Name is required" });
   yield* withHandle(target, (handle) => handle.rename(normalized)).pipe(asError("rename"));

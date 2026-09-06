@@ -1781,9 +1781,10 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         signal: AbortSignal.any([sessionNamingController.signal, AbortSignal.timeout(15_000)]),
       });
       if (disposed || !title || session.sessionManager.getSessionName()) return;
-      session.setSessionName(title);
+      const normalizedTitle = title.trim().slice(0, SESSION_TITLE_MAX_LENGTH);
+      session.setSessionName(normalizedTitle);
       await options.sessionMetadata?.setTitle(
-        session.sessionManager.getSessionName() ?? title.trim(),
+        session.sessionManager.getSessionName() ?? normalizedTitle,
       );
       await emitSnapshot();
     } catch {
@@ -2318,9 +2319,10 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       return { status: "compacted" };
     },
     async rename(title) {
-      session.setSessionName(title.trim());
+      const normalizedTitle = title.trim().slice(0, SESSION_TITLE_MAX_LENGTH);
+      session.setSessionName(normalizedTitle);
       await options.sessionMetadata?.setTitle(
-        session.sessionManager.getSessionName() ?? title.trim(),
+        session.sessionManager.getSessionName() ?? normalizedTitle,
       );
       await emitSnapshot();
       const committedTitle = session.sessionManager.getSessionName() ?? title.trim();
@@ -2811,9 +2813,10 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       await emitSnapshot();
     },
     async rename(name) {
-      session.setSessionName(name.trim());
+      const normalizedName = name.trim().slice(0, SESSION_TITLE_MAX_LENGTH);
+      session.setSessionName(normalizedName);
       await options.sessionMetadata?.setTitle(
-        session.sessionManager.getSessionName() ?? name.trim(),
+        session.sessionManager.getSessionName() ?? normalizedName,
       );
       await emitSnapshot();
     },

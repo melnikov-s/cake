@@ -9,7 +9,7 @@ import { CrossSessionMessageMetadata } from "../domain/cross-session-coordinatio
 import { ipcProjectionArray, ipcProjectionString } from "./projection";
 import { sourceLocationSchema } from "./source-location";
 
-export const SESSION_TITLE_MAX_LENGTH = 1_024;
+export const SESSION_TITLE_MAX_LENGTH = 144;
 
 const boundedText = ipcProjectionString(262_144);
 const stringMax = (maximum: number) => Schema.String.check(Schema.isMaxLength(maximum));

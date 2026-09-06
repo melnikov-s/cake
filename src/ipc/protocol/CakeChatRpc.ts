@@ -11,7 +11,7 @@ import {
 } from "../../domain/cake-chat-data";
 import { CakeChatCatalogUpdate } from "../../domain/catalog-data";
 import { ConversationSnapshot, TurnId } from "../../domain/conversation-data";
-import { piSettingUpdateSchema } from "../session-contract";
+import { SESSION_TITLE_MAX_LENGTH, piSettingUpdateSchema } from "../session-contract";
 
 export const CakeChatRpc = RpcGroup.make(
   Rpc.make("cakeChats.observeCatalog", {
@@ -92,7 +92,13 @@ export const CakeChatRpc = RpcGroup.make(
     error: CakeChatError,
   }),
   Rpc.make("cakeChats.rename", {
-    payload: { ...CakeChatTarget.fields, name: Schema.String },
+    payload: {
+      ...CakeChatTarget.fields,
+      name: Schema.String.check(
+        Schema.isMinLength(1),
+        Schema.isMaxLength(SESSION_TITLE_MAX_LENGTH),
+      ),
+    },
     error: CakeChatError,
   }),
   Rpc.make("cakeChats.handoff", {

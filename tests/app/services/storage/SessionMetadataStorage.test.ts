@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect } from "effect";
 import { afterEach, describe, it } from "vitest";
+import { SESSION_TITLE_MAX_LENGTH } from "../../../../src/ipc/session-contract";
 import {
   makeSessionMetadataStorageLive,
   SessionMetadataStorage,
@@ -42,5 +43,22 @@ describe("SessionMetadataStorage", () => {
       title: "Renamed title",
       removed: undefined,
     });
+  });
+
+  it("caps persisted session titles", async () => {
+    const root = await mkdtemp(join(tmpdir(), "cake-session-metadata-"));
+    directories.push(root);
+    const longTitle = "Long session title ".repeat(20);
+
+    const title = await Effect.runPromise(
+      Effect.gen(function* () {
+        const metadata = yield* SessionMetadataStorage;
+        yield* metadata.setTitle("session-1", longTitle);
+        return yield* metadata.title("session-1");
+      }).pipe(Effect.provide(makeSessionMetadataStorageLive(root))),
+    );
+
+    assert.equal(title, longTitle.trim().slice(0, SESSION_TITLE_MAX_LENGTH));
+    assert.equal(title?.length, SESSION_TITLE_MAX_LENGTH);
   });
 });

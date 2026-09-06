@@ -14,7 +14,7 @@ import { workLogGroupKeys } from "../../utils/work-log-groups";
 import type { ScheduledMessage } from "../models/ScheduledMessage";
 import type { ChatConfigurationStore } from "./ChatConfigurationStore";
 import type { ExistingWorktreeCandidate, WorktreeDraftChoice } from "./WorktreeCreationStore";
-import type { QueuedPrompt as ComposerQueuedPrompt } from "./MessageComposerStore";
+import type { QueuedPrompt as ComposerQueuedPrompt } from "./ConversationComposerStore";
 
 export interface QueuedPrompt extends ComposerQueuedPrompt {
   state: "queued" | "steering";

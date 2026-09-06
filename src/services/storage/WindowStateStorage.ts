@@ -1,8 +1,14 @@
 import { Context, Effect, FileSystem, Layer, Path, Schema, Semaphore } from "effect";
 import { atomicWriteFile, type AtomicFileStage } from "./internal/atomicFile";
 
-const WINDOW_STATE_DOCUMENT_VERSION = 2;
+const WINDOW_STATE_DOCUMENT_VERSION = 3;
 const WINDOW_STATE_DOCUMENT_NAME = "window-state.json";
+
+const JsonRecord = Schema.Record(Schema.String, Schema.Json);
+const decodeJsonRecord = (value: Schema.Schema.Type<typeof Schema.Json> | undefined) => {
+  const result = Schema.decodeUnknownResult(JsonRecord)(value);
+  return result._tag === "Success" ? result.success : undefined;
+};
 
 const EmptyWindowSnapshot: Schema.Schema.Type<typeof Schema.Json> = {
   state: {},
@@ -114,6 +120,61 @@ const messageOf = (cause: unknown) => (cause instanceof Error ? cause.message : 
 const writeError = (stage: AtomicFileStage, cause: unknown) =>
   new WindowStateWriteError({ stage, message: messageOf(cause) });
 
+/** Moves Cake Chat composer snapshots from their former session-level owner to the shared child Store. */
+const migrateVersion2WindowState = (snapshot: Schema.Schema.Type<typeof Schema.Json>) => {
+  const root = decodeJsonRecord(snapshot);
+  const rootChildren = decodeJsonRecord(root?.children);
+  if (!root || !rootChildren) return snapshot;
+  const collection = decodeJsonRecord(rootChildren.cakeChatCollectionStore);
+  const collectionChildren = decodeJsonRecord(collection?.children);
+  if (!collection || !collectionChildren) return snapshot;
+  const loadedSessions = collectionChildren.loadedSessions;
+  if (!Array.isArray(loadedSessions)) return snapshot;
+
+  const migratedSessions = loadedSessions.map((session) => {
+    const sessionRecord = decodeJsonRecord(session);
+    const sessionState = decodeJsonRecord(sessionRecord?.state);
+    if (!sessionRecord || !sessionState) return session;
+    const legacyAttachments = sessionState.attachments;
+    const legacyAnnotations = sessionState.annotations;
+    if (legacyAttachments === undefined && legacyAnnotations === undefined) return session;
+
+    const state = { ...sessionState };
+    delete state.attachments;
+    delete state.annotations;
+    const children = decodeJsonRecord(sessionRecord.children) ?? {};
+    const composer = decodeJsonRecord(children.composerStore) ?? {};
+    const composerState = decodeJsonRecord(composer.state) ?? {};
+    return {
+      ...sessionRecord,
+      state,
+      children: {
+        ...children,
+        composerStore: {
+          ...composer,
+          state: {
+            ...composerState,
+            attachments: composerState.attachments ?? legacyAttachments ?? [],
+            annotations: composerState.annotations ?? legacyAnnotations ?? [],
+          },
+          children: decodeJsonRecord(composer.children) ?? {},
+        },
+      },
+    };
+  });
+
+  return {
+    ...root,
+    children: {
+      ...rootChildren,
+      cakeChatCollectionStore: {
+        ...collection,
+        children: { ...collectionChildren, loadedSessions: migratedSessions },
+      },
+    },
+  };
+};
+
 const migrateLegacyWindowState = Effect.fn("WindowStateStorage.migrateLegacy")(function* (
   legacy: LegacyWindowState,
 ) {
@@ -217,10 +278,17 @@ const migrateLegacyWindowState = Effect.fn("WindowStateStorage.migrateLegacy")(f
   const cakeChatTargets = selectedCakeChatId ? [selectedCakeChatId] : [];
   const cakeChatChildren = cakeChatTargets.map((sessionId) => ({
     key: sessionId,
-    state: { attachments: pendingCakeChat?.stagedPrompt?.attachments ?? [] },
+    state: {},
     children: {
       chatStore: {
         state: { draft: pendingCakeChat?.sessionId === sessionId ? pendingCakeChat.draft : "" },
+        children: {},
+      },
+      composerStore: {
+        state: {
+          attachments: pendingCakeChat?.stagedPrompt?.attachments ?? [],
+          annotations: [],
+        },
         children: {},
       },
     },
@@ -386,12 +454,17 @@ export const makeWindowStateStorageLive = (userDataDirectory: string) =>
         );
         const envelope = yield* Effect.result(Schema.decodeUnknownEffect(StoredEnvelope)(parsed));
         if (envelope._tag === "Success") {
-          if (envelope.success.version !== WINDOW_STATE_DOCUMENT_VERSION)
-            return yield* new WindowStateUnsupportedVersionError({
-              version: envelope.success.version,
-              currentVersion: WINDOW_STATE_DOCUMENT_VERSION,
-            });
-          return envelope.success.data;
+          if (envelope.success.version === WINDOW_STATE_DOCUMENT_VERSION)
+            return envelope.success.data;
+          if (envelope.success.version === 2) {
+            const migrated = migrateVersion2WindowState(envelope.success.data);
+            yield* saveUnlocked(migrated);
+            return migrated;
+          }
+          return yield* new WindowStateUnsupportedVersionError({
+            version: envelope.success.version,
+            currentVersion: WINDOW_STATE_DOCUMENT_VERSION,
+          });
         }
         const legacy = yield* Schema.decodeUnknownEffect(LegacyWindowState)(parsed).pipe(
           Effect.mapError(

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { observer } from "r-state-tree/react";
+import { SESSION_TITLE_MAX_LENGTH } from "../../ipc/session-contract";
 import type { WorktreeRecord } from "../../ipc/worktree-contract";
 import { cn } from "../lib/utils";
 import { Badge } from "./ui/badge";
@@ -107,6 +108,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
           className="session-rename-input w-full h-7 rounded-md border border-accent/50 bg-background px-2 text-xs text-foreground outline-none focus:ring-1 focus:ring-accent"
           aria-label="Session name"
           value={renamingValue}
+          maxLength={SESSION_TITLE_MAX_LENGTH}
           autoFocus
           onChange={(event) => setRenamingValue(event.target.value)}
           onBlur={commitRename}

@@ -326,7 +326,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
   setPendingName(sessionId: string, name: string) {
     if (!this.temporarySessionIds.includes(sessionId))
       throw new Error("Only an unsent session can receive an initial name.");
-    this.pendingNamesBySession[sessionId] = name;
+    this.pendingNamesBySession[sessionId] = name.trim().slice(0, SESSION_TITLE_MAX_LENGTH);
     this.touchPendingSummary(sessionId);
   }
 

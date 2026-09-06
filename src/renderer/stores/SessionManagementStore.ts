@@ -1,4 +1,5 @@
 import { Store } from "r-state-tree";
+import { SESSION_TITLE_MAX_LENGTH } from "../../ipc/session-contract";
 import { RendererClientContext } from "../client/RendererClientContext";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
@@ -21,7 +22,7 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
   }
 
   async renameSession(sessionId: string, name: string) {
-    const title = name.trim();
+    const title = name.trim().slice(0, SESSION_TITLE_MAX_LENGTH);
     if (!title || this.signal.aborted) return;
     if (this.props.registry.isTemporarySession(sessionId)) {
       this.props.registry.setPendingName(sessionId, title);

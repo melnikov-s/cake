@@ -13,7 +13,7 @@ import {
   ProjectSessionTarget,
   ProjectSessionUpdate,
 } from "../../domain/project-session-data";
-import { piSettingUpdateSchema } from "../session-contract";
+import { SESSION_TITLE_MAX_LENGTH, piSettingUpdateSchema } from "../session-contract";
 
 export const ProjectSessionRpc = RpcGroup.make(
   Rpc.make("projectSessions.observeCatalog", {
@@ -150,7 +150,13 @@ export const ProjectSessionRpc = RpcGroup.make(
     error: ProjectSessionError,
   }),
   Rpc.make("projectSessions.rename", {
-    payload: { ...ProjectSessionTarget.fields, name: Schema.String },
+    payload: {
+      ...ProjectSessionTarget.fields,
+      name: Schema.String.check(
+        Schema.isMinLength(1),
+        Schema.isMaxLength(SESSION_TITLE_MAX_LENGTH),
+      ),
+    },
     error: ProjectSessionError,
   }),
   Rpc.make("projectSessions.fork", {

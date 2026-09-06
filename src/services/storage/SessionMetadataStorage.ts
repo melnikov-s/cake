@@ -9,7 +9,9 @@ import { AtomicFileWriter } from "./internal/AtomicFileWriter";
 const SessionMetadataDocument = Schema.Struct({
   version: Schema.Literal(1),
   sessionId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
-  title: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(SESSION_TITLE_MAX_LENGTH)),
+  // Version 1 previously allowed 1,024 characters. Decode those records so they
+  // can be projected at the current bound and rewritten on the next mutation.
+  title: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(1_024)),
 });
 
 interface SessionMetadataDocument extends Schema.Schema.Type<typeof SessionMetadataDocument> {}
@@ -69,7 +71,7 @@ export const makeSessionMetadataStorageLive = (root: string): Layer.Layer<Sessio
     return SessionMetadataStorage.of({
       title: Effect.fn("SessionMetadataStorage.title")((sessionId) =>
         Effect.tryPromise({
-          try: async () => (await read(sessionId))?.title,
+          try: async () => (await read(sessionId))?.title.slice(0, SESSION_TITLE_MAX_LENGTH),
           catch: (cause) => storageError("title", sessionId, cause),
         }),
       ),
