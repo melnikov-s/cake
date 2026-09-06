@@ -140,6 +140,12 @@ export const CheckIcon = () => (
     <path d="m5 12 4 4L19 6" />
   </Icon>
 );
+export const CautionIcon = () => (
+  <Icon size={15} strokeWidth={2}>
+    <path d="M10.3 3.6 2.5 17.1A2 2 0 0 0 4.2 20h15.6a2 2 0 0 0 1.7-2.9L13.7 3.6a2 2 0 0 0-3.4 0Z" />
+    <path d="M12 9v4M12 17h.01" />
+  </Icon>
+);
 export const SteerIcon = () => (
   <Icon size={13} strokeWidth={2}>
     <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />

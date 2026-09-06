@@ -14,11 +14,15 @@ function actionStore({
   dirtyCount,
   behindCount = 0,
   running = false,
+  targetDirty = false,
+  targetOnBranch = true,
 }: {
   aheadCount: number;
   dirtyCount: number;
   behindCount?: number;
   running?: boolean;
+  targetDirty?: boolean;
+  targetOnBranch?: boolean;
 }) {
   return {
     status: {
@@ -34,8 +38,8 @@ function actionStore({
       behindCount,
       dirtyCount,
       merged: false,
-      targetDirty: false,
-      targetOnBranch: true,
+      targetDirty,
+      targetOnBranch,
       merging: false,
       rebasing: false,
       squashMessageReady: false,
@@ -181,6 +185,21 @@ describe("WorktreePill", () => {
     act(() => vi.advanceTimersByTime(120));
     expect(document.querySelector('[role="tooltip"]')?.textContent).toBe(
       "There are no changes or commits to merge.",
+    );
+  });
+
+  it("shows target warnings beside the worktree name with details in a tooltip", () => {
+    vi.useFakeTimers();
+    render(actionStore({ aheadCount: 1, dirtyCount: 0, targetDirty: true }));
+
+    const warning = container.querySelector<HTMLElement>('[data-testid="worktree-target-warning"]');
+    expect(warning).not.toBeNull();
+    expect(container.textContent).not.toContain("The merge target has uncommitted changes.");
+
+    act(() => warning!.dispatchEvent(new MouseEvent("mouseover", { bubbles: true })));
+    act(() => vi.advanceTimersByTime(120));
+    expect(document.querySelector('[role="tooltip"]')?.textContent).toBe(
+      "The merge target has uncommitted changes.",
     );
   });
 

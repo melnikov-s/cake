@@ -15,6 +15,7 @@ import { Button } from "./ui/button";
 import { DialogBackdrop } from "./ui/dialog";
 import {
   BranchIcon,
+  CautionIcon,
   CheckIcon,
   ChevronDownIcon,
   CloseIcon,
@@ -29,6 +30,7 @@ import {
 } from "./ui/icons";
 import { LoadingState } from "./ui/loading-state";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import { TooltipBubble, useTooltip } from "./ui/tooltip";
 import { WorktreePillAction } from "./worktree-pill-action";
 import { WorktreeStatusIcon } from "./worktree-status-icon";
 import { cn } from "@/lib/utils";
@@ -57,6 +59,7 @@ export const WorktreePill = observer(function WorktreePill({
 }: WorktreePillProps) {
   const [existingOpen, setExistingOpen] = useState(false);
   const [confirmation, setConfirmation] = useState<ConfirmationKind>();
+  const { anchor: warningAnchor, hide: hideWarning, show: showWarning } = useTooltip();
   const choice = creation.choice(sessionId);
   // Session-start choices are the only surface that needs the full worktree candidate list.
   const candidates = configurationMode ? creation.candidates(projectPath) : [];
@@ -231,6 +234,11 @@ export const WorktreePill = observer(function WorktreePill({
             ? "Commit & merge"
             : "Merge";
   const mergeAndResolveLabel = "Merge & resolve";
+  const targetWarning = status?.targetDirty
+    ? "The merge target has uncommitted changes."
+    : status && !status.targetOnBranch
+      ? `Switch the merge target to ${status.targetBranch} first.`
+      : undefined;
 
   return (
     <>
@@ -243,6 +251,24 @@ export const WorktreePill = observer(function WorktreePill({
           <span className="flex h-7.5 min-w-0 shrink items-center gap-1.5 px-2 text-xs font-normal text-foreground">
             <WorktreeStatusIcon state={record.state} className="shrink-0" />
             <span className="truncate max-w-56">{branch}</span>
+            {targetWarning && (
+              <span
+                className="shrink-0 cursor-default text-amber-600 dark:text-amber-400"
+                data-testid="worktree-target-warning"
+                role="img"
+                aria-label={targetWarning}
+                tabIndex={0}
+                onMouseEnter={(event) => showWarning(event.currentTarget)}
+                onMouseLeave={hideWarning}
+                onFocus={(event) => showWarning(event.currentTarget)}
+                onBlur={hideWarning}
+              >
+                <CautionIcon />
+              </span>
+            )}
+            {targetWarning && warningAnchor && (
+              <TooltipBubble label={targetWarning} anchor={warningAnchor} />
+            )}
           </span>
           <div className="flex min-w-0 flex-wrap items-center justify-end gap-1 @max-[560px]/worktree:w-full @max-[560px]/worktree:justify-start">
             {status && !landed && status.behindCount > 0 && (
@@ -376,13 +402,6 @@ export const WorktreePill = observer(function WorktreePill({
           </div>
         </div>
         {actions.error && <p className="px-2 text-xs text-destructive">{actions.error}</p>}
-        {status && (status.targetDirty || !status.targetOnBranch) && (
-          <p className="px-2 text-xs text-amber-600 dark:text-amber-400">
-            {status.targetDirty
-              ? "The merge target has uncommitted changes."
-              : `Switch the merge target to ${status.targetBranch} first.`}
-          </p>
-        )}
       </div>
       {(confirmation === "dirty-target" || confirmation === "dirty-target-resolve") && (
         <DialogBackdrop>
