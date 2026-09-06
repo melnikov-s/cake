@@ -312,7 +312,6 @@ export const SettingsPage = observer(function SettingsPage({
                           }
                         : undefined
                     }
-                    disabled={utility.saving}
                     onClear={() => void utility.clear()}
                     onSelect={({ provider, modelId, thinkingLevel }) => {
                       void utility.select(`${provider}/${modelId}`, thinkingLevel);

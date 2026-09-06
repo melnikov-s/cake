@@ -40,7 +40,6 @@ export interface ModelPickerProps {
   allowClear?: boolean;
   showFastMode?: boolean;
   openPresetSettings?(): void;
-  disabled?: boolean;
   placeholder?: string;
   ariaLabel?: string;
   className?: string;
@@ -70,7 +69,6 @@ export function ModelPicker({
   allowClear = false,
   showFastMode = true,
   openPresetSettings,
-  disabled = false,
   placeholder = "Choose model",
   ariaLabel = "Model configuration",
   className,
@@ -209,7 +207,6 @@ export function ModelPicker({
       <PopoverTrigger
         variant="ghost"
         size="sm"
-        disabled={disabled}
         className={cn(
           "inline-flex max-w-[320px] min-w-0 items-center gap-1.5 rounded-full border border-border/60 bg-muted/40 px-3 py-1 text-xs font-medium text-foreground hover:bg-muted/70 hover:text-foreground transition-colors",
           className,
@@ -255,7 +252,6 @@ export function ModelPicker({
                   size="sm"
                   type="button"
                   onClick={showModels}
-                  disabled={disabled}
                   className="h-auto p-0 text-xs text-accent hover:underline hover:bg-transparent flex items-center gap-0.5"
                 >
                   <span>Change model</span>
@@ -281,7 +277,6 @@ export function ModelPicker({
                         size="sm"
                         className="flex-1"
                         active={(configuration?.thinkingLevel ?? "off") === level}
-                        disabled={disabled}
                         key={level}
                         onClick={() => {
                           close();
@@ -312,7 +307,6 @@ export function ModelPicker({
                   </span>
                   <FastModeToggle
                     enabled={Boolean(configuration?.fastMode)}
-                    disabled={disabled}
                     onToggle={(enabled) => {
                       onSelect({
                         provider: configuration!.provider,
@@ -379,7 +373,6 @@ export function ModelPicker({
                         <NavItem
                           key={preset.id}
                           active={isActive}
-                          disabled={disabled}
                           label={
                             <span className="flex items-center gap-1.5 font-semibold">
                               {isActive && (
@@ -432,7 +425,6 @@ export function ModelPicker({
                     {group.models.map((model) => (
                       <NavItem
                         key={modelKey(model.provider, model.id)}
-                        disabled={disabled}
                         label={model.name}
                         description={model.id}
                         onClick={() => configureModel(model)}
@@ -553,9 +545,7 @@ export function ModelPicker({
                 <Button
                   size="sm"
                   disabled={
-                    ((draftModel.availableThinkingLevels?.length ?? 0) > 0 &&
-                      !draftThinkingLevel) ||
-                    disabled
+                    (draftModel.availableThinkingLevels?.length ?? 0) > 0 && !draftThinkingLevel
                   }
                   onClick={() => {
                     const level = draftThinkingLevel ?? "off";

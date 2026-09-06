@@ -22,7 +22,6 @@ export const ChatConfigurationSelector = observer(function ChatConfigurationSele
   const effectiveConfiguration = configuration.deferred
     ? (configuration.effectiveConfiguration ?? sessionConfiguration)
     : sessionConfiguration;
-  const disabled = Boolean(session?.streaming || configuration.activeOperations.length > 0);
 
   return (
     <div onClick={() => configuration.ensureCatalog()} className="contents">
@@ -32,7 +31,6 @@ export const ChatConfigurationSelector = observer(function ChatConfigurationSele
         presets={configuration.presets}
         activePreset={configuration.activePreset}
         value={effectiveConfiguration}
-        disabled={disabled}
         error={configuration.error}
         openPresetSettings={() => configuration.openPresetSettings()}
         onSelect={(next) => {
