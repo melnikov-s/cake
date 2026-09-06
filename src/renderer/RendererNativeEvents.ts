@@ -40,7 +40,7 @@ export class RendererNativeEvents implements Disposable {
     ) =>
       this.supervisor.register(`native:${channel}`, {
         run: (signal, markHealthy) =>
-          this.runtime.runPromise(
+          this.runtime.execute(
             Effect.flatMap(CakeIpcClient, (client) =>
               events(client).pipe(
                 Stream.runForEach((event) =>
@@ -51,7 +51,7 @@ export class RendererNativeEvents implements Disposable {
                 ),
               ),
             ),
-            { signal },
+            signal,
           ),
         reportFailure: (error) => {
           this.completeReadyChannel(channel);

@@ -71,7 +71,7 @@ describe("Subagent Effect RPC contract", () => {
         return () => {};
       },
     });
-    const client = await runtime.runPromise(Effect.service(CakeIpcClient));
+    const client = await runtime.execute(Effect.service(CakeIpcClient));
     expect(Object.keys(client.subagents ?? {})).toEqual(["observe", "steer", "abort", "close"]);
     await runtime.dispose();
   });

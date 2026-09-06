@@ -17,9 +17,13 @@ import { Session } from "../../../src/renderer/models/Session";
 
 function runtimeFor(client: CakeIpcClientService): RendererRuntime {
   return {
-    runPromise: (effect, options) =>
-      Effect.runPromise(Effect.provideService(effect, CakeIpcClient, client), options),
-  } as RendererRuntime;
+    execute: (effect, signal) =>
+      Effect.runPromise(
+        Effect.provideService(effect, CakeIpcClient, client),
+        signal ? { signal } : undefined,
+      ),
+    dispose: async () => undefined,
+  };
 }
 
 const emptySessionCatalog: SessionCatalogUpdate = {

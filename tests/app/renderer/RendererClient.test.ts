@@ -3,15 +3,13 @@ import { makeRendererClient } from "../../../src/renderer/client/RendererClientL
 import { RendererClientError } from "../../../src/renderer/client/RendererClient";
 import type { RendererRuntime } from "../../../src/renderer/RendererRuntime";
 
-function controlledRuntime(runPromise: RendererRuntime["runPromise"]): RendererRuntime {
-  return { runPromise } as RendererRuntime;
+function controlledRuntime(execute: RendererRuntime["execute"]): RendererRuntime {
+  return { execute, dispose: async () => undefined };
 }
 
 describe("RendererClient", () => {
   it("exposes focused command groups without observation methods", () => {
-    const runtime = controlledRuntime(
-      vi.fn(async () => undefined) as RendererRuntime["runPromise"],
-    );
+    const runtime = controlledRuntime(vi.fn(async () => undefined) as RendererRuntime["execute"]);
     const client = makeRendererClient(runtime);
 
     expect(Object.keys(client)).toEqual([
@@ -42,10 +40,10 @@ describe("RendererClient", () => {
   });
 
   it("passes AbortSignal to the window runtime and reports interruption stably", async () => {
-    const runPromise = vi.fn(async () => {
+    const execute = vi.fn(async () => {
       throw new Error("fiber interrupted");
-    }) as RendererRuntime["runPromise"];
-    const client = makeRendererClient(controlledRuntime(runPromise));
+    }) as RendererRuntime["execute"];
+    const client = makeRendererClient(controlledRuntime(execute));
     const controller = new AbortController();
     controller.abort();
 
@@ -53,7 +51,7 @@ describe("RendererClient", () => {
       .delay({ durationMs: 10_000 }, { signal: controller.signal })
       .catch((error: unknown) => error);
 
-    expect(runPromise).toHaveBeenCalledWith(expect.anything(), { signal: controller.signal });
+    expect(execute).toHaveBeenCalledWith(expect.anything(), controller.signal);
     expect(failure).toBeInstanceOf(RendererClientError);
     expect(failure).toMatchObject({
       _tag: "RendererClientError",
@@ -64,10 +62,10 @@ describe("RendererClient", () => {
   });
 
   it("does not expose arbitrary command rejection values", async () => {
-    const runPromise = vi.fn(async () => {
+    const execute = vi.fn(async () => {
       throw { _tag: "ModelPresetNotFoundError", id: "missing" };
-    }) as RendererRuntime["runPromise"];
-    const client = makeRendererClient(controlledRuntime(runPromise));
+    }) as RendererRuntime["execute"];
+    const client = makeRendererClient(controlledRuntime(execute));
 
     const failure = await client.modelPresets.resolve("missing").catch((error: unknown) => error);
 

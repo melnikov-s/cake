@@ -24,7 +24,7 @@ export class RendererMainStateSynchronizer implements Disposable {
     ) =>
       this.supervisor.register(`state:${key}`, {
         run: (signal, markHealthy) =>
-          this.runtime.runPromise(
+          this.runtime.execute(
             Effect.flatMap(CakeIpcClient, (client) =>
               stream(client).pipe(
                 Stream.runForEach((value) =>
@@ -35,7 +35,7 @@ export class RendererMainStateSynchronizer implements Disposable {
                 ),
               ),
             ),
-            { signal },
+            signal,
           ),
         reportFailure: (error) =>
           root.projectWorkbenchStore.setError(error, `Main-process ${key} synchronization`),

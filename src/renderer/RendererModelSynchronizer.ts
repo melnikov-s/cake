@@ -302,7 +302,7 @@ export class RendererModelSynchronizer implements Disposable {
             ),
           ),
         );
-        return this.runtime.runPromise(consume, { signal });
+        return this.runtime.execute(consume, signal);
       },
       classifyFailure: (error) => this.classifyFailure(key, error),
       reportFailure: (error) => this.reportFailure(key, error),

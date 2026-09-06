@@ -15,7 +15,7 @@ const withClient = <Success, Failure>(
 const run = <Success, Failure>(
   effect: Effect.Effect<Success, Failure, CakeIpcClient>,
   signal?: AbortSignal,
-) => runtime.runPromise(effect, signal ? { signal } : undefined);
+) => runtime.execute(effect, signal);
 const collect = <Value, Failure>(
   stream: Stream.Stream<Value, Failure, CakeIpcClient>,
 ): Promise<ReadonlyArray<Value>> => run(Stream.runCollect(stream));

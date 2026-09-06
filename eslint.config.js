@@ -1,6 +1,23 @@
 import eslint from "@eslint/js";
 import tseslint from "typescript-eslint";
 
+// These are imperative framework/SDK adapters, not domain execution sites.
+// Keep this list explicit so a new boundary requires an architecture decision.
+const effectExecutionBoundaries = [
+  "src/main/main.ts", // Process entry point and Electron smoke hooks.
+  "src/main/MainApplication.ts", // Electron lifecycle callbacks.
+  "src/renderer/RendererRuntime.ts", // All renderer commands and subscriptions.
+  "src/layers/CakeChatEnvironmentLive.ts", // Pi tool callbacks.
+  "src/layers/ProjectSessionEnvironmentLive.ts", // Pi tool callbacks.
+  "src/layers/ProjectSessionRuntimeOptionsLive.ts", // Pi runtime callbacks.
+  "src/services/cake-chats/CakeChatEnvironment.ts", // Pi application controls.
+  "src/services/pi/ProjectSessionIntegrationsLive.ts", // Pi repository callbacks.
+  "src/services/worktrees/ManagedWorktreeEngineAdapter.ts", // Promise worktree engine.
+  "src/services/vscode/VsCodeServerLive.ts", // Synchronous manager state callback.
+  "src/services/storage/ReviewStorageLive.ts", // Synchronous test adapter factory.
+];
+const executionApi = "/^run(Fork|Callback|Promise|Sync)(Exit)?(With)?$/";
+
 export default tseslint.config(
   {
     ignores: [
@@ -14,6 +31,38 @@ export default tseslint.config(
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
+  ...[
+    { files: ["src/**/*.{ts,tsx}"], execution: true, ignores: effectExecutionBoundaries },
+    { files: effectExecutionBoundaries, execution: false, ignores: [] },
+  ].map(({ files, execution, ignores }) => ({
+    files,
+    ignores: [...ignores, "src/main/main.ts", "src/renderer/RendererRuntime.ts"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        ...(execution
+          ? [
+              `MemberExpression[computed=false][property.name=${executionApi}]`,
+              `MemberExpression[computed=true][property.value=${executionApi}]`,
+              `ImportSpecifier[imported.name=${executionApi}]`,
+              `Property[parent.type=ObjectPattern][key.name=${executionApi}]`,
+            ].map((selector) => ({
+              selector,
+              message:
+                "Execute Effects only at an approved runtime or external callback boundary. Compose Effects internally; renderer infrastructure uses RendererRuntime.execute.",
+            }))
+          : []),
+        ...[
+          "ImportSpecifier[imported.name=ManagedRuntime]",
+          "ImportDeclaration[source.value='effect/ManagedRuntime']",
+          "MemberExpression[property.name=ManagedRuntime]",
+        ].map((selector) => ({
+          selector,
+          message: "ManagedRuntime belongs only in the main and renderer runtime roots.",
+        })),
+      ],
+    },
+  })),
   {
     files: ["**/*.{ts,tsx}"],
     rules: {

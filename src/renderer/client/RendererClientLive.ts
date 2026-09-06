@@ -54,7 +54,7 @@ export function makeRendererClient(runtime: RendererRuntime): RendererClient {
     options?: RendererCommandOptions,
   ): Promise<Success> =>
     runtime
-      .runPromise(effect, options?.signal ? { signal: options.signal } : undefined)
+      .execute(effect, options?.signal)
       .catch((error: unknown) => Promise.reject(rendererError(operation, error, options?.signal)));
 
   return {

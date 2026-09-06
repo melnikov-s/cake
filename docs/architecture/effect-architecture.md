@@ -184,6 +184,22 @@ client. The
 runtime is created once, lives for the window, and is disposed on window
 teardown.
 
+`RendererRuntime` keeps its `ManagedRuntime` private and exposes only
+`execute(effect, signal?)` and `dispose()`. Commands, Model synchronization,
+main-state synchronization, native-event Streams, and the RPC smoke harness
+all use that execution boundary. It forwards cancellation without translating
+failures; command error presentation remains in `RendererClient`, and Stream
+recovery remains in the synchronization supervisor.
+
+ESLint restricts Effect execution APIs to the explicit boundary files listed in
+`eslint.config.js`. Main bootstrap and imperative Electron, Pi, VS Code, and
+worktree callbacks may execute Effects; domain functions and RPC handlers
+compose them. Runtime construction is restricted to `main.ts` and
+`RendererRuntime.ts`. Tests may create and execute their own runtimes. The
+synchronous ReviewStorage test adapter is an explicit exception in production
+source. `Stream.runForEach` and other Stream consumers construct Effects and
+are not runtime execution APIs.
+
 ```text
 RendererRuntime
 └── CakeIpcClientLive
