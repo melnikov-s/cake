@@ -17,10 +17,18 @@ export const managedWorktreeHandlers = ManagedWorktreeRpc.of({
     Effect.flatMap(RendererConnection, () => managedWorktrees.status(request.workspacePath)).pipe(
       Effect.map((status) => ({ status })),
     ),
+  "managedWorktrees.prepare-worktree-landing": (request) =>
+    Effect.flatMap(RendererConnection, () =>
+      managedWorktrees.prepareLanding(request.workspacePath, request.requestId),
+    ).pipe(Effect.as({ requestId: request.requestId })),
   "managedWorktrees.land-worktree": (request) =>
     Effect.flatMap(RendererConnection, () =>
-      managedWorktrees.land(request.workspacePath, request.request),
+      managedWorktrees.land(request.workspacePath, request.requestId, request.request),
     ).pipe(Effect.map((result) => ({ requestId: request.requestId, result }))),
+  "managedWorktrees.cancel-worktree-landing": (request) =>
+    Effect.flatMap(RendererConnection, () =>
+      managedWorktrees.cancelLanding(request.workspacePath, request.landingOperationId),
+    ).pipe(Effect.as({ requestId: request.requestId })),
   "managedWorktrees.rebase-worktree": (request) =>
     Effect.flatMap(RendererConnection, () => managedWorktrees.rebase(request.workspacePath)).pipe(
       Effect.map((result) => ({ requestId: request.requestId, result })),

@@ -21,6 +21,22 @@ export type WorktreeCommandRunner = (workingDirectory: string, script: string) =
 
 interface LandOptions {
   request: WorktreeLandRequest;
+  operationId?: string;
+  signal?: AbortSignal;
+}
+
+interface LandingQueueEntry {
+  readonly operationId: string;
+  readonly worktreePath: string;
+  readonly resolve: () => void;
+  readonly reject: (error: Error) => void;
+  readonly signal?: AbortSignal;
+  abort?: () => void;
+}
+
+interface RepositoryLandingQueue {
+  active?: LandingQueueEntry;
+  readonly pending: LandingQueueEntry[];
 }
 
 /**
@@ -39,6 +55,8 @@ export class ManagedWorktreeEngine implements WorktreeLandingCoordinator {
   private allRecords: WorktreeRecord[] = [];
   private loaded = false;
   private readonly repositoryOperationTails = new Map<string, Promise<void>>();
+  /** One user-visible landing workflow at a time may target a repository. */
+  private readonly repositoryLandingQueues = new Map<string, RepositoryLandingQueue>();
   /**
    * Proposed squash commit messages keyed by worktree path. A proposal is only
    * valid while both the worktree tip and the target tip are unchanged since it
@@ -201,6 +219,7 @@ export class ManagedWorktreeEngine implements WorktreeLandingCoordinator {
       this.revParseExists(record.worktreePath, "MERGE_HEAD"),
       this.rebaseInProgress(record.worktreePath),
     ]);
+    const landing = this.landingState(record);
     return Schema.decodeUnknownSync(worktreeStatusSchema)({
       record,
       targetBranch: record.baseBranch,
@@ -213,6 +232,15 @@ export class ManagedWorktreeEngine implements WorktreeLandingCoordinator {
       merging,
       rebasing,
       squashMessageReady: await this.hasFreshSquashProposal(record),
+      ...(landing?.state === "queued"
+        ? {
+            landingState: landing.state,
+            landingOperationId: landing.operationId,
+            landingQueuePosition: landing.position,
+          }
+        : landing
+          ? { landingState: landing.state, landingOperationId: landing.operationId }
+          : {}),
     });
   }
 
@@ -263,7 +291,58 @@ export class ManagedWorktreeEngine implements WorktreeLandingCoordinator {
         resolveNormalized(entry.worktreePath) === normalized,
     );
     if (!record) throw new Error("Cake could not find that active worktree");
-    return this.withRepositoryLock(record.projectPath, () => this.landRecord(record, options));
+    const operationId = options.operationId ?? `direct:${normalized}`;
+    await this.acquireLanding(record, operationId, options.signal);
+    try {
+      const outcome = await this.withRepositoryLock(record.projectPath, () =>
+        this.landRecord(record, options),
+      );
+      if (outcome.outcome === "landed") this.releaseLanding(record, operationId);
+      return outcome;
+    } catch (error) {
+      this.releaseLanding(record, operationId);
+      throw error;
+    }
+  }
+
+  /** Reserves this repository's landing slot before agent-assisted preparation begins. */
+  async prepareLanding(
+    worktreePath: string,
+    operationId: string,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    await this.load();
+    const normalized = resolveNormalized(worktreePath);
+    const record = this.allRecords.find(
+      (entry) =>
+        (entry.state ?? "active") === "active" &&
+        resolveNormalized(entry.worktreePath) === normalized,
+    );
+    if (!record) throw new Error("Cake could not find that active worktree");
+    await this.acquireLanding(record, operationId, signal);
+  }
+
+  /** Cancels a paused or queued landing and advances the next repository entry. */
+  async cancelLanding(worktreePath: string, operationId: string): Promise<void> {
+    await this.load();
+    const normalized = resolveNormalized(worktreePath);
+    const record = this.allRecords.find(
+      (entry) => resolveNormalized(entry.worktreePath) === normalized,
+    );
+    if (!record) return;
+    const queue = this.repositoryLandingQueues.get(record.projectPath);
+    if (!queue) return;
+    if (queue.active?.operationId === operationId) {
+      this.releaseLanding(record, operationId);
+      return;
+    }
+    const index = queue.pending.findIndex((entry) => entry.operationId === operationId);
+    if (index < 0) return;
+    const [entry] = queue.pending.splice(index, 1);
+    entry?.abort?.();
+    entry?.reject(new Error("Worktree landing was canceled."));
+    if (!queue.active && queue.pending.length === 0)
+      this.repositoryLandingQueues.delete(record.projectPath);
   }
 
   private async landRecord(
@@ -563,6 +642,82 @@ export class ManagedWorktreeEngine implements WorktreeLandingCoordinator {
       if (!branchExists && !existsSync(join(worktreesDirectory, name))) return name;
     }
     throw new Error("Cake could not generate a unique worktree name");
+  }
+
+  private landingState(
+    record: WorktreeRecord,
+  ):
+    | { state: "running"; operationId: string }
+    | { state: "queued"; operationId: string; position: number }
+    | undefined {
+    const queue = this.repositoryLandingQueues.get(record.projectPath);
+    if (!queue) return undefined;
+    const normalized = resolveNormalized(record.worktreePath);
+    if (queue.active?.worktreePath === normalized)
+      return { state: "running", operationId: queue.active.operationId };
+    const index = queue.pending.findIndex((entry) => entry.worktreePath === normalized);
+    const entry = queue.pending[index];
+    return entry
+      ? { state: "queued", operationId: entry.operationId, position: index + 1 }
+      : undefined;
+  }
+
+  private async acquireLanding(
+    record: WorktreeRecord,
+    operationId: string,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    const repositoryKey = record.projectPath;
+    const normalized = resolveNormalized(record.worktreePath);
+    let queue = this.repositoryLandingQueues.get(repositoryKey);
+    if (!queue) {
+      queue = { pending: [] };
+      this.repositoryLandingQueues.set(repositoryKey, queue);
+    }
+    if (queue.active?.operationId === operationId) return;
+    if (!queue.active) {
+      queue.active = {
+        operationId,
+        worktreePath: normalized,
+        resolve: () => undefined,
+        reject: () => undefined,
+        signal,
+      };
+      return;
+    }
+    if (signal?.aborted) throw new Error("Worktree landing was canceled.");
+    await new Promise<void>((resolve, reject) => {
+      const entry: LandingQueueEntry = {
+        operationId,
+        worktreePath: normalized,
+        resolve,
+        reject,
+        signal,
+      };
+      if (signal) {
+        const onAbort = () => {
+          const index = queue.pending.indexOf(entry);
+          if (index >= 0) queue.pending.splice(index, 1);
+          reject(new Error("Worktree landing was canceled."));
+        };
+        signal.addEventListener("abort", onAbort, { once: true });
+        entry.abort = () => signal.removeEventListener("abort", onAbort);
+      }
+      queue.pending.push(entry);
+    });
+  }
+
+  private releaseLanding(record: WorktreeRecord, operationId: string) {
+    const repositoryKey = record.projectPath;
+    const queue = this.repositoryLandingQueues.get(repositoryKey);
+    if (!queue || queue.active?.operationId !== operationId) return;
+    queue.active.abort?.();
+    const next = queue.pending.shift();
+    queue.active = next;
+    if (next) {
+      next.abort?.();
+      next.resolve();
+    } else this.repositoryLandingQueues.delete(repositoryKey);
   }
 
   private async withRepositoryLock<T>(

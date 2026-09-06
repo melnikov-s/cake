@@ -53,7 +53,7 @@ function actionStore({
     rebase: vi.fn(async () => undefined),
     resolve: vi.fn(async () => undefined),
     retryLanding: vi.fn(async () => undefined),
-    cancelLanding: vi.fn(),
+    cancelLanding: vi.fn(async () => undefined),
     discard: vi.fn(async () => undefined),
   } as unknown as WorktreeStore;
 }
@@ -132,6 +132,19 @@ describe("WorktreePill", () => {
     render(actionStore({ aheadCount: 1, dirtyCount: 0 }));
     expect(button("Merge").disabled).toBe(false);
     expect(button("Merge & resolve").disabled).toBe(false);
+  });
+
+  it("shows queued merges waiting and lets the user remove them from the queue", () => {
+    const actions = actionStore({ aheadCount: 1, dirtyCount: 0 });
+    actions.phase = "waiting";
+    render(actions);
+
+    expect(container.textContent).toContain("Waiting to merge…");
+    expect(container.textContent).toContain(
+      "Another merge is in progress. This merge will start automatically when it finishes.",
+    );
+    act(() => button("Cancel").click());
+    expect(actions.cancelLanding).toHaveBeenCalledOnce();
   });
 
   it("offers rebase only when the target branch has advanced", () => {

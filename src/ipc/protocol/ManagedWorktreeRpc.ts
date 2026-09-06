@@ -6,7 +6,9 @@ type WorktreeOperation = keyof Pick<
   typeof cakeRpcPayloadSchemas,
   | "create-worktree"
   | "get-worktree-status"
+  | "prepare-worktree-landing"
   | "land-worktree"
+  | "cancel-worktree-landing"
   | "rebase-worktree"
   | "discard-worktree"
 >;
@@ -21,7 +23,9 @@ const worktreeRpc = <Type extends WorktreeOperation>(type: Type) =>
 export const ManagedWorktreeRpc = RpcGroup.make(
   worktreeRpc("create-worktree"),
   worktreeRpc("get-worktree-status"),
+  worktreeRpc("prepare-worktree-landing"),
   worktreeRpc("land-worktree"),
+  worktreeRpc("cancel-worktree-landing"),
   worktreeRpc("rebase-worktree"),
   worktreeRpc("discard-worktree"),
 );

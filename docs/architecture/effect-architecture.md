@@ -466,8 +466,9 @@ Every asynchronous intent separately declares a concurrency policy:
 - independent execution.
 
 Examples include serializing Pi turns per session, bounding Subagent Sessions,
-serializing durable scheduled-message mutations, and rejecting concurrent
-landing of the same Managed Worktree. A loading flag
+serializing durable scheduled-message mutations, rejecting concurrent landing
+commands for the same Managed Worktree, and queueing distinct Managed Worktree
+landing workflows in FIFO order per Repository. A loading flag
 is presentation state, not a concurrency policy.
 
 ## Filesystem, Git, worktrees, VS Code, and terminals
@@ -475,6 +476,13 @@ is presentation state, not a concurrency policy.
 Effect Platform's `FileSystem` owns filesystem operations and observation.
 `Git` owns Git commands and Git facts. Cake domain operations decide how
 filesystem events trigger debounced Git refreshes.
+
+Managed Worktree landing uses one process-local FIFO per Repository. A landing
+reserves its slot before any agent-assisted commit or conflict-resolution turn,
+retains it while that workflow is paused, and releases it when the landing
+completes, fails, or is explicitly dismissed. Later landings remain visibly
+queued and begin automatically in acceptance order; unrelated Repositories
+remain concurrent.
 
 `WorktreeStorage` is separate from `Git`:
 

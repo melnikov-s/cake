@@ -218,6 +218,97 @@ describe("WorktreeService decision logic", () => {
     expect(invocations.filter(({ args }) => args[0] === "merge")).toEqual([]);
   });
 
+  it("queues repository landings until the active conflict-resolution workflow releases", async () => {
+    const { service, record: first, state } = await setup();
+    const second = await service.create(first.projectPath, undefined, "second");
+    directories.push(second.worktreePath);
+    await mkdir(second.worktreePath, { recursive: true });
+    state.rebasing = true;
+    await Promise.all(
+      [first.worktreePath, second.worktreePath].map((path) =>
+        mkdir(join(path, ".git", "rebase-merge"), { recursive: true }),
+      ),
+    );
+
+    await service.prepareLanding(first.worktreePath, "landing-1");
+    await expect(
+      service.land(first.worktreePath, {
+        operationId: "landing-1",
+        request: { strategy: "preserve" },
+      }),
+    ).resolves.toMatchObject({ outcome: "resolving" });
+
+    let secondStarted = false;
+    const queued = service.prepareLanding(second.worktreePath, "landing-2").then(() => {
+      secondStarted = true;
+    });
+    await expect
+      .poll(() => service.status(second.worktreePath).then((status) => status?.landingState))
+      .toBe("queued");
+    await expect(service.status(second.worktreePath)).resolves.toMatchObject({
+      landingOperationId: "landing-2",
+      landingQueuePosition: 1,
+    });
+    expect(secondStarted).toBe(false);
+
+    state.rebasing = false;
+    await rm(join(first.worktreePath, ".git", "rebase-merge"), {
+      recursive: true,
+      force: true,
+    });
+    await expect(
+      service.land(first.worktreePath, {
+        operationId: "landing-1",
+        request: { strategy: "preserve" },
+      }),
+    ).resolves.toMatchObject({ outcome: "landed" });
+    await queued;
+    expect(secondStarted).toBe(true);
+    await expect(service.status(second.worktreePath)).resolves.toMatchObject({
+      landingState: "running",
+      landingOperationId: "landing-2",
+    });
+    await service.cancelLanding(second.worktreePath, "landing-2");
+  });
+
+  it("advances waiting landings in FIFO order when paused reservations are canceled", async () => {
+    const { service, record: first } = await setup();
+    const second = await service.create(first.projectPath, undefined, "second");
+    const third = await service.create(first.projectPath, undefined, "third");
+    for (const record of [second, third]) {
+      directories.push(record.worktreePath);
+      await mkdir(record.worktreePath, { recursive: true });
+    }
+    await service.prepareLanding(first.worktreePath, "landing-1");
+    const started: string[] = [];
+    const secondReady = service.prepareLanding(second.worktreePath, "landing-2").then(() => {
+      started.push("second");
+    });
+    await expect
+      .poll(() => service.status(second.worktreePath))
+      .toMatchObject({
+        landingState: "queued",
+        landingQueuePosition: 1,
+      });
+    const thirdReady = service.prepareLanding(third.worktreePath, "landing-3").then(() => {
+      started.push("third");
+    });
+    await expect
+      .poll(() => service.status(third.worktreePath))
+      .toMatchObject({
+        landingState: "queued",
+        landingQueuePosition: 2,
+      });
+    await service.cancelLanding(first.worktreePath, "landing-1");
+    await secondReady;
+    expect(started).toEqual(["second"]);
+    await service.cancelLanding(second.worktreePath, "landing-2");
+    await thirdReady;
+    expect(started).toEqual(["second", "third"]);
+    await service.cancelLanding(third.worktreePath, "landing-3");
+    expect((await service.status(third.worktreePath))?.landingState).toBeUndefined();
+  });
+
   it("blocks landing a parent while child worktrees are active", async () => {
     const { service, record: parent, state } = await setup();
     const child = await service.create(parent.projectPath, parent.worktreePath, "child");

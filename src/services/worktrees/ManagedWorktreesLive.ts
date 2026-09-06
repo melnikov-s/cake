@@ -19,7 +19,7 @@ export const ManagedWorktreesLive: Layer.Layer<
   ManagedWorktrees,
   Effect.gen(function* () {
     const engine = yield* makeManagedWorktreeEngineAdapter;
-    const attempt = <A>(operation: string, execute: () => Promise<A>) =>
+    const attempt = <A>(operation: string, execute: (signal: AbortSignal) => Promise<A>) =>
       Effect.tryPromise({
         try: execute,
         catch: (cause) => worktreeError(operation, cause),
@@ -38,8 +38,20 @@ export const ManagedWorktreesLive: Layer.Layer<
       status: Effect.fn("ManagedWorktrees.status")((worktreePath) =>
         attempt("ManagedWorktrees.status", () => engine.status(worktreePath)),
       ),
-      land: Effect.fn("ManagedWorktrees.land")((worktreePath, request) =>
-        attempt("ManagedWorktrees.land", () => engine.land(worktreePath, { request })),
+      prepareLanding: Effect.fn("ManagedWorktrees.prepareLanding")((worktreePath, operationId) =>
+        attempt("ManagedWorktrees.prepareLanding", (signal) =>
+          engine.prepareLanding(worktreePath, operationId, signal),
+        ),
+      ),
+      land: Effect.fn("ManagedWorktrees.land")((worktreePath, operationId, request) =>
+        attempt("ManagedWorktrees.land", (signal) =>
+          engine.land(worktreePath, { request, operationId, signal }),
+        ),
+      ),
+      cancelLanding: Effect.fn("ManagedWorktrees.cancelLanding")((worktreePath, operationId) =>
+        attempt("ManagedWorktrees.cancelLanding", () =>
+          engine.cancelLanding(worktreePath, operationId),
+        ),
       ),
       rebase: Effect.fn("ManagedWorktrees.rebase")((worktreePath) =>
         attempt("ManagedWorktrees.rebase", () => engine.rebase(worktreePath)),

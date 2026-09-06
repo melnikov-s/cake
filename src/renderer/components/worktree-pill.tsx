@@ -211,7 +211,12 @@ export const WorktreePill = observer(function WorktreePill({
     ? "Wait for the session to finish before using worktree actions."
     : undefined;
   const operationDisabledReason =
-    sessionDisabledReason ?? (busy ? "A worktree operation is already in progress." : undefined);
+    sessionDisabledReason ??
+    (actions.phase === "waiting"
+      ? "Another merge is already in progress. This merge will start automatically."
+      : busy
+        ? "A worktree operation is already in progress."
+        : undefined);
   const mergeDisabledReason =
     operationDisabledReason ??
     (!hasWorkToMerge ? "There are no changes or commits to merge." : undefined);
@@ -221,13 +226,15 @@ export const WorktreePill = observer(function WorktreePill({
   const mergeLabel =
     actions.phase === "committing"
       ? "Committing…"
-      : actions.phase === "landing"
-        ? "Merging…"
-        : actions.phase === "resolving"
-          ? "Resolving conflicts…"
-          : hasUncommittedChanges
-            ? "Commit & merge"
-            : "Merge";
+      : actions.phase === "waiting"
+        ? "Waiting to merge…"
+        : actions.phase === "landing"
+          ? "Merging…"
+          : actions.phase === "resolving"
+            ? "Resolving conflicts…"
+            : hasUncommittedChanges
+              ? "Commit & merge"
+              : "Merge";
   const mergeAndResolveLabel = "Merge & resolve";
   const targetWarning = status?.targetDirty
     ? "The merge target has uncommitted changes."
@@ -346,11 +353,21 @@ export const WorktreePill = observer(function WorktreePill({
                   aria-label="Dismiss"
                   tooltip="Dismiss worktree operation"
                   disabledReason={sessionDisabledReason}
-                  onClick={() => actions.cancelLanding()}
+                  onClick={() => run(actions.cancelLanding())}
                 >
                   Dismiss
                 </WorktreePillAction>
               </>
+            )}
+            {status && actions.phase === "waiting" && (
+              <WorktreePillAction
+                icon={<CloseIcon size={14} />}
+                aria-label="Cancel queued merge"
+                tooltip="Remove this merge from the queue"
+                onClick={() => run(actions.cancelLanding())}
+              >
+                Cancel
+              </WorktreePillAction>
             )}
             {status && !landed && (
               <Popover
@@ -396,6 +413,11 @@ export const WorktreePill = observer(function WorktreePill({
             )}
           </div>
         </div>
+        {actions.phase === "waiting" && (
+          <p className="px-2 text-xs text-muted-foreground">
+            Another merge is in progress. This merge will start automatically when it finishes.
+          </p>
+        )}
         {actions.error && <p className="px-2 text-xs text-destructive">{actions.error}</p>}
       </div>
       {(confirmation === "dirty-target" || confirmation === "dirty-target-resolve") && (

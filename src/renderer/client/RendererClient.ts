@@ -180,10 +180,18 @@ interface ManagedWorktreeCommands {
     input: { workspacePath: string },
     options?: RendererCommandOptions,
   ): Promise<WorktreeStatus | undefined>;
+  prepareLanding(
+    input: { operationId: string; workspacePath: string },
+    options?: RendererCommandOptions,
+  ): Promise<void>;
   land(
     input: { operationId: string; workspacePath: string; request: WorktreeLandRequest },
     options?: RendererCommandOptions,
   ): Promise<WorktreeLandOutcome>;
+  cancelLanding(
+    input: { operationId: string; workspacePath: string },
+    options?: RendererCommandOptions,
+  ): Promise<void>;
   rebase(
     input: { operationId: string; workspacePath: string },
     options?: RendererCommandOptions,

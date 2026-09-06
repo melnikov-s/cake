@@ -39,6 +39,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
   phase:
     | "idle"
     | "committing"
+    | "waiting"
     | "landing"
     | "rebasing"
     | "proposing"
@@ -51,6 +52,8 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
   stalled = false;
 
   private pendingStrategy: WorktreeLandRequest["strategy"] | undefined;
+  private landingOperationId: string | undefined;
+  private landingQueueTimer: ReturnType<typeof setTimeout> | undefined;
   private pendingAllowDirtyTarget = false;
   private pendingResolveAfterLanding = false;
   private adoptedPauseFor: string | undefined;
@@ -60,7 +63,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
   constructor(props: WorktreeStore["props"]) {
     super(props);
     this.effect(() => {
-      if (!this.props.enabled()) return;
+      if (!this.shouldPoll) return;
       const workspacePath = this.props.workspacePath();
       if (!workspacePath) return;
       let active = true;
@@ -76,6 +79,12 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
         if (timer !== undefined) clearTimeout(timer);
       };
     });
+    this.effect(() => () => this.stopLandingQueuePoll());
+  }
+
+  /** Visibility gates idle refreshes, not a workflow that already owns a queue slot. */
+  private get shouldPoll() {
+    return this.props.enabled() || this.isBusy;
   }
 
   get isBusy() {
@@ -87,7 +96,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
   }
 
   async refresh(requestedWorkspacePath?: string) {
-    if (!this.props.enabled() || this.signal.aborted) return;
+    if (!this.shouldPoll || this.signal.aborted) return;
     const workspacePath = requestedWorkspacePath ?? this.props.workspacePath();
     if (!workspacePath || this.refreshingWorkspacePaths.has(workspacePath)) return;
     if (workspacePath !== this.observedWorkspacePath) {
@@ -95,6 +104,8 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
       this.status = undefined;
       this.phase = "idle";
       this.pendingStrategy = undefined;
+      this.landingOperationId = undefined;
+      this.stopLandingQueuePoll();
       this.pendingAllowDirtyTarget = false;
       this.pendingResolveAfterLanding = false;
       this.stalled = false;
@@ -120,26 +131,49 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     }
   }
 
-  /** Asks the session to commit dirty changes, then automatically lands the clean branch. */
+  /** Queues this landing, then asks the session to commit before using its repository slot. */
   async commitAndMerge(allowDirtyTarget = false, resolveAfterLanding = false): Promise<void> {
     const workspacePath = this.requiredWorkspacePath();
     if (this.isBusy) throw new Error("A worktree operation is already in progress.");
     if (this.props.isStreaming()) throw new Error("Wait for the current reply to finish first.");
+    const operationId =
+      this.landingOperationId ?? this.status?.landingOperationId ?? crypto.randomUUID();
+    this.landingOperationId = operationId;
     this.pendingResolveAfterLanding = resolveAfterLanding;
-    if (!this.status?.dirtyCount) {
-      await this.land({ strategy: "preserve", allowDirtyTarget: allowDirtyTarget || undefined });
-      return;
-    }
-    this.phase = "committing";
     this.pendingStrategy = "preserve";
     this.pendingAllowDirtyTarget = allowDirtyTarget;
+    this.phase = "landing";
     this.stalled = false;
     this.error = undefined;
+    this.startLandingQueuePoll(workspacePath, operationId);
     try {
-      await this.requestCommit();
+      await this.managedWorktrees.prepareLanding(
+        { operationId, workspacePath },
+        { signal: this.signal },
+      );
       if (this.signal.aborted || this.props.workspacePath() !== workspacePath) return;
+      this.stopLandingQueuePoll();
+      if (!this.status?.dirtyCount) {
+        await this.performLanding(
+          { strategy: "preserve", allowDirtyTarget: allowDirtyTarget || undefined },
+          workspacePath,
+          operationId,
+        );
+        return;
+      }
+      this.phase = "committing";
+      await this.requestCommit();
     } catch (error) {
-      this.fail(error);
+      const stillCurrent = this.landingOperationId === operationId;
+      if (stillCurrent)
+        await this.managedWorktrees
+          .cancelLanding({ operationId, workspacePath })
+          .catch(() => undefined);
+      if (stillCurrent) {
+        this.landingOperationId = undefined;
+        this.stopLandingQueuePoll();
+        this.fail(error);
+      }
       throw error;
     }
   }
@@ -178,17 +212,29 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     const workspacePath = this.requiredWorkspacePath();
     if (this.isBusy) throw new Error("A worktree operation is already in progress.");
     if (this.props.isStreaming()) throw new Error("Wait for the current reply to finish first.");
-    this.phase = "landing";
+    const operationId =
+      this.landingOperationId ?? this.status?.landingOperationId ?? crypto.randomUUID();
+    this.landingOperationId = operationId;
     this.pendingStrategy = request.strategy;
     this.pendingAllowDirtyTarget = request.allowDirtyTarget === true;
     this.stalled = false;
     this.error = undefined;
+    return this.performLanding(request, workspacePath, operationId);
+  }
+
+  private async performLanding(
+    request: WorktreeLandRequest,
+    workspacePath: string,
+    operationId: string,
+  ): Promise<WorktreeLandOutcome> {
+    this.phase = "landing";
+    this.startLandingQueuePoll(workspacePath, operationId);
     try {
-      const outcome = await this.managedWorktrees.land({
-        operationId: crypto.randomUUID(),
-        workspacePath,
-        request,
-      });
+      const outcome = await this.managedWorktrees.land(
+        { operationId, workspacePath, request },
+        { signal: this.signal },
+      );
+      this.stopLandingQueuePoll();
       if (this.signal.aborted || this.props.workspacePath() !== workspacePath) return outcome;
       if (outcome.outcome === "resolving") {
         this.phase = "resolving";
@@ -197,11 +243,25 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
         this.phase = "proposing";
         await this.requestSquashMessage();
       } else {
+        this.landingOperationId = undefined;
         await this.finishLanded(workspacePath);
       }
       return outcome;
     } catch (error) {
-      this.fail(error);
+      this.stopLandingQueuePoll();
+      if (this.landingOperationId === operationId) {
+        // The engine retains the slot for resolving/proposal outcomes. A failed
+        // agent request must release it too, without allowing polling to retry
+        // the paused workflow while cancellation is in flight.
+        this.phase = "landing";
+        await this.managedWorktrees
+          .cancelLanding({ operationId, workspacePath })
+          .catch(() => undefined);
+        if (this.landingOperationId === operationId) {
+          this.landingOperationId = undefined;
+          this.fail(error);
+        }
+      }
       throw error;
     }
   }
@@ -286,20 +346,27 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     });
   }
 
-  /** Releases a paused landing back to manual control without touching Git state. */
-  cancelLanding() {
+  /** Releases a paused or queued landing back to manual control without touching Git state. */
+  async cancelLanding() {
     if (
+      this.phase !== "waiting" &&
       this.phase !== "committing" &&
       this.phase !== "resolving" &&
       this.phase !== "resolving-rebase" &&
       this.phase !== "proposing"
     )
       return;
+    const workspacePath = this.props.workspacePath();
+    const operationId = this.landingOperationId ?? this.status?.landingOperationId;
+    this.landingOperationId = undefined;
+    this.stopLandingQueuePoll();
     this.phase = "idle";
     this.pendingStrategy = undefined;
     this.pendingAllowDirtyTarget = false;
     this.pendingResolveAfterLanding = false;
     this.stalled = false;
+    if (workspacePath && operationId)
+      await this.managedWorktrees.cancelLanding({ operationId, workspacePath });
   }
 
   /**
@@ -315,6 +382,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     }
     if (!status.record.pendingStrategy) return;
     this.pendingStrategy = status.record.pendingStrategy;
+    this.landingOperationId = status.landingOperationId;
     this.pendingAllowDirtyTarget = false;
     const pausedOnWork =
       status.dirtyCount > 0 ||
@@ -366,6 +434,42 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     const allowDirtyTarget = this.pendingAllowDirtyTarget || undefined;
     this.phase = "idle";
     await this.land({ strategy, allowDirtyTarget });
+  }
+
+  private startLandingQueuePoll(workspacePath: string, operationId: string) {
+    this.stopLandingQueuePoll();
+    const poll = async () => {
+      try {
+        const status = await this.managedWorktrees.status(
+          { workspacePath },
+          { signal: this.signal },
+        );
+        if (
+          this.signal.aborted ||
+          this.props.workspacePath() !== workspacePath ||
+          this.landingOperationId !== operationId
+        )
+          return;
+        if (status) this.status = status;
+        if (this.phase === "landing" || this.phase === "waiting")
+          this.phase = status?.landingState === "queued" ? "waiting" : "landing";
+      } catch {
+        // The landing request remains authoritative; a later poll can recover presentation.
+      }
+      if (
+        !this.signal.aborted &&
+        this.props.workspacePath() === workspacePath &&
+        this.landingOperationId === operationId &&
+        (this.phase === "landing" || this.phase === "waiting")
+      )
+        this.landingQueueTimer = setTimeout(() => void poll(), 250);
+    };
+    this.landingQueueTimer = setTimeout(() => void poll(), 50);
+  }
+
+  private stopLandingQueuePoll() {
+    if (this.landingQueueTimer !== undefined) clearTimeout(this.landingQueueTimer);
+    this.landingQueueTimer = undefined;
   }
 
   private async requestCommit() {
@@ -487,6 +591,8 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     const resolveAfterLanding = this.pendingResolveAfterLanding;
     this.phase = "idle";
     this.pendingStrategy = undefined;
+    this.landingOperationId = undefined;
+    this.stopLandingQueuePoll();
     this.pendingAllowDirtyTarget = false;
     this.pendingResolveAfterLanding = false;
     this.stalled = false;

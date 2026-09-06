@@ -27,10 +27,19 @@ export interface ManagedWorktreesService {
   readonly status: (
     worktreePath: string,
   ) => Effect.Effect<WorktreeStatus | undefined, ManagedWorktreeError>;
+  readonly prepareLanding: (
+    worktreePath: string,
+    operationId: string,
+  ) => Effect.Effect<void, ManagedWorktreeError>;
   readonly land: (
     worktreePath: string,
+    operationId: string,
     request: WorktreeLandRequest,
   ) => Effect.Effect<WorktreeLandOutcome, ManagedWorktreeError>;
+  readonly cancelLanding: (
+    worktreePath: string,
+    operationId: string,
+  ) => Effect.Effect<void, ManagedWorktreeError>;
   readonly rebase: (
     worktreePath: string,
   ) => Effect.Effect<WorktreeRebaseOutcome, ManagedWorktreeError>;

@@ -29,6 +29,9 @@ export const worktreeStatusSchema = Schema.Struct({
   merging: Schema.Boolean,
   rebasing: Schema.Boolean,
   squashMessageReady: Schema.Boolean,
+  landingState: Schema.optionalKey(Schema.Literals(["running", "queued"])),
+  landingOperationId: Schema.optionalKey(bounded(1, 256)),
+  landingQueuePosition: Schema.optionalKey(nonNegativeInt),
 });
 export type WorktreeStatus = typeof worktreeStatusSchema.Type;
 export const worktreeLandRequestSchema = Schema.Union([

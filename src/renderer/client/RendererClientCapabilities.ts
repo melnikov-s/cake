@@ -231,6 +231,17 @@ export function makeRendererClientCapabilities(execute: Execute): RendererClient
           (client) => client.managedWorktrees["get-worktree-status"]({ ...input }),
           options,
         ).then((response) => response.status),
+      prepareLanding: (input, options) =>
+        accepted(
+          "managedWorktrees.prepare-worktree-landing",
+          (client) =>
+            client.managedWorktrees["prepare-worktree-landing"]({
+              requestId: input.operationId,
+              workspacePath: input.workspacePath,
+            }),
+          input.operationId,
+          options,
+        ),
       land: (input, options) =>
         execute(
           "managedWorktrees.land-worktree",
@@ -242,6 +253,20 @@ export function makeRendererClientCapabilities(execute: Execute): RendererClient
             }),
           options,
         ).then((response) => response.result),
+      cancelLanding: (input, options) => {
+        const requestId = crypto.randomUUID();
+        return accepted(
+          "managedWorktrees.cancel-worktree-landing",
+          (client) =>
+            client.managedWorktrees["cancel-worktree-landing"]({
+              requestId,
+              workspacePath: input.workspacePath,
+              landingOperationId: input.operationId,
+            }),
+          requestId,
+          options,
+        );
+      },
       rebase: (input, options) =>
         execute(
           "managedWorktrees.rebase-worktree",

@@ -416,10 +416,19 @@ export const cakeRpcPayloadSchemas = {
   "get-worktree-status": Schema.Struct({
     workspacePath: stringMax(4_096),
   }),
+  "prepare-worktree-landing": Schema.Struct({
+    ...requestBase,
+    workspacePath: stringMax(4_096),
+  }),
   "land-worktree": Schema.Struct({
     ...requestBase,
     workspacePath: stringMax(4_096),
     request: worktreeLandRequestSchema,
+  }),
+  "cancel-worktree-landing": Schema.Struct({
+    ...requestBase,
+    workspacePath: stringMax(4_096),
+    landingOperationId: uuid,
   }),
   "rebase-worktree": Schema.Struct({
     ...requestBase,
@@ -576,7 +585,9 @@ export const cakeRpcSuccessSchemas = {
   "respond-workspace-trust": cakeRpcResultSchemas.accepted,
   "create-worktree": cakeRpcResultSchemas["worktree-created"],
   "get-worktree-status": cakeRpcResultSchemas["worktree-status-loaded"],
+  "prepare-worktree-landing": cakeRpcResultSchemas.accepted,
   "land-worktree": cakeRpcResultSchemas["worktree-landed"],
+  "cancel-worktree-landing": cakeRpcResultSchemas.accepted,
   "rebase-worktree": cakeRpcResultSchemas["worktree-rebased"],
   "discard-worktree": cakeRpcResultSchemas.accepted,
   "open-terminal": cakeRpcResultSchemas["terminal-opened"],
