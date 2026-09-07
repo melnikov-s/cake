@@ -50,6 +50,7 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
   const hasMore = resolved
     ? store.hasMoreResolvedProjectSessions(path)
     : sessions.length > visibleSessions.length;
+  const kanbanSelected = shell.selection.kind === "kanban" && shell.selection.projectPath === path;
   return (
     <div data-slot="project-group" className={cn("mb-3 last:mb-0", empty && "mb-1")}>
       <div
@@ -101,15 +102,11 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
             <IconButton
               className={cn(
                 "size-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-sidebar-hover opacity-0 group-hover/proj:opacity-100 focus-visible:opacity-100 transition-opacity",
-                shell.selection.kind === "kanban" &&
-                  shell.selection.projectPath === path &&
-                  "bg-sidebar-hover text-foreground opacity-100",
+                kanbanSelected && "bg-sidebar-hover text-foreground opacity-100",
               )}
-              tooltip="Open Kanban board"
-              ariaLabel={`Open Kanban board for ${projects.nameFromPath(path)}`}
-              aria-pressed={
-                shell.selection.kind === "kanban" && shell.selection.projectPath === path
-              }
+              tooltip={kanbanSelected ? "Close Kanban board" : "Open Kanban board"}
+              ariaLabel={`${kanbanSelected ? "Close" : "Open"} Kanban board for ${projects.nameFromPath(path)}`}
+              aria-pressed={kanbanSelected}
               onClick={() => onOpenKanban(path)}
             >
               <KanbanIcon />
@@ -156,6 +153,9 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
               }
               onResolve={(sessionId, nextResolved) =>
                 void store.setSessionResolved(sessionId, nextResolved)
+              }
+              onSetStatus={(sessionId, statusId) =>
+                void store.setSessionWorkflowStatus(sessionId, statusId)
               }
               onDelete={(sessionId) => void store.deleteSession(sessionId)}
               onMarkUnread={(sessionId, unread) => void store.setSessionUnread(sessionId, unread)}

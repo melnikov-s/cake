@@ -39,6 +39,7 @@ export function KanbanSessionCard({
       className="cursor-grab flex-col items-stretch gap-2.5 p-3 active:cursor-grabbing"
       title={session.title}
       description={description}
+      descriptionClassName="whitespace-normal break-words leading-relaxed"
       badge={
         session.draft ? (
           <Badge variant="outline" size="xs">

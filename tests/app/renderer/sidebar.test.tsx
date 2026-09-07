@@ -34,6 +34,7 @@ function sidebarProps(store: ProjectWorkbenchStore) {
           (session: { resolved?: boolean }) => session.resolved === true,
         ).length > fixture.sessionLimit("cake-chat", true),
       setSessionResolved: fixture.setSessionResolved ?? vi.fn(),
+      setSessionWorkflowStatus: fixture.setSessionWorkflowStatus ?? vi.fn(),
       setCakeChatSessionResolved: fixture.setCakeChatSessionResolved ?? vi.fn(),
       deleteSession: fixture.deleteSession ?? vi.fn(),
       deleteCakeChatSession: fixture.deleteCakeChatSession ?? vi.fn(),
@@ -165,6 +166,24 @@ describe("Sidebar projects", () => {
         .click(),
     );
     expect(openKanban).toHaveBeenCalledWith("/work/cake");
+
+    act(() =>
+      root.render(
+        <Sidebar
+          {...sidebarProps(store)}
+          shell={{ selection: { kind: "kanban", projectPath: "/work/cake" } } as any}
+          onOpenSettings={vi.fn()}
+          onOpenKanban={openKanban}
+          onToggle={vi.fn()}
+        />,
+      ),
+    );
+    act(() =>
+      container
+        .querySelector<HTMLButtonElement>('[aria-label="Close Kanban board for cake"]')!
+        .click(),
+    );
+    expect(openKanban).toHaveBeenCalledTimes(2);
   });
 
   it("shows project sessions ten at a time", () => {
@@ -1110,7 +1129,7 @@ describe("Sidebar projects", () => {
   });
 
   it("opens the native session menu and begins renaming its selected action", async () => {
-    const showSessionContextMenu = vi.fn(async () => "rename" as const);
+    const showSessionContextMenu = vi.fn(async () => ({ action: "rename" as const }));
     const store = {
       recentProjectPaths: ["/work/cake"],
       projects: [{ path: "/work/cake", name: "Cake" }],
@@ -1147,8 +1166,53 @@ describe("Sidebar projects", () => {
     expect(container.querySelector('[role="menu"]')).toBeNull();
   });
 
+  it("sets a project session workflow status from the native session menu", async () => {
+    const showSessionContextMenu = vi.fn(async () => ({
+      action: "set-status" as const,
+      statusId: "status-review",
+    }));
+    const setSessionWorkflowStatus = vi.fn();
+    const store = {
+      recentProjectPaths: ["/work/cake"],
+      projects: [{ path: "/work/cake", name: "Cake" }],
+      projectSessions: () => [
+        { sessionId: "session-1", title: "Follow up", modifiedAt: new Date(0).toISOString() },
+      ],
+      sessionLimit: () => 8,
+      sessionActivity: vi.fn(),
+      sessionActivityTime: vi.fn(() => "Today"),
+      sessionWorkflowStatus: () => ({ name: "In review", color: "violet" }),
+      nameFromPath: () => "cake",
+      showMoreSessions: vi.fn(),
+      showSessionContextMenu,
+      setSessionWorkflowStatus,
+    } as unknown as ProjectWorkbenchStore;
+
+    act(() =>
+      root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onToggle={vi.fn()} />),
+    );
+    expect(
+      container
+        .querySelector('[data-session-id="session-1"] [aria-label="Status: In review"]')
+        ?.classList.contains("-left-4"),
+    ).toBe(true);
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>(".session-row")!.dispatchEvent(
+        new MouseEvent("contextmenu", {
+          bubbles: true,
+          cancelable: true,
+          clientX: 12,
+          clientY: 34,
+        }),
+      );
+      await Promise.resolve();
+    });
+
+    expect(setSessionWorkflowStatus).toHaveBeenCalledWith("session-1", "status-review");
+  });
+
   it("marks a project session unread from the native session menu", async () => {
-    const showSessionContextMenu = vi.fn(async () => "mark-unread" as const);
+    const showSessionContextMenu = vi.fn(async () => ({ action: "mark-unread" as const }));
     const setSessionUnread = vi.fn();
     const store = {
       recentProjectPaths: ["/work/cake"],
@@ -1222,7 +1286,7 @@ describe("Sidebar projects", () => {
   });
 
   it("deletes a resolved project session from its native menu", async () => {
-    const showSessionContextMenu = vi.fn(async () => "delete" as const);
+    const showSessionContextMenu = vi.fn(async () => ({ action: "delete" as const }));
     const deleteSession = vi.fn();
     const store = {
       recentProjectPaths: ["/work/cake"],
@@ -1265,7 +1329,7 @@ describe("Sidebar projects", () => {
   });
 
   it("opens the native session menu and renames a Cake Chat", async () => {
-    const showSessionContextMenu = vi.fn(async () => "rename" as const);
+    const showSessionContextMenu = vi.fn(async () => ({ action: "rename" as const }));
     const renameCakeChatSession = vi.fn(async () => true);
     const store = {
       recentProjectPaths: [],

@@ -285,8 +285,10 @@ The window Store hierarchy mirrors the product surfaces:
   assignments. `Draft`, `Active`, and `Resolved` remain derived system columns;
   custom statuses subdivide only Active and never redefine transcript lifecycle.
   `KanbanStore` owns the Project Kanban surface, mutation orchestration, drop semantics,
-  and bounded background card-description generation. React owns only an in-progress
-  drag gesture. `SessionCatalogStore` owns the currently demanded, activity-sorted
+  and bounded background card-description generation. Sidebar session rows project a
+  custom status swatch in their indentation gutter and offer the same valid lifecycle and
+  custom-status transitions through their native context menu; Draft is never a return
+  destination after activation. React owns only an in-progress drag gesture. `SessionCatalogStore` owns the currently demanded, activity-sorted
   session metadata projection plus cached ID and project-group indexes. Active
   project streams remain demanded while their groups are visually collapsed, so
   expanding a group never restarts discovery or clears its projection. Its
@@ -294,18 +296,16 @@ The window Store hierarchy mirrors the product surfaces:
   Worktrees; finished, discarded, and missing worktrees never participate in
   startup. Project-root and active or landed Managed Worktree metadata scans run
   concurrently and join the same bounded initial projection, so worktree sessions
-  do not appear as a delayed second catalog. Metadata arrives in bounded batches.
-  The resolved lane and every
-  resolved project group start collapsed, so archive metadata is not read until
-  both are expanded. After its first expansion, a resolved group's catalog and
-  projection remain active for the window lifetime; collapsing it changes only
-  visibility, so re-expansion is immediate. After a group's one initial lazy
-  metadata scan, session mutations publish scoped catalog events; they refresh
-  only the affected session's filename metadata and never restart catalogs from
-  application-state revisions. Resolved groups project ten sessions at first and
-  increase that window by ten when the user chooses Show more; replacing that
-  bounded observation retains the current rows until its next coherent snapshot,
-  so archive discovery never streams partially sorted rows through navigation.
+  do not appear as a delayed second catalog. The complete active catalog arrives as
+  one coherent initial snapshot. The resolved lane and every resolved Project group
+  start visually collapsed, but their metadata-only archive catalogs remain demanded
+  for the window lifetime. Each registered Project therefore has its complete
+  resolved projection before its Kanban board or resolved navigation group opens.
+  This reads Cake's archive index only: it does not open transcripts, inspect Git,
+  discover Managed Worktrees, or acquire Pi runtimes. After the initial scan, session
+  mutations publish scoped catalog events that refresh only the affected metadata and
+  never restart catalogs from application-state revisions. Resolved groups display ten
+  loaded sessions at first and reveal ten more when the user chooses Show more.
   Titles come from Cake's namespace-independent,
   per-session metadata repository, so neither active nor resolved listing opens
   transcript bodies. Session IDs are the canonical identity; duplicate IDs are
@@ -314,9 +314,9 @@ The window Store hierarchy mirrors the product surfaces:
   resolved navigation record stores only bounded Cake-owned display and routing
   metadata, including its title, Project, original Working Directory, and
   historical worktree name. Resolved browsing reads those records without Pi,
-  Git, or Managed Worktree discovery. Existing archives are indexed once, only
-  when their resolved Project group is first expanded; that migration reads
-  filename metadata and Cake titles without opening transcript bodies. Resolving
+  Git, or Managed Worktree discovery. Existing archives are indexed once when
+  their registered Project catalog first initializes; that migration reads filename
+  metadata and Cake titles without opening transcript bodies. Resolving
   and restoring move only the Pi transcript between namespaces; restoring never
   recreates or reopens a Git worktree, and the Cake-owned title remains stable
   across both namespaces.

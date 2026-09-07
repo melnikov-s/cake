@@ -15,6 +15,7 @@ function fixture(options?: {
   resolved?: boolean;
   assigned?: boolean;
   details?: boolean;
+  boardSelected?: boolean;
 }) {
   const session = {
     sessionId: "session-1",
@@ -67,7 +68,7 @@ function fixture(options?: {
       catalog,
       registry,
       setSessionResolved: resolveSession,
-      selectedProjectPath: () => projectPath,
+      selectedProjectPath: () => (options?.boardSelected === false ? undefined : projectPath),
       utilityModelConfigured: () => true,
       openSession: vi.fn(async () => true),
       reportError: vi.fn(),
@@ -132,7 +133,7 @@ describe("KanbanStore", () => {
   });
 
   it("moves among Active and custom columns without changing lifecycle", async () => {
-    const test = fixture();
+    const test = fixture({ boardSelected: false });
     expect(await test.store.moveSession("session-1", statusId)).toBe(true);
     expect(test.mutate).toHaveBeenCalledWith(
       {

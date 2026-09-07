@@ -1,5 +1,5 @@
 import type { Effect } from "effect";
-import type { ProjectSettings } from "../../domain/application-data";
+import type { ProjectSettings, ProjectWorkflowColor } from "../../domain/application-data";
 import type { CakeIpcClientService } from "../../ipc/client/CakeIpcClient";
 import type { EditorAnnotationSnapshot } from "../../ipc/editor-annotation";
 import type {
@@ -52,6 +52,10 @@ export interface EmbeddedEditorStateSnapshot {
 
 type TerminalTarget = { readonly workingDirectory: string };
 
+type SessionContextMenuAction =
+  | { action: "rename" | "mark-unread" | "resolve" | "unresolve" | "delete" }
+  | { action: "set-status"; statusId: string };
+
 interface ElectronCommands {
   chooseProject(options?: RendererCommandOptions): Promise<string | undefined>;
   openExternalUrl(url: string, options?: RendererCommandOptions): Promise<void>;
@@ -79,11 +83,20 @@ interface ElectronCommands {
       x: number;
       y: number;
       resolved: boolean;
+      draft: boolean;
       unread?: boolean;
       familyChild?: boolean;
+      workflow?: {
+        currentStatus: string;
+        statuses: ReadonlyArray<{
+          id: string;
+          name: string;
+          color: ProjectWorkflowColor;
+        }>;
+      };
     },
     options?: RendererCommandOptions,
-  ): Promise<"rename" | "mark-unread" | "resolve" | "unresolve" | "delete" | undefined>;
+  ): Promise<SessionContextMenuAction | undefined>;
   showProjectContextMenu(
     input: { path: string; x: number; y: number; resolvedWorktreeCount: number },
     options?: RendererCommandOptions,

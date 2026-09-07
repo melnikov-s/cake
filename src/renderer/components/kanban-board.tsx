@@ -1,17 +1,20 @@
 import { useState } from "react";
 import { observer } from "r-state-tree/react";
 import type { ProjectWorkflowColor } from "../../domain/application-data";
-import type { KanbanStore } from "../stores/KanbanStore";
+import type { KanbanColumnId, KanbanStore } from "../stores/KanbanStore";
+import { kanbanSessionDragType } from "../lib/kanban-drag";
+import { cn } from "../lib/utils";
 import { ErrorNotice } from "./error-notice";
 import { KanbanColumn, type KanbanDragItem } from "./kanban-column";
 import { Button } from "./ui/button";
 import { ColorPicker } from "./ui/color-picker";
-import { PlusIcon } from "./ui/icons";
+import { PlusIcon, ResolveIcon } from "./ui/icons";
 import { Input } from "./ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 
 export const KanbanBoard = observer(function KanbanBoard({ store }: { store: KanbanStore }) {
   const [dragItem, setDragItem] = useState<KanbanDragItem>();
+  const [dragTargetColumnId, setDragTargetColumnId] = useState<KanbanColumnId>();
   const [addOpen, setAddOpen] = useState(false);
   const [name, setName] = useState("");
   const [color, setColor] = useState<ProjectWorkflowColor>("sky");
@@ -30,7 +33,7 @@ export const KanbanBoard = observer(function KanbanBoard({ store }: { store: Kan
     setAddOpen(false);
   };
   return (
-    <div data-slot="kanban-board" className="flex h-full min-h-0 flex-col overflow-hidden">
+    <div data-slot="kanban-board" className="relative flex h-full min-h-0 flex-col overflow-hidden">
       <div className="flex shrink-0 items-center justify-between gap-4 border-b border-border/65 px-5 py-3">
         <div className="min-w-0">
           <h1 className="truncate font-display text-lg font-semibold tracking-tight">
@@ -75,20 +78,48 @@ export const KanbanBoard = observer(function KanbanBoard({ store }: { store: Kan
           <ErrorNotice title="Kanban operation failed" message={store.error} />
         </div>
       )}
+      {dragItem?.kind === "session" && store.canMoveSessionToResolved(dragItem.sessionId) && (
+        <div
+          data-slot="kanban-resolve-drop-target"
+          className={cn(
+            "absolute right-6 bottom-6 z-30 flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-3 text-xs font-semibold text-muted-foreground shadow-lg transition-all",
+            dragTargetColumnId === "resolved" &&
+              "border-accent bg-accent/15 text-foreground ring-2 ring-accent/35",
+          )}
+          onDragEnter={() => setDragTargetColumnId("resolved")}
+          onDragOver={(event) => {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "move";
+          }}
+          onDrop={(event) => {
+            event.preventDefault();
+            const sessionId = event.dataTransfer.getData(kanbanSessionDragType);
+            if (sessionId) void store.moveSession(sessionId, "resolved");
+            setDragTargetColumnId(undefined);
+            setDragItem(undefined);
+          }}
+        >
+          <ResolveIcon /> Drop to resolve
+        </div>
+      )}
       <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto p-4">
         <KanbanColumn
           store={store}
           id="draft"
           title="Draft"
           dragItem={dragItem}
+          dropActive={dragTargetColumnId === "draft"}
           onDragItemChange={setDragItem}
+          onDragTargetChange={setDragTargetColumnId}
         />
         <KanbanColumn
           store={store}
           id="active"
           title="Active"
           dragItem={dragItem}
+          dropActive={dragTargetColumnId === "active"}
           onDragItemChange={setDragItem}
+          onDragTargetChange={setDragTargetColumnId}
         />
         {store.customColumns.map((column, index) => (
           <KanbanColumn
@@ -99,7 +130,9 @@ export const KanbanBoard = observer(function KanbanBoard({ store }: { store: Kan
             color={column.color}
             customIndex={index}
             dragItem={dragItem}
+            dropActive={dragTargetColumnId === column.id}
             onDragItemChange={setDragItem}
+            onDragTargetChange={setDragTargetColumnId}
           />
         ))}
         <KanbanColumn
@@ -107,7 +140,9 @@ export const KanbanBoard = observer(function KanbanBoard({ store }: { store: Kan
           id="resolved"
           title="Resolved"
           dragItem={dragItem}
+          dropActive={dragTargetColumnId === "resolved"}
           onDragItemChange={setDragItem}
+          onDragTargetChange={setDragTargetColumnId}
         />
       </div>
     </div>

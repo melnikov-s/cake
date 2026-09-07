@@ -39,6 +39,7 @@ export interface SidebarSessionItemProps {
   familyCollapsed?: boolean;
   onRename(sessionId: string, name: string): void;
   onResolve(sessionId: string, resolved: boolean): void;
+  onSetStatus?(sessionId: string, statusId: string): void;
   onDelete(sessionId: string): void;
   /** Omitted on surfaces without unread support; enables the context-menu toggle. */
   onMarkUnread?(sessionId: string, unread: boolean): void;
@@ -58,6 +59,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
   familyCollapsed,
   onRename,
   onResolve,
+  onSetStatus,
   onDelete,
   onMarkUnread,
 }: SidebarSessionItemProps) {
@@ -66,7 +68,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
   const isFamilyParent = Boolean(session.familyChildSessionIds?.length);
   const isFamilyChild =
     Boolean(session.familyParentSessionId) && session.familyParentSessionId !== session.sessionId;
-  const canResolve = !activity && !isFamilyChild;
+  const canResolve = !activity && !isFamilyChild && !session.draft;
   const activityLabel =
     activity === "waiting"
       ? "Waiting for your answer"
@@ -115,6 +117,15 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
           <ChevronIcon />
         </IconButton>
       )}
+      {workflowStatus && renamingValue === null && (
+        <StatusSwatch
+          color={workflowStatus.color}
+          className="absolute top-3 -left-4"
+          title={workflowStatus.name}
+          role="img"
+          aria-label={`Status: ${workflowStatus.name}`}
+        />
+      )}
       {renamingValue !== null ? (
         <input
           className="session-rename-input w-full h-7 rounded-md border border-accent/50 bg-background px-2 text-xs text-foreground outline-none focus:ring-1 focus:ring-accent"
@@ -155,12 +166,15 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
                     onMarkUnread ? unread : undefined,
                   );
               void menu.then((action) => {
-                if (action === "rename") setRenamingValue(session.title);
-                else if (action === "mark-unread") onMarkUnread?.(session.sessionId, true);
-                else if (action === "resolve" && !isFamilyChild) onResolve(session.sessionId, true);
-                else if (action === "unresolve" && !isFamilyChild)
+                if (action?.action === "rename") setRenamingValue(session.title);
+                else if (action?.action === "mark-unread") onMarkUnread?.(session.sessionId, true);
+                else if (action?.action === "resolve" && !isFamilyChild)
+                  onResolve(session.sessionId, true);
+                else if (action?.action === "unresolve" && !isFamilyChild)
                   onResolve(session.sessionId, false);
-                else if (action === "delete" && !isFamilyChild) onDelete(session.sessionId);
+                else if (action?.action === "set-status")
+                  onSetStatus?.(session.sessionId, action.statusId);
+                else if (action?.action === "delete" && !isFamilyChild) onDelete(session.sessionId);
               });
             });
           }}
@@ -222,15 +236,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
             )
           }
           trailing={
-            <div className="session-meta relative flex h-full w-14 shrink-0 items-center justify-center gap-1.5">
-              {workflowStatus && (
-                <StatusSwatch
-                  color={workflowStatus.color}
-                  title={workflowStatus.name}
-                  role="img"
-                  aria-label={`Status: ${workflowStatus.name}`}
-                />
-              )}
+            <div className="session-meta relative flex h-full w-8 shrink-0 items-center justify-center">
               {activity ? (
                 <StatusDot
                   status={

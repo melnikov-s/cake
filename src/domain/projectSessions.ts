@@ -54,13 +54,11 @@ import {
 } from "../services/session-catalogs/SessionCatalogChanges";
 
 type ProjectSessionCatalogEvent = Extract<SessionCatalogUpdate, { _tag: "Event" }>["event"];
-type InitialCatalogItem =
-  | {
-      readonly _tag: "InitialBatch";
-      readonly sessions: ProjectSessionSummary[];
-      readonly hasMore?: boolean;
-    }
-  | { readonly _tag: "InitialComplete" };
+type InitialCatalogItem = {
+  readonly _tag: "InitialBatch";
+  readonly sessions: ProjectSessionSummary[];
+  readonly hasMore?: boolean;
+};
 type CatalogStreamItem = InitialCatalogItem | ProjectSessionCatalogEvent;
 
 const asError = (operation: string) =>
@@ -277,8 +275,7 @@ const catalogForState = Effect.fn("ProjectSessions.catalogForState")(function* (
     ),
   );
   // Project-root and Managed Worktree catalogs form one initial projection. Scan
-  // their lightweight metadata concurrently, then release the bounded batches
-  // together instead of visually appending worktree sessions after root sessions.
+  // their lightweight metadata concurrently before publishing one coherent snapshot.
   return Stream.fromEffect(Stream.runCollect(locationCatalogs)).pipe(
     Stream.flatMap(Stream.fromIterable),
   );
@@ -367,31 +364,19 @@ export const observeCatalog = Effect.fn("ProjectSessions.observeCatalog")(functi
   const catalogs = yield* SessionCatalogChanges;
   const state = yield* getState();
   const catalog = Stream.unwrap(catalogForState(query, state));
-  const initial = query.resolved
-    ? Stream.fromEffect(
-        catalog.pipe(
-          Stream.runCollect,
-          Effect.map((sessions) => {
-            const sorted = Array.from(sessions).sort(compareSessionSummariesForSidebar);
-            return {
-              _tag: "InitialBatch" as const,
-              sessions: sorted.slice(0, query.limit),
-              hasMore: sorted.length > query.limit,
-            };
-          }),
-        ),
-      )
-    : catalog.pipe(
-        Stream.groupedWithin(100, "16 millis"),
-        Stream.map((sessions) => ({
-          _tag: "InitialBatch" as const,
-          sessions: Array.from(sessions),
-        })),
-        Stream.concat(Stream.make({ _tag: "InitialComplete" as const })),
-      );
+  const initial = Stream.fromEffect(
+    catalog.pipe(
+      Stream.runCollect,
+      Effect.map((sessions) => {
+        const collected = Array.from(sessions);
+        if (query.resolved) collected.sort(compareSessionSummariesForSidebar);
+        return { _tag: "InitialBatch" as const, sessions: collected };
+      }),
+    ),
+  );
   return catalogs.initialThenChanges(initial).pipe(
     Stream.mapEffect((item) =>
-      item._tag === "InitialBatch" || item._tag === "InitialComplete"
+      item._tag === "InitialBatch"
         ? Effect.succeed<typeof item | ProjectSessionCatalogEvent | undefined>(item)
         : catalogEventForChange(query, item),
     ),
@@ -413,13 +398,6 @@ export const observeCatalog = Effect.fn("ProjectSessions.observeCatalog")(functi
     >(
       () => ({ revision: 0, initialized: false }),
       (state, item) => {
-        if (item._tag === "InitialComplete") {
-          if (state.initialized) return [state, []];
-          return [
-            { revision: 1, initialized: true },
-            [{ _tag: "Snapshot", revision: 1, sessions: [] }],
-          ];
-        }
         const revision = state.revision + 1;
         if (item._tag === "InitialBatch") {
           const update: SessionCatalogUpdate = state.initialized

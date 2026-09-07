@@ -148,7 +148,7 @@ export class RendererModelSynchronizer implements Disposable {
       (update: ProjectCatalogUpdate) => applyProjectCatalogUpdate(input.projects, update),
     );
     for (const query of input.projectSessionCatalogQueries ?? []) {
-      const key = `project-session-catalog:${query.resolved ? `resolved:${query.limit}` : "active"}:${query.projectPath}`;
+      const key = `project-session-catalog:${query.resolved ? "resolved" : "active"}:${query.projectPath}`;
       active.add(key);
       this.catalogGroups.set(key, { model: input.sessionCatalog, query });
       this.synchronizeModel(

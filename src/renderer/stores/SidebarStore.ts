@@ -17,6 +17,7 @@ export interface SidebarStoreProps {
   sessions: SessionRegistryStore;
   cakeChat(): CakeChatCollectionStore;
   setSessionResolved(sessionId: string, resolved: boolean): Promise<void>;
+  setSessionWorkflowStatus(sessionId: string, statusId: string): Promise<void>;
   setCakeChatSessionResolved(sessionId: string, resolved: boolean): Promise<void>;
   deleteSession(sessionId: string): Promise<void>;
   deleteCakeChatSession(sessionId: string): Promise<void>;
@@ -40,7 +41,7 @@ export class SidebarStore extends Store<SidebarStoreProps> {
     "cake-chat": true,
   });
   private readonly expandedResolvedGroups: Record<string, boolean> = observable({});
-  private readonly activatedResolvedCatalogs: Record<string, boolean> = observable({});
+  private readonly activatedResolvedCakeChatCatalogs: Record<string, boolean> = observable({});
   private readonly sessionLimits: Record<string, number> = observable({});
   @snapshot private readonly collapsedFamilies: Record<string, boolean> = observable({});
   resolvedLaneExpanded = false;
@@ -129,14 +130,39 @@ export class SidebarStore extends Store<SidebarStoreProps> {
     unread?: boolean,
     familyChild?: boolean,
   ) {
+    const session = this.props.catalog.find(sessionId);
+    const workflow = session ? this.props.projects.find(session.projectPath)?.workflow : undefined;
+    const assignedStatusId = workflow?.assignments.find(
+      (assignment) => assignment.sessionId === sessionId,
+    )?.statusId;
+    const currentStatus = session?.draft
+      ? "draft"
+      : resolved
+        ? "resolved"
+        : workflow?.columns.some((status) => status.id === assignedStatusId)
+          ? (assignedStatusId ?? "active")
+          : "active";
     return this.electron.showSessionContextMenu({
       sessionId,
       x,
       y,
       resolved,
+      draft: session?.draft === true,
       unread,
       familyChild,
+      ...(workflow?.columns.length
+        ? {
+            workflow: {
+              currentStatus,
+              statuses: workflow.columns.map((status) => ({ ...status })),
+            },
+          }
+        : undefined),
     });
+  }
+
+  setSessionWorkflowStatus(sessionId: string, statusId: string) {
+    return this.props.setSessionWorkflowStatus(sessionId, statusId);
   }
 
   showProjectContextMenu(path: string, x: number, y: number) {
@@ -221,7 +247,10 @@ export class SidebarStore extends Store<SidebarStoreProps> {
   }
 
   hasMoreResolvedProjectSessions(projectPath: string) {
-    return this.props.catalog.hasMoreResolvedSessions(projectPath);
+    return (
+      this.props.catalog.hasMoreResolvedSessions(projectPath) ||
+      this.projectSessions(projectPath, true).length > this.sessionLimit(projectPath, true)
+    );
   }
 
   get hasMoreResolvedCakeChatSessions() {
@@ -285,25 +314,19 @@ export class SidebarStore extends Store<SidebarStoreProps> {
   toggleResolvedGroupExpanded(groupKey: string) {
     const expanded = !this.isResolvedGroupExpanded(groupKey);
     this.expandedResolvedGroups[groupKey] = expanded;
-    if (expanded) this.activatedResolvedCatalogs[groupKey] = true;
+    if (expanded && groupKey === "cake-chat")
+      this.activatedResolvedCakeChatCatalogs[groupKey] = true;
   }
 
   get projectSessionCatalogQueries(): ReadonlyArray<ProjectSessionCatalogQuery> {
-    const queries: ProjectSessionCatalogQuery[] = [];
-    for (const projectPath of this.props.projects.orderedProjectPaths) {
-      queries.push({ projectPath, resolved: false });
-      if (this.activatedResolvedCatalogs[projectPath])
-        queries.push({
-          projectPath,
-          resolved: true,
-          limit: this.sessionLimit(projectPath, true),
-        });
-    }
-    return queries;
+    return this.props.projects.orderedProjectPaths.flatMap((projectPath) => [
+      { projectPath, resolved: false },
+      { projectPath, resolved: true },
+    ]);
   }
 
   get cakeChatCatalogQueries(): ReadonlyArray<CakeChatCatalogQuery> {
-    return this.activatedResolvedCatalogs["cake-chat"]
+    return this.activatedResolvedCakeChatCatalogs["cake-chat"]
       ? [{ resolved: false }, { resolved: true, limit: this.sessionLimit("cake-chat", true) }]
       : [{ resolved: false }];
   }

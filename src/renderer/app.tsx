@@ -600,14 +600,15 @@ export const App = observer(function App() {
               </strong>
             </div>
             <div className="flex min-w-0 shrink-0 items-center gap-1.5 [app-region:no-drag]">
-              <IconButton
-                tooltip={`Terminal (${terminal.toggleAcceleratorHint})`}
-                disabled={!terminal.available}
-                aria-pressed={terminal.open}
-                onClick={() => void terminal.toggle()}
-              >
-                <TerminalIcon />
-              </IconButton>
+              {terminal.available && (
+                <IconButton
+                  tooltip={`Terminal (${terminal.toggleAcceleratorHint})`}
+                  aria-pressed={terminal.open}
+                  onClick={() => void terminal.toggle()}
+                >
+                  <TerminalIcon />
+                </IconButton>
+              )}
             </div>
           </header>
         )}

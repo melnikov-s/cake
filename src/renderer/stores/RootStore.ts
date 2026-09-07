@@ -525,6 +525,13 @@ export class RootStore extends Store<{
 
   showKanban(projectPath: string) {
     if (!this.projectCatalogStore.find(projectPath)) return;
+    if (
+      this.appShellStore.selection.kind === "kanban" &&
+      this.appShellStore.selection.projectPath === projectPath
+    ) {
+      this.returnToWorkbench();
+      return;
+    }
     this.projectWorkbenchStore.dismissSecondarySurfaces();
     this.appShellStore.showKanban(projectPath);
   }
@@ -796,12 +803,7 @@ export class RootStore extends Store<{
   }
 
   get projectSessionCatalogQueries() {
-    const projectPath = this.kanbanStore.resolvedCatalogProjectPath;
-    const queries = this.sidebarStore.projectSessionCatalogQueries.filter(
-      (query) => !projectPath || query.projectPath !== projectPath || !query.resolved,
-    );
-    if (projectPath) queries.push({ projectPath, resolved: true, limit: 10_000 });
-    return queries;
+    return this.sidebarStore.projectSessionCatalogQueries;
   }
 
   @child
@@ -830,6 +832,9 @@ export class RootStore extends Store<{
       cakeChat: () => this.cakeChatCollectionStore,
       setSessionResolved: async (sessionId, resolved) => {
         await this.resolveProjectSession(sessionId, resolved);
+      },
+      setSessionWorkflowStatus: async (sessionId, statusId) => {
+        await this.kanbanStore.moveSession(sessionId, statusId);
       },
       setCakeChatSessionResolved: (sessionId, resolved) =>
         this.resolveCakeChatSession(sessionId, resolved),

@@ -48,6 +48,8 @@ export const ProjectWorkflowColor = Schema.Literals([
 ]);
 export type ProjectWorkflowColor = typeof ProjectWorkflowColor.Type;
 
+export const PROJECT_WORKFLOW_SESSION_DESCRIPTION_MAX_LENGTH = 560;
+
 const ProjectWorkflowColumn = Schema.Struct({
   id: Schema.String.check(Schema.isUUID(4)),
   name: Schema.String.check(Schema.isTrimmed(), Schema.isMinLength(1), Schema.isMaxLength(40)),
@@ -67,7 +69,11 @@ export const ProjectWorkflowSessionDetails = Schema.Struct({
     }),
   ),
   description: Schema.optionalKey(
-    Schema.String.check(Schema.isTrimmed(), Schema.isMinLength(1), Schema.isMaxLength(240)),
+    Schema.String.check(
+      Schema.isTrimmed(),
+      Schema.isMinLength(1),
+      Schema.isMaxLength(PROJECT_WORKFLOW_SESSION_DESCRIPTION_MAX_LENGTH),
+    ),
   ),
 });
 export interface ProjectWorkflowSessionDetails extends Schema.Schema.Type<

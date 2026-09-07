@@ -71,7 +71,13 @@ export function makeRendererClientCapabilities(execute: Execute): RendererClient
           "electron.show-session-context-menu",
           (client) => client.electron["show-session-context-menu"]({ ...input }),
           options,
-        ).then((response) => response.action),
+        ).then((response) => {
+          if (!response.action) return undefined;
+          if (response.action !== "set-status") return { action: response.action };
+          return response.statusId
+            ? { action: response.action, statusId: response.statusId }
+            : undefined;
+        }),
       showProjectContextMenu: (input, options) =>
         execute(
           "electron.show-project-context-menu",

@@ -15,7 +15,7 @@ describe("CatalogProjection", () => {
 
     applySessionCatalogGroupUpdate(
       projectCatalog,
-      { projectPath: "/project", resolved: true, limit: 10 },
+      { projectPath: "/project", resolved: true },
       { _tag: "Snapshot", revision: 1, sessions: [], hasMore: true },
     );
     applyCakeChatCatalogGroupUpdate(
@@ -90,6 +90,39 @@ describe("CatalogProjection", () => {
           resolved: false,
           unread: false,
         },
+      },
+    );
+
+    expect(catalog.sessions).toHaveLength(1);
+    expect(catalog.sessions[0]?.resolved).toBe(true);
+    catalog[Symbol.dispose]();
+  });
+
+  it("does not let a late active-lane removal delete a resolved summary", () => {
+    const catalog = SessionCatalog.create({
+      sessions: [
+        {
+          sessionId: "session-1",
+          title: "Session",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          modifiedAt: "2026-01-01T00:00:00.000Z",
+          messageCount: 1,
+          resolved: true,
+          unread: false,
+          projectPath: "/project",
+          projectName: "Project",
+          workingDirectory: "/project",
+        },
+      ],
+    });
+
+    applySessionCatalogGroupUpdate(
+      catalog,
+      { projectPath: "/project", resolved: false },
+      {
+        _tag: "Event",
+        revision: 2,
+        event: { _tag: "Removed", sessionId: "session-1" },
       },
     );
 

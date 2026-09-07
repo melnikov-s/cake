@@ -5,6 +5,7 @@ export interface ActionCardProps extends Omit<ButtonHTMLAttributes<HTMLButtonEle
   icon?: ReactNode;
   title: ReactNode;
   description?: ReactNode;
+  descriptionClassName?: string;
   badge?: ReactNode;
   trailing?: ReactNode;
 }
@@ -15,6 +16,7 @@ export const ActionCard = forwardRef<HTMLButtonElement, ActionCardProps>(functio
     icon,
     title,
     description,
+    descriptionClassName,
     badge,
     trailing,
     type = "button",
@@ -46,7 +48,14 @@ export const ActionCard = forwardRef<HTMLButtonElement, ActionCardProps>(functio
             {badge}
           </div>
           {description && (
-            <span className="truncate text-[11px] text-muted-foreground">{description}</span>
+            <span
+              className={cn(
+                "text-[11px] text-muted-foreground",
+                descriptionClassName ?? "truncate",
+              )}
+            >
+              {description}
+            </span>
           )}
         </div>
       </div>

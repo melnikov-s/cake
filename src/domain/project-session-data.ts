@@ -30,16 +30,10 @@ export const ProjectSessionSummary = Schema.Struct({
 });
 export interface ProjectSessionSummary extends Schema.Schema.Type<typeof ProjectSessionSummary> {}
 
-const resolvedCatalogLimit = Schema.Int.check(Schema.isGreaterThan(0));
-
-export const ProjectSessionCatalogQuery = Schema.Union([
-  Schema.Struct({ projectPath: boundedPath, resolved: Schema.Literal(false) }),
-  Schema.Struct({
-    projectPath: boundedPath,
-    resolved: Schema.Literal(true),
-    limit: resolvedCatalogLimit,
-  }),
-]);
+export const ProjectSessionCatalogQuery = Schema.Struct({
+  projectPath: boundedPath,
+  resolved: Schema.Boolean,
+});
 export type ProjectSessionCatalogQuery = Schema.Schema.Type<typeof ProjectSessionCatalogQuery>;
 
 export const ProjectSessionPreview = Schema.Struct({

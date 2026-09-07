@@ -379,7 +379,6 @@ describe("Project Sessions domain", () => {
       const updates = yield* projectSessions.observeCatalog({
         projectPath: "/project",
         resolved: true,
-        limit: 10,
       });
       const first = yield* updates.pipe(Stream.take(1), Stream.runCollect);
       assert.equal(first[0]?._tag, "Snapshot");
@@ -396,7 +395,7 @@ describe("Project Sessions domain", () => {
     );
   });
 
-  it.effect("loads one stable resolved page and reports more results", () => {
+  it.effect("loads every resolved metadata record in one stable snapshot", () => {
     const entries = Array.from({ length: 12 }, (_, index) => ({
       sessionId: `session-${index}`,
       modifiedAt: `2026-01-${String(index + 1).padStart(2, "0")}T00:00:00.000Z`,
@@ -405,16 +404,15 @@ describe("Project Sessions domain", () => {
       const updates = yield* projectSessions.observeCatalog({
         projectPath: "/project",
         resolved: true,
-        limit: 10,
       });
       const first = yield* updates.pipe(Stream.take(1), Stream.runCollect);
       assert.equal(first.length, 1);
       assert.equal(first[0]?._tag, "Snapshot");
       if (first[0]?._tag !== "Snapshot") return;
-      assert.equal(first[0].sessions.length, 10);
+      assert.equal(first[0].sessions.length, 12);
       assert.equal(first[0].sessions[0]?.sessionId, "session-11");
-      assert.equal(first[0].sessions[9]?.sessionId, "session-2");
-      assert.equal(first[0].hasMore, true);
+      assert.equal(first[0].sessions[11]?.sessionId, "session-0");
+      assert.equal(first[0].hasMore, undefined);
     }).pipe(
       Effect.provide(
         makeLayer(undefined, { resolvedOnDisk: true, resolvedProjectEntries: entries }),
@@ -422,14 +420,13 @@ describe("Project Sessions domain", () => {
     );
   });
 
-  it.effect("lazily migrates legacy resolved metadata when its project is expanded", () => {
+  it.effect("migrates legacy resolved metadata when its project catalog initializes", () => {
     let locations = 0;
     let migrations = 0;
     return Effect.gen(function* () {
       const updates = yield* projectSessions.observeCatalog({
         projectPath: "/project",
         resolved: true,
-        limit: 10,
       });
       const first = yield* updates.pipe(Stream.take(1), Stream.runCollect);
       assert.equal(first[0]?._tag, "Snapshot");
@@ -533,6 +530,33 @@ describe("Project Sessions domain", () => {
       }).pipe(Effect.provide(layer));
     }),
   );
+
+  it.effect("publishes the complete active catalog in one initial snapshot", () => {
+    const sessions = Array.from({ length: 150 }, (_, index): SessionSummary => ({
+      id: `session-${index}`,
+      title: `Session ${index}`,
+      created: "2026-01-01T00:00:00.000Z",
+      modified: "2026-01-02T00:00:00.000Z",
+      messageCount: 0,
+      resolved: false,
+    }));
+    return Effect.gen(function* () {
+      const updates = yield* projectSessions.observeCatalog({
+        projectPath: "/project",
+        resolved: false,
+      });
+      const observed = Array.from(yield* updates.pipe(Stream.take(1), Stream.runCollect));
+      assert.equal(observed[0]?._tag, "Snapshot");
+      if (observed[0]?._tag !== "Snapshot") return;
+      assert.equal(observed[0].sessions.length, sessions.length);
+    }).pipe(
+      Effect.provide(
+        makeLayer(undefined, {
+          catalog: () => Stream.fromIterable(sessions),
+        }),
+      ),
+    );
+  });
 
   it.effect("updates one catalog entry without restarting its initial scan", () => {
     let catalogScans = 0;

@@ -84,10 +84,6 @@ export class KanbanStore extends Store<KanbanStoreProps> {
     return path ? this.props.catalog.projectSessions(path) : [];
   }
 
-  get resolvedCatalogProjectPath() {
-    return this.project ? this.projectPath : undefined;
-  }
-
   sessionsInColumn(columnId: KanbanColumnId) {
     return this.sessions.filter((session) => this.columnForSession(session.sessionId) === columnId);
   }
@@ -96,17 +92,23 @@ export class KanbanStore extends Store<KanbanStoreProps> {
     const session = this.props.catalog.find(sessionId);
     if (!session || session.draft) return "draft";
     if (session.resolved) return "resolved";
-    const statusId = this.project?.workflow.assignments.find(
+    const project = this.props.projects.find(session.projectPath);
+    const statusId = project?.workflow.assignments.find(
       (assignment) => assignment.sessionId === sessionId,
     )?.statusId;
-    return statusId && this.customColumns.some((column) => column.id === statusId)
+    return statusId && project?.workflow.columns.some((column) => column.id === statusId)
       ? statusId
       : "active";
   }
 
   statusForSession(sessionId: string) {
+    const session = this.props.catalog.find(sessionId);
     const columnId = this.columnForSession(sessionId);
-    return this.customColumns.find((column) => column.id === columnId);
+    return session
+      ? this.props.projects
+          .find(session.projectPath)
+          ?.workflow.columns.find((column) => column.id === columnId)
+      : undefined;
   }
 
   detailsForSession(sessionId: string) {
@@ -125,6 +127,16 @@ export class KanbanStore extends Store<KanbanStoreProps> {
 
   isSessionPending(sessionId: string) {
     return this.pendingSessionIds.has(sessionId);
+  }
+
+  canMoveSessionToResolved(sessionId: string) {
+    const session = this.props.catalog.find(sessionId);
+    return Boolean(
+      session &&
+      !session.draft &&
+      !session.resolved &&
+      (!session.familyParentSessionId || session.familyParentSessionId === session.sessionId),
+    );
   }
 
   isColumnPending(columnId: string) {
@@ -222,8 +234,8 @@ export class KanbanStore extends Store<KanbanStoreProps> {
     this.props.reportError(error);
   }
 
-  private async mutate(mutation: ProjectWorkflowMutation) {
-    const projectPath = this.projectPath;
+  private async mutate(mutation: ProjectWorkflowMutation, explicitProjectPath?: string) {
+    const projectPath = explicitProjectPath ?? this.projectPath;
     if (!projectPath || this.signal.aborted) return false;
     this.error = undefined;
     try {
@@ -247,14 +259,15 @@ export class KanbanStore extends Store<KanbanStoreProps> {
 
   async moveSession(sessionId: string, destination: KanbanColumnId) {
     const session = this.props.catalog.find(sessionId);
-    const projectPath = this.projectPath;
-    if (!session || !projectPath || session.projectPath !== projectPath) return false;
-    if (this.pendingSessionIds.has(sessionId)) return false;
+    if (!session) return false;
+    const projectPath = session.projectPath;
+    const project = this.props.projects.find(projectPath);
+    if (!project || this.pendingSessionIds.has(sessionId)) return false;
     if (
       destination !== "draft" &&
       destination !== "active" &&
       destination !== "resolved" &&
-      !this.customColumns.some((column) => column.id === destination)
+      !project.workflow.columns.some((column) => column.id === destination)
     ) {
       this.reportError(new Error("That custom status no longer exists"));
       return false;
@@ -289,11 +302,14 @@ export class KanbanStore extends Store<KanbanStoreProps> {
       if (destination === "resolved") {
         return await this.props.setSessionResolved(sessionId, true);
       }
-      return await this.mutate({
-        _tag: "SetSessionStatus",
-        sessionId,
-        ...(destination === "active" ? undefined : { statusId: destination }),
-      });
+      return await this.mutate(
+        {
+          _tag: "SetSessionStatus",
+          sessionId,
+          ...(destination === "active" ? undefined : { statusId: destination }),
+        },
+        projectPath,
+      );
     } catch (error) {
       if (!this.signal.aborted) this.reportError(error);
       return false;

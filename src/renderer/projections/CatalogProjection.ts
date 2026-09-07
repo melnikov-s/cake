@@ -75,7 +75,9 @@ export function applySessionCatalogGroupUpdate(
       );
       sessions.push(...event.sessions);
     } else if (event._tag === "Removed") {
-      sessions = sessions.filter((session) => session.sessionId !== event.sessionId);
+      sessions = sessions.filter(
+        (session) => session.sessionId !== event.sessionId || !belongsToGroup(session),
+      );
     } else {
       sessions = sessions.map((session) =>
         session.sessionId === event.sessionId && belongsToGroup(session)

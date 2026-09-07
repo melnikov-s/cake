@@ -1,11 +1,11 @@
 import { Effect, Schema } from "effect";
 import { PiModels } from "../services/pi/PiModels";
 import type { ModelSelection } from "../services/pi/model-data";
+import { PROJECT_WORKFLOW_SESSION_DESCRIPTION_MAX_LENGTH } from "./application-data";
 
 const USER_CONTEXT_LIMIT = 8_000;
 const TITLE_CHARACTER_LIMIT = 80;
 const WORKTREE_NAME_CHARACTER_LIMIT = 63;
-const SESSION_DESCRIPTION_CHARACTER_LIMIT = 240;
 export const REWORD_CHARACTER_LIMIT = 32_000;
 
 /** Shared dictation-awareness guidance for every rewording completion. */
@@ -54,11 +54,11 @@ export const generateSessionDescription = Effect.fn("UtilityWork.generateSession
     const models = yield* PiModels;
     const text = yield* models.complete({
       selection: input.selection,
-      instructions: `Describe the coding-agent session in one short sentence.
+      instructions: `Describe the coding-agent session in one or two concise sentences.
 Return only the description, with no quotation marks, Markdown, preamble, or explanation.
-State the concrete goal without repeating the title. Keep it at or below ${SESSION_DESCRIPTION_CHARACTER_LIMIT} characters.`,
+State the concrete goal, important scope, and relevant constraints without repeating the title. Keep it at or below ${PROJECT_WORKFLOW_SESSION_DESCRIPTION_MAX_LENGTH} characters.`,
       context: `<session_title>${input.title.slice(0, TITLE_CHARACTER_LIMIT)}</session_title>\n<first_user_message>\n${input.firstUserMessage.slice(0, USER_CONTEXT_LIMIT)}\n</first_user_message>`,
-      maximumOutputCharacters: SESSION_DESCRIPTION_CHARACTER_LIMIT,
+      maximumOutputCharacters: PROJECT_WORKFLOW_SESSION_DESCRIPTION_MAX_LENGTH,
       timeoutMs: 15_000,
     });
     const normalized = text.replace(/\s+/g, " ").trim();
@@ -66,7 +66,9 @@ State the concrete goal without repeating the title. Keep it at or below ${SESSI
       return yield* new UtilityWorkOutputError({
         message: "The utility model returned an empty session description",
       });
-    return Array.from(normalized).slice(0, SESSION_DESCRIPTION_CHARACTER_LIMIT).join("");
+    return Array.from(normalized)
+      .slice(0, PROJECT_WORKFLOW_SESSION_DESCRIPTION_MAX_LENGTH)
+      .join("");
   },
 );
 

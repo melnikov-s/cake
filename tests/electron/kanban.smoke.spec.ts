@@ -60,6 +60,7 @@ test("creates a custom status and drags an active session into it", async () => 
     await projectGroup.hover();
     await projectGroup.getByRole("button", { name: "Open Kanban board for project" }).click();
     await expect(page.locator('[data-slot="kanban-board"]')).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Terminal \(/ })).toHaveCount(0);
 
     await page.getByRole("button", { name: "Add status" }).click();
     await page.getByLabel("Status name").fill("In review");
@@ -76,12 +77,53 @@ test("creates a custom status and drags an active session into it", async () => 
       projectGroup.locator('[data-session-id="kanban-session"] [aria-label="Status: In review"]'),
     ).toBeVisible();
 
+    await expect(card).toBeEnabled();
+
+    await page.getByRole("button", { name: "Add status" }).click();
+    await page.getByLabel("Status name").fill("Blocked");
+    await page.getByRole("button", { name: "Create status" }).click();
+    const blockedColumn = page.locator('[data-column-id]:has-text("Blocked")');
+    await expect(blockedColumn).toBeVisible();
+    await page.getByRole("button", { name: "Drag to reorder Blocked" }).dragTo(customColumn);
+    await expect
+      .poll(() =>
+        page.locator('[data-slot="kanban-board"] [data-column-id] strong').allTextContents(),
+      )
+      .toEqual(["Draft", "Active", "Blocked", "In review", "Resolved"]);
+
+    const cardBounds = await card.boundingBox();
+    if (!cardBounds) throw new Error("Kanban card bounds unavailable");
+    await page.mouse.move(
+      cardBounds.x + cardBounds.width / 2,
+      cardBounds.y + cardBounds.height / 2,
+    );
+    await page.mouse.down();
+    await page.mouse.move(cardBounds.x + cardBounds.width / 2 + 12, cardBounds.y + 12, {
+      steps: 4,
+    });
+    const resolveDropTarget = page.locator('[data-slot="kanban-resolve-drop-target"]');
+    await expect(resolveDropTarget).toBeVisible();
+    const targetBounds = await resolveDropTarget.boundingBox();
+    if (!targetBounds) throw new Error("Resolve drop target bounds unavailable");
+    await page.mouse.move(
+      targetBounds.x + targetBounds.width / 2,
+      targetBounds.y + targetBounds.height / 2,
+      { steps: 8 },
+    );
+    await page.mouse.up();
+    await expect(
+      page.locator('[data-column-id="resolved"] [data-session-id="kanban-session"]'),
+    ).toBeVisible();
+
     await expect
       .poll(async () => {
         const document = JSON.parse(await readFile(applicationDocument, "utf8"));
         return document.data.projects[0].workflow.assignments.length;
       })
       .toBe(1);
+
+    await projectGroup.getByRole("button", { name: "Close Kanban board for project" }).click();
+    await expect(page.locator('[data-slot="kanban-board"]')).toHaveCount(0);
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

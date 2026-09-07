@@ -74,7 +74,7 @@ describe("utility work", () => {
     }),
   );
 
-  it.effect("generates a bounded one-sentence session description", () =>
+  it.effect("generates a bounded session description", () =>
     Effect.gen(function* () {
       let received: BoundedCompletionInput | undefined;
       const description = yield* run(
@@ -92,7 +92,7 @@ describe("utility work", () => {
 
       assert.equal(description, "Organize project sessions with custom workflow statuses.");
       assert.ok(received);
-      assert.equal(received.maximumOutputCharacters, 240);
+      assert.equal(received.maximumOutputCharacters, 560);
       assert.match(received.context, /Build a project-scoped session Kanban board/);
     }),
   );
