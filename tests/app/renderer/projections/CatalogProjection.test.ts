@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   applyCakeChatCatalogGroupUpdate,
+  applyProjectCatalogUpdate,
   applySessionCatalogGroupUpdate,
 } from "../../../../src/renderer/projections/CatalogProjection";
 import { CakeChatCatalog } from "../../../../src/renderer/models/CakeChatCatalog";
 import { SessionCatalog } from "../../../../src/renderer/models/SessionCatalog";
+import { ProjectCatalog } from "../../../../src/renderer/models/ProjectCatalog";
 
 describe("CatalogProjection", () => {
   it("tracks whether each resolved catalog has another page", () => {
@@ -26,6 +28,36 @@ describe("CatalogProjection", () => {
     expect(cakeChatCatalog.resolvedHasMore).toBe(true);
     projectCatalog[Symbol.dispose]();
     cakeChatCatalog[Symbol.dispose]();
+  });
+
+  it("projects Project workflow changes", () => {
+    const catalog = ProjectCatalog.create();
+    applyProjectCatalogUpdate(catalog, {
+      _tag: "Snapshot",
+      revision: 1,
+      projects: [
+        {
+          path: "/project",
+          name: "Project",
+          addedAt: "2026-01-01T00:00:00.000Z",
+          lastOpenedAt: "2026-01-01T00:00:00.000Z",
+          workflow: {
+            columns: [
+              {
+                id: "b925b5dd-9661-4f1a-9f40-406be3c96c27",
+                name: "Blocked",
+                color: "rose",
+              },
+            ],
+            assignments: [],
+            sessionDetails: [],
+          },
+        },
+      ],
+    });
+
+    expect(catalog.projects[0]?.workflow.columns[0]?.name).toBe("Blocked");
+    catalog[Symbol.dispose]();
   });
 
   it("does not let one Project Session catalog lane mutate another lane's summary", () => {

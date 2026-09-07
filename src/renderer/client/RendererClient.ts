@@ -307,6 +307,7 @@ export interface RendererClient {
   };
   readonly modelPresets: CommandGroup<CakeIpcClientService["modelPresets"]>;
   readonly projectSessions: CommandGroup<CakeIpcClientService["projectSessions"]>;
+  readonly projectWorkflow: CommandGroup<CakeIpcClientService["projectWorkflow"]>;
   readonly scheduledMessages: CommandGroup<CakeIpcClientService["scheduledMessages"]>;
   readonly cakeChats: CommandGroup<CakeIpcClientService["cakeChats"]>;
   readonly discussionSessions: CommandGroup<CakeIpcClientService["discussionSessions"]>;

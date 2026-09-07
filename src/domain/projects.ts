@@ -19,12 +19,19 @@ import { SessionArchiveStorage } from "../services/storage/SessionArchiveStorage
 import { ManagedWorktrees } from "../services/worktrees/ManagedWorktrees";
 import { resolveRewordingWorkspace } from "../services/projects/rewording-workspace";
 import type { ProjectCatalogUpdate } from "./catalog-data";
-import type { ProjectRecord } from "./application-data";
+import type {
+  ProjectRecord,
+  ProjectWorkflowMutation,
+  ProjectWorkflowSessionDetails,
+} from "./application-data";
+import { defaultProjectWorkflow } from "./application-data";
+import { inspect as inspectProjectSession } from "./projectSessions";
 import { ProjectError } from "./project-error";
 import {
   observeState,
   removeProject,
   renameProject,
+  mutateProjectWorkflow,
   setProjectSettings as setApplicationProjectSettings,
   setSessionUnread as setApplicationSessionUnread,
   setUtilityModel as setApplicationUtilityModel,
@@ -33,6 +40,7 @@ import {
 } from "./application";
 import {
   dictationRewordingGuidance,
+  generateSessionDescription as generateUtilitySessionDescription,
   generateSessionTitle as generateUtilitySessionTitle,
   REWORD_CHARACTER_LIMIT,
   rewordSelection,
@@ -282,6 +290,122 @@ export const setProjectSettings = Effect.fn("Projects.setProjectSettings")(funct
   };
 });
 
+export const mutateWorkflow = Effect.fn("Projects.mutateWorkflow")(function* (request: {
+  readonly projectPath: string;
+  readonly mutation: ProjectWorkflowMutation;
+}) {
+  yield* requireAllowed(request.projectPath);
+  if (request.mutation._tag === "SetSessionStatus") {
+    const access = yield* ProjectAccess;
+    const workingDirectory = yield* mapProjectError(
+      "mutateProjectWorkflow",
+      access.resolveSessionWorkingDirectory(request.mutation.sessionId),
+    );
+    const environment = yield* ProjectSessionEnvironment;
+    const location = (yield* mapProjectError(
+      "mutateProjectWorkflow",
+      environment.locations(),
+    )).find((candidate) => candidate.workingDirectory === workingDirectory);
+    if (location?.projectPath !== request.projectPath)
+      return yield* new ProjectError({
+        operation: "mutateProjectWorkflow",
+        message: "That session does not belong to this Project",
+      });
+  }
+  return yield* mapProjectError(
+    "mutateProjectWorkflow",
+    mutateProjectWorkflow(request.projectPath, request.mutation),
+  );
+});
+
+export const describeWorkflowSession = Effect.fn("Projects.describeWorkflowSession")(
+  function* (request: {
+    readonly projectPath: string;
+    readonly sessionId: string;
+    readonly workingDirectory: string;
+    readonly title: string;
+    readonly firstUserMessage?: string;
+  }) {
+    yield* requireAllowed(request.projectPath);
+    const application = yield* ApplicationState;
+    const project = application
+      .snapshot()
+      .projects.find((candidate) => candidate.path === request.projectPath);
+    if (!project)
+      return yield* new ProjectError({
+        operation: "describeWorkflowSession",
+        message: "That Project is not registered",
+      });
+    const existing = (project.workflow ?? defaultProjectWorkflow()).sessionDetails.find(
+      (details) => details.sessionId === request.sessionId,
+    );
+    if (existing?.description && existing.model) return existing;
+
+    const preview = request.firstUserMessage
+      ? undefined
+      : yield* mapProjectError(
+          "describeWorkflowSession",
+          inspectProjectSession({
+            sessionId: request.sessionId,
+            workingDirectory: request.workingDirectory,
+          }),
+        );
+    if (preview) {
+      if (preview.projectPath !== request.projectPath)
+        return yield* new ProjectError({
+          operation: "describeWorkflowSession",
+          message: "That session does not belong to this Project",
+        });
+    } else {
+      const environment = yield* ProjectSessionEnvironment;
+      const location = (yield* mapProjectError(
+        "describeWorkflowSession",
+        environment.locations(),
+      )).find((candidate) => candidate.workingDirectory === request.workingDirectory);
+      if (location?.projectPath !== request.projectPath)
+        return yield* new ProjectError({
+          operation: "describeWorkflowSession",
+          message: "That Draft does not belong to this Project",
+        });
+    }
+    const utilityModel = application.snapshot().utilityModel;
+    const firstUserMessage = request.firstUserMessage ?? preview?.firstUserMessage;
+    const generated =
+      !existing?.description && utilityModel && firstUserMessage
+        ? yield* Effect.result(
+            generateUtilitySessionDescription({
+              selection: utilityModelSelection(utilityModel),
+              title: request.title,
+              firstUserMessage,
+            }),
+          )
+        : undefined;
+    const details: ProjectWorkflowSessionDetails = {
+      sessionId: request.sessionId,
+      ...(existing?.model
+        ? { model: existing.model }
+        : preview?.model
+          ? { model: preview.model }
+          : undefined),
+      ...(existing?.description
+        ? { description: existing.description }
+        : generated?._tag === "Success"
+          ? { description: generated.success }
+          : undefined),
+    };
+    return yield* mapProjectError(
+      "describeWorkflowSession",
+      mutateProjectWorkflow(request.projectPath, { _tag: "SetSessionDetails", details }),
+    ).pipe(
+      Effect.map(
+        (workflow) =>
+          workflow.sessionDetails.find((candidate) => candidate.sessionId === request.sessionId) ??
+          details,
+      ),
+    );
+  },
+);
+
 export const remove = Effect.fn("Projects.remove")(function* (
   _connectionId: number,
   request: Payload<"remove-project">,
@@ -479,6 +603,8 @@ const sameProjects = (left: ReadonlyArray<ProjectRecord>, right: ReadonlyArray<P
       project.path === other.path &&
       project.name === other.name &&
       project.addedAt === other.addedAt &&
-      project.lastOpenedAt === other.lastOpenedAt
+      project.lastOpenedAt === other.lastOpenedAt &&
+      JSON.stringify(project.settings) === JSON.stringify(other.settings) &&
+      JSON.stringify(project.workflow) === JSON.stringify(other.workflow)
     );
   });

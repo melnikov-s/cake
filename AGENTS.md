@@ -187,6 +187,20 @@ Before adding state, identify its authority, cohesive owner, lifetime, persisten
 - Relocate utilities and supporting code to `src/utils/` or the appropriate
   service/domain directory; do not place them in Model or Store directories.
 
+## Review proportionality
+
+- Calibrate findings to this product's actual risk. Reserve P0/P1 for common or
+  severe failures such as data loss, security breaches, or a core workflow being
+  unusable—not speculative races involving advisory metadata.
+- Do not manufacture complexity in the name of defensive programming. If an edge
+  case is rare, recoverable, and low impact, either omit it or label it plainly as
+  minor; do not propose coordination, caching, migration, or abstraction machinery
+  without demonstrated need.
+- Separate product defects from repository-policy cleanup and optional polish.
+  Prioritize direct requirement gaps and reproducible user-visible failures.
+- Recommend the smallest understandable fix that solves the observed problem. Cake
+  is a coding agent, not safety-critical infrastructure.
+
 ## Verification
 
 Format changed supported files with Oxfmt before final verification. Use

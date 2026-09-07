@@ -3,6 +3,7 @@ import { it } from "@effect/vitest";
 import { Effect } from "effect";
 import { describe, it as vitestIt } from "vitest";
 import {
+  generateSessionDescription,
   generateSessionTitle,
   generateWorktreeName,
   normalizeSessionTitle,
@@ -70,6 +71,29 @@ describe("utility work", () => {
       assert.match(received.context, /Add a user-configured utility model/);
       assert.equal(received.maximumOutputCharacters, 80);
       assert.equal(received.timeoutMs, 15_000);
+    }),
+  );
+
+  it.effect("generates a bounded one-sentence session description", () =>
+    Effect.gen(function* () {
+      let received: BoundedCompletionInput | undefined;
+      const description = yield* run(
+        generateSessionDescription({
+          selection,
+          title: "Add Kanban",
+          firstUserMessage: "Build a project-scoped session Kanban board.",
+        }),
+        (input) =>
+          Effect.sync(() => {
+            received = input;
+            return "  Organize project sessions with custom workflow statuses.  ";
+          }),
+      );
+
+      assert.equal(description, "Organize project sessions with custom workflow statuses.");
+      assert.ok(received);
+      assert.equal(received.maximumOutputCharacters, 240);
+      assert.match(received.context, /Build a project-scoped session Kanban board/);
     }),
   );
 

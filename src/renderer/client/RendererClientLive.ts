@@ -169,6 +169,20 @@ export function makeRendererClient(runtime: RendererRuntime): RendererClient {
           options,
         ),
     },
+    projectWorkflow: {
+      mutate: (input, options) =>
+        run(
+          "projectWorkflow.mutate",
+          withClient((client) => client.projectWorkflow.mutate(input)),
+          options,
+        ),
+      describeSession: (input, options) =>
+        run(
+          "projectWorkflow.describeSession",
+          withClient((client) => client.projectWorkflow.describeSession(input)),
+          options,
+        ),
+    },
     projectSessions: {
       inspect: (target, options) =>
         run(

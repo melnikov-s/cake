@@ -51,6 +51,23 @@ export const PlusIcon = () => (
     <path d="M12 5v14M5 12h14" />
   </Icon>
 );
+export const KanbanIcon = () => (
+  <Icon>
+    <rect x="3" y="4" width="5" height="16" rx="1.5" />
+    <rect x="10" y="4" width="5" height="10" rx="1.5" />
+    <rect x="17" y="4" width="4" height="13" rx="1.5" />
+  </Icon>
+);
+export const GripIcon = () => (
+  <Icon size={14}>
+    <circle cx="8" cy="6" r="1" fill="currentColor" stroke="none" />
+    <circle cx="16" cy="6" r="1" fill="currentColor" stroke="none" />
+    <circle cx="8" cy="12" r="1" fill="currentColor" stroke="none" />
+    <circle cx="16" cy="12" r="1" fill="currentColor" stroke="none" />
+    <circle cx="8" cy="18" r="1" fill="currentColor" stroke="none" />
+    <circle cx="16" cy="18" r="1" fill="currentColor" stroke="none" />
+  </Icon>
+);
 export const ExpandIcon = ({ size = 15, strokeWidth }: { size?: number; strokeWidth?: number }) => (
   <Icon size={size} strokeWidth={strokeWidth}>
     <path d="M9 4H4v5M15 4h5v5M20 15v5h-5M4 15v5h5" />

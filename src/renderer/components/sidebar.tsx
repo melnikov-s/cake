@@ -21,6 +21,7 @@ export const Sidebar = observer(function Sidebar({
   shell,
   projectSettings,
   onOpenSettings,
+  onOpenKanban,
   onOpenCakeChat,
   onCreateCakeChat,
   onOpenSession,
@@ -38,6 +39,7 @@ export const Sidebar = observer(function Sidebar({
   shell: AppShellStore;
   projectSettings: ProjectSettingsStore;
   onOpenSettings: () => void;
+  onOpenKanban(projectPath: string): void;
   onOpenCakeChat(sessionId?: string): void;
   onCreateCakeChat(): void;
   onOpenSession(sessionId: string): void;
@@ -114,6 +116,7 @@ export const Sidebar = observer(function Sidebar({
               onOpenSession={onOpenSession}
               onRemoveProject={onRemoveProject}
               onOpenSettings={(path) => projectSettings.open(path)}
+              onOpenKanban={onOpenKanban}
             />
           ))
         )}
@@ -158,6 +161,7 @@ export const Sidebar = observer(function Sidebar({
                   onOpenSession={onOpenSession}
                   onRemoveProject={onRemoveProject}
                   onOpenSettings={(path) => projectSettings.open(path)}
+                  onOpenKanban={onOpenKanban}
                 />
               ))}
             </div>

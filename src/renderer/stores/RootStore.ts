@@ -23,6 +23,7 @@ import { AppControlOperationStore } from "./AppControlOperationStore";
 import { ProjectCatalogStore } from "./ProjectCatalogStore";
 import { ProjectSettingsStore } from "./ProjectSettingsStore";
 import { NotificationStore } from "./NotificationStore";
+import { KanbanStore } from "./KanbanStore";
 import { ToastStore } from "./ToastStore";
 import { TerminalStore, type TerminalTarget } from "./TerminalStore";
 import { SessionLayoutStore, type SessionSplitAxis } from "./SessionLayoutStore";
@@ -522,6 +523,12 @@ export class RootStore extends Store<{
     return this.client.electron.showTranscriptSelectionContextMenu(input, { signal: this.signal });
   }
 
+  showKanban(projectPath: string) {
+    if (!this.projectCatalogStore.find(projectPath)) return;
+    this.projectWorkbenchStore.dismissSecondarySurfaces();
+    this.appShellStore.showKanban(projectPath);
+  }
+
   showSettings() {
     this.projectWorkbenchStore.dismissSecondarySurfaces();
     this.appShellStore.showSettings();
@@ -546,8 +553,10 @@ export class RootStore extends Store<{
     }
     if (target) await this.navigateToHistoryEntry(target);
     else if (
-      this.appShellStore.selection.kind === "project-session" &&
-      sessionIds.includes(this.appShellStore.selection.sessionId)
+      (this.appShellStore.selection.kind === "project-session" &&
+        sessionIds.includes(this.appShellStore.selection.sessionId)) ||
+      (this.appShellStore.selection.kind === "kanban" &&
+        this.appShellStore.selection.projectPath === path)
     )
       this.showEmptyWorkbench();
     return true;
@@ -566,6 +575,7 @@ export class RootStore extends Store<{
     );
     if (resolved && changed && !rendererDraft)
       await this.forgetResolvedProjectSessions([sessionId]);
+    return changed;
   }
 
   private async deleteProjectSession(sessionId: string) {
@@ -636,6 +646,10 @@ export class RootStore extends Store<{
       : undefined;
     this.sessionLayoutStore.removeSessions(sessionIds);
     for (const sessionId of sessionIds) this.sessionRegistry.removeSession(sessionId);
+    if (this.appShellStore.selection.kind === "kanban") {
+      this.appShellStore.removeSessionsFromHistory(sessionIds);
+      return;
+    }
     await this.forgetResolvedSessions(sessionIds, fallbackProjectPath ?? activeProjectPath);
   }
 
@@ -765,6 +779,32 @@ export class RootStore extends Store<{
   }
 
   @child
+  get kanbanStore(): KanbanStore {
+    return createStore(KanbanStore, {
+      projects: this.projectCatalogStore,
+      catalog: this.sessionCatalogStore,
+      registry: this.sessionRegistry,
+      setSessionResolved: (sessionId, resolved) => this.resolveProjectSession(sessionId, resolved),
+      selectedProjectPath: () =>
+        this.appShellStore.selection.kind === "kanban"
+          ? this.appShellStore.selection.projectPath
+          : undefined,
+      utilityModelConfigured: () => Boolean(this.settingsStore.utilityModel.model),
+      openSession: (sessionId) => this.openSession(sessionId),
+      reportError: (error) => this.projectWorkbenchStore.setError(error, "Project Kanban"),
+    });
+  }
+
+  get projectSessionCatalogQueries() {
+    const projectPath = this.kanbanStore.resolvedCatalogProjectPath;
+    const queries = this.sidebarStore.projectSessionCatalogQueries.filter(
+      (query) => !projectPath || query.projectPath !== projectPath || !query.resolved,
+    );
+    if (projectPath) queries.push({ projectPath, resolved: true, limit: 10_000 });
+    return queries;
+  }
+
+  @child
   get sessionOperationCoordinator(): SessionOperationCoordinatorStore {
     return createStore(SessionOperationCoordinatorStore);
   }
@@ -788,7 +828,9 @@ export class RootStore extends Store<{
       catalog: this.sessionCatalogStore,
       sessions: this.sessionRegistry,
       cakeChat: () => this.cakeChatCollectionStore,
-      setSessionResolved: (sessionId, resolved) => this.resolveProjectSession(sessionId, resolved),
+      setSessionResolved: async (sessionId, resolved) => {
+        await this.resolveProjectSession(sessionId, resolved);
+      },
       setCakeChatSessionResolved: (sessionId, resolved) =>
         this.resolveCakeChatSession(sessionId, resolved),
       deleteSession: (sessionId) => this.deleteProjectSession(sessionId),
@@ -1017,7 +1059,9 @@ export class RootStore extends Store<{
         this.cakeChatCollectionStore.summaries.some((session) => session.sessionId === sessionId)
           ? this.cakeChatCollectionStore.renameSession(sessionId, title).then(() => undefined)
           : this.projectWorkbenchStore.sessionManagementStore.renameSession(sessionId, title),
-      setSessionResolved: (sessionId, resolved) => this.resolveProjectSession(sessionId, resolved),
+      setSessionResolved: async (sessionId, resolved) => {
+        await this.resolveProjectSession(sessionId, resolved);
+      },
       setSessionsResolved: async (sessionIds, resolved) => {
         const count = await this.projectWorkbenchStore.sessionManagementStore.resolveSessionsById(
           sessionIds,

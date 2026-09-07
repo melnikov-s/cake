@@ -49,6 +49,7 @@ function sidebarProps(store: ProjectWorkbenchStore) {
       isResolvedGroupExpanded: fixture.isResolvedGroupExpanded ?? (() => false),
       toggleResolvedGroupExpanded: fixture.toggleResolvedGroupExpanded ?? vi.fn(),
       sessionActivity: fixture.sessionActivity,
+      sessionWorkflowStatus: fixture.sessionWorkflowStatus ?? (() => undefined),
       sessionActivityForDisplay:
         fixture.sessionActivityForDisplay ??
         ((session: { sessionId: string }) => fixture.sessionActivity(session.sessionId)),
@@ -72,6 +73,7 @@ function sidebarProps(store: ProjectWorkbenchStore) {
       findSession: vi.fn(),
       renameSession: fixture.renameCakeChatSession ?? vi.fn(),
     } as any,
+    onOpenKanban: fixture.openKanban ?? vi.fn(),
     onOpenCakeChat: vi.fn(),
     onCreateCakeChat: vi.fn(),
     onOpenSession: fixture.openSession ?? vi.fn(),
@@ -115,6 +117,7 @@ describe("Sidebar projects", () => {
 
   it("keeps active project sessions expanded with an independent disclosure control", () => {
     const startNewSession = vi.fn();
+    const openKanban = vi.fn();
     const store = {
       recentProjectPaths: ["/work/cake"],
       projectPath: "/work/cake",
@@ -137,7 +140,14 @@ describe("Sidebar projects", () => {
     } as unknown as ProjectWorkbenchStore;
 
     act(() =>
-      root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onToggle={vi.fn()} />),
+      root.render(
+        <Sidebar
+          {...sidebarProps(store)}
+          onOpenSettings={vi.fn()}
+          onOpenKanban={openKanban}
+          onToggle={vi.fn()}
+        />,
+      ),
     );
 
     expect(container.querySelector('[aria-label="Collapse Cake"]')).not.toBeNull();
@@ -148,6 +158,13 @@ describe("Sidebar projects", () => {
       container.querySelector<HTMLButtonElement>('[aria-label="Start new chat in cake"]')!.click(),
     );
     expect(startNewSession).toHaveBeenCalledWith("/work/cake");
+
+    act(() =>
+      container
+        .querySelector<HTMLButtonElement>('[aria-label="Open Kanban board for cake"]')!
+        .click(),
+    );
+    expect(openKanban).toHaveBeenCalledWith("/work/cake");
   });
 
   it("shows project sessions ten at a time", () => {

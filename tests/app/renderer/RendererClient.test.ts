@@ -18,6 +18,7 @@ describe("RendererClient", () => {
       "models",
       "modelPresets",
       "scheduledMessages",
+      "projectWorkflow",
       "projectSessions",
       "cakeChats",
       "discussionSessions",

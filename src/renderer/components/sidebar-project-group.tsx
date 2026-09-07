@@ -2,7 +2,7 @@ import { useState } from "react";
 import { observer } from "r-state-tree/react";
 import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
-import { ChevronIcon, FolderIcon, PlusIcon, SettingsIcon } from "./ui/icons";
+import { ChevronIcon, FolderIcon, KanbanIcon, PlusIcon, SettingsIcon } from "./ui/icons";
 import { IconButton } from "./ui/icon-button";
 import { SidebarSessionItem } from "./sidebar-session-item";
 import type { AppShellStore } from "../stores/AppShellStore";
@@ -22,6 +22,7 @@ export interface SidebarProjectGroupProps {
   onOpenSession(sessionId: string): void;
   onRemoveProject(path: string, deleteSessions: boolean): Promise<boolean>;
   onOpenSettings(path: string): void;
+  onOpenKanban(path: string): void;
 }
 
 /** One project section in the sidebar: header row plus its visible session rows. */
@@ -36,6 +37,7 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
   onOpenSession,
   onRemoveProject,
   onOpenSettings,
+  onOpenKanban,
 }: SidebarProjectGroupProps) {
   const [projectAction, setProjectAction] = useState<ProjectAction>();
   const [actionBusy, setActionBusy] = useState(false);
@@ -97,6 +99,22 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
         {!resolved && (
           <>
             <IconButton
+              className={cn(
+                "size-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-sidebar-hover opacity-0 group-hover/proj:opacity-100 focus-visible:opacity-100 transition-opacity",
+                shell.selection.kind === "kanban" &&
+                  shell.selection.projectPath === path &&
+                  "bg-sidebar-hover text-foreground opacity-100",
+              )}
+              tooltip="Open Kanban board"
+              ariaLabel={`Open Kanban board for ${projects.nameFromPath(path)}`}
+              aria-pressed={
+                shell.selection.kind === "kanban" && shell.selection.projectPath === path
+              }
+              onClick={() => onOpenKanban(path)}
+            >
+              <KanbanIcon />
+            </IconButton>
+            <IconButton
               className="size-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-sidebar-hover opacity-0 group-hover/proj:opacity-100 focus-visible:opacity-100 transition-opacity"
               tooltip="Project settings"
               ariaLabel={`Open settings for ${projects.nameFromPath(path)}`}
@@ -129,6 +147,7 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
               paneNumber={chat.paneNumber?.(session.sessionId)}
               resolved={resolved}
               activity={store.sessionActivityForDisplay(session)}
+              workflowStatus={store.sessionWorkflowStatus(session.sessionId)}
               onOpen={onOpenSession}
               onToggleFamily={(sessionId) => store.toggleFamilyCollapsed(sessionId)}
               familyCollapsed={store.isFamilyCollapsed(session.sessionId)}

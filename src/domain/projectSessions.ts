@@ -552,6 +552,12 @@ export const inspect = Effect.fn("ProjectSessions.inspect")(function* (
     parts: preview.parts.map(toJsonValue),
     resolved: namespace === "resolved",
   };
+  const firstUserMessage = preview.parts.find(
+    (part) => part.kind === "text" && part.role === "user",
+  );
+  if (firstUserMessage?.kind === "text")
+    Object.assign(projected, { firstUserMessage: firstUserMessage.text });
+  if (preview.currentModel !== undefined) Object.assign(projected, { model: preview.currentModel });
   if (location.managedWorktree !== undefined)
     Object.assign(projected, { managedWorktree: location.managedWorktree });
   return projected;

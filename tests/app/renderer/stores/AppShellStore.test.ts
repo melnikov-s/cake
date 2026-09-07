@@ -30,6 +30,18 @@ describe("AppShellStore session history", () => {
     shell[Symbol.dispose]();
   });
 
+  it("selects a Project-scoped Kanban surface without replacing conversation history", () => {
+    const shell = createShell();
+    shell.selectProjectSession("a");
+    shell.showKanban("/work/cake");
+
+    expect(shell.surface).toBe("kanban");
+    expect(shell.selection).toEqual({ kind: "kanban", projectPath: "/work/cake" });
+    expect(shell.activeConversation).toEqual({ kind: "project-session", sessionId: "a" });
+    expect(shell.canGoBack).toBe(false);
+    shell[Symbol.dispose]();
+  });
+
   it("records visited sessions and steps back and forward through them", () => {
     const shell = createShell();
     expect(shell.canGoBack).toBe(false);

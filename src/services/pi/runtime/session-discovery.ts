@@ -157,10 +157,21 @@ export async function loadWorkspaceSessionPreview(
     activeTarget ? activeDirectory : resolvedDirectory!,
     cwd,
   );
+  const branch = manager.getBranch();
+  let model: { provider: string; modelId: string } | undefined;
+  for (const entry of branch) {
+    if (entry.type === "model_change") model = { provider: entry.provider, modelId: entry.modelId };
+    else if (entry.type === "message" && entry.message.role === "assistant")
+      model = {
+        provider: entry.message.provider,
+        modelId: entry.message.responseModel ?? entry.message.model,
+      };
+  }
   return {
     workspacePath: cwd,
     sessionId,
     sessionFile: target,
-    parts: projectSessionEntries(manager.getBranch()),
+    parts: projectSessionEntries(branch),
+    ...(model ? { currentModel: model } : undefined),
   };
 }

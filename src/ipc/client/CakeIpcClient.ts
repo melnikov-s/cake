@@ -20,6 +20,9 @@ import type {
 import type {
   RendererApplicationProjection,
   RendererApplicationState,
+  ProjectWorkflow,
+  ProjectWorkflowMutation,
+  ProjectWorkflowSessionDetails,
 } from "../../domain/application-data";
 import type { AgentAvailabilitySnapshot } from "../../domain/agent-availability-data";
 import type { PiSettingUpdate } from "../session-contract";
@@ -144,6 +147,19 @@ export interface CakeIpcClientService {
   };
   readonly projects: {
     readonly observeCatalog: () => Stream.Stream<ProjectCatalogUpdate, TransportError>;
+  };
+  readonly projectWorkflow: {
+    readonly mutate: (input: {
+      readonly projectPath: string;
+      readonly mutation: ProjectWorkflowMutation;
+    }) => Effect.Effect<ProjectWorkflow, ProjectError | TransportError>;
+    readonly describeSession: (input: {
+      readonly projectPath: string;
+      readonly sessionId: string;
+      readonly workingDirectory: string;
+      readonly title: string;
+      readonly firstUserMessage?: string;
+    }) => Effect.Effect<ProjectWorkflowSessionDetails, ProjectError | TransportError>;
   };
   readonly models: {
     readonly list: () => Effect.Effect<
@@ -580,6 +596,14 @@ export const CakeIpcClientLive = Layer.effect(
       },
       projects: {
         observeCatalog: () => client("projects.observeCatalog", undefined),
+      },
+      projectWorkflow: {
+        mutate: Effect.fn("CakeIpcClient.projectWorkflow.mutate")((input) =>
+          client("projectWorkflow.mutate", input),
+        ),
+        describeSession: Effect.fn("CakeIpcClient.projectWorkflow.describeSession")((input) =>
+          client("projectWorkflow.describeSession", input),
+        ),
       },
       models: {
         list: Effect.fn("CakeIpcClient.models.list")(() => client("models.list", undefined)),

@@ -1,6 +1,6 @@
 import { Store, observable, snapshot } from "r-state-tree";
 
-export type AppSurface = "workbench" | "cake-chat" | "settings";
+export type AppSurface = "workbench" | "cake-chat" | "kanban" | "settings";
 
 export type WindowConversationSelection =
   | { kind: "project-session"; sessionId: string }
@@ -10,6 +10,7 @@ export type AppSelection =
   | { kind: "workbench" }
   | { kind: "project-session"; sessionId: string }
   | { kind: "cake-chat"; sessionId?: string }
+  | { kind: "kanban"; projectPath: string }
   | { kind: "settings" };
 
 /** One visited conversation in the window's back/forward session history. */
@@ -64,6 +65,7 @@ export class AppShellStore extends Store<AppShellStoreProps> {
 
   get surface(): AppSurface {
     if (this.selection.kind === "settings") return "settings";
+    if (this.selection.kind === "kanban") return "kanban";
     if (this.selection.kind === "cake-chat") return "cake-chat";
     return "workbench";
   }
@@ -188,6 +190,10 @@ export class AppShellStore extends Store<AppShellStoreProps> {
     const selection = { kind: "cake-chat", sessionId } as const;
     this.selection = selection;
     this.activeConversation = sessionId ? { kind: "cake-chat", sessionId } : undefined;
+  }
+  showKanban(projectPath: string) {
+    this.markDepartingProjectSession();
+    this.selection = { kind: "kanban", projectPath };
   }
   showSettings() {
     this.markDepartingProjectSession();

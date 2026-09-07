@@ -48,7 +48,14 @@ export const ProjectSessionPreview = Schema.Struct({
   workingDirectory: boundedPath,
   sessionFile: boundedPath,
   parts: Schema.Array(Schema.Json),
+  firstUserMessage: Schema.optionalKey(boundedText),
   resolved: Schema.Boolean,
+  model: Schema.optionalKey(
+    Schema.Struct({
+      provider: boundedId,
+      modelId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(512)),
+    }),
+  ),
   worktreeName: Schema.optionalKey(Schema.String),
   managedWorktree: Schema.optionalKey(ManagedWorktreeContext),
 });

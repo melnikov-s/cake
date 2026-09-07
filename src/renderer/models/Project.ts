@@ -1,5 +1,10 @@
 import { Model, id } from "r-state-tree";
-import { defaultProjectSettings, type ProjectSettings } from "../../domain/application-data";
+import {
+  defaultProjectSettings,
+  defaultProjectWorkflow,
+  type ProjectSettings,
+  type ProjectWorkflow,
+} from "../../domain/application-data";
 
 export class Project extends Model {
   @id path = "";
@@ -7,4 +12,5 @@ export class Project extends Model {
   addedAt = "";
   lastOpenedAt = "";
   settings: ProjectSettings = defaultProjectSettings();
+  workflow: ProjectWorkflow = defaultProjectWorkflow();
 }

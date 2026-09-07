@@ -8,6 +8,7 @@ import { InlineWidgetRpc } from "./InlineWidgetRpc";
 import { ManagedWorktreeRpc } from "./ManagedWorktreeRpc";
 import { ModelRpc } from "./ModelRpc";
 import { ProjectSessionRpc } from "./ProjectSessionRpc";
+import { ProjectWorkflowRpc } from "./ProjectWorkflowRpc";
 import { RendererConnectionMiddleware } from "./RendererConnectionMiddleware";
 import { ScheduledMessageRpc } from "./ScheduledMessageRpc";
 import { SubagentRpc } from "./SubagentRpc";
@@ -27,6 +28,7 @@ export const CakeRpc = ApplicationRpc.merge(
   ManagedWorktreeRpc,
   ModelRpc,
   ProjectSessionRpc,
+  ProjectWorkflowRpc,
   ScheduledMessageRpc,
   SubagentRpc,
   TerminalRpc,

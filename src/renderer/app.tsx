@@ -27,6 +27,7 @@ import { LoadingState } from "@/components/ui/loading-state";
 import { ResizeHandle } from "@/components/ui/resize-handle";
 import { IdeWorkspace } from "@/components/ide-workspace";
 import { SettingsPage } from "@/components/settings-page";
+import { KanbanBoard } from "@/components/kanban-board";
 import { ToastHost } from "@/components/toast-host";
 import { WorktreePill } from "@/components/worktree-pill";
 import { WorkLogControls } from "@/components/work-log-controls";
@@ -281,6 +282,7 @@ export const App = observer(function App() {
       projectSettings={root.projectSettingsStore}
       onToggle={toggleSidebar}
       onOpenSettings={openSettings}
+      onOpenKanban={(projectPath) => root.showKanban(projectPath)}
       onOpenCakeChat={openCakeChat}
       onCreateCakeChat={createCakeChat}
       onOpenSession={openSession}
@@ -589,10 +591,12 @@ export const App = observer(function App() {
               <strong className="block min-w-0 max-w-full truncate text-[13px] font-semibold">
                 {surface === "settings"
                   ? "Settings"
-                  : surface === "cake-chat"
-                    ? "Cake Chat"
-                    : (extensionUi.title ??
-                      (session ? `[${store.projectName}] ${store.sessionTitle}` : "Cake"))}
+                  : surface === "kanban"
+                    ? `${root.kanbanStore.project?.name ?? "Project"} · Kanban`
+                    : surface === "cake-chat"
+                      ? "Cake Chat"
+                      : (extensionUi.title ??
+                        (session ? `[${store.projectName}] ${store.sessionTitle}` : "Cake"))}
               </strong>
             </div>
             <div className="flex min-w-0 shrink-0 items-center gap-1.5 [app-region:no-drag]">
@@ -611,6 +615,8 @@ export const App = observer(function App() {
           <div className="h-full min-h-0 w-full overflow-hidden">
             <SettingsPage settings={settings} />
           </div>
+        ) : surface === "kanban" ? (
+          <KanbanBoard store={root.kanbanStore} />
         ) : cakeChatCollection ? (
           cakeChatSession ? (
             <ConversationSplitLayout

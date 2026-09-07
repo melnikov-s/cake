@@ -2,7 +2,11 @@ import { DateTime, Effect, Schema } from "effect";
 import {
   ApplicationState as ApplicationStateSchema,
   type ApplicationState,
+  defaultProjectWorkflow,
   type ProjectSettings,
+  type ProjectWorkflow,
+  type ProjectWorkflowMutation,
+  type ProjectWorkflowSessionDetails,
   type UtilityModel,
 } from "./application-data";
 import { ApplicationState as ApplicationStateOwner } from "../services/storage/ApplicationState";
@@ -104,6 +108,110 @@ export const setProjectSettings = Effect.fn("Application.setProjectSettings")(fu
   }));
 });
 
+const mutateWorkflowValue = Effect.fn("Application.mutateWorkflowValue")(function* (
+  workflow: ProjectWorkflow,
+  mutation:
+    | ProjectWorkflowMutation
+    | { readonly _tag: "SetSessionDetails"; readonly details: ProjectWorkflowSessionDetails },
+) {
+  if (mutation._tag === "AddColumn") {
+    if (workflow.columns.length >= 20)
+      return yield* new ApplicationPolicyError({
+        message: "A project can have at most 20 custom statuses",
+      });
+    return {
+      ...workflow,
+      columns: [...workflow.columns, mutation.column],
+    };
+  }
+  if (mutation._tag === "SetSessionDetails")
+    return {
+      ...workflow,
+      sessionDetails: [
+        ...workflow.sessionDetails.filter(
+          (details) => details.sessionId !== mutation.details.sessionId,
+        ),
+        mutation.details,
+      ],
+    };
+  if (mutation._tag === "SetSessionStatus") {
+    const assignments = workflow.assignments.filter(
+      (assignment) => assignment.sessionId !== mutation.sessionId,
+    );
+    if (mutation.statusId !== undefined) {
+      if (!workflow.columns.some((column) => column.id === mutation.statusId))
+        return yield* new ApplicationPolicyError({
+          message: "That custom status no longer exists",
+        });
+      assignments.push({ sessionId: mutation.sessionId, statusId: mutation.statusId });
+    }
+    return { ...workflow, assignments };
+  }
+  const columnIndex = workflow.columns.findIndex((column) => column.id === mutation.columnId);
+  if (columnIndex < 0)
+    return yield* new ApplicationPolicyError({ message: "That custom status no longer exists" });
+  if (mutation._tag === "UpdateColumn")
+    return {
+      ...workflow,
+      columns: workflow.columns.map((column, index) =>
+        index === columnIndex
+          ? {
+              ...column,
+              ...(mutation.name === undefined ? undefined : { name: mutation.name }),
+              ...(mutation.color === undefined ? undefined : { color: mutation.color }),
+            }
+          : column,
+      ),
+    };
+  if (mutation._tag === "MoveColumn") {
+    const columns = [...workflow.columns];
+    const column = columns[columnIndex];
+    if (!column)
+      return yield* new ApplicationPolicyError({ message: "That custom status no longer exists" });
+    columns.splice(columnIndex, 1);
+    columns.splice(Math.min(mutation.index, columns.length), 0, column);
+    return { ...workflow, columns };
+  }
+  if (mutation._tag === "DeleteColumn")
+    return {
+      ...workflow,
+      columns: workflow.columns.filter((column) => column.id !== mutation.columnId),
+      assignments: workflow.assignments.filter(
+        (assignment) => assignment.statusId !== mutation.columnId,
+      ),
+    };
+  return workflow;
+});
+
+export const mutateProjectWorkflow = Effect.fn("Application.mutateProjectWorkflow")(function* (
+  path: string,
+  mutation:
+    | ProjectWorkflowMutation
+    | { readonly _tag: "SetSessionDetails"; readonly details: ProjectWorkflowSessionDetails },
+) {
+  const owner = yield* ApplicationStateOwner;
+  const state = yield* owner.transact((current) => {
+    const project = current.projects.find((candidate) => candidate.path === path);
+    if (!project)
+      return Effect.fail(new ApplicationPolicyError({ message: "That Project is not registered" }));
+    return Effect.gen(function* () {
+      const workflow = yield* mutateWorkflowValue(
+        project.workflow ?? defaultProjectWorkflow(),
+        mutation,
+      );
+      return yield* validate({
+        ...current,
+        projects: current.projects.map((candidate) =>
+          candidate.path === path ? { ...candidate, workflow } : candidate,
+        ),
+      });
+    });
+  });
+  return (
+    state.projects.find((project) => project.path === path)?.workflow ?? defaultProjectWorkflow()
+  );
+});
+
 export const removeProject = Effect.fn("Application.removeProject")(function* (path: string) {
   return yield* update((current) => ({
     ...current,
@@ -191,5 +299,21 @@ export const forgetProjectSessions = Effect.fn("Application.forgetProjectSession
     ...current,
     unreadSessionIds: current.unreadSessionIds.filter((id) => !forgotten.has(id)),
     fastModeSessionIds: current.fastModeSessionIds.filter((id) => !forgotten.has(id)),
+    projects: current.projects.map((project) =>
+      project.workflow
+        ? {
+            ...project,
+            workflow: {
+              ...project.workflow,
+              assignments: project.workflow.assignments.filter(
+                (assignment) => !forgotten.has(assignment.sessionId),
+              ),
+              sessionDetails: project.workflow.sessionDetails.filter(
+                (details) => !forgotten.has(details.sessionId),
+              ),
+            },
+          }
+        : project,
+    ),
   }));
 });

@@ -84,7 +84,7 @@ async function bootstrap(bridge: NonNullable<typeof window.cake>) {
   synchronizer.observe({
     projects: rootStore.projectCatalogModel,
     sessionCatalog: rootStore.sessionCatalogModel,
-    projectSessionCatalogQueries: () => rootStore.sidebarStore.projectSessionCatalogQueries,
+    projectSessionCatalogQueries: () => rootStore.projectSessionCatalogQueries,
     cakeChatCatalog: rootStore.cakeChatCatalogModel,
     cakeChatCatalogQueries: () => rootStore.sidebarStore.cakeChatCatalogQueries,
     projectSessions: () => {

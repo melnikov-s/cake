@@ -4,6 +4,7 @@ import { Effect, Layer } from "effect";
 import { describe } from "vitest";
 import {
   forgetProjectSessions,
+  mutateProjectWorkflow,
   removeProject,
   renameProject,
   setProjectSettings,
@@ -104,6 +105,97 @@ describe("Application domain", () => {
         for (let index = 1; index < 200; index++) yield* trustProject(`/work/${index}`);
         const error = yield* Effect.flip(trustProject("/work/overflow"));
         assert.equal(error._tag, "ApplicationPolicyError");
+      }),
+    ),
+  );
+
+  it.effect("keeps custom workflow statuses separate and clears assignments on deletion", () =>
+    run(
+      Effect.gen(function* () {
+        yield* upsertProject("/work/cake", "Cake");
+        const columnId = "b925b5dd-9661-4f1a-9f40-406be3c96c27";
+        yield* mutateProjectWorkflow("/work/cake", {
+          _tag: "AddColumn",
+          column: { id: columnId, name: "In progress", color: "sky" },
+        });
+        const secondColumnId = "bcf5bcc1-9126-4192-a0a8-eadb851c5075";
+        yield* mutateProjectWorkflow("/work/cake", {
+          _tag: "AddColumn",
+          column: { id: secondColumnId, name: "Review", color: "violet" },
+        });
+        const updated = yield* mutateProjectWorkflow("/work/cake", {
+          _tag: "UpdateColumn",
+          columnId,
+          name: "In progress now",
+          color: "mint",
+        });
+        assert.deepEqual(updated.columns[0], {
+          id: columnId,
+          name: "In progress now",
+          color: "mint",
+        });
+        const reordered = yield* mutateProjectWorkflow("/work/cake", {
+          _tag: "MoveColumn",
+          columnId,
+          index: 1,
+        });
+        assert.deepEqual(
+          reordered.columns.map((column) => column.id),
+          [secondColumnId, columnId],
+        );
+        const assigned = yield* mutateProjectWorkflow("/work/cake", {
+          _tag: "SetSessionStatus",
+          sessionId: "session-1",
+          statusId: columnId,
+        });
+        assert.deepEqual(assigned.assignments, [{ sessionId: "session-1", statusId: columnId }]);
+        const deleted = yield* mutateProjectWorkflow("/work/cake", {
+          _tag: "DeleteColumn",
+          columnId,
+        });
+        assert.deepEqual(
+          deleted.columns.map((column) => column.id),
+          [secondColumnId],
+        );
+        assert.deepEqual(deleted.assignments, []);
+      }),
+    ),
+  );
+
+  it.effect("rejects duplicate and reserved custom workflow names", () =>
+    run(
+      Effect.gen(function* () {
+        yield* upsertProject("/work/cake", "Cake");
+        yield* mutateProjectWorkflow("/work/cake", {
+          _tag: "AddColumn",
+          column: {
+            id: "b925b5dd-9661-4f1a-9f40-406be3c96c27",
+            name: "Blocked",
+            color: "rose",
+          },
+        });
+        const duplicate = yield* Effect.flip(
+          mutateProjectWorkflow("/work/cake", {
+            _tag: "AddColumn",
+            column: {
+              id: "bcf5bcc1-9126-4192-a0a8-eadb851c5075",
+              name: "blocked",
+              color: "amber",
+            },
+          }),
+        );
+        assert.equal(duplicate._tag, "ApplicationPolicyError");
+        const reserved = yield* Effect.flip(
+          mutateProjectWorkflow("/work/cake", {
+            _tag: "AddColumn",
+            column: {
+              id: "4535dbea-37f9-4a71-a124-7eaab6a57d88",
+              name: "Active",
+              color: "mint",
+            },
+          }),
+        );
+        assert.equal(reserved._tag, "ApplicationPolicyError");
       }),
     ),
   );

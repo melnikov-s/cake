@@ -18,6 +18,14 @@ export function applyProjectCatalogUpdate(model: ProjectCatalog, update: Project
     addedAt: project.addedAt,
     lastOpenedAt: project.lastOpenedAt,
     settings: { ...project.settings },
+    workflow: {
+      columns: project.workflow.columns.map((column) => ({ ...column })),
+      assignments: project.workflow.assignments.map((assignment) => ({ ...assignment })),
+      sessionDetails: project.workflow.sessionDetails.map((details) => ({
+        ...details,
+        ...(details.model ? { model: { ...details.model } } : undefined),
+      })),
+    },
   }));
   if (update._tag === "Snapshot") projects = [...update.projects];
   else {

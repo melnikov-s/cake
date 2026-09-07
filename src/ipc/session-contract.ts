@@ -534,6 +534,7 @@ export interface SessionPreview {
   readonly sessionId: string;
   readonly sessionFile: string;
   readonly parts: ReadonlyArray<UiPart>;
+  readonly currentModel?: { readonly provider: string; readonly modelId: string };
 }
 export interface SessionSummary {
   readonly id: string;

@@ -36,6 +36,94 @@ export const ProjectSettings = Schema.Struct({
 
 export interface ProjectSettings extends Schema.Schema.Type<typeof ProjectSettings> {}
 
+export const ProjectWorkflowColor = Schema.Literals([
+  "rose",
+  "peach",
+  "amber",
+  "lime",
+  "mint",
+  "sky",
+  "blue",
+  "violet",
+]);
+export type ProjectWorkflowColor = typeof ProjectWorkflowColor.Type;
+
+const ProjectWorkflowColumn = Schema.Struct({
+  id: Schema.String.check(Schema.isUUID(4)),
+  name: Schema.String.check(Schema.isTrimmed(), Schema.isMinLength(1), Schema.isMaxLength(40)),
+  color: ProjectWorkflowColor,
+});
+const ProjectWorkflowAssignment = Schema.Struct({
+  sessionId: nonEmptyBoundedString(256),
+  statusId: Schema.String.check(Schema.isUUID(4)),
+});
+export const ProjectWorkflowSessionDetails = Schema.Struct({
+  sessionId: nonEmptyBoundedString(256),
+  model: Schema.optionalKey(
+    Schema.Struct({
+      provider: nonEmptyBoundedString(256),
+      modelId: nonEmptyBoundedString(512),
+      name: Schema.optionalKey(nonEmptyBoundedString(1_024)),
+    }),
+  ),
+  description: Schema.optionalKey(
+    Schema.String.check(Schema.isTrimmed(), Schema.isMinLength(1), Schema.isMaxLength(240)),
+  ),
+});
+export interface ProjectWorkflowSessionDetails extends Schema.Schema.Type<
+  typeof ProjectWorkflowSessionDetails
+> {}
+
+export const ProjectWorkflow = Schema.Struct({
+  columns: boundedArray(ProjectWorkflowColumn, 20),
+  assignments: boundedArray(ProjectWorkflowAssignment, 10_000),
+  sessionDetails: boundedArray(ProjectWorkflowSessionDetails, 10_000),
+}).check(
+  Schema.makeFilter(
+    (workflow) => {
+      const ids = workflow.columns.map((column) => column.id);
+      const names = workflow.columns.map((column) => column.name.toLowerCase());
+      const reserved = new Set(["draft", "active", "resolved"]);
+      return (
+        new Set(ids).size === ids.length &&
+        new Set(names).size === names.length &&
+        names.every((name) => !reserved.has(name)) &&
+        new Set(workflow.assignments.map((assignment) => assignment.sessionId)).size ===
+          workflow.assignments.length &&
+        new Set(workflow.sessionDetails.map((details) => details.sessionId)).size ===
+          workflow.sessionDetails.length
+      );
+    },
+    { expected: "a valid project workflow with unique columns and session records" },
+  ),
+);
+export interface ProjectWorkflow extends Schema.Schema.Type<typeof ProjectWorkflow> {}
+
+export const defaultProjectWorkflow = (): ProjectWorkflow => ({
+  columns: [],
+  assignments: [],
+  sessionDetails: [],
+});
+
+export const ProjectWorkflowMutation = Schema.TaggedUnion({
+  AddColumn: { column: ProjectWorkflowColumn },
+  UpdateColumn: {
+    columnId: ProjectWorkflowColumn.fields.id,
+    name: Schema.optionalKey(ProjectWorkflowColumn.fields.name),
+    color: Schema.optionalKey(ProjectWorkflowColor),
+  },
+  MoveColumn: {
+    columnId: ProjectWorkflowColumn.fields.id,
+    index: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0), Schema.isLessThanOrEqualTo(19)),
+  },
+  DeleteColumn: { columnId: ProjectWorkflowColumn.fields.id },
+  SetSessionStatus: {
+    sessionId: ProjectWorkflowAssignment.fields.sessionId,
+    statusId: Schema.optionalKey(ProjectWorkflowColumn.fields.id),
+  },
+});
+export type ProjectWorkflowMutation = typeof ProjectWorkflowMutation.Type;
+
 export const defaultProjectSettings = (): ProjectSettings => ({
   worktreeCreateCommand: DEFAULT_WORKTREE_CREATE_COMMAND,
   worktreeSetupCommands: "",
@@ -47,6 +135,7 @@ export const ProjectRecord = Schema.Struct({
   addedAt: IsoTimestamp,
   lastOpenedAt: IsoTimestamp,
   settings: Schema.optionalKey(ProjectSettings),
+  workflow: Schema.optionalKey(ProjectWorkflow),
 });
 
 const SessionIds = boundedArray(boundedString(256), 10_000).check(Schema.isUnique());

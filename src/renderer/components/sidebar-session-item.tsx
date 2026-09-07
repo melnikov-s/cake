@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { observer } from "r-state-tree/react";
 import { SESSION_TITLE_MAX_LENGTH } from "../../ipc/session-contract";
+import type { ProjectWorkflowColor } from "../../domain/application-data";
 import type { WorktreeRecord } from "../../ipc/worktree-contract";
 import { cn } from "../lib/utils";
 import { Badge } from "./ui/badge";
@@ -11,6 +12,7 @@ import type { SidebarStore } from "../stores/SidebarStore";
 import { WorktreeStatusIcon } from "./worktree-status-icon";
 import type { SessionActivity } from "../session-activity";
 import { StatusDot } from "./ui/status-dot";
+import { StatusSwatch } from "./ui/status-swatch";
 
 export interface SidebarSessionItemProps {
   store: SidebarStore;
@@ -31,6 +33,7 @@ export interface SidebarSessionItemProps {
   paneNumber?: number;
   resolved: boolean;
   activity?: SessionActivity;
+  workflowStatus?: { name: string; color: ProjectWorkflowColor };
   onOpen(sessionId: string): void;
   onToggleFamily?(sessionId: string): void;
   familyCollapsed?: boolean;
@@ -49,6 +52,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
   paneNumber,
   resolved,
   activity,
+  workflowStatus,
   onOpen,
   onToggleFamily,
   familyCollapsed,
@@ -218,7 +222,15 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
             )
           }
           trailing={
-            <div className="session-meta relative flex h-full w-14 shrink-0 items-center justify-center">
+            <div className="session-meta relative flex h-full w-14 shrink-0 items-center justify-center gap-1.5">
+              {workflowStatus && (
+                <StatusSwatch
+                  color={workflowStatus.color}
+                  title={workflowStatus.name}
+                  role="img"
+                  aria-label={`Status: ${workflowStatus.name}`}
+                />
+              )}
               {activity ? (
                 <StatusDot
                   status={

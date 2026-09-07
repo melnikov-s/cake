@@ -237,6 +237,16 @@ export class SidebarStore extends Store<SidebarStoreProps> {
     this.sessionLimits[key] = this.sessionLimit(groupKey, resolved) + 10;
   }
 
+  sessionWorkflowStatus(sessionId: string) {
+    const session = this.props.catalog.find(sessionId);
+    if (!session || session.draft || session.resolved) return undefined;
+    const workflow = this.props.projects.find(session.projectPath)?.workflow;
+    const statusId = workflow?.assignments.find(
+      (assignment) => assignment.sessionId === sessionId,
+    )?.statusId;
+    return workflow?.columns.find((column) => column.id === statusId);
+  }
+
   sessionActivity(sessionId: string): SessionActivity | undefined {
     const activity = this.props.sessions.findSession(sessionId)?.activity;
     if (activity) return activity;

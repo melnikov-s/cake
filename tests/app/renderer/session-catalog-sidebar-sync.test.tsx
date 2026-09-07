@@ -50,6 +50,7 @@ function sidebar(root: RootStore) {
       shell={root.appShellStore}
       projectSettings={root.projectSettingsStore}
       onOpenSettings={() => undefined}
+      onOpenKanban={() => undefined}
       onOpenCakeChat={() => undefined}
       onCreateCakeChat={() => undefined}
       onOpenSession={() => undefined}

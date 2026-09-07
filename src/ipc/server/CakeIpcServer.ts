@@ -13,6 +13,7 @@ import { inlineWidgetHandlers } from "./InlineWidgetHandlers";
 import { managedWorktreeHandlers } from "./ManagedWorktreeHandlers";
 import { modelHandlers } from "./ModelHandlers";
 import { projectSessionHandlers } from "./ProjectSessionHandlers";
+import { projectWorkflowHandlers } from "./ProjectWorkflowHandlers";
 import { scheduledMessageHandlers } from "./ScheduledMessageHandlers";
 import { subagentHandlers } from "./SubagentHandlers";
 import { terminalHandlers } from "./TerminalHandlers";
@@ -31,6 +32,7 @@ export const makeCakeIpcServerLive = (homeDirectory: string) => {
     ...managedWorktreeHandlers,
     ...modelHandlers,
     ...projectSessionHandlers,
+    ...projectWorkflowHandlers,
     ...scheduledMessageHandlers,
     ...subagentHandlers,
     ...terminalHandlers,
