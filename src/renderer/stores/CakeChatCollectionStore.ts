@@ -87,6 +87,9 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
   get sessionId() {
     return this.selectedSessionId;
   }
+  get hasMoreResolvedSessions() {
+    return this.props.catalog.resolvedHasMore;
+  }
   get summaries(): readonly CakeChatSummaryProjection[] {
     const authoritative: CakeChatSummaryProjection[] = this.props.catalog.sessions.map(
       (session) => session,

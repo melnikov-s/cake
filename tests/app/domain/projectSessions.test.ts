@@ -123,6 +123,10 @@ const makeLayer = (
     }): void;
     sessionExists?: boolean;
     resolvedOnDisk?: boolean;
+    resolvedProjectEntries?: ReadonlyArray<{
+      readonly sessionId: string;
+      readonly modifiedAt: string;
+    }>;
     migrationComplete?: boolean;
   } = {},
 ) => {
@@ -296,20 +300,25 @@ const makeLayer = (
         deleteResolvedProject: () => Effect.void,
         resolvedProjects: (projectPath) => {
           hooks.onResolvedCatalog?.();
+          const entries = hooks.resolvedProjectEntries ?? [
+            { sessionId: "session-1", modifiedAt: "2026-01-02T00:00:00.000Z" },
+          ];
           return hooks.sessionExists === false || !resolvedOnDisk
             ? Stream.empty
-            : Stream.make({
-                version: 1 as const,
-                sessionId: "session-1",
-                title: "session-1",
-                projectPath,
-                projectName: "Project",
-                workingDirectory: "/project",
-                activeRoot: "/sessions",
-                resolvedRoot: "/resolved-sessions",
-                createdAt: "2026-01-01T00:00:00.000Z",
-                modifiedAt: "2026-01-02T00:00:00.000Z",
-              });
+            : Stream.fromIterable(
+                entries.map((entry) => ({
+                  version: 1 as const,
+                  sessionId: entry.sessionId,
+                  title: entry.sessionId,
+                  projectPath,
+                  projectName: "Project",
+                  workingDirectory: "/project",
+                  activeRoot: "/sessions",
+                  resolvedRoot: "/resolved-sessions",
+                  createdAt: "2026-01-01T00:00:00.000Z",
+                  modifiedAt: entry.modifiedAt,
+                })),
+              );
         },
         projectMigrationComplete: () => Effect.succeed(hooks.migrationComplete ?? true),
         migrateProject: (projectPath) => {
@@ -370,6 +379,7 @@ describe("Project Sessions domain", () => {
       const updates = yield* projectSessions.observeCatalog({
         projectPath: "/project",
         resolved: true,
+        limit: 10,
       });
       const first = yield* updates.pipe(Stream.take(1), Stream.runCollect);
       assert.equal(first[0]?._tag, "Snapshot");
@@ -386,6 +396,32 @@ describe("Project Sessions domain", () => {
     );
   });
 
+  it.effect("loads one stable resolved page and reports more results", () => {
+    const entries = Array.from({ length: 12 }, (_, index) => ({
+      sessionId: `session-${index}`,
+      modifiedAt: `2026-01-${String(index + 1).padStart(2, "0")}T00:00:00.000Z`,
+    }));
+    return Effect.gen(function* () {
+      const updates = yield* projectSessions.observeCatalog({
+        projectPath: "/project",
+        resolved: true,
+        limit: 10,
+      });
+      const first = yield* updates.pipe(Stream.take(1), Stream.runCollect);
+      assert.equal(first.length, 1);
+      assert.equal(first[0]?._tag, "Snapshot");
+      if (first[0]?._tag !== "Snapshot") return;
+      assert.equal(first[0].sessions.length, 10);
+      assert.equal(first[0].sessions[0]?.sessionId, "session-11");
+      assert.equal(first[0].sessions[9]?.sessionId, "session-2");
+      assert.equal(first[0].hasMore, true);
+    }).pipe(
+      Effect.provide(
+        makeLayer(undefined, { resolvedOnDisk: true, resolvedProjectEntries: entries }),
+      ),
+    );
+  });
+
   it.effect("lazily migrates legacy resolved metadata when its project is expanded", () => {
     let locations = 0;
     let migrations = 0;
@@ -393,6 +429,7 @@ describe("Project Sessions domain", () => {
       const updates = yield* projectSessions.observeCatalog({
         projectPath: "/project",
         resolved: true,
+        limit: 10,
       });
       const first = yield* updates.pipe(Stream.take(1), Stream.runCollect);
       assert.equal(first[0]?._tag, "Snapshot");

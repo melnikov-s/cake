@@ -148,7 +148,7 @@ export class RendererModelSynchronizer implements Disposable {
       (update: ProjectCatalogUpdate) => applyProjectCatalogUpdate(input.projects, update),
     );
     for (const query of input.projectSessionCatalogQueries ?? []) {
-      const key = `project-session-catalog:${query.resolved ? "resolved" : "active"}:${query.projectPath}`;
+      const key = `project-session-catalog:${query.resolved ? `resolved:${query.limit}` : "active"}:${query.projectPath}`;
       active.add(key);
       this.catalogGroups.set(key, { model: input.sessionCatalog, query });
       this.synchronizeModel(
@@ -161,7 +161,7 @@ export class RendererModelSynchronizer implements Disposable {
     }
 
     for (const query of input.cakeChatCatalogQueries ?? [{ resolved: false }]) {
-      const key = `cake-chat-catalog:${query.resolved ? "resolved" : "active"}`;
+      const key = `cake-chat-catalog:${query.resolved ? `resolved:${query.limit}` : "active"}`;
       active.add(key);
       this.cakeChatCatalogGroups.set(key, { model: input.cakeChatCatalog, query });
       this.synchronizeModel(
@@ -247,7 +247,29 @@ export class RendererModelSynchronizer implements Disposable {
       );
     }
 
-    for (const key of this.subscriptions.keys()) if (!active.has(key)) this.stop(key);
+    for (const key of this.subscriptions.keys()) {
+      if (active.has(key)) continue;
+      const projectCatalog = this.catalogGroups.get(key);
+      const replacementProjectCatalog =
+        projectCatalog &&
+        [...this.catalogGroups.entries()].some(
+          ([candidateKey, candidate]) =>
+            active.has(candidateKey) &&
+            candidate.model === projectCatalog.model &&
+            candidate.query.projectPath === projectCatalog.query.projectPath &&
+            candidate.query.resolved === projectCatalog.query.resolved,
+        );
+      const cakeChatCatalog = this.cakeChatCatalogGroups.get(key);
+      const replacementCakeChatCatalog =
+        cakeChatCatalog &&
+        [...this.cakeChatCatalogGroups.entries()].some(
+          ([candidateKey, candidate]) =>
+            active.has(candidateKey) &&
+            candidate.model === cakeChatCatalog.model &&
+            candidate.query.resolved === cakeChatCatalog.query.resolved,
+        );
+      this.stop(key, !replacementProjectCatalog && !replacementCakeChatCatalog);
+    }
   }
 
   [Symbol.dispose]() {
@@ -309,26 +331,30 @@ export class RendererModelSynchronizer implements Disposable {
     });
   }
 
-  private stop(key: string) {
+  private stop(key: string, clearCatalog = true) {
+    const subscription = this.subscriptions.get(key);
+    if (subscription) subscription.generation += 1;
     this.supervisor.unregister(`model:${key}`);
     this.subscriptions.delete(key);
     this.models.delete(key);
     const catalog = this.catalogGroups.get(key);
     if (catalog) {
-      applySessionCatalogGroupUpdate(catalog.model, catalog.query, {
-        _tag: "Snapshot",
-        revision: 0,
-        sessions: [],
-      });
+      if (clearCatalog)
+        applySessionCatalogGroupUpdate(catalog.model, catalog.query, {
+          _tag: "Snapshot",
+          revision: 0,
+          sessions: [],
+        });
       this.catalogGroups.delete(key);
     }
     const cakeChatCatalog = this.cakeChatCatalogGroups.get(key);
     if (cakeChatCatalog) {
-      applyCakeChatCatalogGroupUpdate(cakeChatCatalog.model, cakeChatCatalog.query, {
-        _tag: "Snapshot",
-        revision: 0,
-        sessions: [],
-      });
+      if (clearCatalog)
+        applyCakeChatCatalogGroupUpdate(cakeChatCatalog.model, cakeChatCatalog.query, {
+          _tag: "Snapshot",
+          revision: 0,
+          sessions: [],
+        });
       this.cakeChatCatalogGroups.delete(key);
     }
   }

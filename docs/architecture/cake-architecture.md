@@ -296,7 +296,11 @@ The window Store hierarchy mirrors the product surfaces:
   visibility, so re-expansion is immediate. After a group's one initial lazy
   metadata scan, session mutations publish scoped catalog events; they refresh
   only the affected session's filename metadata and never restart catalogs from
-  application-state revisions. Titles come from Cake's namespace-independent,
+  application-state revisions. Resolved groups project ten sessions at first and
+  increase that window by ten when the user chooses Show more; replacing that
+  bounded observation retains the current rows until its next coherent snapshot,
+  so archive discovery never streams partially sorted rows through navigation.
+  Titles come from Cake's namespace-independent,
   per-session metadata repository, so neither active nor resolved listing opens
   transcript bodies. Session IDs are the canonical identity; duplicate IDs are
   rejected. Resolved status derives solely from the active or archived

@@ -4,6 +4,7 @@ import { CakeChatSummary } from "./CakeChatSummary";
 /** Passive current Cake Chat catalog projection. */
 export class CakeChatCatalog extends Model {
   loaded = false;
+  resolvedHasMore = false;
   @child(CakeChatSummary) sessions: CakeChatSummary[] = observable([]);
 
   find(sessionId: string) {

@@ -46,7 +46,9 @@ export function applySessionCatalogGroupUpdate(
     readonly resolved?: boolean | null;
   }) => session.projectPath === query.projectPath && session.resolved === query.resolved;
   let sessions = model.sessions.map((session) => toSnapshot(session));
+  const resolvedHasMoreByProject = { ...model.resolvedHasMoreByProject };
   if (update._tag === "Snapshot") {
+    if (query.resolved) resolvedHasMoreByProject[query.projectPath] = update.hasMore ?? false;
     sessions = [...sessions.filter((session) => !belongsToGroup(session)), ...update.sessions];
   } else {
     const event = update.event;
@@ -81,7 +83,7 @@ export function applySessionCatalogGroupUpdate(
       .filter((sessionId): sessionId is string => typeof sessionId === "string"),
     "Session ID",
   );
-  applySnapshot(model, { sessions });
+  applySnapshot(model, { sessions, resolvedHasMoreByProject });
 }
 
 export function applyCakeChatCatalogGroupUpdate(
@@ -90,7 +92,9 @@ export function applyCakeChatCatalogGroupUpdate(
   update: CakeChatCatalogUpdate,
 ) {
   let sessions = model.sessions.map((session) => toSnapshot(session));
+  let resolvedHasMore = model.resolvedHasMore;
   if (update._tag === "Snapshot") {
+    if (query.resolved) resolvedHasMore = update.hasMore ?? false;
     sessions = [
       ...sessions.filter((session) => session.resolved !== query.resolved),
       ...update.sessions,
@@ -119,7 +123,7 @@ export function applyCakeChatCatalogGroupUpdate(
       .filter((sessionId): sessionId is string => typeof sessionId === "string"),
     "Cake Chat Session ID",
   );
-  applySnapshot(model, { loaded: true, sessions });
+  applySnapshot(model, { loaded: true, resolvedHasMore, sessions });
 }
 
 const compareSessionSummaries = (

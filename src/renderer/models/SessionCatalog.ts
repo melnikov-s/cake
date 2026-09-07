@@ -4,6 +4,7 @@ import { SessionSummary } from "./SessionSummary";
 /** Passive authoritative Project Session catalog projection. */
 export class SessionCatalog extends Model {
   @child(SessionSummary) sessions: SessionSummary[] = observable([]);
+  resolvedHasMoreByProject: Record<string, boolean> = observable({});
 
   find(sessionId: string) {
     return this.sessions.find((session) => session.sessionId === sessionId);

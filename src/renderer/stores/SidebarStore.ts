@@ -220,6 +220,14 @@ export class SidebarStore extends Store<SidebarStoreProps> {
     return this.props.cakeChat().summaries.filter((session) => session.resolved === resolved);
   }
 
+  hasMoreResolvedProjectSessions(projectPath: string) {
+    return this.props.catalog.hasMoreResolvedSessions(projectPath);
+  }
+
+  get hasMoreResolvedCakeChatSessions() {
+    return this.props.cakeChat().hasMoreResolvedSessions;
+  }
+
   sessionLimit(groupKey: string, resolved = false) {
     return this.sessionLimits[this.limitKey(groupKey, resolved)] ?? 10;
   }
@@ -275,14 +283,18 @@ export class SidebarStore extends Store<SidebarStoreProps> {
     for (const projectPath of this.props.projects.orderedProjectPaths) {
       queries.push({ projectPath, resolved: false });
       if (this.activatedResolvedCatalogs[projectPath])
-        queries.push({ projectPath, resolved: true });
+        queries.push({
+          projectPath,
+          resolved: true,
+          limit: this.sessionLimit(projectPath, true),
+        });
     }
     return queries;
   }
 
   get cakeChatCatalogQueries(): ReadonlyArray<CakeChatCatalogQuery> {
     return this.activatedResolvedCatalogs["cake-chat"]
-      ? [{ resolved: false }, { resolved: true }]
+      ? [{ resolved: false }, { resolved: true, limit: this.sessionLimit("cake-chat", true) }]
       : [{ resolved: false }];
   }
 

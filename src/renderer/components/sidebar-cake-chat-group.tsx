@@ -103,7 +103,9 @@ export const SidebarCakeChatGroup = observer(function SidebarCakeChatGroup({
               />
             );
           })}
-          {sessions.length > visibleSessions.length && (
+          {(resolved
+            ? store.hasMoreResolvedCakeChatSessions
+            : sessions.length > visibleSessions.length) && (
             <Button
               variant="ghost"
               className="h-7 justify-start px-2 text-xs text-muted-foreground hover:text-foreground"

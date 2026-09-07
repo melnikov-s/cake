@@ -13,6 +13,7 @@ import { getState, setSessionFastMode, setSessionUnread, trustProject } from "./
 import type { ApplicationState } from "./application-data";
 import type { SessionCatalogUpdate } from "./catalog-data";
 import { toJsonValue } from "../utils/to-json-value";
+import { compareSessionSummariesForSidebar } from "../utils/session-summary-order";
 import {
   TurnId,
   acquire as acquireConversation,
@@ -54,7 +55,11 @@ import {
 
 type ProjectSessionCatalogEvent = Extract<SessionCatalogUpdate, { _tag: "Event" }>["event"];
 type InitialCatalogItem =
-  | { readonly _tag: "InitialBatch"; readonly sessions: ProjectSessionSummary[] }
+  | {
+      readonly _tag: "InitialBatch";
+      readonly sessions: ProjectSessionSummary[];
+      readonly hasMore?: boolean;
+    }
   | { readonly _tag: "InitialComplete" };
 type CatalogStreamItem = InitialCatalogItem | ProjectSessionCatalogEvent;
 
@@ -361,11 +366,29 @@ export const observeCatalog = Effect.fn("ProjectSessions.observeCatalog")(functi
 ) {
   const catalogs = yield* SessionCatalogChanges;
   const state = yield* getState();
-  const initial = Stream.unwrap(catalogForState(query, state)).pipe(
-    Stream.groupedWithin(100, "16 millis"),
-    Stream.map((sessions) => ({ _tag: "InitialBatch" as const, sessions: Array.from(sessions) })),
-    Stream.concat(Stream.make({ _tag: "InitialComplete" as const })),
-  );
+  const catalog = Stream.unwrap(catalogForState(query, state));
+  const initial = query.resolved
+    ? Stream.fromEffect(
+        catalog.pipe(
+          Stream.runCollect,
+          Effect.map((sessions) => {
+            const sorted = Array.from(sessions).sort(compareSessionSummariesForSidebar);
+            return {
+              _tag: "InitialBatch" as const,
+              sessions: sorted.slice(0, query.limit),
+              hasMore: sorted.length > query.limit,
+            };
+          }),
+        ),
+      )
+    : catalog.pipe(
+        Stream.groupedWithin(100, "16 millis"),
+        Stream.map((sessions) => ({
+          _tag: "InitialBatch" as const,
+          sessions: Array.from(sessions),
+        })),
+        Stream.concat(Stream.make({ _tag: "InitialComplete" as const })),
+      );
   return catalogs.initialThenChanges(initial).pipe(
     Stream.mapEffect((item) =>
       item._tag === "InitialBatch" || item._tag === "InitialComplete"
@@ -405,7 +428,14 @@ export const observeCatalog = Effect.fn("ProjectSessions.observeCatalog")(functi
                 revision,
                 event: { _tag: "UpsertedBatch", sessions: item.sessions },
               }
-            : { _tag: "Snapshot", revision, sessions: item.sessions };
+            : item.hasMore === undefined
+              ? { _tag: "Snapshot", revision, sessions: item.sessions }
+              : {
+                  _tag: "Snapshot",
+                  revision,
+                  sessions: item.sessions,
+                  hasMore: item.hasMore,
+                };
           return [{ revision, initialized: true }, [update]];
         }
         return [{ revision, initialized: true }, [{ _tag: "Event", revision, event: item }]];

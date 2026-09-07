@@ -4,6 +4,7 @@ import type { ProjectCatalogUpdate, SessionCatalogUpdate } from "../../../src/do
 import { TurnId, type ConversationSnapshot } from "../../../src/domain/conversation-data";
 import {
   ProjectSessionError,
+  type ProjectSessionCatalogQuery,
   type ProjectSessionUpdate,
 } from "../../../src/domain/project-session-data";
 import { CakeIpcClient, type CakeIpcClientService } from "../../../src/ipc/client/CakeIpcClient";
@@ -543,6 +544,67 @@ describe("RendererModelSynchronizer", () => {
 
     synchronizer.sync({ ...base, projectSessionCatalogQueries: [] });
     expect(sessions.find("visible")).toBeUndefined();
+
+    synchronizer[Symbol.dispose]();
+    projects[Symbol.dispose]();
+    sessions[Symbol.dispose]();
+    cakeChats[Symbol.dispose]();
+  });
+
+  it("keeps resolved rows visible while replacing a catalog page", async () => {
+    const update: SessionCatalogUpdate = {
+      _tag: "Snapshot",
+      revision: 1,
+      sessions: [
+        {
+          sessionId: "resolved-visible",
+          title: "Resolved visible",
+          createdAt: "2026-01-01",
+          modifiedAt: "2026-01-01",
+          messageCount: 0,
+          resolved: true,
+          unread: false,
+          projectPath: "/cake",
+          projectName: "Cake",
+          workingDirectory: "/cake",
+        },
+      ],
+    };
+    const client = {
+      ...clientWithProjectStream(() => Stream.never),
+      projectSessions: {
+        observeCatalog: (query: ProjectSessionCatalogQuery) =>
+          query.resolved && query.limit === 10
+            ? Stream.concat(Stream.make(update), Stream.never)
+            : Stream.never,
+      },
+    } as unknown as CakeIpcClientService;
+    const projects = ProjectCatalog.create();
+    const sessions = SessionCatalog.create();
+    const cakeChats = CakeChatCatalog.create();
+    const synchronizer = new RendererModelSynchronizer(
+      runtimeFor(client),
+      new RendererSynchronizationSupervisor(),
+    );
+    const base = {
+      projects,
+      sessionCatalog: sessions,
+      cakeChatCatalog: cakeChats,
+      projectSessions: [],
+      cakeChats: [],
+    };
+
+    synchronizer.sync({
+      ...base,
+      projectSessionCatalogQueries: [{ projectPath: "/cake", resolved: true, limit: 10 }],
+    });
+    await vi.waitFor(() => expect(sessions.find("resolved-visible")).toBeDefined());
+
+    synchronizer.sync({
+      ...base,
+      projectSessionCatalogQueries: [{ projectPath: "/cake", resolved: true, limit: 20 }],
+    });
+    expect(sessions.find("resolved-visible")).toBeDefined();
 
     synchronizer[Symbol.dispose]();
     projects[Symbol.dispose]();

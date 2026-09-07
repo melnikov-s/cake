@@ -102,7 +102,9 @@ test("resolves and restores the selected project session in the desktop sidebar"
     await expect(restoreAction).toBeVisible();
     await restoreAction.click();
     await expect(restoreAction).toHaveCount(0);
-    await expect(page.locator(`[data-session-id='${sessionId}']`)).toHaveCount(1);
+    await expect(
+      page.locator(`[data-slot="sidebar"] [data-session-id='${sessionId}']`),
+    ).toHaveCount(1);
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

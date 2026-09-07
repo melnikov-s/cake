@@ -24,6 +24,15 @@ function sidebarProps(store: ProjectWorkbenchStore) {
       hasResolvedSessions: fixture.hasResolvedSessions ?? false,
       sessionLimit: fixture.sessionLimit,
       showMoreSessions: fixture.showMoreSessions,
+      hasMoreResolvedProjectSessions:
+        fixture.hasMoreResolvedProjectSessions ??
+        ((path: string) =>
+          fixture.projectSessions(path, true).length > fixture.sessionLimit(path, true)),
+      hasMoreResolvedCakeChatSessions:
+        fixture.hasMoreResolvedCakeChatSessions ??
+        (fixture.cakeChatSummaries ?? []).filter(
+          (session: { resolved?: boolean }) => session.resolved === true,
+        ).length > fixture.sessionLimit("cake-chat", true),
       setSessionResolved: fixture.setSessionResolved ?? vi.fn(),
       setCakeChatSessionResolved: fixture.setCakeChatSessionResolved ?? vi.fn(),
       deleteSession: fixture.deleteSession ?? vi.fn(),

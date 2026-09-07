@@ -45,6 +45,9 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
     ? store.isResolvedGroupExpanded(path)
     : store.isActiveGroupExpanded(path);
   const empty = sessions.length === 0;
+  const hasMore = resolved
+    ? store.hasMoreResolvedProjectSessions(path)
+    : sessions.length > visibleSessions.length;
   return (
     <div data-slot="project-group" className={cn("mb-3 last:mb-0", empty && "mb-1")}>
       <div
@@ -139,7 +142,7 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
               onMarkUnread={(sessionId, unread) => void store.setSessionUnread(sessionId, unread)}
             />
           ))}
-          {sessions.length > visibleSessions.length && (
+          {hasMore && (
             <Button
               variant="ghost"
               className="h-7 justify-start px-2 text-xs text-muted-foreground hover:text-foreground"

@@ -7,6 +7,27 @@ import { CakeChatCatalog } from "../../../../src/renderer/models/CakeChatCatalog
 import { SessionCatalog } from "../../../../src/renderer/models/SessionCatalog";
 
 describe("CatalogProjection", () => {
+  it("tracks whether each resolved catalog has another page", () => {
+    const projectCatalog = SessionCatalog.create();
+    const cakeChatCatalog = CakeChatCatalog.create();
+
+    applySessionCatalogGroupUpdate(
+      projectCatalog,
+      { projectPath: "/project", resolved: true, limit: 10 },
+      { _tag: "Snapshot", revision: 1, sessions: [], hasMore: true },
+    );
+    applyCakeChatCatalogGroupUpdate(
+      cakeChatCatalog,
+      { resolved: true, limit: 10 },
+      { _tag: "Snapshot", revision: 1, sessions: [], hasMore: true },
+    );
+
+    expect(projectCatalog.resolvedHasMoreByProject["/project"]).toBe(true);
+    expect(cakeChatCatalog.resolvedHasMore).toBe(true);
+    projectCatalog[Symbol.dispose]();
+    cakeChatCatalog[Symbol.dispose]();
+  });
+
   it("does not let one Project Session catalog lane mutate another lane's summary", () => {
     const catalog = SessionCatalog.create({
       sessions: [

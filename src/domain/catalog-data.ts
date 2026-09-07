@@ -38,6 +38,7 @@ export const SessionCatalogUpdate = Schema.TaggedUnion({
   Snapshot: {
     revision: Schema.Int,
     sessions: Schema.Array(ProjectSessionSummary),
+    hasMore: Schema.optionalKey(Schema.Boolean),
   },
   Event: {
     revision: Schema.Int,
@@ -57,7 +58,11 @@ const CakeChatCatalogEvent = Schema.TaggedUnion({
 });
 
 export const CakeChatCatalogUpdate = Schema.TaggedUnion({
-  Snapshot: { revision: Schema.Int, sessions: Schema.Array(CakeChatSummary) },
+  Snapshot: {
+    revision: Schema.Int,
+    sessions: Schema.Array(CakeChatSummary),
+    hasMore: Schema.optionalKey(Schema.Boolean),
+  },
   Event: { revision: Schema.Int, event: CakeChatCatalogEvent },
 });
 export type CakeChatCatalogUpdate = Schema.Schema.Type<typeof CakeChatCatalogUpdate>;

@@ -77,6 +77,10 @@ export class SessionCatalogStore extends Store<{
     return this.sessionsByProject.get(projectPath) ?? [];
   }
 
+  hasMoreResolvedSessions(projectPath: string) {
+    return this.props.model.resolvedHasMoreByProject[projectPath] === true;
+  }
+
   noteManagedWorktree(record: WorktreeRecord) {
     this.managedWorktreeOverrides.set(record.worktreePath, record);
   }

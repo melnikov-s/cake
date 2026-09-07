@@ -36,8 +36,14 @@ export const CakeChatSummary = Schema.Struct({
 });
 export interface CakeChatSummary extends Schema.Schema.Type<typeof CakeChatSummary> {}
 
-export const CakeChatCatalogQuery = Schema.Struct({ resolved: Schema.Boolean });
-export interface CakeChatCatalogQuery extends Schema.Schema.Type<typeof CakeChatCatalogQuery> {}
+export const CakeChatCatalogQuery = Schema.Union([
+  Schema.Struct({ resolved: Schema.Literal(false) }),
+  Schema.Struct({
+    resolved: Schema.Literal(true),
+    limit: Schema.Int.check(Schema.isGreaterThan(0)),
+  }),
+]);
+export type CakeChatCatalogQuery = Schema.Schema.Type<typeof CakeChatCatalogQuery>;
 
 export const CakeChatPreview = Schema.Struct({
   sessionId: boundedId,

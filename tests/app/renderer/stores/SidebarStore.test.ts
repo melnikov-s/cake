@@ -133,13 +133,25 @@ describe("SidebarStore catalog demand", () => {
 
     expect(store.projectSessionCatalogQueries).toEqual([
       { projectPath: "/cake", resolved: false },
-      { projectPath: "/cake", resolved: true },
+      { projectPath: "/cake", resolved: true, limit: 10 },
       { projectPath: "/pi", resolved: false },
     ]);
     expect(store.cakeChatCatalogQueries).toEqual([{ resolved: false }]);
 
     store.toggleResolvedGroupExpanded("cake-chat");
-    expect(store.cakeChatCatalogQueries).toEqual([{ resolved: false }, { resolved: true }]);
+    expect(store.cakeChatCatalogQueries).toEqual([
+      { resolved: false },
+      { resolved: true, limit: 10 },
+    ]);
+
+    store.showMoreSessions("/cake", true);
+    store.showMoreSessions("cake-chat", true);
+    expect(store.projectSessionCatalogQueries).toContainEqual({
+      projectPath: "/cake",
+      resolved: true,
+      limit: 20,
+    });
+    expect(store.cakeChatCatalogQueries).toContainEqual({ resolved: true, limit: 20 });
 
     store.toggleResolvedGroupExpanded("/cake");
     store.toggleResolvedGroupExpanded("cake-chat");
@@ -147,10 +159,13 @@ describe("SidebarStore catalog demand", () => {
     expect(store.isResolvedGroupExpanded("/cake")).toBe(false);
     expect(store.projectSessionCatalogQueries).toEqual([
       { projectPath: "/cake", resolved: false },
-      { projectPath: "/cake", resolved: true },
+      { projectPath: "/cake", resolved: true, limit: 20 },
       { projectPath: "/pi", resolved: false },
     ]);
-    expect(store.cakeChatCatalogQueries).toEqual([{ resolved: false }, { resolved: true }]);
+    expect(store.cakeChatCatalogQueries).toEqual([
+      { resolved: false },
+      { resolved: true, limit: 20 },
+    ]);
 
     store[Symbol.dispose]();
   });

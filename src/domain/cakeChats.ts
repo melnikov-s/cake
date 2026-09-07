@@ -16,6 +16,7 @@ import { getState, setSessionFastMode } from "./application";
 import type { CakeChatCatalogUpdate } from "./catalog-data";
 import { SessionArchiveStorage } from "../services/storage/SessionArchiveStorage";
 import { toJsonValue } from "../utils/to-json-value";
+import { compareSessionSummariesForSidebar } from "../utils/session-summary-order";
 import {
   SessionCatalogChanges,
   type SessionCatalogChange,
@@ -172,83 +173,69 @@ export const observeCatalog = Effect.fn("CakeChats.observeCatalog")(function* (
   query: CakeChatCatalogQuery,
 ) {
   const catalogs = yield* SessionCatalogChanges;
-  if (!query.resolved) {
-    const initial = Stream.fromEffect(
-      Stream.unwrap(catalogForState(query)).pipe(
-        Stream.runCollect,
-        Effect.map((sessions) => ({
+  const initial = Stream.fromEffect(
+    Stream.unwrap(catalogForState(query)).pipe(
+      Stream.runCollect,
+      Effect.map((sessions) => {
+        const all = Array.from(sessions);
+        if (!query.resolved) return { _tag: "InitialSnapshot" as const, sessions: all };
+        const sorted = all.sort(compareSessionSummariesForSidebar);
+        return {
           _tag: "InitialSnapshot" as const,
-          sessions: Array.from(sessions),
-        })),
-      ),
-    );
-    return catalogs.initialThenChanges(initial).pipe(
-      Stream.mapEffect((item) =>
-        item._tag === "InitialSnapshot"
-          ? Effect.succeed<
-              | { readonly _tag: "InitialSnapshot"; readonly sessions: CakeChatSummary[] }
-              | CakeChatCatalogEvent
-              | undefined
-            >(item)
-          : catalogEventForChange(query, item),
-      ),
-      Stream.filter(
-        (
-          item,
-        ): item is
-          | { readonly _tag: "InitialSnapshot"; readonly sessions: CakeChatSummary[] }
-          | CakeChatCatalogEvent => item !== undefined,
-      ),
-      Stream.mapError((error) => errorValue("catalog", error)),
-      Stream.mapAccum(
-        () => 0,
-        (revision, item): readonly [number, ReadonlyArray<CakeChatCatalogUpdate>] => {
-          const nextRevision = revision + 1;
-          return [
-            nextRevision,
-            [
-              item._tag === "InitialSnapshot"
-                ? { _tag: "Snapshot", revision: nextRevision, sessions: item.sessions }
-                : { _tag: "Event", revision: nextRevision, event: item },
-            ],
-          ];
-        },
-      ),
-    );
-  }
-  const initial = Stream.unwrap(catalogForState(query)).pipe(
-    Stream.map((session) => ({ _tag: "Initial" as const, session })),
+          sessions: sorted.slice(0, query.limit),
+          hasMore: sorted.length > query.limit,
+        };
+      }),
+    ),
   );
-  const events = catalogs.initialThenChanges(initial).pipe(
+  return catalogs.initialThenChanges(initial).pipe(
     Stream.mapEffect((item) =>
-      item._tag === "Initial"
-        ? Effect.succeed<CakeChatCatalogEvent | undefined>({
-            _tag: "Upserted",
-            session: item.session,
-          })
+      item._tag === "InitialSnapshot"
+        ? Effect.succeed<
+            | {
+                readonly _tag: "InitialSnapshot";
+                readonly sessions: CakeChatSummary[];
+                readonly hasMore?: boolean;
+              }
+            | CakeChatCatalogEvent
+            | undefined
+          >(item)
         : catalogEventForChange(query, item),
     ),
-    Stream.filter((event): event is CakeChatCatalogEvent => event !== undefined),
+    Stream.filter(
+      (
+        item,
+      ): item is
+        | {
+            readonly _tag: "InitialSnapshot";
+            readonly sessions: CakeChatSummary[];
+            readonly hasMore?: boolean;
+          }
+        | CakeChatCatalogEvent => item !== undefined,
+    ),
     Stream.mapError((error) => errorValue("catalog", error)),
     Stream.mapAccum(
-      () => 1,
-      (revision, event): readonly [number, ReadonlyArray<CakeChatCatalogUpdate>] => [
-        revision + 1,
-        [
-          {
-            _tag: "Event",
-            revision: revision + 1,
-            event,
-          },
-        ],
-      ],
+      () => 0,
+      (revision, item): readonly [number, ReadonlyArray<CakeChatCatalogUpdate>] => {
+        const nextRevision = revision + 1;
+        return [
+          nextRevision,
+          [
+            item._tag !== "InitialSnapshot"
+              ? { _tag: "Event", revision: nextRevision, event: item }
+              : item.hasMore === undefined
+                ? { _tag: "Snapshot", revision: nextRevision, sessions: item.sessions }
+                : {
+                    _tag: "Snapshot",
+                    revision: nextRevision,
+                    sessions: item.sessions,
+                    hasMore: item.hasMore,
+                  },
+          ],
+        ];
+      },
     ),
   );
-  return Stream.make({
-    _tag: "Snapshot",
-    revision: 1,
-    sessions: [],
-  } satisfies CakeChatCatalogUpdate).pipe(Stream.concat(events));
 });
 
 export const inspect = Effect.fn("CakeChats.inspect")(function* (sessionId: string) {
