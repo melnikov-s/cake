@@ -12,7 +12,7 @@ import type {
 } from "../../domain/project-session-data";
 import { parseScheduledMessage } from "../../utils/scheduled-message-time";
 import { ChatConfigurationStore } from "./ChatConfigurationStore";
-import { ChatStore } from "./ChatStore";
+import { ChatStore, type QueuedPrompt as ChatQueuedPrompt } from "./ChatStore";
 import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import { ArtifactInteractionStore } from "./ArtifactInteractionStore";
 import { MessageCommentsStore } from "./MessageCommentsStore";
@@ -102,6 +102,24 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   get canonicalParts() {
     return this.model.uiParts;
   }
+
+  @computed
+  get steeringPrompts(): ChatQueuedPrompt[] {
+    return this.model.parts.flatMap((part) =>
+      part.kind === "text" && part.role === "user" && part.deliveryState === "steering"
+        ? [
+            {
+              id: part.id,
+              text: part.text ?? "",
+              attachments: [],
+              renderUserMessageAsMarkdown: part.renderAs === "markdown",
+              state: "steering" as const,
+            },
+          ]
+        : [],
+    );
+  }
+
   get isStreaming() {
     return this.model.streaming;
   }
@@ -413,19 +431,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
             ...entry,
             state: "queued" as const,
           })),
-          ...this.composerStore.parts.flatMap((part) =>
-            part.kind === "text" && part.role === "user" && part.deliveryState === "steering"
-              ? [
-                  {
-                    id: part.id,
-                    text: part.text,
-                    attachments: [],
-                    renderUserMessageAsMarkdown: part.renderAs === "markdown",
-                    state: "steering" as const,
-                  },
-                ]
-              : [],
-          ),
+          ...this.steeringPrompts,
         ];
       },
       steerQueuedPrompt: (id) => this.composerStore.steerQueuedPrompt(id),

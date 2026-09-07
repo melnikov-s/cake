@@ -1,4 +1,4 @@
-import { Model, id } from "r-state-tree";
+import { Model, computed, id } from "r-state-tree";
 import { type Annotation, type ToolOutputContent, type UiPart } from "../../ipc/session-contract";
 
 type TextRole = Extract<UiPart, { kind: "text" }>["role"];
@@ -119,6 +119,7 @@ export class Message extends Model {
     }
   }
 
+  @computed
   get value(): UiPart {
     switch (this.kind) {
       case "text":

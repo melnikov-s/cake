@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo } from "react";
+import { createContext, useContext, useDeferredValue, useMemo } from "react";
 import type { ComponentProps, ReactNode } from "react";
 import { math } from "@streamdown/math";
 import { createMermaidPlugin } from "@streamdown/mermaid";
@@ -228,6 +228,11 @@ export function Markdown({
     normalizeLatexDelimiters ? normalizeLatexMathDelimiters(children) : children,
     Boolean(onOpenSourceLocation),
   );
+  // Streaming updates are lower priority than scrolling and other input. Keeping
+  // Streamdown on its previous source during the urgent render also lets React
+  // coalesce token-sized updates before parsing the growing Markdown again.
+  const deferredSource = useDeferredValue(source);
+  const renderedSource = highlightCode ? source : deferredSource;
   const components = useMemo<Components>(() => {
     if (!onOpenSourceLocation) return { a: (anchorProps) => linkAnchor(anchorProps, linkActions) };
     const openSourceLocation = onOpenSourceLocation;
@@ -282,7 +287,7 @@ export function Markdown({
       plugins={highlightCode ? plugins[colorTheme] : pluginsWithoutCode[colorTheme]}
       skipHtml
     >
-      {source}
+      {renderedSource}
     </Streamdown>
   );
 }

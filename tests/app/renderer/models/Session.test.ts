@@ -4,6 +4,36 @@ import type { ConversationSnapshot } from "../../../../src/domain/conversation-d
 import { Session } from "../../../../src/renderer/models/Session";
 import { toSessionSnapshot } from "../../../../src/utils/session-snapshot";
 
+it("memoizes projected transcript parts until a message changes", () => {
+  const model = Session.create({
+    sessionId: "s",
+    parts: [
+      {
+        id: "assistant-1",
+        kind: "text",
+        role: "assistant",
+        text: "First",
+        status: "streaming",
+      },
+    ],
+  });
+
+  const first = model.uiParts;
+  expect(model.uiParts).toBe(first);
+  expect(model.uiParts[0]).toBe(first[0]);
+
+  model.parts[0]!.update({
+    id: "assistant-1",
+    kind: "text",
+    role: "assistant",
+    text: "Second",
+    status: "streaming",
+  });
+
+  expect(model.uiParts).not.toBe(first);
+  expect(model.uiParts[0]).not.toBe(first[0]);
+});
+
 it("hydrates a complete authoritative conversation snapshot", () => {
   const model = Session.create({ sessionId: "s", workingDirectory: "/p" });
   const snapshot: ConversationSnapshot = {

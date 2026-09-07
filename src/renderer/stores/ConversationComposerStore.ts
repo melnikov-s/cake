@@ -1,4 +1,4 @@
-import { Store, child, createStore, observable, snapshot } from "r-state-tree";
+import { Store, child, computed, createStore, observable, snapshot } from "r-state-tree";
 import type { Annotation, Attachment, FileSuggestion, UiPart } from "../../ipc/session-contract";
 import { parsePiBuiltinCommand } from "../../ipc/session-contract";
 import type { RendererEvent } from "../RendererEvent";
@@ -118,6 +118,7 @@ export class ConversationComposerStore extends Store<ConversationComposerStorePr
     this.focusRequestRevision += 1;
   }
 
+  @computed
   get parts() {
     const canonical = this.props.canonicalParts();
     const sessionId = this.props.sessionId();

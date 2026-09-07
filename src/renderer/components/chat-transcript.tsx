@@ -53,9 +53,11 @@ export {
 
 export type ChatTranscriptHandle = Pick<StickToBottomInstance, "scrollToBottom">;
 
+const defaultTranscriptBehavior: ChatTranscriptBehavior = {};
+
 export const ChatTranscript = observer(function ChatTranscript({
   store,
-  behavior = {},
+  behavior = defaultTranscriptBehavior,
   empty,
   footer,
   error: errorOverride,
@@ -90,11 +92,12 @@ export const ChatTranscript = observer(function ChatTranscript({
     },
     [scrollRef],
   );
+  const parts = store.parts;
   const visibleParts = store.hideThinking
-    ? store.parts.filter((part) => part.kind !== "reasoning")
-    : store.parts;
+    ? parts.filter((part) => part.kind !== "reasoning")
+    : parts;
   const showAssistantLoading = chatWorkIsActive(
-    store.parts,
+    parts,
     store.streaming,
     store.submitting,
     Boolean(behavior.waitingForUser || behavior.artifacts?.interaction.request),
@@ -102,27 +105,26 @@ export const ChatTranscript = observer(function ChatTranscript({
   useLayoutEffect(() => {
     store.syncChangedFilesOpen(showAssistantLoading);
   }, [showAssistantLoading, store]);
-  const groupedParts = groupTranscriptParts(store.parts);
+  const groupedParts = groupTranscriptParts(parts);
   const visibleGroupedParts = store.hideThinking
     ? groupedParts.flatMap((item): TranscriptItem[] => {
         if (item.kind === "reasoning") return [];
         if (item.kind !== "activity-group") return [item];
-        const parts = item.parts.filter((part) => part.kind !== "reasoning");
-        return parts.length > 0 ? [{ ...item, parts }] : [];
+        const visibleGroupParts = item.parts.filter((part) => part.kind !== "reasoning");
+        return visibleGroupParts.length > 0 ? [{ ...item, parts: visibleGroupParts }] : [];
       })
     : groupedParts;
   const items: TranscriptItem[] = [
     ...visibleGroupedParts,
-    ...(workLogChanges(store.parts).length > 0
+    ...(workLogChanges(parts).length > 0
       ? [{ kind: "changed-files" as const, id: "changed-files" }]
       : []),
     ...(showAssistantLoading ? [{ kind: "loading-state" as const, id: "loading-state" }] : []),
   ];
-  const transcriptBehavior: CanonicalTranscriptBehavior = {
-    store,
-    ...behavior,
-    renderChat,
-  };
+  const transcriptBehavior = useMemo<CanonicalTranscriptBehavior>(
+    () => ({ store, ...behavior, renderChat }),
+    [behavior, renderChat, store],
+  );
   const messageNavigationRequest = store.messageNavigationRequest;
   const messageNavigationItemIndex = messageNavigationRequest
     ? items.findIndex((item) =>
@@ -222,7 +224,7 @@ export const ChatTranscript = observer(function ChatTranscript({
   }, [behavior.showSelectionContextMenu, messageComments, openSelectionDraft, store]);
   const changedFiles = (
     <ChangedFiles
-      parts={store.parts}
+      parts={parts}
       workspacePath={behavior.workspacePath}
       open={store.changedFilesOpen}
       onOpenChange={(open) => store.setChangedFilesOpen(open)}

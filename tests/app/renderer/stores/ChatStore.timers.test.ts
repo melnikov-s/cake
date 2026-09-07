@@ -1,4 +1,4 @@
-import { createStore, mount } from "r-state-tree";
+import { createStore, mount, observable } from "r-state-tree";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { UiPart } from "../../../../src/ipc/session-contract";
 import { ChatStore } from "../../../../src/renderer/stores/ChatStore";
@@ -29,6 +29,24 @@ function toolPart(id: string, state: ToolState): UiPart {
 describe("ChatStore work log timers", () => {
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it("does not resynchronize tool timers for assistant text tokens", () => {
+    const assistant: Extract<UiPart, { kind: "text" }> = {
+      id: "assistant-1",
+      kind: "text",
+      role: "assistant",
+      text: "First",
+      status: "streaming",
+    };
+    const parts: UiPart[] = observable([assistant]);
+    const store = createChatStore(() => parts);
+    const sync = vi.spyOn(store as unknown as { syncWorkLogTimers(): void }, "syncWorkLogTimers");
+
+    parts[0] = { ...assistant, text: "Second" };
+
+    expect(sync).not.toHaveBeenCalled();
+    store[Symbol.dispose]();
   });
 
   it("starts a timer when a tool starts running and freezes it when the tool finishes", () => {

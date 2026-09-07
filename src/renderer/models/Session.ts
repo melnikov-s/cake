@@ -1,4 +1,4 @@
-import { Model, child, id, observable, transient } from "r-state-tree";
+import { Model, child, computed, id, observable, transient } from "r-state-tree";
 import type { SessionSnapshot, ThinkingLevel, UiPart } from "../../ipc/session-contract";
 import type { CakeChatControlRequest } from "../../domain/cake-chat-data";
 import { Artifact } from "./Artifact";
@@ -54,6 +54,7 @@ export class Session extends Model {
     return Boolean(this.sessionId);
   }
 
+  @computed
   get uiParts(): UiPart[] {
     return this.parts.map((part) => part.value);
   }

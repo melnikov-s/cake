@@ -1,4 +1,4 @@
-import { Store, observable } from "r-state-tree";
+import { Store, computed, observable } from "r-state-tree";
 import type { Annotation, Attachment, UiPart } from "../../ipc/session-contract";
 
 interface PendingUserMessage {
@@ -31,6 +31,7 @@ export class OptimisticUserMessagesStore extends Store<OptimisticUserMessagesSto
     });
   }
 
+  @computed
   get parts(): UiPart[] {
     const canonical = this.props.canonicalParts();
     if (this.pending.length === 0) return canonical;

@@ -1,4 +1,4 @@
-import { observable, snapshot, Store, untracked } from "r-state-tree";
+import { computed, observable, snapshot, Store, untracked } from "r-state-tree";
 import { shouldRenderMarkdown } from "../../utils/markdown";
 import type { StateSnapshot } from "react-virtuoso";
 import type {
@@ -131,7 +131,8 @@ export class ChatStore extends Store<ChatStoreProps> {
       () =>
         this.props
           .parts()
-          .flatMap((part) => (part.kind === "tool" ? [{ id: part.id, state: part.state }] : [])),
+          .flatMap((part) => (part.kind === "tool" ? [`${part.id}\u0000${part.state}`] : []))
+          .join("\u0001"),
       () => this.syncWorkLogTimers(),
     );
     this.reaction(
@@ -139,16 +140,22 @@ export class ChatStore extends Store<ChatStoreProps> {
       (active) => this.updateScheduledMessageTick(active),
     );
     this.reaction(
-      () => ({
-        requested: [...this.requestedUserMessagePresentation],
-        actual: this.props
-          .parts()
-          .flatMap((part) =>
-            part.kind === "text" && part.role === "user" && part.entryId
-              ? [[part.entryId, part.renderAs === "markdown"] as const]
-              : [],
-          ),
-      }),
+      () => {
+        const requested = [...this.requestedUserMessagePresentation];
+        return {
+          requested,
+          actual:
+            requested.length === 0
+              ? []
+              : this.props
+                  .parts()
+                  .flatMap((part) =>
+                    part.kind === "text" && part.role === "user" && part.entryId
+                      ? [[part.entryId, part.renderAs === "markdown"] as const]
+                      : [],
+                  ),
+        };
+      },
       ({ requested, actual }) => {
         const actualByEntryId = new Map(actual);
         for (const [entryId, presentation] of requested) {
@@ -174,8 +181,9 @@ export class ChatStore extends Store<ChatStoreProps> {
 
   private syncWorkLogTimers() {
     const now = Date.now();
+    const parts = this.props.parts();
     const retainedPartIds = new Set<string>();
-    for (const part of this.props.parts()) {
+    for (const part of parts) {
       retainedPartIds.add(part.id);
       if (part.kind !== "tool") continue;
       const timer = this.workLogTimers.get(part.id);
@@ -191,7 +199,7 @@ export class ChatStore extends Store<ChatStoreProps> {
     for (const partId of this.workLogItemOverrides.keys()) {
       if (!retainedPartIds.has(partId)) this.workLogItemOverrides.delete(partId);
     }
-    const retainedGroupIds = new Set(workLogGroupKeys(this.props.parts()));
+    const retainedGroupIds = new Set(workLogGroupKeys(parts));
     for (const groupId of this.workLogGroupOverrides.keys()) {
       if (!retainedGroupIds.has(groupId)) this.workLogGroupOverrides.delete(groupId);
     }
@@ -236,6 +244,7 @@ export class ChatStore extends Store<ChatStoreProps> {
   get id() {
     return this.props.id();
   }
+  @computed
   get parts() {
     return this.props
       .parts()
@@ -287,6 +296,7 @@ export class ChatStore extends Store<ChatStoreProps> {
   get canEditLastUserMessage() {
     return Boolean(this.props.editLastUserMessage) && !this.liveWorkPossible;
   }
+  @computed
   get lastEditableUserEntryId() {
     const part = this.parts.findLast(
       (candidate) =>
@@ -346,6 +356,7 @@ export class ChatStore extends Store<ChatStoreProps> {
   get canSuggestFiles() {
     return Boolean(this.props.suggestFiles);
   }
+  @computed
   get queuedPrompts(): readonly QueuedPrompt[] {
     return this.props.queuedPrompts?.() ?? [];
   }
