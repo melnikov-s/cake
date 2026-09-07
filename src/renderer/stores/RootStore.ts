@@ -609,12 +609,16 @@ export class RootStore extends Store<{
     sessionIds: readonly string[],
     fallbackProjectPath?: string,
   ) {
+    const activeSessionId = this.appShellStore.activeConversation?.sessionId;
+    const activeConversationRemoved =
+      activeSessionId !== undefined && sessionIds.includes(activeSessionId);
     const target = this.appShellStore.removeSessionsFromHistory(sessionIds);
     if (target) {
       await this.navigateToHistoryEntry(target);
       return;
     }
-    if (fallbackProjectPath) await this.createSession(fallbackProjectPath);
+    if (activeConversationRemoved && fallbackProjectPath)
+      await this.createSession(fallbackProjectPath);
   }
 
   /** Ends live renderer ownership before navigating away from archived Pi sessions. */
