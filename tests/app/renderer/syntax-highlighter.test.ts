@@ -76,6 +76,33 @@ describe("syntaxHighlighter", () => {
     expect(worker.messages).toHaveLength(1);
   });
 
+  it("retains a virtualized transcript-sized working set", async () => {
+    const { syntaxHighlighter } = await import("../../../src/renderer/lib/syntax-highlighter");
+    const workerOptions = Array.from({ length: 256 }, (_, index) => ({
+      code: `const value${index} = true;`,
+      language: "typescript" as const,
+      themes: ["github-light-high-contrast", "github-dark"] as [
+        "github-light-high-contrast",
+        "github-dark",
+      ],
+    }));
+
+    for (const options of workerOptions) {
+      expect(syntaxHighlighter.highlight(options)).toBeNull();
+    }
+    const worker = FakeWorker.instances[0]!;
+    for (const message of worker.messages) {
+      worker.respond({
+        id: message.id,
+        result: { tokens: [[{ content: message.code, offset: 0 }]] },
+      });
+    }
+
+    const first = syntaxHighlighter.highlight(workerOptions[0]!);
+    expect(first?.tokens[0]?.[0]?.content).toBe(workerOptions[0]!.code);
+    expect(worker.messages).toHaveLength(workerOptions.length);
+  });
+
   it("renders oversized input as plain tokens without sending it to Shiki", async () => {
     const { maxHighlightCharacters } =
       await import("../../../src/renderer/lib/syntax-highlighter-contract");

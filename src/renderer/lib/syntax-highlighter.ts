@@ -51,8 +51,12 @@ function plainResult(code: string): SyntaxHighlightResult {
   };
 }
 
-const maximumCacheEntries = 128;
-const maximumCacheWeight = 16 * 1024 * 1024;
+// Transcript rows are virtualized, so scrolling unmounts and remounts their code
+// blocks. Keep a transcript-sized working set: an undersized cache makes every
+// revisit briefly render plain text and enqueue the same expensive tokenization
+// again. The weight limit still bounds unusually large token results.
+const maximumCacheEntries = 512;
+const maximumCacheWeight = 64 * 1024 * 1024;
 const resultCache = new Map<string, { result: SyntaxHighlightResult; weight: number }>();
 let resultCacheWeight = 0;
 
@@ -75,6 +79,8 @@ function cachedResult(key: string) {
 function cacheResult(key: string, code: string, result: SyntaxHighlightResult) {
   const weight = cacheWeight(code, result);
   if (weight > maximumCacheWeight) return;
+  const replaced = resultCache.get(key);
+  if (replaced) resultCacheWeight -= replaced.weight;
   resultCache.set(key, { result, weight });
   resultCacheWeight += weight;
   while (resultCache.size > maximumCacheEntries || resultCacheWeight > maximumCacheWeight) {
