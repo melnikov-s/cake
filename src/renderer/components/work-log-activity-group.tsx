@@ -157,7 +157,7 @@ export const ActivityGroup = observer(function ActivityGroup({
         >
           {showDiff ? (
             <div>
-              <div className="sticky top-0 z-20 overflow-hidden border-b border-border bg-card">
+              <div className="sticky top-0 z-1 overflow-hidden border-b border-border bg-card">
                 <DisclosureTrigger
                   className="px-3 py-2 hover:bg-muted/50"
                   open={activityStripOpen}
