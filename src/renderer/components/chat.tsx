@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { observer } from "r-state-tree/react";
 import { cn } from "@/lib/utils";
 import { AnnotationSummary } from "@/components/annotation-summary";
@@ -16,7 +16,7 @@ import { Chip } from "@/components/ui/chip";
 import { IconButton } from "@/components/ui/icon-button";
 import { PaperclipIcon } from "@/components/ui/icons";
 import { TooltipBubble, useTooltip } from "@/components/ui/tooltip";
-import { BottomFollowController } from "../lib/bottom-follow-controller";
+import type { ChatTranscriptHandle } from "./chat-transcript";
 import type { ChatStore } from "../stores/ChatStore";
 
 function formatCompactTokenCount(tokens: number | null | undefined) {
@@ -124,8 +124,7 @@ export const Chat = observer(function Chat({
   const layoutRef = useRef<HTMLDivElement>(null);
   const composerDockRef = useRef<HTMLDivElement>(null);
   const composerInputRef = useRef<HTMLTextAreaElement>(null);
-  const scrollController = useMemo(() => new BottomFollowController(), [store]);
-  useEffect(() => () => scrollController.dispose(), [scrollController]);
+  const transcriptRef = useRef<ChatTranscriptHandle>(null);
   const [promptedSelection, setPromptedSelection] = useState<{
     draft: string;
     start: number;
@@ -135,7 +134,7 @@ export const Chat = observer(function Chat({
   const composerVisible = store.composerVisible;
   const activatingDraft = store.isDraftSession && !store.editingMessage;
   const submitMessage = async (value?: string) => {
-    if (store.canSubmitValue(value)) scrollController.forceFollow();
+    if (store.canSubmitValue(value)) void transcriptRef.current?.scrollToBottom("instant");
     await store.submit(value);
   };
   useLayoutEffect(() => {
@@ -144,7 +143,6 @@ export const Chat = observer(function Chat({
     if (!layout) return;
     if (embedded || !dock) {
       layout.style.setProperty("--composer-dock-height", "0px");
-      scrollController.layoutChanged();
       return;
     }
 
@@ -157,14 +155,13 @@ export const Chat = observer(function Chat({
           ? dock.offsetHeight
           : layout.getBoundingClientRect().bottom - composerTop;
       layout.style.setProperty("--composer-dock-height", `${inset}px`);
-      scrollController.layoutChanged();
     };
     updateInset();
     const resizeObserver =
       "ResizeObserver" in globalThis ? new globalThis.ResizeObserver(updateInset) : undefined;
     resizeObserver?.observe(dock);
     return () => resizeObserver?.disconnect();
-  }, [composerVisible, embedded, scrollController]);
+  }, [composerVisible, embedded]);
   const restoreSelection = (selection: { start: number; end: number }) => {
     requestAnimationFrame(() => {
       const input = composerInputRef.current;
@@ -371,7 +368,8 @@ export const Chat = observer(function Chat({
         footer={footer}
         error={error}
         virtualized={!compact}
-        scrollController={scrollController}
+        key={store.id}
+        ref={transcriptRef}
         renderChat={renderNestedChat}
       />
       {!composerVisible && store.scheduledMessages.length > 0 && (

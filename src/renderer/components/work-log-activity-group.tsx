@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useState } from "react";
+import { useStickToBottom } from "use-stick-to-bottom";
 import { observer } from "r-state-tree/react";
 import { diffStats } from "@/components/ai-elements/diff-view";
 import { VirtualizedConversation } from "@/components/ai-elements/conversation";
@@ -8,7 +9,6 @@ import { Badge } from "@/components/ui/badge";
 import { DisclosureTrigger } from "@/components/ui/disclosure-trigger";
 import { formatElapsed } from "@/components/ui/loading-state";
 import { cn } from "@/lib/utils";
-import { BottomFollowController } from "../lib/bottom-follow-controller";
 import type { UiPart } from "../../ipc/session-contract";
 import { toolDiff, workLogChanges } from "../../utils/turn-diff";
 import { combineSubagentWorkLogParts } from "../subagent-work-log";
@@ -31,26 +31,17 @@ export const ActivityGroup = observer(function ActivityGroup({
   const open = behavior.store.workLogGroupOpen(groupId, hasDiff);
   const [activityStripOpen, setActivityStripOpen] = useState(false);
   const [logElement, setLogElement] = useState<HTMLDivElement | null>(null);
-  const activityVersion = JSON.stringify(parts);
-  const logRef = useRef<HTMLDivElement>(null);
-  const scrollController = useMemo(() => new BottomFollowController(), [groupId]);
+  const { scrollRef, contentRef, stopScroll } = useStickToBottom({
+    initial: "instant",
+    resize: "instant",
+  });
   const attachLog = useCallback(
     (element: HTMLDivElement | null) => {
-      logRef.current = element;
+      scrollRef(element);
       setLogElement(element);
-      scrollController.connectScroller(element ?? undefined);
     },
-    [scrollController],
+    [scrollRef],
   );
-  useEffect(() => () => scrollController.dispose(), [scrollController]);
-  useLayoutEffect(() => {
-    scrollController.setAlignBottom(() => {
-      const log = logRef.current;
-      if (open && log) log.scrollTop = log.scrollHeight;
-    });
-    scrollController.layoutChanged();
-    return () => scrollController.setAlignBottom(undefined);
-  }, [activityVersion, open, scrollController]);
   const workLogItems = combineSubagentWorkLogParts(parts);
   const tools = workLogItems.filter(
     (part) => part.kind === "tool" || part.kind === "subagent-work-log",
@@ -155,64 +146,67 @@ export const ActivityGroup = observer(function ActivityGroup({
           )}
           ref={attachLog}
         >
-          {showDiff ? (
-            <div>
-              <div className="sticky top-0 z-1 overflow-hidden border-b border-border bg-card">
-                <DisclosureTrigger
-                  className="px-3 py-2 hover:bg-muted/50"
-                  open={activityStripOpen}
-                  onClick={() => {
-                    if (activityStripOpen) {
-                      setActivityStripOpen(false);
-                      return;
+          <div ref={contentRef} className="min-w-0">
+            {showDiff ? (
+              <>
+                <div className="sticky top-0 z-1 overflow-hidden border-b border-border bg-card">
+                  <DisclosureTrigger
+                    className="px-3 py-2 hover:bg-muted/50"
+                    open={activityStripOpen}
+                    onClick={() => {
+                      if (activityStripOpen) {
+                        setActivityStripOpen(false);
+                        return;
+                      }
+                      setActivityStripOpen(true);
+                      stopScroll();
+                      scrollRef.current?.scrollTo({ top: 0 });
+                    }}
+                    badge={
+                      <Badge variant="outline" size="xs" className="text-muted-foreground">
+                        Activity
+                      </Badge>
                     }
-                    setActivityStripOpen(true);
-                    scrollController.changePosition(() => logRef.current?.scrollTo({ top: 0 }));
-                  }}
-                  badge={
-                    <Badge variant="outline" size="xs" className="text-muted-foreground">
-                      Activity
-                    </Badge>
-                  }
-                  title={activityStripLabel}
-                  trailing={
-                    <span className="text-[11px] text-muted-foreground">
-                      {activityStripOpen ? "Hide steps" : "View steps"}
-                    </span>
-                  }
+                    title={activityStripLabel}
+                    trailing={
+                      <span className="text-[11px] text-muted-foreground">
+                        {activityStripOpen ? "Hide steps" : "View steps"}
+                      </span>
+                    }
+                  />
+                </div>
+                {activityStripOpen && logElement && (
+                  <VirtualizedConversation
+                    className="space-y-2 border-b border-border bg-muted/20 p-2.5"
+                    customScrollParent={logElement}
+                    data={workLogItems}
+                    computeItemKey={(_index, item) => item.id}
+                    followOutput={false}
+                    itemContent={(_index, item) => renderWorkLogItem(item, true)}
+                  />
+                )}
+                <WorkLogDiff
+                  parts={parts}
+                  streaming={activityIsRunning}
+                  onOpenSourceLocation={behavior.openSourceLocation}
+                  workspacePath={behavior.workspacePath}
+                  changeClassName="rounded-none border-x-0 border-t-0 last:border-b-0"
+                  headerClassName="top-[33px] bg-card"
                 />
-              </div>
-              {activityStripOpen && logElement && (
+              </>
+            ) : (
+              logElement && (
                 <VirtualizedConversation
-                  className="space-y-2 border-b border-border bg-muted/20 p-2.5"
+                  className="space-y-2"
                   customScrollParent={logElement}
                   data={workLogItems}
                   computeItemKey={(_index, item) => item.id}
                   followOutput={false}
-                  itemContent={(_index, item) => renderWorkLogItem(item, true)}
+                  itemContent={(_index, item) => renderWorkLogItem(item)}
                 />
-              )}
-              <WorkLogDiff
-                parts={parts}
-                streaming={activityIsRunning}
-                onOpenSourceLocation={behavior.openSourceLocation}
-                workspacePath={behavior.workspacePath}
-                changeClassName="rounded-none border-x-0 border-t-0 last:border-b-0"
-                headerClassName="top-[33px] bg-card"
-              />
-            </div>
-          ) : (
-            logElement && (
-              <VirtualizedConversation
-                className="space-y-2"
-                customScrollParent={logElement}
-                data={workLogItems}
-                computeItemKey={(_index, item) => item.id}
-                followOutput={false}
-                itemContent={(_index, item) => renderWorkLogItem(item)}
-              />
-            )
-          )}
+              )
+            )}
+          </div>
         </div>
       )}
     </details>

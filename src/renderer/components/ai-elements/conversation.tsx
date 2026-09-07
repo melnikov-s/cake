@@ -38,12 +38,13 @@ export function Conversation({ className, ...props }: ComponentProps<"section">)
 
 export type VirtualizedConversationHandle = VirtuosoHandle;
 
-export interface VirtualizedConversationProps<Item> {
+export interface VirtualizedConversationProps<Item, Context = unknown> {
+  context?: Context;
   className?: string;
   data: readonly Item[];
   computeItemKey: (index: number, item: Item) => Key;
   itemContent: (index: number, item: Item) => ReactNode;
-  components?: VirtuosoProps<Item, unknown>["components"];
+  components?: VirtuosoProps<Item, Context>["components"];
   customScrollParent?: HTMLElement;
   atBottomStateChange?: (atBottom: boolean) => void;
   followOutput?: FollowOutput;
@@ -55,8 +56,9 @@ export interface VirtualizedConversationProps<Item> {
   "aria-label"?: string;
 }
 
-function VirtualizedConversationInner<Item>(
+function VirtualizedConversationInner<Item, Context>(
   {
+    context,
     className,
     data,
     computeItemKey,
@@ -71,12 +73,13 @@ function VirtualizedConversationInner<Item>(
     scrollerRef,
     role,
     "aria-label": ariaLabel,
-  }: VirtualizedConversationProps<Item>,
+  }: VirtualizedConversationProps<Item, Context>,
   ref: ForwardedRef<VirtualizedConversationHandle>,
 ) {
   return (
     <Virtuoso
       ref={ref}
+      context={context}
       className={className}
       data={data}
       computeItemKey={computeItemKey}
@@ -101,6 +104,7 @@ const ForwardedVirtualizedConversation = forwardRef(VirtualizedConversationInner
 export const VirtualizedConversation =
   // SAFETY: React.forwardRef erases the inner component's generic Item parameter;
   // this restores the same props and ref contract exposed by the implementation.
-  ForwardedVirtualizedConversation as <Item>(
-    props: VirtualizedConversationProps<Item> & RefAttributes<VirtualizedConversationHandle>,
+  ForwardedVirtualizedConversation as <Item, Context = unknown>(
+    props: VirtualizedConversationProps<Item, Context> &
+      RefAttributes<VirtualizedConversationHandle>,
   ) => ReactElement;

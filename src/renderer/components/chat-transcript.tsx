@@ -1,12 +1,15 @@
 import {
   useCallback,
   useEffect,
+  useImperativeHandle,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type ReactNode,
+  type Ref,
 } from "react";
+import { useStickToBottom, type StickToBottomInstance } from "use-stick-to-bottom";
 import { observer } from "r-state-tree/react";
 import { cn } from "@/lib/utils";
 import {
@@ -15,6 +18,7 @@ import {
   type VirtualizedConversationHandle,
 } from "@/components/ai-elements/conversation";
 import { AnnotationDraftPopover } from "@/components/annotation-draft-popover";
+import { ChatTranscriptFooter } from "./chat-transcript-footer";
 import { ChangedFiles } from "@/components/changed-files";
 import { LoadingState } from "@/components/ui/loading-state";
 import {
@@ -22,7 +26,6 @@ import {
   type MessageCommentAnchorRect,
 } from "@/components/message-comment-popover";
 import { workLogChanges } from "../../utils/turn-diff";
-import type { BottomFollowController } from "../lib/bottom-follow-controller";
 import type { ChatStore } from "../stores/ChatStore";
 import {
   ActivityGroup,
@@ -48,6 +51,8 @@ export {
   type TranscriptSelectionCapture,
 } from "./chat-transcript-parts";
 
+export type ChatTranscriptHandle = Pick<StickToBottomInstance, "scrollToBottom">;
+
 export const ChatTranscript = observer(function ChatTranscript({
   store,
   behavior = {},
@@ -55,7 +60,7 @@ export const ChatTranscript = observer(function ChatTranscript({
   footer,
   error: errorOverride,
   virtualized = true,
-  scrollController,
+  ref,
   renderChat,
 }: {
   store: ChatStore;
@@ -64,20 +69,27 @@ export const ChatTranscript = observer(function ChatTranscript({
   footer?: ReactNode;
   error?: { message: string; details?: string; title?: string };
   virtualized?: boolean;
-  scrollController: BottomFollowController;
+  ref?: Ref<ChatTranscriptHandle>;
   renderChat(store: ChatStore): ReactNode;
 }) {
   const virtuosoRef = useRef<VirtualizedConversationHandle>(null);
-  const virtualScrollerRef = useRef<HTMLElement | null>(null);
-  const staticTranscriptRef = useRef<HTMLDivElement>(null);
+  const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
   const pendingSelectionRef = useRef<TranscriptSelectionCapture | undefined>(undefined);
   const restoredScrollState = useMemo(() => store.transcriptScrollState, [store]);
   const [draftAnchor, setDraftAnchor] = useState<MessageCommentAnchorRect>();
   const [annotationDraft, setAnnotationDraft] = useState<TranscriptSelectionCapture>();
-  // Render is the last point at which the mounted transcript still has its
-  // pre-commit geometry. Parent updates (for example, another session settling)
-  // must not turn an asynchronously restored position back into bottom-following.
-  scrollController.capturePositionBeforeLayout();
+  const { scrollRef, contentRef, scrollToBottom, stopScroll } = useStickToBottom({
+    initial: restoredScrollState || store.messageNavigationRequest ? false : "instant",
+    resize: "instant",
+  });
+  useImperativeHandle(ref, () => ({ scrollToBottom }), [scrollToBottom]);
+  const attachScroller = useCallback(
+    (element: HTMLDivElement | null) => {
+      scrollRef(element);
+      setScroller(element);
+    },
+    [scrollRef],
+  );
   const visibleParts = store.hideThinking
     ? store.parts.filter((part) => part.kind !== "reasoning")
     : store.parts;
@@ -106,37 +118,11 @@ export const ChatTranscript = observer(function ChatTranscript({
       : []),
     ...(showAssistantLoading ? [{ kind: "loading-state" as const, id: "loading-state" }] : []),
   ];
-  const itemCountRef = useRef(items.length);
-  itemCountRef.current = items.length;
   const transcriptBehavior: CanonicalTranscriptBehavior = {
     store,
     ...behavior,
     renderChat,
   };
-  const scrollToLatest = useCallback(() => {
-    if (itemCountRef.current > 0)
-      virtuosoRef.current?.scrollToIndex({
-        index: itemCountRef.current - 1,
-        align: "end",
-        behavior: "auto",
-      });
-    if (staticTranscriptRef.current)
-      staticTranscriptRef.current.scrollTop = staticTranscriptRef.current.scrollHeight;
-  }, []);
-  const setStaticScroller = useCallback(
-    (scroller: HTMLDivElement | null) => {
-      staticTranscriptRef.current = scroller;
-      scrollController.connectScroller(scroller ?? undefined);
-    },
-    [scrollController],
-  );
-  useLayoutEffect(() => {
-    scrollController.setAlignBottom(scrollToLatest);
-    if (restoredScrollState === undefined) scrollController.layoutChanged();
-    else scrollController.changePosition(() => undefined);
-    return () => scrollController.setAlignBottom(undefined);
-  }, [restoredScrollState, scrollController, scrollToLatest]);
-  useLayoutEffect(() => scrollController.layoutChanged());
   const messageNavigationRequest = store.messageNavigationRequest;
   const messageNavigationItemIndex = messageNavigationRequest
     ? items.findIndex((item) =>
@@ -149,26 +135,19 @@ export const ChatTranscript = observer(function ChatTranscript({
     restoredScrollState !== undefined || messageNavigationItemIndex >= 0;
   useLayoutEffect(() => {
     if (!messageNavigationRequest || messageNavigationItemIndex < 0) return;
-    scrollController.changePosition(() => {
+    stopScroll();
+    if (virtualized)
       virtuosoRef.current?.scrollToIndex({
         index: messageNavigationItemIndex,
         align: "center",
         behavior: "auto",
       });
-      staticTranscriptRef.current
+    else
+      scroller
         ?.querySelector<HTMLElement>(`[data-transcript-item-index="${messageNavigationItemIndex}"]`)
         ?.scrollIntoView({ block: "center" });
-    });
-  }, [messageNavigationItemIndex, messageNavigationRequest, scrollController]);
-  const setVirtualScroller = useCallback(
-    (scroller: HTMLElement | null | Window) => {
-      virtualScrollerRef.current = scroller instanceof HTMLElement ? scroller : null;
-      scrollController.connectScroller(virtualScrollerRef.current ?? undefined);
-    },
-    [scrollController],
-  );
+  }, [messageNavigationItemIndex, messageNavigationRequest, scroller, stopScroll, virtualized]);
   useEffect(() => {
-    const scroller = virtualScrollerRef.current ?? staticTranscriptRef.current;
     if (!scroller) return;
     let pendingScrollState = store.transcriptScrollState;
     let saveTimer: ReturnType<typeof setTimeout> | undefined;
@@ -189,7 +168,7 @@ export const ChatTranscript = observer(function ChatTranscript({
       if (saveTimer !== undefined) clearTimeout(saveTimer);
       if (pendingScrollState) store.setTranscriptScrollState(pendingScrollState);
     };
-  }, [store, virtualized]);
+  }, [scroller, store, virtualized]);
   const error = errorOverride ?? store.error;
   // Right-clicking any selection inside this conversation keeps the native
   // Electron edit menu. The capture is held until that menu sends its
@@ -303,72 +282,18 @@ export const ChatTranscript = observer(function ChatTranscript({
       )}
     </div>
   );
-  if (visibleParts.length === 0)
-    return (
-      <>
-        {selectionOverlays}
-        <div
-          ref={setStaticScroller}
-          className="transcript h-full w-full max-w-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto px-6 pt-[42px] pb-[210px] [scrollbar-gutter:stable_both-edges] max-[620px]:px-4"
-        >
-          <Conversation>
-            {empty}
-            {showAssistantLoading && <LoadingState startedAt={store.loadingStartedAt} />}
-            {footer}
-            {error?.message && (
-              <ErrorNotice
-                title={error.title ?? "Operation failed"}
-                message={error.message}
-                details={error.details}
-              />
-            )}
-          </Conversation>
-        </div>
-      </>
-    );
-  if (!virtualized)
-    return (
-      <>
-        {selectionOverlays}
-        <div
-          ref={setStaticScroller}
-          className="transcript h-full w-full max-w-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable_both-edges]"
-        >
-          <TranscriptList>
-            {items.map(renderItem)}
-            <div className="mx-auto w-full max-w-[51rem] px-6 pb-[var(--composer-dock-height,210px)] max-[620px]:px-4 in-[.chat-layout-compact]:px-3 in-[.chat-layout-compact]:pb-2 in-[.chat-layout-compact]:min-h-0">
-              {footer}
-              {error?.message && (
-                <ErrorNotice
-                  title={error.title ?? "Operation failed"}
-                  message={error.message}
-                  details={error.details}
-                />
-              )}
-            </div>
-          </TranscriptList>
-        </div>
-      </>
-    );
   return (
     <>
       {selectionOverlays}
-      <VirtualizedConversation
-        key={store.id}
-        ref={virtuosoRef}
-        className="transcript h-full w-full max-w-full min-h-0 min-w-0 overflow-x-hidden [scrollbar-gutter:stable_both-edges] [overflow-anchor:none]"
-        data={items}
-        computeItemKey={(_index, item) => item.id}
-        initialTopMostItemIndex={
-          hasOpeningScrollTarget ? undefined : { index: items.length - 1, align: "end" }
-        }
-        restoreStateFrom={restoredScrollState}
-        followOutput={false}
-        scrollerRef={setVirtualScroller}
-        components={{
-          List: TranscriptList,
-          Footer: () => (
-            <div className="mx-auto w-full max-w-[51rem] px-6 pb-[var(--composer-dock-height,210px)] max-[620px]:px-4 in-[.chat-layout-compact]:px-3 in-[.chat-layout-compact]:pb-2 in-[.chat-layout-compact]:min-h-0">
+      <div
+        ref={attachScroller}
+        className="transcript h-full w-full max-w-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable_both-edges] [overflow-anchor:none]"
+      >
+        <div ref={contentRef} className="min-w-0">
+          {visibleParts.length === 0 ? (
+            <Conversation className="px-6 pt-[42px] pb-[210px] max-[620px]:px-4">
+              {empty}
+              {showAssistantLoading && <LoadingState startedAt={store.loadingStartedAt} />}
               {footer}
               {error?.message && (
                 <ErrorNotice
@@ -377,11 +302,32 @@ export const ChatTranscript = observer(function ChatTranscript({
                   details={error.details}
                 />
               )}
-            </div>
-          ),
-        }}
-        itemContent={(index, item) => renderItem(item, index)}
-      />
+            </Conversation>
+          ) : !virtualized ? (
+            <TranscriptList>
+              {items.map(renderItem)}
+              <ChatTranscriptFooter context={{ footer, error }} />
+            </TranscriptList>
+          ) : (
+            scroller && (
+              <VirtualizedConversation
+                ref={virtuosoRef}
+                customScrollParent={scroller}
+                data={items}
+                context={{ footer, error }}
+                computeItemKey={(_index, item) => item.id}
+                initialTopMostItemIndex={
+                  hasOpeningScrollTarget ? undefined : { index: items.length - 1, align: "end" }
+                }
+                restoreStateFrom={restoredScrollState}
+                followOutput={false}
+                components={{ List: TranscriptList, Footer: ChatTranscriptFooter }}
+                itemContent={(index, item) => renderItem(item, index)}
+              />
+            )
+          )}
+        </div>
+      </div>
     </>
   );
 });

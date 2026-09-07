@@ -165,27 +165,35 @@ test("does not mount collapsed work-log activity until it is expanded", async ()
     const fileHeader = content.locator('[aria-label^="File changes to"] > header');
     await expect(activityToggle).toBeVisible();
     await expect(fileHeader).toBeVisible();
+    await expect
+      .poll(() =>
+        content.evaluate(
+          (element) => element.scrollHeight - element.clientHeight - element.scrollTop,
+        ),
+      )
+      .toBeLessThanOrEqual(1);
 
-    const initialContentBox = await content.boundingBox();
-    const initialActivityBox = await activityToggle.boundingBox();
-    const initialFileHeaderBox = await fileHeader.boundingBox();
-    expect(initialContentBox).not.toBeNull();
-    expect(initialActivityBox).not.toBeNull();
-    expect(initialFileHeaderBox).not.toBeNull();
-    expect(Math.abs(initialActivityBox!.y - initialContentBox!.y)).toBeLessThanOrEqual(1);
-    expect(
-      Math.abs(initialFileHeaderBox!.y - (initialActivityBox!.y + initialActivityBox!.height)),
-    ).toBeLessThanOrEqual(1);
+    // Measure in one frame relative to the current work-log viewport. The
+    // outer chat can still be completing its own initial bottom alignment.
+    const expectPinnedHeaders = () =>
+      expect
+        .poll(() =>
+          content.evaluate((element) => {
+            const activity = element.querySelector("button")!.getBoundingClientRect();
+            const header = element
+              .querySelector('[aria-label^="File changes to"] > header')!
+              .getBoundingClientRect();
+            return Math.max(
+              Math.abs(activity.top - element.getBoundingClientRect().top),
+              Math.abs(header.top - activity.bottom),
+            );
+          }),
+        )
+        .toBeLessThanOrEqual(1);
+    await expectPinnedHeaders();
 
     await content.evaluate((element) => element.scrollTo({ top: 100 }));
-    const scrolledActivityBox = await activityToggle.boundingBox();
-    const pinnedFileHeaderBox = await fileHeader.boundingBox();
-    expect(scrolledActivityBox).not.toBeNull();
-    expect(pinnedFileHeaderBox).not.toBeNull();
-    expect(Math.abs(scrolledActivityBox!.y - initialContentBox!.y)).toBeLessThanOrEqual(1);
-    expect(
-      Math.abs(pinnedFileHeaderBox!.y - (scrolledActivityBox!.y + scrolledActivityBox!.height)),
-    ).toBeLessThanOrEqual(1);
+    await expectPinnedHeaders();
 
     await activityToggle.click();
     await expect(log.locator('[data-slot="tool"]')).toHaveCount(1);

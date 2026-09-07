@@ -392,18 +392,18 @@ The window Store hierarchy mirrors the product surfaces:
   substitute a parallel transcript, message, input, or composer implementation.
   React mounts the Project Session as the nearest provider around the active
   session surface.
-- **Bottom-following is derived from transcript geometry, not application
-  state.** `Chat` caches whether its scroll container was at the bottom before a
-  content or layout change. When it was, `Chat` preserves the bottom across
-  adding, removing, replacing, streaming, or resizing messages, work logs,
-  loading indicators, errors, footers, and the composer. Explicit user scroll
-  input immediately invalidates pending alignment before the browser updates the
-  DOM; subsequent user scrolling derives whether following resumes from the
-  actual scroll position. Navigating to a message likewise derives behavior from
-  the resulting DOM position rather than assigning a semantic mode. Submitting a
-  message is the only operation that forces an arbitrary scroll position to the
-  bottom. Transcript follow state does not belong in a Store or Model. These
-  rules apply identically to every surface using `Chat`.
+- **Scrolling favors a good everyday experience using an off-the-shelf
+  implementation.** `use-stick-to-bottom` owns bottom-following in `Chat` and
+  independently in each expanded work log. Sending a message explicitly scrolls
+  the chat to the bottom; new and streaming content follows while the reader is
+  at or near the bottom. Scrolling up lets the reader browse earlier content,
+  and returning near the bottom resumes following using the library's normal
+  threshold. Message navigation stops following before moving to its target.
+  Virtuoso owns virtualization and initial position restoration, not a competing
+  follow loop. Scroll state stays local to the rendered container, never in a
+  Store or Model. Window, pane, and composer resizing are best-effort layout
+  behavior, not reasons to add custom scrolling machinery. These rules apply
+  identically to every surface using `Chat`.
 - The Cake Chat collection owns its `SessionLayoutStore` and one keyed
   `CakeChatSessionStore` per loaded
   meta-session. Each session retains its own draft, attachments, configuration,

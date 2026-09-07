@@ -35,6 +35,7 @@ export function WorkLogDiff({
             diff={change.diff}
             filePath={toWorkspaceRelativePath(change.path, workspacePath)}
             label={streaming ? "Streaming changes" : "File changes"}
+            highlightCode={!streaming}
             onOpenSourceLocation={onOpenSourceLocation}
             className={changeClassName}
             headerClassName={headerClassName}

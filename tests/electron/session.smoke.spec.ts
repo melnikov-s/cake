@@ -103,7 +103,7 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
         settingsAboveComposer: true,
       });
     await page.getByRole("button", { name: "Toggle sidebar" }).click();
-    await page.getByRole("complementary").getByLabel("Open settings").click();
+    await page.getByRole("complementary").getByLabel("Open settings", { exact: true }).click();
     await expect(page.locator('[data-slot="sidebar"]')).toHaveCount(0);
     await expect(page.getByLabel("Settings sections")).toBeVisible();
     await page.getByRole("button", { name: /Agent/ }).click();
@@ -135,7 +135,7 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
 
     // New Chat is one durable staged composer, not a sidebar session. Navigating
     // away and choosing New Chat again must recover the exact in-progress input.
-    await page.getByRole("complementary").getByLabel("Open settings").click();
+    await page.getByRole("complementary").getByLabel("Open settings", { exact: true }).click();
     await expect(page.getByRole("heading", { name: "Settings", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Back to chat" }).click();
     await page.getByRole("button", { name: "New chat in project", exact: true }).click();

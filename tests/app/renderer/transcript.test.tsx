@@ -1,29 +1,18 @@
 /**
  * @vitest-environment jsdom
  */
-import React, {
-  act,
-  forwardRef,
-  useEffect,
-  useImperativeHandle,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-} from "react";
+import React, { act, forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createStore, mount, observable } from "r-state-tree";
 import type { Annotation, UiPart } from "../../../src/ipc/session-contract";
 import { cakeHotkeyEventName } from "../../../src/renderer/lib/hotkeys";
 
-const { scrollToIndex, virtualizedLayout, virtualizedLifecycle, virtualizedProps } = vi.hoisted(
-  () => ({
-    scrollToIndex: vi.fn(),
-    virtualizedLayout: vi.fn(),
-    virtualizedLifecycle: vi.fn(),
-    virtualizedProps: { current: undefined as undefined | Record<string, unknown> },
-  }),
-);
+const { scrollToIndex, virtualizedLifecycle, virtualizedProps } = vi.hoisted(() => ({
+  scrollToIndex: vi.fn(),
+  virtualizedLifecycle: vi.fn(),
+  virtualizedProps: { current: undefined as undefined | Record<string, unknown> },
+}));
 
 vi.mock("@/components/ai-elements/conversation", () => ({
   Conversation: ({ children }: { children: React.ReactNode }) => <section>{children}</section>,
@@ -32,33 +21,27 @@ vi.mock("@/components/ai-elements/conversation", () => ({
       className?: string;
       data: Array<{ id: string }>;
       itemContent: (index: number, item: { id: string }) => React.ReactNode;
-      scrollerRef?: (element: HTMLElement | null) => void;
+      customScrollParent?: HTMLElement;
     },
     ref,
   ) {
-    const scrollerRef = useRef<HTMLDivElement>(null);
     virtualizedProps.current = props as unknown as Record<string, unknown>;
     useImperativeHandle(ref, () => ({
       getState: (callback: (state: unknown) => void) =>
         callback({
           ranges: [{ startIndex: 0, endIndex: props.data.length - 1, size: 100 }],
-          scrollTop: scrollerRef.current?.scrollTop ?? 0,
+          scrollTop: props.customScrollParent?.scrollTop ?? 0,
         }),
       scrollToIndex,
     }));
-    useLayoutEffect(() => {
-      virtualizedLayout(scrollerRef.current, props.data);
-    }, [props.data]);
     useEffect(() => {
-      props.scrollerRef?.(scrollerRef.current);
       virtualizedLifecycle("mounted");
       return () => {
-        props.scrollerRef?.(null);
         virtualizedLifecycle("unmounted");
       };
     }, []);
     return (
-      <div ref={scrollerRef} className={props.className}>
+      <div className={props.className}>
         {props.data.map((item, index) => (
           <React.Fragment key={item.id}>{props.itemContent(index, item)}</React.Fragment>
         ))}
@@ -75,7 +58,6 @@ import {
   groupTranscriptParts,
   type ChatTranscriptBehavior,
 } from "../../../src/renderer/components/chat-transcript";
-import { BottomFollowController } from "../../../src/renderer/lib/bottom-follow-controller";
 import { MessageCommentsStore } from "../../../src/renderer/stores/MessageCommentsStore";
 import type { ChatConfigurationStore } from "../../../src/renderer/stores/ChatConfigurationStore";
 import { ChatStore } from "../../../src/renderer/stores/ChatStore";
@@ -146,8 +128,6 @@ function Transcript({
   removeAnnotation?(id: string): void;
   virtualized?: boolean;
 }) {
-  const scrollController = useMemo(() => new BottomFollowController(), [sessionId]);
-  useEffect(() => () => scrollController.dispose(), [scrollController]);
   const {
     workLogViewMode = "auto",
     workLogsExpansion: initialExpansion = "collapsed",
@@ -184,6 +164,7 @@ function Transcript({
     submitting: isSubmitting,
     hideThinking,
     workLogViewMode,
+    userMessageRendersAsMarkdown: (_entryId: string, projected: boolean) => projected,
     setWorkLogViewMode: () => undefined,
     cycleWorkLogViewMode: () => undefined,
     workLogElapsedMs: () => undefined,
@@ -269,7 +250,7 @@ function Transcript({
       footer={footer}
       error={error ? { message: error, details: errorDetails, title: errorTitle } : undefined}
       virtualized={virtualized}
-      scrollController={scrollController}
+      key={sessionId}
       renderChat={(nestedStore) => <Chat store={nestedStore} embedded compact />}
     />
   );
@@ -349,7 +330,6 @@ describe("Transcript scrolling", () => {
     document.body.appendChild(container);
     root = createRoot(container);
     scrollToIndex.mockClear();
-    virtualizedLayout.mockReset();
     virtualizedLifecycle.mockClear();
   });
 
@@ -367,7 +347,6 @@ describe("Transcript scrolling", () => {
     act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith(parts)} />));
 
     expect(virtualizedProps.current?.initialTopMostItemIndex).toEqual({ index: 1, align: "end" });
-    expect(scrollToIndex).toHaveBeenCalledWith({ index: 1, align: "end", behavior: "auto" });
     expect(virtualizedProps.current?.followOutput).toBe(false);
   });
 
@@ -419,6 +398,7 @@ describe("Transcript scrolling", () => {
         role: "user",
         text: "# A heading\n\n**Bold**",
         status: "complete",
+        entryId: "user-entry-1",
         renderAs: "markdown",
       },
     ];
@@ -428,237 +408,6 @@ describe("Transcript scrolling", () => {
     const message = container.querySelector<HTMLElement>('[data-slot="message-content"]')!;
     expect(message.classList.contains("whitespace-pre-wrap")).toBe(false);
     expect(message.querySelector("h1")?.textContent).toBe("A heading");
-  });
-
-  it("keeps following when a newly appended loading item temporarily changes bottom geometry", async () => {
-    const user: UiPart = {
-      id: "user-1",
-      kind: "text",
-      role: "user",
-      text: "Start",
-      status: "complete",
-    };
-
-    act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([user])} />));
-    const transcript = container.querySelector<HTMLElement>(".transcript")!;
-    Object.defineProperties(transcript, {
-      scrollHeight: { configurable: true, value: 1_000 },
-      clientHeight: { configurable: true, value: 200 },
-    });
-    transcript.scrollTop = 800;
-    act(() => transcript.dispatchEvent(new Event("scroll")));
-    scrollToIndex.mockClear();
-
-    // Virtuoso measures appended items in a child layout effect. That can emit
-    // an intermediate scroll event before ChatTranscript's layout effect runs.
-    virtualizedLayout.mockImplementationOnce((scroller: HTMLElement) => {
-      Object.defineProperty(scroller, "scrollHeight", { configurable: true, value: 1_100 });
-      scroller.dispatchEvent(new Event("scroll"));
-    });
-    act(() =>
-      root.render(<TestTranscript sessionId="session-1" store={storeWith([user], true)} />),
-    );
-
-    expect(container.querySelector('[data-slot="loading-state"]')).not.toBeNull();
-    await waitFor(() =>
-      expect(scrollToIndex).toHaveBeenCalledWith({ index: 1, align: "end", behavior: "auto" }),
-    );
-    expect(virtualizedProps.current?.followOutput).toBe(false);
-  });
-
-  it("does not follow an unrelated rerender when the transcript geometry is away from bottom", () => {
-    const user: UiPart = {
-      id: "user-1",
-      kind: "text",
-      role: "user",
-      text: "Start",
-      status: "complete",
-    };
-
-    act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([user])} />));
-    const transcript = container.querySelector<HTMLElement>(".transcript")!;
-    Object.defineProperties(transcript, {
-      scrollHeight: { configurable: true, value: 1_000 },
-      clientHeight: { configurable: true, value: 200 },
-    });
-    // A restored virtualized position is programmatic, so it need not be
-    // preceded by wheel or pointer input.
-    transcript.scrollTop = 300;
-    scrollToIndex.mockClear();
-
-    act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([user])} />));
-
-    expect(scrollToIndex).not.toHaveBeenCalled();
-  });
-
-  it("does not follow a newly appended loading item after the user scrolls away", () => {
-    const user: UiPart = {
-      id: "user-1",
-      kind: "text",
-      role: "user",
-      text: "Start",
-      status: "complete",
-    };
-
-    act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([user])} />));
-    const transcript = container.querySelector<HTMLElement>(".transcript")!;
-    Object.defineProperties(transcript, {
-      scrollHeight: { configurable: true, value: 1_000 },
-      clientHeight: { configurable: true, value: 200 },
-    });
-    transcript.scrollTop = 300;
-    act(() => transcript.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -100 })));
-    act(() => transcript.dispatchEvent(new Event("scroll")));
-    scrollToIndex.mockClear();
-
-    act(() =>
-      root.render(<TestTranscript sessionId="session-1" store={storeWith([user], true)} />),
-    );
-
-    expect(container.querySelector('[data-slot="loading-state"]')).not.toBeNull();
-    expect(scrollToIndex).not.toHaveBeenCalled();
-    expect(virtualizedProps.current?.followOutput).toBe(false);
-  });
-
-  it("stops following as soon as wheel input begins, before scroll position changes", () => {
-    const initialParts: UiPart[] = [
-      { id: "user-1", kind: "text", role: "user", text: "Explain", status: "complete" },
-      {
-        id: "assistant-1",
-        kind: "text",
-        role: "assistant",
-        text: "A long answer",
-        status: "streaming",
-      },
-    ];
-
-    act(() =>
-      root.render(<TestTranscript sessionId="session-1" store={storeWith(initialParts, true)} />),
-    );
-    const transcript = container.querySelector<HTMLElement>(".transcript")!;
-    expect(virtualizedProps.current?.followOutput).toBe(false);
-
-    act(() => transcript.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -100 })));
-    scrollToIndex.mockClear();
-
-    const updatedParts: UiPart[] = [
-      initialParts[0]!,
-      {
-        id: "assistant-1",
-        kind: "text",
-        role: "assistant",
-        text: "A long answer with more text",
-        status: "streaming",
-      },
-    ];
-    act(() =>
-      root.render(<TestTranscript sessionId="session-1" store={storeWith(updatedParts, true)} />),
-    );
-
-    expect(scrollToIndex).not.toHaveBeenCalled();
-  });
-
-  it("stops following wheel input in a non-virtualized transcript", () => {
-    const initialParts: UiPart[] = [
-      {
-        id: "assistant-1",
-        kind: "text",
-        role: "assistant",
-        text: "A long answer",
-        status: "streaming",
-      },
-    ];
-
-    act(() =>
-      root.render(
-        <Transcript parts={initialParts} sessionId="session-1" isStreaming virtualized={false} />,
-      ),
-    );
-    const transcript = container.querySelector<HTMLElement>(".transcript")!;
-    Object.defineProperties(transcript, {
-      scrollHeight: { configurable: true, value: 1_000 },
-      clientHeight: { configurable: true, value: 200 },
-    });
-    transcript.scrollTop = 300;
-    act(() => transcript.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -100 })));
-
-    act(() =>
-      root.render(
-        <Transcript
-          parts={[
-            {
-              id: "assistant-1",
-              kind: "text",
-              role: "assistant",
-              text: "A long answer with more text",
-              status: "streaming",
-            },
-          ]}
-          sessionId="session-1"
-          isStreaming
-          virtualized={false}
-        />,
-      ),
-    );
-
-    expect(transcript.scrollTop).toBe(300);
-  });
-
-  it("continues following a response for as long as the transcript is at the bottom", async () => {
-    const parts: UiPart[] = [
-      { id: "user-1", kind: "text", role: "user", text: "Explain", status: "complete" },
-      {
-        id: "assistant-1",
-        kind: "text",
-        role: "assistant",
-        text: "A long answer",
-        status: "streaming",
-      },
-    ];
-
-    act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith(parts, true)} />));
-    const transcript = container.querySelector<HTMLElement>(".transcript")!;
-    Object.defineProperties(transcript, {
-      scrollHeight: { configurable: true, value: 1_000 },
-      clientHeight: { configurable: true, value: 200 },
-    });
-    expect(virtualizedProps.current?.followOutput).toBe(false);
-    transcript.scrollTop = 300;
-    act(() => transcript.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -100 })));
-    act(() => transcript.dispatchEvent(new Event("scroll")));
-    scrollToIndex.mockClear();
-
-    act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith(parts, true)} />));
-    expect(scrollToIndex).not.toHaveBeenCalled();
-
-    act(() => transcript.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: 100 })));
-    transcript.scrollTop = 800;
-    act(() => transcript.dispatchEvent(new Event("scroll")));
-    scrollToIndex.mockClear();
-
-    act(() =>
-      root.render(
-        <TestTranscript
-          sessionId="session-1"
-          store={storeWith(
-            [
-              parts[0]!,
-              {
-                id: "assistant-1",
-                kind: "text",
-                role: "assistant",
-                text: "A long answer with another streamed chunk",
-                status: "streaming",
-              },
-            ],
-            true,
-          )}
-        />,
-      ),
-    );
-    await waitFor(() =>
-      expect(scrollToIndex).toHaveBeenCalledWith({ index: 2, align: "end", behavior: "auto" }),
-    );
   });
 
   it("renders a review notification at its persisted transcript position", () => {
@@ -775,39 +524,6 @@ describe("Transcript scrolling", () => {
     expect(message).not.toBeNull();
   });
 
-  it("does not force-scroll to a newly rendered user message", () => {
-    const assistant: UiPart = {
-      id: "assistant-1",
-      kind: "text",
-      role: "assistant",
-      text: "First",
-      status: "complete",
-    };
-    const user: UiPart = {
-      id: "user-1",
-      kind: "text",
-      role: "user",
-      text: "My message",
-      status: "complete",
-    };
-
-    act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([assistant])} />));
-    const transcript = container.querySelector<HTMLElement>(".transcript")!;
-    Object.defineProperties(transcript, {
-      scrollHeight: { configurable: true, value: 1_000 },
-      clientHeight: { configurable: true, value: 200 },
-    });
-    transcript.scrollTop = 300;
-    act(() => transcript.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -100 })));
-    act(() => transcript.dispatchEvent(new Event("scroll")));
-    scrollToIndex.mockClear();
-    act(() =>
-      root.render(<TestTranscript sessionId="session-1" store={storeWith([assistant, user])} />),
-    );
-
-    expect(scrollToIndex).not.toHaveBeenCalled();
-  });
-
   it("indicates when Pi is busy before the first turn part appears", () => {
     act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([], true)} />));
 
@@ -902,165 +618,6 @@ describe("Transcript scrolling", () => {
     );
 
     expect(container.querySelector(".loading-state")).toBeNull();
-  });
-
-  it("keeps the transcript following a streaming work log as its stable item grows", async () => {
-    const rectSpy = vi
-      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
-      .mockImplementation(function (this: HTMLElement) {
-        return { top: this.hasAttribute("data-response-start") ? 100 : 0 } as DOMRect;
-      });
-    const user: UiPart = {
-      id: "user-1",
-      kind: "text",
-      role: "user",
-      text: "Inspect the project",
-      status: "complete",
-    };
-    const first: UiPart = {
-      id: "reasoning-1",
-      kind: "reasoning",
-      text: "First thought",
-      status: "streaming",
-    };
-    const second: UiPart = {
-      id: "tool-1",
-      kind: "tool",
-      name: "read",
-      input: "file",
-      state: "running",
-    };
-
-    act(() =>
-      root.render(<TestTranscript sessionId="session-1" store={storeWith([user, first], true)} />),
-    );
-    scrollToIndex.mockClear();
-
-    act(() =>
-      root.render(
-        <TestTranscript sessionId="session-1" store={storeWith([user, first, second], true)} />,
-      ),
-    );
-
-    await waitFor(() =>
-      expect(scrollToIndex).toHaveBeenCalledWith({ index: 2, align: "end", behavior: "auto" }),
-    );
-    rectSpy.mockRestore();
-  });
-
-  it("does not follow streaming work-log growth after the user scrolls away", () => {
-    const first: UiPart = {
-      id: "reasoning-1",
-      kind: "reasoning",
-      text: "First thought",
-      status: "streaming",
-    };
-    const second: UiPart = {
-      id: "tool-1",
-      kind: "tool",
-      name: "read",
-      input: "file",
-      state: "running",
-    };
-
-    act(() =>
-      root.render(<TestTranscript sessionId="session-1" store={storeWith([first], true)} />),
-    );
-    const transcript = container.querySelector<HTMLElement>(".transcript")!;
-    Object.defineProperties(transcript, {
-      scrollHeight: { configurable: true, value: 1_000 },
-      clientHeight: { configurable: true, value: 200 },
-    });
-    transcript.scrollTop = 300;
-    act(() => transcript.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -100 })));
-    act(() => transcript.dispatchEvent(new Event("scroll")));
-    scrollToIndex.mockClear();
-
-    act(() =>
-      root.render(
-        <TestTranscript sessionId="session-1" store={storeWith([first, second], true)} />,
-      ),
-    );
-
-    expect(scrollToIndex).not.toHaveBeenCalled();
-  });
-
-  it("keeps the streaming work log scrolled to its latest entry", async () => {
-    const first: UiPart = {
-      id: "reasoning-1",
-      kind: "reasoning",
-      text: "First thought",
-      status: "streaming",
-    };
-    const second: UiPart = {
-      id: "tool-1",
-      kind: "tool",
-      name: "read",
-      input: "file",
-      state: "running",
-    };
-
-    act(() =>
-      root.render(<TestTranscript sessionId="session-1" store={storeWith([first], true)} />),
-    );
-    act(() =>
-      container.querySelector<HTMLElement>('[data-slot="activity-group"] > summary')!.click(),
-    );
-    const log = container.querySelector<HTMLDivElement>('[data-slot="work-log-content"]')!;
-    Object.defineProperties(log, {
-      clientHeight: { configurable: true, value: 120 },
-      scrollHeight: { configurable: true, value: 480 },
-    });
-    log.scrollTop = 360;
-    act(() => log.dispatchEvent(new Event("scroll", { bubbles: true })));
-    Object.defineProperty(log, "scrollHeight", { configurable: true, value: 600 });
-
-    act(() =>
-      root.render(
-        <TestTranscript sessionId="session-1" store={storeWith([first, second], true)} />,
-      ),
-    );
-
-    await waitFor(() => expect(log.scrollTop).toBe(600));
-  });
-
-  it("does not move a streaming work log after the user scrolls away from the bottom", () => {
-    const first: UiPart = {
-      id: "reasoning-1",
-      kind: "reasoning",
-      text: "First thought",
-      status: "streaming",
-    };
-    const second: UiPart = {
-      id: "tool-1",
-      kind: "tool",
-      name: "read",
-      input: "file",
-      state: "running",
-    };
-
-    act(() =>
-      root.render(<TestTranscript sessionId="session-1" store={storeWith([first], true)} />),
-    );
-    act(() =>
-      container.querySelector<HTMLElement>('[data-slot="activity-group"] > summary')!.click(),
-    );
-    const log = container.querySelector<HTMLDivElement>('[data-slot="work-log-content"]')!;
-    Object.defineProperties(log, {
-      clientHeight: { configurable: true, value: 120 },
-      scrollHeight: { configurable: true, value: 480 },
-    });
-    log.scrollTop = 100;
-    act(() => log.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -100 })));
-    act(() => log.dispatchEvent(new Event("scroll", { bubbles: true })));
-
-    act(() =>
-      root.render(
-        <TestTranscript sessionId="session-1" store={storeWith([first, second], true)} />,
-      ),
-    );
-
-    expect(log.scrollTop).toBe(100);
   });
 
   it("leaves work log expansion under user control when settled part IDs replace live IDs", async () => {

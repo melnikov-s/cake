@@ -3,7 +3,7 @@
  */
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { createStore, mount, observable } from "r-state-tree";
+import { createStore, mount } from "r-state-tree";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/components/ai-elements/conversation", async () => {
@@ -407,97 +407,6 @@ describe("Chat", () => {
     expect(stop).not.toBeNull();
     await act(async () => stop.click());
     expect(abort).toHaveBeenCalledOnce();
-  });
-
-  it("scrolls to the bottom and resumes following output after submitting a message", async () => {
-    const submit = vi.fn(async () => true);
-    store = mount(
-      createStore(ChatStore, {
-        id: () => "submit-scroll-chat",
-        parts: () => [
-          {
-            id: "assistant-1",
-            kind: "text",
-            role: "assistant",
-            text: "A long answer",
-            status: "complete",
-          },
-        ],
-        streaming: () => false,
-        submitting: () => false,
-        configuration: () => undefined,
-        commands: () => [],
-        placeholder: () => "Message Cake",
-        inputLabel: () => "Message",
-        canSubmit: (draft) => Boolean(draft.trim()),
-        submit,
-      }),
-    );
-
-    act(() => root.render(<Chat compact store={store!} />));
-    const transcript = container.querySelector<HTMLElement>(".transcript")!;
-    Object.defineProperties(transcript, {
-      scrollHeight: { configurable: true, value: 1_000 },
-      clientHeight: { configurable: true, value: 200 },
-    });
-    transcript.scrollTop = 300;
-    act(() => transcript.dispatchEvent(new Event("scroll")));
-
-    const input = container.querySelector<HTMLTextAreaElement>('[aria-label="Message"]')!;
-    act(() => {
-      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(
-        input,
-        "Continue",
-      );
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-    await act(async () => {
-      input.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
-    });
-
-    expect(submit).toHaveBeenCalledWith("Continue", { renderUserMessageAsMarkdown: false });
-    expect(transcript.scrollTop).toBe(1_000);
-  });
-
-  it("does not scroll to the bottom when the composer appears after the user scrolled away", () => {
-    const activity = observable({ composerVisible: false });
-    store = mount(
-      createStore(ChatStore, {
-        id: () => "composer-visibility-chat",
-        parts: () => [
-          {
-            id: "assistant-1",
-            kind: "text",
-            role: "assistant",
-            text: "A long answer",
-            status: "complete",
-          },
-        ],
-        streaming: () => !activity.composerVisible,
-        submitting: () => false,
-        configuration: () => undefined,
-        commands: () => [],
-        placeholder: () => "Message Cake",
-        inputLabel: () => "Message",
-        canSubmit: () => false,
-        submit: async () => false,
-        composerVisible: () => activity.composerVisible,
-      }),
-    );
-
-    act(() => root.render(<Chat store={store!} />));
-    const transcript = container.querySelector<HTMLElement>(".transcript")!;
-    Object.defineProperties(transcript, {
-      scrollHeight: { configurable: true, value: 1_000 },
-      clientHeight: { configurable: true, value: 200 },
-    });
-    transcript.scrollTop = 300;
-
-    act(() => {
-      activity.composerVisible = true;
-    });
-
-    expect(transcript.scrollTop).toBe(300);
   });
 
   it("keeps draft typing from rendering the surrounding chat", () => {
