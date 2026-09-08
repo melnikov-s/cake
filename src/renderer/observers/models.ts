@@ -24,7 +24,7 @@ import { ProjectSessionError } from "../../domain/project-session-data";
 import type { SubagentUpdate } from "../../domain/subagent-data";
 import type { ScheduledMessageUpdate } from "../../domain/scheduled-message-data";
 import type { CakeIpcClientService } from "../../ipc/client/CakeIpcClient";
-import type { RendererRuntime } from "../RendererRuntime";
+import type { Runtime } from "../runtime";
 import type { RootStore } from "../stores/RootStore";
 import type { CakeChatCatalog } from "../models/CakeChatCatalog";
 import type { ProjectCatalog } from "../models/ProjectCatalog";
@@ -48,6 +48,8 @@ interface ModelSource {
   readonly projection: RootProjection;
   readonly projectSessionCatalogQueries: () => ReadonlyArray<ProjectSessionCatalogQuery>;
   readonly cakeChatCatalogQueries?: () => ReadonlyArray<CakeChatCatalogQuery>;
+  readonly loadedProjectSessions?: () => ReadonlyArray<ObservedProjectSessionTarget>;
+  readonly loadedCakeChatIds?: () => ReadonlyArray<string>;
   readonly projectSessionTargets: () => ReadonlyArray<ObservedProjectSessionTarget>;
   readonly cakeChatTargets: () => ReadonlyArray<CakeChatTarget>;
 }
@@ -74,7 +76,7 @@ type ModelInput = {
 };
 
 /** Creates the window's dynamic observer for passive projection Models. */
-export const createModelObserver = (runtime: RendererRuntime) => {
+export const createModelObserver = (runtime: Runtime) => {
   const observations = new Map<string, ModelObservation>();
   let stopObservingSource: (() => void) | undefined;
   let disposed = false;
@@ -260,6 +262,21 @@ export const createModelObserver = (runtime: RendererRuntime) => {
     if (stopObservingSource)
       throw new Error("Renderer Model observation already has a Model source");
     stopObservingSource = reactiveEffect(() => {
+      const loadedProjectSessions = source.loadedProjectSessions?.();
+      if (loadedProjectSessions) {
+        const loadedIds = new Set(loadedProjectSessions.map(({ sessionId }) => sessionId));
+        for (const target of loadedProjectSessions)
+          source.projection.projectSession(target.sessionId, target.workingDirectory);
+        for (const sessionId of source.projection.projectSessions.map(({ sessionId }) => sessionId))
+          if (!loadedIds.has(sessionId)) source.projection.removeProjectSession(sessionId);
+      }
+      const loadedCakeChatIds = source.loadedCakeChatIds?.();
+      if (loadedCakeChatIds) {
+        const loadedIds = new Set(loadedCakeChatIds);
+        for (const sessionId of loadedCakeChatIds) source.projection.cakeChat(sessionId);
+        for (const sessionId of source.projection.cakeChats.map(({ sessionId }) => sessionId))
+          if (!loadedIds.has(sessionId)) source.projection.removeCakeChat(sessionId);
+      }
       sync({
         projects: source.projection.projects,
         sessionCatalog: source.projection.sessionCatalog,
@@ -291,16 +308,18 @@ export const createModelObserver = (runtime: RendererRuntime) => {
 };
 
 /** Observes the Models demanded by one renderer window's Store tree. */
-export const observeModels = (
-  runtime: RendererRuntime,
-  projection: RootProjection,
-  root: RootStore,
-) => {
+export const observeModels = (runtime: Runtime, projection: RootProjection, root: RootStore) => {
   const observer = createModelObserver(runtime);
   observer.observe({
     projection,
     projectSessionCatalogQueries: () => root.projectSessionCatalogQueries,
     cakeChatCatalogQueries: () => root.sidebarStore.cakeChatCatalogQueries,
+    loadedProjectSessions: () =>
+      root.sessionRegistry.targets.map(({ sessionId, workspacePath }) => ({
+        sessionId,
+        workingDirectory: workspacePath,
+      })),
+    loadedCakeChatIds: () => root.cakeChatCollectionStore.targets,
     projectSessionTargets: () => root.projectSessionObservationTargets,
     cakeChatTargets: () => root.cakeChatCollectionStore.observationTargets,
   });

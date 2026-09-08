@@ -1,8 +1,8 @@
-import type { RendererRuntime } from "../RendererRuntime";
+import type { Runtime } from "../runtime";
 import type { RootStore } from "../stores/RootStore";
 
 /** Projects the main-owned VS Code runtime state into its renderer Store owner. */
-export const observeVsCodeState = (runtime: RendererRuntime, root: RootStore) =>
+export const observeVsCodeState = (runtime: Runtime, root: RootStore) =>
   runtime.observe(
     (client) => client.vscode.observeState(),
     (state) => root.projectWorkbenchStore.embeddedEditorStore.applyState(state),

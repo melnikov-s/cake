@@ -1,7 +1,7 @@
 import { Store, child, createStore } from "r-state-tree";
 import type { Session } from "../models/Session";
 import type { ModelPreset } from "../../ipc/session-contract";
-import { describeError } from "../error-details";
+import { describeError } from "../lib/error-details";
 import { ClientContext } from "./context/ClientContext";
 import { ChatConfigurationStore } from "./ChatConfigurationStore";
 import { ChatStore } from "./ChatStore";

@@ -1,8 +1,8 @@
-import type { RendererRuntime } from "../RendererRuntime";
+import type { Runtime } from "../runtime";
 import type { RootStore } from "../stores/RootStore";
 
 /** Routes window-focused native surface events to their Store owner. */
-export const observeSurfaceEvents = (runtime: RendererRuntime, root: RootStore) =>
+export const observeSurfaceEvents = (runtime: Runtime, root: RootStore) =>
   runtime.observe(
     (client) => client.events.surfaces(),
     (event) => {

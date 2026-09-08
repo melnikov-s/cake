@@ -8,7 +8,7 @@ import { StatusDot } from "@/components/ui/status-dot";
 import { WorkLogActivityTrigger } from "@/components/work-log-activity-trigger";
 import type { UiPart } from "../../ipc/session-contract";
 import { toolDiff, workLogChanges } from "../../utils/turn-diff";
-import { combineSubagentWorkLogParts } from "../subagent-work-log";
+import { combineSubagentWorkLogParts } from "../lib/subagent-work-log";
 import type { CanonicalTranscriptBehavior } from "./chat-message";
 import { TranscriptPart } from "./chat-transcript-part";
 

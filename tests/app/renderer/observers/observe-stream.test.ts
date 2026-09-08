@@ -1,11 +1,11 @@
 import { Effect, Schema, Stream } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CakeIpcClient, type CakeIpcClientService } from "../../../../src/ipc/client/CakeIpcClient";
-import type { RendererRuntime } from "../../../../src/renderer/RendererRuntime";
+import type { Runtime } from "../../../../src/renderer/runtime";
 import { observeStream } from "../../../../src/renderer/observers";
 
 const client = {} as CakeIpcClientService;
-const execute: RendererRuntime["execute"] = (effect, signal) =>
+const execute: Runtime["execute"] = (effect, signal) =>
   Effect.runPromise(
     Effect.provideService(effect, CakeIpcClient, client),
     signal ? { signal } : undefined,

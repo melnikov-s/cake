@@ -4,8 +4,8 @@ import { applyAnnotationUpdate, createAnnotation } from "../../utils/annotations
 import { parsePiBuiltinCommand } from "../../ipc/session-contract";
 import type { StoreEvent } from "../events/StoreEvent";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
-import { describeError } from "../error-details";
-import { pastedImageAttachments } from "../pasted-image-attachments";
+import { describeError } from "../lib/error-details";
+import { pastedImageAttachments } from "../lib/pasted-image-attachments";
 import { ClientContext } from "./context/ClientContext";
 import type { WorktreeDraftChoice } from "./WorktreeCreationStore";
 import { OptimisticUserMessagesStore } from "./OptimisticUserMessagesStore";

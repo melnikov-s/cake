@@ -13,6 +13,12 @@ describe("RootProjection", () => {
     expect(projectSession.parent).toBe(projection);
     expect(cakeChat.parent).toBe(projection);
 
+    projection.removeProjectSession(projectSession.sessionId);
+    projection.removeCakeChat(cakeChat.sessionId);
+
+    expect(projection.projectSessions).toEqual([]);
+    expect(projection.cakeChats).toEqual([]);
+
     projection[Symbol.dispose]();
   });
 });

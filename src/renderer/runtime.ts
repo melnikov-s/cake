@@ -12,7 +12,7 @@ const makeRendererLayer = (transport: ElectronRpcTransport) =>
   CakeIpcClientLive.pipe(Layer.provide(makeElectronRpcClientProtocol(transport)));
 
 /** Window-owned execution boundary; the ManagedRuntime never escapes this module. */
-export const makeRendererRuntime = (transport: ElectronRpcTransport) => {
+export const makeRuntime = (transport: ElectronRpcTransport) => {
   const runtime = ManagedRuntime.make(makeRendererLayer(transport));
   const execute: ExecuteRendererEffect = (effect, signal) =>
     runtime.runPromise(effect, signal ? { signal } : undefined);
@@ -27,4 +27,4 @@ export const makeRendererRuntime = (transport: ElectronRpcTransport) => {
   };
 };
 
-export type RendererRuntime = ReturnType<typeof makeRendererRuntime>;
+export type Runtime = ReturnType<typeof makeRuntime>;

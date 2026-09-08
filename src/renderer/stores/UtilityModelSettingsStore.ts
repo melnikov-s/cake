@@ -1,7 +1,7 @@
 import { Store } from "r-state-tree";
 import type { ApplicationState, ThinkingLevel, UtilityModel } from "../../ipc/session-contract";
 import { ClientContext } from "./context/ClientContext";
-import { describeError } from "../error-details";
+import { describeError } from "../lib/error-details";
 
 /** Owns optimistic, queued persistence of the configured utility model. */
 export class UtilityModelSettingsStore extends Store {

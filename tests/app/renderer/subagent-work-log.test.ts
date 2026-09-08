@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { UiPart } from "../../../src/ipc/session-contract";
-import { combineSubagentWorkLogParts } from "../../../src/renderer/subagent-work-log";
+import { combineSubagentWorkLogParts } from "../../../src/renderer/lib/subagent-work-log";
 
 function tool(
   id: string,

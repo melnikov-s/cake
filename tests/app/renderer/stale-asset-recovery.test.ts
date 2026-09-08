@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { installStaleAssetRecovery } from "../../../src/renderer/stale-asset-recovery";
+import { installStaleAssetRecovery } from "../../../src/renderer/lib/stale-asset-recovery";
 
 describe("stale asset recovery", () => {
   beforeEach(() => {

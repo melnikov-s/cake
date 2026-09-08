@@ -6,7 +6,7 @@ import type {
   ThinkingLevel,
 } from "../../ipc/session-contract";
 import type { Session } from "../models/Session";
-import { describeError } from "../error-details";
+import { describeError } from "../lib/error-details";
 import { ClientContext } from "./context/ClientContext";
 
 export interface ChatConfigurationStoreProps {

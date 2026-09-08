@@ -1,4 +1,4 @@
-import type { Attachment } from "../ipc/session-contract";
+import type { Attachment } from "../../ipc/session-contract";
 
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {

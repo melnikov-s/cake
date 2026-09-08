@@ -4,7 +4,7 @@ import type { ArtifactRecord } from "../../../../src/ipc/artifact-contract";
 import { CakeIpcClient, type CakeIpcClientService } from "../../../../src/ipc/client/CakeIpcClient";
 import { RootProjection } from "../../../../src/renderer/models/RootProjection";
 import { observeArtifactEvents, observeStream } from "../../../../src/renderer/observers";
-import type { RendererRuntime } from "../../../../src/renderer/RendererRuntime";
+import type { Runtime } from "../../../../src/renderer/runtime";
 import type { RootStore } from "../../../../src/renderer/stores/RootStore";
 
 const record: ArtifactRecord = {
@@ -23,8 +23,8 @@ const record: ArtifactRecord = {
   updatedAt: "2026-01-01T00:00:00.000Z",
 };
 
-const runtimeFor = (client: CakeIpcClientService): RendererRuntime => {
-  const execute: RendererRuntime["execute"] = (effect, signal) =>
+const runtimeFor = (client: CakeIpcClientService): Runtime => {
+  const execute: Runtime["execute"] = (effect, signal) =>
     Effect.runPromise(
       Effect.provideService(effect, CakeIpcClient, client),
       signal ? { signal } : undefined,

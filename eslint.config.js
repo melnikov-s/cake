@@ -5,7 +5,7 @@ import tseslint from "typescript-eslint";
 // Keep this list explicit so a new boundary requires an architecture decision.
 const effectExecutionBoundaries = [
   "src/main/main.ts", // Process entry point, runtime disposal, and Electron smoke hooks.
-  "src/renderer/RendererRuntime.ts", // The one window-owned renderer runtime.
+  "src/renderer/runtime.ts", // The one window-owned renderer runtime.
   "src/layers/CakeChatEnvironmentLive.ts", // Final Promise callbacks supplied to Pi.
   "src/layers/ProjectSessionEnvironmentLive.ts", // Final family/tool Promise callbacks supplied to Pi.
   "src/layers/ProjectSessionRuntimeOptionsLive.ts", // Final Project Session callbacks supplied to Pi.
@@ -32,7 +32,7 @@ export default tseslint.config(
     { files: effectExecutionBoundaries, execution: false, ignores: [] },
   ].map(({ files, execution, ignores }) => ({
     files,
-    ignores: [...ignores, "src/main/main.ts", "src/renderer/RendererRuntime.ts"],
+    ignores: [...ignores, "src/main/main.ts", "src/renderer/runtime.ts"],
     rules: {
       "no-restricted-syntax": [
         "error",
@@ -45,7 +45,7 @@ export default tseslint.config(
             ].map((selector) => ({
               selector,
               message:
-                "Execute Effects only at an approved runtime or external callback boundary. Compose Effects internally; renderer infrastructure uses RendererRuntime.execute.",
+                "Execute Effects only at an approved runtime or external callback boundary. Compose Effects internally; renderer infrastructure uses Runtime.execute.",
             }))
           : []),
         ...[
@@ -133,12 +133,7 @@ export default tseslint.config(
           ],
           patterns: [
             {
-              group: [
-                "../../ipc/client/*",
-                "../../ipc/protocol/*",
-                "../RendererRuntime",
-                "../observers/*",
-              ],
+              group: ["../../ipc/client/*", "../../ipc/protocol/*", "../runtime", "../observers/*"],
               message:
                 "Effect RPC and synchronization mechanics belong to renderer infrastructure.",
             },
@@ -157,7 +152,7 @@ export default tseslint.config(
             {
               group: ["../stores/!(RootStore)", "../client/*"],
               message:
-                "The Model observer depends only on RootStore observation demand, RendererRuntime, and passive Models.",
+                "The Model observer depends only on RootStore observation demand, Runtime, and passive Models.",
             },
           ],
         },

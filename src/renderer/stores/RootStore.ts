@@ -15,7 +15,7 @@ import { ReviewsStore } from "./ReviewsStore";
 import { SettingsStore } from "./SettingsStore";
 import { ExtensionUiStore } from "./ExtensionUiStore";
 import { FullscreenSurfaceStore } from "./FullscreenSurfaceStore";
-import { AppControlBridge, type AgentControlSource } from "../app-control-bridge";
+import { AppControlBridge, type AgentControlSource } from "../app-control/AppControlBridge";
 import { CakeChatCollectionStore } from "./CakeChatCollectionStore";
 import { AppShellStore } from "./AppShellStore";
 import { InlineWidgetStore } from "./InlineWidgetStore";

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeError } from "../../../src/renderer/error-details";
+import { describeError } from "../../../src/renderer/lib/error-details";
 
 describe("describeError", () => {
   it("keeps an Error stack while exposing its concise message", () => {

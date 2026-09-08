@@ -24,11 +24,21 @@ export class RootProjection extends Model {
     return this.projectSessions.find((session) => session.sessionId === sessionId);
   }
 
+  removeProjectSession(sessionId: string) {
+    const index = this.projectSessions.findIndex((session) => session.sessionId === sessionId);
+    if (index >= 0) this.projectSessions.splice(index, 1);
+  }
+
   cakeChat(sessionId: string) {
     const existing = this.cakeChats.find((session) => session.sessionId === sessionId);
     if (existing) return existing;
     const session = Session.create({ sessionId });
     this.cakeChats.push(session);
     return session;
+  }
+
+  removeCakeChat(sessionId: string) {
+    const index = this.cakeChats.findIndex((session) => session.sessionId === sessionId);
+    if (index >= 0) this.cakeChats.splice(index, 1);
   }
 }

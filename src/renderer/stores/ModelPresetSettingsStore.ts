@@ -1,7 +1,7 @@
 import { Store, observable, snapshot } from "r-state-tree";
 import type { ChatConfiguration, ModelOption, ModelPreset } from "../../ipc/session-contract";
 import { ClientContext } from "./context/ClientContext";
-import { describeError } from "../error-details";
+import { describeError } from "../lib/error-details";
 
 interface ModelPresetProjection {
   readonly presets: readonly ModelPreset[];

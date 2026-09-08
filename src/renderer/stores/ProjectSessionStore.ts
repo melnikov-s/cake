@@ -21,7 +21,7 @@ import { WorktreeStore, type WorktreeStoreProps } from "./WorktreeStore";
 import { StagedSessionCommandStore } from "./StagedSessionCommandStore";
 import { ClientContext } from "./context/ClientContext";
 import type { ExistingWorktreeCandidate, WorktreeDraftChoice } from "./WorktreeCreationStore";
-import type { SessionActivity } from "../session-activity";
+import type { SessionActivity } from "../lib/session-activity";
 
 export interface SessionTarget {
   workspacePath: string;

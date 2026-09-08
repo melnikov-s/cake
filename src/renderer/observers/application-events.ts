@@ -1,9 +1,9 @@
 import { toStoreEvent } from "../events/StoreEvent";
-import type { RendererRuntime } from "../RendererRuntime";
+import type { Runtime } from "../runtime";
 import type { RootStore } from "../stores/RootStore";
 
 /** Routes window-focused application events to their Store owners. */
-export const observeApplicationEvents = (runtime: RendererRuntime, root: RootStore) =>
+export const observeApplicationEvents = (runtime: Runtime, root: RootStore) =>
   runtime.observe(
     (client) => client.events.application(),
     (event) => {

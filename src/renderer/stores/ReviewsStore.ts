@@ -4,7 +4,7 @@ import type { Annotation } from "../../ipc/session-contract";
 import { applyAnnotationUpdate, createAnnotation } from "../../utils/annotations";
 import { ClientContext } from "./context/ClientContext";
 import { ActiveProjectSessionContext } from "./context/ActiveProjectSessionContext";
-import { describeError } from "../error-details";
+import { describeError } from "../lib/error-details";
 import { ChatStore } from "./ChatStore";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
 

@@ -1,7 +1,7 @@
 import { Effect, Predicate } from "effect";
 import { CakeIpcClient, type CakeIpcClientService } from "../../ipc/client/CakeIpcClient";
 import { makeClientCapabilities } from "./ClientCapabilities";
-import type { RendererRuntime } from "../RendererRuntime";
+import type { Runtime } from "../runtime";
 import { ClientError, type Client, type ClientCommandOptions } from "./Client";
 
 const errorTag = (error: unknown): string | undefined => {
@@ -35,7 +35,7 @@ const clientError = (operation: string, error: unknown, signal?: AbortSignal): C
 };
 
 /** Builds the Promise command adapter over the window's single renderer runtime. */
-export function makeClient(runtime: Pick<RendererRuntime, "execute">): Client {
+export function makeClient(runtime: Pick<Runtime, "execute">): Client {
   const withClient = <Success, Failure>(
     operation: (client: CakeIpcClientService) => Effect.Effect<Success, Failure>,
   ): Effect.Effect<Success, Failure, CakeIpcClient> => Effect.flatMap(CakeIpcClient, operation);

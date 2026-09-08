@@ -10,7 +10,7 @@ import { NavItem } from "./ui/nav-item";
 import { ChevronIcon, ResolveIcon, RestoreIcon } from "./ui/icons";
 import type { SidebarStore } from "../stores/SidebarStore";
 import { WorktreeStatusIcon } from "./worktree-status-icon";
-import type { SessionActivity } from "../session-activity";
+import type { SessionActivity } from "../lib/session-activity";
 import { StatusDot } from "./ui/status-dot";
 import { StatusSwatch } from "./ui/status-swatch";
 

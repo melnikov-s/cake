@@ -3,12 +3,12 @@ import { CakeIpcClient, type CakeIpcClientService } from "../ipc/client/CakeIpcC
 import { FoundationFailure } from "../ipc/protocol/CakeRpc";
 import type { JsonObject } from "../ipc/json-contract";
 import { cakeRpcPayloadSchemas } from "../ipc/cake-rpc-contract";
-import { makeRendererRuntime } from "./RendererRuntime";
+import { makeRuntime } from "./runtime";
 
 const bridge = window.cake;
 if (!bridge) throw new Error("Cake preload bridge is unavailable");
 
-const runtime = makeRendererRuntime(bridge.rpc);
+const runtime = makeRuntime(bridge.rpc);
 const withClient = <Success, Failure>(
   operation: (client: CakeIpcClientService) => Effect.Effect<Success, Failure>,
 ) => Effect.flatMap(CakeIpcClient, operation);

@@ -1,7 +1,7 @@
 import { Store } from "r-state-tree";
 import { defaultProjectSettings, type ProjectSettings } from "../../domain/application-data";
 import { ClientContext } from "./context/ClientContext";
-import { describeError } from "../error-details";
+import { describeError } from "../lib/error-details";
 import type { ProjectCatalogStore } from "./ProjectCatalogStore";
 
 /** Owns the project-settings dialog draft and its serialized save workflow. */

@@ -2,7 +2,7 @@ import { Store, observable } from "r-state-tree";
 import type { PiSettingUpdate } from "../../ipc/session-contract";
 import { ClientContext } from "./context/ClientContext";
 import { SettingsSessionContext } from "./context/SettingsSessionContext";
-import { describeError } from "../error-details";
+import { describeError } from "../lib/error-details";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 
 export interface ProviderSettingsStoreProps {

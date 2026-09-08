@@ -3,18 +3,18 @@ import { createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { DesktopBridgeError } from "./components/desktop-bridge-error";
 import { RendererRoot } from "./components/renderer-root";
-import { makeRendererRuntime } from "./RendererRuntime";
+import { makeRuntime } from "./runtime";
 import { makeClient } from "./client/ClientLive";
 import {
   observeAgentAvailability,
   observeApplicationState,
   observeModels,
-  observeNativeEvents,
+  observeEvents,
   observeVsCodeState,
 } from "./observers";
 import { RootProjection } from "./models/RootProjection";
-import { installStaleAssetRecovery } from "./stale-asset-recovery";
-import { mountRootStore } from "./mount-root-store";
+import { installStaleAssetRecovery } from "./lib/stale-asset-recovery";
+import { mountRootStore } from "./bootstrap/mount-root-store";
 import { storeSnapshotSchema } from "./persistence/StoreSnapshot";
 import { WindowStatePersistence } from "./persistence/WindowStatePersistence";
 import "katex/dist/katex.min.css";
@@ -32,8 +32,8 @@ if (!window.cake) root.render(createElement(DesktopBridgeError));
 else void bootstrap(window.cake);
 
 async function bootstrap(bridge: NonNullable<typeof window.cake>) {
-  const rendererRuntime = makeRendererRuntime(bridge.rpc);
-  const client = makeClient(rendererRuntime);
+  const runtime = makeRuntime(bridge.rpc);
+  const client = makeClient(runtime);
   const projection = RootProjection.create();
   let hydrationError: unknown;
   const snapshot = await client.windowState
@@ -50,9 +50,9 @@ async function bootstrap(bridge: NonNullable<typeof window.cake>) {
     () => persistenceRef.current?.flush() ?? Promise.resolve(),
     projection,
   );
-  const stopObservingApplicationState = observeApplicationState(rendererRuntime, rootStore);
-  const stopObservingAgentAvailability = observeAgentAvailability(rendererRuntime, rootStore);
-  const stopObservingVsCodeState = observeVsCodeState(rendererRuntime, rootStore);
+  const stopObservingApplicationState = observeApplicationState(runtime, rootStore);
+  const stopObservingAgentAvailability = observeAgentAvailability(runtime, rootStore);
+  const stopObservingVsCodeState = observeVsCodeState(runtime, rootStore);
   const persistence = new WindowStatePersistence(client, (error) =>
     rootStore.toastStore.show({
       tone: "error",
@@ -62,8 +62,8 @@ async function bootstrap(bridge: NonNullable<typeof window.cake>) {
   );
   persistenceRef.current = persistence;
   persistence.observe(rootStore);
-  const stopObservingModels = observeModels(rendererRuntime, projection, rootStore);
-  const stopObservingNativeEvents = observeNativeEvents(rendererRuntime, projection, rootStore);
+  const stopObservingModels = observeModels(runtime, projection, rootStore);
+  const stopObservingEvents = observeEvents(runtime, projection, rootStore);
   void rootStore.settingsStore.modelPresets.hydrate();
   void rootStore.initialize();
   if (hydrationError)
@@ -94,14 +94,14 @@ async function bootstrap(bridge: NonNullable<typeof window.cake>) {
     () => {
       disposeStaleAssetRecovery();
       persistence?.[Symbol.dispose]();
-      stopObservingNativeEvents();
+      stopObservingEvents();
       stopObservingVsCodeState();
       stopObservingAgentAvailability();
       stopObservingApplicationState();
       stopObservingModels();
       rootStore[Symbol.dispose]();
       projection[Symbol.dispose]();
-      void rendererRuntime.dispose();
+      void runtime.dispose();
     },
     { once: true },
   );

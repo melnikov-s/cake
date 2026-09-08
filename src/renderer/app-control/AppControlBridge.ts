@@ -1,23 +1,23 @@
 import { Effect, Schema } from "effect";
-import { jsonObjectSchema, jsonValueSchema, type JsonValue } from "../ipc/json-contract";
+import { jsonObjectSchema, jsonValueSchema, type JsonValue } from "../../ipc/json-contract";
 import {
   SESSION_TITLE_MAX_LENGTH,
   thinkingLevelSchema,
   type ChatConfiguration,
   type ProjectRecord,
-} from "../ipc/session-contract";
-import type { CakeChatSummary } from "../domain/cake-chat-data";
-import type { SessionSummary } from "./models/SessionSummary";
-import type { WorktreeRecord } from "../ipc/worktree-contract";
-import type { ScheduledMessage } from "../domain/scheduled-message-data";
+} from "../../ipc/session-contract";
+import type { CakeChatSummary } from "../../domain/cake-chat-data";
+import type { SessionSummary } from "../models/SessionSummary";
+import type { WorktreeRecord } from "../../ipc/worktree-contract";
+import type { ScheduledMessage } from "../../domain/scheduled-message-data";
 import type {
   CoordinationMessage,
   CoordinationThread,
   CrossSessionDeliveryStatus,
   CrossSessionMessageMetadata,
-} from "../domain/cross-session-coordination";
-import type { QueuedProjectSessionMessages } from "../domain/project-session-data";
-import { isActiveSessionActivity, type SessionActivity } from "./session-activity";
+} from "../../domain/cross-session-coordination";
+import type { QueuedProjectSessionMessages } from "../../domain/project-session-data";
+import { isActiveSessionActivity, type SessionActivity } from "../lib/session-activity";
 
 const bounded = (minimum: number, maximum: number) =>
   Schema.String.check(Schema.isMinLength(minimum), Schema.isMaxLength(maximum));

@@ -1,12 +1,12 @@
 import { toStoreEvent } from "../events/StoreEvent";
 import type { RootProjection } from "../models/RootProjection";
 import { applyArtifactUpdate } from "../reducers/ArtifactReducer";
-import type { RendererRuntime } from "../RendererRuntime";
+import type { Runtime } from "../runtime";
 import type { RootStore } from "../stores/RootStore";
 
 /** Routes window-focused artifact events to their projection and Store owners. */
 export const observeArtifactEvents = (
-  runtime: RendererRuntime,
+  runtime: Runtime,
   projection: RootProjection,
   root: RootStore,
 ) =>

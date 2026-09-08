@@ -15,7 +15,7 @@ import type { ProjectCatalogStore } from "./ProjectCatalogStore";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
-import { describeError } from "../error-details";
+import { describeError } from "../lib/error-details";
 import { ClientContext } from "./context/ClientContext";
 import { CommandPaneStore } from "./CommandPaneStore";
 import { SessionManagementStore } from "./SessionManagementStore";

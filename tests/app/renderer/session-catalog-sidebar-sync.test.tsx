@@ -7,7 +7,7 @@ import { applySnapshot, effect, toSnapshot } from "r-state-tree";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Sidebar } from "../../../src/renderer/components/sidebar";
 import type { Client } from "../../../src/renderer/client/Client";
-import { mountRootStore } from "../../../src/renderer/mount-root-store";
+import { mountRootStore } from "../../../src/renderer/bootstrap/mount-root-store";
 import { RootProjection } from "../../../src/renderer/models/RootProjection";
 import type { RootStore } from "../../../src/renderer/stores/RootStore";
 

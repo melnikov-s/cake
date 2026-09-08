@@ -1,7 +1,7 @@
 import { observable, Store } from "r-state-tree";
 import { validateArtifactResponse, type ArtifactRecord } from "../../ipc/artifact-contract";
 import type { StoreEvent } from "../events/StoreEvent";
-import { describeError } from "../error-details";
+import { describeError } from "../lib/error-details";
 import { ClientContext } from "./context/ClientContext";
 import type { JsonValue } from "../../ipc/json-contract";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";

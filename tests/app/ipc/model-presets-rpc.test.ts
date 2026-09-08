@@ -7,7 +7,7 @@ import {
 } from "../../../src/domain/modelPresets";
 import { CakeIpcClient } from "../../../src/ipc/client/CakeIpcClient";
 import { ModelSelection } from "../../../src/services/pi/model-data";
-import { makeRendererRuntime } from "../../../src/renderer/RendererRuntime";
+import { makeRuntime } from "../../../src/renderer/runtime";
 
 const preset = {
   id: "00000000-0000-4000-8000-000000000001",
@@ -73,7 +73,7 @@ describe("Model Preset Effect RPC contract", () => {
   });
 
   it("exposes generated Effect clients grouped by models and modelPresets", async () => {
-    const runtime = makeRendererRuntime({
+    const runtime = makeRuntime({
       send() {},
       subscribe() {
         return () => {};

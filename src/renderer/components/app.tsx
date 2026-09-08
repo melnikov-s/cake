@@ -41,10 +41,10 @@ import { CommandPane } from "@/components/command-pane";
 import { QuakeTerminal } from "@/components/quake-terminal";
 import { cakeHotkeyEventName } from "@/lib/hotkeys";
 import { cn } from "@/lib/utils";
-import type { SourceLocation } from "../ipc/source-location";
-import { toWorkspaceRelativePath } from "../utils/workspace-relative-path";
-import { RootStore } from "./stores/RootStore";
-import type { SessionPaneNode } from "./stores/SessionLayoutStore";
+import type { SourceLocation } from "../../ipc/source-location";
+import { toWorkspaceRelativePath } from "../../utils/workspace-relative-path";
+import { RootStore } from "../stores/RootStore";
+import type { SessionPaneNode } from "../stores/SessionLayoutStore";
 
 export const App = observer(function App() {
   const root = useStore(RootStore);

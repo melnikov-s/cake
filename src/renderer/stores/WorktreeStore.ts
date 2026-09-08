@@ -1,5 +1,5 @@
 import { Store, untracked } from "r-state-tree";
-import { describeError } from "../error-details";
+import { describeError } from "../lib/error-details";
 import { ClientContext } from "./context/ClientContext";
 import type {
   WorktreeLandOutcome,

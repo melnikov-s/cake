@@ -11,14 +11,14 @@ import {
 } from "../../../../src/domain/project-session-data";
 import { CakeIpcClient, type CakeIpcClientService } from "../../../../src/ipc/client/CakeIpcClient";
 import { createModelObserver, observeStream } from "../../../../src/renderer/observers";
-import type { RendererRuntime } from "../../../../src/renderer/RendererRuntime";
+import type { Runtime } from "../../../../src/renderer/runtime";
 import { ProjectCatalog } from "../../../../src/renderer/models/ProjectCatalog";
 import { CakeChatCatalog } from "../../../../src/renderer/models/CakeChatCatalog";
 import { SessionCatalog } from "../../../../src/renderer/models/SessionCatalog";
 import { Session } from "../../../../src/renderer/models/Session";
 
-function runtimeFor(client: CakeIpcClientService): RendererRuntime {
-  const execute: RendererRuntime["execute"] = (effect, signal) =>
+function runtimeFor(client: CakeIpcClientService): Runtime {
+  const execute: Runtime["execute"] = (effect, signal) =>
     Effect.runPromise(
       Effect.provideService(effect, CakeIpcClient, client),
       signal ? { signal } : undefined,

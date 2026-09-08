@@ -1,7 +1,7 @@
 import { Store, observable } from "r-state-tree";
 import { stagedSessionSlashCommands, type SessionSnapshot } from "../../ipc/session-contract";
 import { ClientContext } from "./context/ClientContext";
-import { describeError } from "../error-details";
+import { describeError } from "../lib/error-details";
 
 type SlashCommand = SessionSnapshot["commands"][number];
 

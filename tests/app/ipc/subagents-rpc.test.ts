@@ -7,7 +7,7 @@ import {
   SubagentUpdate,
 } from "../../../src/domain/subagent-data";
 import { CakeIpcClient } from "../../../src/ipc/client/CakeIpcClient";
-import { makeRendererRuntime } from "../../../src/renderer/RendererRuntime";
+import { makeRuntime } from "../../../src/renderer/runtime";
 
 const handleId = "00000000-0000-4000-8000-000000000001";
 const resolvedModel = {
@@ -65,7 +65,7 @@ describe("Subagent Effect RPC contract", () => {
   });
 
   it("exposes the generated subagent client group", async () => {
-    const runtime = makeRendererRuntime({
+    const runtime = makeRuntime({
       send() {},
       subscribe() {
         return () => {};

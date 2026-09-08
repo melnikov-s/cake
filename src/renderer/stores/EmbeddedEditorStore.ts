@@ -5,7 +5,7 @@ import type { Attachment } from "../../ipc/session-contract";
 import type { EmbeddedEditorStateSnapshot, EmbeddedEditorStatus } from "../client/Client";
 import { ClientContext } from "./context/ClientContext";
 import type { StoreEvent } from "../events/StoreEvent";
-import { describeError } from "../error-details";
+import { describeError } from "../lib/error-details";
 
 export interface EmbeddedEditorStoreProps {
   projectPath(): string | undefined;

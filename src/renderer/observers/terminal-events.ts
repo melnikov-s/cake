@@ -1,8 +1,8 @@
-import type { RendererRuntime } from "../RendererRuntime";
+import type { Runtime } from "../runtime";
 import type { RootStore } from "../stores/RootStore";
 
 /** Routes window-focused terminal events to the Terminal Store. */
-export const observeTerminalEvents = (runtime: RendererRuntime, root: RootStore) =>
+export const observeTerminalEvents = (runtime: Runtime, root: RootStore) =>
   runtime.observe(
     (client) => client.events.terminals(),
     (event) => {

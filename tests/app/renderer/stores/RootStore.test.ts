@@ -1,7 +1,7 @@
 import { applySnapshot } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
 import type { Client } from "../../../../src/renderer/client/Client";
-import { mountRootStore } from "../../../../src/renderer/mount-root-store";
+import { mountRootStore } from "../../../../src/renderer/bootstrap/mount-root-store";
 import { RootProjection } from "../../../../src/renderer/models/RootProjection";
 
 const projectPath = "/projects/example";

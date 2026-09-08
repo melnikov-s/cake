@@ -6,7 +6,7 @@ import {
   AppControlBridge,
   type AppControlHost,
   listAppControlTools,
-} from "../../../src/renderer/app-control-bridge";
+} from "../../../src/renderer/app-control/AppControlBridge";
 import { Message } from "../../../src/renderer/models/Message";
 import { Session } from "../../../src/renderer/models/Session";
 import { SessionCoordinationStore } from "../../../src/renderer/stores/SessionCoordinationStore";

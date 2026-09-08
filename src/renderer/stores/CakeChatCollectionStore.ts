@@ -13,7 +13,7 @@ import { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorS
 import { SessionLayoutStore, type SessionSplitAxis } from "./SessionLayoutStore";
 import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import { CakeChatSessionStore } from "./CakeChatSessionStore";
-import { describeError } from "../error-details";
+import { describeError } from "../lib/error-details";
 import type { CakeChatCatalog } from "../models/CakeChatCatalog";
 import type { Session } from "../models/Session";
 

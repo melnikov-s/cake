@@ -57,6 +57,7 @@ describe("WorktreeStore", () => {
           isStreaming: () => activity.streaming,
           onLanded,
           onDiscarded: vi.fn(),
+          prepareWorkingDirectoryRetirement: vi.fn(async () => true),
           onResolveWorkspace,
         }),
         {
@@ -122,6 +123,7 @@ describe("WorktreeStore", () => {
           isStreaming: () => false,
           onLanded: vi.fn(),
           onDiscarded: vi.fn(),
+          prepareWorkingDirectoryRetirement: vi.fn(async () => true),
           onResolveWorkspace: vi.fn(),
         }),
         {
@@ -177,6 +179,7 @@ describe("WorktreeStore", () => {
         isStreaming: () => false,
         onLanded,
         onDiscarded: vi.fn(),
+        prepareWorkingDirectoryRetirement: vi.fn(async () => true),
         onResolveWorkspace: vi.fn(),
       }),
       {

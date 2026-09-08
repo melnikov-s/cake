@@ -1,7 +1,7 @@
 import { StrictMode } from "react";
 import { StoreProvider } from "r-state-tree/react";
 import type { RootStore } from "../stores/RootStore";
-import { App } from "../app";
+import { App } from "./app";
 import { MarkdownLinkProvider } from "./ai-elements/markdown";
 import { RendererErrorBoundary } from "./renderer-error-boundary";
 

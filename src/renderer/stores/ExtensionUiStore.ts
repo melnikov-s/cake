@@ -3,7 +3,7 @@ import type { ResourceDiagnostic } from "../../ipc/session-contract";
 import { ClientContext } from "./context/ClientContext";
 import type { StoreEvent } from "../events/StoreEvent";
 import type { Session } from "../models/Session";
-import { describeError } from "../error-details";
+import { describeError } from "../lib/error-details";
 
 export interface UiRequestState {
   operationId: string;

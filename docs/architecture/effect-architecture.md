@@ -195,7 +195,7 @@ that client. The
 runtime is created once, lives for the window, and is disposed on window
 teardown.
 
-`RendererRuntime` keeps its `ManagedRuntime` private and exposes only
+`Runtime` keeps its `ManagedRuntime` private and exposes only
 `execute(effect, signal?)` and `dispose()`. Commands, Model synchronization,
 focused Store observation, native-event Streams, and the RPC smoke harness
 all use that execution boundary. It forwards cancellation without translating
@@ -212,13 +212,13 @@ Worktree engine has one explicitly listed adapter while that engine remains a
 Promise contract. Domain functions, RPC handlers, Cake-owned environment
 services, Electron lifecycle processing, and VS Code state propagation compose
 Effects instead of executing them. Runtime construction is restricted to
-`main.ts` and `RendererRuntime.ts`. Tests may execute Effects in test
+`main.ts` and `runtime.ts`. Tests may execute Effects in test
 infrastructure; the ReviewStorage test constructor therefore lives under
 `tests/`, not production source. `Stream.runForEach` and other Stream consumers
 construct Effects and are not runtime execution APIs.
 
 ```text
-RendererRuntime
+Runtime
 └── CakeIpcClientLive
     └── Effect RPC client protocol over preload
 ```
@@ -691,13 +691,18 @@ src/
 │   └── BootstrapLive.ts     # Immutable platform bootstrap capabilities
 ├── preload/
 ├── renderer/
-│   ├── RendererRuntime.ts    # one window-local Effect runtime
+│   ├── main.ts               # window composition and teardown
+│   ├── runtime.ts            # one window-local Effect runtime
+│   ├── app-control/          # curated Cake application control bridge
+│   ├── bootstrap/            # renderer assembly helpers
 │   ├── client/               # permanent Promise Client adapter
-│   ├── observers/             # common Stream primitive and focused projection observers
-│   ├── models/RootProjection.ts # window root for currently loaded authoritative projections
-│   ├── models/               # r-state-tree projection Model definitions
-│   ├── stores/               # r-state-tree application/UI Stores
-│   └── components/
+│   ├── components/           # React presentation
+│   ├── lib/                  # renderer-local pure utilities
+│   ├── models/               # r-state-tree projections and RootProjection
+│   ├── observers/            # Stream execution and focused observers
+│   ├── persistence/          # one-way window Store snapshot persistence
+│   ├── reducers/             # update-to-Model reducers
+│   └── stores/               # r-state-tree application/UI Stores
 └── utils/
 ```
 
@@ -710,8 +715,8 @@ Dependencies flow as follows:
 ```text
 renderer components → renderer Stores and Models
 renderer Stores → Client
-renderer observers → RendererRuntime and their Model or Store owners
-RendererRuntime → CakeIpcClient
+renderer observers → Runtime and their Model or Store owners
+Runtime → CakeIpcClient
 Client → CakeIpcClient ↔ shared RPC protocol ↔ CakeIpcServer
 CakeIpcServer → domain operations → Services
 ```
