@@ -111,6 +111,17 @@ test("selects multiple project sessions and Cake Chat with independent transcrip
     page.on("console", (message) => {
       if (message.text().includes("observation failed")) failures.push(message.text());
     });
+    await page.evaluate(() => {
+      const flashes: string[] = [];
+      Object.assign(window, { emptySessionFlashes: flashes });
+      new MutationObserver(() => {
+        for (const heading of document.querySelectorAll(".transcript h1")) {
+          const text = heading.textContent ?? "";
+          if (text.includes("What should we build") || text.includes("What can I help"))
+            flashes.push(text);
+        }
+      }).observe(document.body, { childList: true, subtree: true });
+    });
     for (const session of [...sessions, sessions[0]!, sessions[1]!]) {
       await page.locator(`.session-item[data-session-id="${session.id}"] .session-row`).click();
       await expect(
@@ -118,6 +129,13 @@ test("selects multiple project sessions and Cake Chat with independent transcrip
       ).toBeVisible({ timeout: 20_000 });
     }
     expect(failures).toEqual([]);
+    expect(await page.evaluate(() => Reflect.get(window, "emptySessionFlashes"))).toEqual([]);
+    await page.getByRole("button", { name: "New chat in project", exact: true }).click();
+    await expect(
+      page
+        .locator(".transcript")
+        .getByRole("heading", { name: "What should we build in project?" }),
+    ).toBeVisible();
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

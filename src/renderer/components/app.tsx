@@ -424,7 +424,7 @@ export const App = observer(function App() {
         paneSession.artifactInteractionStore.errorDetails);
     return {
       transcriptBehavior: projectTranscriptBehaviorFor(paneSession),
-      empty: (
+      empty: paneSession.hydrated ? (
         <div className="grid min-h-[calc(100vh-360px)] place-items-center content-center p-8 text-center">
           <h1 className="font-display text-xl font-semibold tracking-tight">
             What should we build in{" "}
@@ -434,6 +434,8 @@ export const App = observer(function App() {
             Describe a task, ask a question, or choose another session from the sidebar.
           </p>
         </div>
+      ) : (
+        <LoadingState label="Opening session" />
       ),
       footer: (
         <ArtifactsPanel
