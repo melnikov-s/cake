@@ -3,7 +3,7 @@ import type { ProjectSessionStartInput } from "../../domain/project-session-data
 import type { SourceLocation } from "../../ipc/source-location";
 import type { ChatConfiguration } from "../../ipc/session-contract";
 import { reviewThreadAnnotations } from "../../utils/review-thread-annotations";
-import type { RendererEvent } from "../RendererEvent";
+import type { StoreEvent } from "../events/StoreEvent";
 import type {
   AgentAvailabilitySnapshot,
   AgentAvailabilityState,
@@ -16,7 +16,7 @@ import type { SessionCatalogStore } from "./SessionCatalogStore";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import { describeError } from "../error-details";
-import { RendererClientContext } from "../client/RendererClientContext";
+import { ClientContext } from "./context/ClientContext";
 import { CommandPaneStore } from "./CommandPaneStore";
 import { SessionManagementStore } from "./SessionManagementStore";
 import { SessionContinuationStore } from "./SessionContinuationStore";
@@ -54,7 +54,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   readonly process = "renderer" as const;
 
   get client() {
-    return RendererClientContext.consume(this)!;
+    return ClientContext.consume(this)!;
   }
   agentAvailability: AgentAvailabilityState = "available";
   agentAvailabilityReason: string | undefined;
@@ -790,7 +790,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     return this.activeSessionId === sessionId;
   }
 
-  receive(event: RendererEvent) {
+  receive(event: StoreEvent) {
     if (
       event.type === "embedded-editor-selection" ||
       event.type === "embedded-editor-selection-cleared"

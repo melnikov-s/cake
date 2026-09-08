@@ -1,6 +1,6 @@
 import { Store } from "r-state-tree";
 import { SESSION_TITLE_MAX_LENGTH } from "../../ipc/session-contract";
-import { RendererClientContext } from "../client/RendererClientContext";
+import { ClientContext } from "./context/ClientContext";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
@@ -17,7 +17,7 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
   private readonly resolvingSessionIds = new Set<string>();
 
   get client() {
-    return RendererClientContext.consume(this)!;
+    return ClientContext.consume(this)!;
   }
 
   async renameSession(sessionId: string, name: string) {

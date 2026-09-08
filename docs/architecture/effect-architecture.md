@@ -14,14 +14,14 @@ flowchart LR
   subgraph Renderer[Sandboxed renderer process]
     React[React]
     StateTree[r-state-tree Models and Stores]
-    Synchronizer[Window Model synchronizer]
-    Client[RendererClient]
+    Observer[Window observers]
+    Client[Client]
     Runtime[Renderer Effect runtime and CakeIpcClient]
     React --> StateTree
     StateTree --> Client
-    Synchronizer --> StateTree
+    Observer --> StateTree
     Client --> Runtime
-    Synchronizer --> Runtime
+    Observer --> Runtime
   end
 
   subgraph Boundary[Validated boundary]
@@ -117,24 +117,27 @@ parallel conversation engines.
 ### Renderer infrastructure adapts RPC; Stores own application state and logic
 
 The window's renderer infrastructure owns `CakeIpcClient` and the Effect
-runtime. A permanent typed `RendererClient` executes semantic commands as
+runtime. A permanent typed `Client` executes semantic commands as
 Promises and propagates optional `AbortSignal` cancellation to Effect Fiber and
-RPC interruption. One window-owned Model synchronizer consumes RPC Streams,
-applies authoritative snapshots to stable r-state-tree Models with
-`applySnapshot`, and reduces subsequent ordered Events transactionally. It uses
-direct, batched Model mutations for incremental entity changes. Renderer
-bootstrap attaches both the Model synchronizer and
-window snapshot persistence to the mounted Root Store; neither is a Store.
+RPC interruption. The runtime's common observation primitive consumes RPC
+Streams and returns cancellation handles to focused window-owned observers. The
+Model observer applies authoritative snapshots to stable r-state-tree Models
+with `applySnapshot` and reduces subsequent ordered Events transactionally,
+using direct, batched Model mutations for incremental entity changes. Separate
+application-state, agent-availability, and VS Code observers apply their streams
+to the Stores that own those projections. Renderer bootstrap attaches these
+observers and window snapshot persistence to the mounted Root Store; none is a
+Store.
 
-A window-owned renderer Model registry creates and retains passive projection
-Models independently of Store and React lifetimes. Session Stores receive those
-Models as dependencies. Loaded Project Session identity is independent from observation
+A window-owned root projection Model owns the authoritative data projections currently
+loaded by that renderer independently of Store and React lifetimes. Session Stores receive
+its child Models as dependencies. Loaded Project Session identity is independent from observation
 lifetime: the selected and currently running sessions are pinned, while a process-local
 20-session idle LRU bounds warm observations. Persisted loaded identities do not demand
 subscriptions at startup. Window teardown first stops native events and Model
 synchronization, then disposes the Store tree, and finally disposes the Models.
 
-Renderer Stores read those Models, invoke `RendererClient`, and own window-local
+Renderer Stores read those Models, invoke `Client`, and own window-local
 application/UI logic and repeated-call policy. They do not import Effect,
 `CakeIpcClient`, RPC definitions, Pi, Git, storage, Electron main
 implementations, or Cake domain operations.
@@ -186,18 +189,19 @@ project resources, VS Code Server, terminals, or Project Session runtimes.
 ### Renderer runtime
 
 Each renderer window has one small runtime providing `CakeIpcClient` over the
-validated preload transport. `RendererClient` and the window-owned Model
-synchronizer are the only ordinary application modules allowed to execute that
-client. The
+validated preload transport. `Client` and the renderer runtime's narrow
+Stream observation helper are the only ordinary application paths that execute
+that client. The
 runtime is created once, lives for the window, and is disposed on window
 teardown.
 
 `RendererRuntime` keeps its `ManagedRuntime` private and exposes only
 `execute(effect, signal?)` and `dispose()`. Commands, Model synchronization,
-main-state synchronization, native-event Streams, and the RPC smoke harness
+focused Store observation, native-event Streams, and the RPC smoke harness
 all use that execution boundary. It forwards cancellation without translating
-failures; command error presentation remains in `RendererClient`, and Stream
-recovery remains in the synchronization supervisor.
+failures; command error presentation remains in `Client`, and the
+runtime's Stream observation helper retries each failed Stream independently
+with an Effect Schedule.
 
 ESLint restricts Effect execution APIs to the explicit boundary files listed in
 `eslint.config.js`. The main process entry point executes `MainApplication` and
@@ -420,12 +424,12 @@ snapshot and resumes observation. Cake does not invent history to fill the gap.
 
 The Pi adapter has one underlying runtime listener per acquired runtime and
 multicasts updates to its scoped consumers. Domain functions project Pi updates
-into Cake Session updates before RPC. The renderer Model synchronizer maps the
+into Cake Session updates before RPC. The renderer Model observer maps the
 RPC Stream into Model snapshots and applies them.
 
 ```text
 Pi → PiSessions Stream → Cake domain projection → RPC Stream
-   → Model synchronizer → snapshot hydration / event reduction
+   → Model observer → snapshot hydration / event reduction
    → reactive r-state-tree Models → Stores/React
 ```
 
@@ -523,7 +527,7 @@ terminate the PTY.
 
 `Electron` owns concrete native capabilities such as windows, dialogs, external
 URLs, filesystem reveal, and application lifecycle. A renderer Store may call
-a semantic `RendererClient` Electron operation for a simple native action. It
+a semantic `Client` Electron operation for a simple native action. It
 uses a domain operation exposed through RPC when Cake business policy or
 multiple Services must be coordinated.
 
@@ -563,7 +567,7 @@ r-state-tree snapshots are the serialization boundary for renderer-owned state:
 
 ```text
 startup: versioned file → WindowStateStorage RPC → mount RootStore with snapshot once
-runtime: onSnapshot(RootStore) → RendererClient.windowState → versioned file
+runtime: onSnapshot(RootStore) → Client.windowState → versioned file
 ```
 
 Window snapshot persistence is renderer infrastructure outside the Store tree.
@@ -593,19 +597,24 @@ Renderer Stores live in `src/renderer/stores`. They own:
 - keyed child Store projections;
 - explicit window snapshot fields.
 
-The single Model synchronizer lives in renderer infrastructure. It owns RPC
-Stream subscriptions, observation generations, and revision/reconnect policy.
+The single Model observer lives in renderer infrastructure. It owns Model
+observation demand and each observation's cancellation handle. It delegates RPC
+Stream execution and failed-stream retries to the renderer runtime's narrow
+observation helper. Each Stream retries independently with an Effect Schedule.
+Each source owns its current-first, ordered update
+contract; the observer does not implement a second revision protocol.
 It applies each validated Snapshot with `applySnapshot` and reduces each
 subsequent Event transactionally, using direct reactive batches for incremental
 entity changes; it is not a second application state system. Renderer bootstrap
-attaches it to the mounted Root Store so it can watch the loaded Model set.
+attaches it to the mounted Root Store and window root projection Model so it can
+watch observation demand and update the corresponding projection children.
 Feature Stores and Models never access it.
 
 The normal data and command paths are:
 
 ```text
-CakeIpcClient Stream → Model synchronizer → hydrate snapshot / reduce event → Store/React
-Store intent → RendererClient Promise → CakeIpcClient Effect → RPC
+CakeIpcClient Stream → Model observer → hydrate snapshot / reduce event → Store/React
+Store intent → Client Promise → CakeIpcClient Effect → RPC
 ```
 
 r-state-tree Models and Stores use the installed package's actual semantics:
@@ -614,19 +623,20 @@ r-state-tree Models and Stores use the installed package's actual semantics:
   references, and synchronous invariants;
 - Stores hold window-local application/UI behavior and explicit async state;
 - one logical projection update is committed in one r-state-tree transaction;
-- Store `AbortSignal` is passed to cancellable `RendererClient` operations;
+- Store `AbortSignal` is passed to cancellable `Client` operations;
 - Store disposal prevents late local commits, while the client translates abort
   to Effect/RPC interruption;
 - Store effects own workflow-local subscriptions and timers, not authoritative
   entity observation Streams;
 - snapshots contain only explicitly selected renderer-owned state.
 
-The Model synchronizer never lets arbitrary Effect Fibers mutate Models. Each
+The Model observer never lets arbitrary Effect Fibers mutate Models. Each
 validated Snapshot is applied atomically and each Event is reduced
-transactionally; incremental entity changes use direct reactive batches. Stale
-generations cannot commit, and reconnect starts from a fresh authoritative
-Snapshot. It owns at
-most one active observation for each loaded identity. Models remain passive
+transactionally; incremental entity changes use direct reactive batches. The
+Model observer interrupts replaced observations through their cancellation
+handles, and retry starts a new source stream whose first value is an
+authoritative Snapshot. The observer owns at most one active observation for
+each loaded identity. Models remain passive
 reactive data and know nothing about Streams or synchronization.
 
 React mounts the root Store outside render, finds it through r-state-tree's
@@ -682,9 +692,9 @@ src/
 ├── preload/
 ├── renderer/
 │   ├── RendererRuntime.ts    # one window-local Effect runtime
-│   ├── client/               # permanent Promise RendererClient adapter
-│   ├── RendererModelSynchronizer.ts # Effect Streams → snapshot hydration and event reduction
-│   ├── RendererModels.ts    # window ownership and lifetime of projection Models
+│   ├── client/               # permanent Promise Client adapter
+│   ├── observers/             # common Stream primitive and focused projection observers
+│   ├── models/RootProjection.ts # window root for currently loaded authoritative projections
 │   ├── models/               # r-state-tree projection Model definitions
 │   ├── stores/               # r-state-tree application/UI Stores
 │   └── components/
@@ -699,9 +709,10 @@ Dependencies flow as follows:
 
 ```text
 renderer components → renderer Stores and Models
-renderer Stores → RendererClient
-RendererModelSynchronizer → CakeIpcClient and renderer Models
-RendererClient → CakeIpcClient ↔ shared RPC protocol ↔ CakeIpcServer
+renderer Stores → Client
+renderer observers → RendererRuntime and their Model or Store owners
+RendererRuntime → CakeIpcClient
+Client → CakeIpcClient ↔ shared RPC protocol ↔ CakeIpcServer
 CakeIpcServer → domain operations → Services
 ```
 
@@ -736,9 +747,9 @@ and use validated or sandboxed protocols.
 
 Domain tests execute real domain Effects with test Service Layers. Service
 integration tests exercise real external boundaries where practical. Renderer
-Store tests inject a controlled Promise `RendererClient`; projection tests use
-controlled current-first Streams and assert identity, ordering, reconnect, and
-disposal. Focused Electron tests prove the complete
+Store tests inject a controlled Promise `Client`; observer tests use controlled
+current-first Streams and assert identity, ordering, retry, and disposal; reducer
+tests assert focused Model updates and preserved child identity. Focused Electron tests prove the complete
 renderer/preload/RPC/main path.
 
 Domain operations and service calls use named Effects and tracing annotations

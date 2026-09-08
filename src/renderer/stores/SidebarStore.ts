@@ -5,7 +5,7 @@ import type { ProjectCatalogStore } from "./ProjectCatalogStore";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
 import type { CakeChatCollectionStore } from "./CakeChatCollectionStore";
-import { RendererClientContext } from "../client/RendererClientContext";
+import { ClientContext } from "./context/ClientContext";
 import type { ProjectSessionCatalogQuery } from "../../domain/project-session-data";
 import type { CakeChatCatalogQuery } from "../../domain/cake-chat-data";
 import type { EmbeddedEditorSettingsStore } from "./EmbeddedEditorSettingsStore";
@@ -29,7 +29,7 @@ export interface SidebarStoreProps {
 /** Owns project navigation, metadata-stream demand, and activity badges. */
 export class SidebarStore extends Store<SidebarStoreProps> {
   get electron() {
-    return RendererClientContext.consume(this)!.electron;
+    return ClientContext.consume(this)!.electron;
   }
 
   @snapshot hidden = false;

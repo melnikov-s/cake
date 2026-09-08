@@ -1,8 +1,8 @@
 import { applySnapshot } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
-import type { RendererClient } from "../../../../src/renderer/client/RendererClient";
+import type { Client } from "../../../../src/renderer/client/Client";
 import { mountRootStore } from "../../../../src/renderer/mount-root-store";
-import { RendererModels } from "../../../../src/renderer/RendererModels";
+import { RootProjection } from "../../../../src/renderer/models/RootProjection";
 
 const projectPath = "/projects/example";
 const worktreePath = "/projects/.cake-worktrees/example-task";
@@ -32,7 +32,7 @@ function deferred() {
 
 describe("RootStore session navigation", () => {
   it("opens projected family children in one reusable pane", async () => {
-    const models = new RendererModels();
+    const models = RootProjection.create();
     applySnapshot(models.sessionCatalog, {
       sessions: [sessionSummary("parent", projectPath)],
       resolvedHasMoreByProject: {},
@@ -41,7 +41,7 @@ describe("RootStore session navigation", () => {
     const respondControl = vi.fn(async () => undefined);
     const client = {
       projectSessions: { open, respondControl },
-    } as unknown as RendererClient;
+    } as unknown as Client;
     const root = mountRootStore(client, { state: {}, children: {} }, async () => undefined, models);
 
     try {
@@ -120,7 +120,7 @@ describe("RootStore session navigation", () => {
   });
 
   it("closes the selected Kanban board when its navigation icon is invoked again", () => {
-    const models = new RendererModels();
+    const models = RootProjection.create();
     applySnapshot(models.projects, {
       projects: [
         {
@@ -132,7 +132,7 @@ describe("RootStore session navigation", () => {
       ],
     });
     const root = mountRootStore(
-      {} as RendererClient,
+      {} as Client,
       { state: {}, children: {} },
       async () => undefined,
       models,
@@ -155,7 +155,7 @@ describe("RootStore session navigation", () => {
   });
 
   it("does not replace a session selected while worktree resolution is in flight", async () => {
-    const models = new RendererModels();
+    const models = RootProjection.create();
     applySnapshot(models.sessionCatalog, {
       sessions: [
         sessionSummary("worktree-session", worktreePath),
@@ -166,7 +166,7 @@ describe("RootStore session navigation", () => {
     const resolution = deferred();
     const client = {
       projectSessions: { resolve: vi.fn(() => resolution.promise) },
-    } as unknown as RendererClient;
+    } as unknown as Client;
     const root = mountRootStore(client, { state: {}, children: {} }, async () => undefined, models);
     const createSession = vi.spyOn(root, "createSession").mockResolvedValue(undefined);
 

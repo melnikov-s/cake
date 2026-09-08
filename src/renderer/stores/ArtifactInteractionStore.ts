@@ -1,8 +1,8 @@
 import { observable, Store } from "r-state-tree";
 import { validateArtifactResponse, type ArtifactRecord } from "../../ipc/artifact-contract";
-import type { RendererEvent } from "../RendererEvent";
+import type { StoreEvent } from "../events/StoreEvent";
 import { describeError } from "../error-details";
-import { RendererClientContext } from "../client/RendererClientContext";
+import { ClientContext } from "./context/ClientContext";
 import type { JsonValue } from "../../ipc/json-contract";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 
@@ -23,7 +23,7 @@ export interface ArtifactInteractionStoreProps {
 /** Owns blocking artifact interaction and artifact export behavior. */
 export class ArtifactInteractionStore extends Store<ArtifactInteractionStoreProps> {
   get client() {
-    return RendererClientContext.consume(this)!;
+    return ClientContext.consume(this)!;
   }
 
   request: ArtifactRequestState | undefined;
@@ -128,7 +128,7 @@ export class ArtifactInteractionStore extends Store<ArtifactInteractionStoreProp
     return this.client.artifacts.export(context.sessionId, { signal: this.signal });
   }
 
-  receive(event: RendererEvent) {
+  receive(event: StoreEvent) {
     if (event.type === "artifact-requested") {
       // Register even while another session is selected: the user may switch
       // back later, and the main process stays blocked until one response (or

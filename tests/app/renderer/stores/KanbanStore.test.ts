@@ -1,11 +1,11 @@
 import { createStore } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
-import type { RendererClient } from "../../../../src/renderer/client/RendererClient";
+import type { Client } from "../../../../src/renderer/client/Client";
 import type { ProjectCatalogStore } from "../../../../src/renderer/stores/ProjectCatalogStore";
 import type { SessionCatalogStore } from "../../../../src/renderer/stores/SessionCatalogStore";
 import type { SessionRegistryStore } from "../../../../src/renderer/stores/SessionRegistryStore";
 import { KanbanStore } from "../../../../src/renderer/stores/KanbanStore";
-import { mountWithRendererClient } from "../mount-with-renderer-client";
+import { mountWithClient } from "../mount-with-client";
 
 const projectPath = "/work/cake";
 const statusId = "b925b5dd-9661-4f1a-9f40-406be3c96c27";
@@ -62,7 +62,7 @@ function fixture(options?: {
     find: (path: string) => (path === projectPath ? project : undefined),
   } as unknown as ProjectCatalogStore;
   const describeSession = vi.fn(async () => project.workflow.sessionDetails[0]!);
-  const { root, subject } = mountWithRendererClient(
+  const { root, subject } = mountWithClient(
     createStore(KanbanStore, {
       projects,
       catalog,
@@ -78,7 +78,7 @@ function fixture(options?: {
         mutate,
         describeSession,
       },
-    } as unknown as RendererClient,
+    } as unknown as Client,
   );
   return {
     root,

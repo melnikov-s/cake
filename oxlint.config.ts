@@ -69,7 +69,7 @@ export default defineConfig({
       files: [
         "src/renderer/app.tsx",
         "src/renderer/components/renderer-error-boundary.tsx",
-        "src/renderer/main.tsx",
+        "src/renderer/main.ts",
         "src/renderer/plugin-runtime.ts",
       ],
       rules: {

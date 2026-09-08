@@ -57,7 +57,7 @@ inserted into Cake's DOM.
 
 ## Renderer ownership
 
-The window-owned Model synchronizer owns Project Session observations and
+The window-owned Model observer owns Project Session observations and
 applies mapped snapshots to stable Session Models supplied only by `RootStore`.
 `ProjectSessionStore` owns composer, chat
 configuration, artifacts, discussion presentation, and renderer operation state
@@ -65,9 +65,9 @@ around that Model. Its `ChatStore` supplies the authoritative shared `Chat`
 component. `RootStore` routes application intents and coordinates selection
 without copying this state.
 
-Stores invoke the Promise-based `RendererClient`; they do not import Effect,
+Stores invoke the Promise-based `Client`; they do not import Effect,
 `CakeIpcClient`, RPC definitions, main domain modules, or `PiSessions`.
-The window-owned Model synchronizer owns observation subscriptions. Store disposal
+The window-owned Model observer owns observation subscriptions. Store disposal
 owns local workflow cleanup and aborts cancellable client operations.
 
 ## Verification boundary

@@ -1,7 +1,7 @@
 import { Store, observable } from "r-state-tree";
 import type { PiSettingUpdate } from "../../ipc/session-contract";
-import { RendererClientContext } from "../client/RendererClientContext";
-import { SettingsSessionContext } from "../context/SettingsSessionContext";
+import { ClientContext } from "./context/ClientContext";
+import { SettingsSessionContext } from "./context/SettingsSessionContext";
 import { describeError } from "../error-details";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 
@@ -18,7 +18,7 @@ export class ProviderSettingsStore extends Store<ProviderSettingsStoreProps> {
   private refreshOperationId: string | undefined;
 
   get client() {
-    return RendererClientContext.consume(this)!;
+    return ClientContext.consume(this)!;
   }
 
   get activeSession() {

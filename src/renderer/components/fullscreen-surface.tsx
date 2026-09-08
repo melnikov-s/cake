@@ -1,9 +1,34 @@
 import { useEffect, useId, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { useStore } from "r-state-tree/react";
 import { IconButton } from "@/components/ui/icon-button";
-import { CloseIcon } from "@/components/ui/icons";
+import { CloseIcon, ExpandIcon } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
-import { useRendererInfrastructure } from "../RendererInfrastructureContext";
+import { FullscreenSurfaceStore } from "../stores/FullscreenSurfaceStore";
+
+export function FullscreenButton({
+  className,
+  disabled,
+  label,
+  onClick,
+}: {
+  className?: string;
+  disabled?: boolean;
+  label: string;
+  onClick(): void;
+}) {
+  return (
+    <IconButton
+      className={cn("fullscreen-trigger", className)}
+      tooltip="View fullscreen"
+      ariaLabel={label}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      <ExpandIcon />
+    </IconButton>
+  );
+}
 
 export function FullscreenSurface({
   children,
@@ -18,7 +43,7 @@ export function FullscreenSurface({
   onClose(): void;
   title: string;
 }) {
-  const infrastructure = useRendererInfrastructure();
+  const fullscreenSurfaces = useStore(FullscreenSurfaceStore);
   const surfaceRef = useRef<HTMLDivElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
   const onCloseRef = useRef(onClose);
@@ -26,26 +51,10 @@ export function FullscreenSurface({
   const titleId = useId();
   onCloseRef.current = onClose;
 
-  useEffect(() => {
-    const unsubscribe = infrastructure.subscribe((event) => {
-      if (event.type === "fullscreen-surface-close-requested" && event.surfaceId === surfaceId)
-        onCloseRef.current();
-    });
-    const registered = infrastructure.client.electron
-      .setFullscreenSurfaceOpen(surfaceId, true)
-      .catch(() => undefined);
-
-    return () => {
-      unsubscribe();
-      // Preserve registration order if a surface opens and closes before the
-      // first cross-process request settles.
-      void registered.then(() =>
-        infrastructure.client.electron
-          .setFullscreenSurfaceOpen(surfaceId, false)
-          .catch(() => undefined),
-      );
-    };
-  }, [infrastructure, surfaceId]);
+  useEffect(
+    () => fullscreenSurfaces.open(surfaceId, () => onCloseRef.current()),
+    [fullscreenSurfaces, surfaceId],
+  );
 
   useEffect(() => {
     const previouslyFocused =

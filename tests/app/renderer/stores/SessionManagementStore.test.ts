@@ -1,11 +1,11 @@
 import { createStore, mount } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
-import type { RendererClient } from "../../../../src/renderer/client/RendererClient";
+import type { Client } from "../../../../src/renderer/client/Client";
 import type { SessionCatalogStore } from "../../../../src/renderer/stores/SessionCatalogStore";
 import { SessionManagementStore } from "../../../../src/renderer/stores/SessionManagementStore";
 import { SessionOperationCoordinatorStore } from "../../../../src/renderer/stores/SessionOperationCoordinatorStore";
 import type { SessionRegistryStore } from "../../../../src/renderer/stores/SessionRegistryStore";
-import { mountWithRendererClient } from "../mount-with-renderer-client";
+import { mountWithClient } from "../mount-with-client";
 
 describe("SessionManagementStore deletion", () => {
   it("deletes a resolved renderer draft without calling the Project Session backend", async () => {
@@ -21,14 +21,14 @@ describe("SessionManagementStore deletion", () => {
       find: (sessionId: string) =>
         sessionId === "draft-1" ? { sessionId, resolved: true } : undefined,
     } as SessionCatalogStore;
-    const { root, subject } = mountWithRendererClient(
+    const { root, subject } = mountWithClient(
       createStore(SessionManagementStore, {
         operations,
         catalog,
         registry,
         reportError: vi.fn(),
       }),
-      { workspaces: { deleteSession } } as unknown as RendererClient,
+      { workspaces: { deleteSession } } as unknown as Client,
     );
 
     await subject.deleteSession("draft-1");

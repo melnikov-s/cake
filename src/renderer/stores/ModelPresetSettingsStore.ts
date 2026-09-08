@@ -1,6 +1,6 @@
 import { Store, observable, snapshot } from "r-state-tree";
 import type { ChatConfiguration, ModelOption, ModelPreset } from "../../ipc/session-contract";
-import { RendererClientContext } from "../client/RendererClientContext";
+import { ClientContext } from "./context/ClientContext";
 import { describeError } from "../error-details";
 
 interface ModelPresetProjection {
@@ -38,7 +38,7 @@ export class ModelPresetSettingsStore extends Store {
   private readonly authoritativeIds = new Map<string, string>();
 
   get client() {
-    return RendererClientContext.consume(this)!;
+    return ClientContext.consume(this)!;
   }
 
   hydrate() {

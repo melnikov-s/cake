@@ -3,10 +3,10 @@ import type { CakeChatControlRequest } from "../../domain/cake-chat-data";
 import type { ProjectSessionControlRequest } from "../../domain/project-session-data";
 import type { JsonValue } from "../../ipc/json-contract";
 import type { ChatConfiguration } from "../../ipc/session-contract";
-import type { RendererClient } from "../client/RendererClient";
-import { RendererClientContext } from "../client/RendererClientContext";
-import { ActiveProjectSessionContext } from "../context/ActiveProjectSessionContext";
-import { SettingsSessionContext } from "../context/SettingsSessionContext";
+import type { Client } from "../client/Client";
+import { ClientContext } from "./context/ClientContext";
+import { ActiveProjectSessionContext } from "./context/ActiveProjectSessionContext";
+import { SettingsSessionContext } from "./context/SettingsSessionContext";
 import type { SessionHistoryEntry } from "./AppShellStore";
 import { SessionRegistryStore } from "./SessionRegistryStore";
 import { ProjectWorkbenchStore } from "./ProjectWorkbenchStore";
@@ -14,6 +14,7 @@ import { SidebarStore } from "./SidebarStore";
 import { ReviewsStore } from "./ReviewsStore";
 import { SettingsStore } from "./SettingsStore";
 import { ExtensionUiStore } from "./ExtensionUiStore";
+import { FullscreenSurfaceStore } from "./FullscreenSurfaceStore";
 import { AppControlBridge, type AgentControlSource } from "../app-control-bridge";
 import { CakeChatCollectionStore } from "./CakeChatCollectionStore";
 import { AppShellStore } from "./AppShellStore";
@@ -30,27 +31,27 @@ import { TerminalStore, type TerminalTarget } from "./TerminalStore";
 import { SessionLayoutStore, type SessionSplitAxis } from "./SessionLayoutStore";
 import { SessionCoordinationStore } from "./SessionCoordinationStore";
 import { resolveDraftUpdate } from "../../utils/resolve-draft-update";
-import type { RendererModels } from "../RendererModels";
+import type { RootProjection } from "../models/RootProjection";
 import { formatHotkey, type HotkeyActionId } from "../lib/hotkeys";
 
 export class RootStore extends Store<{
-  rendererClient: RendererClient;
-  models: RendererModels;
+  client: Client;
+  projection: RootProjection;
   flushWindowState(): Promise<void>;
 }> {
   readonly appControl: AppControlBridge;
 
   get projectCatalogModel() {
-    return this.props.models.projects;
+    return this.props.projection.projects;
   }
   get sessionCatalogModel() {
-    return this.props.models.sessionCatalog;
+    return this.props.projection.sessionCatalog;
   }
   get cakeChatCatalogModel() {
-    return this.props.models.cakeChatCatalog;
+    return this.props.projection.cakeChatCatalog;
   }
 
-  [RendererClientContext.provide]() {
+  [ClientContext.provide]() {
     return this.client;
   }
 
@@ -89,8 +90,15 @@ export class RootStore extends Store<{
     return createStore(InlineWidgetStore);
   }
 
+  @child
+  get fullscreenSurfaceStore(): FullscreenSurfaceStore {
+    return createStore(FullscreenSurfaceStore, {
+      setOpen: (surfaceId, open) => this.client.electron.setFullscreenSurfaceOpen(surfaceId, open),
+    });
+  }
+
   get client() {
-    return this.props.rendererClient;
+    return this.props.client;
   }
 
   private projectSessionWorkingDirectory(sessionId: string) {
@@ -726,7 +734,7 @@ export class RootStore extends Store<{
       operations: this.sessionOperationCoordinator,
       reviews: () => this.reviewsStore,
       sessionModel: (sessionId, workingDirectory) =>
-        this.props.models.projectSession(sessionId, workingDirectory),
+        this.props.projection.projectSession(sessionId, workingDirectory),
       canSubmit: (sessionId) => this.projectWorkbenchStore.canSubmitSession(sessionId),
       isActive: (sessionId) =>
         this.appShellStore.selection.kind === "project-session" &&
@@ -858,6 +866,17 @@ export class RootStore extends Store<{
 
   get projectSessionCatalogQueries() {
     return this.sidebarStore.projectSessionCatalogQueries;
+  }
+
+  /** Project Session targets currently eligible for Model observation. */
+  get projectSessionObservationTargets() {
+    const blockedPath = this.projectWorkbenchStore.pendingAuthorizationPath;
+    return this.sessionRegistry.observationSessions
+      .filter((session) => session.workspacePath !== blockedPath)
+      .map((session) => ({
+        sessionId: session.sessionId,
+        workingDirectory: session.workspacePath,
+      }));
   }
 
   @child
@@ -999,7 +1018,7 @@ export class RootStore extends Store<{
   get cakeChatCollectionStore(): CakeChatCollectionStore {
     return createStore(CakeChatCollectionStore, {
       catalog: this.cakeChatCatalogModel,
-      sessionModel: (sessionId) => this.props.models.cakeChat(sessionId),
+      sessionModel: (sessionId) => this.props.projection.cakeChat(sessionId),
       tools: () => this.appControl.listTools(),
       modelPresets: () => this.settingsStore.modelPresets.presets,
       defaultConfiguration: () => this.settingsStore.modelPresets.defaultConfiguration,

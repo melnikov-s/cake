@@ -1,5 +1,5 @@
 import { Store, child, createStore, observable, snapshot } from "r-state-tree";
-import { RendererClientContext } from "../client/RendererClientContext";
+import { ClientContext } from "./context/ClientContext";
 import type { JsonObject } from "../../ipc/json-contract";
 import {
   SESSION_TITLE_MAX_LENGTH,
@@ -7,7 +7,7 @@ import {
   type ChatConfiguration,
   type ModelPreset,
 } from "../../ipc/session-contract";
-import type { CakeChatSummary } from "../../domain/cake-chat-data";
+import type { CakeChatSummary, CakeChatTarget } from "../../domain/cake-chat-data";
 import { compareSessionSummariesForSidebar } from "../../utils/session-summary-order";
 import { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import { SessionLayoutStore, type SessionSplitAxis } from "./SessionLayoutStore";
@@ -82,7 +82,7 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
   }
 
   get client() {
-    return RendererClientContext.consume(this)!;
+    return ClientContext.consume(this)!;
   }
   get sessionId() {
     return this.selectedSessionId;
@@ -120,6 +120,13 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
 
   get activeSession() {
     return this.selectedSessionId ? this.findSession(this.selectedSessionId) : undefined;
+  }
+
+  /** Loaded Cake Chat targets whose transcript projections should remain synchronized. */
+  get observationTargets(): ReadonlyArray<CakeChatTarget> {
+    return this.loadedSessions
+      .filter((session) => !this.isPendingSession(session.sessionId))
+      .map((session) => this.target(session.sessionId));
   }
 
   findSession(sessionId: string) {

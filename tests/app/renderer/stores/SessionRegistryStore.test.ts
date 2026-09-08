@@ -2,7 +2,7 @@ import { applySnapshot, createStore, mount, type StoreSnapshot } from "r-state-t
 import { describe, expect, it, vi } from "vitest";
 import { SessionCatalog } from "../../../../src/renderer/models/SessionCatalog";
 import { SessionSummary } from "../../../../src/renderer/models/SessionSummary";
-import { RendererModels } from "../../../../src/renderer/RendererModels";
+import { RootProjection } from "../../../../src/renderer/models/RootProjection";
 import { SessionCatalogStore } from "../../../../src/renderer/stores/SessionCatalogStore";
 import { SessionOperationCoordinatorStore } from "../../../../src/renderer/stores/SessionOperationCoordinatorStore";
 import { SessionRegistryStore } from "../../../../src/renderer/stores/SessionRegistryStore";
@@ -21,7 +21,7 @@ function registryFixture(
     }),
   );
   const operations = mount(createStore(SessionOperationCoordinatorStore));
-  const models = new RendererModels();
+  const models = RootProjection.create();
   const registry = mount(
     createStore(SessionRegistryStore, {
       catalog,

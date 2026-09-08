@@ -2,9 +2,9 @@ import { Store } from "r-state-tree";
 import type { EditorAnnotationSnapshot } from "../../ipc/editor-annotation";
 import type { SourceLocation } from "../../ipc/source-location";
 import type { Attachment } from "../../ipc/session-contract";
-import type { EmbeddedEditorStateSnapshot, EmbeddedEditorStatus } from "../client/RendererClient";
-import { RendererClientContext } from "../client/RendererClientContext";
-import type { RendererEvent } from "../RendererEvent";
+import type { EmbeddedEditorStateSnapshot, EmbeddedEditorStatus } from "../client/Client";
+import { ClientContext } from "./context/ClientContext";
+import type { StoreEvent } from "../events/StoreEvent";
 import { describeError } from "../error-details";
 
 export interface EmbeddedEditorStoreProps {
@@ -45,7 +45,7 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
   private annotationSyncPending = false;
 
   get vscode() {
-    return RendererClientContext.consume(this)!.vscode;
+    return ClientContext.consume(this)!.vscode;
   }
 
   get chatSidebarVisible() {
@@ -75,7 +75,7 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
 
   receive(
     event: Extract<
-      RendererEvent,
+      StoreEvent,
       {
         type: "embedded-editor-selection" | "embedded-editor-selection-cleared";
       }

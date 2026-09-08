@@ -2,7 +2,7 @@ import { Store, child, createStore } from "r-state-tree";
 import type { Session } from "../models/Session";
 import type { ModelPreset } from "../../ipc/session-contract";
 import { describeError } from "../error-details";
-import { RendererClientContext } from "../client/RendererClientContext";
+import { ClientContext } from "./context/ClientContext";
 import { ChatConfigurationStore } from "./ChatConfigurationStore";
 import { ChatStore } from "./ChatStore";
 import type { CakeChatCollectionStore } from "./CakeChatCollectionStore";
@@ -35,7 +35,7 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
     return this.props.model;
   }
   get client() {
-    return RendererClientContext.consume(this)!;
+    return ClientContext.consume(this)!;
   }
   get sessionId() {
     return this.props.sessionId;

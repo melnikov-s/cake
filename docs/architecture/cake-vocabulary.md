@@ -242,29 +242,31 @@ runtime. It propagates `AbortSignal` cancellation into Effect interruption and
 hides Layers, Fibers, transport envelopes, and RPC implementation details from
 Stores and React.
 
-### Model synchronizer
+### Model observer
 
 The renderer's single window-owned Stream-to-Model boundary. It listens to
 current-first Effect RPC Streams, applies authoritative snapshots with
 `applySnapshot`, and reduces subsequent validated Events transactionally. It
-uses direct, batched Model mutations for incremental entity changes. It owns
-subscription, revision, reconnect, and interruption
-mechanics. Renderer bootstrap attaches it
+uses direct, batched Model mutations for incremental entity changes. It owns Model observation demand and each observation's cancellation handle.
+The renderer runtime's narrow Stream helper handles interruption and retries
+that Stream with an Effect Schedule. The observer trusts each source's
+current-first, ordered update contract rather
+than implementing a second revision protocol. Renderer bootstrap attaches it
 to the mounted Root Store so it can reactively discover current loaded Models;
-feature Stores and Models never access the synchronizer.
+feature Stores and Models never access the observer.
 
 ### Window state persistence
 
 Window-owned renderer infrastructure that loads one versioned r-state-tree Store
 snapshot before the Root Store mounts, then observes snapshots from the mounted
-Store tree and saves them through `RendererClient`. It is not a Store, does not
+Store tree and saves them through `Client`. It is not a Store, does not
 participate in Store Context, and never reapplies storage to a mounted Store.
 
 ### Store
 
 An r-state-tree behavioral component owning window-local renderer application
 state, application/UI logic, workflow operations, cancellation, and concurrency
-policy. Stores read Models and invoke `RendererClient`; they do not
+policy. Stores read Models and invoke `Client`; they do not
 consume Effect directly or contain Cake business rules or privileged
 implementations.
 
@@ -273,7 +275,7 @@ implementations.
 An r-state-tree reactive representation of a validated entity such as a
 Project, Cake Session, Message, Artifact, or Review Thread. Models represent
 current projected state and synchronous invariants. Models know nothing about
-Streams, RPC, revisions, reconnects, or synchronization; the Model synchronizer
+Streams, RPC, revisions, reconnects, or synchronization; the Model observer
 populates them through snapshots, and Stores and React read them reactively.
 
 ### React-local state

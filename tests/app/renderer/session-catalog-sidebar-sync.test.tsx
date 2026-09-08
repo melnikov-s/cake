@@ -6,9 +6,9 @@ import { createRoot, type Root } from "react-dom/client";
 import { applySnapshot, effect, toSnapshot } from "r-state-tree";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Sidebar } from "../../../src/renderer/components/sidebar";
-import type { RendererClient } from "../../../src/renderer/client/RendererClient";
+import type { Client } from "../../../src/renderer/client/Client";
 import { mountRootStore } from "../../../src/renderer/mount-root-store";
-import { RendererModels } from "../../../src/renderer/RendererModels";
+import { RootProjection } from "../../../src/renderer/models/RootProjection";
 import type { RootStore } from "../../../src/renderer/stores/RootStore";
 
 const projectPath = "/projects/sidebar-sync";
@@ -67,7 +67,7 @@ function sidebar(root: RootStore) {
 describe("Project Session catalog to sidebar synchronization", () => {
   let container: HTMLDivElement;
   let reactRoot: Root;
-  let models: RendererModels;
+  let models: RootProjection;
   let root: RootStore;
   let start: ReturnType<typeof deferred>;
 
@@ -76,7 +76,7 @@ describe("Project Session catalog to sidebar synchronization", () => {
     container = document.createElement("div");
     document.body.append(container);
     reactRoot = createRoot(container);
-    models = new RendererModels();
+    models = RootProjection.create();
     applySnapshot(models.projects, {
       projects: [
         {
@@ -103,7 +103,7 @@ describe("Project Session catalog to sidebar synchronization", () => {
         showSessionContextMenu: async () => undefined,
       },
       projectSessions: { start: vi.fn(() => start.promise) },
-    } as unknown as RendererClient;
+    } as unknown as Client;
     root = mountRootStore(client, { state: {}, children: {} }, async () => undefined, models);
     await act(async () => reactRoot.render(sidebar(root)));
   });

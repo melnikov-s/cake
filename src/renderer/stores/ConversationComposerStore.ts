@@ -2,11 +2,11 @@ import { Store, child, computed, createStore, observable, snapshot } from "r-sta
 import type { Annotation, Attachment, FileSuggestion, UiPart } from "../../ipc/session-contract";
 import { applyAnnotationUpdate, createAnnotation } from "../../utils/annotations";
 import { parsePiBuiltinCommand } from "../../ipc/session-contract";
-import type { RendererEvent } from "../RendererEvent";
+import type { StoreEvent } from "../events/StoreEvent";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import { describeError } from "../error-details";
 import { pastedImageAttachments } from "../pasted-image-attachments";
-import { RendererClientContext } from "../client/RendererClientContext";
+import { ClientContext } from "./context/ClientContext";
 import type { WorktreeDraftChoice } from "./WorktreeCreationStore";
 import { OptimisticUserMessagesStore } from "./OptimisticUserMessagesStore";
 import { shouldRenderMarkdown } from "../../utils/markdown";
@@ -102,7 +102,7 @@ export class ConversationComposerStore extends Store<ConversationComposerStorePr
   }
 
   get client() {
-    return RendererClientContext.consume(this)!;
+    return ClientContext.consume(this)!;
   }
 
   get activeOperations() {
@@ -816,7 +816,7 @@ export class ConversationComposerStore extends Store<ConversationComposerStorePr
     }
   }
 
-  receive(event: RendererEvent) {
+  receive(event: StoreEvent) {
     if (event.type === "agent-availability-changed" && event.availability.state === "unavailable") {
       for (const operationId of this.activeOperations.slice()) this.finishOperation(operationId);
       this.optimisticUserMessages.clear();

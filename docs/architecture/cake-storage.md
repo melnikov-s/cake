@@ -119,7 +119,7 @@ r-state-tree snapshots serialize renderer-owned application state:
 ```text
 explicit snapshot fields
 → r-state-tree snapshot capture/change observation
-→ RendererClient.windowState
+→ Client.windowState
 → WindowStateStorage
 → versioned file
 ```
@@ -148,9 +148,9 @@ Hydration order is mandatory:
 3. the renderer mounts the r-state-tree Root Store once with the complete
    snapshot;
 4. Store effects activate only after that one-time hydration;
-5. bootstrap attaches the external Model synchronizer and a scoped, debounced
+5. bootstrap attaches the external Model observer and a scoped, debounced
    `onSnapshot` observer that persists future Store commits through
-   `RendererClient`.
+   `Client`.
 
 Window persistence is not a Store and never applies a storage value to an
 already-mounted Store. Storage-to-Store flow occurs exactly once at mount;

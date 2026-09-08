@@ -1,5 +1,5 @@
 import { Store, child, computed, createStore, snapshot } from "r-state-tree";
-import type { RendererEvent } from "../RendererEvent";
+import type { StoreEvent } from "../events/StoreEvent";
 import type { Session } from "../models/Session";
 import type { ChatConfiguration, ModelPreset } from "../../ipc/session-contract";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
@@ -19,7 +19,7 @@ import { MessageCommentsStore } from "./MessageCommentsStore";
 import { SubagentActivityStore } from "./SubagentActivityStore";
 import { WorktreeStore, type WorktreeStoreProps } from "./WorktreeStore";
 import { StagedSessionCommandStore } from "./StagedSessionCommandStore";
-import { RendererClientContext } from "../client/RendererClientContext";
+import { ClientContext } from "./context/ClientContext";
 import type { ExistingWorktreeCandidate, WorktreeDraftChoice } from "./WorktreeCreationStore";
 import type { SessionActivity } from "../session-activity";
 
@@ -91,7 +91,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
     return this.props.model;
   }
   get client() {
-    return RendererClientContext.consume(this)!;
+    return ClientContext.consume(this)!;
   }
   get workspacePath() {
     return this.props.workspacePath;
@@ -131,7 +131,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   }
 
   /** Routes an event only to the session subsystem that authoritatively owns it. */
-  receive(event: RendererEvent) {
+  receive(event: StoreEvent) {
     if (event.type === "artifact-requested") {
       if (event.record.artifact.sessionId !== this.sessionId) return;
       this.artifactRequestActive = true;

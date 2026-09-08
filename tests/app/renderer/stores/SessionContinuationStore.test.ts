@@ -1,9 +1,9 @@
 import { createStore, mount } from "r-state-tree";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { RendererClient } from "../../../../src/renderer/client/RendererClient";
+import type { Client } from "../../../../src/renderer/client/Client";
 import { SessionContinuationStore } from "../../../../src/renderer/stores/SessionContinuationStore";
 import { SessionOperationCoordinatorStore } from "../../../../src/renderer/stores/SessionOperationCoordinatorStore";
-import { mountWithRendererClient } from "../mount-with-renderer-client";
+import { mountWithClient } from "../mount-with-client";
 
 const disposables: Array<{ [Symbol.dispose](): void }> = [];
 
@@ -17,7 +17,7 @@ function setup(options?: { workspacePath?: string; canBranch?: boolean }) {
   const openSession = vi.fn(async () => undefined);
   const fork = vi.fn(async () => ({ sessionId: "forked" }));
   const handoff = vi.fn(async () => ({ sessionId: "handed-off" }));
-  const { root, subject } = mountWithRendererClient(
+  const { root, subject } = mountWithClient(
     createStore(SessionContinuationStore, {
       operations,
       createWorktree,
@@ -32,7 +32,7 @@ function setup(options?: { workspacePath?: string; canBranch?: boolean }) {
       openSession,
       reportError: vi.fn(),
     }),
-    { projectSessions: { fork, handoff } } as unknown as RendererClient,
+    { projectSessions: { fork, handoff } } as unknown as Client,
   );
   disposables.push(root, operations);
   return { store: subject, createWorktree, openSession, fork, handoff };

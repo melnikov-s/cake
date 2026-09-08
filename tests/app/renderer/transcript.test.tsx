@@ -61,7 +61,7 @@ import {
 import { MessageCommentsStore } from "../../../src/renderer/stores/MessageCommentsStore";
 import type { ChatConfigurationStore } from "../../../src/renderer/stores/ChatConfigurationStore";
 import { ChatStore, type TranscriptScrollPosition } from "../../../src/renderer/stores/ChatStore";
-import { RendererInfrastructureFixture } from "./renderer-infrastructure";
+import { FullscreenSurfaceFixture } from "./fullscreen-surface-fixture";
 
 interface TranscriptHarness {
   visibleParts: UiPart[];
@@ -1752,7 +1752,7 @@ describe("Transcript scrolling", () => {
     const contextMenu = mountedContextMenuAction();
     act(() =>
       root.render(
-        <RendererInfrastructureFixture>
+        <FullscreenSurfaceFixture>
           <Transcript
             parts={[
               {
@@ -1772,7 +1772,7 @@ describe("Transcript scrolling", () => {
             }}
             empty={<div />}
           />
-        </RendererInfrastructureFixture>,
+        </FullscreenSurfaceFixture>,
       ),
     );
 
@@ -1939,7 +1939,7 @@ describe("Transcript scrolling", () => {
   it("opens every assistant response in a fullscreen reader regardless of text length or streaming state", () => {
     act(() =>
       root.render(
-        <RendererInfrastructureFixture>
+        <FullscreenSurfaceFixture>
           <TestTranscript
             sessionId="session-1"
             store={storeWith([
@@ -1959,7 +1959,7 @@ describe("Transcript scrolling", () => {
               },
             ])}
           />
-        </RendererInfrastructureFixture>,
+        </FullscreenSurfaceFixture>,
       ),
     );
 

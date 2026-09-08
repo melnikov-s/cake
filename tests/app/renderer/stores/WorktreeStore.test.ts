@@ -1,9 +1,9 @@
 import { createStore, observable } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
 import type { WorktreeLandOutcome, WorktreeStatus } from "../../../../src/ipc/worktree-contract";
-import type { RendererClient } from "../../../../src/renderer/client/RendererClient";
+import type { Client } from "../../../../src/renderer/client/Client";
 import { WorktreeStore } from "../../../../src/renderer/stores/WorktreeStore";
-import { mountWithRendererClient } from "../mount-with-renderer-client";
+import { mountWithClient } from "../mount-with-client";
 
 function worktreeStatus(worktreePath: string): WorktreeStatus {
   return {
@@ -49,7 +49,7 @@ describe("WorktreeStore", () => {
         );
       const onLanded = vi.fn();
       const onResolveWorkspace = vi.fn();
-      const { root, subject: store } = mountWithRendererClient(
+      const { root, subject: store } = mountWithClient(
         createStore(WorktreeStore, {
           workspacePath: () => "/worktree",
           sessionId: () => "session-1",
@@ -71,7 +71,7 @@ describe("WorktreeStore", () => {
               activity.streaming = true;
             }),
           },
-        } as unknown as RendererClient,
+        } as unknown as Client,
       );
       try {
         await vi.waitFor(() => expect(store.status).toBeDefined());
@@ -114,7 +114,7 @@ describe("WorktreeStore", () => {
       const prompt = vi.fn(async () => {
         throw new Error("Session unavailable");
       });
-      const { root, subject: store } = mountWithRendererClient(
+      const { root, subject: store } = mountWithClient(
         createStore(WorktreeStore, {
           workspacePath: () => "/worktree",
           sessionId: () => "session-1",
@@ -127,7 +127,7 @@ describe("WorktreeStore", () => {
         {
           managedWorktrees: { status: vi.fn(async () => currentStatus), land, cancelLanding },
           projectSessions: { prompt },
-        } as unknown as RendererClient,
+        } as unknown as Client,
       );
       try {
         await vi.waitFor(() => expect(store.status).toBeDefined());
@@ -169,7 +169,7 @@ describe("WorktreeStore", () => {
     );
     const land = vi.fn(async () => ({ outcome: "landed" as const }));
     const onLanded = vi.fn();
-    const { root, subject: store } = mountWithRendererClient(
+    const { root, subject: store } = mountWithClient(
       createStore(WorktreeStore, {
         workspacePath: () => "/worktree",
         sessionId: () => "session-1",
@@ -186,7 +186,7 @@ describe("WorktreeStore", () => {
           land,
           cancelLanding: vi.fn(async () => undefined),
         },
-      } as unknown as RendererClient,
+      } as unknown as Client,
     );
     await vi.waitFor(() => expect(store.status).toEqual(currentStatus));
 
@@ -209,7 +209,7 @@ describe("WorktreeStore", () => {
         void options;
       },
     );
-    const { root, subject: store } = mountWithRendererClient(
+    const { root, subject: store } = mountWithClient(
       createStore(WorktreeStore, {
         workspacePath: () => "/worktree",
         sessionId: () => "session-1",
@@ -226,7 +226,7 @@ describe("WorktreeStore", () => {
           rebase: vi.fn(async () => ({ outcome: "resolving", files: ["shared.ts"] })),
         },
         projectSessions: { prompt },
-      } as unknown as RendererClient,
+      } as unknown as Client,
     );
     await vi.waitFor(() => expect(store.status).toBe(currentStatus));
 
@@ -247,7 +247,7 @@ describe("WorktreeStore", () => {
   it("does not discard a worktree when terminal retirement is cancelled", async () => {
     const discard = vi.fn(async () => undefined);
     const prepareWorkingDirectoryRetirement = vi.fn(async () => false);
-    const { root, subject: store } = mountWithRendererClient(
+    const { root, subject: store } = mountWithClient(
       createStore(WorktreeStore, {
         workspacePath: () => "/worktree",
         sessionId: () => "session-1",
@@ -263,7 +263,7 @@ describe("WorktreeStore", () => {
           status: vi.fn(async () => worktreeStatus("/worktree")),
           discard,
         },
-      } as unknown as RendererClient,
+      } as unknown as Client,
     );
 
     await store.discard(false);
@@ -284,7 +284,7 @@ describe("WorktreeStore", () => {
         ? projectRefresh
         : Promise.resolve(worktreeStatus(input.workspacePath)),
     );
-    const { root, subject: store } = mountWithRendererClient(
+    const { root, subject: store } = mountWithClient(
       createStore(WorktreeStore, {
         workspacePath: () => activity.workspacePath,
         sessionId: () => "session-1",
@@ -295,7 +295,7 @@ describe("WorktreeStore", () => {
         prepareWorkingDirectoryRetirement: async () => true,
         onResolveWorkspace: vi.fn(),
       }),
-      { managedWorktrees: { status } } as unknown as RendererClient,
+      { managedWorktrees: { status } } as unknown as Client,
     );
 
     await vi.waitFor(() => expect(status).toHaveBeenCalledWith({ workspacePath: "/project" }));

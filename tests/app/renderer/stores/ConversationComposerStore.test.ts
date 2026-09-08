@@ -1,14 +1,14 @@
 import { child, createStore, mount, Store } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
-import type { RendererClient } from "../../../../src/renderer/client/RendererClient";
-import { RendererClientContext } from "../../../../src/renderer/client/RendererClientContext";
+import type { Client } from "../../../../src/renderer/client/Client";
+import { ClientContext } from "../../../../src/renderer/stores/context/ClientContext";
 import { Message } from "../../../../src/renderer/models/Message";
 import { Session } from "../../../../src/renderer/models/Session";
 import { ConversationComposerStore } from "../../../../src/renderer/stores/ConversationComposerStore";
 import { SessionOperationCoordinatorStore } from "../../../../src/renderer/stores/SessionOperationCoordinatorStore";
 
 class HarnessStore extends Store<{
-  client: RendererClient;
+  client: Client;
   model: Session;
   existing?: boolean;
   streaming?: boolean;
@@ -17,7 +17,7 @@ class HarnessStore extends Store<{
   draft = "First message";
   submissionOrder: string[] = [];
 
-  [RendererClientContext.provide]() {
+  [ClientContext.provide]() {
     return this.props.client;
   }
 
@@ -83,7 +83,7 @@ class HarnessStore extends Store<{
   }
 }
 
-class DraftHarnessStore extends Store<{ client: RendererClient }> {
+class DraftHarnessStore extends Store<{ client: Client }> {
   draft = "";
   private staged: { text: string; attachments: []; resolved: boolean } | undefined = {
     text: "# Draft heading",
@@ -91,7 +91,7 @@ class DraftHarnessStore extends Store<{ client: RendererClient }> {
     resolved: false,
   };
 
-  [RendererClientContext.provide]() {
+  [ClientContext.provide]() {
     return this.props.client;
   }
 
@@ -184,7 +184,7 @@ describe("ConversationComposerStore", () => {
           rejectPrompt = reject;
         }),
     );
-    const client = { projectSessions: { prompt } } as unknown as RendererClient;
+    const client = { projectSessions: { prompt } } as unknown as Client;
     const model = Session.create({ sessionId: "session-1", workingDirectory: "/project" });
     const root = mount(createStore(HarnessStore, { client, model, existing: true }));
     const sentImage = {
@@ -219,7 +219,7 @@ describe("ConversationComposerStore", () => {
   it("keeps streaming project input in the local editable queue when configured", async () => {
     const model = Session.create({ sessionId: "session-1", workingDirectory: "/project" });
     const followUp = vi.fn(async () => "turn-2");
-    const client = { projectSessions: { followUp } } as unknown as RendererClient;
+    const client = { projectSessions: { followUp } } as unknown as Client;
     const root = mount(
       createStore(HarnessStore, { client, model, existing: true, streaming: true }),
     );
@@ -240,7 +240,7 @@ describe("ConversationComposerStore", () => {
     const model = Session.create({ sessionId: "session-1", workingDirectory: "/project" });
     const steer = vi.fn(async () => "turn-2");
     const clearQueue = vi.fn(async () => ({ steering: ["First message"], followUp: [] }));
-    const client = { projectSessions: { steer, clearQueue } } as unknown as RendererClient;
+    const client = { projectSessions: { steer, clearQueue } } as unknown as Client;
     const root = mount(
       createStore(HarnessStore, { client, model, existing: true, streaming: true }),
     );
@@ -266,7 +266,7 @@ describe("ConversationComposerStore", () => {
   it("reconciles the first optimistic message when its canonical part completes in place", async () => {
     const model = Session.create({ sessionId: "session-1", workingDirectory: "/project" });
     const start = vi.fn(async () => "turn-1");
-    const client = { projectSessions: { start } } as unknown as RendererClient;
+    const client = { projectSessions: { start } } as unknown as Client;
     const root = mount(createStore(HarnessStore, { client, model }));
 
     await root.composer.submit();
@@ -288,7 +288,7 @@ describe("ConversationComposerStore", () => {
 
   it("renders and activates detected Markdown in a saved draft", async () => {
     const prompt = vi.fn(async () => "turn-1");
-    const client = { projectSessions: { prompt } } as unknown as RendererClient;
+    const client = { projectSessions: { prompt } } as unknown as Client;
     const root = mount(createStore(DraftHarnessStore, { client }));
 
     expect(root.composer.parts).toEqual([

@@ -1,17 +1,17 @@
 import { applySnapshot, child, createStore, mount, Store } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
 import type { UiPart } from "../../../../src/ipc/session-contract";
-import type { RendererClient } from "../../../../src/renderer/client/RendererClient";
-import { RendererClientContext } from "../../../../src/renderer/client/RendererClientContext";
+import type { Client } from "../../../../src/renderer/client/Client";
+import { ClientContext } from "../../../../src/renderer/stores/context/ClientContext";
 import { Session } from "../../../../src/renderer/models/Session";
 import { SubagentActivityStore } from "../../../../src/renderer/stores/SubagentActivityStore";
 
 class HarnessStore extends Store<{
-  client: RendererClient;
+  client: Client;
   model: Session;
   parts(): readonly UiPart[];
 }> {
-  [RendererClientContext.provide]() {
+  [ClientContext.provide]() {
     return this.props.client;
   }
 
@@ -29,7 +29,7 @@ function harness(model: Session, parts: () => readonly UiPart[] = () => []) {
   const abort = vi.fn(async () => undefined);
   const client = {
     subagents: { steer, abort },
-  } as unknown as RendererClient;
+  } as unknown as Client;
   const root = mount(createStore(HarnessStore, { client, model, parts }));
   return { root, store: root.activity, steer, abort };
 }

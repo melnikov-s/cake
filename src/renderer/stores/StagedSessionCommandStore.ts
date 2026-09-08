@@ -1,6 +1,6 @@
 import { Store, observable } from "r-state-tree";
 import { stagedSessionSlashCommands, type SessionSnapshot } from "../../ipc/session-contract";
-import { RendererClientContext } from "../client/RendererClientContext";
+import { ClientContext } from "./context/ClientContext";
 import { describeError } from "../error-details";
 
 type SlashCommand = SessionSnapshot["commands"][number];
@@ -28,9 +28,10 @@ export class StagedSessionCommandStore extends Store {
     const signal = AbortSignal.any([this.signal, controller.signal]);
 
     try {
-      const commands = await RendererClientContext.consume(
-        this,
-      )!.workspaces.loadStagedSlashCommands(workspacePath, { signal });
+      const commands = await ClientContext.consume(this)!.workspaces.loadStagedSlashCommands(
+        workspacePath,
+        { signal },
+      );
       if (signal.aborted || revision !== this.loadRevision) return;
       this.resourceCommands.splice(0, this.resourceCommands.length, ...commands);
     } catch (error) {

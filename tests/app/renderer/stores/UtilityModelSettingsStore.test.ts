@@ -1,9 +1,9 @@
 import { createStore } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
 import type { ApplicationState, UtilityModel } from "../../../../src/ipc/session-contract";
-import type { RendererClient } from "../../../../src/renderer/client/RendererClient";
+import type { Client } from "../../../../src/renderer/client/Client";
 import { UtilityModelSettingsStore } from "../../../../src/renderer/stores/UtilityModelSettingsStore";
-import { mountWithRendererClient } from "../mount-with-renderer-client";
+import { mountWithClient } from "../mount-with-client";
 
 const applicationState = (utilityModel?: UtilityModel): ApplicationState => ({
   projects: [],
@@ -13,10 +13,10 @@ const applicationState = (utilityModel?: UtilityModel): ApplicationState => ({
   utilityModel,
 });
 
-function mountUtility(setUtilityModel: RendererClient["workspaces"]["setUtilityModel"]) {
-  return mountWithRendererClient(createStore(UtilityModelSettingsStore), {
+function mountUtility(setUtilityModel: Client["workspaces"]["setUtilityModel"]) {
+  return mountWithClient(createStore(UtilityModelSettingsStore), {
     workspaces: { setUtilityModel },
-  } as unknown as RendererClient);
+  } as unknown as Client);
 }
 
 function deferred<T>() {

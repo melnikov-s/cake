@@ -1,10 +1,10 @@
 import { child, createStore, Store } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
-import type { RendererClient } from "../../../../src/renderer/client/RendererClient";
-import { ActiveProjectSessionContext } from "../../../../src/renderer/context/ActiveProjectSessionContext";
+import type { Client } from "../../../../src/renderer/client/Client";
+import { ActiveProjectSessionContext } from "../../../../src/renderer/stores/context/ActiveProjectSessionContext";
 import { ReviewsStore } from "../../../../src/renderer/stores/ReviewsStore";
 import type { SessionRegistryStore } from "../../../../src/renderer/stores/SessionRegistryStore";
-import { mountWithRendererClient } from "../mount-with-renderer-client";
+import { mountWithClient } from "../mount-with-client";
 
 class ReviewsHarnessStore extends Store<{ sessionRegistry: SessionRegistryStore }> {
   [ActiveProjectSessionContext.provide]() {
@@ -42,9 +42,9 @@ describe("ReviewsStore", () => {
       findModel: () => ({ reviewThreads: [thread] }),
       findSession: () => undefined,
     } as unknown as SessionRegistryStore;
-    const { root, subject } = mountWithRendererClient(
+    const { root, subject } = mountWithClient(
       createStore(ReviewsHarnessStore, { sessionRegistry }),
-      { discussionSessions: { prompt } } as unknown as RendererClient,
+      { discussionSessions: { prompt } } as unknown as Client,
     );
     const chat = subject.reviews.chatStore("thread-1")!;
 

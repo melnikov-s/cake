@@ -4,7 +4,7 @@ import type {
   InlineWidgetCapability,
   InlineWidgetLanguage,
 } from "../../ipc/inline-widget-contract";
-import { RendererClientContext } from "../client/RendererClientContext";
+import { ClientContext } from "./context/ClientContext";
 
 export interface InlineWidgetState {
   language: InlineWidgetLanguage;
@@ -26,7 +26,7 @@ export interface InlineWidgetRepairInput {
 /** Owns compilation and dedicated-agent repair policy for inline transcript widgets. */
 export class InlineWidgetStore extends Store {
   get inlineWidgets() {
-    return RendererClientContext.consume(this)!.inlineWidgets;
+    return ClientContext.consume(this)!.inlineWidgets;
   }
 
   readonly states: Record<string, InlineWidgetState> = observable({});

@@ -6,8 +6,8 @@ import type { SessionRegistryStore } from "../../../../src/renderer/stores/Sessi
 import type { CakeChatCollectionStore } from "../../../../src/renderer/stores/CakeChatCollectionStore";
 import { SidebarStore } from "../../../../src/renderer/stores/SidebarStore";
 import type { EmbeddedEditorSettingsStore } from "../../../../src/renderer/stores/EmbeddedEditorSettingsStore";
-import type { RendererClient } from "../../../../src/renderer/client/RendererClient";
-import { mountWithRendererClient } from "../mount-with-renderer-client";
+import type { Client } from "../../../../src/renderer/client/Client";
+import { mountWithClient } from "../mount-with-client";
 
 const embeddedEditorSettings = (sidebarAutoHide: "never" | "always" | "below-width" = "never") =>
   ({ sidebarAutoHide, sidebarAutoHideWidth: 1440 }) as EmbeddedEditorSettingsStore;
@@ -87,7 +87,7 @@ describe("SidebarStore catalog demand", () => {
       color: "violet" as const,
     };
     const showSessionContextMenu = vi.fn(async () => undefined);
-    const { root, subject } = mountWithRendererClient(
+    const { root, subject } = mountWithClient(
       createStore(SidebarStore, {
         projects: {
           orderedProjectPaths: ["/cake"],
@@ -115,7 +115,7 @@ describe("SidebarStore catalog demand", () => {
         setSessionUnread: async () => undefined,
         embeddedEditorSettings: embeddedEditorSettings(),
       }),
-      { electron: { showSessionContextMenu } } as unknown as RendererClient,
+      { electron: { showSessionContextMenu } } as unknown as Client,
     );
 
     try {

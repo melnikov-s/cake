@@ -1,11 +1,11 @@
 import { applySnapshot, createStore, toSnapshot } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
 import { SESSION_TITLE_MAX_LENGTH } from "../../../../src/ipc/session-contract";
-import type { RendererClient } from "../../../../src/renderer/client/RendererClient";
+import type { Client } from "../../../../src/renderer/client/Client";
 import { CakeChatCatalog } from "../../../../src/renderer/models/CakeChatCatalog";
 import { CakeChatCollectionStore } from "../../../../src/renderer/stores/CakeChatCollectionStore";
-import { mountWithRendererClient } from "../mount-with-renderer-client";
-import { RendererModels } from "../../../../src/renderer/RendererModels";
+import { mountWithClient } from "../mount-with-client";
+import { RootProjection } from "../../../../src/renderer/models/RootProjection";
 import { Message } from "../../../../src/renderer/models/Message";
 
 describe("CakeChatCollectionStore", () => {
@@ -13,14 +13,14 @@ describe("CakeChatCollectionStore", () => {
     "retains rejected Cake Chat command %s for correction",
     async (command) => {
       const catalog = CakeChatCatalog.create({ loaded: true, sessions: [] });
-      const models = new RendererModels();
-      const { root, subject: store } = mountWithRendererClient(
+      const models = RootProjection.create();
+      const { root, subject: store } = mountWithClient(
         createStore(CakeChatCollectionStore, {
           catalog,
           sessionModel: (sessionId) => models.cakeChat(sessionId),
           tools: () => [],
         }),
-        {} as RendererClient,
+        {} as Client,
       );
       const session = store.activeSession!;
       const submitted = await session.chatStore.submit(command);
@@ -43,14 +43,14 @@ describe("CakeChatCollectionStore", () => {
       throw new Error("Request failed");
     });
     const catalog = CakeChatCatalog.create({ loaded: true, sessions: [] });
-    const models = new RendererModels();
-    const { root, subject: store } = mountWithRendererClient(
+    const models = RootProjection.create();
+    const { root, subject: store } = mountWithClient(
       createStore(CakeChatCollectionStore, {
         catalog,
         sessionModel: (sessionId) => models.cakeChat(sessionId),
         tools: () => [],
       }),
-      { cakeChats: { [operation]: fail } } as unknown as RendererClient,
+      { cakeChats: { [operation]: fail } } as unknown as Client,
     );
     const session = store.activeSession!;
     store.markSessionStarted(session.sessionId);
@@ -77,14 +77,14 @@ describe("CakeChatCollectionStore", () => {
       throw new Error("Send failed");
     });
     const catalog = CakeChatCatalog.create({ loaded: true, sessions: [] });
-    const models = new RendererModels();
-    const { root, subject: store } = mountWithRendererClient(
+    const models = RootProjection.create();
+    const { root, subject: store } = mountWithClient(
       createStore(CakeChatCollectionStore, {
         catalog,
         sessionModel: (sessionId) => models.cakeChat(sessionId),
         tools: () => [],
       }),
-      { cakeChats: { prompt } } as unknown as RendererClient,
+      { cakeChats: { prompt } } as unknown as Client,
     );
     const session = store.activeSession!;
     store.createDraftSession(session.sessionId, "Saved message", []);
@@ -105,14 +105,14 @@ describe("CakeChatCollectionStore", () => {
         }),
     );
     const catalog = CakeChatCatalog.create({ loaded: true, sessions: [] });
-    const models = new RendererModels();
-    const { root, subject: store } = mountWithRendererClient(
+    const models = RootProjection.create();
+    const { root, subject: store } = mountWithClient(
       createStore(CakeChatCollectionStore, {
         catalog,
         sessionModel: (sessionId) => models.cakeChat(sessionId),
         tools: () => [],
       }),
-      { cakeChats: { prompt } } as unknown as RendererClient,
+      { cakeChats: { prompt } } as unknown as Client,
     );
     const session = store.activeSession!;
 
@@ -148,14 +148,14 @@ describe("CakeChatCollectionStore", () => {
 
   it("splits Cake Chat into independently focused pending sessions", () => {
     const catalog = CakeChatCatalog.create({ loaded: true, sessions: [] });
-    const models = new RendererModels();
-    const { root, subject: store } = mountWithRendererClient(
+    const models = RootProjection.create();
+    const { root, subject: store } = mountWithClient(
       createStore(CakeChatCollectionStore, {
         catalog,
         sessionModel: (sessionId) => models.cakeChat(sessionId),
         tools: () => [],
       }),
-      {} as RendererClient,
+      {} as Client,
     );
     const firstSessionId = store.sessionId!;
 
@@ -176,14 +176,14 @@ describe("CakeChatCollectionStore", () => {
 
   it("uses the shared composer command handling to rename Cake Chat", async () => {
     const catalog = CakeChatCatalog.create({ loaded: true, sessions: [] });
-    const models = new RendererModels();
-    const { root, subject: store } = mountWithRendererClient(
+    const models = RootProjection.create();
+    const { root, subject: store } = mountWithClient(
       createStore(CakeChatCollectionStore, {
         catalog,
         sessionModel: (sessionId) => models.cakeChat(sessionId),
         tools: () => [],
       }),
-      {} as RendererClient,
+      {} as Client,
     );
     const session = store.activeSession!;
 
@@ -200,14 +200,14 @@ describe("CakeChatCollectionStore", () => {
   it("caps Cake Chat titles when renaming", async () => {
     const rename = vi.fn(async () => undefined);
     const catalog = CakeChatCatalog.create({ loaded: true, sessions: [] });
-    const models = new RendererModels();
-    const { root, subject: store } = mountWithRendererClient(
+    const models = RootProjection.create();
+    const { root, subject: store } = mountWithClient(
       createStore(CakeChatCollectionStore, {
         catalog,
         sessionModel: (sessionId) => models.cakeChat(sessionId),
         tools: () => [],
       }),
-      { cakeChats: { rename } } as unknown as RendererClient,
+      { cakeChats: { rename } } as unknown as Client,
     );
     const sessionId = store.sessionId!;
     store.markSessionStarted(sessionId);
@@ -229,14 +229,14 @@ describe("CakeChatCollectionStore", () => {
   it("deletes a resolved draft without calling the Cake Chat backend", async () => {
     const deleteResolved = vi.fn(async () => undefined);
     const catalog = CakeChatCatalog.create({ loaded: true, sessions: [] });
-    const models = new RendererModels();
-    const { root, subject: store } = mountWithRendererClient(
+    const models = RootProjection.create();
+    const { root, subject: store } = mountWithClient(
       createStore(CakeChatCollectionStore, {
         catalog,
         sessionModel: (sessionId) => models.cakeChat(sessionId),
         tools: () => [],
       }),
-      { cakeChats: { deleteResolved } } as unknown as RendererClient,
+      { cakeChats: { deleteResolved } } as unknown as Client,
     );
     const sessionId = store.sessionId!;
     store.createDraftSession(sessionId, "Planned work", []);
@@ -255,14 +255,14 @@ describe("CakeChatCollectionStore", () => {
   it("submits transcript annotations from Cake Chat", async () => {
     const prompt = vi.fn(async () => "turn-1");
     const catalog = CakeChatCatalog.create({ loaded: true, sessions: [] });
-    const models = new RendererModels();
-    const { root, subject: store } = mountWithRendererClient(
+    const models = RootProjection.create();
+    const { root, subject: store } = mountWithClient(
       createStore(CakeChatCollectionStore, {
         catalog,
         sessionModel: (sessionId) => models.cakeChat(sessionId),
         tools: () => [],
       }),
-      { cakeChats: { prompt } } as unknown as RendererClient,
+      { cakeChats: { prompt } } as unknown as Client,
     );
     const session = store.activeSession!;
 
@@ -315,14 +315,14 @@ describe("CakeChatCollectionStore", () => {
       sessionId === "first" ? first : second,
     );
     const catalog = CakeChatCatalog.create({ loaded: true, sessions: [] });
-    const models = new RendererModels();
-    const { root, subject: store } = mountWithRendererClient(
+    const models = RootProjection.create();
+    const { root, subject: store } = mountWithClient(
       createStore(CakeChatCollectionStore, {
         catalog,
         sessionModel: (sessionId) => models.cakeChat(sessionId),
         tools: () => [],
       }),
-      { cakeChats: { open } } as unknown as RendererClient,
+      { cakeChats: { open } } as unknown as Client,
     );
 
     const openingFirst = store.open("first");
@@ -345,14 +345,14 @@ describe("CakeChatCollectionStore", () => {
   it("omits unset optional fields from Cake Chat prompts", async () => {
     const prompt = vi.fn(async () => "turn-1");
     const catalog = CakeChatCatalog.create({ loaded: false, sessions: [] });
-    const models = new RendererModels();
-    const { root, subject: store } = mountWithRendererClient(
+    const models = RootProjection.create();
+    const { root, subject: store } = mountWithClient(
       createStore(CakeChatCollectionStore, {
         catalog,
         sessionModel: (sessionId) => models.cakeChat(sessionId),
         tools: () => [],
       }),
-      { cakeChats: { prompt } } as unknown as RendererClient,
+      { cakeChats: { prompt } } as unknown as Client,
     );
 
     const initialization = store.initialize();

@@ -1,7 +1,7 @@
 import { Store, observable } from "r-state-tree";
 import type { ProjectWorkflowColor, ProjectWorkflowMutation } from "../../domain/application-data";
 import type { Project } from "../models/Project";
-import { RendererClientContext } from "../client/RendererClientContext";
+import { ClientContext } from "./context/ClientContext";
 import type { ProjectCatalogStore } from "./ProjectCatalogStore";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
@@ -63,7 +63,7 @@ export class KanbanStore extends Store<KanbanStoreProps> {
   }
 
   get client() {
-    return RendererClientContext.consume(this)!;
+    return ClientContext.consume(this)!;
   }
 
   get projectPath() {

@@ -7,7 +7,7 @@ import {
   subagentHandleFromTool,
   type SubagentRun,
 } from "../../utils/subagent-runs";
-import { RendererClientContext } from "../client/RendererClientContext";
+import { ClientContext } from "./context/ClientContext";
 import { ChatStore } from "./ChatStore";
 import { SubagentHandleId } from "../../domain/subagent-data";
 
@@ -20,7 +20,7 @@ export class SubagentActivityStore extends Store<{
   parts(): readonly UiPart[];
 }> {
   get client() {
-    return RendererClientContext.consume(this)!;
+    return ClientContext.consume(this)!;
   }
 
   get runs(): SubagentRun[] {

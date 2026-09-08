@@ -10,11 +10,11 @@ vi.mock("mermaid", () => ({
 import { ArtifactHost } from "../../../src/renderer/components/artifact-host";
 import { ArtifactsPanel } from "../../../src/renderer/components/artifacts-panel";
 import type { ArtifactRecord } from "../../../src/ipc/artifact-contract";
-import type { RendererClient } from "../../../src/renderer/client/RendererClient";
+import type { Client } from "../../../src/renderer/client/Client";
 import { InlineWidgetStore } from "../../../src/renderer/stores/InlineWidgetStore";
 import type { ProjectSessionStore } from "../../../src/renderer/stores/ProjectSessionStore";
-import { RendererInfrastructureFixture } from "./renderer-infrastructure";
-import { mountWithRendererClient } from "./mount-with-renderer-client";
+import { FullscreenSurfaceFixture } from "./fullscreen-surface-fixture";
+import { mountWithClient } from "./mount-with-client";
 
 function record(artifact: ArtifactRecord["artifact"]): ArtifactRecord {
   return {
@@ -211,9 +211,9 @@ describe("ArtifactHost", () => {
 
     act(() =>
       root.render(
-        <RendererInfrastructureFixture>
+        <FullscreenSurfaceFixture>
           <ArtifactHost record={artifact} requested onSubmit={submit} />
-        </RendererInfrastructureFixture>,
+        </FullscreenSurfaceFixture>,
       ),
     );
     const radios = [...container.querySelectorAll<HTMLInputElement>('input[type="radio"]')];
@@ -306,11 +306,10 @@ describe("ArtifactHost", () => {
     const client = {
       compile: vi.fn(async () => ({ token, url: `cake-widget://document/${token}` })),
       repair: vi.fn(),
-    } as unknown as RendererClient["inlineWidgets"];
-    ({ root: widgetRoot, subject: widgets } = mountWithRendererClient(
-      createStore(InlineWidgetStore),
-      { inlineWidgets: client } as unknown as RendererClient,
-    ));
+    } as unknown as Client["inlineWidgets"];
+    ({ root: widgetRoot, subject: widgets } = mountWithClient(createStore(InlineWidgetStore), {
+      inlineWidgets: client,
+    } as unknown as Client));
     const submit = vi.fn();
     const request = {
       protocol: "cake.request/v1" as const,
@@ -337,9 +336,9 @@ describe("ArtifactHost", () => {
 
     await act(async () => {
       root.render(
-        <RendererInfrastructureFixture>
+        <FullscreenSurfaceFixture>
           <ArtifactHost record={artifact} requested onSubmit={submit} inlineWidgets={widgets} />
-        </RendererInfrastructureFixture>,
+        </FullscreenSurfaceFixture>,
       );
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
@@ -391,11 +390,10 @@ describe("ArtifactHost", () => {
     const client = {
       compile: vi.fn(async () => ({ token, url: `cake-widget://document/${token}` })),
       repair: vi.fn(async () => ({ source, repairSessionId: "repair-session" })),
-    } as unknown as RendererClient["inlineWidgets"];
-    ({ root: widgetRoot, subject: widgets } = mountWithRendererClient(
-      createStore(InlineWidgetStore),
-      { inlineWidgets: client } as unknown as RendererClient,
-    ));
+    } as unknown as Client["inlineWidgets"];
+    ({ root: widgetRoot, subject: widgets } = mountWithClient(createStore(InlineWidgetStore), {
+      inlineWidgets: client,
+    } as unknown as Client));
     const artifact = record({
       protocol: "cake.artifact/v1",
       id: "comparison",
@@ -415,9 +413,9 @@ describe("ArtifactHost", () => {
 
     await act(async () => {
       root.render(
-        <RendererInfrastructureFixture>
+        <FullscreenSurfaceFixture>
           <ArtifactHost record={artifact} inlineWidgets={widgets} />
-        </RendererInfrastructureFixture>,
+        </FullscreenSurfaceFixture>,
       );
       await new Promise((resolve) => setTimeout(resolve, 0));
     });

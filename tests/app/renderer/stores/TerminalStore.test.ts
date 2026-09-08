@@ -1,8 +1,8 @@
 import { createStore, observable } from "r-state-tree";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { RendererClient } from "../../../../src/renderer/client/RendererClient";
+import type { Client } from "../../../../src/renderer/client/Client";
 import { TerminalStore, type TerminalTarget } from "../../../../src/renderer/stores/TerminalStore";
-import { mountWithRendererClient } from "../mount-with-renderer-client";
+import { mountWithClient } from "../mount-with-client";
 
 const stores: Disposable[] = [];
 
@@ -13,9 +13,9 @@ const workingDirectoryTarget = (
 
 function mountTerminal(
   activeTarget: () => TerminalTarget | undefined,
-  commands: Partial<RendererClient["terminals"]>,
+  commands: Partial<Client["terminals"]>,
 ) {
-  const terminals: RendererClient["terminals"] = {
+  const terminals: Client["terminals"] = {
     open: async () => {
       throw new Error("Unexpected terminal open");
     },
@@ -26,7 +26,7 @@ function mountTerminal(
     closeWorkingDirectory: async () => undefined,
     ...commands,
   };
-  const mounted = mountWithRendererClient(
+  const mounted = mountWithClient(
     createStore(TerminalStore, {
       activeTarget,
       toggleAcceleratorHint: () => "Ctrl+`",
@@ -34,7 +34,7 @@ function mountTerminal(
     }),
     {
       terminals,
-    } as unknown as RendererClient,
+    } as unknown as Client,
   );
   stores.push(mounted.root);
   return mounted.subject;

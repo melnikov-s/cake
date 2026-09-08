@@ -1,6 +1,6 @@
 import { Store, observable } from "r-state-tree";
 import type { WorktreeRecord } from "../../ipc/worktree-contract";
-import { RendererClientContext } from "../client/RendererClientContext";
+import { ClientContext } from "./context/ClientContext";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 
@@ -22,7 +22,7 @@ export interface WorktreeCreationStoreProps {
 /** Owns draft-only worktree selection and first-send checkout preparation. */
 export class WorktreeCreationStore extends Store<WorktreeCreationStoreProps> {
   get managedWorktrees() {
-    return RendererClientContext.consume(this)!.managedWorktrees;
+    return ClientContext.consume(this)!.managedWorktrees;
   }
 
   private readonly choicesBySession: Record<string, WorktreeDraftChoice> = observable({});

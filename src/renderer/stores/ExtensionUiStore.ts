@@ -1,7 +1,7 @@
 import { Store, observable } from "r-state-tree";
 import type { ResourceDiagnostic } from "../../ipc/session-contract";
-import { RendererClientContext } from "../client/RendererClientContext";
-import type { RendererEvent } from "../RendererEvent";
+import { ClientContext } from "./context/ClientContext";
+import type { StoreEvent } from "../events/StoreEvent";
 import type { Session } from "../models/Session";
 import { describeError } from "../error-details";
 
@@ -33,7 +33,7 @@ export interface ExtensionUiStoreProps {
 /** Owns extension-provided dialogs and transient renderer presentation. */
 export class ExtensionUiStore extends Store<ExtensionUiStoreProps> {
   get artifacts() {
-    return RendererClientContext.consume(this)!.artifacts;
+    return ClientContext.consume(this)!.artifacts;
   }
 
   request: UiRequestState | undefined;
@@ -87,7 +87,7 @@ export class ExtensionUiStore extends Store<ExtensionUiStoreProps> {
     this.notifications.splice(0);
   }
 
-  receive(event: RendererEvent) {
+  receive(event: StoreEvent) {
     if (event.type === "extension-ui-intent") {
       if (event.sessionId !== this.props.sessionContext()?.sessionId) return;
       const intent = event.intent;

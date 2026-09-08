@@ -1,6 +1,6 @@
 import { Store, untracked } from "r-state-tree";
 import { describeError } from "../error-details";
-import { RendererClientContext } from "../client/RendererClientContext";
+import { ClientContext } from "./context/ClientContext";
 import type {
   WorktreeLandOutcome,
   WorktreeLandRequest,
@@ -32,11 +32,11 @@ export interface WorktreeStoreProps {
  */
 export class WorktreeStore extends Store<WorktreeStoreProps> {
   get managedWorktrees() {
-    return RendererClientContext.consume(this)!.managedWorktrees;
+    return ClientContext.consume(this)!.managedWorktrees;
   }
 
   get projectSessions() {
-    return RendererClientContext.consume(this)!.projectSessions;
+    return ClientContext.consume(this)!.projectSessions;
   }
 
   status: WorktreeStatus | undefined;

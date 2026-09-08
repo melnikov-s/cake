@@ -22,9 +22,11 @@ Markdown or carry compatibility behavior for superseded contracts.
   session ID, revision, kind, digest, and Markdown fallback. It never receives
   a second Cake-owned transcript.
 - Renderer `Artifact` instances are disposable projections of validated
-  repository records. Pending response ownership, cancellation, and routing
-  remain in a focused renderer artifact workflow Store and the main artifact
-  domain operations above `PiSessions`.
+  repository records. Session snapshots hydrate current records; a focused
+  artifact observer applies live repository updates from the existing native
+  event stream directly to loaded Session Models. Pending response ownership,
+  cancellation, and routing remain in a focused renderer artifact workflow
+  Store and the main artifact domain operations above `PiSessions`.
 - Cake indexes the persisted Pi session reference in window state and records
   artifact session aliases when Pi materializes a new persistent session ID.
   Hydration combines validated Pi pointers with that Cake index, so artifacts

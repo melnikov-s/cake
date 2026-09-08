@@ -1,10 +1,10 @@
 import { createStore, toSnapshot } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
-import type { RendererClient } from "../../../../src/renderer/client/RendererClient";
+import type { Client } from "../../../../src/renderer/client/Client";
 import { StagedSessionCommandStore } from "../../../../src/renderer/stores/StagedSessionCommandStore";
-import { mountWithRendererClient } from "../mount-with-renderer-client";
+import { mountWithClient } from "../mount-with-client";
 
-type Commands = Awaited<ReturnType<RendererClient["workspaces"]["loadStagedSlashCommands"]>>;
+type Commands = Awaited<ReturnType<Client["workspaces"]["loadStagedSlashCommands"]>>;
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -28,12 +28,10 @@ function skill(name: string): Commands[number] {
   };
 }
 
-function mountCommands(
-  loadStagedSlashCommands: RendererClient["workspaces"]["loadStagedSlashCommands"],
-) {
-  return mountWithRendererClient(createStore(StagedSessionCommandStore), {
+function mountCommands(loadStagedSlashCommands: Client["workspaces"]["loadStagedSlashCommands"]) {
+  return mountWithClient(createStore(StagedSessionCommandStore), {
     workspaces: { loadStagedSlashCommands },
-  } as unknown as RendererClient);
+  } as unknown as Client);
 }
 
 describe("StagedSessionCommandStore", () => {
@@ -41,7 +39,7 @@ describe("StagedSessionCommandStore", () => {
     const first = deferred<Commands>();
     const second = deferred<Commands>();
     const load = vi
-      .fn<RendererClient["workspaces"]["loadStagedSlashCommands"]>()
+      .fn<Client["workspaces"]["loadStagedSlashCommands"]>()
       .mockReturnValueOnce(first.promise)
       .mockReturnValueOnce(second.promise);
     const { root, subject: store } = mountCommands(load);
@@ -61,7 +59,7 @@ describe("StagedSessionCommandStore", () => {
   it("clears commands from the previous workspace while the replacement loads", async () => {
     const replacement = deferred<Commands>();
     const load = vi
-      .fn<RendererClient["workspaces"]["loadStagedSlashCommands"]>()
+      .fn<Client["workspaces"]["loadStagedSlashCommands"]>()
       .mockResolvedValueOnce([skill("previous")])
       .mockReturnValueOnce(replacement.promise);
     const { root, subject: store } = mountCommands(load);

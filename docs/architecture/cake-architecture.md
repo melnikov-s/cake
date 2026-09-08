@@ -127,9 +127,10 @@ capabilities. It contains no Cake business logic.
 The renderer is sandboxed and has no Node integration. It owns React views, one
 window-local r-state-tree, reactive Models, and renderer application state and
 logic. Renderer infrastructure owns one Effect runtime and generated
-`CakeIpcClient`, then exposes a typed Promise-based `RendererClient` for commands
-and one window-owned Model synchronizer for Streams. The synchronizer maps
-validated updates to snapshots and applies them to existing Models. Ordinary
+`CakeIpcClient`, then exposes a typed Promise-based `Client` for commands
+and one common Stream observation primitive. Focused window-owned observers
+apply validated updates to their Model or Store owners and retain their own
+cancellation handles. Ordinary
 Stores and Models do not import Effect, construct transport envelopes, or import
 privileged implementations.
 
@@ -251,8 +252,10 @@ Named product surfaces receive named Stores with cohesive behavior, lifecycle,
 async policy, and persistence responsibility.
 
 Models are validated reactive projections of entities. One window-owned Model
-synchronizer owns authoritative RPC Stream subscriptions, reconnect and revision
-policy. It applies authoritative snapshots with `applySnapshot` and reduces
+synchronizer owns authoritative Model observation demand and each observation's
+cancellation handle. The renderer runtime's narrow Stream helper provides
+Effect-scheduled retries. The observer trusts the sources' current-first, ordered
+update contract, applies authoritative snapshots with `applySnapshot`, and reduces
 ordered events transactionally, using direct, batched Model mutations for
 incremental entity changes so identity is preserved.
 Window bootstrap attaches it to the mounted Root Store so it can discover the
@@ -260,7 +263,7 @@ current loaded Models reactively; feature Stores and Models never access
 synchronization machinery. Stores own window-local application/UI
 state and logic: workflow timers, cancellation,
 concurrency, snapshot coordination, and application intents. They invoke
-semantic Promise operations on `RendererClient`; Cake business logic lives in
+semantic Promise operations on `Client`; Cake business logic lives in
 main-process domain Effect modules. React keeps only truly local DOM, focus,
 measurement, hover, or isolated input state.
 
@@ -332,7 +335,7 @@ The window Store hierarchy mirrors the product surfaces:
   Working Directory, and the Cake-owned title remains stable across both namespaces.
 - Window-owned persistence infrastructure loads one versioned Store snapshot before
   mounting the Root Store, then watches the mounted Store tree and saves later
-  snapshots through `RendererClient`. Persistence is not a Store and never
+  snapshots through `Client`. Persistence is not a Store and never
   synchronizes storage back into an already-mounted Store tree.
 - `ProjectWorkbenchStore` coordinates project activation and its focused
   workflow children: `CommandPaneStore`, `SessionManagementStore`,

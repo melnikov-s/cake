@@ -7,7 +7,7 @@ import type {
 } from "../../ipc/session-contract";
 import type { Session } from "../models/Session";
 import { describeError } from "../error-details";
-import { RendererClientContext } from "../client/RendererClientContext";
+import { ClientContext } from "./context/ClientContext";
 
 export interface ChatConfigurationStoreProps {
   session(): Session | undefined;
@@ -41,7 +41,7 @@ export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
   private fastModeOverride: boolean | undefined;
 
   get client() {
-    return RendererClientContext.consume(this)!;
+    return ClientContext.consume(this)!;
   }
   get session() {
     return this.props.session();

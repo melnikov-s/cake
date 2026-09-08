@@ -1,5 +1,5 @@
 import { Store } from "r-state-tree";
-import { RendererClientContext } from "../client/RendererClientContext";
+import { ClientContext } from "./context/ClientContext";
 
 interface AgentNotificationInput {
   readonly title: string;
@@ -49,7 +49,7 @@ export class NotificationStore extends Store<{
     if (!pending) return;
     this.pending.delete(key);
     const nativeId = `cake-agent:${key}`;
-    void RendererClientContext.consume(this)!
+    void ClientContext.consume(this)!
       .electron.showNotification(
         {
           title: pending.input.source

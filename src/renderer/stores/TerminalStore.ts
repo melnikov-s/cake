@@ -1,5 +1,5 @@
 import { Store } from "r-state-tree";
-import { RendererClientContext } from "../client/RendererClientContext";
+import { ClientContext } from "./context/ClientContext";
 
 export interface TerminalTarget {
   workingDirectory: string;
@@ -28,7 +28,7 @@ export class TerminalStore extends Store<{
   newTabHotkey(): string;
 }> {
   get terminals() {
-    return RendererClientContext.consume(this)!.terminals;
+    return ClientContext.consume(this)!.terminals;
   }
 
   open = false;

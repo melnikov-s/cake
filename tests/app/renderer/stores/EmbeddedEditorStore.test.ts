@@ -2,8 +2,8 @@ import { createStore } from "r-state-tree";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { EditorAnnotationSnapshot } from "../../../../src/ipc/editor-annotation";
 import { EmbeddedEditorStore } from "../../../../src/renderer/stores/EmbeddedEditorStore";
-import type { RendererClient } from "../../../../src/renderer/client/RendererClient";
-import { mountWithRendererClient } from "../mount-with-renderer-client";
+import type { Client } from "../../../../src/renderer/client/Client";
+import { mountWithClient } from "../mount-with-client";
 function createHarness(annotations?: EditorAnnotationSnapshot) {
   let ideMode = false;
   let chatSidebarVisible = true;
@@ -27,7 +27,7 @@ function createHarness(annotations?: EditorAnnotationSnapshot) {
   });
   const enterProjectSidebarMode = vi.fn();
   const leaveProjectSidebarMode = vi.fn();
-  const { root, subject: store } = mountWithRendererClient(
+  const { root, subject: store } = mountWithClient(
     createStore(EmbeddedEditorStore, {
       projectPath: () => "/tmp/project",
       ideMode: () => ideMode,
@@ -51,7 +51,7 @@ function createHarness(annotations?: EditorAnnotationSnapshot) {
       leaveProjectSidebarMode,
       projectSidebarWidth: () => 292,
     }),
-    { vscode: client } as unknown as RendererClient,
+    { vscode: client } as unknown as Client,
   );
   return {
     client,

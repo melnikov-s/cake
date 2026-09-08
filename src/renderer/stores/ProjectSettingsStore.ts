@@ -1,6 +1,6 @@
 import { Store } from "r-state-tree";
 import { defaultProjectSettings, type ProjectSettings } from "../../domain/application-data";
-import { RendererClientContext } from "../client/RendererClientContext";
+import { ClientContext } from "./context/ClientContext";
 import { describeError } from "../error-details";
 import type { ProjectCatalogStore } from "./ProjectCatalogStore";
 
@@ -13,7 +13,7 @@ export class ProjectSettingsStore extends Store<{ projects: ProjectCatalogStore 
   error: string | undefined;
 
   get client() {
-    return RendererClientContext.consume(this)!;
+    return ClientContext.consume(this)!;
   }
 
   get projectName() {

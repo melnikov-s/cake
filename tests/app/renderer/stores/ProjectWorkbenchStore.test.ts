@@ -1,6 +1,6 @@
 import { createStore, mount, toSnapshot } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
-import type { RendererClient } from "../../../../src/renderer/client/RendererClient";
+import type { Client } from "../../../../src/renderer/client/Client";
 import type { ExtensionUiStore } from "../../../../src/renderer/stores/ExtensionUiStore";
 import type { ProjectCatalogStore } from "../../../../src/renderer/stores/ProjectCatalogStore";
 import { ProjectWorkbenchStore } from "../../../../src/renderer/stores/ProjectWorkbenchStore";
@@ -8,12 +8,12 @@ import type { ReviewsStore } from "../../../../src/renderer/stores/ReviewsStore"
 import type { SessionCatalogStore } from "../../../../src/renderer/stores/SessionCatalogStore";
 import type { SessionRegistryStore } from "../../../../src/renderer/stores/SessionRegistryStore";
 import { SessionOperationCoordinatorStore } from "../../../../src/renderer/stores/SessionOperationCoordinatorStore";
-import { mountWithRendererClient } from "../mount-with-renderer-client";
+import { mountWithClient } from "../mount-with-client";
 
 function mountWorkbench(
   registry: SessionRegistryStore,
   catalog: SessionCatalogStore,
-  rendererClient: RendererClient,
+  client: Client,
   initialActiveSessionId?: string,
   restoreStagedSession?: (projectPath: string) => string | undefined,
 ) {
@@ -22,7 +22,7 @@ function mountWorkbench(
     activeSessionId = sessionId;
   });
   const operations = mount(createStore(SessionOperationCoordinatorStore));
-  const mounted = mountWithRendererClient(
+  const mounted = mountWithClient(
     createStore(ProjectWorkbenchStore, {
       prepareWorkingDirectoryRetirement: async () => true,
       sessionRegistry: registry,
@@ -42,7 +42,7 @@ function mountWorkbench(
       leaveIdeSidebarMode: vi.fn(),
       projectSidebarWidth: () => 292,
     }),
-    rendererClient,
+    client,
   );
   return { ...mounted, operations, selectSession };
 }
@@ -74,7 +74,7 @@ describe("ProjectWorkbenchStore startup selection", () => {
     } = mountWorkbench(
       registry,
       catalog,
-      { projectSessions: { open } } as unknown as RendererClient,
+      { projectSessions: { open } } as unknown as Client,
       "session-1",
     );
     store.projectPath = "/project";
@@ -106,7 +106,7 @@ describe("ProjectWorkbenchStore startup selection", () => {
     } = mountWorkbench(
       registry,
       {} as SessionCatalogStore,
-      { workspaces: { inspect } } as unknown as RendererClient,
+      { workspaces: { inspect } } as unknown as Client,
       "session-1",
     );
 
@@ -152,7 +152,7 @@ describe("ProjectWorkbenchStore startup selection", () => {
       selectSession,
     } = mountWorkbench(registry, catalog, {
       projectSessions: { open },
-    } as unknown as RendererClient);
+    } as unknown as Client);
 
     const opening = store.openSession("session-1");
 
@@ -182,7 +182,7 @@ describe("ProjectWorkbenchStore startup selection", () => {
     } = mountWorkbench(
       registry,
       {} as SessionCatalogStore,
-      {} as RendererClient,
+      {} as Client,
       undefined,
       restoreStagedSession,
     );
@@ -211,12 +211,7 @@ describe("ProjectWorkbenchStore startup selection", () => {
       subject: store,
       operations,
       selectSession,
-    } = mountWorkbench(
-      registry,
-      {} as SessionCatalogStore,
-      {} as RendererClient,
-      "visible-session",
-    );
+    } = mountWorkbench(registry, {} as SessionCatalogStore, {} as Client, "visible-session");
     store.projectPath = "/visible-project";
 
     const created = await store.createDraftSession("/other-project", "Draft", "Do this later");
@@ -249,7 +244,7 @@ describe("ProjectWorkbenchStore startup selection", () => {
     } = mountWorkbench(
       registry,
       {} as SessionCatalogStore,
-      { projectSessions: { start } } as unknown as RendererClient,
+      { projectSessions: { start } } as unknown as Client,
       "visible-session",
     );
     store.projectPath = "/visible-project";
@@ -293,7 +288,7 @@ describe("ProjectWorkbenchStore startup selection", () => {
       operations,
     } = mountWorkbench(registry, catalog, {
       projectSessions: { open },
-    } as unknown as RendererClient);
+    } as unknown as Client);
 
     await store.openSession("session-1");
 

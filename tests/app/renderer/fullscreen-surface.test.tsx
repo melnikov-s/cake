@@ -3,7 +3,7 @@ import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { FullscreenSurface } from "../../../src/renderer/components/fullscreen-surface";
-import { RendererInfrastructureFixture } from "./renderer-infrastructure";
+import { FullscreenSurfaceFixture } from "./fullscreen-surface-fixture";
 
 function pressEscape() {
   act(() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
@@ -33,7 +33,7 @@ describe("FullscreenSurface", () => {
     let closed = false;
     act(() =>
       root.render(
-        <RendererInfrastructureFixture>
+        <FullscreenSurfaceFixture>
           <FullscreenSurface
             eyebrow="Full response"
             title="Cake"
@@ -43,7 +43,7 @@ describe("FullscreenSurface", () => {
           >
             <p>Response body</p>
           </FullscreenSurface>
-        </RendererInfrastructureFixture>,
+        </FullscreenSurfaceFixture>,
       ),
     );
     expect(document.body.querySelector('[role="dialog"]')).not.toBeNull();
@@ -57,7 +57,7 @@ describe("FullscreenSurface", () => {
     let closed = false;
     act(() =>
       root.render(
-        <RendererInfrastructureFixture>
+        <FullscreenSurfaceFixture>
           <FullscreenSurface
             eyebrow="Full response"
             title="Cake"
@@ -67,7 +67,7 @@ describe("FullscreenSurface", () => {
           >
             <p>Response body</p>
           </FullscreenSurface>
-        </RendererInfrastructureFixture>,
+        </FullscreenSurfaceFixture>,
       ),
     );
     const surface = document.body.querySelector<HTMLElement>('[role="dialog"]')!;

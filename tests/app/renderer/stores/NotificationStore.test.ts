@@ -1,8 +1,8 @@
 import { createStore } from "r-state-tree";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { RendererClient } from "../../../../src/renderer/client/RendererClient";
+import type { Client } from "../../../../src/renderer/client/Client";
 import { NotificationStore } from "../../../../src/renderer/stores/NotificationStore";
-import { mountWithRendererClient } from "../mount-with-renderer-client";
+import { mountWithClient } from "../mount-with-client";
 
 const source = {
   kind: "project-session" as const,
@@ -21,9 +21,9 @@ describe("NotificationStore", () => {
 
   it("debounces a session burst and delivers only its latest notification", async () => {
     const showNotification = vi.fn(async () => undefined);
-    const { root, subject: store } = mountWithRendererClient(
+    const { root, subject: store } = mountWithClient(
       createStore(NotificationStore, { onError: vi.fn() }),
-      { electron: { showNotification } } as unknown as RendererClient,
+      { electron: { showNotification } } as unknown as Client,
     );
 
     await store.enqueue({ title: "Build", body: "25%", level: "warning", source });
@@ -49,9 +49,9 @@ describe("NotificationStore", () => {
 
   it("batches different sessions independently", async () => {
     const showNotification = vi.fn(async () => undefined);
-    const { root, subject: store } = mountWithRendererClient(
+    const { root, subject: store } = mountWithClient(
       createStore(NotificationStore, { onError: vi.fn() }),
-      { electron: { showNotification } } as unknown as RendererClient,
+      { electron: { showNotification } } as unknown as Client,
     );
 
     await store.enqueue({ title: "First", body: "Done", level: "success", source });
@@ -69,9 +69,9 @@ describe("NotificationStore", () => {
 
   it("cancels pending delivery when disposed", async () => {
     const showNotification = vi.fn(async () => undefined);
-    const { root, subject: store } = mountWithRendererClient(
+    const { root, subject: store } = mountWithClient(
       createStore(NotificationStore, { onError: vi.fn() }),
-      { electron: { showNotification } } as unknown as RendererClient,
+      { electron: { showNotification } } as unknown as Client,
     );
 
     await store.enqueue({ title: "Build", body: "Done", level: "info", source });

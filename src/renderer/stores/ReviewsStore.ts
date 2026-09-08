@@ -2,8 +2,8 @@ import { Store, child, createStore, observable } from "r-state-tree";
 import type { DiscussionAnchor } from "../../domain/discussion-session-data";
 import type { Annotation } from "../../ipc/session-contract";
 import { applyAnnotationUpdate, createAnnotation } from "../../utils/annotations";
-import { RendererClientContext } from "../client/RendererClientContext";
-import { ActiveProjectSessionContext } from "../context/ActiveProjectSessionContext";
+import { ClientContext } from "./context/ClientContext";
+import { ActiveProjectSessionContext } from "./context/ActiveProjectSessionContext";
 import { describeError } from "../error-details";
 import { ChatStore } from "./ChatStore";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
@@ -23,7 +23,7 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
   private readonly resolutionRevisions = new Map<string, number>();
 
   get client() {
-    return RendererClientContext.consume(this)!;
+    return ClientContext.consume(this)!;
   }
 
   get context() {

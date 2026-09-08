@@ -1,6 +1,6 @@
 import { Store } from "r-state-tree";
-import { RendererClientContext } from "../client/RendererClientContext";
-import { ActiveProjectSessionContext } from "../context/ActiveProjectSessionContext";
+import { ClientContext } from "./context/ClientContext";
+import { ActiveProjectSessionContext } from "./context/ActiveProjectSessionContext";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 
 export type CommandPane = "changelog" | "tree" | "resources";
@@ -21,7 +21,7 @@ export class CommandPaneStore extends Store<CommandPaneStoreProps> {
   private navigationRevision = 0;
 
   get client() {
-    return RendererClientContext.consume(this)!;
+    return ClientContext.consume(this)!;
   }
 
   get activeSession() {

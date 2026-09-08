@@ -587,7 +587,7 @@ export const open = Effect.fn("ProjectSessions.open")(function* (target: Project
         message: `Cake could not find Project Session ${target.sessionId}`,
       });
   }
-  // Selection starts observation in the renderer's Model synchronizer. Opening
+  // Selection starts observation in the renderer's Model observer. Opening
   // validates durable transcript state, but resolved sessions remain archived
   // and are projected as read-only previews until an explicit restore or prompt.
   if (namespace)

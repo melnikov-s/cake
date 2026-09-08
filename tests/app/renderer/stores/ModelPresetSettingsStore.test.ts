@@ -2,8 +2,8 @@ import { child, createStore, mount, Store } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
 import type { ModelOption, ModelPreset } from "../../../../src/ipc/session-contract";
 import { ModelPresetSettingsStore } from "../../../../src/renderer/stores/ModelPresetSettingsStore";
-import type { RendererClient } from "../../../../src/renderer/client/RendererClient";
-import { RendererClientContext } from "../../../../src/renderer/client/RendererClientContext";
+import type { Client } from "../../../../src/renderer/client/Client";
+import { ClientContext } from "../../../../src/renderer/stores/context/ClientContext";
 
 interface Projection {
   presets: readonly ModelPreset[];
@@ -94,8 +94,8 @@ function createClient(initial: Projection = { presets: [] }, models = [catalogMo
   return { client, state: () => state };
 }
 
-class HarnessStore extends Store<{ client: RendererClient }> {
-  [RendererClientContext.provide]() {
+class HarnessStore extends Store<{ client: Client }> {
+  [ClientContext.provide]() {
     return this.props.client;
   }
 
@@ -106,7 +106,7 @@ class HarnessStore extends Store<{ client: RendererClient }> {
 
 function mountStore(initial?: Projection, models?: ModelOption[]) {
   const controlled = createClient(initial, models);
-  const rendererClient = {
+  const client = {
     models: {
       list: controlled.client.listModels,
       refresh: vi.fn(),
@@ -119,8 +119,8 @@ function mountStore(initial?: Projection, models?: ModelOption[]) {
       setDefault: controlled.client.setDefaultModelPreset,
       resolve: vi.fn(),
     },
-  } as unknown as RendererClient;
-  const root = mount(createStore(HarnessStore, { client: rendererClient }));
+  } as unknown as Client;
+  const root = mount(createStore(HarnessStore, { client: client }));
   return {
     ...controlled,
     store: root.settings,

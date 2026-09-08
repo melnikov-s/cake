@@ -1,6 +1,6 @@
 import { Store } from "r-state-tree";
 import { suggestedWorktreeName } from "../../utils/worktree-name";
-import { RendererClientContext } from "../client/RendererClientContext";
+import { ClientContext } from "./context/ClientContext";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 
 export type SessionContinuationDestination =
@@ -45,7 +45,7 @@ export class SessionContinuationStore extends Store<SessionContinuationStoreProp
   private activeOperationId: string | undefined;
 
   get client() {
-    return RendererClientContext.consume(this)!;
+    return ClientContext.consume(this)!;
   }
 
   forkAt(entryId: string) {

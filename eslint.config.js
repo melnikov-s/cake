@@ -128,7 +128,7 @@ export default tseslint.config(
           paths: [
             {
               name: "effect",
-              message: "Renderer Stores and Models use RendererClient and passive reactive state.",
+              message: "Renderer Stores and Models use Client and passive reactive state.",
             },
           ],
           patterns: [
@@ -137,7 +137,7 @@ export default tseslint.config(
                 "../../ipc/client/*",
                 "../../ipc/protocol/*",
                 "../RendererRuntime",
-                "../RendererModelSynchronizer",
+                "../observers/*",
               ],
               message:
                 "Effect RPC and synchronization mechanics belong to renderer infrastructure.",
@@ -148,15 +148,16 @@ export default tseslint.config(
     },
   },
   {
-    files: ["src/renderer/RendererModelSynchronizer.ts"],
+    files: ["src/renderer/observers/models.ts"],
     rules: {
       "no-restricted-imports": [
         "error",
         {
           patterns: [
             {
-              group: ["./stores/*", "./client/*"],
-              message: "The Model synchronizer depends only on CakeIpcClient and passive Models.",
+              group: ["../stores/!(RootStore)", "../client/*"],
+              message:
+                "The Model observer depends only on RootStore observation demand, RendererRuntime, and passive Models.",
             },
           ],
         },

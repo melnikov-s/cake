@@ -1,12 +1,12 @@
 import { Store } from "r-state-tree";
 import type { ApplicationState, ThinkingLevel, UtilityModel } from "../../ipc/session-contract";
-import { RendererClientContext } from "../client/RendererClientContext";
+import { ClientContext } from "./context/ClientContext";
 import { describeError } from "../error-details";
 
 /** Owns optimistic, queued persistence of the configured utility model. */
 export class UtilityModelSettingsStore extends Store {
   get workspaces() {
-    return RendererClientContext.consume(this)!.workspaces;
+    return ClientContext.consume(this)!.workspaces;
   }
 
   model: UtilityModel | undefined;

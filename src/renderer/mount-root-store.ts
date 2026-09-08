@@ -1,18 +1,18 @@
 import { createStore, mount, type StoreSnapshot } from "r-state-tree";
-import type { RendererClient } from "./client/RendererClient";
+import type { Client } from "./client/Client";
 import { RootStore } from "./stores/RootStore";
-import type { RendererModels } from "./RendererModels";
+import type { RootProjection } from "./models/RootProjection";
 
 export function mountRootStore(
-  client: RendererClient,
+  client: Client,
   snapshot: StoreSnapshot,
   flushWindowState: () => Promise<void>,
-  models: RendererModels,
+  projection: RootProjection,
 ) {
   const root = mount(
     createStore(RootStore, {
-      rendererClient: client,
-      models,
+      client: client,
+      projection,
       flushWindowState,
     }),
     { snapshot },
