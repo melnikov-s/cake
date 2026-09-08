@@ -1,6 +1,5 @@
 import { Store, child, computed, createStore, observable, snapshot } from "r-state-tree";
 import type { Annotation, Attachment, FileSuggestion, UiPart } from "../../ipc/session-contract";
-import { applyAnnotationUpdate, createAnnotation } from "../../utils/annotations";
 import { parsePiBuiltinCommand } from "../../ipc/session-contract";
 import type { StoreEvent } from "../events/StoreEvent";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
@@ -9,6 +8,7 @@ import { pastedImageAttachments } from "../lib/pasted-image-attachments";
 import { ClientContext } from "./context/ClientContext";
 import type { WorktreeDraftChoice } from "./WorktreeCreationStore";
 import { OptimisticUserMessagesStore } from "./OptimisticUserMessagesStore";
+import { AnnotationDraftStore } from "./AnnotationDraftStore";
 import { shouldRenderMarkdown } from "../../utils/markdown";
 
 /** A prompt held locally while the session streams, shown as a chip above the composer. */
@@ -74,7 +74,7 @@ export interface ConversationComposerStoreProps {
 /** Owns attachments, the local prompt queue, optimistic immediate prompts, and prompt delivery. */
 export class ConversationComposerStore extends Store<ConversationComposerStoreProps> {
   @snapshot attachments: Attachment[] = observable([]);
-  @snapshot annotations: Annotation[] = observable([]);
+  @snapshot private readonly annotations: Annotation[] = observable([]);
   @snapshot editorContextAttachment: Extract<Attachment, { kind: "source" }> | undefined;
   queuedPrompts: QueuedPrompt[] = observable([]);
   focusRequestRevision = 0;
@@ -98,6 +98,16 @@ export class ConversationComposerStore extends Store<ConversationComposerStorePr
   get optimisticUserMessages(): OptimisticUserMessagesStore {
     return createStore(OptimisticUserMessagesStore, {
       canonicalParts: this.props.canonicalParts,
+    });
+  }
+
+  @child
+  get annotationDraft(): AnnotationDraftStore {
+    return createStore(AnnotationDraftStore, {
+      annotations: this.annotations,
+      onAdded: () => this.requestFocus(),
+      onLimitReached: () =>
+        this.reportError(new Error("A message can include at most 100 annotations")),
     });
   }
 
@@ -177,31 +187,6 @@ export class ConversationComposerStore extends Store<ConversationComposerStorePr
           JSON.stringify(attachment.location.range) !== JSON.stringify(context.location.range),
       ),
     ];
-  }
-
-  addAnnotation(annotation: Omit<Annotation, "id">) {
-    if (this.annotations.length >= 100) {
-      this.reportError(new Error("A message can include at most 100 annotations"));
-      return;
-    }
-    this.annotations.push(createAnnotation(crypto.randomUUID(), annotation));
-    this.requestFocus();
-  }
-
-  updateAnnotation(id: string, update: Partial<Omit<Annotation, "id">>) {
-    const index = this.annotations.findIndex((annotation) => annotation.id === id);
-    if (index >= 0) {
-      const annotation = this.annotations[index];
-      if (!annotation) return;
-      this.annotations.splice(index, 1, applyAnnotationUpdate(annotation, update));
-    }
-  }
-
-  removeAnnotation(id: string) {
-    const index = this.annotations.findIndex((annotation) => annotation.id === id);
-    if (index >= 0) {
-      this.annotations.splice(index, 1);
-    }
   }
 
   setEditorContextAttachment(attachment: Extract<Attachment, { kind: "source" }> | undefined) {
@@ -289,7 +274,7 @@ export class ConversationComposerStore extends Store<ConversationComposerStorePr
     }
     const builtin = parsePiBuiltinCommand(text);
     if (builtin?.name === "handoff" || builtin?.name === "handoffandresolve") {
-      if (this.attachments.length > 0 || this.annotations.length > 0) {
+      if (this.attachments.length > 0 || this.annotationDraft.annotations.length > 0) {
         this.reportError(new Error("Remove attachments before using /handoff"));
         return false;
       }
@@ -332,7 +317,7 @@ export class ConversationComposerStore extends Store<ConversationComposerStorePr
     if (builtin?.name === "schedule" && this.props.scheduleMessage) {
       if (
         this.attachments.length > 0 ||
-        this.annotations.length > 0 ||
+        this.annotationDraft.annotations.length > 0 ||
         this.editorContextAttachment
       ) {
         this.reportError(new Error("Remove attachments before using /schedule"));
@@ -369,7 +354,7 @@ export class ConversationComposerStore extends Store<ConversationComposerStorePr
           ),
         ]
       : explicitAttachments;
-    const annotations = this.annotations.slice();
+    const annotations = this.annotationDraft.annotations.slice();
     const attachments: Attachment[] = [
       ...contextAttachments,
       ...(annotations.length > 0 ? [{ kind: "annotation" as const, annotations }] : []),
@@ -389,7 +374,7 @@ export class ConversationComposerStore extends Store<ConversationComposerStorePr
       if (text || explicitAttachments.length > 0 || annotations.length > 0) {
         this.props.setDraft("");
         this.attachments.splice(0);
-        this.annotations.splice(0);
+        this.annotationDraft.clear();
         this.queuedPrompts.push({
           id: crypto.randomUUID(),
           text,
@@ -402,7 +387,7 @@ export class ConversationComposerStore extends Store<ConversationComposerStorePr
     if (text || explicitAttachments.length > 0 || annotations.length > 0) {
       this.props.setDraft("");
       this.attachments.splice(0);
-      this.annotations.splice(0);
+      this.annotationDraft.clear();
       return this.deliver(
         text,
         attachments,
@@ -525,7 +510,7 @@ export class ConversationComposerStore extends Store<ConversationComposerStorePr
     if (!entry) return;
     this.props.setDraft(entry.text);
     for (const attachment of entry.attachments) {
-      if (attachment.kind === "annotation") this.annotations.push(...attachment.annotations);
+      if (attachment.kind === "annotation") this.annotationDraft.append(attachment.annotations);
       else this.attachments.push(attachment);
     }
     this.requestFocus();
@@ -630,8 +615,8 @@ export class ConversationComposerStore extends Store<ConversationComposerStorePr
       : explicit;
     return [
       ...attachments,
-      ...(this.annotations.length > 0
-        ? [{ kind: "annotation" as const, annotations: this.annotations.slice() }]
+      ...(this.annotationDraft.annotations.length > 0
+        ? [{ kind: "annotation" as const, annotations: this.annotationDraft.annotations.slice() }]
         : []),
     ];
   }
@@ -639,16 +624,16 @@ export class ConversationComposerStore extends Store<ConversationComposerStorePr
   private clearComposer() {
     this.props.setDraft("");
     this.attachments.splice(0);
-    this.annotations.splice(0);
+    this.annotationDraft.clear();
     this.editorContextAttachment = undefined;
   }
 
   private restoreAttachments(attachments: readonly Attachment[]) {
     this.attachments.splice(0);
-    this.annotations.splice(0);
+    this.annotationDraft.clear();
     this.editorContextAttachment = undefined;
     for (const attachment of attachments) {
-      if (attachment.kind === "annotation") this.annotations.push(...attachment.annotations);
+      if (attachment.kind === "annotation") this.annotationDraft.append(attachment.annotations);
       else this.attachments.push({ ...attachment });
     }
   }
@@ -811,7 +796,7 @@ export class ConversationComposerStore extends Store<ConversationComposerStorePr
     if (!this.props.draft().trim()) this.props.setDraft(text);
     // A failed send must not discard context added for the next message while awaiting delivery.
     for (const attachment of attachments) {
-      if (attachment.kind === "annotation") this.annotations.push(...attachment.annotations);
+      if (attachment.kind === "annotation") this.annotationDraft.append(attachment.annotations);
       else if (attachment !== this.editorContextAttachment) this.attachments.push(attachment);
     }
   }

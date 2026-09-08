@@ -61,7 +61,7 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
         Boolean(
           this.chatStore.draft.trim() ||
           this.composerStore.attachments.length > 0 ||
-          this.composerStore.annotations.length > 0,
+          this.composerStore.annotationDraft.annotations.length > 0,
         ),
       isStreaming: () => this.streaming,
       selectModel: async (value) => {
@@ -164,7 +164,7 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
         Boolean(
           this.chatStore.draft.trim() ||
           this.composerStore.attachments.length > 0 ||
-          this.composerStore.annotations.length > 0,
+          this.composerStore.annotationDraft.annotations.length > 0,
         ),
       submit: (_draft, options) =>
         this.composerStore.submit(undefined, options?.renderUserMessageAsMarkdown ?? false),
@@ -180,10 +180,10 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
         Boolean(this.composerStore.editingEntryId || this.composerStore.editingDraftSession),
       abort: () => this.abort(),
       attachments: () => this.composerStore.attachments,
-      annotations: () => this.composerStore.annotations,
-      addAnnotation: (annotation) => this.composerStore.addAnnotation(annotation),
-      updateAnnotation: (id, update) => this.composerStore.updateAnnotation(id, update),
-      removeAnnotation: (id) => this.composerStore.removeAnnotation(id),
+      annotations: () => this.composerStore.annotationDraft.annotations,
+      addAnnotation: (annotation) => this.composerStore.annotationDraft.add(annotation),
+      updateAnnotation: (id, update) => this.composerStore.annotationDraft.update(id, update),
+      removeAnnotation: (id) => this.composerStore.annotationDraft.remove(id),
       addPastedImages: (files) => this.composerStore.addPastedImages(files),
       removeAttachment: (index) => this.composerStore.removeAttachment(index),
       showComposerContextMenu: (selection, x, y) =>

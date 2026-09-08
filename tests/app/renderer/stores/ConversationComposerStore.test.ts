@@ -288,6 +288,45 @@ describe("ConversationComposerStore", () => {
     model[Symbol.dispose]();
   });
 
+  it("delivers annotations from its draft Store and clears them after submission", async () => {
+    const prompt = vi.fn(async () => "turn-1");
+    const client = { projectSessions: { prompt } } as unknown as Client;
+    const model = Session.create({ sessionId: "session-1", workingDirectory: "/project" });
+    const root = mount(createStore(HarnessStore, { client, model, existing: true }));
+
+    root.composer.annotationDraft.add({
+      messageId: "assistant-1",
+      selectedText: "important answer",
+      startOffset: 3,
+      endOffset: 19,
+      contextBefore: "An ",
+      contextAfter: " follows.",
+      comment: "Go deeper",
+    });
+    expect(root.composer.focusRequestRevision).toBe(1);
+    await root.composer.submit();
+
+    expect(prompt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        attachments: [
+          {
+            kind: "annotation",
+            annotations: [
+              expect.objectContaining({
+                messageId: "assistant-1",
+                selectedText: "important answer",
+                comment: "Go deeper",
+              }),
+            ],
+          },
+        ],
+      }),
+    );
+    expect(root.composer.annotationDraft.annotations).toEqual([]);
+    root[Symbol.dispose]();
+    model[Symbol.dispose]();
+  });
+
   it("renders and activates detected Markdown in a saved draft", async () => {
     const prompt = vi.fn(async () => "turn-1");
     const client = { projectSessions: { prompt } } as unknown as Client;

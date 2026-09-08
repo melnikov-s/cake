@@ -1,12 +1,12 @@
 import { Store, child, createStore, observable } from "r-state-tree";
 import type { DiscussionAnchor } from "../../domain/discussion-session-data";
 import type { Annotation } from "../../ipc/session-contract";
-import { applyAnnotationUpdate, createAnnotation } from "../../utils/annotations";
 import { ClientContext } from "./context/ClientContext";
 import { ActiveProjectSessionContext } from "./context/ActiveProjectSessionContext";
 import { describeError } from "../lib/error-details";
 import { ChatStore } from "./ChatStore";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
+import { AnnotationDraftStore } from "./AnnotationDraftStore";
 
 export interface ReviewsStoreProps {
   sessionRegistry: SessionRegistryStore;
@@ -19,7 +19,7 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
   draftFocusRequestRevision = 0;
   error: string | undefined;
   errorDetails: string | undefined;
-  readonly composerAnnotations = observable(new Map<string, Annotation[]>());
+  private readonly annotationDraftIds: string[] = observable(["code-review-draft"]);
   private readonly resolutionRevisions = new Map<string, number>();
 
   get client() {
@@ -91,34 +91,18 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
   cancelDraft() {
     this.draftAnchor = undefined;
     this.draftChatStore.setDraft("");
-    this.clearComposerAnnotations("code-review-draft");
+    this.annotationDraft("code-review-draft")?.clear();
   }
 
-  annotations(composerId: string): readonly Annotation[] {
-    return this.composerAnnotations.get(composerId) ?? [];
-  }
-
-  addAnnotation(composerId: string, annotation: Omit<Annotation, "id">) {
-    const annotations = this.annotationDraft(composerId);
-    if (annotations.length >= 100) {
-      this.reportError(new Error("A message can include at most 100 annotations"));
-      return;
-    }
-    annotations.push(createAnnotation(crypto.randomUUID(), annotation));
-  }
-
-  updateAnnotation(composerId: string, id: string, update: Partial<Omit<Annotation, "id">>) {
-    const annotations = this.composerAnnotations.get(composerId);
-    const index = annotations?.findIndex((annotation) => annotation.id === id) ?? -1;
-    const annotation = annotations?.[index];
-    if (annotations && index >= 0 && annotation)
-      annotations.splice(index, 1, applyAnnotationUpdate(annotation, update));
-  }
-
-  removeAnnotation(composerId: string, id: string) {
-    const annotations = this.composerAnnotations.get(composerId);
-    const index = annotations?.findIndex((annotation) => annotation.id === id) ?? -1;
-    if (annotations && index >= 0) annotations.splice(index, 1);
+  @child
+  get annotationDrafts(): AnnotationDraftStore[] {
+    return this.annotationDraftIds.map((composerId) =>
+      createStore(AnnotationDraftStore, {
+        key: composerId,
+        onLimitReached: () =>
+          this.reportError(new Error("A message can include at most 100 annotations")),
+      }),
+    );
   }
 
   @child
@@ -145,14 +129,16 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
       inputLabel: () => "Message code chat",
       focusRequestRevision: () => this.draftFocusRequestRevision,
       canSubmit: (draft) =>
-        Boolean(this.draftAnchor && (draft.trim() || this.annotations("code-review-draft").length)),
+        Boolean(
+          this.draftAnchor && (draft.trim() || this.annotationsFor("code-review-draft").length),
+        ),
       submit: async (draft) => {
         const anchor = this.draftAnchor;
         if (!anchor) return false;
         const threadId = await this.createThread(
           anchor,
           draft,
-          this.annotations("code-review-draft"),
+          this.annotationsFor("code-review-draft"),
         );
         if (threadId && this.draftAnchor === anchor) {
           this.cancelDraft();
@@ -160,10 +146,12 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
         }
         return Boolean(threadId);
       },
-      annotations: () => this.annotations("code-review-draft"),
-      addAnnotation: (annotation) => this.addAnnotation("code-review-draft", annotation),
-      updateAnnotation: (id, update) => this.updateAnnotation("code-review-draft", id, update),
-      removeAnnotation: (id) => this.removeAnnotation("code-review-draft", id),
+      annotations: () => this.annotationsFor("code-review-draft"),
+      addAnnotation: (annotation) =>
+        this.ensureAnnotationDraft("code-review-draft").add(annotation),
+      updateAnnotation: (id, update) =>
+        this.annotationDraft("code-review-draft")?.update(id, update),
+      removeAnnotation: (id) => this.annotationDraft("code-review-draft")?.remove(id),
       error: () => ({ message: this.error, details: this.errorDetails }),
     });
   }
@@ -192,14 +180,14 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
         inputLabel: () =>
           thread.anchor.view === "message" ? "Reply to selection chat" : "Reply to code chat",
         canSubmit: (draft) =>
-          Boolean(draft.trim() || this.annotations(thread.id).length) &&
+          Boolean(draft.trim() || this.annotationsFor(thread.id).length) &&
           thread.status === "open" &&
           !thread.streaming,
-        submit: (draft) => this.replyThread(thread.id, draft, this.annotations(thread.id)),
-        annotations: () => this.annotations(thread.id),
-        addAnnotation: (annotation) => this.addAnnotation(thread.id, annotation),
-        updateAnnotation: (id, update) => this.updateAnnotation(thread.id, id, update),
-        removeAnnotation: (id) => this.removeAnnotation(thread.id, id),
+        submit: (draft) => this.replyThread(thread.id, draft, this.annotationsFor(thread.id)),
+        annotations: () => this.annotationsFor(thread.id),
+        addAnnotation: (annotation) => this.ensureAnnotationDraft(thread.id).add(annotation),
+        updateAnnotation: (id, update) => this.annotationDraft(thread.id)?.update(id, update),
+        removeAnnotation: (id) => this.annotationDraft(thread.id)?.remove(id),
         composerVisible: () => thread.status === "open" && !thread.streaming,
         error: () => ({ message: this.error, details: this.errorDetails }),
         usage: () => thread.usage,
@@ -241,7 +229,7 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
     if (!body.trim() && annotations.length === 0) return false;
     try {
       await this.promptThread(threadId, body.trim(), annotations);
-      if (!this.signal.aborted) this.clearComposerAnnotations(threadId);
+      if (!this.signal.aborted) this.annotationDraft(threadId)?.clear();
       return !this.signal.aborted;
     } catch (error) {
       if (!this.signal.aborted) this.reportError(error);
@@ -295,17 +283,18 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
     );
   }
 
-  private annotationDraft(composerId: string) {
-    let annotations = this.composerAnnotations.get(composerId);
-    if (!annotations) {
-      annotations = observable([]);
-      this.composerAnnotations.set(composerId, annotations);
-    }
-    return annotations;
+  private annotationsFor(composerId: string): readonly Annotation[] {
+    return this.annotationDraft(composerId)?.annotations ?? [];
   }
 
-  private clearComposerAnnotations(composerId: string) {
-    this.composerAnnotations.get(composerId)?.splice(0);
+  private annotationDraft(composerId: string) {
+    const index = this.annotationDraftIds.indexOf(composerId);
+    return index >= 0 ? this.annotationDrafts[index] : undefined;
+  }
+
+  private ensureAnnotationDraft(composerId: string) {
+    if (!this.annotationDraftIds.includes(composerId)) this.annotationDraftIds.push(composerId);
+    return this.annotationDraft(composerId)!;
   }
 
   private clearError() {

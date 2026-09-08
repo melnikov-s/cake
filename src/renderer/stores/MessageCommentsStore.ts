@@ -1,10 +1,10 @@
-import { Store, child, createStore, observable } from "r-state-tree";
+import { Store, child, createStore } from "r-state-tree";
 import type { ReviewAnchor } from "../../ipc/review-contract";
 import type { Annotation } from "../../ipc/session-contract";
-import { applyAnnotationUpdate, createAnnotation } from "../../utils/annotations";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
 import type { ReviewsStore } from "./ReviewsStore";
 import { ChatStore } from "./ChatStore";
+import { AnnotationDraftStore } from "./AnnotationDraftStore";
 
 export interface MessageCommentsStoreProps {
   sessionRegistry: SessionRegistryStore;
@@ -27,7 +27,6 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
   draftSelection: MessageSelectionAnchor | undefined;
   createdThreadId: string | undefined;
   draftFocusRequestRevision = 0;
-  readonly draftAnnotations: Annotation[] = observable([]);
 
   get threads() {
     const context = this.props.context();
@@ -59,10 +58,15 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
 
   prepareDraft(selection: MessageSelectionAnchor) {
     this.draftChatStore.setDraft("");
-    this.draftAnnotations.splice(0);
+    this.annotationDraft.clear();
     this.draftSelection = selection;
     this.createdThreadId = undefined;
     this.draftFocusRequestRevision += 1;
+  }
+
+  @child
+  get annotationDraft(): AnnotationDraftStore {
+    return createStore(AnnotationDraftStore);
   }
 
   @child
@@ -92,27 +96,31 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
       inputLabel: () => "Message about selected text",
       focusRequestRevision: () => this.draftFocusRequestRevision,
       canSubmit: (draft) =>
-        Boolean(this.draftSelection && (draft.trim() || this.draftAnnotations.length)) &&
+        Boolean(this.draftSelection && (draft.trim() || this.annotationDraft.annotations.length)) &&
         !this.draftThread?.pending &&
         (!this.createdThreadId || !this.threadStreaming(this.createdThreadId)),
       submit: async (draft) => {
         if (!this.draftSelection) return false;
         if (!this.createdThreadId) {
-          const threadId = await this.createThread(this.draftSelection, draft);
+          const threadId = await this.createThread(
+            this.draftSelection,
+            draft,
+            this.annotationDraft.annotations,
+          );
           this.createdThreadId = threadId;
-          if (threadId) this.draftAnnotations.splice(0);
+          if (threadId) this.annotationDraft.clear();
           return Boolean(threadId);
         }
         const submitted = await this.props
           .reviews()
-          .replyThread(this.createdThreadId, draft, this.draftAnnotations);
-        if (submitted) this.draftAnnotations.splice(0);
+          .replyThread(this.createdThreadId, draft, this.annotationDraft.annotations);
+        if (submitted) this.annotationDraft.clear();
         return submitted;
       },
-      annotations: () => this.draftAnnotations,
-      addAnnotation: (annotation) => this.addAnnotation(annotation),
-      updateAnnotation: (id, update) => this.updateAnnotation(id, update),
-      removeAnnotation: (id) => this.removeAnnotation(id),
+      annotations: () => this.annotationDraft.annotations,
+      addAnnotation: (annotation) => this.annotationDraft.add(annotation),
+      updateAnnotation: (id, update) => this.annotationDraft.update(id, update),
+      removeAnnotation: (id) => this.annotationDraft.remove(id),
       error: () => ({
         message: this.props.reviews().error,
         details: this.props.reviews().errorDetails,
@@ -124,7 +132,7 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
   async createThread(
     selection: MessageSelectionAnchor,
     body: string,
-    annotations: readonly Annotation[] = this.draftAnnotations,
+    annotations: readonly Annotation[] = this.annotationDraft.annotations,
   ) {
     const context = this.props.context();
     if (!context || (!body.trim() && annotations.length === 0)) return undefined;
@@ -142,23 +150,6 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
       startOffset: selection.startOffset,
       endOffset: selection.endOffset,
     };
-    return this.props.reviews().createThread(anchor, body, annotations);
-  }
-
-  private addAnnotation(annotation: Omit<Annotation, "id">) {
-    if (this.draftAnnotations.length >= 100) return;
-    this.draftAnnotations.push(createAnnotation(crypto.randomUUID(), annotation));
-  }
-
-  private updateAnnotation(id: string, update: Partial<Omit<Annotation, "id">>) {
-    const index = this.draftAnnotations.findIndex((annotation) => annotation.id === id);
-    const annotation = this.draftAnnotations[index];
-    if (index >= 0 && annotation)
-      this.draftAnnotations.splice(index, 1, applyAnnotationUpdate(annotation, update));
-  }
-
-  private removeAnnotation(id: string) {
-    const index = this.draftAnnotations.findIndex((annotation) => annotation.id === id);
-    if (index >= 0) this.draftAnnotations.splice(index, 1);
+    return this.props.reviews().createThread(anchor, body, annotations.slice());
   }
 }
