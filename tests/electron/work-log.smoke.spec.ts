@@ -72,6 +72,12 @@ test("does not mount collapsed work-log activity until it is expanded", async ()
         message: {
           role: "assistant",
           content: [
+            ...Array.from({ length: 16 }, (_, index) => ({
+              type: "toolCall",
+              id: `read-${index}`,
+              name: "read",
+              arguments: { path: `src/file-${index}.ts` },
+            })),
             {
               type: "toolCall",
               id: "call-1",
@@ -161,53 +167,62 @@ test("does not mount collapsed work-log activity until it is expanded", async ()
     await expect(log).toHaveAttribute("open", "");
 
     const content = log.locator('[data-slot="work-log-content"]');
+    const diffScroll = content.locator('[data-slot="work-log-diff-scroll"]');
     const activityToggle = content.getByRole("button", { name: /View steps/ });
-    const fileHeader = content.locator('[aria-label^="File changes to"] > header');
+    const fileHeader = diffScroll.locator('[aria-label^="File changes to"] > header');
     await expect(activityToggle).toBeVisible();
     await expect(fileHeader).toBeVisible();
     await expect
       .poll(() =>
-        content.evaluate(
+        diffScroll.evaluate(
           (element) => element.scrollHeight - element.clientHeight - element.scrollTop,
         ),
       )
       .toBeLessThanOrEqual(1);
 
-    // Measure in one frame relative to the current work-log viewport. The
-    // outer chat can still be completing its own initial bottom alignment.
-    const expectPinnedHeaders = () =>
+    // The diff header pins inside its own viewport. The outer chat can still
+    // be completing its own initial bottom alignment.
+    const expectPinnedDiffHeader = () =>
       expect
         .poll(() =>
-          content.evaluate((element) => {
-            const activity = element.querySelector("button")!.getBoundingClientRect();
+          diffScroll.evaluate((element) => {
             const header = element
               .querySelector('[aria-label^="File changes to"] > header')!
               .getBoundingClientRect();
-            return Math.max(
-              Math.abs(activity.top - element.getBoundingClientRect().top),
-              Math.abs(header.top - activity.bottom),
-            );
+            return Math.abs(header.top - element.getBoundingClientRect().top);
           }),
         )
         .toBeLessThanOrEqual(1);
-    await expectPinnedHeaders();
+    await expectPinnedDiffHeader();
 
-    await content.evaluate((element) => element.scrollTo({ top: 100 }));
-    await expectPinnedHeaders();
+    await diffScroll.evaluate((element) => element.scrollTo({ top: 100 }));
+    await expectPinnedDiffHeader();
+    const diffScrollTop = await diffScroll.evaluate((element) => element.scrollTop);
+    expect(diffScrollTop).toBeGreaterThan(0);
 
     await activityToggle.click();
-    await expect(log.locator('[data-slot="tool"]')).toHaveCount(1);
-    await expect.poll(() => content.evaluate((element) => element.scrollTop)).toBe(0);
+    const activityScroll = content.locator('[data-slot="work-log-scroll"]');
+    await expect.poll(() => log.locator('[data-slot="tool"]').count()).toBeGreaterThan(0);
+    await expect
+      .poll(() =>
+        activityScroll.evaluate(
+          (element) => element.scrollHeight - element.clientHeight - element.scrollTop,
+        ),
+      )
+      .toBeLessThanOrEqual(1);
+    await expect(activityScroll).toContainText("src/app.ts");
+    expect(await diffScroll.evaluate((element) => element.scrollTop)).toBe(diffScrollTop);
 
-    await content.evaluate((element) => element.scrollTo({ top: 100 }));
-    const scrollTopBeforeHidingActivity = await content.evaluate((element) => element.scrollTop);
-    expect(scrollTopBeforeHidingActivity).toBeGreaterThan(0);
+    await activityScroll.evaluate((element) => element.scrollTo({ top: 0 }));
+    await expect.poll(() => activityScroll.evaluate((element) => element.scrollTop)).toBe(0);
     await content.getByRole("button", { name: /Hide steps/ }).click();
     await expect(log.locator('[data-slot="tool"]')).toHaveCount(0);
-    expect(await content.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+    expect(await diffScroll.evaluate((element) => element.scrollTop)).toBe(diffScrollTop);
 
     await content.getByRole("button", { name: /View steps/ }).click();
-    await expect(log.locator('[data-slot="tool"]')).toHaveCount(1);
+    await expect.poll(() => log.locator('[data-slot="tool"]').count()).toBeGreaterThan(0);
+    await expect.poll(() => activityScroll.evaluate((element) => element.scrollTop)).toBe(0);
+    expect(await diffScroll.evaluate((element) => element.scrollTop)).toBe(diffScrollTop);
 
     await log.locator(":scope > summary").click();
     await expect(log).not.toHaveAttribute("open", "");
@@ -216,15 +231,21 @@ test("does not mount collapsed work-log activity until it is expanded", async ()
 
     await page.keyboard.press("Control+o");
     await expect(log).toHaveAttribute("open", "");
-    await expect(log.locator('[data-slot="tool"]')).toHaveCount(1);
+    await expect.poll(() => log.locator('[data-slot="tool"]').count()).toBeGreaterThan(0);
     await expect(log.locator('[data-slot="tool"] [aria-expanded="true"]')).toHaveCount(0);
-    await expect(log.locator('[data-slot="tool-details"]')).toBeHidden();
+    await expect(log.locator('[data-slot="tool-details"]').first()).toBeHidden();
 
     await page.keyboard.press("Control+o");
     await expect(log).toHaveAttribute("open", "");
-    await expect(log.locator('[data-slot="tool"] [aria-expanded="true"]')).toHaveCount(1);
-    await expect(log.locator('[data-slot="tool-details"]')).toBeVisible();
-    await expect(log.locator('[data-slot="tool-details"]')).toContainText(
+    await expect
+      .poll(async () => {
+        const tools = await log.locator('[data-slot="tool"]').count();
+        const expanded = await log.locator('[data-slot="tool"] [aria-expanded="true"]').count();
+        return tools > 0 && expanded === tools;
+      })
+      .toBe(true);
+    await activityScroll.evaluate((element) => element.scrollTo({ top: element.scrollHeight }));
+    await expect(log.locator('[data-slot="tool-details"]').last()).toContainText(
       "Successfully replaced text in src/app.ts",
     );
 
@@ -234,7 +255,7 @@ test("does not mount collapsed work-log activity until it is expanded", async ()
 
     await log.locator(":scope > summary").click();
     await expect(log).toHaveAttribute("open", "");
-    await expect(log.locator('[data-slot="tool"]')).toHaveCount(1);
+    await expect.poll(() => log.locator('[data-slot="tool"]').count()).toBeGreaterThan(0);
     await expect(log.locator('[data-slot="tool"] [aria-expanded="true"]')).toHaveCount(0);
 
     // Verify the top-right work-log display menu.
@@ -253,7 +274,13 @@ test("does not mount collapsed work-log activity until it is expanded", async ()
     await expect(compactBtn).toHaveAttribute("aria-pressed", "false");
 
     await fullBtn.click();
-    await expect(log.locator('[data-slot="tool"] [aria-expanded="true"]')).toHaveCount(1);
+    await expect
+      .poll(async () => {
+        const tools = await log.locator('[data-slot="tool"]').count();
+        const expanded = await log.locator('[data-slot="tool"] [aria-expanded="true"]').count();
+        return tools > 0 && expanded === tools;
+      })
+      .toBe(true);
     await expect(fullBtn).toHaveAttribute("aria-pressed", "true");
 
     await collapseBtn.click();

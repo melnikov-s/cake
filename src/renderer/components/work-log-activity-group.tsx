@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useStickToBottom } from "use-stick-to-bottom";
 import { observer } from "r-state-tree/react";
 import { diffStats } from "@/components/ai-elements/diff-view";
@@ -6,12 +6,31 @@ import { VirtualizedConversation } from "@/components/ai-elements/conversation";
 import { WorkLogDiff } from "@/components/ai-elements/work-log-diff";
 import { StatusDot } from "@/components/ui/status-dot";
 import { WorkLogActivityTrigger } from "@/components/work-log-activity-trigger";
-import { cn } from "@/lib/utils";
 import type { UiPart } from "../../ipc/session-contract";
 import { toolDiff, workLogChanges } from "../../utils/turn-diff";
 import { combineSubagentWorkLogParts } from "../subagent-work-log";
 import type { CanonicalTranscriptBehavior } from "./chat-message";
 import { TranscriptPart } from "./chat-transcript-part";
+
+interface WorkLogScrollState {
+  atBottom: boolean;
+  top: number;
+}
+
+function saveScrollState(element: HTMLDivElement): WorkLogScrollState {
+  return {
+    atBottom: element.scrollHeight - element.clientHeight - element.scrollTop <= 1,
+    top: element.scrollTop,
+  };
+}
+
+function restoreScrollState(element: HTMLDivElement, state: WorkLogScrollState | undefined) {
+  if (!state) return;
+  requestAnimationFrame(() => {
+    if (!element.isConnected) return;
+    element.scrollTop = state.atBottom ? element.scrollHeight : state.top;
+  });
+}
 
 export const ActivityGroup = observer(function ActivityGroup({
   groupId,
@@ -29,16 +48,38 @@ export const ActivityGroup = observer(function ActivityGroup({
   const open = behavior.store.workLogGroupOpen(groupId, hasDiff);
   const [activityStripOpen, setActivityStripOpen] = useState(false);
   const [logElement, setLogElement] = useState<HTMLDivElement | null>(null);
-  const { scrollRef, contentRef, stopScroll } = useStickToBottom({
+  const logScrollState = useRef<WorkLogScrollState | undefined>(undefined);
+  const diffScrollState = useRef<WorkLogScrollState | undefined>(undefined);
+  const currentLogElement = useRef<HTMLDivElement | null>(null);
+  const currentDiffElement = useRef<HTMLDivElement | null>(null);
+  const { scrollRef: logScrollRef, contentRef: logContentRef } = useStickToBottom({
+    initial: "instant",
+    resize: "instant",
+  });
+  const { scrollRef: diffScrollRef, contentRef: diffContentRef } = useStickToBottom({
     initial: "instant",
     resize: "instant",
   });
   const attachLog = useCallback(
     (element: HTMLDivElement | null) => {
-      scrollRef(element);
+      if (currentLogElement.current)
+        logScrollState.current = saveScrollState(currentLogElement.current);
+      currentLogElement.current = element;
+      logScrollRef(element);
       setLogElement(element);
+      if (element) restoreScrollState(element, logScrollState.current);
     },
-    [scrollRef],
+    [logScrollRef],
+  );
+  const attachDiff = useCallback(
+    (element: HTMLDivElement | null) => {
+      if (currentDiffElement.current)
+        diffScrollState.current = saveScrollState(currentDiffElement.current);
+      currentDiffElement.current = element;
+      diffScrollRef(element);
+      if (element) restoreScrollState(element, diffScrollState.current);
+    },
+    [diffScrollRef],
   );
   const workLogItems = useMemo(() => combineSubagentWorkLogParts(parts), [parts]);
   const tools = useMemo(
@@ -138,57 +179,67 @@ export const ActivityGroup = observer(function ActivityGroup({
         <span>Work log</span>
         <small className="ml-1.5 font-normal text-muted-foreground">{label}</small>
       </summary>
-      {open && (
-        <div
-          data-slot="work-log-content"
-          className={cn(
-            "max-h-[32rem] overflow-y-auto border-t border-border/60",
-            showDiff ? "p-0" : "p-3 pt-2.5",
-          )}
-          ref={attachLog}
-        >
-          <div ref={contentRef} className="min-w-0">
-            {showDiff ? (
-              <>
-                <div className="sticky top-0 z-1 overflow-hidden border-b border-border bg-card">
-                  <WorkLogActivityTrigger
-                    store={behavior.store}
-                    firstPartId={firstPartId}
-                    lastPartId={lastPartId}
-                    activityCountLabel={activityCountLabel}
-                    open={activityStripOpen}
-                    onToggle={() => {
-                      if (activityStripOpen) {
-                        setActivityStripOpen(false);
-                        return;
-                      }
-                      setActivityStripOpen(true);
-                      stopScroll();
-                      scrollRef.current?.scrollTo({ top: 0 });
-                    }}
-                  />
+      {open &&
+        (showDiff ? (
+          <div
+            data-slot="work-log-content"
+            className="flex max-h-[32rem] min-h-0 flex-col overflow-hidden border-t border-border/60"
+          >
+            <div className="z-1 shrink-0 overflow-hidden border-b border-border bg-card">
+              <WorkLogActivityTrigger
+                store={behavior.store}
+                firstPartId={firstPartId}
+                lastPartId={lastPartId}
+                activityCountLabel={activityCountLabel}
+                open={activityStripOpen}
+                onToggle={() => setActivityStripOpen(!activityStripOpen)}
+              />
+            </div>
+            {activityStripOpen && (
+              <div
+                ref={attachLog}
+                data-slot="work-log-scroll"
+                className="max-h-64 min-h-0 shrink-0 overflow-y-auto border-b border-border bg-muted/20 p-2.5"
+              >
+                <div ref={logContentRef} className="min-w-0">
+                  {logElement && (
+                    <VirtualizedConversation
+                      className="space-y-2"
+                      customScrollParent={logElement}
+                      data={workLogItems}
+                      computeItemKey={(_index, item) => item.id}
+                      followOutput={false}
+                      itemContent={(_index, item) => renderWorkLogItem(item, true)}
+                    />
+                  )}
                 </div>
-                {activityStripOpen && logElement && (
-                  <VirtualizedConversation
-                    className="space-y-2 border-b border-border bg-muted/20 p-2.5"
-                    customScrollParent={logElement}
-                    data={workLogItems}
-                    computeItemKey={(_index, item) => item.id}
-                    followOutput={false}
-                    itemContent={(_index, item) => renderWorkLogItem(item, true)}
-                  />
-                )}
+              </div>
+            )}
+            <div
+              ref={attachDiff}
+              data-slot="work-log-diff-scroll"
+              className="min-h-0 shrink overflow-y-auto"
+            >
+              <div ref={diffContentRef} className="min-w-0">
                 <WorkLogDiff
                   parts={parts}
                   streaming={activityIsRunning}
                   onOpenSourceLocation={behavior.openSourceLocation}
                   workspacePath={behavior.workspacePath}
                   changeClassName="rounded-none border-x-0 border-t-0 last:border-b-0"
-                  headerClassName="top-[33px] bg-card"
+                  headerClassName="top-0 bg-card"
                 />
-              </>
-            ) : (
-              logElement && (
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div
+            ref={attachLog}
+            data-slot="work-log-content"
+            className="max-h-[32rem] overflow-y-auto border-t border-border/60 p-3 pt-2.5"
+          >
+            <div ref={logContentRef} className="min-w-0">
+              {logElement && (
                 <VirtualizedConversation
                   className="space-y-2"
                   customScrollParent={logElement}
@@ -197,11 +248,10 @@ export const ActivityGroup = observer(function ActivityGroup({
                   followOutput={false}
                   itemContent={(_index, item) => renderWorkLogItem(item)}
                 />
-              )
-            )}
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        ))}
     </details>
   );
 });

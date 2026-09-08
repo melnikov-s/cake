@@ -249,6 +249,7 @@ test("streaming work logs keep their DOM and follow their own bottom", async () 
       ],
     });
     const diff = content.getByLabel("Streaming file diff");
+    const diffScroll = content.locator('[data-slot="work-log-diff-scroll"]');
     for (let index = 0; index < 4; index += 1) {
       const text = Array.from(
         { length: 30 },
@@ -260,7 +261,7 @@ test("streaming work logs keep their DOM and follow their own bottom", async () 
       await expect(diff).toContainText(`streamed${index}_29`);
       await expect
         .poll(() =>
-          content.evaluate(
+          diffScroll.evaluate(
             (element) => element.scrollHeight - element.clientHeight - element.scrollTop,
           ),
         )
@@ -280,7 +281,7 @@ test("streaming work logs keep their DOM and follow their own bottom", async () 
     await expect.poll(() => diff.locator(".syntax-token").count()).toBeGreaterThan(0);
     await expect
       .poll(() =>
-        content.evaluate(
+        diffScroll.evaluate(
           (element) => element.scrollHeight - element.clientHeight - element.scrollTop,
         ),
       )
