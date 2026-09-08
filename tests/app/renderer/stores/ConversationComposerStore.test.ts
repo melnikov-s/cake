@@ -154,7 +154,7 @@ describe("ConversationComposerStore", () => {
       ],
     });
     const handoffSession = vi.fn(async () => true);
-    const client = { projectSessions: {} } as unknown as RendererClient;
+    const client = { projectSessions: {} } as unknown as Client;
     const root = mount(
       createStore(HarnessStore, { client, model, existing: true, handoffSession }),
     );

@@ -2,33 +2,9 @@ import { useEffect, useId, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useStore } from "r-state-tree/react";
 import { IconButton } from "@/components/ui/icon-button";
-import { CloseIcon, ExpandIcon } from "@/components/ui/icons";
+import { CloseIcon } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
 import { FullscreenSurfaceStore } from "../stores/FullscreenSurfaceStore";
-
-export function FullscreenButton({
-  className,
-  disabled,
-  label,
-  onClick,
-}: {
-  className?: string;
-  disabled?: boolean;
-  label: string;
-  onClick(): void;
-}) {
-  return (
-    <IconButton
-      className={cn("fullscreen-trigger", className)}
-      tooltip="View fullscreen"
-      ariaLabel={label}
-      disabled={disabled}
-      onClick={onClick}
-    >
-      <ExpandIcon />
-    </IconButton>
-  );
-}
 
 export function FullscreenSurface({
   children,

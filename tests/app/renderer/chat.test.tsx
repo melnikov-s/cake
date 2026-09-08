@@ -39,7 +39,7 @@ import { Chat } from "../../../src/renderer/components/chat";
 import type { ChatConfigurationStore } from "../../../src/renderer/stores/ChatConfigurationStore";
 import { ChatStore } from "../../../src/renderer/stores/ChatStore";
 import { ScheduledMessage } from "../../../src/renderer/models/ScheduledMessage";
-import { RendererInfrastructureFixture } from "./renderer-infrastructure";
+import { FullscreenSurfaceFixture } from "./fullscreen-surface-fixture";
 
 describe("Chat", () => {
   let container: HTMLDivElement;
@@ -581,9 +581,9 @@ describe("Chat", () => {
 
     act(() =>
       root.render(
-        <RendererInfrastructureFixture>
+        <FullscreenSurfaceFixture>
           <Chat store={store!} />
-        </RendererInfrastructureFixture>,
+        </FullscreenSurfaceFixture>,
       ),
     );
 
