@@ -69,24 +69,12 @@ export const ChatTextMessage = forwardRef<
   ref,
 ) {
   const assistant = part.role === "assistant";
-  // A steered or queued prompt is not yet accepted into the conversation;
-  // render it with a distinct pending treatment until Pi delivers it.
-  const pending =
-    !assistant && (part.deliveryState === "queued" || part.deliveryState === "steering");
   const senderLabel = part.crossSession
     ? `${part.crossSession.sender.title} · session message · ${part.crossSession.sequence}${part.crossSession.maxMessages ? `/${part.crossSession.maxMessages}` : ""}`
     : undefined;
   const userLabel =
     senderLabel ??
-    (part.deliveryState === "queued"
-      ? "You · pending"
-      : part.deliveryState === "steering"
-        ? "You · pending steer"
-        : part.deliveryState === "sending"
-          ? "You · sending"
-          : part.draft
-            ? "You · draft"
-            : "You");
+    (part.deliveryState === "sending" ? "You · sending" : part.draft ? "You · draft" : "You");
   return (
     <Message
       ref={ref}
@@ -94,7 +82,6 @@ export const ChatTextMessage = forwardRef<
       onMouseLeave={onMouseLeave}
       className={cn(
         assistant ? "group/msg relative mr-auto w-full" : "group/msg ml-auto w-[min(88%,42rem)]",
-        pending && "opacity-75",
       )}
     >
       <MessageLabel>
@@ -106,7 +93,6 @@ export const ChatTextMessage = forwardRef<
           assistant
             ? "bg-card text-foreground"
             : "border-user-message-foreground/20 bg-user-message text-user-message-foreground",
-          pending && "border-dashed border-user-message-foreground/45",
           !assistant && part.renderAs !== "markdown" && "whitespace-pre-wrap",
         )}
       >

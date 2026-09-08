@@ -179,6 +179,25 @@ describe("Chat", () => {
             state: "queued",
           },
           {
+            id: "family-message",
+            text: "Child work is complete",
+            attachments: [],
+            renderUserMessageAsMarkdown: false,
+            state: "queued",
+            editable: false,
+            source: {
+              version: 1,
+              messageId: "f6debbbd-ced1-4a12-b0f7-fb60c292c623",
+              threadId: "8358c2b7-bd3c-42ee-9fec-fcb726b66c18",
+              sequence: 1,
+              sender: {
+                sessionId: "child-session",
+                title: "Storage implementation",
+                kind: "project-session",
+              },
+            },
+          },
+          {
             id: "steering",
             text: "Change direction",
             attachments: [],
@@ -205,6 +224,12 @@ describe("Chat", () => {
       container.querySelector('[aria-label="Remove queued prompt: Do this next"]'),
     ).not.toBeNull();
     expect(container.querySelector('[aria-label="Steering: Change direction"]')).not.toBeNull();
+    expect(
+      container.querySelector('[aria-label="Message from Storage implementation"]'),
+    ).not.toBeNull();
+    expect(
+      container.querySelector('[aria-label="Edit queued prompt: Child work is complete"]'),
+    ).toBeNull();
 
     await act(async () => {
       container

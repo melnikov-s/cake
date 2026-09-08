@@ -23,6 +23,41 @@ function createChatStore(
   );
 }
 
+describe("ChatStore pending message projection", () => {
+  it("keeps queued and steering input beside the composer instead of in the transcript", () => {
+    const store = createChatStore(() => Promise.resolve(true), {
+      parts: () => [
+        {
+          id: "complete",
+          kind: "text",
+          role: "user",
+          text: "Already delivered",
+          status: "complete",
+        },
+        {
+          id: "queued",
+          kind: "text",
+          role: "user",
+          text: "Waiting",
+          status: "complete",
+          deliveryState: "queued",
+        },
+        {
+          id: "steering",
+          kind: "text",
+          role: "user",
+          text: "Steering",
+          status: "complete",
+          deliveryState: "steering",
+        },
+      ],
+    });
+
+    expect(store.parts.map((part) => part.id)).toEqual(["complete"]);
+    store[Symbol.dispose]();
+  });
+});
+
 describe("ChatStore empty-composer submit", () => {
   it("steers the head of the prompt queue when submitting an empty composer", async () => {
     const steerQueuedPrompt = vi.fn();

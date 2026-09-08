@@ -22,8 +22,10 @@ coordination.
 Child creation validates the effective model selection before durable creation.
 Omitted model and thinking level inherit the caller's current values. Cake
 persists request correlation and the child identity before accepting the initial
-prompt. Retrying the same request returns that identity. A launch failure leaves
-the child tracked and reports the failed launch instead of deleting membership.
+prompt. Accepting that background turn completes the creation operation; the
+parent never waits for the child's turn to settle. Retrying the same request
+returns that identity. A launch failure leaves the child tracked and reports the
+failed launch instead of deleting membership.
 
 ## Runtime relationship context
 
@@ -39,10 +41,14 @@ agents to coordinate it. Agent-created Git worktrees do not rebind Cake.
 
 ## Communication
 
-Family messages use ordinary validated cross-session messaging. Accepted text
+Family messages use ordinary validated cross-session messaging. An idle
+recipient starts a normal turn immediately; an active recipient receives the
+message through Pi's follow-up queue, never through steering. Accepted text
 becomes authoritative only in the destination Pi transcript; Cake metadata owns
-routing and correlation, not a second message copy. Routing is main-process
-policy and must not depend on renderer visibility.
+routing and correlation, not a second message copy. Pending input is projected
+beside the composer with its source-session attribution and is not rendered as
+transcript history. Routing is main-process policy and must not depend on
+renderer visibility.
 
 For each child turn, Cake durably correlates whether a parent-directed message
 was accepted. A normally settled, failed, or aborted child turn with no such

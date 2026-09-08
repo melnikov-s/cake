@@ -338,6 +338,15 @@ export const deliver = Effect.fn("SessionFamilies.deliverNotice")(function* (tur
       : turn.outcome === "aborted"
         ? "was aborted"
         : "stopped";
+  const childSummary = yield* sessions
+    .catalogEntry(
+      {
+        workingDirectory: family.workingDirectory,
+        sessionDirectory: location.sessionDirectory,
+      },
+      turn.sessionId,
+    )
+    .pipe(Effect.catch(() => Effect.succeed(undefined)));
   const text = encodeCrossSessionMessage(
     `Child session ${turn.sessionId} ${outcome} without sending a response to its parent.`,
     {
@@ -347,7 +356,7 @@ export const deliver = Effect.fn("SessionFamilies.deliverNotice")(function* (tur
       sequence: 1,
       sender: {
         sessionId: turn.sessionId,
-        title: `Child session ${turn.sessionId}`,
+        title: childSummary?.title ?? `Child session ${turn.sessionId}`,
         kind: "project-session",
         projectName: location.projectName,
         workingDirectory: location.workingDirectory,
@@ -375,9 +384,11 @@ export const deliver = Effect.fn("SessionFamilies.deliverNotice")(function* (tur
     })).includes(turn.deliveryTurnId)
   )
     return;
-  // Child outcomes are queued user input even while the parent is idle, so
-  // they do not claim the parent's conversation or interrupt an active turn.
-  const deliveryTurnId = yield* parent.followUp(text, [], false);
+  // Match ordinary user delivery: start an idle parent, or queue behind its
+  // active turn without steering or interrupting it.
+  const deliveryTurnId = snapshot.streaming
+    ? yield* parent.followUp(text, [], false)
+    : yield* parent.prompt(text, [], false);
   yield* storage.markNoticeAttempt(turn.turnId, deliveryTurnId);
 });
 

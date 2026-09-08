@@ -138,7 +138,7 @@ describe("Session Family outcome delivery", () => {
                   }),
                 }),
                 prompt: async (text: string, delivery: string) => {
-                  assert.equal(delivery, "follow-up");
+                  assert.equal(delivery, "prompt");
                   transcript.push(text);
                   Deferred.doneUnsafe(received, Effect.void);
                 },
@@ -175,6 +175,42 @@ describe("Session Family outcome delivery", () => {
         }).pipe(Effect.provide(dependencies));
       });
     },
+  );
+
+  it.effect("queues a notice behind active parent work without steering it", () =>
+    Effect.gen(function* () {
+      const received = yield* Deferred.make<void>();
+      yield* Effect.gen(function* () {
+        const storage = yield* SessionFamilyStorage;
+        yield* storage.addChild(reservation);
+        yield* storage.recordTurn(outcome);
+        yield* Effect.scoped(deliver(outcome));
+        yield* Deferred.await(received);
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            familyStorageHarness().layer,
+            environment,
+            Layer.mock(SessionArchiveStorage, { locate: () => Effect.succeed("active" as const) }),
+            makePiSessionsLayer({
+              catalog: () => Stream.empty,
+              catalogEntry: () => Effect.succeed(undefined),
+              inspect: () => Effect.succeed(undefined),
+              changelog: () => Effect.succeed(""),
+              createRuntime: (runtimeOptions) =>
+                Effect.succeed({
+                  ...fakeRuntime(runtimeOptions, () => undefined),
+                  snapshot: async () => ({ ...snapshot, streaming: true }),
+                  prompt: async (_text: string, delivery: string) => {
+                    assert.equal(delivery, "follow-up");
+                    Deferred.doneUnsafe(received, Effect.void);
+                  },
+                }),
+            }),
+          ),
+        ),
+      );
+    }),
   );
 
   it.effect("recovers a reservation without a transcript and reports the failed launch", () =>

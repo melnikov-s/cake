@@ -104,16 +104,20 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   }
 
   @computed
-  get steeringPrompts(): ChatQueuedPrompt[] {
+  get runtimeQueuedPrompts(): ChatQueuedPrompt[] {
     return this.model.parts.flatMap((part) =>
-      part.kind === "text" && part.role === "user" && part.deliveryState === "steering"
+      part.kind === "text" &&
+      part.role === "user" &&
+      (part.deliveryState === "queued" || part.deliveryState === "steering")
         ? [
             {
               id: part.partKey,
               text: part.text ?? "",
               attachments: [],
               renderUserMessageAsMarkdown: part.renderAs === "markdown",
-              state: "steering" as const,
+              state: part.deliveryState,
+              source: part.crossSession,
+              editable: false,
             },
           ]
         : [],
@@ -430,8 +434,9 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
           ...this.composerStore.queuedPrompts.map((entry) => ({
             ...entry,
             state: "queued" as const,
+            editable: true,
           })),
-          ...this.steeringPrompts,
+          ...this.runtimeQueuedPrompts,
         ];
       },
       steerQueuedPrompt: (id) => this.composerStore.steerQueuedPrompt(id),

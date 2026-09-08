@@ -17,6 +17,8 @@ import type { QueuedPrompt as ComposerQueuedPrompt } from "./ConversationCompose
 
 export interface QueuedPrompt extends ComposerQueuedPrompt {
   state: "queued" | "steering";
+  source?: Extract<UiPart, { kind: "text" }>["crossSession"];
+  editable?: boolean;
 }
 
 export interface ChatStoreProps {
@@ -252,7 +254,11 @@ export class ChatStore extends Store<ChatStoreProps> {
   get parts() {
     return this.props
       .parts()
-      .filter((part) => part.kind !== "text" || part.deliveryState !== "steering");
+      .filter(
+        (part) =>
+          part.kind !== "text" ||
+          (part.deliveryState !== "queued" && part.deliveryState !== "steering"),
+      );
   }
   get streaming() {
     return this.props.streaming();

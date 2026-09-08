@@ -879,6 +879,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
           "Use this operation—not cake subagents—when the user asks for a child session, full child Project Session, related session, or Session Family member.",
           "The calling session becomes the family parent when it creates its first child.",
           "Children inherit the exact Project and Working Directory, share mutable files, and start in the background.",
+          "This operation returns after the initial child turn is accepted; do not wait or poll for the child, and finish the parent turn normally.",
           "Pane placement defaults to none. Set placement to right or down only when the child should be opened beside the parent.",
           "A child cannot create another child; it must ask its parent for further delegation.",
         ],
