@@ -63,7 +63,6 @@ async function transcriptAnchor(transcript: Locator) {
     return {
       text: item.textContent,
       offset: item.getBoundingClientRect().top - viewportTop,
-      scrollTop: element.scrollTop,
     };
   });
 }
@@ -79,17 +78,15 @@ async function expectRestoredAnchor(
         return {
           textMatches: restored.text === saved.text,
           offsetDifference: Math.abs(restored.offset - saved.offset),
-          scrollDifference: Math.abs(restored.scrollTop - saved.scrollTop),
         };
       } catch {
         return {
           textMatches: false,
           offsetDifference: Number.POSITIVE_INFINITY,
-          scrollDifference: Number.POSITIVE_INFINITY,
         };
       }
     })
-    .toEqual({ textMatches: true, offsetDifference: 0, scrollDifference: 0 });
+    .toEqual({ textMatches: true, offsetDifference: 0 });
 }
 
 for (const scenario of [
@@ -277,6 +274,34 @@ for (const scenario of [
         await expect(firstSession).toHaveClass(/active/);
 
         await expectRestoredAnchor(transcript, savedAnchor);
+
+        await transcript.evaluate((element) => {
+          element.scrollTop = 0;
+          element.dispatchEvent(new Event("scroll"));
+        });
+        await page.waitForTimeout(150);
+        await secondSession.locator(".session-row").click();
+        await expect(secondSession).toHaveClass(/active/);
+        await firstSession.locator(".session-row").click();
+        await expect(firstSession).toHaveClass(/active/);
+        await expect.poll(() => transcript.evaluate((element) => element.scrollTop)).toBe(0);
+
+        await transcript.evaluate((element) => {
+          element.scrollTop = element.scrollHeight;
+          element.dispatchEvent(new Event("scroll"));
+        });
+        await page.waitForTimeout(150);
+        await secondSession.locator(".session-row").click();
+        await expect(secondSession).toHaveClass(/active/);
+        await firstSession.locator(".session-row").click();
+        await expect(firstSession).toHaveClass(/active/);
+        await expect
+          .poll(() =>
+            transcript.evaluate(
+              (element) => element.scrollHeight - element.clientHeight - element.scrollTop,
+            ),
+          )
+          .toBeLessThanOrEqual(1);
 
         // Another session settling rerenders the application shell. Exercise the
         // same parent-render boundary after Virtuoso has restored this transcript.

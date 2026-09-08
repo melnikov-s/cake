@@ -130,10 +130,10 @@ describe("ChatStore user message Markdown", () => {
 describe("ChatStore message navigation", () => {
   it("replaces saved scroll state and revisions repeated navigation requests", () => {
     const store = createChatStore(() => Promise.resolve(true));
-    store.setTranscriptScrollState({ ranges: [], scrollTop: 100 });
+    store.setTranscriptScrollPosition({ kind: "message", messageId: "message-1", offset: -100 });
 
     store.navigateToMessage("assistant-1");
-    expect(store.transcriptScrollState).toBeUndefined();
+    expect(store.transcriptScrollPosition).toBeUndefined();
     expect(store.messageNavigationRequest).toEqual({ messageId: "assistant-1", revision: 1 });
 
     store.navigateToMessage("assistant-1");

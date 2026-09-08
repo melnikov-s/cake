@@ -27,7 +27,7 @@ import {
   type MessageCommentAnchorRect,
 } from "@/components/message-comment-popover";
 import { workLogChanges } from "../../utils/turn-diff";
-import type { ChatStore } from "../stores/ChatStore";
+import type { ChatStore, TranscriptScrollPosition } from "../stores/ChatStore";
 import {
   ActivityGroup,
   ErrorNotice,
@@ -78,11 +78,14 @@ export const ChatTranscript = observer(function ChatTranscript({
   const virtuosoRef = useRef<VirtualizedConversationHandle>(null);
   const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
   const pendingSelectionRef = useRef<TranscriptSelectionCapture | undefined>(undefined);
-  const restoredScrollState = useMemo(() => untracked(() => store.transcriptScrollState), [store]);
+  const restoredScrollPosition = useMemo(
+    () => untracked(() => store.transcriptScrollPosition),
+    [store],
+  );
   const [draftAnchor, setDraftAnchor] = useState<MessageCommentAnchorRect>();
   const [annotationDraft, setAnnotationDraft] = useState<TranscriptSelectionCapture>();
   const { scrollRef, contentRef, scrollToBottom, stopScroll } = useStickToBottom({
-    initial: restoredScrollState || store.messageNavigationRequest ? false : "instant",
+    initial: restoredScrollPosition || store.messageNavigationRequest ? false : "instant",
     resize: "instant",
   });
   useImperativeHandle(ref, () => ({ scrollToBottom }), [scrollToBottom]);
@@ -133,8 +136,30 @@ export const ChatTranscript = observer(function ChatTranscript({
           : item.id === messageNavigationRequest.messageId,
       )
     : -1;
-  const hasOpeningScrollTarget =
-    restoredScrollState !== undefined || messageNavigationItemIndex >= 0;
+  const restoredMessageItemIndex =
+    restoredScrollPosition?.kind === "message"
+      ? items.findIndex((item) =>
+          item.kind === "activity-group" || item.kind === "source-group"
+            ? item.parts.some((part) => part.id === restoredScrollPosition.messageId)
+            : item.id === restoredScrollPosition.messageId,
+        )
+      : -1;
+  const restoredItemLocation =
+    restoredScrollPosition?.kind === "top"
+      ? { index: 0, align: "start" as const }
+      : restoredScrollPosition?.kind === "bottom"
+        ? { index: items.length - 1, align: "end" as const }
+        : restoredScrollPosition?.kind === "message" && restoredMessageItemIndex >= 0
+          ? {
+              index: restoredMessageItemIndex,
+              align: "start" as const,
+              offset: -restoredScrollPosition.offset,
+            }
+          : undefined;
+  const openingItemLocation =
+    messageNavigationItemIndex >= 0
+      ? undefined
+      : (restoredItemLocation ?? { index: items.length - 1, align: "end" as const });
   useLayoutEffect(() => {
     if (!messageNavigationRequest || messageNavigationItemIndex < 0) return;
     stopScroll();
@@ -151,26 +176,43 @@ export const ChatTranscript = observer(function ChatTranscript({
   }, [messageNavigationItemIndex, messageNavigationRequest, scroller, stopScroll, virtualized]);
   useEffect(() => {
     if (!scroller) return;
-    let pendingScrollState = untracked(() => store.transcriptScrollState);
+    let pendingPosition = untracked(() => store.transcriptScrollPosition);
     let saveTimer: ReturnType<typeof setTimeout> | undefined;
-    const commitScrollState = () => {
+    const captureScrollPosition = (): TranscriptScrollPosition | undefined => {
+      if (scroller.clientHeight <= 0) return undefined;
+      if (scroller.scrollTop <= 1) return { kind: "top" };
+      if (scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop <= 1)
+        return { kind: "bottom" };
+      const viewportTop = scroller.getBoundingClientRect().top;
+      const anchor = Array.from(
+        scroller.querySelectorAll<HTMLElement>("[data-transcript-anchor-id]"),
+      ).find((item) => item.getBoundingClientRect().bottom > viewportTop + 1);
+      const messageId = anchor?.dataset.transcriptAnchorId;
+      if (!anchor || !messageId) return undefined;
+      return {
+        kind: "message",
+        messageId,
+        offset: anchor.getBoundingClientRect().top - viewportTop,
+      };
+    };
+    const commitScrollPosition = () => {
       saveTimer = undefined;
-      if (pendingScrollState) store.setTranscriptScrollState(pendingScrollState);
+      if (pendingPosition) store.setTranscriptScrollPosition(pendingPosition);
     };
-    const captureScrollState = () => {
-      virtuosoRef.current?.getState((state) => {
-        pendingScrollState = state;
-        if (saveTimer !== undefined) clearTimeout(saveTimer);
-        saveTimer = setTimeout(commitScrollState, 100);
-      });
-    };
-    scroller.addEventListener("scroll", captureScrollState, { passive: true });
-    return () => {
-      scroller.removeEventListener("scroll", captureScrollState);
+    const captureAndSchedule = () => {
+      pendingPosition = captureScrollPosition();
+      if (!pendingPosition) return;
       if (saveTimer !== undefined) clearTimeout(saveTimer);
-      if (pendingScrollState) store.setTranscriptScrollState(pendingScrollState);
+      saveTimer = setTimeout(commitScrollPosition, 100);
     };
-  }, [scroller, store, virtualized]);
+    scroller.addEventListener("scroll", captureAndSchedule, { passive: true });
+    return () => {
+      scroller.removeEventListener("scroll", captureAndSchedule);
+      if (saveTimer !== undefined) clearTimeout(saveTimer);
+      pendingPosition = captureScrollPosition() ?? pendingPosition;
+      if (pendingPosition) store.setTranscriptScrollPosition(pendingPosition);
+    };
+  }, [scroller, store]);
   const error = errorOverride ?? store.error;
   // Right-clicking any selection inside this conversation keeps the native
   // Electron edit menu. The capture is held until that menu sends its
@@ -260,6 +302,9 @@ export const ChatTranscript = observer(function ChatTranscript({
       key={item.id}
       data-slot="transcript-item"
       data-transcript-item-index={index}
+      data-transcript-anchor-id={
+        item.kind === "activity-group" || item.kind === "source-group" ? item.parts[0]?.id : item.id
+      }
       className={cn(
         "min-w-0 pb-5 in-[.chat-layout-compact]:pb-3.5",
         errorNoticeFollowsUser(items, index) && "pt-3",
@@ -318,10 +363,7 @@ export const ChatTranscript = observer(function ChatTranscript({
                 data={items}
                 context={{ footer, error }}
                 computeItemKey={(_index, item) => item.id}
-                initialTopMostItemIndex={
-                  hasOpeningScrollTarget ? undefined : { index: items.length - 1, align: "end" }
-                }
-                restoreStateFrom={restoredScrollState}
+                initialTopMostItemIndex={openingItemLocation}
                 followOutput={false}
                 components={{ List: TranscriptList, Footer: ChatTranscriptFooter }}
                 itemContent={(index, item) => renderItem(item, index)}

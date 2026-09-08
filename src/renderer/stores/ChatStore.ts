@@ -1,6 +1,5 @@
 import { computed, observable, snapshot, Store, untracked } from "r-state-tree";
 import { shouldRenderMarkdown } from "../../utils/markdown";
-import type { StateSnapshot } from "react-virtuoso";
 import type {
   Annotation,
   Attachment,
@@ -86,6 +85,11 @@ export interface MessageNavigationRequest {
   revision: number;
 }
 
+export type TranscriptScrollPosition =
+  | { kind: "top" }
+  | { kind: "bottom" }
+  | { kind: "message"; messageId: string; offset: number };
+
 export type { WorkLogViewMode, WorkLogsExpansion };
 
 /** Common state and behavior contract for every Cake conversation surface. */
@@ -106,7 +110,7 @@ export class ChatStore extends Store<ChatStoreProps> {
   scheduledMessageError: string | undefined;
   loadingStartedAt: number | undefined;
   readonly workLogTimers = observable(new Map<string, WorkLogTimerState>());
-  transcriptScrollState: StateSnapshot | undefined;
+  transcriptScrollPosition: TranscriptScrollPosition | undefined;
   messageNavigationRequest: MessageNavigationRequest | undefined;
   changedFilesOpen = false;
   private messageNavigationRevision = 0;
@@ -474,12 +478,12 @@ export class ChatStore extends Store<ChatStoreProps> {
     }
   }
 
-  setTranscriptScrollState(state: StateSnapshot | undefined) {
-    this.transcriptScrollState = state;
+  setTranscriptScrollPosition(position: TranscriptScrollPosition | undefined) {
+    this.transcriptScrollPosition = position;
   }
 
   navigateToMessage(messageId: string) {
-    this.transcriptScrollState = undefined;
+    this.transcriptScrollPosition = undefined;
     this.messageNavigationRequest = {
       messageId,
       revision: ++this.messageNavigationRevision,

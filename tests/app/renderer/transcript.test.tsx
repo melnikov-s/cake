@@ -60,7 +60,7 @@ import {
 } from "../../../src/renderer/components/chat-transcript";
 import { MessageCommentsStore } from "../../../src/renderer/stores/MessageCommentsStore";
 import type { ChatConfigurationStore } from "../../../src/renderer/stores/ChatConfigurationStore";
-import { ChatStore } from "../../../src/renderer/stores/ChatStore";
+import { ChatStore, type TranscriptScrollPosition } from "../../../src/renderer/stores/ChatStore";
 import { RendererInfrastructureFixture } from "./renderer-infrastructure";
 
 interface TranscriptHarness {
@@ -151,12 +151,7 @@ function Transcript({
   const workLogState = workLogStateRef.current;
   const changedFilesStateRef = useRef(observable({ open: false }));
   const changedFilesChurningRef = useRef<boolean | undefined>(undefined);
-  const transcriptScrollStatesRef = useRef(
-    new Map<
-      string,
-      { ranges: Array<{ startIndex: number; endIndex: number; size: number }>; scrollTop: number }
-    >(),
-  );
+  const transcriptScrollPositionsRef = useRef(new Map<string, TranscriptScrollPosition>());
   const store = {
     id: sessionId,
     parts,
@@ -209,8 +204,8 @@ function Transcript({
     setWorkLogItemOpen(partId: string, open: boolean) {
       workLogState.items.set(partId, open);
     },
-    get transcriptScrollState() {
-      return transcriptScrollStatesRef.current.get(sessionId);
+    get transcriptScrollPosition() {
+      return transcriptScrollPositionsRef.current.get(sessionId);
     },
     messageNavigationRequest,
     get changedFilesOpen() {
@@ -229,16 +224,9 @@ function Transcript({
     addAnnotation,
     updateAnnotation,
     removeAnnotation,
-    setTranscriptScrollState(
-      state:
-        | {
-            ranges: Array<{ startIndex: number; endIndex: number; size: number }>;
-            scrollTop: number;
-          }
-        | undefined,
-    ) {
-      if (state !== undefined) transcriptScrollStatesRef.current.set(sessionId, state);
-      else transcriptScrollStatesRef.current.delete(sessionId);
+    setTranscriptScrollPosition(position: TranscriptScrollPosition | undefined) {
+      if (position !== undefined) transcriptScrollPositionsRef.current.set(sessionId, position);
+      else transcriptScrollPositionsRef.current.delete(sessionId);
     },
     error: undefined,
   } as unknown as ChatStore;
@@ -1065,7 +1053,7 @@ describe("Transcript scrolling", () => {
     expect(container.querySelector('[data-slot="loading-state"]')).toBe(loadingState);
   });
 
-  it("restores each selected session's virtualized scroll state", () => {
+  it("restores each selected session by its visible message anchor", () => {
     const first: UiPart = {
       id: "assistant-1",
       kind: "text",
@@ -1084,8 +1072,16 @@ describe("Transcript scrolling", () => {
     act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([first])} />));
     act(() => {
       const transcript = container.querySelector<HTMLElement>(".transcript");
-      if (transcript) transcript.scrollTop = 240;
-      transcript?.dispatchEvent(new Event("scroll"));
+      const item = transcript?.querySelector<HTMLElement>('[data-slot="transcript-item"]');
+      if (!transcript || !item) return;
+      Object.defineProperties(transcript, {
+        clientHeight: { configurable: true, value: 400 },
+        scrollHeight: { configurable: true, value: 1_000 },
+      });
+      transcript.getBoundingClientRect = () => ({ top: 0 }) as DOMRect;
+      item.getBoundingClientRect = () => ({ top: -40, bottom: 60 }) as DOMRect;
+      transcript.scrollTop = 240;
+      transcript.dispatchEvent(new Event("scroll"));
     });
     act(() => root.render(<TestTranscript sessionId="session-2" store={storeWith([second])} />));
     act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([first])} />));
@@ -1097,11 +1093,11 @@ describe("Transcript scrolling", () => {
       ["unmounted"],
       ["mounted"],
     ]);
-    expect(virtualizedProps.current?.restoreStateFrom).toEqual({
-      ranges: [{ startIndex: 0, endIndex: 0, size: 100 }],
-      scrollTop: 240,
+    expect(virtualizedProps.current?.initialTopMostItemIndex).toEqual({
+      index: 0,
+      align: "start",
+      offset: 40,
     });
-    expect(virtualizedProps.current?.initialTopMostItemIndex).toBeUndefined();
   });
 
   it("shows loading for the whole conversation turn and removes it at end-turn", () => {
