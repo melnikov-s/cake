@@ -43,7 +43,7 @@ export function ShellCommand({ part }: { part: Extract<UiPart, { kind: "command"
           className="max-h-64 overflow-auto border-t border-border/60 px-4 pb-3"
           hidden={!open}
         >
-          <Markdown className="pt-3 text-xs" highlightCode={part.state !== "running"}>
+          <Markdown className="pt-3 text-xs" streaming={part.state === "running"}>
             {fencedCode(part.output, "text")}
           </Markdown>
         </div>

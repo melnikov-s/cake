@@ -68,20 +68,20 @@ function toolTitle(
   return summary ? `${operationName} ${summary}` : operationName;
 }
 
-function toolCode(value: string, className: string, highlightCode: boolean) {
+function toolCode(value: string, className: string, streaming: boolean) {
   const parsed = parseJson(value);
   const source = parsed === undefined ? value : JSON.stringify(parsed, null, 2);
   const language = parsed === undefined ? "text" : "json";
   return (
-    <Markdown className={className} highlightCode={highlightCode}>
+    <Markdown className={className} streaming={streaming} mutableCode={streaming}>
       {fencedCode(source, language)}
     </Markdown>
   );
 }
 
-function toolText(value: string, className: string, language: string, highlightCode: boolean) {
+function toolText(value: string, className: string, language: string, streaming: boolean) {
   return (
-    <Markdown className={className} highlightCode={highlightCode}>
+    <Markdown className={className} streaming={streaming} mutableCode={streaming}>
       {fencedCode(value, language)}
     </Markdown>
   );
@@ -91,11 +91,16 @@ function toolOutputContent(
   content: readonly ToolOutputContent[],
   className: string,
   language: string,
-  highlightCode: boolean,
+  streaming: boolean,
 ) {
   return content.map((item, index) =>
     item.type === "text" ? (
-      <Markdown className={className} highlightCode={highlightCode} key={`text-${index}`}>
+      <Markdown
+        className={className}
+        streaming={streaming}
+        mutableCode={streaming}
+        key={`text-${index}`}
+      >
         {fencedCode(item.text, language)}
       </Markdown>
     ) : (
@@ -116,17 +121,17 @@ function toolOutput(
   part: Extract<UiPart, { kind: "tool" }>,
   className: string,
   language: string,
-  highlightCode: boolean,
+  streaming: boolean,
 ) {
   if (part.outputContent && part.outputContent.length > 0)
-    return toolOutputContent(part.outputContent, className, language, highlightCode);
+    return toolOutputContent(part.outputContent, className, language, streaming);
   if (part.output === undefined) return null;
-  return toolText(part.output, className, language, highlightCode);
+  return toolText(part.output, className, language, streaming);
 }
 
-function readToolCode(part: Extract<UiPart, { kind: "tool" }>, highlightCode: boolean) {
+function readToolCode(part: Extract<UiPart, { kind: "tool" }>, streaming: boolean) {
   const path = toolPath(part);
-  return toolOutput(part, "mt-3 text-xs", path ? languageForSource(path) : "text", highlightCode);
+  return toolOutput(part, "mt-3 text-xs", path ? languageForSource(path) : "text", streaming);
 }
 
 function editorLocation(part: Extract<UiPart, { kind: "tool" }>): SourceLocation | undefined {
@@ -267,7 +272,7 @@ export function Tool({
       {hasDetails && detailsMounted && (
         <div data-slot="tool-details" className="mt-1" hidden={!open}>
           {read ? (
-            readToolCode(part, part.state !== "running")
+            readToolCode(part, part.state === "running")
           ) : diff ? (
             <DiffView
               diff={diff}
@@ -281,11 +286,15 @@ export function Tool({
               onOpenSourceLocation={onOpenSourceLocation}
             />
           ) : bash ? (
-            <Markdown className="mt-3 text-xs" highlightCode={part.state !== "running"}>
+            <Markdown
+              className="mt-3 text-xs"
+              streaming={part.state === "running"}
+              mutableCode={part.state === "running"}
+            >
               {fencedCode(bash, "bash")}
             </Markdown>
           ) : (
-            part.input && toolCode(part.input, "mt-3 text-xs", part.state !== "running")
+            part.input && toolCode(part.input, "mt-3 text-xs", part.state === "running")
           )}
           {!diff &&
             !read &&
@@ -293,7 +302,7 @@ export function Tool({
               part,
               "mt-3 border-t border-border pt-3 text-xs",
               "text",
-              part.state !== "running",
+              part.state === "running",
             )}
         </div>
       )}

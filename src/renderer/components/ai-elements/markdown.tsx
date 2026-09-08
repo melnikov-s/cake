@@ -1,4 +1,4 @@
-import { createContext, useContext, useDeferredValue, useMemo } from "react";
+import { createContext, useContext, useDeferredValue, useMemo, useRef } from "react";
 import type { ComponentProps, ReactNode } from "react";
 import { math } from "@streamdown/math";
 import { createMermaidPlugin } from "@streamdown/mermaid";
@@ -9,7 +9,7 @@ import {
   type StreamdownProps,
 } from "streamdown";
 import { useResolvedColorTheme } from "@/lib/resolved-color-theme";
-import { syntaxHighlighter } from "@/lib/syntax-highlighter";
+import { plainSyntaxHighlight, syntaxHighlighter } from "@/lib/syntax-highlighter";
 import { cn } from "@/lib/utils";
 import type { SourceLocation } from "../../../ipc/source-location";
 import { formatSourceLocation, parseSourceLocation } from "../../../utils/source-location";
@@ -186,14 +186,41 @@ function linkAnchor(allProps: AnchorProps, actions?: MarkdownLinkActions) {
 }
 
 const mermaid = createMermaidPlugin({ config: { securityLevel: "strict" } });
-const plugins = {
-  light: { code: syntaxHighlighter, math, mermaid },
-  dark: { code: syntaxHighlighter, math, mermaid },
-};
-const pluginsWithoutCode = {
-  light: { math, mermaid },
-  dark: { math, mermaid },
-};
+function lastFence(markdown: string) {
+  let fence: { marker: "`" | "~"; length: number; contentStart: number } | undefined;
+  let latest: { code: string; incomplete: boolean } | undefined;
+  let offset = 0;
+
+  for (const line of markdown.match(/[^\n]*\n|[^\n]+$/g) ?? []) {
+    if (fence) {
+      const closing = line.match(/^ {0,3}(`+|~+)[ \t]*(?:\n|$)/)?.[1];
+      if (closing?.[0] === fence.marker && closing.length >= fence.length) {
+        latest = {
+          code: markdown.slice(fence.contentStart, offset).replace(/\n+$/, ""),
+          incomplete: false,
+        };
+        fence = undefined;
+      }
+    } else {
+      const opening = line.match(/^ {0,3}(`{3,}|~{3,})/)?.[1];
+      if (
+        opening &&
+        (opening[0] === "~" || !line.slice(line.indexOf(opening) + opening.length).includes("`"))
+      ) {
+        fence = {
+          marker: opening.startsWith("`") ? "`" : "~",
+          length: opening.length,
+          contentStart: offset + line.length,
+        };
+      }
+    }
+    offset += line.length;
+  }
+
+  return fence
+    ? { code: markdown.slice(fence.contentStart).replace(/\n+$/, ""), incomplete: true }
+    : latest;
+}
 
 type MarkdownProps = Omit<
   StreamdownProps,
@@ -206,8 +233,10 @@ type MarkdownProps = Omit<
   | "skipHtml"
 > & {
   children: string;
-  /** Defers expensive highlighting while content is still changing. */
-  highlightCode?: boolean;
+  /** Keeps only the currently incomplete code fence plain while content streams. */
+  streaming?: boolean;
+  /** Marks the final fenced block itself as changing even when its fence is synthetically closed. */
+  mutableCode?: boolean;
   /** Normalizes conventional LaTeX delimiters after streamed content settles. */
   normalizeLatexDelimiters?: boolean;
   /** Invoked when the reader selects a workspace source reference. */
@@ -217,7 +246,8 @@ type MarkdownProps = Omit<
 export function Markdown({
   children,
   className,
-  highlightCode = true,
+  streaming = false,
+  mutableCode = false,
   normalizeLatexDelimiters = true,
   onOpenSourceLocation,
   ...props
@@ -232,7 +262,26 @@ export function Markdown({
   // Streamdown on its previous source during the urgent render also lets React
   // coalesce token-sized updates before parsing the growing Markdown again.
   const deferredSource = useDeferredValue(source);
-  const renderedSource = highlightCode ? source : deferredSource;
+  const renderedSource = streaming ? deferredSource : source;
+  const finalFence = streaming ? lastFence(renderedSource) : undefined;
+  const changingCode =
+    finalFence && (mutableCode || finalFence.incomplete) ? finalFence.code : undefined;
+  const changingCodeRef = useRef(changingCode);
+  changingCodeRef.current = changingCode;
+  const codeHighlighter = useMemo(
+    () => ({
+      ...syntaxHighlighter,
+      highlight: (...args: Parameters<typeof syntaxHighlighter.highlight>) =>
+        changingCodeRef.current === args[0].code
+          ? plainSyntaxHighlight(args[0].code)
+          : syntaxHighlighter.highlight(...args),
+    }),
+    [mutableCode, streaming],
+  );
+  const configuredPlugins = useMemo(
+    () => ({ code: codeHighlighter, math, mermaid }),
+    [codeHighlighter],
+  );
   const components = useMemo<Components>(() => {
     if (!onOpenSourceLocation) return { a: (anchorProps) => linkAnchor(anchorProps, linkActions) };
     const openSourceLocation = onOpenSourceLocation;
@@ -284,7 +333,7 @@ export function Markdown({
       }}
       mode="static"
       parseMarkdownIntoBlocksFn={parseMarkdownIntoBlocks}
-      plugins={highlightCode ? plugins[colorTheme] : pluginsWithoutCode[colorTheme]}
+      plugins={configuredPlugins}
       skipHtml
     >
       {renderedSource}

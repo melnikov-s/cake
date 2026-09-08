@@ -10,6 +10,7 @@ import {
   Markdown,
   MarkdownLinkProvider,
 } from "../../../src/renderer/components/ai-elements/markdown";
+import { syntaxHighlighter } from "../../../src/renderer/lib/syntax-highlighter";
 
 vi.mock("streamdown", () => ({
   defaultRehypePlugins: {},
@@ -31,6 +32,7 @@ describe("Markdown", () => {
 
   afterEach(() => {
     act(() => root.unmount());
+    vi.restoreAllMocks();
     delete document.documentElement.dataset.theme;
     container.remove();
   });
@@ -61,10 +63,31 @@ describe("Markdown", () => {
     );
   });
 
-  it("omits the code plugin while changing content should not be highlighted", () => {
-    act(() => root.render(<Markdown highlightCode={false}>```ts\nconst value = 1\n```</Markdown>));
+  it("highlights completed fences while keeping only the incomplete streaming fence plain", () => {
+    const highlight = vi.spyOn(syntaxHighlighter, "highlight");
+    const source = ["```ts", "const settled = true;", "```", "", "```ts", "const changing ="].join(
+      "\n",
+    );
+    act(() => root.render(<Markdown streaming>{source}</Markdown>));
 
-    expect(vi.mocked(Streamdown).mock.calls.at(-1)![0].plugins?.code).toBeUndefined();
+    const codePlugin = vi.mocked(Streamdown).mock.calls.at(-1)![0].plugins?.code;
+    const themes = syntaxHighlighter.getThemes();
+    codePlugin?.highlight({ code: "const settled = true;", language: "ts", themes });
+    expect(highlight).toHaveBeenCalledOnce();
+
+    const changing = codePlugin?.highlight({ code: "const changing =", language: "ts", themes });
+    expect(highlight).toHaveBeenCalledOnce();
+    expect(changing?.tokens[0]?.[0]?.content).toBe("const changing =");
+  });
+
+  it("keeps the streaming highlighter stable across source updates", () => {
+    act(() => root.render(<Markdown streaming>{"```ts\nconst value ="}</Markdown>));
+    const firstPlugin = vi.mocked(Streamdown).mock.calls.at(-1)![0].plugins?.code;
+
+    act(() => root.render(<Markdown streaming>{"```ts\nconst value = 1"}</Markdown>));
+    const secondPlugin = vi.mocked(Streamdown).mock.calls.at(-1)![0].plugins?.code;
+
+    expect(secondPlugin).toBe(firstPlugin);
   });
 
   it("uses Mermaid's high-contrast theme in dark mode", async () => {

@@ -111,7 +111,7 @@ export const ChatTextMessage = forwardRef<
       >
         {assistant || part.renderAs === "markdown" ? (
           <Markdown
-            highlightCode={part.status !== "streaming"}
+            streaming={part.status === "streaming"}
             normalizeLatexDelimiters={part.status !== "streaming"}
             onOpenSourceLocation={onOpenSourceLocation}
           >
@@ -331,7 +331,7 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
 
   const content = () => (
     <Markdown
-      highlightCode={part.status !== "streaming"}
+      streaming={part.status === "streaming"}
       normalizeLatexDelimiters={part.status !== "streaming"}
       onOpenSourceLocation={behavior.openSourceLocation}
     >

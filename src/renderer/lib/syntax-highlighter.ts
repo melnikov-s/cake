@@ -40,7 +40,7 @@ function isSupportedLanguage(language: string): language is SupportedSyntaxLangu
   return supportedLanguages.has(language);
 }
 
-function plainResult(code: string): SyntaxHighlightResult {
+export function plainSyntaxHighlight(code: string): SyntaxHighlightResult {
   let offset = 0;
   return {
     tokens: code.split("\n").map((content) => {
@@ -120,7 +120,7 @@ function failWorker(reason: unknown) {
   console.error("[Syntax highlighter] Worker failed; using plain code rendering", message);
   for (const [id, pending] of pendingById) {
     pendingById.delete(id);
-    finishPending(pending, plainResult(pending.code));
+    finishPending(pending, plainSyntaxHighlight(pending.code));
   }
 }
 
@@ -137,7 +137,7 @@ function getSyntaxWorker() {
       const pending = pendingById.get(response.id);
       if (!pending) return;
       pendingById.delete(response.id);
-      const result = response.result ?? plainResult(pending.code);
+      const result = response.result ?? plainSyntaxHighlight(pending.code);
       const elapsedMs = performance.now() - pending.startedAt;
       if (response.error) {
         console.warn("[Syntax highlighter] Highlight failed", {
@@ -178,14 +178,14 @@ export const syntaxHighlighter = {
   highlight(options, callback?) {
     const language = normalizeLanguage(options.language);
     if (options.code.length > maxHighlightCharacters || !isSupportedLanguage(language))
-      return plainResult(options.code);
+      return plainSyntaxHighlight(options.code);
 
     const key = `${language}\u0000${syntaxThemes[0]}\u0000${syntaxThemes[1]}\u0000${options.code}`;
     const cached = cachedResult(key);
     if (cached) return cached;
 
     const worker = getSyntaxWorker();
-    if (!worker) return plainResult(options.code);
+    if (!worker) return plainSyntaxHighlight(options.code);
 
     const existing = pendingByKey.get(key);
     if (existing) {
