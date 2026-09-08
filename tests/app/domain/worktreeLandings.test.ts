@@ -49,6 +49,7 @@ function services(options: {
   events: string[];
   land?: () => WorktreeLandOutcome;
   prompt?: (text: string) => void;
+  promptWait?: Effect.Effect<void>;
   prepare?: Effect.Effect<void, ManagedWorktreeError>;
 }) {
   const managed = ManagedWorktrees.of({
@@ -77,6 +78,7 @@ function services(options: {
         options.events.push("prompt");
         options.prompt?.(text);
       }).pipe(
+        Effect.andThen(options.promptWait ?? Effect.void),
         Effect.mapError(
           () => new WorktreeLandingAgentError({ operation: "prompt", message: "failed" }),
         ),
@@ -154,7 +156,7 @@ describe("WorktreeLandings", () => {
           commitBeforeLanding: false,
         });
         yield* awaitPhase("landed");
-        expect(events).toEqual(["land", "prompt", "land"]);
+        expect(events).toEqual(["prepare", "land", "prompt", "land"]);
         expect(promptText).toContain("shared.ts");
         expect(promptText).toContain("Cake will finish the landing");
       }).pipe(Effect.provide(layer)),
@@ -207,10 +209,73 @@ describe("WorktreeLandings", () => {
         const snapshot = yield* worktreeLandings.inspect({ workspacePath, sessionId: "session-1" });
         expect(snapshot.operation?.operationId).toBe("recovered-landing");
         yield* awaitPhase("landed");
-        expect(events).toEqual(["land"]);
+        expect(events).toEqual(["prepare", "land"]);
       }).pipe(Effect.provide(layer)),
     );
   });
+
+  it.effect("reacquires the FIFO reservation for durable paused landing metadata", () => {
+    const events: string[] = [];
+    const layer = services({
+      status: () => ({
+        ...baseStatus(),
+        dirtyCount: 1,
+        rebasing: true,
+        landingOperationId: "recovered-conflict",
+        record: { ...record, pendingStrategy: "preserve" },
+      }),
+      events,
+    });
+    return Effect.scoped(
+      Effect.gen(function* () {
+        const snapshot = yield* worktreeLandings.inspect({ workspacePath, sessionId: "session-1" });
+        expect(snapshot.operation?.phase).toBe("waiting");
+        yield* awaitPhase("stalled");
+        expect(events).toEqual(["prepare"]);
+      }).pipe(Effect.provide(layer)),
+    );
+  });
+
+  it.effect("atomically claims a paused operation before retrying", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const events: string[] = [];
+        const promptGate = yield* Deferred.make<void>();
+        const layer = services({
+          status: baseStatus,
+          events,
+          promptWait: Deferred.await(promptGate),
+        });
+        yield* Effect.gen(function* () {
+          const coordinator = yield* WorktreeLandingCoordinator;
+          yield* SubscriptionRef.update(coordinator.state, () => ({
+            operations: new Map([
+              [
+                workspacePath,
+                {
+                  operationId: "paused-landing",
+                  workspacePath,
+                  sessionId: "session-1",
+                  kind: "landing" as const,
+                  phase: "stalled" as const,
+                  strategy: "preserve" as const,
+                  allowDirtyTarget: false,
+                  pauseReason: "conflict" as const,
+                },
+              ],
+            ]),
+          }));
+          yield* worktreeLandings.retry({ workspacePath, sessionId: "session-1" });
+          yield* awaitPhase("resolving");
+          yield* worktreeLandings.retry({ workspacePath, sessionId: "session-2" }).pipe(
+            Effect.flip,
+            Effect.map((error) => expect(error.operation).toBe("retry")),
+          );
+          yield* Deferred.succeed(promptGate, undefined);
+        }).pipe(Effect.provide(layer));
+      }),
+    ),
+  );
 
   it.effect("cancels a queued process-owned workflow explicitly", () =>
     Effect.scoped(

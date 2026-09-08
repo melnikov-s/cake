@@ -908,20 +908,21 @@ export const prompt = Effect.fn("ProjectSessions.prompt")(function* (
   return turnId;
 });
 
-export const awaitIdle = Effect.fn("ProjectSessions.awaitIdle")(function* (
+export const awaitTurnSettled = Effect.fn("ProjectSessions.awaitTurnSettled")(function* (
   target: ProjectSessionTarget,
+  turnId: TurnId,
 ) {
   const location = yield* findLocation(target);
   const sessions = yield* PiSessions;
-  const busy = () =>
+  const pending = () =>
     sessions
-      .currentStatus({
+      .currentTurnIds({
         workingDirectory: location.workingDirectory,
         sessionDirectory: location.sessionDirectory,
         sessionId: target.sessionId,
       })
-      .pipe(Effect.map((status) => status?.streaming === true));
-  yield* busy().pipe(
+      .pipe(Effect.map((turnIds) => turnIds.includes(turnId)));
+  yield* pending().pipe(
     Effect.repeat({ while: (running) => running, schedule: Schedule.spaced("250 millis") }),
   );
 });

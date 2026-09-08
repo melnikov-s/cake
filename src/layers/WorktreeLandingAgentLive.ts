@@ -1,5 +1,4 @@
-import { Effect, Layer } from "effect";
-import type { Scope } from "effect";
+import { Context, Effect, Layer, Scope } from "effect";
 import * as projectSessions from "../domain/projectSessions";
 import type { ProjectSessionEnvironment } from "../services/project-sessions/ProjectSessionEnvironment";
 import type { PiSessions } from "../services/pi/PiSessions";
@@ -33,19 +32,22 @@ export const WorktreeLandingAgentLive = Layer.effect(
       | SessionCatalogChanges
       | SessionFamilyStorage
     >();
+    const dependencies = Context.omit(Scope.Scope)(context);
     return WorktreeLandingAgent.of({
       promptAndWait: Effect.fn("WorktreeLandingAgent.promptAndWait")(function* (input) {
-        yield* projectSessions
-          .prompt({
-            sessionId: input.sessionId,
-            text: input.text,
-            attachments: [],
-            renderUserMessageAsMarkdown: false,
-          })
-          .pipe(asError("prompt"), Effect.provide(context));
-        yield* projectSessions
-          .awaitIdle({ sessionId: input.sessionId })
-          .pipe(asError("awaitIdle"), Effect.provide(context));
+        yield* Effect.gen(function* () {
+          const turnId = yield* projectSessions
+            .prompt({
+              sessionId: input.sessionId,
+              text: input.text,
+              attachments: [],
+              renderUserMessageAsMarkdown: false,
+            })
+            .pipe(asError("prompt"));
+          yield* projectSessions
+            .awaitTurnSettled({ sessionId: input.sessionId }, turnId)
+            .pipe(asError("awaitTurnSettled"));
+        }).pipe(Effect.provide(dependencies), Effect.scoped);
       }),
     });
   }),

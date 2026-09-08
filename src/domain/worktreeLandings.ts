@@ -182,10 +182,6 @@ const prepareCommitAndLand = Effect.fn("WorktreeLandings.prepareCommitAndLand")(
   operation: WorktreeLandingOperation,
 ) {
   const worktrees = yield* ManagedWorktrees;
-  yield* update(operation.workspacePath, operation.operationId, (current) => ({
-    ...current,
-    phase: "waiting",
-  }));
   yield* worktrees
     .prepareLanding(operation.workspacePath, operation.operationId)
     .pipe(asError("prepareLanding"));
@@ -207,6 +203,29 @@ const prepareCommitAndLand = Effect.fn("WorktreeLandings.prepareCommitAndLand")(
     return;
   }
   yield* performLanding(operation);
+});
+
+const prepareAndLand = Effect.fn("WorktreeLandings.prepareAndLand")(function* (
+  operation: WorktreeLandingOperation,
+) {
+  yield* (yield* ManagedWorktrees)
+    .prepareLanding(operation.workspacePath, operation.operationId)
+    .pipe(asError("prepareLanding"));
+  yield* performLanding(operation);
+});
+
+const adoptLanding = Effect.fn("WorktreeLandings.adoptLanding")(function* (
+  operation: WorktreeLandingOperation,
+  ready: boolean,
+) {
+  yield* (yield* ManagedWorktrees)
+    .prepareLanding(operation.workspacePath, operation.operationId)
+    .pipe(asError("prepareLanding"));
+  if (ready) return yield* performLanding(operation);
+  yield* update(operation.workspacePath, operation.operationId, (current) => ({
+    ...current,
+    phase: "stalled",
+  }));
 });
 
 const performRebase = Effect.fn("WorktreeLandings.performRebase")(function* (
@@ -316,14 +335,14 @@ export const start = Effect.fn("WorktreeLandings.start")(function* (input: {
     workspacePath: input.workspacePath,
     sessionId: input.sessionId,
     kind: "landing",
-    phase: input.commitBeforeLanding ? "waiting" : "landing",
+    phase: "waiting",
     strategy: input.strategy,
     allowDirtyTarget: input.allowDirtyTarget,
   };
   yield* insert(operation);
   yield* run(
     operation,
-    input.commitBeforeLanding ? prepareCommitAndLand(operation) : performLanding(operation),
+    input.commitBeforeLanding ? prepareCommitAndLand(operation) : prepareAndLand(operation),
   );
   return operation;
 });
@@ -352,30 +371,33 @@ export const retry = Effect.fn("WorktreeLandings.retry")(function* (input: {
   readonly sessionId: string;
 }) {
   const coordinator = yield* WorktreeLandingCoordinator;
-  const current = (yield* SubscriptionRef.get(coordinator.state)).operations.get(
-    input.workspacePath,
-  );
-  if (!current || current.phase !== "stalled")
+  const status = yield* requireStatus(input.workspacePath);
+  const operation = yield* SubscriptionRef.modify(coordinator.state, (state) => {
+    const current = state.operations.get(input.workspacePath);
+    if (!current || current.phase !== "stalled") return [undefined, state] as const;
+    const retryPhase =
+      current.pauseReason === "rebase-conflict"
+        ? "rebasing"
+        : current.pauseReason === "commit"
+          ? "committing"
+          : current.pauseReason === "squash-message"
+            ? "proposing"
+            : "resolving";
+    const claimed: WorktreeLandingOperation = {
+      ...current,
+      sessionId: input.sessionId,
+      phase: retryPhase,
+      error: undefined,
+    };
+    const operations = new Map(state.operations);
+    operations.set(input.workspacePath, claimed);
+    return [claimed, { operations }] as const;
+  });
+  if (!operation)
     return yield* new WorktreeLandingError({
       operation: "retry",
       message: "No paused worktree operation is waiting to retry.",
     });
-  const retryPhase =
-    current.pauseReason === "rebase-conflict"
-      ? "rebasing"
-      : current.pauseReason === "commit"
-        ? "committing"
-        : current.pauseReason === "squash-message"
-          ? "proposing"
-          : "resolving";
-  const status = yield* requireStatus(input.workspacePath);
-  const operation: WorktreeLandingOperation = {
-    ...current,
-    sessionId: input.sessionId,
-    phase: retryPhase,
-    error: undefined,
-  };
-  yield* update(input.workspacePath, current.operationId, () => operation);
   const worker =
     operation.pauseReason === "rebase-conflict"
       ? performRebase(operation)
@@ -457,7 +479,7 @@ export const inspect = Effect.fn("WorktreeLandings.inspect")(function* (input: {
       workspacePath: input.workspacePath,
       sessionId: input.sessionId,
       kind: strategy ? "landing" : "rebase",
-      phase: ready ? "landing" : "stalled",
+      phase: strategy ? "waiting" : ready ? "rebasing" : "stalled",
       strategy,
       allowDirtyTarget: false,
       pauseReason: ready
@@ -469,7 +491,7 @@ export const inspect = Effect.fn("WorktreeLandings.inspect")(function* (input: {
           : "rebase-conflict",
     };
     yield* insert(operation);
-    if (ready) yield* run(operation, performLanding(operation));
+    if (strategy) yield* run(operation, adoptLanding(operation, ready));
   }
   const snapshot: WorktreeLandingSnapshot = {};
   if (status) Object.assign(snapshot, { status });
