@@ -1,4 +1,6 @@
 import { Model, child, observable } from "r-state-tree";
+import { LlmModel } from "./LlmModel";
+import { Resource } from "./Resource";
 import { CakeChatCatalog } from "./CakeChatCatalog";
 import { ProjectCatalog } from "./ProjectCatalog";
 import { Session } from "./Session";
@@ -6,6 +8,8 @@ import { SessionCatalog } from "./SessionCatalog";
 
 /** Owns the authoritative data projections currently loaded in one renderer window. */
 export class RootProjection extends Model {
+  @child(LlmModel) llmModels: LlmModel[] = observable([]);
+  @child(Resource) resources: Resource[] = observable([]);
   @child(ProjectCatalog) projects = ProjectCatalog.create();
   @child(SessionCatalog) sessionCatalog = SessionCatalog.create();
   @child(CakeChatCatalog) cakeChatCatalog = CakeChatCatalog.create();

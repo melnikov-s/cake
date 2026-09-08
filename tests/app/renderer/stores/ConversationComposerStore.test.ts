@@ -30,6 +30,7 @@ class HarnessStore extends Store<{
       this.props.model.parts.push(
         Message.create({
           id: "canonical-user-1",
+          partKey: "canonical-user-1",
           kind: "text",
           role: "user",
           text: "First message",
@@ -149,7 +150,8 @@ describe("ConversationComposerStore", () => {
           role: "assistant",
           text: "Completed response",
           status: "complete",
-          entryId: "assistant-entry",
+          piId: "assistant-entry",
+          partKey: "assistant-part",
         },
       ],
     });

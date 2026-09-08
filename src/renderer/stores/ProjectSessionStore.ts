@@ -109,7 +109,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       part.kind === "text" && part.role === "user" && part.deliveryState === "steering"
         ? [
             {
-              id: part.id,
+              id: part.partKey,
               text: part.text ?? "",
               attachments: [],
               renderUserMessageAsMarkdown: part.renderAs === "markdown",
@@ -270,7 +270,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
         this.props.registry.applyGeneratedDraftName(sessionId, title),
       configureDraftActivation: (choice) => this.props.configureDraftActivation(choice),
       sessionCreationChoice: this.props.sessionCreationChoice,
-      editorText: (entryId) => this.model.tree.find((entry) => entry.id === entryId)?.editorText,
+      editorText: (entryId) => this.model.tree.find((entry) => entry.piId === entryId)?.editorText,
     });
   }
 

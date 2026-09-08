@@ -142,7 +142,7 @@ const archivedSummary = (
 ): ProjectSessionSummary => {
   const projected: ProjectSessionSummary = {
     sessionId: entry.sessionId,
-    title: entry.title,
+    title: entry.title.slice(0, SESSION_TITLE_MAX_LENGTH),
     createdAt: entry.createdAt,
     modifiedAt: entry.modifiedAt,
     messageCount: 0,

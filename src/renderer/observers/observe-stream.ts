@@ -10,6 +10,7 @@ export type StreamFailureAction = "retry" | "stop";
 
 export interface StreamOptions {
   readonly classifyFailure?: (error: unknown) => StreamFailureAction;
+  readonly onStopped?: (error: unknown) => void;
   readonly reportFailure: (error: unknown) => void;
 }
 
@@ -40,8 +41,8 @@ export const observeStream = <Value>(
     source(client).pipe(
       Stream.runForEach((value) =>
         Effect.sync(() => {
-          failureReported = false;
           consume(value);
+          failureReported = false;
         }),
       ),
     ),
@@ -51,7 +52,10 @@ export const observeStream = <Value>(
   );
 
   void execute(run, controller.signal).catch((error: unknown) => {
-    if (!controller.signal.aborted) reportOnce(error);
+    if (!controller.signal.aborted) {
+      reportOnce(error);
+      options.onStopped?.(error);
+    }
   });
   return () => controller.abort();
 };

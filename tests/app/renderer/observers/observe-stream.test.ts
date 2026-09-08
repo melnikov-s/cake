@@ -73,6 +73,42 @@ describe("observeStream", () => {
     stopHealthy();
   });
 
+  it("reports consumer defects as stopped and does not automatically replay them", async () => {
+    vi.useFakeTimers();
+    const failure = new Error("Invalid projection");
+    const onStopped = vi.fn();
+    const reportFailure = vi.fn();
+    const source = vi.fn(() => Stream.make("snapshot"));
+    const stop = observeStream(
+      execute,
+      source,
+      () => {
+        throw failure;
+      },
+      { onStopped, reportFailure },
+    );
+    await vi.waitFor(() => expect(onStopped).toHaveBeenCalledWith(failure));
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(source).toHaveBeenCalledOnce();
+    expect(reportFailure).toHaveBeenCalledOnce();
+    stop();
+  });
+
+  it("does not report cancellation as a stopped observation", async () => {
+    const onStopped = vi.fn();
+    const reportFailure = vi.fn();
+    const stop = observeStream(
+      execute,
+      () => Stream.never,
+      () => undefined,
+      { onStopped, reportFailure },
+    );
+    stop();
+    await Promise.resolve();
+    expect(onStopped).not.toHaveBeenCalled();
+    expect(reportFailure).not.toHaveBeenCalled();
+  });
+
   it("does not retry failures classified as terminal", async () => {
     vi.useFakeTimers();
     const reportFailure = vi.fn();

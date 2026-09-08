@@ -14,7 +14,7 @@ export const ChatConfigurationSelector = observer(function ChatConfigurationSele
   const sessionConfiguration = selectedModel
     ? {
         provider: selectedModel.provider,
-        modelId: selectedModel.id,
+        modelId: selectedModel.modelId,
         thinkingLevel: session?.thinkingLevel,
         fastMode: configuration.fastMode,
       }
@@ -37,7 +37,7 @@ export const ChatConfigurationSelector = observer(function ChatConfigurationSele
           if (
             selectedModel &&
             next.provider === selectedModel.provider &&
-            next.modelId === selectedModel.id &&
+            next.modelId === selectedModel.modelId &&
             next.fastMode === configuration.fastMode &&
             next.thinkingLevel !== session?.thinkingLevel
           ) {

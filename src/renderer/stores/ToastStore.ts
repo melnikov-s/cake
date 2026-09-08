@@ -10,6 +10,7 @@ export interface Toast {
 }
 
 export interface ToastInput {
+  autoDismiss?: boolean;
   tone?: Toast["tone"];
   title: string;
   message: string;
@@ -51,6 +52,8 @@ export class ToastStore extends Store {
     if (this.toasts.length > MAX_TOASTS) this.dismiss(this.toasts[0]!.id);
     const previousTimer = this.timers.get(id);
     if (previousTimer) clearTimeout(previousTimer);
+    this.timers.delete(id);
+    if (toast.autoDismiss === false) return;
     this.timers.set(
       id,
       setTimeout(() => {

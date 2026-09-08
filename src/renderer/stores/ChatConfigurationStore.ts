@@ -68,7 +68,7 @@ export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
     return this.presets.find(
       (preset) =>
         preset.provider === session.model?.provider &&
-        preset.modelId === session.model.id &&
+        preset.modelId === session.model.modelId &&
         preset.thinkingLevel === session.thinkingLevel &&
         preset.fastMode === this.fastMode,
     );
@@ -80,7 +80,9 @@ export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
   get modelsByProvider() {
     // A runtime-backed session carries its own authoritative catalog; a
     // deferred chat falls back to the shared agent-directory catalog.
-    const models = this.session?.models.length ? this.session.models : this.catalogModels;
+    const models = this.session?.modelOptions.length
+      ? this.session.modelOptions.map((option) => option.value)
+      : this.catalogModels;
     const groups = new Map<string, { name: string; models: ModelOption[] }>();
     for (const model of models) {
       const group = groups.get(model.provider) ?? { name: model.providerName, models: [] };

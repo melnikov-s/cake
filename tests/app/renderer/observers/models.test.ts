@@ -64,6 +64,51 @@ function clientWithProjectStream(
 }
 
 describe("createModelObserver", () => {
+  it("restarts stopped observations explicitly and ignores stale retry actions", async () => {
+    const onStopped = vi.fn();
+    let attempts = 0;
+    const source = () => {
+      attempts++;
+      return attempts === 1
+        ? Stream.die(new Error("Projection failed"))
+        : Stream.concat(
+            Stream.make<[ProjectCatalogUpdate]>({
+              _tag: "Snapshot",
+              revision: 1,
+              projects: [
+                {
+                  path: "/cake",
+                  name: "Recovered",
+                  addedAt: "2026-01-01",
+                  lastOpenedAt: "2026-01-01",
+                },
+              ],
+            }),
+            Stream.never,
+          );
+    };
+    const observer = createModelObserver(runtimeFor(clientWithProjectStream(source)), onStopped);
+    const projects = ProjectCatalog.create();
+    const sessionCatalog = SessionCatalog.create();
+    const cakeChatCatalog = CakeChatCatalog.create();
+    const input = { projects, sessionCatalog, cakeChatCatalog, projectSessions: [], cakeChats: [] };
+    observer.sync(input);
+    await vi.waitFor(() => expect(onStopped).toHaveBeenCalledOnce());
+    observer.sync(input);
+    expect(attempts).toBe(1);
+    const retry = onStopped.mock.calls[0]![2] as () => void;
+    retry();
+    await vi.waitFor(() => expect(projects.projects[0]?.name).toBe("Recovered"));
+    retry();
+    expect(attempts).toBe(2);
+    observer.stop();
+    retry();
+    expect(attempts).toBe(2);
+    projects[Symbol.dispose]();
+    sessionCatalog[Symbol.dispose]();
+    cakeChatCatalog[Symbol.dispose]();
+  });
+
   it("allows an unhydrated session placeholder to observe its final Working Directory", async () => {
     const targets: Array<{ sessionId: string; workingDirectory?: string }> = [];
     const client = {

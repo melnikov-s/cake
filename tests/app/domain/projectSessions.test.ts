@@ -128,6 +128,7 @@ const makeLayer = (
     resolvedProjectEntries?: ReadonlyArray<{
       readonly sessionId: string;
       readonly modifiedAt: string;
+      readonly title?: string;
     }>;
     migrationComplete?: boolean;
     worktreeRecords?: ReadonlyArray<WorktreeRecord>;
@@ -315,7 +316,7 @@ const makeLayer = (
                 entries.map((entry) => ({
                   version: 1 as const,
                   sessionId: entry.sessionId,
-                  title: entry.sessionId,
+                  title: entry.title ?? entry.sessionId,
                   projectPath,
                   projectName: "Project",
                   workingDirectory: "/project",
@@ -411,6 +412,34 @@ describe("Project Sessions domain", () => {
           resolvedOnDisk: true,
           onCatalog: () => piCatalogs++,
           onLocations: () => locations++,
+        }),
+      ),
+    );
+  });
+
+  it.effect("bounds existing archive titles before catalog serialization", () => {
+    return Effect.gen(function* () {
+      const updates = yield* projectSessions.observeCatalog({
+        projectPath: "/project",
+        resolved: true,
+      });
+      const first = yield* updates.pipe(Stream.take(1), Stream.runCollect);
+      assert.equal(first[0]?._tag, "Snapshot");
+      if (first[0]?._tag !== "Snapshot") return;
+      assert.equal(first[0].sessions.length, 2);
+      assert.equal(
+        first[0].sessions.find((item) => item.sessionId === "long")?.title,
+        "x".repeat(144),
+      );
+      assert.equal(first[0].sessions.find((item) => item.sessionId === "normal")?.title, "Normal");
+    }).pipe(
+      Effect.provide(
+        makeLayer(undefined, {
+          resolvedOnDisk: true,
+          resolvedProjectEntries: [
+            { sessionId: "long", title: "x".repeat(500), modifiedAt: "2026-01-02" },
+            { sessionId: "normal", title: "Normal", modifiedAt: "2026-01-01" },
+          ],
         }),
       ),
     );

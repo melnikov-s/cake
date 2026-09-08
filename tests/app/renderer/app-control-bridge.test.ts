@@ -586,6 +586,7 @@ describe("AppControlBridge", () => {
     targetSession.parts.push(
       Message.create({
         id: "projected-message",
+        partKey: "projected-message",
         kind: "text",
         role: "user",
         text: "Only message",

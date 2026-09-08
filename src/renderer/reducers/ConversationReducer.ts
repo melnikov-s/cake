@@ -1,16 +1,21 @@
 import { Schema } from "effect";
-import { applySnapshot, batch, toSnapshot } from "r-state-tree";
+import { applySnapshot, batch, toSnapshot, type Snapshot } from "r-state-tree";
 import type { CakeChatUpdate } from "../../domain/cake-chat-data";
-import type { ConversationEvent } from "../../domain/conversation-data";
+import type { ConversationEvent, ConversationSnapshot } from "../../domain/conversation-data";
 import type { ProjectSessionUpdate } from "../../domain/project-session-data";
 import {
   extensionUiEventSchema,
   sessionUsageSchema,
+  sessionSnapshotSchema,
+  type SessionSnapshot,
   uiPartSchema,
 } from "../../ipc/session-contract";
-import { toSessionSnapshot } from "../../utils/session-snapshot";
+import { projectionId } from "../../utils/projection-id";
+import { modelOptionKey } from "../../utils/model-option-key";
+import { artifactSnapshot } from "./ArtifactReducer";
 import type { Session } from "../models/Session";
-import { applyPartUpdate, removePart } from "./SessionPartReducer";
+import { applyConversationCatalog } from "./ConversationCatalogReducer";
+import { applyPartUpdate, messageSnapshots, removePart } from "./SessionPartReducer";
 
 export function applyProjectSessionUpdate(
   model: Session,
@@ -54,26 +59,33 @@ export function applyCakeChatUpdate(model: Session, sessionId: string, update: C
   applyConversationEvent(model, event);
 }
 
-function applyConversationSnapshot(
+export function applyConversationSnapshot(
   model: Session,
-  conversation: Parameters<typeof toSessionSnapshot>[0],
-  preserveActiveTurns: boolean,
+  conversation: ConversationSnapshot,
+  preserveActiveTurns = false,
 ) {
   const current = toSnapshot(model);
-  const authoritative = toSessionSnapshot(conversation);
-  applySnapshot(model, {
-    ...authoritative,
-    activeTurnIds: preserveActiveTurns ? current.activeTurnIds : [],
-    reviewThreads: current.reviewThreads,
-    subagentActivities: current.subagentActivities,
-    scheduledMessages: current.scheduledMessages,
-    releasedSubagentHandleIds: current.releasedSubagentHandleIds,
-    backgroundWorkActive: current.backgroundWorkActive,
-    controlRequests: current.controlRequests,
-    extensionUi: {
-      ...authoritative.extensionUi,
-      compatibilityDiagnostics: current.extensionUi?.compatibilityDiagnostics ?? [],
-    },
+  const parsed = Schema.decodeUnknownSync(sessionSnapshotSchema)({
+    ...conversation,
+    workspacePath: conversation.workingDirectory,
+  });
+  const authoritative = sessionSnapshot(parsed);
+  batch(() => {
+    applyConversationCatalog(model, parsed);
+    applySnapshot(model, {
+      ...authoritative,
+      activeTurnIds: preserveActiveTurns ? current.activeTurnIds : [],
+      reviewThreads: current.reviewThreads,
+      subagentActivities: current.subagentActivities,
+      scheduledMessages: current.scheduledMessages,
+      releasedSubagentHandleIds: current.releasedSubagentHandleIds,
+      backgroundWorkActive: current.backgroundWorkActive,
+      controlRequests: current.controlRequests,
+      extensionUi: {
+        ...authoritative.extensionUi,
+        compatibilityDiagnostics: current.extensionUi?.compatibilityDiagnostics ?? [],
+      },
+    });
   });
 }
 
@@ -84,7 +96,11 @@ function applyConversationEvent(model: Session, event: ConversationEvent) {
   }
   batch(() => {
     if (event._tag === "PartUpdated")
-      applyPartUpdate(model.parts, Schema.decodeUnknownSync(uiPartSchema)(event.part));
+      applyPartUpdate(
+        model.parts,
+        Schema.decodeUnknownSync(uiPartSchema)(event.part),
+        model.sessionId,
+      );
     else if (event._tag === "PartRemoved") removePart(model.parts, event.partId);
     else if (event._tag === "StreamingChanged") model.streaming = event.streaming;
     else if (event._tag === "UsageUpdated")
@@ -121,4 +137,58 @@ function applyExtensionUiEvent(model: Session, event: typeof extensionUiEventSch
   }
   if (!extensionUi.compatibilityDiagnostics.some((item) => item.id === event.diagnostic.id))
     extensionUi.compatibilityDiagnostics.push(event.diagnostic);
+}
+
+function sessionSnapshot(parsed: SessionSnapshot): Snapshot<Session> {
+  return {
+    workingDirectory: parsed.workspacePath,
+    sessionId: parsed.sessionId,
+    sessionFile: parsed.sessionFile,
+    parts: messageSnapshots(parsed.parts, parsed.sessionId),
+    model: parsed.model ? { id: modelOptionKey(parsed.model) } : undefined,
+    fastMode: parsed.fastMode ?? false,
+    fastModeAvailable: parsed.fastModeAvailable ?? false,
+    modelOptions: parsed.models.map(({ provider, id, ...option }) => ({
+      ...option,
+      id: projectionId(parsed.sessionId, modelOptionKey({ provider, id })),
+      llmModel: { id: modelOptionKey({ provider, id }) },
+    })),
+    thinkingLevel: parsed.thinkingLevel,
+    availableThinkingLevels: [...parsed.availableThinkingLevels],
+    piSettings: parsed.piSettings,
+    streaming: parsed.streaming,
+    activeTurnIds: [],
+    diagnostics: [...parsed.diagnostics],
+    commands: parsed.commands.map((command) => ({ ...command })),
+    usage: parsed.usage,
+    resources: parsed.compatibility.resources.map((resource) => ({
+      id: projectionId(parsed.sessionId, resource.id),
+      resource: { id: resource.id },
+      name: resource.name,
+      description: resource.description,
+      source: resource.source,
+      scope: resource.scope,
+      origin: resource.origin,
+      enabled: resource.enabled,
+      commands: [...resource.commands],
+      tools: [...resource.tools],
+    })),
+    resourceDiagnostics: parsed.compatibility.diagnostics.map((diagnostic) => ({
+      ...diagnostic,
+      diagnosticKey: diagnostic.id,
+      id: projectionId(parsed.sessionId, diagnostic.id),
+    })),
+    tree: parsed.tree.map(({ id, parentId, ...entry }) => ({
+      ...entry,
+      piId: id,
+      parentPiId: parentId,
+      id: projectionId(parsed.sessionId, id),
+    })),
+    artifacts: (parsed.artifacts ?? []).map(artifactSnapshot),
+    extensionUi: {
+      title: parsed.extensionUi.title,
+      statuses: parsed.extensionUi.statuses.map((status) => ({ ...status })),
+      compatibilityDiagnostics: [],
+    },
+  };
 }

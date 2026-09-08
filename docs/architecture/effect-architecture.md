@@ -129,9 +129,12 @@ to the Stores that own those projections. Renderer bootstrap attaches these
 observers and window snapshot persistence to the mounted Root Store; none is a
 Store.
 
-A window-owned root projection Model owns the authoritative data projections currently
-loaded by that renderer independently of Store and React lifetimes. Session Stores receive
-its child Models as dependencies. Loaded Project Session identity is independent from observation
+A window-owned RootProjection Model owns the authoritative data projections currently
+loaded by that renderer independently of Store and React lifetimes. It owns canonical
+LLM identities and resource identities once; sessions select LLMs through model references.
+Session-owned model options and resource usages reference those shared identities while
+retaining runtime-specific authentication, capabilities, discovery, and activation data.
+Session Stores receive these Models as dependencies. Loaded Project Session identity is independent from observation
 lifetime: the selected and currently running sessions are pinned, while a process-local
 20-session idle LRU bounds warm observations. Persisted loaded identities do not demand
 subscriptions at startup. Window teardown first stops native events and Model
@@ -606,8 +609,27 @@ contract; the observer does not implement a second revision protocol.
 It applies each validated Snapshot with `applySnapshot` and reduces each
 subsequent Event transactionally, using direct reactive batches for incremental
 entity changes; it is not a second application state system. Renderer bootstrap
-attaches it to the mounted Root Store and window root projection Model so it can
-watch observation demand and update the corresponding projection children.
+attaches it to the mounted Root Store and RootProjection so it can watch observation
+demand and update the corresponding projection children. Shared identities are registered
+before session references are hydrated, in the same reactive batch. Pi message/tree IDs,
+resource diagnostics, resource usages, model options, and artifacts use unique renderer
+IDs containing their owning session (or discussion) and source ID. Model identity is always the unique identifier, never a separate identity key.
+Use `id` alone when the Cake and Pi identities are the same. Only split into `id`
+and `piId` when Pi's session-local identity differs from Cake's tree-unique identity.
+Session tree entries use `sessionId:piId`. Message projections use
+`sessionId:partKey`: the existing Cake part key already distinguishes text,
+reasoning, attachments, and other parts of a Pi entry. A Message's optional `piId`
+is the actual Pi entry ID supplied by the transport, never the generated part key.
+Pi entry references are explicitly named `parentPiId` and `firstKeptPiId` inside
+Models and mapped to Pi contract field names at the boundary. Cake-generated
+resource diagnostics use `diagnosticKey`, not `piId`. Provider model names remain
+`modelId`. Do not add redundant `piId` fields to sessions or Cake-owned entities.
+Source values remain unchanged at Pi/RPC boundaries. Artifacts have one renderer `id`,
+composed from session and artifact identity; their received record remains transport data. Cake-created session, discussion, scheduled-message, and
+subagent IDs are already globally unique within their Model class.
+Canonical entities remain available for the window lifetime so unloading a session cannot
+invalidate another session's references. Projection defects stop the
+observation and offer an explicit retry; recoverable stream failures retry automatically.
 Feature Stores and Models never access it.
 
 The normal data and command paths are:
@@ -698,7 +720,7 @@ src/
 │   ├── client/               # permanent Promise Client adapter
 │   ├── components/           # React presentation
 │   ├── lib/                  # renderer-local pure utilities
-│   ├── models/               # r-state-tree projections and RootProjection
+│   ├── models/               # r-state-tree projection Models
 │   ├── observers/            # Stream execution and focused observers
 │   ├── persistence/          # one-way window Store snapshot persistence
 │   ├── reducers/             # update-to-Model reducers

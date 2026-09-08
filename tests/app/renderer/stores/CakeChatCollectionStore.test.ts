@@ -131,6 +131,7 @@ describe("CakeChatCollectionStore", () => {
     session.model.parts.push(
       Message.create({
         id: "canonical-user-1",
+        partKey: "canonical-user-1",
         kind: "text",
         role: "user",
         text: "Hello Cake",

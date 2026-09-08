@@ -122,7 +122,8 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   get commandPaneStore(): CommandPaneStore {
     return createStore(CommandPaneStore, {
       operations: this.props.operations,
-      editorText: (entryId) => this.session?.tree.find((entry) => entry.id === entryId)?.editorText,
+      editorText: (entryId) =>
+        this.session?.tree.find((entry) => entry.piId === entryId)?.editorText,
       setDraft: (value) => this.activeSession?.chatStore.setDraft(value),
       requestComposerFocus: () => this.activeSession?.composerStore.requestFocus(),
       reportError: (error) => this.setError(error),

@@ -107,7 +107,7 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       activateDraftSession: (sessionId) => this.props.collection.activateDraftSession(sessionId),
       applyGeneratedDraftName: (sessionId, title) =>
         this.props.collection.applyGeneratedDraftName(sessionId, title),
-      editorText: (entryId) => this.model.tree.find((entry) => entry.id === entryId)?.editorText,
+      editorText: (entryId) => this.model.tree.find((entry) => entry.piId === entryId)?.editorText,
     });
   }
 

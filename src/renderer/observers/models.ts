@@ -76,7 +76,10 @@ type ModelInput = {
 };
 
 /** Creates the window's dynamic observer for passive projection Models. */
-export const createModelObserver = (runtime: Runtime) => {
+export const createModelObserver = (
+  runtime: Runtime,
+  onStopped?: (key: string, error: unknown, retry: () => void) => void,
+) => {
   const observations = new Map<string, ModelObservation>();
   let stopObservingSource: (() => void) | undefined;
   let disposed = false;
@@ -105,6 +108,14 @@ export const createModelObserver = (runtime: Runtime) => {
     if (current?.model === model) return;
     if (current) stop(key);
     const cancel = runtime.observe(stream, apply, {
+      onStopped: (error) => {
+        if (unavailable(key, error)) return;
+        onStopped?.(key, error, () => {
+          if (disposed || observations.get(key)?.stop !== cancel) return;
+          stop(key, false);
+          observeModelStream(key, model, stream, apply, options);
+        });
+      },
       classifyFailure: (error): StreamFailureAction => (unavailable(key, error) ? "stop" : "retry"),
       reportFailure: (error) => {
         if (!unavailable(key, error))
@@ -309,7 +320,16 @@ export const createModelObserver = (runtime: Runtime) => {
 
 /** Observes the Models demanded by one renderer window's Store tree. */
 export const observeModels = (runtime: Runtime, projection: RootProjection, root: RootStore) => {
-  const observer = createModelObserver(runtime);
+  const observer = createModelObserver(runtime, (key, error, retry) => {
+    root.toastStore.show({
+      tone: "error",
+      title: "Updates stopped",
+      autoDismiss: false,
+      message: `${key}: ${error instanceof Error ? error.message : String(error)}`,
+      coalesceKey: `observation:${key}`,
+      action: { label: "Retry", run: retry },
+    });
+  });
   observer.observe({
     projection,
     projectSessionCatalogQueries: () => root.projectSessionCatalogQueries,

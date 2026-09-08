@@ -13,9 +13,12 @@ type CrossSessionMetadata = Extract<UiPart, { kind: "text" }>["crossSession"];
 
 export class Message extends Model {
   @id id = "";
+  /** Cake-generated key for a display part within its conversation. */
+  partKey = "";
   kind: UiPart["kind"] = "notice";
   role: TextRole | undefined;
-  entryId: string | undefined;
+  /** Pi entry identity, when the display part carries one. */
+  piId: string | undefined;
   text: string | undefined;
   content: string | undefined;
   status: PartStatus | undefined;
@@ -27,7 +30,7 @@ export class Message extends Model {
   excludeFromContext: boolean | undefined;
   input: string | undefined;
   output: string | undefined;
-  outputContent: ToolOutputContent[] | undefined;
+  outputContent: readonly ToolOutputContent[] | undefined;
   artifactId: string | undefined;
   filePath: string | undefined;
   diff: string | undefined;
@@ -46,15 +49,15 @@ export class Message extends Model {
   commentCount: number | undefined;
   summary: string | undefined;
   tokensBefore: number | undefined;
-  firstKeptEntryId: string | undefined;
+  firstKeptPiId: string | undefined;
 
   /** Updates live transcript fields without reapplying every optional snapshot field per token. */
   update(part: UiPart) {
-    if (part.id !== this.id || part.kind !== this.kind) return false;
+    if (part.id !== this.partKey || part.kind !== this.kind) return false;
     switch (part.kind) {
       case "text":
         this.role = part.role;
-        this.entryId = part.entryId;
+        this.piId = part.entryId;
         this.text = part.text;
         this.status = part.status;
         this.deliveryState = part.deliveryState;
@@ -114,7 +117,7 @@ export class Message extends Model {
       case "compaction":
         this.summary = part.summary;
         this.tokensBefore = part.tokensBefore;
-        this.firstKeptEntryId = part.firstKeptEntryId;
+        this.firstKeptPiId = part.firstKeptEntryId;
         return true;
     }
   }
@@ -125,10 +128,10 @@ export class Message extends Model {
       case "text":
         // SAFETY: snapshots and update() keep status aligned with the part discriminant.
         return {
-          id: this.id,
+          id: this.partKey,
           kind: this.kind,
           role: this.role!,
-          entryId: this.entryId,
+          entryId: this.piId,
           text: this.text!,
           status: this.status as TextStatus,
           deliveryState: this.deliveryState,
@@ -136,18 +139,18 @@ export class Message extends Model {
           crossSession: this.crossSession,
         };
       case "skill":
-        return { id: this.id, kind: this.kind, name: this.name!, content: this.content! };
+        return { id: this.partKey, kind: this.kind, name: this.name!, content: this.content! };
       case "reasoning":
         // SAFETY: snapshots and update() keep reasoning status aligned with the part discriminant.
         return {
-          id: this.id,
+          id: this.partKey,
           kind: this.kind,
           text: this.text!,
           status: this.status as Extract<UiPart, { kind: "reasoning" }>["status"],
         };
       case "command":
         return {
-          id: this.id,
+          id: this.partKey,
           kind: this.kind,
           command: this.command!,
           output: this.output!,
@@ -157,7 +160,7 @@ export class Message extends Model {
         };
       case "tool":
         return {
-          id: this.id,
+          id: this.partKey,
           kind: this.kind,
           name: this.name!,
           command: this.command,
@@ -170,10 +173,10 @@ export class Message extends Model {
           state: this.state!,
         };
       case "source":
-        return { id: this.id, kind: this.kind, title: this.title!, url: this.url! };
+        return { id: this.partKey, kind: this.kind, title: this.title!, url: this.url! };
       case "attachment":
         return {
-          id: this.id,
+          id: this.partKey,
           kind: this.kind,
           name: this.name!,
           mediaType: this.mediaType!,
@@ -181,10 +184,10 @@ export class Message extends Model {
           data: this.data,
         };
       case "annotation":
-        return { id: this.id, kind: this.kind, annotations: this.annotations! };
+        return { id: this.partKey, kind: this.kind, annotations: this.annotations! };
       case "notice":
         return {
-          id: this.id,
+          id: this.partKey,
           kind: this.kind,
           tone: this.tone!,
           title: this.title!,
@@ -194,7 +197,7 @@ export class Message extends Model {
       case "review-run":
         // SAFETY: snapshots and update() keep review status aligned with the part discriminant.
         return {
-          id: this.id,
+          id: this.partKey,
           kind: this.kind,
           operationId: this.operationId!,
           threadIds: this.threadIds!,
@@ -203,11 +206,11 @@ export class Message extends Model {
         };
       case "compaction":
         return {
-          id: this.id,
+          id: this.partKey,
           kind: this.kind,
           summary: this.summary!,
           tokensBefore: this.tokensBefore!,
-          firstKeptEntryId: this.firstKeptEntryId,
+          firstKeptEntryId: this.firstKeptPiId,
         };
     }
   }

@@ -83,7 +83,11 @@ export const CommandPane = observer(function CommandPane({
       {commandPane.pane === "tree" ? (
         store.session.tree.length > 0 ? (
           <SessionTree
-            nodes={store.session.tree}
+            nodes={store.session.tree.map((entry) => ({
+              ...entry,
+              id: entry.piId,
+              parentId: entry.parentPiId,
+            }))}
             onNavigate={(id) => void commandPane.navigateTo(id)}
             onFork={(id) => void store.sessionContinuationStore.forkAt(id)}
           />

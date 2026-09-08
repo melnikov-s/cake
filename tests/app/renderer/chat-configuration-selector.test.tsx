@@ -64,7 +64,12 @@ describe("ChatConfigurationSelector", () => {
     );
     return {
       session: {
-        model: { provider: current.provider, id: current.id, name: current.name },
+        model: {
+          provider: current.provider,
+          id: JSON.stringify([current.provider, current.id]),
+          modelId: current.id,
+          name: current.name,
+        },
         thinkingLevel: "medium",
         availableThinkingLevels: current.availableThinkingLevels,
         fastModeAvailable: false,

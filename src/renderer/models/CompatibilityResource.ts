@@ -1,12 +1,20 @@
-import { Model, id, observable } from "r-state-tree";
+import { Model, id, modelRef, observable } from "r-state-tree";
 import type { CompatibilityResource as CompatibilityResourceRecord } from "../../ipc/session-contract";
 
+import { Resource } from "./Resource";
+
+/** A session's discovery and activation of a shared resource. */
 export class CompatibilityResource extends Model {
   @id id = "";
-  kind: CompatibilityResourceRecord["kind"] = "extension";
+  @modelRef(Resource) resource: Resource | undefined;
+  get kind(): CompatibilityResourceRecord["kind"] {
+    return this.resource?.kind ?? "extension";
+  }
   name = "";
   description: string | undefined;
-  path: string | undefined;
+  get path() {
+    return this.resource?.path;
+  }
   source = "";
   scope: CompatibilityResourceRecord["scope"] = "user";
   origin: CompatibilityResourceRecord["origin"] = "top-level";
@@ -16,7 +24,7 @@ export class CompatibilityResource extends Model {
 
   get value(): CompatibilityResourceRecord {
     return {
-      id: this.id,
+      id: this.resource?.id ?? "",
       kind: this.kind,
       name: this.name,
       description: this.description,

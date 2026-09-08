@@ -46,6 +46,23 @@ describe("ToastStore", () => {
     store[Symbol.dispose]();
   });
 
+  it("keeps a stopped observation retry available until acted on", () => {
+    const store = mount(createStore(ToastStore));
+    const run = vi.fn();
+    store.show({
+      title: "Updates stopped",
+      message: "Session",
+      autoDismiss: false,
+      action: { label: "Retry", run },
+    });
+    vi.advanceTimersByTime(60_000);
+    expect(store.toasts).toHaveLength(1);
+    store.runAction(store.toasts[0]!.id);
+    expect(run).toHaveBeenCalledOnce();
+    expect(store.toasts).toHaveLength(0);
+    store[Symbol.dispose]();
+  });
+
   it("auto-dismisses a toast after the timeout", () => {
     const store = mount(createStore(ToastStore));
     store.show({ title: "Hello", message: "World" });

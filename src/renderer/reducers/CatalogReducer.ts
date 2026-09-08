@@ -1,5 +1,7 @@
-import { applySnapshot, toSnapshot } from "r-state-tree";
-import type { ProjectRecord } from "../../domain/application-data";
+import { applySnapshot, batch, toSnapshot } from "r-state-tree";
+import { Project } from "../models/Project";
+import { SessionSummary } from "../models/SessionSummary";
+import { CakeChatSummary } from "../models/CakeChatSummary";
 import type {
   CakeChatCatalogUpdate,
   ProjectCatalogUpdate,
@@ -12,36 +14,27 @@ import type { ProjectCatalog } from "../models/ProjectCatalog";
 import type { SessionCatalog } from "../models/SessionCatalog";
 
 export function applyProjectCatalogUpdate(model: ProjectCatalog, update: ProjectCatalogUpdate) {
-  let projects: ProjectRecord[] = model.projects.map((project) => ({
-    path: project.path,
-    name: project.name,
-    addedAt: project.addedAt,
-    lastOpenedAt: project.lastOpenedAt,
-    settings: { ...project.settings },
-    workflow: {
-      columns: project.workflow.columns.map((column) => ({ ...column })),
-      assignments: project.workflow.assignments.map((assignment) => ({ ...assignment })),
-      sessionDetails: project.workflow.sessionDetails.map((details) => ({
-        ...details,
-        ...(details.model ? { model: { ...details.model } } : undefined),
-      })),
-    },
-  }));
-  if (update._tag === "Snapshot") projects = [...update.projects];
-  else {
-    const event = update.event;
-    if (event._tag === "Replaced") projects = [...event.projects];
-    else if (event._tag === "Upserted") {
-      const index = projects.findIndex((project) => project.path === event.project.path);
-      if (index >= 0) projects[index] = event.project;
-      else projects.push(event.project);
-    } else projects = projects.filter((project) => project.path !== event.path);
+  const change = update._tag === "Snapshot" ? update : update.event;
+  if (change._tag === "Snapshot" || change._tag === "Replaced") {
+    const projects = change.projects;
+    assertUnique(
+      projects.map((project) => project.path),
+      "Project path",
+    );
+    applySnapshot(model, { projects: [...projects] });
+    return;
   }
-  assertUnique(
-    projects.map((project) => project.path),
-    "Project path",
-  );
-  applySnapshot(model, { projects });
+  const event = change;
+  batch(() => {
+    if (event._tag === "Upserted") {
+      const existing = model.find(event.project.path);
+      if (existing) applySnapshot(existing, event.project);
+      else model.projects.push(Project.create(event.project));
+    } else {
+      const index = model.projects.findIndex((project) => project.path === event.path);
+      if (index >= 0) model.projects.splice(index, 1);
+    }
+  });
 }
 
 export function applySessionCatalogGroupUpdate(
@@ -53,47 +46,68 @@ export function applySessionCatalogGroupUpdate(
     readonly projectPath?: string | null;
     readonly resolved?: boolean | null;
   }) => session.projectPath === query.projectPath && session.resolved === query.resolved;
-  let sessions = model.sessions.map((session) => toSnapshot(session));
-  const resolvedHasMoreByProject = { ...model.resolvedHasMoreByProject };
-  if (update._tag === "Snapshot") {
-    if (query.resolved) resolvedHasMoreByProject[query.projectPath] = update.hasMore ?? false;
-    sessions = [...sessions.filter((session) => !belongsToGroup(session)), ...update.sessions];
-  } else {
-    const event = update.event;
-    if (event._tag === "Replaced") {
-      sessions = [...sessions.filter((session) => !belongsToGroup(session)), ...event.sessions];
-    } else if (event._tag === "Upserted") {
-      const existing = sessions.find((session) => session.sessionId === event.session.sessionId);
-      if (existing && existing.projectPath !== event.session.projectPath)
-        throw new Error(`Session ID collision: ${event.session.sessionId}`);
-      sessions = sessions.filter((session) => session.sessionId !== event.session.sessionId);
-      sessions.push(event.session);
-    } else if (event._tag === "UpsertedBatch") {
-      const incomingIds = new Set(event.sessions.map((session) => session.sessionId));
-      sessions = sessions.filter(
-        (session) => !session.sessionId || !incomingIds.has(session.sessionId),
-      );
-      sessions.push(...event.sessions);
-    } else if (event._tag === "Removed") {
-      sessions = sessions.filter(
-        (session) => session.sessionId !== event.sessionId || !belongsToGroup(session),
-      );
-    } else {
-      sessions = sessions.map((session) =>
-        session.sessionId === event.sessionId && belongsToGroup(session)
-          ? { ...session, resolved: event.resolved, unread: event.unread }
-          : session,
-      );
-    }
+  const change = update._tag === "Snapshot" ? update : update.event;
+  if (change._tag === "Snapshot" || change._tag === "Replaced") {
+    const incoming = change.sessions;
+    const sessions = [
+      ...model.sessions
+        .filter((session) => !belongsToGroup(session))
+        .map((session) => toSnapshot(session)),
+      ...incoming,
+    ];
+    assertUnique(
+      sessions
+        .map((session) => session.sessionId)
+        .filter((id): id is string => typeof id === "string"),
+      "Session ID",
+    );
+    sessions.sort(compareSessionSummaries);
+    batch(() => {
+      applySnapshot(model, {
+        sessions,
+        resolvedHasMoreByProject: { ...model.resolvedHasMoreByProject },
+      });
+      if (update._tag === "Snapshot" && query.resolved)
+        model.resolvedHasMoreByProject[query.projectPath] = update.hasMore ?? false;
+    });
+    return;
   }
-  sessions.sort(compareSessionSummaries);
+  const event = change;
+  const incoming =
+    event._tag === "Upserted"
+      ? [event.session]
+      : event._tag === "UpsertedBatch"
+        ? event.sessions
+        : [];
   assertUnique(
-    sessions
-      .map((session) => session.sessionId)
-      .filter((sessionId): sessionId is string => typeof sessionId === "string"),
+    incoming.map((session) => session.sessionId),
     "Session ID",
   );
-  applySnapshot(model, { sessions, resolvedHasMoreByProject });
+  for (const session of incoming) {
+    const existing = model.find(session.sessionId);
+    if (existing && existing.projectPath !== session.projectPath)
+      throw new Error(`Session ID collision: ${session.sessionId}`);
+  }
+  batch(() => {
+    for (const session of incoming) {
+      const existing = model.find(session.sessionId);
+      if (existing) applySnapshot(existing, session);
+      else model.sessions.push(SessionSummary.create(session));
+    }
+    if (event._tag === "Removed") {
+      const index = model.sessions.findIndex(
+        (session) => session.sessionId === event.sessionId && belongsToGroup(session),
+      );
+      if (index >= 0) model.sessions.splice(index, 1);
+    } else if (event._tag === "StatusChanged") {
+      const existing = model.find(event.sessionId);
+      if (existing && belongsToGroup(existing)) {
+        existing.resolved = event.resolved;
+        existing.unread = event.unread;
+      }
+    }
+    model.sessions.sort(compareSessionSummaries);
+  });
 }
 
 export function applyCakeChatCatalogGroupUpdate(
@@ -101,39 +115,48 @@ export function applyCakeChatCatalogGroupUpdate(
   query: CakeChatCatalogQuery,
   update: CakeChatCatalogUpdate,
 ) {
-  let sessions = model.sessions.map((session) => toSnapshot(session));
-  let resolvedHasMore = model.resolvedHasMore;
-  if (update._tag === "Snapshot") {
-    if (query.resolved) resolvedHasMore = update.hasMore ?? false;
-    sessions = [
-      ...sessions.filter((session) => session.resolved !== query.resolved),
-      ...update.sessions,
+  const change = update._tag === "Snapshot" ? update : update.event;
+  if (change._tag === "Snapshot" || change._tag === "Replaced") {
+    const incoming = change.sessions;
+    const sessions = [
+      ...model.sessions
+        .filter((session) => session.resolved !== query.resolved)
+        .map((session) => toSnapshot(session)),
+      ...incoming,
     ];
-  } else {
-    const event = update.event;
-    if (event._tag === "Replaced") {
-      sessions = [
-        ...sessions.filter((session) => session.resolved !== query.resolved),
-        ...event.sessions,
-      ];
-    } else if (event._tag === "Upserted") {
-      sessions = sessions.filter((candidate) => candidate.sessionId !== event.session.sessionId);
-      sessions.push(event.session);
-    } else if (event._tag === "Removed")
-      sessions = sessions.filter((session) => session.sessionId !== event.sessionId);
-    else
-      sessions = sessions.map((session) =>
-        session.sessionId === event.sessionId ? { ...session, resolved: event.resolved } : session,
-      );
+    assertUnique(
+      sessions
+        .map((session) => session.sessionId)
+        .filter((id): id is string => typeof id === "string"),
+      "Cake Chat Session ID",
+    );
+    sessions.sort(compareSessionSummaries);
+    applySnapshot(model, {
+      loaded: true,
+      resolvedHasMore:
+        update._tag === "Snapshot" && query.resolved
+          ? (update.hasMore ?? false)
+          : model.resolvedHasMore,
+      sessions,
+    });
+    return;
   }
-  sessions.sort(compareSessionSummaries);
-  assertUnique(
-    sessions
-      .map((session) => session.sessionId)
-      .filter((sessionId): sessionId is string => typeof sessionId === "string"),
-    "Cake Chat Session ID",
-  );
-  applySnapshot(model, { loaded: true, resolvedHasMore, sessions });
+  const event = change;
+  batch(() => {
+    if (event._tag === "Upserted") {
+      const existing = model.find(event.session.sessionId);
+      if (existing) applySnapshot(existing, event.session);
+      else model.sessions.push(CakeChatSummary.create(event.session));
+    } else if (event._tag === "Removed") {
+      const index = model.sessions.findIndex((session) => session.sessionId === event.sessionId);
+      if (index >= 0) model.sessions.splice(index, 1);
+    } else {
+      const existing = model.find(event.sessionId);
+      if (existing) existing.resolved = event.resolved;
+    }
+    model.sessions.sort(compareSessionSummaries);
+    model.loaded = true;
+  });
 }
 
 const compareSessionSummaries = (

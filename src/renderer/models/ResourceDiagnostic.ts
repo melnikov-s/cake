@@ -3,6 +3,7 @@ import type { ResourceDiagnostic as ResourceDiagnosticRecord } from "../../ipc/s
 
 export class ResourceDiagnostic extends Model {
   @id id = "";
+  diagnosticKey = "";
   severity: ResourceDiagnosticRecord["severity"] = "info";
   source: ResourceDiagnosticRecord["source"] = "runtime";
   message = "";
@@ -11,7 +12,7 @@ export class ResourceDiagnostic extends Model {
 
   get value(): ResourceDiagnosticRecord {
     return {
-      id: this.id,
+      id: this.diagnosticKey,
       severity: this.severity,
       source: this.source,
       message: this.message,

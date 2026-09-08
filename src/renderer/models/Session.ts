@@ -1,9 +1,10 @@
-import { Model, child, computed, id, observable, transient } from "r-state-tree";
+import { Model, child, computed, id, modelRef, observable, transient } from "r-state-tree";
 import type { SessionSnapshot, ThinkingLevel, UiPart } from "../../ipc/session-contract";
 import type { CakeChatControlRequest } from "../../domain/cake-chat-data";
 import { Artifact } from "./Artifact";
 import { CompatibilityResource } from "./CompatibilityResource";
 import { Message } from "./Message";
+import { LlmModel } from "./LlmModel";
 import { ModelOption } from "./ModelOption";
 import { ReviewThread } from "./ReviewThread";
 import { ResourceDiagnostic } from "./ResourceDiagnostic";
@@ -17,12 +18,12 @@ export class Session extends Model {
   @id sessionId = "";
   sessionFile = "";
   @child(Message) parts: Message[] = observable([]);
-  model: SessionSnapshot["model"] = undefined;
+  @modelRef(LlmModel) model: LlmModel | undefined;
   fastMode = false;
   fastModeAvailable = false;
-  @child(ModelOption) models: ModelOption[] = observable([]);
+  @child(ModelOption) modelOptions: ModelOption[] = observable([]);
   thinkingLevel: ThinkingLevel = "off";
-  availableThinkingLevels: ThinkingLevel[] = observable([]);
+  availableThinkingLevels: readonly ThinkingLevel[] = observable([]);
   piSettings: SessionSnapshot["piSettings"] = undefined;
   streaming = false;
   /** Pi-accepted turns bridge command acceptance to the first streaming event. */

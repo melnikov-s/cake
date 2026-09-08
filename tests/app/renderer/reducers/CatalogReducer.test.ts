@@ -161,3 +161,136 @@ describe("CatalogReducer", () => {
     catalog[Symbol.dispose]();
   });
 });
+
+it("updates project entries without resnapshotting unrelated workflow state", () => {
+  const catalog = ProjectCatalog.create();
+  const record = (path: string) => ({
+    path,
+    name: path,
+    addedAt: "2026-01-01",
+    lastOpenedAt: "2026-01-01",
+  });
+  applyProjectCatalogUpdate(catalog, {
+    _tag: "Snapshot",
+    revision: 1,
+    projects: [record("/one"), record("/two")],
+  });
+  const first = catalog.projects[0]!;
+  const second = catalog.projects[1]!;
+  const workflow = second.workflow;
+  const projects = catalog.projects;
+  applyProjectCatalogUpdate(catalog, {
+    _tag: "Event",
+    revision: 2,
+    event: { _tag: "Upserted", project: { ...record("/one"), name: "Updated" } },
+  });
+  expect(catalog.projects).toBe(projects);
+  expect(catalog.projects[0]).toBe(first);
+  expect(first.name).toBe("Updated");
+  expect(second.workflow).toBe(workflow);
+  applyProjectCatalogUpdate(catalog, {
+    _tag: "Event",
+    revision: 3,
+    event: { _tag: "Removed", path: "/one" },
+  });
+  expect(catalog.projects).toEqual([second]);
+  expect(second.workflow).toBe(workflow);
+  catalog[Symbol.dispose]();
+});
+
+it("upserts a batch in place and preserves ordering and other lanes", () => {
+  const record = (sessionId: string, modifiedAt: string) => ({
+    sessionId,
+    modifiedAt,
+    createdAt: "2026-01-01",
+    title: sessionId,
+    messageCount: 1,
+    resolved: false,
+    unread: false,
+    projectPath: "/project",
+    projectName: "Project",
+    workingDirectory: "/project",
+  });
+  const catalog = SessionCatalog.create({
+    sessions: [
+      { ...record("one", "2026-01-01"), parentSessionId: "parent" },
+      { ...record("resolved", "2026-01-03"), resolved: true },
+    ],
+  });
+  const one = catalog.find("one");
+  const resolved = catalog.find("resolved");
+  const sessions = catalog.sessions;
+  const query = { projectPath: "/project", resolved: false };
+  applySessionCatalogGroupUpdate(catalog, query, {
+    _tag: "Event",
+    revision: 1,
+    event: {
+      _tag: "UpsertedBatch",
+      sessions: [record("one", "2026-01-02"), record("two", "2026-01-04")],
+    },
+  });
+  expect(catalog.sessions).toBe(sessions);
+  expect(catalog.find("one")).toBe(one);
+  expect(catalog.find("resolved")).toBe(resolved);
+  expect(catalog.sessions.map((session) => session.sessionId)).toEqual(["two", "one", "resolved"]);
+  applySessionCatalogGroupUpdate(catalog, query, {
+    _tag: "Event",
+    revision: 2,
+    event: {
+      _tag: "StatusChanged",
+      sessionId: "two",
+      resolved: true,
+      unread: true,
+    },
+  });
+  expect(catalog.sessions.map((session) => session.sessionId)).toEqual(["one", "two", "resolved"]);
+  expect(catalog.find("two")?.unread).toBe(true);
+  catalog[Symbol.dispose]();
+});
+
+it("upserts and removes Cake Chat summaries while retaining existing Models", () => {
+  const catalog = CakeChatCatalog.create();
+  const record = (sessionId: string, modifiedAt: string) => ({
+    sessionId,
+    modifiedAt,
+    createdAt: "2026-01-01",
+    title: sessionId,
+    messageCount: 1,
+    resolved: false,
+  });
+  const query = { resolved: false } as const;
+  applyCakeChatCatalogGroupUpdate(catalog, query, {
+    _tag: "Snapshot",
+    revision: 1,
+    sessions: [record("one", "2026-01-01")],
+  });
+  const one = catalog.find("one");
+  const sessions = catalog.sessions;
+  applyCakeChatCatalogGroupUpdate(catalog, query, {
+    _tag: "Event",
+    revision: 2,
+    event: {
+      _tag: "Upserted",
+      session: record("two", "2026-01-02"),
+    },
+  });
+  applyCakeChatCatalogGroupUpdate(catalog, query, {
+    _tag: "Event",
+    revision: 3,
+    event: {
+      _tag: "Upserted",
+      session: { ...record("one", "2026-01-03"), title: "Updated" },
+    },
+  });
+  expect(catalog.sessions).toBe(sessions);
+  expect(catalog.find("one")).toBe(one);
+  expect(one?.title).toBe("Updated");
+  expect(catalog.sessions.map((session) => session.sessionId)).toEqual(["one", "two"]);
+  applyCakeChatCatalogGroupUpdate(catalog, query, {
+    _tag: "Event",
+    revision: 4,
+    event: { _tag: "Removed", sessionId: "two" },
+  });
+  expect(catalog.sessions).toEqual([one]);
+  catalog[Symbol.dispose]();
+});

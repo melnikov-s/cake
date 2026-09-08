@@ -1,12 +1,12 @@
 import { Schema } from "effect";
-import { applySnapshot, batch, toSnapshot, type Snapshot } from "r-state-tree";
+import { applySnapshot, batch, type Snapshot } from "r-state-tree";
 import type { DiscussionCatalogUpdate } from "../../domain/catalog-data";
 import type {
   DiscussionSessionUpdate,
   DiscussionThread,
 } from "../../domain/discussion-session-data";
 import { sessionSnapshotSchema, uiPartSchema } from "../../ipc/session-contract";
-import type { ReviewThread } from "../models/ReviewThread";
+import { ReviewThread } from "../models/ReviewThread";
 import type { Session } from "../models/Session";
 import { applyPartUpdate, messageSnapshots, removePart } from "./SessionPartReducer";
 
@@ -22,9 +22,18 @@ export function applyDiscussionCatalogUpdate(
     threads.map((thread) => thread.id),
     "Discussion thread ID",
   );
-  applySnapshot(model, {
-    ...toSnapshot(model),
-    reviewThreads: threads.map((thread) => discussionSnapshot(thread)),
+  const snapshots = threads.map((thread) => discussionSnapshot(thread));
+  const retained = new Set(snapshots.map((thread) => thread.id));
+  batch(() => {
+    for (let index = model.reviewThreads.length - 1; index >= 0; index -= 1)
+      if (!retained.has(model.reviewThreads[index]!.id)) model.reviewThreads.splice(index, 1);
+    for (const snapshot of snapshots) {
+      const existing = model.reviewThreads.find((thread) => thread.id === snapshot.id);
+      if (existing) applySnapshot(existing, snapshot);
+      else model.reviewThreads.push(ReviewThread.create(snapshot));
+    }
+    const order = new Map(snapshots.map((thread, index) => [thread.id, index]));
+    model.reviewThreads.sort((left, right) => order.get(left.id)! - order.get(right.id)!);
   });
 }
 
@@ -48,7 +57,7 @@ export function applyDiscussionUpdate(
   }
   batch(() => {
     if (event._tag === "PartUpdated")
-      applyPartUpdate(model.parts, Schema.decodeUnknownSync(uiPartSchema)(event.part));
+      applyPartUpdate(model.parts, Schema.decodeUnknownSync(uiPartSchema)(event.part), model.id);
     else if (event._tag === "PartRemoved") removePart(model.parts, event.partId);
     else if (event._tag === "StreamingChanged") model.streaming = event.streaming;
   });
@@ -80,22 +89,20 @@ function discussionSnapshot(
     readonly streaming: boolean;
   },
 ): Snapshot<ReviewThread> {
-  const usage =
-    conversation?.usage === undefined
-      ? thread.usage
-      : Schema.decodeUnknownSync(sessionSnapshotSchema.fields.usage)(conversation.usage);
-  const snapshot = {
+  const usage = Schema.decodeUnknownSync(sessionSnapshotSchema.fields.usage)(
+    conversation?.usage ?? thread.usage,
+  );
+  return {
     ...thread,
+    usage,
     parts: messageSnapshots(
       (conversation?.parts ?? thread.parts).map((part) =>
         Schema.decodeUnknownSync(uiPartSchema)(part),
       ),
+      thread.id,
     ),
     streaming: conversation?.streaming ?? false,
   };
-  if (usage !== undefined) Object.assign(snapshot, { usage });
-  // SAFETY: every ReviewThread field is populated from validated Discussion and UiPart values.
-  return snapshot as Snapshot<ReviewThread>;
 }
 
 function assertUnique(values: readonly string[], label: string) {

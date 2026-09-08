@@ -67,7 +67,7 @@ describe("Chat", () => {
     const setUserMessageMarkdown = vi.fn(async () => undefined);
     const configuration = {
       session: {
-        model: { provider: "openai", id: "gpt", name: "GPT" },
+        model: { provider: "openai", id: '["openai","gpt"]', modelId: "gpt", name: "GPT" },
         thinkingLevel: "medium",
         availableThinkingLevels: ["off", "medium"],
       },

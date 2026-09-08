@@ -2,7 +2,8 @@ import { Model, id } from "r-state-tree";
 
 export class SessionTreeEntry extends Model {
   @id id = "";
-  parentId: string | undefined;
+  piId = "";
+  parentPiId: string | undefined;
   type = "";
   messageRole: string | undefined;
   editorText: string | undefined;
