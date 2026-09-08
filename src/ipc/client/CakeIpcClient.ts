@@ -511,7 +511,6 @@ export interface CakeIpcClientService {
   readonly events: {
     readonly application: () => Stream.Stream<
       FocusedCakeEvent<
-        | "workspace-inspected"
         | "changelog-snapshot"
         | "complete"
         | "fatal"

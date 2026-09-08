@@ -688,7 +688,6 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
       focused(
         connectionId,
         "application",
-        "workspace-inspected",
         "changelog-snapshot",
         "complete",
         "fatal",

@@ -90,7 +90,10 @@ describe("ProjectWorkbenchStore startup selection", () => {
   });
 
   it("hydrates its runtime view from the shell selection without persisting another selection", async () => {
-    const inspect = vi.fn(async () => undefined);
+    const inspect = vi.fn(async (input: { operationId: string; path: string }) => ({
+      ...input,
+      trustRequired: true,
+    }));
     const load = vi.fn();
     const registry = {
       findSession: () => undefined,
@@ -193,6 +196,45 @@ describe("ProjectWorkbenchStore startup selection", () => {
     expect(restoreStagedSession).toHaveBeenCalledWith("/project");
     expect(selectSession).toHaveBeenCalledWith(stagedSession.sessionId);
     expect(showLoadedSession).toHaveBeenCalledWith(stagedSession.sessionId);
+
+    root[Symbol.dispose]();
+    operations[Symbol.dispose]();
+  });
+
+  it("opens a new session from the workspace inspection response", async () => {
+    const inspect = vi.fn(async (input: { operationId: string; path: string }) => ({
+      ...input,
+      trustRequired: false,
+    }));
+    const registry = {
+      findSession: () => undefined,
+      isStagedSession: () => false,
+    } as unknown as SessionRegistryStore;
+    const {
+      root,
+      subject: store,
+      operations,
+    } = mountWorkbench(
+      registry,
+      {} as SessionCatalogStore,
+      { workspaces: { inspect } } as unknown as Client,
+    );
+    const showTemporarySession = vi
+      .spyOn(
+        store as unknown as {
+          showTemporarySession: (path: string, sessionId: string, staged?: boolean) => void;
+        },
+        "showTemporarySession",
+      )
+      .mockImplementation(() => undefined);
+
+    await store.startNewSession("/other-project");
+
+    expect(inspect).toHaveBeenCalledWith(
+      expect.objectContaining({ path: "/other-project" }),
+      expect.any(Object),
+    );
+    expect(showTemporarySession).toHaveBeenCalledWith("/other-project", expect.any(String), true);
 
     root[Symbol.dispose]();
     operations[Symbol.dispose]();

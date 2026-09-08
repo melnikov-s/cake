@@ -3,7 +3,7 @@ import { CakeIpcClient, type CakeIpcClientService } from "../../ipc/client/CakeI
 
 const retrySchedule = Schedule.min([
   Schedule.exponential("250 millis"),
-  Schedule.spaced("30 seconds"),
+  Schedule.spaced("1 second"),
 ]);
 
 export type StreamFailureAction = "retry" | "stop";
@@ -37,18 +37,35 @@ export const observeStream = <Value>(
     Schedule.setInputType<unknown>(),
     Schedule.while(({ input }) => (options.classifyFailure?.(input) ?? "retry") === "retry"),
   );
-  const run = Effect.flatMap(CakeIpcClient, (client) =>
-    source(client).pipe(
-      Stream.runForEach((value) =>
-        Effect.sync(() => {
-          consume(value);
-          failureReported = false;
-        }),
+  const attempt = Effect.suspend(() => {
+    let receivedValue = false;
+    return Effect.flatMap(CakeIpcClient, (client) =>
+      source(client).pipe(
+        Stream.runForEach((value) =>
+          Effect.sync(() => {
+            receivedValue = true;
+            consume(value);
+            failureReported = false;
+          }),
+        ),
       ),
-    ),
-  ).pipe(
-    Effect.tapError((error) => Effect.sync(() => reportOnce(error))),
+    ).pipe(
+      Effect.catch((error) =>
+        Effect.sync(() => reportOnce(error)).pipe(
+          Effect.andThen(
+            (options.classifyFailure?.(error) ?? "retry") === "stop" || !receivedValue
+              ? Effect.fail(error)
+              : Effect.void,
+          ),
+        ),
+      ),
+    );
+  });
+  const run = attempt.pipe(
     Effect.retry(schedule),
+    Effect.andThen(Effect.sleep("250 millis")),
+    Effect.repeat(Schedule.forever),
+    Effect.asVoid,
   );
 
   void execute(run, controller.signal).catch((error: unknown) => {

@@ -547,13 +547,11 @@ export const inspect = Effect.fn("Projects.inspect")(function* (
       "inspectWorkspace",
       access.requestTrust(sender.id, request.requestId, request.path),
     );
-  electron.sendTo(sender, {
-    type: "workspace-inspected",
+  return {
     requestId: request.requestId,
     path: request.path,
     trustRequired,
-  });
-  return { requestId: request.requestId };
+  };
 });
 
 export const respondTrust = Effect.fn("Projects.respondTrust")(function* (

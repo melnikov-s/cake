@@ -611,7 +611,25 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       sessionId,
     };
     try {
-      await this.client.workspaces.inspect({ operationId, path }, { signal: this.signal });
+      const inspection = await this.client.workspaces.inspect(
+        { operationId, path },
+        { signal: this.signal },
+      );
+      if (this.signal.aborted || revision !== this.openRevision) return;
+      this.finishOperation(inspection.operationId);
+      const pending = this.pendingOpen;
+      if (!pending || pending.inspectOperationId !== inspection.operationId) return;
+      if (inspection.trustRequired) this.pendingTrustPath = inspection.path;
+      else if (pending.newSession)
+        this.showTemporarySession(
+          inspection.path,
+          pending.sessionId ?? crypto.randomUUID(),
+          pending.stagedSession,
+        );
+      else {
+        this.pendingOpen = undefined;
+        await this.openPath(inspection.path, false, pending.sessionId);
+      }
     } catch (error) {
       if (revision === this.openRevision) this.setError(error);
       this.finishOperation(operationId);
@@ -864,23 +882,6 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       ) {
         this.reopenAfterAgentRestart = false;
         void this.inspectPath(this.projectPath, false, this.session.sessionId);
-      }
-      return;
-    }
-    if (event.type === "workspace-inspected") {
-      this.finishOperation(event.operationId);
-      const pending = this.pendingOpen;
-      if (!pending || pending.inspectOperationId !== event.operationId) return;
-      if (event.trustRequired) this.pendingTrustPath = event.path;
-      else if (pending.newSession)
-        this.showTemporarySession(
-          event.path,
-          pending.sessionId ?? crypto.randomUUID(),
-          pending.stagedSession,
-        );
-      else {
-        this.pendingOpen = undefined;
-        void this.openPath(event.path, false, pending.sessionId);
       }
       return;
     }

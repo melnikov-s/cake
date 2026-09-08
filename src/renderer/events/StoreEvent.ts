@@ -14,7 +14,6 @@ export type StoreEvent =
       availability: AgentAvailabilityEntry;
       workingDirectory?: string;
     }
-  | { type: "workspace-inspected"; operationId: string; path: string; trustRequired: boolean }
   | {
       type: "changelog-received";
       operationId: string;
@@ -72,13 +71,6 @@ export type StoreEvent =
   | { type: "embedded-editor-selection-cleared"; workspacePath: string };
 
 export function toStoreEvent(event: CakeEvent): StoreEvent | undefined {
-  if (event.type === "workspace-inspected")
-    return {
-      type: "workspace-inspected",
-      operationId: event.requestId,
-      path: event.path,
-      trustRequired: event.trustRequired,
-    };
   if (event.type === "artifact-requested")
     return {
       type: "artifact-requested",

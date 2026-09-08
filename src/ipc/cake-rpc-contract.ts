@@ -48,12 +48,6 @@ const cakeEventSchemas = {
     type: Schema.Literal("fullscreen-surface-close-requested"),
     surfaceId: uuid,
   }),
-  "workspace-inspected": Schema.Struct({
-    type: Schema.Literal("workspace-inspected"),
-    requestId: uuid,
-    path: stringMax(4_096),
-    trustRequired: Schema.Boolean,
-  }),
   "changelog-snapshot": Schema.Struct({
     type: Schema.Literal("changelog-snapshot"),
     requestId: uuid,
@@ -160,7 +154,6 @@ const cakeEventSchemas = {
 
 export const applicationEventSchema = Schema.Union([
   cakeEventSchemas["renderer-events-ready"],
-  cakeEventSchemas["workspace-inspected"],
   cakeEventSchemas["changelog-snapshot"],
   cakeEventSchemas.complete,
   cakeEventSchemas.fatal,
@@ -203,7 +196,6 @@ export const surfaceEventSchema = Schema.Union([
 export const cakeEventSchema = Schema.Union([
   cakeEventSchemas["renderer-events-ready"],
   cakeEventSchemas["fullscreen-surface-close-requested"],
-  cakeEventSchemas["workspace-inspected"],
   cakeEventSchemas["changelog-snapshot"],
   cakeEventSchemas["artifact-updated"],
   cakeEventSchemas["artifact-requested"],
@@ -543,6 +535,11 @@ const cakeRpcResultSchemas = {
   "slash-commands-loaded": Schema.Struct({
     commands: ipcProjectionArray(slashCommandSchema, 20_000),
   }),
+  "workspace-inspection": Schema.Struct({
+    ...requestBase,
+    path: stringMax(4_096),
+    trustRequired: Schema.Boolean,
+  }),
   "worktree-created": Schema.Struct({
     ...requestBase,
     record: worktreeRecordSchema,
@@ -594,7 +591,7 @@ export const cakeRpcSuccessSchemas = {
   "delete-session": cakeRpcResultSchemas["application-state-updated"],
   "set-session-unread": cakeRpcResultSchemas["application-state-updated"],
   "restart-pi": cakeRpcResultSchemas.accepted,
-  "inspect-workspace": cakeRpcResultSchemas.accepted,
+  "inspect-workspace": cakeRpcResultSchemas["workspace-inspection"],
   "respond-workspace-trust": cakeRpcResultSchemas.accepted,
   "create-worktree": cakeRpcResultSchemas["worktree-created"],
   "get-worktree-status": cakeRpcResultSchemas["worktree-status-loaded"],

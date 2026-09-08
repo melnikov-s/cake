@@ -73,6 +73,41 @@ describe("observeStream", () => {
     stopHealthy();
   });
 
+  it("resets reconnect backoff after a stream emits a value", async () => {
+    vi.useFakeTimers();
+    const consume = vi.fn();
+    let attempts = 0;
+    const attemptTimes: Array<number> = [];
+
+    const stop = observeStream(
+      execute,
+      () => {
+        attempts += 1;
+        attemptTimes.push(Date.now());
+        if (attempts === 1) return Stream.fail(new Error("offline"));
+        if (attempts === 2)
+          return Stream.concat(Stream.make("healthy"), Stream.fail(new Error("disconnected")));
+        return Stream.concat(Stream.make("recovered"), Stream.never);
+      },
+      consume,
+      { reportFailure: () => undefined },
+    );
+
+    await vi.waitFor(() => expect(attempts).toBe(1));
+    await vi.advanceTimersToNextTimerAsync();
+    await vi.waitFor(() => expect(consume).toHaveBeenCalledWith("healthy"));
+    expect(attempts).toBe(2);
+
+    await vi.advanceTimersToNextTimerAsync();
+    await vi.waitFor(() => expect(consume).toHaveBeenCalledWith("recovered"));
+    expect(attempts).toBe(3);
+    const [firstAttempt, secondAttempt, thirdAttempt] = attemptTimes;
+    if (firstAttempt === undefined || secondAttempt === undefined || thirdAttempt === undefined)
+      throw new Error("Expected three reconnect attempts");
+    expect(thirdAttempt - secondAttempt).toBeLessThanOrEqual(secondAttempt - firstAttempt + 5);
+    stop();
+  });
+
   it("reports consumer defects as stopped and does not automatically replay them", async () => {
     vi.useFakeTimers();
     const failure = new Error("Invalid projection");

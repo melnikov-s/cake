@@ -11,7 +11,6 @@ export interface NativeEventsService {
     connectionId: number,
   ) => Stream.Stream<
     FocusedCakeEvent<
-      | "workspace-inspected"
       | "changelog-snapshot"
       | "complete"
       | "fatal"

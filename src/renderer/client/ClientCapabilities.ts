@@ -189,17 +189,24 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
           (client) => client.workspaces["restart-pi"]({ path }),
           options,
         ).then(() => undefined),
-      inspect: (input, options) =>
-        accepted(
+      inspect: async (input, options) => {
+        const response = await execute(
           "workspaces.inspect-workspace",
           (client) =>
             client.workspaces["inspect-workspace"]({
               requestId: input.operationId,
               path: input.path,
             }),
-          { requestId: input.operationId, path: input.path }.requestId,
           options,
-        ),
+        );
+        if (response.requestId !== input.operationId)
+          throw new Error("Cake returned the wrong workspace inspection");
+        return {
+          operationId: response.requestId,
+          path: response.path,
+          trustRequired: response.trustRequired,
+        };
+      },
       respondToTrust: (input, options) =>
         accepted(
           "workspaces.respond-workspace-trust",
