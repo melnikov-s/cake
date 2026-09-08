@@ -140,6 +140,18 @@ const makeLayer = (
     onCleanupResolved?(): void;
     onRestoreResolved?(): void;
     onCloseWorkingDirectory?(): void;
+    family?: {
+      readonly familyId: string;
+      readonly parentSessionId: string;
+      readonly projectPath: string;
+      readonly workingDirectory: string;
+      readonly createdAt: string;
+      readonly children: ReadonlyArray<{
+        readonly sessionId: string;
+        readonly requestId: string;
+        readonly createdAt: string;
+      }>;
+    };
   } = {},
 ) => {
   let resolvedOnDisk = hooks.resolvedOnDisk ?? false;
@@ -207,7 +219,14 @@ const makeLayer = (
     Layer.mock(ProjectSessionLifecycle, {}),
     Layer.succeed(SessionFamilyStorage, {
       list: () => Effect.succeed([]),
-      familyForMember: () => Effect.succeed(undefined),
+      familyForMember: (sessionId) =>
+        Effect.succeed(
+          hooks.family &&
+            (hooks.family.parentSessionId === sessionId ||
+              hooks.family.children.some((child) => child.sessionId === sessionId))
+            ? hooks.family
+            : undefined,
+        ),
       addChild: () => Effect.die("Unexpected family child creation"),
       state: () => Effect.succeed({ families: [], transitions: [], turns: [] }),
       withMemberLock: (_id, effect) => effect,
@@ -399,6 +418,177 @@ const makeLayer = (
 };
 
 describe("Project Sessions domain", () => {
+  it.effect("moves active sessions through authoritative custom workflow policy", () =>
+    Effect.gen(function* () {
+      const workflow = yield* projectSessions.moveWorkflowSession({
+        projectPath: "/project",
+        sessionId: "session-1",
+        workingDirectory: "/project",
+        destination: {
+          _tag: "Custom",
+          statusId: "b925b5dd-9661-4f1a-9f40-406be3c96c27",
+        },
+      });
+      assert.deepEqual(workflow.assignments, [
+        {
+          sessionId: "session-1",
+          statusId: "b925b5dd-9661-4f1a-9f40-406be3c96c27",
+        },
+      ]);
+    }).pipe(
+      Effect.provide(
+        makeLayer({
+          ...defaultApplicationState(),
+          projects: [
+            {
+              path: "/project",
+              name: "Project",
+              addedAt: "2026-01-01T00:00:00.000Z",
+              lastOpenedAt: "2026-01-01T00:00:00.000Z",
+              workflow: {
+                columns: [
+                  {
+                    id: "b925b5dd-9661-4f1a-9f40-406be3c96c27",
+                    name: "Review",
+                    color: "violet",
+                  },
+                ],
+                assignments: [],
+                sessionDetails: [],
+              },
+            },
+          ],
+        }),
+      ),
+    ),
+  );
+
+  it.effect("restores a resolved session before assigning its custom status", () => {
+    let restores = 0;
+    return Effect.gen(function* () {
+      const workflow = yield* projectSessions.moveWorkflowSession({
+        projectPath: "/project",
+        sessionId: "session-1",
+        workingDirectory: "/project",
+        destination: {
+          _tag: "Custom",
+          statusId: "b925b5dd-9661-4f1a-9f40-406be3c96c27",
+        },
+      });
+      assert.equal(restores, 1);
+      assert.equal(workflow.assignments[0]?.statusId, "b925b5dd-9661-4f1a-9f40-406be3c96c27");
+    }).pipe(
+      Effect.provide(
+        makeLayer(
+          {
+            ...defaultApplicationState(),
+            projects: [
+              {
+                path: "/project",
+                name: "Project",
+                addedAt: "2026-01-01T00:00:00.000Z",
+                lastOpenedAt: "2026-01-01T00:00:00.000Z",
+                workflow: {
+                  columns: [
+                    {
+                      id: "b925b5dd-9661-4f1a-9f40-406be3c96c27",
+                      name: "Review",
+                      color: "violet",
+                    },
+                  ],
+                  assignments: [],
+                  sessionDetails: [],
+                },
+              },
+            ],
+          },
+          { resolvedOnDisk: true, onRestore: () => restores++ },
+        ),
+      ),
+    );
+  });
+
+  it.effect("rejects Draft resolution and missing custom statuses through the domain", () =>
+    Effect.gen(function* () {
+      const missingStatus = yield* Effect.flip(
+        projectSessions.moveWorkflowSession({
+          projectPath: "/project",
+          sessionId: "session-1",
+          workingDirectory: "/project",
+          destination: {
+            _tag: "Custom",
+            statusId: "b925b5dd-9661-4f1a-9f40-406be3c96c27",
+          },
+        }),
+      );
+      assert.equal(missingStatus.message, "That custom status no longer exists");
+      const draftResolution = yield* Effect.flip(
+        projectSessions.moveWorkflowSession({
+          projectPath: "/project",
+          sessionId: "session-1",
+          workingDirectory: "/project",
+          destination: { _tag: "Resolved" },
+        }),
+      );
+      assert.equal(draftResolution.message, "Activate a Draft before resolving it");
+      const directResolution = yield* Effect.flip(
+        projectSessions.resolve({ sessionId: "session-1", workingDirectory: "/project" }),
+      );
+      assert.equal(directResolution.message, "Activate a Draft before resolving it");
+    }).pipe(Effect.provide(makeLayer(undefined, { sessionExists: false }))),
+  );
+
+  it.effect("rejects independent Session Family child lifecycle transitions", () => {
+    const family = {
+      familyId: "family-1",
+      parentSessionId: "parent-1",
+      projectPath: "/project",
+      workingDirectory: "/project",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      children: [
+        {
+          sessionId: "session-1",
+          requestId: "request-1",
+          createdAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    };
+    return Effect.gen(function* () {
+      const resolveError = yield* Effect.flip(
+        projectSessions.moveWorkflowSession({
+          projectPath: "/project",
+          sessionId: "session-1",
+          workingDirectory: "/project",
+          destination: { _tag: "Resolved" },
+        }),
+      );
+      assert.equal(
+        resolveError.message,
+        "Resolve or restore this Session Family from its parent card",
+      );
+      const restoreError = yield* Effect.flip(
+        projectSessions.moveWorkflowSession({
+          projectPath: "/project",
+          sessionId: "session-1",
+          workingDirectory: "/project",
+          destination: { _tag: "Active" },
+        }),
+      );
+      assert.equal(
+        restoreError.message,
+        "Resolve or restore this Session Family from its parent card",
+      );
+      const directResolve = yield* Effect.flip(
+        projectSessions.resolve({ sessionId: "session-1", workingDirectory: "/project" }),
+      );
+      assert.equal(directResolve.message, "Only the Session Family parent can resolve the family");
+      const directRestore = yield* Effect.flip(
+        projectSessions.restore({ sessionId: "session-1", workingDirectory: "/project" }),
+      );
+      assert.equal(directRestore.message, "Only the Session Family parent can restore the family");
+    }).pipe(Effect.provide(makeLayer(undefined, { family, resolvedOnDisk: true })));
+  });
+
   it.effect("loads resolved metadata without consulting Pi or project environments", () => {
     let piCatalogs = 0;
     let locations = 0;

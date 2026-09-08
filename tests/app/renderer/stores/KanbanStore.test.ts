@@ -16,6 +16,7 @@ function fixture(options?: {
   assigned?: boolean;
   details?: boolean;
   boardSelected?: boolean;
+  familyChild?: boolean;
 }) {
   const session = {
     sessionId: "session-1",
@@ -27,6 +28,7 @@ function fixture(options?: {
     workingDirectory: projectPath,
     draft: options?.draft ?? false,
     resolved: options?.resolved ?? false,
+    ...(options?.familyChild ? { familyParentSessionId: "family-parent" } : undefined),
   };
   const project = {
     path: projectPath,
@@ -47,7 +49,7 @@ function fixture(options?: {
     },
   };
   const mutate = vi.fn(async () => project.workflow);
-  const resolveSession = vi.fn(async () => true);
+  const moveSession = vi.fn(async () => project.workflow);
   const activateDraft = vi.fn(async () => true);
   const registry = {
     findSession: () => ({ chatStore: { activateDraft }, model: {} }),
@@ -67,7 +69,6 @@ function fixture(options?: {
       projects,
       catalog,
       registry,
-      setSessionResolved: resolveSession,
       selectedProjectPath: () => (options?.boardSelected === false ? undefined : projectPath),
       utilityModelConfigured: () => true,
       openSession: vi.fn(async () => true),
@@ -76,6 +77,7 @@ function fixture(options?: {
     {
       projectWorkflow: {
         mutate,
+        moveSession,
         describeSession,
       },
     } as unknown as Client,
@@ -86,7 +88,7 @@ function fixture(options?: {
     project,
     mutate,
     describeSession,
-    resolveSession,
+    moveSession,
     activateDraft,
   };
 }
@@ -118,6 +120,27 @@ describe("KanbanStore", () => {
     test.root[Symbol.dispose]();
   });
 
+  it("rejects invalid status names immediately and sends normalized valid names", async () => {
+    const test = fixture();
+    expect(await test.store.addColumn(" Active ", "rose")).toBe(false);
+    expect(test.store.error).toBe(
+      "Status names must be unique and cannot use a system status name",
+    );
+    expect(test.mutate).not.toHaveBeenCalled();
+
+    expect(await test.store.addColumn("  Review  ", "violet")).toBe(true);
+    expect(test.mutate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mutation: expect.objectContaining({
+          _tag: "AddColumn",
+          column: expect.objectContaining({ name: "Review" }),
+        }),
+      }),
+      expect.anything(),
+    );
+    test.root[Symbol.dispose]();
+  });
+
   it("generates Draft descriptions from the staged prompt", async () => {
     const test = fixture({ draft: true, details: false });
     await vi.waitFor(() =>
@@ -135,22 +158,25 @@ describe("KanbanStore", () => {
   it("moves among Active and custom columns without changing lifecycle", async () => {
     const test = fixture({ boardSelected: false });
     expect(await test.store.moveSession("session-1", statusId)).toBe(true);
-    expect(test.mutate).toHaveBeenCalledWith(
+    expect(test.moveSession).toHaveBeenCalledWith(
       {
         projectPath,
-        mutation: { _tag: "SetSessionStatus", sessionId: "session-1", statusId },
+        sessionId: "session-1",
+        workingDirectory: projectPath,
+        destination: { _tag: "Custom", statusId },
       },
       expect.anything(),
     );
-    expect(test.resolveSession).not.toHaveBeenCalled();
     test.root[Symbol.dispose]();
   });
 
   it("restores before assigning a resolved session to a custom column", async () => {
     const test = fixture({ resolved: true, assigned: true });
     expect(await test.store.moveSession("session-1", statusId)).toBe(true);
-    expect(test.resolveSession).toHaveBeenCalledWith("session-1", false);
-    expect(test.mutate).toHaveBeenCalled();
+    expect(test.moveSession).toHaveBeenCalledWith(
+      expect.objectContaining({ destination: { _tag: "Custom", statusId } }),
+      expect.anything(),
+    );
     test.root[Symbol.dispose]();
   });
 
@@ -158,7 +184,10 @@ describe("KanbanStore", () => {
     const test = fixture({ draft: true });
     expect(await test.store.moveSession("session-1", statusId)).toBe(true);
     expect(test.activateDraft).toHaveBeenCalledOnce();
-    expect(test.mutate).toHaveBeenCalled();
+    expect(test.moveSession).toHaveBeenCalledWith(
+      expect.objectContaining({ destination: { _tag: "Custom", statusId } }),
+      expect.anything(),
+    );
     test.root[Symbol.dispose]();
   });
 
@@ -166,14 +195,25 @@ describe("KanbanStore", () => {
     const test = fixture({ draft: true });
     expect(await test.store.moveSession("session-1", "resolved")).toBe(false);
     expect(test.activateDraft).not.toHaveBeenCalled();
-    expect(test.resolveSession).not.toHaveBeenCalled();
+    expect(test.moveSession).not.toHaveBeenCalled();
+    test.root[Symbol.dispose]();
+  });
+
+  it("rejects lifecycle changes for a Session Family child immediately", async () => {
+    const test = fixture({ familyChild: true });
+    expect(await test.store.moveSession("session-1", "resolved")).toBe(false);
+    expect(test.store.error).toBe("Resolve or restore this Session Family from its parent card");
+    expect(test.moveSession).not.toHaveBeenCalled();
     test.root[Symbol.dispose]();
   });
 
   it("preserves custom status when resolving", async () => {
     const test = fixture({ assigned: true });
     expect(await test.store.moveSession("session-1", "resolved")).toBe(true);
-    expect(test.resolveSession).toHaveBeenCalledWith("session-1", true);
+    expect(test.moveSession).toHaveBeenCalledWith(
+      expect.objectContaining({ destination: { _tag: "Resolved" } }),
+      expect.anything(),
+    );
     expect(test.mutate).not.toHaveBeenCalled();
     test.root[Symbol.dispose]();
   });

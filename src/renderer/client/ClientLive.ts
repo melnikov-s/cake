@@ -174,6 +174,12 @@ export function makeClient(runtime: Pick<Runtime, "execute">): Client {
           withClient((client) => client.projectWorkflow.mutate(input)),
           options,
         ),
+      moveSession: (input, options) =>
+        run(
+          "projectWorkflow.moveSession",
+          withClient((client) => client.projectWorkflow.moveSession(input)),
+          options,
+        ),
       describeSession: (input, options) =>
         run(
           "projectWorkflow.describeSession",

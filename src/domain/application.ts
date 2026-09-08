@@ -8,6 +8,7 @@ import {
   type ProjectWorkflowMutation,
   type ProjectWorkflowSessionDetails,
   type UtilityModel,
+  validateProjectWorkflowColumnName,
 } from "./application-data";
 import { ApplicationState as ApplicationStateOwner } from "../services/storage/ApplicationState";
 
@@ -112,6 +113,11 @@ const mutateWorkflowValue = Effect.fn("Application.mutateWorkflowValue")(functio
   workflow: ProjectWorkflow,
   mutation:
     | ProjectWorkflowMutation
+    | {
+        readonly _tag: "SetSessionStatus";
+        readonly sessionId: string;
+        readonly statusId?: string;
+      }
     | { readonly _tag: "SetSessionDetails"; readonly details: ProjectWorkflowSessionDetails },
 ) {
   if (mutation._tag === "AddColumn") {
@@ -119,9 +125,11 @@ const mutateWorkflowValue = Effect.fn("Application.mutateWorkflowValue")(functio
       return yield* new ApplicationPolicyError({
         message: "A project can have at most 20 custom statuses",
       });
+    const validation = validateProjectWorkflowColumnName(workflow, mutation.column.name);
+    if (!validation.ok) return yield* new ApplicationPolicyError({ message: validation.message });
     return {
       ...workflow,
-      columns: [...workflow.columns, mutation.column],
+      columns: [...workflow.columns, { ...mutation.column, name: validation.name }],
     };
   }
   if (mutation._tag === "SetSessionDetails")
@@ -150,19 +158,25 @@ const mutateWorkflowValue = Effect.fn("Application.mutateWorkflowValue")(functio
   const columnIndex = workflow.columns.findIndex((column) => column.id === mutation.columnId);
   if (columnIndex < 0)
     return yield* new ApplicationPolicyError({ message: "That custom status no longer exists" });
-  if (mutation._tag === "UpdateColumn")
+  if (mutation._tag === "UpdateColumn") {
+    const name =
+      mutation.name === undefined
+        ? undefined
+        : validateProjectWorkflowColumnName(workflow, mutation.name, mutation.columnId);
+    if (name && !name.ok) return yield* new ApplicationPolicyError({ message: name.message });
     return {
       ...workflow,
       columns: workflow.columns.map((column, index) =>
         index === columnIndex
           ? {
               ...column,
-              ...(mutation.name === undefined ? undefined : { name: mutation.name }),
+              ...(name === undefined ? undefined : { name: name.name }),
               ...(mutation.color === undefined ? undefined : { color: mutation.color }),
             }
           : column,
       ),
     };
+  }
   if (mutation._tag === "MoveColumn") {
     const columns = [...workflow.columns];
     const column = columns[columnIndex];
@@ -183,10 +197,15 @@ const mutateWorkflowValue = Effect.fn("Application.mutateWorkflowValue")(functio
   return workflow;
 });
 
-export const mutateProjectWorkflow = Effect.fn("Application.mutateProjectWorkflow")(function* (
+const mutateProjectWorkflowValue = Effect.fn("Application.mutateProjectWorkflowValue")(function* (
   path: string,
   mutation:
     | ProjectWorkflowMutation
+    | {
+        readonly _tag: "SetSessionStatus";
+        readonly sessionId: string;
+        readonly statusId?: string;
+      }
     | { readonly _tag: "SetSessionDetails"; readonly details: ProjectWorkflowSessionDetails },
 ) {
   const owner = yield* ApplicationStateOwner;
@@ -211,6 +230,26 @@ export const mutateProjectWorkflow = Effect.fn("Application.mutateProjectWorkflo
     state.projects.find((project) => project.path === path)?.workflow ?? defaultProjectWorkflow()
   );
 });
+
+export const mutateProjectWorkflow = Effect.fn("Application.mutateProjectWorkflow")(
+  (path: string, mutation: ProjectWorkflowMutation) => mutateProjectWorkflowValue(path, mutation),
+);
+
+export const setProjectWorkflowSessionStatus = Effect.fn(
+  "Application.setProjectWorkflowSessionStatus",
+)((path: string, sessionId: string, statusId?: string) =>
+  mutateProjectWorkflowValue(path, {
+    _tag: "SetSessionStatus",
+    sessionId,
+    ...(statusId === undefined ? undefined : { statusId }),
+  }),
+);
+
+export const setProjectWorkflowSessionDetails = Effect.fn(
+  "Application.setProjectWorkflowSessionDetails",
+)((path: string, details: ProjectWorkflowSessionDetails) =>
+  mutateProjectWorkflowValue(path, { _tag: "SetSessionDetails", details }),
+);
 
 export const removeProject = Effect.fn("Application.removeProject")(function* (path: string) {
   return yield* update((current) => ({

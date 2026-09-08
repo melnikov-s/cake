@@ -922,7 +922,6 @@ export class RootStore extends Store<{
       projects: this.projectCatalogStore,
       catalog: this.sessionCatalogStore,
       registry: this.sessionRegistry,
-      setSessionResolved: (sessionId, resolved) => this.resolveProjectSession(sessionId, resolved),
       selectedProjectPath: () =>
         this.appShellStore.selection.kind === "kanban"
           ? this.appShellStore.selection.projectPath

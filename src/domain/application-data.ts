@@ -55,6 +55,40 @@ const ProjectWorkflowColumn = Schema.Struct({
   name: Schema.String.check(Schema.isTrimmed(), Schema.isMinLength(1), Schema.isMaxLength(40)),
   color: ProjectWorkflowColor,
 });
+
+const PROJECT_WORKFLOW_RESERVED_COLUMN_NAMES = new Set(["draft", "active", "resolved"]);
+const PROJECT_WORKFLOW_COLUMN_NAME_MAX_LENGTH = 40;
+
+export type ProjectWorkflowColumnNameValidation =
+  | { readonly ok: true; readonly name: string }
+  | { readonly ok: false; readonly message: string };
+
+/** Pure Project workflow policy shared with renderer-side fast validation. */
+export const validateProjectWorkflowColumnName = (
+  workflow: Pick<ProjectWorkflow, "columns">,
+  name: string,
+  currentColumnId?: string,
+): ProjectWorkflowColumnNameValidation => {
+  const normalized = name.trim();
+  if (!normalized) return { ok: false, message: "Status names cannot be empty" };
+  if (normalized.length > PROJECT_WORKFLOW_COLUMN_NAME_MAX_LENGTH)
+    return {
+      ok: false,
+      message: `Status names cannot exceed ${PROJECT_WORKFLOW_COLUMN_NAME_MAX_LENGTH} characters`,
+    };
+  const key = normalized.toLowerCase();
+  if (
+    PROJECT_WORKFLOW_RESERVED_COLUMN_NAMES.has(key) ||
+    workflow.columns.some(
+      (column) => column.id !== currentColumnId && column.name.toLowerCase() === key,
+    )
+  )
+    return {
+      ok: false,
+      message: "Status names must be unique and cannot use a system status name",
+    };
+  return { ok: true, name: normalized };
+};
 const ProjectWorkflowAssignment = Schema.Struct({
   sessionId: nonEmptyBoundedString(256),
   statusId: Schema.String.check(Schema.isUUID(4)),
@@ -89,11 +123,10 @@ export const ProjectWorkflow = Schema.Struct({
     (workflow) => {
       const ids = workflow.columns.map((column) => column.id);
       const names = workflow.columns.map((column) => column.name.toLowerCase());
-      const reserved = new Set(["draft", "active", "resolved"]);
       return (
         new Set(ids).size === ids.length &&
         new Set(names).size === names.length &&
-        names.every((name) => !reserved.has(name)) &&
+        names.every((name) => !PROJECT_WORKFLOW_RESERVED_COLUMN_NAMES.has(name)) &&
         new Set(workflow.assignments.map((assignment) => assignment.sessionId)).size ===
           workflow.assignments.length &&
         new Set(workflow.sessionDetails.map((details) => details.sessionId)).size ===
@@ -111,11 +144,17 @@ export const defaultProjectWorkflow = (): ProjectWorkflow => ({
   sessionDetails: [],
 });
 
+const ProjectWorkflowColumnMutationInput = Schema.Struct({
+  id: ProjectWorkflowColumn.fields.id,
+  name: boundedString(256),
+  color: ProjectWorkflowColor,
+});
+
 export const ProjectWorkflowMutation = Schema.TaggedUnion({
-  AddColumn: { column: ProjectWorkflowColumn },
+  AddColumn: { column: ProjectWorkflowColumnMutationInput },
   UpdateColumn: {
     columnId: ProjectWorkflowColumn.fields.id,
-    name: Schema.optionalKey(ProjectWorkflowColumn.fields.name),
+    name: Schema.optionalKey(boundedString(256)),
     color: Schema.optionalKey(ProjectWorkflowColor),
   },
   MoveColumn: {
@@ -123,12 +162,15 @@ export const ProjectWorkflowMutation = Schema.TaggedUnion({
     index: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0), Schema.isLessThanOrEqualTo(19)),
   },
   DeleteColumn: { columnId: ProjectWorkflowColumn.fields.id },
-  SetSessionStatus: {
-    sessionId: ProjectWorkflowAssignment.fields.sessionId,
-    statusId: Schema.optionalKey(ProjectWorkflowColumn.fields.id),
-  },
 });
 export type ProjectWorkflowMutation = typeof ProjectWorkflowMutation.Type;
+
+export const ProjectWorkflowSessionDestination = Schema.TaggedUnion({
+  Active: {},
+  Custom: { statusId: ProjectWorkflowColumn.fields.id },
+  Resolved: {},
+});
+export type ProjectWorkflowSessionDestination = typeof ProjectWorkflowSessionDestination.Type;
 
 export const defaultProjectSettings = (): ProjectSettings => ({
   worktreeCreateCommand: DEFAULT_WORKTREE_CREATE_COMMAND,

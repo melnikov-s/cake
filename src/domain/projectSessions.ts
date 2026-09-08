@@ -10,8 +10,18 @@ import {
   type PiSettingUpdate,
   type SessionSummary,
 } from "../ipc/session-contract";
-import { getState, setSessionFastMode, setSessionUnread, trustProject } from "./application";
-import type { ApplicationState } from "./application-data";
+import {
+  getState,
+  setProjectWorkflowSessionStatus,
+  setSessionFastMode,
+  setSessionUnread,
+  trustProject,
+} from "./application";
+import {
+  defaultProjectWorkflow,
+  type ApplicationState,
+  type ProjectWorkflowSessionDestination,
+} from "./application-data";
 import type { SessionCatalogUpdate } from "./catalog-data";
 import { toJsonValue } from "../utils/to-json-value";
 import { compareSessionSummariesForSidebar } from "../utils/session-summary-order";
@@ -1269,6 +1279,17 @@ export const resolve = Effect.fn("ProjectSessions.resolve")(function* (
       message: "Only the Session Family parent can resolve the family",
     });
   if (family) {
+    const location = yield* findLocation(target, { includeInactive: true });
+    const archive = yield* SessionArchiveStorage;
+    const namespace = yield* archive
+      .locate(target.sessionId, archiveLocation(location))
+      .pipe(asError("resolve"));
+    if (namespace === "resolved") return;
+    if (!namespace)
+      return yield* new ProjectSessionError({
+        operation: "resolve",
+        message: "Activate a Draft before resolving it",
+      });
     const lifecycle = yield* ProjectSessionLifecycle;
     return yield* lifecycle
       .setProjectSessionResolved(target.sessionId, true)
@@ -1285,6 +1306,16 @@ export const resolve = Effect.fn("ProjectSessions.resolve")(function* (
             message: "The session became a family parent; retry the family operation",
           });
         const location = yield* findLocation(target, { includeInactive: true });
+        const archive = yield* SessionArchiveStorage;
+        const namespace = yield* archive
+          .locate(target.sessionId, archiveLocation(location))
+          .pipe(asError("resolve"));
+        if (namespace === "resolved") return;
+        if (!namespace)
+          return yield* new ProjectSessionError({
+            operation: "resolve",
+            message: "Activate a Draft before resolving it",
+          });
         const sessions = yield* PiSessions;
         const status = yield* sessions.currentStatus({
           workingDirectory: location.workingDirectory,
@@ -1327,6 +1358,17 @@ export const restore = Effect.fn("ProjectSessions.restore")(function* (
       message: "Only the Session Family parent can restore the family",
     });
   if (family) {
+    const location = yield* findLocation(target);
+    const archive = yield* SessionArchiveStorage;
+    const namespace = yield* archive
+      .locate(target.sessionId, archiveLocation(location))
+      .pipe(asError("restore"));
+    if (namespace === "active") return;
+    if (!namespace)
+      return yield* new ProjectSessionError({
+        operation: "restore",
+        message: "Only a resolved Project Session can be restored",
+      });
     const lifecycle = yield* ProjectSessionLifecycle;
     return yield* lifecycle
       .setProjectSessionResolved(target.sessionId, false)
@@ -1344,6 +1386,16 @@ export const restore = Effect.fn("ProjectSessions.restore")(function* (
           });
         const environment = yield* ProjectSessionEnvironment;
         const location = yield* findLocation(target);
+        const archive = yield* SessionArchiveStorage;
+        const namespace = yield* archive
+          .locate(target.sessionId, archiveLocation(location))
+          .pipe(asError("restore"));
+        if (namespace === "active") return;
+        if (!namespace)
+          return yield* new ProjectSessionError({
+            operation: "restore",
+            message: "Only a resolved Project Session can be restored",
+          });
         yield* managedWorktrees.restoreResolved(location.workingDirectory).pipe(asError("restore"));
         const restored = yield* environment
           .restore(target.sessionId, location)
@@ -1355,3 +1407,73 @@ export const restore = Effect.fn("ProjectSessions.restore")(function* (
     )
     .pipe(asError("restore"));
 });
+
+/** Authoritative lifecycle/custom-column transition for one Project Session card. */
+export const moveWorkflowSession = Effect.fn("ProjectSessions.moveWorkflowSession")(
+  function* (input: {
+    readonly projectPath: string;
+    readonly sessionId: string;
+    readonly workingDirectory: string;
+    readonly destination: ProjectWorkflowSessionDestination;
+  }) {
+    const state = yield* getState().pipe(asError("moveWorkflowSession"));
+    const project = state.projects.find((candidate) => candidate.path === input.projectPath);
+    if (!project)
+      return yield* new ProjectSessionError({
+        operation: "moveWorkflowSession",
+        message: "That Project is not registered",
+      });
+    const workflow = project.workflow ?? defaultProjectWorkflow();
+    const destinationStatusId =
+      input.destination._tag === "Custom" ? input.destination.statusId : undefined;
+    if (
+      destinationStatusId !== undefined &&
+      !workflow.columns.some((column) => column.id === destinationStatusId)
+    )
+      return yield* new ProjectSessionError({
+        operation: "moveWorkflowSession",
+        message: "That custom status no longer exists",
+      });
+
+    const target = { sessionId: input.sessionId, workingDirectory: input.workingDirectory };
+    const location = yield* findLocation(target, { includeInactive: true });
+    if (location.projectPath !== input.projectPath)
+      return yield* new ProjectSessionError({
+        operation: "moveWorkflowSession",
+        message: "That session does not belong to this Project",
+      });
+    const archive = yield* SessionArchiveStorage;
+    const namespace = yield* archive
+      .locate(input.sessionId, archiveLocation(location))
+      .pipe(asError("moveWorkflowSession"));
+    if (!namespace)
+      return yield* new ProjectSessionError({
+        operation: "moveWorkflowSession",
+        message:
+          input.destination._tag === "Resolved"
+            ? "Activate a Draft before resolving it"
+            : "Activate the Draft before assigning its workflow status",
+      });
+
+    const family = yield* Effect.flatMap(SessionFamilyStorage, (storage) =>
+      storage.familyForMember(input.sessionId),
+    ).pipe(asError("moveWorkflowSession"));
+    const familyChild = family && family.parentSessionId !== input.sessionId;
+    if (familyChild && (namespace === "resolved" || input.destination._tag === "Resolved"))
+      return yield* new ProjectSessionError({
+        operation: "moveWorkflowSession",
+        message: "Resolve or restore this Session Family from its parent card",
+      });
+
+    if (input.destination._tag === "Resolved") {
+      if (namespace === "active") yield* resolve(target);
+      return workflow;
+    }
+    if (namespace === "resolved") yield* restore(target);
+    return yield* setProjectWorkflowSessionStatus(
+      input.projectPath,
+      input.sessionId,
+      destinationStatusId,
+    ).pipe(asError("moveWorkflowSession"));
+  },
+);

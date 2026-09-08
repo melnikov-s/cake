@@ -8,6 +8,7 @@ import {
   removeProject,
   renameProject,
   setProjectSettings,
+  setProjectWorkflowSessionStatus,
   setSessionFastMode,
   setSessionUnread,
   setUtilityModel,
@@ -143,11 +144,11 @@ describe("Application domain", () => {
           reordered.columns.map((column) => column.id),
           [secondColumnId, columnId],
         );
-        const assigned = yield* mutateProjectWorkflow("/work/cake", {
-          _tag: "SetSessionStatus",
-          sessionId: "session-1",
-          statusId: columnId,
-        });
+        const assigned = yield* setProjectWorkflowSessionStatus(
+          "/work/cake",
+          "session-1",
+          columnId,
+        );
         assert.deepEqual(assigned.assignments, [{ sessionId: "session-1", statusId: columnId }]);
         const deleted = yield* mutateProjectWorkflow("/work/cake", {
           _tag: "DeleteColumn",
@@ -170,16 +171,22 @@ describe("Application domain", () => {
           _tag: "AddColumn",
           column: {
             id: "b925b5dd-9661-4f1a-9f40-406be3c96c27",
-            name: "Blocked",
+            name: "  Blocked  ",
             color: "rose",
           },
         });
+        const normalized = (yield* mutateProjectWorkflow("/work/cake", {
+          _tag: "UpdateColumn",
+          columnId: "b925b5dd-9661-4f1a-9f40-406be3c96c27",
+          name: "  Waiting  ",
+        })).columns[0];
+        assert.equal(normalized?.name, "Waiting");
         const duplicate = yield* Effect.flip(
           mutateProjectWorkflow("/work/cake", {
             _tag: "AddColumn",
             column: {
               id: "bcf5bcc1-9126-4192-a0a8-eadb851c5075",
-              name: "blocked",
+              name: "waiting",
               color: "amber",
             },
           }),
@@ -196,6 +203,26 @@ describe("Application domain", () => {
           }),
         );
         assert.equal(reserved._tag, "ApplicationPolicyError");
+        assert.equal(
+          reserved.message,
+          "Status names must be unique and cannot use a system status name",
+        );
+        const empty = yield* Effect.flip(
+          mutateProjectWorkflow("/work/cake", {
+            _tag: "UpdateColumn",
+            columnId: "b925b5dd-9661-4f1a-9f40-406be3c96c27",
+            name: "   ",
+          }),
+        );
+        assert.equal(empty.message, "Status names cannot be empty");
+        const tooLong = yield* Effect.flip(
+          mutateProjectWorkflow("/work/cake", {
+            _tag: "UpdateColumn",
+            columnId: "b925b5dd-9661-4f1a-9f40-406be3c96c27",
+            name: "x".repeat(41),
+          }),
+        );
+        assert.equal(tooLong.message, "Status names cannot exceed 40 characters");
       }),
     ),
   );

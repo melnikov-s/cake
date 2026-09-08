@@ -24,6 +24,7 @@ import type {
   ProjectWorkflow,
   ProjectWorkflowMutation,
   ProjectWorkflowSessionDetails,
+  ProjectWorkflowSessionDestination,
 } from "../../domain/application-data";
 import type { AgentAvailabilitySnapshot } from "../../domain/agent-availability-data";
 import type { PiSettingUpdate } from "../session-contract";
@@ -154,6 +155,12 @@ export interface CakeIpcClientService {
     readonly mutate: (input: {
       readonly projectPath: string;
       readonly mutation: ProjectWorkflowMutation;
+    }) => Effect.Effect<ProjectWorkflow, ProjectError | TransportError>;
+    readonly moveSession: (input: {
+      readonly projectPath: string;
+      readonly sessionId: string;
+      readonly workingDirectory: string;
+      readonly destination: ProjectWorkflowSessionDestination;
     }) => Effect.Effect<ProjectWorkflow, ProjectError | TransportError>;
     readonly describeSession: (input: {
       readonly projectPath: string;
@@ -604,6 +611,9 @@ export const CakeIpcClientLive = Layer.effect(
       projectWorkflow: {
         mutate: Effect.fn("CakeIpcClient.projectWorkflow.mutate")((input) =>
           client("projectWorkflow.mutate", input),
+        ),
+        moveSession: Effect.fn("CakeIpcClient.projectWorkflow.moveSession")((input) =>
+          client("projectWorkflow.moveSession", input),
         ),
         describeSession: Effect.fn("CakeIpcClient.projectWorkflow.describeSession")((input) =>
           client("projectWorkflow.describeSession", input),

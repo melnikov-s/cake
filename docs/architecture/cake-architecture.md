@@ -299,9 +299,12 @@ The window Store hierarchy mirrors the product surfaces:
 - `ProjectCatalogStore` owns registered Project records and their window-local
   ordering. Each Project may carry Cake-owned custom workflow columns and per-session
   assignments. `Draft`, `Active`, and `Resolved` remain derived system columns;
-  custom statuses subdivide only Active and never redefine transcript lifecycle.
-  `KanbanStore` owns the Project Kanban surface, mutation orchestration, drop semantics,
-  and bounded background card-description generation. Sidebar session rows project a
+  custom statuses subdivide only Active and never redefine transcript lifecycle. Main-process
+  Project Session domain operations authoritatively normalize custom status names and enforce
+  lifecycle, custom-column, and Session Family transition policy. `KanbanStore` owns board
+  presentation, drag/drop orchestration, pending-card state, immediate UX validation and errors,
+  and bounded background card-description generation; it invokes one semantic transition command
+  rather than composing authoritative lifecycle mutations. Sidebar session rows project a
   custom status swatch in their indentation gutter and offer the same valid lifecycle and
   custom-status transitions through their native context menu; Draft is never a return
   destination after activation. React owns only an in-progress drag gesture. `SessionCatalogStore` owns the currently demanded, activity-sorted

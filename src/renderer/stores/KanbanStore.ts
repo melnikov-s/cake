@@ -1,5 +1,9 @@
 import { Store, observable } from "r-state-tree";
-import type { ProjectWorkflowColor, ProjectWorkflowMutation } from "../../domain/application-data";
+import {
+  type ProjectWorkflowColor,
+  type ProjectWorkflowMutation,
+  validateProjectWorkflowColumnName,
+} from "../../domain/application-data";
 import type { Project } from "../models/Project";
 import { ClientContext } from "./context/ClientContext";
 import type { ProjectCatalogStore } from "./ProjectCatalogStore";
@@ -13,14 +17,11 @@ export interface KanbanStoreProps {
   projects: ProjectCatalogStore;
   catalog: SessionCatalogStore;
   registry: SessionRegistryStore;
-  setSessionResolved(sessionId: string, resolved: boolean): Promise<boolean>;
   selectedProjectPath(): string | undefined;
   utilityModelConfigured(): boolean;
   openSession(sessionId: string): Promise<boolean>;
   reportError(error: unknown): void;
 }
-
-const reservedNames = new Set(["draft", "active", "resolved"]);
 
 /** Owns the Project Kanban surface and the semantic meaning of completed drops. */
 export class KanbanStore extends Store<KanbanStoreProps> {
@@ -209,24 +210,16 @@ export class KanbanStore extends Store<KanbanStoreProps> {
   }
 
   private validateColumnName(name: string, currentColumnId?: string) {
-    const normalized = name.trim();
-    if (!normalized) {
-      this.reportError(new Error("Status names cannot be empty"));
+    const validation = validateProjectWorkflowColumnName(
+      { columns: this.customColumns },
+      name,
+      currentColumnId,
+    );
+    if (!validation.ok) {
+      this.reportError(new Error(validation.message));
       return undefined;
     }
-    const key = normalized.toLowerCase();
-    if (
-      reservedNames.has(key) ||
-      this.customColumns.some(
-        (column) => column.id !== currentColumnId && column.name.toLowerCase() === key,
-      )
-    ) {
-      this.reportError(
-        new Error("Status names must be unique and cannot use a system status name"),
-      );
-      return undefined;
-    }
-    return normalized;
+    return validation.name;
   }
 
   private reportError(error: unknown) {
@@ -295,21 +288,23 @@ export class KanbanStore extends Store<KanbanStoreProps> {
       if (source === "draft") {
         const draft = this.props.registry.findSession(sessionId);
         if (!draft || !(await draft.chatStore.activateDraft())) return false;
-      } else if (source === "resolved") {
-        if (!(await this.props.setSessionResolved(sessionId, false))) return false;
       }
 
-      if (destination === "resolved") {
-        return await this.props.setSessionResolved(sessionId, true);
-      }
-      return await this.mutate(
+      await this.client.projectWorkflow.moveSession(
         {
-          _tag: "SetSessionStatus",
+          projectPath,
           sessionId,
-          ...(destination === "active" ? undefined : { statusId: destination }),
+          workingDirectory: session.workingDirectory,
+          destination:
+            destination === "resolved"
+              ? { _tag: "Resolved" }
+              : destination === "active"
+                ? { _tag: "Active" }
+                : { _tag: "Custom", statusId: destination },
         },
-        projectPath,
+        { signal: this.signal },
       );
+      return !this.signal.aborted;
     } catch (error) {
       if (!this.signal.aborted) this.reportError(error);
       return false;

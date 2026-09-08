@@ -23,15 +23,20 @@ import type {
   ProjectRecord,
   ProjectWorkflowMutation,
   ProjectWorkflowSessionDetails,
+  ProjectWorkflowSessionDestination,
 } from "./application-data";
 import { defaultProjectWorkflow } from "./application-data";
-import { inspect as inspectProjectSession } from "./projectSessions";
+import {
+  inspect as inspectProjectSession,
+  moveWorkflowSession as moveProjectSessionWorkflow,
+} from "./projectSessions";
 import { ProjectError } from "./project-error";
 import {
   observeState,
   removeProject,
   renameProject,
   mutateProjectWorkflow,
+  setProjectWorkflowSessionDetails,
   setProjectSettings as setApplicationProjectSettings,
   setSessionUnread as setApplicationSessionUnread,
   setUtilityModel as setApplicationUtilityModel,
@@ -295,27 +300,20 @@ export const mutateWorkflow = Effect.fn("Projects.mutateWorkflow")(function* (re
   readonly mutation: ProjectWorkflowMutation;
 }) {
   yield* requireAllowed(request.projectPath);
-  if (request.mutation._tag === "SetSessionStatus") {
-    const access = yield* ProjectAccess;
-    const workingDirectory = yield* mapProjectError(
-      "mutateProjectWorkflow",
-      access.resolveSessionWorkingDirectory(request.mutation.sessionId),
-    );
-    const environment = yield* ProjectSessionEnvironment;
-    const location = (yield* mapProjectError(
-      "mutateProjectWorkflow",
-      environment.locations(),
-    )).find((candidate) => candidate.workingDirectory === workingDirectory);
-    if (location?.projectPath !== request.projectPath)
-      return yield* new ProjectError({
-        operation: "mutateProjectWorkflow",
-        message: "That session does not belong to this Project",
-      });
-  }
   return yield* mapProjectError(
     "mutateProjectWorkflow",
     mutateProjectWorkflow(request.projectPath, request.mutation),
   );
+});
+
+export const moveWorkflowSession = Effect.fn("Projects.moveWorkflowSession")(function* (request: {
+  readonly projectPath: string;
+  readonly sessionId: string;
+  readonly workingDirectory: string;
+  readonly destination: ProjectWorkflowSessionDestination;
+}) {
+  yield* requireAllowed(request.projectPath);
+  return yield* mapProjectError("moveProjectWorkflowSession", moveProjectSessionWorkflow(request));
 });
 
 export const describeWorkflowSession = Effect.fn("Projects.describeWorkflowSession")(
@@ -395,7 +393,7 @@ export const describeWorkflowSession = Effect.fn("Projects.describeWorkflowSessi
     };
     return yield* mapProjectError(
       "describeWorkflowSession",
-      mutateProjectWorkflow(request.projectPath, { _tag: "SetSessionDetails", details }),
+      setProjectWorkflowSessionDetails(request.projectPath, details),
     ).pipe(
       Effect.map(
         (workflow) =>
