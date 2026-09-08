@@ -152,6 +152,30 @@ test("streaming work logs keep their DOM and follow their own bottom", async () 
       .locator(":scope > div");
     const originalFooter = await footer.elementHandle();
     if (!originalContent || !originalFooter) throw new Error("Missing work log content or footer");
+
+    // Settled fences keep their highlighted DOM while only the fence receiving
+    // streamed text remains plain. Closing that fence highlights it without
+    // replacing the earlier block.
+    sendReasoning("```ts\nconst settledSyntax = true;\n```\n\n```ts\nconst streamingSyntax =");
+    const codeBodies = content.locator('[data-streamdown="code-block-body"]');
+    await expect(codeBodies).toHaveCount(2);
+    const settledCode = codeBodies.nth(0);
+    const streamingCode = codeBodies.nth(1);
+    await expect.poll(() => settledCode.locator('[style*="--sdm-c"]').count()).toBeGreaterThan(0);
+    await expect(streamingCode.locator('[style*="--sdm-c"]')).toHaveCount(0);
+    const originalSettledCode = await settledCode.elementHandle();
+    if (!originalSettledCode) throw new Error("Missing settled code block");
+
+    sendReasoning(" 1;");
+    await expect(streamingCode).toContainText("const streamingSyntax = 1;");
+    expect(await originalSettledCode.evaluate((element) => element.isConnected)).toBe(true);
+    await expect.poll(() => settledCode.locator('[style*="--sdm-c"]').count()).toBeGreaterThan(0);
+    await expect(streamingCode.locator('[style*="--sdm-c"]')).toHaveCount(0);
+
+    sendReasoning("\n```\n\nAfter streamed code.\n\n");
+    await expect.poll(() => streamingCode.locator('[style*="--sdm-c"]').count()).toBeGreaterThan(0);
+    expect(await originalSettledCode.evaluate((element) => element.isConnected)).toBe(true);
+
     for (let index = 0; index < 8; index += 1) {
       sendReasoning(`Streaming marker ${index}.\n\n${"More streamed reasoning.\n\n".repeat(4)}`);
       await expect(content).toContainText(`Streaming marker ${index}`);

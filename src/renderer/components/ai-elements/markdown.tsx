@@ -188,7 +188,7 @@ function linkAnchor(allProps: AnchorProps, actions?: MarkdownLinkActions) {
 const mermaid = createMermaidPlugin({ config: { securityLevel: "strict" } });
 function lastFence(markdown: string) {
   let fence: { marker: "`" | "~"; length: number; contentStart: number } | undefined;
-  let latest: { code: string; incomplete: boolean } | undefined;
+  let latest: { code: string; contentStart: number; incomplete: boolean } | undefined;
   let offset = 0;
 
   for (const line of markdown.match(/[^\n]*\n|[^\n]+$/g) ?? []) {
@@ -197,6 +197,7 @@ function lastFence(markdown: string) {
       if (closing?.[0] === fence.marker && closing.length >= fence.length) {
         latest = {
           code: markdown.slice(fence.contentStart, offset).replace(/\n+$/, ""),
+          contentStart: fence.contentStart,
           incomplete: false,
         };
         fence = undefined;
@@ -218,7 +219,11 @@ function lastFence(markdown: string) {
   }
 
   return fence
-    ? { code: markdown.slice(fence.contentStart).replace(/\n+$/, ""), incomplete: true }
+    ? {
+        code: markdown.slice(fence.contentStart).replace(/\n+$/, ""),
+        contentStart: fence.contentStart,
+        incomplete: true,
+      }
     : latest;
 }
 
@@ -264,10 +269,10 @@ export function Markdown({
   const deferredSource = useDeferredValue(source);
   const renderedSource = streaming ? deferredSource : source;
   const finalFence = streaming ? lastFence(renderedSource) : undefined;
-  const changingCode =
-    finalFence && (mutableCode || finalFence.incomplete) ? finalFence.code : undefined;
-  const changingCodeRef = useRef(changingCode);
-  changingCodeRef.current = changingCode;
+  const changingFence =
+    finalFence && (mutableCode || finalFence.incomplete) ? finalFence : undefined;
+  const changingCodeRef = useRef(changingFence?.code);
+  changingCodeRef.current = changingFence?.code;
   const codeHighlighter = useMemo(
     () => ({
       ...syntaxHighlighter,
@@ -276,7 +281,10 @@ export function Markdown({
           ? plainSyntaxHighlight(args[0].code)
           : syntaxHighlighter.highlight(...args),
     }),
-    [mutableCode, streaming],
+    // Keep the plugin stable as the active fence grows. Change it only when a
+    // fence starts or settles so Streamdown reruns highlighting for that fence;
+    // cached settled fences retain their existing highlighted result.
+    [changingFence?.contentStart, mutableCode, streaming],
   );
   const configuredPlugins = useMemo(
     () => ({ code: codeHighlighter, math, mermaid }),
@@ -331,7 +339,7 @@ export function Markdown({
       mermaid={{
         config: { securityLevel: "strict", theme: colorTheme === "dark" ? "dark" : "neutral" },
       }}
-      mode="static"
+      mode="streaming"
       parseMarkdownIntoBlocksFn={parseMarkdownIntoBlocks}
       plugins={configuredPlugins}
       skipHtml

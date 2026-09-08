@@ -37,14 +37,14 @@ describe("Markdown", () => {
     container.remove();
   });
 
-  it("keeps Streamdown's static block parser stable across transcript updates", () => {
+  it("keeps Streamdown's block parser stable across transcript updates", () => {
     act(() => root.render(<Markdown>First</Markdown>));
     const firstProps = vi.mocked(Streamdown).mock.calls.at(-1)![0];
 
     act(() => root.render(<Markdown>Second</Markdown>));
     const secondProps = vi.mocked(Streamdown).mock.calls.at(-1)![0];
 
-    expect(secondProps).toMatchObject({ isAnimating: false, mode: "static", skipHtml: true });
+    expect(secondProps).toMatchObject({ isAnimating: false, mode: "streaming", skipHtml: true });
     expect(secondProps.parseMarkdownIntoBlocksFn).toBe(firstProps.parseMarkdownIntoBlocksFn);
     expect(secondProps.parseMarkdownIntoBlocksFn?.("first")).toEqual(["first"]);
     expect(secondProps.parseMarkdownIntoBlocksFn?.("changing content")).toEqual([
