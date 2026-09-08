@@ -928,6 +928,7 @@ export class RootStore extends Store<{
           : undefined,
       utilityModelConfigured: () => Boolean(this.settingsStore.utilityModel.model),
       openSession: (sessionId) => this.openSession(sessionId),
+      forgetResolvedSession: (sessionId) => this.forgetResolvedProjectSessions([sessionId]),
       reportError: (error) => this.projectWorkbenchStore.setError(error, "Project Kanban"),
     });
   }

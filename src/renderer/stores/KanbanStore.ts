@@ -20,6 +20,7 @@ export interface KanbanStoreProps {
   selectedProjectPath(): string | undefined;
   utilityModelConfigured(): boolean;
   openSession(sessionId: string): Promise<boolean>;
+  forgetResolvedSession(sessionId: string): Promise<void>;
   reportError(error: unknown): void;
 }
 
@@ -304,6 +305,8 @@ export class KanbanStore extends Store<KanbanStoreProps> {
         },
         { signal: this.signal },
       );
+      if (destination === "resolved" && !this.signal.aborted)
+        await this.props.forgetResolvedSession(sessionId);
       return !this.signal.aborted;
     } catch (error) {
       if (!this.signal.aborted) this.reportError(error);

@@ -50,6 +50,7 @@ function fixture(options?: {
   };
   const mutate = vi.fn(async () => project.workflow);
   const moveSession = vi.fn(async () => project.workflow);
+  const forgetResolvedSession = vi.fn(async () => undefined);
   const activateDraft = vi.fn(async () => true);
   const registry = {
     findSession: () => ({ chatStore: { activateDraft }, model: {} }),
@@ -72,6 +73,7 @@ function fixture(options?: {
       selectedProjectPath: () => (options?.boardSelected === false ? undefined : projectPath),
       utilityModelConfigured: () => true,
       openSession: vi.fn(async () => true),
+      forgetResolvedSession,
       reportError: vi.fn(),
     }),
     {
@@ -89,6 +91,7 @@ function fixture(options?: {
     mutate,
     describeSession,
     moveSession,
+    forgetResolvedSession,
     activateDraft,
   };
 }
@@ -214,6 +217,7 @@ describe("KanbanStore", () => {
       expect.objectContaining({ destination: { _tag: "Resolved" } }),
       expect.anything(),
     );
+    expect(test.forgetResolvedSession).toHaveBeenCalledWith("session-1");
     expect(test.mutate).not.toHaveBeenCalled();
     test.root[Symbol.dispose]();
   });
