@@ -884,6 +884,13 @@ export class RootStore extends Store<{
       catalog: this.sessionCatalogStore,
       sessions: this.sessionRegistry,
       cakeChat: () => this.cakeChatCollectionStore,
+      selectedConversation: () => {
+        const selection = this.appShellStore.selection;
+        if (selection.kind === "project-session") return selection;
+        return selection.kind === "cake-chat" && selection.sessionId
+          ? { kind: "cake-chat", sessionId: selection.sessionId }
+          : undefined;
+      },
       setSessionResolved: async (sessionId, resolved) => {
         await this.resolveProjectSession(sessionId, resolved);
       },

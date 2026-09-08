@@ -1,4 +1,4 @@
-import { createStore, mount } from "r-state-tree";
+import { createStore, mount, observable } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
 import type { ProjectCatalogStore } from "../../../../src/renderer/stores/ProjectCatalogStore";
 import type { SessionCatalogStore } from "../../../../src/renderer/stores/SessionCatalogStore";
@@ -13,6 +13,73 @@ const embeddedEditorSettings = (sidebarAutoHide: "never" | "always" | "below-wid
   ({ sidebarAutoHide, sidebarAutoHideWidth: 1440 }) as EmbeddedEditorSettingsStore;
 
 describe("SidebarStore catalog demand", () => {
+  it("keeps the selected session in its current slot until it is deselected", () => {
+    const selection = observable({
+      current: undefined as
+        | { kind: "project-session" | "cake-chat"; sessionId: string }
+        | undefined,
+    });
+    const summaries = observable([
+      {
+        sessionId: "newer",
+        modifiedAt: "2026-01-03T00:00:00.000Z",
+        resolved: false,
+        draft: false,
+        projectPath: "/cake",
+      },
+      {
+        sessionId: "selected",
+        modifiedAt: "2026-01-02T00:00:00.000Z",
+        resolved: false,
+        draft: false,
+        projectPath: "/cake",
+      },
+      {
+        sessionId: "older",
+        modifiedAt: "2026-01-01T00:00:00.000Z",
+        resolved: false,
+        draft: false,
+        projectPath: "/cake",
+      },
+    ]);
+    const catalog = {
+      projectSessions: () => summaries,
+      find: (sessionId: string) => summaries.find((session) => session.sessionId === sessionId),
+    } as unknown as SessionCatalogStore;
+    const store = mount(
+      createStore(SidebarStore, {
+        projects: { orderedProjectPaths: [] } as unknown as ProjectCatalogStore,
+        catalog,
+        sessions: {} as SessionRegistryStore,
+        cakeChat: () => ({ summaries: [] }) as unknown as CakeChatCollectionStore,
+        selectedConversation: () => selection.current,
+        setSessionResolved: async () => undefined,
+        setSessionWorkflowStatus: async () => undefined,
+        setCakeChatSessionResolved: async () => undefined,
+        deleteSession: async () => undefined,
+        deleteCakeChatSession: async () => undefined,
+        setSessionUnread: async () => undefined,
+        embeddedEditorSettings: embeddedEditorSettings(),
+      }),
+    );
+
+    selection.current = { kind: "project-session", sessionId: "selected" };
+    summaries[1]!.modifiedAt = "2026-01-04T00:00:00.000Z";
+    expect(store.projectSessions("/cake").map((session) => session.sessionId)).toEqual([
+      "newer",
+      "selected",
+      "older",
+    ]);
+
+    selection.current = undefined;
+    expect(store.projectSessions("/cake").map((session) => session.sessionId)).toEqual([
+      "selected",
+      "newer",
+      "older",
+    ]);
+    store[Symbol.dispose]();
+  });
+
   it("provides custom workflow statuses and the current status to the native menu", async () => {
     const status = {
       id: "b925b5dd-9661-4f1a-9f40-406be3c96c27",

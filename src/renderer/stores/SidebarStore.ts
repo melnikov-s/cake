@@ -16,6 +16,7 @@ export interface SidebarStoreProps {
   catalog: SessionCatalogStore;
   sessions: SessionRegistryStore;
   cakeChat(): CakeChatCollectionStore;
+  selectedConversation?(): { kind: "project-session" | "cake-chat"; sessionId: string } | undefined;
   setSessionResolved(sessionId: string, resolved: boolean): Promise<void>;
   setSessionWorkflowStatus(sessionId: string, statusId: string): Promise<void>;
   setCakeChatSessionResolved(sessionId: string, resolved: boolean): Promise<void>;
@@ -44,6 +45,15 @@ export class SidebarStore extends Store<SidebarStoreProps> {
   private readonly activatedResolvedCakeChatCatalogs: Record<string, boolean> = observable({});
   private readonly sessionLimits: Record<string, number> = observable({});
   @snapshot private readonly collapsedFamilies: Record<string, boolean> = observable({});
+  private pinnedSession:
+    | {
+        kind: "project-session" | "cake-chat";
+        sessionId: string;
+        groupKey: string;
+        resolved: boolean;
+        index: number;
+      }
+    | undefined;
   resolvedLaneExpanded = false;
   now = Date.now();
 
@@ -69,6 +79,14 @@ export class SidebarStore extends Store<SidebarStoreProps> {
       ],
       () => this.applyIdeAutoHide(),
     );
+    this.reaction(
+      () => {
+        const selected = this.props.selectedConversation?.();
+        return selected ? `${selected.kind}:${selected.sessionId}` : undefined;
+      },
+      () => this.pinSelectedSession(),
+    );
+    this.pinSelectedSession();
   }
 
   get visible() {
@@ -183,34 +201,19 @@ export class SidebarStore extends Store<SidebarStoreProps> {
   }
 
   projectSessions(workspacePath: string, resolved = false) {
-    const sessions = this.props.catalog
-      .projectSessions(workspacePath)
-      .filter((item) => item.resolved === resolved);
-    const byId = new Map(sessions.map((session) => [session.sessionId, session]));
-    const roots = sessions.filter(
-      (session) =>
-        !session.familyParentSessionId ||
-        session.familyParentSessionId === session.sessionId ||
-        !byId.has(session.familyParentSessionId),
-    );
-    const latestActivity = (session: (typeof sessions)[number]) => {
-      const members = session.familyChildSessionIds
-        ? [
-            session,
-            ...session.familyChildSessionIds.flatMap((id) => (byId.get(id) ? [byId.get(id)!] : [])),
-          ]
-        : [session];
-      return members.reduce(
-        (latest, member) => (member.modifiedAt > latest ? member.modifiedAt : latest),
-        session.modifiedAt,
-      );
-    };
-    roots.sort((left, right) =>
-      compareSessionSummariesForSidebar(
-        { modifiedAt: latestActivity(left), draft: left.draft },
-        { modifiedAt: latestActivity(right), draft: right.draft },
-      ),
-    );
+    const { byId, roots } = this.sortedProjectSessionRoots(workspacePath, resolved);
+    const pinned = this.pinnedSession;
+    if (
+      pinned?.kind === "project-session" &&
+      pinned.groupKey === workspacePath &&
+      pinned.resolved === resolved
+    ) {
+      const currentIndex = roots.findIndex((session) => session.sessionId === pinned.sessionId);
+      if (currentIndex >= 0) {
+        const [selected] = roots.splice(currentIndex, 1);
+        roots.splice(Math.min(pinned.index, roots.length), 0, selected!);
+      }
+    }
     return roots.flatMap((root) => {
       if (!root.familyChildSessionIds || this.isFamilyCollapsed(root.sessionId)) return [root];
       const children = root.familyChildSessionIds
@@ -243,7 +246,17 @@ export class SidebarStore extends Store<SidebarStoreProps> {
   }
 
   cakeChatSessions(resolved = false) {
-    return this.props.cakeChat().summaries.filter((session) => session.resolved === resolved);
+    const sessions = this.props
+      .cakeChat()
+      .summaries.filter((session) => session.resolved === resolved);
+    const pinned = this.pinnedSession;
+    if (pinned?.kind !== "cake-chat" || pinned.resolved !== resolved) return sessions;
+    const currentIndex = sessions.findIndex((session) => session.sessionId === pinned.sessionId);
+    if (currentIndex < 0) return sessions;
+    const ordered = [...sessions];
+    const [selected] = ordered.splice(currentIndex, 1);
+    ordered.splice(Math.min(pinned.index, ordered.length), 0, selected!);
+    return ordered;
   }
 
   hasMoreResolvedProjectSessions(projectPath: string) {
@@ -358,6 +371,80 @@ export class SidebarStore extends Store<SidebarStoreProps> {
 
   sessionActivityTime(modified: string) {
     return formatRelativeSessionTime(modified, this.now);
+  }
+
+  private sortedProjectSessionRoots(workspacePath: string, resolved: boolean) {
+    const sessions = this.props.catalog
+      .projectSessions(workspacePath)
+      .filter((item) => item.resolved === resolved);
+    const byId = new Map(sessions.map((session) => [session.sessionId, session]));
+    const roots = sessions.filter(
+      (session) =>
+        !session.familyParentSessionId ||
+        session.familyParentSessionId === session.sessionId ||
+        !byId.has(session.familyParentSessionId),
+    );
+    const latestActivity = (session: (typeof sessions)[number]) => {
+      const members = session.familyChildSessionIds
+        ? [
+            session,
+            ...session.familyChildSessionIds.flatMap((id) => (byId.get(id) ? [byId.get(id)!] : [])),
+          ]
+        : [session];
+      return members.reduce(
+        (latest, member) => (member.modifiedAt > latest ? member.modifiedAt : latest),
+        session.modifiedAt,
+      );
+    };
+    roots.sort((left, right) =>
+      compareSessionSummariesForSidebar(
+        { modifiedAt: latestActivity(left), draft: left.draft },
+        { modifiedAt: latestActivity(right), draft: right.draft },
+      ),
+    );
+    return { byId, roots };
+  }
+
+  private pinSelectedSession() {
+    this.pinnedSession = undefined;
+    const selected = this.props.selectedConversation?.();
+    if (!selected) return;
+    if (selected.kind === "cake-chat") {
+      const summary = this.props
+        .cakeChat()
+        .summaries.find((session) => session.sessionId === selected.sessionId);
+      if (!summary) return;
+      const sessions = this.props
+        .cakeChat()
+        .summaries.filter((session) => session.resolved === summary.resolved);
+      const index = sessions.findIndex((session) => session.sessionId === selected.sessionId);
+      if (index >= 0)
+        this.pinnedSession = {
+          kind: selected.kind,
+          sessionId: selected.sessionId,
+          groupKey: "cake-chat",
+          resolved: summary.resolved,
+          index,
+        };
+      return;
+    }
+    const summary = this.props.catalog.find(selected.sessionId);
+    if (!summary) return;
+    const { byId, roots } = this.sortedProjectSessionRoots(summary.projectPath, summary.resolved);
+    const parentId = summary.familyParentSessionId;
+    const rootId =
+      parentId && parentId !== summary.sessionId && byId.has(parentId)
+        ? parentId
+        : summary.sessionId;
+    const index = roots.findIndex((session) => session.sessionId === rootId);
+    if (index >= 0)
+      this.pinnedSession = {
+        kind: selected.kind,
+        sessionId: rootId,
+        groupKey: summary.projectPath,
+        resolved: summary.resolved,
+        index,
+      };
   }
 
   private limitKey(groupKey: string, resolved: boolean) {
