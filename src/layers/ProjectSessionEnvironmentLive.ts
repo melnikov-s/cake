@@ -248,11 +248,12 @@ export const makeProjectSessionEnvironmentLive = (
                       const presentation = await runtimeIntegrations
                         .requestApplicationControl(
                           {
-                            _tag: "OpenChildSession",
+                            _tag: "ProjectChildSession",
                             childSessionId: result.childSessionId,
                             title: input.title,
                             familyId: result.familyId,
                             familyChildOrder: result.familyChildOrder,
+                            placement: input.placement,
                           },
                           signal,
                         )

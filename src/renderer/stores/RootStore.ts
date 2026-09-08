@@ -211,9 +211,9 @@ export class RootStore extends Store<{
     };
   }
 
-  private async openChildProjectSession(
+  private async projectChildSession(
     parentSessionId: string,
-    input: Extract<ProjectSessionControlRequest["invocation"], { _tag: "OpenChildSession" }>,
+    input: Extract<ProjectSessionControlRequest["invocation"], { _tag: "ProjectChildSession" }>,
   ) {
     const workingDirectory = this.requireProjectSessionWorkingDirectory(parentSessionId);
     this.sessionRegistry.loadUnlistedFamilySession(
@@ -235,20 +235,26 @@ export class RootStore extends Store<{
       this.sessionRegistry.removeSession(input.childSessionId);
       throw error;
     }
-    const paneId = this.sessionLayoutStore.showChildSession(parentSessionId, input.childSessionId);
+    if (input.placement === "none")
+      return { ok: true, childSessionId: input.childSessionId, placement: input.placement };
+    const paneId = this.sessionLayoutStore.showChildSession(
+      parentSessionId,
+      input.childSessionId,
+      input.placement === "right" ? "x" : "y",
+    );
     if (!paneId) throw new Error("Cake could not open a child pane beside its parent.");
     this.projectWorkbenchStore.dismissSecondarySurfaces();
     this.selectProjectSessionForShell(input.childSessionId);
     this.projectWorkbenchStore.showLoadedSession(input.childSessionId);
-    return { ok: true, childSessionId: input.childSessionId, paneId };
+    return { ok: true, childSessionId: input.childSessionId, placement: input.placement, paneId };
   }
 
   async respondProjectSessionControl(request: ProjectSessionControlRequest) {
     if (this.respondedProjectSessionControlIds.has(request.controlRequestId)) return;
     this.respondedProjectSessionControlIds.add(request.controlRequestId);
     const invocation = request.invocation;
-    if (invocation._tag === "OpenChildSession") {
-      const result = await this.openChildProjectSession(request.sessionId, invocation).catch(
+    if (invocation._tag === "ProjectChildSession") {
+      const result = await this.projectChildSession(request.sessionId, invocation).catch(
         (error) => ({
           ok: false as const,
           error: error instanceof Error ? error.message : String(error),

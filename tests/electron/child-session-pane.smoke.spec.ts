@@ -37,6 +37,7 @@ test("opens family children beside their parent and reuses the child pane", asyn
   const project = join(temporaryRoot, "project");
   const cakeHome = join(temporaryRoot, "cake-home");
   const parentSessionId = "family-parent";
+  const backgroundChildSessionId = "family-child-background";
   const firstChildSessionId = "family-child-1";
   const secondChildSessionId = "family-child-2";
   const sessionDirectory = cakeWorkspaceSessionDirectory(project, join(cakeHome, "pi", "sessions"));
@@ -79,6 +80,7 @@ test("opens family children beside their parent and reuses the child pane", asyn
   );
   await Promise.all([
     writeSession(sessionDirectory, parentSessionId, project, "Parent"),
+    writeSession(sessionDirectory, backgroundChildSessionId, project, "Background child"),
     writeSession(sessionDirectory, firstChildSessionId, project, "First child"),
     writeSession(sessionDirectory, secondChildSessionId, project, "Second child"),
   ]);
@@ -103,13 +105,30 @@ test("opens family children beside their parent and reuses the child pane", asyn
     await emitRendererEvent(application, {
       type: "project-session-control-requested",
       sessionId: parentSessionId,
+      controlRequestId: "00000000-0000-4000-8000-000000000000",
+      invocation: {
+        _tag: "ProjectChildSession",
+        childSessionId: backgroundChildSessionId,
+        title: "Background child",
+        familyId: "family-1",
+        familyChildOrder: 0,
+        placement: "none",
+      },
+    });
+    await expect(panes).toHaveCount(1);
+    await expect(panes.first()).toHaveAttribute("data-session-id", parentSessionId);
+
+    await emitRendererEvent(application, {
+      type: "project-session-control-requested",
+      sessionId: parentSessionId,
       controlRequestId: "00000000-0000-4000-8000-000000000001",
       invocation: {
-        _tag: "OpenChildSession",
+        _tag: "ProjectChildSession",
         childSessionId: firstChildSessionId,
         title: "First child",
         familyId: "family-1",
         familyChildOrder: 0,
+        placement: "right",
       },
     });
     await expect(panes).toHaveCount(2);
@@ -121,11 +140,12 @@ test("opens family children beside their parent and reuses the child pane", asyn
       sessionId: parentSessionId,
       controlRequestId: "00000000-0000-4000-8000-000000000002",
       invocation: {
-        _tag: "OpenChildSession",
+        _tag: "ProjectChildSession",
         childSessionId: secondChildSessionId,
         title: "Second child",
         familyId: "family-1",
         familyChildOrder: 1,
+        placement: "right",
       },
     });
     await expect(panes).toHaveCount(2);

@@ -309,6 +309,7 @@ export interface CakeRuntimeOptions {
         title: string;
         initialPrompt: string;
         model: ChatConfiguration;
+        placement: "none" | "right" | "down";
       },
       signal: AbortSignal,
     ): Promise<JsonValue>;
@@ -719,6 +720,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         initialPrompt: string;
         model?: { provider: string; modelId: string };
         thinkingLevel?: ThinkingLevel;
+        placement: "none" | "right" | "down";
       },
       requestId: string,
       signal: AbortSignal,
@@ -877,6 +879,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
           "Use this operation—not cake subagents—when the user asks for a child session, full child Project Session, related session, or Session Family member.",
           "The calling session becomes the family parent when it creates its first child.",
           "Children inherit the exact Project and Working Directory, share mutable files, and start in the background.",
+          "Pane placement defaults to none. Set placement to right or down only when the child should be opened beside the parent.",
           "A child cannot create another child; it must ask its parent for further delegation.",
         ],
         inputSchema: Schema.Struct({
@@ -897,12 +900,16 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
           thinkingLevel: Schema.optionalKey(
             Schema.Literals(["off", "minimal", "low", "medium", "high", "xhigh", "max"]),
           ),
+          placement: Schema.Literals(["none", "right", "down"]).pipe(
+            Schema.withDecodingDefaultKey(Effect.succeed("none" as const)),
+          ),
         }),
         examples: [
           {
             input: {
               title: "Storage implementation",
               initialPrompt: "Implement the storage slice and message me when it is ready.",
+              placement: "right",
             },
           },
         ],
@@ -919,6 +926,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
               initialPrompt: string;
               model?: { provider: string; modelId: string };
               thinkingLevel?: ThinkingLevel;
+              placement: "none" | "right" | "down";
             },
             context.toolCallId,
             context.signal,
@@ -2373,6 +2381,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
           requestId,
           title: input.title,
           initialPrompt: input.initialPrompt,
+          placement: input.placement,
           model: {
             provider: input.model?.provider ?? current.provider,
             modelId: input.model?.modelId ?? current.id,

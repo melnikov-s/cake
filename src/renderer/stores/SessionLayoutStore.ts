@@ -183,7 +183,7 @@ export class SessionLayoutStore extends Store {
   }
 
   /** Opens one family child beside its parent and reuses that slot for later children. */
-  showChildSession(parentSessionId: string, childSessionId: string) {
+  showChildSession(parentSessionId: string, childSessionId: string, axis: SessionSplitAxis = "x") {
     const existing = this.paneForSession(childSessionId);
     if (existing) {
       this.childPaneIdsByParentSessionId[parentSessionId] = existing.paneId;
@@ -203,7 +203,7 @@ export class SessionLayoutStore extends Store {
     if (assignedPaneId) delete this.childPaneIdsByParentSessionId[parentSessionId];
     if (!this.canSplit) return undefined;
     this.focusedPaneId = parentPane.paneId;
-    const paneId = this.splitFocused(childSessionId, "x");
+    const paneId = this.splitFocused(childSessionId, axis);
     if (paneId) this.childPaneIdsByParentSessionId[parentSessionId] = paneId;
     return paneId;
   }

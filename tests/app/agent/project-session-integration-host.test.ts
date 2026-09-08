@@ -125,11 +125,12 @@ describe("ProjectSessionIntegrationHost application controls", () => {
       .projectSessionRuntimeIntegrations("parent-session")
       .requestApplicationControl(
         {
-          _tag: "OpenChildSession",
+          _tag: "ProjectChildSession",
           childSessionId: "child-session",
           title: "Child task",
           familyId: "family-1",
           familyChildOrder: 0,
+          placement: "down",
         },
         new AbortController().signal,
       );

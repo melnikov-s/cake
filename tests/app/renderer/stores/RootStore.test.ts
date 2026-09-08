@@ -52,13 +52,36 @@ describe("RootStore session navigation", () => {
 
       await root.respondProjectSessionControl({
         sessionId: "parent",
+        controlRequestId: "00000000-0000-4000-8000-000000000000",
+        invocation: {
+          _tag: "ProjectChildSession",
+          childSessionId: "background-child",
+          title: "Background child",
+          familyId: "family",
+          familyChildOrder: 0,
+          placement: "none",
+        },
+      });
+      expect(root.sessionCatalogStore.find("background-child")).toMatchObject({
+        title: "Background child",
+        pending: true,
+      });
+      expect(root.sessionLayoutStore.panes.map((pane) => pane.sessionId)).toEqual(["parent"]);
+      expect(root.appShellStore.activeConversation).toEqual({
+        kind: "project-session",
+        sessionId: "parent",
+      });
+
+      await root.respondProjectSessionControl({
+        sessionId: "parent",
         controlRequestId: "00000000-0000-4000-8000-000000000001",
         invocation: {
-          _tag: "OpenChildSession",
+          _tag: "ProjectChildSession",
           childSessionId: "child-1",
           title: "First child",
           familyId: "family",
           familyChildOrder: 0,
+          placement: "right",
         },
       });
       const childPaneId = root.sessionLayoutStore.paneForSession("child-1")?.paneId;
@@ -77,18 +100,19 @@ describe("RootStore session navigation", () => {
         sessionId: "parent",
         controlRequestId: "00000000-0000-4000-8000-000000000002",
         invocation: {
-          _tag: "OpenChildSession",
+          _tag: "ProjectChildSession",
           childSessionId: "child-2",
           title: "Second child",
           familyId: "family",
           familyChildOrder: 1,
+          placement: "right",
         },
       });
       expect(root.sessionLayoutStore.paneForSession("child-2")?.paneId).toBe(childPaneId);
       expect(root.sessionLayoutStore.hasSession("child-1")).toBe(false);
       expect(root.sessionLayoutStore.panes).toHaveLength(2);
-      expect(open).toHaveBeenCalledTimes(2);
-      expect(respondControl).toHaveBeenCalledTimes(2);
+      expect(open).toHaveBeenCalledTimes(3);
+      expect(respondControl).toHaveBeenCalledTimes(3);
     } finally {
       root[Symbol.dispose]();
       models[Symbol.dispose]();
