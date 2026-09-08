@@ -1,4 +1,8 @@
 import { Rpc, RpcGroup } from "effect/unstable/rpc";
+import {
+  ResolvedManagedWorktreeCleanupPlan,
+  ResolvedManagedWorktreeCleanupResult,
+} from "../../domain/managed-worktree-cleanup-data";
 import { WorktreeLandingError } from "../../domain/worktree-landing-data";
 import { ManagedWorktreeError } from "../../services/worktrees/ManagedWorktrees";
 import { cakeRpcPayloadSchemas, cakeRpcSuccessSchemas } from "../cake-rpc-contract";
@@ -33,4 +37,14 @@ export const ManagedWorktreeRpc = RpcGroup.make(
   landingRpc("cancel-worktree-landing"),
   landingRpc("start-worktree-rebase"),
   managedWorktreeRpc("discard-worktree"),
+  Rpc.make("managedWorktrees.inspectResolvedForProject", {
+    payload: { projectPath: ResolvedManagedWorktreeCleanupPlan.fields.projectPath },
+    success: ResolvedManagedWorktreeCleanupPlan,
+    error: ManagedWorktreeError,
+  }),
+  Rpc.make("managedWorktrees.discardResolvedForProject", {
+    payload: { projectPath: ResolvedManagedWorktreeCleanupPlan.fields.projectPath },
+    success: ResolvedManagedWorktreeCleanupResult,
+    error: ManagedWorktreeError,
+  }),
 );

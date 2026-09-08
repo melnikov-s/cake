@@ -217,6 +217,24 @@ export interface ProjectSessionStartInput extends Schema.Schema.Type<
   typeof ProjectSessionStartInput
 > {}
 
+export const WorkingDirectoryResolutionFailure = Schema.Struct({
+  sessionIds: Schema.Array(boundedId).check(Schema.isMaxLength(10_000)),
+  message: Schema.String,
+});
+export interface WorkingDirectoryResolutionFailure extends Schema.Schema.Type<
+  typeof WorkingDirectoryResolutionFailure
+> {}
+
+export const WorkingDirectoryResolutionResult = Schema.Struct({
+  projectPath: boundedPath,
+  workingDirectory: boundedPath,
+  resolvedSessionIds: Schema.Array(boundedId).check(Schema.isMaxLength(10_000)),
+  failures: Schema.Array(WorkingDirectoryResolutionFailure).check(Schema.isMaxLength(10_000)),
+});
+export interface WorkingDirectoryResolutionResult extends Schema.Schema.Type<
+  typeof WorkingDirectoryResolutionResult
+> {}
+
 export class ProjectSessionError extends Schema.TaggedError<ProjectSessionError>()(
   "ProjectSessionError",
   { operation: Schema.String, message: Schema.String },

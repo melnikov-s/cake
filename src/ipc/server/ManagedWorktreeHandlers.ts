@@ -50,4 +50,12 @@ export const managedWorktreeHandlers = ManagedWorktreeRpc.of({
     Effect.flatMap(RendererConnection, () =>
       managedWorktrees.discard(request.workspacePath, request.keepBranch),
     ).pipe(Effect.as({ requestId: request.requestId })),
+  "managedWorktrees.inspectResolvedForProject": ({ projectPath }) =>
+    Effect.flatMap(RendererConnection, () =>
+      managedWorktrees.inspectResolvedForProject(projectPath),
+    ),
+  "managedWorktrees.discardResolvedForProject": ({ projectPath }) =>
+    Effect.flatMap(RendererConnection, () =>
+      managedWorktrees.discardResolvedForProject(projectPath),
+    ),
 });

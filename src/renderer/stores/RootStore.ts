@@ -1037,8 +1037,8 @@ export class RootStore extends Store<{
   @child
   get projectWorkbenchStore(): ProjectWorkbenchStore {
     return createStore(ProjectWorkbenchStore, {
-      prepareWorkingDirectoryRetirement: (workingDirectory) =>
-        this.terminalStore.prepareWorkingDirectoryRetirement([workingDirectory]),
+      prepareWorkingDirectoryRetirement: (workingDirectories) =>
+        this.terminalStore.prepareWorkingDirectoryRetirement(workingDirectories),
       sessionRegistry: this.sessionRegistry,
       operations: this.sessionOperationCoordinator,
       projects: this.projectCatalogStore,

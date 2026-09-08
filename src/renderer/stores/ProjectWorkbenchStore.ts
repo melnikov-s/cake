@@ -23,7 +23,7 @@ import { SessionContinuationStore } from "./SessionContinuationStore";
 import { WorktreeCreationStore, type WorktreeDraftChoice } from "./WorktreeCreationStore";
 
 export interface ProjectWorkbenchStoreProps {
-  prepareWorkingDirectoryRetirement(workingDirectory: string): Promise<boolean>;
+  prepareWorkingDirectoryRetirement(workingDirectories: readonly string[]): Promise<boolean>;
   sessionRegistry: SessionRegistryStore;
   operations: SessionOperationCoordinatorStore;
   projects: ProjectCatalogStore;
@@ -349,16 +349,25 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   }
 
   async deleteResolvedWorktrees(path: string) {
-    const records = this.props.catalog.resolvedWorktrees(path);
     try {
-      for (const record of records) {
-        await this.client.managedWorktrees.discard({
-          operationId: crypto.randomUUID(),
-          workspacePath: record.worktreePath,
-          keepBranch: false,
-        });
-        if (this.signal.aborted) return false;
-        this.props.catalog.noteManagedWorktree({ ...record, state: "discarded" });
+      const plan = await this.client.managedWorktrees.inspectResolvedForProject(path, {
+        signal: this.signal,
+      });
+      if (
+        this.signal.aborted ||
+        !(await this.props.prepareWorkingDirectoryRetirement(plan.workingDirectories))
+      )
+        return false;
+      const result = await this.client.managedWorktrees.discardResolvedForProject(path, {
+        signal: this.signal,
+      });
+      if (this.signal.aborted) return false;
+      if (result.failures.length > 0) {
+        this.setError(
+          new Error(result.failures.map((failure) => failure.message).join("\n")),
+          "Deleting resolved worktrees",
+        );
+        return false;
       }
       return true;
     } catch (error) {
@@ -490,19 +499,24 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   ) {
     if (
       !options?.workingDirectoryRetired &&
-      !(await this.props.prepareWorkingDirectoryRetirement(workspacePath))
+      !(await this.props.prepareWorkingDirectoryRetirement([workspacePath]))
     )
       return;
-    const projectPath = this.props.catalog.projectOfManagedWorktree(workspacePath) ?? workspacePath;
-    const sessionIds = this.props.catalog.sessions
-      .filter((session) => session.workingDirectory === workspacePath && !session.resolved)
-      .map((session) => session.sessionId);
-    const resolvedCount =
-      sessionIds.length > 0
-        ? await this.sessionManagementStore.resolveSessionsById(sessionIds, true)
-        : 0;
-    if (resolvedCount === sessionIds.length)
-      await this.props.onWorktreeSessionsResolved(sessionIds, projectPath);
+    try {
+      const result = await this.client.projectSessions.resolveWorkingDirectory(
+        { workingDirectory: workspacePath },
+        { signal: this.signal },
+      );
+      if (this.signal.aborted) return;
+      await this.props.onWorktreeSessionsResolved(result.resolvedSessionIds, result.projectPath);
+      if (result.failures.length > 0)
+        this.setError(
+          new Error(result.failures.map((failure) => failure.message).join("\n")),
+          "Resolving Working Directory",
+        );
+    } catch (error) {
+      if (!this.signal.aborted) this.setError(error, "Resolving Working Directory");
+    }
   }
 
   private suspendEmbeddedEditor() {

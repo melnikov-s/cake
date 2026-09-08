@@ -116,6 +116,8 @@ export const projectSessionHandlers = ProjectSessionRpc.of({
     return projectSessions.fork(input);
   },
   "projectSessions.resolve": (target) => projectSessions.resolve(target).pipe(Effect.asVoid),
+  "projectSessions.resolveWorkingDirectory": ({ workingDirectory }) =>
+    projectSessions.resolveWorkingDirectory(workingDirectory),
   "projectSessions.restore": (target) => projectSessions.restore(target).pipe(Effect.asVoid),
   "projectSessions.respondControl": ({ sessionId, controlRequestId, result }) =>
     Effect.flatMap(ProjectSessionIntegrations, (integrations) =>

@@ -16,6 +16,10 @@ function mountWorkbench(
   client: Client,
   initialActiveSessionId?: string,
   restoreStagedSession?: (projectPath: string) => string | undefined,
+  workflow?: {
+    prepareWorkingDirectoryRetirement?(workingDirectories: readonly string[]): Promise<boolean>;
+    onWorktreeSessionsResolved?(sessionIds: readonly string[], projectPath: string): Promise<void>;
+  },
 ) {
   let activeSessionId = initialActiveSessionId;
   const selectSession = vi.fn((sessionId: string) => {
@@ -24,7 +28,8 @@ function mountWorkbench(
   const operations = mount(createStore(SessionOperationCoordinatorStore));
   const mounted = mountWithClient(
     createStore(ProjectWorkbenchStore, {
-      prepareWorkingDirectoryRetirement: async () => true,
+      prepareWorkingDirectoryRetirement:
+        workflow?.prepareWorkingDirectoryRetirement ?? (async () => true),
       sessionRegistry: registry,
       operations,
       projects: {} as ProjectCatalogStore,
@@ -32,7 +37,7 @@ function mountWorkbench(
       extensionUi: () => ({ clear: vi.fn() }) as unknown as ExtensionUiStore,
       catalog,
       startCakeChat: async () => undefined,
-      onWorktreeSessionsResolved: async () => undefined,
+      onWorktreeSessionsResolved: workflow?.onWorktreeSessionsResolved ?? (async () => undefined),
       openSessionById: async () => undefined,
       activeSessionId: () => activeSessionId,
       restoreStagedSession,
@@ -46,6 +51,84 @@ function mountWorkbench(
   );
   return { ...mounted, operations, selectSession };
 }
+
+describe("ProjectWorkbenchStore cleanup workflows", () => {
+  it("confirms authoritative bulk cleanup candidates and delegates one semantic command", async () => {
+    const prepare = vi.fn(async () => true);
+    const inspectResolvedForProject = vi.fn(async () => ({
+      projectPath: "/project",
+      workingDirectories: ["/eligible"],
+    }));
+    const discardResolvedForProject = vi.fn(async () => ({
+      projectPath: "/project",
+      discardedWorkingDirectories: ["/eligible"],
+      failures: [],
+    }));
+    const {
+      root,
+      subject: store,
+      operations,
+    } = mountWorkbench(
+      {} as SessionRegistryStore,
+      {
+        resolvedWorktrees: vi.fn(() => [{ worktreePath: "/stale-renderer-choice" }]),
+      } as unknown as SessionCatalogStore,
+      {
+        managedWorktrees: { inspectResolvedForProject, discardResolvedForProject },
+      } as unknown as Client,
+      undefined,
+      undefined,
+      { prepareWorkingDirectoryRetirement: prepare },
+    );
+
+    await expect(store.deleteResolvedWorktrees("/project")).resolves.toBe(true);
+
+    expect(inspectResolvedForProject).toHaveBeenCalledWith("/project", expect.any(Object));
+    expect(prepare).toHaveBeenCalledWith(["/eligible"]);
+    expect(discardResolvedForProject).toHaveBeenCalledWith("/project", expect.any(Object));
+
+    root[Symbol.dispose]();
+    operations[Symbol.dispose]();
+  });
+
+  it("uses the main-selected Working Directory result for renderer cleanup", async () => {
+    const prepare = vi.fn(async () => true);
+    const onResolved = vi.fn(async () => undefined);
+    const resolveWorkingDirectory = vi.fn(async () => ({
+      projectPath: "/project",
+      workingDirectory: "/worktree",
+      resolvedSessionIds: ["session-1", "session-2"],
+      failures: [],
+    }));
+    const {
+      root,
+      subject: store,
+      operations,
+    } = mountWorkbench(
+      {} as SessionRegistryStore,
+      { sessions: [] } as unknown as SessionCatalogStore,
+      { projectSessions: { resolveWorkingDirectory } } as unknown as Client,
+      undefined,
+      undefined,
+      {
+        prepareWorkingDirectoryRetirement: prepare,
+        onWorktreeSessionsResolved: onResolved,
+      },
+    );
+
+    await store.resolveWorktreeWorkspace("/worktree");
+
+    expect(prepare).toHaveBeenCalledWith(["/worktree"]);
+    expect(resolveWorkingDirectory).toHaveBeenCalledWith(
+      { workingDirectory: "/worktree" },
+      expect.any(Object),
+    );
+    expect(onResolved).toHaveBeenCalledWith(["session-1", "session-2"], "/project");
+
+    root[Symbol.dispose]();
+    operations[Symbol.dispose]();
+  });
+});
 
 describe("ProjectWorkbenchStore startup selection", () => {
   it("selects a cached session immediately without reopening it", async () => {

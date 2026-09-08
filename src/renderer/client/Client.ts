@@ -1,6 +1,10 @@
 import type { Effect } from "effect";
 import type { ProjectSettings, ProjectWorkflowColor } from "../../domain/application-data";
 import type {
+  ResolvedManagedWorktreeCleanupPlan,
+  ResolvedManagedWorktreeCleanupResult,
+} from "../../domain/managed-worktree-cleanup-data";
+import type {
   WorktreeLandingOperation,
   WorktreeLandingSnapshot,
 } from "../../domain/worktree-landing-data";
@@ -212,6 +216,14 @@ interface ManagedWorktreeCommands {
     input: { operationId: string; workspacePath: string; keepBranch: boolean },
     options?: ClientCommandOptions,
   ): Promise<void>;
+  inspectResolvedForProject(
+    projectPath: string,
+    options?: ClientCommandOptions,
+  ): Promise<ResolvedManagedWorktreeCleanupPlan>;
+  discardResolvedForProject(
+    projectPath: string,
+    options?: ClientCommandOptions,
+  ): Promise<ResolvedManagedWorktreeCleanupResult>;
 }
 
 interface TerminalCommands {

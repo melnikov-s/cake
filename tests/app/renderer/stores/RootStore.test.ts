@@ -22,10 +22,10 @@ const sessionSummary = (sessionId: string, workingDirectory: string) => ({
   draft: false,
 });
 
-function deferred() {
-  let resolve!: () => void;
+function deferred<T = void>() {
+  let resolve!: (value: T) => void;
   return {
-    promise: new Promise<void>((complete) => (resolve = complete)),
+    promise: new Promise<T>((complete) => (resolve = complete)),
     resolve,
   };
 }
@@ -424,9 +424,14 @@ describe("RootStore session navigation", () => {
       ],
       resolvedHasMoreByProject: {},
     });
-    const resolution = deferred();
+    const resolution = deferred<{
+      projectPath: string;
+      workingDirectory: string;
+      resolvedSessionIds: string[];
+      failures: [];
+    }>();
     const client = {
-      projectSessions: { resolve: vi.fn(() => resolution.promise) },
+      projectSessions: { resolveWorkingDirectory: vi.fn(() => resolution.promise) },
     } as unknown as Client;
     const root = mountRootStore(client, { state: {}, children: {} }, async () => undefined, models);
     const createSession = vi.spyOn(root, "createSession").mockResolvedValue(undefined);
@@ -438,7 +443,12 @@ describe("RootStore session navigation", () => {
       });
       root.appShellStore.selectProjectSession("current-session");
 
-      resolution.resolve();
+      resolution.resolve({
+        projectPath,
+        workingDirectory: worktreePath,
+        resolvedSessionIds: ["worktree-session"],
+        failures: [],
+      });
       await resolving;
 
       expect(root.appShellStore.activeConversation).toEqual({

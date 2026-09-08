@@ -18,6 +18,7 @@ import type {
 } from "../../../src/services/pi/runtime/cake-runtime";
 import {
   makeProjectSessionEnvironmentLayer,
+  ProjectSessionEnvironmentError,
   type ProjectSessionLocation,
 } from "../../../src/services/project-sessions/ProjectSessionEnvironment";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
@@ -112,7 +113,9 @@ const makeLayer = (
   },
   hooks: {
     onCreateRuntime?(): void;
-    onArchive?(): void;
+    onArchive?(sessionId: string): void;
+    archiveErrorSessionId?: string;
+    onLifecycleResolve?(sessionId: string, resolved: boolean): void;
     onRestore?(): void;
     onCatalog?(): void;
     catalog?(workingDirectory: string): Stream.Stream<SessionSummary, unknown>;
@@ -154,7 +157,7 @@ const makeLayer = (
     };
   } = {},
 ) => {
-  let resolvedOnDisk = hooks.resolvedOnDisk ?? false;
+  const resolvedSessionIds = new Set(hooks.resolvedOnDisk ? ["session-1"] : []);
   const application = Layer.effect(
     ApplicationState,
     Effect.gen(function* () {
@@ -177,7 +180,7 @@ const makeLayer = (
     catalog: (query) => {
       hooks.onCatalog?.();
       if (hooks.catalog) return hooks.catalog(query.workingDirectory);
-      return hooks.sessionExists === false || resolvedOnDisk
+      return hooks.sessionExists === false || resolvedSessionIds.has("session-1")
         ? Stream.empty
         : Stream.make({
             id: "session-1",
@@ -189,7 +192,7 @@ const makeLayer = (
           });
     },
     catalogEntry: () =>
-      hooks.sessionExists === false || resolvedOnDisk
+      hooks.sessionExists === false || resolvedSessionIds.has("session-1")
         ? Effect.succeed(undefined)
         : Effect.succeed({
             id: "session-1",
@@ -216,9 +219,12 @@ const makeLayer = (
   return Layer.mergeAll(
     application,
     SessionCatalogChanges.layer,
-    Layer.mock(ProjectSessionLifecycle, {}),
+    Layer.mock(ProjectSessionLifecycle, {
+      setProjectSessionResolved: (sessionId, resolved) =>
+        Effect.sync(() => hooks.onLifecycleResolve?.(sessionId, resolved)),
+    }),
     Layer.succeed(SessionFamilyStorage, {
-      list: () => Effect.succeed([]),
+      list: () => Effect.succeed(hooks.family ? [hooks.family] : []),
       familyForMember: (sessionId) =>
         Effect.succeed(
           hooks.family &&
@@ -278,14 +284,21 @@ const makeLayer = (
             },
           };
         }),
-      archive: () =>
+      archive: (sessionId) =>
+        hooks.archiveErrorSessionId === sessionId
+          ? Effect.fail(
+              new ProjectSessionEnvironmentError({
+                operation: "archive",
+                message: `Cannot archive ${sessionId}`,
+              }),
+            )
+          : Effect.sync(() => {
+              resolvedSessionIds.add(sessionId);
+              hooks.onArchive?.(sessionId);
+            }),
+      restore: (sessionId, location) =>
         Effect.sync(() => {
-          resolvedOnDisk = true;
-          hooks.onArchive?.();
-        }),
-      restore: (_sessionId, location) =>
-        Effect.sync(() => {
-          resolvedOnDisk = false;
+          resolvedSessionIds.delete(sessionId);
           hooks.onRestore?.();
           return location;
         }),
@@ -298,13 +311,17 @@ const makeLayer = (
         restore: () => Effect.succeed(false),
         deleteResolved: () => Effect.void,
         delete: () => Effect.void,
-        locate: () =>
+        locate: (sessionId) =>
           Effect.succeed(
-            hooks.sessionExists === false ? undefined : resolvedOnDisk ? "resolved" : "active",
+            hooks.sessionExists === false
+              ? undefined
+              : resolvedSessionIds.has(sessionId)
+                ? "resolved"
+                : "active",
           ),
         resolved: () => {
           hooks.onResolvedCatalog?.();
-          return hooks.sessionExists === false || !resolvedOnDisk
+          return hooks.sessionExists === false || resolvedSessionIds.size === 0
             ? Stream.empty
             : Stream.make({
                 id: "session-1",
@@ -316,7 +333,7 @@ const makeLayer = (
               });
         },
         resolvedEntry: () =>
-          hooks.sessionExists === false || !resolvedOnDisk
+          hooks.sessionExists === false || !resolvedSessionIds.has("session-1")
             ? Effect.succeed(undefined)
             : Effect.succeed({
                 id: "session-1",
@@ -334,7 +351,7 @@ const makeLayer = (
           const entries = hooks.resolvedProjectEntries ?? [
             { sessionId: "session-1", modifiedAt: "2026-01-02T00:00:00.000Z" },
           ];
-          return hooks.sessionExists === false || !resolvedOnDisk
+          return hooks.sessionExists === false || resolvedSessionIds.size === 0
             ? Stream.empty
             : Stream.fromIterable(
                 entries.map((entry) => ({
@@ -354,7 +371,7 @@ const makeLayer = (
         projectMigrationComplete: () => Effect.succeed(hooks.migrationComplete ?? true),
         migrateProject: (projectPath) => {
           hooks.onMigrateProject?.();
-          return hooks.sessionExists === false || !resolvedOnDisk
+          return hooks.sessionExists === false || resolvedSessionIds.size === 0
             ? Stream.empty
             : Stream.make({
                 version: 1 as const,
@@ -369,8 +386,8 @@ const makeLayer = (
                 modifiedAt: "2026-01-02T00:00:00.000Z",
               });
         },
-        resolvedProjectEntry: () =>
-          hooks.sessionExists === false || !resolvedOnDisk
+        resolvedProjectEntry: (sessionId) =>
+          hooks.sessionExists === false || !resolvedSessionIds.has(sessionId)
             ? Effect.succeed(undefined)
             : Effect.succeed({
                 version: 1 as const,
@@ -1096,6 +1113,122 @@ describe("Project Sessions domain", () => {
         makeLayer(defaultApplicationState(), {
           onCreateRuntime: () => runtimeConstructions++,
           onArchive: () => archives++,
+        }),
+      ),
+    );
+  });
+
+  it.effect(
+    "resolves only the sessions authoritatively discovered in one Working Directory",
+    () => {
+      const archived: string[] = [];
+      const session = (id: string): SessionSummary => ({
+        id,
+        title: id,
+        created: "2026-01-01T00:00:00.000Z",
+        modified: "2026-01-02T00:00:00.000Z",
+        messageCount: 1,
+        resolved: false,
+      });
+      return Effect.gen(function* () {
+        const result = yield* projectSessions.resolveWorkingDirectory("/worktree");
+        assert.equal(result.projectPath, "/project");
+        assert.deepEqual(result.resolvedSessionIds, ["worktree-1", "worktree-2"]);
+        assert.deepEqual(result.failures, []);
+        assert.deepEqual(archived, ["worktree-1", "worktree-2"]);
+      }).pipe(
+        Effect.provide(
+          makeLayer(defaultApplicationState(), {
+            locations: [
+              {
+                projectPath: "/project",
+                projectName: "Project",
+                workingDirectory: "/worktree",
+                sessionDirectory: "/worktree-sessions",
+                resolvedSessionDirectory: "/resolved-sessions",
+              },
+              {
+                projectPath: "/other",
+                projectName: "Other",
+                workingDirectory: "/other",
+                sessionDirectory: "/other-sessions",
+                resolvedSessionDirectory: "/resolved-sessions",
+              },
+            ],
+            catalog: (workingDirectory) =>
+              workingDirectory === "/worktree"
+                ? Stream.fromIterable([session("worktree-1"), session("worktree-2")])
+                : Stream.make(session("other-1")),
+            onArchive: (sessionId) => archived.push(sessionId),
+          }),
+        ),
+      );
+    },
+  );
+
+  it.effect("resolves a Session Family once through its parent", () => {
+    const lifecycleCalls: Array<[string, boolean]> = [];
+    const family = {
+      familyId: "family-1",
+      parentSessionId: "parent",
+      projectPath: "/project",
+      workingDirectory: "/project",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      children: [
+        {
+          sessionId: "child",
+          requestId: "request-1",
+          createdAt: "2026-01-01T00:00:01.000Z",
+        },
+      ],
+    };
+    const session = (id: string): SessionSummary => ({
+      id,
+      title: id,
+      created: "2026-01-01T00:00:00.000Z",
+      modified: "2026-01-02T00:00:00.000Z",
+      messageCount: 1,
+      resolved: false,
+    });
+    return Effect.gen(function* () {
+      const result = yield* projectSessions.resolveWorkingDirectory("/project");
+      assert.deepEqual(result.resolvedSessionIds, ["parent", "child"]);
+      assert.deepEqual(result.failures, []);
+      assert.deepEqual(lifecycleCalls, [["parent", true]]);
+    }).pipe(
+      Effect.provide(
+        makeLayer(defaultApplicationState(), {
+          family,
+          catalog: () => Stream.fromIterable([session("parent"), session("child")]),
+          onLifecycleResolve: (sessionId, resolved) => lifecycleCalls.push([sessionId, resolved]),
+        }),
+      ),
+    );
+  });
+
+  it.effect("reports partial Working Directory resolution failures and continues", () => {
+    const archived: string[] = [];
+    const session = (id: string): SessionSummary => ({
+      id,
+      title: id,
+      created: "2026-01-01T00:00:00.000Z",
+      modified: "2026-01-02T00:00:00.000Z",
+      messageCount: 1,
+      resolved: false,
+    });
+    return Effect.gen(function* () {
+      const result = yield* projectSessions.resolveWorkingDirectory("/project");
+      assert.deepEqual(result.resolvedSessionIds, ["session-1"]);
+      assert.deepEqual(result.failures, [
+        { sessionIds: ["session-2"], message: "Cannot archive session-2" },
+      ]);
+      assert.deepEqual(archived, ["session-1"]);
+    }).pipe(
+      Effect.provide(
+        makeLayer(defaultApplicationState(), {
+          catalog: () => Stream.fromIterable([session("session-1"), session("session-2")]),
+          archiveErrorSessionId: "session-2",
+          onArchive: (sessionId) => archived.push(sessionId),
         }),
       ),
     );

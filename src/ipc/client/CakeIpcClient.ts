@@ -6,6 +6,10 @@ import type { ArtifactError } from "../../domain/artifact-data";
 import type { ElectronError } from "../../services/electron/Electron";
 import type { InlineWidgetError } from "../../services/widgets/InlineWidgets";
 import type { TerminalError } from "../../services/terminal/Terminal";
+import type {
+  ResolvedManagedWorktreeCleanupPlan,
+  ResolvedManagedWorktreeCleanupResult,
+} from "../../domain/managed-worktree-cleanup-data";
 import type { WorktreeLandingError } from "../../domain/worktree-landing-data";
 import type { ManagedWorktreeError } from "../../services/worktrees/ManagedWorktrees";
 import type { VsCodeServerError } from "../../services/vscode/VsCodeServer";
@@ -37,6 +41,7 @@ import type {
   QueuedProjectSessionMessages,
   ProjectSessionTarget,
   ProjectSessionUpdate,
+  WorkingDirectoryResolutionResult,
 } from "../../domain/project-session-data";
 import type { ConversationSnapshot, TurnId } from "../../domain/conversation-data";
 import type {
@@ -419,6 +424,9 @@ export interface CakeIpcClientService {
     readonly resolve: (
       target: ProjectSessionTarget,
     ) => Effect.Effect<void, ProjectSessionError | TransportError>;
+    readonly resolveWorkingDirectory: (input: {
+      readonly workingDirectory: string;
+    }) => Effect.Effect<WorkingDirectoryResolutionResult, ProjectSessionError | TransportError>;
     readonly restore: (
       target: ProjectSessionTarget,
     ) => Effect.Effect<void, ProjectSessionError | TransportError>;
@@ -486,7 +494,17 @@ export interface CakeIpcClientService {
     | "start-worktree-rebase"
     | "discard-worktree",
     ManagedWorktreeError | WorktreeLandingError
-  >;
+  > & {
+    readonly inspectResolvedForProject: (input: {
+      readonly projectPath: string;
+    }) => Effect.Effect<ResolvedManagedWorktreeCleanupPlan, ManagedWorktreeError | TransportError>;
+    readonly discardResolvedForProject: (input: {
+      readonly projectPath: string;
+    }) => Effect.Effect<
+      ResolvedManagedWorktreeCleanupResult,
+      ManagedWorktreeError | TransportError
+    >;
+  };
   readonly terminals: RpcOperations<
     | "open-terminal"
     | "write-terminal"
@@ -828,6 +846,9 @@ export const CakeIpcClientLive = Layer.effect(
         resolve: Effect.fn("CakeIpcClient.projectSessions.resolve")((target) =>
           client("projectSessions.resolve", target),
         ),
+        resolveWorkingDirectory: Effect.fn("CakeIpcClient.projectSessions.resolveWorkingDirectory")(
+          (input) => client("projectSessions.resolveWorkingDirectory", input),
+        ),
         restore: Effect.fn("CakeIpcClient.projectSessions.restore")((target) =>
           client("projectSessions.restore", target),
         ),
@@ -949,6 +970,12 @@ export const CakeIpcClientLive = Layer.effect(
         "discard-worktree": Effect.fn("CakeIpcClient.managedWorktrees.discard-worktree")(
           (payload) => client("managedWorktrees.discard-worktree", payload),
         ),
+        inspectResolvedForProject: Effect.fn(
+          "CakeIpcClient.managedWorktrees.inspectResolvedForProject",
+        )((input) => client("managedWorktrees.inspectResolvedForProject", input)),
+        discardResolvedForProject: Effect.fn(
+          "CakeIpcClient.managedWorktrees.discardResolvedForProject",
+        )((input) => client("managedWorktrees.discardResolvedForProject", input)),
       },
       terminals: {
         "open-terminal": Effect.fn("CakeIpcClient.terminals.open-terminal")((payload) =>

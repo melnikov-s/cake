@@ -3,9 +3,17 @@ import { defaultProjectSettings } from "./application-data";
 import { getState, trustProject } from "./application";
 import { generateWorktreeName, utilityModelSelection } from "./utilityWork";
 import { PiSessions } from "../services/pi/PiSessions";
+import { ProjectSessionEnvironment } from "../services/project-sessions/ProjectSessionEnvironment";
 import { ProjectAccess } from "../services/projects/ProjectAccess";
+import { SessionCatalogChanges } from "../services/session-catalogs/SessionCatalogChanges";
+import {
+  SessionArchiveStorage,
+  type ProjectSessionArchiveMetadata,
+  type ProjectSessionArchiveMigrationSource,
+} from "../services/storage/SessionArchiveStorage";
 import { Terminal } from "../services/terminal/Terminal";
 import { ManagedWorktreeError, ManagedWorktrees } from "../services/worktrees/ManagedWorktrees";
+import type { ResolvedManagedWorktreeCleanupFailure } from "./managed-worktree-cleanup-data";
 
 const policyError = (operation: string, cause: unknown) =>
   new ManagedWorktreeError({
@@ -88,6 +96,174 @@ export const discard = Effect.fn("ManagedWorktrees.discard")(function* (
     .pipe(Effect.mapError((cause) => policyError("ManagedWorktrees.discard", cause)));
   yield* (yield* ManagedWorktrees).discard(workingDirectory, keepBranch);
 });
+
+const resolvedEntriesForProject = Effect.fn("ManagedWorktrees.resolvedEntriesForProject")(
+  function* (projectPath: string) {
+    const state = yield* getState();
+    const project = state.projects.find((candidate) => candidate.path === projectPath);
+    if (!project)
+      return yield* new ManagedWorktreeError({
+        operation: "ManagedWorktrees.resolvedEntriesForProject",
+        message: "Cake could not find that Project",
+      });
+    yield* requireAllowed(projectPath);
+    const archive = yield* SessionArchiveStorage;
+    const environment = yield* ProjectSessionEnvironment;
+    const locations = yield* environment
+      .locations({ includeInactive: true })
+      .pipe(
+        Effect.mapError((cause) =>
+          policyError("ManagedWorktrees.resolvedEntriesForProject", cause),
+        ),
+      );
+    const migrationComplete = yield* archive
+      .projectMigrationComplete(projectPath)
+      .pipe(
+        Effect.mapError((cause) =>
+          policyError("ManagedWorktrees.resolvedEntriesForProject", cause),
+        ),
+      );
+    const entries = migrationComplete
+      ? archive.resolvedProjects(projectPath)
+      : archive.migrateProject(
+          projectPath,
+          project.name,
+          locations
+            .filter((location) => location.projectPath === projectPath)
+            .map((location) => {
+              const source: ProjectSessionArchiveMigrationSource = {
+                location: {
+                  cwd: location.workingDirectory,
+                  activeRoot: location.sessionDirectory,
+                  resolvedRoot: location.resolvedSessionDirectory,
+                },
+              };
+              if (location.managedWorktree)
+                Object.assign(source, {
+                  worktreeName: location.managedWorktree.branch.replace(/^agent\//, ""),
+                });
+              return source;
+            }),
+        );
+    return {
+      locations,
+      entries: yield* entries.pipe(
+        Stream.runCollect,
+        Effect.map((items) => Array.from(items)),
+        Effect.mapError((cause) =>
+          policyError("ManagedWorktrees.resolvedEntriesForProject", cause),
+        ),
+      ),
+    };
+  },
+);
+
+const discoverResolvedForProject = Effect.fn("ManagedWorktrees.discoverResolvedForProject")(
+  function* (projectPath: string) {
+    const worktrees = yield* ManagedWorktrees;
+    const sessions = yield* PiSessions;
+    const { entries, locations } = yield* resolvedEntriesForProject(projectPath);
+    const resolvedWorkingDirectories = new Set(entries.map((entry) => entry.workingDirectory));
+    const candidates = (yield* worktrees.records()).filter(
+      (record) =>
+        record.projectPath === projectPath &&
+        record.state === "landed" &&
+        resolvedWorkingDirectories.has(record.worktreePath),
+    );
+    const eligible = yield* Effect.forEach(candidates, (record) =>
+      Effect.gen(function* () {
+        const location = locations.find(
+          (candidate) =>
+            candidate.projectPath === projectPath &&
+            candidate.workingDirectory === record.worktreePath,
+        );
+        if (!location)
+          return yield* new ManagedWorktreeError({
+            operation: "ManagedWorktrees.discoverResolvedForProject",
+            message: `Cake could not locate Working Directory ${record.worktreePath}`,
+          });
+        return yield* sessions
+          .catalog({
+            workingDirectory: location.workingDirectory,
+            sessionDirectory: location.sessionDirectory,
+          })
+          .pipe(
+            Stream.runHead,
+            Effect.map((active) => (Option.isNone(active) ? record.worktreePath : undefined)),
+            Effect.mapError((cause) =>
+              policyError("ManagedWorktrees.discoverResolvedForProject", cause),
+            ),
+          );
+      }),
+    );
+    return {
+      entries,
+      workingDirectories: eligible.filter(
+        (workingDirectory): workingDirectory is string => workingDirectory !== undefined,
+      ),
+    };
+  },
+);
+
+/** Authoritatively previews landed Managed Worktrees containing only resolved sessions. */
+export const inspectResolvedForProject = Effect.fn("ManagedWorktrees.inspectResolvedForProject")(
+  function* (projectPath: string) {
+    const discovered = yield* discoverResolvedForProject(projectPath);
+    return { projectPath, workingDirectories: discovered.workingDirectories };
+  },
+);
+
+/**
+ * Rediscovers and discards eligible Managed Worktrees sequentially. Per-worktree
+ * failures are returned so successful cleanup remains visible and retryable.
+ */
+export const discardResolvedForProject = Effect.fn("ManagedWorktrees.discardResolvedForProject")(
+  function* (projectPath: string) {
+    const discovered = yield* discoverResolvedForProject(projectPath);
+    const worktrees = yield* ManagedWorktrees;
+    const terminals = yield* Terminal;
+    const catalogs = yield* SessionCatalogChanges;
+    const discardedWorkingDirectories: string[] = [];
+    const failures: ResolvedManagedWorktreeCleanupFailure[] = [];
+    for (const workingDirectory of discovered.workingDirectories) {
+      const outcome = yield* Effect.gen(function* () {
+        const runningProgramCount = yield* terminals.runningProgramCount(workingDirectory);
+        if (runningProgramCount > 0)
+          return yield* new ManagedWorktreeError({
+            operation: "ManagedWorktrees.discardResolvedForProject",
+            message: "Running terminal programs require confirmation before cleanup",
+          });
+        yield* terminals.closeWorkingDirectory(workingDirectory);
+        yield* worktrees.discard(workingDirectory, false);
+      }).pipe(
+        Effect.mapError((cause) =>
+          policyError("ManagedWorktrees.discardResolvedForProject", cause),
+        ),
+        Effect.match({
+          onFailure: (error) => ({ _tag: "Failure" as const, error }),
+          onSuccess: () => ({ _tag: "Success" as const }),
+        }),
+      );
+      if (outcome._tag === "Failure") {
+        failures.push({ workingDirectory, message: outcome.error.message });
+        continue;
+      }
+      discardedWorkingDirectories.push(workingDirectory);
+      const entries = discovered.entries.filter(
+        (entry: ProjectSessionArchiveMetadata) => entry.workingDirectory === workingDirectory,
+      );
+      for (const entry of entries)
+        yield* catalogs.publish({
+          _tag: "ProjectSessionChanged",
+          sessionId: entry.sessionId,
+          projectPath,
+          workingDirectory,
+          resolved: true,
+        });
+    }
+    return { projectPath, discardedWorkingDirectories, failures };
+  },
+);
 
 /** Retires a landed checkout once its final active Project Session has been resolved. */
 export const cleanupResolved = Effect.fn("ManagedWorktrees.cleanupResolved")(function* (

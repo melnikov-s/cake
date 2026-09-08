@@ -497,6 +497,14 @@ remain concurrent. Managed Worktree metadata persists the engine's paused
 strategy, allowing a later process to adopt conflict and squash-message pauses;
 queue position and active operation progress remain process-lifetime facts.
 
+Bulk cleanup selection is also main-owned policy. The Managed Worktree domain previews and
+then authoritatively rediscovers landed Project worktrees that have archived sessions and no
+active sessions; the renderer uses the preview only for terminal-program confirmation. Cleanup
+runs sequentially and returns successful paths plus per-worktree failures, so partial progress is
+visible and retryable. Resolving a whole Working Directory likewise discovers its active Pi
+Sessions in main, collapses Session Family members to the parent lifecycle operation, and returns
+resolved IDs plus per-target failures for renderer navigation and error presentation.
+
 `WorktreeStorage` is separate from `Git`:
 
 ```text

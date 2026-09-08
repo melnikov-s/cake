@@ -309,6 +309,18 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
           }.requestId,
           options,
         ),
+      inspectResolvedForProject: (projectPath, options) =>
+        execute(
+          "managedWorktrees.inspectResolvedForProject",
+          (client) => client.managedWorktrees.inspectResolvedForProject({ projectPath }),
+          options,
+        ),
+      discardResolvedForProject: (projectPath, options) =>
+        execute(
+          "managedWorktrees.discardResolvedForProject",
+          (client) => client.managedWorktrees.discardResolvedForProject({ projectPath }),
+          options,
+        ),
     },
     terminals: {
       open: (input, options) => {

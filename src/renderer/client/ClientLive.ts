@@ -344,6 +344,12 @@ export function makeClient(runtime: Pick<Runtime, "execute">): Client {
           withClient((client) => client.projectSessions.resolve(target)),
           options,
         ),
+      resolveWorkingDirectory: (input, options) =>
+        run(
+          "projectSessions.resolveWorkingDirectory",
+          withClient((client) => client.projectSessions.resolveWorkingDirectory(input)),
+          options,
+        ),
       restore: (target, options) =>
         run(
           "projectSessions.restore",

@@ -54,6 +54,7 @@ import {
   type ProjectSessionSummary,
   type ProjectSessionTarget,
   type ProjectSessionUpdate,
+  type WorkingDirectoryResolutionFailure,
 } from "./project-session-data";
 import { SessionArchiveStorage } from "../services/storage/SessionArchiveStorage";
 import { SessionFamilyStorage, type SessionFamily } from "../services/storage/SessionFamilyStorage";
@@ -1345,6 +1346,84 @@ export const resolve = Effect.fn("ProjectSessions.resolve")(function* (
     )
     .pipe(asError("resolve"));
 });
+
+/**
+ * Discovers every active Project Session in one authoritative Working Directory
+ * and resolves standalone sessions or whole Session Families sequentially.
+ */
+export const resolveWorkingDirectory = Effect.fn("ProjectSessions.resolveWorkingDirectory")(
+  function* (workingDirectory: string) {
+    const environment = yield* ProjectSessionEnvironment;
+    const locations = (yield* environment
+      .locations({ includeInactive: true })
+      .pipe(asError("resolveWorkingDirectory"))).filter(
+      (location) => location.workingDirectory === workingDirectory,
+    );
+    const [location, ...collisions] = locations;
+    if (!location || collisions.length > 0)
+      return yield* new ProjectSessionError({
+        operation: "resolveWorkingDirectory",
+        message: !location
+          ? `Cake could not find Working Directory ${workingDirectory}`
+          : `Working Directory collision detected: ${workingDirectory}`,
+      });
+
+    const activeSessions = yield* (yield* PiSessions)
+      .catalog({ workingDirectory, sessionDirectory: location.sessionDirectory })
+      .pipe(
+        Stream.runCollect,
+        Effect.map((items) => Array.from(items)),
+        asError("resolveWorkingDirectory"),
+      );
+    const activeSessionIds = new Set(activeSessions.map((session) => session.id));
+    const families = yield* (yield* SessionFamilyStorage)
+      .list()
+      .pipe(asError("resolveWorkingDirectory"));
+    const familyByMember = new Map(
+      families.flatMap((family) => [
+        [family.parentSessionId, family] as const,
+        ...family.children.map((child) => [child.sessionId, family] as const),
+      ]),
+    );
+    const targets: Array<{ sessionId: string; sessionIds: string[] }> = [];
+    const selected = new Set<string>();
+    for (const session of activeSessions) {
+      const family = familyByMember.get(session.id);
+      const sessionId = family?.parentSessionId ?? session.id;
+      if (selected.has(sessionId)) continue;
+      selected.add(sessionId);
+      const sessionIds = family
+        ? [family.parentSessionId, ...family.children.map((child) => child.sessionId)].filter(
+            (id) => activeSessionIds.has(id),
+          )
+        : [session.id];
+      targets.push({ sessionId, sessionIds });
+    }
+
+    const resolvedSessionIds: string[] = [];
+    const failures: WorkingDirectoryResolutionFailure[] = [];
+    for (const target of targets) {
+      const outcome = yield* resolve({
+        sessionId: target.sessionId,
+        workingDirectory,
+      }).pipe(
+        Effect.match({
+          onFailure: (error) => ({ _tag: "Failure" as const, error }),
+          onSuccess: () => ({ _tag: "Success" as const }),
+        }),
+      );
+      if (outcome._tag === "Failure")
+        failures.push({ sessionIds: target.sessionIds, message: outcome.error.message });
+      else resolvedSessionIds.push(...target.sessionIds);
+    }
+    return {
+      projectPath: location.projectPath,
+      workingDirectory,
+      resolvedSessionIds,
+      failures,
+    };
+  },
+);
 
 export const restore = Effect.fn("ProjectSessions.restore")(function* (
   target: ProjectSessionTarget,

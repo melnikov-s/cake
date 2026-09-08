@@ -12,6 +12,7 @@ import {
   QueuedProjectSessionMessages,
   ProjectSessionTarget,
   ProjectSessionUpdate,
+  WorkingDirectoryResolutionResult,
 } from "../../domain/project-session-data";
 import { SESSION_TITLE_MAX_LENGTH, piSettingUpdateSchema } from "../session-contract";
 
@@ -171,6 +172,11 @@ export const ProjectSessionRpc = RpcGroup.make(
   }),
   Rpc.make("projectSessions.resolve", {
     payload: ProjectSessionTarget,
+    error: ProjectSessionError,
+  }),
+  Rpc.make("projectSessions.resolveWorkingDirectory", {
+    payload: { workingDirectory: Schema.String },
+    success: WorkingDirectoryResolutionResult,
     error: ProjectSessionError,
   }),
   Rpc.make("projectSessions.restore", {
