@@ -38,6 +38,8 @@ export interface ProjectWorkbenchStoreProps {
   openSessionById(sessionId: string): Promise<void>;
   /** The Project Session retained by the application shell as its active conversation. */
   activeSessionId(): string | undefined;
+  /** Restores the focused pane's retained unsent session for this Project, when present. */
+  restoreStagedSession?(projectPath: string): string | undefined;
   /** Selects a Project Session in the application shell. */
   selectSession(sessionId: string): void;
   toggleProjectSidebar(): void;
@@ -365,16 +367,19 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   }
 
   async startNewSession(path = this.projectPath) {
-    if (
-      this.activeSession &&
-      this.sessionRegistry.isTemporarySession(this.activeSession.sessionId) &&
-      !this.sessionRegistry.isDraftSession(this.activeSession.sessionId)
-    ) {
+    if (this.activeSession && this.sessionRegistry.isStagedSession(this.activeSession.sessionId)) {
       this.activeSession.composerStore.requestFocus();
       return;
     }
     if (!path) {
       await this.chooseProject();
+      return;
+    }
+    const stagedSessionId = this.props.restoreStagedSession?.(path);
+    if (stagedSessionId) {
+      this.openRevision += 1;
+      this.props.selectSession(stagedSessionId);
+      this.showLoadedSession(stagedSessionId);
       return;
     }
     const sessionId = crypto.randomUUID();

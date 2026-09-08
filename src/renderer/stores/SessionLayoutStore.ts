@@ -74,6 +74,27 @@ export class SessionLayoutStore extends Store {
     return this.focusedPane?.sessionId;
   }
 
+  /** Session IDs retained by the focused pane, ordered from oldest to newest visit. */
+  get focusedSessionHistory(): readonly string[] {
+    if (!this.layout || !this.focusedPaneId) return [];
+    return (
+      collectPanes(this.layout).find((pane) => pane.paneId === this.focusedPaneId)?.history ?? []
+    );
+  }
+
+  /** Restores a retained session without creating another pane-history entry. */
+  restoreFocusedHistorySession(sessionId: string) {
+    if (!this.layout || !this.focusedPaneId) return false;
+    let restored = false;
+    this.layout = updatePane(this.layout, this.focusedPaneId, (pane) => {
+      const historyCursor = pane.history.lastIndexOf(sessionId);
+      if (historyCursor < 0) return pane;
+      restored = true;
+      return { ...pane, historyCursor };
+    });
+    return restored;
+  }
+
   get canSplit() {
     return this.panes.length > 0 && this.panes.length < MAX_SESSION_PANES;
   }

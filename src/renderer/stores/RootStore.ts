@@ -968,6 +968,21 @@ export class RootStore extends Store<{
         const active = this.appShellStore.activeConversation;
         return active?.kind === "project-session" ? active.sessionId : undefined;
       },
+      restoreStagedSession: (projectPath) => {
+        const sessionId = this.sessionLayoutStore.focusedSessionHistory.findLast((candidateId) => {
+          if (!this.sessionRegistry.isStagedSession(candidateId)) return false;
+          const session = this.sessionRegistry.findSession(candidateId);
+          if (!session) return false;
+          const candidateProjectPath =
+            this.sessionCatalogStore.projectOfManagedWorktree(session.workspacePath) ??
+            session.workspacePath;
+          return candidateProjectPath === projectPath;
+        });
+        if (!sessionId) return undefined;
+        return this.sessionLayoutStore.restoreFocusedHistorySession(sessionId)
+          ? sessionId
+          : undefined;
+      },
       selectSession: (sessionId) => {
         this.sessionLayoutStore.showSession(sessionId);
         this.selectProjectSessionForShell(sessionId);

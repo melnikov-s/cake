@@ -15,6 +15,7 @@ function mountWorkbench(
   catalog: SessionCatalogStore,
   rendererClient: RendererClient,
   initialActiveSessionId?: string,
+  restoreStagedSession?: (projectPath: string) => string | undefined,
 ) {
   let activeSessionId = initialActiveSessionId;
   const selectSession = vi.fn((sessionId: string) => {
@@ -34,6 +35,7 @@ function mountWorkbench(
       onWorktreeSessionsResolved: async () => undefined,
       openSessionById: async () => undefined,
       activeSessionId: () => activeSessionId,
+      restoreStagedSession,
       selectSession,
       toggleProjectSidebar: vi.fn(),
       enterIdeSidebarMode: vi.fn(),
@@ -160,6 +162,38 @@ describe("ProjectWorkbenchStore startup selection", () => {
 
     finishOpen?.();
     await opening;
+    root[Symbol.dispose]();
+    operations[Symbol.dispose]();
+  });
+
+  it("restores the focused pane's staged composer when starting a new session", async () => {
+    const stagedSession = { sessionId: "staged-1", workspacePath: "/project" };
+    const registry = {
+      findSession: (sessionId: string) =>
+        sessionId === stagedSession.sessionId ? stagedSession : undefined,
+      isStagedSession: () => false,
+    } as unknown as SessionRegistryStore;
+    const restoreStagedSession = vi.fn(() => stagedSession.sessionId);
+    const {
+      root,
+      subject: store,
+      operations,
+      selectSession,
+    } = mountWorkbench(
+      registry,
+      {} as SessionCatalogStore,
+      {} as RendererClient,
+      undefined,
+      restoreStagedSession,
+    );
+    const showLoadedSession = vi.spyOn(store, "showLoadedSession").mockReturnValue(true);
+
+    await store.startNewSession("/project");
+
+    expect(restoreStagedSession).toHaveBeenCalledWith("/project");
+    expect(selectSession).toHaveBeenCalledWith(stagedSession.sessionId);
+    expect(showLoadedSession).toHaveBeenCalledWith(stagedSession.sessionId);
+
     root[Symbol.dispose]();
     operations[Symbol.dispose]();
   });

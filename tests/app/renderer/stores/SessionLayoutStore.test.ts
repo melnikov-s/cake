@@ -88,6 +88,12 @@ describe("SessionLayoutStore", () => {
     expect(store.focusedSessionId).toBe("session-a");
     expect(store.goBack()).toBeUndefined();
 
+    store.showSession("session-c");
+    expect(store.focusedSessionHistory).toEqual(["session-a", "session-c"]);
+    expect(store.restoreFocusedHistorySession("session-a")).toBe(true);
+    expect(store.focusedSessionId).toBe("session-a");
+    expect(store.focusedSessionHistory).toEqual(["session-a", "session-c"]);
+
     store.showSession("session-b");
     expect(store.panes).toHaveLength(2);
     expect(store.focusedSessionId).toBe("session-b");
