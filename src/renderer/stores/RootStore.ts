@@ -1,6 +1,7 @@
 import { Store, child, createStore, untracked } from "r-state-tree";
 import type { CakeChatControlRequest } from "../../domain/cake-chat-data";
 import type { ProjectSessionControlRequest } from "../../domain/project-session-data";
+import type { JsonValue } from "../../ipc/json-contract";
 import type { ChatConfiguration } from "../../ipc/session-contract";
 import type { RendererClient } from "../client/RendererClient";
 import { RendererClientContext } from "../client/RendererClientContext";
@@ -214,7 +215,7 @@ export class RootStore extends Store<{
   private async projectChildSession(
     parentSessionId: string,
     input: Extract<ProjectSessionControlRequest["invocation"], { _tag: "ProjectChildSession" }>,
-  ) {
+  ): Promise<JsonValue> {
     const workingDirectory = this.requireProjectSessionWorkingDirectory(parentSessionId);
     this.sessionRegistry.loadUnlistedFamilySession(
       input.childSessionId,
@@ -734,7 +735,7 @@ export class RootStore extends Store<{
       openCommandPane: (pane) => this.projectWorkbenchStore.commandPaneStore.open(pane),
       persistNow: () => this.props.flushWindowState(),
       projectName: (workspacePath) => this.projectCatalogStore.nameForPath(workspacePath),
-      abort: () => this.projectWorkbenchStore.abort(),
+      abort: (sessionId) => this.projectWorkbenchStore.abortSession(sessionId),
       renameSession: (sessionId, name) =>
         this.projectWorkbenchStore.sessionManagementStore.renameSession(sessionId, name),
       handoffSession: (entryId, prompt, resolveSource) =>

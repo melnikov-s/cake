@@ -200,6 +200,13 @@ parent also releases its private descendants. Cake projects live child tool
 activity, usage, cost, and the final answer through the parent tool call rather
 than exposing a second transcript.
 
+Full Project Session families use a different coordination contract. Messages
+between parent and child sessions, including deterministic completion or abort
+notices, are always ordinary queued Pi user messages. They never steer or
+implicitly start the recipient, and queued family input does not make an idle
+session appear active. Each family member remains independently selectable,
+messageable, and stoppable by its own session identity.
+
 Embedded VS Code's Source Control view is the Working Directory change authority and
 renders native Git diffs. Cake projects review annotations into VS Code without
 maintaining a second working-tree snapshot or diff browser. Historical per-turn

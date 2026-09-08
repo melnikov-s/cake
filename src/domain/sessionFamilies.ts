@@ -375,9 +375,9 @@ export const deliver = Effect.fn("SessionFamilies.deliverNotice")(function* (tur
     })).includes(turn.deliveryTurnId)
   )
     return;
-  const deliveryTurnId = snapshot.streaming
-    ? yield* parent.followUp(text, [], false)
-    : yield* parent.prompt(text, [], false);
+  // Child outcomes are queued user input even while the parent is idle, so
+  // they do not claim the parent's conversation or interrupt an active turn.
+  const deliveryTurnId = yield* parent.followUp(text, [], false);
   yield* storage.markNoticeAttempt(turn.turnId, deliveryTurnId);
 });
 

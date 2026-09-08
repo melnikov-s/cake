@@ -77,6 +77,38 @@ describe("ConversationProjection", () => {
     session[Symbol.dispose]();
   });
 
+  it("keeps queued follow-ups out of the active loading state", () => {
+    const session = Session.create({ sessionId: "session", workingDirectory: "/cake" });
+    applyProjectSessionUpdate(session, "session", snapshot({ statuses: [] }));
+
+    applyProjectSessionUpdate(session, "session", {
+      _tag: "Event",
+      revision: 2,
+      sessionId: "session",
+      event: {
+        _tag: "TurnAccepted",
+        sessionId: "session",
+        turnId: "00000000-0000-4000-8000-000000000001" as never,
+        delivery: "follow-up",
+      },
+    });
+    expect(session.activeTurnIds).toEqual([]);
+
+    applyProjectSessionUpdate(session, "session", {
+      _tag: "Event",
+      revision: 3,
+      sessionId: "session",
+      event: {
+        _tag: "TurnAccepted",
+        sessionId: "session",
+        turnId: "00000000-0000-4000-8000-000000000002" as never,
+        delivery: "prompt",
+      },
+    });
+    expect(session.activeTurnIds).toEqual(["00000000-0000-4000-8000-000000000002"]);
+    session[Symbol.dispose]();
+  });
+
   it("applies usage updates without replacing the conversation snapshot", () => {
     const session = Session.create({ sessionId: "session", workingDirectory: "/cake" });
     applyProjectSessionUpdate(session, "session", snapshot({ statuses: [] }));

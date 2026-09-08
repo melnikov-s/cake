@@ -28,7 +28,7 @@ export interface SessionRegistryStoreProps {
   openCommandPane(pane: "changelog" | "tree" | "resources"): Promise<void>;
   persistNow(): Promise<void>;
   projectName(workspacePath: string): string;
-  abort(): Promise<void>;
+  abort(sessionId: string): Promise<void>;
   renameSession(sessionId: string, name: string): Promise<void>;
   handoffSession(entryId: string, prompt?: string, resolveSource?: boolean): Promise<boolean>;
   modelPresets?(): readonly ModelPreset[];
@@ -96,7 +96,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
         isActive: () => this.props.isActive(target.sessionId),
         openCommandPane: (pane) => this.props.openCommandPane(pane),
         projectName: () => this.props.projectName(target.workspacePath),
-        abort: () => this.props.abort(),
+        abort: () => this.props.abort(target.sessionId),
         renameSession: (name) => this.props.renameSession(target.sessionId, name),
         handoffSession: (entryId, prompt, resolveSource) =>
           this.props.handoffSession(entryId, prompt, resolveSource),

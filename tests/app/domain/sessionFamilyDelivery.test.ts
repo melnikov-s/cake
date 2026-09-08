@@ -137,7 +137,8 @@ describe("Session Family outcome delivery", () => {
                       : [];
                   }),
                 }),
-                prompt: async (text: string) => {
+                prompt: async (text: string, delivery: string) => {
+                  assert.equal(delivery, "follow-up");
                   transcript.push(text);
                   Deferred.doneUnsafe(received, Effect.void);
                 },

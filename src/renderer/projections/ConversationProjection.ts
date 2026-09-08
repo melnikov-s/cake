@@ -90,7 +90,10 @@ function applyConversationEvent(model: Session, event: ConversationEvent) {
     else if (event._tag === "UsageUpdated")
       model.usage = Schema.decodeUnknownSync(sessionUsageSchema)(event.usage);
     else if (event._tag === "TurnAccepted") {
-      if (!model.activeTurnIds.includes(event.turnId)) model.activeTurnIds.push(event.turnId);
+      // Follow-ups are queued input, not active work. Pi's streaming projection
+      // becomes authoritative if and when it starts processing one.
+      if (event.delivery !== "follow-up" && !model.activeTurnIds.includes(event.turnId))
+        model.activeTurnIds.push(event.turnId);
     } else if (event._tag === "TurnSettled") {
       const index = model.activeTurnIds.indexOf(event.turnId);
       if (index >= 0) model.activeTurnIds.splice(index, 1);

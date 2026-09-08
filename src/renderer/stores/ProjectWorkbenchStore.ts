@@ -769,15 +769,10 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     }
   }
 
-  async abort() {
+  async abortSession(sessionId: string) {
     const operationId = this.startOperation();
     try {
-      const context = this.sessionContext();
-      if (!context) throw new Error("No active session");
-      await this.client.projectSessions.abort(
-        { sessionId: context.sessionId },
-        { signal: this.signal },
-      );
+      await this.client.projectSessions.abort({ sessionId }, { signal: this.signal });
       this.finishOperation(operationId);
     } catch (error) {
       if (this.signal.aborted) return;

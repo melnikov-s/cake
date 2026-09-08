@@ -147,8 +147,8 @@ export const makeProjectSessionEnvironmentLive = (
           const isChild =
             family?.parentSessionId !== undefined && family.parentSessionId !== sessionId;
           const relationshipPrompt = isChild
-            ? `## Session family\n\nThis is a full child Project Session in family ${family.familyId}. Its parent is ${family.parentSessionId}. Message the parent through ordinary Cake session messaging and ask it for any further full-session delegation. The Cake Working Directory is fixed at ${family.workingDirectory}; family members share mutable files, uncommitted changes, and Git index state. Coordinate concurrent edits. You cannot create children, resolve independently, detach, or relocate this session.`
-            : `## Session families\n\nThis Project Session can create full child Project Sessions with \`sessions.create-child\`. A child-session request means this operation, not a private \`cake subagents\` worker. Children inherit this exact Cake Working Directory and share mutable files, uncommitted changes, and Git index state. Give each child its assignment in the initial prompt, instruct it to message back, and coordinate sequencing and concurrent edits. Discover and message children through the ordinary Cake session operations. Resolving a family applies to every member and requires every member to be inactive.`;
+            ? `## Session family\n\nThis is a full child Project Session in family ${family.familyId}. Its parent is ${family.parentSessionId}. Message the parent through ordinary Cake session messaging and ask it for any further full-session delegation. Family messages are always queued so they never interrupt the recipient's active turn. The Cake Working Directory is fixed at ${family.workingDirectory}; family members share mutable files, uncommitted changes, and Git index state. Coordinate concurrent edits. You cannot create children, resolve independently, detach, or relocate this session.`
+            : `## Session families\n\nThis Project Session can create full child Project Sessions with \`sessions.create-child\`. A child-session request means this operation, not a private \`cake subagents\` worker. Children inherit this exact Cake Working Directory and share mutable files, uncommitted changes, and Git index state. Give each child its assignment in the initial prompt, instruct it to message back, and coordinate sequencing and concurrent edits. Discover and message children through the ordinary Cake session operations. Family messages are always queued so they never interrupt the recipient's active turn or prevent other conversation. Resolving a family applies to every member and requires every member to be inactive.`;
           const getRuntimeOptions = () => runtimeOptions;
           const runtimeOptions: PiSessionAcquireOptions = {
             profile: { _tag: "ProjectSession" },
@@ -308,7 +308,6 @@ export const makeProjectSessionEnvironmentLive = (
                           newSession: false,
                         });
                         const destination = yield* sessions.acquire(destinationOptions);
-                        const snapshot = yield* destination.snapshot();
                         const messageId = crypto.randomUUID();
                         const threadId = input.threadId ?? crypto.randomUUID();
                         const messageMetadata = {
@@ -342,13 +341,10 @@ export const makeProjectSessionEnvironmentLive = (
                           : [];
                         if (repliesToParent)
                           yield* families.prepareReply(sessionId, sourceTurnIds, messageId);
-                        const delivery = input.delivery ?? "prompt";
-                        const queued = delivery === "queue" || snapshot.streaming;
-                        const turnId = yield* delivery === "steer"
-                          ? destination.steer(encoded, [], false)
-                          : queued
-                            ? destination.followUp(encoded, [], false)
-                            : destination.prompt(encoded, [], false);
+                        // Family communication is ordinary queued input. It must never steer
+                        // or start the recipient implicitly, even when the caller requests a
+                        // different generic cross-session delivery mode.
+                        const turnId = yield* destination.followUp(encoded, [], false);
                         if (repliesToParent) yield* families.reportTurns(sessionId, sourceTurnIds);
                         yield* catalogs.publish({
                           _tag: "ProjectSessionChanged",
@@ -364,7 +360,7 @@ export const makeProjectSessionEnvironmentLive = (
                           messageId,
                           threadId,
                           turnId,
-                          status: queued ? "queued" : "accepted",
+                          status: "queued",
                         });
                       }),
                     ),
