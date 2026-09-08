@@ -138,6 +138,30 @@ describe("SessionRegistryStore materialization", () => {
     fixture.dispose();
   });
 
+  it("projects a main-created family child until the authoritative catalog arrives", () => {
+    const fixture = registryFixture();
+    fixture.registry.loadUnlistedFamilySession("child", "/project", "Child task", {
+      familyId: "family",
+      parentSessionId: "parent",
+      childOrder: 1,
+    });
+
+    expect(fixture.catalog.find("child")).toMatchObject({
+      sessionId: "child",
+      title: "Child task",
+      workingDirectory: "/project",
+      familyId: "family",
+      familyParentSessionId: "parent",
+      familyChildOrder: 1,
+      pending: true,
+    });
+    expect(fixture.registry.observationSessions.map((session) => session.sessionId)).toEqual([
+      "child",
+    ]);
+
+    fixture.dispose();
+  });
+
   it("clears the pending summary when authority arrives after materialization", () => {
     const fixture = registryFixture();
     const { catalogModel, registry } = fixture;

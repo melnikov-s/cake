@@ -42,6 +42,24 @@ describe("SessionLayoutStore", () => {
     vi.restoreAllMocks();
   });
 
+  it("reuses one adjacent pane for sequential family children", () => {
+    const store = mount(createStore(SessionLayoutStore));
+    store.ensureSession("parent");
+
+    const firstPaneId = store.showChildSession("parent", "child-1");
+    expect(store.panes.map((pane) => pane.sessionId)).toEqual(["parent", "child-1"]);
+    expect(store.neighbors("parent").right).toEqual([
+      { paneId: firstPaneId, sessionId: "child-1" },
+    ]);
+
+    const secondPaneId = store.showChildSession("parent", "child-2");
+    expect(secondPaneId).toBe(firstPaneId);
+    expect(store.panes.map((pane) => pane.sessionId)).toEqual(["parent", "child-2"]);
+    expect(store.hasSession("child-1")).toBe(false);
+
+    store[Symbol.dispose]();
+  });
+
   it("only exposes pane numbers while the layout is split", () => {
     const store = mount(createStore(SessionLayoutStore));
     store.ensureSession("session-a");

@@ -66,7 +66,14 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
   @snapshot private readonly temporarySessionIds: string[] = observable([]);
   @snapshot private readonly pendingSummaryMetadataBySession: Record<
     string,
-    { fallbackTitle?: string; createdAt: string; modifiedAt: string }
+    {
+      fallbackTitle?: string;
+      createdAt: string;
+      modifiedAt: string;
+      familyId?: string;
+      familyParentSessionId?: string;
+      familyChildOrder?: number;
+    }
   > = observable({});
   /** Unsent, unsaved project chats retained by independent session panes. */
   @snapshot private readonly stagedSessionIds: string[] = observable([]);
@@ -134,6 +141,31 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     return session;
   }
 
+  /** Makes a main-created family child visible until the disk-backed catalog catches up. */
+  loadUnlistedFamilySession(
+    sessionId: string,
+    workingDirectory: string,
+    title: string,
+    family: { familyId: string; parentSessionId: string; childOrder: number },
+  ) {
+    return batch(() => {
+      const session = this.load(sessionId, workingDirectory);
+      const now = new Date().toISOString();
+      const current = this.pendingSummaryMetadataBySession[sessionId];
+      this.pendingNamesBySession[sessionId] = title;
+      this.pendingSummaryMetadataBySession[sessionId] = {
+        createdAt: current?.createdAt ?? now,
+        modifiedAt: now,
+        fallbackTitle: title,
+        familyId: family.familyId,
+        familyParentSessionId: family.parentSessionId,
+        familyChildOrder: family.childOrder,
+      };
+      addUnique(this.unlistedNewSessionIds, sessionId);
+      return session;
+    });
+  }
+
   /** Project Sessions whose transcript projections should remain synchronized. */
   get observationSessions() {
     const recent = new Set(this.recentObservationSessionIds);
@@ -181,6 +213,13 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
           projectName: this.props.projectName(projectPath),
           workingDirectory: target.workspacePath,
           managedWorktree,
+          ...(metadata?.familyId !== undefined ? { familyId: metadata.familyId } : null),
+          ...(metadata?.familyParentSessionId !== undefined
+            ? { familyParentSessionId: metadata.familyParentSessionId }
+            : null),
+          ...(metadata?.familyChildOrder !== undefined
+            ? { familyChildOrder: metadata.familyChildOrder }
+            : null),
           pending: true as const,
           draft: draft !== undefined,
         },
@@ -420,6 +459,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     const current = this.pendingSummaryMetadataBySession[sessionId];
     const now = new Date().toISOString();
     this.pendingSummaryMetadataBySession[sessionId] = {
+      ...current,
       createdAt: current?.createdAt ?? now,
       modifiedAt: now,
       fallbackTitle: fallbackTitle ?? current?.fallbackTitle,

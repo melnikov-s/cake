@@ -109,6 +109,42 @@ describe("ProjectSessionIntegrationHost application controls", () => {
     host[Symbol.dispose]();
   });
 
+  it("carries a validated child-session presentation request", async () => {
+    let request: Extract<CakeEvent, { type: "project-session-control-requested" }> | undefined;
+    const host = new ProjectSessionIntegrationHost({
+      workspacePath: "/projects/cake",
+      agentDir: "/agent",
+      sessionDir: "/sessions",
+      emit: vi.fn(),
+      emitApplicationControl: (event) => {
+        request = event;
+      },
+    });
+
+    const pending = host
+      .projectSessionRuntimeIntegrations("parent-session")
+      .requestApplicationControl(
+        {
+          _tag: "OpenChildSession",
+          childSessionId: "child-session",
+          title: "Child task",
+          familyId: "family-1",
+          familyChildOrder: 0,
+        },
+        new AbortController().signal,
+      );
+
+    expect(() => Schema.decodeUnknownSync(cakeEventSchema)(request)).not.toThrow();
+    if (!request) throw new Error("Expected a control request");
+    host.dispatch({
+      type: "respond-project-session-control",
+      controlRequestId: request.controlRequestId,
+      result: { ok: true, childSessionId: "child-session", paneId: "pane-2" },
+    });
+    await expect(pending).resolves.toMatchObject({ ok: true, paneId: "pane-2" });
+    host[Symbol.dispose]();
+  });
+
   it("settles a pending request when its tool call is aborted", async () => {
     const controller = new AbortController();
     const host = new ProjectSessionIntegrationHost({

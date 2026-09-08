@@ -231,8 +231,8 @@ export const makeProjectSessionEnvironmentLive = (
                   ),
                 createChildSession: isChild
                   ? undefined
-                  : (input, signal) =>
-                      run(
+                  : async (input, signal) => {
+                      const result = await run(
                         Effect.scoped(
                           sessionFamilies.createChild(sessionId, location, input, (childId) =>
                             environmentService.runtimeOptions({
@@ -241,9 +241,27 @@ export const makeProjectSessionEnvironmentLive = (
                               newSession: true,
                             }),
                           ),
-                        ).pipe(Effect.map(toJsonValue)),
+                        ),
                         { signal },
-                      ),
+                      );
+                      if (result.launch.status === "failed") return toJsonValue(result);
+                      const presentation = await runtimeIntegrations
+                        .requestApplicationControl(
+                          {
+                            _tag: "OpenChildSession",
+                            childSessionId: result.childSessionId,
+                            title: input.title,
+                            familyId: result.familyId,
+                            familyChildOrder: result.familyChildOrder,
+                          },
+                          signal,
+                        )
+                        .catch((error) => ({
+                          ok: false,
+                          error: error instanceof Error ? error.message : String(error),
+                        }));
+                      return toJsonValue({ ...result, presentation });
+                    },
                 routeFamilyMessage: (untrustedInput, signal) =>
                   run(
                     Effect.scoped(

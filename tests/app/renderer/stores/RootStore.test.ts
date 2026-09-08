@@ -30,7 +30,71 @@ function deferred() {
   };
 }
 
-describe("RootStore resolved-session navigation", () => {
+describe("RootStore session navigation", () => {
+  it("opens projected family children in one reusable pane", async () => {
+    const models = new RendererModels();
+    applySnapshot(models.sessionCatalog, {
+      sessions: [sessionSummary("parent", projectPath)],
+      resolvedHasMoreByProject: {},
+    });
+    const open = vi.fn(async () => undefined);
+    const respondControl = vi.fn(async () => undefined);
+    const client = {
+      projectSessions: { open, respondControl },
+    } as unknown as RendererClient;
+    const root = mountRootStore(client, { state: {}, children: {} }, async () => undefined, models);
+
+    try {
+      root.sessionRegistry.load("parent", projectPath);
+      root.sessionLayoutStore.ensureSession("parent");
+      root.appShellStore.selectProjectSession("parent");
+      root.projectWorkbenchStore.showLoadedSession("parent");
+
+      await root.respondProjectSessionControl({
+        sessionId: "parent",
+        controlRequestId: "00000000-0000-4000-8000-000000000001",
+        invocation: {
+          _tag: "OpenChildSession",
+          childSessionId: "child-1",
+          title: "First child",
+          familyId: "family",
+          familyChildOrder: 0,
+        },
+      });
+      const childPaneId = root.sessionLayoutStore.paneForSession("child-1")?.paneId;
+      expect(root.sessionCatalogStore.find("child-1")).toMatchObject({
+        title: "First child",
+        pending: true,
+        familyParentSessionId: "parent",
+      });
+      expect(root.sessionLayoutStore.panes).toHaveLength(2);
+      expect(root.appShellStore.activeConversation).toEqual({
+        kind: "project-session",
+        sessionId: "child-1",
+      });
+
+      await root.respondProjectSessionControl({
+        sessionId: "parent",
+        controlRequestId: "00000000-0000-4000-8000-000000000002",
+        invocation: {
+          _tag: "OpenChildSession",
+          childSessionId: "child-2",
+          title: "Second child",
+          familyId: "family",
+          familyChildOrder: 1,
+        },
+      });
+      expect(root.sessionLayoutStore.paneForSession("child-2")?.paneId).toBe(childPaneId);
+      expect(root.sessionLayoutStore.hasSession("child-1")).toBe(false);
+      expect(root.sessionLayoutStore.panes).toHaveLength(2);
+      expect(open).toHaveBeenCalledTimes(2);
+      expect(respondControl).toHaveBeenCalledTimes(2);
+    } finally {
+      root[Symbol.dispose]();
+      models[Symbol.dispose]();
+    }
+  });
+
   it("closes the selected Kanban board when its navigation icon is invoked again", () => {
     const models = new RendererModels();
     applySnapshot(models.projects, {

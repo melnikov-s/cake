@@ -211,9 +211,57 @@ export class RootStore extends Store<{
     };
   }
 
+  private async openChildProjectSession(
+    parentSessionId: string,
+    input: Extract<ProjectSessionControlRequest["invocation"], { _tag: "OpenChildSession" }>,
+  ) {
+    const workingDirectory = this.requireProjectSessionWorkingDirectory(parentSessionId);
+    this.sessionRegistry.loadUnlistedFamilySession(
+      input.childSessionId,
+      workingDirectory,
+      input.title,
+      {
+        familyId: input.familyId,
+        parentSessionId,
+        childOrder: input.familyChildOrder,
+      },
+    );
+    try {
+      await this.client.projectSessions.open(
+        { sessionId: input.childSessionId, workingDirectory },
+        { signal: this.signal },
+      );
+    } catch (error) {
+      this.sessionRegistry.removeSession(input.childSessionId);
+      throw error;
+    }
+    const paneId = this.sessionLayoutStore.showChildSession(parentSessionId, input.childSessionId);
+    if (!paneId) throw new Error("Cake could not open a child pane beside its parent.");
+    this.projectWorkbenchStore.dismissSecondarySurfaces();
+    this.selectProjectSessionForShell(input.childSessionId);
+    this.projectWorkbenchStore.showLoadedSession(input.childSessionId);
+    return { ok: true, childSessionId: input.childSessionId, paneId };
+  }
+
   async respondProjectSessionControl(request: ProjectSessionControlRequest) {
     if (this.respondedProjectSessionControlIds.has(request.controlRequestId)) return;
     this.respondedProjectSessionControlIds.add(request.controlRequestId);
+    const invocation = request.invocation;
+    if (invocation._tag === "OpenChildSession") {
+      const result = await this.openChildProjectSession(request.sessionId, invocation).catch(
+        (error) => ({
+          ok: false as const,
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
+      await this.client.projectSessions.respondControl(
+        request.sessionId,
+        request.controlRequestId,
+        result,
+        { signal: this.signal },
+      );
+      return;
+    }
     const catalogSession = this.sessionCatalogStore.find(request.sessionId);
     const loadedSession = this.sessionRegistry.findSession(request.sessionId);
     const sourceWorkingDirectory = catalogSession?.workingDirectory ?? loadedSession?.workspacePath;
@@ -223,7 +271,6 @@ export class RootStore extends Store<{
         ? (this.sessionCatalogStore.projectOfManagedWorktree(sourceWorkingDirectory) ??
           sourceWorkingDirectory)
         : undefined);
-    const invocation = request.invocation;
     const appInvocation =
       invocation._tag === "InvokeAppControl"
         ? { name: invocation.command, arguments: invocation.input }

@@ -201,6 +201,9 @@ export const createChild = Effect.fn("SessionFamilies.createChild")(function* <E
     familyId: prepared.family.familyId,
     parentSessionId,
     childSessionId: prepared.child.sessionId,
+    familyChildOrder: prepared.family.children.findIndex(
+      (child) => child.sessionId === prepared.child.sessionId,
+    ),
   };
   if (!prepared.handle)
     return {

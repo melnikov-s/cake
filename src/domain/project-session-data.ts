@@ -99,6 +99,12 @@ export const ProjectSessionControlInvocation = Schema.TaggedUnion({
       }),
     ),
   },
+  OpenChildSession: {
+    childSessionId: boundedId,
+    title: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(500)),
+    familyId: boundedId,
+    familyChildOrder: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  },
 });
 export type ProjectSessionControlInvocation = Schema.Schema.Type<
   typeof ProjectSessionControlInvocation

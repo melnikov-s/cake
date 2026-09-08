@@ -1,4 +1,4 @@
-import { Store, snapshot } from "r-state-tree";
+import { Store, observable, snapshot } from "r-state-tree";
 
 export const MAX_SESSION_PANES = 4;
 
@@ -40,6 +40,7 @@ export interface SessionPanePlacement extends SessionPane {
 export class SessionLayoutStore extends Store {
   @snapshot layout: SessionLayoutNode | undefined;
   @snapshot focusedPaneId: string | undefined;
+  @snapshot private readonly childPaneIdsByParentSessionId: Record<string, string> = observable({});
 
   get panes(): readonly SessionPane[] {
     const paneNodes = this.layout ? collectPanes(this.layout) : [];
@@ -181,6 +182,32 @@ export class SessionLayoutStore extends Store {
     return paneId;
   }
 
+  /** Opens one family child beside its parent and reuses that slot for later children. */
+  showChildSession(parentSessionId: string, childSessionId: string) {
+    const existing = this.paneForSession(childSessionId);
+    if (existing) {
+      this.childPaneIdsByParentSessionId[parentSessionId] = existing.paneId;
+      return this.focusPane(existing.paneId) ? existing.paneId : undefined;
+    }
+    const parentPane = this.paneForSession(parentSessionId);
+    if (!parentPane || !this.layout) return undefined;
+    const assignedPaneId = this.childPaneIdsByParentSessionId[parentSessionId];
+    if (assignedPaneId && this.panes.some((pane) => pane.paneId === assignedPaneId)) {
+      this.layout = removeSessionFromOtherHistories(this.layout, childSessionId, assignedPaneId);
+      this.layout = updatePane(this.layout, assignedPaneId, (pane) =>
+        paneNode(pane.paneId, childSessionId),
+      );
+      this.focusedPaneId = assignedPaneId;
+      return assignedPaneId;
+    }
+    if (assignedPaneId) delete this.childPaneIdsByParentSessionId[parentSessionId];
+    if (!this.canSplit) return undefined;
+    this.focusedPaneId = parentPane.paneId;
+    const paneId = this.splitFocused(childSessionId, "x");
+    if (paneId) this.childPaneIdsByParentSessionId[parentSessionId] = paneId;
+    return paneId;
+  }
+
   closePane(paneId: string) {
     if (!this.layout || this.panes.length <= 1) return undefined;
     const currentPanes = collectPanes(this.layout);
@@ -190,6 +217,9 @@ export class SessionLayoutStore extends Store {
     const nextLayout = removePane(this.layout, paneId);
     if (!nextLayout) return undefined;
     this.layout = nextLayout;
+    for (const [parentSessionId, childPaneId] of Object.entries(this.childPaneIdsByParentSessionId))
+      if (childPaneId === paneId || closing.history.includes(parentSessionId))
+        delete this.childPaneIdsByParentSessionId[parentSessionId];
     const remaining = collectPanes(nextLayout);
     const nextPane =
       remaining[Math.min(remaining.length - 1, Math.max(0, closingIndex))] ?? remaining[0];
@@ -205,6 +235,10 @@ export class SessionLayoutStore extends Store {
     if (!this.layout || sessionIds.length === 0) return;
     const removed = new Set(sessionIds);
     this.layout = pruneSessions(this.layout, removed);
+    const remainingPaneIds = new Set(this.panes.map((pane) => pane.paneId));
+    for (const [parentSessionId, childPaneId] of Object.entries(this.childPaneIdsByParentSessionId))
+      if (removed.has(parentSessionId) || !remainingPaneIds.has(childPaneId))
+        delete this.childPaneIdsByParentSessionId[parentSessionId];
     const panes = this.panes;
     if (panes.length === 0) {
       this.focusedPaneId = undefined;

@@ -574,14 +574,26 @@ export const open = Effect.fn("ProjectSessions.open")(function* (target: Project
   const namespace = yield* archive
     .locate(target.sessionId, archiveLocation(location))
     .pipe(asError("open"));
-  if (!namespace)
-    return yield* new ProjectSessionError({
-      operation: "open",
-      message: `Cake could not find Project Session ${target.sessionId}`,
+  if (!namespace) {
+    const sessions = yield* PiSessions;
+    const activeRuntime = yield* sessions.currentStatus({
+      sessionId: target.sessionId,
+      workingDirectory: location.workingDirectory,
+      sessionDirectory: location.sessionDirectory,
     });
+    if (!activeRuntime)
+      return yield* new ProjectSessionError({
+        operation: "open",
+        message: `Cake could not find Project Session ${target.sessionId}`,
+      });
+  }
   // Selection starts observation in the renderer's Model synchronizer. Opening
   // validates durable transcript state, but resolved sessions remain archived
   // and are projected as read-only previews until an explicit restore or prompt.
+  if (namespace)
+    yield* publishCatalogChange(target.sessionId, location, namespace === "resolved").pipe(
+      asError("open"),
+    );
 });
 
 const isSessionResolved = Effect.fn("ProjectSessions.isSessionResolved")(function* (

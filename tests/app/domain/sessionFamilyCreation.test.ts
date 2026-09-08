@@ -135,6 +135,8 @@ describe("Session Family creation", () => {
         yield* Deferred.await(started);
         const second = yield* createChild("parent", location, input, factory);
         assert.equal(first.childSessionId, second.childSessionId);
+        assert.equal(first.familyChildOrder, 0);
+        assert.equal(second.familyChildOrder, 0);
         assert.equal(second.launch.status, "already-started");
         assert.equal(launches, 1);
       }).pipe(
