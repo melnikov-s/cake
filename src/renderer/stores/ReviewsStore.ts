@@ -1,6 +1,7 @@
 import { Store, child, createStore, observable } from "r-state-tree";
 import type { DiscussionAnchor } from "../../domain/discussion-session-data";
 import type { Annotation } from "../../ipc/session-contract";
+import { applyAnnotationUpdate, createAnnotation } from "../../utils/annotations";
 import { RendererClientContext } from "../client/RendererClientContext";
 import { ActiveProjectSessionContext } from "../context/ActiveProjectSessionContext";
 import { describeError } from "../error-details";
@@ -103,7 +104,7 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
       this.reportError(new Error("A message can include at most 100 annotations"));
       return;
     }
-    annotations.push({ id: crypto.randomUUID(), ...annotation });
+    annotations.push(createAnnotation(crypto.randomUUID(), annotation));
   }
 
   updateAnnotation(composerId: string, id: string, update: Partial<Omit<Annotation, "id">>) {
@@ -111,7 +112,7 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
     const index = annotations?.findIndex((annotation) => annotation.id === id) ?? -1;
     const annotation = annotations?.[index];
     if (annotations && index >= 0 && annotation)
-      annotations.splice(index, 1, { ...annotation, ...update });
+      annotations.splice(index, 1, applyAnnotationUpdate(annotation, update));
   }
 
   removeAnnotation(composerId: string, id: string) {

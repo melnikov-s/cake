@@ -1,6 +1,7 @@
 import { Store, child, createStore, observable } from "r-state-tree";
 import type { ReviewAnchor } from "../../ipc/review-contract";
 import type { Annotation } from "../../ipc/session-contract";
+import { applyAnnotationUpdate, createAnnotation } from "../../utils/annotations";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
 import type { ReviewsStore } from "./ReviewsStore";
 import { ChatStore } from "./ChatStore";
@@ -146,14 +147,14 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
 
   private addAnnotation(annotation: Omit<Annotation, "id">) {
     if (this.draftAnnotations.length >= 100) return;
-    this.draftAnnotations.push({ id: crypto.randomUUID(), ...annotation });
+    this.draftAnnotations.push(createAnnotation(crypto.randomUUID(), annotation));
   }
 
   private updateAnnotation(id: string, update: Partial<Omit<Annotation, "id">>) {
     const index = this.draftAnnotations.findIndex((annotation) => annotation.id === id);
     const annotation = this.draftAnnotations[index];
     if (index >= 0 && annotation)
-      this.draftAnnotations.splice(index, 1, { ...annotation, ...update });
+      this.draftAnnotations.splice(index, 1, applyAnnotationUpdate(annotation, update));
   }
 
   private removeAnnotation(id: string) {

@@ -150,13 +150,13 @@ export const fileSuggestionSchema = Schema.Struct({
 const annotationSchema = Schema.Struct({
   id: Schema.String.check(Schema.isUUID()),
   messageId: stringRange(1, 256),
-  entryId: Schema.optional(stringRange(1, 256)),
+  entryId: Schema.optionalKey(stringRange(1, 256)),
   selectedText: ipcProjectionString(48_000).check(Schema.isMinLength(1)),
   startOffset: nonNegativeInt,
   endOffset: nonNegativeInt,
   contextBefore: ipcProjectionString(8_000),
   contextAfter: ipcProjectionString(8_000),
-  comment: Schema.optional(ipcProjectionString(16_000)),
+  comment: Schema.optionalKey(ipcProjectionString(16_000)),
 }).check(
   Schema.makeFilter((annotation) =>
     annotation.endOffset > annotation.startOffset

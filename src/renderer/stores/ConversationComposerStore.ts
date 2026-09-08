@@ -1,5 +1,6 @@
 import { Store, child, computed, createStore, observable, snapshot } from "r-state-tree";
 import type { Annotation, Attachment, FileSuggestion, UiPart } from "../../ipc/session-contract";
+import { applyAnnotationUpdate, createAnnotation } from "../../utils/annotations";
 import { parsePiBuiltinCommand } from "../../ipc/session-contract";
 import type { RendererEvent } from "../RendererEvent";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
@@ -183,7 +184,7 @@ export class ConversationComposerStore extends Store<ConversationComposerStorePr
       this.reportError(new Error("A message can include at most 100 annotations"));
       return;
     }
-    this.annotations.push({ id: crypto.randomUUID(), ...annotation });
+    this.annotations.push(createAnnotation(crypto.randomUUID(), annotation));
     this.requestFocus();
   }
 
@@ -192,7 +193,7 @@ export class ConversationComposerStore extends Store<ConversationComposerStorePr
     if (index >= 0) {
       const annotation = this.annotations[index];
       if (!annotation) return;
-      this.annotations.splice(index, 1, { ...annotation, ...update });
+      this.annotations.splice(index, 1, applyAnnotationUpdate(annotation, update));
     }
   }
 
