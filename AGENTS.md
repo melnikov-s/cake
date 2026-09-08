@@ -21,31 +21,27 @@ the current work, not because Cake is trying to become a general-purpose IDE.
 See `docs/architecture/cake-architecture.md` for the process, authority, trust,
 state, and development boundaries behind these principles.
 
-## Required reading
+## Architecture and library guidance
 
-- Read `docs/architecture/cake-architecture.md`,
+Consult documentation proportionally while investigating and implementing; do
+not treat exhaustive reading as a prerequisite to making the first focused
+code change.
+
+- For architecture or feature-ownership changes, consult the relevant sections
+  of `docs/architecture/cake-architecture.md`,
   `docs/architecture/cake-vocabulary.md`, and
-  `docs/architecture/effect-architecture.md` before changing architecture or
-  feature ownership.
-- Before implementing or changing renderer state, read r-state-tree's installed
-  `README.md`, `node_modules/r-state-tree/skills/r-state-tree/SKILL.md`, and every
-  reference that skill routes to, plus the existing Cake Models/Stores.
-  Classify authority, owner, lifetime, persistence, and concurrency before
-  editing.
-
-## Learning more about Effect
-
-This repository uses the Effect Typescript library.
-
-Before writing or reviewing any Effect code, read
-`.agents/skills/effect-ts/SKILL.md`, every reference it routes to for the task,
-and `node_modules/effect/AGENTS.md` **completely**. Cake architecture decides
-ownership and process boundaries; the installed Effect package is the API
-authority; the local skill defines Cake's Effect coding conventions within
-those boundaries.
-
-If you need to learn more about particular Effect APIs and concepts that the
-guides don't cover, search through the source code in `node_modules/effect/src`.
+  `docs/architecture/effect-architecture.md` before finalizing the design.
+- For renderer-state changes, inspect the existing Cake Models/Stores and consult
+  the relevant r-state-tree `README.md`, skill, or references for the APIs and
+  ownership decisions being changed. Classify authority, owner, lifetime,
+  persistence, and concurrency as part of the implementation.
+- For Effect code, use `.agents/skills/effect-ts/SKILL.md`, the installed
+  `node_modules/effect/AGENTS.md`, and their relevant linked references as
+  targeted guidance. Cake architecture decides ownership and process boundaries;
+  the installed Effect package is the API authority; the local skill defines
+  Cake's Effect coding conventions within those boundaries.
+- When guides do not answer a particular Effect API question, inspect the pinned
+  implementation in `node_modules/effect/src`.
 
 ## Core ownership rules
 
