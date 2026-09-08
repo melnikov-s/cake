@@ -62,6 +62,13 @@ export const makeVsCodeServerLive = (
           Queue.offerUnsafe(stateChanges, state);
         },
       });
+      yield* electron.fullscreenSurfaceChanges().pipe(
+        Stream.runForEach(({ connectionId, open }) =>
+          Effect.sync(() => manager.setFullscreenSurfaceOpen(connectionId, open)),
+        ),
+        Effect.forkScoped,
+      );
+
       const tryManager = <A>(operation: string, execute: (signal: AbortSignal) => Promise<A>) =>
         Effect.tryPromise({
           try: execute,

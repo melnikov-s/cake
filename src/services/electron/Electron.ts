@@ -1,4 +1,4 @@
-import { Context, Schema, type Effect } from "effect";
+import { Context, Schema, type Effect, type Stream } from "effect";
 import type { BrowserWindow, WebContents } from "electron";
 import type {
   CakeEvent,
@@ -23,6 +23,11 @@ export interface ElectronWindowLifecycle {
   readonly onWindowClosed: (ownerId: number, workingDirectory: string | undefined) => void;
   readonly allowProjectPath: (path: string) => Effect.Effect<void>;
   readonly hasUtilityModel: () => boolean;
+}
+
+interface FullscreenSurfaceState {
+  readonly connectionId: number;
+  readonly open: boolean;
 }
 
 export interface ElectronService {
@@ -58,6 +63,7 @@ export interface ElectronService {
     connectionId: number,
     request: Payload<"set-fullscreen-surface-open">,
   ) => Effect.Effect<Success<"set-fullscreen-surface-open">, ElectronError>;
+  readonly fullscreenSurfaceChanges: () => Stream.Stream<FullscreenSurfaceState>;
 
   readonly start: (lifecycle: ElectronWindowLifecycle) => Effect.Effect<void>;
   readonly openExternal: (url: string) => Effect.Effect<void, ElectronError>;

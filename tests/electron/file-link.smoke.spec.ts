@@ -355,6 +355,13 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
         type: "embedded-editor-toggle-chat",
         workspacePath: project,
       });
+    const vscodeIsVisible = () =>
+      application.evaluate(({ BrowserWindow }) => {
+        const view = BrowserWindow.getAllWindows()[0]?.contentView.children.find((child) =>
+          child.webContents.getURL().startsWith("http://127.0.0.1:"),
+        );
+        return view?.getVisible() ?? false;
+      });
     const vscodeFillsWindow = () =>
       application.evaluate(async ({ BrowserWindow }) => {
         const window = BrowserWindow.getAllWindows()[0];
@@ -399,16 +406,39 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
 
     await expect(page.locator(".transcript").getByText(/Phase 4 — Model references/)).toBeVisible();
 
+    const composer = page.getByRole("combobox", { name: "Message", exact: true });
+    await composer.fill("/handoffandresolve Continue cleanly");
+    await page.getByRole("button", { name: "Send" }).click();
+    const handoffDialog = page.getByRole("dialog", { name: "Hand off this conversation" });
+    await expect(handoffDialog).toBeVisible();
+    await expect(
+      handoffDialog.getByRole("switch", {
+        name: "Resolve the parent conversation after handoff",
+      }),
+    ).toBeChecked();
+    await expect.poll(vscodeIsVisible).toBe(false);
+    await handoffDialog.getByRole("button", { name: "Cancel" }).click();
+    await expect.poll(vscodeIsVisible).toBe(true);
+    await composer.fill("Keep this IDE draft");
+
+    await page.getByRole("button", { name: "View response fullscreen" }).click({ force: true });
+    const messageDialog = page.getByRole("dialog", { name: "Cake" });
+    await expect(messageDialog).toBeVisible();
+    await expect.poll(vscodeIsVisible).toBe(false);
+    await page.getByRole("button", { name: "Exit fullscreen Cake" }).click();
+    await expect.poll(vscodeIsVisible).toBe(true);
+
     const imagePreview = page.getByRole("button", { name: "View Image 1 enlarged" });
     await imagePreview.click();
     const imageDialog = page.getByRole("dialog", { name: "Image 1" });
     await expect(imageDialog).toBeVisible();
-    const [chatBounds, dialogBounds, imageBounds] = await Promise.all([
-      page.locator('aside [data-slot="chat"]').boundingBox(),
+    await expect.poll(vscodeIsVisible).toBe(false);
+    const [dialogBounds, imageBounds, viewport] = await Promise.all([
       imageDialog.boundingBox(),
       imageDialog.locator("img").boundingBox(),
+      page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight })),
     ]);
-    expect(dialogBounds).toEqual(chatBounds);
+    expect(dialogBounds).toEqual({ x: 0, y: 0, ...viewport });
     expect(imageBounds!.x).toBeGreaterThanOrEqual(dialogBounds!.x);
     expect(imageBounds!.x + imageBounds!.width).toBeLessThanOrEqual(
       dialogBounds!.x + dialogBounds!.width,
@@ -417,7 +447,8 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
     expect(imageBounds!.y + imageBounds!.height).toBeLessThanOrEqual(
       dialogBounds!.y + dialogBounds!.height,
     );
-    await page.getByRole("button", { name: "Close Image 1" }).click();
+    await page.getByRole("button", { name: "Exit fullscreen Image 1" }).click();
+    await expect.poll(vscodeIsVisible).toBe(true);
 
     const resizeHandle = page.getByRole("separator", { name: "Resize current session sidebar" });
     await expect(resizeHandle).toHaveAttribute("aria-valuenow", "420");

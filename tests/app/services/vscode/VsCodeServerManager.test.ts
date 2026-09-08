@@ -87,6 +87,41 @@ describe("VsCodeServerManager startup", () => {
     expect(view.setBounds).toHaveBeenCalledWith({ x: 10, y: 62, width: 902, height: 701 });
   });
 
+  it("suppresses the native view while a fullscreen Cake surface is open", () => {
+    manager = createManager({ root: "/unused" });
+    const view = {
+      setVisible: vi.fn(),
+      setBounds: vi.fn(),
+      webContents: { executeJavaScript: vi.fn(async () => undefined) },
+    };
+    manager["views"].set(17, { workspacePath: "/real/project", view: view as never });
+    manager.updateBounds(17, {
+      visible: true,
+      x: 320,
+      y: 0,
+      width: 900,
+      height: 700,
+      projectSidebarWidth: 320,
+    });
+
+    manager.setFullscreenSurfaceOpen(17, true);
+    expect(view.setVisible).toHaveBeenLastCalledWith(false);
+
+    manager.updateBounds(17, {
+      visible: true,
+      x: 300,
+      y: 0,
+      width: 920,
+      height: 700,
+      projectSidebarWidth: 300,
+    });
+    expect(view.setVisible).toHaveBeenLastCalledWith(false);
+
+    manager.setFullscreenSurfaceOpen(17, false);
+    expect(view.setVisible).toHaveBeenLastCalledWith(true);
+    expect(view.setBounds).toHaveBeenLastCalledWith({ x: 300, y: 0, width: 920, height: 700 });
+  });
+
   it("routes a native close back to the agent while the editor view is visible", () => {
     const broadcast = vi.fn();
     manager = createManager({ root: "/unused", broadcast });

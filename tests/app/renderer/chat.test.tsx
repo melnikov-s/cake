@@ -39,6 +39,7 @@ import { Chat } from "../../../src/renderer/components/chat";
 import type { ChatConfigurationStore } from "../../../src/renderer/stores/ChatConfigurationStore";
 import { ChatStore } from "../../../src/renderer/stores/ChatStore";
 import { ScheduledMessage } from "../../../src/renderer/models/ScheduledMessage";
+import { RendererInfrastructureFixture } from "./renderer-infrastructure";
 
 describe("Chat", () => {
   let container: HTMLDivElement;
@@ -578,7 +579,13 @@ describe("Chat", () => {
       }),
     );
 
-    act(() => root.render(<Chat store={store!} />));
+    act(() =>
+      root.render(
+        <RendererInfrastructureFixture>
+          <Chat store={store!} />
+        </RendererInfrastructureFixture>,
+      ),
+    );
 
     const input = container.querySelector<HTMLTextAreaElement>('[aria-label="Message"]')!;
     act(() => {

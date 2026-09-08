@@ -8,8 +8,8 @@ import {
   ConfirmationRequest,
   ConfirmationTitle,
 } from "./ai-elements/confirmation";
+import { FullscreenSurface } from "./fullscreen-surface";
 import { ActionCard } from "./ui/action-card";
-import { DialogBackdrop } from "./ui/dialog";
 import { Input } from "./ui/input";
 import { Switch } from "./ui/switch";
 import type {
@@ -79,12 +79,6 @@ export const SessionContinuationDialog = observer(function SessionContinuationDi
       destinationIsSelectable(prompt, destination.value),
     );
     const handleKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        event.stopPropagation();
-        store.cancelPrompt();
-        return;
-      }
       if (event.key === "Enter") {
         if (![...destinationRefs.values()].some((element) => element === document.activeElement)) {
           return;
@@ -133,10 +127,14 @@ export const SessionContinuationDialog = observer(function SessionContinuationDi
   };
 
   return (
-    <DialogBackdrop onClose={() => store.cancelPrompt()}>
+    <FullscreenSurface
+      eyebrow="Conversation continuation"
+      mode="dialog"
+      title={title}
+      onClose={() => store.cancelPrompt()}
+    >
       <Confirmation
         state="requested"
-        role="dialog"
         aria-labelledby="session-continuation-title"
         aria-describedby="session-continuation-description"
       >
@@ -223,6 +221,6 @@ export const SessionContinuationDialog = observer(function SessionContinuationDi
           </form>
         </ConfirmationRequest>
       </Confirmation>
-    </DialogBackdrop>
+    </FullscreenSurface>
   );
 });

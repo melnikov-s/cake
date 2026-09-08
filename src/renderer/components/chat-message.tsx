@@ -14,7 +14,8 @@ import { Markdown } from "@/components/ai-elements/markdown";
 import { cakeHotkeyEventName } from "@/lib/hotkeys";
 import { cn } from "@/lib/utils";
 import { Message, MessageContent, MessageLabel } from "@/components/ai-elements/message";
-import { FullscreenButton, FullscreenSurface } from "@/components/fullscreen-surface";
+import { FullscreenSurface } from "@/components/fullscreen-surface";
+import { FullscreenButton } from "@/components/ui/fullscreen-button";
 import { IconButton } from "@/components/ui/icon-button";
 import { ChatIcon, CheckIcon, CopyIcon, ForkIcon, HandoffIcon } from "@/components/ui/icons";
 import {

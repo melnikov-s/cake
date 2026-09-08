@@ -494,6 +494,7 @@ export const App = observer(function App() {
           />
         </StoreProvider>
         {!terminal.docked && <QuakeTerminal store={terminal} />}
+        <SessionContinuationDialog store={store.sessionContinuationStore} />
       </>
     );
   const shellStyle: CSSProperties & Record<"--sidebar-width" | "--right-pane-width", string> = {

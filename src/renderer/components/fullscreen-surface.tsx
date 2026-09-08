@@ -1,33 +1,9 @@
 import { useEffect, useId, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { IconButton } from "@/components/ui/icon-button";
-import { CloseIcon, ExpandIcon } from "@/components/ui/icons";
+import { CloseIcon } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
 import { useRendererInfrastructure } from "../RendererInfrastructureContext";
-
-export function FullscreenButton({
-  className,
-  disabled,
-  label,
-  onClick,
-}: {
-  className?: string;
-  disabled?: boolean;
-  label: string;
-  onClick(): void;
-}) {
-  return (
-    <IconButton
-      className={cn("fullscreen-trigger", className)}
-      tooltip="View fullscreen"
-      ariaLabel={label}
-      disabled={disabled}
-      onClick={onClick}
-    >
-      <ExpandIcon />
-    </IconButton>
-  );
-}
 
 export function FullscreenSurface({
   children,
@@ -38,7 +14,7 @@ export function FullscreenSurface({
 }: {
   children: ReactNode;
   eyebrow: string;
-  mode?: "reader" | "canvas";
+  mode?: "reader" | "canvas" | "dialog";
   onClose(): void;
   title: string;
 }) {
@@ -55,15 +31,19 @@ export function FullscreenSurface({
       if (event.type === "fullscreen-surface-close-requested" && event.surfaceId === surfaceId)
         onCloseRef.current();
     });
-    void infrastructure.client.electron
+    const registered = infrastructure.client.electron
       .setFullscreenSurfaceOpen(surfaceId, true)
       .catch(() => undefined);
 
     return () => {
       unsubscribe();
-      void infrastructure.client.electron
-        .setFullscreenSurfaceOpen(surfaceId, false)
-        .catch(() => undefined);
+      // Preserve registration order if a surface opens and closes before the
+      // first cross-process request settles.
+      void registered.then(() =>
+        infrastructure.client.electron
+          .setFullscreenSurfaceOpen(surfaceId, false)
+          .catch(() => undefined),
+      );
     };
   }, [infrastructure, surfaceId]);
 
@@ -72,7 +52,7 @@ export function FullscreenSurface({
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    closeButton.current?.focus();
+    if (!surfaceRef.current?.contains(document.activeElement)) closeButton.current?.focus();
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       // Fullscreen surfaces sit directly below the shared overlay band, so
@@ -124,10 +104,18 @@ export function FullscreenSurface({
         </IconButton>
       </header>
       <main
-        className={cn("flex flex-1 justify-center overflow-auto p-6", mode === "canvas" && "p-0")}
+        className={cn(
+          "flex flex-1 justify-center overflow-auto p-6",
+          mode === "canvas" && "p-0",
+          mode === "dialog" && "items-center",
+        )}
       >
         <article
-          className={cn("w-full max-w-4xl", mode === "canvas" && "h-full max-w-none")}
+          className={cn(
+            "w-full max-w-4xl",
+            mode === "canvas" && "h-full max-w-none",
+            mode === "dialog" && "max-w-[34rem]",
+          )}
           onMouseDown={(event) => event.stopPropagation()}
         >
           {children}

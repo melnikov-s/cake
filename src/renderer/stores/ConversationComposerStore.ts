@@ -288,11 +288,7 @@ export class ConversationComposerStore extends Store<ConversationComposerStorePr
     }
     const builtin = parsePiBuiltinCommand(text);
     if (builtin?.name === "handoff" || builtin?.name === "handoffandresolve") {
-      if (
-        this.attachments.length > 0 ||
-        this.annotations.length > 0 ||
-        this.editorContextAttachment
-      ) {
+      if (this.attachments.length > 0 || this.annotations.length > 0) {
         this.reportError(new Error("Remove attachments before using /handoff"));
         return false;
       }

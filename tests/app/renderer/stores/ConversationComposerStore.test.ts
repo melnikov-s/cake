@@ -12,6 +12,7 @@ class HarnessStore extends Store<{
   model: Session;
   existing?: boolean;
   streaming?: boolean;
+  handoffSession?: (entryId: string, prompt?: string, resolveSource?: boolean) => Promise<boolean>;
 }> {
   draft = "First message";
   submissionOrder: string[] = [];
@@ -57,7 +58,7 @@ class HarnessStore extends Store<{
       openCommandPane: async () => undefined,
       selectModel: async () => undefined,
       renameSession: async () => undefined,
-      handoffSession: async () => false,
+      handoffSession: this.props.handoffSession ?? (async () => false),
       deliver: async (input) => {
         if (this.props.existing) {
           const command =
@@ -137,6 +138,44 @@ class DraftHarnessStore extends Store<{ client: RendererClient }> {
 }
 
 describe("ConversationComposerStore", () => {
+  it("allows handoff-and-resolve while VS Code contributes automatic source context", async () => {
+    const model = Session.create({
+      sessionId: "session-1",
+      workingDirectory: "/project",
+      parts: [
+        {
+          id: "assistant-part",
+          kind: "text",
+          role: "assistant",
+          text: "Completed response",
+          status: "complete",
+          entryId: "assistant-entry",
+        },
+      ],
+    });
+    const handoffSession = vi.fn(async () => true);
+    const client = { projectSessions: {} } as unknown as RendererClient;
+    const root = mount(
+      createStore(HarnessStore, { client, model, existing: true, handoffSession }),
+    );
+    root.draft = "/handoffandresolve Continue cleanly";
+    root.composer.setEditorContextAttachment({
+      kind: "source",
+      name: "active.ts",
+      location: {
+        path: "/project/active.ts",
+        range: { start: { line: 1 }, end: { line: 2 } },
+      },
+    });
+
+    await root.composer.submit();
+
+    expect(handoffSession).toHaveBeenCalledWith("assistant-entry", "Continue cleanly", true);
+    expect(root.draft).toBe("");
+    root[Symbol.dispose]();
+    model[Symbol.dispose]();
+  });
+
   it("preserves the next message's context when an in-flight send fails", async () => {
     let rejectPrompt!: (error: Error) => void;
     const prompt = vi.fn(

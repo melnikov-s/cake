@@ -1,7 +1,7 @@
 import { Option, Schema } from "effect";
 import { useState } from "react";
 import { Markdown } from "@/components/ai-elements/markdown";
-import { FullscreenButton } from "@/components/fullscreen-surface";
+import { FullscreenButton } from "@/components/ui/fullscreen-button";
 import { observer } from "r-state-tree/react";
 import type { ArtifactRecord } from "../../ipc/artifact-contract";
 import type { JsonValue } from "../../ipc/json-contract";

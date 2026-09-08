@@ -76,6 +76,9 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
   const windows = new Map<number, BrowserWindow>();
   const windowWorkspaces = new Map<number, string>();
   const fullscreenSurfaces = new Map<number, Set<string>>();
+  const fullscreenSurfaceListeners = new Set<
+    (state: { readonly connectionId: number; readonly open: boolean }) => void
+  >();
   const openSessionContextMenus = new Set<Menu>();
   const nativeEventListeners = new Map<number, Set<(event: CakeEvent) => void>>();
   let applicationQuitting = false;
@@ -131,6 +134,19 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
     sendTo(window.webContents, { type: "fullscreen-surface-close-requested", surfaceId });
     return true;
   };
+
+  const fullscreenSurfaceChanges = () =>
+    Stream.callback<{ readonly connectionId: number; readonly open: boolean }>((queue) =>
+      Effect.acquireRelease(
+        Effect.sync(() => {
+          const listener = (state: { readonly connectionId: number; readonly open: boolean }) =>
+            Queue.offerUnsafe(queue, state);
+          fullscreenSurfaceListeners.add(listener);
+          return listener;
+        }),
+        (listener) => Effect.sync(() => fullscreenSurfaceListeners.delete(listener)),
+      ),
+    );
 
   const createWindow = () => {
     const browserWindowOptions = {
@@ -560,6 +576,7 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
           catch: electronError,
         });
         let surfaceIds = fullscreenSurfaces.get(sender.id);
+        const wasOpen = Boolean(surfaceIds?.size);
         if (request.open) {
           if (!surfaceIds) {
             surfaceIds = new Set();
@@ -570,6 +587,10 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
           surfaceIds.delete(request.surfaceId);
           if (surfaceIds.size === 0) fullscreenSurfaces.delete(sender.id);
         }
+        const open = Boolean(fullscreenSurfaces.get(sender.id)?.size);
+        if (open !== wasOpen)
+          for (const listener of fullscreenSurfaceListeners)
+            listener({ connectionId: sender.id, open });
         return { requestId: request.requestId };
       },
     ),
@@ -610,6 +631,7 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
         // renderer windows now so RPC transports and native views cannot retain the runtime.
         for (const window of windows.values()) if (!window.isDestroyed()) window.destroy();
         nativeEventListeners.clear();
+        fullscreenSurfaceListeners.clear();
         windowWorkspaces.clear();
         fullscreenSurfaces.clear();
         windows.clear();
@@ -618,6 +640,7 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
     ),
     sendTo,
     broadcast,
+    fullscreenSurfaceChanges,
     requireRendererConnection,
     workspaceForConnection: (connectionId) => windowWorkspaces.get(connectionId),
     associateWorkspace: (connectionId, workingDirectory) =>

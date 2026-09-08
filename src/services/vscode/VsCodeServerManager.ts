@@ -333,6 +333,8 @@ export class VsCodeServerManager {
   private views = new Map<number, ViewEntry>();
   /** Latest renderer-owned rect, retained when it arrives before the native view exists. */
   private requestedBounds = new Map<number, ViewBounds>();
+  /** Windows whose Cake renderer currently owns the viewport with a fullscreen surface. */
+  private fullscreenWindows = new Set<number>();
   private companionPorts = new Map<string, number>();
   /** Maps canonical server workspaces back to the project path Cake presents to the renderer. */
   private presentedWorkspacePaths = new Map<string, string>();
@@ -522,10 +524,23 @@ export class VsCodeServerManager {
     if (instance) this.touch(instance);
   }
 
+  /** Temporarily suppresses the native editor without changing its retained renderer bounds. */
+  setFullscreenSurfaceOpen(webContentsId: number, open: boolean) {
+    if (open) this.fullscreenWindows.add(webContentsId);
+    else this.fullscreenWindows.delete(webContentsId);
+    const entry = this.views.get(webContentsId);
+    if (entry) this.applyRequestedBounds(webContentsId, entry.view);
+  }
+
   private applyRequestedBounds(webContentsId: number, view: WebContentsView) {
     const bounds = this.requestedBounds.get(webContentsId);
     if (!bounds) return;
-    view.setVisible(bounds.visible && bounds.width > 0 && bounds.height > 0);
+    view.setVisible(
+      !this.fullscreenWindows.has(webContentsId) &&
+        bounds.visible &&
+        bounds.width > 0 &&
+        bounds.height > 0,
+    );
     view.setBounds({
       x: Math.round(bounds.x),
       y: Math.round(bounds.y),
@@ -654,6 +669,7 @@ export class VsCodeServerManager {
 
   /** Detaches one window's view and lets its former server go idle. */
   closeForWindow(webContentsId: number) {
+    this.fullscreenWindows.delete(webContentsId);
     this.requestedBounds.delete(webContentsId);
     const entry = this.views.get(webContentsId);
     if (!entry) return;
@@ -669,6 +685,7 @@ export class VsCodeServerManager {
     for (const [, entry] of this.views) entry.view.setVisible(false);
     this.views.clear();
     this.requestedBounds.clear();
+    this.fullscreenWindows.clear();
     for (const [, instance] of this.servers) this.disposeServer(instance);
     this.servers.clear();
     this.starting.clear();
