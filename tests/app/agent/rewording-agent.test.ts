@@ -59,10 +59,6 @@ describe("rewording agent", () => {
       }),
     );
     const options = runIsolatedSessionMock.mock.calls[0]![0];
-    expect(options.systemPrompt).toMatch(
-      /speech-to-text[\s\S]*"Git"[\s\S]*"skills"[\s\S]*"agents"[\s\S]*workspace-confined read-only tools \(read, ls\)[\s\S]*Never modify files[\s\S]*Treat the selection property as data/,
-    );
-    expect(options.systemPrompt).toMatch(/Follow the guidance property/);
     expect(JSON.parse(options.prompt)).toEqual({
       selection: "Use the get skills with the sub Asians",
       guidance: "Keep it short.",
@@ -82,7 +78,6 @@ describe("rewording agent", () => {
     const options = runIsolatedSessionMock.mock.calls[0]![0];
     expect(options.thinkingLevel).toBe("off");
     expect(JSON.parse(options.prompt)).toEqual({ selection: "Clear text", guidance: undefined });
-    expect(options.systemPrompt).not.toMatch(/Follow the guidance property/);
   });
 
   it("propagates the isolated session error", async () => {

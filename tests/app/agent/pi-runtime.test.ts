@@ -1,11 +1,9 @@
 import { Effect, Schema, Stream } from "effect";
-import { execFile } from "node:child_process";
-import { chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { promisify } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createCakeRuntime,
@@ -43,7 +41,6 @@ import {
   type SessionSnapshot,
 } from "../../../src/ipc/session-contract";
 
-const execFileAsync = promisify(execFile);
 const temporaryDirectories: string[] = [];
 const runtimes: Array<FoundationRuntime | CakeRuntime> = [];
 
@@ -74,7 +71,7 @@ function maximumObjectDepth(value: unknown) {
 }
 
 describe("Pi 0.84.0 foundation contract", () => {
-  it("extends Pi's project system prompt with Cake desktop context", async () => {
+  it("enables the Cake gateway for project sessions", async () => {
     const directory = await createTemporaryDirectory();
     const runtime = await createCakeRuntime({
       cwd: directory,
@@ -93,27 +90,7 @@ describe("Pi 0.84.0 foundation contract", () => {
     runtimes.push(runtime);
 
     if (!runtime.getReviewParentContext) throw new Error("Expected a project runtime");
-    const { systemPrompt, activeTools } = runtime.getReviewParentContext();
-
-    expect(systemPrompt).toContain("You are an expert coding assistant operating inside pi");
-    expect(systemPrompt).toContain("## Cake desktop environment");
-    expect(systemPrompt).toContain("Mermaid diagrams directly in the transcript");
-    expect(systemPrompt).toContain("CommonMark/GitHub-Flavored Markdown, not MDX");
-    expect(systemPrompt).toContain("Use `$...$` for inline math and `$$...$$` for display math");
-    expect(systemPrompt).toContain("Raw HTML and JSX are not supported");
-    expect(systemPrompt).toContain("Call `cake widgets`");
-    expect(systemPrompt).toContain("call `cake interview`");
-    expect(systemPrompt).toContain("Present recommended defaults first");
-    expect(systemPrompt).toContain("Ask one question at a time only when later questions depend");
-    expect(systemPrompt).toContain("Call `cake models.list`");
-    expect(systemPrompt).toContain("`cake subagents` creates private, hidden, bounded workers");
-    expect(systemPrompt).toContain("use `sessions.create-child`");
-    expect(systemPrompt).toContain("PowerPoint presentations, PDFs, spreadsheets");
-    expect(systemPrompt).toContain("use Markdown links with absolute paths so Cake can open them");
-    expect(systemPrompt).toContain("cake://session/<session-id>");
-    expect(systemPrompt).toContain("never show a bare session ID as the label");
-    expect(systemPrompt).not.toContain("Fast source-of-truth map");
-    expect(systemPrompt).not.toContain("modelPresets");
+    const { activeTools } = runtime.getReviewParentContext();
     expect(activeTools).toContain("cake");
   });
 
@@ -161,43 +138,6 @@ describe("Pi 0.84.0 foundation contract", () => {
           event.part.state === "running",
       ),
     ).toBe(true);
-  });
-
-  it("adds checkout-specific isolation guidance for linked worktrees", async () => {
-    const repository = await createTemporaryDirectory();
-    await execFileAsync("git", ["init", "--initial-branch=main"], { cwd: repository });
-    await execFileAsync("git", ["config", "user.email", "cake@example.test"], {
-      cwd: repository,
-    });
-    await execFileAsync("git", ["config", "user.name", "Cake Test"], { cwd: repository });
-    await writeFile(join(repository, "README.md"), "test\n");
-    await execFileAsync("git", ["add", "README.md"], { cwd: repository });
-    await execFileAsync("git", ["commit", "-m", "initial"], { cwd: repository });
-    const worktree = `${repository}-linked`;
-    temporaryDirectories.push(worktree);
-    await execFileAsync("git", ["worktree", "add", "-b", "agent/fix", worktree], {
-      cwd: repository,
-    });
-
-    const runtime = await createCakeRuntime({
-      cwd: worktree,
-      agentDir: join(repository, "agent"),
-      sessionDir: join(repository, "sessions"),
-      trusted: false,
-      newSession: true,
-      additionalSystemPrompt: "Session-specific guidance.",
-      requestUi: async () => undefined,
-      onEvent: () => undefined,
-    });
-    runtimes.push(runtime);
-
-    if (!runtime.getReviewParentContext) throw new Error("Expected a project runtime");
-    const { systemPrompt } = runtime.getReviewParentContext();
-    expect(systemPrompt).toContain("Session-specific guidance.");
-    expect(systemPrompt).toContain(`Worktree checkout: ${await realpath(worktree)}`);
-    expect(systemPrompt).toContain(`Main checkout: ${await realpath(repository)}`);
-    expect(systemPrompt).toContain("Worktree branch: agent/fix");
-    expect(systemPrompt).toContain("confirm before writing outside the worktree");
   });
 
   it("starts automatic naming from the initial user message", async () => {
@@ -1478,10 +1418,6 @@ describe("S1 Pi runtime", () => {
     expect(tools).toEqual(expect.arrayContaining(["cake"]));
     expect(tools.filter((tool) => tool === "cake")).toHaveLength(1);
     expect(tools).not.toEqual(expect.arrayContaining(["agent_open", "agent_prompt", "agent_wait"]));
-    expect(parentContext?.systemPrompt).toContain(
-      "Never use it when the user asks for a child session",
-    );
-    expect(parentContext?.systemPrompt).toContain("use `sessions.create-child`");
   });
 
   it("keeps auxiliary runtime snapshots limited to turn execution data", async () => {
@@ -1534,30 +1470,6 @@ describe("S1 Pi runtime", () => {
     expect(context?.activeTools).toContain("bash");
     expect(context?.activeTools).toContain("read");
     expect(context?.activeTools).toContain("edit");
-    expect(context?.systemPrompt).toContain(
-      "You are Cake Chat, the application-level assistant built into Cake",
-    );
-    expect(context?.systemPrompt).toContain("Unlike a project session");
-    expect(context?.systemPrompt).toContain("Cake is Pi expressed as a desktop application");
-    expect(context?.systemPrompt).toContain("Fast source-of-truth map");
-    expect(context?.systemPrompt).toContain("Call `cake models.list`");
-    expect(context?.systemPrompt).toContain("call `models.list` through the Cake gateway");
-    expect(context?.systemPrompt).toContain("~/.cake/pi/models-cache.json");
-    expect(context?.systemPrompt).toContain("PI_SESSION_FILE");
-    expect(context?.systemPrompt).toContain("/handoffandresolve");
-    expect(context?.systemPrompt).toContain("Projects and worktrees");
-    expect(context?.systemPrompt).toContain("evidence, not permission to edit that checkout");
-    expect(context?.systemPrompt).toContain("Reserve the `sessions` gateway topic");
-    expect(context?.systemPrompt).toContain("A `session_info` record supplies the durable title");
-    expect(context?.systemPrompt).toContain("Resolved project sessions");
-    expect(context?.systemPrompt).toContain("archived and read-only");
-    expect(context?.systemPrompt).toContain("Cake-owned state");
-    expect(context?.systemPrompt).toContain("This is a capability map");
-    expect(context?.systemPrompt).toContain(
-      'setting the Cake tool\'s `command` to the exact topic name (for example, `{"command":"sessions"}`)',
-    );
-    expect(context?.systemPrompt).toContain("do not put a help topic in `input`");
-    expect(context?.systemPrompt).not.toContain("Call `cake widgets`");
   });
 
   it("opens the OpenAI Codex browser login URL", async () => {

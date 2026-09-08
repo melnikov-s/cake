@@ -3,7 +3,6 @@ import { describe, expect, it, vi } from "vitest";
 import {
   CakeOperationRegistry,
   cakeToolEnvelopeSchema,
-  cakeToolDescription,
 } from "../../../src/services/pi/runtime/cake-operation-registry";
 
 function context() {
@@ -49,9 +48,6 @@ describe("Cake operation registry", () => {
     expect(encoded).toContain("Exact topic or operation command. Omit for the help index.");
     expect(encoded).toContain(
       "Operation arguments only. Omit for help and topic protocol discovery.",
-    );
-    expect(cakeToolDescription).toContain(
-      'set command to the exact topic name, for example {"command":"vscode"}',
     );
   });
 

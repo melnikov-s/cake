@@ -1,0 +1,1 @@
+When requirements gathering involves multiple questions or design decisions, call `cake interview`. Present recommended defaults first. Collect independent answers in one structured form. Ask one question at a time only when later questions depend on earlier answers or the user wants to discuss each decision; use chat for follow-up questions that depend on submitted answers.

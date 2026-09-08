@@ -203,14 +203,16 @@ than exposing a second transcript.
 
 Full Project Session families use a different coordination contract. Messages
 between parent and child sessions, including deterministic completion or abort
-notices, are ordinary Pi user messages. They start a normal turn when the
-recipient is idle, or enter Pi's follow-up queue behind active work; they never
-steer or interrupt an active turn. Pending family input is projected beside the
-composer with source-session attribution rather than as transcript history.
+notices, are ordinary Pi user messages. By default they start a normal turn when
+the recipient is idle or enter Pi's follow-up queue behind active work. An
+explicit steer interrupts and redirects an active family member. Pending family
+input is projected beside the composer with source-session attribution rather
+than as transcript history.
 Creating a child accepts its initial turn in the background and does not keep
 the parent's turn waiting for that child. Each family member remains
 independently selectable, messageable, and stoppable by its own session
-identity.
+identity. A parent may abort a child's active turn without resolving or deleting
+the child.
 
 Embedded VS Code's Source Control view is the Working Directory change authority and
 renders native Git diffs. Cake projects review annotations into VS Code without

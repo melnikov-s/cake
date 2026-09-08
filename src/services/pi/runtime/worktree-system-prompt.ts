@@ -1,6 +1,8 @@
 import { execFile } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { promisify } from "node:util";
+import worktreePromptTemplate from "./prompts/worktree.md?raw";
+import { renderPromptTemplate } from "./prompt-template";
 
 const execFileAsync = promisify(execFile);
 
@@ -11,16 +13,11 @@ export interface GitWorktreeContext {
 }
 
 export function worktreeSystemPrompt(context: GitWorktreeContext): string {
-  return `## Worktree isolation
-
-This session is running in a Git worktree:
-- Worktree checkout: ${context.worktreePath}
-- Main checkout: ${context.mainCheckoutPath}
-- Worktree branch: ${context.branch}
-
-Default all repository reads, searches, edits, tests, and commits to the worktree checkout. Resolve repository-relative paths inside the worktree, and when logs or stack traces mention equivalent absolute paths under the main checkout, use the corresponding path in the worktree instead. Never modify files in the main checkout directly. Landing changes onto the main checkout goes through Cake's worktree landing flow.
-
-If the user deliberately asks you to operate on files outside the worktree, you may comply. When instructions or path signals conflict—for example, a pasted stack trace names files in the main checkout—surface the conflict and confirm before writing outside the worktree rather than silently choosing the external path.`;
+  return renderPromptTemplate(worktreePromptTemplate, {
+    worktreePath: context.worktreePath,
+    mainCheckoutPath: context.mainCheckoutPath,
+    branch: context.branch,
+  });
 }
 
 export async function detectGitWorktree(cwd: string): Promise<GitWorktreeContext | undefined> {

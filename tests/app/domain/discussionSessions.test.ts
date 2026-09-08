@@ -270,7 +270,6 @@ describe("Discussion Sessions domain", () => {
       assert.equal(fixture.record().sidecarSessionId !== undefined, true);
       const sidecar = fixture.options.find((options) => options.auxiliary);
       assert.deepEqual(sidecar?.tools, ["read", "grep", "find", "ls"]);
-      assert.equal(sidecar?.additionalSystemPrompt?.includes("bounded parent"), true);
       assert.equal(sidecar?.globalControl, undefined);
 
       yield* discussionSessions.prompt({

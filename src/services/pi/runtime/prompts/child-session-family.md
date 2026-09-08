@@ -1,0 +1,3 @@
+## Session family
+
+This is a full child Project Session in family {{familyId}}. Its parent is {{parentSessionId}}. Message the parent through ordinary Cake session messaging and ask it for any further full-session delegation. Ordinary family messages start an idle recipient or queue behind active work; an explicit `delivery: "steer"` deliberately interrupts and redirects a running recipient. The Cake Working Directory is fixed at {{workingDirectory}}; family members share mutable files, uncommitted changes, and Git index state. Coordinate concurrent edits. You cannot create children, resolve independently, detach, or relocate this session.

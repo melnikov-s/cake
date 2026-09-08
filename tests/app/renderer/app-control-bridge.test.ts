@@ -398,6 +398,42 @@ describe("AppControlBridge", () => {
     });
   });
 
+  it("steers and stops an active explicitly targeted session", async () => {
+    const sendSessionMessage = vi.fn(async () => "turn-1");
+    const abortSession = vi.fn(async () => undefined);
+    const bridge = new AppControlBridge(
+      createHost({
+        sessions: () => [
+          {
+            workingDirectory: "/projects/other",
+            projectName: "Other",
+            sessionId: "session-2",
+            title: "Active child",
+            modifiedAt: "2026-09-04T12:00:00.000Z",
+            messageCount: 2,
+            resolved: false,
+            draft: false,
+          },
+        ],
+        sessionActivity: () => "running",
+        sendSessionMessage,
+        abortSession,
+      }),
+    );
+
+    await expect(
+      bridge.invoke({
+        name: "sessions.send",
+        arguments: { sessionId: "session-2", text: "Change direction", delivery: "steer" },
+      }),
+    ).resolves.toMatchObject({ ok: true, delivery: "steer", status: "accepted" });
+    await expect(
+      bridge.invoke({ name: "sessions.abort", arguments: { sessionId: "session-2" } }),
+    ).resolves.toMatchObject({ ok: true, name: "abort_session", status: "stopping" });
+    expect(sendSessionMessage).toHaveBeenCalledWith("session-2", "Change direction", "steer");
+    expect(abortSession).toHaveBeenCalledWith("session-2");
+  });
+
   it("keeps duplicate-title targets disambiguated by project and working directory", async () => {
     const sessions = [
       {

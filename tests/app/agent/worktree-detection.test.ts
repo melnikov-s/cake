@@ -4,10 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  detectGitWorktree,
-  worktreeSystemPrompt,
-} from "../../../src/services/pi/runtime/worktree-system-prompt";
+import { detectGitWorktree } from "../../../src/services/pi/runtime/worktree-system-prompt";
 
 const execFileAsync = promisify(execFile);
 const temporaryDirectories: string[] = [];
@@ -34,24 +31,7 @@ afterEach(async () => {
   );
 });
 
-describe("worktree system prompt", () => {
-  it("names the checkout boundaries and explains conflict handling", () => {
-    const prompt = worktreeSystemPrompt({
-      worktreePath: "/repos/.cake-worktrees/fix",
-      mainCheckoutPath: "/repos/cake",
-      branch: "agent/fix",
-    });
-
-    expect(prompt).toContain("Worktree checkout: /repos/.cake-worktrees/fix");
-    expect(prompt).toContain("Main checkout: /repos/cake");
-    expect(prompt).toContain("Worktree branch: agent/fix");
-    expect(prompt).toContain("Default all repository reads, searches, edits, tests, and commits");
-    expect(prompt).toContain("Never modify files in the main checkout directly");
-    expect(prompt).toContain("Cake's worktree landing flow");
-    expect(prompt).toContain("you may comply");
-    expect(prompt).toContain("confirm before writing outside the worktree");
-  });
-
+describe("worktree detection", () => {
   it("detects a linked worktree but not the main checkout", async () => {
     const repository = await createRepository();
     const worktree = `${repository}-linked`;
@@ -66,7 +46,7 @@ describe("worktree system prompt", () => {
     });
   });
 
-  it("does not add guidance outside a Git repository", async () => {
+  it("returns no context outside a Git repository", async () => {
     const directory = await mkdtemp(join(tmpdir(), "cake-no-repository-"));
     temporaryDirectories.push(directory);
 

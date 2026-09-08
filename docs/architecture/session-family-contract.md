@@ -13,6 +13,7 @@ coordination.
   persisted. Concurrent first-child requests serialize through family storage
   and produce one family.
 - Children cannot create children, detach, reparent, or replace themselves.
+- A parent may abort a child's active turn. Aborting does not resolve, delete, or detach the child.
 - Existing sessions cannot be attached.
 - Every member has the same Project, normalized Working Directory, and Managed
   Worktree association. These bindings do not change during family membership.
@@ -41,11 +42,12 @@ agents to coordinate it. Agent-created Git worktrees do not rebind Cake.
 
 ## Communication
 
-Family messages use ordinary validated cross-session messaging. An idle
-recipient starts a normal turn immediately; an active recipient receives the
-message through Pi's follow-up queue, never through steering. Accepted text
-becomes authoritative only in the destination Pi transcript; Cake metadata owns
-routing and correlation, not a second message copy. Pending input is projected
+Family messages use ordinary validated cross-session messaging. By default, an
+idle recipient starts a normal turn immediately and an active recipient receives
+the message through Pi's follow-up queue. A sender may explicitly request
+`steer` to interrupt and redirect an active recipient. Accepted text becomes
+authoritative only in the destination Pi transcript; Cake metadata owns routing
+and correlation, not a second message copy. Pending input is projected
 beside the composer with its source-session attribution and is not rendered as
 transcript history. Routing is main-process policy and must not depend on
 renderer visibility.
