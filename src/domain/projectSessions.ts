@@ -1,5 +1,6 @@
 import { ProjectSessionLifecycle } from "../services/project-sessions/ProjectSessionLifecycle";
 import { Effect, Stream } from "effect";
+import * as managedWorktrees from "./managedWorktrees";
 import * as subagents from "./subagents";
 import {
   SESSION_TITLE_MAX_LENGTH,
@@ -1222,6 +1223,9 @@ export const resolve = Effect.fn("ProjectSessions.resolve")(function* (
         const environment = yield* ProjectSessionEnvironment;
         yield* subagents.releaseParent(target.sessionId).pipe(asError("resolve"));
         yield* environment.archive(target.sessionId, location).pipe(asError("resolve"));
+        yield* managedWorktrees
+          .cleanupResolved(location.workingDirectory, location.sessionDirectory)
+          .pipe(asError("resolve"));
         yield* setSessionUnread(target.sessionId, false).pipe(asError("resolve"));
         yield* publishCatalogStatus(target.sessionId, location, true).pipe(asError("resolve"));
       }),
@@ -1258,6 +1262,7 @@ export const restore = Effect.fn("ProjectSessions.restore")(function* (
           });
         const environment = yield* ProjectSessionEnvironment;
         const location = yield* findLocation(target);
+        yield* managedWorktrees.restoreResolved(location.workingDirectory).pipe(asError("restore"));
         const restored = yield* environment
           .restore(target.sessionId, location)
           .pipe(asError("restore"));

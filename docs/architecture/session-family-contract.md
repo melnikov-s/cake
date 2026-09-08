@@ -74,9 +74,13 @@ member explicitly; messaging a resolved member never restores a family.
 
 Archive and restore are idempotent multi-transcript operations tracked by a
 recoverable journal. Transcript namespace remains the resolved-state authority;
-the journal records only incomplete work. Individual member delete, handoff,
-relocation, and resolve/restore paths reject family members. Ordinary forks are
-standalone and never inherit membership.
+the journal records only incomplete work. When archiving the family removes the
+final active Project Session from a landed Managed Worktree, Cake retires that
+checkout; restoring the family recreates it before restoring the first transcript.
+An unrelated active Project Session sharing the Working Directory prevents this
+retirement. Individual member delete, handoff, relocation, and resolve/restore
+paths reject family members. Ordinary forks are standalone and never inherit
+membership.
 
 `sessionFamilies` is the shared main-process domain for creation, admission,
 lifecycle transitions, and outcome delivery. The existing Project Session

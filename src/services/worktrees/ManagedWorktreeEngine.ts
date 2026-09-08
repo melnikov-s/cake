@@ -576,12 +576,19 @@ export class ManagedWorktreeEngine implements WorktreeLandingCoordinator {
   async cleanupResolved(worktreePath: string): Promise<void> {
     await this.load();
     const normalized = resolveNormalized(worktreePath);
-    const record = this.allRecords.find(
+    const pendingRecord = this.allRecords.find(
       (entry) => resolveNormalized(entry.worktreePath) === normalized,
     );
-    if (!record || !["landed", "discarded", "resolved"].includes(record.state ?? "active")) return;
-    if (record.state === "resolved") return;
-    await this.withRepositoryLock(record.projectPath, async () => {
+    if (
+      !pendingRecord ||
+      !["landed", "discarded", "resolved"].includes(pendingRecord.state ?? "active")
+    )
+      return;
+    await this.withRepositoryLock(pendingRecord.projectPath, async () => {
+      const record = this.allRecords.find(
+        (entry) => resolveNormalized(entry.worktreePath) === normalized,
+      );
+      if (!record || !["landed", "discarded"].includes(record.state ?? "active")) return;
       if (record.state === "landed")
         await this.cleanup(record, { keepBranch: false, state: "resolved" });
       else await this.closeRecord(record, "resolved");

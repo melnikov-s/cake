@@ -316,10 +316,13 @@ The window Store hierarchy mirrors the product surfaces:
   historical worktree name. Resolved browsing reads those records without Pi,
   Git, or Managed Worktree discovery. Existing archives are indexed once when
   their registered Project catalog first initializes; that migration reads filename
-  metadata and Cake titles without opening transcript bodies. Resolving
-  and restoring move only the Pi transcript between namespaces; restoring never
-  recreates or reopens a Git worktree, and the Cake-owned title remains stable
-  across both namespaces.
+  metadata and Cake titles without opening transcript bodies. Resolving moves the Pi
+  transcript between namespaces. After the final active Project Session in a landed
+  Managed Worktree is resolved, Cake closes that Working Directory's terminals and
+  removes the checkout and merged branch while retaining its Managed Worktree record.
+  Restoring the first archived session recreates that checkout before restoring its
+  transcript. Resolving one of several active sessions never retires their shared
+  Working Directory, and the Cake-owned title remains stable across both namespaces.
 - Window-owned persistence infrastructure loads one versioned Store snapshot before
   mounting the Root Store, then watches the mounted Store tree and saves later
   snapshots through `RendererClient`. Persistence is not a Store and never

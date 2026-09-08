@@ -2,12 +2,14 @@ import { transition } from "../domain/sessionFamilies";
 import { Effect, Layer, Stream } from "effect";
 import { forgetProjectSessions, setSessionUnread } from "../domain/application";
 import * as artifacts from "../domain/artifacts";
+import * as managedWorktrees from "../domain/managedWorktrees";
 import * as reviews from "../domain/reviews";
 import type { WorktreeRecord } from "../ipc/worktree-contract";
 import { PiSessions } from "../services/pi/PiSessions";
 import { streamWorkspaceSessions } from "../services/pi/runtime/session-discovery";
 import { ProjectAccess } from "../services/projects/ProjectAccess";
 import { ApplicationState } from "../services/storage/ApplicationState";
+import type { Terminal } from "../services/terminal/Terminal";
 import type { ArtifactStorage } from "../services/storage/ArtifactStorage";
 import type { ReviewStorage } from "../services/storage/ReviewStorage";
 import {
@@ -50,6 +52,7 @@ export const makeProjectSessionLifecycleLive = (
   | SessionArchiveStorage
   | SessionCatalogChanges
   | SessionFamilyStorage
+  | Terminal
 > =>
   Layer.effect(
     ProjectSessionLifecycle,
@@ -71,6 +74,7 @@ export const makeProjectSessionLifecycleLive = (
         | SessionArchiveStorage
         | SessionCatalogChanges
         | SessionFamilyStorage
+        | Terminal
       >();
       const run = <A, E, R>(operation: string, effect: Effect.Effect<A, E, R>) =>
         effect.pipe(
@@ -120,8 +124,18 @@ export const makeProjectSessionLifecycleLive = (
               archiveContext,
             ),
           );
+          yield* run(
+            "setProjectSessionResolved",
+            managedWorktrees.cleanupResolved(workingDirectory, options.projectSessionDirectory),
+          );
           yield* run("setProjectSessionResolved", setSessionUnread(sessionId, false));
-        } else yield* run("setProjectSessionResolved", archive.restoreProject(sessionId));
+        } else {
+          yield* run(
+            "setProjectSessionResolved",
+            managedWorktrees.restoreResolved(workingDirectory),
+          );
+          yield* run("setProjectSessionResolved", archive.restoreProject(sessionId));
+        }
         yield* catalogs.publish({
           _tag: "ProjectSessionStatusChanged",
           sessionId,

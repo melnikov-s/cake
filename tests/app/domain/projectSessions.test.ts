@@ -25,8 +25,10 @@ import { SessionArchiveStorage } from "../../../src/services/storage/SessionArch
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import { SubagentCoordinatorLive } from "../../../src/services/subagents/SubagentCoordinator";
 import { Terminal } from "../../../src/services/terminal/Terminal";
+import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import type { SessionSnapshot, SessionSummary } from "../../../src/ipc/session-contract";
+import type { WorktreeRecord } from "../../../src/ipc/worktree-contract";
 
 const snapshot: SessionSnapshot = {
   workspacePath: "/project",
@@ -128,6 +130,10 @@ const makeLayer = (
       readonly modifiedAt: string;
     }>;
     migrationComplete?: boolean;
+    worktreeRecords?: ReadonlyArray<WorktreeRecord>;
+    onCleanupResolved?(): void;
+    onRestoreResolved?(): void;
+    onCloseWorkingDirectory?(): void;
   } = {},
 ) => {
   let resolvedOnDisk = hooks.resolvedOnDisk ?? false;
@@ -355,6 +361,18 @@ const makeLayer = (
               }),
       }),
     ),
+    Layer.mock(ManagedWorktrees, {
+      records: () => Effect.succeed(hooks.worktreeRecords ?? []),
+      cleanupResolved: () =>
+        Effect.sync(() => {
+          hooks.onCleanupResolved?.();
+        }),
+      restoreResolved: () =>
+        Effect.sync(() => {
+          hooks.onRestoreResolved?.();
+          return undefined;
+        }),
+    }),
     Layer.succeed(
       Terminal,
       Terminal.of({
@@ -363,7 +381,10 @@ const makeLayer = (
         resize: () => Effect.die("Unexpected terminal resize"),
         runningProgramCount: () => Effect.die("Unexpected terminal status"),
         close: () => Effect.die("Unexpected terminal close"),
-        closeWorkingDirectory: () => Effect.void,
+        closeWorkingDirectory: () =>
+          Effect.sync(() => {
+            hooks.onCloseWorkingDirectory?.();
+          }),
         closeOwner: () => Effect.void,
         events: () => Stream.empty,
       }),
@@ -816,6 +837,128 @@ describe("Project Sessions domain", () => {
         makeLayer(defaultApplicationState(), {
           onCreateRuntime: () => runtimeConstructions++,
           onArchive: () => archives++,
+        }),
+      ),
+    );
+  });
+
+  it.effect("retires a landed Managed Worktree after its final session is resolved", () => {
+    let cleanups = 0;
+    let terminalClosures = 0;
+    const worktree: WorktreeRecord = {
+      projectPath: "/project",
+      worktreePath: "/worktree",
+      branch: "agent/finished",
+      baseBranch: "main",
+      state: "landed",
+      createdAt: "2026-01-01T00:00:00.000Z",
+    };
+    return Effect.gen(function* () {
+      yield* projectSessions.resolve({
+        sessionId: "session-1",
+        workingDirectory: worktree.worktreePath,
+      });
+      assert.equal(cleanups, 1);
+      assert.equal(terminalClosures, 1);
+    }).pipe(
+      Effect.provide(
+        makeLayer(defaultApplicationState(), {
+          locations: [
+            {
+              projectPath: "/project",
+              projectName: "Project",
+              workingDirectory: worktree.worktreePath,
+              sessionDirectory: "/sessions",
+              resolvedSessionDirectory: "/resolved-sessions",
+              managedWorktree: worktree,
+            },
+          ],
+          worktreeRecords: [worktree],
+          onCleanupResolved: () => cleanups++,
+          onCloseWorkingDirectory: () => terminalClosures++,
+        }),
+      ),
+    );
+  });
+
+  it.effect("keeps a landed Managed Worktree while another session remains active", () => {
+    let cleanups = 0;
+    const worktree: WorktreeRecord = {
+      projectPath: "/project",
+      worktreePath: "/worktree",
+      branch: "agent/shared",
+      baseBranch: "main",
+      state: "landed",
+      createdAt: "2026-01-01T00:00:00.000Z",
+    };
+    return Effect.gen(function* () {
+      yield* projectSessions.resolve({
+        sessionId: "session-1",
+        workingDirectory: worktree.worktreePath,
+      });
+      assert.equal(cleanups, 0);
+    }).pipe(
+      Effect.provide(
+        makeLayer(defaultApplicationState(), {
+          locations: [
+            {
+              projectPath: "/project",
+              projectName: "Project",
+              workingDirectory: worktree.worktreePath,
+              sessionDirectory: "/sessions",
+              resolvedSessionDirectory: "/resolved-sessions",
+              managedWorktree: worktree,
+            },
+          ],
+          catalog: () =>
+            Stream.make({
+              id: "session-2",
+              title: "Still active",
+              created: "2026-01-01T00:00:00.000Z",
+              modified: "2026-01-02T00:00:00.000Z",
+              messageCount: 1,
+              resolved: false,
+            }),
+          worktreeRecords: [worktree],
+          onCleanupResolved: () => cleanups++,
+        }),
+      ),
+    );
+  });
+
+  it.effect("recreates a resolved Managed Worktree before restoring its session", () => {
+    const events: string[] = [];
+    const worktree: WorktreeRecord = {
+      projectPath: "/project",
+      worktreePath: "/worktree",
+      branch: "agent/finished",
+      baseBranch: "main",
+      state: "resolved",
+      createdAt: "2026-01-01T00:00:00.000Z",
+    };
+    return Effect.gen(function* () {
+      yield* projectSessions.restore({
+        sessionId: "session-1",
+        workingDirectory: worktree.worktreePath,
+      });
+      assert.deepEqual(events, ["worktree", "session"]);
+    }).pipe(
+      Effect.provide(
+        makeLayer(defaultApplicationState(), {
+          resolvedOnDisk: true,
+          locations: [
+            {
+              projectPath: "/project",
+              projectName: "Project",
+              workingDirectory: worktree.worktreePath,
+              sessionDirectory: "/sessions",
+              resolvedSessionDirectory: "/resolved-sessions",
+              managedWorktree: worktree,
+            },
+          ],
+          worktreeRecords: [worktree],
+          onRestoreResolved: () => events.push("worktree"),
+          onRestore: () => events.push("session"),
         }),
       ),
     );

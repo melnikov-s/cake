@@ -1,8 +1,9 @@
-import { Effect } from "effect";
+import { Effect, Option, Stream } from "effect";
 import { defaultProjectSettings } from "./application-data";
 import { getState, trustProject } from "./application";
 import { generateWorktreeName, utilityModelSelection } from "./utilityWork";
 import type { WorktreeLandRequest } from "../ipc/worktree-contract";
+import { PiSessions } from "../services/pi/PiSessions";
 import { ProjectAccess } from "../services/projects/ProjectAccess";
 import { Terminal } from "../services/terminal/Terminal";
 import { ManagedWorktreeError, ManagedWorktrees } from "../services/worktrees/ManagedWorktrees";
@@ -120,4 +121,40 @@ export const discard = Effect.fn("ManagedWorktrees.discard")(function* (
     .closeWorkingDirectory(workingDirectory)
     .pipe(Effect.mapError((cause) => policyError("ManagedWorktrees.discard", cause)));
   yield* (yield* ManagedWorktrees).discard(workingDirectory, keepBranch);
+});
+
+/** Retires a landed checkout once its final active Project Session has been resolved. */
+export const cleanupResolved = Effect.fn("ManagedWorktrees.cleanupResolved")(function* (
+  workingDirectory: string,
+  sessionDirectory: string,
+) {
+  const worktrees = yield* ManagedWorktrees;
+  const record = (yield* worktrees.records()).find(
+    (candidate) => candidate.worktreePath === workingDirectory && candidate.state === "landed",
+  );
+  if (!record) return;
+
+  const activeSession = yield* (yield* PiSessions)
+    .catalog({ workingDirectory, sessionDirectory })
+    .pipe(
+      Stream.runHead,
+      Effect.mapError((cause) => policyError("ManagedWorktrees.cleanupResolved", cause)),
+    );
+  if (Option.isSome(activeSession)) return;
+
+  yield* (yield* Terminal)
+    .closeWorkingDirectory(workingDirectory)
+    .pipe(Effect.mapError((cause) => policyError("ManagedWorktrees.cleanupResolved", cause)));
+  yield* worktrees.cleanupResolved(workingDirectory);
+});
+
+/** Recreates a checkout retired by resolution before its first transcript is restored. */
+export const restoreResolved = Effect.fn("ManagedWorktrees.restoreResolved")(function* (
+  workingDirectory: string,
+) {
+  const worktrees = yield* ManagedWorktrees;
+  const record = (yield* worktrees.records()).find(
+    (candidate) => candidate.worktreePath === workingDirectory && candidate.state === "resolved",
+  );
+  if (record) yield* worktrees.restoreResolved(workingDirectory);
 });
