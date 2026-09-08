@@ -10,6 +10,7 @@ import {
   type Ref,
 } from "react";
 import { useStickToBottom, type StickToBottomInstance } from "use-stick-to-bottom";
+import { untracked } from "r-state-tree";
 import { observer } from "r-state-tree/react";
 import { cn } from "@/lib/utils";
 import {
@@ -77,7 +78,7 @@ export const ChatTranscript = observer(function ChatTranscript({
   const virtuosoRef = useRef<VirtualizedConversationHandle>(null);
   const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
   const pendingSelectionRef = useRef<TranscriptSelectionCapture | undefined>(undefined);
-  const restoredScrollState = useMemo(() => store.transcriptScrollState, [store]);
+  const restoredScrollState = useMemo(() => untracked(() => store.transcriptScrollState), [store]);
   const [draftAnchor, setDraftAnchor] = useState<MessageCommentAnchorRect>();
   const [annotationDraft, setAnnotationDraft] = useState<TranscriptSelectionCapture>();
   const { scrollRef, contentRef, scrollToBottom, stopScroll } = useStickToBottom({
@@ -106,6 +107,7 @@ export const ChatTranscript = observer(function ChatTranscript({
     store.syncChangedFilesOpen(showAssistantLoading);
   }, [showAssistantLoading, store]);
   const groupedParts = groupTranscriptParts(parts);
+  const hasWorkLogChanges = useMemo(() => workLogChanges(parts).length > 0, [parts]);
   const visibleGroupedParts = store.hideThinking
     ? groupedParts.flatMap((item): TranscriptItem[] => {
         if (item.kind === "reasoning") return [];
@@ -116,9 +118,7 @@ export const ChatTranscript = observer(function ChatTranscript({
     : groupedParts;
   const items: TranscriptItem[] = [
     ...visibleGroupedParts,
-    ...(workLogChanges(parts).length > 0
-      ? [{ kind: "changed-files" as const, id: "changed-files" }]
-      : []),
+    ...(hasWorkLogChanges ? [{ kind: "changed-files" as const, id: "changed-files" }] : []),
     ...(showAssistantLoading ? [{ kind: "loading-state" as const, id: "loading-state" }] : []),
   ];
   const transcriptBehavior = useMemo<CanonicalTranscriptBehavior>(
@@ -151,7 +151,7 @@ export const ChatTranscript = observer(function ChatTranscript({
   }, [messageNavigationItemIndex, messageNavigationRequest, scroller, stopScroll, virtualized]);
   useEffect(() => {
     if (!scroller) return;
-    let pendingScrollState = store.transcriptScrollState;
+    let pendingScrollState = untracked(() => store.transcriptScrollState);
     let saveTimer: ReturnType<typeof setTimeout> | undefined;
     const commitScrollState = () => {
       saveTimer = undefined;

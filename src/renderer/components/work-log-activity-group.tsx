@@ -1,13 +1,11 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useStickToBottom } from "use-stick-to-bottom";
 import { observer } from "r-state-tree/react";
 import { diffStats } from "@/components/ai-elements/diff-view";
 import { VirtualizedConversation } from "@/components/ai-elements/conversation";
 import { WorkLogDiff } from "@/components/ai-elements/work-log-diff";
 import { StatusDot } from "@/components/ui/status-dot";
-import { Badge } from "@/components/ui/badge";
-import { DisclosureTrigger } from "@/components/ui/disclosure-trigger";
-import { formatElapsed } from "@/components/ui/loading-state";
+import { WorkLogActivityTrigger } from "@/components/work-log-activity-trigger";
 import { cn } from "@/lib/utils";
 import type { UiPart } from "../../ipc/session-contract";
 import { toolDiff, workLogChanges } from "../../utils/turn-diff";
@@ -24,7 +22,7 @@ export const ActivityGroup = observer(function ActivityGroup({
   parts: UiPart[];
   behavior: CanonicalTranscriptBehavior;
 }) {
-  const changes = workLogChanges(parts);
+  const changes = useMemo(() => workLogChanges(parts), [parts]);
   const hasDiff = changes.length > 0;
   const viewMode = behavior.store.workLogViewMode;
   const showDiff = hasDiff && (viewMode === "diff" || viewMode === "auto");
@@ -42,34 +40,43 @@ export const ActivityGroup = observer(function ActivityGroup({
     },
     [scrollRef],
   );
-  const workLogItems = combineSubagentWorkLogParts(parts);
-  const tools = workLogItems.filter(
-    (part) => part.kind === "tool" || part.kind === "subagent-work-log",
-  ).length;
+  const workLogItems = useMemo(() => combineSubagentWorkLogParts(parts), [parts]);
+  const tools = useMemo(
+    () =>
+      workLogItems.filter((part) => part.kind === "tool" || part.kind === "subagent-work-log")
+        .length,
+    [workLogItems],
+  );
   const reasoningParts = parts.filter(
     (part): part is Extract<UiPart, { kind: "reasoning" }> => part.kind === "reasoning",
   );
   const reasoningHasContent = reasoningParts.some((part) => Boolean(part.text.trim()));
   const reasoningIsStreaming = reasoningParts.some((part) => part.status === "streaming");
-  const toolParts = parts.filter(
-    (part): part is Extract<UiPart, { kind: "tool" }> => part.kind === "tool",
+  const toolParts = useMemo(
+    () => parts.filter((part): part is Extract<UiPart, { kind: "tool" }> => part.kind === "tool"),
+    [parts],
   );
   const activityIsRunning =
     reasoningIsStreaming || toolParts.some((part) => part.state === "running");
-  const editParts = toolParts.filter((part) => part.name === "edit" && Boolean(toolDiff(part)));
-  const editTotals = editParts.reduce(
-    (total, part) => {
-      const stats = diffStats(toolDiff(part)!);
-      return {
-        additions: total.additions + stats.additions,
-        deletions: total.deletions + stats.deletions,
-      };
-    },
-    { additions: 0, deletions: 0 },
-  );
+  const { editCount, editTotals } = useMemo(() => {
+    const editParts = toolParts.filter((part) => part.name === "edit" && Boolean(toolDiff(part)));
+    return {
+      editCount: editParts.length,
+      editTotals: editParts.reduce(
+        (total, part) => {
+          const stats = diffStats(toolDiff(part)!);
+          return {
+            additions: total.additions + stats.additions,
+            deletions: total.deletions + stats.deletions,
+          };
+        },
+        { additions: 0, deletions: 0 },
+      ),
+    };
+  }, [toolParts]);
   const label =
-    editParts.length > 0
-      ? `${editParts.length} ${editParts.length === 1 ? "edit" : "edits"} · +${editTotals.additions} −${editTotals.deletions}`
+    editCount > 0
+      ? `${editCount} ${editCount === 1 ? "edit" : "edits"} · +${editTotals.additions} −${editTotals.deletions}`
       : tools === 0
         ? "Reasoning"
         : `${tools} tool ${tools === 1 ? "call" : "calls"}`;
@@ -77,14 +84,8 @@ export const ActivityGroup = observer(function ActivityGroup({
     tools === 0
       ? "Reasoning"
       : `${tools} tool ${tools === 1 ? "call" : "calls"}${reasoningHasContent ? " · reasoning" : ""}`;
-  const elapsedMs =
-    parts.length > 0
-      ? behavior.store.workLogElapsedMsRange(parts[0]!.id, parts[parts.length - 1]!.id)
-      : undefined;
-  const elapsedLabel = elapsedMs !== undefined ? formatElapsed(elapsedMs) : undefined;
-  const activityStripLabel = elapsedLabel
-    ? `${activityCountLabel} · ${elapsedLabel}`
-    : activityCountLabel;
+  const firstPartId = parts[0]?.id;
+  const lastPartId = parts.at(-1)?.id;
   const live = behavior.store.liveWorkPossible;
   const renderWorkLogItem = (item: (typeof workLogItems)[number], omitToolDiff = false) => (
     <div className="min-w-0">
@@ -150,10 +151,13 @@ export const ActivityGroup = observer(function ActivityGroup({
             {showDiff ? (
               <>
                 <div className="sticky top-0 z-1 overflow-hidden border-b border-border bg-card">
-                  <DisclosureTrigger
-                    className="px-3 py-2 hover:bg-muted/50"
+                  <WorkLogActivityTrigger
+                    store={behavior.store}
+                    firstPartId={firstPartId}
+                    lastPartId={lastPartId}
+                    activityCountLabel={activityCountLabel}
                     open={activityStripOpen}
-                    onClick={() => {
+                    onToggle={() => {
                       if (activityStripOpen) {
                         setActivityStripOpen(false);
                         return;
@@ -162,17 +166,6 @@ export const ActivityGroup = observer(function ActivityGroup({
                       stopScroll();
                       scrollRef.current?.scrollTo({ top: 0 });
                     }}
-                    badge={
-                      <Badge variant="outline" size="xs" className="text-muted-foreground">
-                        Activity
-                      </Badge>
-                    }
-                    title={activityStripLabel}
-                    trailing={
-                      <span className="text-[11px] text-muted-foreground">
-                        {activityStripOpen ? "Hide steps" : "View steps"}
-                      </span>
-                    }
                   />
                 </div>
                 {activityStripOpen && logElement && (

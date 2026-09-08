@@ -1,10 +1,11 @@
+import { memo } from "react";
 import type { UiPart } from "../../../ipc/session-contract";
 import type { SourceLocation } from "../../../ipc/source-location";
 import { workLogChangeChunks } from "../../../utils/turn-diff";
 import { toWorkspaceRelativePath } from "../../../utils/workspace-relative-path";
 import { DiffView } from "./diff-view";
 
-export function WorkLogDiff({
+export const WorkLogDiff = memo(function WorkLogDiff({
   parts,
   streaming,
   onOpenSourceLocation,
@@ -44,4 +45,4 @@ export function WorkLogDiff({
       ))}
     </div>
   );
-}
+});
