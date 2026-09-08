@@ -1,5 +1,9 @@
 import type { Effect } from "effect";
 import type { ProjectSettings, ProjectWorkflowColor } from "../../domain/application-data";
+import type {
+  WorktreeLandingOperation,
+  WorktreeLandingSnapshot,
+} from "../../domain/worktree-landing-data";
 import type { CakeIpcClientService } from "../../ipc/client/CakeIpcClient";
 import type { EditorAnnotationSnapshot } from "../../ipc/editor-annotation";
 import type {
@@ -18,13 +22,7 @@ import type {
   SessionSnapshot,
   UtilityModel,
 } from "../../ipc/session-contract";
-import type {
-  WorktreeLandOutcome,
-  WorktreeLandRequest,
-  WorktreeRebaseOutcome,
-  WorktreeRecord,
-  WorktreeStatus,
-} from "../../ipc/worktree-contract";
+import type { WorktreeRecord } from "../../ipc/worktree-contract";
 
 export interface ClientCommandOptions {
   readonly signal?: AbortSignal;
@@ -183,26 +181,33 @@ interface ManagedWorktreeCommands {
     },
     options?: ClientCommandOptions,
   ): Promise<WorktreeRecord>;
-  status(
-    input: { workspacePath: string },
+  landing(
+    input: { workspacePath: string; sessionId: string },
     options?: ClientCommandOptions,
-  ): Promise<WorktreeStatus | undefined>;
-  prepareLanding(
-    input: { operationId: string; workspacePath: string },
+  ): Promise<WorktreeLandingSnapshot>;
+  startLanding(
+    input: {
+      operationId: string;
+      workspacePath: string;
+      sessionId: string;
+      strategy: "preserve" | "squash";
+      allowDirtyTarget: boolean;
+      commitBeforeLanding: boolean;
+    },
     options?: ClientCommandOptions,
-  ): Promise<void>;
-  land(
-    input: { operationId: string; workspacePath: string; request: WorktreeLandRequest },
+  ): Promise<WorktreeLandingOperation>;
+  retryLanding(
+    input: { operationId: string; workspacePath: string; sessionId: string },
     options?: ClientCommandOptions,
-  ): Promise<WorktreeLandOutcome>;
+  ): Promise<WorktreeLandingOperation>;
   cancelLanding(
     input: { operationId: string; workspacePath: string },
     options?: ClientCommandOptions,
   ): Promise<void>;
-  rebase(
-    input: { operationId: string; workspacePath: string },
+  startRebase(
+    input: { operationId: string; workspacePath: string; sessionId: string },
     options?: ClientCommandOptions,
-  ): Promise<WorktreeRebaseOutcome>;
+  ): Promise<WorktreeLandingOperation>;
   discard(
     input: { operationId: string; workspacePath: string; keepBranch: boolean },
     options?: ClientCommandOptions,

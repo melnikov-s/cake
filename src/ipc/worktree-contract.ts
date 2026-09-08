@@ -1,5 +1,4 @@
 import { Schema } from "effect";
-import { ipcProjectionArray } from "./projection";
 
 const bounded = (minimum: number, maximum: number) =>
   Schema.String.check(Schema.isMinLength(minimum), Schema.isMaxLength(maximum));
@@ -34,26 +33,16 @@ export const worktreeStatusSchema = Schema.Struct({
   landingQueuePosition: Schema.optionalKey(nonNegativeInt),
 });
 export type WorktreeStatus = typeof worktreeStatusSchema.Type;
-export const worktreeLandRequestSchema = Schema.Union([
-  Schema.Struct({
-    strategy: Schema.Literal("preserve"),
-    allowDirtyTarget: Schema.optional(Schema.Literal(true)),
-  }),
-  Schema.Struct({
-    strategy: Schema.Literal("squash"),
-    message: Schema.optional(bounded(1, 6_000)),
-    allowDirtyTarget: Schema.optional(Schema.Literal(true)),
-  }),
-]);
-export type WorktreeLandRequest = typeof worktreeLandRequestSchema.Type;
-export const worktreeRebaseOutcomeSchema = Schema.Union([
-  Schema.Struct({ outcome: Schema.Literal("rebased") }),
-  Schema.Struct({
-    outcome: Schema.Literal("resolving"),
-    files: ipcProjectionArray(Schema.String.check(Schema.isMaxLength(4_096)), 10_000),
-  }),
-]);
-export type WorktreeRebaseOutcome = typeof worktreeRebaseOutcomeSchema.Type;
+export type WorktreeLandRequest =
+  | { readonly strategy: "preserve"; readonly allowDirtyTarget?: true }
+  | {
+      readonly strategy: "squash";
+      readonly message?: string;
+      readonly allowDirtyTarget?: true;
+    };
+export type WorktreeRebaseOutcome =
+  | { readonly outcome: "rebased" }
+  | { readonly outcome: "resolving"; readonly files: ReadonlyArray<string> };
 export interface WorktreeLandingCoordinator {
   proposeSquashMessage(input: {
     workspacePath: string;
@@ -61,15 +50,7 @@ export interface WorktreeLandingCoordinator {
     body?: string;
   }): Promise<void>;
 }
-export const worktreeLandOutcomeSchema = Schema.Union([
-  Schema.Struct({
-    outcome: Schema.Literal("landed"),
-    commit: Schema.optional(Schema.String.check(Schema.isMaxLength(256))),
-  }),
-  Schema.Struct({
-    outcome: Schema.Literal("resolving"),
-    files: ipcProjectionArray(Schema.String.check(Schema.isMaxLength(4_096)), 10_000),
-  }),
-  Schema.Struct({ outcome: Schema.Literal("proposal") }),
-]);
-export type WorktreeLandOutcome = typeof worktreeLandOutcomeSchema.Type;
+export type WorktreeLandOutcome =
+  | { readonly outcome: "landed"; readonly commit?: string }
+  | { readonly outcome: "resolving"; readonly files: ReadonlyArray<string> }
+  | { readonly outcome: "proposal" };

@@ -21,13 +21,8 @@ import {
   slashCommandSchema,
   utilityModelSchema,
 } from "./session-contract";
-import {
-  worktreeLandOutcomeSchema,
-  worktreeLandRequestSchema,
-  worktreeRebaseOutcomeSchema,
-  worktreeRecordSchema,
-  worktreeStatusSchema,
-} from "./worktree-contract";
+import { WorktreeLandingOperation, WorktreeLandingSnapshot } from "../domain/worktree-landing-data";
+import { worktreeRecordSchema } from "./worktree-contract";
 
 const bounded = (minimum: number, maximum: number) =>
   Schema.String.check(Schema.isMinLength(minimum), Schema.isMaxLength(maximum));
@@ -417,26 +412,31 @@ export const cakeRpcPayloadSchemas = {
     ),
     firstUserMessage: Schema.optional(bounded(1, 262_144)),
   }),
-  "get-worktree-status": Schema.Struct({
+  "get-worktree-landing": Schema.Struct({
     workspacePath: stringMax(4_096),
+    sessionId: bounded(1, 256),
   }),
-  "prepare-worktree-landing": Schema.Struct({
+  "start-worktree-landing": Schema.Struct({
     ...requestBase,
     workspacePath: stringMax(4_096),
+    sessionId: bounded(1, 256),
+    strategy: Schema.Literals(["preserve", "squash"]),
+    allowDirtyTarget: Schema.Boolean,
+    commitBeforeLanding: Schema.Boolean,
   }),
-  "land-worktree": Schema.Struct({
+  "retry-worktree-landing": Schema.Struct({
     ...requestBase,
     workspacePath: stringMax(4_096),
-    request: worktreeLandRequestSchema,
+    sessionId: bounded(1, 256),
   }),
   "cancel-worktree-landing": Schema.Struct({
     ...requestBase,
     workspacePath: stringMax(4_096),
-    landingOperationId: uuid,
   }),
-  "rebase-worktree": Schema.Struct({
+  "start-worktree-rebase": Schema.Struct({
     ...requestBase,
     workspacePath: stringMax(4_096),
+    sessionId: bounded(1, 256),
   }),
   "discard-worktree": Schema.Struct({
     ...requestBase,
@@ -544,16 +544,10 @@ const cakeRpcResultSchemas = {
     ...requestBase,
     record: worktreeRecordSchema,
   }),
-  "worktree-status-loaded": Schema.Struct({
-    status: Schema.optional(worktreeStatusSchema),
-  }),
-  "worktree-landed": Schema.Struct({
+  "worktree-landing-loaded": WorktreeLandingSnapshot,
+  "worktree-landing-started": Schema.Struct({
     ...requestBase,
-    result: worktreeLandOutcomeSchema,
-  }),
-  "worktree-rebased": Schema.Struct({
-    ...requestBase,
-    result: worktreeRebaseOutcomeSchema,
+    operation: WorktreeLandingOperation,
   }),
   accepted: accepted,
   "ui-response-accepted": Schema.Struct({
@@ -594,11 +588,11 @@ export const cakeRpcSuccessSchemas = {
   "inspect-workspace": cakeRpcResultSchemas["workspace-inspection"],
   "respond-workspace-trust": cakeRpcResultSchemas.accepted,
   "create-worktree": cakeRpcResultSchemas["worktree-created"],
-  "get-worktree-status": cakeRpcResultSchemas["worktree-status-loaded"],
-  "prepare-worktree-landing": cakeRpcResultSchemas.accepted,
-  "land-worktree": cakeRpcResultSchemas["worktree-landed"],
+  "get-worktree-landing": cakeRpcResultSchemas["worktree-landing-loaded"],
+  "start-worktree-landing": cakeRpcResultSchemas["worktree-landing-started"],
+  "retry-worktree-landing": cakeRpcResultSchemas["worktree-landing-started"],
   "cancel-worktree-landing": cakeRpcResultSchemas.accepted,
-  "rebase-worktree": cakeRpcResultSchemas["worktree-rebased"],
+  "start-worktree-rebase": cakeRpcResultSchemas["worktree-landing-started"],
   "discard-worktree": cakeRpcResultSchemas.accepted,
   "open-terminal": cakeRpcResultSchemas["terminal-opened"],
   "write-terminal": cakeRpcResultSchemas.accepted,

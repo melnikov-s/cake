@@ -35,6 +35,8 @@ import { makeVsCodeServerLive } from "../services/vscode/VsCodeServerLive";
 import { makeArtifactStorageLive } from "../services/storage/ArtifactStorageLive";
 import { makeReviewStorageLive } from "../services/storage/ReviewStorageLive";
 import { ManagedWorktreesLive } from "../services/worktrees/ManagedWorktreesLive";
+import { WorktreeLandingCoordinatorLive } from "../services/worktrees/WorktreeLandingCoordinator";
+import { WorktreeLandingAgentLive } from "../layers/WorktreeLandingAgentLive";
 import { makeGitLive } from "../services/git/GitLive";
 import { makeWorktreeStorageLive } from "../services/storage/WorktreeStorageLive";
 import { makeSessionArchiveStorageLive } from "../services/storage/SessionArchiveStorageLive";
@@ -125,6 +127,7 @@ const baseLive = Layer.mergeAll(
   agentAvailabilityLive,
   electronLive,
   SubagentCoordinatorLive,
+  WorktreeLandingCoordinatorLive,
   Layer.succeed(ProjectConfiguration, { agentDirectory: cakePaths.piAgent }),
   RewordingRequestsLive,
 );
@@ -203,11 +206,16 @@ const cakeSessionLive = Layer.mergeAll(
 const workspaceFilesLive = makeWorkspaceFilesLive(cakePaths.piAgent).pipe(
   Layer.provide(runtimeLive),
 );
-const servicesWithoutScheduledWorkerLive = Layer.mergeAll(
+const sessionServicesLive = Layer.mergeAll(
   runtimeLive,
   subagentEnvironmentLive,
   cakeSessionLive,
   workspaceFilesLive,
+);
+const worktreeLandingAgentLive = WorktreeLandingAgentLive.pipe(Layer.provide(sessionServicesLive));
+const servicesWithoutScheduledWorkerLive = Layer.merge(
+  sessionServicesLive,
+  worktreeLandingAgentLive,
 );
 const scheduledMessageWorkerLive = Layer.effectDiscard(
   Effect.gen(function* () {

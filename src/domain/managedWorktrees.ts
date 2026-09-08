@@ -2,7 +2,6 @@ import { Effect, Option, Stream } from "effect";
 import { defaultProjectSettings } from "./application-data";
 import { getState, trustProject } from "./application";
 import { generateWorktreeName, utilityModelSelection } from "./utilityWork";
-import type { WorktreeLandRequest } from "../ipc/worktree-contract";
 import { PiSessions } from "../services/pi/PiSessions";
 import { ProjectAccess } from "../services/projects/ProjectAccess";
 import { Terminal } from "../services/terminal/Terminal";
@@ -77,39 +76,6 @@ export const create = Effect.fn("ManagedWorktrees.create")(function* (input: {
       Effect.mapError((cause) => policyError("ManagedWorktrees.create", cause)),
     );
   return record;
-});
-
-export const status = Effect.fn("ManagedWorktrees.status")(function* (workingDirectory: string) {
-  return yield* (yield* ManagedWorktrees).status(workingDirectory);
-});
-
-export const prepareLanding = Effect.fn("ManagedWorktrees.prepareLanding")(function* (
-  workingDirectory: string,
-  operationId: string,
-) {
-  yield* requireRecord(workingDirectory, new Set(["active"]));
-  return yield* (yield* ManagedWorktrees).prepareLanding(workingDirectory, operationId);
-});
-
-export const land = Effect.fn("ManagedWorktrees.land")(function* (
-  workingDirectory: string,
-  operationId: string,
-  request: WorktreeLandRequest,
-) {
-  yield* requireRecord(workingDirectory, new Set(["active"]));
-  return yield* (yield* ManagedWorktrees).land(workingDirectory, operationId, request);
-});
-
-export const cancelLanding = Effect.fn("ManagedWorktrees.cancelLanding")(function* (
-  workingDirectory: string,
-  operationId: string,
-) {
-  return yield* (yield* ManagedWorktrees).cancelLanding(workingDirectory, operationId);
-});
-
-export const rebase = Effect.fn("ManagedWorktrees.rebase")(function* (workingDirectory: string) {
-  yield* requireRecord(workingDirectory, new Set(["active"]));
-  return yield* (yield* ManagedWorktrees).rebase(workingDirectory);
 });
 
 export const discard = Effect.fn("ManagedWorktrees.discard")(function* (

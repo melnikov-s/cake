@@ -6,6 +6,7 @@ import type { ArtifactError } from "../../domain/artifact-data";
 import type { ElectronError } from "../../services/electron/Electron";
 import type { InlineWidgetError } from "../../services/widgets/InlineWidgets";
 import type { TerminalError } from "../../services/terminal/Terminal";
+import type { WorktreeLandingError } from "../../domain/worktree-landing-data";
 import type { ManagedWorktreeError } from "../../services/worktrees/ManagedWorktrees";
 import type { VsCodeServerError } from "../../services/vscode/VsCodeServer";
 import type { WorkspaceFileError } from "../../services/filesystem/WorkspaceFiles";
@@ -471,13 +472,13 @@ export interface CakeIpcClientService {
   >;
   readonly managedWorktrees: RpcOperations<
     | "create-worktree"
-    | "get-worktree-status"
-    | "prepare-worktree-landing"
-    | "land-worktree"
+    | "get-worktree-landing"
+    | "start-worktree-landing"
+    | "retry-worktree-landing"
     | "cancel-worktree-landing"
-    | "rebase-worktree"
+    | "start-worktree-rebase"
     | "discard-worktree",
-    ManagedWorktreeError
+    ManagedWorktreeError | WorktreeLandingError
   >;
   readonly terminals: RpcOperations<
     | "open-terminal"
@@ -920,20 +921,20 @@ export const CakeIpcClientLive = Layer.effect(
         "create-worktree": Effect.fn("CakeIpcClient.managedWorktrees.create-worktree")((payload) =>
           client("managedWorktrees.create-worktree", payload),
         ),
-        "get-worktree-status": Effect.fn("CakeIpcClient.managedWorktrees.get-worktree-status")(
-          (payload) => client("managedWorktrees.get-worktree-status", payload),
+        "get-worktree-landing": Effect.fn("CakeIpcClient.managedWorktrees.get-worktree-landing")(
+          (payload) => client("managedWorktrees.get-worktree-landing", payload),
         ),
-        "prepare-worktree-landing": Effect.fn(
-          "CakeIpcClient.managedWorktrees.prepare-worktree-landing",
-        )((payload) => client("managedWorktrees.prepare-worktree-landing", payload)),
-        "land-worktree": Effect.fn("CakeIpcClient.managedWorktrees.land-worktree")((payload) =>
-          client("managedWorktrees.land-worktree", payload),
-        ),
+        "start-worktree-landing": Effect.fn(
+          "CakeIpcClient.managedWorktrees.start-worktree-landing",
+        )((payload) => client("managedWorktrees.start-worktree-landing", payload)),
+        "retry-worktree-landing": Effect.fn(
+          "CakeIpcClient.managedWorktrees.retry-worktree-landing",
+        )((payload) => client("managedWorktrees.retry-worktree-landing", payload)),
         "cancel-worktree-landing": Effect.fn(
           "CakeIpcClient.managedWorktrees.cancel-worktree-landing",
         )((payload) => client("managedWorktrees.cancel-worktree-landing", payload)),
-        "rebase-worktree": Effect.fn("CakeIpcClient.managedWorktrees.rebase-worktree")((payload) =>
-          client("managedWorktrees.rebase-worktree", payload),
+        "start-worktree-rebase": Effect.fn("CakeIpcClient.managedWorktrees.start-worktree-rebase")(
+          (payload) => client("managedWorktrees.start-worktree-rebase", payload),
         ),
         "discard-worktree": Effect.fn("CakeIpcClient.managedWorktrees.discard-worktree")(
           (payload) => client("managedWorktrees.discard-worktree", payload),

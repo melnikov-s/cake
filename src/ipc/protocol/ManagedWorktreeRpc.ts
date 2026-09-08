@@ -1,31 +1,36 @@
 import { Rpc, RpcGroup } from "effect/unstable/rpc";
+import { WorktreeLandingError } from "../../domain/worktree-landing-data";
 import { ManagedWorktreeError } from "../../services/worktrees/ManagedWorktrees";
 import { cakeRpcPayloadSchemas, cakeRpcSuccessSchemas } from "../cake-rpc-contract";
 
-type WorktreeOperation = keyof Pick<
-  typeof cakeRpcPayloadSchemas,
-  | "create-worktree"
-  | "get-worktree-status"
-  | "prepare-worktree-landing"
-  | "land-worktree"
+type ManagedWorktreeOperation = "create-worktree" | "discard-worktree";
+type LandingOperation =
+  | "get-worktree-landing"
+  | "start-worktree-landing"
+  | "retry-worktree-landing"
   | "cancel-worktree-landing"
-  | "rebase-worktree"
-  | "discard-worktree"
->;
+  | "start-worktree-rebase";
 
-const worktreeRpc = <Type extends WorktreeOperation>(type: Type) =>
+const managedWorktreeRpc = <Type extends ManagedWorktreeOperation>(type: Type) =>
   Rpc.make(`managedWorktrees.${type}` as const, {
     payload: cakeRpcPayloadSchemas[type],
     success: cakeRpcSuccessSchemas[type],
     error: ManagedWorktreeError,
   });
 
+const landingRpc = <Type extends LandingOperation>(type: Type) =>
+  Rpc.make(`managedWorktrees.${type}` as const, {
+    payload: cakeRpcPayloadSchemas[type],
+    success: cakeRpcSuccessSchemas[type],
+    error: WorktreeLandingError,
+  });
+
 export const ManagedWorktreeRpc = RpcGroup.make(
-  worktreeRpc("create-worktree"),
-  worktreeRpc("get-worktree-status"),
-  worktreeRpc("prepare-worktree-landing"),
-  worktreeRpc("land-worktree"),
-  worktreeRpc("cancel-worktree-landing"),
-  worktreeRpc("rebase-worktree"),
-  worktreeRpc("discard-worktree"),
+  managedWorktreeRpc("create-worktree"),
+  landingRpc("get-worktree-landing"),
+  landingRpc("start-worktree-landing"),
+  landingRpc("retry-worktree-landing"),
+  landingRpc("cancel-worktree-landing"),
+  landingRpc("start-worktree-rebase"),
+  managedWorktreeRpc("discard-worktree"),
 );

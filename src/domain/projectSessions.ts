@@ -1,5 +1,5 @@
 import { ProjectSessionLifecycle } from "../services/project-sessions/ProjectSessionLifecycle";
-import { Effect, Stream } from "effect";
+import { Effect, Schedule, Stream } from "effect";
 import * as managedWorktrees from "./managedWorktrees";
 import * as subagents from "./subagents";
 import {
@@ -906,6 +906,24 @@ export const prompt = Effect.fn("ProjectSessions.prompt")(function* (
   );
   yield* publishTargetCatalogChange(promptTarget(input));
   return turnId;
+});
+
+export const awaitIdle = Effect.fn("ProjectSessions.awaitIdle")(function* (
+  target: ProjectSessionTarget,
+) {
+  const location = yield* findLocation(target);
+  const sessions = yield* PiSessions;
+  const busy = () =>
+    sessions
+      .currentStatus({
+        workingDirectory: location.workingDirectory,
+        sessionDirectory: location.sessionDirectory,
+        sessionId: target.sessionId,
+      })
+      .pipe(Effect.map((status) => status?.streaming === true));
+  yield* busy().pipe(
+    Effect.repeat({ while: (running) => running, schedule: Schedule.spaced("250 millis") }),
+  );
 });
 
 export const steer = Effect.fn("ProjectSessions.steer")(function* (

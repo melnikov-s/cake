@@ -485,12 +485,17 @@ Effect Platform's `FileSystem` owns filesystem operations and observation.
 `Git` owns Git commands and Git facts. Cake domain operations decide how
 filesystem events trigger debounced Git refreshes.
 
-Managed Worktree landing uses one process-local FIFO per Repository. A landing
+Managed Worktree landing uses one process-local FIFO per Repository. The
+`worktreeLandings` domain module owns the semantic operation and exact Project
+Session prompts; its process-scoped coordinator owns operation state and Fibers,
+so accepted work continues across renderer reload or disconnection. A landing
 reserves its slot before any agent-assisted commit or conflict-resolution turn,
 retains it while that workflow is paused, and releases it when the landing
 completes, fails, or is explicitly dismissed. Later landings remain visibly
 queued and begin automatically in acceptance order; unrelated Repositories
-remain concurrent.
+remain concurrent. Managed Worktree metadata persists the engine's paused
+strategy, allowing a later process to adopt conflict and squash-message pauses;
+queue position and active operation progress remain process-lifetime facts.
 
 `WorktreeStorage` is separate from `Git`:
 

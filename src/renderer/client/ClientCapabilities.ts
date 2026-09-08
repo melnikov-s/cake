@@ -238,34 +238,37 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
             }),
           options,
         ).then((response) => response.record),
-      status: (input, options) =>
+      landing: (input, options) =>
         execute(
-          "managedWorktrees.get-worktree-status",
-          (client) => client.managedWorktrees["get-worktree-status"]({ ...input }),
-          options,
-        ).then((response) => response.status),
-      prepareLanding: (input, options) =>
-        accepted(
-          "managedWorktrees.prepare-worktree-landing",
-          (client) =>
-            client.managedWorktrees["prepare-worktree-landing"]({
-              requestId: input.operationId,
-              workspacePath: input.workspacePath,
-            }),
-          input.operationId,
+          "managedWorktrees.get-worktree-landing",
+          (client) => client.managedWorktrees["get-worktree-landing"]({ ...input }),
           options,
         ),
-      land: (input, options) =>
+      startLanding: (input, options) =>
         execute(
-          "managedWorktrees.land-worktree",
+          "managedWorktrees.start-worktree-landing",
           (client) =>
-            client.managedWorktrees["land-worktree"]({
+            client.managedWorktrees["start-worktree-landing"]({
               requestId: input.operationId,
               workspacePath: input.workspacePath,
-              request: input.request,
+              sessionId: input.sessionId,
+              strategy: input.strategy,
+              allowDirtyTarget: input.allowDirtyTarget,
+              commitBeforeLanding: input.commitBeforeLanding,
             }),
           options,
-        ).then((response) => response.result),
+        ).then((response) => response.operation),
+      retryLanding: (input, options) =>
+        execute(
+          "managedWorktrees.retry-worktree-landing",
+          (client) =>
+            client.managedWorktrees["retry-worktree-landing"]({
+              requestId: input.operationId,
+              workspacePath: input.workspacePath,
+              sessionId: input.sessionId,
+            }),
+          options,
+        ).then((response) => response.operation),
       cancelLanding: (input, options) => {
         const requestId = crypto.randomUUID();
         return accepted(
@@ -274,22 +277,22 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
             client.managedWorktrees["cancel-worktree-landing"]({
               requestId,
               workspacePath: input.workspacePath,
-              landingOperationId: input.operationId,
             }),
           requestId,
           options,
         );
       },
-      rebase: (input, options) =>
+      startRebase: (input, options) =>
         execute(
-          "managedWorktrees.rebase-worktree",
+          "managedWorktrees.start-worktree-rebase",
           (client) =>
-            client.managedWorktrees["rebase-worktree"]({
+            client.managedWorktrees["start-worktree-rebase"]({
               requestId: input.operationId,
               workspacePath: input.workspacePath,
+              sessionId: input.sessionId,
             }),
           options,
-        ).then((response) => response.result),
+        ).then((response) => response.operation),
       discard: (input, options) =>
         accepted(
           "managedWorktrees.discard-worktree",

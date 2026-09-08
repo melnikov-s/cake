@@ -408,7 +408,9 @@ The window Store hierarchy mirrors the product surfaces:
   session identity. Cake Chat never enters this registry.
 - Each `ProjectSessionStore` owns that session's activity,
   message composer, projected scheduled-message controls, chat configuration, session-local Agent/IDE presentation preference and IDE
-  chat-drawer geometry, managed-worktree status and actions, artifacts, and message comments. Its
+  chat-drawer geometry, managed-worktree status and action presentation, artifacts, and message comments. Managed Worktree landing sequencing,
+  recovery, queue policy, and Project Session prompts are authoritative main-process domain behavior; the renderer only starts, retries, dismisses,
+  and projects those operations. Its
   `ChatStore` is the common conversation-facing state boundary: it presents the
   draft, transcript parts, streaming state, configuration, and composer actions
   consumed by the authoritative `Chat` component.
