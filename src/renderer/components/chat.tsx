@@ -134,7 +134,7 @@ export const Chat = observer(function Chat({
   const composerVisible = store.composerVisible;
   const activatingDraft = store.isDraftSession && !store.editingMessage;
   const submitMessage = async (value?: string) => {
-    if (store.canSubmitValue(value)) void transcriptRef.current?.scrollToBottom("instant");
+    if (store.canSubmitValue(value)) void transcriptRef.current?.scrollToBottom();
     await store.submit(value);
   };
   useLayoutEffect(() => {

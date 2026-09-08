@@ -6,13 +6,13 @@ import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/ses
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
-function sessionTranscript(sessionId: string, project: string, title: string) {
+function sessionTranscript(sessionId: string, project: string, title: string, count = 48) {
   const timestamp = new Date(0).toISOString();
   const entries: Array<Record<string, unknown>> = [
     { type: "session", version: 3, id: sessionId, timestamp, cwd: project },
   ];
   let parentId: string | null = null;
-  for (let index = 0; index < 48; index += 1) {
+  for (let index = 0; index < count; index += 1) {
     const role = index % 2 === 0 ? "user" : "assistant";
     const id = `${sessionId}-${index}`;
     const body = `${title} transcript item ${index}. ${"This line gives the virtualized message a distinct height. ".repeat((index % 6) + 1)}`;
@@ -90,6 +90,7 @@ async function expectRestoredAnchor(
 }
 
 for (const scenario of [
+  "reopens a large loaded session",
   "restores session position",
   "follows the full bottom and isolates nested scrolling",
 ] as const) {
@@ -138,7 +139,12 @@ for (const scenario of [
     await Promise.all([
       writeFile(
         join(sessionDirectory, `1970-01-01T00-00-00-000Z_${firstSessionId}.jsonl`),
-        sessionTranscript(firstSessionId, project, "First scroll fixture"),
+        sessionTranscript(
+          firstSessionId,
+          project,
+          "First scroll fixture",
+          scenario === "reopens a large loaded session" ? 480 : 48,
+        ),
       ),
       writeFile(
         join(sessionDirectory, `1970-01-01T00-00-01-000Z_${secondSessionId}.jsonl`),
@@ -171,6 +177,32 @@ for (const scenario of [
           ),
         )
         .toBeLessThanOrEqual(1);
+
+      if (scenario === "reopens a large loaded session") {
+        for (let repeat = 0; repeat < 3; repeat += 1) {
+          await secondSession.locator(".session-row").click();
+          await expect(secondSession).toHaveClass(/active/);
+          await expect(transcript.locator('[data-slot="transcript-item"]').last()).toContainText(
+            "Second scroll fixture",
+          );
+          await firstSession.locator(".session-row").click();
+          await expect(firstSession).toHaveClass(/active/);
+          await expect(transcript.locator('[data-slot="transcript-item"]').last()).toContainText(
+            "transcript item 479",
+          );
+          await expect
+            .poll(() =>
+              transcript.evaluate(
+                (element) => element.scrollHeight - element.clientHeight - element.scrollTop,
+              ),
+            )
+            .toBeLessThanOrEqual(1);
+          expect(await transcript.locator('[data-slot="transcript-item"]').count()).toBeLessThan(
+            40,
+          );
+        }
+        return;
+      }
 
       const composer = page.getByRole("combobox", { name: "Message" });
       await composer.fill(Array.from({ length: 30 }, (_, index) => `Line ${index + 1}`).join("\n"));
@@ -315,7 +347,7 @@ for (const scenario of [
               (element) => element.scrollHeight - element.clientHeight - element.scrollTop,
             ),
           )
-          .toBeGreaterThan(500);
+          .toBeLessThanOrEqual(1);
       } else {
         // Resizing the composer while reading history must not pull us back down.
         await composer.fill("Line one\nLine two\nLine three\nLine four");

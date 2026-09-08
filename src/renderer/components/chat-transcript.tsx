@@ -9,7 +9,7 @@ import {
   type ReactNode,
   type Ref,
 } from "react";
-import { useStickToBottom, type StickToBottomInstance } from "use-stick-to-bottom";
+import { useStickToBottom } from "use-stick-to-bottom";
 import { untracked } from "r-state-tree";
 import { observer } from "r-state-tree/react";
 import { cn } from "@/lib/utils";
@@ -52,7 +52,9 @@ export {
   type TranscriptSelectionCapture,
 } from "./chat-transcript-parts";
 
-export type ChatTranscriptHandle = Pick<StickToBottomInstance, "scrollToBottom">;
+export interface ChatTranscriptHandle {
+  scrollToBottom(): void;
+}
 
 const defaultTranscriptBehavior: ChatTranscriptBehavior = {};
 
@@ -84,17 +86,35 @@ export const ChatTranscript = observer(function ChatTranscript({
   );
   const [draftAnchor, setDraftAnchor] = useState<MessageCommentAnchorRect>();
   const [annotationDraft, setAnnotationDraft] = useState<TranscriptSelectionCapture>();
-  const { scrollRef, contentRef, scrollToBottom, stopScroll } = useStickToBottom({
+  const {
+    scrollRef,
+    contentRef,
+    scrollToBottom: scrollCompactToBottom,
+    stopScroll,
+  } = useStickToBottom({
     initial: restoredScrollPosition || store.messageNavigationRequest ? false : "instant",
     resize: "instant",
   });
+  const atBottom = useRef(!restoredScrollPosition || restoredScrollPosition.kind === "bottom");
+  const scrollToBottom = useCallback(() => {
+    if (virtualized)
+      virtuosoRef.current?.scrollToIndex({ index: "LAST", align: "end", behavior: "auto" });
+    else void scrollCompactToBottom("instant");
+  }, [scrollCompactToBottom, virtualized]);
   useImperativeHandle(ref, () => ({ scrollToBottom }), [scrollToBottom]);
+  const handleBottomStateChange = useCallback((value: boolean) => {
+    atBottom.current = value;
+  }, []);
+  const handleTotalHeightChange = useCallback(() => {
+    if (atBottom.current)
+      virtuosoRef.current?.scrollToIndex({ index: "LAST", align: "end", behavior: "auto" });
+  }, []);
   const attachScroller = useCallback(
     (element: HTMLDivElement | null) => {
-      scrollRef(element);
+      if (!virtualized) scrollRef(element);
       setScroller(element);
     },
-    [scrollRef],
+    [scrollRef, virtualized],
   );
   const parts = store.parts;
   const visibleParts = store.hideThinking
@@ -144,25 +164,21 @@ export const ChatTranscript = observer(function ChatTranscript({
             : item.id === restoredScrollPosition.messageId,
         )
       : -1;
-  const restoredItemLocation =
-    restoredScrollPosition?.kind === "top"
-      ? { index: 0, align: "start" as const }
-      : restoredScrollPosition?.kind === "bottom"
-        ? { index: items.length - 1, align: "end" as const }
-        : restoredScrollPosition?.kind === "message" && restoredMessageItemIndex >= 0
-          ? {
-              index: restoredMessageItemIndex,
-              align: "start" as const,
-              offset: -restoredScrollPosition.offset,
-            }
-          : undefined;
-  const openingItemLocation =
-    messageNavigationItemIndex >= 0
-      ? undefined
-      : (restoredItemLocation ?? { index: items.length - 1, align: "end" as const });
+  const itemCount = items.length;
+  const openingItemLocation = useMemo(() => {
+    if (messageNavigationItemIndex >= 0) return undefined;
+    if (restoredScrollPosition?.kind === "top") return { index: 0, align: "start" as const };
+    if (restoredScrollPosition?.kind === "message" && restoredMessageItemIndex >= 0)
+      return {
+        index: restoredMessageItemIndex,
+        align: "start" as const,
+        offset: -restoredScrollPosition.offset,
+      };
+    return { index: itemCount - 1, align: "end" as const };
+  }, [itemCount, messageNavigationItemIndex, restoredMessageItemIndex, restoredScrollPosition]);
   useLayoutEffect(() => {
     if (!messageNavigationRequest || messageNavigationItemIndex < 0) return;
-    stopScroll();
+    if (!virtualized) stopScroll();
     if (virtualized)
       virtuosoRef.current?.scrollToIndex({
         index: messageNavigationItemIndex,
@@ -174,7 +190,7 @@ export const ChatTranscript = observer(function ChatTranscript({
         ?.querySelector<HTMLElement>(`[data-transcript-item-index="${messageNavigationItemIndex}"]`)
         ?.scrollIntoView({ block: "center" });
   }, [messageNavigationItemIndex, messageNavigationRequest, scroller, stopScroll, virtualized]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!scroller) return;
     let pendingPosition = untracked(() => store.transcriptScrollPosition);
     let saveTimer: ReturnType<typeof setTimeout> | undefined;
@@ -201,6 +217,7 @@ export const ChatTranscript = observer(function ChatTranscript({
     };
     const captureAndSchedule = () => {
       pendingPosition = captureScrollPosition();
+      if (pendingPosition) atBottom.current = pendingPosition.kind === "bottom";
       if (!pendingPosition) return;
       if (saveTimer !== undefined) clearTimeout(saveTimer);
       saveTimer = setTimeout(commitScrollPosition, 100);
@@ -209,7 +226,6 @@ export const ChatTranscript = observer(function ChatTranscript({
     return () => {
       scroller.removeEventListener("scroll", captureAndSchedule);
       if (saveTimer !== undefined) clearTimeout(saveTimer);
-      pendingPosition = captureScrollPosition() ?? pendingPosition;
       if (pendingPosition) store.setTranscriptScrollPosition(pendingPosition);
     };
   }, [scroller, store]);
@@ -336,7 +352,7 @@ export const ChatTranscript = observer(function ChatTranscript({
         ref={attachScroller}
         className="transcript h-full w-full max-w-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable_both-edges] [overflow-anchor:none]"
       >
-        <div ref={contentRef} className="min-w-0">
+        <div ref={virtualized ? undefined : contentRef} className="min-w-0">
           {visibleParts.length === 0 ? (
             <Conversation className="px-6 pt-[42px] pb-[210px] max-[620px]:px-4">
               {empty}
@@ -364,7 +380,9 @@ export const ChatTranscript = observer(function ChatTranscript({
                 context={{ footer, error }}
                 computeItemKey={(_index, item) => item.id}
                 initialTopMostItemIndex={openingItemLocation}
-                followOutput={false}
+                followOutput="auto"
+                atBottomStateChange={handleBottomStateChange}
+                totalListHeightChanged={handleTotalHeightChange}
                 components={{ List: TranscriptList, Footer: ChatTranscriptFooter }}
                 itemContent={(index, item) => renderItem(item, index)}
               />

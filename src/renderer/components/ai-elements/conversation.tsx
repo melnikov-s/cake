@@ -5,6 +5,7 @@
  */
 import {
   forwardRef,
+  useState,
   type ComponentProps,
   type ForwardedRef,
   type AriaRole,
@@ -47,6 +48,7 @@ export interface VirtualizedConversationProps<Item, Context = unknown> {
   customScrollParent?: HTMLElement;
   atBottomStateChange?: (atBottom: boolean) => void;
   followOutput?: FollowOutput;
+  totalListHeightChanged?: (height: number) => void;
   initialTopMostItemIndex?: IndexLocationWithAlign | number;
   rangeChanged?: VirtuosoProps<Item, unknown>["rangeChanged"];
   scrollerRef?: VirtuosoProps<Item, unknown>["scrollerRef"];
@@ -65,6 +67,7 @@ function VirtualizedConversationInner<Item, Context>(
     customScrollParent,
     atBottomStateChange,
     followOutput,
+    totalListHeightChanged,
     initialTopMostItemIndex,
     rangeChanged,
     scrollerRef,
@@ -73,6 +76,8 @@ function VirtualizedConversationInner<Item, Context>(
   }: VirtualizedConversationProps<Item, Context>,
   ref: ForwardedRef<VirtualizedConversationHandle>,
 ) {
+  // Initial positioning belongs to this mount; subsequent navigation uses the handle.
+  const [initialLocation] = useState(initialTopMostItemIndex);
   return (
     <Virtuoso
       ref={ref}
@@ -86,7 +91,8 @@ function VirtualizedConversationInner<Item, Context>(
       {...(customScrollParent === undefined ? {} : { customScrollParent })}
       {...(atBottomStateChange === undefined ? {} : { atBottomStateChange })}
       {...(followOutput === undefined ? {} : { followOutput })}
-      {...(initialTopMostItemIndex === undefined ? {} : { initialTopMostItemIndex })}
+      {...(totalListHeightChanged === undefined ? {} : { totalListHeightChanged })}
+      {...(initialLocation === undefined ? {} : { initialTopMostItemIndex: initialLocation })}
       {...(rangeChanged === undefined ? {} : { rangeChanged })}
       {...(scrollerRef === undefined ? {} : { scrollerRef })}
       {...(role === undefined ? {} : { role })}
