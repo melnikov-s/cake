@@ -68,10 +68,10 @@ describe("ProjectWorkbenchStore", () => {
         relocate,
       },
     } as unknown as SessionRegistryStore;
-    const noteManagedWorktree = vi.fn();
+    const notePendingManagedWorktree = vi.fn();
     const catalog = {
       projectOfManagedWorktree: vi.fn(() => undefined),
-      noteManagedWorktree,
+      notePendingManagedWorktree,
     } as unknown as SessionCatalogStore;
     const record = {
       projectPath: "/project",

@@ -150,7 +150,7 @@ describe("Project Session catalog to sidebar synchronization", () => {
     });
 
     await act(async () => {
-      root.sessionCatalogStore.noteManagedWorktree({
+      root.sessionCatalogStore.notePendingManagedWorktree({
         projectPath,
         worktreePath,
         branch: "agent/sidebar-sync-generated",

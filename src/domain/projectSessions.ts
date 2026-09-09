@@ -327,6 +327,37 @@ const catalogEventForChange = Effect.fn("ProjectSessions.catalogEventForChange")
   query: ProjectSessionCatalogQuery,
   change: SessionCatalogChange,
 ) {
+  if (change._tag === "ManagedWorktreeChanged") {
+    if (query.resolved) return undefined;
+    const environment = yield* ProjectSessionEnvironment;
+    const location = (yield* environment.locations().pipe(asError("catalog"))).find(
+      (candidate) =>
+        candidate.projectPath === query.projectPath &&
+        candidate.workingDirectory === change.workingDirectory,
+    );
+    if (!location) return undefined;
+    const state = yield* getState();
+    const unread = new Set(state.unreadSessionIds);
+    const families = yield* (yield* SessionFamilyStorage).list().pipe(asError("catalog"));
+    const familyByMember = new Map(
+      families.flatMap((family) => [
+        [family.parentSessionId, family] as const,
+        ...family.children.map((child) => [child.sessionId, family] as const),
+      ]),
+    );
+    const sessions = yield* (yield* PiSessions)
+      .catalog({
+        workingDirectory: location.workingDirectory,
+        sessionDirectory: location.sessionDirectory,
+      })
+      .pipe(
+        Stream.map((item) => summary(item, location, false, unread, familyByMember.get(item.id))),
+        Stream.runCollect,
+        Effect.map((items) => Array.from(items)),
+        asError("catalog"),
+      );
+    return { _tag: "UpsertedBatch", sessions } as const;
+  }
   if (change._tag === "ProjectSessionRemoved")
     return { _tag: "Removed", sessionId: change.sessionId } as const;
   if (change._tag === "ProjectSessionStatusChanged") {

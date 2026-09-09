@@ -12,6 +12,7 @@ import {
   WorktreeLandingCoordinator,
   WorktreeLandingCoordinatorLive,
 } from "../../../src/services/worktrees/WorktreeLandingCoordinator";
+import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import {
   ManagedWorktreeError,
   ManagedWorktrees,
@@ -52,6 +53,7 @@ function services(options: {
   promptWait?: Effect.Effect<void>;
   prepare?: Effect.Effect<void, ManagedWorktreeError>;
   cancel?: (onlyIfQueued: boolean | undefined) => Effect.Effect<void, ManagedWorktreeError>;
+  onCatalogChange?: (workingDirectory: string) => void;
 }) {
   const managed = ManagedWorktrees.of({
     records: () => Effect.succeed([record]),
@@ -90,6 +92,17 @@ function services(options: {
     Layer.succeed(ManagedWorktrees, managed),
     Layer.succeed(WorktreeLandingAgent, agent),
     WorktreeLandingCoordinatorLive,
+    Layer.succeed(
+      SessionCatalogChanges,
+      SessionCatalogChanges.of({
+        publish: (change) =>
+          Effect.sync(() => {
+            if (change._tag === "ManagedWorktreeChanged")
+              options.onCatalogChange?.(change.workingDirectory);
+          }),
+        initialThenChanges: (initial) => initial,
+      }),
+    ),
   );
 }
 
@@ -108,9 +121,11 @@ describe("WorktreeLandings", () => {
     const events: string[] = [];
     let status = { ...baseStatus(), dirtyCount: 2, aheadCount: 0 };
     let promptText = "";
+    const projectedWorktrees: string[] = [];
     const layer = services({
       status: () => status,
       events,
+      onCatalogChange: (workingDirectory) => projectedWorktrees.push(workingDirectory),
       prompt: (text) => {
         promptText = text;
         status = baseStatus();
@@ -130,6 +145,7 @@ describe("WorktreeLandings", () => {
         expect(events).toEqual(["prepare", "prompt", "land"]);
         expect(promptText).toContain("commit all intended work");
         expect(promptText).toContain("Do not merge, rebase, push");
+        expect(projectedWorktrees).toEqual([workspacePath]);
       }).pipe(Effect.provide(layer)),
     );
   });

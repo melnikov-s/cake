@@ -743,15 +743,14 @@ export class RootStore extends Store<{
         this.projectWorkbenchStore.sessionCreationChoice(sessionId),
       draftActivationCandidates: (sessionId) =>
         this.projectWorkbenchStore.draftActivationCandidates(sessionId),
-      onWorktreeLanded: (record) => {
-        this.sessionCatalogStore.noteManagedWorktree(record);
+      onWorktreeLanded: () => {
         this.toastStore.show({
           tone: "info",
           title: "Worktree merged",
           message: "Your work was merged back into the project.",
         });
       },
-      onWorktreeDiscarded: (record) => this.sessionCatalogStore.noteManagedWorktree(record),
+      onWorktreeDiscarded: () => undefined,
       retirement: this.workingDirectoryRetirementStore,
       onResolveWorktree: (workspacePath, options) =>
         this.projectWorkbenchStore.resolveWorktreeWorkspace(workspacePath, options),

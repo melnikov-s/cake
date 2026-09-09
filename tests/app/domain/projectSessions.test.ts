@@ -870,6 +870,68 @@ describe("Project Sessions domain", () => {
     );
   });
 
+  it.effect("projects a managed worktree lifecycle change without restarting the catalog", () => {
+    const activeWorktree: WorktreeRecord = {
+      projectPath: "/project",
+      worktreePath: "/worktree",
+      branch: "agent/change",
+      baseBranch: "main",
+      state: "active",
+      createdAt: "2026-01-01T00:00:00.000Z",
+    };
+    const location: ProjectSessionLocation = {
+      projectPath: "/project",
+      projectName: "Project",
+      workingDirectory: "/worktree",
+      sessionDirectory: "/sessions",
+      resolvedSessionDirectory: "/resolved-sessions",
+      managedWorktree: activeWorktree,
+    };
+    return Effect.gen(function* () {
+      const catalogs = yield* SessionCatalogChanges;
+      const updates = yield* projectSessions.observeCatalog({
+        projectPath: "/project",
+        resolved: false,
+      });
+      const ready = yield* Deferred.make<void>();
+      const fiber = yield* updates.pipe(
+        Stream.tap((update) =>
+          update.revision === 1 ? Deferred.succeed(ready, undefined) : Effect.void,
+        ),
+        Stream.take(2),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      yield* Deferred.await(ready);
+      Object.assign(location, { managedWorktree: { ...activeWorktree, state: "landed" } });
+      yield* catalogs.publish({
+        _tag: "ManagedWorktreeChanged",
+        workingDirectory: "/worktree",
+      });
+
+      const observed = Array.from(yield* Fiber.join(fiber));
+      const event = observed[1];
+      assert.equal(event?._tag, "Event");
+      if (event?._tag !== "Event" || event.event._tag !== "UpsertedBatch") return;
+      assert.equal(event.event.sessions[0]?.managedWorktree?.state, "landed");
+    }).pipe(
+      Effect.provide(
+        makeLayer(undefined, {
+          locations: [location],
+          catalog: () =>
+            Stream.make({
+              id: "session-1",
+              title: "Session",
+              created: "2026-01-01T00:00:00.000Z",
+              modified: "2026-01-01T00:00:00.000Z",
+              messageCount: 1,
+              resolved: false,
+            }),
+        }),
+      ),
+    );
+  });
+
   it.effect("moves a resolved session without restarting the active metadata stream", () => {
     return Effect.gen(function* () {
       const updates = yield* projectSessions.observeCatalog({

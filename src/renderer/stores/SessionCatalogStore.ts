@@ -30,7 +30,21 @@ export class SessionCatalogStore extends Store<{
   model: SessionCatalog;
   pendingSessions?(): readonly PendingSessionSummary[];
 }> {
-  private readonly managedWorktreeOverrides = observable(new Map<string, WorktreeRecord>());
+  /** Bridges newly-created worktrees only until their first authoritative session projection. */
+  private readonly pendingManagedWorktrees = observable(new Map<string, WorktreeRecord>());
+
+  constructor(props: SessionCatalogStore["props"]) {
+    super(props);
+    this.reaction(
+      () =>
+        this.props.model.sessions.flatMap((session) =>
+          session.managedWorktree ? [session.managedWorktree.worktreePath] : [],
+        ),
+      (projectedPaths) => {
+        for (const path of projectedPaths) this.pendingManagedWorktrees.delete(path);
+      },
+    );
+  }
 
   @computed
   get sessions(): ReadonlyArray<SessionSummary | PendingSessionSummary> {
@@ -81,8 +95,8 @@ export class SessionCatalogStore extends Store<{
     return this.props.model.resolvedHasMoreByProject[projectPath] === true;
   }
 
-  noteManagedWorktree(record: WorktreeRecord) {
-    this.managedWorktreeOverrides.set(record.worktreePath, record);
+  notePendingManagedWorktree(record: WorktreeRecord) {
+    this.pendingManagedWorktrees.set(record.worktreePath, record);
   }
 
   @computed
@@ -93,7 +107,8 @@ export class SessionCatalogStore extends Store<{
       if (record && !indexed.has(session.workingDirectory))
         indexed.set(session.workingDirectory, record);
     }
-    for (const [path, record] of this.managedWorktreeOverrides) indexed.set(path, record);
+    for (const [path, record] of this.pendingManagedWorktrees)
+      if (!indexed.has(path)) indexed.set(path, record);
     return indexed;
   }
 

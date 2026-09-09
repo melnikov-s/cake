@@ -47,6 +47,8 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
   stalled = false;
 
   private operationId: string | undefined;
+  /** The renderer intent remains valid even if another observer acknowledges main's terminal operation. */
+  private startedLandingOperationId: string | undefined;
   private pendingResolveAfterLanding = false;
   private readonly refreshingWorkspacePaths = new Set<string>();
   private observedWorkspacePath: string | undefined;
@@ -105,6 +107,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
       this.status = undefined;
       this.phase = "idle";
       this.operationId = undefined;
+      this.startedLandingOperationId = undefined;
       this.pendingResolveAfterLanding = false;
       this.stalled = false;
       this.error = undefined;
@@ -131,9 +134,11 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     this.phase = (this.status?.dirtyCount ?? 0) > 0 ? "committing" : "landing";
     this.stalled = false;
     this.error = undefined;
+    const operationId = crypto.randomUUID();
+    this.startedLandingOperationId = operationId;
     try {
       const operation = await this.managedWorktrees.startLanding({
-        operationId: crypto.randomUUID(),
+        operationId,
         workspacePath,
         sessionId,
         strategy: "preserve",
@@ -141,6 +146,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
         commitBeforeLanding: true,
       });
       this.applyOperationPresentation(operation);
+      await this.refresh(workspacePath);
     } catch (error) {
       this.fail(error);
       throw error;
@@ -154,9 +160,11 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     this.phase = "landing";
     this.stalled = false;
     this.error = undefined;
+    const operationId = crypto.randomUUID();
+    this.startedLandingOperationId = operationId;
     try {
       const operation = await this.managedWorktrees.startLanding({
-        operationId: crypto.randomUUID(),
+        operationId,
         workspacePath,
         sessionId,
         strategy: request.strategy,
@@ -164,6 +172,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
         commitBeforeLanding: false,
       });
       this.applyOperationPresentation(operation);
+      await this.refresh(workspacePath);
     } catch (error) {
       this.fail(error);
       throw error;
@@ -221,6 +230,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
       });
       if (this.operationId !== operationId) return;
       this.operationId = undefined;
+      this.startedLandingOperationId = undefined;
       this.phase = "idle";
       this.stalled = false;
       this.pendingResolveAfterLanding = false;
@@ -280,6 +290,12 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     workspacePath: string,
   ) {
     if (!operation) {
+      if (this.status?.record.state === "landed" && this.startedLandingOperationId) {
+        await this.finishLanded(workspacePath, this.startedLandingOperationId);
+        return;
+      }
+      // A snapshot requested concurrently with start may predate main's accepted operation.
+      if (this.startedLandingOperationId && this.status?.record.state !== "landed") return;
       if (this.phase !== "discarding" && this.phase !== "resolving-session") this.phase = "idle";
       this.operationId = undefined;
       this.stalled = false;
@@ -344,19 +360,24 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     this.phase = "idle";
     this.stalled = false;
     this.pendingResolveAfterLanding = false;
+    this.startedLandingOperationId = undefined;
     if (currentStatus) {
       const record = { ...currentStatus.record, state: "landed" as const };
       Reflect.deleteProperty(record, "pendingStrategy");
       this.status = { ...currentStatus, merged: true, record };
       await this.props.onLanded(record);
     }
-    await this.managedWorktrees.cancelLanding({
-      operationId,
-      workspacePath,
-      intent: "acknowledge",
-    });
     this.operationId = undefined;
-    if (resolveAfterLanding && this.props.workspacePath() === workspacePath) await this.resolve();
+    await Promise.all([
+      this.managedWorktrees.cancelLanding({
+        operationId,
+        workspacePath,
+        intent: "acknowledge",
+      }),
+      resolveAfterLanding && this.props.workspacePath() === workspacePath
+        ? this.resolve()
+        : Promise.resolve(),
+    ]);
   }
 
   private assertCanStart() {
@@ -368,6 +389,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     if (this.signal.aborted) return;
     this.error = describeError(error).message;
     this.phase = "idle";
+    this.startedLandingOperationId = undefined;
     this.pendingResolveAfterLanding = false;
     this.stalled = false;
   }

@@ -115,6 +115,47 @@ describe("WorktreeStore", () => {
     }
   });
 
+  it("finishes merge-and-resolve from landed status even when terminal acknowledgement is unavailable", async () => {
+    let started = false;
+    const landedStatus = {
+      ...worktreeStatus("/worktree"),
+      record: { ...worktreeStatus("/worktree").record, state: "landed" as const },
+      merged: true,
+    };
+    const onLanded = vi.fn();
+    const onResolveWorkspace = vi.fn();
+    const cancelLanding = vi.fn(async () => {
+      throw new Error("acknowledgement transport failed");
+    });
+    const { root, subject: store } = mountWithClient(
+      createStore(WorktreeStore, { ...props(), onLanded, onResolveWorkspace }),
+      {
+        managedWorktrees: {
+          landing: vi.fn(async () =>
+            started ? { status: landedStatus } : { status: worktreeStatus("/worktree") },
+          ),
+          startLanding: vi.fn(async () => {
+            started = true;
+            return operation("waiting");
+          }),
+          cancelLanding,
+        },
+      } as unknown as Client,
+    );
+    try {
+      await vi.waitFor(() => expect(store.status).toBeDefined());
+      await store.commitAndMerge(false, true);
+
+      expect(onLanded).toHaveBeenCalledWith(expect.objectContaining({ state: "landed" }));
+      expect(onResolveWorkspace).toHaveBeenCalledWith("/worktree");
+      expect(cancelLanding).toHaveBeenCalledWith(
+        expect.objectContaining({ intent: "acknowledge" }),
+      );
+    } finally {
+      root[Symbol.dispose]();
+    }
+  });
+
   it("projects authoritative pause and completion while retaining window-local resolve choice", async () => {
     vi.useFakeTimers();
     let current: WorktreeLandingOperation | undefined;

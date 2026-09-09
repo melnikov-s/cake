@@ -19,7 +19,7 @@ const worktree: WorktreeRecord = {
 describe("WorktreeCreationStore", () => {
   it("uses a saved draft's session name for its new worktree", async () => {
     const create = vi.fn(async () => worktree);
-    const noteManagedWorktree = vi.fn();
+    const notePendingManagedWorktree = vi.fn();
     const relocateTemporarySession = vi.fn();
     const operations = mount(createStore(SessionOperationCoordinatorStore));
     const client = { managedWorktrees: { create } } as unknown as Client;
@@ -28,7 +28,7 @@ describe("WorktreeCreationStore", () => {
         operations,
         catalog: {
           managedWorktree: vi.fn(),
-          noteManagedWorktree,
+          notePendingManagedWorktree,
         } as unknown as SessionCatalogStore,
         relocateTemporarySession,
         reportError: vi.fn(),
@@ -55,7 +55,7 @@ describe("WorktreeCreationStore", () => {
         worktreeName: "planned-work",
         firstUserMessage: "Implement the planned work",
       });
-      expect(noteManagedWorktree).toHaveBeenCalledWith(worktree);
+      expect(notePendingManagedWorktree).toHaveBeenCalledWith(worktree);
       expect(relocateTemporarySession).toHaveBeenCalledWith("draft-1", worktree.worktreePath);
     } finally {
       mounted.root[Symbol.dispose]();

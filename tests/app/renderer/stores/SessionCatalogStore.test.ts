@@ -89,16 +89,27 @@ describe("SessionCatalogStore indexes", () => {
     store[Symbol.dispose]();
   });
 
-  it("lets a renderer-local managed-worktree update override the projected record", () => {
-    const model = SessionCatalog.create({
-      sessions: [session("session", "2026-01-01T00:00:00.000Z", worktree())],
+  it("indexes a pending session's managed worktree before its catalog projection arrives", () => {
+    const model = SessionCatalog.create({ sessions: [] });
+    const pendingWorktree = worktree();
+    const pending = [
+      {
+        ...session("session", "2026-01-01T00:00:00.000Z", pendingWorktree),
+        pending: true as const,
+      },
+    ];
+    const store = mount(
+      createStore(SessionCatalogStore, { model, pendingSessions: () => pending }),
+    );
+    store.notePendingManagedWorktree(pendingWorktree);
+
+    expect(store.managedWorktree("/worktree")).toBe(pendingWorktree);
+
+    applySnapshot(model, {
+      sessions: [session("session", "2026-01-01T00:00:00.000Z", worktree("landed"))],
     });
-    const store = mount(createStore(SessionCatalogStore, { model }));
-    const landed = worktree("landed");
-
-    store.noteManagedWorktree(landed);
-
-    expect(store.managedWorktree("/worktree")).toBe(landed);
+    applySnapshot(model, { sessions: [] });
+    expect(store.managedWorktree("/worktree")).toBeUndefined();
     store[Symbol.dispose]();
   });
 

@@ -70,7 +70,7 @@ export class WorktreeCreationStore extends Store<WorktreeCreationStoreProps> {
         worktreeName: options?.name,
       });
       if (this.signal.aborted) throw new Error("Worktree creation was cancelled.");
-      this.props.catalog.noteManagedWorktree(record);
+      this.props.catalog.notePendingManagedWorktree(record);
       return record;
     } finally {
       this.props.operations.finish(operationId);
@@ -114,7 +114,7 @@ export class WorktreeCreationStore extends Store<WorktreeCreationStoreProps> {
           firstUserMessage: firstUserMessage.trim() || undefined,
         });
         if (this.signal.aborted) return false;
-        this.props.catalog.noteManagedWorktree(record);
+        this.props.catalog.notePendingManagedWorktree(record);
         workspacePath = record.worktreePath;
       }
       if (this.signal.aborted) return false;

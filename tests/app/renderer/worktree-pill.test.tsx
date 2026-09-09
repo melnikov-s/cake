@@ -202,6 +202,20 @@ describe("WorktreePill", () => {
     expect(container.querySelectorAll("button")).toHaveLength(0);
   });
 
+  it("does not let stale action status mask the catalog's landed record", () => {
+    render(actionStore({ aheadCount: 1, dirtyCount: 0 }), {
+      projectPath: "/project",
+      worktreePath: "/worktree",
+      branch: "agent/session",
+      baseBranch: "main",
+      state: "landed",
+      createdAt: new Date(0).toISOString(),
+    });
+
+    expect(button("Merge")).toBeUndefined();
+    expect(button("Resolve")).toBeDefined();
+  });
+
   it("keeps merge actions visible but disabled when there is nothing to land", () => {
     vi.useFakeTimers();
     render(actionStore({ aheadCount: 0, dirtyCount: 0 }));

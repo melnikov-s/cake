@@ -2,6 +2,7 @@ import { Cause, Effect, FiberMap, SubscriptionRef } from "effect";
 import type { WorktreeLandRequest, WorktreeStatus } from "../ipc/worktree-contract";
 import { ManagedWorktrees } from "../services/worktrees/ManagedWorktrees";
 import { WorktreeLandingAgent } from "../services/worktrees/WorktreeLandingAgent";
+import { SessionCatalogChanges } from "../services/session-catalogs/SessionCatalogChanges";
 import { WorktreeLandingCoordinator } from "../services/worktrees/WorktreeLandingCoordinator";
 import {
   WorktreeLandingError,
@@ -130,7 +131,7 @@ const performLanding: (
 ) => Effect.Effect<
   void,
   WorktreeLandingError,
-  ManagedWorktrees | WorktreeLandingAgent | WorktreeLandingCoordinator
+  ManagedWorktrees | WorktreeLandingAgent | WorktreeLandingCoordinator | SessionCatalogChanges
 > = Effect.fn("WorktreeLandings.performLanding")(function* (operation) {
   const worktrees = yield* ManagedWorktrees;
   yield* update(operation.workspacePath, operation.operationId, (current) => ({
@@ -151,6 +152,10 @@ const performLanding: (
       phase: "landed",
       pauseReason: undefined,
     }));
+    yield* (yield* SessionCatalogChanges).publish({
+      _tag: "ManagedWorktreeChanged",
+      workingDirectory: operation.workspacePath,
+    });
     return;
   }
   const status = yield* requireStatus(operation.workspacePath);
@@ -278,7 +283,7 @@ const run = Effect.fn("WorktreeLandings.run")(function* (
   worker: Effect.Effect<
     void,
     WorktreeLandingError,
-    ManagedWorktrees | WorktreeLandingAgent | WorktreeLandingCoordinator
+    ManagedWorktrees | WorktreeLandingAgent | WorktreeLandingCoordinator | SessionCatalogChanges
   >,
 ) {
   const coordinator = yield* WorktreeLandingCoordinator;
