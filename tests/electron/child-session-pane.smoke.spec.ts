@@ -132,8 +132,43 @@ test("opens family children beside their parent and reuses the child pane", asyn
       },
     });
     await expect(panes).toHaveCount(2);
-    await expect(panes.nth(1)).toHaveAttribute("data-session-id", firstChildSessionId);
-    await expect(panes.nth(1)).toHaveAttribute("data-focused", "true");
+    const parentPane = panes.filter({ has: page.getByText("Parent", { exact: true }) });
+    const childPane = panes.filter({ has: page.getByText("First child", { exact: true }) });
+    const parentInput = parentPane.getByLabel("Message");
+    const childInput = childPane.getByLabel("Message");
+    await expect(childPane).toHaveAttribute("data-session-id", firstChildSessionId);
+    await expect(childPane).toHaveAttribute("data-focused", "true");
+    await expect(
+      page.locator(`.session-item[data-session-id="${firstChildSessionId}"]`),
+    ).toHaveClass(/active/);
+
+    // A stale async focus restoration in either mounted chat must not become pane-selection
+    // authority. Before this regression, alternating programmatic focus changed the shell
+    // selection on every focus event and could make the parent and child flash in the sidebar.
+    await page.evaluate(
+      ({ parentSessionId, childSessionId }) => {
+        const input = (sessionId: string) =>
+          document.querySelector<HTMLTextAreaElement>(
+            `[data-slot="session-pane"][data-session-id="${sessionId}"] textarea`,
+          )!;
+        for (let index = 0; index < 10; index += 1) {
+          input(parentSessionId).focus();
+          input(childSessionId).focus();
+        }
+        input(parentSessionId).focus();
+      },
+      { parentSessionId, childSessionId: firstChildSessionId },
+    );
+    await expect(childPane).toHaveAttribute("data-focused", "true");
+    await expect(
+      page.locator(`.session-item[data-session-id="${firstChildSessionId}"]`),
+    ).toHaveClass(/active/);
+
+    // Pointer and keyboard traversal remain explicit user intents that select a pane.
+    await parentInput.click();
+    await expect(parentPane).toHaveAttribute("data-focused", "true");
+    await childInput.click();
+    await expect(childPane).toHaveAttribute("data-focused", "true");
 
     await emitRendererEvent(application, {
       type: "project-session-control-requested",

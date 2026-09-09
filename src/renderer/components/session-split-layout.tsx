@@ -1,4 +1,11 @@
-import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { observer } from "r-state-tree/react";
 import { CloseIcon, SplitDownIcon, SplitRightIcon } from "@/components/ui/icons";
 import { IconButton } from "@/components/ui/icon-button";
@@ -21,6 +28,8 @@ interface SessionSplitLayoutProps {
   onFocus(paneId: string): void;
   onSplit(axis: SessionSplitAxis): void;
   onClose(paneId: string): void;
+  /** Shared by recursive nodes to distinguish keyboard traversal from programmatic focus. */
+  keyboardFocusIntent?: { current: boolean };
 }
 
 export const SessionSplitLayout = observer(function SessionSplitLayout({
@@ -33,9 +42,30 @@ export const SessionSplitLayout = observer(function SessionSplitLayout({
   onFocus,
   onSplit,
   onClose,
+  keyboardFocusIntent: inheritedKeyboardFocusIntent,
 }: SessionSplitLayoutProps) {
   const splitRef = useRef<HTMLDivElement>(null);
+  const localKeyboardFocusIntent = useRef(false);
+  const keyboardFocusIntent = inheritedKeyboardFocusIntent ?? localKeyboardFocusIntent;
   const [splitSize, setSplitSize] = useState(1_000);
+
+  useEffect(() => {
+    if (inheritedKeyboardFocusIntent) return;
+    let clearIntent: number | undefined;
+    const recordKeyboardFocusIntent = (event: KeyboardEvent) => {
+      if (event.key !== "Tab") return;
+      keyboardFocusIntent.current = true;
+      window.clearTimeout(clearIntent);
+      clearIntent = window.setTimeout(() => {
+        keyboardFocusIntent.current = false;
+      });
+    };
+    window.addEventListener("keydown", recordKeyboardFocusIntent, { capture: true });
+    return () => {
+      window.removeEventListener("keydown", recordKeyboardFocusIntent, { capture: true });
+      window.clearTimeout(clearIntent);
+    };
+  }, [inheritedKeyboardFocusIntent, keyboardFocusIntent]);
 
   useLayoutEffect(() => {
     if (!node || node.kind !== "split") return;
@@ -70,8 +100,15 @@ export const SessionSplitLayout = observer(function SessionSplitLayout({
             focused &&
             "border-accent/40 shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--accent)_10%,transparent)]",
         )}
-        onPointerDownCapture={() => onFocus(node.paneId)}
-        onFocusCapture={() => onFocus(node.paneId)}
+        onPointerDownCapture={() => {
+          keyboardFocusIntent.current = false;
+          onFocus(node.paneId);
+        }}
+        onFocusCapture={() => {
+          if (!keyboardFocusIntent.current) return;
+          keyboardFocusIntent.current = false;
+          onFocus(node.paneId);
+        }}
       >
         <header
           data-slot="workspace-header"
@@ -146,6 +183,7 @@ export const SessionSplitLayout = observer(function SessionSplitLayout({
           onFocus,
           onSplit,
           onClose,
+          keyboardFocusIntent,
         }}
         node={node.first}
       />
@@ -170,6 +208,7 @@ export const SessionSplitLayout = observer(function SessionSplitLayout({
           onFocus,
           onSplit,
           onClose,
+          keyboardFocusIntent,
         }}
         node={node.second}
       />
