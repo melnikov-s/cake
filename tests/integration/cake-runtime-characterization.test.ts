@@ -375,6 +375,7 @@ describe("CakeRuntime characterization", () => {
     const prompt = runtime.prompt("Reload afterward", "prompt", []);
     await requestStarted.promise;
     await runtime.reload?.();
+    await runtime.reload?.();
 
     expect((await runtime.snapshot()).piSettings?.reloadPending).toBe(true);
     expect(events).toEqual(
@@ -400,5 +401,13 @@ describe("CakeRuntime characterization", () => {
         { type: "part-removed", sessionId: runtime.sessionId, partId: "pi-reload-status" },
       ]),
     );
+    expect(
+      events.filter(
+        (event) =>
+          event.type === "part-updated" &&
+          event.part.kind === "notice" &&
+          event.part.title === "Reloading Pi",
+      ),
+    ).toHaveLength(1);
   });
 });

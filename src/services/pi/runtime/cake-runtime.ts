@@ -5,7 +5,6 @@ import {
   SettingsManager,
   createAgentSession,
   type InlineExtension,
-  type SlashCommandInfo,
 } from "@earendil-works/pi-coding-agent";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
@@ -16,7 +15,6 @@ import type {
   PiSettingUpdate,
   ExtensionUiEvent,
   ExtensionUiIntent,
-  ResourceDiagnostic,
   SessionSnapshot,
   SessionUsage,
   ThinkingLevel,
@@ -54,7 +52,6 @@ import {
   supportsFastMode,
   type FastModeModel,
 } from "../fast-mode";
-import { compatibilityCatalog } from "../live/PiCompatibilityProjection";
 import { projectModelCatalog } from "../live/PiModelsLive";
 import { createCakeArtifactExtension } from "./artifact-extension";
 import { createCakeArtifactOperations } from "./cake-artifact-operations";
@@ -70,16 +67,11 @@ import {
   cakeToolEnvelopeSchema,
   type CakeOperationDefinition,
 } from "./cake-operation-registry";
+import { createCakeRuntimeRecovery } from "./cake-runtime-recovery";
 import {
-  INTERRUPTED_TURN_NOTICE_PART_ID,
-  TURN_RECOVERY_MAX_AUTO_CONTINUATIONS,
-  TURN_RECOVERY_NOTICE_PART_ID,
-  classifyTurnFailure,
-  interruptedTurnResumePrompt,
-  shouldAutoResumeInterruptedTurn,
-  turnRecoveryPrompt,
-} from "./turn-recovery";
-import { createCakeExtensionUiContext } from "./extension-compatibility";
+  createCakeRuntimeResourceLifecycle,
+  loadCakeRuntimeResourceLoader,
+} from "./cake-runtime-resources";
 import type { RuntimeUiRequest } from "./runtime-ui-request";
 import type {
   InlineWidgetGenerationRequest,
@@ -87,8 +79,6 @@ import type {
   ReviewParentContext,
 } from "./sidecar-runtime";
 import { assertSessionPath } from "./session-path";
-import { ResponseRetryController } from "./response-retry";
-import { ReloadableResourceLoader } from "./ReloadableResourceLoader";
 import { applyPiSetting } from "./settings-translation";
 import { cakeWorkspaceSessionDirectory, findSessionFile } from "./session-discovery";
 import { createConversationHandoff } from "./session-handoff";
@@ -118,7 +108,6 @@ import {
 import {
   activeCompactionNotice,
   createCakeRuntimeEventProjection,
-  projectRetryNotice,
 } from "./cake-runtime-event-projection";
 import { projectCakeRuntimeSnapshot } from "./cake-runtime-snapshot";
 import { createCakeRuntimeTurnController } from "./cake-runtime-turn-controller";
@@ -1222,101 +1211,106 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
   const detectedWorktreePrompt = detectedWorktree
     ? worktreeSystemPrompt(detectedWorktree)
     : undefined;
-  const resourceLoader = new ReloadableResourceLoader(() => {
-    return new DefaultResourceLoader(
-      globalControl
-        ? {
-            cwd: options.cwd,
-            agentDir,
-            settingsManager,
-            extensionFactories: [
-              createFastModeExtension(fastModeEnabled),
-              createCakeGatewayExtension((pi) =>
-                filterRuntimeOperations([
-                  ...localOperations(),
-                  ...createGlobalControlOperations(globalControl, resolveApiModel),
-                  ...(options.modelPresets ? createCakeModelOperations(options.modelPresets) : []),
-                  ...createCakeArtifactOperations(pi, {
-                    persistArtifact,
-                    requestArtifact,
-                    generateInlineWidget: options.generateInlineWidget,
-                  }),
-                  ...(options.vscodeControl
-                    ? createCakeVscodeOperations(options.vscodeControl)
-                    : []),
-                  ...(options.worktreeLandingControl
-                    ? createCakeWorktreeOperations(options.worktreeLandingControl)
-                    : []),
-                  ...(options.agentControl
-                    ? createAgentControlOperations(
-                        options.agentControl,
+  const resourceLoader = await loadCakeRuntimeResourceLoader({
+    trusted: options.trusted,
+    makeResourceLoader: () =>
+      new DefaultResourceLoader(
+        globalControl
+          ? {
+              cwd: options.cwd,
+              agentDir,
+              settingsManager,
+              extensionFactories: [
+                createFastModeExtension(fastModeEnabled),
+                createCakeGatewayExtension((pi) =>
+                  filterRuntimeOperations([
+                    ...localOperations(),
+                    ...createGlobalControlOperations(globalControl, resolveApiModel),
+                    ...(options.modelPresets
+                      ? createCakeModelOperations(options.modelPresets)
+                      : []),
+                    ...createCakeArtifactOperations(pi, {
+                      persistArtifact,
+                      requestArtifact,
+                      generateInlineWidget: options.generateInlineWidget,
+                    }),
+                    ...(options.vscodeControl
+                      ? createCakeVscodeOperations(options.vscodeControl)
+                      : []),
+                    ...(options.worktreeLandingControl
+                      ? createCakeWorktreeOperations(options.worktreeLandingControl)
+                      : []),
+                    ...(options.agentControl
+                      ? createAgentControlOperations(
+                          options.agentControl,
+                          () => runtimeIdentity.sessionId,
+                          resolveApiModel,
+                        )
+                      : []),
+                  ]),
+                ),
+                createCakeArtifactExtension({ persistArtifact, requestArtifact }),
+              ],
+              appendSystemPromptOverride: (base) => [...base, cakeChatSystemPrompt],
+            }
+          : {
+              cwd: options.cwd,
+              agentDir,
+              settingsManager,
+              appendSystemPromptOverride: (base) => [
+                ...base,
+                cakeProjectSystemPrompt,
+                ...(options.additionalSystemPrompt ? [options.additionalSystemPrompt] : []),
+                ...(detectedWorktreePrompt ? [detectedWorktreePrompt] : []),
+              ],
+              additionalSkillPaths: [],
+              additionalPromptTemplatePaths: [],
+              additionalExtensionPaths: [],
+              noExtensions: options.auxiliary,
+              noSkills: options.auxiliary,
+              noPromptTemplates: options.auxiliary,
+              noThemes: options.auxiliary,
+              extensionFactories: [
+                createFastModeExtension(fastModeEnabled),
+                createCakeGatewayExtension((pi) =>
+                  filterRuntimeOperations([
+                    ...localOperations(),
+                    ...(options.modelPresets
+                      ? createCakeModelOperations(options.modelPresets)
+                      : []),
+                    ...createCakeArtifactOperations(pi, {
+                      persistArtifact,
+                      requestArtifact,
+                      generateInlineWidget: options.generateInlineWidget,
+                    }),
+                    ...(options.vscodeControl
+                      ? createCakeVscodeOperations(options.vscodeControl)
+                      : []),
+                    ...(options.worktreeLandingControl
+                      ? createCakeWorktreeOperations(options.worktreeLandingControl)
+                      : []),
+                    ...(options.agentControl
+                      ? createAgentControlOperations(
+                          options.agentControl,
+                          () => runtimeIdentity.sessionId,
+                          resolveApiModel,
+                        )
+                      : []),
+                  ]),
+                ),
+                createCakeArtifactExtension({ persistArtifact, requestArtifact }),
+                ...(options.reviewContextPath
+                  ? [
+                      reviewContextExtension(
+                        options.reviewContextPath,
                         () => runtimeIdentity.sessionId,
-                        resolveApiModel,
-                      )
-                    : []),
-                ]),
-              ),
-              createCakeArtifactExtension({ persistArtifact, requestArtifact }),
-            ],
-            appendSystemPromptOverride: (base) => [...base, cakeChatSystemPrompt],
-          }
-        : {
-            cwd: options.cwd,
-            agentDir,
-            settingsManager,
-            appendSystemPromptOverride: (base) => [
-              ...base,
-              cakeProjectSystemPrompt,
-              ...(options.additionalSystemPrompt ? [options.additionalSystemPrompt] : []),
-              ...(detectedWorktreePrompt ? [detectedWorktreePrompt] : []),
-            ],
-            additionalSkillPaths: [],
-            additionalPromptTemplatePaths: [],
-            additionalExtensionPaths: [],
-            noExtensions: options.auxiliary,
-            noSkills: options.auxiliary,
-            noPromptTemplates: options.auxiliary,
-            noThemes: options.auxiliary,
-            extensionFactories: [
-              createFastModeExtension(fastModeEnabled),
-              createCakeGatewayExtension((pi) =>
-                filterRuntimeOperations([
-                  ...localOperations(),
-                  ...(options.modelPresets ? createCakeModelOperations(options.modelPresets) : []),
-                  ...createCakeArtifactOperations(pi, {
-                    persistArtifact,
-                    requestArtifact,
-                    generateInlineWidget: options.generateInlineWidget,
-                  }),
-                  ...(options.vscodeControl
-                    ? createCakeVscodeOperations(options.vscodeControl)
-                    : []),
-                  ...(options.worktreeLandingControl
-                    ? createCakeWorktreeOperations(options.worktreeLandingControl)
-                    : []),
-                  ...(options.agentControl
-                    ? createAgentControlOperations(
-                        options.agentControl,
-                        () => runtimeIdentity.sessionId,
-                        resolveApiModel,
-                      )
-                    : []),
-                ]),
-              ),
-              createCakeArtifactExtension({ persistArtifact, requestArtifact }),
-              ...(options.reviewContextPath
-                ? [
-                    reviewContextExtension(
-                      options.reviewContextPath,
-                      () => runtimeIdentity.sessionId,
-                    ),
-                  ]
-                : []),
-            ],
-          },
-    );
+                      ),
+                    ]
+                  : []),
+              ],
+            },
+      ),
   });
-  await resourceLoader.reload({ resolveProjectTrust: async () => options.trusted });
   const sessionDir = options.globalControl
     ? resolve(options.sessionDir)
     : cakeWorkspaceSessionDirectory(options.cwd, options.sessionDir);
@@ -1361,92 +1355,37 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
   const cakeSessionId = session.sessionManager.getSessionId();
   currentModel = session.model;
   runtimeIdentity.sessionId = cakeSessionId;
-  let responseRetryTurnDepth = 0;
-  const responseRetries = new ResponseRetryController({
-    enabled: () => responseRetryTurnDepth > 0 && settingsManager.getRetryEnabled(),
-    onRetry: (event) =>
-      options.onEvent({
-        type: "part-updated",
-        sessionId: cakeSessionId,
-        part: projectRetryNotice(event),
-      }),
-    onFinished: () =>
-      options.onEvent({
-        type: "part-removed",
-        sessionId: cakeSessionId,
-        partId: "active-retry",
-      }),
-  });
-  session.agent.streamFunction = responseRetries.wrap(session.agent.streamFunction);
-  async function withResponseRetries<T>(operation: () => Promise<T>): Promise<T> {
-    responseRetryTurnDepth += 1;
-    try {
-      return await operation();
-    } finally {
-      responseRetryTurnDepth -= 1;
-    }
-  }
   let disposed = false;
   let disposePromise: Promise<void> | undefined;
-  let turnRecoveryFailureDetail: string | undefined;
-  let reloadRequested = 0;
-  let reloadCompleted = 0;
-  let reloadInFlight: Promise<void> | undefined;
   let sessionNamingInFlight = false;
   const sessionNamingController = new AbortController();
   const generateTitle = options.generateSessionTitle;
-  const initialCatalog = compatibilityCatalog(
+  const emitPart = (part: UiPart) =>
+    options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part });
+  const removePart = (partId: string) =>
+    options.onEvent({ type: "part-removed", sessionId: cakeSessionId, partId });
+  const recovery = createCakeRuntimeRecovery({
+    session,
+    retryEnabled: () => settingsManager.getRetryEnabled(),
+    isDisposed: () => disposed,
+    emitPart,
+    removePart,
+  });
+  const resources = await createCakeRuntimeResourceLifecycle({
     resourceLoader,
     settingsManager,
-    options.cwd,
-    agentDir,
-  );
-  const catalog = {
-    ...initialCatalog,
-    resources: [...initialCatalog.resources],
-    diagnostics: [...initialCatalog.diagnostics],
-  };
-  interface MutableExtensionUiState {
-    statuses: Array<{ key: string; text: string }>;
-    title?: string;
-  }
-  const extensionUiState: MutableExtensionUiState = { statuses: [] };
-  const compatibilityDiagnosticKeys = new Set(
-    catalog.diagnostics.map((item) => `${item.method ?? ""}:${item.message}`),
-  );
-
-  const requestExtensionValue = async (request: RuntimeUiRequest) => options.requestUi(request);
-  const extensionUi = createCakeExtensionUiContext({
-    request: requestExtensionValue,
-    state: extensionUiState,
-    emitState: (event) => {
-      if (!disposed) options.onEvent({ type: "extension-ui", sessionId: cakeSessionId, event });
-    },
-    emitIntent: (intent) => {
-      if (!disposed) options.emitExtensionUiIntent?.(intent);
-    },
-    addDiagnostic(method, message) {
-      const key = `${method}:${message}`;
-      if (compatibilityDiagnosticKeys.has(key)) return;
-      compatibilityDiagnosticKeys.add(key);
-      const diagnostic: ResourceDiagnostic = {
-        id: `compatibility:${method}:${compatibilityDiagnosticKeys.size}`,
-        severity: "warning",
-        source: "compatibility",
-        method,
-        message,
-      };
-      catalog.diagnostics.push(diagnostic);
-      if (!disposed) {
-        options.onEvent({
-          type: "extension-ui",
-          sessionId: cakeSessionId,
-          event: { kind: "diagnostic", diagnostic },
-        });
-      }
-    },
+    workingDirectory: options.cwd,
+    agentDirectory: agentDir,
+    session,
+    requestUi: (request) => options.requestUi(request),
+    emitExtensionUiIntent: options.emitExtensionUiIntent,
+    emitEvent: (event) =>
+      options.onEvent({ type: "extension-ui", sessionId: cakeSessionId, event }),
+    emitPart,
+    removePart,
+    emitSnapshot: () => emitSnapshot(),
   });
-  await session.bindExtensions({ mode: "rpc", uiContext: extensionUi });
+  const requestExtensionValue = async (request: RuntimeUiRequest) => options.requestUi(request);
 
   const modelOptions = async () =>
     (await projectModelCatalog(modelRuntime, getSupportedThinkingLevels)).map(
@@ -1457,33 +1396,6 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         authTypes: [...authTypes],
       }),
     );
-
-  // Reads the live command catalog straight from Pi's current extension runner,
-  // session prompt templates, and loaded skills. Deliberately not routed through
-  // a captured extension ctx: those go stale across session reloads and would
-  // make every snapshot throw (see Pi's assertActive on captured contexts).
-  function piCommandCatalog(): SlashCommandInfo[] {
-    const extensionCommands = session.extensionRunner.getRegisteredCommands().map((command) => ({
-      name: command.invocationName,
-      description: command.description,
-      source: "extension" as const,
-      sourceInfo: command.sourceInfo,
-    }));
-    const templateCommands = session.promptTemplates.map((template) => ({
-      name: template.name,
-      description: template.description,
-      argumentHint: template.argumentHint,
-      source: "prompt" as const,
-      sourceInfo: template.sourceInfo,
-    }));
-    const skillCommands = resourceLoader.getSkills().skills.map((skill) => ({
-      name: `skill:${skill.name}`,
-      description: skill.description,
-      source: "skill" as const,
-      sourceInfo: skill.sourceInfo,
-    }));
-    return [...extensionCommands, ...templateCommands, ...skillCommands];
-  }
 
   async function makeSnapshot(
     onCaptured?: (snapshot: SessionSnapshot) => void,
@@ -1520,19 +1432,19 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       queuedParts: projection.queuedParts(),
       transientParts: [
         ...(session.isCompacting ? [activeCompactionNotice()] : []),
-        ...(turnRecoveryFailureDetail ? [recoveryFailureNotice(turnRecoveryFailureDetail)] : []),
+        ...recovery.transientParts(),
       ],
       fastMode: fastModeEnabled(),
-      commands: options.auxiliary ? [] : piCommandCatalog(),
+      commands: options.auxiliary ? [] : resources.commandCatalog(),
       slashCommands: options.slashCommands,
       usage: projection.currentUsage(),
-      compatibility: catalog,
-      extensionUi: extensionUiState,
+      compatibility: resources.compatibility,
+      extensionUi: resources.extensionUi,
       diagnostics: [
         ...extensionsResult.errors.map((error) => `${error.path}: ${error.error}`),
         ...(modelFallbackMessage ? [modelFallbackMessage] : []),
       ],
-      reloadPending: reloadCompleted < reloadRequested || Boolean(reloadInFlight),
+      reloadPending: resources.reloadPending(),
     });
     onCaptured?.(snapshot);
     return snapshot;
@@ -1566,81 +1478,6 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
 
   function emitSnapshotInBackground() {
     void emitSnapshot().catch(() => undefined);
-  }
-
-  async function drainReloads() {
-    if (reloadInFlight) return reloadInFlight;
-    if (reloadCompleted >= reloadRequested || session.isStreaming || session.isCompacting) return;
-    reloadInFlight = (async () => {
-      try {
-        while (
-          !disposed &&
-          reloadCompleted < reloadRequested &&
-          !session.isStreaming &&
-          !session.isCompacting
-        ) {
-          const target = reloadRequested;
-          options.onEvent({
-            type: "part-updated",
-            sessionId: cakeSessionId,
-            part: {
-              id: "pi-reload-status",
-              kind: "notice",
-              tone: "info",
-              title: "Reloading Pi",
-              detail: "Refreshing settings, extensions, skills, prompts, and tools.",
-            },
-          });
-          await session.reload();
-          reloadCompleted = target;
-        }
-        if (!disposed && reloadCompleted >= reloadRequested)
-          options.onEvent({
-            type: "part-removed",
-            sessionId: cakeSessionId,
-            partId: "pi-reload-status",
-          });
-      } catch (error) {
-        reloadCompleted = reloadRequested;
-        if (!disposed)
-          options.onEvent({
-            type: "part-updated",
-            sessionId: cakeSessionId,
-            part: {
-              id: "pi-reload-status",
-              kind: "notice",
-              tone: "error",
-              title: "Pi reload failed",
-              detail: error instanceof Error ? error.message : String(error),
-            },
-          });
-        throw error;
-      } finally {
-        reloadInFlight = undefined;
-        await emitSnapshot();
-      }
-    })();
-    return reloadInFlight;
-  }
-
-  async function requestReload() {
-    reloadRequested += 1;
-    if (session.isStreaming || session.isCompacting) {
-      options.onEvent({
-        type: "part-updated",
-        sessionId: cakeSessionId,
-        part: {
-          id: "pi-reload-status",
-          kind: "notice",
-          tone: "info",
-          title: "Pi reload queued",
-          detail: "Cake will reload Pi after the current response settles.",
-        },
-      });
-      await emitSnapshot();
-      return;
-    }
-    await drainReloads();
   }
 
   async function nameSessionFromFirstMessage(currentUserMessage: string) {
@@ -1683,148 +1520,19 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     isDisposed: () => disposed,
   });
   // The stream adapter replays pre-output throttling and successful empty
-  // responses. This hidden continuation remains a bounded fallback for aborted
-  // turns and for empty turns when automatic retry is disabled.
-  let userAbortRequested = false;
-  let turnRecoveryContinuations = 0;
+  // responses. Hidden continuations remain a bounded fallback for interrupted
+  // and otherwise unrecoverable empty turns.
   let resolveOnSettle = false;
-
-  function removeRecoveryNotice() {
-    turnRecoveryFailureDetail = undefined;
-    options.onEvent({
-      type: "part-removed",
-      sessionId: cakeSessionId,
-      partId: TURN_RECOVERY_NOTICE_PART_ID,
-    });
-  }
-
-  function recoveryFailureNotice(detail: string): Extract<UiPart, { kind: "notice" }> {
-    return {
-      id: TURN_RECOVERY_NOTICE_PART_ID,
-      kind: "notice",
-      tone: "error",
-      title: "Response could not be completed",
-      detail: `${detail} Automatic recovery stopped. Send another message to retry manually.`,
-    };
-  }
-
-  function emitRecoveryFailure(detail: string) {
-    turnRecoveryFailureDetail = detail;
-    options.onEvent({
-      type: "part-updated",
-      sessionId: cakeSessionId,
-      part: recoveryFailureNotice(detail),
-    });
-  }
-
-  async function continueTurnHidden(content: string) {
-    try {
-      await withResponseRetries(() =>
-        session.sendCustomMessage(
-          {
-            customType: "cake.turn-recovery",
-            content,
-            display: false,
-          },
-          { triggerTurn: true, deliverAs: "followUp" },
-        ),
-      );
-      return true;
-    } catch (error) {
-      if (!disposed) emitRecoveryFailure(error instanceof Error ? error.message : String(error));
-      return false;
-    }
-  }
-
-  async function handleSettledTurnRecovery() {
-    // A user prompt or another run may have started while the settled snapshot
-    // was being assembled. It supersedes recovery of the previous turn.
-    if (disposed || session.isStreaming) return;
-    const last = session.messages.at(-1);
-    const failure = classifyTurnFailure(
-      last?.role === "assistant" ? last : undefined,
-      userAbortRequested,
-    );
-    if (!failure) {
-      if (turnRecoveryContinuations > 0) {
-        turnRecoveryContinuations = 0;
-        removeRecoveryNotice();
-        options.onEvent({
-          type: "part-removed",
-          sessionId: cakeSessionId,
-          partId: INTERRUPTED_TURN_NOTICE_PART_ID,
-        });
-      }
-      return;
-    }
-    if (
-      !settingsManager.getRetryEnabled() ||
-      turnRecoveryContinuations >= TURN_RECOVERY_MAX_AUTO_CONTINUATIONS
-    ) {
-      options.onEvent({
-        type: "part-removed",
-        sessionId: cakeSessionId,
-        partId: INTERRUPTED_TURN_NOTICE_PART_ID,
-      });
-      emitRecoveryFailure(failure.detail);
-      return;
-    }
-    turnRecoveryContinuations += 1;
-    await continueTurnHidden(turnRecoveryPrompt(failure.kind));
-  }
-
-  // A dangling tool-result tail is strong evidence of process interruption.
-  // Resume it once with hidden context; settled failed assistant tails are not
-  // retried when a session is reopened.
-  async function resumeInterruptedTurn() {
-    if (disposed || session.isStreaming) return;
-    const tail = session.messages.at(-1);
-    const settledFailure = classifyTurnFailure(tail?.role === "assistant" ? tail : undefined);
-    if (settledFailure?.kind === "empty") {
-      emitRecoveryFailure(settledFailure.detail);
-      return;
-    }
-    if (!settingsManager.getRetryEnabled() || !shouldAutoResumeInterruptedTurn(session.messages))
-      return;
-    turnRecoveryContinuations = TURN_RECOVERY_MAX_AUTO_CONTINUATIONS;
-    options.onEvent({
-      type: "part-updated",
-      sessionId: cakeSessionId,
-      part: {
-        id: INTERRUPTED_TURN_NOTICE_PART_ID,
-        kind: "notice",
-        tone: "info",
-        title: "Resuming interrupted turn",
-      },
-    });
-    if (!(await continueTurnHidden(interruptedTurnResumePrompt)) && !disposed)
-      options.onEvent({
-        type: "part-removed",
-        sessionId: cakeSessionId,
-        partId: INTERRUPTED_TURN_NOTICE_PART_ID,
-      });
-  }
 
   const turnController = createCakeRuntimeTurnController({
     session,
     isDisposed: () => disposed,
     beforeIdleTurn: async () => {
-      if (reloadCompleted < reloadRequested) await drainReloads();
+      await resources.drainReloads();
     },
-    withResponseRetries,
-    cancelResponseRetries: () => responseRetries.cancel(),
-    recovery: {
-      onUserInput() {
-        userAbortRequested = false;
-        turnRecoveryContinuations = 0;
-        removeRecoveryNotice();
-      },
-      onAbort() {
-        userAbortRequested = true;
-        turnRecoveryContinuations = 0;
-        removeRecoveryNotice();
-      },
-    },
+    withResponseRetries: recovery.withResponseRetries,
+    cancelResponseRetries: recovery.cancelResponseRetries,
+    recovery,
     deliverTrackedUserMessage: projection.deliverTrackedUserMessage,
     syncQueuedParts: projection.syncQueuedParts,
     emitPart: (part) => options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part }),
@@ -1895,11 +1603,11 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       }
       return;
     }
-    await drainReloads().catch(() => undefined);
+    await resources.drainReloads()?.catch(() => undefined);
     // Apply recovery only after the settled snapshot so its transient failure
     // notice cannot be overwritten by that snapshot.
     await emitSnapshot().catch(() => undefined);
-    await handleSettledTurnRecovery();
+    await recovery.handleSettledTurn();
   }
 
   const unsubscribe = session.subscribe((event) => {
@@ -1940,7 +1648,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       void finishSettledTurn();
     }
   });
-  void resumeInterruptedTurn();
+  void recovery.resumeInterruptedTurn();
 
   const currentModelSelection = (): ExplicitCakeModelSelection | undefined =>
     session.model
@@ -2241,11 +1949,11 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     },
     async setPiSetting(update) {
       applyPiSetting(settingsManager, session, update);
-      if (update.key === "retryEnabled" && !update.value) responseRetries.cancel();
+      if (update.key === "retryEnabled" && !update.value) recovery.cancelResponseRetries();
       await settingsManager.flush();
       await emitSnapshot();
     },
-    reload: requestReload,
+    reload: resources.requestReload,
     async refreshModels() {
       // Runtime catalogs sync from the shared models store on disk. The single
       // network pass is performed on the shared agent catalog by the main
@@ -2377,7 +2085,8 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       turnController.dispose();
       sessionNamingController.abort();
       projection.dispose();
-      responseRetries.cancel();
+      recovery.dispose();
+      resources.dispose();
       unsubscribe();
       const finish = async () => {
         session.dispose();
