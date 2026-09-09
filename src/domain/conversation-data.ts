@@ -1,6 +1,16 @@
 import { Schema } from "effect";
 
 const boundedId = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
+const boundedText = Schema.String.check(Schema.isMaxLength(262_144));
+
+/** Cake projection of the transient messages waiting in a conversation runtime. */
+export const QueuedConversationMessages = Schema.Struct({
+  steering: Schema.Array(boundedText),
+  followUp: Schema.Array(boundedText),
+});
+export interface QueuedConversationMessages extends Schema.Schema.Type<
+  typeof QueuedConversationMessages
+> {}
 
 export const TurnId = Schema.String.check(Schema.isUUID(4)).pipe(Schema.brand("TurnId"));
 export type TurnId = Schema.Schema.Type<typeof TurnId>;

@@ -30,6 +30,7 @@ import {
   acquire as acquireConversation,
   observe as observeConversation,
   projectPreviewSnapshot,
+  projectQueuedMessages,
 } from "./conversations";
 import { PiSessionError, PiSessions, type PiSessionHandle } from "../services/pi/PiSessions";
 import {
@@ -1003,6 +1004,7 @@ export const listQueuedMessages = Effect.fn("ProjectSessions.listQueuedMessages"
   target: ProjectSessionTarget,
 ) {
   return yield* withHandle(target, (handle) => handle.listQueuedMessages()).pipe(
+    Effect.map(projectQueuedMessages),
     asError("listQueuedMessages"),
   );
 });
@@ -1010,7 +1012,10 @@ export const listQueuedMessages = Effect.fn("ProjectSessions.listQueuedMessages"
 export const clearQueue = Effect.fn("ProjectSessions.clearQueue")(function* (
   target: ProjectSessionTarget,
 ) {
-  return yield* withHandle(target, (handle) => handle.clearQueue()).pipe(asError("clearQueue"));
+  return yield* withHandle(target, (handle) => handle.clearQueue()).pipe(
+    Effect.map(projectQueuedMessages),
+    asError("clearQueue"),
+  );
 });
 
 export const cancelSteering = Effect.fn("ProjectSessions.cancelSteering")(function* (

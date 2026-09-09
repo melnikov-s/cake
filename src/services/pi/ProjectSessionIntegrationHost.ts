@@ -21,7 +21,8 @@ import {
   runInlineWidgetRepair,
   type InlineWidgetGenerationRequest,
 } from "./runtime/sidecar-runtime";
-import type { CakeRuntimeOptions, RuntimeUiRequest } from "./runtime/cake-runtime";
+import type { CakeRuntimeOptions } from "./runtime/cake-runtime";
+import type { RuntimeUiRequest } from "./runtime/runtime-ui-request";
 
 interface ArtifactRepositoryPort {
   readonly upsert: (workingDirectory: string, artifact: CakeArtifactV1) => Promise<ArtifactRecord>;

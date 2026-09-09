@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { Effect, Layer, Schema } from "effect";
-import { worktreeRecordSchema } from "../../ipc/worktree-contract";
+import { WorktreeRecord } from "../../domain/managed-worktree-data";
 import { AtomicFileWriter } from "./internal/AtomicFileWriter";
 import {
   WorktreeStorage,
@@ -10,7 +10,7 @@ import {
 
 const storedWorktrees = Schema.Struct({
   schemaVersion: Schema.Literal(1).pipe(Schema.withDecodingDefaultKey(Effect.succeed(1 as const))),
-  records: Schema.Array(worktreeRecordSchema)
+  records: Schema.Array(WorktreeRecord)
     .check(Schema.isMaxLength(500))
     .pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
 });

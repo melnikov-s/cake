@@ -4,7 +4,7 @@ import { forgetProjectSessions, setSessionUnread } from "../domain/application";
 import * as artifacts from "../domain/artifacts";
 import * as managedWorktrees from "../domain/managedWorktrees";
 import * as reviews from "../domain/reviews";
-import type { WorktreeRecord } from "../ipc/worktree-contract";
+import type { WorktreeRecord } from "../domain/managed-worktree-data";
 import { PiSessions } from "../services/pi/PiSessions";
 import { streamWorkspaceSessions } from "../services/pi/runtime/session-discovery";
 import { ProjectAccess } from "../services/projects/ProjectAccess";

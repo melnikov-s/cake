@@ -15,7 +15,7 @@ import { ApplicationState } from "../../../src/services/storage/ApplicationState
 import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { Terminal } from "../../../src/services/terminal/Terminal";
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
-import type { WorktreeRecord } from "../../../src/ipc/worktree-contract";
+import type { WorktreeRecord } from "../../../src/domain/managed-worktree-data";
 
 const record = (
   projectPath: string,

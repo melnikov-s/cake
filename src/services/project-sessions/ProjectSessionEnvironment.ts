@@ -1,21 +1,7 @@
 import { Context, Layer, Schema } from "effect";
 import type { Effect } from "effect";
 import type { PiSessionAcquireOptions } from "../pi/PiSessions";
-
-export const ManagedWorktreeContext = Schema.Struct({
-  projectPath: Schema.String,
-  worktreePath: Schema.String,
-  branch: Schema.String,
-  baseBranch: Schema.String,
-  parentWorktreePath: Schema.optionalKey(Schema.String),
-  baseCommit: Schema.optionalKey(Schema.String),
-  state: Schema.optionalKey(
-    Schema.Literals(["active", "landed", "resolved", "discarded", "missing"]),
-  ),
-  pendingStrategy: Schema.optionalKey(Schema.Literals(["preserve", "squash"])),
-  createdAt: Schema.String,
-});
-export interface ManagedWorktreeContext extends Schema.Schema.Type<typeof ManagedWorktreeContext> {}
+import { ManagedWorktreeContext } from "../../domain/managed-worktree-data";
 
 export const ProjectSessionLocation = Schema.Struct({
   projectPath: Schema.String,

@@ -5,7 +5,7 @@ import { Deferred, Effect, Fiber, Layer } from "effect";
 import { describe, expect, vi } from "vitest";
 import { defaultApplicationState } from "../../../src/domain/application-data";
 import type { ApplicationState as ApplicationStateValue } from "../../../src/domain/application-data";
-import type { WorktreeRecord } from "../../../src/ipc/worktree-contract";
+import type { WorktreeRecord } from "../../../src/domain/managed-worktree-data";
 import { MainApplication } from "../../../src/main/MainApplication";
 import { Electron, type ElectronWindowLifecycle } from "../../../src/services/electron/Electron";
 import { PiSessions } from "../../../src/services/pi/PiSessions";

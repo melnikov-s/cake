@@ -29,7 +29,7 @@ import { Terminal } from "../../../src/services/terminal/Terminal";
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import type { SessionSnapshot, SessionSummary } from "../../../src/ipc/session-contract";
-import type { WorktreeRecord } from "../../../src/ipc/worktree-contract";
+import type { WorktreeRecord } from "../../../src/domain/managed-worktree-data";
 
 const snapshot: SessionSnapshot = {
   workspacePath: "/project",

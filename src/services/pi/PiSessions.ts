@@ -13,7 +13,7 @@ import {
   Scope,
   Stream,
 } from "effect";
-import type { QueuedProjectSessionMessages } from "../../domain/project-session-data";
+import type { PiQueuedMessages } from "./conversation-data";
 import { jsonValueSchema } from "../../ipc/json-contract";
 import type {
   Attachment,
@@ -127,9 +127,9 @@ export interface PiSessionHandle {
     attachments?: ReadonlyArray<Attachment>,
     renderUserMessageAsMarkdown?: boolean,
   ) => Effect.Effect<string, PiSessionError>;
-  readonly listQueuedMessages: () => Effect.Effect<QueuedProjectSessionMessages, PiSessionError>;
-  readonly clearQueue: () => Effect.Effect<QueuedProjectSessionMessages, PiSessionError>;
-  readonly cancelSteering: () => Effect.Effect<QueuedProjectSessionMessages, PiSessionError>;
+  readonly listQueuedMessages: () => Effect.Effect<PiQueuedMessages, PiSessionError>;
+  readonly clearQueue: () => Effect.Effect<PiQueuedMessages, PiSessionError>;
+  readonly cancelSteering: () => Effect.Effect<PiQueuedMessages, PiSessionError>;
   readonly editMessage: (
     entryId: string,
     text: string,

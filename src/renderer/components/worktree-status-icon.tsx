@@ -1,4 +1,4 @@
-import type { WorktreeRecord } from "../../ipc/worktree-contract";
+import type { WorktreeRecord } from "../../domain/managed-worktree-data";
 import { cn } from "../lib/utils";
 import { PullRequestIcon } from "./ui/icons";
 

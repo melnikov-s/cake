@@ -7,6 +7,7 @@ import type {
   PiSessions,
   PiSessionUpdate,
 } from "../services/pi/PiSessions";
+import type { PiQueuedMessages } from "../services/pi/conversation-data";
 import type { SessionSnapshot } from "../ipc/session-contract";
 import { toJsonValue } from "../utils/to-json-value";
 import {
@@ -14,9 +15,16 @@ import {
   type ConversationEvent,
   type ConversationSnapshot,
   type ConversationUpdate,
+  type QueuedConversationMessages,
 } from "./conversation-data";
 
 export * from "./conversation-data";
+
+/** Maps Pi's transient runtime queue into Cake's conversation projection. */
+export const projectQueuedMessages = (queued: PiQueuedMessages): QueuedConversationMessages => ({
+  steering: [...queued.steering],
+  followUp: [...queued.followUp],
+});
 
 export const projectPreviewSnapshot = (preview: {
   readonly workspacePath: string;

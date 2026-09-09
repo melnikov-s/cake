@@ -1,7 +1,7 @@
 import type { ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 import { createHash } from "node:crypto";
 import type { ExtensionUiEvent, ExtensionUiIntent } from "../../../ipc/session-contract";
-import type { RuntimeUiRequest } from "./cake-runtime";
+import type { RuntimeUiRequest } from "./runtime-ui-request";
 
 export function createCakeExtensionUiContext(options: {
   request(request: RuntimeUiRequest): Promise<string | undefined>;

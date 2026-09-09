@@ -80,6 +80,7 @@ import {
   turnRecoveryPrompt,
 } from "./turn-recovery";
 import { createCakeExtensionUiContext } from "./extension-compatibility";
+import type { RuntimeUiRequest } from "./runtime-ui-request";
 import type {
   InlineWidgetGenerationRequest,
   InlineWidgetGenerationResult,
@@ -146,18 +147,6 @@ export const projectSessionCreateInputSchema = Schema.Struct({
   ),
 });
 type ProjectSessionCreateInput = typeof projectSessionCreateInputSchema.Type;
-
-export interface RuntimeUiRequest {
-  kind: "confirm" | "text" | "secret" | "select" | "manual_code" | "editor";
-  title: string;
-  message: string;
-  placeholder?: string;
-  initialValue?: string;
-  multiline?: boolean;
-  options?: Array<{ id: string; label: string }>;
-  signal?: AbortSignal;
-  timeout?: number;
-}
 
 export type CakeRuntimeEvent =
   | { type: "snapshot"; requestId?: string; snapshot: SessionSnapshot }

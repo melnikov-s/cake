@@ -2,7 +2,7 @@ import { useState } from "react";
 import { observer } from "r-state-tree/react";
 import type { WorktreeCreationStore } from "../stores/WorktreeCreationStore";
 import type { WorktreeStore } from "../stores/WorktreeStore";
-import type { WorktreeRecord } from "../../ipc/worktree-contract";
+import type { WorktreeRecord } from "../../domain/managed-worktree-data";
 import {
   Confirmation,
   ConfirmationAction,

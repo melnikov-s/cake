@@ -1,12 +1,38 @@
 import { Context, Schema, type Effect, type Stream } from "effect";
-import type { cakeRpcPayloadSchemas, cakeRpcSuccessSchemas } from "../../ipc/cake-rpc-contract";
+import type { EditorAnnotationSnapshot } from "../../ipc/editor-annotation";
 import type { JsonValue } from "../../ipc/json-contract";
 import type { SourceLocation } from "../../ipc/source-location";
 
-type Payload<Type extends keyof typeof cakeRpcPayloadSchemas> =
-  (typeof cakeRpcPayloadSchemas)[Type]["Type"];
-type Success<Type extends keyof typeof cakeRpcSuccessSchemas> =
-  (typeof cakeRpcSuccessSchemas)[Type]["Type"];
+interface EmbeddedEditorState {
+  readonly status: "missing" | "downloading" | "starting" | "ready" | "failed";
+  readonly message?: string;
+  readonly customPath?: string;
+}
+
+interface EmbeddedEditorRequestIdentity {
+  readonly requestId: string;
+}
+
+interface OpenEmbeddedEditorInput extends EmbeddedEditorRequestIdentity {
+  readonly workspacePath: string;
+}
+
+interface UpdateEmbeddedEditorBoundsInput extends EmbeddedEditorRequestIdentity {
+  readonly visible: boolean;
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+  readonly projectSidebarWidth: number;
+}
+
+interface RevealInEmbeddedEditorInput extends OpenEmbeddedEditorInput {
+  readonly location: SourceLocation;
+}
+
+interface UpdateEmbeddedEditorAnnotationsInput extends OpenEmbeddedEditorInput {
+  readonly snapshot: EditorAnnotationSnapshot;
+}
 
 export class VsCodeServerError extends Schema.TaggedError<VsCodeServerError>()(
   "VsCodeServerError",
@@ -18,29 +44,29 @@ export type VscodeActionResult<Value> =
   | { readonly status: "mode-required" };
 
 export interface VsCodeServerService {
-  readonly state: () => Effect.Effect<Success<"get-embedded-editor-state">>;
-  readonly stateChanges: () => Stream.Stream<Success<"get-embedded-editor-state">>;
+  readonly state: () => Effect.Effect<EmbeddedEditorState>;
+  readonly stateChanges: () => Stream.Stream<EmbeddedEditorState>;
   readonly refreshStatus: () => Effect.Effect<void, VsCodeServerError>;
   readonly install: (
-    request: Payload<"install-embedded-editor">,
-  ) => Effect.Effect<Success<"install-embedded-editor">, VsCodeServerError>;
+    request: EmbeddedEditorRequestIdentity,
+  ) => Effect.Effect<EmbeddedEditorRequestIdentity, VsCodeServerError>;
   readonly open: (
     connectionId: number,
-    request: Payload<"open-embedded-editor">,
-  ) => Effect.Effect<Success<"open-embedded-editor">, VsCodeServerError>;
+    request: OpenEmbeddedEditorInput,
+  ) => Effect.Effect<EmbeddedEditorRequestIdentity, VsCodeServerError>;
   readonly updateBounds: (
     connectionId: number,
-    request: Payload<"update-embedded-editor-bounds">,
-  ) => Effect.Effect<Success<"update-embedded-editor-bounds">, VsCodeServerError>;
+    request: UpdateEmbeddedEditorBoundsInput,
+  ) => Effect.Effect<EmbeddedEditorRequestIdentity, VsCodeServerError>;
   readonly reveal: (
-    request: Payload<"reveal-in-embedded-editor">,
-  ) => Effect.Effect<Success<"reveal-in-embedded-editor">, VsCodeServerError>;
+    request: RevealInEmbeddedEditorInput,
+  ) => Effect.Effect<EmbeddedEditorRequestIdentity, VsCodeServerError>;
   readonly openSourceControl: (
-    request: Payload<"open-embedded-editor-source-control">,
-  ) => Effect.Effect<Success<"open-embedded-editor-source-control">, VsCodeServerError>;
+    request: OpenEmbeddedEditorInput,
+  ) => Effect.Effect<EmbeddedEditorRequestIdentity, VsCodeServerError>;
   readonly updateAnnotations: (
-    request: Payload<"update-embedded-editor-annotations">,
-  ) => Effect.Effect<Success<"update-embedded-editor-annotations">, VsCodeServerError>;
+    request: UpdateEmbeddedEditorAnnotationsInput,
+  ) => Effect.Effect<EmbeddedEditorRequestIdentity, VsCodeServerError>;
   readonly enterProjectEditor: (workingDirectory: string) => Effect.Effect<void, VsCodeServerError>;
   readonly openProjectLocation: (
     workingDirectory: string,

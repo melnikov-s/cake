@@ -26,7 +26,7 @@ import type {
   SessionSnapshot,
   UtilityModel,
 } from "../../ipc/session-contract";
-import type { WorktreeRecord } from "../../ipc/worktree-contract";
+import type { WorktreeRecord } from "../../domain/managed-worktree-data";
 
 export interface ClientCommandOptions {
   readonly signal?: AbortSignal;

@@ -382,8 +382,10 @@ Pi Session Runtime loads them, so they are exposed through the session handle.
 ### Pi projection boundary
 
 Raw Pi objects and events stop inside `services/pi`. Pure translation modules
-map Pi snapshots, events, resources, and errors to Cake-owned values. No other
-Cake module imports Pi packages directly.
+map Pi snapshots, events, resources, errors, and transient queue state to
+Cake-owned conversation values. Pi Service contracts never depend on a
+Project-Session projection or RPC payload type. No other Cake module imports Pi
+packages directly.
 
 ## Session observation and Streams
 
@@ -483,7 +485,10 @@ Effect Platform's `FileSystem` owns filesystem operations and observation.
 `Git` owns Git commands and Git facts. Cake domain operations decide how
 filesystem events trigger debounced Git refreshes.
 
-Managed Worktree records are main-owned persisted authority. `ManagedWorktrees`
+Managed Worktree records are main-owned persisted authority. Their record and
+Project Session context schemas live in the Managed Worktree domain data module;
+storage, Services, Project Session projections, and RPC compose those owned
+values rather than defining or importing an RPC-owned record. `ManagedWorktrees`
 exposes one Schema-validated current-first Stream: a coherent record Snapshot followed
 without a subscription gap by ordered lifecycle upserts. Each renderer's Model observer
 reduces that Stream into its window-lifetime `WorktreeCatalog`; `SessionSummary` stores no

@@ -8,7 +8,7 @@ import {
 } from "../../ipc/session-contract";
 import type { CakeChatSummary } from "../../domain/cake-chat-data";
 import type { SessionSummary } from "../models/SessionSummary";
-import type { WorktreeRecord } from "../../ipc/worktree-contract";
+import type { WorktreeRecord } from "../../domain/managed-worktree-data";
 import type { ScheduledMessage } from "../../domain/scheduled-message-data";
 import type {
   CoordinationMessage,
@@ -16,7 +16,7 @@ import type {
   CrossSessionDeliveryStatus,
   CrossSessionMessageMetadata,
 } from "../../domain/cross-session-coordination";
-import type { QueuedProjectSessionMessages } from "../../domain/project-session-data";
+import type { QueuedConversationMessages } from "../../domain/conversation-data";
 import { isActiveSessionActivity, type SessionActivity } from "../lib/session-activity";
 import { CakeModelSelection } from "../../domain/cake-model-selection";
 
@@ -294,8 +294,8 @@ export interface AppControlHost {
     }): Promise<ScheduledMessage>;
     listScheduledMessages(sessionId?: string): Promise<readonly ScheduledMessage[]>;
     cancelScheduledMessage(id: string): Promise<void>;
-    listPendingMessages(sessionId: string): Promise<QueuedProjectSessionMessages>;
-    dequeuePendingMessages(sessionId: string): Promise<QueuedProjectSessionMessages>;
+    listPendingMessages(sessionId: string): Promise<QueuedConversationMessages>;
+    dequeuePendingMessages(sessionId: string): Promise<QueuedConversationMessages>;
     abort(sessionId: string): Promise<void>;
     rename(sessionId: string, title: string): Promise<void>;
     setResolved(sessionId: string, resolved: boolean): Promise<void>;
@@ -436,7 +436,7 @@ export type AppControlResult =
   | {
       ok: true;
       name: "list_pending_messages" | "dequeue_pending_messages";
-      messages: QueuedProjectSessionMessages;
+      messages: QueuedConversationMessages;
     }
   | { ok: true; name: "abort_session"; target: SessionTarget; status: "stopping" }
   | { ok: true; name: "rename_session"; target: SessionTarget; title: string }

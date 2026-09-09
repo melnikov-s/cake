@@ -7,12 +7,9 @@ import {
   WorktreeLandingSnapshot,
 } from "../../../src/domain/worktree-landing-data";
 import { WorktreeOperationCatalogUpdate } from "../../../src/domain/worktree-operation-data";
+import type { WorktreeRecord } from "../../../src/domain/managed-worktree-data";
 import * as worktreeLandings from "../../../src/domain/worktreeLandings";
-import type {
-  WorktreeLandOutcome,
-  WorktreeRecord,
-  WorktreeStatus,
-} from "../../../src/ipc/worktree-contract";
+import type { WorktreeLandOutcome, WorktreeStatus } from "../../../src/ipc/worktree-contract";
 import {
   WorktreeLandingAgent,
   WorktreeLandingAgentError,

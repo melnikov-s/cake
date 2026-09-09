@@ -1,24 +1,11 @@
 import { Schema } from "effect";
+import { WorktreeRecord } from "../domain/managed-worktree-data";
 
 const bounded = (minimum: number, maximum: number) =>
   Schema.String.check(Schema.isMinLength(minimum), Schema.isMaxLength(maximum));
 const nonNegativeInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
-
-export const worktreeRecordSchema = Schema.Struct({
-  projectPath: bounded(1, 4_096),
-  worktreePath: bounded(1, 4_096),
-  branch: bounded(1, 512),
-  baseBranch: bounded(1, 512),
-  parentWorktreePath: Schema.optional(bounded(1, 4_096)),
-  baseCommit: Schema.optional(bounded(1, 256)),
-  state: Schema.optional(Schema.Literals(["active", "landed", "resolved", "discarded", "missing"])),
-  pendingStrategy: Schema.optionalKey(Schema.Literals(["preserve", "squash"])),
-  resolveAfterLanding: Schema.optionalKey(Schema.Boolean),
-  createdAt: Schema.String,
-});
-export type WorktreeRecord = typeof worktreeRecordSchema.Type;
 export const worktreeStatusSchema = Schema.Struct({
-  record: worktreeRecordSchema,
+  record: WorktreeRecord,
   targetBranch: bounded(1, 512),
   dirtyCount: nonNegativeInt,
   aheadCount: nonNegativeInt,

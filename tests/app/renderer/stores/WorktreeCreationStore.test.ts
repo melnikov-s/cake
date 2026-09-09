@@ -1,7 +1,7 @@
 import { createStore, mount } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
 import type { Client } from "../../../../src/renderer/client/Client";
-import type { WorktreeRecord } from "../../../../src/ipc/worktree-contract";
+import type { WorktreeRecord } from "../../../../src/domain/managed-worktree-data";
 import type { SessionCatalogStore } from "../../../../src/renderer/stores/SessionCatalogStore";
 import { SessionOperationCoordinatorStore } from "../../../../src/renderer/stores/SessionOperationCoordinatorStore";
 import { WorktreeCreationStore } from "../../../../src/renderer/stores/WorktreeCreationStore";

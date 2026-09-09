@@ -9,10 +9,10 @@ import {
   type WorktreeLandRequest,
   type WorktreeLandingCoordinator,
   type WorktreeRebaseOutcome,
-  type WorktreeRecord,
   type WorktreeStatus,
 } from "../../ipc/worktree-contract";
 import type { ProjectSettings } from "../../domain/application-data";
+import type { WorktreeRecord } from "../../domain/managed-worktree-data";
 import type { GitRunner } from "../git/Git";
 import type { WorktreeStorageRepository } from "../storage/WorktreeStorage";
 import { renderWorktreeCommand } from "./worktree-command-template";

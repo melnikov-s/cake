@@ -40,12 +40,15 @@ import type {
   ProjectSessionPreview,
   ProjectSessionPromptInput,
   ProjectSessionStartInput,
-  QueuedProjectSessionMessages,
   ProjectSessionTarget,
   ProjectSessionUpdate,
   WorkingDirectoryResolutionResult,
 } from "../../domain/project-session-data";
-import type { ConversationSnapshot, TurnId } from "../../domain/conversation-data";
+import type {
+  ConversationSnapshot,
+  QueuedConversationMessages,
+  TurnId,
+} from "../../domain/conversation-data";
 import type {
   CakeChatConfiguration,
   CakeChatCatalogQuery,
@@ -351,13 +354,13 @@ export interface CakeIpcClientService {
     ) => Effect.Effect<void, ProjectSessionError | TransportError>;
     readonly listQueuedMessages: (
       target: ProjectSessionTarget,
-    ) => Effect.Effect<QueuedProjectSessionMessages, ProjectSessionError | TransportError>;
+    ) => Effect.Effect<QueuedConversationMessages, ProjectSessionError | TransportError>;
     readonly clearQueue: (
       target: ProjectSessionTarget,
-    ) => Effect.Effect<QueuedProjectSessionMessages, ProjectSessionError | TransportError>;
+    ) => Effect.Effect<QueuedConversationMessages, ProjectSessionError | TransportError>;
     readonly cancelSteering: (
       target: ProjectSessionTarget,
-    ) => Effect.Effect<QueuedProjectSessionMessages, ProjectSessionError | TransportError>;
+    ) => Effect.Effect<QueuedConversationMessages, ProjectSessionError | TransportError>;
     readonly compact: (
       input: ProjectSessionTarget & { readonly instructions?: string },
     ) => Effect.Effect<void, ProjectSessionError | TransportError>;

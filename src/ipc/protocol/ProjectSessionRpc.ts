@@ -2,14 +2,13 @@ import { Schema } from "effect";
 import { Rpc, RpcGroup } from "effect/unstable/rpc";
 import { CakeChatConfiguration } from "../../domain/cake-chat-data";
 import { SessionCatalogUpdate } from "../../domain/catalog-data";
-import { TurnId } from "../../domain/conversation-data";
+import { QueuedConversationMessages, TurnId } from "../../domain/conversation-data";
 import {
   ProjectSessionError,
   ProjectSessionCatalogQuery,
   ProjectSessionPreview,
   ProjectSessionPromptInput,
   ProjectSessionStartInput,
-  QueuedProjectSessionMessages,
   ProjectSessionTarget,
   ProjectSessionUpdate,
   WorkingDirectoryResolutionResult,
@@ -64,12 +63,12 @@ export const ProjectSessionRpc = RpcGroup.make(
   }),
   Rpc.make("projectSessions.listQueuedMessages", {
     payload: ProjectSessionTarget,
-    success: QueuedProjectSessionMessages,
+    success: QueuedConversationMessages,
     error: ProjectSessionError,
   }),
   Rpc.make("projectSessions.clearQueue", {
     payload: ProjectSessionTarget,
-    success: QueuedProjectSessionMessages,
+    success: QueuedConversationMessages,
     error: ProjectSessionError,
   }),
   Rpc.make("projectSessions.cancelSteering", {

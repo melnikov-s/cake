@@ -1,7 +1,7 @@
 import { Schema } from "effect";
 import { SESSION_TITLE_MAX_LENGTH } from "../ipc/session-contract";
 import { ThinkingLevel } from "../services/pi/model-data";
-import { ManagedWorktreeContext } from "../services/project-sessions/ProjectSessionEnvironment";
+import { ManagedWorktreeContext } from "./managed-worktree-data";
 import { CakeSessionIdentity, ConversationEvent, ConversationSnapshot } from "./conversation-data";
 import { CrossSessionMessageMetadata } from "./cross-session-coordination";
 
@@ -181,14 +181,6 @@ const Attachment = Schema.Union([
     ),
   }),
 ]);
-
-export const QueuedProjectSessionMessages = Schema.Struct({
-  steering: Schema.Array(boundedText),
-  followUp: Schema.Array(boundedText),
-});
-export interface QueuedProjectSessionMessages extends Schema.Schema.Type<
-  typeof QueuedProjectSessionMessages
-> {}
 
 export const ProjectSessionPromptInput = Schema.Struct({
   sessionId: boundedId,

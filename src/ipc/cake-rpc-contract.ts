@@ -22,7 +22,7 @@ import {
   utilityModelSchema,
 } from "./session-contract";
 import { WorktreeLandingOperation, WorktreeLandingSnapshot } from "../domain/worktree-landing-data";
-import { worktreeRecordSchema } from "./worktree-contract";
+import { WorktreeRecord } from "../domain/managed-worktree-data";
 
 const bounded = (minimum: number, maximum: number) =>
   Schema.String.check(Schema.isMinLength(minimum), Schema.isMaxLength(maximum));
@@ -558,7 +558,7 @@ const cakeRpcResultSchemas = {
   }),
   "worktree-created": Schema.Struct({
     ...requestBase,
-    record: worktreeRecordSchema,
+    record: WorktreeRecord,
   }),
   "worktree-landing-loaded": WorktreeLandingSnapshot,
   "worktree-landing-started": Schema.Struct({
