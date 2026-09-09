@@ -326,6 +326,7 @@ export const App = observer(function App() {
         root.sessionCatalogStore.projectOfManagedWorktree(session.workspacePath) ??
         session.workspacePath
       }
+      resolved={root.sessionCatalogStore.find(session.sessionId)?.resolved}
       configurationMode={worktreeConfigurationMode}
       onConfigured={() => session.conversationSessionStore.composerStore.draftStore.requestFocus()}
     />
@@ -469,6 +470,7 @@ export const App = observer(function App() {
             root.sessionCatalogStore.projectOfManagedWorktree(paneSession.workspacePath) ??
             paneSession.workspacePath
           }
+          resolved={root.sessionCatalogStore.find(paneSession.sessionId)?.resolved}
           configurationMode={configurationMode}
           onConfigured={() =>
             paneSession.conversationSessionStore.composerStore.draftStore.requestFocus()

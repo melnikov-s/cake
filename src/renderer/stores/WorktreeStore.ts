@@ -15,7 +15,7 @@ export interface WorktreeStoreProps {
   enabled(): boolean;
   isStreaming(): boolean;
   operation(): WorktreeLandingOperation | undefined;
-  onLanded(record: WorktreeRecord): Promise<void> | void;
+  onLanded(record: WorktreeRecord, result: { resolved: boolean }): Promise<void> | void;
   onDiscarded(record: WorktreeRecord): Promise<void> | void;
   retirement: WorkingDirectoryRetirementWorkflow;
   onResolveWorkspace(
@@ -47,6 +47,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
 
   private operationId: string | undefined;
   private startedLandingOperationId: string | undefined;
+  private startedResolveAfterLanding = false;
   private readonly refreshingWorkspacePaths = new Set<string>();
   private observedWorkspacePath: string | undefined;
   private completedOperationId: string | undefined;
@@ -99,6 +100,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
       this.phase = "idle";
       this.operationId = undefined;
       this.startedLandingOperationId = undefined;
+      this.startedResolveAfterLanding = false;
       this.stalled = false;
       this.error = undefined;
       this.completedOperationId = undefined;
@@ -107,8 +109,10 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     try {
       const snapshot = await this.managedWorktrees.landing({ workspacePath, sessionId });
       if (this.signal.aborted || this.props.workspacePath() !== workspacePath) return;
-      this.status = snapshot.status;
       const operation = this.props.operation();
+      // Merge-and-resolve retires the worktree before publishing its terminal operation.
+      // Retain the last status long enough to present that successful completion.
+      if (snapshot.status || operation?.phase !== "landed") this.status = snapshot.status;
       if (operation) await this.applyOperation(operation, workspacePath);
     } catch {
       // Transient Git or transport failures surface through the next projected operation or intent.
@@ -126,6 +130,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     this.error = undefined;
     const operationId = crypto.randomUUID();
     this.startedLandingOperationId = operationId;
+    this.startedResolveAfterLanding = resolveAfterLanding;
     try {
       const operation = await this.managedWorktrees.startLanding({
         operationId,
@@ -136,6 +141,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
         commitBeforeLanding: true,
         resolveAfterLanding,
       });
+      this.startedLandingOperationId = operation.operationId;
       this.applyOperationPresentation(operation);
       await this.refresh(workspacePath);
     } catch (error) {
@@ -153,6 +159,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     this.error = undefined;
     const operationId = crypto.randomUUID();
     this.startedLandingOperationId = operationId;
+    this.startedResolveAfterLanding = false;
     try {
       const operation = await this.managedWorktrees.startLanding({
         operationId,
@@ -163,6 +170,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
         commitBeforeLanding: false,
         resolveAfterLanding: false,
       });
+      this.startedLandingOperationId = operation.operationId;
       this.applyOperationPresentation(operation);
       await this.refresh(workspacePath);
     } catch (error) {
@@ -227,6 +235,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
       if (this.operationId !== operationId) return;
       this.operationId = undefined;
       this.startedLandingOperationId = undefined;
+      this.startedResolveAfterLanding = false;
       this.phase = "idle";
       this.stalled = false;
     } catch (error) {
@@ -286,7 +295,11 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
   ) {
     if (!operation) {
       if (this.status?.record.state === "landed" && this.startedLandingOperationId) {
-        await this.finishLanded(workspacePath, this.startedLandingOperationId);
+        await this.finishLanded(
+          workspacePath,
+          this.startedLandingOperationId,
+          this.startedResolveAfterLanding,
+        );
         return;
       }
       // A snapshot requested concurrently with start may predate main's accepted operation.
@@ -299,7 +312,13 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     this.applyOperationPresentation(operation);
     if (operation.phase === "landed" && this.completedOperationId !== operation.operationId) {
       this.completedOperationId = operation.operationId;
-      await this.finishLanded(workspacePath, operation.operationId);
+      await this.finishLanded(
+        workspacePath,
+        operation.operationId,
+        operation.resolveAfterLanding === true ||
+          (this.startedLandingOperationId === operation.operationId &&
+            this.startedResolveAfterLanding),
+      );
     } else if (operation.phase === "complete") {
       await this.managedWorktrees.cancelLanding({
         operationId: operation.operationId,
@@ -349,16 +368,17 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     this.phase = operation.phase;
   }
 
-  private async finishLanded(workspacePath: string, operationId: string) {
+  private async finishLanded(workspacePath: string, operationId: string, resolved: boolean) {
     const currentStatus = this.status;
     this.phase = "idle";
     this.stalled = false;
     this.startedLandingOperationId = undefined;
+    this.startedResolveAfterLanding = false;
     if (currentStatus) {
       const record = { ...currentStatus.record, state: "landed" as const };
       Reflect.deleteProperty(record, "pendingStrategy");
       this.status = { ...currentStatus, merged: true, record };
-      await this.props.onLanded(record);
+      await this.props.onLanded(record, { resolved });
     }
     this.operationId = undefined;
     await this.managedWorktrees.cancelLanding({
@@ -378,6 +398,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     this.error = describeError(error).message;
     this.phase = "idle";
     this.startedLandingOperationId = undefined;
+    this.startedResolveAfterLanding = false;
     this.stalled = false;
   }
 

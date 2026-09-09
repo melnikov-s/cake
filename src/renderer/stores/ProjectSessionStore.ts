@@ -51,7 +51,7 @@ export interface ProjectSessionStoreProps extends SessionTarget {
   configureDraftActivation(choice: WorktreeDraftChoice): void;
   sessionCreationChoice(): WorktreeDraftChoice;
   draftActivationCandidates(): ExistingWorktreeCandidate[];
-  onWorktreeLanded(record: Parameters<WorktreeStoreProps["onLanded"]>[0]): Promise<void> | void;
+  onWorktreeLanded: WorktreeStoreProps["onLanded"];
   onWorktreeDiscarded(
     record: Parameters<WorktreeStoreProps["onDiscarded"]>[0],
   ): Promise<void> | void;

@@ -128,11 +128,6 @@ describe("WorktreeStore", () => {
   it("submits authoritative merge-and-resolve intent even when acknowledgement is unavailable", async () => {
     let started = false;
     let projected: WorktreeLandingOperation | undefined;
-    const landedStatus = {
-      ...worktreeStatus("/worktree"),
-      record: { ...worktreeStatus("/worktree").record, state: "landed" as const },
-      merged: true,
-    };
     const onLanded = vi.fn();
     const onResolveWorkspace = vi.fn();
     const cancelLanding = vi.fn(async () => {
@@ -147,7 +142,7 @@ describe("WorktreeStore", () => {
       {
         managedWorktrees: {
           landing: vi.fn(async () =>
-            started ? { status: landedStatus } : { status: worktreeStatus("/worktree") },
+            started ? { status: undefined } : { status: worktreeStatus("/worktree") },
           ),
           startLanding: vi.fn(async (input) => {
             expect(input).toMatchObject({ resolveAfterLanding: true });
@@ -163,7 +158,9 @@ describe("WorktreeStore", () => {
       await vi.waitFor(() => expect(store.status).toBeDefined());
       await store.commitAndMerge(false, true);
 
-      expect(onLanded).toHaveBeenCalledWith(expect.objectContaining({ state: "landed" }));
+      expect(onLanded).toHaveBeenCalledWith(expect.objectContaining({ state: "landed" }), {
+        resolved: true,
+      });
       expect(onResolveWorkspace).not.toHaveBeenCalled();
       expect(cancelLanding).toHaveBeenCalledWith(
         expect.objectContaining({ intent: "acknowledge" }),
@@ -203,7 +200,9 @@ describe("WorktreeStore", () => {
 
       current = operation("landed");
       await store.refresh();
-      expect(onLanded).toHaveBeenCalledOnce();
+      expect(onLanded).toHaveBeenCalledWith(expect.objectContaining({ state: "landed" }), {
+        resolved: true,
+      });
       expect(cancelLanding).toHaveBeenCalledWith({
         operationId: "landing-operation",
         workspacePath: "/worktree",

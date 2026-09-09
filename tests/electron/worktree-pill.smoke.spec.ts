@@ -246,10 +246,14 @@ test("shows only resolve after a worktree is merged and removes the checkout", a
     await expect(page.getByRole("button", { name: "Current checkout", exact: true })).toBeVisible();
     await expect.poll(() => existsSync(worktreePath)).toBe(false);
     await page.getByRole("button", { name: "Expand Resolved" }).click();
-    const restore = page
-      .getByRole("region", { name: "Resolved sessions" })
-      .getByRole("button", { name: /^Restore / });
+    await page.getByRole("button", { name: "Expand project resolved" }).last().click();
+    const resolvedSession = page.locator(
+      `[data-slot="resolved-lane"] .session-item[data-session-id="${sessionId}"]`,
+    );
+    const restore = resolvedSession.getByRole("button", { name: /^Restore / });
     await expect(restore).toBeVisible();
+    await resolvedSession.locator(".session-row").click();
+    await expect(page.locator('[data-slot="worktree-pill"]')).toHaveCount(0);
     await restore.click();
     await expect.poll(() => existsSync(worktreePath)).toBe(true);
     await expect(page.getByText(/Cake could not find session/)).toHaveCount(0);

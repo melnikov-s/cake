@@ -94,6 +94,7 @@ describe("WorktreePill", () => {
     actions: WorktreeStore,
     record?: WorktreeRecord,
     configurationMode?: "new-session" | "activate-draft" | "edit-draft",
+    resolved = false,
   ) {
     act(() =>
       root.render(
@@ -103,6 +104,7 @@ describe("WorktreePill", () => {
           record={record}
           sessionId="session"
           projectPath="/project"
+          resolved={resolved}
           configurationMode={configurationMode}
           onConfigured={vi.fn()}
         />,
@@ -171,6 +173,13 @@ describe("WorktreePill", () => {
     render(actionStore({ aheadCount: 1, dirtyCount: 0 }));
 
     expect(candidates).not.toHaveBeenCalled();
+  });
+
+  it("hides the entire worktree pill for a resolved session", () => {
+    render(actionStore({ aheadCount: 1, dirtyCount: 0 }), undefined, undefined, true);
+
+    expect(container.querySelector('[data-slot="worktree-pill"]')).toBeNull();
+    expect(container.querySelector("button")).toBeNull();
   });
 
   it("offers draft as the final choice for a new session", () => {

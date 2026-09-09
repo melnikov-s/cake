@@ -42,6 +42,7 @@ export interface WorktreePillProps {
   record?: WorktreeRecord;
   sessionId: string;
   projectPath: string;
+  resolved?: boolean;
   configurationMode?: "new-session" | "activate-draft" | "edit-draft";
   onConfigured(): void;
 }
@@ -55,6 +56,7 @@ export const WorktreePill = observer(function WorktreePill({
   record: knownRecord,
   sessionId,
   projectPath,
+  resolved = false,
   configurationMode,
   onConfigured,
 }: WorktreePillProps) {
@@ -76,6 +78,8 @@ export const WorktreePill = observer(function WorktreePill({
     setConfirmation(undefined);
     void operation.catch(() => undefined);
   };
+
+  if (resolved) return null;
 
   if (configurationMode) {
     const selectedExisting =
