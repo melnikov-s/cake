@@ -63,12 +63,11 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
         handoffSession: (entryId, prompt, resolveSource) =>
           this.props.management.handoff(this.sessionId, entryId, prompt, resolveSource),
         deliver: async (input) => {
-          const newSession = this.props.pendingSessions.newSessionRequest(
-            this.sessionId,
-            this.props.target().tools,
-          );
+          const target = this.props.target();
+          const newSession = this.props.pendingSessions.newSessionRequest(this.sessionId);
           const prompt = {
             sessionId: input.sessionId,
+            tools: target.tools,
             text: input.text,
             renderUserMessageAsMarkdown: input.renderUserMessageAsMarkdown,
             attachments: input.attachments,

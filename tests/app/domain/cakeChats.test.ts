@@ -238,10 +238,11 @@ describe("Cake Chats domain", () => {
       const turnId = yield* cakeChatOperations.prompt(
         {
           sessionId: "cake-chat-1",
+          tools: [],
           text: "Find my task",
           attachments: [],
           renderUserMessageAsMarkdown: false,
-          newSession: { tools: [] },
+          newSession: {},
         },
         configuration,
       );
@@ -302,6 +303,7 @@ describe("Cake Chats domain", () => {
       yield* cakeChatOperations.prompt(
         {
           sessionId: "cake-chat-1",
+          tools: [],
           text: "Continue",
           attachments: [],
           renderUserMessageAsMarkdown: false,
@@ -321,6 +323,7 @@ describe("Cake Chats domain", () => {
       yield* cakeChatOperations.editMessage(
         {
           sessionId: target.sessionId,
+          tools: target.tools,
           entryId: "user-message",
           text: "Updated",
           attachments: [],
@@ -385,6 +388,36 @@ describe("Cake Chats domain", () => {
       yield* cakeChatOperations.open({ sessionId: "cake-chat-1", tools }, configuration);
       yield* cakeChatOperations.open({ sessionId: "cake-chat-2", tools: [] }, configuration);
       assert.deepEqual(fixture.toolCounts(), [1, 0]);
+    }).pipe(Effect.provide(fixture.layer));
+  });
+
+  it.effect("keeps curated tools when a Cake Chat runtime is reacquired", () => {
+    const fixture = makeLayer();
+    const tools = [
+      {
+        command: "open-project",
+        topic: "projects",
+        summary: "Open one project",
+        parameters: {},
+      },
+    ];
+    return Effect.gen(function* () {
+      yield* Effect.scoped(
+        cakeChatOperations.open({ sessionId: "cake-chat-1", tools }, configuration),
+      );
+      yield* Effect.scoped(
+        cakeChatOperations.prompt(
+          {
+            sessionId: "cake-chat-1",
+            tools,
+            text: "Continue",
+            attachments: [],
+            renderUserMessageAsMarkdown: false,
+          },
+          configuration,
+        ),
+      );
+      assert.deepEqual(fixture.toolCounts(), [1, 1]);
     }).pipe(Effect.provide(fixture.layer));
   });
 

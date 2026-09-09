@@ -132,12 +132,12 @@ const Attachment = Schema.Union([
 
 export const CakeChatPromptInput = Schema.Struct({
   sessionId: boundedId,
+  tools: Schema.Array(CakeControlTool),
   text: boundedText,
   attachments: Schema.Array(Attachment).check(Schema.isMaxLength(20)),
   renderUserMessageAsMarkdown: Schema.Boolean,
   newSession: Schema.optionalKey(
     Schema.Struct({
-      tools: Schema.Array(CakeControlTool),
       configuration: Schema.optionalKey(CakeChatConfiguration),
       name: Schema.optionalKey(Schema.String),
     }),

@@ -376,10 +376,11 @@ describe("CakeChatCollectionStore", () => {
       1,
       {
         sessionId: session!.sessionId,
+        tools: [],
         text: "Hello Cake",
         renderUserMessageAsMarkdown: false,
         attachments: [],
-        newSession: { tools: [] },
+        newSession: {},
       },
       expect.any(Object),
     );
@@ -418,6 +419,7 @@ describe("CakeChatCollectionStore", () => {
       2,
       {
         sessionId: session!.sessionId,
+        tools: [],
         text: "Follow up",
         renderUserMessageAsMarkdown: false,
         attachments: [],

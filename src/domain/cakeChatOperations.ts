@@ -188,7 +188,7 @@ export const prompt = Effect.fn("CakeChats.prompt")(function* (
 ) {
   const target: CakeChatTarget = {
     sessionId: input.sessionId,
-    tools: input.newSession?.tools ?? [],
+    tools: input.tools,
   };
   const handle = input.newSession
     ? yield* acquireTarget(target, true, configuration)
@@ -233,7 +233,7 @@ export const editMessage = Effect.fn("CakeChats.editMessage")(function* (
   configuration: CakeChatRuntimeConfiguration,
 ) {
   yield* editConversationMessage(
-    acquireForUse({ sessionId: input.sessionId, tools: [] }, configuration),
+    acquireForUse({ sessionId: input.sessionId, tools: input.tools }, configuration),
     input.entryId,
     input.text,
     projectAttachments(input.attachments),

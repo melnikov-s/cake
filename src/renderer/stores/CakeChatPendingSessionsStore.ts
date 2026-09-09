@@ -18,7 +18,6 @@ export interface CakeControlTool {
 }
 
 interface NewCakeChatSessionRequest {
-  tools: ReadonlyArray<CakeControlTool>;
   configuration?: ChatConfiguration;
   name?: string;
 }
@@ -97,9 +96,9 @@ export class CakeChatPendingSessionsStore extends Store<CakeChatPendingSessionsS
     return true;
   }
 
-  newSessionRequest(sessionId: string, tools: ReadonlyArray<CakeControlTool>) {
+  newSessionRequest(sessionId: string) {
     if (!this.isPending(sessionId)) return undefined;
-    const request: NewCakeChatSessionRequest = { tools };
+    const request: NewCakeChatSessionRequest = {};
     const configuration = this.configuration(sessionId);
     if (configuration !== undefined) request.configuration = configuration;
     const name = this.conversation(sessionId)?.name;

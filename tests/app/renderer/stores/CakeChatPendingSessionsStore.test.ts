@@ -25,8 +25,7 @@ describe("CakeChatPendingSessionsStore", () => {
 
     expect(conversation).toBeInstanceOf(PendingConversationStore);
     expect(store.conversation("pending-1")).toBe(conversation);
-    expect(store.newSessionRequest("pending-1", [])).toEqual({
-      tools: [],
+    expect(store.newSessionRequest("pending-1")).toEqual({
       configuration,
       name: "Saved plan",
     });
