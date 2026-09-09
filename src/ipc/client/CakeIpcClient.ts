@@ -73,6 +73,7 @@ import type {
   ModelPresetCreateInput,
   ModelPresetLimitError,
   ModelPresetNotFoundError,
+  ModelPresetOrderInput,
   ModelPresetProjection,
   ModelPresetUpdateInput,
   ModelPresetValidationError,
@@ -175,6 +176,9 @@ export interface CakeIpcClientService {
     ) => Effect.Effect<ModelPresetProjection, ModelPresetMutationError>;
     readonly update: (
       input: ModelPresetUpdateInput,
+    ) => Effect.Effect<ModelPresetProjection, ModelPresetMutationError>;
+    readonly reorder: (
+      input: ModelPresetOrderInput,
     ) => Effect.Effect<ModelPresetProjection, ModelPresetMutationError>;
     readonly remove: (id: string) => Effect.Effect<ModelPresetProjection, ModelPresetMutationError>;
     readonly setDefault: (
@@ -619,6 +623,9 @@ export const CakeIpcClientLive = Layer.effect(
         ),
         update: Effect.fn("CakeIpcClient.modelPresets.update")((input) =>
           client("modelPresets.update", input),
+        ),
+        reorder: Effect.fn("CakeIpcClient.modelPresets.reorder")((input) =>
+          client("modelPresets.reorder", input),
         ),
         remove: Effect.fn("CakeIpcClient.modelPresets.remove")((id) =>
           client("modelPresets.remove", { id }),

@@ -25,7 +25,7 @@ interface Projection {
   defaultPresetId?: string;
 }
 
-async function launch(temporaryRoot: string) {
+async function launch(temporaryRoot: string, cakeHome: string) {
   return electron.launch({
     args: [repositoryRoot],
     cwd: repositoryRoot,
@@ -107,7 +107,7 @@ test("Model Presets use Effect RPC, persist transactionally, and preserve unreso
       theme: "system",
     }),
   );
-  let application = await launch(temporaryRoot);
+  let application = await launch(temporaryRoot, cakeHome);
   try {
     await application.firstWindow();
     const harness = await openHarness(application);
@@ -135,20 +135,34 @@ test("Model Presets use Effect RPC, persist transactionally, and preserve unreso
     const withDefault = await call<Projection>(harness, "setDefaultModelPreset", unavailable.id);
     expect(withDefault.defaultPresetId).toBe(unavailable.id);
 
-    const withDuplicate = await call<Projection>(harness, "createModelPreset", {
-      name: "Temporary second preset",
+    const withSecond = await call<Projection>(harness, "createModelPreset", {
+      name: "Second preset",
       provider: "missing-provider",
       modelId: "other-missing-model",
       thinkingLevel: "off",
       fastMode: false,
     });
-    expect(withDuplicate.presets).toHaveLength(2);
+    expect(withSecond.presets).toHaveLength(2);
+    const second = withSecond.presets[1]!;
+    const reordered = await call<Projection>(harness, "reorderModelPresets", [
+      second.id,
+      unavailable.id,
+    ]);
+    expect(reordered.presets.map((preset) => preset.id)).toEqual([second.id, unavailable.id]);
+
+    const withTemporary = await call<Projection>(harness, "createModelPreset", {
+      name: "Temporary preset",
+      provider: "missing-provider",
+      modelId: "temporary-model",
+      thinkingLevel: "off",
+      fastMode: false,
+    });
     const removed = await call<Projection>(
       harness,
       "removeModelPreset",
-      withDuplicate.presets[1]!.id,
+      withTemporary.presets[2]!.id,
     );
-    expect(removed.presets).toHaveLength(1);
+    expect(removed.presets).toHaveLength(2);
 
     await application.close();
     // Start the verification window with one genuinely new staged Project chat;
@@ -162,11 +176,12 @@ test("Model Presets use Effect RPC, persist transactionally, and preserve unreso
         theme: "system",
       }),
     );
-    application = await launch(temporaryRoot);
+    application = await launch(temporaryRoot, cakeHome);
     const mainPage = await application.firstWindow();
     const restartedHarness = await openHarness(application);
     expect(await call<Projection>(restartedHarness, "listModelPresets")).toEqual({
       presets: [
+        second,
         {
           ...unavailable,
           name: "Unavailable but editable",
@@ -186,12 +201,29 @@ test("Model Presets use Effect RPC, persist transactionally, and preserve unreso
       "Unavailable but editable",
     );
 
-    const openSettings = mainPage.getByLabel("Open settings").first();
+    const openSettings = mainPage.locator('button[aria-label="Open settings"]:visible');
     await expect(openSettings).toBeVisible({ timeout: 20_000 });
     await openSettings.click();
     const modelPresets = mainPage.getByLabel("Model Presets");
     await expect(modelPresets.getByText("Unavailable but editable", { exact: true })).toBeVisible();
-    await expect(modelPresets.getByText("Model unavailable", { exact: true })).toBeVisible();
+    await expect(
+      modelPresets.getByText("Model unavailable", { exact: true }).first(),
+    ).toBeVisible();
+
+    await modelPresets
+      .getByRole("button", { name: "Drag to reorder Unavailable but editable" })
+      .dragTo(modelPresets.locator(`[data-preset-id="${second.id}"]`));
+    await expect(modelPresets.locator("[data-preset-id]").first()).toHaveAttribute(
+      "data-preset-id",
+      unavailable.id,
+    );
+    await expect
+      .poll(async () =>
+        (await call<Projection>(restartedHarness, "listModelPresets")).presets.map(
+          (preset) => preset.id,
+        ),
+      )
+      .toEqual([unavailable.id, second.id]);
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

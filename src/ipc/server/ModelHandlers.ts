@@ -9,6 +9,7 @@ export const modelHandlers = ModelRpc.of({
   "modelPresets.list": () => modelPresets.list(),
   "modelPresets.create": (input) => modelPresets.create(input),
   "modelPresets.update": (input) => modelPresets.update(input),
+  "modelPresets.reorder": (input) => modelPresets.reorder(input),
   "modelPresets.remove": ({ id }) => modelPresets.remove(id),
   "modelPresets.setDefault": ({ id }) => modelPresets.setDefault(id),
   "modelPresets.resolve": ({ id }) => modelPresets.resolve(id),

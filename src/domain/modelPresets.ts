@@ -18,6 +18,10 @@ export const ModelPresetCreateInput = Schema.Struct({
 
 export const ModelPresetUpdateInput = ModelPreset;
 
+export const ModelPresetOrderInput = Schema.Struct({
+  ids: Schema.Array(Schema.String.check(Schema.isUUID(4))).check(Schema.isMaxLength(100)),
+});
+
 export const ModelPresetProjection = Schema.Struct({
   presets: Schema.Array(ModelPreset).check(Schema.isMaxLength(100)),
   // Projection constructors always include this key; undefined means no default.
@@ -62,6 +66,7 @@ export class ModelPresetLimitError extends Schema.TaggedError<ModelPresetLimitEr
 
 export interface ModelPresetCreateInput extends Schema.Schema.Type<typeof ModelPresetCreateInput> {}
 export interface ModelPresetUpdateInput extends Schema.Schema.Type<typeof ModelPresetUpdateInput> {}
+export interface ModelPresetOrderInput extends Schema.Schema.Type<typeof ModelPresetOrderInput> {}
 export interface ModelPresetProjection extends Schema.Schema.Type<typeof ModelPresetProjection> {}
 
 type ModelPresetDomainError =
@@ -143,6 +148,30 @@ export const update = Effect.fn("ModelPresets.update")(function* (input: ModelPr
         ),
       })),
     );
+  });
+});
+
+export const reorder = Effect.fn("ModelPresets.reorder")(function* (input: ModelPresetOrderInput) {
+  return yield* transact((current) => {
+    const currentIds = new Set(current.modelPresets.map((preset) => preset.id));
+    const orderedIds = new Set(input.ids);
+    if (
+      orderedIds.size !== input.ids.length ||
+      orderedIds.size !== currentIds.size ||
+      input.ids.some((id) => !currentIds.has(id))
+    )
+      return Effect.fail(
+        new ModelPresetValidationError({
+          message: "Preset order must contain every preset exactly once",
+        }),
+      );
+    const indexById = new Map(input.ids.map((id, index) => [id, index]));
+    return Effect.succeed({
+      ...current,
+      modelPresets: [...current.modelPresets].sort(
+        (left, right) => (indexById.get(left.id) ?? 0) - (indexById.get(right.id) ?? 0),
+      ),
+    });
   });
 });
 

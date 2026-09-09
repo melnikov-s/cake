@@ -2,6 +2,7 @@ import { Effect, Schema } from "effect";
 import { describe, expect, it } from "vitest";
 import {
   ModelPresetCreateInput,
+  ModelPresetOrderInput,
   ModelPresetProjection,
   ModelPresetUpdateInput,
 } from "../../../src/domain/modelPresets";
@@ -30,6 +31,9 @@ describe("Model Preset Effect RPC contract", () => {
       }),
     ).toMatchObject({ name: preset.name });
     expect(Schema.decodeUnknownSync(ModelPresetUpdateInput)(preset)).toEqual(preset);
+    expect(Schema.decodeUnknownSync(ModelPresetOrderInput)({ ids: [preset.id] })).toEqual({
+      ids: [preset.id],
+    });
     expect(
       Schema.decodeUnknownSync(ModelPresetProjection)({
         presets: [preset],
@@ -85,6 +89,7 @@ describe("Model Preset Effect RPC contract", () => {
       "list",
       "create",
       "update",
+      "reorder",
       "remove",
       "setDefault",
       "resolve",

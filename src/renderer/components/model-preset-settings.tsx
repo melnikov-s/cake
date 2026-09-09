@@ -1,9 +1,13 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { observer } from "r-state-tree/react";
 import type { ModelPreset } from "../../ipc/session-contract";
+import { modelPresetDragType } from "../lib/model-preset-drag";
+import { cn } from "../lib/utils";
 import { ModelPicker, reasoningLabel } from "./model-picker";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
+import { IconButton } from "./ui/icon-button";
+import { GripIcon } from "./ui/icons";
 import { Input } from "./ui/input";
 import type {
   ModelPresetResolutionStatus,
@@ -35,6 +39,8 @@ export const ModelPresetSettings = observer(function ModelPresetSettings({
   const groups = settings.modelsByProvider;
   const [editingId, setEditingId] = useState<string | "new" | undefined>();
   const [draft, setDraft] = useState(emptyDraft);
+  const [draggedId, setDraggedId] = useState<string>();
+  const [dropTargetId, setDropTargetId] = useState<string>();
 
   useEffect(() => {
     if (!settings.sectionRequestRevision) return;
@@ -86,23 +92,67 @@ export const ModelPresetSettings = observer(function ModelPresetSettings({
           return (
             <article
               key={preset.id}
-              className="flex items-center justify-between gap-4 rounded-xl border border-border bg-muted/50 p-3"
+              data-preset-id={preset.id}
+              className={cn(
+                "flex items-center justify-between gap-4 rounded-xl border border-border bg-muted/50 p-3 transition-[opacity,box-shadow,border-color]",
+                draggedId === preset.id && "opacity-45",
+                dropTargetId === preset.id &&
+                  "border-accent ring-2 ring-accent/35 ring-offset-2 ring-offset-background",
+              )}
+              onDragEnter={(event) => {
+                if (
+                  event.dataTransfer.types.includes(modelPresetDragType) &&
+                  draggedId !== preset.id
+                )
+                  setDropTargetId(preset.id);
+              }}
+              onDragOver={(event) => {
+                if (!event.dataTransfer.types.includes(modelPresetDragType)) return;
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "move";
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                const sourceId = event.dataTransfer.getData(modelPresetDragType);
+                if (sourceId) void settings.reorderPreset(sourceId, preset.id);
+                setDraggedId(undefined);
+                setDropTargetId(undefined);
+              }}
             >
-              <div>
-                <strong className="block text-xs font-semibold text-foreground">
-                  {preset.name}
-                </strong>
-                <small className="block font-mono text-[10px] text-muted-foreground">
-                  {preset.provider}/{preset.modelId} · {reasoningLabel(preset.thinkingLevel)}
-                  {preset.fastMode ? " · Fast" : ""}
-                </small>
-                {unavailable && (
-                  <Badge variant="destructive" size="xs" className="mt-1">
-                    {unavailable}
-                  </Badge>
-                )}
+              <div className="flex min-w-0 items-center gap-3">
+                <IconButton
+                  draggable
+                  className="size-7 shrink-0 cursor-grab text-muted-foreground active:cursor-grabbing"
+                  tooltip={`Reorder ${preset.name}`}
+                  ariaLabel={`Drag to reorder ${preset.name}`}
+                  onDragStart={(event) => {
+                    event.dataTransfer.effectAllowed = "move";
+                    event.dataTransfer.setData(modelPresetDragType, preset.id);
+                    setDraggedId(preset.id);
+                  }}
+                  onDragEnd={() => {
+                    setDraggedId(undefined);
+                    setDropTargetId(undefined);
+                  }}
+                >
+                  <GripIcon />
+                </IconButton>
+                <div className="min-w-0">
+                  <strong className="block truncate text-xs font-semibold text-foreground">
+                    {preset.name}
+                  </strong>
+                  <small className="block truncate font-mono text-[10px] text-muted-foreground">
+                    {preset.provider}/{preset.modelId} · {reasoningLabel(preset.thinkingLevel)}
+                    {preset.fastMode ? " · Fast" : ""}
+                  </small>
+                  {unavailable && (
+                    <Badge variant="destructive" size="xs" className="mt-1">
+                      {unavailable}
+                    </Badge>
+                  )}
+                </div>
               </div>
-              <div className="flex items-center gap-2 text-xs">
+              <div className="flex shrink-0 items-center gap-2 text-xs">
                 <Button
                   variant={isDefault ? "outline" : "ghost"}
                   size="sm"

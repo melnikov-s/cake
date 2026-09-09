@@ -138,6 +138,23 @@ export class ModelPresetSettingsStore extends Store {
     return this.createPreset({ ...source, name: `${source.name} copy` });
   }
 
+  reorderPreset(id: string, targetId: string) {
+    const sourceIndex = this.presets.findIndex((preset) => preset.id === id);
+    const targetIndex = this.presets.findIndex((preset) => preset.id === targetId);
+    if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) return Promise.resolve();
+    const reordered = [...this.presets];
+    const [source] = reordered.splice(sourceIndex, 1);
+    if (!source) return Promise.resolve();
+    reordered.splice(targetIndex, 0, source);
+    const revision = this.beginOptimistic(reordered, this.defaultPresetId);
+    return this.enqueue(revision, () =>
+      this.client.modelPresets.reorder(
+        { ids: reordered.map((preset) => this.resolveAuthoritativeId(preset.id)) },
+        { signal: this.signal },
+      ),
+    );
+  }
+
   deletePreset(id: string) {
     const revision = this.beginOptimistic(
       this.presets.filter((preset) => preset.id !== id),

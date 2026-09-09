@@ -122,6 +122,12 @@ export function makeClient(runtime: Pick<Runtime, "execute">): Client {
           withClient((client) => client.modelPresets.update(input)),
           options,
         ),
+      reorder: (input, options) =>
+        run(
+          "modelPresets.reorder",
+          withClient((client) => client.modelPresets.reorder(input)),
+          options,
+        ),
       remove: (id, options) =>
         run(
           "modelPresets.remove",

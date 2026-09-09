@@ -271,6 +271,8 @@ const harness = {
     thinkingLevel: "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
     fastMode: boolean;
   }) => run(withClient((client) => client.modelPresets.update(input))),
+  reorderModelPresets: (ids: readonly string[]) =>
+    run(withClient((client) => client.modelPresets.reorder({ ids }))),
   removeModelPreset: (id: string) => run(withClient((client) => client.modelPresets.remove(id))),
   setDefaultModelPreset: (id?: string) =>
     run(withClient((client) => client.modelPresets.setDefault(id))),

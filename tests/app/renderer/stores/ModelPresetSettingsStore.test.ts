@@ -79,6 +79,16 @@ function createClient(initial: Projection = { presets: [] }, models = [catalogMo
       };
       return state;
     }),
+    reorderModelPresets: vi.fn(async ({ ids }: { ids: readonly string[] }) => {
+      const indexById = new Map(ids.map((id, index) => [id, index]));
+      state = {
+        ...state,
+        presets: [...state.presets].sort(
+          (left, right) => (indexById.get(left.id) ?? 0) - (indexById.get(right.id) ?? 0),
+        ),
+      };
+      return state;
+    }),
     removeModelPreset: vi.fn(async (id: string) => {
       state = {
         presets: state.presets.filter((value) => value.id !== id),
@@ -115,6 +125,7 @@ function mountStore(initial?: Projection, models?: ModelOption[]) {
       list: controlled.client.listModelPresets,
       create: controlled.client.createModelPreset,
       update: controlled.client.updateModelPreset,
+      reorder: controlled.client.reorderModelPresets,
       remove: controlled.client.removeModelPreset,
       setDefault: controlled.client.setDefaultModelPreset,
       resolve: vi.fn(),
@@ -174,6 +185,24 @@ describe("ModelPresetSettingsStore", () => {
     expect(client.createModelPreset).toHaveBeenCalledTimes(2);
     expect(client.updateModelPreset).toHaveBeenCalledOnce();
     expect(client.removeModelPreset).toHaveBeenCalledOnce();
+    dispose();
+  });
+
+  it("optimistically reorders presets and persists their order", async () => {
+    const first = preset({ name: "First" });
+    const second = preset({ id: "00000000-0000-4000-8000-000000000002", name: "Second" });
+    const third = preset({ id: "00000000-0000-4000-8000-000000000003", name: "Third" });
+    const { client, store, dispose } = mountStore({ presets: [first, second, third] });
+    await store.hydrate();
+
+    const save = store.reorderPreset(first.id, third.id);
+    expect(store.presets.map((value) => value.name)).toEqual(["Second", "Third", "First"]);
+    await save;
+    expect(client.reorderModelPresets).toHaveBeenCalledWith(
+      { ids: [second.id, third.id, first.id] },
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(store.presets.map((value) => value.name)).toEqual(["Second", "Third", "First"]);
     dispose();
   });
 

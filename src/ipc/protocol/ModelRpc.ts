@@ -6,6 +6,7 @@ import {
   ModelPresetCreateInput,
   ModelPresetLimitError,
   ModelPresetNotFoundError,
+  ModelPresetOrderInput,
   ModelPresetProjection,
   ModelPresetUpdateInput,
   ModelPresetValidationError,
@@ -59,6 +60,11 @@ export const ModelRpc = RpcGroup.make(
   }),
   Rpc.make("modelPresets.update", {
     payload: ModelPresetUpdateInput,
+    success: ModelPresetProjection,
+    error: ModelPresetMutationError,
+  }),
+  Rpc.make("modelPresets.reorder", {
+    payload: ModelPresetOrderInput,
     success: ModelPresetProjection,
     error: ModelPresetMutationError,
   }),

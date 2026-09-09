@@ -7,6 +7,7 @@ import {
   create,
   list,
   remove,
+  reorder,
   resolve,
   setDefault,
   update,
@@ -161,6 +162,32 @@ describe("Model Presets domain", () => {
           update({ ...preset, id: "00000000-0000-4000-8000-000000000099" }),
         );
         assert.equal(missing._tag, "ModelPresetNotFoundError");
+      }),
+    );
+    return effect;
+  });
+
+  it.effect("reorders presets and rejects incomplete or duplicate orders", () => {
+    const { effect } = run(
+      Effect.gen(function* () {
+        const first = (yield* create(input("First"))).presets[0];
+        const second = (yield* create(input("Second"))).presets[1];
+        const third = (yield* create(input("Third"))).presets[2];
+        assert.ok(first && second && third);
+
+        const reordered = yield* reorder({ ids: [third.id, first.id, second.id] });
+        assert.deepEqual(
+          reordered.presets.map((preset) => preset.name),
+          ["Third", "First", "Second"],
+        );
+        assert.equal(
+          (yield* Effect.flip(reorder({ ids: [first.id, second.id] })))._tag,
+          "ModelPresetValidationError",
+        );
+        assert.equal(
+          (yield* Effect.flip(reorder({ ids: [first.id, first.id, third.id] })))._tag,
+          "ModelPresetValidationError",
+        );
       }),
     );
     return effect;
