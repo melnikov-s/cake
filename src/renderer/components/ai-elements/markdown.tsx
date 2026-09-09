@@ -1,18 +1,26 @@
-import { createContext, useContext, useDeferredValue, useMemo, useRef } from "react";
+import { createContext, useContext, useDeferredValue, useMemo } from "react";
 import type { ComponentProps, ReactNode } from "react";
+import type { Code, Root, RootContent } from "mdast";
 import { math } from "@streamdown/math";
 import { createMermaidPlugin } from "@streamdown/mermaid";
+import remarkParse from "remark-parse";
 import {
   parseMarkdownIntoBlocks,
   Streamdown,
   type Components,
   type StreamdownProps,
 } from "streamdown";
+import { unified } from "unified";
 import { useResolvedColorTheme } from "@/lib/resolved-color-theme";
-import { plainSyntaxHighlight, syntaxHighlighter } from "@/lib/syntax-highlighter";
+import {
+  supportsSyntaxHighlightLanguage,
+  syntaxHighlighter,
+  syntaxHighlightLanguageNames,
+} from "@/lib/syntax-highlighter";
 import { cn } from "@/lib/utils";
 import type { SourceLocation } from "../../../ipc/source-location";
 import { formatSourceLocation, parseSourceLocation } from "../../../utils/source-location";
+import { MarkdownCodeBlock, streamingCodeMarker } from "./markdown-code-block";
 
 /** Matches web-style hrefs that must never be treated as workspace file paths. */
 const nonPathHref = /^(?:[a-z][a-z0-9+.-]*:|\/\/|#)/i;
@@ -186,45 +194,103 @@ function linkAnchor(allProps: AnchorProps, actions?: MarkdownLinkActions) {
 }
 
 const mermaid = createMermaidPlugin({ config: { securityLevel: "strict" } });
-function lastFence(markdown: string) {
-  let fence: { marker: "`" | "~"; length: number; contentStart: number } | undefined;
-  let latest: { code: string; contentStart: number; incomplete: boolean } | undefined;
-  let offset = 0;
+const configuredPlugins = {
+  code: syntaxHighlighter,
+  math,
+  mermaid,
+  renderers: [
+    {
+      component: MarkdownCodeBlock,
+      language: syntaxHighlightLanguageNames,
+    },
+  ],
+};
+const codeControls = {
+  code: {
+    copy: true,
+    download: false,
+  },
+};
 
-  for (const line of markdown.match(/[^\n]*\n|[^\n]+$/g) ?? []) {
-    if (fence) {
-      const closing = line.match(/^ {0,3}(`+|~+)[ \t]*(?:\n|$)/)?.[1];
-      if (closing?.[0] === fence.marker && closing.length >= fence.length) {
-        latest = {
-          code: markdown.slice(fence.contentStart, offset).replace(/\n+$/, ""),
-          contentStart: fence.contentStart,
-          incomplete: false,
-        };
-        fence = undefined;
-      }
-    } else {
-      const opening = line.match(/^ {0,3}(`{3,}|~{3,})/)?.[1];
-      if (
-        opening &&
-        (opening[0] === "~" || !line.slice(line.indexOf(opening) + opening.length).includes("`"))
-      ) {
-        fence = {
-          marker: opening.startsWith("`") ? "`" : "~",
-          length: opening.length,
-          contentStart: offset + line.length,
-        };
-      }
-    }
-    offset += line.length;
-  }
+type FenceLocation = {
+  contentStart: number;
+  incomplete: boolean;
+  languageEnd: number;
+  languageStart: number;
+  linePrefix: string;
+  normalizedLanguage: string;
+  openingInfoEnd: number;
+};
 
-  return fence
-    ? {
-        code: markdown.slice(fence.contentStart).replace(/\n+$/, ""),
-        contentStart: fence.contentStart,
-        incomplete: true,
-      }
-    : latest;
+const markdownParser = unified().use(remarkParse);
+const closingFenceLine = /^(?:(?: {0,3}>[ \t]?)*[ \t]*)(`+|~+)[ \t]*$/;
+const listMarkerAtEnd = /(?:[-+*]|\d+[.)])[ \t]+$/;
+
+function finalCodeNode(markdown: string) {
+  let finalCode: Code | undefined;
+  const visit = (node: Root | RootContent) => {
+    if (node.type === "code") finalCode = node;
+    if ("children" in node) for (const child of node.children) visit(child);
+  };
+  visit(markdownParser.parse(markdown));
+  return finalCode;
+}
+
+function lastFence(markdown: string): FenceLocation | undefined {
+  const code = finalCodeNode(markdown);
+  const openingStart = code?.position?.start?.offset;
+  const codeEnd = code?.position?.end?.offset;
+  const language = code?.lang;
+  if (
+    openingStart === undefined ||
+    codeEnd === undefined ||
+    !language ||
+    !supportsSyntaxHighlightLanguage(language)
+  )
+    return undefined;
+
+  const openingLineBreak = markdown.indexOf("\n", openingStart);
+  const contentStart = openingLineBreak < 0 ? markdown.length : openingLineBreak + 1;
+  const openingInfoEnd =
+    openingLineBreak < 0
+      ? markdown.length
+      : markdown[openingLineBreak - 1] === "\r"
+        ? openingLineBreak - 1
+        : openingLineBreak;
+  const openingLine = markdown.slice(openingStart, openingInfoEnd);
+  const opening = openingLine.match(/^(`{3,}|~{3,})/)?.[1];
+  if (!opening) return undefined;
+  const relativeLanguageStart = openingLine.indexOf(language, opening.length);
+  if (relativeLanguageStart < 0) return undefined;
+
+  const rawCode = markdown.slice(openingStart, codeEnd);
+  const finalLine = rawCode.slice(rawCode.lastIndexOf("\n") + 1);
+  const closing = finalLine.match(closingFenceLine)?.[1];
+  const hasClosingFence =
+    closing !== undefined && closing[0] === opening[0] && closing.length >= opening.length;
+  const endsAtStreamingEdge = /^(?:\r?\n)?$/.test(markdown.slice(codeEnd));
+  const incomplete = !hasClosingFence && endsAtStreamingEdge;
+  const openingLineStart = markdown.lastIndexOf("\n", openingStart - 1) + 1;
+  const openingPrefix = markdown.slice(openingLineStart, openingStart);
+  const linePrefix = openingPrefix.replace(listMarkerAtEnd, (marker) => " ".repeat(marker.length));
+  const languageStart = openingStart + relativeLanguageStart;
+  return {
+    contentStart,
+    incomplete,
+    languageEnd: languageStart + language.length,
+    languageStart,
+    linePrefix,
+    normalizedLanguage: language.toLowerCase(),
+    openingInfoEnd,
+  };
+}
+
+function markChangingFence(markdown: string, mutableCode: boolean) {
+  const finalFence = lastFence(markdown);
+  if (!finalFence || (!mutableCode && !finalFence.incomplete)) return markdown;
+  const markedOpening = `${markdown.slice(0, finalFence.languageStart)}${finalFence.normalizedLanguage}${markdown.slice(finalFence.languageEnd, finalFence.openingInfoEnd)} ${streamingCodeMarker}${markdown.slice(finalFence.openingInfoEnd, finalFence.contentStart)}`;
+  if (finalFence.contentStart === finalFence.openingInfoEnd) return markedOpening;
+  return `${markedOpening}${finalFence.linePrefix}${streamingCodeMarker}\n${markdown.slice(finalFence.contentStart)}`;
 }
 
 type MarkdownProps = Omit<
@@ -259,6 +325,15 @@ export function Markdown({
 }: MarkdownProps) {
   const colorTheme = useResolvedColorTheme();
   const linkActions = useContext(MarkdownLinkContext);
+  const mermaidOptions = useMemo<NonNullable<StreamdownProps["mermaid"]>>(
+    () => ({
+      config: {
+        securityLevel: "strict",
+        theme: colorTheme === "dark" ? "dark" : "neutral",
+      },
+    }),
+    [colorTheme],
+  );
   const source = prepareMarkdownLinks(
     normalizeLatexDelimiters ? normalizeLatexMathDelimiters(children) : children,
     Boolean(onOpenSourceLocation),
@@ -267,29 +342,13 @@ export function Markdown({
   // Streamdown on its previous source during the urgent render also lets React
   // coalesce token-sized updates before parsing the growing Markdown again.
   const deferredSource = useDeferredValue(source);
-  const renderedSource = streaming ? deferredSource : source;
-  const finalFence = streaming ? lastFence(renderedSource) : undefined;
-  const changingFence =
-    finalFence && (mutableCode || finalFence.incomplete) ? finalFence : undefined;
-  const changingCodeRef = useRef(changingFence?.code);
-  changingCodeRef.current = changingFence?.code;
-  const codeHighlighter = useMemo(
-    () => ({
-      ...syntaxHighlighter,
-      highlight: (...args: Parameters<typeof syntaxHighlighter.highlight>) =>
-        changingCodeRef.current === args[0].code
-          ? plainSyntaxHighlight(args[0].code)
-          : syntaxHighlighter.highlight(...args),
-    }),
-    // Keep the plugin stable as the active fence grows. Change it only when a
-    // fence starts or settles so Streamdown reruns highlighting for that fence;
-    // cached settled fences retain their existing highlighted result.
-    [changingFence?.contentStart, mutableCode, streaming],
-  );
-  const configuredPlugins = useMemo(
-    () => ({ code: codeHighlighter, math, mermaid }),
-    [codeHighlighter],
-  );
+  const deferredRenderedSource = streaming ? deferredSource : source;
+  // Mark the one logical fence that is still changing. The custom code renderer
+  // reads fence metadata, so duplicate source text in settled blocks cannot be
+  // mistaken for the active block and the shared highlighter remains stable.
+  const renderedSource = streaming
+    ? markChangingFence(deferredRenderedSource, mutableCode)
+    : deferredRenderedSource;
   const components = useMemo<Components>(() => {
     if (!onOpenSourceLocation) return { a: (anchorProps) => linkAnchor(anchorProps, linkActions) };
     const openSourceLocation = onOpenSourceLocation;
@@ -329,16 +388,9 @@ export function Markdown({
         "markdown-content min-w-0 max-w-full break-words [overflow-wrap:anywhere] [&_[data-streamdown=code-block-body]]:overflow-x-hidden [&_[data-streamdown=code-block-body]_pre]:whitespace-pre-wrap [&_[data-streamdown=code-block-body]_pre]:[overflow-wrap:anywhere]",
         className,
       )}
-      controls={{
-        code: {
-          copy: true,
-          download: false,
-        },
-      }}
+      controls={codeControls}
       isAnimating={false}
-      mermaid={{
-        config: { securityLevel: "strict", theme: colorTheme === "dark" ? "dark" : "neutral" },
-      }}
+      mermaid={mermaidOptions}
       mode="streaming"
       parseMarkdownIntoBlocksFn={parseMarkdownIntoBlocks}
       plugins={configuredPlugins}

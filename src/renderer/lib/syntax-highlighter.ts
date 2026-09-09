@@ -30,6 +30,9 @@ const aliases = new Map<string, SupportedSyntaxLanguage>([
   ["yml", "yaml"],
 ]);
 const supportedLanguages = new Set<string>(supportedSyntaxLanguages);
+export const syntaxHighlightLanguageNames = [
+  ...new Set([...supportedSyntaxLanguages, ...aliases.keys()]),
+];
 
 function normalizeLanguage(language: string) {
   const normalized = language.trim().toLowerCase();
@@ -40,7 +43,11 @@ function isSupportedLanguage(language: string): language is SupportedSyntaxLangu
   return supportedLanguages.has(language);
 }
 
-export function plainSyntaxHighlight(code: string): SyntaxHighlightResult {
+export function supportsSyntaxHighlightLanguage(language: string) {
+  return isSupportedLanguage(normalizeLanguage(language));
+}
+
+function plainSyntaxHighlight(code: string): SyntaxHighlightResult {
   let offset = 0;
   return {
     tokens: code.split("\n").map((content) => {
@@ -170,7 +177,7 @@ export const syntaxHighlighter = {
   name: "shiki",
   type: "code-highlighter",
   getSupportedLanguages: () => [...supportedSyntaxLanguages],
-  supportsLanguage: (language) => supportedLanguages.has(normalizeLanguage(language)),
+  supportsLanguage: supportsSyntaxHighlightLanguage,
   getThemes: (): [(typeof syntaxThemes)[0], (typeof syntaxThemes)[1]] => [
     syntaxThemes[0],
     syntaxThemes[1],

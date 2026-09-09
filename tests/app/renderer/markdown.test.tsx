@@ -63,21 +63,46 @@ describe("Markdown", () => {
     );
   });
 
-  it("highlights completed fences while keeping only the incomplete streaming fence plain", () => {
-    const highlight = vi.spyOn(syntaxHighlighter, "highlight");
+  it("marks only the incomplete fence for block-local plain rendering", () => {
     const source = ["```ts", "const settled = true;", "```", "", "```ts", "const changing ="].join(
       "\n",
     );
     act(() => root.render(<Markdown streaming>{source}</Markdown>));
 
-    const codePlugin = vi.mocked(Streamdown).mock.calls.at(-1)![0].plugins?.code;
-    const themes = syntaxHighlighter.getThemes();
-    codePlugin?.highlight({ code: "const settled = true;", language: "ts", themes });
-    expect(highlight).toHaveBeenCalledOnce();
+    const streamdownProps = vi.mocked(Streamdown).mock.calls.at(-1)![0];
+    expect(streamdownProps.children).toBe(
+      [
+        "```ts",
+        "const settled = true;",
+        "```",
+        "",
+        "```ts __cake_streaming_code__",
+        "__cake_streaming_code__",
+        "const changing =",
+      ].join("\n"),
+    );
+    expect(streamdownProps.plugins?.code).toBe(syntaxHighlighter);
+    expect(streamdownProps.plugins?.renderers).toHaveLength(1);
+  });
 
-    const changing = codePlugin?.highlight({ code: "const changing =", language: "ts", themes });
-    expect(highlight).toHaveBeenCalledOnce();
-    expect(changing?.tokens[0]?.[0]?.content).toBe("const changing =");
+  it("does not inject markers into unsupported, unlabelled, Mermaid, or indented literal code", () => {
+    for (const source of [
+      "```text\nhello",
+      "```\nhello",
+      "```mermaid\ngraph TD",
+      "- item\n\n      ```ts\n      const literal = true;",
+    ]) {
+      act(() => root.render(<Markdown streaming>{source}</Markdown>));
+      expect(vi.mocked(Streamdown).mock.calls.at(-1)![0].children).toBe(source);
+    }
+  });
+
+  it("normalizes a marked language so custom-renderer routing agrees", () => {
+    act(() => root.render(<Markdown streaming>{"```TS\nconst value = 1;"}</Markdown>));
+
+    expect(vi.mocked(Streamdown).mock.calls.at(-1)![0].children).toBe(
+      "```ts __cake_streaming_code__\n__cake_streaming_code__\nconst value = 1;",
+    );
   });
 
   it("keeps the streaming highlighter stable across source updates", () => {

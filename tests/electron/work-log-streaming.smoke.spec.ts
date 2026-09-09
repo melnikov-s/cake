@@ -153,28 +153,85 @@ test("streaming work logs keep their DOM and follow their own bottom", async () 
     const originalFooter = await footer.elementHandle();
     if (!originalContent || !originalFooter) throw new Error("Missing work log content or footer");
 
-    // Settled fences keep their highlighted DOM while only the fence receiving
-    // streamed text remains plain. Closing that fence highlights it without
-    // replacing the earlier block.
-    sendReasoning("```ts\nconst settledSyntax = true;\n```\n\n```ts\nconst streamingSyntax =");
+    // Observe every rendered frame and relevant DOM mutation after settled
+    // fences are highlighted. Eventual assertions alone miss a one-frame plain
+    // fallback while a later block changes.
+    sendReasoning(
+      "```ts\nconst repeatedSyntax = true;\n```\n\n```ts\nconst secondSettled = 2;\n```",
+    );
     const codeBodies = content.locator('[data-streamdown="code-block-body"]');
     await expect(codeBodies).toHaveCount(2);
-    const settledCode = codeBodies.nth(0);
-    const streamingCode = codeBodies.nth(1);
-    await expect.poll(() => settledCode.locator('[style*="--sdm-c"]').count()).toBeGreaterThan(0);
-    await expect(streamingCode.locator('[style*="--sdm-c"]')).toHaveCount(0);
-    const originalSettledCode = await settledCode.elementHandle();
-    if (!originalSettledCode) throw new Error("Missing settled code block");
+    const firstSettledCode = codeBodies.nth(0);
+    const secondSettledCode = codeBodies.nth(1);
+    await expect
+      .poll(() => firstSettledCode.locator('[style*="--sdm-c"]').count())
+      .toBeGreaterThan(0);
+    await expect
+      .poll(() => secondSettledCode.locator('[style*="--sdm-c"]').count())
+      .toBeGreaterThan(0);
+    const continuity = await content.evaluateHandle((root) => {
+      let stopped = false;
+      let lostHighlight = false;
+      const isContinuouslyHighlighted = () => {
+        const bodies = Array.from(
+          root.querySelectorAll<HTMLElement>('[data-streamdown="code-block-body"]'),
+        );
+        return (
+          bodies.length >= 2 &&
+          bodies.slice(0, 2).every((element) => element.querySelector('[style*="--sdm-c"]'))
+        );
+      };
+      const sample = () => {
+        if (!isContinuouslyHighlighted()) lostHighlight = true;
+        if (!stopped) requestAnimationFrame(sample);
+      };
+      const observer = new MutationObserver(() => {
+        if (!isContinuouslyHighlighted()) lostHighlight = true;
+      });
+      observer.observe(root, {
+        attributes: true,
+        attributeFilter: ["style"],
+        childList: true,
+        subtree: true,
+      });
+      requestAnimationFrame(sample);
+      return {
+        stop() {
+          stopped = true;
+          observer.disconnect();
+          return { lostHighlight, highlightedAtEnd: isContinuouslyHighlighted() };
+        },
+      };
+    });
 
-    sendReasoning(" 1;");
-    await expect(streamingCode).toContainText("const streamingSyntax = 1;");
-    expect(await originalSettledCode.evaluate((element) => element.isConnected)).toBe(true);
-    await expect.poll(() => settledCode.locator('[style*="--sdm-c"]').count()).toBeGreaterThan(0);
+    // The active fence deliberately repeats the first settled fence's source.
+    // Content equality must not make the completed block plain.
+    sendReasoning("\n\n```ts\nconst repeatedSyntax = true;");
+    await expect(codeBodies).toHaveCount(3);
+    const streamingCode = codeBodies.nth(2);
+    await expect(streamingCode).toContainText("const repeatedSyntax = true;");
     await expect(streamingCode.locator('[style*="--sdm-c"]')).toHaveCount(0);
+    await expect
+      .poll(() => firstSettledCode.locator('[style*="--sdm-c"]').count())
+      .toBeGreaterThan(0);
 
+    for (const delta of ["\nconst growing =", " 1;", "\nconst more = 2;"]) {
+      sendReasoning(delta);
+      await expect(streamingCode).toContainText(delta.trim());
+    }
     sendReasoning("\n```\n\nAfter streamed code.\n\n");
     await expect.poll(() => streamingCode.locator('[style*="--sdm-c"]').count()).toBeGreaterThan(0);
-    expect(await originalSettledCode.evaluate((element) => element.isConnected)).toBe(true);
+
+    // A following active fence stays plain without disturbing either completed
+    // block, including the just-settled repeated block.
+    sendReasoning("```ts\nconst nextStreaming =");
+    await expect(codeBodies).toHaveCount(4);
+    const nextStreamingCode = codeBodies.nth(3);
+    await expect(nextStreamingCode.locator('[style*="--sdm-c"]')).toHaveCount(0);
+    sendReasoning(" 3;\n```\n");
+    await expect
+      .poll(() => nextStreamingCode.locator('[style*="--sdm-c"]').count())
+      .toBeGreaterThan(0);
 
     for (let index = 0; index < 8; index += 1) {
       sendReasoning(`Streaming marker ${index}.\n\n${"More streamed reasoning.\n\n".repeat(4)}`);
@@ -234,6 +291,9 @@ test("streaming work logs keep their DOM and follow their own bottom", async () 
         ),
       )
       .toBeLessThanOrEqual(1);
+    const continuityResult = await continuity.evaluate((tracker) => tracker.stop());
+    expect(continuityResult).toEqual({ lostHighlight: false, highlightedAtEnd: true });
+
     // Stream an edit's partial JSON arguments through Pi, not DOM-only changes.
     sendDelta({
       tool_calls: [
@@ -250,6 +310,7 @@ test("streaming work logs keep their DOM and follow their own bottom", async () 
     });
     const diff = content.getByLabel("Streaming file diff");
     const diffScroll = content.locator('[data-slot="work-log-diff-scroll"]');
+    await expect(diff).toBeVisible();
     for (let index = 0; index < 4; index += 1) {
       const text = Array.from(
         { length: 30 },
