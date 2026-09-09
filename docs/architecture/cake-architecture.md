@@ -346,9 +346,12 @@ The window Store hierarchy mirrors the product surfaces:
   mounting the Root Store, then watches the mounted Store tree and saves later
   snapshots through `Client`. Persistence is not a Store and never
   synchronizes storage back into an already-mounted Store tree.
-- `ProjectWorkbenchStore` coordinates project activation and its focused
-  workflow children: `CommandPaneStore`, `SessionManagementStore`,
-  `SessionContinuationStore`, `WorktreeCreationStore`, and `EmbeddedEditorStore`.
+- `ProjectWorkbenchStore` coordinates accepted Project-open results with Project Session
+  selection and presentation plus its focused workflow children. `ProjectOpenStore` owns Project
+  picker and inspection state, trust decisions, active Working Directory persistence, and
+  latest-result concurrency. The other children are `CommandPaneStore`,
+  `SessionManagementStore`, `SessionContinuationStore`, `WorktreeCreationStore`, and
+  `EmbeddedEditorStore`.
   `SessionLayoutStore` owns a persisted binary split tree, divider ratios, focused pane,
   and per-pane session navigation. Root owns the Project Session layout, while the Cake Chat
   collection owns an independent instance for its meta-sessions. Splitting is relative to the
@@ -497,6 +500,7 @@ flowchart TD
   Root --> Catalog["SessionCatalogStore"]
   Root --> Registry["SessionRegistryStore"]
   Root --> Workbench["ProjectWorkbenchStore"]
+  Workbench --> ProjectOpen["ProjectOpenStore"]
   Root --> CakeChat["Cake Chat collection Store"]
   CakeChat --> CakeLayout["SessionLayoutStore"]
   CakeChat --> CakeRegistry["CakeChatRegistryStore"]

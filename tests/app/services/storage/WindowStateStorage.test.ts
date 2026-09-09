@@ -416,6 +416,37 @@ describe("WindowStateStorage", () => {
     );
   });
 
+  it.effect("moves version-six Project-open state into ProjectOpenStore", () => {
+    const snapshot = {
+      state: {},
+      children: {
+        projectWorkbenchStore: {
+          state: { projectPath: "/restored", unrelated: "retained" },
+          children: {},
+        },
+      },
+    };
+
+    return withStorage(JSON.stringify({ version: 6, data: snapshot }), (storage) =>
+      Effect.gen(function* () {
+        const loaded = (yield* storage.load()) as unknown as {
+          children: {
+            projectWorkbenchStore: {
+              state: Record<string, unknown>;
+              children: Record<string, unknown>;
+            };
+          };
+        };
+        const workbench = loaded.children.projectWorkbenchStore;
+        assert.deepStrictEqual(workbench.state, { unrelated: "retained" });
+        assert.deepStrictEqual(workbench.children.projectOpenStore, {
+          state: { projectPath: "/restored" },
+          children: {},
+        });
+      }),
+    );
+  });
+
   it.effect("places unversioned Cake Chat input under the shared composer Store", () => {
     const attachment = {
       kind: "image",

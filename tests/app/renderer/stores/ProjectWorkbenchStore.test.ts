@@ -32,7 +32,11 @@ function mountWorkbench(
         workflow?.prepareWorkingDirectoryRetirement ?? (async () => true),
       sessionRegistry: registry,
       operations,
-      projects: {} as ProjectCatalogStore,
+      projects: {
+        nameFromPath: (path: string) => path.split("/").at(-1) ?? path,
+        nameForPath: (path: string) => path.split("/").at(-1) ?? path,
+        recordOpened: vi.fn(),
+      } as unknown as ProjectCatalogStore,
       reviews: () => ({}) as ReviewsStore,
       extensionUi: () => ({ clear: vi.fn() }) as unknown as ExtensionUiStore,
       catalog,
@@ -160,7 +164,7 @@ describe("ProjectWorkbenchStore startup selection", () => {
       { projectSessions: { open } } as unknown as Client,
       "session-1",
     );
-    store.projectPath = "/project";
+    store.projectOpenStore.projectPath = "/project";
 
     await store.openSession("session-1");
 
@@ -197,15 +201,69 @@ describe("ProjectWorkbenchStore startup selection", () => {
 
     await store.initialize({ workspacePath: "/project", sessionId: "session-1" });
 
-    expect(store.projectPath).toBe("/project");
+    expect(store.projectOpenStore.projectPath).toBe("/project");
     expect(store.activeSessionId).toBe("session-1");
     expect(load).toHaveBeenCalledWith("session-1", "/project");
     expect(inspect).toHaveBeenCalledWith(
       expect.objectContaining({ path: "/project" }),
       expect.any(Object),
     );
-    expect(toSnapshot(store).state).not.toHaveProperty("selectedSessionId");
+    const snapshot = toSnapshot(store);
+    expect(snapshot.state).not.toHaveProperty("selectedSessionId");
+    expect(snapshot.state).not.toHaveProperty("projectPath");
+    expect(snapshot.children.projectOpenStore).toMatchObject({
+      state: { projectPath: "/project" },
+    });
     expect(selectSession).not.toHaveBeenCalled();
+
+    root[Symbol.dispose]();
+    operations[Symbol.dispose]();
+  });
+
+  it("coordinates an accepted Project open with Project Session selection", async () => {
+    const inspect = vi.fn(async (request: { operationId: string; path: string }) => ({
+      ...request,
+      trustRequired: false,
+    }));
+    const registerProject = vi.fn(async () => undefined);
+    const open = vi.fn(async () => undefined);
+    const load = vi.fn();
+    const registry = {
+      findSession: () => undefined,
+      load,
+      pendingSessions: { isTemporary: () => false },
+    } as unknown as SessionRegistryStore;
+    const summary = {
+      sessionId: "session-1",
+      projectPath: "/project",
+      workingDirectory: "/project",
+      resolved: false,
+      unread: false,
+    };
+    const catalog = {
+      find: (sessionId: string) => (sessionId === summary.sessionId ? summary : undefined),
+      projectSessions: () => [summary],
+      projectOfManagedWorktree: () => undefined,
+    } as unknown as SessionCatalogStore;
+    const {
+      root,
+      subject: store,
+      operations,
+      selectSession,
+    } = mountWorkbench(registry, catalog, {
+      workspaces: { inspect, registerProject },
+      projectSessions: { open },
+    } as unknown as Client);
+
+    await store.projectOpenStore.inspectPath("/project");
+
+    expect(registerProject).toHaveBeenCalledWith("/project", "project", expect.any(Object));
+    expect(selectSession).toHaveBeenCalledWith("session-1");
+    expect(open).toHaveBeenCalledWith(
+      { sessionId: "session-1", workingDirectory: "/project" },
+      expect.any(Object),
+    );
+    expect(load).toHaveBeenCalledWith("session-1", "/project");
 
     root[Symbol.dispose]();
     operations[Symbol.dispose]();
@@ -304,7 +362,12 @@ describe("ProjectWorkbenchStore startup selection", () => {
     const showTemporarySession = vi
       .spyOn(
         store as unknown as {
-          showTemporarySession: (path: string, sessionId: string, staged?: boolean) => void;
+          showTemporarySession: (
+            path: string,
+            sessionId: string,
+            staged?: boolean,
+            acceptedProjectOpen?: boolean,
+          ) => void;
         },
         "showTemporarySession",
       )
@@ -316,7 +379,12 @@ describe("ProjectWorkbenchStore startup selection", () => {
       expect.objectContaining({ path: "/other-project" }),
       expect.any(Object),
     );
-    expect(showTemporarySession).toHaveBeenCalledWith("/other-project", expect.any(String), true);
+    expect(showTemporarySession).toHaveBeenCalledWith(
+      "/other-project",
+      expect.any(String),
+      true,
+      true,
+    );
 
     root[Symbol.dispose]();
     operations[Symbol.dispose]();
@@ -339,13 +407,13 @@ describe("ProjectWorkbenchStore startup selection", () => {
       operations,
       selectSession,
     } = mountWorkbench(registry, {} as SessionCatalogStore, {} as Client, "visible-session");
-    store.projectPath = "/visible-project";
+    store.projectOpenStore.projectPath = "/visible-project";
 
     const created = await store.createDraftSession("/other-project", "Draft", "Do this later");
 
     expect(pendingSessions.prepare).toHaveBeenCalledWith("/other-project", created);
     expect(pendingSessions.createDraft).toHaveBeenCalledWith(created, "Do this later", []);
-    expect(store.projectPath).toBe("/visible-project");
+    expect(store.projectOpenStore.projectPath).toBe("/visible-project");
     expect(store.activeSessionId).toBe("visible-session");
     expect(selectSession).not.toHaveBeenCalled();
 
@@ -377,7 +445,7 @@ describe("ProjectWorkbenchStore startup selection", () => {
       { projectSessions: { start } } as unknown as Client,
       "visible-session",
     );
-    store.projectPath = "/visible-project";
+    store.projectOpenStore.projectPath = "/visible-project";
 
     const created = await store.createSession("/other-project", "Background", "Run the tests");
 
@@ -391,7 +459,7 @@ describe("ProjectWorkbenchStore startup selection", () => {
       expect.any(Object),
     );
     expect(pendingSessions.materialize).toHaveBeenCalledWith(created, "/other-project");
-    expect(store.projectPath).toBe("/visible-project");
+    expect(store.projectOpenStore.projectPath).toBe("/visible-project");
     expect(store.activeSessionId).toBe("visible-session");
     expect(selectSession).not.toHaveBeenCalled();
 

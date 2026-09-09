@@ -49,6 +49,7 @@ import type { SessionPaneNode } from "../stores/SessionLayoutStore";
 export const App = observer(function App() {
   const root = useStore(RootStore);
   const store = root.projectWorkbenchStore;
+  const projectOpen = store.projectOpenStore;
   const sidebar = root.sidebarStore;
   const projects = root.projectCatalogStore;
   const reviews = root.reviewsStore;
@@ -71,7 +72,11 @@ export const App = observer(function App() {
     projectSessionVisible || Boolean(cakeChatCollection && cakeChatSession);
   const selectedProjectSessionId =
     shell.selection.kind === "project-session" ? shell.selection.sessionId : undefined;
-  const workbenchError = store.contextError(session?.sessionId ?? selectedProjectSessionId);
+  const workbenchError =
+    store.contextError(session?.sessionId ?? selectedProjectSessionId) ??
+    (projectOpen.error
+      ? { message: projectOpen.error, details: projectOpen.errorDetails }
+      : undefined);
   const chatError =
     workbenchError?.message ??
     composer?.error ??
@@ -609,7 +614,7 @@ export const App = observer(function App() {
                     : surface === "cake-chat"
                       ? "Cake Chat"
                       : (extensionUi.title ??
-                        (session ? `[${store.projectName}] ${store.sessionTitle}` : "Cake"))}
+                        (session ? `[${projectOpen.projectName}] ${store.sessionTitle}` : "Cake"))}
               </strong>
             </div>
             <div className="flex min-w-0 shrink-0 items-center gap-1.5 [app-region:no-drag]">
@@ -690,7 +695,7 @@ export const App = observer(function App() {
               <div className="mt-6 flex gap-2.5">
                 <Button
                   size="lg"
-                  disabled={store.agentAvailability !== "available" || store.isBusy}
+                  disabled={store.agentAvailability !== "available" || projectOpen.isBusy}
                   onClick={() => void root.chooseProject()}
                 >
                   <FolderIcon /> Open project
@@ -698,7 +703,7 @@ export const App = observer(function App() {
                 <Button
                   size="lg"
                   variant="outline"
-                  disabled={store.agentAvailability !== "available" || store.isBusy}
+                  disabled={store.agentAvailability !== "available" || projectOpen.isBusy}
                   onClick={() => void root.startOneOffChat()}
                 >
                   <ChatIcon /> One-off chat
@@ -722,7 +727,7 @@ export const App = observer(function App() {
               const summary = root.sessionCatalogStore.find(sessionId);
               const projectName = summary
                 ? root.projectCatalogStore.nameForPath(summary.projectPath)
-                : store.projectName;
+                : projectOpen.projectName;
               return `[${projectName}] ${summary?.title ?? "New chat"}`;
             }}
             loadingLabel="Opening session"
@@ -753,7 +758,7 @@ export const App = observer(function App() {
           onResizeEnd={() => setResizingPanel(false)}
         />
       )}
-      {store.pendingTrustPath && (
+      {projectOpen.pendingTrustPath && (
         <DialogBackdrop>
           <Confirmation
             state="requested"
@@ -764,17 +769,17 @@ export const App = observer(function App() {
             <ConfirmationRequest>
               <ConfirmationTitle id="trust-title">Trust this workspace?</ConfirmationTitle>
               <ConfirmationDescription id="trust-description">
-                {store.pendingTrustPath} contains project-local executable Pi resources. Trust it
-                only if you know its contents.
+                {projectOpen.pendingTrustPath} contains project-local executable Pi resources. Trust
+                it only if you know its contents.
               </ConfirmationDescription>
               <ConfirmationActions>
                 <ConfirmationAction
                   variant="outline"
-                  onClick={() => void store.resolveProjectTrust(false)}
+                  onClick={() => void projectOpen.resolveProjectTrust(false)}
                 >
                   Cancel
                 </ConfirmationAction>
-                <ConfirmationAction onClick={() => void store.resolveProjectTrust(true)}>
+                <ConfirmationAction onClick={() => void projectOpen.resolveProjectTrust(true)}>
                   Trust and open
                 </ConfirmationAction>
               </ConfirmationActions>
@@ -817,7 +822,7 @@ export const App = observer(function App() {
         ))}
       </ToastHost>
       {!terminal.docked && <QuakeTerminal store={terminal} />}
-      {store.agentAvailability === "unavailable" && store.projectPath && (
+      {store.agentAvailability === "unavailable" && projectOpen.projectPath && (
         <div className="fixed bottom-4 right-4 z-40 flex items-center gap-3 rounded-xl border border-border bg-card p-2.5 px-3 text-xs shadow-lg">
           <span>{store.agentAvailabilityReason ?? "The coding agent is unavailable."}</span>
           <Button size="sm" onClick={() => void store.restartPi()}>

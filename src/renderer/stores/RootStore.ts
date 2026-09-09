@@ -428,12 +428,12 @@ export class RootStore extends Store<{
 
   async startOneOffChat() {
     this.showEmptyWorkbench();
-    await this.projectWorkbenchStore.startOneOffChat();
+    await this.projectWorkbenchStore.projectOpenStore.startOneOffChat();
   }
 
   async chooseProject() {
     this.showEmptyWorkbench();
-    await this.projectWorkbenchStore.chooseProject();
+    await this.projectWorkbenchStore.projectOpenStore.chooseProject();
   }
 
   navigateBack() {
@@ -945,7 +945,7 @@ export class RootStore extends Store<{
 
   /** Project Session targets currently eligible for Model observation. */
   get projectSessionObservationTargets() {
-    const blockedPath = this.projectWorkbenchStore.pendingAuthorizationPath;
+    const blockedPath = this.projectWorkbenchStore.projectOpenStore.pendingAuthorizationPath;
     return this.sessionRegistry.observationRetention.sessions
       .filter((session) => session.workspacePath !== blockedPath)
       .map((session) => ({
@@ -1022,7 +1022,8 @@ export class RootStore extends Store<{
           ? this.cakeChatCollectionStore.registry.find(active.sessionId)
           : undefined;
       },
-      workbenchError: () => this.projectWorkbenchStore.error,
+      workbenchError: () =>
+        this.projectWorkbenchStore.error ?? this.projectWorkbenchStore.projectOpenStore.error,
     });
   }
 
