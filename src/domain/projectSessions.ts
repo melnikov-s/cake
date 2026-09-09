@@ -4,8 +4,6 @@ import * as managedWorktrees from "./managedWorktrees";
 import * as subagents from "./subagents";
 import {
   SESSION_TITLE_MAX_LENGTH,
-  type Annotation,
-  type Attachment,
   type ChatConfiguration,
   type PiSettingUpdate,
   type SessionSummary,
@@ -27,10 +25,23 @@ import { toJsonValue } from "../utils/to-json-value";
 import { compareSessionSummariesForSidebar } from "../utils/session-summary-order";
 import {
   TurnId,
+  abort as abortConversation,
   acquire as acquireConversation,
+  applyConfiguration as applyConversationConfiguration,
+  authenticate as authenticateConversation,
+  compact as compactConversation,
+  deliver as deliverConversation,
+  deliverWhenAvailable,
+  editMessage as editConversationMessage,
   observe as observeConversation,
+  projectAttachments,
   projectPreviewSnapshot,
   projectQueuedMessages,
+  setFastMode as setConversationFastMode,
+  setModel as setConversationModel,
+  setPiSetting as setConversationPiSetting,
+  setThinkingLevel as setConversationThinkingLevel,
+  use as useConversation,
 } from "./conversations";
 import { PiSessionError, PiSessions, type PiSessionHandle } from "../services/pi/PiSessions";
 import type { ProjectSessionLocation } from "./project-session-data";
@@ -542,6 +553,13 @@ const acquireTarget = Effect.fn("ProjectSessions.acquireTarget")(function* (
   return yield* acquireConversation(sessions, options).pipe(asError("acquire"));
 });
 
+const acquireExistingTarget = Effect.fn("ProjectSessions.acquireExistingTarget")(function* (
+  target: ProjectSessionTarget,
+) {
+  const location = yield* findLocation(target);
+  return yield* acquireTarget(location, target.sessionId, false);
+});
+
 export const start = Effect.fn("ProjectSessions.start")(function* (
   input: ProjectSessionStartInput,
 ) {
@@ -562,7 +580,7 @@ export const start = Effect.fn("ProjectSessions.start")(function* (
   if (input.name?.trim()) yield* handle.rename(input.name.trim()).pipe(asError("start"));
   const turnId = TurnId.make(
     yield* handle
-      .prompt(input.text, runtimeAttachments(input.attachments), input.renderUserMessageAsMarkdown)
+      .prompt(input.text, projectAttachments(input.attachments), input.renderUserMessageAsMarkdown)
       .pipe(asError("start")),
   );
   yield* publishCatalogChange(input.sessionId, location, false).pipe(asError("start"));
@@ -799,39 +817,17 @@ export const observe = Effect.fn("ProjectSessions.observe")(function* (
   return updates;
 });
 
-const withHandle = Effect.fn("ProjectSessions.withHandle")(function* <A, E>(
-  target: ProjectSessionTarget,
-  use: (handle: PiSessionHandle) => Effect.Effect<A, E>,
-) {
-  const location = yield* findLocation(target);
-  const handle = yield* acquireTarget(location, target.sessionId, false);
-  return yield* use(handle);
-});
-
 /** Delivers an unattended message now, queueing it as a follow-up when the target is busy. */
 export const sendAutomatically = Effect.fn("ProjectSessions.sendAutomatically")(function* (
   input: ProjectSessionPromptInput,
 ) {
   yield* restoreIfResolved(promptTarget(input));
   const turnId = TurnId.make(
-    yield* withHandle(promptTarget(input), (handle) =>
-      handle
-        .snapshot()
-        .pipe(
-          Effect.flatMap((snapshot) =>
-            snapshot.streaming
-              ? handle.followUp(
-                  input.text,
-                  runtimeAttachments(input.attachments),
-                  input.renderUserMessageAsMarkdown,
-                )
-              : handle.prompt(
-                  input.text,
-                  runtimeAttachments(input.attachments),
-                  input.renderUserMessageAsMarkdown,
-                ),
-          ),
-        ),
+    yield* deliverWhenAvailable(
+      acquireExistingTarget(promptTarget(input)),
+      input.text,
+      projectAttachments(input.attachments),
+      input.renderUserMessageAsMarkdown,
     ).pipe(asError("sendAutomatically")),
   );
   yield* publishTargetCatalogChange(promptTarget(input));
@@ -872,55 +868,6 @@ const withContinuationSource = Effect.fn("ProjectSessions.withContinuationSource
   return { result, source: restored, sourceWasResolved: true };
 });
 
-const runtimeAttachments = (
-  values: ProjectSessionPromptInput["attachments"],
-): ReadonlyArray<Attachment> =>
-  values.map((value): Attachment => {
-    switch (value.kind) {
-      case "file":
-        return { kind: "file", name: value.name, path: value.path };
-      case "image":
-        return {
-          kind: "image",
-          name: value.name,
-          mimeType: value.mimeType,
-          data: value.data,
-        };
-      case "source":
-        return {
-          kind: "source",
-          name: value.name,
-          location: {
-            path: value.location.path,
-            range: {
-              start: { line: value.location.range.start.line },
-              end: { line: value.location.range.end.line },
-            },
-          },
-        };
-      case "annotation":
-        return {
-          kind: "annotation",
-          annotations: value.annotations.map((annotation) => {
-            const projected: Annotation = {
-              id: annotation.id,
-              messageId: annotation.messageId,
-              selectedText: annotation.selectedText,
-              startOffset: annotation.startOffset,
-              endOffset: annotation.endOffset,
-              contextBefore: annotation.contextBefore,
-              contextAfter: annotation.contextAfter,
-            };
-            if (annotation.entryId !== undefined)
-              Object.assign(projected, { entryId: annotation.entryId });
-            if (annotation.comment !== undefined)
-              Object.assign(projected, { comment: annotation.comment });
-            return projected;
-          }),
-        };
-    }
-  });
-
 const promptTarget = (input: ProjectSessionPromptInput): ProjectSessionTarget => {
   const target: ProjectSessionTarget = { sessionId: input.sessionId };
   if (input.workingDirectory !== undefined)
@@ -933,12 +880,12 @@ export const prompt = Effect.fn("ProjectSessions.prompt")(function* (
 ) {
   yield* restoreIfResolved(promptTarget(input));
   const turnId = TurnId.make(
-    yield* withHandle(promptTarget(input), (handle) =>
-      handle.prompt(
-        input.crossSession ? encodeCrossSessionMessage(input.text, input.crossSession) : input.text,
-        runtimeAttachments(input.attachments),
-        input.renderUserMessageAsMarkdown,
-      ),
+    yield* deliverConversation(
+      acquireExistingTarget(promptTarget(input)),
+      "prompt",
+      input.crossSession ? encodeCrossSessionMessage(input.text, input.crossSession) : input.text,
+      projectAttachments(input.attachments),
+      input.renderUserMessageAsMarkdown,
     ).pipe(asError("prompt")),
   );
   yield* publishTargetCatalogChange(promptTarget(input));
@@ -968,12 +915,12 @@ export const steer = Effect.fn("ProjectSessions.steer")(function* (
   input: ProjectSessionPromptInput,
 ) {
   const turnId = TurnId.make(
-    yield* withHandle(promptTarget(input), (handle) =>
-      handle.steer(
-        input.crossSession ? encodeCrossSessionMessage(input.text, input.crossSession) : input.text,
-        runtimeAttachments(input.attachments),
-        input.renderUserMessageAsMarkdown,
-      ),
+    yield* deliverConversation(
+      acquireExistingTarget(promptTarget(input)),
+      "steer",
+      input.crossSession ? encodeCrossSessionMessage(input.text, input.crossSession) : input.text,
+      projectAttachments(input.attachments),
+      input.renderUserMessageAsMarkdown,
     ).pipe(asError("steer")),
   );
   yield* publishTargetCatalogChange(promptTarget(input));
@@ -984,12 +931,12 @@ export const followUp = Effect.fn("ProjectSessions.followUp")(function* (
   input: ProjectSessionPromptInput,
 ) {
   const turnId = TurnId.make(
-    yield* withHandle(promptTarget(input), (handle) =>
-      handle.followUp(
-        input.crossSession ? encodeCrossSessionMessage(input.text, input.crossSession) : input.text,
-        runtimeAttachments(input.attachments),
-        input.renderUserMessageAsMarkdown,
-      ),
+    yield* deliverConversation(
+      acquireExistingTarget(promptTarget(input)),
+      "follow-up",
+      input.crossSession ? encodeCrossSessionMessage(input.text, input.crossSession) : input.text,
+      projectAttachments(input.attachments),
+      input.renderUserMessageAsMarkdown,
     ).pipe(asError("followUp")),
   );
   yield* publishTargetCatalogChange(promptTarget(input));
@@ -999,19 +946,17 @@ export const followUp = Effect.fn("ProjectSessions.followUp")(function* (
 export const listQueuedMessages = Effect.fn("ProjectSessions.listQueuedMessages")(function* (
   target: ProjectSessionTarget,
 ) {
-  return yield* withHandle(target, (handle) => handle.listQueuedMessages()).pipe(
-    Effect.map(projectQueuedMessages),
-    asError("listQueuedMessages"),
-  );
+  return yield* useConversation(acquireExistingTarget(target), (handle) =>
+    handle.listQueuedMessages(),
+  ).pipe(Effect.map(projectQueuedMessages), asError("listQueuedMessages"));
 });
 
 export const clearQueue = Effect.fn("ProjectSessions.clearQueue")(function* (
   target: ProjectSessionTarget,
 ) {
-  return yield* withHandle(target, (handle) => handle.clearQueue()).pipe(
-    Effect.map(projectQueuedMessages),
-    asError("clearQueue"),
-  );
+  return yield* useConversation(acquireExistingTarget(target), (handle) =>
+    handle.clearQueue(),
+  ).pipe(Effect.map(projectQueuedMessages), asError("clearQueue"));
 });
 
 export const cancelSteering = Effect.fn("ProjectSessions.cancelSteering")(function* (
@@ -1025,7 +970,9 @@ export const cancelSteering = Effect.fn("ProjectSessions.cancelSteering")(functi
 export const getChangelog = Effect.fn("ProjectSessions.getChangelog")(function* (
   target: ProjectSessionTarget,
 ) {
-  return yield* withHandle(target, (handle) => handle.executeCommand("changelog", "")).pipe(
+  return yield* useConversation(acquireExistingTarget(target), (handle) =>
+    handle.executeCommand("changelog", ""),
+  ).pipe(
     asError("getChangelog"),
     Effect.map((markdown) => markdown ?? ""),
   );
@@ -1035,18 +982,24 @@ export const navigate = Effect.fn("ProjectSessions.navigate")(function* (
   target: ProjectSessionTarget,
   entryId: string,
 ) {
-  yield* withHandle(target, (handle) => handle.navigate(entryId)).pipe(asError("navigate"));
+  yield* useConversation(acquireExistingTarget(target), (handle) => handle.navigate(entryId)).pipe(
+    asError("navigate"),
+  );
 });
 
 export const setPiSetting = Effect.fn("ProjectSessions.setPiSetting")(function* (
   target: ProjectSessionTarget,
   update: PiSettingUpdate,
 ) {
-  yield* withHandle(target, (handle) => handle.setPiSetting(update)).pipe(asError("setPiSetting"));
+  yield* setConversationPiSetting(acquireExistingTarget(target), update).pipe(
+    asError("setPiSetting"),
+  );
 });
 
 export const reload = Effect.fn("ProjectSessions.reload")(function* (target: ProjectSessionTarget) {
-  yield* withHandle(target, (handle) => handle.reload()).pipe(asError("reload"));
+  yield* useConversation(acquireExistingTarget(target), (handle) => handle.reload()).pipe(
+    asError("reload"),
+  );
 });
 
 export const login = Effect.fn("ProjectSessions.login")(function* (
@@ -1054,21 +1007,28 @@ export const login = Effect.fn("ProjectSessions.login")(function* (
   provider: string,
   authType: "api_key" | "oauth",
 ) {
-  yield* withHandle(target, (handle) => handle.login(provider, authType)).pipe(asError("login"));
+  yield* authenticateConversation(acquireExistingTarget(target), {
+    _tag: "Login",
+    provider,
+    authType,
+  }).pipe(asError("login"));
 });
 
 export const logout = Effect.fn("ProjectSessions.logout")(function* (
   target: ProjectSessionTarget,
   provider: string,
 ) {
-  yield* withHandle(target, (handle) => handle.logout(provider)).pipe(asError("logout"));
+  yield* authenticateConversation(acquireExistingTarget(target), {
+    _tag: "Logout",
+    provider,
+  }).pipe(asError("logout"));
 });
 
 export const compact = Effect.fn("ProjectSessions.compact")(function* (
   target: ProjectSessionTarget,
   instructions?: string,
 ) {
-  yield* withHandle(target, (handle) => handle.compact(instructions)).pipe(asError("compact"));
+  yield* compactConversation(acquireExistingTarget(target), instructions).pipe(asError("compact"));
 });
 
 export const editMessage = Effect.fn("ProjectSessions.editMessage")(function* (
@@ -1079,19 +1039,18 @@ export const editMessage = Effect.fn("ProjectSessions.editMessage")(function* (
     readonly renderUserMessageAsMarkdown: ProjectSessionPromptInput["renderUserMessageAsMarkdown"];
   },
 ) {
-  yield* withHandle(input, (handle) =>
-    handle.editMessage(
-      input.entryId,
-      input.text,
-      runtimeAttachments(input.attachments),
-      input.renderUserMessageAsMarkdown,
-    ),
+  yield* editConversationMessage(
+    acquireExistingTarget(input),
+    input.entryId,
+    input.text,
+    projectAttachments(input.attachments),
+    input.renderUserMessageAsMarkdown,
   ).pipe(asError("editMessage"));
 });
 
 export const setUserMessageMarkdown = Effect.fn("ProjectSessions.setUserMessageMarkdown")(
   function* (target: ProjectSessionTarget, entryId: string, renderAsMarkdown: boolean) {
-    yield* withHandle(target, (handle) =>
+    yield* useConversation(acquireExistingTarget(target), (handle) =>
       handle.setUserMessageMarkdown(entryId, renderAsMarkdown),
     ).pipe(asError("setUserMessageMarkdown"));
   },
@@ -1101,7 +1060,7 @@ export const applyConfiguration = Effect.fn("ProjectSessions.applyConfiguration"
   target: ProjectSessionTarget,
   configuration: ChatConfiguration,
 ) {
-  yield* withHandle(target, (handle) => handle.applyConfiguration(configuration)).pipe(
+  yield* applyConversationConfiguration(acquireExistingTarget(target), configuration).pipe(
     asError("applyConfiguration"),
   );
 });
@@ -1111,7 +1070,7 @@ export const setModel = Effect.fn("ProjectSessions.setModel")(function* (
   provider: string,
   modelId: string,
 ) {
-  yield* withHandle(target, (handle) => handle.setModel(provider, modelId)).pipe(
+  yield* setConversationModel(acquireExistingTarget(target), provider, modelId).pipe(
     asError("setModel"),
   );
 });
@@ -1120,7 +1079,7 @@ export const setThinkingLevel = Effect.fn("ProjectSessions.setThinkingLevel")(fu
   target: ProjectSessionTarget,
   level: Parameters<PiSessionHandle["setThinkingLevel"]>[0],
 ) {
-  yield* withHandle(target, (handle) => handle.setThinkingLevel(level)).pipe(
+  yield* setConversationThinkingLevel(acquireExistingTarget(target), level).pipe(
     asError("setThinkingLevel"),
   );
 });
@@ -1129,12 +1088,14 @@ export const setFastMode = Effect.fn("ProjectSessions.setFastMode")(function* (
   target: ProjectSessionTarget,
   enabled: boolean,
 ) {
-  yield* withHandle(target, (handle) => handle.setFastMode(enabled)).pipe(asError("setFastMode"));
+  yield* setConversationFastMode(acquireExistingTarget(target), enabled).pipe(
+    asError("setFastMode"),
+  );
 });
 
 export const abort = Effect.fn("ProjectSessions.abort")(function* (target: ProjectSessionTarget) {
   yield* subagents.abortParentChildren(target.sessionId).pipe(asError("abort"));
-  yield* withHandle(target, (handle) => handle.abort()).pipe(asError("abort"));
+  yield* abortConversation(acquireExistingTarget(target)).pipe(asError("abort"));
 });
 
 export const rename = Effect.fn("ProjectSessions.rename")(function* (

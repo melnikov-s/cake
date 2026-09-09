@@ -8,7 +8,14 @@ import type {
   PiSessionUpdate,
 } from "../services/pi/PiSessions";
 import type { PiQueuedMessages } from "../services/pi/conversation-data";
-import type { SessionSnapshot } from "../ipc/session-contract";
+import type {
+  Annotation,
+  Attachment,
+  ChatConfiguration,
+  PiSettingUpdate,
+  SessionSnapshot,
+  ThinkingLevel,
+} from "../ipc/session-contract";
 import { toJsonValue } from "../utils/to-json-value";
 import {
   TurnId,
@@ -138,5 +145,179 @@ export const acquire = Effect.fn("Conversations.acquire")(function* (
 ) {
   return yield* sessions.acquire(options);
 });
+
+/** Acquires one scoped Pi handle at the point a shared conversation operation uses it. */
+export const use = Effect.fn("Conversations.use")(function* <A, E, R, E2, R2>(
+  acquisition: Effect.Effect<PiSessionHandle, E, R>,
+  operation: (handle: PiSessionHandle) => Effect.Effect<A, E2, R2>,
+): Effect.fn.Return<A, E | E2, R | R2> {
+  return yield* operation(yield* acquisition);
+});
+
+export type ConversationDelivery = "prompt" | "steer" | "follow-up";
+
+export const deliver = Effect.fn("Conversations.deliver")(function* <E, R>(
+  acquisition: Effect.Effect<PiSessionHandle, E, R>,
+  delivery: ConversationDelivery,
+  text: string,
+  attachments: ReadonlyArray<Attachment>,
+  renderUserMessageAsMarkdown: boolean,
+) {
+  return yield* use(acquisition, (handle) => {
+    switch (delivery) {
+      case "prompt":
+        return handle.prompt(text, attachments, renderUserMessageAsMarkdown);
+      case "steer":
+        return handle.steer(text, attachments, renderUserMessageAsMarkdown);
+      case "follow-up":
+        return handle.followUp(text, attachments, renderUserMessageAsMarkdown);
+    }
+  });
+});
+
+/** Prompts an idle conversation or queues a follow-up behind its active turn. */
+export const deliverWhenAvailable = Effect.fn("Conversations.deliverWhenAvailable")(function* <
+  E,
+  R,
+>(
+  acquisition: Effect.Effect<PiSessionHandle, E, R>,
+  text: string,
+  attachments: ReadonlyArray<Attachment>,
+  renderUserMessageAsMarkdown: boolean,
+) {
+  return yield* use(acquisition, (handle) =>
+    handle
+      .snapshot()
+      .pipe(
+        Effect.flatMap((snapshot) =>
+          snapshot.streaming
+            ? handle.followUp(text, attachments, renderUserMessageAsMarkdown)
+            : handle.prompt(text, attachments, renderUserMessageAsMarkdown),
+        ),
+      ),
+  );
+});
+
+export const abort = Effect.fn("Conversations.abort")(function* <E, R>(
+  acquisition: Effect.Effect<PiSessionHandle, E, R>,
+) {
+  yield* use(acquisition, (handle) => handle.abort());
+});
+
+export const compact = Effect.fn("Conversations.compact")(function* <E, R>(
+  acquisition: Effect.Effect<PiSessionHandle, E, R>,
+  instructions?: string,
+) {
+  yield* use(acquisition, (handle) => handle.compact(instructions));
+});
+
+export const editMessage = Effect.fn("Conversations.editMessage")(function* <E, R>(
+  acquisition: Effect.Effect<PiSessionHandle, E, R>,
+  entryId: string,
+  text: string,
+  attachments: ReadonlyArray<Attachment>,
+  renderUserMessageAsMarkdown: boolean,
+) {
+  yield* use(acquisition, (handle) =>
+    handle.editMessage(entryId, text, attachments, renderUserMessageAsMarkdown),
+  );
+});
+
+export const applyConfiguration = Effect.fn("Conversations.applyConfiguration")(function* <E, R>(
+  acquisition: Effect.Effect<PiSessionHandle, E, R>,
+  configuration: ChatConfiguration,
+) {
+  yield* use(acquisition, (handle) => handle.applyConfiguration(configuration));
+});
+
+export const setModel = Effect.fn("Conversations.setModel")(function* <E, R>(
+  acquisition: Effect.Effect<PiSessionHandle, E, R>,
+  provider: string,
+  modelId: string,
+) {
+  yield* use(acquisition, (handle) => handle.setModel(provider, modelId));
+});
+
+export const setThinkingLevel = Effect.fn("Conversations.setThinkingLevel")(function* <E, R>(
+  acquisition: Effect.Effect<PiSessionHandle, E, R>,
+  level: ThinkingLevel,
+) {
+  yield* use(acquisition, (handle) => handle.setThinkingLevel(level));
+});
+
+export const setFastMode = Effect.fn("Conversations.setFastMode")(function* <E, R>(
+  acquisition: Effect.Effect<PiSessionHandle, E, R>,
+  enabled: boolean,
+) {
+  yield* use(acquisition, (handle) => handle.setFastMode(enabled));
+});
+
+export const setPiSetting = Effect.fn("Conversations.setPiSetting")(function* <E, R>(
+  acquisition: Effect.Effect<PiSessionHandle, E, R>,
+  update: PiSettingUpdate,
+) {
+  yield* use(acquisition, (handle) => handle.setPiSetting(update));
+});
+
+export const authenticate = Effect.fn("Conversations.authenticate")(function* <E, R>(
+  acquisition: Effect.Effect<PiSessionHandle, E, R>,
+  operation:
+    | { readonly _tag: "Login"; readonly provider: string; readonly authType: "api_key" | "oauth" }
+    | { readonly _tag: "Logout"; readonly provider: string },
+) {
+  yield* use(acquisition, (handle) =>
+    operation._tag === "Login"
+      ? handle.login(operation.provider, operation.authType)
+      : handle.logout(operation.provider),
+  );
+});
+
+/** Detaches RPC-decoded attachments from their input arrays before passing them to Pi. */
+export const projectAttachments = (values: ReadonlyArray<Attachment>): ReadonlyArray<Attachment> =>
+  values.map((value): Attachment => {
+    switch (value.kind) {
+      case "file":
+        return { kind: "file", name: value.name, path: value.path };
+      case "image":
+        return {
+          kind: "image",
+          name: value.name,
+          mimeType: value.mimeType,
+          data: value.data,
+        };
+      case "source":
+        return {
+          kind: "source",
+          name: value.name,
+          location: {
+            path: value.location.path,
+            range: {
+              start: { line: value.location.range.start.line },
+              end: { line: value.location.range.end.line },
+            },
+          },
+        };
+      case "annotation":
+        return {
+          kind: "annotation",
+          annotations: value.annotations.map((annotation) => {
+            const projected: Annotation = {
+              id: annotation.id,
+              messageId: annotation.messageId,
+              selectedText: annotation.selectedText,
+              startOffset: annotation.startOffset,
+              endOffset: annotation.endOffset,
+              contextBefore: annotation.contextBefore,
+              contextAfter: annotation.contextAfter,
+            };
+            if (annotation.entryId !== undefined)
+              Object.assign(projected, { entryId: annotation.entryId });
+            if (annotation.comment !== undefined)
+              Object.assign(projected, { comment: annotation.comment });
+            return projected;
+          }),
+        };
+    }
+  });
 
 export const observe = (handle: PiSessionHandle) => projectUpdates(handle.updates);

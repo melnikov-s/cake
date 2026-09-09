@@ -57,6 +57,7 @@ const makeLayer = (
   let archived = 0;
   let restored = 0;
   const toolCounts: number[] = [];
+  const operations: string[] = [];
   const terminal = Terminal.of({
     open: () => Effect.die("Unexpected terminal open"),
     write: () => Effect.die("Unexpected terminal write"),
@@ -92,16 +93,38 @@ const makeLayer = (
     prompt: async () => {
       options.onEvent({ type: "streaming", sessionId: snapshot.sessionId, streaming: false });
     },
+    editMessage: async () => {
+      operations.push("edit");
+    },
     setUserMessageMarkdown: async () => undefined,
-    compact: async () => undefined,
-    abort: async () => undefined,
-    setModel: async () => undefined,
-    setThinkingLevel: async () => undefined,
-    applyConfiguration: async () => undefined,
-    setPiSetting: async () => undefined,
+    compact: async () => {
+      operations.push("compact");
+    },
+    abort: async () => {
+      operations.push("abort");
+    },
+    setModel: async () => {
+      operations.push("model");
+    },
+    setThinkingLevel: async () => {
+      operations.push("thinking");
+    },
+    setFastMode: async () => {
+      operations.push("fast");
+    },
+    applyConfiguration: async () => {
+      operations.push("configuration");
+    },
+    setPiSetting: async () => {
+      operations.push("setting");
+    },
     recordReviewRun: () => undefined,
-    login: async () => undefined,
-    logout: async () => undefined,
+    login: async () => {
+      operations.push("login");
+    },
+    logout: async () => {
+      operations.push("logout");
+    },
     rename: async () => undefined,
     fork: async () => ({ sessionId: "fork", sessionFile: "/fork.jsonl" }),
     handoff: async () => ({ sessionId: "handoff", sessionFile: "/handoff.jsonl" }),
@@ -209,6 +232,7 @@ const makeLayer = (
     restored: () => restored,
     state: () => state,
     toolCounts: () => toolCounts,
+    operations: () => operations,
   };
 };
 
@@ -281,6 +305,48 @@ describe("Cake Chats domain", () => {
       });
       assert.equal(fixture.restored(), 1);
       assert.equal(fixture.created(), 1);
+    }).pipe(Effect.provide(fixture.layer));
+  });
+
+  it.effect("routes matching conversation controls through one acquired Cake Chat runtime", () => {
+    const fixture = makeLayer();
+    const target = { sessionId: "cake-chat-1", tools: [] };
+    return Effect.gen(function* () {
+      yield* cakeChats.compact(target, "Keep the architecture notes");
+      yield* cakeChats.editMessage({
+        sessionId: target.sessionId,
+        entryId: "user-message",
+        text: "Updated",
+        attachments: [],
+        renderUserMessageAsMarkdown: false,
+      });
+      yield* cakeChats.applyConfiguration(target, {
+        provider: "fixture-provider",
+        modelId: "fixture-model",
+        thinkingLevel: "medium",
+        fastMode: false,
+      });
+      yield* cakeChats.setModel(target, "fixture-provider", "fixture-model");
+      yield* cakeChats.setThinkingLevel(target, "high");
+      yield* cakeChats.setFastMode(target, true);
+      yield* cakeChats.setPiSetting(target, { key: "retryEnabled", value: false });
+      yield* cakeChats.login(target, "fixture-provider", "api_key");
+      yield* cakeChats.logout(target, "fixture-provider");
+      yield* cakeChats.abort(target);
+
+      assert.equal(fixture.created(), 1);
+      assert.deepEqual(fixture.operations(), [
+        "compact",
+        "edit",
+        "configuration",
+        "model",
+        "thinking",
+        "fast",
+        "setting",
+        "login",
+        "logout",
+        "abort",
+      ]);
     }).pipe(Effect.provide(fixture.layer));
   });
 

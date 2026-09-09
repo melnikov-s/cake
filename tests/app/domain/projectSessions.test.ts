@@ -71,6 +71,7 @@ const fakeRuntime = (
   }) => void,
   onForkTitle?: (title: string) => void,
   onRename?: (name: string) => void,
+  onOperation?: (operation: string) => void,
 ): CakeRuntime => ({
   sessionId: snapshot.sessionId,
   sessionFile: snapshot.sessionFile,
@@ -79,20 +80,23 @@ const fakeRuntime = (
   listQueuedMessages: async () => ({ steering: [], followUp: [] }),
   clearQueue: async () => ({ steering: [], followUp: [] }),
   cancelSteering: async () => ({ steering: [], followUp: [] }),
-  prompt: async () => {
+  prompt: async (_text, delivery) => {
+    onOperation?.(delivery);
     await prompt();
     options.onEvent({ type: "streaming", sessionId: snapshot.sessionId, streaming: false });
   },
+  editMessage: async () => onOperation?.("edit"),
   setUserMessageMarkdown: async () => undefined,
-  compact: async () => undefined,
-  abort: async () => undefined,
-  setModel: async () => undefined,
-  setThinkingLevel: async () => undefined,
-  applyConfiguration: async () => undefined,
-  setPiSetting: async () => undefined,
+  compact: async () => onOperation?.("compact"),
+  abort: async () => onOperation?.("abort"),
+  setModel: async () => onOperation?.("model"),
+  setThinkingLevel: async () => onOperation?.("thinking"),
+  setFastMode: async () => onOperation?.("fast"),
+  applyConfiguration: async () => onOperation?.("configuration"),
+  setPiSetting: async () => onOperation?.("setting"),
   recordReviewRun: () => undefined,
-  login: async () => undefined,
-  logout: async () => undefined,
+  login: async () => onOperation?.("login"),
+  logout: async () => onOperation?.("logout"),
   rename: async (name) => onRename?.(name),
   fork: async (_entryId, title) => {
     onForkTitle?.(title);
@@ -141,6 +145,7 @@ const makeLayer = (
       readonly sessionRoot: string;
     }): void;
     onForkTitle?(title: string): void;
+    onOperation?(operation: string): void;
     sessionExists?: boolean;
     resolvedOnDisk?: boolean;
     resolvedProjectEntries?: ReadonlyArray<{
@@ -243,6 +248,7 @@ const makeLayer = (
           hooks.onHandoff,
           hooks.onForkTitle,
           hooks.onRename,
+          hooks.onOperation,
         );
       }),
     changelog: () => Effect.succeed("# Changelog"),
@@ -1474,6 +1480,59 @@ describe("Project Sessions domain", () => {
       });
       assert.match(turnId, /^[0-9a-f-]{36}$/);
     }).pipe(Effect.provide(makeLayer())),
+  );
+
+  it.effect(
+    "routes matching conversation controls through one acquired Project Session runtime",
+    () => {
+      const operations: string[] = [];
+      let runtimeConstructions = 0;
+      const target = { sessionId: "session-1" };
+      return Effect.gen(function* () {
+        yield* projectSessions.compact(target, "Keep the architecture notes");
+        yield* projectSessions.editMessage({
+          ...target,
+          entryId: "user-message",
+          text: "Updated",
+          attachments: [],
+          renderUserMessageAsMarkdown: false,
+        });
+        yield* projectSessions.applyConfiguration(target, {
+          provider: "fixture-provider",
+          modelId: "fixture-model",
+          thinkingLevel: "medium",
+          fastMode: false,
+        });
+        yield* projectSessions.setModel(target, "fixture-provider", "fixture-model");
+        yield* projectSessions.setThinkingLevel(target, "high");
+        yield* projectSessions.setFastMode(target, true);
+        yield* projectSessions.setPiSetting(target, { key: "retryEnabled", value: false });
+        yield* projectSessions.login(target, "fixture-provider", "api_key");
+        yield* projectSessions.logout(target, "fixture-provider");
+        yield* projectSessions.abort(target);
+
+        assert.equal(runtimeConstructions, 1);
+        assert.deepEqual(operations, [
+          "compact",
+          "edit",
+          "configuration",
+          "model",
+          "thinking",
+          "fast",
+          "setting",
+          "login",
+          "logout",
+          "abort",
+        ]);
+      }).pipe(
+        Effect.provide(
+          makeLayer(undefined, {
+            onCreateRuntime: () => runtimeConstructions++,
+            onOperation: (operation) => operations.push(operation),
+          }),
+        ),
+      );
+    },
   );
 
   it.effect("publishes an authoritative catalog update when a new session starts", () =>
