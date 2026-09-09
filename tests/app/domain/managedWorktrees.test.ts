@@ -34,6 +34,7 @@ const makeLayer = (options: {
   records: readonly WorktreeRecord[];
   resolvedWorkingDirectories: readonly string[];
   activeWorkingDirectories?: readonly string[];
+  activateAfterCatalogChecks?: Readonly<Record<string, number>>;
   runningWorkingDirectories?: readonly string[];
   discarded: string[];
   changes: SessionCatalogChange[];
@@ -55,6 +56,7 @@ const makeLayer = (options: {
       },
     ],
   };
+  const catalogChecks = new Map<string, number>();
   const locations = options.records.map((worktree) => ({
     projectPath: worktree.projectPath,
     projectName: worktree.projectPath === "/project" ? "Project" : "Other",
@@ -89,8 +91,12 @@ const makeLayer = (options: {
         ),
     }),
     Layer.mock(PiSessions, {
-      catalog: ({ workingDirectory }) =>
-        options.activeWorkingDirectories?.includes(workingDirectory)
+      catalog: ({ workingDirectory }) => {
+        const checks = (catalogChecks.get(workingDirectory) ?? 0) + 1;
+        catalogChecks.set(workingDirectory, checks);
+        const activeAfter = options.activateAfterCatalogChecks?.[workingDirectory];
+        return options.activeWorkingDirectories?.includes(workingDirectory) ||
+          (activeAfter !== undefined && checks > activeAfter)
           ? Stream.make({
               id: `active-${workingDirectory}`,
               title: "Active",
@@ -99,7 +105,8 @@ const makeLayer = (options: {
               messageCount: 1,
               resolved: false,
             })
-          : Stream.empty,
+          : Stream.empty;
+      },
     }),
     Layer.mock(ManagedWorktrees, {
       records: () => Effect.succeed(options.records),
@@ -157,6 +164,32 @@ describe("Managed Worktrees domain cleanup", () => {
         },
       ]);
     }).pipe(Effect.provide(layer));
+  });
+
+  it.effect("does not discard a worktree that gains an active session after discovery", () => {
+    const discarded: string[] = [];
+    const changes: SessionCatalogChange[] = [];
+    return Effect.gen(function* () {
+      const result = yield* managedWorktrees.discardResolvedForProject("/project");
+      assert.deepEqual(result.discardedWorkingDirectories, []);
+      assert.deepEqual(result.failures, [
+        {
+          workingDirectory: "/worktree",
+          message: "Working Directory is no longer eligible for resolved worktree cleanup",
+        },
+      ]);
+      assert.deepEqual(discarded, []);
+    }).pipe(
+      Effect.provide(
+        makeLayer({
+          records: [record("/project", "/worktree")],
+          resolvedWorkingDirectories: ["/worktree"],
+          activateAfterCatalogChecks: { "/worktree": 1 },
+          discarded,
+          changes,
+        }),
+      ),
+    );
   });
 
   it.effect("reports a per-worktree failure and continues cleanup", () => {

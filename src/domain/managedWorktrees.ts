@@ -158,10 +158,21 @@ const resolvedEntriesForProject = Effect.fn("ManagedWorktrees.resolvedEntriesFor
   },
 );
 
+const activeSessionInWorkingDirectory = Effect.fn(
+  "ManagedWorktrees.activeSessionInWorkingDirectory",
+)(function* (workingDirectory: string, sessionDirectory: string) {
+  return yield* (yield* PiSessions).catalog({ workingDirectory, sessionDirectory }).pipe(
+    Stream.runHead,
+    Effect.map(Option.isSome),
+    Effect.mapError((cause) =>
+      policyError("ManagedWorktrees.activeSessionInWorkingDirectory", cause),
+    ),
+  );
+});
+
 const discoverResolvedForProject = Effect.fn("ManagedWorktrees.discoverResolvedForProject")(
   function* (projectPath: string) {
     const worktrees = yield* ManagedWorktrees;
-    const sessions = yield* PiSessions;
     const { entries, locations } = yield* resolvedEntriesForProject(projectPath);
     const resolvedWorkingDirectories = new Set(entries.map((entry) => entry.workingDirectory));
     const candidates = (yield* worktrees.records()).filter(
@@ -182,22 +193,17 @@ const discoverResolvedForProject = Effect.fn("ManagedWorktrees.discoverResolvedF
             operation: "ManagedWorktrees.discoverResolvedForProject",
             message: `Cake could not locate Working Directory ${record.worktreePath}`,
           });
-        return yield* sessions
-          .catalog({
-            workingDirectory: location.workingDirectory,
-            sessionDirectory: location.sessionDirectory,
-          })
-          .pipe(
-            Stream.runHead,
-            Effect.map((active) => (Option.isNone(active) ? record.worktreePath : undefined)),
-            Effect.mapError((cause) =>
-              policyError("ManagedWorktrees.discoverResolvedForProject", cause),
-            ),
-          );
+        return (yield* activeSessionInWorkingDirectory(
+          location.workingDirectory,
+          location.sessionDirectory,
+        ))
+          ? undefined
+          : record.worktreePath;
       }),
     );
     return {
       entries,
+      locations,
       workingDirectories: eligible.filter(
         (workingDirectory): workingDirectory is string => workingDirectory !== undefined,
       ),
@@ -227,6 +233,29 @@ export const discardResolvedForProject = Effect.fn("ManagedWorktrees.discardReso
     const failures: ResolvedManagedWorktreeCleanupFailure[] = [];
     for (const workingDirectory of discovered.workingDirectories) {
       const outcome = yield* Effect.gen(function* () {
+        const currentRecord = (yield* worktrees.records()).find(
+          (record) =>
+            record.projectPath === projectPath &&
+            record.worktreePath === workingDirectory &&
+            record.state === "landed",
+        );
+        const location = discovered.locations.find(
+          (candidate) =>
+            candidate.projectPath === projectPath &&
+            candidate.workingDirectory === workingDirectory,
+        );
+        if (
+          !currentRecord ||
+          !location ||
+          (yield* activeSessionInWorkingDirectory(
+            location.workingDirectory,
+            location.sessionDirectory,
+          ))
+        )
+          return yield* new ManagedWorktreeError({
+            operation: "ManagedWorktrees.discardResolvedForProject",
+            message: "Working Directory is no longer eligible for resolved worktree cleanup",
+          });
         const runningProgramCount = yield* terminals.runningProgramCount(workingDirectory);
         if (runningProgramCount > 0)
           return yield* new ManagedWorktreeError({
