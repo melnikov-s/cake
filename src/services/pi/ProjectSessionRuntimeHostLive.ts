@@ -2,6 +2,7 @@ import { Effect, Layer } from "effect";
 import { Electron } from "../electron/Electron";
 import { ArtifactStorage } from "../storage/ArtifactStorage";
 import { ReviewStorage } from "../storage/ReviewStorage";
+import { RendererRequestCoordinator } from "../renderer-requests/RendererRequestCoordinator";
 import { ProjectSessionIntegrationHost } from "./ProjectSessionIntegrationHost";
 import {
   ProjectSessionRuntimeHost,
@@ -28,29 +29,39 @@ export interface ProjectSessionRuntimeHostLiveOptions {
 
 export const makeProjectSessionRuntimeHostLive = (
   options: ProjectSessionRuntimeHostLiveOptions,
-): Layer.Layer<ProjectSessionRuntimeHost, never, ArtifactStorage | Electron | ReviewStorage> =>
+): Layer.Layer<
+  ProjectSessionRuntimeHost,
+  never,
+  ArtifactStorage | Electron | RendererRequestCoordinator | ReviewStorage
+> =>
   Layer.effect(
     ProjectSessionRuntimeHost,
     Effect.gen(function* () {
       const artifacts = yield* ArtifactStorage;
       const electron = yield* Electron;
       const reviews = yield* ReviewStorage;
-      const artifactContext = yield* Effect.context<ArtifactStorage>();
-      const runArtifact = Effect.runPromiseWith(artifactContext);
+      const rendererRequests = yield* RendererRequestCoordinator;
+      const adapterContext = yield* Effect.context<ArtifactStorage | RendererRequestCoordinator>();
+      const runAdapter = Effect.runPromiseWith(adapterContext);
       const sessions = new Map<string, SessionIntegration>();
-      const rendererConnections = new Map<string, number>();
 
-      const release = (sessionId: string) => {
-        rendererConnections.delete(sessionId);
+      const disposeHost = (sessionId: string) => {
         const integration = sessions.get(sessionId);
         if (!integration) return;
         sessions.delete(sessionId);
         integration.host[Symbol.dispose]();
       };
-      const releaseWorkingDirectory = (workingDirectory: string) => {
+      const release = Effect.fn("ProjectSessionRuntimeHost.release")(function* (sessionId: string) {
+        disposeHost(sessionId);
+        yield* rendererRequests.releaseSession({ _tag: "ProjectSession", sessionId });
+      });
+      const releaseWorkingDirectory = Effect.fn(
+        "ProjectSessionRuntimeHost.releaseWorkingDirectory",
+      )(function* (workingDirectory: string) {
         for (const integration of sessions.values())
-          if (integration.workingDirectory === workingDirectory) release(integration.sessionId);
-      };
+          if (integration.workingDirectory === workingDirectory) disposeHost(integration.sessionId);
+        yield* rendererRequests.releaseWorkingDirectory(workingDirectory);
+      });
       const acquire = (workingDirectory: string, sessionId: string) => {
         const existing = sessions.get(sessionId);
         if (existing) {
@@ -64,22 +75,21 @@ export const makeProjectSessionRuntimeHostLive = (
           sessionDir: options.sessionDirectory,
           widgetSessionDir: options.widgetSessionDirectory,
           emit: electron.broadcast,
-          emitApplicationControl: (event) => {
-            const connectionId = rendererConnections.get(event.sessionId);
-            if (connectionId === undefined)
-              throw new Error("No renderer is associated with the calling Project Session");
-            electron.sendTo(electron.requireRendererConnection(connectionId), event);
-          },
+          requestUi: (request) => runAdapter(rendererRequests.requestUi(sessionId, request)),
+          requestArtifact: (record, signal) =>
+            runAdapter(rendererRequests.requestArtifact(sessionId, record, signal)),
+          requestApplicationControl: (invocation, signal) =>
+            runAdapter(rendererRequests.requestProjectControl(sessionId, invocation, signal)),
           artifactRepository: {
             // Pi's artifact hooks are Promise callbacks. Keep the only execution
             // adapter at this host boundary and provide only ArtifactStorage.
-            upsert: (directory, artifact) => runArtifact(artifacts.upsert(directory, artifact)),
+            upsert: (directory, artifact) => runAdapter(artifacts.upsert(directory, artifact)),
             get: (directory, targetSessionId, artifactId) =>
-              runArtifact(artifacts.get(directory, targetSessionId, artifactId)),
+              runAdapter(artifacts.get(directory, targetSessionId, artifactId)),
             listSession: (directory, targetSessionId) =>
-              runArtifact(artifacts.listSession(directory, targetSessionId)),
+              runAdapter(artifacts.listSession(directory, targetSessionId)),
             linkSession: (record, targetSessionId) =>
-              runArtifact(artifacts.linkSession(record, targetSessionId)),
+              runAdapter(artifacts.linkSession(record, targetSessionId)),
           },
           reviewRepository: {
             reviewContextPath: reviews.reviewContextPath,
@@ -89,76 +99,28 @@ export const makeProjectSessionRuntimeHostLive = (
         sessions.set(sessionId, integration);
         return integration;
       };
-      const requireSession = (sessionId: string) => {
-        const integration = sessions.get(sessionId);
-        if (!integration) throw new Error(`No live integrations exist for session ${sessionId}`);
-        return integration;
-      };
-      const releaseAll = () => {
-        for (const sessionId of sessions.keys()) release(sessionId);
-      };
-      yield* Effect.addFinalizer(() => Effect.sync(releaseAll));
+      yield* Effect.addFinalizer(() =>
+        Effect.forEach([...sessions.keys()], release, { discard: true }),
+      );
 
       return ProjectSessionRuntimeHost.of({
         stopWorkingDirectory: Effect.fn("ProjectSessionRuntimeHost.stopWorkingDirectory")(
-          (workingDirectory) => Effect.sync(() => releaseWorkingDirectory(workingDirectory)),
-        ),
-        cancelPendingRequests: Effect.fn("ProjectSessionRuntimeHost.cancelPendingRequests")(
-          (workingDirectory) =>
-            Effect.sync(() => {
-              for (const integration of sessions.values())
-                if (integration.workingDirectory === workingDirectory)
-                  integration.host.cancelPendingRequests();
-            }),
+          (workingDirectory) => releaseWorkingDirectory(workingDirectory),
         ),
         runtimeIntegrations: Effect.fn("ProjectSessionRuntimeHost.runtimeIntegrations")(
           (workingDirectory, sessionId) =>
-            Effect.try({
-              try: () => acquire(workingDirectory, sessionId).host.runtimeIntegrations(sessionId),
-              catch: (cause) => runtimeError("runtimeIntegrations", cause),
-            }),
+            rendererRequests.registerProjectSession(sessionId, workingDirectory).pipe(
+              Effect.andThen(
+                Effect.try({
+                  try: () =>
+                    acquire(workingDirectory, sessionId).host.runtimeIntegrations(sessionId),
+                  catch: (cause) => runtimeError("runtimeIntegrations", cause),
+                }),
+              ),
+              Effect.mapError((cause) => runtimeError("runtimeIntegrations", cause)),
+            ),
         ),
-        releaseSession: Effect.fn("ProjectSessionRuntimeHost.releaseSession")((sessionId) =>
-          Effect.sync(() => release(sessionId)),
-        ),
-        bindRenderer: Effect.fn("ProjectSessionRuntimeHost.bindRenderer")(
-          (sessionId, connectionId) =>
-            Effect.sync(() => {
-              rendererConnections.set(sessionId, connectionId);
-            }),
-        ),
-        respondArtifact: Effect.fn("ProjectSessionRuntimeHost.respondArtifact")(
-          (sessionId, response) =>
-            Effect.try({
-              try: () =>
-                requireSession(sessionId).host.dispatch({ type: "respond-artifact", ...response }),
-              catch: (cause) => runtimeError("respondArtifact", cause),
-            }),
-        ),
-        respondUi: Effect.fn("ProjectSessionRuntimeHost.respondUi")((sessionId, response) =>
-          Effect.try({
-            try: () => requireSession(sessionId).host.dispatch({ type: "respond-ui", ...response }),
-            catch: (cause) => runtimeError("respondUi", cause),
-          }),
-        ),
-        respondControl: Effect.fn("ProjectSessionRuntimeHost.respondControl")(
-          (sessionId, controlRequestId, result) =>
-            Effect.try({
-              try: () => {
-                // Releasing a runtime settles its pending controls before a renderer
-                // can finish an application mutation that stops the calling session.
-                // Its eventual acknowledgement is therefore an expected late response.
-                const integration = sessions.get(sessionId);
-                if (!integration) return;
-                integration.host.dispatch({
-                  type: "respond-project-session-control",
-                  controlRequestId,
-                  result,
-                });
-              },
-              catch: (cause) => runtimeError("respondControl", cause),
-            }),
-        ),
+        releaseSession: Effect.fn("ProjectSessionRuntimeHost.releaseSession")(release),
       });
     }),
   );

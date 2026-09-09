@@ -3,6 +3,7 @@ import { setSessionFastMode } from "../domain/application";
 import { makeSubagentControl } from "../domain/subagentControl";
 import { jsonObjectSchema } from "../ipc/json-contract";
 import type { PiSessions } from "../services/pi/PiSessions";
+import type { RendererRequestCoordinator } from "../services/renderer-requests/RendererRequestCoordinator";
 import { ProjectSessionLifecycle } from "../services/project-sessions/ProjectSessionLifecycle";
 import { ApplicationState } from "../services/storage/ApplicationState";
 import { SessionArchiveStorage } from "../services/storage/SessionArchiveStorage";
@@ -43,6 +44,7 @@ export const makeCakeChatEnvironmentLive = (
   | ApplicationState
   | PiSessions
   | ProjectSessionLifecycle
+  | RendererRequestCoordinator
   | SessionArchiveStorage
   | SessionCatalogChanges
   | SubagentCoordinator

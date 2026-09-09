@@ -141,6 +141,11 @@ renderer-owned application mutation, main sends one validated control request
 only to the renderer connection associated with the calling Project Session;
 the renderer executes the shared application intent, completes persistence,
 and acknowledges the result through Effect RPC before the tool call returns.
+One process-scoped renderer-request coordinator owns transient reverse-request
+correlation, Project Session and Cake Chat renderer targeting, completion,
+cancellation, and connection/session cleanup. It publishes through the existing
+native-event Streams and accepts responses through the existing Effect RPCs; it
+is main-local coordination, not another transport or durable authority.
 
 ## Utility model
 

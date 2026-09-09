@@ -1,13 +1,41 @@
-import { Stream } from "effect";
+import { Effect, Stream } from "effect";
 import * as cakeChats from "../../domain/cakeChats";
+import { CakeChatError } from "../../domain/cake-chat-data";
+import { CakeChatEnvironment } from "../../services/cake-chats/CakeChatEnvironment";
 import { CakeChatRpc } from "../protocol/CakeChatRpc";
+import { RendererConnection } from "../protocol/RendererConnectionMiddleware";
+
+const withConnection = <A, E, R>(operation: (connectionId: number) => Effect.Effect<A, E, R>) =>
+  Effect.flatMap(RendererConnection, ({ connectionId }) => operation(connectionId));
+
+const bindRenderer = (connectionId: number, sessionId: string) =>
+  Effect.flatMap(CakeChatEnvironment, (environment) =>
+    environment.bindRenderer(sessionId, connectionId),
+  ).pipe(
+    Effect.mapError(
+      (error) => new CakeChatError({ operation: "bindRenderer", message: error.message }),
+    ),
+  );
 
 export const cakeChatHandlers = CakeChatRpc.of({
   "cakeChats.observeCatalog": (query) => Stream.unwrap(cakeChats.observeCatalog(query)),
   "cakeChats.inspect": ({ sessionId }) => cakeChats.inspect(sessionId),
-  "cakeChats.open": (target) => cakeChats.open(target),
-  "cakeChats.observe": (target) => Stream.unwrap(cakeChats.observe(target)),
-  "cakeChats.prompt": (input) => cakeChats.prompt(input),
+  "cakeChats.open": (target) =>
+    withConnection((connectionId) =>
+      bindRenderer(connectionId, target.sessionId).pipe(Effect.andThen(cakeChats.open(target))),
+    ),
+  "cakeChats.observe": (target) =>
+    Stream.unwrap(
+      withConnection((connectionId) =>
+        bindRenderer(connectionId, target.sessionId).pipe(
+          Effect.andThen(cakeChats.observe(target, connectionId)),
+        ),
+      ),
+    ),
+  "cakeChats.prompt": (input) =>
+    withConnection((connectionId) =>
+      bindRenderer(connectionId, input.sessionId).pipe(Effect.andThen(cakeChats.prompt(input))),
+    ),
   "cakeChats.abort": (target) => cakeChats.abort(target),
   "cakeChats.compact": ({ instructions, ...target }) => cakeChats.compact(target, instructions),
   "cakeChats.editMessage": (input) => cakeChats.editMessage(input),
@@ -35,5 +63,7 @@ export const cakeChatHandlers = CakeChatRpc.of({
   "cakeChats.restore": (target) => cakeChats.restore(target),
   "cakeChats.deleteResolved": (target) => cakeChats.deleteResolved(target),
   "cakeChats.respondControl": ({ controlRequestId, result }) =>
-    cakeChats.respondControl(controlRequestId, result),
+    withConnection((connectionId) =>
+      cakeChats.respondControl(connectionId, controlRequestId, result),
+    ),
 });

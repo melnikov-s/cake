@@ -295,9 +295,13 @@ carry renderer-connection-scoped native events to their window-owned consumers.
 Main RPC handlers are thin adapters to domain operations. They do not own
 business logic. Effect Schema decodes requests, results, failures, and Stream
 elements once at the process boundary; already-decoded values use ordinary
-TypeScript types internally and are not reparsed at each function call. Each
-renderer connection owns the Scope of its streaming RPCs and in-flight requests. Closing a window interrupts those subscriptions and
-requests.
+TypeScript types internally and are not reparsed at each function call. A
+process-scoped renderer-request coordinator owns transient reverse-request
+correlation and validates the expected Cake Session and renderer connection
+before completing a request. It publishes only through the existing native-event
+Streams and completes only through the existing Effect RPC response methods.
+Each renderer connection owns the Scope of its streaming RPCs and in-flight
+requests. Closing a window interrupts those subscriptions and requests.
 
 A long-lived operation with independent domain lifetime returns a stable ID or
 handle once accepted and reports later progress through a Stream. Interrupting

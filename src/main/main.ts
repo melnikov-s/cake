@@ -11,6 +11,7 @@ import { makePiSessionsLive } from "../services/pi/PiSessions";
 import { makeSessionFamilyStorageLive } from "../services/storage/SessionFamilyStorage";
 import { AgentAvailability } from "../services/pi/AgentAvailability";
 import { makeProjectSessionRuntimeHostLive } from "../services/pi/ProjectSessionRuntimeHostLive";
+import { RendererRequestCoordinatorLive } from "../services/renderer-requests/RendererRequestCoordinator";
 import { makeProjectSessionLifecycleLive } from "../layers/ProjectSessionLifecycleLive";
 import { makeProjectAccessLive } from "../services/projects/ProjectAccessLive";
 import { ProjectConfiguration } from "../services/projects/ProjectConfiguration";
@@ -160,12 +161,22 @@ const lifecycleLive = makeProjectSessionLifecycleLive({
   resolvedCakeChatSessionDirectory: cakePaths.piGlobalChatResolvedSessions,
 }).pipe(Layer.provide(nativeLive));
 const sessionFoundationLive = Layer.merge(nativeLive, lifecycleLive);
+const rendererRequestCoordinatorLive = RendererRequestCoordinatorLive.pipe(
+  Layer.provide(sessionFoundationLive),
+);
+const rendererRequestFoundationLive = Layer.merge(
+  sessionFoundationLive,
+  rendererRequestCoordinatorLive,
+);
 const projectSessionRuntimeHostLive = makeProjectSessionRuntimeHostLive({
   agentDirectory: cakePaths.piAgent,
   sessionDirectory: cakePaths.piSessions,
   widgetSessionDirectory: cakePaths.piWidgetSessions,
-}).pipe(Layer.provide(sessionFoundationLive));
-const runtimeHostGraphLive = Layer.merge(sessionFoundationLive, projectSessionRuntimeHostLive);
+}).pipe(Layer.provide(rendererRequestFoundationLive));
+const runtimeHostGraphLive = Layer.merge(
+  rendererRequestFoundationLive,
+  projectSessionRuntimeHostLive,
+);
 const inlineWidgetsLive = makeInlineWidgetsLive({
   paths: cakePaths,
   publish: publishInlineWidget,

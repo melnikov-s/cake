@@ -4,7 +4,7 @@ import * as projects from "../../domain/projects";
 import * as projectSessions from "../../domain/projectSessions";
 import { ProjectSessionRpc } from "../protocol/ProjectSessionRpc";
 import { RendererConnection } from "../protocol/RendererConnectionMiddleware";
-import { ProjectSessionRuntimeHost } from "../../services/pi/ProjectSessionRuntimeHost";
+import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
 
 const withConnection = <A, E, R>(operation: (connectionId: number) => Effect.Effect<A, E, R>) =>
   Effect.flatMap(RendererConnection, ({ connectionId }) => operation(connectionId));
@@ -21,8 +21,8 @@ const activateWorkingDirectory = (connectionId: number, workingDirectory: string
   );
 
 const bindRenderer = (connectionId: number, sessionId: string) =>
-  Effect.flatMap(ProjectSessionRuntimeHost, (integrations) =>
-    integrations.bindRenderer(sessionId, connectionId),
+  Effect.flatMap(RendererRequestCoordinator, (coordinator) =>
+    coordinator.bind({ _tag: "ProjectSession", sessionId }, connectionId),
   ).pipe(
     Effect.mapError(
       (error) => new ProjectSessionError({ operation: "bindRenderer", message: error.message }),
@@ -121,8 +121,10 @@ export const projectSessionHandlers = ProjectSessionRpc.of({
     projectSessions.resolveWorkingDirectory(workingDirectory),
   "projectSessions.restore": (target) => projectSessions.restore(target).pipe(Effect.asVoid),
   "projectSessions.respondControl": ({ sessionId, controlRequestId, result }) =>
-    Effect.flatMap(ProjectSessionRuntimeHost, (integrations) =>
-      integrations.respondControl(sessionId, controlRequestId, result),
+    withConnection((connectionId) =>
+      Effect.flatMap(RendererRequestCoordinator, (coordinator) =>
+        coordinator.respondProjectControl(connectionId, sessionId, controlRequestId, result),
+      ),
     ).pipe(
       Effect.mapError(
         (error) => new ProjectSessionError({ operation: "respondControl", message: error.message }),

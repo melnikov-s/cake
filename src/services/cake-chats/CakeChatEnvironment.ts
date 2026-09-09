@@ -1,7 +1,11 @@
-import { Context, Deferred, Effect, Layer, PubSub, Schema, Stream } from "effect";
+import { Context, Effect, Layer, Schema, type Stream } from "effect";
 import type { JsonValue } from "../../ipc/json-contract";
 import type { PiSessionAcquireOptions } from "../pi/PiSessions";
 import type { CakeChatControlRequest, CakeControlTool } from "../../domain/cake-chat-data";
+import {
+  RendererRequestCoordinator,
+  type RendererRequestCoordinatorError,
+} from "../renderer-requests/RendererRequestCoordinator";
 
 interface CakeChatLocation {
   readonly workingDirectory: string;
@@ -25,8 +29,13 @@ export interface CakeChatEnvironmentService {
   readonly runtimeOptions: (
     input: CakeChatRuntimeInput,
   ) => Effect.Effect<PiSessionAcquireOptions, CakeChatEnvironmentError>;
-  readonly controlRequests: () => Stream.Stream<CakeChatControlRequest>;
+  readonly bindRenderer: (
+    sessionId: string,
+    connectionId: number,
+  ) => Effect.Effect<void, CakeChatEnvironmentError>;
+  readonly controlRequests: (connectionId?: number) => Stream.Stream<CakeChatControlRequest>;
   readonly respondControl: (
+    connectionId: number,
     controlRequestId: string,
     result: JsonValue,
   ) => Effect.Effect<void, CakeChatEnvironmentError>;
@@ -55,44 +64,21 @@ export interface CakeChatEnvironmentOperations {
   readonly deleteResolved: (sessionId: string) => Effect.Effect<void, CakeChatEnvironmentError>;
 }
 
-const cancelledControl = (name: string): JsonValue => ({
-  ok: false,
-  name,
-  error: "The Cake Chat request was cancelled.",
-});
-
 /** Outside-world adapter for Cake Chat archive paths and renderer control settlement. */
 export const makeCakeChatEnvironmentLayer = (operations: CakeChatEnvironmentOperations) =>
   Layer.effect(
     CakeChatEnvironment,
     Effect.gen(function* () {
-      const requests = yield* PubSub.unbounded<CakeChatControlRequest>();
-      const pending = new Map<string, Deferred.Deferred<JsonValue>>();
+      const rendererRequests = yield* RendererRequestCoordinator;
 
-      const requestControl = Effect.fn("CakeChatEnvironment.requestControl")(function* (
-        sessionId: string,
-        invocation: { readonly name: string; readonly arguments: JsonValue },
-        signal: AbortSignal,
-      ) {
-        const controlRequestId = crypto.randomUUID();
-        const response = yield* Deferred.make<JsonValue>();
-        pending.set(controlRequestId, response);
-        yield* PubSub.publish(requests, {
-          _tag: "ControlRequested",
-          sessionId,
-          controlRequestId,
-          invocation,
-        });
-        const aborted = Effect.callback<JsonValue>((resume) => {
-          const onAbort = () => resume(Effect.succeed(cancelledControl(invocation.name)));
-          if (signal.aborted) onAbort();
-          else signal.addEventListener("abort", onAbort, { once: true });
-          return Effect.sync(() => signal.removeEventListener("abort", onAbort));
-        });
-        return yield* Effect.race(Deferred.await(response), aborted).pipe(
-          Effect.ensuring(Effect.sync(() => pending.delete(controlRequestId))),
-        );
-      });
+      const requestControl = Effect.fn("CakeChatEnvironment.requestControl")(
+        (
+          sessionId: string,
+          invocation: { readonly name: string; readonly arguments: JsonValue },
+          signal: AbortSignal,
+        ) =>
+          rendererRequests.requestCakeChatControl(sessionId, invocation, signal).pipe(Effect.orDie),
+      );
 
       const invoke = (
         sessionId: string,
@@ -107,34 +93,46 @@ export const makeCakeChatEnvironmentLayer = (operations: CakeChatEnvironmentOper
         if (input.tools.length > 0) toolsBySessionId.set(input.sessionId, input.tools);
         const tools =
           input.tools.length > 0 ? input.tools : (toolsBySessionId.get(input.sessionId) ?? []);
-        return yield* operations.runtimeOptions({ ...input, tools }, invoke);
+        const runtime = yield* operations.runtimeOptions({ ...input, tools }, invoke);
+        return {
+          ...runtime,
+          onRelease: (runtime.onRelease ?? Effect.void).pipe(
+            Effect.ensuring(
+              rendererRequests.releaseSession({
+                _tag: "CakeChatSession",
+                sessionId: input.sessionId,
+              }),
+            ),
+          ),
+        };
       });
-      const respondControl = Effect.fn("CakeChatEnvironment.respondControl")(function* (
-        controlRequestId: string,
-        result: JsonValue,
-      ) {
-        const response = pending.get(controlRequestId);
-        if (!response)
-          return yield* new CakeChatEnvironmentError({
-            operation: "respondControl",
-            message: "That Cake Chat control request is no longer pending",
-          });
-        yield* Deferred.succeed(response, result);
-      });
-
-      yield* Effect.addFinalizer(() =>
-        Effect.gen(function* () {
-          for (const response of pending.values())
-            yield* Deferred.succeed(response, { ok: false, error: "Cake Chat stopped." });
-          pending.clear();
-          yield* PubSub.shutdown(requests);
-        }),
+      const respondControl = Effect.fn("CakeChatEnvironment.respondControl")(
+        (connectionId: number, controlRequestId: string, result: JsonValue) =>
+          rendererRequests.respondCakeChatControl(connectionId, controlRequestId, result).pipe(
+            Effect.mapError(
+              (error: RendererRequestCoordinatorError) =>
+                new CakeChatEnvironmentError({
+                  operation: error.operation,
+                  message: error.message,
+                }),
+            ),
+          ),
       );
 
       return CakeChatEnvironment.of({
         location: operations.location,
         runtimeOptions,
-        controlRequests: () => Stream.fromPubSub(requests),
+        bindRenderer: (sessionId, connectionId) =>
+          rendererRequests.bind({ _tag: "CakeChatSession", sessionId }, connectionId).pipe(
+            Effect.mapError(
+              (error: RendererRequestCoordinatorError) =>
+                new CakeChatEnvironmentError({
+                  operation: error.operation,
+                  message: error.message,
+                }),
+            ),
+          ),
+        controlRequests: rendererRequests.cakeChatControlRequests,
         respondControl,
         archive: operations.archive,
         restore: operations.restore,

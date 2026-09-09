@@ -293,7 +293,10 @@ type UnrevisionedCakeChatUpdate =
   | { readonly _tag: "Snapshot"; readonly snapshot: CakeChatSnapshot }
   | { readonly _tag: "Event"; readonly sessionId: string; readonly event: CakeChatEvent };
 
-export const observe = Effect.fn("CakeChats.observe")(function* (target: CakeChatTarget) {
+export const observe = Effect.fn("CakeChats.observe")(function* (
+  target: CakeChatTarget,
+  connectionId?: number,
+) {
   const catalogs = yield* SessionCatalogChanges;
   const initialResolved = Stream.fromEffect(sessionNamespace(target.sessionId)).pipe(
     Stream.map((namespace) => ({
@@ -347,7 +350,7 @@ export const observe = Effect.fn("CakeChats.observe")(function* (target: CakeCha
                   return { _tag: "Snapshot", snapshot };
                 }),
               );
-              const controls = environment.controlRequests().pipe(
+              const controls = environment.controlRequests(connectionId).pipe(
                 Stream.filter((request) => request.sessionId === target.sessionId),
                 Stream.map((event): UnrevisionedCakeChatUpdate => ({
                   _tag: "Event",
@@ -652,9 +655,12 @@ export const deleteResolved = Effect.fn("CakeChats.deleteResolved")(function* (
 });
 
 export const respondControl = Effect.fn("CakeChats.respondControl")(function* (
+  connectionId: number,
   controlRequestId: string,
   result: Schema.Schema.Type<typeof Schema.Json>,
 ) {
   const environment = yield* CakeChatEnvironment;
-  yield* environment.respondControl(controlRequestId, result).pipe(asError("respondControl"));
+  yield* environment
+    .respondControl(connectionId, controlRequestId, result)
+    .pipe(asError("respondControl"));
 });

@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 import type { cakeRpcPayloadSchemas } from "../ipc/cake-rpc-contract";
-import { ProjectSessionRuntimeHost } from "../services/pi/ProjectSessionRuntimeHost";
+import { RendererRequestCoordinator } from "../services/renderer-requests/RendererRequestCoordinator";
 import { ProjectAccess } from "../services/projects/ProjectAccess";
 import { ArtifactStorage } from "../services/storage/ArtifactStorage";
 import { ArtifactError } from "./artifact-data";
@@ -32,17 +32,25 @@ const authorizedWorkingDirectory = Effect.fn("Artifacts.authorizedWorkingDirecto
   });
 });
 
-export const respond = Effect.fn("Artifacts.respond")(function* (request: ArtifactResponse) {
+export const respond = Effect.fn("Artifacts.respond")(function* (
+  connectionId: number,
+  request: ArtifactResponse,
+) {
   yield* authorizedWorkingDirectory(request.sessionId);
-  const runtime = yield* ProjectSessionRuntimeHost;
-  yield* runtime.respondArtifact(request.sessionId, request).pipe(asError("respond"));
+  const coordinator = yield* RendererRequestCoordinator;
+  yield* coordinator
+    .respondArtifact(connectionId, request.sessionId, request)
+    .pipe(asError("respond"));
   return { artifactRequestId: request.artifactRequestId };
 });
 
-export const respondUi = Effect.fn("Artifacts.respondUi")(function* (request: UiResponse) {
+export const respondUi = Effect.fn("Artifacts.respondUi")(function* (
+  connectionId: number,
+  request: UiResponse,
+) {
   yield* authorizedWorkingDirectory(request.sessionId);
-  const runtime = yield* ProjectSessionRuntimeHost;
-  yield* runtime.respondUi(request.sessionId, request).pipe(asError("respondUi"));
+  const coordinator = yield* RendererRequestCoordinator;
+  yield* coordinator.respondUi(connectionId, request.sessionId, request).pipe(asError("respondUi"));
   return { uiRequestId: request.uiRequestId };
 });
 

@@ -14,6 +14,8 @@ import type {
   CakeRuntimeOptions,
 } from "../../../src/services/pi/runtime/cake-runtime";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
+import { Electron } from "../../../src/services/electron/Electron";
+import { RendererRequestCoordinatorLive } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
 import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { SubagentCoordinatorLive } from "../../../src/services/subagents/SubagentCoordinator";
 import { Terminal } from "../../../src/services/terminal/Terminal";
@@ -117,6 +119,19 @@ const makeLayer = (
       }),
     changelog: () => Effect.succeed("# Changelog"),
   };
+  const electron = Layer.mock(Electron, {
+    sendTo: () => {},
+    broadcast: () => {},
+    requireRendererConnection: () => {
+      throw new Error("Unexpected renderer event");
+    },
+    workspaceForConnection: () => undefined,
+    associateWorkspace: () => {},
+    forgetWorkspace: () => {},
+    windowsForWorkspace: () => [],
+    centerTrafficLights: () => {},
+  });
+  const rendererRequests = RendererRequestCoordinatorLive.pipe(Layer.provide(electron));
   const environment = makeCakeChatEnvironmentLayer({
     location: () =>
       Effect.succeed({
@@ -159,7 +174,7 @@ const makeLayer = (
       Effect.sync(() => {
         resolvedOnDisk = false;
       }),
-  });
+  }).pipe(Layer.provide(rendererRequests));
   return {
     layer: Layer.mergeAll(
       Layer.succeed(ApplicationState, application),
@@ -184,6 +199,7 @@ const makeLayer = (
           resolvedProjectEntry: () => Effect.succeed(undefined),
         }),
       ),
+      rendererRequests,
       environment,
       SubagentCoordinatorLive,
       Layer.succeed(Terminal, terminal),

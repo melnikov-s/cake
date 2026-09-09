@@ -4,7 +4,7 @@ import { initialize } from "../domain/application";
 import { initializeRegisteredProjectAccess } from "../domain/projects";
 import * as workingDirectoryTerminals from "../domain/workingDirectoryTerminals";
 import { Electron } from "../services/electron/Electron";
-import { ProjectSessionRuntimeHost } from "../services/pi/ProjectSessionRuntimeHost";
+import { RendererRequestCoordinator } from "../services/renderer-requests/RendererRequestCoordinator";
 import type { PiSessions } from "../services/pi/PiSessions";
 import { ProjectAccess } from "../services/projects/ProjectAccess";
 import { RewordingRequests } from "../services/projects/RewordingRequests";
@@ -35,7 +35,7 @@ type MainApplicationServices =
   | Electron
   | PiSessions
   | ProjectAccess
-  | ProjectSessionRuntimeHost
+  | RendererRequestCoordinator
   | RewordingRequests
   | Terminal
   | VsCodeServer
@@ -57,7 +57,7 @@ export const MainApplication = Effect.fn("MainApplication")(function* ({
     Effect.gen(function* () {
       const applicationState = yield* ApplicationState;
       const electron = yield* Electron;
-      const integrations = yield* ProjectSessionRuntimeHost;
+      const rendererRequests = yield* RendererRequestCoordinator;
       const access = yield* ProjectAccess;
       const rewordingRequests = yield* RewordingRequests;
       const vscode = yield* VsCodeServer;
@@ -67,7 +67,6 @@ export const MainApplication = Effect.fn("MainApplication")(function* ({
       }>();
       const handleWindowClosed = Effect.fn("MainApplication.handleWindowClosed")(function* ({
         ownerId,
-        workingDirectory,
       }: {
         readonly ownerId: number;
         readonly workingDirectory: string | undefined;
@@ -78,7 +77,7 @@ export const MainApplication = Effect.fn("MainApplication")(function* ({
             vscode.closeForWindow(ownerId),
             access.clearOwner(ownerId),
             rewordingRequests.disposeOwner(ownerId),
-            ...(workingDirectory ? [integrations.cancelPendingRequests(workingDirectory)] : []),
+            rendererRequests.releaseConnection(ownerId),
           ],
           { concurrency: "unbounded", discard: true },
         );

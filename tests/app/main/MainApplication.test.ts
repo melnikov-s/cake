@@ -9,7 +9,7 @@ import type { WorktreeRecord } from "../../../src/domain/managed-worktree-data";
 import { MainApplication } from "../../../src/main/MainApplication";
 import { Electron, type ElectronWindowLifecycle } from "../../../src/services/electron/Electron";
 import { PiSessions } from "../../../src/services/pi/PiSessions";
-import { ProjectSessionRuntimeHost } from "../../../src/services/pi/ProjectSessionRuntimeHost";
+import { RendererRequestCoordinator } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
 import { ProjectSessionLifecycle } from "../../../src/services/project-sessions/ProjectSessionLifecycle";
 import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
 import { RewordingRequests } from "../../../src/services/projects/RewordingRequests";
@@ -57,7 +57,7 @@ const testLayer = (input?: {
   readonly closeEditorForWindow?: (ownerId: number) => void;
   readonly clearOwner?: (ownerId: number) => void;
   readonly disposeRewordingOwner?: (ownerId: number) => void;
-  readonly cancelPendingRequests?: (workingDirectory: string) => void;
+  readonly releaseRendererConnection?: (ownerId: number) => void;
 }) => {
   const state = input?.applicationState ?? defaultApplicationState();
   return Layer.mergeAll(
@@ -90,9 +90,9 @@ const testLayer = (input?: {
       release: () => Effect.void,
       disposeOwner: (ownerId) => Effect.sync(() => input?.disposeRewordingOwner?.(ownerId)),
     }),
-    Layer.mock(ProjectSessionRuntimeHost, {
-      cancelPendingRequests: (workingDirectory) =>
-        Effect.sync(() => input?.cancelPendingRequests?.(workingDirectory)),
+    Layer.mock(RendererRequestCoordinator, {
+      releaseConnection: (ownerId) =>
+        Effect.sync(() => input?.releaseRendererConnection?.(ownerId)),
     }),
     Layer.mock(ManagedWorktrees, { records: () => Effect.succeed(input?.worktrees ?? []) }),
     Layer.mock(PiSessions, {}),
@@ -208,7 +208,7 @@ describe("MainApplication", () => {
             closeEditorForWindow: (ownerId) => record(`editor:${ownerId}`),
             clearOwner: (ownerId) => record(`access:${ownerId}`),
             disposeRewordingOwner: (ownerId) => record(`rewording:${ownerId}`),
-            cancelPendingRequests: (workingDirectory) => record(`requests:${workingDirectory}`),
+            releaseRendererConnection: (ownerId) => record(`requests:${ownerId}`),
           }),
         ),
       );
@@ -216,13 +216,7 @@ describe("MainApplication", () => {
       lifecycle?.onWindowClosed(17, "/projects/cake");
       yield* Deferred.await(cleaned);
       expect(operations.toSorted()).toEqual(
-        [
-          "terminal:17",
-          "editor:17",
-          "access:17",
-          "rewording:17",
-          "requests:/projects/cake",
-        ].toSorted(),
+        ["terminal:17", "editor:17", "access:17", "rewording:17", "requests:17"].toSorted(),
       );
       application.emit("window-all-closed");
       yield* Fiber.join(fiber);
