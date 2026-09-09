@@ -20,7 +20,7 @@ import type { CanonicalTranscriptBehavior } from "../../../src/renderer/componen
 import { ActivityGroup } from "../../../src/renderer/components/work-log-activity-group";
 import { ChatStore } from "../../../src/renderer/stores/ChatStore";
 
-describe("ActivityGroup timer isolation", () => {
+describe("ActivityGroup", () => {
   let container: HTMLDivElement;
   let root: Root;
   let store: ChatStore;
@@ -87,5 +87,51 @@ describe("ActivityGroup timer isolation", () => {
 
     expect(renderWorkLogDiff).toHaveBeenCalledTimes(rendersBeforeTick);
     expect(container.textContent).toContain("0.5s");
+  });
+
+  it("includes added and removed files in the work-log totals", async () => {
+    const parts: UiPart[] = [
+      {
+        id: "tool-write",
+        kind: "tool",
+        name: "write",
+        input: JSON.stringify({ path: "src/added.ts", content: "one\ntwo\nthree" }),
+        filePath: "src/added.ts",
+        state: "success",
+      },
+      {
+        id: "tool-remove",
+        kind: "tool",
+        name: "remove",
+        input: JSON.stringify({ path: "src/removed.ts" }),
+        filePath: "src/removed.ts",
+        diff: "--- a/src/removed.ts\n+++ /dev/null\n@@ -1,4 +0,0 @@\n-one\n-two\n-three\n-four",
+        state: "success",
+      },
+    ];
+    store = mount(
+      createStore(ChatStore, {
+        id: () => "session-1",
+        parts: () => parts,
+        streaming: () => false,
+        submitting: () => false,
+        configuration: () => undefined,
+        commands: () => [],
+        placeholder: () => "",
+        inputLabel: () => "Prompt",
+        canSubmit: () => true,
+        submit: async () => true,
+      }),
+    );
+    const behavior = {
+      store,
+      renderChat: () => null,
+    } as CanonicalTranscriptBehavior;
+
+    await act(async () => {
+      root.render(<ActivityGroup groupId="group-1" parts={parts} behavior={behavior} />);
+    });
+
+    expect(container.querySelector("summary")?.textContent).toContain("2 edits · +3 −4");
   });
 });

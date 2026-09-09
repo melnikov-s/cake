@@ -1,13 +1,11 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useStickToBottom } from "use-stick-to-bottom";
 import { observer } from "r-state-tree/react";
-import { diffStats } from "@/components/ai-elements/diff-view";
 import { VirtualizedConversation } from "@/components/ai-elements/conversation";
 import { WorkLogDiff } from "@/components/ai-elements/work-log-diff";
 import { StatusDot } from "@/components/ui/status-dot";
 import { WorkLogActivityTrigger } from "@/components/work-log-activity-trigger";
 import type { UiPart } from "../../ipc/session-contract";
-import { toolDiff, workLogChanges } from "../../utils/turn-diff";
 import { combineSubagentWorkLogParts } from "../lib/subagent-work-log";
 import type { CanonicalTranscriptBehavior } from "./chat-message";
 import { TranscriptPart } from "./chat-transcript-part";
@@ -41,8 +39,8 @@ export const ActivityGroup = observer(function ActivityGroup({
   parts: UiPart[];
   behavior: CanonicalTranscriptBehavior;
 }) {
-  const changes = useMemo(() => workLogChanges(parts), [parts]);
-  const hasDiff = changes.length > 0;
+  const changeSummary = behavior.store.workLogPresentation.changeSummary(parts);
+  const hasDiff = changeSummary.editCount > 0;
   const viewMode = behavior.store.workLogPresentation.viewMode;
   const showDiff = hasDiff && (viewMode === "diff" || viewMode === "auto");
   const open = behavior.store.workLogPresentation.groupOpen(groupId, hasDiff);
@@ -99,25 +97,9 @@ export const ActivityGroup = observer(function ActivityGroup({
   );
   const activityIsRunning =
     reasoningIsStreaming || toolParts.some((part) => part.state === "running");
-  const { editCount, editTotals } = useMemo(() => {
-    const editParts = toolParts.filter((part) => part.name === "edit" && Boolean(toolDiff(part)));
-    return {
-      editCount: editParts.length,
-      editTotals: editParts.reduce(
-        (total, part) => {
-          const stats = diffStats(toolDiff(part)!);
-          return {
-            additions: total.additions + stats.additions,
-            deletions: total.deletions + stats.deletions,
-          };
-        },
-        { additions: 0, deletions: 0 },
-      ),
-    };
-  }, [toolParts]);
   const label =
-    editCount > 0
-      ? `${editCount} ${editCount === 1 ? "edit" : "edits"} · +${editTotals.additions} −${editTotals.deletions}`
+    changeSummary.editCount > 0
+      ? `${changeSummary.editCount} ${changeSummary.editCount === 1 ? "edit" : "edits"} · +${changeSummary.additions} −${changeSummary.deletions}`
       : tools === 0
         ? "Reasoning"
         : `${tools} tool ${tools === 1 ? "call" : "calls"}`;

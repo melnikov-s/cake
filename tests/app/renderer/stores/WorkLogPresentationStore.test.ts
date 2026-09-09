@@ -33,6 +33,36 @@ describe("WorkLogPresentationStore", () => {
     vi.useRealTimers();
   });
 
+  it("summarizes every file-changing tool, including added and removed files", () => {
+    const parts: UiPart[] = [
+      {
+        id: "tool-write",
+        kind: "tool",
+        name: "write",
+        input: JSON.stringify({ path: "src/added.ts", content: "one\ntwo\nthree" }),
+        filePath: "src/added.ts",
+        state: "success",
+      },
+      {
+        id: "tool-remove",
+        kind: "tool",
+        name: "remove",
+        input: JSON.stringify({ path: "src/removed.ts" }),
+        filePath: "src/removed.ts",
+        diff: "--- a/src/removed.ts\n+++ /dev/null\n@@ -1,4 +0,0 @@\n-one\n-two\n-three\n-four",
+        state: "success",
+      },
+    ];
+    const store = createChatStore(() => parts);
+
+    expect(store.workLogPresentation.changeSummary(parts)).toEqual({
+      editCount: 2,
+      additions: 3,
+      deletions: 4,
+    });
+    store[Symbol.dispose]();
+  });
+
   it("does not resynchronize tool timers for assistant text tokens", () => {
     const assistant: Extract<UiPart, { kind: "text" }> = {
       id: "assistant-1",

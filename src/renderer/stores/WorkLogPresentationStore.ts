@@ -1,5 +1,6 @@
 import { observable, Store, untracked } from "r-state-tree";
 import type { UiPart, WorkLogsExpansion, WorkLogViewMode } from "../../ipc/session-contract";
+import { workLogChangeChunks } from "../../utils/turn-diff";
 import { workLogGroupKeys } from "../../utils/work-log-groups";
 
 export interface WorkLogPresentationCapabilities {
@@ -19,7 +20,13 @@ export interface WorkLogTimerState {
   endedAt?: number;
 }
 
-/** Owns work-log display preferences, disclosure overrides, and elapsed-time resources. */
+export interface WorkLogChangeSummary {
+  editCount: number;
+  additions: number;
+  deletions: number;
+}
+
+/** Owns work-log change summaries, display preferences, disclosure, and elapsed-time resources. */
 export class WorkLogPresentationStore extends Store<WorkLogPresentationStoreProps> {
   private localViewMode: WorkLogViewMode = "auto";
   private localExpansion: WorkLogsExpansion = "collapsed";
@@ -88,6 +95,18 @@ export class WorkLogPresentationStore extends Store<WorkLogPresentationStoreProp
     if (this.tickInterval === undefined) return;
     clearInterval(this.tickInterval);
     this.tickInterval = undefined;
+  }
+
+  changeSummary(parts: readonly UiPart[]): WorkLogChangeSummary {
+    const changes = workLogChangeChunks(parts);
+    return changes.reduce(
+      (summary, change) => ({
+        editCount: summary.editCount + 1,
+        additions: summary.additions + change.additions,
+        deletions: summary.deletions + change.deletions,
+      }),
+      { editCount: 0, additions: 0, deletions: 0 },
+    );
   }
 
   elapsedMs(partId: string): number | undefined {
