@@ -21,8 +21,9 @@ describe("NotificationStore", () => {
 
   it("debounces a session burst and delivers only its latest notification", async () => {
     const showNotification = vi.fn(async () => undefined);
+    const showToast = vi.fn();
     const { root, subject: store } = mountWithClient(
-      createStore(NotificationStore, { onError: vi.fn() }),
+      createStore(NotificationStore, { onToast: showToast, onError: vi.fn() }),
       { electron: { showNotification } } as unknown as Client,
     );
 
@@ -31,6 +32,7 @@ describe("NotificationStore", () => {
     await store.enqueue({ title: "Build", body: "75%", level: "info", source });
     await vi.advanceTimersByTimeAsync(2_999);
     expect(showNotification).not.toHaveBeenCalled();
+    expect(showToast).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(1);
     expect(showNotification).toHaveBeenCalledOnce();
@@ -44,13 +46,21 @@ describe("NotificationStore", () => {
       },
       { signal: store.signal },
     );
+    expect(showToast).toHaveBeenCalledOnce();
+    expect(showToast).toHaveBeenCalledWith({
+      title: "Build · Build monitor",
+      message: "75%",
+      tone: "info",
+      coalesceKey: "cake-agent:session-1",
+    });
     root[Symbol.dispose]();
   });
 
   it("batches different sessions independently", async () => {
     const showNotification = vi.fn(async () => undefined);
+    const showToast = vi.fn();
     const { root, subject: store } = mountWithClient(
-      createStore(NotificationStore, { onError: vi.fn() }),
+      createStore(NotificationStore, { onToast: showToast, onError: vi.fn() }),
       { electron: { showNotification } } as unknown as Client,
     );
 
@@ -64,13 +74,18 @@ describe("NotificationStore", () => {
     await vi.advanceTimersByTimeAsync(3_000);
 
     expect(showNotification).toHaveBeenCalledTimes(2);
+    expect(showToast).toHaveBeenCalledTimes(2);
+    expect(showToast).toHaveBeenCalledWith(
+      expect.objectContaining({ tone: "info", coalesceKey: "cake-agent:session-1" }),
+    );
     root[Symbol.dispose]();
   });
 
   it("cancels pending delivery when disposed", async () => {
     const showNotification = vi.fn(async () => undefined);
+    const showToast = vi.fn();
     const { root, subject: store } = mountWithClient(
-      createStore(NotificationStore, { onError: vi.fn() }),
+      createStore(NotificationStore, { onToast: showToast, onError: vi.fn() }),
       { electron: { showNotification } } as unknown as Client,
     );
 
@@ -79,5 +94,6 @@ describe("NotificationStore", () => {
     await vi.advanceTimersByTimeAsync(3_000);
 
     expect(showNotification).not.toHaveBeenCalled();
+    expect(showToast).not.toHaveBeenCalled();
   });
 });

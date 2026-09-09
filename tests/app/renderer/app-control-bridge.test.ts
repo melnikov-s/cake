@@ -220,6 +220,50 @@ describe("AppControlBridge", () => {
     expect(showAgentAction).not.toHaveBeenCalled();
   });
 
+  it("coalesces equivalent calling-session resolution receipts", async () => {
+    const showAgentAction = vi.fn();
+    const source = {
+      kind: "project-session" as const,
+      sessionId: "session-1",
+      title: "Build monitor",
+    };
+    const bridge = new AppControlBridge(
+      createHost({
+        showAgentAction,
+        sessions: () => [
+          {
+            workingDirectory: "/projects/cake",
+            projectName: "Cake",
+            sessionId: "session-1",
+            title: "Build monitor",
+            modifiedAt: "2026-03-01T12:00:00.000Z",
+            messageCount: 3,
+            resolved: false,
+            draft: false,
+          },
+        ],
+        setProjectSessionsResolved: async () => 1,
+      }),
+    );
+
+    await bridge.invoke({ name: "agent.action", arguments: { action: "resolve" } }, source);
+    await bridge.invoke(
+      {
+        name: "sessions.resolve",
+        arguments: {
+          targets: [{ kind: "project", sessionId: "session-1" }],
+          resolved: true,
+        },
+      },
+      source,
+    );
+
+    expect(showAgentAction).toHaveBeenCalledTimes(2);
+    expect(showAgentAction.mock.calls[0]![0].coalesceKey).toBe(
+      showAgentAction.mock.calls[1]![0].coalesceKey,
+    );
+  });
+
   it("turns completed calling-session actions into attributed receipts", async () => {
     const showAgentAction = vi.fn();
     const source = {

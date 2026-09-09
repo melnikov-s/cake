@@ -285,8 +285,8 @@ The window Store hierarchy mirrors the product surfaces:
   agent-notification delivery: it applies one three-second trailing debounce per
   calling Cake Session, keeps only the latest item in each burst, and assigns a
   stable native group and notification identity per Session. Agent-selected levels
-  do not bypass this policy. Electron then delivers the result through the operating
-  system notification center rather than Cake's in-window toast stack.
+  do not bypass this policy. On delivery, Cake presents the result in its in-window
+  toast stack and Electron also sends it to the operating system notification center.
   `ApplicationControlStore` owns Project Session and Cake Chat application-control request
   acceptance, deduplication, invocation, response delivery, and lifetime cancellation. Root
   supplies grouped application-state, session-intent, and presentation capabilities and retains

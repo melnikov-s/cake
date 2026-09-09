@@ -16,11 +16,19 @@ interface PendingNotification {
   timer: ReturnType<typeof setTimeout>;
 }
 
+interface NotificationToastInput {
+  readonly title: string;
+  readonly message: string;
+  readonly tone: "info" | "warning" | "error";
+  readonly coalesceKey: string;
+}
+
 const NOTIFICATION_DEBOUNCE_MS = 3_000;
 const UNATTRIBUTED_KEY = "cake-agent";
 
-/** Owns batching and delivery policy for agent-requested native notifications. */
+/** Owns batching and delivery policy for agent-requested notifications. */
 export class NotificationStore extends Store<{
+  onToast(input: NotificationToastInput): void;
   onError(error: unknown): void;
 }> {
   private readonly pending = new Map<string, PendingNotification>();
@@ -49,12 +57,19 @@ export class NotificationStore extends Store<{
     if (!pending) return;
     this.pending.delete(key);
     const nativeId = `cake-agent:${key}`;
+    const title = pending.input.source
+      ? `${pending.input.title} · ${pending.input.source.title}`
+      : pending.input.title;
+    this.props.onToast({
+      title,
+      message: pending.input.body,
+      tone: pending.input.level === "success" ? "info" : pending.input.level,
+      coalesceKey: nativeId,
+    });
     void ClientContext.consume(this)!
       .electron.showNotification(
         {
-          title: pending.input.source
-            ? `${pending.input.title} · ${pending.input.source.title}`
-            : pending.input.title,
+          title,
           body: pending.input.body,
           level: pending.input.level,
           id: nativeId,

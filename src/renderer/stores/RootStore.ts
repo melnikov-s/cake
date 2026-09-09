@@ -842,6 +842,7 @@ export class RootStore extends Store<{
   @child
   get notificationStore(): NotificationStore {
     return createStore(NotificationStore, {
+      onToast: (toast) => this.toastStore.show(toast),
       onError: (error) =>
         this.toastStore.show({
           tone: "error",

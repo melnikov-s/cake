@@ -1200,12 +1200,21 @@ export class AppControlBridge {
       targetSessionId: sessionId,
       targetKind: "project-session" as const,
     });
+    const resolutionKey = (
+      resolved: boolean,
+      targets: ReadonlyArray<{ sessionId: string; kind: "project-session" | "cake-chat" }>,
+    ) =>
+      `resolve:${targets.map((target) => `${target.kind}:${target.sessionId}`).join(",")}:${resolved}`;
     const resolutionReceipt = (
       message: string,
-      coalesceKey: string,
+      resolved: boolean,
+      targets: ReadonlyArray<{ sessionId: string; kind: "project-session" | "cake-chat" }>,
       target?: { sessionId: string; kind: "project-session" | "cake-chat" },
     ) => {
-      const receipt: AgentActionReceipt = { message, coalesceKey };
+      const receipt: AgentActionReceipt = {
+        message,
+        coalesceKey: resolutionKey(resolved, targets),
+      };
       if (target) {
         receipt.targetSessionId = target.sessionId;
         receipt.targetKind = target.kind;
@@ -1224,7 +1233,12 @@ export class AppControlBridge {
         message: messages[result.action],
         targetSessionId: source.sessionId,
         targetKind: source.kind,
-        coalesceKey: `current:${result.action}:${result.detail ?? ""}`,
+        coalesceKey:
+          result.action === "resolve" || result.action === "restore"
+            ? resolutionKey(result.action === "resolve", [
+                { sessionId: source.sessionId, kind: source.kind },
+              ])
+            : `current:${result.action}:${result.detail ?? ""}`,
       };
     }
     if (result.name === "split_view")
@@ -1289,11 +1303,12 @@ export class AppControlBridge {
         coalesceKey: `rename:${result.target.sessionId}`,
       };
     if (result.name === "set_session_resolved")
-      return {
-        message: `${result.resolved ? "Resolved" : "Restored"} “${projectTitle(result.target.sessionId)}”`,
-        ...projectTarget(result.target.sessionId),
-        coalesceKey: `resolve:${result.target.sessionId}:${result.resolved}`,
-      };
+      return resolutionReceipt(
+        `${result.resolved ? "Resolved" : "Restored"} “${projectTitle(result.target.sessionId)}”`,
+        result.resolved,
+        [{ sessionId: result.target.sessionId, kind: "project-session" }],
+        { sessionId: result.target.sessionId, kind: "project-session" },
+      );
     if (result.name === "set_session_model")
       return {
         message: `Changed the model for “${projectTitle(result.target.sessionId)}”`,
@@ -1303,7 +1318,8 @@ export class AppControlBridge {
     if (result.name === "set_sessions_resolved")
       return resolutionReceipt(
         `${result.resolved ? "Resolved" : "Restored"} ${result.sessionCount} project ${result.sessionCount === 1 ? "session" : "sessions"}`,
-        `resolve-project:${result.sessionIds.join(",")}:${result.resolved}`,
+        result.resolved,
+        result.sessionIds.map((sessionId) => ({ sessionId, kind: "project-session" })),
         result.sessionIds.length === 1
           ? { sessionId: result.sessionIds[0]!, kind: "project-session" }
           : undefined,
@@ -1311,22 +1327,23 @@ export class AppControlBridge {
     if (result.name === "set_cake_chat_sessions_resolved")
       return resolutionReceipt(
         `${result.resolved ? "Resolved" : "Restored"} ${result.sessionCount} Cake Chat ${result.sessionCount === 1 ? "session" : "sessions"}`,
-        `resolve-cake:${result.sessionIds.join(",")}:${result.resolved}`,
+        result.resolved,
+        result.sessionIds.map((sessionId) => ({ sessionId, kind: "cake-chat" })),
         result.sessionIds.length === 1
           ? { sessionId: result.sessionIds[0]!, kind: "cake-chat" }
           : undefined,
       );
     if (result.name === "sessions.resolve") {
       const target = result.targets.length === 1 ? result.targets[0] : undefined;
+      const targets = result.targets.map((item) => ({
+        sessionId: item.sessionId,
+        kind: item.kind === "cake-chat" ? ("cake-chat" as const) : ("project-session" as const),
+      }));
       return resolutionReceipt(
         `${result.resolved ? "Resolved" : "Restored"} ${result.sessionCount} ${result.sessionCount === 1 ? "session" : "sessions"}`,
-        `resolve:${result.targets.map((item) => `${item.kind}:${item.sessionId}`).join(",")}:${result.resolved}`,
-        target
-          ? {
-              sessionId: target.sessionId,
-              kind: target.kind === "cake-chat" ? "cake-chat" : "project-session",
-            }
-          : undefined,
+        result.resolved,
+        targets,
+        target ? targets[0] : undefined,
       );
     }
     return undefined;
