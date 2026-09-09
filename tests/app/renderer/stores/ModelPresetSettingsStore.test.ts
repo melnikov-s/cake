@@ -222,6 +222,39 @@ describe("ModelPresetSettingsStore", () => {
     dispose();
   });
 
+  it("routes queued optimistic edits to a create result when another window created first", async () => {
+    const external = preset({
+      id: "00000000-0000-4000-8000-000000000010",
+      name: "External",
+    });
+    const created = preset({
+      id: "00000000-0000-4000-8000-000000000011",
+      name: "Local",
+    });
+    const create = deferred<Projection>();
+    const { client, store, dispose } = mountStore();
+    client.createModelPreset.mockReturnValueOnce(create.promise);
+    client.updateModelPreset.mockResolvedValueOnce({
+      presets: [external, { ...created, name: "Local edit" }],
+    });
+
+    const createSave = store.createPreset(presetDraft({ name: "Local" }));
+    const optimistic = store.presets[0]!;
+    const updateSave = store.updatePreset({ ...optimistic, name: "Local edit" });
+    await vi.waitFor(() => expect(client.createModelPreset).toHaveBeenCalledOnce());
+
+    create.resolve({ presets: [external, created] });
+    await createSave;
+    await updateSave;
+
+    expect(client.updateModelPreset).toHaveBeenCalledWith(
+      { ...optimistic, id: created.id, name: "Local edit" },
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(store.presets).toEqual([external, { ...created, name: "Local edit" }]);
+    dispose();
+  });
+
   it("optimistically reorders presets and persists their order", async () => {
     const first = preset({ name: "First" });
     const second = preset({ id: "00000000-0000-4000-8000-000000000002", name: "Second" });

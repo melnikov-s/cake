@@ -1,9 +1,36 @@
+import { Schema } from "effect";
 import { describe, expect, it } from "vitest";
-import { RendererApplicationState } from "../../../src/domain/application-data";
+import {
+  RendererApplicationProjection,
+  RendererApplicationState,
+  defaultApplicationState,
+} from "../../../src/domain/application-data";
 import { applicationStateSchema, parsePiBuiltinCommand } from "../../../src/ipc/session-contract";
 
 it("uses the domain-owned renderer application schema at the IPC boundary", () => {
   expect(applicationStateSchema).toBe(RendererApplicationState);
+});
+
+it("rejects invalid model-preset invariants at the application projection wire boundary", () => {
+  const duplicate = {
+    id: "00000000-0000-4000-8000-000000000001",
+    name: "Preset",
+    provider: "openai",
+    modelId: "model",
+    thinkingLevel: "off" as const,
+    fastMode: false,
+  };
+
+  expect(() =>
+    Schema.decodeUnknownSync(RendererApplicationProjection)({
+      revision: 1,
+      state: {
+        ...defaultApplicationState(),
+        modelPresets: [duplicate, duplicate],
+        defaultModelPresetId: "00000000-0000-4000-8000-000000000002",
+      },
+    }),
+  ).toThrow(/unique Project and Model Preset identities with a valid default preset/);
 });
 
 describe("parsePiBuiltinCommand", () => {

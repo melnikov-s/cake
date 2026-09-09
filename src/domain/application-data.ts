@@ -199,16 +199,7 @@ const RendererApplicationFields = {
   defaultModelPresetId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
 };
 
-/** Broad renderer projection of current main-owned application state. */
-export const RendererApplicationState = Schema.Struct(RendererApplicationFields);
-
-export const RendererApplicationProjection = Schema.Struct({
-  revision: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
-  state: RendererApplicationState,
-});
-
-/** Current main-owned Application value. Storage envelope versioning is separate. */
-export const ApplicationState = Schema.Struct(RendererApplicationFields).check(
+const CurrentApplicationState = Schema.Struct(RendererApplicationFields).check(
   Schema.makeFilter(
     (state) => {
       const projectPaths = state.projects.map((project) => project.path);
@@ -222,6 +213,17 @@ export const ApplicationState = Schema.Struct(RendererApplicationFields).check(
     { expected: "unique Project and Model Preset identities with a valid default preset" },
   ),
 );
+
+/** Broad renderer projection of current main-owned application state. */
+export const RendererApplicationState = CurrentApplicationState;
+
+export const RendererApplicationProjection = Schema.Struct({
+  revision: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  state: RendererApplicationState,
+});
+
+/** Current main-owned Application value. Storage envelope versioning is separate. */
+export const ApplicationState = CurrentApplicationState;
 
 export interface ApplicationState extends Schema.Schema.Type<typeof ApplicationState> {}
 export interface RendererApplicationState extends Schema.Schema.Type<

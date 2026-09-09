@@ -153,7 +153,10 @@ export class ModelPresetSettingsStore extends Store {
       const state = await this.client.modelPresets.create(preset, {
         signal: this.signal,
       });
-      const created = state.presets.find((candidate) => !knownIds.has(candidate.id));
+      // Creation appends its result to the projection. Prefer the last new id so a
+      // preset created by another window just before this command cannot capture
+      // queued edits that still reference our optimistic id.
+      const created = state.presets.findLast((candidate) => !knownIds.has(candidate.id));
       if (created) this.authoritativeIds.set(optimisticId, created.id);
       return state;
     });
