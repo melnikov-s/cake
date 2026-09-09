@@ -316,14 +316,6 @@ interface GlobalControlTool {
   limitations?: readonly string[];
 }
 
-/** Pi throws this when a plain prompt arrives while the agent turn is streaming. */
-function isAlreadyProcessingError(error: unknown): boolean {
-  return (
-    error instanceof Error &&
-    error.message.startsWith("Agent is already processing. Specify streamingBehavior")
-  );
-}
-
 function retryNotice(event: ResponseRetryNotice): Extract<UiPart, { kind: "notice" }> {
   return {
     id: "active-retry",
@@ -2300,26 +2292,23 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       try {
         const content = promptText(item.text, item.attachments);
         const images = imageContent(item.attachments);
-        if (index === 0 && !session.isStreaming) {
-          try {
-            await deliverTrackedUserMessage(content, item.renderUserMessageAsMarkdown, () =>
-              withResponseRetries(() => session.prompt(content, { images, source: "interactive" })),
-            );
-            if (item.turnId) turnCompletions.finishHandledInput(item.turnId);
-            continue;
-          } catch (error) {
-            // A turn may have started between the check and this call.
-            if (!isAlreadyProcessingError(error)) throw error;
-          }
-        }
-        if (item.delivery === "steer")
-          await deliverTrackedUserMessage(content, item.renderUserMessageAsMarkdown, () =>
-            session.steer(content, images),
-          );
-        else
-          await deliverTrackedUserMessage(content, item.renderUserMessageAsMarkdown, () =>
-            session.followUp(content, images),
-          );
+        await deliverTrackedUserMessage(content, item.renderUserMessageAsMarkdown, () =>
+          withResponseRetries(() =>
+            session.prompt(content, {
+              images,
+              source: "interactive",
+              streamingBehavior: item.delivery === "steer" ? "steer" : "followUp",
+            }),
+          ),
+        );
+        // Extension commands can finish without creating a user message or run.
+        if (
+          item.turnId &&
+          !session.isStreaming &&
+          session.getSteeringMessages().length === 0 &&
+          session.getFollowUpMessages().length === 0
+        )
+          turnCompletions.finishHandledInput(item.turnId);
       } catch {
         // Delivery failed; keep the remainder queued for the next flush.
         compactionQueue.unshift(...queued.slice(index));
@@ -2613,12 +2602,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       }
       if (!session.isStreaming && reloadCompleted < reloadRequested) await drainReloads();
       const completion = turnId
-        ? turnCompletions.track(
-            turnId,
-            promptText(text, attachments),
-            ((delivery === "prompt" || delivery === "steer") && !session.isStreaming) ||
-              text.startsWith("/"),
-          )
+        ? turnCompletions.track(turnId, promptText(text, attachments), true)
         : undefined;
       try {
         if (session.isCompacting) {
@@ -2640,51 +2624,20 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         }
         const content = promptText(text, attachments);
         const images = imageContent(attachments);
-        if (delivery === "steer") {
-          if (session.isStreaming)
-            await deliverTrackedUserMessage(content, renderUserMessageAsMarkdown, () =>
-              session.steer(content, images),
-            );
-          else {
-            try {
-              // Pi's steer API only queues input for an existing run. When the target has
-              // become idle, start a normal turn instead of stranding the message forever.
-              await deliverTrackedUserMessage(content, renderUserMessageAsMarkdown, () =>
-                withResponseRetries(() =>
-                  session.prompt(content, { images, source: "interactive" }),
-                ),
-              );
-            } catch (error) {
-              // Preserve steering intent if another turn started after the idle check.
-              if (!isAlreadyProcessingError(error)) throw error;
-              await deliverTrackedUserMessage(content, renderUserMessageAsMarkdown, () =>
-                session.steer(content, images),
-              );
-            }
-          }
-        } else if (delivery === "follow-up")
-          await deliverTrackedUserMessage(content, renderUserMessageAsMarkdown, () =>
-            session.followUp(content, images),
-          );
-        else if (session.isStreaming) {
-          // The renderer may see a stale idle snapshot while a turn is still
-          // running. Queue the message instead of failing the submission.
-          await deliverTrackedUserMessage(content, renderUserMessageAsMarkdown, () =>
-            session.followUp(content, images),
-          );
-        } else {
-          try {
-            await deliverTrackedUserMessage(content, renderUserMessageAsMarkdown, () =>
-              withResponseRetries(() => session.prompt(content, { images, source: "interactive" })),
-            );
-          } catch (error) {
-            // The turn may have started between the check and this call.
-            if (!isAlreadyProcessingError(error)) throw error;
-            await deliverTrackedUserMessage(content, renderUserMessageAsMarkdown, () =>
-              session.followUp(content, images),
-            );
-          }
-        }
+        // Pi's prompt operation atomically starts an idle session or applies the requested
+        // queue policy if a run is active. Calling steer/followUp directly would only enqueue
+        // and can strand input when the recipient becomes idle before delivery.
+        await deliverTrackedUserMessage(content, renderUserMessageAsMarkdown, () =>
+          withResponseRetries(() =>
+            session.prompt(content, {
+              images,
+              source: "interactive",
+              ...(delivery === "steer"
+                ? { streamingBehavior: "steer" as const }
+                : { streamingBehavior: "followUp" as const }),
+            }),
+          ),
+        );
         // Pi extensions may handle input without creating a user message or run.
         if (
           turnId &&
@@ -2737,7 +2690,11 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     },
     async cancelSteering() {
       const queued = session.clearQueue();
-      for (const text of [...queued.steering, ...queued.followUp]) await session.followUp(text);
+      for (const text of [...queued.steering, ...queued.followUp])
+        await session.prompt(text, {
+          source: "interactive",
+          streamingBehavior: "followUp",
+        });
       compactionQueue = compactionQueue.map((message) =>
         message.delivery === "steer" ? { ...message, delivery: "follow-up" } : message,
       );

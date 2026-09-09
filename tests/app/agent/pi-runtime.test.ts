@@ -1804,6 +1804,95 @@ describe("S1 Pi runtime", () => {
     }
   });
 
+  it("starts an idle session for an ordinary follow-up delivery", async () => {
+    const directory = await createTemporaryDirectory();
+    const agentDir = join(directory, "agent");
+    let requestBody = "";
+    const server = createServer((request, response) => {
+      request.on("data", (chunk) => {
+        requestBody += String(chunk);
+      });
+      request.on("end", () => {
+        response.writeHead(200, { "content-type": "text/event-stream" });
+        response.write(
+          `data: ${JSON.stringify({
+            id: "idle-follow-up-response",
+            object: "chat.completion.chunk",
+            created: 0,
+            model: "fixture-model",
+            choices: [
+              {
+                index: 0,
+                delta: { role: "assistant", content: "Acknowledged." },
+                finish_reason: null,
+              },
+            ],
+          })}\n\n`,
+        );
+        response.write(
+          `data: ${JSON.stringify({
+            id: "idle-follow-up-response",
+            object: "chat.completion.chunk",
+            created: 0,
+            model: "fixture-model",
+            choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+          })}\n\n`,
+        );
+        response.end("data: [DONE]\n\n");
+      });
+    });
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", resolve);
+    });
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("Expected a TCP test server");
+    await mkdir(join(agentDir, "extensions"), { recursive: true });
+    await writeFile(
+      join(agentDir, "extensions", "fixture-provider.ts"),
+      `export default function (pi) { pi.registerProvider("fixture-provider", ${JSON.stringify({
+        name: "Fixture provider",
+        baseUrl: `http://127.0.0.1:${(address as AddressInfo).port}/v1`,
+        apiKey: "fixture",
+        api: "openai-completions",
+        models: [
+          {
+            id: "fixture-model",
+            name: "Fixture model",
+            reasoning: false,
+            input: ["text"],
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+            contextWindow: 4_096,
+            maxTokens: 1_024,
+          },
+        ],
+      })}); }\n`,
+    );
+
+    try {
+      const runtime = await createCakeRuntime({
+        cwd: directory,
+        agentDir,
+        sessionDir: join(directory, "sessions"),
+        trusted: true,
+        newSession: true,
+        requestUi: async () => undefined,
+        onEvent: () => undefined,
+      });
+      runtimes.push(runtime);
+      await runtime.setModel("fixture-provider", "fixture-model");
+
+      await runtime.prompt("Idle queued family reply", "follow-up", []);
+
+      expect(requestBody).toContain("Idle queued family reply");
+      await expect(runtime.listQueuedMessages()).resolves.toEqual({ steering: [], followUp: [] });
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
+  });
+
   it("exposes delegation as hidden subagents rather than session construction", async () => {
     const directory = await createTemporaryDirectory();
     const runtime = await createCakeRuntime({
