@@ -1,5 +1,6 @@
 import { observer } from "r-state-tree/react";
 import { cn } from "@/lib/utils";
+import { Button } from "./ui/button";
 import { DisclosureTrigger } from "./ui/disclosure-trigger";
 import { IconButton } from "./ui/icon-button";
 import { BackIcon, FolderPlusIcon, ForwardIcon, SettingsIcon, SidebarIcon } from "./ui/icons";
@@ -168,19 +169,20 @@ export const Sidebar = observer(function Sidebar({
           )}
         </section>
       </div>
-      <div className="flex min-h-[52px] items-center justify-end border-t border-border/65 px-4 py-2 text-muted-foreground">
-        <div className="flex min-w-0 flex-1 items-center gap-1.5 empty:hidden"></div>
-        <IconButton
+      <div className="min-h-[52px] border-t border-border/65 px-3 py-2 text-muted-foreground">
+        <Button
+          variant="ghost"
           className={cn(
-            "size-8 rounded-lg bg-transparent text-muted-foreground hover:bg-sidebar-hover hover:text-foreground",
+            "h-9 w-full justify-start gap-2 px-2 text-xs font-medium text-muted-foreground hover:bg-sidebar-hover hover:text-foreground",
             shell.selection.kind === "settings" && "bg-sidebar-hover text-foreground",
           )}
-          tooltip="Open settings"
+          aria-label="Open settings"
           aria-current={shell.selection.kind === "settings" ? "page" : undefined}
           onClick={onOpenSettings}
         >
           <SettingsIcon />
-        </IconButton>
+          <span>Settings</span>
+        </Button>
       </div>
       <ProjectSettingsDialog store={projectSettings} />
     </aside>

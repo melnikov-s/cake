@@ -2,7 +2,7 @@ import { useState } from "react";
 import { observer } from "r-state-tree/react";
 import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
-import { ChevronIcon, FolderIcon, KanbanIcon, PlusIcon, SettingsIcon } from "./ui/icons";
+import { ChevronIcon, KanbanIcon, PlusIcon, SettingsIcon } from "./ui/icons";
 import { IconButton } from "./ui/icon-button";
 import { SidebarSessionItem } from "./sidebar-session-item";
 import type { AppShellStore } from "../stores/AppShellStore";
@@ -76,7 +76,7 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
         <Button
           data-slot="project-label"
           variant="ghost"
-          className="h-7 min-w-0 flex-1 justify-start gap-2 px-1 text-xs font-medium text-inherit hover:text-foreground"
+          className="h-7 min-w-0 flex-1 justify-start px-1 text-xs font-medium text-inherit hover:text-foreground"
           type="button"
           aria-label={
             resolved
@@ -94,7 +94,6 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
             });
           }}
         >
-          <FolderIcon />
           <span className="truncate">{projects.nameForPath(path)}</span>
         </Button>
         {!resolved && (
@@ -131,7 +130,7 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
         )}
       </div>
       {expanded && (
-        <div className="flex flex-col pl-6 space-y-0.5 mt-0.5">
+        <div className="mt-0.5 flex flex-col space-y-0.5 pl-4">
           {visibleSessions.map((session) => (
             <SidebarSessionItem
               key={session.sessionId}

@@ -80,7 +80,7 @@ export const SidebarCakeChatGroup = observer(function SidebarCakeChatGroup({
         )}
       </div>
       {expanded && (
-        <div className="flex flex-col pl-5 space-y-0.5 mt-0.5">
+        <div className="mt-0.5 flex flex-col space-y-0.5 pl-1">
           {visibleSessions.map((session) => {
             const selected =
               shell.selection.kind === "cake-chat" &&

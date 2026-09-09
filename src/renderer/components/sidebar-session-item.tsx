@@ -6,6 +6,7 @@ import type { WorktreeRecord } from "../../ipc/worktree-contract";
 import { cn } from "../lib/utils";
 import { Badge } from "./ui/badge";
 import { IconButton } from "./ui/icon-button";
+import { Input } from "./ui/input";
 import { NavItem } from "./ui/nav-item";
 import { ChevronIcon, ResolveIcon, RestoreIcon } from "./ui/icons";
 import type { SidebarStore } from "../stores/SidebarStore";
@@ -92,10 +93,10 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
   return (
     <div
       data-session-id={session.sessionId}
+      data-family-role={isFamilyChild ? "child" : isFamilyParent ? "parent" : "root"}
       className={cn(
-        "session-item group relative flex min-h-11 w-full items-center rounded-md py-1 text-xs select-none transition-colors",
-        isFamilyChild &&
-          "ml-3 w-[calc(100%-0.75rem)] pl-3 before:absolute before:inset-y-0 before:left-0 before:w-px before:bg-border after:absolute after:left-0 after:top-1/2 after:h-px after:w-2 after:bg-border",
+        "session-item group relative grid min-h-11 w-full grid-cols-[1.25rem_minmax(0,1fr)] items-center rounded-md py-1 text-xs select-none transition-colors",
+        isFamilyChild && "ml-5 w-[calc(100%-1.25rem)]",
         selected
           ? "active bg-sidebar-active text-primary font-semibold"
           : "text-muted-foreground hover:bg-sidebar-hover hover:text-foreground",
@@ -103,32 +104,51 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
         selected && canResolve && "has-session-action",
       )}
     >
-      {isFamilyParent && renamingValue === null && (
-        <IconButton
-          className={cn(
-            "ml-0.5 size-5 shrink-0 text-muted-foreground transition-transform",
-            familyCollapsed && "-rotate-90",
-          )}
-          tooltip={familyCollapsed ? "Expand child sessions" : "Collapse child sessions"}
-          ariaLabel={`${familyCollapsed ? "Expand" : "Collapse"} children of ${session.title}`}
-          aria-expanded={!familyCollapsed}
-          onClick={() => onToggleFamily?.(session.sessionId)}
+      {renamingValue === null && (
+        <div
+          data-slot="session-leading"
+          className="relative flex h-full items-center justify-center"
         >
-          <ChevronIcon />
-        </IconButton>
-      )}
-      {workflowStatus && renamingValue === null && (
-        <StatusSwatch
-          color={workflowStatus.color}
-          className="absolute top-3 -left-4"
-          title={workflowStatus.name}
-          role="img"
-          aria-label={`Status: ${workflowStatus.name}`}
-        />
+          {isFamilyParent ? (
+            <>
+              <IconButton
+                className={cn(
+                  "size-5 shrink-0 text-muted-foreground transition-transform",
+                  familyCollapsed && "-rotate-90",
+                )}
+                tooltip={familyCollapsed ? "Expand child sessions" : "Collapse child sessions"}
+                ariaLabel={`${familyCollapsed ? "Expand" : "Collapse"} children of ${session.title}`}
+                aria-expanded={!familyCollapsed}
+                onClick={() => onToggleFamily?.(session.sessionId)}
+              >
+                <ChevronIcon />
+              </IconButton>
+              {workflowStatus && (
+                <StatusSwatch
+                  color={workflowStatus.color}
+                  className="absolute -left-2"
+                  title={workflowStatus.name}
+                  role="img"
+                  aria-label={`Status: ${workflowStatus.name}`}
+                />
+              )}
+            </>
+          ) : (
+            workflowStatus && (
+              <StatusSwatch
+                color={workflowStatus.color}
+                title={workflowStatus.name}
+                role="img"
+                aria-label={`Status: ${workflowStatus.name}`}
+              />
+            )
+          )}
+        </div>
       )}
       {renamingValue !== null ? (
-        <input
-          className="session-rename-input w-full h-7 rounded-md border border-accent/50 bg-background px-2 text-xs text-foreground outline-none focus:ring-1 focus:ring-accent"
+        <Input
+          size="sm"
+          className="session-rename-input col-start-2 mr-2 w-[calc(100%-0.5rem)]"
           aria-label="Session name"
           value={renamingValue}
           maxLength={SESSION_TITLE_MAX_LENGTH}
@@ -142,7 +162,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
         />
       ) : (
         <NavItem
-          className="session-row flex-1"
+          className="session-row col-start-2 bg-transparent hover:bg-transparent"
           active={selected}
           onClick={() => onOpen(session.sessionId)}
           onContextMenu={(event) => {
@@ -196,44 +216,39 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
             )
           }
           description={
-            (branch || !activity) && (
-              <span
-                className={cn(
-                  "flex w-full min-w-0 items-center gap-1.5 text-[10px] font-normal leading-none",
-                  selected ? "text-primary/80" : "text-muted-foreground/80",
-                )}
+            <span
+              data-slot="session-description"
+              className={cn(
+                "flex w-full min-w-0 items-center gap-1.5 text-[10px] font-normal leading-none",
+                selected ? "text-primary/80" : "text-muted-foreground/80",
+              )}
+            >
+              {branch && !isFamilyChild && (
+                <>
+                  {session.managedWorktree && (
+                    <WorktreeStatusIcon
+                      state={session.managedWorktree.state}
+                      className="shrink-0"
+                    />
+                  )}
+                  <span className="truncate">{branch}</span>
+                  {showBaseBranch && (
+                    <>
+                      <span aria-hidden="true">→</span>
+                      <span className="truncate">{baseBranch}</span>
+                    </>
+                  )}
+                  <span aria-hidden="true">·</span>
+                </>
+              )}
+              <time
+                className="session-time shrink-0 whitespace-nowrap text-[10px] tabular-nums text-muted-foreground"
+                dateTime={session.modifiedAt}
+                title={new Date(session.modifiedAt).toLocaleString()}
               >
-                {branch && (
-                  <>
-                    {session.managedWorktree && (
-                      <WorktreeStatusIcon
-                        state={session.managedWorktree.state}
-                        className="shrink-0"
-                      />
-                    )}
-                    <span className="truncate">{branch}</span>
-                    {showBaseBranch && (
-                      <>
-                        <span aria-hidden="true">→</span>
-                        <span className="truncate">{baseBranch}</span>
-                      </>
-                    )}
-                  </>
-                )}
-                {!activity && (
-                  <>
-                    {branch && <span aria-hidden="true">·</span>}
-                    <time
-                      className="session-time shrink-0 whitespace-nowrap text-[10px] tabular-nums text-muted-foreground"
-                      dateTime={session.modifiedAt}
-                      title={new Date(session.modifiedAt).toLocaleString()}
-                    >
-                      {store.sessionActivityTime(session.modifiedAt)}
-                    </time>
-                  </>
-                )}
-              </span>
-            )
+                {store.sessionActivityTime(session.modifiedAt)}
+              </time>
+            </span>
           }
           trailing={
             <div className="session-meta relative flex h-full w-8 shrink-0 items-center justify-center">

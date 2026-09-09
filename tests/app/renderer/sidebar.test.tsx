@@ -274,7 +274,7 @@ describe("Sidebar projects", () => {
     ).not.toBeNull();
   });
 
-  it("hides time and resolve controls while a session is running or unread", () => {
+  it("keeps activity times visible while hiding resolve controls for active sessions", () => {
     const modified = new Date(0).toISOString();
     const setSessionResolved = vi.fn();
     const store = {
@@ -317,8 +317,8 @@ describe("Sidebar projects", () => {
     expect(
       container.querySelector('[data-session-id="running"] [aria-label="Running"]'),
     ).not.toBeNull();
-    expect(container.querySelector('[data-session-id="running"] .session-time')).toBeNull();
-    expect(container.querySelector('[data-session-id="ready"] .session-time')).toBeNull();
+    expect(container.querySelector('[data-session-id="running"] .session-time')).not.toBeNull();
+    expect(container.querySelector('[data-session-id="ready"] .session-time')).not.toBeNull();
     expect(container.querySelector('[data-session-id="ready"] .session-resolve-action')).toBeNull();
 
     act(() =>
@@ -341,6 +341,56 @@ describe("Sidebar projects", () => {
     expect(
       container.querySelector('[data-session-id="running"] .session-resolve-action'),
     ).toBeNull();
+  });
+
+  it("indents family children and places their activity time below the title", () => {
+    const modified = new Date("2026-08-16T12:00:00.000Z").toISOString();
+    const store = {
+      recentProjectPaths: ["/work/cake"],
+      projects: [{ path: "/work/cake", name: "Cake" }],
+      projectSessions: () => [
+        {
+          sessionId: "parent",
+          title: "Parent session",
+          modifiedAt: modified,
+          familyChildSessionIds: ["child"],
+        },
+        {
+          sessionId: "child",
+          title: "Child session",
+          modifiedAt: modified,
+          worktreeName: "family-worktree",
+          familyParentSessionId: "parent",
+        },
+      ],
+      sessionLimit: () => 8,
+      sessionActivity: (sessionId: string) => (sessionId === "child" ? "unread" : undefined),
+      sessionActivityTime: vi.fn(() => "20 min ago"),
+      sessionWorkflowStatus: (sessionId: string) =>
+        sessionId === "child" ? { name: "In review", color: "amber" } : undefined,
+      nameFromPath: () => "cake",
+      showMoreSessions: vi.fn(),
+    } as unknown as ProjectWorkbenchStore;
+
+    act(() =>
+      root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onToggle={vi.fn()} />),
+    );
+
+    const parent = container.querySelector<HTMLElement>('[data-session-id="parent"]')!;
+    const child = container.querySelector<HTMLElement>('[data-session-id="child"]')!;
+    expect(parent.dataset.familyRole).toBe("parent");
+    expect(child.dataset.familyRole).toBe("child");
+    expect(parent.querySelector(".session-row")?.classList).toContain("col-start-2");
+    expect(child.querySelector(".session-row")?.classList).toContain("col-start-2");
+    expect(child.classList).toContain("ml-5");
+    expect(
+      child.querySelector('[data-slot="session-description"] .session-time')?.textContent,
+    ).toBe("20 min ago");
+    expect(child.querySelector('[data-slot="session-description"]')?.textContent).not.toContain(
+      "family-worktree",
+    );
+    expect(child.querySelector('[aria-label="Ready, unread"]')).not.toBeNull();
+    expect(child.querySelector('[aria-label="Status: In review"]')).not.toBeNull();
   });
 
   it("leaves long titles intact for CSS ellipsis and shows relative activity", () => {
@@ -1193,8 +1243,10 @@ describe("Sidebar projects", () => {
     );
     expect(
       container
-        .querySelector('[data-session-id="session-1"] [aria-label="Status: In review"]')
-        ?.classList.contains("-left-4"),
+        .querySelector('[data-session-id="session-1"] [data-slot="session-leading"]')
+        ?.contains(
+          container.querySelector('[data-session-id="session-1"] [aria-label="Status: In review"]'),
+        ),
     ).toBe(true);
     await act(async () => {
       container.querySelector<HTMLButtonElement>(".session-row")!.dispatchEvent(
@@ -1383,7 +1435,7 @@ describe("Sidebar projects", () => {
     expect(renameCakeChatSession).toHaveBeenCalledWith("cake-chat-1", "Renamed Cake Chat");
   });
 
-  it("does not offer resolve or time for unread completed sessions", () => {
+  it("shows time but does not offer resolve for unread completed sessions", () => {
     const setSessionResolved = vi.fn();
     const store = {
       recentProjectPaths: ["/work/cake"],
@@ -1411,7 +1463,7 @@ describe("Sidebar projects", () => {
     expect(
       container.querySelector('[data-session-id="unread"] [aria-label="Ready, unread"]'),
     ).not.toBeNull();
-    expect(container.querySelector('[data-session-id="unread"] .session-time')).toBeNull();
+    expect(container.querySelector('[data-session-id="unread"] .session-time')).not.toBeNull();
     expect(
       container.querySelector('[data-session-id="unread"] .session-resolve-action'),
     ).toBeNull();
