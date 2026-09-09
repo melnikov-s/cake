@@ -197,6 +197,7 @@ interface ManagedWorktreeCommands {
       strategy: "preserve" | "squash";
       allowDirtyTarget: boolean;
       commitBeforeLanding: boolean;
+      resolveAfterLanding: boolean;
     },
     options?: ClientCommandOptions,
   ): Promise<WorktreeLandingOperation>;

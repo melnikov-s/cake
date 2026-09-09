@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { SessionCatalog } from "../../../../src/renderer/models/SessionCatalog";
 import { SessionSummary } from "../../../../src/renderer/models/SessionSummary";
 import { RootProjection } from "../../../../src/renderer/models/RootProjection";
+import { WorktreeCatalog } from "../../../../src/renderer/models/WorktreeCatalog";
 import { SessionCatalogStore } from "../../../../src/renderer/stores/SessionCatalogStore";
 import { SessionOperationCoordinatorStore } from "../../../../src/renderer/stores/SessionOperationCoordinatorStore";
 import { SessionRegistryStore } from "../../../../src/renderer/stores/SessionRegistryStore";
@@ -17,6 +18,7 @@ function registryFixture(
   const catalog = mount(
     createStore(SessionCatalogStore, {
       model: catalogModel,
+      worktrees: WorktreeCatalog.create(),
       pendingSessions: () => registryRef.current?.pendingSessions.summaries ?? [],
     }),
   );
@@ -33,6 +35,7 @@ function registryFixture(
       },
       canSubmit: () => true,
       isActive,
+      worktreeOperation: () => undefined,
       openCommandPane: async () => undefined,
       persistNow: async () => undefined,
       projectName: (workingDirectory) => workingDirectory,

@@ -97,6 +97,10 @@ export class SidebarStore extends Store<SidebarStoreProps> {
     return this.props.catalog.sessions;
   }
 
+  managedWorktree(workingDirectory: string) {
+    return this.props.catalog.managedWorktree(workingDirectory);
+  }
+
   toggle() {
     if (this.ideActive) {
       this.ideHidden = this.visible;

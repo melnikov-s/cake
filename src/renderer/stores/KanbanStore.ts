@@ -126,6 +126,10 @@ export class KanbanStore extends Store<KanbanStoreProps> {
     return this.project?.workflow.sessionDetails.find((details) => details.sessionId === sessionId);
   }
 
+  managedWorktree(workingDirectory: string) {
+    return this.props.catalog.managedWorktree(workingDirectory);
+  }
+
   modelForSession(sessionId: string) {
     const loaded = this.props.registry.findSession(sessionId);
     const runtimeModel = loaded?.model.model;

@@ -37,7 +37,6 @@ export const ChatComposerInput = observer(function ChatComposerInput({
       suggestFiles={store.canSuggestFiles ? (prefix) => store.suggestFiles(prefix) : undefined}
       placeholder={store.placeholder}
       value={store.draft}
-      disabled={store.submittingLocally}
       onValueChange={(value) => store.setDraft(value)}
       onContextMenu={(event) => {
         if (!store.canRewordComposerSelection || store.rewording) return;

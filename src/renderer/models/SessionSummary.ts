@@ -1,6 +1,4 @@
 import { Model, id } from "r-state-tree";
-import type { ManagedWorktreeContext } from "../../services/project-sessions/ProjectSessionEnvironment";
-
 export class SessionSummary extends Model {
   @id sessionId = "";
   title = "";
@@ -14,7 +12,6 @@ export class SessionSummary extends Model {
   projectName = "";
   workingDirectory = "";
   worktreeName: string | undefined;
-  managedWorktree: ManagedWorktreeContext | undefined;
   familyId: string | undefined;
   familyParentSessionId: string | undefined;
   familyChildSessionIds: readonly string[] | undefined;

@@ -11,6 +11,8 @@ import type {
   ResolvedManagedWorktreeCleanupResult,
 } from "../../domain/managed-worktree-cleanup-data";
 import type { WorktreeLandingError } from "../../domain/worktree-landing-data";
+import type { ManagedWorktreeCatalogUpdate } from "../../domain/managed-worktree-data";
+import type { WorktreeOperationCatalogUpdate } from "../../domain/worktree-operation-data";
 import type { ManagedWorktreeError } from "../../services/worktrees/ManagedWorktrees";
 import type { VsCodeServerError } from "../../services/vscode/VsCodeServer";
 import type { WorkspaceFileError } from "../../services/filesystem/WorkspaceFiles";
@@ -495,6 +497,11 @@ export interface CakeIpcClientService {
     | "discard-worktree",
     ManagedWorktreeError | WorktreeLandingError
   > & {
+    readonly observeCatalog: () => Stream.Stream<
+      ManagedWorktreeCatalogUpdate,
+      ManagedWorktreeError | TransportError
+    >;
+    readonly observeOperations: () => Stream.Stream<WorktreeOperationCatalogUpdate, TransportError>;
     readonly inspectResolvedForProject: (input: {
       readonly projectPath: string;
     }) => Effect.Effect<ResolvedManagedWorktreeCleanupPlan, ManagedWorktreeError | TransportError>;
@@ -949,6 +956,8 @@ export const CakeIpcClientLive = Layer.effect(
         ),
       },
       managedWorktrees: {
+        observeCatalog: () => client("managedWorktrees.observeCatalog", undefined),
+        observeOperations: () => client("managedWorktrees.observeOperations", undefined),
         "create-worktree": Effect.fn("CakeIpcClient.managedWorktrees.create-worktree")((payload) =>
           client("managedWorktrees.create-worktree", payload),
         ),

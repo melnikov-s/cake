@@ -11,8 +11,8 @@ export interface KanbanSessionCardProps {
     draft?: boolean;
     resolved: boolean;
     worktreeName?: string;
-    managedWorktree?: { branch: string };
   };
+  managedWorktree?: { branch: string };
   model?: string;
   description?: string;
   status?: { name: string; color: ProjectWorkflowColor };
@@ -24,6 +24,7 @@ export interface KanbanSessionCardProps {
 
 export function KanbanSessionCard({
   session,
+  managedWorktree,
   model,
   description,
   status,
@@ -32,7 +33,7 @@ export function KanbanSessionCard({
   onDragStart,
   onDragEnd,
 }: KanbanSessionCardProps) {
-  const worktree = session.worktreeName ?? session.managedWorktree?.branch.replace(/^agent\//, "");
+  const worktree = session.worktreeName ?? managedWorktree?.branch.replace(/^agent\//, "");
   return (
     <ActionCard
       data-session-id={session.sessionId}

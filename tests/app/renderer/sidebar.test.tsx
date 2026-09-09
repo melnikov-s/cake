@@ -51,6 +51,7 @@ function sidebarProps(store: ProjectWorkbenchStore) {
       toggleResolvedGroupExpanded: fixture.toggleResolvedGroupExpanded ?? vi.fn(),
       sessionActivity: fixture.sessionActivity,
       sessionWorkflowStatus: fixture.sessionWorkflowStatus ?? (() => undefined),
+      managedWorktree: fixture.managedWorktree ?? (() => undefined),
       sessionActivityForDisplay:
         fixture.sessionActivityForDisplay ??
         ((session: { sessionId: string }) => fixture.sessionActivity(session.sessionId)),
@@ -405,10 +406,15 @@ describe("Sidebar projects", () => {
           sessionId: "session-1",
           title,
           modifiedAt: modified,
-          managedWorktree: { branch: "agent/feature", baseBranch: "main" },
+          workingDirectory: "/work/feature",
+          worktreeName: "feature",
         },
       ],
       sessionLimit: () => 8,
+      managedWorktree: (workingDirectory: string) =>
+        workingDirectory === "/work/feature"
+          ? { branch: "agent/feature", baseBranch: "main" }
+          : undefined,
       sessionActivity: vi.fn(),
       sessionActivityTime: vi.fn(() => "20 min ago"),
       chatReviewCommentCountForSession: vi.fn(() => 0),
@@ -439,13 +445,15 @@ describe("Sidebar projects", () => {
           sessionId: "open",
           title: "Open worktree",
           modifiedAt: "2026-08-16T12:00:00.000Z",
-          managedWorktree: { branch: "agent/open", baseBranch: "main", state: "active" },
+          workingDirectory: "/work/open",
+          worktreeName: "open",
         },
         {
           sessionId: "merged",
           title: "Merged worktree",
           modifiedAt: "2026-08-16T11:00:00.000Z",
-          managedWorktree: { branch: "agent/merged", baseBranch: "main", state: "landed" },
+          workingDirectory: "/work/merged",
+          worktreeName: "merged",
         },
         {
           sessionId: "main",
@@ -454,6 +462,12 @@ describe("Sidebar projects", () => {
         },
       ],
       sessionLimit: () => 8,
+      managedWorktree: (workingDirectory: string) =>
+        workingDirectory === "/work/open"
+          ? { branch: "agent/open", baseBranch: "main", state: "active" }
+          : workingDirectory === "/work/merged"
+            ? { branch: "agent/merged", baseBranch: "main", state: "landed" }
+            : undefined,
       sessionActivity: vi.fn(),
       sessionActivityTime: vi.fn(() => "Today"),
       nameFromPath: () => "cake",

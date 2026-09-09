@@ -13,6 +13,7 @@ export const worktreeRecordSchema = Schema.Struct({
   baseCommit: Schema.optional(bounded(1, 256)),
   state: Schema.optional(Schema.Literals(["active", "landed", "resolved", "discarded", "missing"])),
   pendingStrategy: Schema.optionalKey(Schema.Literals(["preserve", "squash"])),
+  resolveAfterLanding: Schema.optionalKey(Schema.Boolean),
   createdAt: Schema.String,
 });
 export type WorktreeRecord = typeof worktreeRecordSchema.Type;

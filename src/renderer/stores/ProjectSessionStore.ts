@@ -35,6 +35,7 @@ export interface ProjectSessionStoreProps extends SessionTarget {
   reviews(): ReviewsStore;
   canSubmit(): boolean;
   isActive(): boolean;
+  worktreeOperation: WorktreeStoreProps["operation"];
   openCommandPane(pane: "changelog" | "tree" | "resources"): Promise<void>;
   projectName(): string;
   abort(): Promise<void>;
@@ -199,6 +200,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       sessionId: () => this.sessionId,
       enabled: () => this.props.isActive(),
       isStreaming: () => this.isStreaming,
+      operation: this.props.worktreeOperation,
       onLanded: this.props.onWorktreeLanded,
       onDiscarded: this.props.onWorktreeDiscarded,
       retirement: this.props.retirement,

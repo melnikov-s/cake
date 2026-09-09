@@ -94,7 +94,6 @@ describe("WorktreePill", () => {
     actions: WorktreeStore,
     record?: WorktreeRecord,
     configurationMode?: "new-session" | "activate-draft" | "edit-draft",
-    canManage = true,
   ) {
     act(() =>
       root.render(
@@ -104,7 +103,6 @@ describe("WorktreePill", () => {
           record={record}
           sessionId="session"
           projectPath="/project"
-          canManage={canManage}
           configurationMode={configurationMode}
           onConfigured={vi.fn()}
         />,
@@ -184,7 +182,7 @@ describe("WorktreePill", () => {
     expect(select).toHaveBeenCalledWith("session", { kind: "draft" });
   });
 
-  it("keeps the known worktree visible while live status is loading", () => {
+  it("keeps projected worktree controls visible while live status is loading after handoff", () => {
     const actions = actionStore({ aheadCount: 0, dirtyCount: 0 });
     actions.status = undefined;
 
@@ -199,7 +197,25 @@ describe("WorktreePill", () => {
     expect(container.querySelector('[data-slot="worktree-pill"]')?.textContent).toContain(
       "session",
     );
-    expect(container.querySelectorAll("button")).toHaveLength(0);
+    expect(button("Merge").disabled).toBe(true);
+    expect(button("Merge & resolve").disabled).toBe(true);
+    expect(button("Discard & resolve").disabled).toBe(false);
+  });
+
+  it("shows resolve from the projected landed record before live status loads", () => {
+    const actions = actionStore({ aheadCount: 0, dirtyCount: 0 });
+    actions.status = undefined;
+
+    render(actions, {
+      projectPath: "/project",
+      worktreePath: "/worktree",
+      branch: "agent/session",
+      baseBranch: "main",
+      state: "landed",
+      createdAt: new Date(0).toISOString(),
+    });
+
+    expect(button("Resolve").disabled).toBe(false);
   });
 
   it("does not let stale action status mask the catalog's landed record", () => {
@@ -252,18 +268,12 @@ describe("WorktreePill", () => {
     expect(button("Discard & resolve").disabled).toBe(true);
   });
 
-  it("hides worktree management actions from family child sessions", () => {
-    render(
-      actionStore({ aheadCount: 1, dirtyCount: 1, behindCount: 1 }),
-      undefined,
-      undefined,
-      false,
-    );
+  it("keeps shared worktree management available from every session", () => {
+    render(actionStore({ aheadCount: 1, dirtyCount: 1, behindCount: 1 }));
 
-    expect(container.textContent).toContain("session");
-    expect(button("Rebase")).toBeUndefined();
-    expect(button("Commit & merge")).toBeUndefined();
-    expect(button("Merge & resolve")).toBeUndefined();
-    expect(button("Discard & resolve")).toBeUndefined();
+    expect(button("Rebase")).toBeDefined();
+    expect(button("Commit & merge")).toBeDefined();
+    expect(button("Merge & resolve")).toBeDefined();
+    expect(button("Discard & resolve")).toBeDefined();
   });
 });

@@ -423,6 +423,7 @@ export const cakeRpcPayloadSchemas = {
     strategy: Schema.Literals(["preserve", "squash"]),
     allowDirtyTarget: Schema.Boolean,
     commitBeforeLanding: Schema.Boolean,
+    resolveAfterLanding: Schema.Boolean,
   }),
   "retry-worktree-landing": Schema.Struct({
     ...requestBase,

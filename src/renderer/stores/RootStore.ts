@@ -105,6 +105,23 @@ export class RootStore extends Store<{
     return this.props.client;
   }
 
+  private worktreeOperation(workspacePath: string) {
+    const operation = this.props.projection.worktreeOperations.find(workspacePath);
+    if (!operation) return undefined;
+    return {
+      operationId: operation.operationId,
+      workspacePath: operation.workspacePath,
+      sessionId: operation.sessionId,
+      kind: operation.kind,
+      phase: operation.phase,
+      strategy: operation.strategy,
+      allowDirtyTarget: operation.allowDirtyTarget,
+      resolveAfterLanding: operation.resolveAfterLanding,
+      pauseReason: operation.pauseReason,
+      error: operation.error,
+    };
+  }
+
   private projectSessionWorkingDirectory(sessionId: string) {
     return (
       this.sessionCatalogStore.find(sessionId)?.workingDirectory ??
@@ -730,6 +747,7 @@ export class RootStore extends Store<{
         this.appShellStore.selection.kind === "project-session" &&
         this.appShellStore.selection.sessionId === sessionId,
       isVisible: (sessionId) => this.sessionLayoutStore.hasSession(sessionId),
+      worktreeOperation: (workspacePath) => this.worktreeOperation(workspacePath),
       openCommandPane: (pane) => this.projectWorkbenchStore.commandPaneStore.open(pane),
       persistNow: () => this.props.flushWindowState(),
       projectName: (workspacePath) => this.projectCatalogStore.nameForPath(workspacePath),
@@ -780,7 +798,9 @@ export class RootStore extends Store<{
     const worktreeName =
       summary && "worktreeName" in summary
         ? summary.worktreeName
-        : summary?.managedWorktree?.branch.replace(/^agent\//, "");
+        : this.sessionCatalogStore
+            .managedWorktree(workingDirectory)
+            ?.branch.replace(/^agent\//, "");
     return {
       workingDirectory,
       label: worktreeName ? `${projectName} · ${worktreeName}` : projectName,
@@ -827,6 +847,7 @@ export class RootStore extends Store<{
   get sessionCatalogStore(): SessionCatalogStore {
     return createStore(SessionCatalogStore, {
       model: this.sessionCatalogModel,
+      worktrees: this.props.projection.worktrees,
       pendingSessions: () => this.sessionRegistry.pendingSessions.summaries,
     });
   }
@@ -1134,6 +1155,8 @@ export class RootStore extends Store<{
         sessions: () => this.sessionCatalogStore.sessions,
         cakeChatSessions: () => this.cakeChatCollectionStore.summaries,
         sessionActivity: (sessionId) => this.sidebarStore.sessionActivity(sessionId),
+        managedWorktree: (workingDirectory) =>
+          this.sessionCatalogStore.managedWorktree(workingDirectory),
       },
       sessions: {
         open: (sessionId, messageId) => this.openSession(sessionId, messageId),

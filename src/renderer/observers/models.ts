@@ -23,6 +23,8 @@ import type {
 import { ProjectSessionError } from "../../domain/project-session-data";
 import type { SubagentUpdate } from "../../domain/subagent-data";
 import type { ScheduledMessageUpdate } from "../../domain/scheduled-message-data";
+import type { ManagedWorktreeCatalogUpdate } from "../../domain/managed-worktree-data";
+import type { WorktreeOperationCatalogUpdate } from "../../domain/worktree-operation-data";
 import type { CakeIpcClientService } from "../../ipc/client/CakeIpcClient";
 import type { Runtime } from "../runtime";
 import type { RootStore } from "../stores/RootStore";
@@ -31,6 +33,8 @@ import type { ProjectCatalog } from "../models/ProjectCatalog";
 import type { RootProjection } from "../models/RootProjection";
 import type { Session } from "../models/Session";
 import type { SessionCatalog } from "../models/SessionCatalog";
+import type { WorktreeCatalog } from "../models/WorktreeCatalog";
+import type { WorktreeOperationCatalog } from "../models/WorktreeOperationCatalog";
 import {
   applyCakeChatCatalogGroupUpdate,
   applyProjectCatalogUpdate,
@@ -41,6 +45,8 @@ import { applyCakeChatUpdate, applyProjectSessionUpdate } from "../reducers/Conv
 import { applyDiscussionCatalogUpdate, applyDiscussionUpdate } from "../reducers/DiscussionReducer";
 import { applySubagentUpdate } from "../reducers/SubagentReducer";
 import { applyScheduledMessageUpdate } from "../reducers/ScheduledMessageReducer";
+import { applyManagedWorktreeCatalogUpdate } from "../reducers/WorktreeCatalogReducer";
+import { applyWorktreeOperationCatalogUpdate } from "../reducers/WorktreeOperationReducer";
 import type { StreamFailureAction } from "./observe-stream";
 
 type ObservedProjectSessionTarget = ProjectSessionTarget & { readonly workingDirectory: string };
@@ -69,6 +75,8 @@ type ModelObservationOptions = Omit<ModelObservation, "model" | "stop">;
 type ModelInput = {
   readonly projects: ProjectCatalog;
   readonly sessionCatalog: SessionCatalog;
+  readonly worktrees?: WorktreeCatalog;
+  readonly worktreeOperations?: WorktreeOperationCatalog;
   readonly projectSessionCatalogQueries?: ReadonlyArray<ProjectSessionCatalogQuery>;
   readonly cakeChatCatalog: CakeChatCatalog;
   readonly cakeChatCatalogQueries?: ReadonlyArray<CakeChatCatalogQuery>;
@@ -151,6 +159,24 @@ export const createModelObserver = (
       observeModelStream(key, model, stream, apply, options);
     };
 
+    const worktreeOperations = input.worktreeOperations;
+    if (worktreeOperations)
+      observe(
+        "managed-worktree-operations",
+        worktreeOperations,
+        (client) => client.managedWorktrees.observeOperations(),
+        (update: WorktreeOperationCatalogUpdate) =>
+          applyWorktreeOperationCatalogUpdate(worktreeOperations, update),
+      );
+    const worktrees = input.worktrees;
+    if (worktrees)
+      observe(
+        "managed-worktrees",
+        worktrees,
+        (client) => client.managedWorktrees.observeCatalog(),
+        (update: ManagedWorktreeCatalogUpdate) =>
+          applyManagedWorktreeCatalogUpdate(worktrees, update),
+      );
     observe(
       "projects",
       input.projects,
@@ -292,6 +318,8 @@ export const createModelObserver = (
       sync({
         projects: source.projection.projects,
         sessionCatalog: source.projection.sessionCatalog,
+        worktrees: source.projection.worktrees,
+        worktreeOperations: source.projection.worktreeOperations,
         projectSessionCatalogQueries: source.projectSessionCatalogQueries(),
         cakeChatCatalog: source.projection.cakeChatCatalog,
         cakeChatCatalogQueries: source.cakeChatCatalogQueries?.(),

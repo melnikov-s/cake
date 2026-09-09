@@ -33,6 +33,7 @@ function createHost(
       sessions: () => [],
       cakeChatSessions: overrides.cakeChatSessions ?? (() => []),
       sessionActivity: () => undefined,
+      managedWorktree: () => undefined,
     },
     sessions: {
       open: async () => false,

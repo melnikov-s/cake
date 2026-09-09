@@ -27,6 +27,7 @@ export const WorktreeLandingOperation = Schema.Struct({
   phase: WorktreeLandingPhase,
   strategy: Schema.optionalKey(Schema.Literals(["preserve", "squash"])),
   allowDirtyTarget: Schema.Boolean,
+  resolveAfterLanding: Schema.optionalKey(Schema.Boolean),
   pauseReason: Schema.optionalKey(
     Schema.Literals(["commit", "conflict", "rebase-conflict", "squash-message"]),
   ),

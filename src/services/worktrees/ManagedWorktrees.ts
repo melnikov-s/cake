@@ -1,4 +1,5 @@
-import { Context, Schema, type Effect } from "effect";
+import { Context, Schema, type Effect, type Stream } from "effect";
+import type { ManagedWorktreeCatalogUpdate } from "../../domain/managed-worktree-data";
 import type { ProjectSettings } from "../../domain/application-data";
 import type {
   WorktreeLandOutcome,
@@ -18,6 +19,7 @@ export class ManagedWorktreeError extends Schema.TaggedError<ManagedWorktreeErro
 
 export interface ManagedWorktreesService {
   readonly records: () => Effect.Effect<ReadonlyArray<WorktreeRecord>, ManagedWorktreeError>;
+  readonly observe: () => Stream.Stream<ManagedWorktreeCatalogUpdate, ManagedWorktreeError>;
   readonly create: (
     projectPath: string,
     baseWorktreePath?: string,
@@ -30,6 +32,10 @@ export interface ManagedWorktreesService {
   readonly prepareLanding: (
     worktreePath: string,
     operationId: string,
+  ) => Effect.Effect<void, ManagedWorktreeError>;
+  readonly setResolveAfterLanding: (
+    worktreePath: string,
+    enabled: boolean,
   ) => Effect.Effect<void, ManagedWorktreeError>;
   readonly land: (
     worktreePath: string,

@@ -124,6 +124,7 @@ export const KanbanColumn = observer(function KanbanColumn({
           <KanbanSessionCard
             key={session.sessionId}
             session={session}
+            managedWorktree={store.managedWorktree(session.workingDirectory)}
             model={store.modelForSession(session.sessionId)}
             description={store.detailsForSession(session.sessionId)?.description}
             status={store.statusForSession(session.sessionId)}

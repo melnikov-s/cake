@@ -1,9 +1,16 @@
 import { it } from "@effect/vitest";
 import { Deferred, Effect, Layer, Stream, SubscriptionRef } from "effect";
 import { describe, expect } from "vitest";
-import type { WorktreeLandingPhase } from "../../../src/domain/worktree-landing-data";
+import type {
+  WorktreeLandingError,
+  WorktreeLandingPhase,
+} from "../../../src/domain/worktree-landing-data";
 import * as worktreeLandings from "../../../src/domain/worktreeLandings";
-import type { WorktreeLandOutcome, WorktreeStatus } from "../../../src/ipc/worktree-contract";
+import type {
+  WorktreeLandOutcome,
+  WorktreeRecord,
+  WorktreeStatus,
+} from "../../../src/ipc/worktree-contract";
 import {
   WorktreeLandingAgent,
   WorktreeLandingAgentError,
@@ -12,7 +19,7 @@ import {
   WorktreeLandingCoordinator,
   WorktreeLandingCoordinatorLive,
 } from "../../../src/services/worktrees/WorktreeLandingCoordinator";
-import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
+import { WorktreeLandingCompletion } from "../../../src/services/worktrees/WorktreeLandingCompletion";
 import {
   ManagedWorktreeError,
   ManagedWorktrees,
@@ -46,19 +53,31 @@ const failure = (operation: string) =>
   new ManagedWorktreeError({ operation, message: `Unexpected ${operation}` });
 
 function services(options: {
-  status: () => WorktreeStatus;
+  status: () => WorktreeStatus | undefined;
+  records?: () => ReadonlyArray<WorktreeRecord>;
   events: string[];
   land?: () => WorktreeLandOutcome;
   prompt?: (text: string) => void;
   promptWait?: Effect.Effect<void>;
   prepare?: Effect.Effect<void, ManagedWorktreeError>;
   cancel?: (onlyIfQueued: boolean | undefined) => Effect.Effect<void, ManagedWorktreeError>;
-  onCatalogChange?: (workingDirectory: string) => void;
+  resolve?: (workingDirectory: string) => Effect.Effect<
+    {
+      projectPath: string;
+      workingDirectory: string;
+      resolvedSessionIds: string[];
+      failures: Array<{ sessionIds: string[]; message: string }>;
+    },
+    WorktreeLandingError
+  >;
 }) {
   const managed = ManagedWorktrees.of({
-    records: () => Effect.succeed([record]),
+    records: () => Effect.succeed(options.records?.() ?? [record]),
+    observe: () => Stream.never,
     create: () => Effect.fail(failure("create")),
     status: () => Effect.sync(options.status),
+    setResolveAfterLanding: (_worktreePath, enabled) =>
+      Effect.sync(() => options.events.push(`resolve-intent:${enabled}`)),
     prepareLanding: () =>
       Effect.sync(() => options.events.push("prepare")).pipe(
         Effect.andThen(options.prepare ?? Effect.void),
@@ -93,14 +112,16 @@ function services(options: {
     Layer.succeed(WorktreeLandingAgent, agent),
     WorktreeLandingCoordinatorLive,
     Layer.succeed(
-      SessionCatalogChanges,
-      SessionCatalogChanges.of({
-        publish: (change) =>
-          Effect.sync(() => {
-            if (change._tag === "ManagedWorktreeChanged")
-              options.onCatalogChange?.(change.workingDirectory);
+      WorktreeLandingCompletion,
+      WorktreeLandingCompletion.of({
+        resolveWorkingDirectory: (workingDirectory) =>
+          options.resolve?.(workingDirectory) ??
+          Effect.succeed({
+            projectPath: "/project",
+            workingDirectory,
+            resolvedSessionIds: [],
+            failures: [],
           }),
-        initialThenChanges: (initial) => initial,
       }),
     ),
   );
@@ -121,11 +142,9 @@ describe("WorktreeLandings", () => {
     const events: string[] = [];
     let status = { ...baseStatus(), dirtyCount: 2, aheadCount: 0 };
     let promptText = "";
-    const projectedWorktrees: string[] = [];
     const layer = services({
       status: () => status,
       events,
-      onCatalogChange: (workingDirectory) => projectedWorktrees.push(workingDirectory),
       prompt: (text) => {
         promptText = text;
         status = baseStatus();
@@ -145,7 +164,6 @@ describe("WorktreeLandings", () => {
         expect(events).toEqual(["prepare", "prompt", "land"]);
         expect(promptText).toContain("commit all intended work");
         expect(promptText).toContain("Do not merge, rebase, push");
-        expect(projectedWorktrees).toEqual([workspacePath]);
       }).pipe(Effect.provide(layer)),
     );
   });
@@ -376,5 +394,71 @@ describe("WorktreeLandings", () => {
         }).pipe(Effect.provide(layer));
       }),
     ),
+  );
+
+  it.effect("persists and completes resolve-after-landing before terminal acknowledgement", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const events: string[] = [];
+        const resolved = yield* Deferred.make<string>();
+        const layer = services({
+          status: baseStatus,
+          events,
+          resolve: (workingDirectory) =>
+            Deferred.succeed(resolved, workingDirectory).pipe(
+              Effect.as({
+                projectPath: "/project",
+                workingDirectory,
+                resolvedSessionIds: ["session-1"],
+                failures: [],
+              }),
+            ),
+        });
+        yield* Effect.gen(function* () {
+          yield* worktreeLandings.start({
+            operationId: "landing-resolve",
+            workspacePath,
+            sessionId: "session-1",
+            strategy: "preserve",
+            allowDirtyTarget: false,
+            commitBeforeLanding: false,
+            resolveAfterLanding: true,
+          });
+          expect(yield* Deferred.await(resolved)).toBe(workspacePath);
+          yield* awaitPhase("landed");
+          expect(events).toEqual([
+            "resolve-intent:true",
+            "prepare",
+            "land",
+            "resolve-intent:false",
+          ]);
+        }).pipe(Effect.provide(layer));
+      }),
+    ),
+  );
+
+  it.effect("recovers a landed resolve intent when the terminal operation is absent", () =>
+    Effect.gen(function* () {
+      const events: string[] = [];
+      const landed: WorktreeRecord = { ...record, state: "landed", resolveAfterLanding: true };
+      const layer = services({
+        status: () => undefined,
+        records: () => [landed],
+        events,
+        resolve: (workingDirectory) =>
+          Effect.succeed({
+            projectPath: "/project",
+            workingDirectory,
+            resolvedSessionIds: ["session-1"],
+            failures: [],
+          }),
+      });
+      const snapshot = yield* worktreeLandings
+        .inspect({ workspacePath, sessionId: "session-1" })
+        .pipe(Effect.provide(layer));
+      expect(snapshot.operation).toBeUndefined();
+      expect(snapshot.status).toBeUndefined();
+      expect(events).toEqual(["resolve-intent:false"]);
+    }),
   );
 });

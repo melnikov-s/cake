@@ -22,7 +22,6 @@ export const ProjectSessionSummary = Schema.Struct({
   projectName: Schema.String,
   workingDirectory: boundedPath,
   worktreeName: Schema.optionalKey(Schema.String),
-  managedWorktree: Schema.optionalKey(ManagedWorktreeContext),
   familyId: Schema.optionalKey(boundedId),
   familyParentSessionId: Schema.optionalKey(boundedId),
   familyChildSessionIds: Schema.optionalKey(Schema.Array(boundedId)),

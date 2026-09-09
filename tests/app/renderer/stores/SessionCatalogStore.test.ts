@@ -2,6 +2,7 @@ import { applySnapshot, createStore, mount, toSnapshot } from "r-state-tree";
 import { describe, expect, it } from "vitest";
 import type { WorktreeRecord } from "../../../../src/ipc/worktree-contract";
 import { SessionCatalog } from "../../../../src/renderer/models/SessionCatalog";
+import { WorktreeCatalog } from "../../../../src/renderer/models/WorktreeCatalog";
 import { SessionCatalogStore } from "../../../../src/renderer/stores/SessionCatalogStore";
 
 const worktree = (state: WorktreeRecord["state"] = "active"): WorktreeRecord => ({
@@ -13,7 +14,7 @@ const worktree = (state: WorktreeRecord["state"] = "active"): WorktreeRecord => 
   createdAt: new Date(0).toISOString(),
 });
 
-const session = (sessionId: string, modifiedAt: string, managedWorktree?: WorktreeRecord) => ({
+const session = (sessionId: string, modifiedAt: string, worktreePath?: string) => ({
   sessionId,
   title: sessionId,
   createdAt: modifiedAt,
@@ -23,26 +24,26 @@ const session = (sessionId: string, modifiedAt: string, managedWorktree?: Worktr
   unread: false,
   projectPath: "/project",
   projectName: "project",
-  workingDirectory: managedWorktree?.worktreePath ?? "/project",
-  managedWorktree,
+  workingDirectory: worktreePath ?? "/project",
   pending: false,
   draft: false,
 });
 
 describe("SessionCatalogStore indexes", () => {
-  it("reuses project and worktree indexes until the catalog changes", () => {
+  it("joins sessions to the shared authoritative worktree catalog", () => {
     const model = SessionCatalog.create({
       sessions: [
-        session("newer", "2026-01-02T00:00:00.000Z", worktree()),
+        session("newer", "2026-01-02T00:00:00.000Z", "/worktree"),
         session("older", "2026-01-01T00:00:00.000Z"),
       ],
     });
-    const store = mount(createStore(SessionCatalogStore, { model }));
+    const worktrees = WorktreeCatalog.create({ worktrees: [worktree()] });
+    const store = mount(createStore(SessionCatalogStore, { model, worktrees }));
 
     const firstProjectSessions = store.projectSessions("/project");
     expect(store.projectSessions("/project")).toBe(firstProjectSessions);
     expect(store.find("newer")).toBe(firstProjectSessions[0]);
-    expect(store.managedWorktree("/worktree")).toEqual(worktree());
+    expect(store.managedWorktree("/worktree")).toBe(worktrees.worktrees[0]);
 
     applySnapshot(model, {
       sessions: [
@@ -78,7 +79,11 @@ describe("SessionCatalogStore indexes", () => {
       },
     ];
     const store = mount(
-      createStore(SessionCatalogStore, { model, pendingSessions: () => pending }),
+      createStore(SessionCatalogStore, {
+        model,
+        worktrees: WorktreeCatalog.create(),
+        pendingSessions: () => pending,
+      }),
     );
 
     expect(store.projectSessions("/project").map((current) => current.sessionId)).toEqual([
@@ -89,26 +94,27 @@ describe("SessionCatalogStore indexes", () => {
     store[Symbol.dispose]();
   });
 
-  it("indexes a pending session's managed worktree before its catalog projection arrives", () => {
+  it("uses a pending creation fact only until the authoritative worktree arrives", () => {
     const model = SessionCatalog.create({ sessions: [] });
+    const worktrees = WorktreeCatalog.create();
     const pendingWorktree = worktree();
     const pending = [
       {
-        ...session("session", "2026-01-01T00:00:00.000Z", pendingWorktree),
+        ...session("session", "2026-01-01T00:00:00.000Z", "/worktree"),
         pending: true as const,
       },
     ];
     const store = mount(
-      createStore(SessionCatalogStore, { model, pendingSessions: () => pending }),
+      createStore(SessionCatalogStore, { model, worktrees, pendingSessions: () => pending }),
     );
     store.notePendingManagedWorktree(pendingWorktree);
 
     expect(store.managedWorktree("/worktree")).toBe(pendingWorktree);
 
-    applySnapshot(model, {
-      sessions: [session("session", "2026-01-01T00:00:00.000Z", worktree("landed"))],
-    });
-    applySnapshot(model, { sessions: [] });
+    applySnapshot(worktrees, { worktrees: [worktree("landed")] });
+    expect(store.managedWorktree("/worktree")).toBe(worktrees.worktrees[0]);
+    expect(store.managedWorktree("/worktree")?.state).toBe("landed");
+    applySnapshot(worktrees, { worktrees: [] });
     expect(store.managedWorktree("/worktree")).toBeUndefined();
     store[Symbol.dispose]();
   });
@@ -123,7 +129,11 @@ describe("SessionCatalogStore indexes", () => {
       },
     ];
     const store = mount(
-      createStore(SessionCatalogStore, { model, pendingSessions: () => pending }),
+      createStore(SessionCatalogStore, {
+        model,
+        worktrees: WorktreeCatalog.create(),
+        pendingSessions: () => pending,
+      }),
     );
 
     expect(store.sessions).toMatchObject([

@@ -4,6 +4,8 @@ import {
   ResolvedManagedWorktreeCleanupResult,
 } from "../../domain/managed-worktree-cleanup-data";
 import { WorktreeLandingError } from "../../domain/worktree-landing-data";
+import { ManagedWorktreeCatalogUpdate } from "../../domain/managed-worktree-data";
+import { WorktreeOperationCatalogUpdate } from "../../domain/worktree-operation-data";
 import { ManagedWorktreeError } from "../../services/worktrees/ManagedWorktrees";
 import { cakeRpcPayloadSchemas, cakeRpcSuccessSchemas } from "../cake-rpc-contract";
 
@@ -30,6 +32,15 @@ const landingRpc = <Type extends LandingOperation>(type: Type) =>
   });
 
 export const ManagedWorktreeRpc = RpcGroup.make(
+  Rpc.make("managedWorktrees.observeCatalog", {
+    success: ManagedWorktreeCatalogUpdate,
+    error: ManagedWorktreeError,
+    stream: true,
+  }),
+  Rpc.make("managedWorktrees.observeOperations", {
+    success: WorktreeOperationCatalogUpdate,
+    stream: true,
+  }),
   managedWorktreeRpc("create-worktree"),
   landingRpc("get-worktree-landing"),
   landingRpc("start-worktree-landing"),

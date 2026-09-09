@@ -28,6 +28,7 @@ function createHost(overrides: AppControlHostOverrides = {}): AppControlHost {
       sessions: overrides.sessions ?? (() => []),
       cakeChatSessions: overrides.cakeChatSessions ?? (() => []),
       sessionActivity: overrides.sessionActivity ?? (() => undefined),
+      managedWorktree: overrides.managedWorktree ?? (() => undefined),
       ...(overrides.sessionLayout ? { sessionLayout: overrides.sessionLayout } : null),
     },
     sessions: {
@@ -779,9 +780,10 @@ describe("AppControlBridge", () => {
           messageCount: 3,
           resolved: false,
           draft: false,
-          managedWorktree,
         },
       ],
+      managedWorktree: (workingDirectory) =>
+        workingDirectory === managedWorktree.worktreePath ? managedWorktree : undefined,
     });
 
     await expect(

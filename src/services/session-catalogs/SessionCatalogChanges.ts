@@ -1,10 +1,6 @@
 import { Context, Effect, Layer, PubSub, Stream } from "effect";
 export type SessionCatalogChange =
   | {
-      readonly _tag: "ManagedWorktreeChanged";
-      readonly workingDirectory: string;
-    }
-  | {
       readonly _tag: "ProjectSessionChanged";
       readonly sessionId: string;
       readonly projectPath: string;

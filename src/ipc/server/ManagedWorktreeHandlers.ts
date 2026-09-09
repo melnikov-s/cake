@@ -1,10 +1,14 @@
-import { Effect } from "effect";
+import { Effect, Stream } from "effect";
 import * as managedWorktrees from "../../domain/managedWorktrees";
 import * as worktreeLandings from "../../domain/worktreeLandings";
 import { ManagedWorktreeRpc } from "../protocol/ManagedWorktreeRpc";
 import { RendererConnection } from "../protocol/RendererConnectionMiddleware";
+import { ManagedWorktrees } from "../../services/worktrees/ManagedWorktrees";
 
 export const managedWorktreeHandlers = ManagedWorktreeRpc.of({
+  "managedWorktrees.observeCatalog": () =>
+    Stream.unwrap(Effect.map(ManagedWorktrees, (worktrees) => worktrees.observe())),
+  "managedWorktrees.observeOperations": () => Stream.unwrap(worktreeLandings.observeOperations()),
   "managedWorktrees.create-worktree": (request) =>
     Effect.flatMap(RendererConnection, () =>
       managedWorktrees.create({
@@ -25,6 +29,7 @@ export const managedWorktreeHandlers = ManagedWorktreeRpc.of({
         strategy: request.strategy,
         allowDirtyTarget: request.allowDirtyTarget,
         commitBeforeLanding: request.commitBeforeLanding,
+        resolveAfterLanding: request.resolveAfterLanding,
       }),
     ).pipe(Effect.map((operation) => ({ requestId: request.requestId, operation }))),
   "managedWorktrees.retry-worktree-landing": (request) =>

@@ -470,6 +470,60 @@ describe("Chat", () => {
     expect(container.querySelector<HTMLButtonElement>('[aria-label="Send"]')?.disabled).toBe(false);
   });
 
+  it("keeps the composer input editable while a submission is pending", async () => {
+    let finishSubmit!: () => void;
+    const submitted = new Promise<void>((resolve) => {
+      finishSubmit = resolve;
+    });
+    store = mount(
+      createStore(ChatStore, {
+        id: () => "pending-submit-chat",
+        parts: () => [],
+        streaming: () => false,
+        submitting: () => false,
+        configuration: () => undefined,
+        commands: () => [],
+        placeholder: () => "Message Cake",
+        inputLabel: () => "Message",
+        canSubmit: (draft) => Boolean(draft.trim()),
+        submit: async () => {
+          await submitted;
+          return true;
+        },
+      }),
+    );
+
+    act(() => root.render(<Chat store={store!} />));
+    const input = container.querySelector<HTMLTextAreaElement>('[aria-label="Message"]')!;
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(
+        input,
+        "First instruction",
+      );
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('[aria-label="Send"]')!.click();
+      await Promise.resolve();
+    });
+
+    expect(input.disabled).toBe(false);
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(
+        input,
+        "Next instruction",
+      );
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(store.draft).toBe("Next instruction");
+
+    await act(async () => {
+      finishSubmit();
+      await submitted;
+    });
+    expect(store.draft).toBe("Next instruction");
+  });
+
   it("submits the draft from the send icon when idle", async () => {
     const submit = vi.fn(async () => true);
     store = mount(

@@ -136,6 +136,7 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
               key={session.sessionId}
               store={store}
               session={session}
+              managedWorktree={store.managedWorktree(session.workingDirectory)}
               selected={
                 shell.selection.kind === "project-session" &&
                 shell.selection.sessionId === session.sessionId

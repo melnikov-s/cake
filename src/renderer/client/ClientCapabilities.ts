@@ -255,6 +255,7 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
               strategy: input.strategy,
               allowDirtyTarget: input.allowDirtyTarget,
               commitBeforeLanding: input.commitBeforeLanding,
+              resolveAfterLanding: input.resolveAfterLanding,
             }),
           options,
         ).then((response) => response.operation),

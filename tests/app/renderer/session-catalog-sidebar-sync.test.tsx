@@ -176,6 +176,18 @@ describe("Project Session catalog to sidebar synchronization", () => {
 
     await act(async () => {
       const existing = models.sessionCatalog.sessions.map((session) => toSnapshot(session));
+      applySnapshot(models.worktrees, {
+        worktrees: [
+          {
+            projectPath,
+            worktreePath,
+            branch: "agent/sidebar-sync-generated",
+            baseBranch: "main",
+            state: "active",
+            createdAt: "2026-01-01T00:00:00.000Z",
+          },
+        ],
+      });
       applySnapshot(models.sessionCatalog, {
         sessions: [
           ...existing,
@@ -183,14 +195,6 @@ describe("Project Session catalog to sidebar synchronization", () => {
             ...authoritativeSession(firstId, "2026-01-03T00:00:00.000Z"),
             title: "Duplicate title",
             workingDirectory: worktreePath,
-            managedWorktree: {
-              projectPath,
-              worktreePath,
-              branch: "agent/sidebar-sync-generated",
-              baseBranch: "main",
-              state: "active",
-              createdAt: "2026-01-01T00:00:00.000Z",
-            },
           },
         ],
       });

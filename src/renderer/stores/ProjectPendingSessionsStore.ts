@@ -73,7 +73,6 @@ export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsSto
           projectPath,
           projectName: this.props.projectName(projectPath),
           workingDirectory: session.workspacePath,
-          managedWorktree,
           ...(metadata?.familyId !== undefined ? { familyId: metadata.familyId } : null),
           ...(metadata?.familyParentSessionId !== undefined
             ? { familyParentSessionId: metadata.familyParentSessionId }

@@ -485,6 +485,13 @@ Effect Platform's `FileSystem` owns filesystem operations and observation.
 `Git` owns Git commands and Git facts. Cake domain operations decide how
 filesystem events trigger debounced Git refreshes.
 
+Managed Worktree records are main-owned persisted authority. `ManagedWorktrees`
+exposes one Schema-validated current-first Stream: a coherent record Snapshot followed
+without a subscription gap by ordered lifecycle upserts. Each renderer's Model observer
+reduces that Stream into its window-lifetime `WorktreeCatalog`; `SessionSummary` stores no
+mutable lifecycle copy and joins by Working Directory. A pending creation fact exists only
+until the authoritative entity arrives.
+
 Managed Worktree landing uses one process-local FIFO per Repository. The
 `worktreeLandings` domain module owns the semantic operation and exact Project
 Session prompts; its process-scoped coordinator owns operation state and Fibers,
@@ -495,7 +502,10 @@ completes, fails, or is explicitly dismissed. Later landings remain visibly
 queued and begin automatically in acceptance order; unrelated Repositories
 remain concurrent. Managed Worktree metadata persists the engine's paused
 strategy, allowing a later process to adopt conflict and squash-message pauses;
-queue position and active operation progress remain process-lifetime facts.
+queue position and active operation progress remain process-lifetime facts. The accepted merge-and-resolve intent is a
+persisted Managed Worktree fact until the main-owned completion policy resolves the Working
+Directory, so renderer remount, missing terminal operation projection, or failed terminal
+acknowledgement cannot lose it. Acknowledgement only retires terminal operation presentation.
 
 Bulk cleanup selection is also main-owned policy. The Managed Worktree domain previews and
 then authoritatively rediscovers landed Project worktrees that have archived sessions and no

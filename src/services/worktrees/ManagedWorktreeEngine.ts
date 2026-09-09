@@ -608,6 +608,22 @@ export class ManagedWorktreeEngine implements WorktreeLandingCoordinator {
     });
   }
 
+  /** Persists the accepted resolve-after-landing workflow intent across renderer/process recovery. */
+  async setResolveAfterLanding(worktreePath: string, enabled: boolean): Promise<void> {
+    await this.load();
+    const normalized = resolveNormalized(worktreePath);
+    const record = this.allRecords.find(
+      (entry) => resolveNormalized(entry.worktreePath) === normalized,
+    );
+    if (!record) throw new Error("Cake could not find that worktree");
+    const next = { ...record };
+    if (enabled) next.resolveAfterLanding = true;
+    else Reflect.deleteProperty(next, "resolveAfterLanding");
+    const index = this.allRecords.indexOf(record);
+    this.allRecords = this.allRecords.with(index, next);
+    await this.persist();
+  }
+
   /** Recreates a checkout removed by resolution so an archived session can be restored. */
   async restoreResolved(worktreePath: string): Promise<WorktreeRecord | undefined> {
     await this.load();

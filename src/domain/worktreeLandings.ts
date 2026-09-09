@@ -1,9 +1,9 @@
-import { Cause, Effect, FiberMap, SubscriptionRef } from "effect";
+import { Cause, Effect, FiberMap, Stream, SubscriptionRef } from "effect";
 import type { WorktreeLandRequest, WorktreeStatus } from "../ipc/worktree-contract";
 import { ManagedWorktrees } from "../services/worktrees/ManagedWorktrees";
 import { WorktreeLandingAgent } from "../services/worktrees/WorktreeLandingAgent";
-import { SessionCatalogChanges } from "../services/session-catalogs/SessionCatalogChanges";
 import { WorktreeLandingCoordinator } from "../services/worktrees/WorktreeLandingCoordinator";
+import { WorktreeLandingCompletion } from "../services/worktrees/WorktreeLandingCompletion";
 import {
   WorktreeLandingError,
   type WorktreeLandingOperation,
@@ -11,6 +11,14 @@ import {
 } from "./worktree-landing-data";
 
 const messageOf = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause));
+
+/** Current-first process-lifetime projection of landing and queue progress. */
+export const observeOperations = Effect.fn("WorktreeLandings.observeOperations")(function* () {
+  const coordinator = yield* WorktreeLandingCoordinator;
+  return SubscriptionRef.changes(coordinator.state).pipe(
+    Stream.map((state) => ({ operations: [...state.operations.values()] })),
+  );
+});
 const asError = (operation: string) =>
   Effect.mapError(
     (cause: unknown) => new WorktreeLandingError({ operation, message: messageOf(cause) }),
@@ -131,7 +139,7 @@ const performLanding: (
 ) => Effect.Effect<
   void,
   WorktreeLandingError,
-  ManagedWorktrees | WorktreeLandingAgent | WorktreeLandingCoordinator | SessionCatalogChanges
+  ManagedWorktrees | WorktreeLandingAgent | WorktreeLandingCoordinator | WorktreeLandingCompletion
 > = Effect.fn("WorktreeLandings.performLanding")(function* (operation) {
   const worktrees = yield* ManagedWorktrees;
   yield* update(operation.workspacePath, operation.operationId, (current) => ({
@@ -147,15 +155,24 @@ const performLanding: (
     .land(operation.workspacePath, operation.operationId, request)
     .pipe(asError("land"));
   if (outcome.outcome === "landed") {
+    if (operation.resolveAfterLanding) {
+      const result = yield* (yield* WorktreeLandingCompletion).resolveWorkingDirectory(
+        operation.workspacePath,
+      );
+      if (result.failures.length > 0)
+        return yield* new WorktreeLandingError({
+          operation: "resolveWorkingDirectory",
+          message: result.failures.map((failure) => failure.message).join("\n"),
+        });
+      yield* worktrees
+        .setResolveAfterLanding(operation.workspacePath, false)
+        .pipe(asError("resolveWorkingDirectory"));
+    }
     yield* update(operation.workspacePath, operation.operationId, (current) => ({
       ...current,
       phase: "landed",
       pauseReason: undefined,
     }));
-    yield* (yield* SessionCatalogChanges).publish({
-      _tag: "ManagedWorktreeChanged",
-      workingDirectory: operation.workspacePath,
-    });
     return;
   }
   const status = yield* requireStatus(operation.workspacePath);
@@ -283,17 +300,28 @@ const run = Effect.fn("WorktreeLandings.run")(function* (
   worker: Effect.Effect<
     void,
     WorktreeLandingError,
-    ManagedWorktrees | WorktreeLandingAgent | WorktreeLandingCoordinator | SessionCatalogChanges
+    ManagedWorktrees | WorktreeLandingAgent | WorktreeLandingCoordinator | WorktreeLandingCompletion
   >,
 ) {
   const coordinator = yield* WorktreeLandingCoordinator;
   const supervised = worker.pipe(
     Effect.catch((error) =>
       Effect.gen(function* () {
-        if (operation.kind === "landing")
-          yield* (yield* ManagedWorktrees)
+        if (operation.kind === "landing") {
+          const worktrees = yield* ManagedWorktrees;
+          yield* worktrees
             .cancelLanding(operation.workspacePath, operation.operationId)
             .pipe(Effect.ignore);
+          const record = (yield* worktrees
+            .records()
+            .pipe(Effect.catch(() => Effect.succeed([])))).find(
+            (candidate) => candidate.worktreePath === operation.workspacePath,
+          );
+          if (operation.resolveAfterLanding && record?.state !== "landed")
+            yield* worktrees
+              .setResolveAfterLanding(operation.workspacePath, false)
+              .pipe(Effect.ignore);
+        }
         yield* update(operation.workspacePath, operation.operationId, (current) => ({
           ...current,
           phase: "failed",
@@ -333,6 +361,7 @@ export const start = Effect.fn("WorktreeLandings.start")(function* (input: {
   readonly strategy: WorktreeLandRequest["strategy"];
   readonly allowDirtyTarget: boolean;
   readonly commitBeforeLanding: boolean;
+  readonly resolveAfterLanding?: boolean;
 }) {
   yield* requireStatus(input.workspacePath);
   const operation: WorktreeLandingOperation = {
@@ -343,8 +372,13 @@ export const start = Effect.fn("WorktreeLandings.start")(function* (input: {
     phase: "waiting",
     strategy: input.strategy,
     allowDirtyTarget: input.allowDirtyTarget,
+    resolveAfterLanding: input.resolveAfterLanding || undefined,
   };
   yield* insert(operation);
+  if (input.resolveAfterLanding)
+    yield* (yield* ManagedWorktrees)
+      .setResolveAfterLanding(input.workspacePath, true)
+      .pipe(asError("start"));
   yield* run(
     operation,
     input.commitBeforeLanding ? prepareCommitAndLand(operation) : prepareAndLand(operation),
@@ -489,6 +523,8 @@ export const cancel = Effect.fn("WorktreeLandings.cancel")(function* (
     if (current.kind === "landing")
       yield* worktrees.cancelLanding(workspacePath, current.operationId).pipe(asError("cancel"));
   }
+  if (current.resolveAfterLanding)
+    yield* worktrees.setResolveAfterLanding(workspacePath, false).pipe(asError("cancel"));
   yield* SubscriptionRef.update(coordinator.state, (state) => {
     const latest = state.operations.get(workspacePath);
     if (!latest || latest.operationId !== operationId) return state;
@@ -504,6 +540,22 @@ export const inspect = Effect.fn("WorktreeLandings.inspect")(function* (input: {
 }) {
   const worktrees = yield* ManagedWorktrees;
   const coordinator = yield* WorktreeLandingCoordinator;
+  const durableRecord = (yield* worktrees.records().pipe(asError("inspect"))).find(
+    (record) => record.worktreePath === input.workspacePath,
+  );
+  if (durableRecord?.state === "landed" && durableRecord.resolveAfterLanding) {
+    const result = yield* (yield* WorktreeLandingCompletion).resolveWorkingDirectory(
+      input.workspacePath,
+    );
+    if (result.failures.length > 0)
+      return yield* new WorktreeLandingError({
+        operation: "resolveWorkingDirectory",
+        message: result.failures.map((failure) => failure.message).join("\n"),
+      });
+    yield* worktrees
+      .setResolveAfterLanding(input.workspacePath, false)
+      .pipe(asError("resolveWorkingDirectory"));
+  }
   const status = yield* worktrees.status(input.workspacePath).pipe(asError("inspect"));
   let operation = (yield* SubscriptionRef.get(coordinator.state)).operations.get(
     input.workspacePath,

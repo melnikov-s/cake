@@ -193,7 +193,7 @@ type SessionSummaryView = Pick<
       SessionSummary,
       "familyId" | "familyParentSessionId" | "familyChildSessionIds" | "familyChildOrder"
     >
-  > & { managedWorktree?: SessionSummary["managedWorktree"] };
+  >;
 
 type AppControlSelection =
   | { kind: "workbench" }
@@ -263,6 +263,7 @@ export interface AppControlHost {
     sessions(): readonly SessionSummaryView[];
     cakeChatSessions(): readonly CakeChatSummary[];
     sessionActivity(sessionId: string): SessionActivity | undefined;
+    managedWorktree(workingDirectory: string): WorktreeRecord | undefined;
   };
   sessions: {
     open(sessionId: string, messageId?: string): Promise<boolean | void>;
@@ -332,7 +333,7 @@ export interface AppControlSession {
   messageCount: number;
   resolved: boolean;
   draft: boolean;
-  managedWorktree?: SessionSummaryView["managedWorktree"];
+  managedWorktree?: WorktreeRecord;
   familyId?: string;
   familyParentSessionId?: string;
   familyChildSessionIds?: readonly string[];
@@ -1446,9 +1447,8 @@ export class AppControlBridge {
       resolved: session.resolved,
       draft: session.draft,
     };
-    const resultWithWorktree = session.managedWorktree
-      ? { ...result, managedWorktree: session.managedWorktree }
-      : result;
+    const managedWorktree = this.host.state.managedWorktree(session.workingDirectory);
+    const resultWithWorktree = managedWorktree ? { ...result, managedWorktree } : result;
     const resultWithFamily = session.familyId
       ? {
           ...resultWithWorktree,

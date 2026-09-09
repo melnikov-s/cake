@@ -313,7 +313,14 @@ The window Store hierarchy mirrors the product surfaces:
   custom status swatch in their indentation gutter and offer the same valid lifecycle and
   custom-status transitions through their native context menu; Draft is never a return
   destination after activation. React owns only an in-progress drag gesture. `SessionCatalogStore` owns the currently demanded, activity-sorted
-  session metadata projection plus cached ID and project-group indexes. Active
+  session metadata projection plus cached ID and project-group indexes. A separate
+  window-lifetime `WorktreeCatalog` Model owns the authoritative Managed Worktree
+  projection keyed by Working Directory. Session summaries retain only their stable
+  Working Directory and historical display name; every active lifecycle treatment joins
+  through that shared catalog, so sessions sharing a checkout observe one entity and expose the
+  same Working Directory controls; those controls are not owned by a family parent or any other
+  individual session. A renderer-pending creation record bridges only command acceptance to the first projected
+  record and never overrides the catalog. Active
   project streams remain demanded while their groups are visually collapsed, so
   expanding a group never restarts discovery or clears its projection. Its
   active discovery reads only the Project root and active or landed Managed
@@ -440,7 +447,12 @@ The window Store hierarchy mirrors the product surfaces:
   projection, and activation UI workflow over the owning `PendingConversationStore` data.
   Managed Worktree landing sequencing,
   recovery, queue policy, and Project Session prompts are authoritative main-process domain behavior; the renderer only starts, retries, dismisses,
-  and projects those operations. Its `ChatStore` remains the common
+  and projects those operations. Managed Worktree records are main-persisted authority and
+  stream current-first into `WorktreeCatalog`; `WorktreeStore` owns only window-local command,
+  confirmation, error, and retirement presentation. Merge-and-resolve persists its accepted
+  completion intent in the Managed Worktree record until main resolves the Working Directory;
+  terminal-operation acknowledgement is independent cleanup and cannot gate that resolution.
+  Its `ChatStore` remains the common
   conversation-facing state boundary supplied to the authoritative `Chat`
   component. Internally, `TranscriptInteractionStore` owns window-local
   transcript restoration, message navigation, changed-files disclosure, loading

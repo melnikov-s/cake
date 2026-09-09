@@ -43,17 +43,19 @@ export class WorktreeCreationStore extends Store<WorktreeCreationStoreProps> {
     delete this.choicesBySession[sessionId];
   }
 
-  /** Active managed worktrees, paired with their most recently active session. */
+  /** Active projected worktrees, paired with their most recently active session when present. */
   candidates(projectPath: string): ExistingWorktreeCandidate[] {
-    const records = new Map<string, ExistingWorktreeCandidate>();
-    for (const session of this.props.catalog.projectSessions(projectPath)) {
-      const record = this.props.catalog.managedWorktree(session.workingDirectory);
-      if (record && (record.state ?? "active") === "active" && !records.has(record.worktreePath))
-        records.set(record.worktreePath, { ...record, sessionTitle: session.title });
-    }
-    return [...records.values()].sort((left, right) =>
-      right.createdAt.localeCompare(left.createdAt),
-    );
+    const sessions = this.props.catalog.projectSessions(projectPath);
+    return this.props.catalog
+      .managedWorktreesForProject(projectPath)
+      .filter((record) => (record.state ?? "active") === "active")
+      .map((record) => ({
+        ...record,
+        sessionTitle:
+          sessions.find((session) => session.workingDirectory === record.worktreePath)?.title ??
+          record.branch.replace(/^agent\//, ""),
+      }))
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
   }
 
   /** Creates a managed checkout for a session-creation workflow outside the draft UI. */

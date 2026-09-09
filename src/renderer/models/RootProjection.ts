@@ -5,6 +5,8 @@ import { CakeChatCatalog } from "./CakeChatCatalog";
 import { ProjectCatalog } from "./ProjectCatalog";
 import { Session } from "./Session";
 import { SessionCatalog } from "./SessionCatalog";
+import { WorktreeCatalog } from "./WorktreeCatalog";
+import { WorktreeOperationCatalog } from "./WorktreeOperationCatalog";
 
 /** Owns the authoritative data projections currently loaded in one renderer window. */
 export class RootProjection extends Model {
@@ -12,6 +14,8 @@ export class RootProjection extends Model {
   @child(Resource) resources: Resource[] = observable([]);
   @child(ProjectCatalog) projects = ProjectCatalog.create();
   @child(SessionCatalog) sessionCatalog = SessionCatalog.create();
+  @child(WorktreeCatalog) worktrees = WorktreeCatalog.create();
+  @child(WorktreeOperationCatalog) worktreeOperations = WorktreeOperationCatalog.create();
   @child(CakeChatCatalog) cakeChatCatalog = CakeChatCatalog.create();
   @child(Session) projectSessions: Session[] = observable([]);
   @child(Session) cakeChats: Session[] = observable([]);

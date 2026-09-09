@@ -5,6 +5,7 @@ import type {
   SessionCatalogUpdate,
 } from "../../../../src/domain/catalog-data";
 import { TurnId, type ConversationSnapshot } from "../../../../src/domain/conversation-data";
+import type { ManagedWorktreeCatalogUpdate } from "../../../../src/domain/managed-worktree-data";
 import {
   ProjectSessionError,
   type ProjectSessionUpdate,
@@ -18,6 +19,7 @@ import { ProjectCatalog } from "../../../../src/renderer/models/ProjectCatalog";
 import { CakeChatCatalog } from "../../../../src/renderer/models/CakeChatCatalog";
 import { SessionCatalog } from "../../../../src/renderer/models/SessionCatalog";
 import { Session } from "../../../../src/renderer/models/Session";
+import { WorktreeCatalog } from "../../../../src/renderer/models/WorktreeCatalog";
 
 function runtimeFor(client: CakeIpcClientService): Runtime {
   const execute: Runtime["execute"] = (effect, signal) =>
@@ -66,6 +68,51 @@ function clientWithProjectStream(
 }
 
 describe("createModelObserver", () => {
+  it("projects a managed worktree Snapshot and ordered lifecycle Event", async () => {
+    const events = await Effect.runPromise(Queue.unbounded<ManagedWorktreeCatalogUpdate>());
+    const active = {
+      projectPath: "/project",
+      worktreePath: "/worktree",
+      branch: "agent/change",
+      baseBranch: "main",
+      state: "active" as const,
+      createdAt: "2026-01-01T00:00:00.000Z",
+    };
+    const baseClient = clientWithProjectStream(() =>
+      Stream.concat(Stream.make({ _tag: "Snapshot", revision: 1, projects: [] }), Stream.never),
+    );
+    const client = {
+      ...baseClient,
+      managedWorktrees: {
+        observeCatalog: () =>
+          Stream.concat(
+            Stream.make({ _tag: "Snapshot" as const, worktrees: [active] }),
+            Stream.fromQueue(events),
+          ),
+      } as unknown as CakeIpcClientService["managedWorktrees"],
+    };
+    const observer = observerFor(client);
+    const worktrees = WorktreeCatalog.create();
+    observer.sync({
+      projects: ProjectCatalog.create(),
+      sessionCatalog: SessionCatalog.create(),
+      cakeChatCatalog: CakeChatCatalog.create(),
+      worktrees,
+      projectSessions: [],
+      cakeChats: [],
+    });
+
+    await vi.waitFor(() => expect(worktrees.find("/worktree")?.state).toBe("active"));
+    await Effect.runPromise(
+      Queue.offer(events, {
+        _tag: "Event",
+        event: { _tag: "Upserted", worktree: { ...active, state: "landed" } },
+      }),
+    );
+    await vi.waitFor(() => expect(worktrees.find("/worktree")?.state).toBe("landed"));
+    observer.stop();
+  });
+
   it("formats observer collision diagnostics with IDs, context, and stack", () => {
     const error = new CatalogIdentityCollisionError("Session ID", ["session-1"], {
       context: "resolved snapshot for /cake",

@@ -21,15 +21,13 @@ export interface SidebarSessionItemProps {
     sessionId: string;
     title: string;
     modifiedAt: string;
+    workingDirectory?: string;
     draft?: boolean;
     worktreeName?: string;
-    managedWorktree?: Pick<
-      WorktreeRecord,
-      "branch" | "baseBranch" | "parentWorktreePath" | "state"
-    >;
     familyParentSessionId?: string;
     familyChildSessionIds?: readonly string[];
   };
+  managedWorktree?: Pick<WorktreeRecord, "branch" | "baseBranch" | "parentWorktreePath" | "state">;
   selected: boolean;
   paneNumber?: number;
   resolved: boolean;
@@ -50,6 +48,7 @@ export interface SidebarSessionItemProps {
 export const SidebarSessionItem = observer(function SidebarSessionItem({
   store,
   session,
+  managedWorktree,
   selected,
   paneNumber,
   resolved,
@@ -80,8 +79,8 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
           : "Ready, unread";
   const branch = session.draft
     ? undefined
-    : (session.worktreeName ?? session.managedWorktree?.branch.replace(/^agent\//, ""));
-  const baseBranch = session.managedWorktree?.baseBranch.replace(/^agent\//, "");
+    : (session.worktreeName ?? managedWorktree?.branch.replace(/^agent\//, ""));
+  const baseBranch = managedWorktree?.baseBranch.replace(/^agent\//, "");
   const showBaseBranch = baseBranch !== undefined && baseBranch !== "main";
   const commitRename = () => {
     const value = renamingValue;
@@ -225,11 +224,8 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
             >
               {branch && !isFamilyChild && (
                 <>
-                  {session.managedWorktree && (
-                    <WorktreeStatusIcon
-                      state={session.managedWorktree.state}
-                      className="shrink-0"
-                    />
+                  {managedWorktree && (
+                    <WorktreeStatusIcon state={managedWorktree.state} className="shrink-0" />
                   )}
                   <span className="truncate">{branch}</span>
                   {showBaseBranch && (

@@ -37,6 +37,7 @@ import { makeReviewStorageLive } from "../services/storage/ReviewStorageLive";
 import { ManagedWorktreesLive } from "../services/worktrees/ManagedWorktreesLive";
 import { WorktreeLandingCoordinatorLive } from "../services/worktrees/WorktreeLandingCoordinator";
 import { WorktreeLandingAgentLive } from "../layers/WorktreeLandingAgentLive";
+import { WorktreeLandingCompletionLive } from "../layers/WorktreeLandingCompletionLive";
 import { makeGitLive } from "../services/git/GitLive";
 import { makeWorktreeStorageLive } from "../services/storage/WorktreeStorageLive";
 import { makeSessionArchiveStorageLive } from "../services/storage/SessionArchiveStorageLive";
@@ -213,9 +214,13 @@ const sessionServicesLive = Layer.mergeAll(
   workspaceFilesLive,
 );
 const worktreeLandingAgentLive = WorktreeLandingAgentLive.pipe(Layer.provide(sessionServicesLive));
-const servicesWithoutScheduledWorkerLive = Layer.merge(
+const worktreeLandingCompletionLive = WorktreeLandingCompletionLive.pipe(
+  Layer.provide(sessionServicesLive),
+);
+const servicesWithoutScheduledWorkerLive = Layer.mergeAll(
   sessionServicesLive,
   worktreeLandingAgentLive,
+  worktreeLandingCompletionLive,
 );
 const scheduledMessageWorkerLive = Layer.effectDiscard(
   Effect.gen(function* () {

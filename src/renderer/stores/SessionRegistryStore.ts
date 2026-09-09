@@ -9,6 +9,7 @@ import type { SessionCatalogStore } from "./SessionCatalogStore";
 import { SessionObservationRetentionStore } from "./SessionObservationRetentionStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { WorktreeStoreProps } from "./WorktreeStore";
+import type { WorktreeLandingOperation } from "../../domain/worktree-landing-data";
 import type { ExistingWorktreeCandidate, WorktreeDraftChoice } from "./WorktreeCreationStore";
 
 export interface SessionRegistryStoreProps {
@@ -19,6 +20,7 @@ export interface SessionRegistryStoreProps {
   canSubmit(sessionId: string): boolean;
   isActive(sessionId: string): boolean;
   isVisible?(sessionId: string): boolean;
+  worktreeOperation(workspacePath: string): WorktreeLandingOperation | undefined;
   openCommandPane(pane: "changelog" | "tree" | "resources"): Promise<void>;
   persistNow(): Promise<void>;
   projectName(workingDirectory: string): string;
@@ -84,6 +86,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
         reviews: this.props.reviews,
         canSubmit: () => this.props.canSubmit(target.sessionId),
         isActive: () => this.props.isActive(target.sessionId),
+        worktreeOperation: () => this.props.worktreeOperation(target.workspacePath),
         openCommandPane: this.props.openCommandPane,
         projectName: () => this.props.projectName(target.workspacePath),
         abort: () => this.props.abort(target.sessionId),

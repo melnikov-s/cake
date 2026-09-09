@@ -1,6 +1,7 @@
 import { Store, computed, observable } from "r-state-tree";
 import type { SessionCatalog } from "../models/SessionCatalog";
 import type { SessionSummary } from "../models/SessionSummary";
+import type { WorktreeCatalog } from "../models/WorktreeCatalog";
 import type { WorktreeRecord } from "../../ipc/worktree-contract";
 import { compareSessionSummariesForSidebar } from "../../utils/session-summary-order";
 
@@ -16,7 +17,6 @@ export interface PendingSessionSummary {
   projectPath: string;
   projectName: string;
   workingDirectory: string;
-  managedWorktree?: WorktreeRecord;
   familyId?: string;
   familyParentSessionId?: string;
   familyChildSessionIds?: readonly string[];
@@ -28,6 +28,7 @@ export interface PendingSessionSummary {
 /** Projects the authoritative and renderer-pending catalogs with Managed Worktree policy. */
 export class SessionCatalogStore extends Store<{
   model: SessionCatalog;
+  worktrees: WorktreeCatalog;
   pendingSessions?(): readonly PendingSessionSummary[];
 }> {
   /** Bridges newly-created worktrees only until their first authoritative session projection. */
@@ -36,10 +37,7 @@ export class SessionCatalogStore extends Store<{
   constructor(props: SessionCatalogStore["props"]) {
     super(props);
     this.reaction(
-      () =>
-        this.props.model.sessions.flatMap((session) =>
-          session.managedWorktree ? [session.managedWorktree.worktreePath] : [],
-        ),
+      () => this.props.worktrees.worktrees.map((worktree) => worktree.worktreePath),
       (projectedPaths) => {
         for (const path of projectedPaths) this.pendingManagedWorktrees.delete(path);
       },
@@ -99,31 +97,25 @@ export class SessionCatalogStore extends Store<{
     this.pendingManagedWorktrees.set(record.worktreePath, record);
   }
 
-  @computed
-  private get managedWorktreeIndex(): ReadonlyMap<string, WorktreeRecord> {
-    const indexed = new Map<string, WorktreeRecord>();
-    for (const session of this.props.model.sessions) {
-      const record = session.managedWorktree;
-      if (record && !indexed.has(session.workingDirectory))
-        indexed.set(session.workingDirectory, record);
-    }
-    for (const [path, record] of this.pendingManagedWorktrees)
-      if (!indexed.has(path)) indexed.set(path, record);
-    return indexed;
-  }
-
   managedWorktree(workingDirectory: string) {
-    return this.managedWorktreeIndex.get(workingDirectory);
+    return (
+      this.props.worktrees.find(workingDirectory) ??
+      this.pendingManagedWorktrees.get(workingDirectory)
+    );
   }
 
   projectOfManagedWorktree(workingDirectory: string) {
     return this.managedWorktree(workingDirectory)?.projectPath;
   }
 
+  managedWorktreesForProject(projectPath: string) {
+    return this.props.worktrees.forProject(projectPath);
+  }
+
   resolvedWorktrees(projectPath: string) {
     const sessionsByWorktree = new Map<string, Array<SessionSummary | PendingSessionSummary>>();
     for (const session of this.projectSessions(projectPath)) {
-      const record = session.managedWorktree;
+      const record = this.managedWorktree(session.workingDirectory);
       if (!record || record.state !== "landed") continue;
       const sessions = sessionsByWorktree.get(record.worktreePath) ?? [];
       sessions.push(session);
@@ -131,7 +123,10 @@ export class SessionCatalogStore extends Store<{
     }
     return [...sessionsByWorktree.values()]
       .filter((sessions) => sessions.length > 0 && sessions.every((session) => session.resolved))
-      .map((sessions) => sessions[0]!.managedWorktree!);
+      .flatMap((sessions) => {
+        const record = this.managedWorktree(sessions[0]?.workingDirectory ?? "");
+        return record ? [record] : [];
+      });
   }
 
   get authoritativeSessionIds() {

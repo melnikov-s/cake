@@ -45,11 +45,15 @@ function operation(
   };
 }
 
-const props = (activity = observable({ workspacePath: "/worktree", enabled: true })) => ({
+const props = (
+  activity = observable({ workspacePath: "/worktree", enabled: true }),
+  projectedOperation: () => WorktreeLandingOperation | undefined = () => undefined,
+) => ({
   workspacePath: () => activity.workspacePath,
   sessionId: () => "session-1",
   enabled: () => activity.enabled,
   isStreaming: () => false,
+  operation: projectedOperation,
   onLanded: vi.fn(),
   onDiscarded: vi.fn(),
   retirement: {
@@ -91,11 +95,17 @@ describe("WorktreeStore", () => {
   it("shows waiting only for the matching authoritative queue reservation", async () => {
     let status = worktreeStatus("/worktree");
     const current = operation("waiting");
-    const { root, subject: store } = mountWithClient(createStore(WorktreeStore, props()), {
-      managedWorktrees: {
-        landing: vi.fn(async () => ({ status, operation: current })),
-      },
-    } as unknown as Client);
+    const { root, subject: store } = mountWithClient(
+      createStore(
+        WorktreeStore,
+        props(undefined, () => current),
+      ),
+      {
+        managedWorktrees: {
+          landing: vi.fn(async () => ({ status, operation: current })),
+        },
+      } as unknown as Client,
+    );
     try {
       await vi.waitFor(() => expect(store.status).toBeDefined());
       expect(store.phase).toBe("landing");
@@ -115,8 +125,9 @@ describe("WorktreeStore", () => {
     }
   });
 
-  it("finishes merge-and-resolve from landed status even when terminal acknowledgement is unavailable", async () => {
+  it("submits authoritative merge-and-resolve intent even when acknowledgement is unavailable", async () => {
     let started = false;
+    let projected: WorktreeLandingOperation | undefined;
     const landedStatus = {
       ...worktreeStatus("/worktree"),
       record: { ...worktreeStatus("/worktree").record, state: "landed" as const },
@@ -128,15 +139,21 @@ describe("WorktreeStore", () => {
       throw new Error("acknowledgement transport failed");
     });
     const { root, subject: store } = mountWithClient(
-      createStore(WorktreeStore, { ...props(), onLanded, onResolveWorkspace }),
+      createStore(WorktreeStore, {
+        ...props(undefined, () => projected),
+        onLanded,
+        onResolveWorkspace,
+      }),
       {
         managedWorktrees: {
           landing: vi.fn(async () =>
             started ? { status: landedStatus } : { status: worktreeStatus("/worktree") },
           ),
-          startLanding: vi.fn(async () => {
+          startLanding: vi.fn(async (input) => {
+            expect(input).toMatchObject({ resolveAfterLanding: true });
             started = true;
-            return operation("waiting");
+            projected = operation("landed", { resolveAfterLanding: true });
+            return operation("waiting", { resolveAfterLanding: true });
           }),
           cancelLanding,
         },
@@ -147,7 +164,7 @@ describe("WorktreeStore", () => {
       await store.commitAndMerge(false, true);
 
       expect(onLanded).toHaveBeenCalledWith(expect.objectContaining({ state: "landed" }));
-      expect(onResolveWorkspace).toHaveBeenCalledWith("/worktree");
+      expect(onResolveWorkspace).not.toHaveBeenCalled();
       expect(cancelLanding).toHaveBeenCalledWith(
         expect.objectContaining({ intent: "acknowledge" }),
       );
@@ -156,17 +173,23 @@ describe("WorktreeStore", () => {
     }
   });
 
-  it("projects authoritative pause and completion while retaining window-local resolve choice", async () => {
-    vi.useFakeTimers();
+  it("projects authoritative pause and completion after submitting resolve intent", async () => {
     let current: WorktreeLandingOperation | undefined;
     const onLanded = vi.fn();
     const onResolveWorkspace = vi.fn();
-    const currentProps = { ...props(), onLanded, onResolveWorkspace };
+    const currentProps = {
+      ...props(undefined, () => current),
+      onLanded,
+      onResolveWorkspace,
+    };
     const cancelLanding = vi.fn(async () => undefined);
     const { root, subject: store } = mountWithClient(createStore(WorktreeStore, currentProps), {
       managedWorktrees: {
         landing: vi.fn(async () => ({ status: worktreeStatus("/worktree"), operation: current })),
-        startLanding: vi.fn(async () => operation("waiting")),
+        startLanding: vi.fn(async (input) => {
+          expect(input).toMatchObject({ resolveAfterLanding: true });
+          return operation("waiting", { resolveAfterLanding: true });
+        }),
         cancelLanding,
       },
     } as unknown as Client);
@@ -174,23 +197,21 @@ describe("WorktreeStore", () => {
       await vi.waitFor(() => expect(store.status).toBeDefined());
       await store.commitAndMerge(false, true);
       current = operation("stalled", { pauseReason: "commit" });
-      await vi.advanceTimersByTimeAsync(5_000);
+      await store.refresh();
       expect(store.phase).toBe("committing");
       expect(store.stalled).toBe(true);
 
       current = operation("landed");
-      await vi.advanceTimersByTimeAsync(5_000);
+      await store.refresh();
       expect(onLanded).toHaveBeenCalledOnce();
       expect(cancelLanding).toHaveBeenCalledWith({
         operationId: "landing-operation",
         workspacePath: "/worktree",
         intent: "acknowledge",
       });
-      expect(onResolveWorkspace).toHaveBeenCalledWith("/worktree");
+      expect(onResolveWorkspace).not.toHaveBeenCalled();
     } finally {
       root[Symbol.dispose]();
-      expect(vi.getTimerCount()).toBe(0);
-      vi.useRealTimers();
     }
   });
 
@@ -199,14 +220,20 @@ describe("WorktreeStore", () => {
     const cancelLanding = vi.fn(async () => undefined);
     const startRebase = vi.fn(async () => operation("rebasing", { kind: "rebase" }));
     let current = operation("stalled", { pauseReason: "conflict" });
-    const { root, subject: store } = mountWithClient(createStore(WorktreeStore, props()), {
-      managedWorktrees: {
-        landing: vi.fn(async () => ({ status: worktreeStatus("/worktree"), operation: current })),
-        retryLanding,
-        cancelLanding,
-        startRebase,
-      },
-    } as unknown as Client);
+    const { root, subject: store } = mountWithClient(
+      createStore(
+        WorktreeStore,
+        props(undefined, () => current),
+      ),
+      {
+        managedWorktrees: {
+          landing: vi.fn(async () => ({ status: worktreeStatus("/worktree"), operation: current })),
+          retryLanding,
+          cancelLanding,
+          startRebase,
+        },
+      } as unknown as Client,
+    );
     try {
       await vi.waitFor(() => expect(store.stalled).toBe(true));
       await store.retryLanding();

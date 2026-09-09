@@ -312,12 +312,6 @@ export const App = observer(function App() {
     : sessionIsTemporary
       ? "new-session"
       : undefined;
-  const canManageWorktree = (sessionId: string) => {
-    const summary = root.sessionCatalogStore.find(sessionId);
-    return (
-      summary?.familyParentSessionId === undefined || summary.familyParentSessionId === sessionId
-    );
-  };
   const projectComposerHeader = session ? (
     <WorktreePill
       creation={store.worktreeCreationStore}
@@ -328,7 +322,6 @@ export const App = observer(function App() {
         root.sessionCatalogStore.projectOfManagedWorktree(session.workspacePath) ??
         session.workspacePath
       }
-      canManage={canManageWorktree(session.sessionId)}
       configurationMode={worktreeConfigurationMode}
       onConfigured={() => session.conversationSessionStore.composerStore.draftStore.requestFocus()}
     />
@@ -472,7 +465,6 @@ export const App = observer(function App() {
             root.sessionCatalogStore.projectOfManagedWorktree(paneSession.workspacePath) ??
             paneSession.workspacePath
           }
-          canManage={canManageWorktree(paneSession.sessionId)}
           configurationMode={configurationMode}
           onConfigured={() =>
             paneSession.conversationSessionStore.composerStore.draftStore.requestFocus()
