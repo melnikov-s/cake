@@ -185,6 +185,10 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
         sessionId,
       });
       this.applyOperationPresentation(operation);
+      // The rebase can complete before this RPC response arrives. Reconcile after
+      // applying the accepted operation so that response cannot overwrite a
+      // terminal projection and leave the controls stuck in "rebasing".
+      await this.refresh(workspacePath);
     } catch (error) {
       this.fail(error);
       throw error;

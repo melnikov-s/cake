@@ -257,6 +257,44 @@ describe("WorktreeStore", () => {
     }
   });
 
+  it("reconciles a rebase that completes before the start response arrives", async () => {
+    let current: WorktreeLandingOperation | undefined;
+    const cancelLanding = vi.fn(async () => undefined);
+    const startRebase = vi.fn(async () => {
+      current = operation("complete", { kind: "rebase", strategy: undefined });
+      return operation("rebasing", { kind: "rebase", strategy: undefined });
+    });
+    const { root, subject: store } = mountWithClient(
+      createStore(
+        WorktreeStore,
+        props(undefined, () => current),
+      ),
+      {
+        managedWorktrees: {
+          landing: vi.fn(async () => ({
+            status: worktreeStatus("/worktree"),
+            operation: current,
+          })),
+          startRebase,
+          cancelLanding,
+        },
+      } as unknown as Client,
+    );
+    try {
+      await vi.waitFor(() => expect(store.status).toBeDefined());
+      await store.rebase();
+
+      expect(store.phase).toBe("idle");
+      expect(cancelLanding).toHaveBeenCalledWith({
+        operationId: "landing-operation",
+        workspacePath: "/worktree",
+        intent: "acknowledge",
+      });
+    } finally {
+      root[Symbol.dispose]();
+    }
+  });
+
   it("does not discard a worktree when terminal retirement is cancelled", async () => {
     const discard = vi.fn(async () => undefined);
     const currentProps = props();
