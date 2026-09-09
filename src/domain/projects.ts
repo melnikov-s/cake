@@ -26,10 +26,8 @@ import type {
   ProjectWorkflowSessionDestination,
 } from "./application-data";
 import { defaultProjectWorkflow } from "./application-data";
-import {
-  inspect as inspectProjectSession,
-  moveWorkflowSession as moveProjectSessionWorkflow,
-} from "./projectSessions";
+import { inspect as inspectProjectSession } from "./projectSessionMetadata";
+import { moveWorkflowSession as moveProjectSessionWorkflow } from "./projectSessionLifecycle";
 import { ProjectError } from "./project-error";
 import {
   observeState,

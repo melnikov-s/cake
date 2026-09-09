@@ -9,7 +9,7 @@ import type { ProjectSessionConfiguration } from "../services/project-sessions/P
 import type { ProjectSessionLifecycle } from "../services/project-sessions/ProjectSessionLifecycle";
 import type { SessionFamilyStorage } from "../services/storage/SessionFamilyStorage";
 import type { ManagedWorktrees } from "../services/worktrees/ManagedWorktrees";
-import * as projectSessions from "../domain/projectSessions";
+import * as projectSessionLifecycle from "../domain/projectSessionLifecycle";
 import { WorktreeLandingError } from "../domain/worktree-landing-data";
 import { WorktreeLandingCompletion } from "../services/worktrees/WorktreeLandingCompletion";
 
@@ -32,7 +32,7 @@ export const WorktreeLandingCompletionLive = Layer.effect(
     return WorktreeLandingCompletion.of({
       resolveWorkingDirectory: Effect.fn("WorktreeLandingCompletion.resolveWorkingDirectory")(
         (workingDirectory) =>
-          projectSessions.resolveWorkingDirectory(workingDirectory).pipe(
+          projectSessionLifecycle.resolveWorkingDirectory(workingDirectory).pipe(
             Effect.mapError(
               (error) =>
                 new WorktreeLandingError({

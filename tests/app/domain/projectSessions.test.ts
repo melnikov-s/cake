@@ -4,7 +4,10 @@ import { it } from "@effect/vitest";
 import { Deferred, Effect, Fiber, Layer, Queue, Stream, SubscriptionRef } from "effect";
 import * as TestClock from "effect/testing/TestClock";
 import { describe, vi } from "vitest";
-import * as projectSessions from "../../../src/domain/projectSessions";
+import * as projectSessionMetadata from "../../../src/domain/projectSessionMetadata";
+import * as projectSessionOperations from "../../../src/domain/projectSessionOperations";
+import * as projectSessionContinuations from "../../../src/domain/projectSessionContinuations";
+import * as projectSessionLifecycle from "../../../src/domain/projectSessionLifecycle";
 import type { SessionCatalogUpdate } from "../../../src/domain/catalog-data";
 import { getState } from "../../../src/domain/application";
 import {
@@ -514,7 +517,7 @@ const makeLayer = (
 describe("Project Sessions domain", () => {
   it.effect("moves active sessions through authoritative custom workflow policy", () =>
     Effect.gen(function* () {
-      const workflow = yield* projectSessions.moveWorkflowSession({
+      const workflow = yield* projectSessionLifecycle.moveWorkflowSession({
         projectPath: "/project",
         sessionId: "session-1",
         workingDirectory: "/project",
@@ -560,7 +563,7 @@ describe("Project Sessions domain", () => {
   it.effect("restores a resolved session before assigning its custom status", () => {
     let restores = 0;
     return Effect.gen(function* () {
-      const workflow = yield* projectSessions.moveWorkflowSession({
+      const workflow = yield* projectSessionLifecycle.moveWorkflowSession({
         projectPath: "/project",
         sessionId: "session-1",
         workingDirectory: "/project",
@@ -605,7 +608,7 @@ describe("Project Sessions domain", () => {
   it.effect("rejects Draft resolution and missing custom statuses through the domain", () =>
     Effect.gen(function* () {
       const missingStatus = yield* Effect.flip(
-        projectSessions.moveWorkflowSession({
+        projectSessionLifecycle.moveWorkflowSession({
           projectPath: "/project",
           sessionId: "session-1",
           workingDirectory: "/project",
@@ -617,7 +620,7 @@ describe("Project Sessions domain", () => {
       );
       assert.equal(missingStatus.message, "That custom status no longer exists");
       const draftResolution = yield* Effect.flip(
-        projectSessions.moveWorkflowSession({
+        projectSessionLifecycle.moveWorkflowSession({
           projectPath: "/project",
           sessionId: "session-1",
           workingDirectory: "/project",
@@ -626,7 +629,7 @@ describe("Project Sessions domain", () => {
       );
       assert.equal(draftResolution.message, "Activate a Draft before resolving it");
       const directResolution = yield* Effect.flip(
-        projectSessions.resolve({ sessionId: "session-1", workingDirectory: "/project" }),
+        projectSessionLifecycle.resolve({ sessionId: "session-1", workingDirectory: "/project" }),
       );
       assert.equal(directResolution.message, "Activate a Draft before resolving it");
     }).pipe(Effect.provide(makeLayer(undefined, { sessionExists: false }))),
@@ -649,7 +652,7 @@ describe("Project Sessions domain", () => {
     };
     return Effect.gen(function* () {
       const resolveError = yield* Effect.flip(
-        projectSessions.moveWorkflowSession({
+        projectSessionLifecycle.moveWorkflowSession({
           projectPath: "/project",
           sessionId: "session-1",
           workingDirectory: "/project",
@@ -661,7 +664,7 @@ describe("Project Sessions domain", () => {
         "Resolve or restore this Session Family from its parent card",
       );
       const restoreError = yield* Effect.flip(
-        projectSessions.moveWorkflowSession({
+        projectSessionLifecycle.moveWorkflowSession({
           projectPath: "/project",
           sessionId: "session-1",
           workingDirectory: "/project",
@@ -673,11 +676,11 @@ describe("Project Sessions domain", () => {
         "Resolve or restore this Session Family from its parent card",
       );
       const directResolve = yield* Effect.flip(
-        projectSessions.resolve({ sessionId: "session-1", workingDirectory: "/project" }),
+        projectSessionLifecycle.resolve({ sessionId: "session-1", workingDirectory: "/project" }),
       );
       assert.equal(directResolve.message, "Only the Session Family parent can resolve the family");
       const directRestore = yield* Effect.flip(
-        projectSessions.restore({ sessionId: "session-1", workingDirectory: "/project" }),
+        projectSessionLifecycle.restore({ sessionId: "session-1", workingDirectory: "/project" }),
       );
       assert.equal(directRestore.message, "Only the Session Family parent can restore the family");
     }).pipe(Effect.provide(makeLayer(undefined, { family, resolvedOnDisk: true })));
@@ -687,7 +690,7 @@ describe("Project Sessions domain", () => {
     let piCatalogs = 0;
     let locations = 0;
     return Effect.gen(function* () {
-      const updates = yield* projectSessions.observeCatalog({
+      const updates = yield* projectSessionMetadata.observeCatalog({
         projectPath: "/project",
         resolved: true,
       });
@@ -708,7 +711,7 @@ describe("Project Sessions domain", () => {
 
   it.effect("bounds existing archive titles before catalog serialization", () => {
     return Effect.gen(function* () {
-      const updates = yield* projectSessions.observeCatalog({
+      const updates = yield* projectSessionMetadata.observeCatalog({
         projectPath: "/project",
         resolved: true,
       });
@@ -740,7 +743,7 @@ describe("Project Sessions domain", () => {
       modifiedAt: `2026-01-${String(index + 1).padStart(2, "0")}T00:00:00.000Z`,
     }));
     return Effect.gen(function* () {
-      const updates = yield* projectSessions.observeCatalog({
+      const updates = yield* projectSessionMetadata.observeCatalog({
         projectPath: "/project",
         resolved: true,
       });
@@ -763,7 +766,7 @@ describe("Project Sessions domain", () => {
     let locations = 0;
     let migrations = 0;
     return Effect.gen(function* () {
-      const updates = yield* projectSessions.observeCatalog({
+      const updates = yield* projectSessionMetadata.observeCatalog({
         projectPath: "/project",
         resolved: true,
       });
@@ -786,7 +789,7 @@ describe("Project Sessions domain", () => {
   it.effect("does not touch resolved storage for an active catalog stream", () => {
     let resolvedCatalogs = 0;
     return Effect.gen(function* () {
-      const updates = yield* projectSessions.observeCatalog({
+      const updates = yield* projectSessionMetadata.observeCatalog({
         projectPath: "/project",
         resolved: false,
       });
@@ -836,7 +839,7 @@ describe("Project Sessions domain", () => {
       });
 
       yield* Effect.gen(function* () {
-        const updates = yield* projectSessions.observeCatalog({
+        const updates = yield* projectSessionMetadata.observeCatalog({
           projectPath: "/project",
           resolved: false,
         });
@@ -880,7 +883,7 @@ describe("Project Sessions domain", () => {
       resolved: false,
     }));
     return Effect.gen(function* () {
-      const updates = yield* projectSessions.observeCatalog({
+      const updates = yield* projectSessionMetadata.observeCatalog({
         projectPath: "/project",
         resolved: false,
       });
@@ -902,7 +905,7 @@ describe("Project Sessions domain", () => {
     return Effect.gen(function* () {
       const catalogs = yield* SessionCatalogChanges;
       const application = yield* ApplicationState;
-      const updates = yield* projectSessions.observeCatalog({
+      const updates = yield* projectSessionMetadata.observeCatalog({
         projectPath: "/project",
         resolved: false,
       });
@@ -949,7 +952,7 @@ describe("Project Sessions domain", () => {
 
   it.effect("moves a resolved session without restarting the active metadata stream", () => {
     return Effect.gen(function* () {
-      const updates = yield* projectSessions.observeCatalog({
+      const updates = yield* projectSessionMetadata.observeCatalog({
         projectPath: "/project",
         resolved: false,
       });
@@ -963,7 +966,7 @@ describe("Project Sessions domain", () => {
         Effect.forkChild,
       );
       yield* Deferred.await(ready);
-      yield* projectSessions.resolve({
+      yield* projectSessionLifecycle.resolve({
         sessionId: "session-1",
         workingDirectory: "/project",
       });
@@ -981,7 +984,7 @@ describe("Project Sessions domain", () => {
 
   it.effect("streams Project and Working Directory metadata above PiSessions", () =>
     Effect.gen(function* () {
-      const updates = yield* projectSessions.observeCatalog({
+      const updates = yield* projectSessionMetadata.observeCatalog({
         projectPath: "/project",
         resolved: false,
       });
@@ -1003,7 +1006,7 @@ describe("Project Sessions domain", () => {
   it.effect("handoffs without constructing a destination runtime and copies Fast mode", () => {
     let runtimeConstructions = 0;
     return Effect.gen(function* () {
-      const result = yield* projectSessions.handoff({
+      const result = yield* projectSessionContinuations.handoff({
         target: { sessionId: "session-1", workingDirectory: "/project" },
         entryId: "assistant-entry",
       });
@@ -1038,7 +1041,7 @@ describe("Project Sessions domain", () => {
       | { readonly workingDirectory: string; readonly sessionRoot: string }
       | undefined;
     return Effect.gen(function* () {
-      const result = yield* projectSessions.handoff({
+      const result = yield* projectSessionContinuations.handoff({
         target: { sessionId: "session-1", workingDirectory: "/project" },
         entryId: "assistant-entry",
         destinationWorkingDirectory: "/project-worktree",
@@ -1088,7 +1091,7 @@ describe("Project Sessions domain", () => {
     });
 
     return Effect.gen(function* () {
-      yield* projectSessions.fork({
+      yield* projectSessionContinuations.fork({
         target: { sessionId: "session-1", workingDirectory: "/project" },
         entryId: "assistant-entry",
       });
@@ -1119,11 +1122,11 @@ describe("Project Sessions domain", () => {
       let archives = 0;
       return Effect.gen(function* () {
         const target = { sessionId: "session-1", workingDirectory: "/project" };
-        const result = yield* projectSessions.fork({
+        const result = yield* projectSessionContinuations.fork({
           target,
           entryId: "assistant-entry",
         });
-        const source = yield* projectSessions.inspect(target);
+        const source = yield* projectSessionMetadata.inspect(target);
 
         assert.equal(result.sessionId, "forked");
         assert.equal(source.resolved, true);
@@ -1151,11 +1154,11 @@ describe("Project Sessions domain", () => {
       let archives = 0;
       return Effect.gen(function* () {
         const target = { sessionId: "session-1", workingDirectory: "/project" };
-        const result = yield* projectSessions.handoff({
+        const result = yield* projectSessionContinuations.handoff({
           target,
           entryId: "assistant-entry",
         });
-        const source = yield* projectSessions.inspect(target);
+        const source = yield* projectSessionMetadata.inspect(target);
 
         assert.equal(result.sessionId, "handoff");
         assert.equal(source.resolved, true);
@@ -1179,7 +1182,7 @@ describe("Project Sessions domain", () => {
     let runtimeConstructions = 0;
     let archives = 0;
     return Effect.gen(function* () {
-      yield* projectSessions.resolve({
+      yield* projectSessionLifecycle.resolve({
         sessionId: "session-1",
         workingDirectory: "/project",
       });
@@ -1208,7 +1211,7 @@ describe("Project Sessions domain", () => {
         resolved: false,
       });
       return Effect.gen(function* () {
-        const result = yield* projectSessions.resolveWorkingDirectory("/worktree");
+        const result = yield* projectSessionLifecycle.resolveWorkingDirectory("/worktree");
         assert.equal(result.projectPath, "/project");
         assert.deepEqual(result.resolvedSessionIds, ["worktree-1", "worktree-2"]);
         assert.deepEqual(result.failures, []);
@@ -1268,7 +1271,7 @@ describe("Project Sessions domain", () => {
       resolved: false,
     });
     return Effect.gen(function* () {
-      const result = yield* projectSessions.resolveWorkingDirectory("/project");
+      const result = yield* projectSessionLifecycle.resolveWorkingDirectory("/project");
       assert.deepEqual(result.resolvedSessionIds, ["parent", "child"]);
       assert.deepEqual(result.failures, []);
       assert.deepEqual(lifecycleCalls, [["parent", true]]);
@@ -1294,7 +1297,7 @@ describe("Project Sessions domain", () => {
       resolved: false,
     });
     return Effect.gen(function* () {
-      const result = yield* projectSessions.resolveWorkingDirectory("/project");
+      const result = yield* projectSessionLifecycle.resolveWorkingDirectory("/project");
       assert.deepEqual(result.resolvedSessionIds, ["session-1"]);
       assert.deepEqual(result.failures, [
         { sessionIds: ["session-2"], message: "Cannot archive session-2" },
@@ -1323,7 +1326,7 @@ describe("Project Sessions domain", () => {
       createdAt: "2026-01-01T00:00:00.000Z",
     };
     return Effect.gen(function* () {
-      yield* projectSessions.resolve({
+      yield* projectSessionLifecycle.resolve({
         sessionId: "session-1",
         workingDirectory: worktree.worktreePath,
       });
@@ -1361,7 +1364,7 @@ describe("Project Sessions domain", () => {
       createdAt: "2026-01-01T00:00:00.000Z",
     };
     return Effect.gen(function* () {
-      yield* projectSessions.resolve({
+      yield* projectSessionLifecycle.resolve({
         sessionId: "session-1",
         workingDirectory: worktree.worktreePath,
       });
@@ -1406,7 +1409,7 @@ describe("Project Sessions domain", () => {
       createdAt: "2026-01-01T00:00:00.000Z",
     };
     return Effect.gen(function* () {
-      yield* projectSessions.restore({
+      yield* projectSessionLifecycle.restore({
         sessionId: "session-1",
         workingDirectory: worktree.worktreePath,
       });
@@ -1436,7 +1439,7 @@ describe("Project Sessions domain", () => {
   it.effect("resolves a session from an inactive Managed Worktree location", () => {
     let archives = 0;
     return Effect.gen(function* () {
-      yield* projectSessions.resolve({
+      yield* projectSessionLifecycle.resolve({
         sessionId: "session-1",
         workingDirectory: "/discarded-worktree",
       });
@@ -1469,10 +1472,10 @@ describe("Project Sessions domain", () => {
 
   it.effect("emits a Cake snapshot and returns an accepted Turn ID", () =>
     Effect.gen(function* () {
-      const stream = yield* projectSessions.observe({ sessionId: "session-1" });
+      const stream = yield* projectSessionOperations.observe({ sessionId: "session-1" });
       const initial = yield* stream.pipe(Stream.take(1), Stream.runCollect);
       assert.equal(initial[0]?._tag, "Snapshot");
-      const turnId = yield* projectSessions.prompt({
+      const turnId = yield* projectSessionOperations.prompt({
         sessionId: "session-1",
         text: "Implement it",
         attachments: [],
@@ -1489,27 +1492,27 @@ describe("Project Sessions domain", () => {
       let runtimeConstructions = 0;
       const target = { sessionId: "session-1" };
       return Effect.gen(function* () {
-        yield* projectSessions.compact(target, "Keep the architecture notes");
-        yield* projectSessions.editMessage({
+        yield* projectSessionOperations.compact(target, "Keep the architecture notes");
+        yield* projectSessionOperations.editMessage({
           ...target,
           entryId: "user-message",
           text: "Updated",
           attachments: [],
           renderUserMessageAsMarkdown: false,
         });
-        yield* projectSessions.applyConfiguration(target, {
+        yield* projectSessionOperations.applyConfiguration(target, {
           provider: "fixture-provider",
           modelId: "fixture-model",
           thinkingLevel: "medium",
           fastMode: false,
         });
-        yield* projectSessions.setModel(target, "fixture-provider", "fixture-model");
-        yield* projectSessions.setThinkingLevel(target, "high");
-        yield* projectSessions.setFastMode(target, true);
-        yield* projectSessions.setPiSetting(target, { key: "retryEnabled", value: false });
-        yield* projectSessions.login(target, "fixture-provider", "api_key");
-        yield* projectSessions.logout(target, "fixture-provider");
-        yield* projectSessions.abort(target);
+        yield* projectSessionOperations.setModel(target, "fixture-provider", "fixture-model");
+        yield* projectSessionOperations.setThinkingLevel(target, "high");
+        yield* projectSessionOperations.setFastMode(target, true);
+        yield* projectSessionOperations.setPiSetting(target, { key: "retryEnabled", value: false });
+        yield* projectSessionOperations.login(target, "fixture-provider", "api_key");
+        yield* projectSessionOperations.logout(target, "fixture-provider");
+        yield* projectSessionOperations.abort(target);
 
         assert.equal(runtimeConstructions, 1);
         assert.deepEqual(operations, [
@@ -1537,7 +1540,7 @@ describe("Project Sessions domain", () => {
 
   it.effect("publishes an authoritative catalog update when a new session starts", () =>
     Effect.gen(function* () {
-      const updates = yield* projectSessions.observeCatalog({
+      const updates = yield* projectSessionMetadata.observeCatalog({
         projectPath: "/project",
         resolved: false,
       });
@@ -1552,7 +1555,7 @@ describe("Project Sessions domain", () => {
       );
       yield* Deferred.await(ready);
 
-      yield* projectSessions.start({
+      yield* projectSessionOperations.start({
         sessionId: "session-1",
         workingDirectory: "/project",
         text: "First message",
@@ -1569,7 +1572,7 @@ describe("Project Sessions domain", () => {
   it.effect("publishes a renamed title before the active turn settles", () => {
     let title = "Active branch";
     return Effect.gen(function* () {
-      const updates = yield* projectSessions.observeCatalog({
+      const updates = yield* projectSessionMetadata.observeCatalog({
         projectPath: "/project",
         resolved: false,
       });
@@ -1584,7 +1587,7 @@ describe("Project Sessions domain", () => {
       );
       yield* Deferred.await(ready);
 
-      yield* projectSessions.rename({ sessionId: "session-1" }, "Renamed while running");
+      yield* projectSessionOperations.rename({ sessionId: "session-1" }, "Renamed while running");
 
       const observed = Array.from(yield* Fiber.join(fiber));
       const renamed = observed[1];
@@ -1613,7 +1616,7 @@ describe("Project Sessions domain", () => {
       finishPrompt = resolve;
     });
     return Effect.gen(function* () {
-      yield* projectSessions.start({
+      yield* projectSessionOperations.start({
         sessionId: "session-1",
         workingDirectory: "/project",
         text: "First message",
@@ -1621,7 +1624,7 @@ describe("Project Sessions domain", () => {
         renderUserMessageAsMarkdown: false,
       });
 
-      const updates = yield* projectSessions.observe({
+      const updates = yield* projectSessionOperations.observe({
         sessionId: "session-1",
         workingDirectory: "/project",
       });
@@ -1638,7 +1641,7 @@ describe("Project Sessions domain", () => {
   it.effect("never materializes a new Pi Session through observation", () => {
     const creationModes: boolean[] = [];
     return Effect.gen(function* () {
-      const stream = yield* projectSessions.observe({
+      const stream = yield* projectSessionOperations.observe({
         sessionId: "session-1",
         workingDirectory: "/project",
       });
@@ -1656,7 +1659,7 @@ describe("Project Sessions domain", () => {
   it.effect("activates an unresolved session without constructing a Pi runtime", () => {
     let runtimeConstructions = 0;
     return Effect.gen(function* () {
-      yield* projectSessions.open({ sessionId: "session-1" });
+      yield* projectSessionMetadata.open({ sessionId: "session-1" });
       assert.equal(runtimeConstructions, 0);
     }).pipe(
       Effect.provide(
@@ -1682,11 +1685,11 @@ describe("Project Sessions domain", () => {
     let runtimeConstructions = 0;
     let restores = 0;
     return Effect.gen(function* () {
-      yield* projectSessions.open({ sessionId: "session-1" });
+      yield* projectSessionMetadata.open({ sessionId: "session-1" });
       assert.equal(runtimeConstructions, 0);
       assert.equal(restores, 0);
 
-      const updates = yield* projectSessions.observe({ sessionId: "session-1" });
+      const updates = yield* projectSessionOperations.observe({ sessionId: "session-1" });
       const preview = Array.from(yield* updates.pipe(Stream.take(1), Stream.runCollect));
       assert.equal(preview[0]?._tag, "Snapshot");
       const first = preview[0];
@@ -1729,7 +1732,7 @@ describe("Project Sessions domain", () => {
     let runtimeConstructions = 0;
     let restores = 0;
     return Effect.gen(function* () {
-      yield* projectSessions.prompt({
+      yield* projectSessionOperations.prompt({
         sessionId: "session-1",
         text: "Continue",
         attachments: [],
@@ -1764,7 +1767,7 @@ describe("Project Sessions domain", () => {
 
   it.effect("rejects an unresolved session that is missing from its Working Directory", () =>
     Effect.gen(function* () {
-      const error = yield* projectSessions
+      const error = yield* projectSessionMetadata
         .open({ sessionId: "missing", workingDirectory: "/project" })
         .pipe(Effect.flip);
       assert.equal(error.operation, "open");

@@ -1,5 +1,5 @@
 import { Context, Effect, Layer, Scope } from "effect";
-import * as projectSessions from "../domain/projectSessions";
+import * as projectSessionOperations from "../domain/projectSessionOperations";
 import type { Electron } from "../services/electron/Electron";
 import type { PiModels } from "../services/pi/PiModels";
 import type { PiSessions } from "../services/pi/PiSessions";
@@ -54,7 +54,7 @@ export const WorktreeLandingAgentLive = Layer.effect(
     return WorktreeLandingAgent.of({
       promptAndWait: Effect.fn("WorktreeLandingAgent.promptAndWait")(function* (input) {
         yield* Effect.gen(function* () {
-          const turnId = yield* projectSessions
+          const turnId = yield* projectSessionOperations
             .prompt({
               sessionId: input.sessionId,
               text: input.text,
@@ -62,7 +62,7 @@ export const WorktreeLandingAgentLive = Layer.effect(
               renderUserMessageAsMarkdown: false,
             })
             .pipe(asError("prompt"));
-          yield* projectSessions
+          yield* projectSessionOperations
             .awaitTurnSettled({ sessionId: input.sessionId }, turnId)
             .pipe(asError("awaitTurnSettled"));
         }).pipe(Effect.provide(dependencies), Effect.scoped);

@@ -720,8 +720,14 @@ src/
 │   ├── application.ts
 │   ├── projects.ts
 │   ├── conversations.ts
-│   ├── projectSessions.ts
-│   ├── cakeChats.ts
+│   ├── projectSessionMetadata.ts
+│   ├── projectSessionOperations.ts
+│   ├── projectSessionContinuations.ts
+│   ├── projectSessionLifecycle.ts
+│   ├── cakeChatMetadata.ts
+│   ├── cakeChatOperations.ts
+│   ├── cakeChatContinuations.ts
+│   ├── cakeChatLifecycle.ts
 │   ├── discussionSessions.ts
 │   ├── subagents.ts
 │   ├── modelPresets.ts

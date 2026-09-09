@@ -1,5 +1,6 @@
 import { DateTime, Effect, Schedule, Stream } from "effect";
-import * as projectSessions from "./projectSessions";
+import * as projectSessionMetadata from "./projectSessionMetadata";
+import * as projectSessionOperations from "./projectSessionOperations";
 import {
   ScheduledMessageError,
   type ScheduleMessageInput,
@@ -33,7 +34,9 @@ export const list = Effect.fn("ScheduledMessages.list")(function* (targetSession
 export const schedule = Effect.fn("ScheduledMessages.schedule")(function* (
   input: ScheduleMessageInput,
 ) {
-  yield* projectSessions.inspect({ sessionId: input.targetSessionId }).pipe(asError("schedule"));
+  yield* projectSessionMetadata
+    .inspect({ sessionId: input.targetSessionId })
+    .pipe(asError("schedule"));
   const now = DateTime.formatIso(yield* DateTime.now);
   if (input.sendAt <= now)
     return yield* new ScheduledMessageError({
@@ -120,7 +123,7 @@ export const observe = Effect.fn("ScheduledMessages.observe")(function* (targetS
 });
 
 const deliverOne = Effect.fn("ScheduledMessages.deliverOne")(function* (message: ScheduledMessage) {
-  yield* projectSessions.sendAutomatically({
+  yield* projectSessionOperations.sendAutomatically({
     sessionId: message.targetSessionId,
     text: message.text,
     attachments: [],

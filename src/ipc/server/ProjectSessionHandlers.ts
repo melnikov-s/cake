@@ -1,7 +1,10 @@
 import { Effect, Stream } from "effect";
 import { ProjectSessionError } from "../../domain/project-session-data";
 import * as projects from "../../domain/projects";
-import * as projectSessions from "../../domain/projectSessions";
+import * as projectSessionMetadata from "../../domain/projectSessionMetadata";
+import * as projectSessionOperations from "../../domain/projectSessionOperations";
+import * as projectSessionContinuations from "../../domain/projectSessionContinuations";
+import * as projectSessionLifecycle from "../../domain/projectSessionLifecycle";
 import { ProjectSessionRpc } from "../protocol/ProjectSessionRpc";
 import { RendererConnection } from "../protocol/RendererConnectionMiddleware";
 import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
@@ -30,19 +33,20 @@ const bindRenderer = (connectionId: number, sessionId: string) =>
   );
 
 export const projectSessionHandlers = ProjectSessionRpc.of({
-  "projectSessions.observeCatalog": (query) => Stream.unwrap(projectSessions.observeCatalog(query)),
-  "projectSessions.inspect": (target) => projectSessions.inspect(target),
+  "projectSessions.observeCatalog": (query) =>
+    Stream.unwrap(projectSessionMetadata.observeCatalog(query)),
+  "projectSessions.inspect": (target) => projectSessionMetadata.inspect(target),
   "projectSessions.start": (input) =>
     withConnection((connectionId) =>
       activateWorkingDirectory(connectionId, input.workingDirectory).pipe(
         Effect.andThen(bindRenderer(connectionId, input.sessionId)),
-        Effect.andThen(projectSessions.start(input)),
+        Effect.andThen(projectSessionOperations.start(input)),
       ),
     ),
   "projectSessions.open": (target) =>
     withConnection((connectionId) =>
       bindRenderer(connectionId, target.sessionId).pipe(
-        Effect.andThen(projectSessions.open(target)),
+        Effect.andThen(projectSessionMetadata.open(target)),
         Effect.tap(() =>
           target.workingDirectory
             ? activateWorkingDirectory(connectionId, target.workingDirectory)
@@ -50,50 +54,53 @@ export const projectSessionHandlers = ProjectSessionRpc.of({
         ),
       ),
     ),
-  "projectSessions.observe": (target) => Stream.unwrap(projectSessions.observe(target)),
+  "projectSessions.observe": (target) => Stream.unwrap(projectSessionOperations.observe(target)),
   "projectSessions.prompt": (input) =>
     withConnection((connectionId) =>
       bindRenderer(connectionId, input.sessionId).pipe(
-        Effect.andThen(projectSessions.prompt(input)),
+        Effect.andThen(projectSessionOperations.prompt(input)),
       ),
     ),
   "projectSessions.steer": (input) =>
     withConnection((connectionId) =>
       bindRenderer(connectionId, input.sessionId).pipe(
-        Effect.andThen(projectSessions.steer(input)),
+        Effect.andThen(projectSessionOperations.steer(input)),
       ),
     ),
   "projectSessions.followUp": (input) =>
     withConnection((connectionId) =>
       bindRenderer(connectionId, input.sessionId).pipe(
-        Effect.andThen(projectSessions.followUp(input)),
+        Effect.andThen(projectSessionOperations.followUp(input)),
       ),
     ),
-  "projectSessions.abort": (target) => projectSessions.abort(target),
-  "projectSessions.listQueuedMessages": (target) => projectSessions.listQueuedMessages(target),
-  "projectSessions.clearQueue": (target) => projectSessions.clearQueue(target),
-  "projectSessions.cancelSteering": (target) => projectSessions.cancelSteering(target),
+  "projectSessions.abort": (target) => projectSessionOperations.abort(target),
+  "projectSessions.listQueuedMessages": (target) =>
+    projectSessionOperations.listQueuedMessages(target),
+  "projectSessions.clearQueue": (target) => projectSessionOperations.clearQueue(target),
+  "projectSessions.cancelSteering": (target) => projectSessionOperations.cancelSteering(target),
   "projectSessions.compact": ({ instructions, ...target }) =>
-    projectSessions.compact(target, instructions),
-  "projectSessions.editMessage": (input) => projectSessions.editMessage(input),
+    projectSessionOperations.compact(target, instructions),
+  "projectSessions.editMessage": (input) => projectSessionOperations.editMessage(input),
   "projectSessions.setUserMessageMarkdown": ({ entryId, renderAsMarkdown, ...target }) =>
-    projectSessions.setUserMessageMarkdown(target, entryId, renderAsMarkdown),
+    projectSessionOperations.setUserMessageMarkdown(target, entryId, renderAsMarkdown),
   "projectSessions.applyConfiguration": ({ configuration, ...target }) =>
-    projectSessions.applyConfiguration(target, configuration),
+    projectSessionOperations.applyConfiguration(target, configuration),
   "projectSessions.setModel": ({ provider, modelId, ...target }) =>
-    projectSessions.setModel(target, provider, modelId),
+    projectSessionOperations.setModel(target, provider, modelId),
   "projectSessions.setThinkingLevel": ({ level, ...target }) =>
-    projectSessions.setThinkingLevel(target, level),
+    projectSessionOperations.setThinkingLevel(target, level),
   "projectSessions.setFastMode": ({ enabled, ...target }) =>
-    projectSessions.setFastMode(target, enabled),
-  "projectSessions.getChangelog": (target) => projectSessions.getChangelog(target),
-  "projectSessions.navigate": ({ entryId, ...target }) => projectSessions.navigate(target, entryId),
+    projectSessionOperations.setFastMode(target, enabled),
+  "projectSessions.getChangelog": (target) => projectSessionOperations.getChangelog(target),
+  "projectSessions.navigate": ({ entryId, ...target }) =>
+    projectSessionOperations.navigate(target, entryId),
   "projectSessions.setPiSetting": ({ update, ...target }) =>
-    projectSessions.setPiSetting(target, update),
-  "projectSessions.reload": (target) => projectSessions.reload(target),
+    projectSessionOperations.setPiSetting(target, update),
+  "projectSessions.reload": (target) => projectSessionOperations.reload(target),
   "projectSessions.login": ({ provider, authType, ...target }) =>
-    projectSessions.login(target, provider, authType),
-  "projectSessions.logout": ({ provider, ...target }) => projectSessions.logout(target, provider),
+    projectSessionOperations.login(target, provider, authType),
+  "projectSessions.logout": ({ provider, ...target }) =>
+    projectSessionOperations.logout(target, provider),
   "projectSessions.handoff": ({
     entryId,
     prompt,
@@ -101,25 +108,27 @@ export const projectSessionHandlers = ProjectSessionRpc.of({
     resolveSource,
     ...target
   }) => {
-    const input: Parameters<typeof projectSessions.handoff>[0] = { target, entryId };
+    const input: Parameters<typeof projectSessionContinuations.handoff>[0] = { target, entryId };
     if (prompt !== undefined) Object.assign(input, { prompt });
     if (destinationWorkingDirectory !== undefined)
       Object.assign(input, { destinationWorkingDirectory });
     if (resolveSource !== undefined) Object.assign(input, { resolveSource });
-    return projectSessions.handoff(input);
+    return projectSessionContinuations.handoff(input);
   },
-  "projectSessions.rename": ({ name, ...target }) => projectSessions.rename(target, name),
+  "projectSessions.rename": ({ name, ...target }) => projectSessionOperations.rename(target, name),
   "projectSessions.fork": ({ entryId, destinationWorkingDirectory, resolveSource, ...target }) => {
-    const input: Parameters<typeof projectSessions.fork>[0] = { target, entryId };
+    const input: Parameters<typeof projectSessionContinuations.fork>[0] = { target, entryId };
     if (destinationWorkingDirectory !== undefined)
       Object.assign(input, { destinationWorkingDirectory });
     if (resolveSource !== undefined) Object.assign(input, { resolveSource });
-    return projectSessions.fork(input);
+    return projectSessionContinuations.fork(input);
   },
-  "projectSessions.resolve": (target) => projectSessions.resolve(target).pipe(Effect.asVoid),
+  "projectSessions.resolve": (target) =>
+    projectSessionLifecycle.resolve(target).pipe(Effect.asVoid),
   "projectSessions.resolveWorkingDirectory": ({ workingDirectory }) =>
-    projectSessions.resolveWorkingDirectory(workingDirectory),
-  "projectSessions.restore": (target) => projectSessions.restore(target).pipe(Effect.asVoid),
+    projectSessionLifecycle.resolveWorkingDirectory(workingDirectory),
+  "projectSessions.restore": (target) =>
+    projectSessionLifecycle.restore(target).pipe(Effect.asVoid),
   "projectSessions.respondControl": ({ sessionId, controlRequestId, result }) =>
     withConnection((connectionId) =>
       Effect.flatMap(RendererRequestCoordinator, (coordinator) =>

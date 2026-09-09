@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
 import { Effect, Layer, Stream } from "effect";
 import { describe } from "vitest";
-import * as cakeChats from "../../../src/domain/cakeChats";
+import * as cakeChatMetadata from "../../../src/domain/cakeChatMetadata";
+import * as cakeChatOperations from "../../../src/domain/cakeChatOperations";
+import * as cakeChatContinuations from "../../../src/domain/cakeChatContinuations";
+import * as cakeChatLifecycle from "../../../src/domain/cakeChatLifecycle";
 import {
   defaultApplicationState,
   type ApplicationState as ApplicationStateValue,
@@ -240,10 +243,10 @@ describe("Cake Chats domain", () => {
   it.effect("keeps a pending Cake Chat unmaterialized until its first prompt", () => {
     const fixture = makeLayer();
     return Effect.gen(function* () {
-      const updates = yield* cakeChats.observeCatalog({ resolved: false });
+      const updates = yield* cakeChatMetadata.observeCatalog({ resolved: false });
       yield* updates.pipe(Stream.take(1), Stream.runDrain);
       assert.equal(fixture.created(), 0);
-      const turnId = yield* cakeChats.prompt({
+      const turnId = yield* cakeChatOperations.prompt({
         sessionId: "cake-chat-1",
         text: "Find my task",
         attachments: [],
@@ -261,7 +264,7 @@ describe("Cake Chats domain", () => {
       fastModeSessionIds: ["cake-chat-1"],
     });
     return Effect.gen(function* () {
-      const result = yield* cakeChats.handoff({
+      const result = yield* cakeChatContinuations.handoff({
         target: { sessionId: "cake-chat-1", tools: [] },
         entryId: "assistant-entry",
       });
@@ -274,7 +277,7 @@ describe("Cake Chats domain", () => {
   it.effect("previews a resolved Cake Chat without restoring or constructing its runtime", () => {
     const fixture = makeLayer(defaultApplicationState(), { resolvedOnDisk: true });
     return Effect.gen(function* () {
-      const opened = yield* cakeChats.open({ sessionId: "cake-chat-1", tools: [] });
+      const opened = yield* cakeChatOperations.open({ sessionId: "cake-chat-1", tools: [] });
       assert.equal(opened.sessionId, "cake-chat-1");
       assert.deepEqual(opened.parts[0], {
         id: "user-message",
@@ -286,7 +289,7 @@ describe("Cake Chats domain", () => {
       assert.equal(fixture.created(), 0);
       assert.equal(fixture.restored(), 0);
 
-      const updates = yield* cakeChats.observe({ sessionId: "cake-chat-1", tools: [] });
+      const updates = yield* cakeChatOperations.observe({ sessionId: "cake-chat-1", tools: [] });
       const preview = Array.from(yield* updates.pipe(Stream.take(1), Stream.runCollect));
       assert.equal(preview[0]?._tag, "Snapshot");
       assert.equal(fixture.created(), 0);
@@ -297,7 +300,7 @@ describe("Cake Chats domain", () => {
   it.effect("restores a resolved Cake Chat when a message is submitted", () => {
     const fixture = makeLayer(defaultApplicationState(), { resolvedOnDisk: true });
     return Effect.gen(function* () {
-      yield* cakeChats.prompt({
+      yield* cakeChatOperations.prompt({
         sessionId: "cake-chat-1",
         text: "Continue",
         attachments: [],
@@ -312,27 +315,27 @@ describe("Cake Chats domain", () => {
     const fixture = makeLayer();
     const target = { sessionId: "cake-chat-1", tools: [] };
     return Effect.gen(function* () {
-      yield* cakeChats.compact(target, "Keep the architecture notes");
-      yield* cakeChats.editMessage({
+      yield* cakeChatOperations.compact(target, "Keep the architecture notes");
+      yield* cakeChatOperations.editMessage({
         sessionId: target.sessionId,
         entryId: "user-message",
         text: "Updated",
         attachments: [],
         renderUserMessageAsMarkdown: false,
       });
-      yield* cakeChats.applyConfiguration(target, {
+      yield* cakeChatOperations.applyConfiguration(target, {
         provider: "fixture-provider",
         modelId: "fixture-model",
         thinkingLevel: "medium",
         fastMode: false,
       });
-      yield* cakeChats.setModel(target, "fixture-provider", "fixture-model");
-      yield* cakeChats.setThinkingLevel(target, "high");
-      yield* cakeChats.setFastMode(target, true);
-      yield* cakeChats.setPiSetting(target, { key: "retryEnabled", value: false });
-      yield* cakeChats.login(target, "fixture-provider", "api_key");
-      yield* cakeChats.logout(target, "fixture-provider");
-      yield* cakeChats.abort(target);
+      yield* cakeChatOperations.setModel(target, "fixture-provider", "fixture-model");
+      yield* cakeChatOperations.setThinkingLevel(target, "high");
+      yield* cakeChatOperations.setFastMode(target, true);
+      yield* cakeChatOperations.setPiSetting(target, { key: "retryEnabled", value: false });
+      yield* cakeChatOperations.login(target, "fixture-provider", "api_key");
+      yield* cakeChatOperations.logout(target, "fixture-provider");
+      yield* cakeChatOperations.abort(target);
 
       assert.equal(fixture.created(), 1);
       assert.deepEqual(fixture.operations(), [
@@ -361,8 +364,8 @@ describe("Cake Chats domain", () => {
           parameters: {},
         },
       ];
-      yield* cakeChats.open({ sessionId: "cake-chat-1", tools });
-      yield* cakeChats.open({ sessionId: "cake-chat-2", tools: [] });
+      yield* cakeChatOperations.open({ sessionId: "cake-chat-1", tools });
+      yield* cakeChatOperations.open({ sessionId: "cake-chat-2", tools: [] });
       assert.deepEqual(fixture.toolCounts(), [1, 0]);
     }).pipe(Effect.provide(fixture.layer));
   });
@@ -370,7 +373,7 @@ describe("Cake Chats domain", () => {
   it.effect("archives only a settled materialized Cake Chat", () => {
     const fixture = makeLayer();
     return Effect.gen(function* () {
-      yield* cakeChats.resolve({ sessionId: "cake-chat-1", tools: [] });
+      yield* cakeChatLifecycle.resolve({ sessionId: "cake-chat-1", tools: [] });
       assert.equal(fixture.archived(), 1);
     }).pipe(Effect.provide(fixture.layer));
   });
