@@ -11,6 +11,8 @@ import {
 } from "../../../../src/domain/project-session-data";
 import { CakeIpcClient, type CakeIpcClientService } from "../../../../src/ipc/client/CakeIpcClient";
 import { createModelObserver, observeStream } from "../../../../src/renderer/observers";
+import { observationFailureDetails } from "../../../../src/renderer/observers/models";
+import { CatalogIdentityCollisionError } from "../../../../src/renderer/reducers/CatalogReducer";
 import type { Runtime } from "../../../../src/renderer/runtime";
 import { ProjectCatalog } from "../../../../src/renderer/models/ProjectCatalog";
 import { CakeChatCatalog } from "../../../../src/renderer/models/CakeChatCatalog";
@@ -64,6 +66,19 @@ function clientWithProjectStream(
 }
 
 describe("createModelObserver", () => {
+  it("formats observer collision diagnostics with IDs, context, and stack", () => {
+    const error = new CatalogIdentityCollisionError("Session ID", ["session-1"], {
+      context: "resolved snapshot for /cake",
+    });
+    const details = observationFailureDetails("project-session-catalog:resolved:/cake", error);
+
+    expect(details).toContain("Observer: project-session-catalog:resolved:/cake");
+    expect(details).toContain(`Error: ${error.message}`);
+    expect(details).toContain("Session IDs: session-1");
+    expect(details).toContain("Context: resolved snapshot for /cake");
+    expect(details).toContain("Stack / cause:");
+  });
+
   it("restarts stopped observations explicitly and ignores stale retry actions", async () => {
     const onStopped = vi.fn();
     let attempts = 0;
@@ -507,6 +522,67 @@ describe("createModelObserver", () => {
 
     await vi.waitFor(() => expect(sessions.find("newer")?.resolved).toBe(true));
     expect(sessions.sessions.map((session) => session.sessionId)).toEqual(["older", "newer"]);
+
+    observer.stop();
+    projects[Symbol.dispose]();
+    sessions[Symbol.dispose]();
+    cakeChats[Symbol.dispose]();
+  });
+
+  it("keeps observing when resolved hydration overlaps a stale active summary", async () => {
+    const summary = {
+      sessionId: "moving-session",
+      title: "Moving",
+      createdAt: "2026-01-01",
+      modifiedAt: "2026-01-02",
+      messageCount: 1,
+      unread: false,
+      projectPath: "/cake",
+      projectName: "Cake",
+      workingDirectory: "/cake",
+    };
+    const client = {
+      ...clientWithProjectStream(() => Stream.never),
+      projectSessions: {
+        observeCatalog: (query: { resolved: boolean }) => {
+          const update: SessionCatalogUpdate = {
+            _tag: "Snapshot",
+            revision: 1,
+            sessions: [{ ...summary, resolved: query.resolved }],
+          };
+          return Stream.concat(Stream.make(update), Stream.never);
+        },
+      },
+    } as unknown as CakeIpcClientService;
+    const onStopped = vi.fn();
+    const projects = ProjectCatalog.create();
+    const sessions = SessionCatalog.create();
+    const cakeChats = CakeChatCatalog.create();
+    const observer = createModelObserver(runtimeFor(client), onStopped);
+    const base = {
+      projects,
+      sessionCatalog: sessions,
+      cakeChatCatalog: cakeChats,
+      projectSessions: [],
+      cakeChats: [],
+    };
+
+    observer.sync({
+      ...base,
+      projectSessionCatalogQueries: [{ projectPath: "/cake", resolved: false }],
+    });
+    await vi.waitFor(() => expect(sessions.find("moving-session")?.resolved).toBe(false));
+    observer.sync({
+      ...base,
+      projectSessionCatalogQueries: [
+        { projectPath: "/cake", resolved: false },
+        { projectPath: "/cake", resolved: true },
+      ],
+    });
+
+    await vi.waitFor(() => expect(sessions.find("moving-session")?.resolved).toBe(true));
+    expect(sessions.sessions).toHaveLength(1);
+    expect(onStopped).not.toHaveBeenCalled();
 
     observer.stop();
     projects[Symbol.dispose]();

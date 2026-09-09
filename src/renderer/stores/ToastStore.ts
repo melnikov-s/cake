@@ -5,6 +5,7 @@ export interface Toast {
   tone: "info" | "warning" | "error";
   title: string;
   message: string;
+  details?: string;
   action?: { label: string; run(): void | Promise<void> };
   coalesceKey?: string;
 }
@@ -14,6 +15,7 @@ export interface ToastInput {
   tone?: Toast["tone"];
   title: string;
   message: string;
+  details?: string;
   action?: Toast["action"];
   coalesceKey?: string;
 }
@@ -45,6 +47,7 @@ export class ToastStore extends Store {
       title: toast.title,
       message: toast.message,
     };
+    if (toast.details) next.details = toast.details;
     if (toast.action) next.action = toast.action;
     if (toast.coalesceKey) next.coalesceKey = toast.coalesceKey;
     if (existing) this.toasts.splice(this.toasts.indexOf(existing), 1, next);

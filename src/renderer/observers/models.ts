@@ -35,6 +35,7 @@ import {
   applyCakeChatCatalogGroupUpdate,
   applyProjectCatalogUpdate,
   applySessionCatalogGroupUpdate,
+  CatalogIdentityCollisionError,
 } from "../reducers/CatalogReducer";
 import { applyCakeChatUpdate, applyProjectSessionUpdate } from "../reducers/ConversationReducer";
 import { applyDiscussionCatalogUpdate, applyDiscussionUpdate } from "../reducers/DiscussionReducer";
@@ -318,6 +319,30 @@ export const createModelObserver = (
   return { observe, sync, stop: dispose };
 };
 
+export const observationFailureDetails = (key: string, error: unknown) => {
+  const message = error instanceof Error ? error.message : String(error);
+  const collisionIds =
+    error instanceof CatalogIdentityCollisionError
+      ? error.values
+      : (message
+          .match(/Session ID collision: ([^(\n]+)/)?.[1]
+          ?.split(",")
+          .map((value) => value.trim())
+          .filter(Boolean) ?? []);
+  const context =
+    error instanceof CatalogIdentityCollisionError && error.context
+      ? [`Context: ${error.context}`]
+      : [];
+  const stack = error instanceof Error && error.stack ? error.stack : undefined;
+  return [
+    `Observer: ${key}`,
+    `Error: ${message}`,
+    ...(collisionIds.length > 0 ? [`Session IDs: ${collisionIds.join(", ")}`] : []),
+    ...context,
+    ...(stack && stack !== message ? ["", "Stack / cause:", stack] : []),
+  ].join("\n");
+};
+
 /** Observes the Models demanded by one renderer window's Store tree. */
 export const observeModels = (runtime: Runtime, projection: RootProjection, root: RootStore) => {
   const observer = createModelObserver(runtime, (key, error, retry) => {
@@ -325,7 +350,8 @@ export const observeModels = (runtime: Runtime, projection: RootProjection, root
       tone: "error",
       title: "Updates stopped",
       autoDismiss: false,
-      message: `${key}: ${error instanceof Error ? error.message : String(error)}`,
+      message: "Updates for this view stopped. Retry to reconnect.",
+      details: observationFailureDetails(key, error),
       coalesceKey: `observation:${key}`,
       action: { label: "Retry", run: retry },
     });

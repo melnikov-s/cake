@@ -248,6 +248,67 @@ it("upserts a batch in place and preserves ordering and other lanes", () => {
   catalog[Symbol.dispose]();
 });
 
+it("reconciles overlapping active and resolved snapshots during a resolve transition", () => {
+  const active = {
+    sessionId: "moving-session",
+    modifiedAt: "2026-01-02",
+    createdAt: "2026-01-01",
+    title: "Moving",
+    messageCount: 1,
+    resolved: false,
+    unread: false,
+    projectPath: "/project",
+    projectName: "Project",
+    workingDirectory: "/project",
+  };
+  const catalog = SessionCatalog.create();
+
+  applySessionCatalogGroupUpdate(
+    catalog,
+    { projectPath: "/project", resolved: false },
+    { _tag: "Snapshot", revision: 1, sessions: [active] },
+  );
+  applySessionCatalogGroupUpdate(
+    catalog,
+    { projectPath: "/project", resolved: true },
+    {
+      _tag: "Snapshot",
+      revision: 1,
+      sessions: [{ ...active, resolved: true, workingDirectory: "/resolved/project" }],
+    },
+  );
+
+  expect(catalog.sessions).toHaveLength(1);
+  expect(catalog.sessions[0]?.sessionId).toBe("moving-session");
+  expect(catalog.sessions[0]?.resolved).toBe(true);
+  catalog[Symbol.dispose]();
+});
+
+it("reports the colliding IDs while preserving cross-project identity safeguards", () => {
+  const record = (projectPath: string) => ({
+    sessionId: "duplicate-session",
+    modifiedAt: "2026-01-02",
+    createdAt: "2026-01-01",
+    title: "Duplicate",
+    messageCount: 1,
+    resolved: false,
+    unread: false,
+    projectPath,
+    projectName: projectPath,
+    workingDirectory: projectPath,
+  });
+  const catalog = SessionCatalog.create({ sessions: [record("/one")] });
+
+  expect(() =>
+    applySessionCatalogGroupUpdate(
+      catalog,
+      { projectPath: "/two", resolved: false },
+      { _tag: "Snapshot", revision: 1, sessions: [record("/two")] },
+    ),
+  ).toThrow("Session ID collision: duplicate-session (snapshot for /two)");
+  catalog[Symbol.dispose]();
+});
+
 it("upserts and removes Cake Chat summaries while retaining existing Models", () => {
   const catalog = CakeChatCatalog.create();
   const record = (sessionId: string, modifiedAt: string) => ({

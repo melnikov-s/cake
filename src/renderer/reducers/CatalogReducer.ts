@@ -49,9 +49,30 @@ export function applySessionCatalogGroupUpdate(
   const change = update._tag === "Snapshot" ? update : update.event;
   if (change._tag === "Snapshot" || change._tag === "Replaced") {
     const incoming = change.sessions;
+    const incomingSessionIds = incoming.map((session) => session.sessionId);
+    assertUnique(
+      incomingSessionIds,
+      "Session ID",
+      `${query.resolved ? "resolved" : "active"} snapshot for ${query.projectPath}`,
+    );
+    const incomingById = new Map(incoming.map((session) => [session.sessionId, session]));
+    const incomingIds = new Set(incomingById.keys());
+    const retained = model.sessions.filter((session) => !belongsToGroup(session));
+    for (const session of retained) {
+      const replacement = incomingById.get(session.sessionId);
+      if (!replacement) continue;
+      if (session.projectPath !== replacement.projectPath)
+        throw new CatalogIdentityCollisionError("Session ID", [session.sessionId], {
+          context: `snapshot for ${query.projectPath}`,
+        });
+    }
+    // Active and resolved observers subscribe and scan independently. A resolve can
+    // therefore leave one lane's pre-transition Snapshot in the Model when the
+    // other lane's post-transition Snapshot arrives. They describe one identity,
+    // so the arriving lane observation supersedes the stale opposite-lane summary.
     const sessions = [
-      ...model.sessions
-        .filter((session) => !belongsToGroup(session))
+      ...retained
+        .filter((session) => !incomingIds.has(session.sessionId))
         .map((session) => toSnapshot(session)),
       ...incoming,
     ];
@@ -60,6 +81,7 @@ export function applySessionCatalogGroupUpdate(
         .map((session) => session.sessionId)
         .filter((id): id is string => typeof id === "string"),
       "Session ID",
+      `merged snapshot for ${query.projectPath}`,
     );
     sessions.sort(compareSessionSummaries);
     batch(() => {
@@ -82,11 +104,14 @@ export function applySessionCatalogGroupUpdate(
   assertUnique(
     incoming.map((session) => session.sessionId),
     "Session ID",
+    `${query.resolved ? "resolved" : "active"} event for ${query.projectPath}`,
   );
   for (const session of incoming) {
     const existing = model.find(session.sessionId);
     if (existing && existing.projectPath !== session.projectPath)
-      throw new Error(`Session ID collision: ${session.sessionId}`);
+      throw new CatalogIdentityCollisionError("Session ID", [session.sessionId], {
+        context: `event for ${query.projectPath}`,
+      });
   }
   batch(() => {
     for (const session of incoming) {
@@ -169,6 +194,28 @@ const compareSessionSummaries = (
   return (right.modifiedAt ?? "").localeCompare(left.modifiedAt ?? "");
 };
 
-function assertUnique(values: readonly string[], label: string) {
-  if (new Set(values).size !== values.length) throw new Error(`${label} collision`);
+export class CatalogIdentityCollisionError extends Error {
+  readonly values: readonly string[];
+  readonly context?: string;
+
+  constructor(label: string, values: readonly string[], options?: { readonly context?: string }) {
+    const uniqueValues = [...new Set(values)];
+    super(
+      `${label} collision: ${uniqueValues.join(", ")}${options?.context ? ` (${options.context})` : ""}`,
+    );
+    this.name = "CatalogIdentityCollisionError";
+    this.values = uniqueValues;
+    this.context = options?.context;
+  }
+}
+
+function assertUnique(values: readonly string[], label: string, context?: string) {
+  const seen = new Set<string>();
+  const duplicates = new Set<string>();
+  for (const value of values) {
+    if (seen.has(value)) duplicates.add(value);
+    else seen.add(value);
+  }
+  if (duplicates.size > 0)
+    throw new CatalogIdentityCollisionError(label, [...duplicates], { context });
 }
