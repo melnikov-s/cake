@@ -20,7 +20,10 @@ export const SettingsAppearanceSection = observer(function SettingsAppearanceSec
         </div>
       </header>
       <div className="grid gap-4">
-        <label className="flex items-center justify-between gap-6 text-sm">
+        <label
+          id="setting-theme"
+          className="scroll-mt-8 flex items-center justify-between gap-6 text-sm"
+        >
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <strong className="text-xs font-medium text-foreground">Theme</strong>
             <small className="text-[11px] text-muted-foreground">

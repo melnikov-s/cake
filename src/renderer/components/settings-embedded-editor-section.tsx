@@ -24,7 +24,10 @@ export const SettingsEmbeddedEditorSection = observer(function SettingsEmbeddedE
         </p>
       </header>
       <div className="grid gap-4">
-        <label className="flex items-center justify-between gap-6 text-sm">
+        <label
+          id="setting-editor-sidebar-auto-hide"
+          className="scroll-mt-8 flex items-center justify-between gap-6 text-sm"
+        >
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <strong className="text-xs font-medium text-foreground">
               Auto-hide project sidebar
@@ -48,7 +51,10 @@ export const SettingsEmbeddedEditorSection = observer(function SettingsEmbeddedE
           </Select>
         </label>
         {settings.sidebarAutoHide === "below-width" ? (
-          <label className="flex items-center justify-between gap-6 text-sm">
+          <label
+            id="setting-editor-sidebar-auto-hide-width"
+            className="scroll-mt-8 flex items-center justify-between gap-6 text-sm"
+          >
             <span className="flex min-w-0 flex-1 flex-col gap-0.5">
               <strong className="text-xs font-medium text-foreground">Window width</strong>
               <small className="text-[11px] text-muted-foreground">

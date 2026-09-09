@@ -2,12 +2,14 @@ import { useEffect, useState } from "react";
 import { Input } from "../ui/input";
 
 export function SettingsTextField({
+  id,
   label,
   description,
   value,
   placeholder,
   onApply,
 }: {
+  id?: string;
   label: string;
   description: string;
   value: string;
@@ -17,7 +19,7 @@ export function SettingsTextField({
   const [draft, setDraft] = useState(value);
   useEffect(() => setDraft(value), [value]);
   return (
-    <label className="flex items-center justify-between gap-6 text-sm">
+    <label id={id} className="scroll-mt-8 flex items-center justify-between gap-6 text-sm">
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <strong className="text-xs font-medium text-foreground">{label}</strong>
         <small className="text-[11px] text-muted-foreground">{description}</small>

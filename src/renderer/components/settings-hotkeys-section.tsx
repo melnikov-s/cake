@@ -38,8 +38,9 @@ export const SettingsHotkeysSection = observer(function SettingsHotkeysSection({
                   .filter((definition) => definition.group === group)
                   .map((definition) => (
                     <div
+                      id={`setting-hotkey-${definition.id}`}
                       key={definition.id}
-                      className="flex min-h-16 items-center justify-between gap-6 py-3"
+                      className="scroll-mt-8 flex min-h-16 items-center justify-between gap-6 py-3"
                     >
                       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                         <strong className="text-xs font-medium text-foreground">

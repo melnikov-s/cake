@@ -5,9 +5,11 @@ import { Button } from "../ui/button";
 import { Textarea } from "../ui/textarea";
 
 export function SettingsPackagesField({
+  id,
   value,
   onApply,
 }: {
+  id?: string;
   value: PiSettings["packages"];
   onApply(value: PiSettings["packages"]): void;
 }) {
@@ -27,7 +29,7 @@ export function SettingsPackagesField({
     }
   };
   return (
-    <label className="flex flex-col gap-2 text-sm">
+    <label id={id} className="scroll-mt-8 flex flex-col gap-2 text-sm">
       <span className="flex flex-col gap-0.5">
         <strong className="text-xs font-medium text-foreground">Packages</strong>
         <small className="text-[11px] text-muted-foreground">

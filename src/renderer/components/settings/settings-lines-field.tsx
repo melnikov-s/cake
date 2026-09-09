@@ -2,11 +2,13 @@ import { useEffect, useState } from "react";
 import { Textarea } from "../ui/textarea";
 
 export function SettingsLinesField({
+  id,
   label,
   description,
   value,
   onApply,
 }: {
+  id?: string;
   label: string;
   description: string;
   value: ReadonlyArray<string>;
@@ -16,7 +18,7 @@ export function SettingsLinesField({
   const [draft, setDraft] = useState(serialized);
   useEffect(() => setDraft(serialized), [serialized]);
   return (
-    <label className="flex flex-col gap-2 text-sm">
+    <label id={id} className="scroll-mt-8 flex flex-col gap-2 text-sm">
       <span className="flex flex-col gap-0.5">
         <strong className="text-xs font-medium text-foreground">{label}</strong>
         <small className="text-[11px] text-muted-foreground">{description}</small>

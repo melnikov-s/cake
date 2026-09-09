@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { observer } from "r-state-tree/react";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
@@ -13,80 +13,7 @@ import { SettingsPackagesField } from "./settings/settings-packages-field";
 import { SettingsTextField } from "./settings/settings-text-field";
 import { Input } from "./ui/input";
 import { SearchIcon } from "./ui/icons";
-import type { SettingsPageId } from "../stores/SettingsStore";
-
-type SettingsNavItem = {
-  page: SettingsPageId;
-  label: string;
-  description?: string;
-  keywords: string;
-};
-
-const SETTINGS_NAV_GROUPS: ReadonlyArray<{
-  label: string;
-  items: readonly SettingsNavItem[];
-}> = [
-  {
-    label: "Intelligence",
-    items: [
-      {
-        page: "models",
-        label: "Models",
-        description: "Defaults and presets",
-        keywords: "current chat reasoning utility default agent model fast mode",
-      },
-      {
-        page: "providers",
-        label: "Providers",
-        description: "Accounts and API keys",
-        keywords: "authentication login oauth token api key accounts",
-      },
-      {
-        page: "agent",
-        label: "Agent",
-        description: "Behavior and content",
-        keywords:
-          "auto compact retry thinking steering follow-up images skill commands cache notices",
-      },
-    ],
-  },
-  {
-    label: "Pi runtime",
-    items: [
-      {
-        page: "runtime",
-        label: "Execution & resources",
-        keywords: "shell npm packages extensions skills prompts reload paths command",
-      },
-      {
-        page: "network",
-        label: "Network & privacy",
-        keywords: "transport websocket sse timeout trust safety anthropic usage warning telemetry",
-      },
-    ],
-  },
-  {
-    label: "Application",
-    items: [
-      {
-        page: "appearance",
-        label: "Appearance",
-        keywords: "theme light dark system work logs expansion view mode",
-      },
-      {
-        page: "hotkeys",
-        label: "Hotkeys",
-        description: "Keyboard shortcuts",
-        keywords: "keys shortcuts keyboard bindings commands",
-      },
-      {
-        page: "editor",
-        label: "VS Code",
-        keywords: "editor embedded sidebar auto hide width vscode",
-      },
-    ],
-  },
-];
+import { SETTINGS_NAV_GROUPS, searchSettings } from "../lib/settings-search";
 
 function queueMode(value: string) {
   if (value === "one-at-a-time" || value === "all") return value;
@@ -127,22 +54,31 @@ export const SettingsPage = observer(function SettingsPage({
   const providerGroups = settings.providerGroups;
   const utilityModel = utility.model;
   const [searchQuery, setSearchQuery] = useState("");
-  const searchTerms = searchQuery.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
-  const visibleNavGroups = SETTINGS_NAV_GROUPS.map((group) => ({
-    ...group,
-    items:
-      searchTerms.length > 0
-        ? group.items.filter((item) => {
-            const searchableText =
-              `${item.label} ${item.description ?? ""} ${item.keywords}`.toLocaleLowerCase();
-            return searchTerms.every((term) => searchableText.includes(term));
-          })
-        : group.items,
-  })).filter((group) => group.items.length > 0);
-  const searchResultCount = visibleNavGroups.reduce(
-    (count, group) => count + group.items.length,
-    0,
-  );
+  const [scrollRequest, setScrollRequest] = useState<{ targetId: string }>();
+  const hotkeySearchItems = settings.hotkeys.definitions.map((definition) => ({
+    page: "hotkeys" as const,
+    label: definition.label,
+    targetId: `setting-hotkey-${definition.id}`,
+    keywords: definition.description,
+  }));
+  const searchResults = searchSettings(searchQuery, hotkeySearchItems);
+  const searching = searchQuery.trim().length > 0;
+  const searchResultCount = searchResults.reduce((count, group) => count + group.items.length, 0);
+
+  useEffect(() => {
+    if (!scrollRequest) return;
+    const target = document.getElementById(scrollRequest.targetId);
+    if (target) {
+      target.scrollIntoView?.({ behavior: "smooth", block: "start" });
+      return;
+    }
+    document.getElementById("settings-content-scroll")?.scrollTo?.({ top: 0, behavior: "smooth" });
+  }, [activePage, scrollRequest]);
+
+  const selectSearchResult = (page: (typeof searchResults)[number]["page"], targetId: string) => {
+    settings.selectPage(page);
+    setScrollRequest({ targetId });
+  };
   return (
     <div className="grid h-full min-h-0 grid-cols-[220px_minmax(0,1fr)]">
       <aside
@@ -171,32 +107,55 @@ export const SettingsPage = observer(function SettingsPage({
           />
         </div>
         <nav className="grid gap-5" aria-label="Settings pages">
-          {visibleNavGroups.map((group) => (
-            <div key={group.label}>
-              <p className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/75">
-                {group.label}
-              </p>
-              <div className="grid gap-0.5">
-                {group.items.map((item) => (
-                  <NavItem
-                    key={item.page}
-                    label={item.label}
-                    description={item.description}
-                    active={activePage === item.page}
-                    onClick={() => settings.selectPage(item.page)}
-                  />
-                ))}
-              </div>
-            </div>
-          ))}
-          {searchTerms.length > 0 && searchResultCount === 0 && (
+          {searching
+            ? searchResults.map((group) => (
+                <div key={group.page}>
+                  <p className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/75">
+                    {group.label}
+                  </p>
+                  <div className="grid gap-0.5">
+                    {group.items.map((item) => (
+                      <NavItem
+                        key={item.targetId}
+                        label={item.label}
+                        active={
+                          activePage === item.page && scrollRequest?.targetId === item.targetId
+                        }
+                        onClick={() => selectSearchResult(item.page, item.targetId)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ))
+            : SETTINGS_NAV_GROUPS.map((group) => (
+                <div key={group.label}>
+                  <p className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/75">
+                    {group.label}
+                  </p>
+                  <div className="grid gap-0.5">
+                    {group.items.map((item) => (
+                      <NavItem
+                        key={item.page}
+                        label={item.label}
+                        description={item.description}
+                        active={activePage === item.page}
+                        onClick={() => settings.selectPage(item.page)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ))}
+          {searching && searchResultCount === 0 && (
             <p className="px-2 text-xs leading-relaxed text-muted-foreground" role="status">
               No settings found for “{searchQuery.trim()}”.
             </p>
           )}
         </nav>
       </aside>
-      <div className="min-h-0 overflow-y-auto [scrollbar-gutter:stable]">
+      <div
+        id="settings-content-scroll"
+        className="min-h-0 overflow-y-auto [scrollbar-gutter:stable]"
+      >
         <div className="mx-auto max-w-4xl px-8 py-8 pb-16">
           <div className="mb-8">
             <span className="text-xs font-medium text-accent">Cake / Pi</span>
@@ -419,12 +378,14 @@ export const SettingsPage = observer(function SettingsPage({
               {pi ? (
                 <div className="grid gap-4">
                   <SettingsToggle
+                    id="setting-auto-compact"
                     label="Auto-compact"
                     description="Compact context automatically when it gets too large."
                     checked={pi.autoCompact}
                     onChange={(value) => void providers.setPiSetting({ key: "autoCompact", value })}
                   />
                   <SettingsToggle
+                    id="setting-automatic-retry"
                     label="Automatic retry"
                     description="Retry transient provider failures automatically."
                     checked={pi.retryEnabled}
@@ -433,6 +394,7 @@ export const SettingsPage = observer(function SettingsPage({
                     }
                   />
                   <SettingsToggle
+                    id="setting-hide-thinking"
                     label="Hide thinking"
                     description="Hide reasoning blocks in assistant responses."
                     checked={pi.hideThinkingBlock}
@@ -440,7 +402,10 @@ export const SettingsPage = observer(function SettingsPage({
                       void providers.setPiSetting({ key: "hideThinkingBlock", value })
                     }
                   />
-                  <label className="flex items-center justify-between gap-6 text-sm">
+                  <label
+                    id="setting-steering-mode"
+                    className="scroll-mt-8 flex items-center justify-between gap-6 text-sm"
+                  >
                     <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                       <strong className="text-xs font-medium text-foreground">Steering mode</strong>
                       <small className="text-[11px] text-muted-foreground">
@@ -462,7 +427,10 @@ export const SettingsPage = observer(function SettingsPage({
                       <option value="all">All at once</option>
                     </Select>
                   </label>
-                  <label className="flex items-center justify-between gap-6 text-sm">
+                  <label
+                    id="setting-follow-up-mode"
+                    className="scroll-mt-8 flex items-center justify-between gap-6 text-sm"
+                  >
                     <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                       <strong className="text-xs font-medium text-foreground">
                         Follow-up mode
@@ -509,6 +477,7 @@ export const SettingsPage = observer(function SettingsPage({
                 {pi ? (
                   <div className="grid gap-4">
                     <SettingsTextField
+                      id="setting-shell-path"
                       label="Shell path"
                       description="Custom shell executable. Leave empty to use Pi’s platform default."
                       value={pi.shellPath}
@@ -516,6 +485,7 @@ export const SettingsPage = observer(function SettingsPage({
                       onApply={(value) => void providers.setPiSetting({ key: "shellPath", value })}
                     />
                     <SettingsTextField
+                      id="setting-shell-command-prefix"
                       label="Shell command prefix"
                       description="Command prepended to every Pi shell invocation."
                       value={pi.shellCommandPrefix}
@@ -525,6 +495,7 @@ export const SettingsPage = observer(function SettingsPage({
                       }
                     />
                     <SettingsLinesField
+                      id="setting-npm-command"
                       label="npm command"
                       description="Command and arguments used for package operations, one argument per line."
                       value={pi.npmCommand}
@@ -562,22 +533,26 @@ export const SettingsPage = observer(function SettingsPage({
                 {pi ? (
                   <div className="grid gap-4">
                     <SettingsPackagesField
+                      id="setting-packages"
                       value={pi.packages}
                       onApply={(value) => void providers.setPiSetting({ key: "packages", value })}
                     />
                     <SettingsLinesField
+                      id="setting-extension-paths"
                       label="Extension paths"
                       description="One path, glob, inclusion, or exclusion per line."
                       value={pi.extensions}
                       onApply={(value) => void providers.setPiSetting({ key: "extensions", value })}
                     />
                     <SettingsLinesField
+                      id="setting-skill-paths"
                       label="Skill paths"
                       description="One path, glob, inclusion, or exclusion per line."
                       value={pi.skills}
                       onApply={(value) => void providers.setPiSetting({ key: "skills", value })}
                     />
                     <SettingsLinesField
+                      id="setting-prompt-paths"
                       label="Prompt paths"
                       description="One path, glob, inclusion, or exclusion per line."
                       value={pi.prompts}
@@ -608,6 +583,7 @@ export const SettingsPage = observer(function SettingsPage({
               {pi ? (
                 <div className="grid gap-4">
                   <SettingsToggle
+                    id="setting-auto-resize-images"
                     label="Auto-resize images"
                     description="Resize large images for better model compatibility."
                     checked={pi.autoResizeImages}
@@ -616,12 +592,14 @@ export const SettingsPage = observer(function SettingsPage({
                     }
                   />
                   <SettingsToggle
+                    id="setting-block-images"
                     label="Block images"
                     description="Prevent images from being sent to model providers."
                     checked={pi.blockImages}
                     onChange={(value) => void providers.setPiSetting({ key: "blockImages", value })}
                   />
                   <SettingsToggle
+                    id="setting-skill-commands"
                     label="Skill commands"
                     description="Register discovered skills as /skill:name commands."
                     checked={pi.enableSkillCommands}
@@ -630,6 +608,7 @@ export const SettingsPage = observer(function SettingsPage({
                     }
                   />
                   <SettingsToggle
+                    id="setting-cache-miss-notices"
                     label="Cache miss notices"
                     description="Show notices for significant prompt-cache misses."
                     checked={pi.showCacheMissNotices}
@@ -659,7 +638,10 @@ export const SettingsPage = observer(function SettingsPage({
                 </header>
                 {pi ? (
                   <div className="grid gap-4">
-                    <label className="flex items-center justify-between gap-6 text-sm">
+                    <label
+                      id="setting-transport"
+                      className="scroll-mt-8 flex items-center justify-between gap-6 text-sm"
+                    >
                       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                         <strong className="text-xs font-medium text-foreground">Transport</strong>
                         <small className="text-[11px] text-muted-foreground">
@@ -683,7 +665,10 @@ export const SettingsPage = observer(function SettingsPage({
                         <option value="websocket-cached">WebSocket cached</option>
                       </Select>
                     </label>
-                    <label className="flex items-center justify-between gap-6 text-sm">
+                    <label
+                      id="setting-http-idle-timeout"
+                      className="scroll-mt-8 flex items-center justify-between gap-6 text-sm"
+                    >
                       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                         <strong className="text-xs font-medium text-foreground">
                           HTTP idle timeout
@@ -731,7 +716,10 @@ export const SettingsPage = observer(function SettingsPage({
                 </header>
                 {pi ? (
                   <div className="grid gap-4">
-                    <label className="flex items-center justify-between gap-6 text-sm">
+                    <label
+                      id="setting-default-project-trust"
+                      className="scroll-mt-8 flex items-center justify-between gap-6 text-sm"
+                    >
                       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                         <strong className="text-xs font-medium text-foreground">
                           Default project trust
@@ -757,6 +745,7 @@ export const SettingsPage = observer(function SettingsPage({
                       </Select>
                     </label>
                     <SettingsToggle
+                      id="setting-anthropic-extra-usage-warning"
                       label="Anthropic extra usage warning"
                       description="Warn when subscription authentication may use paid extra usage."
                       checked={pi.anthropicExtraUsageWarning}
@@ -765,6 +754,7 @@ export const SettingsPage = observer(function SettingsPage({
                       }
                     />
                     <SettingsToggle
+                      id="setting-install-telemetry"
                       label="Install telemetry"
                       description="Send Pi’s anonymous version/update ping after detected updates."
                       checked={pi.enableInstallTelemetry}
