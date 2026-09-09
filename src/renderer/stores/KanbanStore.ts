@@ -85,7 +85,14 @@ export class KanbanStore extends Store<KanbanStoreProps> {
 
   get sessions() {
     const path = this.projectPath;
-    return path ? this.props.catalog.projectSessions(path) : [];
+    return path
+      ? this.props.catalog
+          .projectSessions(path)
+          .filter(
+            (session) =>
+              !session.familyParentSessionId || session.familyParentSessionId === session.sessionId,
+          )
+      : [];
   }
 
   sessionsInColumn(columnId: KanbanColumnId) {

@@ -130,6 +130,13 @@ describe("KanbanStore", () => {
     test.root[Symbol.dispose]();
   });
 
+  it("excludes Session Family children from the board", () => {
+    const test = fixture({ familyChild: true });
+    expect(test.store.sessions).toEqual([]);
+    expect(test.store.sessionsInColumn("active")).toEqual([]);
+    test.root[Symbol.dispose]();
+  });
+
   it("rejects invalid status names immediately and sends normalized valid names", async () => {
     const test = fixture();
     expect(await test.store.addColumn(" Active ", "rose")).toBe(false);
