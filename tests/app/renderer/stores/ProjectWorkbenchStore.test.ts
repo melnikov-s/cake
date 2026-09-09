@@ -1,6 +1,7 @@
 import { createStore, mount, toSnapshot } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
 import type { Client } from "../../../../src/renderer/client/Client";
+import { Session } from "../../../../src/renderer/models/Session";
 import type { ExtensionUiStore } from "../../../../src/renderer/stores/ExtensionUiStore";
 import type { ProjectCatalogStore } from "../../../../src/renderer/stores/ProjectCatalogStore";
 import { ProjectWorkbenchStore } from "../../../../src/renderer/stores/ProjectWorkbenchStore";
@@ -55,6 +56,23 @@ function mountWorkbench(
     client,
   );
   return { ...mounted, operations, selectSession };
+}
+
+function loadedSessionStub(model: { sessionFile: string }, workspacePath = "/project") {
+  return {
+    workspacePath,
+    model,
+    ideMode: false,
+    conversationSessionStore: {
+      composerStore: {
+        draftStore: {
+          requestFocus: vi.fn(),
+          setEditorContextAttachment: vi.fn(),
+        },
+      },
+    },
+    markRead: vi.fn(),
+  };
 }
 
 describe("ProjectWorkbenchStore", () => {
@@ -274,11 +292,17 @@ describe("ProjectWorkbenchStore startup selection", () => {
     }));
     const registerProject = vi.fn(async () => undefined);
     const open = vi.fn(async () => undefined);
-    const load = vi.fn();
+    const session = loadedSessionStub({ sessionFile: "/sessions/session-1.jsonl" });
+    let loaded = false;
+    const load = vi.fn(() => {
+      loaded = true;
+      return session;
+    });
     const registry = {
-      findSession: () => undefined,
+      findSession: () => (loaded ? session : undefined),
       load,
       pendingSessions: { isTemporary: () => false },
+      observationRetention: { retain: vi.fn() },
     } as unknown as SessionRegistryStore;
     const summary = {
       sessionId: "session-1",
@@ -316,7 +340,7 @@ describe("ProjectWorkbenchStore startup selection", () => {
     operations[Symbol.dispose]();
   });
 
-  it("selects an uncached session before its open request finishes", async () => {
+  it("keeps the current selection until an uncached session is hydrated", async () => {
     let finishOpen: (() => void) | undefined;
     const open = vi.fn(
       () =>
@@ -324,9 +348,16 @@ describe("ProjectWorkbenchStore startup selection", () => {
           finishOpen = resolve;
         }),
     );
+    const session = loadedSessionStub({ sessionFile: "/sessions/session-1.jsonl" });
+    let loaded = false;
     const registry = {
-      findSession: () => undefined,
-      load: vi.fn(),
+      findSession: () => (loaded ? session : undefined),
+      load: vi.fn(() => {
+        loaded = true;
+        return session;
+      }),
+      observationRetention: { retain: vi.fn() },
+      pendingSessions: { isTemporary: () => false },
     } as unknown as SessionRegistryStore;
     const catalog = {
       find: (sessionId: string) => ({
@@ -346,12 +377,52 @@ describe("ProjectWorkbenchStore startup selection", () => {
 
     const opening = store.openSession("session-1");
 
-    expect(selectSession).toHaveBeenCalledWith("session-1");
-    expect(store.activeSessionId).toBe("session-1");
+    expect(selectSession).not.toHaveBeenCalled();
+    expect(store.activeSessionId).toBeUndefined();
     expect(open).toHaveBeenCalled();
 
     finishOpen?.();
     await opening;
+    expect(selectSession).toHaveBeenCalledWith("session-1");
+    expect(store.activeSessionId).toBe("session-1");
+    root[Symbol.dispose]();
+    operations[Symbol.dispose]();
+  });
+
+  it("keeps the source session visible while a continuation snapshot hydrates", async () => {
+    const model = Session.create({ sessionId: "continuation", workingDirectory: "/project" });
+    const session = loadedSessionStub(model);
+    const registry = {
+      findSession: (sessionId: string) => (sessionId === "continuation" ? session : undefined),
+      load: vi.fn(),
+      observationRetention: { retain: vi.fn() },
+      pendingSessions: { isTemporary: () => false },
+    } as unknown as SessionRegistryStore;
+    const catalog = {
+      find: () => ({
+        sessionId: "continuation",
+        workingDirectory: "/project",
+        unread: false,
+      }),
+      projectOfManagedWorktree: () => undefined,
+    } as unknown as SessionCatalogStore;
+    const {
+      root,
+      subject: store,
+      operations,
+      selectSession,
+    } = mountWorkbench(registry, catalog, {
+      projectSessions: { open: vi.fn(async () => undefined) },
+    } as unknown as Client);
+
+    const opening = store.openSession("continuation");
+    await Promise.resolve();
+
+    expect(selectSession).not.toHaveBeenCalled();
+    model.sessionFile = "/sessions/continuation.jsonl";
+    await opening;
+    expect(selectSession).toHaveBeenCalledWith("continuation");
+
     root[Symbol.dispose]();
     operations[Symbol.dispose]();
   });

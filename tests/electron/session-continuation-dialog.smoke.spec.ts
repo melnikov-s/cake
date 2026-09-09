@@ -122,6 +122,17 @@ test("forks and hands off sessions across working directories", async () => {
       name: "Fork response with full context into new chat",
     });
     await expect(fork).toBeVisible({ timeout: 20_000 });
+    await page.evaluate(() => {
+      const flashes: string[] = [];
+      Object.assign(window, { continuationEmptySessionFlashes: flashes });
+      new MutationObserver(() => {
+        for (const heading of document.querySelectorAll(".transcript h1")) {
+          const text = heading.textContent ?? "";
+          if (text.includes("What should we build") || text.includes("What can I help"))
+            flashes.push(text);
+        }
+      }).observe(document.body, { childList: true, subtree: true });
+    });
     await fork.click({ force: true });
 
     const dialog = page.getByRole("dialog", { name: "Fork this conversation" });
@@ -196,9 +207,11 @@ test("forks and hands off sessions across working directories", async () => {
     // Hand the worktree fork back to the project root. The handoff dialog offers
     // both a child branch and a checkout-free destination, and writes the abridged
     // transcript into the selected Working Directory.
-    await page
-      .getByRole("button", { name: "Hand off response without tool history into new chat" })
-      .click({ force: true });
+    const rootHandoff = page.getByRole("button", {
+      name: "Hand off response without tool history into new chat",
+    });
+    await expect(rootHandoff).toBeEnabled();
+    await rootHandoff.click();
     const rootHandoffDialog = page.getByRole("dialog", { name: "Hand off this conversation" });
     await expect(
       rootHandoffDialog.getByRole("button", { name: "Branch off the current worktree" }),
@@ -241,6 +254,9 @@ test("forks and hands off sessions across working directories", async () => {
     await expect(page.getByRole("combobox", { name: "Message" })).toBeVisible();
     await expect(page.getByText("Cake could not find that session")).toHaveCount(0);
     await expect(resolvedParent).toBeVisible();
+    expect(
+      await page.evaluate(() => Reflect.get(window, "continuationEmptySessionFlashes")),
+    ).toEqual([]);
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

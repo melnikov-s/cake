@@ -1,4 +1,4 @@
-import { Store, child, createStore } from "r-state-tree";
+import { Store, batch, child, createStore, effect as reactiveEffect } from "r-state-tree";
 import type { ProjectSessionStartInput } from "../../domain/project-session-data";
 import type { SourceLocation } from "../../ipc/source-location";
 import type { ChatConfiguration } from "../../ipc/session-contract";
@@ -546,34 +546,40 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     const revision = ++this.sessionOpenRevision;
     if (!acceptedProjectOpen) this.projectOpenStore.cancelPending();
     const summary = this.props.catalog.find(sessionId);
-    const workspacePath =
-      summary?.workingDirectory ?? this.sessionRegistry.findSession(sessionId)?.workspacePath;
+    const existingSession = this.sessionRegistry.findSession(sessionId);
+    const workspacePath = summary?.workingDirectory ?? existingSession?.workspacePath;
     if (!workspacePath) throw new Error(`Cake could not find session ${sessionId}`);
     const alreadyActive = this.activeSessionId === sessionId;
-    this.props.selectSession(sessionId);
     this.error = undefined;
     this.errorDetails = undefined;
     this.errorSessionId = undefined;
-    this.markSessionRead(sessionId);
     if (
       alreadyActive &&
       workspacePath === this.projectOpenStore.projectPath &&
       sessionId === this.session?.sessionId
     ) {
+      this.props.selectSession(sessionId);
       this.restoreSessionPresentation();
       return;
     }
-    const cached = this.showLoadedSessionTarget(sessionId, true);
-    if (cached && this.sessionRegistry.pendingSessions.isTemporary(sessionId)) return;
+    if (existingSession && this.sessionRegistry.pendingSessions.isTemporary(sessionId)) {
+      this.activateLoadedSession(sessionId);
+      return;
+    }
+    const hydrated = Boolean(existingSession?.model.sessionFile);
+    if (hydrated) this.activateLoadedSession(sessionId);
+    else if (existingSession) this.sessionRegistry.observationRetention.retain(sessionId);
     try {
       await this.client.projectSessions.open(
         { sessionId, workingDirectory: workspacePath },
         { signal: this.signal },
       );
       if (this.signal.aborted || revision !== this.sessionOpenRevision) return;
-      if (!cached) {
-        this.sessionRegistry.load(sessionId, workspacePath);
-        this.showLoadedSessionTarget(sessionId, true);
+      if (!existingSession) this.sessionRegistry.load(sessionId, workspacePath);
+      if (!hydrated) {
+        const ready = await this.waitForSessionHydration(sessionId);
+        if (!ready || this.signal.aborted || revision !== this.sessionOpenRevision) return;
+        this.activateLoadedSession(sessionId);
       }
       this.props.projects.recordOpened(
         this.props.catalog.projectOfManagedWorktree(workspacePath) ?? workspacePath,
@@ -582,6 +588,37 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       if (!this.signal.aborted && revision === this.sessionOpenRevision)
         this.setError(error, "Opening Project Session", sessionId);
     }
+  }
+
+  private activateLoadedSession(sessionId: string) {
+    batch(() => {
+      this.props.selectSession(sessionId);
+      this.showLoadedSessionTarget(sessionId, true);
+      this.markSessionRead(sessionId);
+    });
+  }
+
+  /** Keeps the current transcript mounted until the destination's first snapshot is applied. */
+  private waitForSessionHydration(sessionId: string): Promise<boolean> {
+    if (this.sessionRegistry.findSession(sessionId)?.model.sessionFile)
+      return Promise.resolve(true);
+    if (this.signal.aborted) return Promise.resolve(false);
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (ready: boolean) => {
+        if (settled) return;
+        settled = true;
+        this.signal.removeEventListener("abort", abort);
+        dispose();
+        resolve(ready);
+      };
+      const abort = () => finish(false);
+      this.signal.addEventListener("abort", abort, { once: true });
+      const dispose = reactiveEffect(() => {
+        if (this.sessionRegistry.findSession(sessionId)?.model.sessionFile)
+          queueMicrotask(() => finish(true));
+      });
+    });
   }
 
   showLoadedSession(sessionId: string) {
