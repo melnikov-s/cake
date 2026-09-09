@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/icons";
 import { LoadingState } from "@/components/ui/loading-state";
 import { ResizeHandle } from "@/components/ui/resize-handle";
+import { UiHintMode } from "@/components/ui/ui-hint-mode";
 import { IdeWorkspace } from "@/components/ide-workspace";
 import { SettingsPage } from "@/components/settings-page";
 import { KanbanBoard } from "@/components/kanban-board";
@@ -834,6 +835,7 @@ export const App = observer(function App() {
       {!terminal.docked && (
         <QuakeTerminal store={terminal} retirement={root.workingDirectoryRetirementStore} />
       )}
+      <UiHintMode store={root.uiHintModeStore} />
       {store.agentAvailability === "unavailable" && projectOpen.projectPath && (
         <div className="fixed bottom-4 right-4 z-40 flex items-center gap-3 rounded-xl border border-border bg-card p-2.5 px-3 text-xs shadow-lg">
           <span>{store.agentAvailabilityReason ?? "The coding agent is unavailable."}</span>

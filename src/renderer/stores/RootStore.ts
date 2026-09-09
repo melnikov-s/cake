@@ -33,6 +33,7 @@ import { SessionCoordinationStore } from "./SessionCoordinationStore";
 import { resolveDraftUpdate } from "../../utils/resolve-draft-update";
 import type { RootProjection } from "../models/RootProjection";
 import { formatHotkey, type HotkeyActionId } from "../lib/hotkeys";
+import { UiHintModeStore } from "./UiHintModeStore";
 
 export class RootStore extends Store<{
   client: Client;
@@ -93,6 +94,11 @@ export class RootStore extends Store<{
     return createStore(FullscreenSurfaceStore, {
       setOpen: (surfaceId, open) => this.client.electron.setFullscreenSurfaceOpen(surfaceId, open),
     });
+  }
+
+  @child
+  get uiHintModeStore(): UiHintModeStore {
+    return createStore(UiHintModeStore);
   }
 
   get client() {
@@ -386,6 +392,7 @@ export class RootStore extends Store<{
   }
 
   handleHotkey(action: HotkeyActionId) {
+    if (action !== "show-ui-hints") this.uiHintModeStore.close();
     const selection = this.appShellStore.selection;
     const projectSelected = selection.kind === "project-session";
     const chat =
@@ -449,6 +456,9 @@ export class RootStore extends Store<{
         break;
       case "history-forward":
         this.navigateForward();
+        break;
+      case "show-ui-hints":
+        this.uiHintModeStore.toggle();
         break;
       case "toggle-work-logs":
         chat?.workLogPresentation.cycleExpansion();

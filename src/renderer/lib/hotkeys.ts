@@ -20,6 +20,7 @@ export const hotkeyActionIds = [
   "focus-pane-4",
   "history-back",
   "history-forward",
+  "show-ui-hints",
   "toggle-work-logs",
   "cycle-work-log-view",
   "open-hovered-message",
@@ -176,6 +177,13 @@ export const hotkeyDefinitions: readonly HotkeyDefinition[] = [
     label: "Open Settings",
     description: "Open Cake settings.",
     defaultBinding: "Mod+,",
+  },
+  {
+    id: "show-ui-hints",
+    group: "Navigation",
+    label: "Show UI hints",
+    description: "Label visible controls for keyboard activation.",
+    defaultBinding: "Mod+G",
   },
   {
     id: "toggle-work-logs",

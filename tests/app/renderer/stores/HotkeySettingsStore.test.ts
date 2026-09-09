@@ -16,6 +16,7 @@ describe("HotkeySettingsStore", () => {
       : { ctrlKey: true };
 
     expect(store.actionForEvent(keyboardEvent("b", platformModifier))).toBe("toggle-sidebar");
+    expect(store.actionForEvent(keyboardEvent("g", platformModifier))).toBe("show-ui-hints");
 
     store.assign("toggle-sidebar", "Mod+Shift+B");
 

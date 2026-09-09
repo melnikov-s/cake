@@ -48,13 +48,30 @@ test("remaps application hotkeys from Settings", async () => {
 
   try {
     const page = await application.firstWindow();
-    await expect(page.getByLabel("Message")).toBeVisible({ timeout: 20_000 });
+    const messageInput = page.getByRole("combobox", { name: "Message", exact: true });
+    await expect(messageInput).toBeVisible({ timeout: 20_000 });
     await page.waitForTimeout(1_000);
-    await page.getByRole("complementary").getByLabel("Open settings", { exact: true }).click();
+    const modifier = process.platform === "darwin" ? "Meta" : "Control";
+
+    await page.keyboard.press(`${modifier}+G`);
+    await expect(page.locator('[data-slot="ui-hint-overlay"]')).toBeVisible();
+    await expect(page.locator('[data-slot="ui-hint"]').first()).toBeVisible();
+    const messageHint = await messageInput.getAttribute("data-cake-hint-label");
+    expect(messageHint).toBeTruthy();
+    await page.keyboard.type(messageHint!);
+    await expect(messageInput).toBeFocused();
+    await expect(page.locator('[data-slot="ui-hint-overlay"]')).toHaveCount(0);
+
+    const settingsButton = page
+      .getByRole("complementary")
+      .getByLabel("Open settings", { exact: true });
+    await page.keyboard.press(`${modifier}+G`);
+    const settingsHint = await settingsButton.getAttribute("data-cake-hint-label");
+    expect(settingsHint).toBeTruthy();
+    await page.keyboard.type(settingsHint!);
     await page.getByRole("button", { name: "Hotkeys" }).click();
     await expect(page.getByRole("heading", { name: "Hotkeys" })).toBeVisible();
 
-    const modifier = process.platform === "darwin" ? "Meta" : "Control";
     const terminalShortcut = page.getByRole("button", { name: "Toggle terminal shortcut" });
     await expect(terminalShortcut).toContainText(process.platform === "darwin" ? "⌘`" : "Ctrl+`");
 
