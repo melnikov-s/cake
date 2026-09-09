@@ -209,6 +209,42 @@ permits, since it runs Oxlint first and then ESLint. Run focused tests and the
 relevant typecheck or build for the files changed. Preserve unrelated worktree
 changes.
 
+### Workflow and feature test depth
+
+- Default to focused integration tests for product features and workflows. Keep
+  the real domain policy, Store behavior, state transitions, and projections in
+  the test; replace only external boundaries with deterministic fake Services or
+  controlled clients.
+- Do not rely on shallow UI tests with hand-assembled component state as the main
+  proof of workflow behavior. Test the path from the authoritative operation
+  through its renderer projection or Store to the user-visible result whenever
+  that path is the feature contract.
+- A focused component test is appropriate for a presentation-only component or
+  reusable UI primitive. It is supplementary, not a substitute for workflow
+  integration coverage when behavior depends on main-owned facts, asynchronous
+  operations, persistence, queues, or multiple state transitions.
+- Build coherent snapshots using the same fields and identities supplied by the
+  authority. Assert the triggering case, the superficially similar case that
+  must not trigger the behavior, and the important transition sequence rather
+  than only a final static render.
+- Test concurrency, cancellation, stale requests, and retry behavior with
+  deterministic synchronization such as Effect `Deferred`, `Queue`, `Latch`, or
+  `Ref`. Assert the product invariant and every allowed outcome—for example,
+  cancellation either wins before work starts or is rejected after work starts,
+  but never reports success while the work still runs.
+- Fake the external boundary at the highest practical level while retaining the
+  implementation whose coordination is under test. For example, use a fake
+  `ManagedWorktrees` Layer to test domain-to-renderer behavior, or use the real
+  worktree engine with a fake `GitRunner` when its queue is under test. Do not use
+  real Git, Pi, subprocesses, elapsed-time sleeps, or Electron unless that
+  integration is itself the behavior being verified.
+- Prefer reusable realistic state builders such as running, queued, stalled,
+  and completed operation fixtures over ad hoc object literals that can encode
+  impossible or misleading combinations.
+- For bug fixes, place the regression at the lowest layer that owns the cause
+  and add cross-boundary integration coverage when the visible failure came from
+  translation between layers.
+
 Test commands are intentionally quiet so agent-facing output stays small: vitest
 prints one summary line when everything passes and only failing tests otherwise,
 and console logs from tests are suppressed. Pass `--reporter=default` (`pnpm test
