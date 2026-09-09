@@ -23,8 +23,15 @@ import { TerminalView } from "@/components/ui/terminal-view";
 import { formatHotkey } from "@/lib/hotkeys";
 import { cn } from "@/lib/utils";
 import type { TerminalStore } from "../stores/TerminalStore";
+import type { WorkingDirectoryRetirementStore } from "../stores/WorkingDirectoryRetirementStore";
 
-export const QuakeTerminal = observer(function QuakeTerminal({ store }: { store: TerminalStore }) {
+export const QuakeTerminal = observer(function QuakeTerminal({
+  store,
+  retirement,
+}: {
+  store: TerminalStore;
+  retirement: WorkingDirectoryRetirementStore;
+}) {
   const [height, setHeight] = useState(360);
   const resolutionTitleId = useId();
   const maxHeight = Math.max(220, Math.floor(window.innerHeight * 0.8));
@@ -33,13 +40,13 @@ export const QuakeTerminal = observer(function QuakeTerminal({ store }: { store:
   const target = store.activeTarget;
 
   useEffect(() => {
-    if (!store.resolutionRequest) return;
+    if (!retirement.confirmationRequest) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") store.cancelResolution();
+      if (event.key === "Escape") retirement.cancel();
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [store, store.resolutionRequest]);
+  }, [retirement, retirement.confirmationRequest]);
 
   return (
     <>
@@ -180,11 +187,11 @@ export const QuakeTerminal = observer(function QuakeTerminal({ store }: { store:
           onChange={setHeight}
         />
       </section>
-      {store.resolutionRequest && (
+      {retirement.confirmationRequest && (
         <DialogBackdrop
           className="z-[110]"
           aria-labelledby={resolutionTitleId}
-          onClose={() => store.cancelResolution()}
+          onClose={() => retirement.cancel()}
         >
           <Confirmation
             className="w-full max-w-md"
@@ -194,18 +201,18 @@ export const QuakeTerminal = observer(function QuakeTerminal({ store }: { store:
             <ConfirmationRequest>
               <ConfirmationTitle id={resolutionTitleId}>
                 Retire and stop running{" "}
-                {store.resolutionRequest.runningProgramCount === 1 ? "program" : "programs"}?
+                {retirement.confirmationRequest.runningProgramCount === 1 ? "program" : "programs"}?
               </ConfirmationTitle>
               <ConfirmationDescription>
-                {store.resolutionRequest.runningProgramCount === 1
+                {retirement.confirmationRequest.runningProgramCount === 1
                   ? "This Working Directory has a running terminal program. Continuing will stop it and close this directory’s terminals in every Cake window."
-                  : `These Working Directories have ${store.resolutionRequest.runningProgramCount} running terminal programs across Cake windows. Continuing will stop them and close those directories’ terminals in every window.`}
+                  : `These Working Directories have ${retirement.confirmationRequest.runningProgramCount} running terminal programs across Cake windows. Continuing will stop them and close those directories’ terminals in every window.`}
               </ConfirmationDescription>
               <ConfirmationActions>
-                <ConfirmationAction variant="outline" onClick={() => store.cancelResolution()}>
+                <ConfirmationAction variant="outline" onClick={() => retirement.cancel()}>
                   Cancel
                 </ConfirmationAction>
-                <ConfirmationAction onClick={() => void store.confirmResolution()}>
+                <ConfirmationAction onClick={() => void retirement.confirm()}>
                   Continue and stop
                 </ConfirmationAction>
               </ConfirmationActions>

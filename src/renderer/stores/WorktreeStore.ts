@@ -7,6 +7,7 @@ import type {
 } from "../../ipc/worktree-contract";
 import { describeError } from "../lib/error-details";
 import { ClientContext } from "./context/ClientContext";
+import type { WorkingDirectoryRetirementWorkflow } from "./WorkingDirectoryRetirementStore";
 
 const POLL_INTERVAL_MS = 5_000;
 
@@ -17,7 +18,7 @@ export interface WorktreeStoreProps {
   isStreaming(): boolean;
   onLanded(record: WorktreeRecord): Promise<void> | void;
   onDiscarded(record: WorktreeRecord): Promise<void> | void;
-  prepareWorkingDirectoryRetirement(workingDirectory: string): Promise<boolean>;
+  retirement: WorkingDirectoryRetirementWorkflow;
   onResolveWorkspace(
     workspacePath: string,
     options?: { workingDirectoryRetired?: boolean },
@@ -230,7 +231,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     this.phase = "discarding";
     this.error = undefined;
     try {
-      if (!(await this.props.prepareWorkingDirectoryRetirement(workspacePath))) {
+      if (!(await this.props.retirement.prepare([workspacePath]))) {
         if (!this.signal.aborted) this.phase = "idle";
         return;
       }

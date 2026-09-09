@@ -368,9 +368,12 @@ The window Store hierarchy mirrors the product surfaces:
   apply. The window-level terminal dock spans the workbench and follows the focused Project
   Session pane's Working Directory. Its tab collections are keyed by canonical Working Directory,
   so sessions in one checkout share terminals while different Managed Worktrees remain isolated.
-  Resolving one session preserves those terminals; retiring or discarding the Working Directory
-  closes the complete collection. Embedded VS Code temporarily replaces the Project Session split
-  presentation without destroying its layout.
+  `WorkingDirectoryRetirementStore` owns the window-local, non-persisted retirement preflight and
+  confirmation workflow shared by resolve, discard, and bulk cleanup. Main remains authoritative
+  for all-window terminal inspection and closure; `TerminalStore` only blocks and releases its local
+  tab projections while retirement is active. Resolving one session preserves those terminals;
+  retiring or discarding the Working Directory closes the complete collection. Embedded VS Code
+  temporarily replaces the Project Session split presentation without destroying its layout.
   `WorktreeCreationStore` owns staged-session disposition and worktree selection plus the
   coordinated create-worktree-then-create-named-session workflow used by Cake Chat and a Project
   Session agent's singular `session.create` control. That local control creates an independent

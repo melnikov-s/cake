@@ -28,8 +28,9 @@ function mountWorkbench(
   const operations = mount(createStore(SessionOperationCoordinatorStore));
   const mounted = mountWithClient(
     createStore(ProjectWorkbenchStore, {
-      prepareWorkingDirectoryRetirement:
-        workflow?.prepareWorkingDirectoryRetirement ?? (async () => true),
+      retirement: {
+        prepare: workflow?.prepareWorkingDirectoryRetirement ?? (async () => true),
+      },
       sessionRegistry: registry,
       operations,
       projects: {

@@ -27,6 +27,7 @@ import { NotificationStore } from "./NotificationStore";
 import { KanbanStore } from "./KanbanStore";
 import { ToastStore } from "./ToastStore";
 import { TerminalStore, type TerminalTarget } from "./TerminalStore";
+import { WorkingDirectoryRetirementStore } from "./WorkingDirectoryRetirementStore";
 import { SessionLayoutStore, type SessionSplitAxis } from "./SessionLayoutStore";
 import { SessionCoordinationStore } from "./SessionCoordinationStore";
 import { resolveDraftUpdate } from "../../utils/resolve-draft-update";
@@ -750,8 +751,7 @@ export class RootStore extends Store<{
         });
       },
       onWorktreeDiscarded: (record) => this.sessionCatalogStore.noteManagedWorktree(record),
-      prepareWorkingDirectoryRetirement: (workingDirectory) =>
-        this.terminalStore.prepareWorkingDirectoryRetirement([workingDirectory]),
+      retirement: this.workingDirectoryRetirementStore,
       onResolveWorktree: (workspacePath, options) =>
         this.projectWorkbenchStore.resolveWorktreeWorkspace(workspacePath, options),
       settings: () => this.settingsStore.appearance,
@@ -781,9 +781,18 @@ export class RootStore extends Store<{
   get terminalStore(): TerminalStore {
     return createStore(TerminalStore, {
       activeTarget: () => this.activeTerminalTarget(),
+      retirement: () => this.workingDirectoryRetirementStore,
       toggleAcceleratorHint: () =>
         formatHotkey(this.settingsStore.hotkeys.bindingFor("toggle-terminal")),
       newTabHotkey: () => this.settingsStore.hotkeys.bindingFor("new-terminal-tab"),
+    });
+  }
+
+  @child
+  get workingDirectoryRetirementStore(): WorkingDirectoryRetirementStore {
+    return createStore(WorkingDirectoryRetirementStore, {
+      onRetired: (workingDirectories) =>
+        this.terminalStore.releaseWorkingDirectories(workingDirectories),
     });
   }
 
@@ -945,8 +954,7 @@ export class RootStore extends Store<{
   @child
   get projectWorkbenchStore(): ProjectWorkbenchStore {
     return createStore(ProjectWorkbenchStore, {
-      prepareWorkingDirectoryRetirement: (workingDirectories) =>
-        this.terminalStore.prepareWorkingDirectoryRetirement(workingDirectories),
+      retirement: this.workingDirectoryRetirementStore,
       sessionRegistry: this.sessionRegistry,
       operations: this.sessionOperationCoordinator,
       projects: this.projectCatalogStore,

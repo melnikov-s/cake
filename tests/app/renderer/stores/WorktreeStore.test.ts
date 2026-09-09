@@ -52,7 +52,9 @@ const props = (activity = observable({ workspacePath: "/worktree", enabled: true
   isStreaming: () => false,
   onLanded: vi.fn(),
   onDiscarded: vi.fn(),
-  prepareWorkingDirectoryRetirement: vi.fn(async () => true),
+  retirement: {
+    prepare: vi.fn(async () => true),
+  },
   onResolveWorkspace: vi.fn(),
 });
 
@@ -158,7 +160,9 @@ describe("WorktreeStore", () => {
   it("does not discard a worktree when terminal retirement is cancelled", async () => {
     const discard = vi.fn(async () => undefined);
     const currentProps = props();
-    currentProps.prepareWorkingDirectoryRetirement = vi.fn(async () => false);
+    currentProps.retirement = {
+      prepare: vi.fn(async () => false),
+    };
     const { root, subject: store } = mountWithClient(createStore(WorktreeStore, currentProps), {
       managedWorktrees: {
         landing: vi.fn(async () => ({ status: worktreeStatus("/worktree") })),
@@ -166,7 +170,7 @@ describe("WorktreeStore", () => {
       },
     } as unknown as Client);
     await store.discard(false);
-    expect(currentProps.prepareWorkingDirectoryRetirement).toHaveBeenCalledWith("/worktree");
+    expect(currentProps.retirement.prepare).toHaveBeenCalledWith(["/worktree"]);
     expect(discard).not.toHaveBeenCalled();
     root[Symbol.dispose]();
   });

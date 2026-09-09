@@ -506,11 +506,17 @@ export const App = observer(function App() {
             projectChat={session.chatStore}
             projectComposerHeader={projectComposerHeader}
             sessionTitle={store.sessionTitle}
-            terminalDock={terminal.docked ? <QuakeTerminal store={terminal} /> : undefined}
+            terminalDock={
+              terminal.docked ? (
+                <QuakeTerminal store={terminal} retirement={root.workingDirectoryRetirementStore} />
+              ) : undefined
+            }
             transcriptBehavior={projectTranscriptBehavior}
           />
         </StoreProvider>
-        {!terminal.docked && <QuakeTerminal store={terminal} />}
+        {!terminal.docked && (
+          <QuakeTerminal store={terminal} retirement={root.workingDirectoryRetirementStore} />
+        )}
         <SessionContinuationDialog store={store.sessionContinuationStore} />
       </>
     );
@@ -742,7 +748,9 @@ export const App = observer(function App() {
             onClose={(paneId) => root.closeSessionPane(paneId)}
           />
         )}
-        {terminal.docked && <QuakeTerminal store={terminal} />}
+        {terminal.docked && (
+          <QuakeTerminal store={terminal} retirement={root.workingDirectoryRetirementStore} />
+        )}
       </section>
       <CommandPane store={store} extensionUi={extensionUi} />
       {store.commandPaneStore.pane && (
@@ -821,7 +829,9 @@ export const App = observer(function App() {
           </button>
         ))}
       </ToastHost>
-      {!terminal.docked && <QuakeTerminal store={terminal} />}
+      {!terminal.docked && (
+        <QuakeTerminal store={terminal} retirement={root.workingDirectoryRetirementStore} />
+      )}
       {store.agentAvailability === "unavailable" && projectOpen.projectPath && (
         <div className="fixed bottom-4 right-4 z-40 flex items-center gap-3 rounded-xl border border-border bg-card p-2.5 px-3 text-xs shadow-lg">
           <span>{store.agentAvailabilityReason ?? "The coding agent is unavailable."}</span>

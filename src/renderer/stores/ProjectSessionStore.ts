@@ -53,7 +53,7 @@ export interface ProjectSessionStoreProps extends SessionTarget {
   onWorktreeDiscarded(
     record: Parameters<WorktreeStoreProps["onDiscarded"]>[0],
   ): Promise<void> | void;
-  prepareWorkingDirectoryRetirement(workingDirectory: string): Promise<boolean>;
+  retirement: WorktreeStoreProps["retirement"];
   onResolveWorktree: WorktreeStoreProps["onResolveWorkspace"];
   settings?(): AppearanceSettingsStore | undefined;
 }
@@ -205,7 +205,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       isStreaming: () => this.isStreaming,
       onLanded: this.props.onWorktreeLanded,
       onDiscarded: this.props.onWorktreeDiscarded,
-      prepareWorkingDirectoryRetirement: this.props.prepareWorkingDirectoryRetirement,
+      retirement: this.props.retirement,
       onResolveWorkspace: this.props.onResolveWorktree,
     });
   }

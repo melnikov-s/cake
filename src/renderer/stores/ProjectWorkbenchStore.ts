@@ -22,9 +22,10 @@ import { SessionManagementStore } from "./SessionManagementStore";
 import { SessionContinuationStore } from "./SessionContinuationStore";
 import { WorktreeCreationStore, type WorktreeDraftChoice } from "./WorktreeCreationStore";
 import { ProjectOpenStore, type ProjectOpenResult } from "./ProjectOpenStore";
+import type { WorkingDirectoryRetirementWorkflow } from "./WorkingDirectoryRetirementStore";
 
 export interface ProjectWorkbenchStoreProps {
-  prepareWorkingDirectoryRetirement(workingDirectories: readonly string[]): Promise<boolean>;
+  retirement: WorkingDirectoryRetirementWorkflow;
   sessionRegistry: SessionRegistryStore;
   operations: SessionOperationCoordinatorStore;
   projects: ProjectCatalogStore;
@@ -311,10 +312,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       const plan = await this.client.managedWorktrees.inspectResolvedForProject(path, {
         signal: this.signal,
       });
-      if (
-        this.signal.aborted ||
-        !(await this.props.prepareWorkingDirectoryRetirement(plan.workingDirectories))
-      )
+      if (this.signal.aborted || !(await this.props.retirement.prepare(plan.workingDirectories)))
         return false;
       const result = await this.client.managedWorktrees.discardResolvedForProject(path, {
         signal: this.signal,
@@ -469,7 +467,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   ) {
     if (
       !options?.workingDirectoryRetired &&
-      !(await this.props.prepareWorkingDirectoryRetirement([workspacePath]))
+      !(await this.props.retirement.prepare([workspacePath]))
     )
       return;
     try {

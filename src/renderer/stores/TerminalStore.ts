@@ -1,5 +1,6 @@
 import { Store } from "r-state-tree";
 import { ClientContext } from "./context/ClientContext";
+import type { WorkingDirectoryRetirementStore } from "./WorkingDirectoryRetirementStore";
 
 export interface TerminalTarget {
   workingDirectory: string;
@@ -15,15 +16,10 @@ export interface TerminalEntry {
   error?: string;
 }
 
-interface PendingRetirement {
-  workingDirectories: string[];
-  keys: string[];
-  finish(proceed: boolean): void;
-}
-
 /** Owns the window's lazy, in-memory terminal collections, keyed by Working Directory. */
 export class TerminalStore extends Store<{
   activeTarget(): TerminalTarget | undefined;
+  retirement(): WorkingDirectoryRetirementStore;
   toggleAcceleratorHint(): string;
   newTabHotkey(): string;
 }> {
@@ -35,9 +31,6 @@ export class TerminalStore extends Store<{
   docked = false;
   entries: TerminalEntry[] = [];
   activeEntryKeys: Record<string, string> = {};
-  resolutionRequest: { runningProgramCount: number } | undefined;
-  private pendingRetirement: PendingRetirement | undefined;
-  private retiringDirectories: readonly string[] = [];
   private readonly dataListeners = new Map<string, Set<(data: string) => void>>();
   private readonly bufferedData = new Map<string, string>();
   private readonly orphanEvents = new Map<
@@ -66,7 +59,6 @@ export class TerminalStore extends Store<{
     this.effect(() => {
       const terminals = this.terminals;
       return () => {
-        this.pendingRetirement?.finish(false);
         for (const entry of this.entries) {
           if (entry.terminalId) void terminals.close(entry.terminalId).catch(() => undefined);
         }
@@ -177,7 +169,7 @@ export class TerminalStore extends Store<{
   }
 
   private async start(target: TerminalTarget, cols: number, rows: number, forceNew = false) {
-    if (this.retiringDirectories.includes(target.workingDirectory) || this.signal.aborted) return;
+    if (this.props.retirement().isRetiring(target.workingDirectory) || this.signal.aborted) return;
     const openTerminal = this.terminals.open;
     if (!openTerminal) return;
     const current = this.activeEntry;
@@ -287,73 +279,12 @@ export class TerminalStore extends Store<{
     };
   }
 
-  async prepareWorkingDirectoryRetirement(workingDirectories: readonly string[]) {
-    const directories = [...new Set(workingDirectories)];
-    if (directories.length === 0) return true;
-    if (this.retiringDirectories.length > 0 || this.signal.aborted) return false;
-    this.retiringDirectories = directories;
-    try {
-      // Main inspects the same all-window collection that retirement will close.
-      // A failed inspection must not be interpreted as an idle shell.
-      const statuses = await Promise.all(
-        directories.map((directory) => this.terminals.workingDirectoryStatus(directory)),
-      );
-      if (this.signal.aborted) return false;
-      const runningProgramCount = statuses.reduce(
-        (total, status) => total + status.runningProgramCount,
-        0,
-      );
-      const keys = this.entries
-        .filter((entry) => directories.includes(entry.target.workingDirectory))
-        .map((entry) => entry.key);
-      if (runningProgramCount === 0) {
-        await this.closeWorkingDirectories(directories, keys);
-        return true;
-      }
-      return await new Promise<boolean>((finish) => {
-        this.pendingRetirement = { workingDirectories: directories, keys, finish };
-        this.resolutionRequest = { runningProgramCount };
-      });
-    } finally {
-      this.retiringDirectories = [];
-    }
-  }
-
-  cancelResolution() {
-    this.finishRetirement(false);
-  }
-
-  async confirmResolution() {
-    const pending = this.pendingRetirement;
-    if (!pending) return;
-    this.pendingRetirement = undefined;
-    this.resolutionRequest = undefined;
-    try {
-      await this.closeWorkingDirectories(pending.workingDirectories, pending.keys);
-      pending.finish(true);
-    } catch {
-      pending.finish(false);
-    }
-  }
-
-  private finishRetirement(proceed: boolean) {
-    const pending = this.pendingRetirement;
-    if (!pending) return;
-    this.pendingRetirement = undefined;
-    this.resolutionRequest = undefined;
-    pending.finish(proceed);
-  }
-
-  private async closeWorkingDirectories(
-    workingDirectories: readonly string[],
-    keys: readonly string[],
-  ) {
-    await Promise.all(
-      workingDirectories.map((workingDirectory) =>
-        this.terminals.closeWorkingDirectory(workingDirectory),
-      ),
+  releaseWorkingDirectories(workingDirectories: readonly string[]) {
+    const keySet = new Set(
+      this.entries
+        .filter((entry) => workingDirectories.includes(entry.target.workingDirectory))
+        .map((entry) => entry.key),
     );
-    const keySet = new Set(keys);
     const removedTargetKeys = new Set(
       this.entries
         .filter((entry) => keySet.has(entry.key))
@@ -365,7 +296,7 @@ export class TerminalStore extends Store<{
         ([targetKey, entryKey]) => !removedTargetKeys.has(targetKey) || !keySet.has(entryKey),
       ),
     );
-    for (const key of keys) {
+    for (const key of keySet) {
       this.dataListeners.delete(key);
       this.bufferedData.delete(key);
     }

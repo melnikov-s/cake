@@ -2,9 +2,11 @@ import { createStore, observable } from "r-state-tree";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Client } from "../../../../src/renderer/client/Client";
 import { TerminalStore, type TerminalTarget } from "../../../../src/renderer/stores/TerminalStore";
+import { WorkingDirectoryRetirementStore } from "../../../../src/renderer/stores/WorkingDirectoryRetirementStore";
 import { mountWithClient } from "../mount-with-client";
 
 const stores: Disposable[] = [];
+const retirements = new WeakMap<TerminalStore, WorkingDirectoryRetirementStore>();
 
 const workingDirectoryTarget = (
   workingDirectory: string,
@@ -26,17 +28,27 @@ function mountTerminal(
     closeWorkingDirectory: async () => undefined,
     ...commands,
   };
+  const client = { terminals } as unknown as Client;
+  const terminalRef: { current?: TerminalStore } = {};
+  const retirementMount = mountWithClient(
+    createStore(WorkingDirectoryRetirementStore, {
+      onRetired: (workingDirectories) =>
+        terminalRef.current!.releaseWorkingDirectories(workingDirectories),
+    }),
+    client,
+  );
   const mounted = mountWithClient(
     createStore(TerminalStore, {
       activeTarget,
+      retirement: () => retirementMount.subject,
       toggleAcceleratorHint: () => "Ctrl+`",
       newTabHotkey: () => "Mod+T",
     }),
-    {
-      terminals,
-    } as unknown as Client,
+    client,
   );
-  stores.push(mounted.root);
+  terminalRef.current = mounted.subject;
+  retirements.set(mounted.subject, retirementMount.subject);
+  stores.push(mounted.root, retirementMount.root);
   return mounted.subject;
 }
 
@@ -56,7 +68,7 @@ describe("TerminalStore", () => {
       close,
     });
     const opening = store.toggle();
-    await store.prepareWorkingDirectoryRetirement(["/workspace/one"]);
+    await retirements.get(store)!.prepare(["/workspace/one"]);
     finishOpen({ terminalId: "late-terminal", shell: "zsh" });
     await opening;
     expect(store.entries).toHaveLength(0);
@@ -72,7 +84,7 @@ describe("TerminalStore", () => {
         }),
     });
     const opening = store.toggle();
-    await store.prepareWorkingDirectoryRetirement(["/workspace/one"]);
+    await retirements.get(store)!.prepare(["/workspace/one"]);
     failOpen(new Error("Directory removed"));
     await opening;
     expect(store.entries).toHaveLength(0);
@@ -84,10 +96,12 @@ describe("TerminalStore", () => {
       workingDirectoryStatus: async () => ({ runningProgramCount: 2 }),
       closeWorkingDirectory,
     });
-    const retiring = store.prepareWorkingDirectoryRetirement(["/workspace/one"]);
-    await vi.waitFor(() => expect(store.resolutionRequest?.runningProgramCount).toBe(2));
+    const retiring = retirements.get(store)!.prepare(["/workspace/one"]);
+    await vi.waitFor(() =>
+      expect(retirements.get(store)!.confirmationRequest?.runningProgramCount).toBe(2),
+    );
     expect(closeWorkingDirectory).not.toHaveBeenCalled();
-    store.cancelResolution();
+    retirements.get(store)!.cancel();
     await expect(retiring).resolves.toBe(false);
     expect(closeWorkingDirectory).not.toHaveBeenCalled();
   });
@@ -102,14 +116,14 @@ describe("TerminalStore", () => {
           finishStatus = resolve;
         }),
     });
-    const retiring = store.prepareWorkingDirectoryRetirement(["/workspace/one"]);
+    const retiring = retirements.get(store)!.prepare(["/workspace/one"]);
     await store.newTab();
-    await expect(store.prepareWorkingDirectoryRetirement(["/workspace/one"])).resolves.toBe(false);
+    await expect(retirements.get(store)!.prepare(["/workspace/one"])).resolves.toBe(false);
     finishStatus({ runningProgramCount: 1 });
-    await vi.waitFor(() => expect(store.resolutionRequest).toBeDefined());
+    await vi.waitFor(() => expect(retirements.get(store)!.confirmationRequest).toBeDefined());
     await store.newTab();
     expect(open).not.toHaveBeenCalled();
-    store.cancelResolution();
+    retirements.get(store)!.cancel();
     await retiring;
     await store.newTab();
     expect(open).toHaveBeenCalledTimes(1);
@@ -123,7 +137,7 @@ describe("TerminalStore", () => {
       },
       closeWorkingDirectory,
     });
-    await expect(store.prepareWorkingDirectoryRetirement(["/workspace/one"])).rejects.toThrow(
+    await expect(retirements.get(store)!.prepare(["/workspace/one"])).rejects.toThrow(
       "Inspection failed",
     );
     expect(closeWorkingDirectory).not.toHaveBeenCalled();
@@ -212,14 +226,14 @@ describe("TerminalStore", () => {
     });
     await store.toggle();
 
-    const prepared = store.prepareWorkingDirectoryRetirement(["/workspace/one"]);
+    const prepared = retirements.get(store)!.prepare(["/workspace/one"]);
     await vi.waitFor(() => {
-      expect(store.resolutionRequest).toEqual({ runningProgramCount: 1 });
+      expect(retirements.get(store)!.confirmationRequest).toEqual({ runningProgramCount: 1 });
     });
-    await store.confirmResolution();
+    await retirements.get(store)!.confirm();
 
     await expect(prepared).resolves.toBe(true);
-    expect(closeWorkingDirectory).toHaveBeenCalledWith("/workspace/one");
+    expect(closeWorkingDirectory).toHaveBeenCalledWith("/workspace/one", expect.any(Object));
     expect(store.entries).toHaveLength(0);
   });
 
@@ -232,10 +246,10 @@ describe("TerminalStore", () => {
       closeWorkingDirectory,
     });
     await store.toggle();
-    await expect(store.prepareWorkingDirectoryRetirement(["/workspace/one"])).resolves.toBe(true);
-    expect(workingDirectoryStatus).toHaveBeenCalledWith("/workspace/one");
-    expect(closeWorkingDirectory).toHaveBeenCalledWith("/workspace/one");
-    expect(store.resolutionRequest).toBeUndefined();
+    await expect(retirements.get(store)!.prepare(["/workspace/one"])).resolves.toBe(true);
+    expect(workingDirectoryStatus).toHaveBeenCalledWith("/workspace/one", expect.any(Object));
+    expect(closeWorkingDirectory).toHaveBeenCalledWith("/workspace/one", expect.any(Object));
+    expect(retirements.get(store)!.confirmationRequest).toBeUndefined();
     expect(store.entries).toHaveLength(0);
   });
 });
