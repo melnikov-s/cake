@@ -1,4 +1,5 @@
 import { toStoreEvent } from "../events/StoreEvent";
+import { cakeNativeHotkeyInputEventName } from "../lib/hotkeys";
 import type { Runtime } from "../runtime";
 import type { RootStore } from "../stores/RootStore";
 
@@ -7,6 +8,12 @@ export const observeApplicationEvents = (runtime: Runtime, root: RootStore) =>
   runtime.observe(
     (client) => client.events.application(),
     (event) => {
+      if (event.type === "application-hotkey-input") {
+        window.dispatchEvent(
+          new CustomEvent(cakeNativeHotkeyInputEventName, { detail: event, cancelable: true }),
+        );
+        return;
+      }
       const storeEvent = toStoreEvent(event);
       if (!storeEvent) return;
       try {

@@ -17,6 +17,15 @@ describe("HotkeySettingsStore", () => {
 
     expect(store.actionForEvent(keyboardEvent("b", platformModifier))).toBe("toggle-sidebar");
     expect(store.actionForEvent(keyboardEvent("g", platformModifier))).toBe("show-ui-hints");
+    expect(
+      store.actionForEvent(
+        new KeyboardEvent("keydown", {
+          key: "Dead",
+          code: "Backquote",
+          ...platformModifier,
+        }),
+      ),
+    ).toBe("toggle-terminal");
 
     store.assign("toggle-sidebar", "Mod+Shift+B");
 

@@ -109,6 +109,17 @@ const cakeEventSchemas = {
     exitCode: int,
   }),
   "terminal-toggle-requested": Schema.Struct({ type: Schema.Literal("terminal-toggle-requested") }),
+  "application-hotkey-input": Schema.Struct({
+    type: Schema.Literal("application-hotkey-input"),
+    key: stringMax(64),
+    code: stringMax(64),
+    metaKey: Schema.Boolean,
+    ctrlKey: Schema.Boolean,
+    altKey: Schema.Boolean,
+    shiftKey: Schema.Boolean,
+    repeat: Schema.Boolean,
+    isComposing: Schema.Boolean,
+  }),
   "embedded-editor-toggle-mode-requested": Schema.Struct({
     type: Schema.Literal("embedded-editor-toggle-mode-requested"),
   }),
@@ -155,6 +166,7 @@ export const applicationEventSchema = Schema.Union([
   cakeEventSchemas.notification,
   cakeEventSchemas["extension-ui-intent"],
   cakeEventSchemas["project-session-control-requested"],
+  cakeEventSchemas["application-hotkey-input"],
 ]);
 
 export const artifactEventSchema = Schema.Union([
@@ -203,6 +215,7 @@ export const cakeEventSchema = Schema.Union([
   cakeEventSchemas["terminal-data"],
   cakeEventSchemas["terminal-exited"],
   cakeEventSchemas["terminal-toggle-requested"],
+  cakeEventSchemas["application-hotkey-input"],
   cakeEventSchemas["embedded-editor-toggle-mode-requested"],
   cakeEventSchemas["embedded-editor-selection"],
   cakeEventSchemas["embedded-editor-back-to-agent"],

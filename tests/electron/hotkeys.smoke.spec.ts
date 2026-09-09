@@ -87,6 +87,19 @@ test("remaps application hotkeys from Settings", async () => {
     await page.getByRole("button", { name: "Hotkeys" }).click();
     const sidebarShortcut = page.getByRole("button", { name: "Toggle sidebar shortcut" });
     await sidebarShortcut.click();
+    await page.keyboard.press(`${modifier}+Backquote`);
+    await expect(sidebarShortcut).toContainText(process.platform === "darwin" ? "⌘`" : "Ctrl+`");
+    await expect(terminalShortcut).toContainText("Not assigned");
+    await page.getByRole("button", { name: "Back to chat" }).click();
+    await page.keyboard.press(`${modifier}+Backquote`);
+    await expect(page.locator('[data-slot="sidebar"]')).toHaveCount(0);
+    await page.keyboard.press(`${modifier}+Backquote`);
+    await expect(page.locator('[data-slot="sidebar"]')).toBeVisible();
+
+    await page.getByRole("complementary").getByLabel("Open settings", { exact: true }).click();
+    await page.getByRole("button", { name: "Hotkeys" }).click();
+    await page.getByRole("button", { name: "Reset all" }).click();
+    await sidebarShortcut.click();
     await expect(sidebarShortcut).toBeFocused();
     await page.evaluate(() => (document.activeElement as HTMLElement).blur());
     await page.keyboard.press(`${modifier}+Shift+B`);

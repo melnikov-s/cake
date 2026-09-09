@@ -17,6 +17,7 @@ export interface NativeEventsService {
       | "notification"
       | "extension-ui-intent"
       | "project-session-control-requested"
+      | "application-hotkey-input"
       | "renderer-events-ready"
     >
   >;

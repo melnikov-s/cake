@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { hotkeyFromKeyboardEvent, formatHotkey } from "@/lib/hotkeys";
+import {
+  cakeNativeHotkeyInputEventName,
+  hotkeyFromKeyboardEvent,
+  formatHotkey,
+} from "@/lib/hotkeys";
 import { Button } from "./button";
 import { cn } from "@/lib/utils";
 
@@ -43,14 +47,24 @@ export function HotkeyRecorder({
       onChange(binding);
       setRecording(false);
     };
+    const nativeHotkey = (event: WindowEventMap["cake-native-hotkey-input"]) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const binding = hotkeyFromKeyboardEvent(event.detail);
+      if (!binding) return;
+      onChange(binding);
+      setRecording(false);
+    };
     const pointerDown = (event: PointerEvent) => {
       if (event.target instanceof Node && !container.current?.contains(event.target))
         setRecording(false);
     };
     window.addEventListener("keydown", keyDown, { capture: true });
+    window.addEventListener(cakeNativeHotkeyInputEventName, nativeHotkey, { capture: true });
     window.addEventListener("pointerdown", pointerDown, { capture: true });
     return () => {
       window.removeEventListener("keydown", keyDown, { capture: true });
+      window.removeEventListener(cakeNativeHotkeyInputEventName, nativeHotkey, { capture: true });
       window.removeEventListener("pointerdown", pointerDown, { capture: true });
     };
   }, [onChange, onClear, recording]);

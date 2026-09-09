@@ -177,6 +177,25 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
     const ownerId = window.webContents.id;
     windows.set(window.id, window);
     window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+    window.webContents.on("before-input-event", (event, input) => {
+      // macOS reserves Command+Backquote for window cycling, so it never reaches the renderer.
+      // Claim that physical key here and forward it through the validated native-event stream so
+      // both the configurable hotkey dispatcher and recorder can handle it.
+      if (process.platform !== "darwin" || !input.meta || input.code !== "Backquote") return;
+      event.preventDefault();
+      if (input.type !== "keyDown" || input.isAutoRepeat) return;
+      sendTo(window.webContents, {
+        type: "application-hotkey-input",
+        key: input.key,
+        code: input.code,
+        metaKey: input.meta,
+        ctrlKey: input.control,
+        altKey: input.alt,
+        shiftKey: input.shift,
+        repeat: input.isAutoRepeat,
+        isComposing: false,
+      });
+    });
     window.webContents.on("context-menu", (_event, params) => {
       if (!params.isEditable && !params.selectionText && !params.misspelledWord && !params.linkURL)
         return;
@@ -694,6 +713,7 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
         "notification",
         "extension-ui-intent",
         "project-session-control-requested",
+        "application-hotkey-input",
       ),
     artifacts: (connectionId) =>
       focused(connectionId, "artifacts", "artifact-updated", "artifact-requested", "ui-request"),

@@ -21,7 +21,10 @@ export class HotkeySettingsStore extends Store {
 
   actionForEvent(event: KeyboardEvent): HotkeyActionId | undefined {
     const binding = hotkeyFromKeyboardEvent(event);
-    if (!binding) return undefined;
+    return binding ? this.actionForBinding(binding) : undefined;
+  }
+
+  actionForBinding(binding: string): HotkeyActionId | undefined {
     return hotkeyActionIds.find((id) => this.bindingFor(id) === binding);
   }
 

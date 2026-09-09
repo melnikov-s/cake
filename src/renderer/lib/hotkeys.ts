@@ -209,6 +209,24 @@ export const hotkeyDefinitions: readonly HotkeyDefinition[] = [
 ];
 
 export const cakeHotkeyEventName = "cake-hotkey";
+export const cakeNativeHotkeyInputEventName = "cake-native-hotkey-input";
+
+export interface HotkeyInput {
+  readonly key: string;
+  readonly code: string;
+  readonly metaKey: boolean;
+  readonly ctrlKey: boolean;
+  readonly altKey: boolean;
+  readonly shiftKey: boolean;
+  readonly repeat: boolean;
+  readonly isComposing: boolean;
+}
+
+declare global {
+  interface WindowEventMap {
+    "cake-native-hotkey-input": CustomEvent<HotkeyInput>;
+  }
+}
 
 const definitionById = new Map(hotkeyDefinitions.map((definition) => [definition.id, definition]));
 
@@ -216,7 +234,7 @@ export function defaultHotkeyBinding(id: HotkeyActionId) {
   return definitionById.get(id)?.defaultBinding ?? "";
 }
 
-export function hotkeyFromKeyboardEvent(event: KeyboardEvent): string | undefined {
+export function hotkeyFromKeyboardEvent(event: HotkeyInput): string | undefined {
   if (event.isComposing || event.repeat) return undefined;
   const modifiers = [
     (isMacPlatform ? event.metaKey : event.ctrlKey) ? "Mod" : undefined,

@@ -40,7 +40,12 @@ import { ArtifactsPanel } from "@/components/artifacts-panel";
 import { UiDialog } from "@/components/ui-dialog";
 import { CommandPane } from "@/components/command-pane";
 import { QuakeTerminal } from "@/components/quake-terminal";
-import { cakeHotkeyEventName } from "@/lib/hotkeys";
+import {
+  cakeHotkeyEventName,
+  cakeNativeHotkeyInputEventName,
+  hotkeyFromKeyboardEvent,
+  type HotkeyActionId,
+} from "@/lib/hotkeys";
 import { cn } from "@/lib/utils";
 import type { SourceLocation } from "../../ipc/source-location";
 import { toWorkspaceRelativePath } from "../../utils/workspace-relative-path";
@@ -159,25 +164,42 @@ export const App = observer(function App() {
   }, [root]);
 
   useEffect(() => {
+    const recordingHotkey = () =>
+      Boolean(document.querySelector('[data-slot="hotkey-recorder"][data-recording="true"]'));
+    const runAction = (action: HotkeyActionId, target: EventTarget | null) => {
+      if (action === "new-terminal-tab" && target instanceof Element && target.closest(".xterm"))
+        return;
+      if (action === "open-hovered-message")
+        window.dispatchEvent(new CustomEvent(cakeHotkeyEventName, { detail: action }));
+      else root.handleHotkey(action);
+    };
     const runHotkey = (event: globalThis.KeyboardEvent) => {
       if (event.defaultPrevented) return;
       const target = event.target;
       if (
-        document.querySelector('[data-slot="hotkey-recorder"][data-recording="true"]') ||
+        recordingHotkey() ||
         (target instanceof Element && target.closest('[data-slot="hotkey-recorder"]'))
       )
         return;
       const action = settings.hotkeys.actionForEvent(event);
       if (!action) return;
-      if (action === "new-terminal-tab" && target instanceof Element && target.closest(".xterm"))
-        return;
       event.preventDefault();
-      if (action === "open-hovered-message")
-        window.dispatchEvent(new CustomEvent(cakeHotkeyEventName, { detail: action }));
-      else root.handleHotkey(action);
+      runAction(action, target);
+    };
+    const runNativeHotkey = (event: WindowEventMap["cake-native-hotkey-input"]) => {
+      if (event.defaultPrevented || recordingHotkey()) return;
+      const binding = hotkeyFromKeyboardEvent(event.detail);
+      const action = binding ? settings.hotkeys.actionForBinding(binding) : undefined;
+      if (!action) return;
+      event.preventDefault();
+      runAction(action, null);
     };
     window.addEventListener("keydown", runHotkey, { capture: true });
-    return () => window.removeEventListener("keydown", runHotkey, { capture: true });
+    window.addEventListener(cakeNativeHotkeyInputEventName, runNativeHotkey);
+    return () => {
+      window.removeEventListener("keydown", runHotkey, { capture: true });
+      window.removeEventListener(cakeNativeHotkeyInputEventName, runNativeHotkey);
+    };
   }, [root, settings.hotkeys]);
 
   const projectTranscriptBehaviorFor = (paneSession: NonNullable<typeof session>) => ({
