@@ -164,14 +164,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   }
 
   get canSubmit() {
-    return (
-      this.props.canSubmit() &&
-      Boolean(
-        this.chatStore.draft.trim() ||
-        this.composerStore.attachments.length > 0 ||
-        this.composerStore.annotationDraft.annotations.length > 0,
-      )
-    );
+    return this.props.canSubmit() && Boolean(this.composerStore.draftStore.hasContent);
   }
 
   @computed
@@ -232,8 +225,6 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       projectPath: () => this.workspacePath,
       sessionId: () => this.sessionId,
       canonicalParts: () => this.canonicalParts,
-      draft: () => this.chatStore.draft,
-      setDraft: (value) => this.chatStore.setDraft(value),
       canSubmit: () => this.canSubmit,
       isStreaming: () => this.isStreaming,
       queueWhileStreaming: () => true,
@@ -378,8 +369,11 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       id: () => this.sessionId,
       parts: () => this.composerStore.parts,
       streaming: () => this.isStreaming,
+      draft: () => this.composerStore.draftStore.text,
+      setDraft: (value) => this.composerStore.draftStore.setText(value),
       submitting: () =>
-        this.composerStore.activeOperations.length > 0 || this.model.activeTurnIds.length > 0,
+        this.composerStore.deliveryStore.activeOperations.length > 0 ||
+        this.model.activeTurnIds.length > 0,
       stoppable: () => this.model.backgroundWorkActive,
       configuration: () => this.configurationStore,
       commands: () =>
@@ -404,19 +398,19 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       draftActivationCandidates: this.props.draftActivationCandidates,
       editLastUserMessage: (entryId) => this.composerStore.beginEditMessage(entryId),
       isDraftSession: () => this.props.registry.isDraftSession(this.sessionId),
-      editingMessage: () =>
-        Boolean(this.composerStore.editingEntryId || this.composerStore.editingDraftSession),
+      editingMessage: () => this.composerStore.editingMessage,
       abort: () => this.props.abort(),
-      attachments: () => this.composerStore.visibleAttachments,
-      addAttachments: () => this.composerStore.addAttachments(),
-      addPastedImages: (files) => this.composerStore.addPastedImages(files),
-      removeAttachment: (index) => this.composerStore.removeAttachment(index),
-      annotations: () => this.composerStore.annotationDraft.annotations,
-      addAnnotation: (annotation) => this.composerStore.annotationDraft.add(annotation),
-      updateAnnotation: (id, update) => this.composerStore.annotationDraft.update(id, update),
-      removeAnnotation: (id) => this.composerStore.annotationDraft.remove(id),
-      suggestFiles: (prefix) => this.composerStore.suggestFiles(prefix),
-      focusRequestRevision: () => this.composerStore.focusRequestRevision,
+      attachments: () => this.composerStore.draftStore.visibleAttachments,
+      addAttachments: () => this.composerStore.draftStore.addAttachments(),
+      addPastedImages: (files) => this.composerStore.draftStore.addPastedImages(files),
+      removeAttachment: (index) => this.composerStore.draftStore.removeAttachment(index),
+      annotations: () => this.composerStore.draftStore.annotationDraft.annotations,
+      addAnnotation: (annotation) => this.composerStore.draftStore.annotationDraft.add(annotation),
+      updateAnnotation: (id, update) =>
+        this.composerStore.draftStore.annotationDraft.update(id, update),
+      removeAnnotation: (id) => this.composerStore.draftStore.annotationDraft.remove(id),
+      suggestFiles: (prefix) => this.composerStore.draftStore.suggestFiles(prefix),
+      focusRequestRevision: () => this.composerStore.draftStore.focusRequestRevision,
       showComposerContextMenu: (selection, x, y) =>
         this.client.electron.showComposerContextMenu({ selection, x, y }, { signal: this.signal }),
       rewordComposerSelection: (selection, prompt) =>
@@ -431,7 +425,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       usage: () => this.model.usage,
       queuedPrompts: () => {
         return [
-          ...this.composerStore.queuedPrompts.map((entry) => ({
+          ...this.composerStore.promptQueueStore.prompts.map((entry) => ({
             ...entry,
             state: "queued" as const,
             editable: true,
@@ -439,10 +433,10 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
           ...this.runtimeQueuedPrompts,
         ];
       },
-      steerQueuedPrompt: (id) => this.composerStore.steerQueuedPrompt(id),
-      editQueuedPrompt: (id) => this.composerStore.editQueuedPrompt(id),
-      removeQueuedPrompt: (id) => this.composerStore.removeQueuedPrompt(id),
-      cancelSteering: () => this.composerStore.cancelSteering(),
+      steerQueuedPrompt: (id) => this.composerStore.promptQueueStore.steer(id),
+      editQueuedPrompt: (id) => this.composerStore.promptQueueStore.edit(id),
+      removeQueuedPrompt: (id) => this.composerStore.promptQueueStore.remove(id),
+      cancelSteering: () => this.composerStore.promptQueueStore.cancelSteering(),
       scheduledMessages: () => this.model.scheduledMessages,
       cancelScheduledMessage: (id) =>
         this.client.scheduledMessages.cancel(id, { signal: this.signal }),

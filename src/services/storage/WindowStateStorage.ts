@@ -1,7 +1,7 @@
 import { Context, Effect, FileSystem, Layer, Path, Schema, Semaphore } from "effect";
 import { atomicWriteFile, type AtomicFileStage } from "./internal/atomicFile";
 
-const WINDOW_STATE_DOCUMENT_VERSION = 3;
+const WINDOW_STATE_DOCUMENT_VERSION = 4;
 const WINDOW_STATE_DOCUMENT_NAME = "window-state.json";
 
 const JsonRecord = Schema.Record(Schema.String, Schema.Json);
@@ -173,6 +173,88 @@ const migrateVersion2WindowState = (snapshot: Schema.Schema.Type<typeof Schema.J
       },
     },
   };
+};
+
+/** Moves coherent draft state beneath ComposerDraftStore while retaining standalone Chat drafts. */
+const migrateVersion3WindowState = (snapshot: Schema.Schema.Type<typeof Schema.Json>) => {
+  const migrateSession = (value: Schema.Schema.Type<typeof Schema.Json>) => {
+    const session = decodeJsonRecord(value);
+    const children = decodeJsonRecord(session?.children);
+    if (!session || !children) return value;
+    const chat = decodeJsonRecord(children.chatStore) ?? {};
+    const chatState = decodeJsonRecord(chat.state) ?? {};
+    const composer = decodeJsonRecord(children.composerStore) ?? {};
+    const composerState = decodeJsonRecord(composer.state) ?? {};
+    const composerChildren = decodeJsonRecord(composer.children) ?? {};
+    const draft = decodeJsonRecord(composerChildren.draftStore) ?? {};
+    const draftState = decodeJsonRecord(draft.state) ?? {};
+    const nextChatState = { ...chatState };
+    const text = nextChatState.draft;
+    delete nextChatState.draft;
+    const nextComposerState = { ...composerState };
+    const attachments = nextComposerState.attachments;
+    const annotations = nextComposerState.annotations;
+    const editorContextAttachment = nextComposerState.editorContextAttachment;
+    delete nextComposerState.attachments;
+    delete nextComposerState.annotations;
+    delete nextComposerState.editorContextAttachment;
+    const draftEditorContext = draftState.editorContextAttachment ?? editorContextAttachment;
+    const migratedDraftState = {
+      ...draftState,
+      text: draftState.text ?? text ?? "",
+      attachments: draftState.attachments ?? attachments ?? [],
+      annotations: draftState.annotations ?? annotations ?? [],
+    };
+    const nextDraftState =
+      draftEditorContext === undefined
+        ? migratedDraftState
+        : { ...migratedDraftState, editorContextAttachment: draftEditorContext };
+    return {
+      ...session,
+      children: {
+        ...children,
+        chatStore: { ...chat, state: nextChatState },
+        composerStore: {
+          ...composer,
+          state: nextComposerState,
+          children: {
+            ...composerChildren,
+            draftStore: {
+              ...draft,
+              state: nextDraftState,
+              children: decodeJsonRecord(draft.children) ?? {},
+            },
+          },
+        },
+      },
+    };
+  };
+
+  const root = decodeJsonRecord(snapshot);
+  const children = decodeJsonRecord(root?.children);
+  if (!root || !children) return snapshot;
+  const registry = decodeJsonRecord(children.sessionRegistry);
+  const registryChildren = decodeJsonRecord(registry?.children);
+  const collection = decodeJsonRecord(children.cakeChatCollectionStore);
+  const collectionChildren = decodeJsonRecord(collection?.children);
+  const nextChildren = { ...children };
+  if (registry && registryChildren && Array.isArray(registryChildren.sessions))
+    nextChildren.sessionRegistry = {
+      ...registry,
+      children: {
+        ...registryChildren,
+        sessions: registryChildren.sessions.map(migrateSession),
+      },
+    };
+  if (collection && collectionChildren && Array.isArray(collectionChildren.loadedSessions))
+    nextChildren.cakeChatCollectionStore = {
+      ...collection,
+      children: {
+        ...collectionChildren,
+        loadedSessions: collectionChildren.loadedSessions.map(migrateSession),
+      },
+    };
+  return { ...root, children: nextChildren };
 };
 
 const migrateLegacyWindowState = Effect.fn("WindowStateStorage.migrateLegacy")(function* (
@@ -409,9 +491,12 @@ const migrateLegacyWindowState = Effect.fn("WindowStateStorage.migrateLegacy")(f
     try: () => JSON.stringify(migrated),
     catch: (cause) => new WindowStateMalformedDocumentError({ message: messageOf(cause) }),
   });
-  return yield* Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Json))(encoded).pipe(
+  const decoded = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Json))(
+    encoded,
+  ).pipe(
     Effect.mapError((cause) => new WindowStateMalformedDocumentError({ message: cause.message })),
   );
+  return migrateVersion3WindowState(decoded);
 });
 
 export const makeWindowStateStorageLive = (userDataDirectory: string) =>
@@ -457,7 +542,14 @@ export const makeWindowStateStorageLive = (userDataDirectory: string) =>
           if (envelope.success.version === WINDOW_STATE_DOCUMENT_VERSION)
             return envelope.success.data;
           if (envelope.success.version === 2) {
-            const migrated = migrateVersion2WindowState(envelope.success.data);
+            const migrated = migrateVersion3WindowState(
+              migrateVersion2WindowState(envelope.success.data),
+            );
+            yield* saveUnlocked(migrated);
+            return migrated;
+          }
+          if (envelope.success.version === 3) {
+            const migrated = migrateVersion3WindowState(envelope.success.data);
             yield* saveUnlocked(migrated);
             return migrated;
           }

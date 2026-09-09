@@ -298,7 +298,7 @@ export const App = observer(function App() {
     : false;
   const sessionIsDraft = session ? store.sessionRegistry.isDraftSession(session.sessionId) : false;
   const worktreeConfigurationMode = sessionIsDraft
-    ? session?.composerStore.editingDraftSession
+    ? session?.composerStore.pendingSessionDraftStore.editing
       ? "edit-draft"
       : "activate-draft"
     : sessionIsTemporary
@@ -322,7 +322,7 @@ export const App = observer(function App() {
       }
       canManage={canManageWorktree(session.sessionId)}
       configurationMode={worktreeConfigurationMode}
-      onConfigured={() => session.composerStore.requestFocus()}
+      onConfigured={() => session.composerStore.draftStore.requestFocus()}
     />
   ) : undefined;
   const renderProjectPaneHeader = (
@@ -411,7 +411,7 @@ export const App = observer(function App() {
     const temporary = store.sessionRegistry.isTemporarySession(paneSession.sessionId);
     const draft = store.sessionRegistry.isDraftSession(paneSession.sessionId);
     const configurationMode = draft
-      ? paneSession.composerStore.editingDraftSession
+      ? paneSession.composerStore.pendingSessionDraftStore.editing
         ? "edit-draft"
         : "activate-draft"
       : temporary
@@ -466,7 +466,7 @@ export const App = observer(function App() {
           }
           canManage={canManageWorktree(paneSession.sessionId)}
           configurationMode={configurationMode}
-          onConfigured={() => paneSession.composerStore.requestFocus()}
+          onConfigured={() => paneSession.composerStore.draftStore.requestFocus()}
         />
       ),
       status:

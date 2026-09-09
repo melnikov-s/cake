@@ -64,7 +64,12 @@ const CakeChatComposerProjection = Schema.Struct({
             state: Schema.Record(Schema.String, Schema.Json),
             children: Schema.Struct({
               chatStore: Schema.Struct({ state: Schema.Record(Schema.String, Schema.Json) }),
-              composerStore: Schema.Struct({ state: Schema.Record(Schema.String, Schema.Json) }),
+              composerStore: Schema.Struct({
+                state: Schema.Record(Schema.String, Schema.Json),
+                children: Schema.Struct({
+                  draftStore: Schema.Struct({ state: Schema.Record(Schema.String, Schema.Json) }),
+                }),
+              }),
             }),
           }),
         ),
@@ -120,10 +125,19 @@ describe("WindowStateStorage", () => {
                     key: "cake-chat-1",
                     state: {},
                     children: {
-                      chatStore: { state: { draft: "Keep this draft" }, children: {} },
+                      chatStore: { state: {}, children: {} },
                       composerStore: {
-                        state: { attachments: [attachment], annotations: [annotation] },
-                        children: {},
+                        state: {},
+                        children: {
+                          draftStore: {
+                            state: {
+                              text: "Keep this draft",
+                              attachments: [attachment],
+                              annotations: [annotation],
+                            },
+                            children: {},
+                          },
+                        },
                       },
                     },
                   },
@@ -158,8 +172,10 @@ describe("WindowStateStorage", () => {
         const projection = yield* Schema.decodeUnknownEffect(CakeChatComposerProjection)(loaded);
         const session = projection.children.cakeChatCollectionStore.children.loadedSessions[0]!;
         assert.deepStrictEqual(session.state, {});
-        assert.deepStrictEqual(session.children.chatStore.state, { draft: "Keep this draft" });
-        assert.deepStrictEqual(session.children.composerStore.state, {
+        assert.deepStrictEqual(session.children.chatStore.state, {});
+        assert.deepStrictEqual(session.children.composerStore.state, {});
+        assert.deepStrictEqual(session.children.composerStore.children.draftStore.state, {
+          text: "Keep this draft",
           attachments: [attachment],
           annotations: [],
         });

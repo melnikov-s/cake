@@ -60,13 +60,13 @@ describe("CakeChatCollectionStore", () => {
       mimeType: "image/png",
       data: "image",
     };
-    session.composerStore.attachments.push(image);
+    session.composerStore.draftStore.attachments.push(image);
     expect(await session.chatStore.submit(text)).toBe(false);
-    expect(session.composerStore.attachments).toEqual([image]);
+    expect(session.composerStore.draftStore.attachments).toEqual([image]);
     expect(fail).toHaveBeenCalledOnce();
     expect(session.chatStore.draft).toBe(text);
-    expect(session.composerStore.optimisticUserMessages.pending).toEqual([]);
-    expect(session.composerStore.activeOperations).toEqual([]);
+    expect(session.composerStore.deliveryStore.optimisticUserMessages.pending).toEqual([]);
+    expect(session.composerStore.deliveryStore.activeOperations).toEqual([]);
     root[Symbol.dispose]();
     catalog[Symbol.dispose]();
     models[Symbol.dispose]();
@@ -90,7 +90,7 @@ describe("CakeChatCollectionStore", () => {
     store.createDraftSession(session.sessionId, "Saved message", []);
     expect(await session.chatStore.activateDraft()).toBe(false);
     expect(session.chatStore.draft).toBe("Saved message");
-    expect(session.composerStore.optimisticUserMessages.pending).toEqual([]);
+    expect(session.composerStore.deliveryStore.optimisticUserMessages.pending).toEqual([]);
     root[Symbol.dispose]();
     catalog[Symbol.dispose]();
     models[Symbol.dispose]();
@@ -138,7 +138,7 @@ describe("CakeChatCollectionStore", () => {
         status: "complete",
       }),
     );
-    expect(session.composerStore.optimisticUserMessages.pending).toEqual([]);
+    expect(session.composerStore.deliveryStore.optimisticUserMessages.pending).toEqual([]);
     expect(session.composerStore.parts).toEqual([
       expect.objectContaining({ id: "canonical-user-1", deliveryState: undefined }),
     ]);

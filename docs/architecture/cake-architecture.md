@@ -411,7 +411,11 @@ The window Store hierarchy mirrors the product surfaces:
   session identity. Cake Chat never enters this registry.
 - Each `ProjectSessionStore` owns that session's activity,
   message composer, projected scheduled-message controls, chat configuration, session-local Agent/IDE presentation preference and IDE
-  chat-drawer geometry, managed-worktree status and action presentation, artifacts, and message comments. Managed Worktree landing sequencing,
+  chat-drawer geometry, managed-worktree status and action presentation, artifacts, and message comments. `ConversationComposerStore`
+  coordinates focused children: `ComposerDraftStore` owns the persisted coherent unsent draft and focus requests,
+  `PromptQueueStore` owns transient editable follow-ups and settled-turn draining, `ConversationDeliveryStore` owns optimistic
+  projection and operation-correlated delivery recovery, and `PendingSessionDraftStore` owns the distinct saved-draft lifecycle.
+  Managed Worktree landing sequencing,
   recovery, queue policy, and Project Session prompts are authoritative main-process domain behavior; the renderer only starts, retries, dismisses,
   and projects those operations. Its
   `ChatStore` is the common conversation-facing state boundary: it presents the
@@ -482,6 +486,10 @@ flowchart TD
   Registry --> Session["ProjectSessionStore (one per loaded target)"]
   Session --> Model["Session"]
   Session --> Composer["ConversationComposerStore"]
+  Composer --> ComposerDraft["ComposerDraftStore"]
+  Composer --> PromptQueue["PromptQueueStore"]
+  Composer --> Delivery["ConversationDeliveryStore"]
+  Composer --> PendingDraft["PendingSessionDraftStore"]
   Session --> Config["ChatConfigurationStore"]
   Session --> Worktree["WorktreeStore"]
   Session --> Chat["ChatStore"]

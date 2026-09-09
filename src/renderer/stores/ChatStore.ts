@@ -31,6 +31,8 @@ export interface ChatStoreProps {
   commands(): SessionSnapshot["commands"];
   placeholder(): string;
   inputLabel(): string;
+  draft?(): string;
+  setDraft?(value: string): void;
   canSubmit(draft: string): boolean;
   submit(
     draft: string,
@@ -96,7 +98,7 @@ export type { WorkLogViewMode, WorkLogsExpansion };
 
 /** Common state and behavior contract for every Cake conversation surface. */
 export class ChatStore extends Store<ChatStoreProps> {
-  @snapshot draft = "";
+  @snapshot private localDraft = "";
   private localWorkLogViewMode: WorkLogViewMode = "auto";
   private localWorkLogsExpansion: WorkLogsExpansion = "collapsed";
   readonly workLogItemOverrides = observable(new Map<string, boolean>());
@@ -249,6 +251,9 @@ export class ChatStore extends Store<ChatStoreProps> {
 
   get id() {
     return this.props.id();
+  }
+  get draft() {
+    return this.props.draft?.() ?? this.localDraft;
   }
   @computed
   get parts() {
@@ -461,7 +466,8 @@ export class ChatStore extends Store<ChatStoreProps> {
 
   setDraft(value: string) {
     if (this.draft !== value) this.draftRevision += 1;
-    this.draft = value;
+    if (this.props.setDraft) this.props.setDraft(value);
+    else this.localDraft = value;
     this.rewordError = undefined;
   }
 

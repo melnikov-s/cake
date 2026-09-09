@@ -49,10 +49,6 @@ class HarnessStore extends Store<{
       projectPath: () => "/project",
       sessionId: () => "session-1",
       canonicalParts: () => this.props.model.uiParts,
-      draft: () => this.draft,
-      setDraft: (value) => {
-        this.draft = value;
-      },
       canSubmit: () => true,
       isStreaming: () => this.props.streaming ?? false,
       queueWhileStreaming: () => true,
@@ -105,10 +101,6 @@ class DraftHarnessStore extends Store<{ client: Client }> {
       projectPath: () => "/project",
       sessionId: () => "draft-session",
       canonicalParts: () => [],
-      draft: () => this.draft,
-      setDraft: (value) => {
-        this.draft = value;
-      },
       canSubmit: () => true,
       isStreaming: () => false,
       openCommandPane: async () => undefined,
@@ -160,8 +152,8 @@ describe("ConversationComposerStore", () => {
     const root = mount(
       createStore(HarnessStore, { client, model, existing: true, handoffSession }),
     );
-    root.draft = "/handoffandresolve Continue cleanly";
-    root.composer.setEditorContextAttachment({
+    root.composer.draftStore.setText("/handoffandresolve Continue cleanly");
+    root.composer.draftStore.setEditorContextAttachment({
       kind: "source",
       name: "active.ts",
       location: {
@@ -173,7 +165,7 @@ describe("ConversationComposerStore", () => {
     await root.composer.submit();
 
     expect(handoffSession).toHaveBeenCalledWith("assistant-entry", "Continue cleanly", true);
-    expect(root.draft).toBe("");
+    expect(root.composer.draftStore.text).toBe("");
     root[Symbol.dispose]();
     model[Symbol.dispose]();
   });
@@ -189,6 +181,7 @@ describe("ConversationComposerStore", () => {
     const client = { projectSessions: { prompt } } as unknown as Client;
     const model = Session.create({ sessionId: "session-1", workingDirectory: "/project" });
     const root = mount(createStore(HarnessStore, { client, model, existing: true }));
+    root.composer.draftStore.setText("First message");
     const sentImage = {
       kind: "image" as const,
       name: "sent.png",
@@ -201,19 +194,19 @@ describe("ConversationComposerStore", () => {
       name: "next.ts",
       location: { path: "/project/next.ts", range: { start: { line: 1 }, end: { line: 2 } } },
     };
-    root.composer.attachments.push(sentImage);
+    root.composer.draftStore.attachments.push(sentImage);
     const submission = root.composer.submit();
-    root.draft = "Next message";
-    root.composer.attachments.push(nextImage);
-    root.composer.editorContextAttachment = nextContext;
+    root.composer.draftStore.setText("Next message");
+    root.composer.draftStore.attachments.push(nextImage);
+    root.composer.draftStore.editorContextAttachment = nextContext;
     rejectPrompt(new Error("Send failed"));
     await submission;
 
-    expect(root.draft).toBe("Next message");
-    expect(root.composer.attachments).toEqual([nextImage, sentImage]);
-    expect(root.composer.editorContextAttachment).toEqual(nextContext);
-    expect(root.composer.optimisticUserMessages.pending).toEqual([]);
-    expect(root.composer.activeOperations).toEqual([]);
+    expect(root.composer.draftStore.text).toBe("Next message");
+    expect(root.composer.draftStore.attachments).toEqual([nextImage, sentImage]);
+    expect(root.composer.draftStore.editorContextAttachment).toEqual(nextContext);
+    expect(root.composer.deliveryStore.optimisticUserMessages.pending).toEqual([]);
+    expect(root.composer.deliveryStore.activeOperations).toEqual([]);
     root[Symbol.dispose]();
     model[Symbol.dispose]();
   });
@@ -225,14 +218,15 @@ describe("ConversationComposerStore", () => {
     const root = mount(
       createStore(HarnessStore, { client, model, existing: true, streaming: true }),
     );
+    root.composer.draftStore.setText("First message");
 
     await root.composer.submit();
 
     expect(followUp).not.toHaveBeenCalled();
-    expect(root.composer.queuedPrompts).toEqual([
+    expect(root.composer.promptQueueStore.prompts).toEqual([
       expect.objectContaining({ text: "First message" }),
     ]);
-    expect(root.composer.optimisticUserMessages.pending).toEqual([]);
+    expect(root.composer.deliveryStore.optimisticUserMessages.pending).toEqual([]);
 
     root[Symbol.dispose]();
     model[Symbol.dispose]();
@@ -246,17 +240,18 @@ describe("ConversationComposerStore", () => {
     const root = mount(
       createStore(HarnessStore, { client, model, existing: true, streaming: true }),
     );
+    root.composer.draftStore.setText("First message");
 
     await root.composer.submit();
-    root.composer.steerQueuedPrompt(root.composer.queuedPrompts[0]!.id);
+    root.composer.promptQueueStore.steer(root.composer.promptQueueStore.prompts[0]!.id);
 
     expect(steer).toHaveBeenCalledOnce();
-    expect(root.composer.queuedPrompts).toEqual([]);
+    expect(root.composer.promptQueueStore.prompts).toEqual([]);
     expect(root.composer.parts).toEqual([
       expect.objectContaining({ text: "First message", deliveryState: "steering" }),
     ]);
 
-    await root.composer.cancelSteering();
+    await root.composer.promptQueueStore.cancelSteering();
 
     expect(clearQueue).toHaveBeenCalledOnce();
     expect(root.composer.parts).toEqual([]);
@@ -270,12 +265,13 @@ describe("ConversationComposerStore", () => {
     const start = vi.fn(async () => "turn-1");
     const client = { projectSessions: { start } } as unknown as Client;
     const root = mount(createStore(HarnessStore, { client, model }));
+    root.composer.draftStore.setText("First message");
 
     await root.composer.submit();
 
     expect(start).toHaveBeenCalledOnce();
     expect(root.submissionOrder).toEqual(["projected", "prepared"]);
-    expect(root.composer.optimisticUserMessages.pending).toEqual([]);
+    expect(root.composer.deliveryStore.optimisticUserMessages.pending).toEqual([]);
     expect(root.composer.parts).toEqual([
       expect.objectContaining({
         id: "canonical-user-1",
@@ -293,8 +289,9 @@ describe("ConversationComposerStore", () => {
     const client = { projectSessions: { prompt } } as unknown as Client;
     const model = Session.create({ sessionId: "session-1", workingDirectory: "/project" });
     const root = mount(createStore(HarnessStore, { client, model, existing: true }));
+    root.composer.draftStore.setText("First message");
 
-    root.composer.annotationDraft.add({
+    root.composer.draftStore.annotationDraft.add({
       messageId: "assistant-1",
       selectedText: "important answer",
       startOffset: 3,
@@ -303,7 +300,7 @@ describe("ConversationComposerStore", () => {
       contextAfter: " follows.",
       comment: "Go deeper",
     });
-    expect(root.composer.focusRequestRevision).toBe(1);
+    expect(root.composer.draftStore.focusRequestRevision).toBe(1);
     await root.composer.submit();
 
     expect(prompt).toHaveBeenCalledWith(
@@ -322,7 +319,7 @@ describe("ConversationComposerStore", () => {
         ],
       }),
     );
-    expect(root.composer.annotationDraft.annotations).toEqual([]);
+    expect(root.composer.draftStore.annotationDraft.annotations).toEqual([]);
     root[Symbol.dispose]();
     model[Symbol.dispose]();
   });

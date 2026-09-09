@@ -619,7 +619,7 @@ export class RootStore extends Store<{
       return;
     }
     this.showWorkbench();
-    this.projectWorkbenchStore.activeSession?.composerStore.requestFocus();
+    this.projectWorkbenchStore.activeSession?.composerStore.draftStore.requestFocus();
   }
   dismissTopSecondarySurface() {
     if (this.projectWorkbenchStore.sessionContinuationStore.prompt) {
@@ -1027,10 +1027,13 @@ export class RootStore extends Store<{
       sessionContext: () => this.projectWorkbenchStore.sessionContext(),
       setDraft: (value) => {
         const session = this.projectWorkbenchStore.activeSession;
-        if (session) session.chatStore.setDraft(resolveDraftUpdate(value, session.chatStore.draft));
+        if (session)
+          session.composerStore.draftStore.setText(
+            resolveDraftUpdate(value, session.composerStore.draftStore.text),
+          );
       },
       requestComposerFocus: () =>
-        this.projectWorkbenchStore.activeSession?.composerStore.requestFocus(),
+        this.projectWorkbenchStore.activeSession?.composerStore.draftStore.requestFocus(),
     });
   }
 

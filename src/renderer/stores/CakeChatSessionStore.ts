@@ -1,7 +1,6 @@
 import { Store, child, createStore } from "r-state-tree";
 import type { Session } from "../models/Session";
 import type { ModelPreset } from "../../ipc/session-contract";
-import { describeError } from "../lib/error-details";
 import { ClientContext } from "./context/ClientContext";
 import { ChatConfigurationStore } from "./ChatConfigurationStore";
 import { ChatStore } from "./ChatStore";
@@ -55,14 +54,7 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
     return createStore(ConversationComposerStore, {
       sessionId: () => this.sessionId,
       canonicalParts: () => this.model.uiParts,
-      draft: () => this.chatStore.draft,
-      setDraft: (value) => this.chatStore.setDraft(value),
-      canSubmit: () =>
-        Boolean(
-          this.chatStore.draft.trim() ||
-          this.composerStore.attachments.length > 0 ||
-          this.composerStore.annotationDraft.annotations.length > 0,
-        ),
+      canSubmit: () => this.composerStore.draftStore.hasContent,
       isStreaming: () => this.streaming,
       selectModel: async (value) => {
         await this.configurationStore.selectModel(value);
@@ -153,19 +145,17 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       id: () => this.sessionId,
       parts: () => this.composerStore.parts,
       streaming: () => this.streaming,
+      draft: () => this.composerStore.draftStore.text,
+      setDraft: (value) => this.composerStore.draftStore.setText(value),
       submitting: () =>
-        this.composerStore.activeOperations.length > 0 || this.model.activeTurnIds.length > 0,
+        this.composerStore.deliveryStore.activeOperations.length > 0 ||
+        this.model.activeTurnIds.length > 0,
       configuration: () => this.configurationStore,
       commands: () => this.model.commands,
       placeholder: () => "Ask Cake to find or control a task…",
       inputLabel: () => "Message Cake Chat",
-      focusRequestRevision: () => this.composerStore.focusRequestRevision,
-      canSubmit: () =>
-        Boolean(
-          this.chatStore.draft.trim() ||
-          this.composerStore.attachments.length > 0 ||
-          this.composerStore.annotationDraft.annotations.length > 0,
-        ),
+      focusRequestRevision: () => this.composerStore.draftStore.focusRequestRevision,
+      canSubmit: () => this.composerStore.draftStore.hasContent,
       submit: (_draft, options) =>
         this.composerStore.submit(undefined, options?.renderUserMessageAsMarkdown ?? false),
       setUserMessageMarkdown: (entryId, renderAsMarkdown) =>
@@ -176,16 +166,16 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       activateDraft: () => this.composerStore.activateDraftSession(),
       editLastUserMessage: (entryId) => this.composerStore.beginEditMessage(entryId),
       isDraftSession: () => this.props.collection.isDraftSession(this.sessionId),
-      editingMessage: () =>
-        Boolean(this.composerStore.editingEntryId || this.composerStore.editingDraftSession),
+      editingMessage: () => this.composerStore.editingMessage,
       abort: () => this.abort(),
-      attachments: () => this.composerStore.attachments,
-      annotations: () => this.composerStore.annotationDraft.annotations,
-      addAnnotation: (annotation) => this.composerStore.annotationDraft.add(annotation),
-      updateAnnotation: (id, update) => this.composerStore.annotationDraft.update(id, update),
-      removeAnnotation: (id) => this.composerStore.annotationDraft.remove(id),
-      addPastedImages: (files) => this.composerStore.addPastedImages(files),
-      removeAttachment: (index) => this.composerStore.removeAttachment(index),
+      attachments: () => this.composerStore.draftStore.visibleAttachments,
+      annotations: () => this.composerStore.draftStore.annotationDraft.annotations,
+      addAnnotation: (annotation) => this.composerStore.draftStore.annotationDraft.add(annotation),
+      updateAnnotation: (id, update) =>
+        this.composerStore.draftStore.annotationDraft.update(id, update),
+      removeAnnotation: (id) => this.composerStore.draftStore.annotationDraft.remove(id),
+      addPastedImages: (files) => this.composerStore.draftStore.addPastedImages(files),
+      removeAttachment: (index) => this.composerStore.draftStore.removeAttachment(index),
       showComposerContextMenu: (selection, x, y) =>
         this.client.electron.showComposerContextMenu({ selection, x, y }, { signal: this.signal }),
       rewordComposerSelection: (selection, prompt) =>
@@ -208,7 +198,7 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
   }
 
   requestFocus() {
-    this.composerStore.requestFocus();
+    this.composerStore.draftStore.requestFocus();
   }
 
   async abort() {
@@ -227,8 +217,6 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
   }
 
   reportError(error: unknown, context?: string) {
-    const described = describeError(error, context);
-    this.composerStore.error = described.message;
-    this.composerStore.errorDetails = described.details;
+    this.composerStore.reportError(error, context);
   }
 }

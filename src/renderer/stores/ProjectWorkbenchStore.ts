@@ -124,8 +124,8 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       operations: this.props.operations,
       editorText: (entryId) =>
         this.session?.tree.find((entry) => entry.piId === entryId)?.editorText,
-      setDraft: (value) => this.activeSession?.chatStore.setDraft(value),
-      requestComposerFocus: () => this.activeSession?.composerStore.requestFocus(),
+      setDraft: (value) => this.activeSession?.composerStore.draftStore.setText(value),
+      requestComposerFocus: () => this.activeSession?.composerStore.draftStore.requestFocus(),
       reportError: (error) => this.setError(error),
     });
   }
@@ -221,7 +221,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     const session = this.sessionRegistry.findSession(sessionId);
     if (!session) return false;
     if (this.sessionRegistry.isTemporarySession(sessionId)) return true;
-    const command = session.chatStore.draft.trim().toLocaleLowerCase();
+    const command = session.composerStore.draftStore.text.trim().toLocaleLowerCase();
     const local = command === "/tree" || command === "/resources" || command === "/changelog";
     return local || this.agentAvailability === "available";
   }
@@ -378,7 +378,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
 
   async startNewSession(path = this.projectPath) {
     if (this.activeSession && this.sessionRegistry.isStagedSession(this.activeSession.sessionId)) {
-      this.activeSession.composerStore.requestFocus();
+      this.activeSession.composerStore.draftStore.requestFocus();
       return;
     }
     if (!path) {
@@ -520,15 +520,15 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   }
 
   private suspendEmbeddedEditor() {
-    this.activeSession?.composerStore.setEditorContextAttachment(undefined);
+    this.activeSession?.composerStore.draftStore.setEditorContextAttachment(undefined);
     this.embeddedEditorStore.suspend();
   }
 
   /** Explicitly returns the active session to its Agent presentation. */
   backToAgent() {
-    this.activeSession?.composerStore.setEditorContextAttachment(undefined);
+    this.activeSession?.composerStore.draftStore.setEditorContextAttachment(undefined);
     this.embeddedEditorStore.hide();
-    this.activeSession?.composerStore.requestFocus();
+    this.activeSession?.composerStore.draftStore.requestFocus();
   }
 
   restoreSessionPresentation() {
@@ -547,7 +547,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     this.markSessionRead(sessionId);
     this.extensionUi.clear();
     this.commandPaneStore.dismiss();
-    session.composerStore.requestFocus();
+    session.composerStore.draftStore.requestFocus();
     void session.stagedCommandStore.load(path);
     void this.refreshRegisteredProject(path);
   }
@@ -603,7 +603,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     this.restoreSessionPresentation();
     this.extensionUi.clear();
     this.commandPaneStore.dismiss();
-    session.composerStore.requestFocus();
+    session.composerStore.draftStore.requestFocus();
     return true;
   }
 
@@ -830,7 +830,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     ) {
       this.embeddedEditorStore.receive(event);
       if (event.workspacePath === this.projectPath)
-        this.activeSession?.composerStore.setEditorContextAttachment(
+        this.activeSession?.composerStore.draftStore.setEditorContextAttachment(
           this.embeddedEditorStore.visible
             ? this.embeddedEditorStore.activeContextAttachment
             : undefined,
@@ -881,7 +881,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
           !this.sessionRegistry.isTemporarySession(this.session.sessionId),
         );
         if (this.reopenAfterAgentRestart)
-          this.draftAfterAgentRestart = this.activeSession?.chatStore.draft;
+          this.draftAfterAgentRestart = this.activeSession?.composerStore.draftStore.text;
         this.props.operations.reset();
         this.sessionContinuationStore.reset();
         this.activeOpenOperationId = undefined;
