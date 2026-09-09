@@ -68,10 +68,10 @@ const archiveMember = Effect.fn("ProjectSessions.archiveMember")(function* (
   const namespace = yield* archive
     .locate(sessionId, archiveLocation(location))
     .pipe(asError(operation));
-  if (namespace === "resolved") return;
   if (!namespace) return yield* error(operation, "Activate a Draft before resolving it");
   yield* subagents.releaseParent(sessionId).pipe(asError(operation));
-  yield* projectSessionLocations.archive(sessionId, location).pipe(asError(operation));
+  if (namespace === "active")
+    yield* projectSessionLocations.archive(sessionId, location).pipe(asError(operation));
   yield* setSessionUnread(sessionId, false).pipe(asError(operation));
   yield* publishCatalogStatus(sessionId, location, true).pipe(asError(operation));
 });
@@ -85,11 +85,11 @@ const restoreMember = Effect.fn("ProjectSessions.restoreMember")(function* (
   const namespace = yield* archive
     .locate(sessionId, archiveLocation(location))
     .pipe(asError(operation));
-  if (namespace === "active") return location;
   if (!namespace) return yield* error(operation, "Only a resolved Project Session can be restored");
-  const restored = yield* projectSessionLocations
-    .restore(sessionId, location)
-    .pipe(asError(operation));
+  const restored =
+    namespace === "resolved"
+      ? yield* projectSessionLocations.restore(sessionId, location).pipe(asError(operation))
+      : location;
   yield* publishCatalogStatus(sessionId, restored, false).pipe(asError(operation));
   yield* publishCatalogChange(sessionId, restored, false).pipe(asError(operation));
   return restored;
@@ -167,26 +167,27 @@ const transitionStandalone = Effect.fn("ProjectSessions.transitionStandalone")(f
             operation,
             "The session became a family parent; retry the family operation",
           );
-        const location = yield* findLocation(target, { includeInactive: true });
+        const location = yield* findLocation(target, { includeInactive: true }).pipe(
+          asError(operation),
+        );
         const archive = yield* SessionArchiveStorage;
         const namespace = yield* archive
           .locate(target.sessionId, archiveLocation(location))
           .pipe(asError(operation));
         if (resolved) {
-          if (namespace === "resolved") return;
           if (!namespace) return yield* error(operation, "Activate a Draft before resolving it");
-          yield* assertResolvable(
-            target.sessionId,
-            location.workingDirectory,
-            location.sessionDirectory,
-            operation,
-          );
+          if (namespace === "active")
+            yield* assertResolvable(
+              target.sessionId,
+              location.workingDirectory,
+              location.sessionDirectory,
+              operation,
+            );
           yield* archiveMember(target.sessionId, location, operation);
           yield* managedWorktrees
             .cleanupResolved(location.workingDirectory, location.sessionDirectory)
             .pipe(asError(operation));
         } else {
-          if (namespace === "active") return;
           if (!namespace)
             return yield* error(operation, "Only a resolved Project Session can be restored");
           yield* managedWorktrees
@@ -213,7 +214,7 @@ const transition = Effect.fn("ProjectSessions.transitionLifecycle")(function* (
       `Only the Session Family parent can ${resolved ? "resolve" : "restore"} the family`,
     );
   if (!family) return yield* transitionStandalone(target, resolved, operation);
-  const location = yield* findLocation(target, { includeInactive: true });
+  const location = yield* findLocation(target, { includeInactive: true }).pipe(asError(operation));
   const archive = yield* SessionArchiveStorage;
   const namespace = yield* archive
     .locate(target.sessionId, archiveLocation(location))
@@ -407,7 +408,9 @@ export const moveWorkflowSession = Effect.fn("ProjectSessions.moveWorkflowSessio
     )
       return yield* error("moveWorkflowSession", "That custom status no longer exists");
     const target = { sessionId: input.sessionId, workingDirectory: input.workingDirectory };
-    const location = yield* findLocation(target, { includeInactive: true });
+    const location = yield* findLocation(target, { includeInactive: true }).pipe(
+      asError("moveWorkflowSession"),
+    );
     if (location.projectPath !== input.projectPath)
       return yield* error("moveWorkflowSession", "That session does not belong to this Project");
     const namespace = yield* (yield* SessionArchiveStorage)

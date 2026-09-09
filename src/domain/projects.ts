@@ -12,6 +12,7 @@ import { inspectWorkspace } from "../services/pi/runtime/session-discovery";
 import { ProjectAccess } from "../services/projects/ProjectAccess";
 import { ProjectConfiguration } from "../services/projects/ProjectConfiguration";
 import { RewordingRequests } from "../services/projects/RewordingRequests";
+import { Terminal } from "../services/terminal/Terminal";
 import { SessionCatalogChanges } from "../services/session-catalogs/SessionCatalogChanges";
 import { ApplicationState } from "../services/storage/ApplicationState";
 import { SessionArchiveStorage } from "../services/storage/SessionArchiveStorage";
@@ -411,6 +412,7 @@ export const remove = Effect.fn("Projects.remove")(function* (
   const access = yield* ProjectAccess;
   const electron = yield* Electron;
   const integrations = yield* ProjectSessionRuntimeHost;
+  const terminal = yield* Terminal;
   const worktrees = yield* ManagedWorktrees;
   const records = yield* mapProjectError("removeProject", worktrees.records());
   const projectWorktrees = records.filter((record) => record.projectPath === request.path);
@@ -424,6 +426,7 @@ export const remove = Effect.fn("Projects.remove")(function* (
     ...projectWorktrees.map((record) => record.worktreePath),
   ]);
   for (const workingDirectory of workingDirectories) {
+    yield* mapProjectError("removeProject", terminal.closeWorkingDirectory(workingDirectory));
     yield* mapProjectError("removeProject", access.revoke(workingDirectory));
     yield* mapProjectError("removeProject", integrations.stopWorkingDirectory(workingDirectory));
     electron.forgetWorkspace(workingDirectory);

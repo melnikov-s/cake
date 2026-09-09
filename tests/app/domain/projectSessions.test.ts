@@ -37,7 +37,10 @@ import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamil
 import { SubagentCoordinatorLive } from "../../../src/services/subagents/SubagentCoordinator";
 import { Terminal } from "../../../src/services/terminal/Terminal";
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
-import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
+import {
+  SessionCatalogChanges,
+  type SessionCatalogChange,
+} from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import type { SessionSnapshot, SessionSummary } from "../../../src/ipc/session-contract";
 import type { WorktreeRecord } from "../../../src/domain/managed-worktree-data";
 
@@ -133,6 +136,7 @@ const makeLayer = (
     archiveErrorSessionId?: string;
     onRestore?(sessionId: string): void;
     onCatalog?(): void;
+    onCatalogChange?(change: SessionCatalogChange): void;
     catalog?(workingDirectory: string): Stream.Stream<SessionSummary, unknown>;
     catalogModifiedAt?(): string;
     catalogTitle?(): string;
@@ -263,9 +267,18 @@ const makeLayer = (
       }),
     changelog: () => Effect.succeed("# Changelog"),
   };
+  const catalogChanges = hooks.onCatalogChange
+    ? Layer.succeed(
+        SessionCatalogChanges,
+        SessionCatalogChanges.of({
+          publish: (change) => Effect.sync(() => hooks.onCatalogChange?.(change)),
+          initialThenChanges: (initial) => initial,
+        }),
+      )
+    : SessionCatalogChanges.layer;
   return Layer.mergeAll(
     application,
-    SessionCatalogChanges.layer,
+    catalogChanges,
     Layer.succeed(SessionFamilyStorage, {
       list: () => Effect.succeed(hooks.family ? [hooks.family] : []),
       familyForMember: (sessionId) =>
@@ -1203,6 +1216,16 @@ describe("Project Sessions domain", () => {
     },
   );
 
+  it.effect("maps restore location failures to the restore operation", () =>
+    Effect.gen(function* () {
+      const failure = yield* projectSessionLifecycle
+        .restore({ sessionId: "missing", workingDirectory: "/missing" })
+        .pipe(Effect.flip);
+      assert.equal(failure.operation, "restore");
+      assert.match(failure.message, /could not find Project Session missing/);
+    }).pipe(Effect.provide(makeLayer(undefined, { sessionExists: false }))),
+  );
+
   it.effect("resolves a located idle session without constructing a Pi runtime", () => {
     let runtimeConstructions = 0;
     let archives = 0;
@@ -1365,16 +1388,56 @@ describe("Project Sessions domain", () => {
     };
     return projectSessionLifecycle.recoverFamilyTransition("parent", true).pipe(
       Effect.tap(() =>
-        Effect.sync(() => {
+        Effect.gen(function* () {
           assert.deepEqual(archived, ["child"]);
+          assert.deepEqual((yield* getState()).unreadSessionIds, []);
+        }),
+      ),
+      Effect.provide(
+        makeLayer(
+          { ...defaultApplicationState(), unreadSessionIds: ["parent"] },
+          {
+            family,
+            familyTransitionResolved: true,
+            initialResolvedSessionIds: ["parent"],
+            onArchive: (sessionId) => archived.push(sessionId),
+          },
+        ),
+      ),
+    );
+  });
+
+  it.effect("replays post-restore catalog updates for members already moved", () => {
+    const changes: SessionCatalogChange[] = [];
+    const family = {
+      familyId: "family-1",
+      parentSessionId: "parent",
+      projectPath: "/project",
+      workingDirectory: "/project",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      children: [
+        {
+          sessionId: "child",
+          requestId: "request-1",
+          createdAt: "2026-01-01T00:00:01.000Z",
+        },
+      ],
+    };
+    return projectSessionLifecycle.recoverFamilyTransition("parent", false).pipe(
+      Effect.tap(() =>
+        Effect.sync(() => {
+          assert.deepEqual(
+            changes.filter((change) => change.sessionId === "parent").map((change) => change._tag),
+            ["ProjectSessionStatusChanged", "ProjectSessionChanged"],
+          );
         }),
       ),
       Effect.provide(
         makeLayer(defaultApplicationState(), {
           family,
-          familyTransitionResolved: true,
-          initialResolvedSessionIds: ["parent"],
-          onArchive: (sessionId) => archived.push(sessionId),
+          familyTransitionResolved: false,
+          initialResolvedSessionIds: ["child"],
+          onCatalogChange: (change) => changes.push(change),
         }),
       ),
     );
