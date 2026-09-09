@@ -7,8 +7,6 @@ import {
   type InlineExtension,
   type SlashCommandInfo,
 } from "@earendil-works/pi-coding-agent";
-import { RuntimeTurnCompletion } from "./RuntimeTurnCompletion";
-import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { Effect, Option, Schema } from "effect";
@@ -25,7 +23,7 @@ import type {
   UiPart,
   UtilityModel,
 } from "../../../ipc/session-contract";
-import { SESSION_TITLE_MAX_LENGTH, parsePiBuiltinCommand } from "../../../ipc/session-contract";
+import { SESSION_TITLE_MAX_LENGTH } from "../../../ipc/session-contract";
 import {
   CakeModelSelection,
   resolveCakeModelSelection,
@@ -107,13 +105,10 @@ import {
 } from "./subagent-contract";
 import {
   formatUnknown,
-  imageContent,
   projectArtifactPointers,
-  promptText,
   reviewRunEntrySchema,
   reviewRunEntryType,
   reviewRunPart,
-  shellCommandPart,
   textFromContent,
   userMessagePresentationEntrySchema,
   userMessagePresentationEntryType,
@@ -125,6 +120,7 @@ import {
   projectRetryNotice,
 } from "./cake-runtime-event-projection";
 import { projectCakeRuntimeSnapshot } from "./cake-runtime-snapshot";
+import { createCakeRuntimeTurnController } from "./cake-runtime-turn-controller";
 
 export const piRuntimeVersion = "0.84.0" as const;
 const commonPrompt = renderPromptTemplate(commonPromptTemplate);
@@ -1689,26 +1685,14 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     }
   }
 
-  // Messages submitted while compaction is running. Pi rejects prompts during
-  // manual compaction, so Cake holds them here and delivers them when the
-  // compaction_end event reports the session is available again.
-  let compactionQueue: {
-    turnId?: string;
-    text: string;
-    attachments: Attachment[];
-    delivery: "steer" | "follow-up";
-    renderUserMessageAsMarkdown: boolean;
-  }[] = [];
-  const turnCompletions = new RuntimeTurnCompletion();
+  let compactionQueuedMessages: () => readonly string[] = () => [];
   const projection = createCakeRuntimeEventProjection({
     session,
     sessionId: cakeSessionId,
     emit: options.onEvent,
-    compactionQueuedMessages: () => compactionQueue.map((item) => item.text),
+    compactionQueuedMessages: () => compactionQueuedMessages(),
     isDisposed: () => disposed,
   });
-  const deliverTrackedUserMessage = projection.deliverTrackedUserMessage;
-  const syncQueuedParts = projection.syncQueuedParts;
   // The stream adapter replays pre-output throttling and successful empty
   // responses. This hidden continuation remains a bounded fallback for aborted
   // turns and for empty turns when automatic retry is disabled.
@@ -1831,6 +1815,35 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         partId: INTERRUPTED_TURN_NOTICE_PART_ID,
       });
   }
+
+  const turnController = createCakeRuntimeTurnController({
+    session,
+    isDisposed: () => disposed,
+    beforeIdleTurn: async () => {
+      if (reloadCompleted < reloadRequested) await drainReloads();
+    },
+    withResponseRetries,
+    cancelResponseRetries: () => responseRetries.cancel(),
+    recovery: {
+      onUserInput() {
+        userAbortRequested = false;
+        turnRecoveryContinuations = 0;
+        removeRecoveryNotice();
+      },
+      onAbort() {
+        userAbortRequested = true;
+        turnRecoveryContinuations = 0;
+        removeRecoveryNotice();
+      },
+    },
+    deliverTrackedUserMessage: projection.deliverTrackedUserMessage,
+    syncQueuedParts: projection.syncQueuedParts,
+    emitPart: (part) => options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part }),
+    emitSnapshot: () => emitSnapshot(),
+    emitSnapshotInBackground,
+  });
+  compactionQueuedMessages = turnController.compactionQueuedMessages;
+
   interface PendingSessionFork {
     readonly entryId?: string;
     readonly prompt?: string;
@@ -1907,13 +1920,12 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       void options.sessionTitleChanged?.(cakeSessionId, event.name).catch(() => undefined);
     if (event.type === "compaction_end") {
       if (!event.aborted && !event.errorMessage) emitSnapshotInBackground();
-      // Deliver anything submitted while compaction held the session. A retry
-      // is still pending, so wait for the final compaction_end instead.
-      if (!event.willRetry) void flushCompactionQueue();
+      // A retry is still pending, so wait for the final compaction_end.
+      turnController.compactionEnded(event.willRetry);
     }
     if (event.type === "message_end" && event.message.role === "user") {
       const content = textFromContent(event.message.content);
-      turnCompletions.consume(content);
+      turnController.consumeUserMessage(content);
       const presentation = projection.consumeUserPresentation(content);
       if (presentation?.renderUserMessageAsMarkdown)
         queueMicrotask(() => {
@@ -1935,61 +1947,11 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       }
     }
     if (event.type === "agent_settled") {
-      turnCompletions.settle();
+      turnController.settleTurn();
       void finishSettledTurn();
     }
   });
   void resumeInterruptedTurn();
-
-  const runCompact = async (instructions?: string) => {
-    if (disposed) throw new Error("The Cake runtime has been disposed");
-    if (!session.isStreaming && reloadCompleted < reloadRequested) await drainReloads();
-    await session.compact(instructions || undefined);
-    await emitSnapshot();
-  };
-
-  // Delivers messages that were submitted while compaction held the session.
-  // The first message starts a fresh turn when the session is idle; the rest
-  // ride the normal steer/follow-up queues of that turn. Hoisted as a function
-  // declaration: the compaction_end subscriber above fires it.
-  async function flushCompactionQueue() {
-    if (disposed || compactionQueue.length === 0) return;
-    const queued = compactionQueue;
-    compactionQueue = [];
-    syncQueuedParts();
-    let index = 0;
-    for (const item of queued) {
-      try {
-        const content = promptText(item.text, item.attachments);
-        const images = imageContent(item.attachments);
-        await deliverTrackedUserMessage(content, item.renderUserMessageAsMarkdown, () =>
-          withResponseRetries(() =>
-            session.prompt(content, {
-              images,
-              source: "interactive",
-              streamingBehavior: item.delivery === "steer" ? "steer" : "followUp",
-            }),
-          ),
-        );
-        // Extension commands can finish without creating a user message or run.
-        if (
-          item.turnId &&
-          !session.isStreaming &&
-          session.getSteeringMessages().length === 0 &&
-          session.getFollowUpMessages().length === 0
-        )
-          turnCompletions.finishHandledInput(item.turnId);
-      } catch {
-        // Delivery failed; keep the remainder queued for the next flush.
-        compactionQueue.unshift(...queued.slice(index));
-        syncQueuedParts();
-        break;
-      } finally {
-        index += 1;
-      }
-    }
-    emitSnapshotInBackground();
-  }
 
   const currentModelSelection = (): ExplicitCakeModelSelection | undefined =>
     session.model
@@ -2050,7 +2012,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       });
     },
     async compact(instructions) {
-      await runCompact(instructions);
+      await turnController.compact(instructions);
       await reportAgentAction("compact");
       return { status: "compacted" };
     },
@@ -2225,160 +2187,12 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         { triggerTurn: true, deliverAs: "steer" },
       );
     },
-    compact: (instructions) => runCompact(instructions),
-    executingTurnIds: () => turnCompletions.executingIds(),
-    async prompt(text, delivery, attachments, renderUserMessageAsMarkdown = false, turnId) {
-      if (disposed) throw new Error("The Cake runtime has been disposed");
-      // A real user submission starts a fresh bounded recovery budget.
-      userAbortRequested = false;
-      turnRecoveryContinuations = 0;
-      removeRecoveryNotice();
-      const builtin = parsePiBuiltinCommand(text);
-      if (builtin?.name === "compact") {
-        await runCompact(builtin.args || undefined);
-        return;
-      }
-      const shellPrefix = text.startsWith("!!") ? "!!" : text.startsWith("!") ? "!" : undefined;
-      const shellCommand = shellPrefix ? text.slice(shellPrefix.length).trim() : "";
-      if (shellPrefix && attachments.length === 0) {
-        if (!shellCommand) return;
-        const partId = `bash-${randomUUID()}`;
-        const excludeFromContext = shellPrefix === "!!";
-        let output = "";
-        const project = (state: "running" | "success" | "error") =>
-          options.onEvent({
-            type: "part-updated",
-            sessionId: cakeSessionId,
-            part: shellCommandPart({
-              id: partId,
-              command: shellCommand,
-              output: output.slice(-500_000),
-              excludeFromContext,
-              state,
-            }),
-          });
-        project("running");
-        const result = await session.executeBash(
-          shellCommand,
-          (chunk) => {
-            output += chunk;
-            project("running");
-          },
-          { excludeFromContext, id: partId },
-        );
-        project(result.exitCode === 0 && !result.cancelled ? "success" : "error");
-        await emitSnapshot();
-        return;
-      }
-      if (!session.isStreaming && reloadCompleted < reloadRequested) await drainReloads();
-      const completion = turnId
-        ? turnCompletions.track(turnId, promptText(text, attachments), true)
-        : undefined;
-      try {
-        if (session.isCompacting) {
-          // Pi rejects prompts during compaction. Hold the message with its
-          // delivery intent and deliver it when compaction finishes instead of
-          // failing the submission.
-          compactionQueue.push({
-            turnId,
-            text,
-            attachments,
-            // A plain "prompt" intent degrades to a follow-up when it has to
-            // wait behind compaction; steering intent is preserved.
-            delivery: delivery === "steer" ? "steer" : "follow-up",
-            renderUserMessageAsMarkdown,
-          });
-          syncQueuedParts();
-          await completion;
-          return;
-        }
-        const content = promptText(text, attachments);
-        const images = imageContent(attachments);
-        // Pi's prompt operation atomically starts an idle session or applies the requested
-        // queue policy if a run is active. Calling steer/followUp directly would only enqueue
-        // and can strand input when the recipient becomes idle before delivery.
-        await deliverTrackedUserMessage(content, renderUserMessageAsMarkdown, () =>
-          withResponseRetries(() =>
-            session.prompt(content, {
-              images,
-              source: "interactive",
-              ...(delivery === "steer"
-                ? { streamingBehavior: "steer" as const }
-                : { streamingBehavior: "followUp" as const }),
-            }),
-          ),
-        );
-        // Pi extensions may handle input without creating a user message or run.
-        if (
-          turnId &&
-          !session.isStreaming &&
-          !session.isCompacting &&
-          session.getSteeringMessages().length === 0 &&
-          session.getFollowUpMessages().length === 0
-        )
-          turnCompletions.finishHandledInput(turnId);
-        await completion;
-      } finally {
-        if (turnId) turnCompletions.forget(turnId);
-      }
-    },
-    async listQueuedMessages() {
-      return {
-        steering: [
-          ...session.getSteeringMessages(),
-          ...compactionQueue
-            .filter((message) => message.delivery === "steer")
-            .map((message) => message.text),
-        ],
-        followUp: [
-          ...session.getFollowUpMessages(),
-          ...compactionQueue
-            .filter((message) => message.delivery === "follow-up")
-            .map((message) => message.text),
-        ],
-      };
-    },
-    async clearQueue() {
-      const queued = session.clearQueue();
-      turnCompletions.cancel(true);
-      const steering = [
-        ...queued.steering,
-        ...compactionQueue
-          .filter((message) => message.delivery === "steer")
-          .map((message) => message.text),
-      ];
-      const followUp = [
-        ...queued.followUp,
-        ...compactionQueue
-          .filter((message) => message.delivery === "follow-up")
-          .map((message) => message.text),
-      ];
-      compactionQueue = [];
-      syncQueuedParts();
-      await emitSnapshot();
-      return { steering, followUp };
-    },
-    async cancelSteering() {
-      const queued = session.clearQueue();
-      for (const text of [...queued.steering, ...queued.followUp])
-        await session.prompt(text, {
-          source: "interactive",
-          streamingBehavior: "followUp",
-        });
-      compactionQueue = compactionQueue.map((message) =>
-        message.delivery === "steer" ? { ...message, delivery: "follow-up" } : message,
-      );
-      syncQueuedParts();
-      await emitSnapshot();
-      return {
-        steering: [],
-        followUp: [
-          ...queued.steering,
-          ...queued.followUp,
-          ...compactionQueue.map((message) => message.text),
-        ],
-      };
-    },
+    compact: turnController.compact,
+    executingTurnIds: turnController.executingTurnIds,
+    prompt: turnController.prompt,
+    listQueuedMessages: turnController.listQueuedMessages,
+    clearQueue: turnController.clearQueue,
+    cancelSteering: turnController.cancelSteering,
     async setUserMessageMarkdown(entryId, renderAsMarkdown) {
       if (disposed) throw new Error("The Cake runtime has been disposed");
       const target = session.sessionManager
@@ -2395,39 +2209,8 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       session.sessionManager.appendCustomEntry(userMessagePresentationEntryType, presentation);
       await emitSnapshot();
     },
-    async editMessage(entryId, text, attachments, renderUserMessageAsMarkdown) {
-      if (disposed) throw new Error("The Cake runtime has been disposed");
-      if (session.isStreaming || session.isCompacting)
-        throw new Error("Wait for the current response to finish before editing a message");
-      const lastUserEntry = session.sessionManager
-        .getBranch()
-        .findLast((entry) => entry.type === "message" && entry.message.role === "user");
-      if (!lastUserEntry || lastUserEntry.id !== entryId)
-        throw new Error("Only the last user message can be edited");
-      userAbortRequested = false;
-      turnRecoveryContinuations = 0;
-      removeRecoveryNotice();
-      const result = await session.navigateTree(entryId, { summarize: false });
-      if (result.cancelled) throw new Error("Message editing was cancelled");
-      await emitSnapshot();
-      const content = promptText(text, attachments);
-      const images = imageContent(attachments);
-      await deliverTrackedUserMessage(content, renderUserMessageAsMarkdown, () =>
-        withResponseRetries(() => session.prompt(content, { images, source: "interactive" })),
-      );
-    },
-    abort: () => {
-      turnCompletions.cancel();
-      userAbortRequested = true;
-      turnRecoveryContinuations = 0;
-      removeRecoveryNotice();
-      responseRetries.cancel();
-      if (session.isBashRunning) {
-        session.abortBash();
-        return Promise.resolve();
-      }
-      return session.abort();
-    },
+    editMessage: turnController.editMessage,
+    abort: turnController.abort,
     async setModel(provider, modelId) {
       const model = modelRuntime.getModel(provider, modelId);
       if (!model) throw new Error(`Unknown model ${provider}/${modelId}`);
@@ -2602,7 +2385,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     dispose() {
       if (disposed) return disposePromise;
       disposed = true;
-      turnCompletions.cancel();
+      turnController.dispose();
       sessionNamingController.abort();
       projection.dispose();
       responseRetries.cancel();
