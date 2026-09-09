@@ -6,7 +6,7 @@ import { ChatStore } from "../../../../src/renderer/stores/ChatStore";
 type ToolState = Extract<UiPart, { kind: "tool" }>["state"];
 
 function createChatStore(parts: () => UiPart[]) {
-  return mount(
+  const store = mount(
     createStore(ChatStore, {
       id: () => "chat",
       parts,
@@ -20,13 +20,15 @@ function createChatStore(parts: () => UiPart[]) {
       submit: () => Promise.resolve(true),
     }),
   );
+  void store.workLogPresentation;
+  return store;
 }
 
 function toolPart(id: string, state: ToolState): UiPart {
   return { id, kind: "tool", name: "bash", input: "echo hi", state };
 }
 
-describe("ChatStore work log timers", () => {
+describe("WorkLogPresentationStore", () => {
   afterEach(() => {
     vi.useRealTimers();
   });
@@ -41,7 +43,7 @@ describe("ChatStore work log timers", () => {
     };
     const parts: UiPart[] = observable([assistant]);
     const store = createChatStore(() => parts);
-    const sync = vi.spyOn(store as unknown as { syncWorkLogTimers(): void }, "syncWorkLogTimers");
+    const sync = vi.spyOn(store.workLogPresentation, "syncTimers");
 
     parts[0] = { ...assistant, text: "Second" };
 
@@ -55,23 +57,23 @@ describe("ChatStore work log timers", () => {
     let parts: UiPart[] = [toolPart("tool-1", "running")];
     const store = createChatStore(() => parts);
 
-    expect(store.workLogElapsedMs("tool-1")).toBe(0);
+    expect(store.workLogPresentation.elapsedMs("tool-1")).toBe(0);
 
     vi.advanceTimersByTime(1_500);
     // Drive the same sync the parts reaction drives; the closure variable itself is not observable.
-    store["syncWorkLogTimers"]();
-    const runningElapsed = store.workLogElapsedMs("tool-1");
+    store.workLogPresentation.syncTimers();
+    const runningElapsed = store.workLogPresentation.elapsedMs("tool-1");
     expect(runningElapsed).toBeGreaterThan(0);
 
     vi.advanceTimersByTime(1_000);
     parts = [toolPart("tool-1", "success")];
-    store["syncWorkLogTimers"]();
-    const frozen = store.workLogElapsedMs("tool-1");
+    store.workLogPresentation.syncTimers();
+    const frozen = store.workLogPresentation.elapsedMs("tool-1");
     expect(frozen).toBeGreaterThanOrEqual(runningElapsed!);
 
     vi.advanceTimersByTime(5_000);
-    store["syncWorkLogTimers"]();
-    expect(store.workLogElapsedMs("tool-1")).toBe(frozen);
+    store.workLogPresentation.syncTimers();
+    expect(store.workLogPresentation.elapsedMs("tool-1")).toBe(frozen);
     store[Symbol.dispose]();
   });
 
@@ -83,12 +85,12 @@ describe("ChatStore work log timers", () => {
 
     vi.advanceTimersByTime(1_000);
     parts = [toolPart("spawn", "success"), toolPart("wait", "running")];
-    store["syncWorkLogTimers"]();
+    store.workLogPresentation.syncTimers();
     vi.advanceTimersByTime(1_500);
     parts = [toolPart("spawn", "success"), toolPart("wait", "success")];
-    store["syncWorkLogTimers"]();
+    store.workLogPresentation.syncTimers();
 
-    expect(store.workLogElapsedMsRange("spawn", "wait")).toBe(2_500);
+    expect(store.workLogPresentation.elapsedMsRange("spawn", "wait")).toBe(2_500);
     store[Symbol.dispose]();
   });
 
@@ -97,22 +99,22 @@ describe("ChatStore work log timers", () => {
     vi.setSystemTime(1_000_000);
     let parts: UiPart[] = [toolPart("tool-1", "running"), toolPart("tool-2", "running")];
     const store = createChatStore(() => parts);
-    store.setWorkLogItemOpen("tool-1", true);
-    store.setWorkLogGroupOpen("activity-0", true);
+    store.workLogPresentation.setItemOpen("tool-1", true);
+    store.workLogPresentation.setGroupOpen("activity-0", true);
 
     parts = [toolPart("tool-2", "success")];
-    store["syncWorkLogTimers"]();
+    store.workLogPresentation.syncTimers();
 
-    expect(store.workLogElapsedMs("tool-1")).toBeUndefined();
-    expect(store.workLogTimers.has("tool-1")).toBe(false);
-    expect(store.workLogItemOverrides.has("tool-1")).toBe(false);
-    expect(store.workLogGroupOverrides.get("activity-0")).toBe(true);
-    expect(store.workLogElapsedMs("tool-2")).toBeGreaterThanOrEqual(0);
+    expect(store.workLogPresentation.elapsedMs("tool-1")).toBeUndefined();
+    expect(store.workLogPresentation.timers.has("tool-1")).toBe(false);
+    expect(store.workLogPresentation.itemOverrides.has("tool-1")).toBe(false);
+    expect(store.workLogPresentation.groupOverrides.get("activity-0")).toBe(true);
+    expect(store.workLogPresentation.elapsedMs("tool-2")).toBeGreaterThanOrEqual(0);
     expect(vi.getTimerCount()).toBe(0);
 
     parts = [];
-    store["syncWorkLogTimers"]();
-    expect(store.workLogGroupOverrides.has("activity-0")).toBe(false);
+    store.workLogPresentation.syncTimers();
+    expect(store.workLogPresentation.groupOverrides.has("activity-0")).toBe(false);
     store[Symbol.dispose]();
   });
 
@@ -121,7 +123,7 @@ describe("ChatStore work log timers", () => {
       { id: "live-reasoning", kind: "reasoning", text: "Inspecting", status: "streaming" },
     ];
     const store = createChatStore(() => parts);
-    store.setWorkLogGroupOpen("activity-0", true);
+    store.workLogPresentation.setGroupOpen("activity-0", true);
 
     parts = [
       {
@@ -131,9 +133,9 @@ describe("ChatStore work log timers", () => {
         status: "complete",
       },
     ];
-    store["syncWorkLogTimers"]();
+    store.workLogPresentation.syncTimers();
 
-    expect(store.workLogGroupOpen("activity-0", false)).toBe(true);
+    expect(store.workLogPresentation.groupOpen("activity-0", false)).toBe(true);
     store[Symbol.dispose]();
   });
 
@@ -155,7 +157,7 @@ describe("ChatStore work log timers", () => {
     vi.setSystemTime(1_000_000);
     const store = createChatStore(() => [toolPart("done", "success")]);
 
-    expect(store.workLogElapsedMs("done")).toBeUndefined();
+    expect(store.workLogPresentation.elapsedMs("done")).toBeUndefined();
     store[Symbol.dispose]();
   });
 });

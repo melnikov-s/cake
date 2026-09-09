@@ -12,8 +12,8 @@ import { SegmentedControlGroup, SegmentedControlButton } from "@/components/ui/s
 import type { ChatStore } from "../stores/ChatStore";
 
 export const WorkLogControls = observer(function WorkLogControls({ store }: { store: ChatStore }) {
-  const viewMode = store.workLogViewMode;
-  const expansion = store.workLogsExpansion;
+  const viewMode = store.workLogPresentation.viewMode;
+  const expansion = store.workLogPresentation.expansion;
 
   return (
     <Popover>
@@ -51,7 +51,7 @@ export const WorkLogControls = observer(function WorkLogControls({ store }: { st
               size="sm"
               active={viewMode === "auto"}
               aria-label="Auto view mode"
-              onClick={() => store.setWorkLogViewMode("auto")}
+              onClick={() => store.workLogPresentation.setViewMode("auto")}
             >
               <SparkleIcon />
               <span className="ml-1">Auto</span>
@@ -60,7 +60,7 @@ export const WorkLogControls = observer(function WorkLogControls({ store }: { st
               size="sm"
               active={viewMode === "diff"}
               aria-label="Diff view mode"
-              onClick={() => store.setWorkLogViewMode("diff")}
+              onClick={() => store.workLogPresentation.setViewMode("diff")}
             >
               <DiffIcon />
               <span className="ml-1">Diff</span>
@@ -69,7 +69,7 @@ export const WorkLogControls = observer(function WorkLogControls({ store }: { st
               size="sm"
               active={viewMode === "log"}
               aria-label="Log view mode"
-              onClick={() => store.setWorkLogViewMode("log")}
+              onClick={() => store.workLogPresentation.setViewMode("log")}
             >
               <LogIcon />
               <span className="ml-1">Log</span>
@@ -95,7 +95,7 @@ export const WorkLogControls = observer(function WorkLogControls({ store }: { st
               size="sm"
               active={expansion === "collapsed"}
               aria-label="Collapsed work logs"
-              onClick={() => store.setWorkLogsExpansion("collapsed")}
+              onClick={() => store.workLogPresentation.setExpansion("collapsed")}
             >
               <WorkLogCollapsedIcon />
               <span className="ml-1">Collapsed</span>
@@ -104,7 +104,7 @@ export const WorkLogControls = observer(function WorkLogControls({ store }: { st
               size="sm"
               active={expansion === "expanded"}
               aria-label="Compact work logs"
-              onClick={() => store.setWorkLogsExpansion("expanded")}
+              onClick={() => store.workLogPresentation.setExpansion("expanded")}
             >
               <WorkLogSemiExpandedIcon />
               <span className="ml-1">Compact</span>
@@ -113,7 +113,7 @@ export const WorkLogControls = observer(function WorkLogControls({ store }: { st
               size="sm"
               active={expansion === "fully-expanded"}
               aria-label="Full work logs"
-              onClick={() => store.setWorkLogsExpansion("fully-expanded")}
+              onClick={() => store.workLogPresentation.setExpansion("fully-expanded")}
             >
               <WorkLogFullyExpandedIcon />
               <span className="ml-1">Full</span>

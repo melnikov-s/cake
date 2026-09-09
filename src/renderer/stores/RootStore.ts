@@ -135,7 +135,7 @@ export class RootStore extends Store<{
         (part.kind === "text" && part.entryId !== undefined && part.entryId === messageId),
     );
     if (!message) return false;
-    session.chatStore.navigateToMessage(message.id);
+    session.chatStore.transcriptInteraction.navigateToMessage(message.id);
     return true;
   }
 
@@ -543,10 +543,10 @@ export class RootStore extends Store<{
         this.navigateForward();
         break;
       case "toggle-work-logs":
-        chat?.cycleWorkLogsExpansion();
+        chat?.workLogPresentation.cycleExpansion();
         break;
       case "cycle-work-log-view":
-        chat?.cycleWorkLogViewMode();
+        chat?.workLogPresentation.cycleViewMode();
         break;
       case "open-hovered-message":
         break;

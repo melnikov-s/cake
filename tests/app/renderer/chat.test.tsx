@@ -105,7 +105,7 @@ describe("Chat", () => {
         inputLabel: () => "Reply to chat",
         canSubmit: (draft) => Boolean(draft.trim()),
         submit,
-        setUserMessageMarkdown,
+        userMessagePresentation: { setMarkdown: setUserMessageMarkdown },
         abort,
       }),
     );
@@ -262,8 +262,7 @@ describe("Chat", () => {
         inputLabel: () => "Message",
         canSubmit: () => false,
         submit: async () => false,
-        scheduledMessages: () => [message],
-        cancelScheduledMessage,
+        scheduledMessages: { messages: () => [message], cancel: cancelScheduledMessage },
       }),
     );
 
@@ -660,8 +659,10 @@ describe("Chat", () => {
         inputLabel: () => "Message",
         canSubmit: () => true,
         submit: async () => true,
-        showComposerContextMenu,
-        rewordComposerSelection,
+        composerReword: {
+          showContextMenu: showComposerContextMenu,
+          rewordSelection: rewordComposerSelection,
+        },
       }),
     );
     store.setDraft("Before rough ramble after");
@@ -699,8 +700,10 @@ describe("Chat", () => {
         inputLabel: () => "Message",
         canSubmit: () => true,
         submit: async () => true,
-        showComposerContextMenu,
-        rewordComposerSelection: async (selection) => selection,
+        composerReword: {
+          showContextMenu: showComposerContextMenu,
+          rewordSelection: async (selection) => selection,
+        },
       }),
     );
     store.setDraft("Nothing selected");
@@ -730,8 +733,10 @@ describe("Chat", () => {
         inputLabel: () => "Message",
         canSubmit: () => true,
         submit: async () => true,
-        showComposerContextMenu,
-        rewordComposerSelection,
+        composerReword: {
+          showContextMenu: showComposerContextMenu,
+          rewordSelection: rewordComposerSelection,
+        },
       }),
     );
     store.setDraft("rambling text");

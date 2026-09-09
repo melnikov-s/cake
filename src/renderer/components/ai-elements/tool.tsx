@@ -153,8 +153,8 @@ export const ToolRunTimer = observer(function ToolRunTimer({
   startPartId?: string;
 }) {
   const elapsedMs = startPartId
-    ? store.workLogElapsedMsRange(startPartId, partId)
-    : store.workLogElapsedMs(partId);
+    ? store.workLogPresentation.elapsedMsRange(startPartId, partId)
+    : store.workLogPresentation.elapsedMs(partId);
   if (elapsedMs === undefined) return null;
   return (
     <span

@@ -158,76 +158,80 @@ function Transcript({
     streaming: isStreaming,
     submitting: isSubmitting,
     hideThinking,
-    workLogViewMode,
-    userMessageRendersAsMarkdown: (_entryId: string, projected: boolean) => projected,
-    setWorkLogViewMode: () => undefined,
-    cycleWorkLogViewMode: () => undefined,
-    workLogElapsedMs: () => undefined,
-    workLogElapsedMsRange: () => undefined,
-    get workLogsExpansion() {
-      return workLogState.expansion.value;
+    transcriptInteraction: {
+      userMessageRendersAsMarkdown: (_entryId: string, projected: boolean) => projected,
+      get transcriptScrollPosition() {
+        return transcriptScrollPositionsRef.current.get(sessionId);
+      },
+      messageNavigationRequest,
+      get changedFilesOpen() {
+        return changedFilesStateRef.current.open;
+      },
+      setChangedFilesOpen(open: boolean) {
+        changedFilesStateRef.current.open = open;
+      },
+      syncChangedFilesOpen(churning: boolean) {
+        if (changedFilesChurningRef.current === churning) return;
+        changedFilesChurningRef.current = churning;
+        if (churning) changedFilesStateRef.current.open = false;
+      },
+      setTranscriptScrollPosition(position: TranscriptScrollPosition | undefined) {
+        if (position !== undefined) transcriptScrollPositionsRef.current.set(sessionId, position);
+        else transcriptScrollPositionsRef.current.delete(sessionId);
+      },
     },
-    get workLogItemOverrides() {
-      return workLogState.items;
-    },
-    get workLogGroupOverrides() {
-      return workLogState.groups;
-    },
-    setWorkLogsExpansion(expansion: "collapsed" | "expanded" | "fully-expanded") {
-      workLogState.expansion.value = expansion;
-      workLogState.items.clear();
-      workLogState.groups.clear();
-    },
-    cycleWorkLogsExpansion() {
-      workLogState.expansion.value =
-        workLogState.expansion.value === "collapsed"
-          ? "expanded"
-          : workLogState.expansion.value === "expanded"
-            ? "fully-expanded"
-            : "collapsed";
-      workLogState.items.clear();
-      workLogState.groups.clear();
-    },
-    workLogGroupOpen(groupId: string, hasDiff: boolean) {
-      const override = workLogState.groups.get(groupId);
-      if (override !== undefined) return override;
-      if (workLogState.expansion.value === "collapsed") return false;
-      if (workLogViewMode === "diff" && !hasDiff) return false;
-      return true;
-    },
-    setWorkLogGroupOpen(groupId: string, open: boolean) {
-      workLogState.groups.set(groupId, open);
-    },
-    workLogItemOpen(partId: string) {
-      return workLogState.items.get(partId) ?? workLogState.expansion.value === "fully-expanded";
-    },
-    setWorkLogItemOpen(partId: string, open: boolean) {
-      workLogState.items.set(partId, open);
-    },
-    get transcriptScrollPosition() {
-      return transcriptScrollPositionsRef.current.get(sessionId);
-    },
-    messageNavigationRequest,
-    get changedFilesOpen() {
-      return changedFilesStateRef.current.open;
-    },
-    setChangedFilesOpen(open: boolean) {
-      changedFilesStateRef.current.open = open;
-    },
-    syncChangedFilesOpen(churning: boolean) {
-      if (changedFilesChurningRef.current === churning) return;
-      changedFilesChurningRef.current = churning;
-      if (churning) changedFilesStateRef.current.open = false;
+    workLogPresentation: {
+      viewMode: workLogViewMode,
+      setViewMode: () => undefined,
+      cycleViewMode: () => undefined,
+      elapsedMs: () => undefined,
+      elapsedMsRange: () => undefined,
+      get expansion() {
+        return workLogState.expansion.value;
+      },
+      get itemOverrides() {
+        return workLogState.items;
+      },
+      get groupOverrides() {
+        return workLogState.groups;
+      },
+      setExpansion(expansion: "collapsed" | "expanded" | "fully-expanded") {
+        workLogState.expansion.value = expansion;
+        workLogState.items.clear();
+        workLogState.groups.clear();
+      },
+      cycleExpansion() {
+        workLogState.expansion.value =
+          workLogState.expansion.value === "collapsed"
+            ? "expanded"
+            : workLogState.expansion.value === "expanded"
+              ? "fully-expanded"
+              : "collapsed";
+        workLogState.items.clear();
+        workLogState.groups.clear();
+      },
+      groupOpen(groupId: string, hasDiff: boolean) {
+        const override = workLogState.groups.get(groupId);
+        if (override !== undefined) return override;
+        if (workLogState.expansion.value === "collapsed") return false;
+        if (workLogViewMode === "diff" && !hasDiff) return false;
+        return true;
+      },
+      setGroupOpen(groupId: string, open: boolean) {
+        workLogState.groups.set(groupId, open);
+      },
+      itemOpen(partId: string) {
+        return workLogState.items.get(partId) ?? workLogState.expansion.value === "fully-expanded";
+      },
+      setItemOpen(partId: string, open: boolean) {
+        workLogState.items.set(partId, open);
+      },
     },
     annotations: annotations ?? [],
     canAnnotate: Boolean(addAnnotation),
     addAnnotation,
     updateAnnotation,
     removeAnnotation,
-    setTranscriptScrollPosition(position: TranscriptScrollPosition | undefined) {
-      if (position !== undefined) transcriptScrollPositionsRef.current.set(sessionId, position);
-      else transcriptScrollPositionsRef.current.delete(sessionId);
-    },
     error: undefined,
   } as unknown as ChatStore;
   return (

@@ -1,7 +1,7 @@
 import { observer } from "r-state-tree/react";
 import { ClockIcon, RemoveIcon } from "@/components/ui/icons";
 import { IconButton } from "@/components/ui/icon-button";
-import type { ChatStore } from "../stores/ChatStore";
+import type { ScheduledMessageInteractionStore } from "../stores/ScheduledMessageInteractionStore";
 
 function countdown(milliseconds: number) {
   const seconds = Math.max(0, Math.ceil(milliseconds / 1_000));
@@ -17,16 +17,16 @@ function countdown(milliseconds: number) {
 export const ScheduledPrompts = observer(function ScheduledPrompts({
   store,
 }: {
-  store: ChatStore;
+  store: ScheduledMessageInteractionStore;
 }) {
-  if (store.scheduledMessages.length === 0) return null;
+  if (store.messages.length === 0) return null;
   return (
     <div
       className="flex flex-col gap-1 border-b border-border px-1.5 py-1"
       role="list"
       aria-label="Scheduled messages"
     >
-      {store.scheduledMessages.map((message) => (
+      {store.messages.map((message) => (
         <div
           className="flex items-center justify-between gap-2 rounded-md bg-muted px-2 py-1 text-xs"
           role="listitem"
@@ -41,13 +41,13 @@ export const ScheduledPrompts = observer(function ScheduledPrompts({
             dateTime={message.sendAt}
             title={new Date(message.sendAt).toLocaleString()}
           >
-            sends in {countdown(store.scheduledMessageRemainingMs(message.sendAt))}
+            sends in {countdown(store.remainingMs(message.sendAt))}
           </time>
-          {store.canCancelScheduledMessage && (
+          {store.canCancel && (
             <IconButton
               tooltip="Cancel scheduled message"
               ariaLabel={`Cancel scheduled message: ${message.text}`}
-              onClick={() => void store.cancelScheduledMessage(message.id)}
+              onClick={() => void store.cancel(message.id)}
             >
               <RemoveIcon />
             </IconButton>

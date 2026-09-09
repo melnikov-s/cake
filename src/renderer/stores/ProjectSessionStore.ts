@@ -388,11 +388,13 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       canSubmit: () => this.canSubmit,
       submit: (_draft, options) =>
         this.composerStore.submit(undefined, options?.renderUserMessageAsMarkdown ?? false),
-      setUserMessageMarkdown: (entryId, renderAsMarkdown) =>
-        this.client.projectSessions.setUserMessageMarkdown(
-          { sessionId: this.sessionId, entryId, renderAsMarkdown },
-          { signal: this.signal },
-        ),
+      userMessagePresentation: {
+        setMarkdown: (entryId, renderAsMarkdown) =>
+          this.client.projectSessions.setUserMessageMarkdown(
+            { sessionId: this.sessionId, entryId, renderAsMarkdown },
+            { signal: this.signal },
+          ),
+      },
       activateDraft: (choice) => this.composerStore.activateDraftSession(choice),
       sessionCreationChoice: this.props.sessionCreationChoice,
       draftActivationCandidates: this.props.draftActivationCandidates,
@@ -411,17 +413,22 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       removeAnnotation: (id) => this.composerStore.draftStore.annotationDraft.remove(id),
       suggestFiles: (prefix) => this.composerStore.draftStore.suggestFiles(prefix),
       focusRequestRevision: () => this.composerStore.draftStore.focusRequestRevision,
-      showComposerContextMenu: (selection, x, y) =>
-        this.client.electron.showComposerContextMenu({ selection, x, y }, { signal: this.signal }),
-      rewordComposerSelection: (selection, prompt) =>
-        this.client.workspaces.rewordComposerSelection(
-          {
-            selection,
-            prompt,
-            workingDirectory: this.props.workspacePath,
-          },
-          { signal: this.signal },
-        ),
+      composerReword: {
+        showContextMenu: (selection, x, y) =>
+          this.client.electron.showComposerContextMenu(
+            { selection, x, y },
+            { signal: this.signal },
+          ),
+        rewordSelection: (selection, prompt) =>
+          this.client.workspaces.rewordComposerSelection(
+            {
+              selection,
+              prompt,
+              workingDirectory: this.props.workspacePath,
+            },
+            { signal: this.signal },
+          ),
+      },
       usage: () => this.model.usage,
       queuedPrompts: () => {
         return [
@@ -437,9 +444,10 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       editQueuedPrompt: (id) => this.composerStore.promptQueueStore.edit(id),
       removeQueuedPrompt: (id) => this.composerStore.promptQueueStore.remove(id),
       cancelSteering: () => this.composerStore.promptQueueStore.cancelSteering(),
-      scheduledMessages: () => this.model.scheduledMessages,
-      cancelScheduledMessage: (id) =>
-        this.client.scheduledMessages.cancel(id, { signal: this.signal }),
+      scheduledMessages: {
+        messages: () => this.model.scheduledMessages,
+        cancel: (id) => this.client.scheduledMessages.cancel(id, { signal: this.signal }),
+      },
       hideThinking: () => Boolean(this.model.piSettings?.hideThinkingBlock),
       error: () => ({
         message:
@@ -451,13 +459,15 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
           this.configurationStore.errorDetails ??
           this.stagedCommandStore.errorDetails,
       }),
-      workLogViewMode: () => this.props.settings?.()?.workLogViewMode,
-      setWorkLogViewMode: (mode) => {
-        this.props.settings?.()?.setWorkLogViewMode(mode);
-      },
-      workLogsExpansion: () => this.props.settings?.()?.workLogsExpansion,
-      setWorkLogsExpansion: (expansion) => {
-        this.props.settings?.()?.setWorkLogsExpansion(expansion);
+      workLogPresentation: {
+        viewMode: () => this.props.settings?.()?.workLogViewMode,
+        setViewMode: (mode) => {
+          this.props.settings?.()?.setWorkLogViewMode(mode);
+        },
+        expansion: () => this.props.settings?.()?.workLogsExpansion,
+        setExpansion: (expansion) => {
+          this.props.settings?.()?.setWorkLogsExpansion(expansion);
+        },
       },
     });
   }

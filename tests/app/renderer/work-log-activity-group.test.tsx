@@ -69,7 +69,7 @@ describe("ActivityGroup timer isolation", () => {
         submit: async () => true,
       }),
     );
-    store.setWorkLogsExpansion("expanded");
+    store.workLogPresentation.setExpansion("expanded");
     const behavior = {
       store,
       renderChat: () => null,

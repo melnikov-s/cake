@@ -21,7 +21,9 @@ export const WorkLogActivityTrigger = observer(function WorkLogActivityTrigger({
   onToggle(): void;
 }) {
   const elapsedMs =
-    firstPartId && lastPartId ? store.workLogElapsedMsRange(firstPartId, lastPartId) : undefined;
+    firstPartId && lastPartId
+      ? store.workLogPresentation.elapsedMsRange(firstPartId, lastPartId)
+      : undefined;
   const title =
     elapsedMs === undefined
       ? activityCountLabel

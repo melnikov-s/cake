@@ -153,9 +153,11 @@ describe("ChatStore user message Markdown", () => {
 
   it("forwards a message presentation change", async () => {
     const setUserMessageMarkdown = vi.fn(() => Promise.resolve());
-    const store = createChatStore(() => Promise.resolve(true), { setUserMessageMarkdown });
+    const store = createChatStore(() => Promise.resolve(true), {
+      userMessagePresentation: { setMarkdown: setUserMessageMarkdown },
+    });
 
-    await store.setUserMessageMarkdown("user-entry", true);
+    await store.transcriptInteraction.setUserMessageMarkdown("user-entry", true);
 
     expect(setUserMessageMarkdown).toHaveBeenCalledWith("user-entry", true);
     store[Symbol.dispose]();
@@ -165,14 +167,24 @@ describe("ChatStore user message Markdown", () => {
 describe("ChatStore message navigation", () => {
   it("replaces saved scroll state and revisions repeated navigation requests", () => {
     const store = createChatStore(() => Promise.resolve(true));
-    store.setTranscriptScrollPosition({ kind: "message", messageId: "message-1", offset: -100 });
+    store.transcriptInteraction.setTranscriptScrollPosition({
+      kind: "message",
+      messageId: "message-1",
+      offset: -100,
+    });
 
-    store.navigateToMessage("assistant-1");
-    expect(store.transcriptScrollPosition).toBeUndefined();
-    expect(store.messageNavigationRequest).toEqual({ messageId: "assistant-1", revision: 1 });
+    store.transcriptInteraction.navigateToMessage("assistant-1");
+    expect(store.transcriptInteraction.transcriptScrollPosition).toBeUndefined();
+    expect(store.transcriptInteraction.messageNavigationRequest).toEqual({
+      messageId: "assistant-1",
+      revision: 1,
+    });
 
-    store.navigateToMessage("assistant-1");
-    expect(store.messageNavigationRequest).toEqual({ messageId: "assistant-1", revision: 2 });
+    store.transcriptInteraction.navigateToMessage("assistant-1");
+    expect(store.transcriptInteraction.messageNavigationRequest).toEqual({
+      messageId: "assistant-1",
+      revision: 2,
+    });
     store[Symbol.dispose]();
   });
 });
@@ -194,15 +206,15 @@ describe("ChatStore loading timer", () => {
     );
 
     const submission = store.submit("Keep working");
-    const startedAt = store.loadingStartedAt;
+    const startedAt = store.transcriptInteraction.loadingStartedAt;
     expect(startedAt).toBe(Date.now());
 
     vi.advanceTimersByTime(2_000);
-    expect(store.loadingStartedAt).toBe(startedAt);
+    expect(store.transcriptInteraction.loadingStartedAt).toBe(startedAt);
 
     finish(true);
     await submission;
-    expect(store.loadingStartedAt).toBeUndefined();
+    expect(store.transcriptInteraction.loadingStartedAt).toBeUndefined();
     store[Symbol.dispose]();
   });
 
@@ -223,20 +235,20 @@ describe("ChatStore loading timer", () => {
     );
 
     const submission = store.submit("Keep working");
-    const startedAt = store.loadingStartedAt;
+    const startedAt = store.transcriptInteraction.loadingStartedAt;
     activity.accepted = true;
     finish(true);
     await submission;
 
     expect(store.loading).toBe(true);
-    expect(store.loadingStartedAt).toBe(startedAt);
+    expect(store.transcriptInteraction.loadingStartedAt).toBe(startedAt);
 
     activity.streaming = true;
     activity.accepted = false;
-    expect(store.loadingStartedAt).toBe(startedAt);
+    expect(store.transcriptInteraction.loadingStartedAt).toBe(startedAt);
 
     activity.streaming = false;
-    expect(store.loadingStartedAt).toBeUndefined();
+    expect(store.transcriptInteraction.loadingStartedAt).toBeUndefined();
     store[Symbol.dispose]();
   });
 });
@@ -244,27 +256,27 @@ describe("ChatStore loading timer", () => {
 describe("ChatStore changed-files expansion", () => {
   it("starts collapsed, preserves user expansion, and collapses when streaming starts again", () => {
     const store = createChatStore(() => Promise.resolve(true));
-    expect(store.changedFilesOpen).toBe(false);
+    expect(store.transcriptInteraction.changedFilesOpen).toBe(false);
 
-    store.syncChangedFilesOpen(false);
-    expect(store.changedFilesOpen).toBe(false);
+    store.transcriptInteraction.syncChangedFilesOpen(false);
+    expect(store.transcriptInteraction.changedFilesOpen).toBe(false);
 
-    store.setChangedFilesOpen(true);
-    store.syncChangedFilesOpen(false);
-    expect(store.changedFilesOpen).toBe(true);
+    store.transcriptInteraction.setChangedFilesOpen(true);
+    store.transcriptInteraction.syncChangedFilesOpen(false);
+    expect(store.transcriptInteraction.changedFilesOpen).toBe(true);
 
-    store.syncChangedFilesOpen(true);
-    expect(store.changedFilesOpen).toBe(false);
+    store.transcriptInteraction.syncChangedFilesOpen(true);
+    expect(store.transcriptInteraction.changedFilesOpen).toBe(false);
 
-    store.setChangedFilesOpen(true);
-    store.syncChangedFilesOpen(true);
-    expect(store.changedFilesOpen).toBe(true);
+    store.transcriptInteraction.setChangedFilesOpen(true);
+    store.transcriptInteraction.syncChangedFilesOpen(true);
+    expect(store.transcriptInteraction.changedFilesOpen).toBe(true);
 
-    store.syncChangedFilesOpen(false);
-    expect(store.changedFilesOpen).toBe(true);
+    store.transcriptInteraction.syncChangedFilesOpen(false);
+    expect(store.transcriptInteraction.changedFilesOpen).toBe(true);
 
-    store.syncChangedFilesOpen(true);
-    expect(store.changedFilesOpen).toBe(false);
+    store.transcriptInteraction.syncChangedFilesOpen(true);
+    expect(store.transcriptInteraction.changedFilesOpen).toBe(false);
     store[Symbol.dispose]();
   });
 });
@@ -272,43 +284,43 @@ describe("ChatStore changed-files expansion", () => {
 describe("ChatStore work-log view mode and expansion", () => {
   it("manages local workLogViewMode and cycles auto -> diff -> log -> auto", () => {
     const store = createChatStore(() => Promise.resolve(true));
-    expect(store.workLogViewMode).toBe("auto");
+    expect(store.workLogPresentation.viewMode).toBe("auto");
 
-    store.cycleWorkLogViewMode();
-    expect(store.workLogViewMode).toBe("diff");
+    store.workLogPresentation.cycleViewMode();
+    expect(store.workLogPresentation.viewMode).toBe("diff");
 
-    store.cycleWorkLogViewMode();
-    expect(store.workLogViewMode).toBe("log");
+    store.workLogPresentation.cycleViewMode();
+    expect(store.workLogPresentation.viewMode).toBe("log");
 
-    store.cycleWorkLogViewMode();
-    expect(store.workLogViewMode).toBe("auto");
+    store.workLogPresentation.cycleViewMode();
+    expect(store.workLogPresentation.viewMode).toBe("auto");
 
-    store.setWorkLogViewMode("diff");
-    expect(store.workLogViewMode).toBe("diff");
+    store.workLogPresentation.setViewMode("diff");
+    expect(store.workLogPresentation.viewMode).toBe("diff");
     store[Symbol.dispose]();
   });
 
   it("manages local workLogsExpansion and cycles collapsed -> expanded -> fully-expanded -> collapsed", () => {
     const store = createChatStore(() => Promise.resolve(true));
-    expect(store.workLogsExpansion).toBe("collapsed");
-    expect(store.workLogItemOpen("item-1")).toBe(false);
+    expect(store.workLogPresentation.expansion).toBe("collapsed");
+    expect(store.workLogPresentation.itemOpen("item-1")).toBe(false);
 
-    store.cycleWorkLogsExpansion();
-    expect(store.workLogsExpansion).toBe("expanded");
-    expect(store.workLogItemOpen("item-1")).toBe(false);
+    store.workLogPresentation.cycleExpansion();
+    expect(store.workLogPresentation.expansion).toBe("expanded");
+    expect(store.workLogPresentation.itemOpen("item-1")).toBe(false);
 
-    store.setWorkLogItemOpen("item-1", true);
-    expect(store.workLogItemOpen("item-1")).toBe(true);
+    store.workLogPresentation.setItemOpen("item-1", true);
+    expect(store.workLogPresentation.itemOpen("item-1")).toBe(true);
 
-    store.cycleWorkLogsExpansion();
-    expect(store.workLogsExpansion).toBe("fully-expanded");
+    store.workLogPresentation.cycleExpansion();
+    expect(store.workLogPresentation.expansion).toBe("fully-expanded");
     // In fully-expanded, overrides are cleared and all items are open
-    expect(store.workLogItemOpen("item-1")).toBe(true);
-    expect(store.workLogItemOpen("item-2")).toBe(true);
+    expect(store.workLogPresentation.itemOpen("item-1")).toBe(true);
+    expect(store.workLogPresentation.itemOpen("item-2")).toBe(true);
 
-    store.cycleWorkLogsExpansion();
-    expect(store.workLogsExpansion).toBe("collapsed");
-    expect(store.workLogItemOpen("item-1")).toBe(false);
+    store.workLogPresentation.cycleExpansion();
+    expect(store.workLogPresentation.expansion).toBe("collapsed");
+    expect(store.workLogPresentation.itemOpen("item-1")).toBe(false);
     store[Symbol.dispose]();
   });
 
@@ -323,40 +335,42 @@ describe("ChatStore work-log view mode and expansion", () => {
     });
 
     const store = createChatStore(() => Promise.resolve(true), {
-      workLogViewMode: () => mode,
-      setWorkLogViewMode: setMode,
-      workLogsExpansion: () => expansion,
-      setWorkLogsExpansion: setExpansion,
+      workLogPresentation: {
+        viewMode: () => mode,
+        setViewMode: setMode,
+        expansion: () => expansion,
+        setExpansion,
+      },
     });
 
-    expect(store.workLogViewMode).toBe("log");
-    expect(store.workLogsExpansion).toBe("expanded");
+    expect(store.workLogPresentation.viewMode).toBe("log");
+    expect(store.workLogPresentation.expansion).toBe("expanded");
 
-    store.setWorkLogViewMode("diff");
+    store.workLogPresentation.setViewMode("diff");
     expect(setMode).toHaveBeenCalledWith("diff");
 
-    store.setWorkLogsExpansion("fully-expanded");
+    store.workLogPresentation.setExpansion("fully-expanded");
     expect(setExpansion).toHaveBeenCalledWith("fully-expanded");
     store[Symbol.dispose]();
   });
 
   it("keeps non-diff work logs collapsed in diff view mode and allows group overrides", () => {
     const store = createChatStore(() => Promise.resolve(true));
-    store.setWorkLogsExpansion("expanded");
-    store.setWorkLogViewMode("diff");
+    store.workLogPresentation.setExpansion("expanded");
+    store.workLogPresentation.setViewMode("diff");
 
     // In diff mode, groups with diffs open, while groups without diffs stay collapsed
-    expect(store.workLogGroupOpen("group-diff", true)).toBe(true);
-    expect(store.workLogGroupOpen("group-no-diff", false)).toBe(false);
+    expect(store.workLogPresentation.groupOpen("group-diff", true)).toBe(true);
+    expect(store.workLogPresentation.groupOpen("group-no-diff", false)).toBe(false);
 
     // Manual click overrides the default for that group
-    store.setWorkLogGroupOpen("group-no-diff", true);
-    expect(store.workLogGroupOpen("group-no-diff", false)).toBe(true);
+    store.workLogPresentation.setGroupOpen("group-no-diff", true);
+    expect(store.workLogPresentation.groupOpen("group-no-diff", false)).toBe(true);
 
     // Changing expansion clears group overrides
-    store.setWorkLogsExpansion("collapsed");
-    expect(store.workLogGroupOpen("group-no-diff", false)).toBe(false);
-    expect(store.workLogGroupOpen("group-diff", true)).toBe(false);
+    store.workLogPresentation.setExpansion("collapsed");
+    expect(store.workLogPresentation.groupOpen("group-no-diff", false)).toBe(false);
+    expect(store.workLogPresentation.groupOpen("group-diff", true)).toBe(false);
 
     store[Symbol.dispose]();
   });

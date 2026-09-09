@@ -42,7 +42,10 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
 }) {
   const userMessageRendersAsMarkdown =
     part.kind === "text" && part.role === "user" && part.entryId
-      ? behavior.store.userMessageRendersAsMarkdown(part.entryId, part.renderAs === "markdown")
+      ? behavior.store.transcriptInteraction.userMessageRendersAsMarkdown(
+          part.entryId,
+          part.renderAs === "markdown",
+        )
       : false;
   if (part.kind === "text")
     return part.role === "assistant" ? (
@@ -56,26 +59,32 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
         onOpenSourceLocation={behavior.openSourceLocation}
       >
         <div className="ml-auto flex min-h-[30px] items-center gap-2" aria-label="User actions">
-          {part.entryId && behavior.store.canToggleUserMessageMarkdown && !part.draft && (
-            <IconButton
-              className="pointer-events-none opacity-0 transition-opacity group-hover/msg:pointer-events-auto group-hover/msg:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
-              tooltip={userMessageRendersAsMarkdown ? "Render as plain text" : "Render as Markdown"}
-              ariaLabel={
-                userMessageRendersAsMarkdown ? "Render as plain text" : "Render as Markdown"
-              }
-              aria-pressed={userMessageRendersAsMarkdown}
-              disabled={behavior.store.updatingUserMessagePresentation.has(part.entryId)}
-              onClick={() => {
-                if (part.entryId)
-                  void behavior.store.setUserMessageMarkdown(
-                    part.entryId,
-                    !userMessageRendersAsMarkdown,
-                  );
-              }}
-            >
-              <MarkdownIcon />
-            </IconButton>
-          )}
+          {part.entryId &&
+            behavior.store.transcriptInteraction.canToggleUserMessageMarkdown &&
+            !part.draft && (
+              <IconButton
+                className="pointer-events-none opacity-0 transition-opacity group-hover/msg:pointer-events-auto group-hover/msg:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
+                tooltip={
+                  userMessageRendersAsMarkdown ? "Render as plain text" : "Render as Markdown"
+                }
+                ariaLabel={
+                  userMessageRendersAsMarkdown ? "Render as plain text" : "Render as Markdown"
+                }
+                aria-pressed={userMessageRendersAsMarkdown}
+                disabled={behavior.store.transcriptInteraction.updatingUserMessagePresentation.has(
+                  part.entryId,
+                )}
+                onClick={() => {
+                  if (part.entryId)
+                    void behavior.store.transcriptInteraction.setUserMessageMarkdown(
+                      part.entryId,
+                      !userMessageRendersAsMarkdown,
+                    );
+                }}
+              >
+                <MarkdownIcon />
+              </IconButton>
+            )}
           {part.entryId === behavior.store.lastEditableUserEntryId &&
             behavior.store.canEditLastUserMessage && (
               <>
@@ -114,9 +123,12 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
   if (part.kind === "reasoning")
     return (
       <Reasoning
-        open={behavior.store.workLogItemOpen(part.id)}
+        open={behavior.store.workLogPresentation.itemOpen(part.id)}
         onToggle={() =>
-          behavior.store.setWorkLogItemOpen(part.id, !behavior.store.workLogItemOpen(part.id))
+          behavior.store.workLogPresentation.setItemOpen(
+            part.id,
+            !behavior.store.workLogPresentation.itemOpen(part.id),
+          )
         }
         streaming={part.status === "streaming"}
         hasContent={Boolean(part.text.trim())}
@@ -173,11 +185,11 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
         expansion={
           workLogItem
             ? {
-                open: behavior.store.workLogItemOpen(part.id),
+                open: behavior.store.workLogPresentation.itemOpen(part.id),
                 toggle: () =>
-                  behavior.store.setWorkLogItemOpen(
+                  behavior.store.workLogPresentation.setItemOpen(
                     part.id,
-                    !behavior.store.workLogItemOpen(part.id),
+                    !behavior.store.workLogPresentation.itemOpen(part.id),
                   ),
               }
             : undefined

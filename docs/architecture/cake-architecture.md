@@ -417,10 +417,18 @@ The window Store hierarchy mirrors the product surfaces:
   projection and operation-correlated delivery recovery, and `PendingSessionDraftStore` owns the distinct saved-draft lifecycle.
   Managed Worktree landing sequencing,
   recovery, queue policy, and Project Session prompts are authoritative main-process domain behavior; the renderer only starts, retries, dismisses,
-  and projects those operations. Its
-  `ChatStore` is the common conversation-facing state boundary: it presents the
-  draft, transcript parts, streaming state, configuration, and composer actions
-  consumed by the authoritative `Chat` component.
+  and projects those operations. Its `ChatStore` remains the common
+  conversation-facing state boundary supplied to the authoritative `Chat`
+  component. Internally, `TranscriptInteractionStore` owns window-local
+  transcript restoration, message navigation, changed-files disclosure, loading
+  duration, and user-message presentation mutations; `WorkLogPresentationStore`
+  owns work-log disclosure preferences, elapsed-time tracking, and its per-chat
+  interval; and `ScheduledMessageInteractionStore` owns scheduled-message
+  countdown and cancellation presentation plus its per-chat interval. These
+  children share the owning `ChatStore` lifetime and persist nothing. Pi remains
+  transcript authority, while Cake's scheduled-message projection remains
+  authoritative for pending delivery intents. Composer draft submission remains
+  serialized at the shared `ChatStore` boundary.
 - Project sessions, Cake Chat sessions, selection chats, and review threads all
   render the same `Chat` component and supply a `ChatStore`. `Chat` owns the
   authoritative virtualized transcript, message rendering, loading behavior,
@@ -493,6 +501,9 @@ flowchart TD
   Session --> Config["ChatConfigurationStore"]
   Session --> Worktree["WorktreeStore"]
   Session --> Chat["ChatStore"]
+  Chat --> TranscriptInteraction["TranscriptInteractionStore"]
+  Chat --> WorkLogPresentation["WorkLogPresentationStore"]
+  Chat --> ScheduledInteraction["ScheduledMessageInteractionStore"]
   Session --> Comments["MessageCommentsStore"]
   Session --> Artifacts["ArtifactInteractionStore"]
   Root --> Reviews["ReviewsStore"]

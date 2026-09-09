@@ -81,7 +81,7 @@ export const ChatTranscript = observer(function ChatTranscript({
   const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
   const pendingSelectionRef = useRef<TranscriptSelectionCapture | undefined>(undefined);
   const restoredScrollPosition = useMemo(
-    () => untracked(() => store.transcriptScrollPosition),
+    () => untracked(() => store.transcriptInteraction.transcriptScrollPosition),
     [store],
   );
   const [draftAnchor, setDraftAnchor] = useState<MessageCommentAnchorRect>();
@@ -92,7 +92,10 @@ export const ChatTranscript = observer(function ChatTranscript({
     scrollToBottom: scrollCompactToBottom,
     stopScroll,
   } = useStickToBottom({
-    initial: restoredScrollPosition || store.messageNavigationRequest ? false : "instant",
+    initial:
+      restoredScrollPosition || store.transcriptInteraction.messageNavigationRequest
+        ? false
+        : "instant",
     resize: "instant",
   });
   const atBottom = useRef(!restoredScrollPosition || restoredScrollPosition.kind === "bottom");
@@ -127,7 +130,7 @@ export const ChatTranscript = observer(function ChatTranscript({
     Boolean(behavior.waitingForUser || behavior.artifacts?.interaction.request),
   );
   useLayoutEffect(() => {
-    store.syncChangedFilesOpen(showAssistantLoading);
+    store.transcriptInteraction.syncChangedFilesOpen(showAssistantLoading);
   }, [showAssistantLoading, store]);
   const groupedParts = groupTranscriptParts(parts);
   const hasWorkLogChanges = useMemo(() => workLogChanges(parts).length > 0, [parts]);
@@ -148,7 +151,7 @@ export const ChatTranscript = observer(function ChatTranscript({
     () => ({ store, ...behavior, renderChat }),
     [behavior, renderChat, store],
   );
-  const messageNavigationRequest = store.messageNavigationRequest;
+  const messageNavigationRequest = store.transcriptInteraction.messageNavigationRequest;
   const messageNavigationItemIndex = messageNavigationRequest
     ? items.findIndex((item) =>
         item.kind === "activity-group" || item.kind === "source-group"
@@ -192,7 +195,7 @@ export const ChatTranscript = observer(function ChatTranscript({
   }, [messageNavigationItemIndex, messageNavigationRequest, scroller, stopScroll, virtualized]);
   useLayoutEffect(() => {
     if (!scroller) return;
-    let pendingPosition = untracked(() => store.transcriptScrollPosition);
+    let pendingPosition = untracked(() => store.transcriptInteraction.transcriptScrollPosition);
     let saveTimer: ReturnType<typeof setTimeout> | undefined;
     const captureScrollPosition = (): TranscriptScrollPosition | undefined => {
       if (scroller.clientHeight <= 0) return undefined;
@@ -213,7 +216,7 @@ export const ChatTranscript = observer(function ChatTranscript({
     };
     const commitScrollPosition = () => {
       saveTimer = undefined;
-      if (pendingPosition) store.setTranscriptScrollPosition(pendingPosition);
+      if (pendingPosition) store.transcriptInteraction.setTranscriptScrollPosition(pendingPosition);
     };
     const captureAndSchedule = () => {
       pendingPosition = captureScrollPosition();
@@ -226,7 +229,7 @@ export const ChatTranscript = observer(function ChatTranscript({
     return () => {
       scroller.removeEventListener("scroll", captureAndSchedule);
       if (saveTimer !== undefined) clearTimeout(saveTimer);
-      if (pendingPosition) store.setTranscriptScrollPosition(pendingPosition);
+      if (pendingPosition) store.transcriptInteraction.setTranscriptScrollPosition(pendingPosition);
     };
   }, [scroller, store]);
   const error = errorOverride ?? store.error;
@@ -284,8 +287,8 @@ export const ChatTranscript = observer(function ChatTranscript({
     <ChangedFiles
       parts={parts}
       workspacePath={behavior.workspacePath}
-      open={store.changedFilesOpen}
-      onOpenChange={(open) => store.setChangedFilesOpen(open)}
+      open={store.transcriptInteraction.changedFilesOpen}
+      onOpenChange={(open) => store.transcriptInteraction.setChangedFilesOpen(open)}
       onOpenFile={
         behavior.openSourceLocation
           ? (path) => behavior.openSourceLocation?.({ path, view: "changes" })
@@ -337,7 +340,7 @@ export const ChatTranscript = observer(function ChatTranscript({
       ) : item.kind === "changed-files" ? (
         changedFiles
       ) : item.kind === "loading-state" ? (
-        <LoadingState startedAt={store.loadingStartedAt} />
+        <LoadingState startedAt={store.transcriptInteraction.loadingStartedAt} />
       ) : item.kind === "review-run" ? (
         <ReviewRunMessage run={item} onOpen={transcriptBehavior.onOpenReviewRun} />
       ) : (
@@ -356,7 +359,9 @@ export const ChatTranscript = observer(function ChatTranscript({
           {visibleParts.length === 0 ? (
             <Conversation className="px-6 pt-[42px] pb-[210px] max-[620px]:px-4">
               {empty}
-              {showAssistantLoading && <LoadingState startedAt={store.loadingStartedAt} />}
+              {showAssistantLoading && (
+                <LoadingState startedAt={store.transcriptInteraction.loadingStartedAt} />
+              )}
               {footer}
               {error?.message && (
                 <ErrorNotice
@@ -380,7 +385,7 @@ export const ChatTranscript = observer(function ChatTranscript({
                 context={{ footer, error }}
                 computeItemKey={(_index, item) => item.id}
                 initialTopMostItemIndex={openingItemLocation}
-                followOutput="auto"
+                followOutput={false}
                 atBottomStateChange={handleBottomStateChange}
                 totalListHeightChanged={handleTotalHeightChange}
                 components={{ List: TranscriptList, Footer: ChatTranscriptFooter }}

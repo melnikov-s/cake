@@ -43,9 +43,9 @@ export const ActivityGroup = observer(function ActivityGroup({
 }) {
   const changes = useMemo(() => workLogChanges(parts), [parts]);
   const hasDiff = changes.length > 0;
-  const viewMode = behavior.store.workLogViewMode;
+  const viewMode = behavior.store.workLogPresentation.viewMode;
   const showDiff = hasDiff && (viewMode === "diff" || viewMode === "auto");
-  const open = behavior.store.workLogGroupOpen(groupId, hasDiff);
+  const open = behavior.store.workLogPresentation.groupOpen(groupId, hasDiff);
   const [activityStripOpen, setActivityStripOpen] = useState(false);
   const [logElement, setLogElement] = useState<HTMLDivElement | null>(null);
   const logScrollState = useRef<WorkLogScrollState | undefined>(undefined);
@@ -172,7 +172,7 @@ export const ActivityGroup = observer(function ActivityGroup({
         className="flex cursor-pointer select-none items-center gap-2 px-3.5 py-2.5 font-mono text-xs font-semibold text-foreground [&::-webkit-details-marker]:hidden"
         onClick={(event) => {
           event.preventDefault();
-          behavior.store.setWorkLogGroupOpen(groupId, !open);
+          behavior.store.workLogPresentation.setGroupOpen(groupId, !open);
         }}
       >
         <StatusDot status={activityIsRunning ? "running" : "complete"} />

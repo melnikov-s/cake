@@ -158,11 +158,13 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       canSubmit: () => this.composerStore.draftStore.hasContent,
       submit: (_draft, options) =>
         this.composerStore.submit(undefined, options?.renderUserMessageAsMarkdown ?? false),
-      setUserMessageMarkdown: (entryId, renderAsMarkdown) =>
-        this.client.cakeChats.setUserMessageMarkdown(
-          { ...this.props.collection.target(this.sessionId), entryId, renderAsMarkdown },
-          { signal: this.signal },
-        ),
+      userMessagePresentation: {
+        setMarkdown: (entryId, renderAsMarkdown) =>
+          this.client.cakeChats.setUserMessageMarkdown(
+            { ...this.props.collection.target(this.sessionId), entryId, renderAsMarkdown },
+            { signal: this.signal },
+          ),
+      },
       activateDraft: () => this.composerStore.activateDraftSession(),
       editLastUserMessage: (entryId) => this.composerStore.beginEditMessage(entryId),
       isDraftSession: () => this.props.collection.isDraftSession(this.sessionId),
@@ -176,13 +178,18 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       removeAnnotation: (id) => this.composerStore.draftStore.annotationDraft.remove(id),
       addPastedImages: (files) => this.composerStore.draftStore.addPastedImages(files),
       removeAttachment: (index) => this.composerStore.draftStore.removeAttachment(index),
-      showComposerContextMenu: (selection, x, y) =>
-        this.client.electron.showComposerContextMenu({ selection, x, y }, { signal: this.signal }),
-      rewordComposerSelection: (selection, prompt) =>
-        this.client.workspaces.rewordComposerSelection(
-          { selection, prompt },
-          { signal: this.signal },
-        ),
+      composerReword: {
+        showContextMenu: (selection, x, y) =>
+          this.client.electron.showComposerContextMenu(
+            { selection, x, y },
+            { signal: this.signal },
+          ),
+        rewordSelection: (selection, prompt) =>
+          this.client.workspaces.rewordComposerSelection(
+            { selection, prompt },
+            { signal: this.signal },
+          ),
+      },
       usage: () => this.model.usage,
       hideThinking: () => Boolean(this.model.piSettings?.hideThinkingBlock),
       error: () => ({
@@ -190,10 +197,12 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
         details: this.configurationStore.errorDetails ?? this.composerStore.errorDetails,
         title: "Cake Chat failed",
       }),
-      workLogViewMode: () => this.props.settings?.()?.workLogViewMode,
-      setWorkLogViewMode: (mode) => this.props.settings?.()?.setWorkLogViewMode(mode),
-      workLogsExpansion: () => this.props.settings?.()?.workLogsExpansion,
-      setWorkLogsExpansion: (expansion) => this.props.settings?.()?.setWorkLogsExpansion(expansion),
+      workLogPresentation: {
+        viewMode: () => this.props.settings?.()?.workLogViewMode,
+        setViewMode: (mode) => this.props.settings?.()?.setWorkLogViewMode(mode),
+        expansion: () => this.props.settings?.()?.workLogsExpansion,
+        setExpansion: (expansion) => this.props.settings?.()?.setWorkLogsExpansion(expansion),
+      },
     });
   }
 
