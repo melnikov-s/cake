@@ -11,7 +11,11 @@ export const observeApplicationEvents = (runtime: Runtime, root: RootStore) =>
       if (!storeEvent) return;
       try {
         if (storeEvent.type === "notification") {
-          root.toastStore.show(storeEvent);
+          void root.notificationStore.enqueue({
+            title: storeEvent.title,
+            body: storeEvent.message,
+            level: storeEvent.tone,
+          });
           return;
         }
         if (storeEvent.type === "project-session-control-requested") {
