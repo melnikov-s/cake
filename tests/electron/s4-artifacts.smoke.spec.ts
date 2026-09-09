@@ -114,7 +114,7 @@ test("presents artifacts, sorts a table, resolves a form, and isolates HTML", as
         };
         const selection = document.data?.children?.appShellStore?.state?.selection;
         return Boolean(
-          document.version === 2 && selection?.kind === "project-session" && selection.sessionId,
+          document.version === 9 && selection?.kind === "project-session" && selection.sessionId,
         );
       })
       .toBe(true);
