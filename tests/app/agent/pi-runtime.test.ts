@@ -32,6 +32,7 @@ import {
   promptText,
   projectQueuedMessages,
   projectSessionEntries,
+  toolArtifactId,
   toolResultContent,
 } from "../../../src/services/pi/runtime/session-projection";
 import { loadReviewSessionProjection } from "../../../src/services/pi/runtime/sidecar-runtime";
@@ -1438,6 +1439,53 @@ describe("Pi 0.84.0 foundation contract", () => {
         state: "success",
       }),
     ]);
+  });
+
+  it("omits malformed artifact IDs from tool projections", () => {
+    expect(toolArtifactId({ artifactId: "" })).toBeUndefined();
+    expect(toolArtifactId({ artifactId: "x".repeat(257) })).toBeUndefined();
+    expect(
+      toolArtifactId({
+        artifactId: "",
+        input: { request: { id: "request-1" } },
+      }),
+    ).toBe("request-1");
+
+    const parts = projectSessionEntries([
+      {
+        type: "message",
+        id: "assistant-tool-call",
+        parentId: null,
+        timestamp: new Date(0).toISOString(),
+        message: {
+          role: "assistant",
+          content: [
+            {
+              type: "toolCall",
+              id: "request-call",
+              name: "cake",
+              arguments: { artifactId: "" },
+            },
+          ],
+        },
+      },
+    ] as never);
+
+    expect(parts).toEqual([expect.objectContaining({ kind: "tool", artifactId: undefined })]);
+    expect(() =>
+      Schema.decodeUnknownSync(sessionSnapshotSchema)({
+        workspacePath: "/workspace",
+        sessionId: "session-1",
+        sessionFile: "/session.jsonl",
+        parts,
+        models: [],
+        thinkingLevel: "off",
+        availableThinkingLevels: ["off"],
+        streaming: false,
+        diagnostics: [],
+        commands: [],
+      }),
+    ).not.toThrow();
   });
 
   it("projects an unlinked artifact pointer as its own branch-local transcript part", () => {

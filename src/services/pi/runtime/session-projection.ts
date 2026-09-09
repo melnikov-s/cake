@@ -124,37 +124,51 @@ export function cakeOperationCommand(value: unknown) {
   return undefined;
 }
 
+const projectedArtifactIdSchema = Schema.String.check(
+  Schema.isMinLength(1),
+  Schema.isMaxLength(256),
+);
+
+function projectedArtifactId(value: unknown) {
+  const parsed = Schema.decodeUnknownOption(projectedArtifactIdSchema)(value);
+  return Option.isSome(parsed) ? parsed.value : undefined;
+}
+
 export function toolArtifactId(value: unknown) {
   if (typeof value !== "object" || value === null) return undefined;
-  const direct = Reflect.get(value, "artifactId");
-  if (typeof direct === "string") return direct;
+  const direct = projectedArtifactId(Reflect.get(value, "artifactId"));
+  if (direct) return direct;
   const details = Reflect.get(value, "details");
   const detailedId =
     typeof details === "object" && details !== null
-      ? Reflect.get(details, "artifactId")
+      ? projectedArtifactId(Reflect.get(details, "artifactId"))
       : undefined;
-  if (typeof detailedId === "string") return detailedId;
+  if (detailedId) return detailedId;
   const result =
     typeof details === "object" && details !== null ? Reflect.get(details, "result") : undefined;
   const resultId =
-    typeof result === "object" && result !== null ? Reflect.get(result, "artifactId") : undefined;
-  if (typeof resultId === "string") return resultId;
+    typeof result === "object" && result !== null
+      ? projectedArtifactId(Reflect.get(result, "artifactId"))
+      : undefined;
+  if (resultId) return resultId;
   const artifact = Reflect.get(value, "artifact");
   const artifactId =
-    typeof artifact === "object" && artifact !== null ? Reflect.get(artifact, "id") : undefined;
-  if (typeof artifactId === "string") return artifactId;
+    typeof artifact === "object" && artifact !== null
+      ? projectedArtifactId(Reflect.get(artifact, "id"))
+      : undefined;
+  if (artifactId) return artifactId;
   const request = Reflect.get(value, "request");
   const requestId =
-    typeof request === "object" && request !== null ? Reflect.get(request, "id") : undefined;
-  if (typeof requestId === "string") return requestId;
+    typeof request === "object" && request !== null
+      ? projectedArtifactId(Reflect.get(request, "id"))
+      : undefined;
+  if (requestId) return requestId;
   const input = Reflect.get(value, "input");
   const nestedRequest =
     typeof input === "object" && input !== null ? Reflect.get(input, "request") : undefined;
-  const nestedRequestId =
-    typeof nestedRequest === "object" && nestedRequest !== null
-      ? Reflect.get(nestedRequest, "id")
-      : undefined;
-  return typeof nestedRequestId === "string" ? nestedRequestId : undefined;
+  return typeof nestedRequest === "object" && nestedRequest !== null
+    ? projectedArtifactId(Reflect.get(nestedRequest, "id"))
+    : undefined;
 }
 
 export function textFromContent(content: unknown): string {
