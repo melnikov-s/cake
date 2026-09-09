@@ -1,10 +1,12 @@
 import { it } from "@effect/vitest";
-import { Deferred, Effect, Layer, Stream, SubscriptionRef } from "effect";
+import { Deferred, Effect, Layer, Schema, Stream, SubscriptionRef } from "effect";
 import { describe, expect } from "vitest";
-import type {
-  WorktreeLandingError,
-  WorktreeLandingPhase,
+import {
+  type WorktreeLandingError,
+  type WorktreeLandingPhase,
+  WorktreeLandingSnapshot,
 } from "../../../src/domain/worktree-landing-data";
+import { WorktreeOperationCatalogUpdate } from "../../../src/domain/worktree-operation-data";
 import * as worktreeLandings from "../../../src/domain/worktreeLandings";
 import type {
   WorktreeLandOutcome,
@@ -426,6 +428,19 @@ describe("WorktreeLandings", () => {
           });
           expect(yield* Deferred.await(resolved)).toBe(workspacePath);
           yield* awaitPhase("landed");
+          const snapshot = yield* worktreeLandings.inspect({
+            workspacePath,
+            sessionId: "session-1",
+          });
+          expect(snapshot.operation).not.toHaveProperty("pauseReason");
+          expect(() => Schema.decodeUnknownSync(WorktreeLandingSnapshot)(snapshot)).not.toThrow();
+          const operationUpdates = yield* (yield* worktreeLandings.observeOperations()).pipe(
+            Stream.take(1),
+            Stream.runCollect,
+          );
+          expect(() =>
+            Schema.decodeUnknownSync(WorktreeOperationCatalogUpdate)(operationUpdates[0]),
+          ).not.toThrow();
           expect(events).toEqual([
             "resolve-intent:true",
             "prepare",

@@ -12,6 +12,15 @@ import {
 
 const messageOf = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause));
 
+const normalizeOperation = (operation: WorktreeLandingOperation): WorktreeLandingOperation => {
+  const normalized = { ...operation };
+  if (normalized.strategy === undefined) delete normalized.strategy;
+  if (normalized.resolveAfterLanding === undefined) delete normalized.resolveAfterLanding;
+  if (normalized.pauseReason === undefined) delete normalized.pauseReason;
+  if (normalized.error === undefined) delete normalized.error;
+  return normalized;
+};
+
 /** Current-first process-lifetime projection of landing and queue progress. */
 export const observeOperations = Effect.fn("WorktreeLandings.observeOperations")(function* () {
   const coordinator = yield* WorktreeLandingCoordinator;
@@ -37,7 +46,7 @@ const update = Effect.fn("WorktreeLandings.update")(function* (
     const current = state.operations.get(workspacePath);
     if (!current || current.operationId !== operationId) return state;
     const operations = new Map(state.operations);
-    operations.set(workspacePath, change(current));
+    operations.set(workspacePath, normalizeOperation(change(current)));
     return { operations };
   });
 });
@@ -344,7 +353,7 @@ const insert = Effect.fn("WorktreeLandings.insert")(function* (
     const current = state.operations.get(operation.workspacePath);
     if (current && !isTerminal(current)) return [false, state] as const;
     const operations = new Map(state.operations);
-    operations.set(operation.workspacePath, operation);
+    operations.set(operation.workspacePath, normalizeOperation(operation));
     return [true, { operations }] as const;
   });
   if (!inserted)
@@ -364,7 +373,7 @@ export const start = Effect.fn("WorktreeLandings.start")(function* (input: {
   readonly resolveAfterLanding?: boolean;
 }) {
   yield* requireStatus(input.workspacePath);
-  const operation: WorktreeLandingOperation = {
+  const operation = normalizeOperation({
     operationId: input.operationId,
     workspacePath: input.workspacePath,
     sessionId: input.sessionId,
@@ -373,7 +382,7 @@ export const start = Effect.fn("WorktreeLandings.start")(function* (input: {
     strategy: input.strategy,
     allowDirtyTarget: input.allowDirtyTarget,
     resolveAfterLanding: input.resolveAfterLanding || undefined,
-  };
+  });
   yield* insert(operation);
   if (input.resolveAfterLanding)
     yield* (yield* ManagedWorktrees)
@@ -422,12 +431,12 @@ export const retry = Effect.fn("WorktreeLandings.retry")(function* (input: {
           : current.pauseReason === "squash-message"
             ? "proposing"
             : "resolving";
-    const claimed: WorktreeLandingOperation = {
+    const claimed = normalizeOperation({
       ...current,
       sessionId: input.sessionId,
       phase: retryPhase,
       error: undefined,
-    };
+    });
     const operations = new Map(state.operations);
     operations.set(input.workspacePath, claimed);
     return [claimed, { operations }] as const;
@@ -564,7 +573,7 @@ export const inspect = Effect.fn("WorktreeLandings.inspect")(function* (input: {
     const strategy = status.record.pendingStrategy;
     const proposing = strategy === "squash" && !status.merging && !status.rebasing;
     const ready = strategy !== undefined && !landingBlocked(status, strategy);
-    operation = {
+    operation = normalizeOperation({
       operationId: status.landingOperationId ?? crypto.randomUUID(),
       workspacePath: input.workspacePath,
       sessionId: input.sessionId,
@@ -579,7 +588,7 @@ export const inspect = Effect.fn("WorktreeLandings.inspect")(function* (input: {
             ? "squash-message"
             : "conflict"
           : "rebase-conflict",
-    };
+    });
     yield* insert(operation);
     if (strategy) yield* run(operation, adoptLanding(operation, ready));
   }
