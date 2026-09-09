@@ -75,9 +75,12 @@ export class RootStore extends Store<{
         : undefined;
     }
     if (active?.kind === "cake-chat") {
-      const session = this.cakeChatCollectionStore.findSession(active.sessionId);
+      const session = this.cakeChatCollectionStore.registry.find(active.sessionId);
       return session
-        ? { kind: "cake-chat" as const, ...this.cakeChatCollectionStore.target(active.sessionId) }
+        ? {
+            kind: "cake-chat" as const,
+            ...this.cakeChatCollectionStore.registry.target(active.sessionId),
+          }
         : undefined;
     }
     return undefined;
@@ -484,7 +487,7 @@ export class RootStore extends Store<{
     const chat =
       selection.kind === "cake-chat"
         ? selection.sessionId
-          ? this.cakeChatCollectionStore.findSession(selection.sessionId)?.chatStore
+          ? this.cakeChatCollectionStore.registry.find(selection.sessionId)?.chatStore
           : undefined
         : projectSelected
           ? this.projectWorkbenchStore.activeSession?.chatStore
@@ -732,7 +735,7 @@ export class RootStore extends Store<{
 
   private async deleteCakeChatSession(sessionId: string) {
     const wasSelected = this.appShellStore.activeConversation?.sessionId === sessionId;
-    await this.cakeChatCollectionStore.deleteSession(sessionId);
+    await this.cakeChatCollectionStore.management.deleteSession(sessionId);
     if (this.cakeChatCollectionStore.summaries.some((session) => session.sessionId === sessionId))
       return;
     await this.forgetResolvedSessions([sessionId]);
@@ -741,7 +744,7 @@ export class RootStore extends Store<{
   }
 
   private async resolveCakeChatSession(sessionId: string, resolved: boolean) {
-    await this.cakeChatCollectionStore.resolveSession(sessionId, resolved);
+    await this.cakeChatCollectionStore.management.resolveSession(sessionId, resolved);
     if (!resolved) return;
     if (this.cakeChatCollectionStore.isSessionResolved(sessionId)) {
       await this.forgetResolvedSessions([sessionId]);
@@ -1016,7 +1019,7 @@ export class RootStore extends Store<{
           return session?.sessionId === active.sessionId ? session : undefined;
         }
         return active?.kind === "cake-chat"
-          ? this.cakeChatCollectionStore.findSession(active.sessionId)
+          ? this.cakeChatCollectionStore.registry.find(active.sessionId)
           : undefined;
       },
       workbenchError: () => this.projectWorkbenchStore.error,
@@ -1115,7 +1118,7 @@ export class RootStore extends Store<{
   constructor(props: RootStore["props"]) {
     super(props);
     this.effect(() => {
-      for (const session of this.cakeChatCollectionStore.loadedSessions)
+      for (const session of this.cakeChatCollectionStore.registry.sessions)
         for (const request of session.model.controlRequests)
           if (!this.respondedCakeChatControlIds.has(request.controlRequestId)) {
             this.respondedCakeChatControlIds.add(request.controlRequestId);
@@ -1146,8 +1149,8 @@ export class RootStore extends Store<{
         if (selection.kind === "cake-chat") {
           if (
             !selection.sessionId ||
-            (this.cakeChatCollectionStore.isPendingSession(selection.sessionId) &&
-              !this.cakeChatCollectionStore.isDraftSession(selection.sessionId))
+            (this.cakeChatCollectionStore.pendingSessions.isPending(selection.sessionId) &&
+              !this.cakeChatCollectionStore.pendingSessions.isDraft(selection.sessionId))
           )
             return { kind: "new-cake-chat" as const };
           return {
@@ -1232,7 +1235,9 @@ export class RootStore extends Store<{
         ),
       renameSession: (sessionId, title) =>
         this.cakeChatCollectionStore.summaries.some((session) => session.sessionId === sessionId)
-          ? this.cakeChatCollectionStore.renameSession(sessionId, title).then(() => undefined)
+          ? this.cakeChatCollectionStore.management
+              .renameSession(sessionId, title)
+              .then(() => undefined)
           : this.projectWorkbenchStore.sessionManagementStore.renameSession(sessionId, title),
       setSessionResolved: async (sessionId, resolved) => {
         await this.resolveProjectSession(sessionId, resolved);
@@ -1247,7 +1252,10 @@ export class RootStore extends Store<{
         return count;
       },
       setCakeChatSessionsResolved: async (sessionIds, resolved) => {
-        const count = await this.cakeChatCollectionStore.resolveSessions(sessionIds, resolved);
+        const count = await this.cakeChatCollectionStore.management.resolveSessions(
+          sessionIds,
+          resolved,
+        );
         if (resolved) await this.forgetResolvedSessions(sessionIds);
         return count;
       },

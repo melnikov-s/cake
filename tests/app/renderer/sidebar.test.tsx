@@ -71,8 +71,8 @@ function sidebarProps(store: ProjectWorkbenchStore) {
     cakeChat: {
       summaries: fixture.cakeChatSummaries ?? [],
       sessionId: undefined,
-      findSession: vi.fn(),
-      renameSession: fixture.renameCakeChatSession ?? vi.fn(),
+      registry: { find: vi.fn() },
+      management: { renameSession: fixture.renameCakeChatSession ?? vi.fn() },
     } as any,
     onOpenKanban: fixture.openKanban ?? vi.fn(),
     onOpenCakeChat: vi.fn(),
@@ -711,7 +711,8 @@ describe("Sidebar projects", () => {
     props.cakeChat = {
       summaries: [{ sessionId: "cake-chat-1", title: "Repair the sidebar" }],
       sessionId: "cake-chat-1",
-      findSession: vi.fn(),
+      registry: { find: vi.fn() },
+      management: { renameSession: vi.fn() },
     } as any;
 
     act(() =>
@@ -913,7 +914,8 @@ describe("Sidebar projects", () => {
     props.cakeChat = {
       summaries: [{ sessionId: "cake-session", title: "Meta work" }],
       sessionId: "cake-session",
-      findSession: vi.fn(),
+      registry: { find: vi.fn() },
+      management: { renameSession: vi.fn() },
     } as any;
 
     act(() =>

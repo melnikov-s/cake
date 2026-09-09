@@ -339,9 +339,9 @@ export const observeModels = (runtime: Runtime, projection: RootProjection, root
         sessionId,
         workingDirectory: workspacePath,
       })),
-    loadedCakeChatIds: () => root.cakeChatCollectionStore.targets,
+    loadedCakeChatIds: () => root.cakeChatCollectionStore.registry.targets,
     projectSessionTargets: () => root.projectSessionObservationTargets,
-    cakeChatTargets: () => root.cakeChatCollectionStore.observationTargets,
+    cakeChatTargets: () => root.cakeChatCollectionStore.registry.observationTargets,
   });
   return observer.stop;
 };

@@ -454,22 +454,35 @@ The window Store hierarchy mirrors the product surfaces:
   Store or Model. Window, pane, and composer resizing are best-effort layout
   behavior, not reasons to add custom scrolling machinery. These rules apply
   identically to every surface using `Chat`.
-- The Cake Chat collection owns its `SessionLayoutStore` and one keyed
-  `CakeChatSessionStore` per loaded
-  meta-session. Each session retains its own draft, attachments, configuration,
-  transcript projection, and streaming state while another Cake Chat session is
-  selected. Like a new project chat, a new Cake Chat begins as one renderer-owned
-  pending session and creates its Pi runtime on the first prompt; its identity and
-  draft may be restored from window state without implying that a transcript file
+- `CakeChatCollectionStore` is the collection-level coordinator for catalog initialization and
+  genuine cross-child navigation. Its `CakeChatRegistryStore` owns persisted loaded target
+  identities, keyed `CakeChatSessionStore` creation and lookup, and reconciliation with the
+  authoritative Cake Chat catalog. `CakeChatPendingSessionsStore` owns window-persisted pending
+  configuration, names, saved prompts and attachments, pending summaries, and the
+  pending-to-materialized lifecycle; each session composer continues to compose
+  `PendingSessionDraftStore` for saved-draft editing and activation behavior.
+  `CakeChatManagementStore` owns rename, handoff, resolve, restore, and delete operations.
+  Resolve/restore commands serialize in invocation order and delete waits for earlier resolution
+  work; rename and handoff remain independent commands, with Store-lifetime cancellation and late
+  result rejection. The collection also composes its independent `SessionLayoutStore`, whose
+  focused session is the Cake Chat collection selection. This avoids a second persisted selection
+  ID while `AppShellStore` remains the authority for the window's mutually exclusive application
+  surface. The layout, registry identities, pending records, and session composer drafts persist in
+  the window snapshot; management operations and catalog hydration remain process-lifetime state.
+  Main/Pi remain authoritative for materialized Cake Chat metadata and transcripts.
+
+  Each keyed session retains its own draft, attachments, configuration, transcript projection, and
+  streaming state while another Cake Chat session is selected. Like a new project chat, a new Cake
+  Chat begins as one renderer-owned pending session and creates its Pi runtime on the first prompt;
+  its identity and draft may be restored from window state without implying that a transcript file
   exists. Each visible Cake Chat pane may hold its own pending conversation and retains an
   independent composer. Persisted Cake Chat sessions keep live runtimes as they are opened. The
-  window's renderer Model owner retains each projected `Session` independently of
-  Store or React lifetimes and disposes Models only after Model synchronization has
-  stopped. Project and Cake Chat session Stores receive those Models rather than
-  creating or disposing them. Cake Chat snapshots and deltas route through the collection, independently of project-session
-  registry and workbench lifetimes. Cross-process operations use explicit project
-  or Cake Chat intents and never infer session ownership from transcript-file
-  existence.
+  window's renderer Model owner retains each projected `Session` independently of Store or React
+  lifetimes and disposes Models only after Model synchronization has stopped. Project and Cake Chat
+  session Stores receive those Models rather than creating or disposing them. Cake Chat snapshots
+  and deltas route through the registry, independently of project-session registry and workbench
+  lifetimes. Cross-process operations use explicit project or Cake Chat intents and never infer
+  session ownership from transcript-file existence.
 
 UI and application controls invoke semantic `RootStore` intents such as
 `openSession`, `createSession`, or `showCakeChat`. The root performs any
@@ -486,7 +499,10 @@ flowchart TD
   Root --> Workbench["ProjectWorkbenchStore"]
   Root --> CakeChat["Cake Chat collection Store"]
   CakeChat --> CakeLayout["SessionLayoutStore"]
-  CakeChat --> CakeSession["CakeChatSessionStore per loaded meta-session"]
+  CakeChat --> CakeRegistry["CakeChatRegistryStore"]
+  CakeChat --> CakePending["CakeChatPendingSessionsStore"]
+  CakeChat --> CakeManagement["CakeChatManagementStore"]
+  CakeRegistry --> CakeSession["CakeChatSessionStore per loaded meta-session"]
   CakeSession --> CakeComposer["ConversationComposerStore"]
   CakeSession --> MetaChat["ChatStore"]
   Root --> Settings["SettingsStore"]

@@ -65,7 +65,7 @@ export const App = observer(function App() {
   const cakeChatCollection = surface === "cake-chat" ? root.cakeChatCollectionStore : undefined;
   const cakeChatSession =
     cakeChatCollection && shell.selection.kind === "cake-chat" && shell.selection.sessionId
-      ? cakeChatCollection.findSession(shell.selection.sessionId)
+      ? cakeChatCollection.registry.find(shell.selection.sessionId)
       : undefined;
   const conversationPaneVisible =
     projectSessionVisible || Boolean(cakeChatCollection && cakeChatSession);
@@ -215,7 +215,7 @@ export const App = observer(function App() {
     onHandoff: (entryId: string) => {
       const pane = cakeChatCollection?.sessionLayoutStore.paneForSession(paneSession.sessionId);
       if (pane) root.focusCakeChatPane(pane.paneId);
-      void cakeChatCollection?.handoff(paneSession.sessionId, entryId);
+      void cakeChatCollection?.management.handoff(paneSession.sessionId, entryId);
     },
   });
   const renderCakeChatPaneHeader = (
@@ -635,7 +635,7 @@ export const App = observer(function App() {
           cakeChatSession ? (
             <ConversationSplitLayout
               store={cakeChatCollection.sessionLayoutStore}
-              findSession={(sessionId) => cakeChatCollection.findSession(sessionId)}
+              findSession={(sessionId) => cakeChatCollection.registry.find(sessionId)}
               chatProps={cakeChatProps}
               title={(sessionId) =>
                 cakeChatCollection.summaries.find((summary) => summary.sessionId === sessionId)

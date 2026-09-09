@@ -4,15 +4,19 @@ import type { ModelPreset } from "../../ipc/session-contract";
 import { ClientContext } from "./context/ClientContext";
 import { ChatConfigurationStore } from "./ChatConfigurationStore";
 import { ChatStore } from "./ChatStore";
-import type { CakeChatCollectionStore } from "./CakeChatCollectionStore";
 import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
+import type { CakeChatManagementStore } from "./CakeChatManagementStore";
+import type { CakeChatPendingSessionsStore } from "./CakeChatPendingSessionsStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import { ConversationComposerStore } from "./ConversationComposerStore";
+import type { CakeChatTarget } from "../../domain/cake-chat-data";
 
 export interface CakeChatSessionStoreProps {
   sessionId: string;
   model: Session;
-  collection: CakeChatCollectionStore;
+  target(): CakeChatTarget;
+  pendingSessions: CakeChatPendingSessionsStore;
+  management: CakeChatManagementStore;
   operations: SessionOperationCoordinatorStore;
   modelPresets(): readonly ModelPreset[];
   openModelPresetSettings(): void;
@@ -60,11 +64,14 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
         await this.configurationStore.selectModel(value);
         return !this.signal.aborted && !this.configurationStore.error;
       },
-      renameSession: (name) => this.props.collection.renameSession(this.sessionId, name),
+      renameSession: (name) => this.props.management.renameSession(this.sessionId, name),
       handoffSession: (entryId, prompt, resolveSource) =>
-        this.props.collection.handoff(this.sessionId, entryId, prompt, resolveSource),
+        this.props.management.handoff(this.sessionId, entryId, prompt, resolveSource),
       deliver: async (input) => {
-        const newSession = this.props.collection.newSessionRequest(this.sessionId);
+        const newSession = this.props.pendingSessions.newSessionRequest(
+          this.sessionId,
+          this.props.target().tools,
+        );
         const prompt = {
           sessionId: input.sessionId,
           text: input.text,
@@ -73,32 +80,32 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
         };
         if (newSession !== undefined) Object.assign(prompt, { newSession });
         await this.client.cakeChats.prompt(prompt, { signal: this.signal });
-        this.props.collection.markSessionStarted(this.sessionId);
+        this.props.pendingSessions.markMaterialized(this.sessionId);
       },
       editMessage: (input) =>
         this.client.cakeChats.editMessage(
-          { ...this.props.collection.target(this.sessionId), ...input },
+          { ...this.props.target(), ...input },
           { signal: this.signal },
         ),
       compact: async (_sessionId, instructions) => {
-        if (this.props.collection.isPendingSession(this.sessionId))
+        if (this.props.pendingSessions.isPending(this.sessionId))
           throw new Error("Compaction requires an existing conversation");
         await this.client.cakeChats.compact(
-          { ...this.props.collection.target(this.sessionId), instructions },
+          { ...this.props.target(), instructions },
           { signal: this.signal },
         );
       },
       operations: this.props.operations,
       operationOwner: this.promptOwner,
-      draftSessionPrompt: (sessionId) => this.props.collection.draftSessionPrompt(sessionId),
-      isDeferredSession: (sessionId) => this.props.collection.isPendingSession(sessionId),
+      draftSessionPrompt: (sessionId) => this.props.pendingSessions.draftPrompt(sessionId),
+      isDeferredSession: (sessionId) => this.props.pendingSessions.isPending(sessionId),
       createDraftSession: (sessionId, text, attachments) =>
-        this.props.collection.createDraftSession(sessionId, text, attachments),
+        this.props.pendingSessions.createDraft(sessionId, text, attachments),
       updateDraftSession: (sessionId, text, attachments) =>
-        this.props.collection.updateDraftSession(sessionId, text, attachments),
-      activateDraftSession: (sessionId) => this.props.collection.activateDraftSession(sessionId),
+        this.props.pendingSessions.updateDraft(sessionId, text, attachments),
+      activateDraftSession: (sessionId) => this.props.pendingSessions.activateDraft(sessionId),
       applyGeneratedDraftName: (sessionId, title) =>
-        this.props.collection.applyGeneratedDraftName(sessionId, title),
+        this.props.pendingSessions.applyGeneratedDraftName(sessionId, title),
       editorText: (entryId) => this.model.tree.find((entry) => entry.piId === entryId)?.editorText,
     });
   }
@@ -111,29 +118,28 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       operationOwner: this.configurationOwner,
       presets: this.props.modelPresets,
       openPresetSettings: this.props.openModelPresetSettings,
-      deferredNewSession: () => this.props.collection.isPendingSession(this.sessionId),
-      effectiveConfiguration: () =>
-        this.props.collection.pendingSessionConfiguration(this.sessionId),
+      deferredNewSession: () => this.props.pendingSessions.isPending(this.sessionId),
+      effectiveConfiguration: () => this.props.pendingSessions.configuration(this.sessionId),
       setPendingConfiguration: (configuration) =>
-        this.props.collection.setPendingSessionConfiguration(this.sessionId, configuration),
+        this.props.pendingSessions.setConfiguration(this.sessionId, configuration),
       setConfiguration: (configuration) =>
         this.client.cakeChats.applyConfiguration(
-          { ...this.props.collection.target(this.sessionId), configuration },
+          { ...this.props.target(), configuration },
           { signal: this.signal },
         ),
       setModel: (provider, modelId) =>
         this.client.cakeChats.setModel(
-          { ...this.props.collection.target(this.sessionId), provider, modelId },
+          { ...this.props.target(), provider, modelId },
           { signal: this.signal },
         ),
       setThinkingLevel: (level) =>
         this.client.cakeChats.setThinkingLevel(
-          { ...this.props.collection.target(this.sessionId), level },
+          { ...this.props.target(), level },
           { signal: this.signal },
         ),
       setFastMode: (enabled) =>
         this.client.cakeChats.setFastMode(
-          { ...this.props.collection.target(this.sessionId), enabled },
+          { ...this.props.target(), enabled },
           { signal: this.signal },
         ),
     });
@@ -161,13 +167,13 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       userMessagePresentation: {
         setMarkdown: (entryId, renderAsMarkdown) =>
           this.client.cakeChats.setUserMessageMarkdown(
-            { ...this.props.collection.target(this.sessionId), entryId, renderAsMarkdown },
+            { ...this.props.target(), entryId, renderAsMarkdown },
             { signal: this.signal },
           ),
       },
       activateDraft: () => this.composerStore.activateDraftSession(),
       editLastUserMessage: (entryId) => this.composerStore.beginEditMessage(entryId),
-      isDraftSession: () => this.props.collection.isDraftSession(this.sessionId),
+      isDraftSession: () => this.props.pendingSessions.isDraft(this.sessionId),
       editingMessage: () => this.composerStore.editingMessage,
       abort: () => this.abort(),
       attachments: () => this.composerStore.draftStore.visibleAttachments,
@@ -214,7 +220,7 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
     if (!this.streaming) return;
     const operationId = this.props.operations.start(`cake-chat-abort:${this.sessionId}`);
     try {
-      await this.client.cakeChats.abort(this.props.collection.target(this.sessionId), {
+      await this.client.cakeChats.abort(this.props.target(), {
         signal: this.signal,
       });
       this.props.operations.finish(operationId);

@@ -85,7 +85,7 @@ export const SidebarCakeChatGroup = observer(function SidebarCakeChatGroup({
             const selected =
               shell.selection.kind === "cake-chat" &&
               shell.selection.sessionId === session.sessionId;
-            const running = cakeChat.findSession(session.sessionId)?.streaming === true;
+            const running = cakeChat.registry.find(session.sessionId)?.streaming === true;
             return (
               <SidebarSessionItem
                 key={session.sessionId}
@@ -95,7 +95,9 @@ export const SidebarCakeChatGroup = observer(function SidebarCakeChatGroup({
                 resolved={resolved}
                 activity={running ? "running" : undefined}
                 onOpen={onOpenCakeChat}
-                onRename={(sessionId, name) => void cakeChat.renameSession(sessionId, name)}
+                onRename={(sessionId, name) =>
+                  void cakeChat.management.renameSession(sessionId, name)
+                }
                 onResolve={(sessionId, nextResolved) =>
                   void store.setCakeChatSessionResolved(sessionId, nextResolved)
                 }

@@ -53,7 +53,7 @@ describe("CakeChatCollectionStore", () => {
       { cakeChats: { [operation]: fail } } as unknown as Client,
     );
     const session = store.activeSession!;
-    store.markSessionStarted(session.sessionId);
+    store.pendingSessions.markMaterialized(session.sessionId);
     const image = {
       kind: "image" as const,
       name: "context.png",
@@ -87,7 +87,7 @@ describe("CakeChatCollectionStore", () => {
       { cakeChats: { prompt } } as unknown as Client,
     );
     const session = store.activeSession!;
-    store.createDraftSession(session.sessionId, "Saved message", []);
+    store.pendingSessions.createDraft(session.sessionId, "Saved message", []);
     expect(await session.chatStore.activateDraft()).toBe(false);
     expect(session.chatStore.draft).toBe("Saved message");
     expect(session.composerStore.deliveryStore.optimisticUserMessages.pending).toEqual([]);
@@ -165,7 +165,7 @@ describe("CakeChatCollectionStore", () => {
     expect(split?.sessionId).not.toBe(firstSessionId);
     expect(store.sessionLayoutStore.panes).toHaveLength(2);
     expect(store.sessionLayoutStore.focusedSessionId).toBe(split?.sessionId);
-    expect(store.loadedSessions).toHaveLength(2);
+    expect(store.registry.sessions).toHaveLength(2);
 
     store.focusPane(store.sessionLayoutStore.panes[0]!.paneId);
     expect(store.sessionId).toBe(firstSessionId);
@@ -211,9 +211,9 @@ describe("CakeChatCollectionStore", () => {
       { cakeChats: { rename } } as unknown as Client,
     );
     const sessionId = store.sessionId!;
-    store.markSessionStarted(sessionId);
+    store.pendingSessions.markMaterialized(sessionId);
 
-    await store.renameSession(sessionId, "x".repeat(SESSION_TITLE_MAX_LENGTH + 20));
+    await store.management.renameSession(sessionId, "x".repeat(SESSION_TITLE_MAX_LENGTH + 20));
 
     expect(rename).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -240,10 +240,10 @@ describe("CakeChatCollectionStore", () => {
       { cakeChats: { deleteResolved } } as unknown as Client,
     );
     const sessionId = store.sessionId!;
-    store.createDraftSession(sessionId, "Planned work", []);
-    await store.resolveSession(sessionId, true);
+    store.pendingSessions.createDraft(sessionId, "Planned work", []);
+    await store.management.resolveSession(sessionId, true);
 
-    await store.deleteSession(sessionId);
+    await store.management.deleteSession(sessionId);
 
     expect(deleteResolved).not.toHaveBeenCalled();
     expect(store.summaries.some((session) => session.sessionId === sessionId)).toBe(false);
@@ -395,7 +395,9 @@ describe("CakeChatCollectionStore", () => {
     expect(store.summaries).toMatchObject([
       { sessionId: session!.sessionId, title: "Authoritative title", messageCount: 1 },
     ]);
-    expect(toSnapshot(store)).toMatchObject({ state: { pendingSessions: [] } });
+    expect(toSnapshot(store)).toMatchObject({
+      children: { pendingSessions: { state: { sessions: [] } } },
+    });
 
     await session!.chatStore.submit("Follow up");
 

@@ -1,7 +1,7 @@
 import { Context, Effect, FileSystem, Layer, Path, Schema, Semaphore } from "effect";
 import { atomicWriteFile, type AtomicFileStage } from "./internal/atomicFile";
 
-const WINDOW_STATE_DOCUMENT_VERSION = 5;
+const WINDOW_STATE_DOCUMENT_VERSION = 6;
 const WINDOW_STATE_DOCUMENT_NAME = "window-state.json";
 
 const JsonRecord = Schema.Record(Schema.String, Schema.Json);
@@ -342,6 +342,71 @@ const migrateVersion4WindowState = (snapshot: Schema.Schema.Type<typeof Schema.J
   };
 };
 
+/** Moves Cake Chat identity and pending state into focused child Stores and selects via its layout. */
+const migrateVersion5WindowState = (snapshot: Schema.Schema.Type<typeof Schema.Json>) => {
+  const root = decodeJsonRecord(snapshot);
+  const rootChildren = decodeJsonRecord(root?.children);
+  const collection = decodeJsonRecord(rootChildren?.cakeChatCollectionStore);
+  const collectionState = decodeJsonRecord(collection?.state);
+  const collectionChildren = decodeJsonRecord(collection?.children);
+  if (!root || !rootChildren || !collection || !collectionState) return snapshot;
+
+  const nextCollectionState = { ...collectionState };
+  const selectedSessionId = Schema.decodeUnknownResult(Schema.String)(
+    nextCollectionState.selectedSessionId,
+  );
+  const targets = nextCollectionState.targets ?? [];
+  const pendingSessions = nextCollectionState.pendingSessions ?? [];
+  delete nextCollectionState.selectedSessionId;
+  delete nextCollectionState.targets;
+  delete nextCollectionState.pendingSessions;
+
+  const nextCollectionChildren = { ...collectionChildren };
+  const loadedSessions = nextCollectionChildren.loadedSessions ?? [];
+  delete nextCollectionChildren.loadedSessions;
+  const existingLayout = decodeJsonRecord(nextCollectionChildren.sessionLayoutStore);
+  const existingLayoutState = decodeJsonRecord(existingLayout?.state);
+  if (
+    selectedSessionId._tag === "Success" &&
+    (!existingLayoutState || existingLayoutState.layout === undefined)
+  ) {
+    const paneId = `cake-chat-pane:${selectedSessionId.success}`;
+    nextCollectionChildren.sessionLayoutStore = {
+      state: {
+        ...existingLayoutState,
+        layout: {
+          kind: "pane",
+          paneId,
+          history: [selectedSessionId.success],
+          historyCursor: 0,
+        },
+        focusedPaneId: paneId,
+      },
+      children: decodeJsonRecord(existingLayout?.children) ?? {},
+    };
+  }
+  nextCollectionChildren.registry = {
+    state: { targets },
+    children: { sessions: loadedSessions },
+  };
+  nextCollectionChildren.pendingSessions = {
+    state: { sessions: pendingSessions },
+    children: {},
+  };
+
+  return {
+    ...root,
+    children: {
+      ...rootChildren,
+      cakeChatCollectionStore: {
+        ...collection,
+        state: nextCollectionState,
+        children: nextCollectionChildren,
+      },
+    },
+  };
+};
+
 const migrateLegacyWindowState = Effect.fn("WindowStateStorage.migrateLegacy")(function* (
   legacy: LegacyWindowState,
 ) {
@@ -581,7 +646,9 @@ const migrateLegacyWindowState = Effect.fn("WindowStateStorage.migrateLegacy")(f
   ).pipe(
     Effect.mapError((cause) => new WindowStateMalformedDocumentError({ message: cause.message })),
   );
-  return migrateVersion4WindowState(migrateVersion3WindowState(decoded));
+  return migrateVersion5WindowState(
+    migrateVersion4WindowState(migrateVersion3WindowState(decoded)),
+  );
 });
 
 export const makeWindowStateStorageLive = (userDataDirectory: string) =>
@@ -627,21 +694,30 @@ export const makeWindowStateStorageLive = (userDataDirectory: string) =>
           if (envelope.success.version === WINDOW_STATE_DOCUMENT_VERSION)
             return envelope.success.data;
           if (envelope.success.version === 2) {
-            const migrated = migrateVersion4WindowState(
-              migrateVersion3WindowState(migrateVersion2WindowState(envelope.success.data)),
+            const migrated = migrateVersion5WindowState(
+              migrateVersion4WindowState(
+                migrateVersion3WindowState(migrateVersion2WindowState(envelope.success.data)),
+              ),
             );
             yield* saveUnlocked(migrated);
             return migrated;
           }
           if (envelope.success.version === 3) {
-            const migrated = migrateVersion4WindowState(
-              migrateVersion3WindowState(envelope.success.data),
+            const migrated = migrateVersion5WindowState(
+              migrateVersion4WindowState(migrateVersion3WindowState(envelope.success.data)),
             );
             yield* saveUnlocked(migrated);
             return migrated;
           }
           if (envelope.success.version === 4) {
-            const migrated = migrateVersion4WindowState(envelope.success.data);
+            const migrated = migrateVersion5WindowState(
+              migrateVersion4WindowState(envelope.success.data),
+            );
+            yield* saveUnlocked(migrated);
+            return migrated;
+          }
+          if (envelope.success.version === 5) {
+            const migrated = migrateVersion5WindowState(envelope.success.data);
             yield* saveUnlocked(migrated);
             return migrated;
           }

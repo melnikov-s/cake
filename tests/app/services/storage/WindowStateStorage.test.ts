@@ -59,20 +59,26 @@ const CakeChatComposerProjection = Schema.Struct({
   children: Schema.Struct({
     cakeChatCollectionStore: Schema.Struct({
       children: Schema.Struct({
-        loadedSessions: Schema.Array(
-          Schema.Struct({
-            state: Schema.Record(Schema.String, Schema.Json),
-            children: Schema.Struct({
-              chatStore: Schema.Struct({ state: Schema.Record(Schema.String, Schema.Json) }),
-              composerStore: Schema.Struct({
+        registry: Schema.Struct({
+          children: Schema.Struct({
+            sessions: Schema.Array(
+              Schema.Struct({
                 state: Schema.Record(Schema.String, Schema.Json),
                 children: Schema.Struct({
-                  draftStore: Schema.Struct({ state: Schema.Record(Schema.String, Schema.Json) }),
+                  chatStore: Schema.Struct({ state: Schema.Record(Schema.String, Schema.Json) }),
+                  composerStore: Schema.Struct({
+                    state: Schema.Record(Schema.String, Schema.Json),
+                    children: Schema.Struct({
+                      draftStore: Schema.Struct({
+                        state: Schema.Record(Schema.String, Schema.Json),
+                      }),
+                    }),
+                  }),
                 }),
               }),
-            }),
+            ),
           }),
-        ),
+        }),
       }),
     }),
   }),
@@ -120,28 +126,34 @@ describe("WindowStateStorage", () => {
             cakeChatCollectionStore: {
               state: {},
               children: {
-                loadedSessions: [
-                  {
-                    key: "cake-chat-1",
-                    state: {},
-                    children: {
-                      chatStore: { state: {}, children: {} },
-                      composerStore: {
+                registry: {
+                  state: { targets: [] },
+                  children: {
+                    sessions: [
+                      {
+                        key: "cake-chat-1",
                         state: {},
                         children: {
-                          draftStore: {
-                            state: {
-                              text: "Keep this draft",
-                              attachments: [attachment],
-                              annotations: [annotation],
+                          chatStore: { state: {}, children: {} },
+                          composerStore: {
+                            state: {},
+                            children: {
+                              draftStore: {
+                                state: {
+                                  text: "Keep this draft",
+                                  attachments: [attachment],
+                                  annotations: [annotation],
+                                },
+                                children: {},
+                              },
                             },
-                            children: {},
                           },
                         },
                       },
-                    },
+                    ],
                   },
-                ],
+                },
+                pendingSessions: { state: { sessions: [] }, children: {} },
               },
             },
           },
@@ -341,6 +353,69 @@ describe("WindowStateStorage", () => {
     );
   });
 
+  it.effect("moves version-five Cake Chat ownership into focused child Stores", () => {
+    const snapshot = {
+      state: {},
+      children: {
+        cakeChatCollectionStore: {
+          state: {
+            selectedSessionId: "cake-chat-1",
+            targets: ["cake-chat-1"],
+            pendingSessions: [
+              {
+                sessionId: "cake-chat-1",
+                started: false,
+                createdAt: "1970-01-01T00:00:00.000Z",
+                modifiedAt: "1970-01-01T00:00:00.000Z",
+                messageCount: 0,
+              },
+            ],
+          },
+          children: {
+            loadedSessions: [{ key: "cake-chat-1", state: {}, children: {} }],
+          },
+        },
+      },
+    };
+
+    return withStorage(JSON.stringify({ version: 5, data: snapshot }), (storage) =>
+      Effect.gen(function* () {
+        const loaded = (yield* storage.load()) as unknown as {
+          children: {
+            cakeChatCollectionStore: {
+              state: unknown;
+              children: Record<string, unknown>;
+            };
+          };
+        };
+        const collection = loaded.children.cakeChatCollectionStore;
+        assert.deepStrictEqual(collection.state, {});
+        assert.deepStrictEqual(collection.children.registry, {
+          state: { targets: ["cake-chat-1"] },
+          children: {
+            sessions: [{ key: "cake-chat-1", state: {}, children: {} }],
+          },
+        });
+        assert.deepStrictEqual(collection.children.pendingSessions, {
+          state: { sessions: snapshot.children.cakeChatCollectionStore.state.pendingSessions },
+          children: {},
+        });
+        assert.deepStrictEqual(collection.children.sessionLayoutStore, {
+          state: {
+            layout: {
+              kind: "pane",
+              paneId: "cake-chat-pane:cake-chat-1",
+              history: ["cake-chat-1"],
+              historyCursor: 0,
+            },
+            focusedPaneId: "cake-chat-pane:cake-chat-1",
+          },
+          children: {},
+        });
+      }),
+    );
+  });
+
   it.effect("places unversioned Cake Chat input under the shared composer Store", () => {
     const attachment = {
       kind: "image",
@@ -361,7 +436,8 @@ describe("WindowStateStorage", () => {
       Effect.gen(function* () {
         const loaded = yield* storage.load();
         const projection = yield* Schema.decodeUnknownEffect(CakeChatComposerProjection)(loaded);
-        const session = projection.children.cakeChatCollectionStore.children.loadedSessions[0]!;
+        const session =
+          projection.children.cakeChatCollectionStore.children.registry.children.sessions[0]!;
         assert.deepStrictEqual(session.state, {});
         assert.deepStrictEqual(session.children.chatStore.state, {});
         assert.deepStrictEqual(session.children.composerStore.state, {});
