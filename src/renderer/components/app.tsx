@@ -186,10 +186,14 @@ export const App = observer(function App() {
       root.focusSessionPane(root.sessionLayoutStore.paneForSession(paneSession.sessionId)!.paneId);
       void store.sessionContinuationStore.forkAt(entryId);
     },
-    onHandoff: (entryId: string) => {
-      root.focusSessionPane(root.sessionLayoutStore.paneForSession(paneSession.sessionId)!.paneId);
-      void store.sessionContinuationStore.handoffAt(entryId);
-    },
+    onHandoff: paneSession.canHandoff
+      ? (entryId: string) => {
+          root.focusSessionPane(
+            root.sessionLayoutStore.paneForSession(paneSession.sessionId)!.paneId,
+          );
+          void store.sessionContinuationStore.handoffAt(entryId);
+        }
+      : undefined,
     openSourceLocation: (location: SourceLocation) => {
       root.focusSessionPane(root.sessionLayoutStore.paneForSession(paneSession.sessionId)!.paneId);
       void store

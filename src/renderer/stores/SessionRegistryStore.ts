@@ -89,6 +89,9 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
         worktreeOperation: () => this.props.worktreeOperation(target.workspacePath),
         openCommandPane: this.props.openCommandPane,
         projectName: () => this.props.projectName(target.workspacePath),
+        familyId: () =>
+          this.props.catalog?.find(target.sessionId)?.familyId ??
+          this.pendingSessions.familyId(target.sessionId),
         abort: () => this.props.abort(target.sessionId),
         renameSession: (name) => this.props.renameSession(target.sessionId, name),
         handoffSession: this.props.handoffSession,
@@ -140,6 +143,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
   ) {
     return batch(() => {
       const session = this.load(sessionId, workingDirectory);
+      this.pendingSessions.trackFamilyParent(family.parentSessionId, family.familyId);
       this.pendingSessions.trackUnlistedFamilySession(sessionId, title, family);
       return session;
     });

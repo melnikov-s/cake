@@ -12,6 +12,7 @@ class HarnessStore extends Store<{
   model: Session;
   existing?: boolean;
   streaming?: boolean;
+  canHandoff?: boolean;
   handoffSession?: (entryId: string, prompt?: string, resolveSource?: boolean) => Promise<boolean>;
 }> {
   draft = "First message";
@@ -55,6 +56,7 @@ class HarnessStore extends Store<{
       openCommandPane: async () => undefined,
       selectModel: async () => undefined,
       renameSession: async () => undefined,
+      canHandoff: () => this.props.canHandoff ?? true,
       handoffSession: this.props.handoffSession ?? (async () => false),
       deliver: async (input) => {
         if (this.props.existing) {
@@ -166,6 +168,43 @@ describe("ConversationComposerStore", () => {
 
     expect(handoffSession).toHaveBeenCalledWith("assistant-entry", "Continue cleanly", true);
     expect(root.composer.draftStore.text).toBe("");
+    root[Symbol.dispose]();
+    model[Symbol.dispose]();
+  });
+
+  it("rejects a typed handoff command when the session belongs to a family", async () => {
+    const model = Session.create({
+      sessionId: "session-1",
+      workingDirectory: "/project",
+      parts: [
+        {
+          id: "assistant-part",
+          kind: "text",
+          role: "assistant",
+          text: "Completed response",
+          status: "complete",
+          piId: "assistant-entry",
+          partKey: "assistant-part",
+        },
+      ],
+    });
+    const handoffSession = vi.fn(async () => true);
+    const client = { projectSessions: {} } as unknown as Client;
+    const root = mount(
+      createStore(HarnessStore, {
+        client,
+        model,
+        existing: true,
+        canHandoff: false,
+        handoffSession,
+      }),
+    );
+    root.composer.draftStore.setText("/handoff Continue cleanly");
+
+    await expect(root.composer.submit()).resolves.toBe(false);
+
+    expect(handoffSession).not.toHaveBeenCalled();
+    expect(root.composer.error).toBe("Session Family members cannot be handed off");
     root[Symbol.dispose]();
     model[Symbol.dispose]();
   });

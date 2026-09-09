@@ -100,6 +100,17 @@ export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsSto
     return session;
   }
 
+  familyId(sessionId: string) {
+    return this.summaryMetadataBySession[sessionId]?.familyId;
+  }
+
+  trackFamilyParent(sessionId: string, familyId: string) {
+    this.summaryMetadataBySession[sessionId] = {
+      ...this.summaryMetadataBySession[sessionId],
+      familyId,
+    };
+  }
+
   trackUnlistedFamilySession(
     sessionId: string,
     title: string,

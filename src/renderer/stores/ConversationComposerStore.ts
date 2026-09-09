@@ -27,6 +27,7 @@ export interface ConversationComposerStoreProps {
   openCommandPane?(pane: "changelog" | "tree" | "resources"): Promise<void>;
   selectModel(value: string): Promise<boolean | void>;
   renameSession(name: string): Promise<boolean | void>;
+  canHandoff?(): boolean;
   handoffSession(entryId: string, prompt?: string, resolveSource?: boolean): Promise<boolean>;
   deliver(input: ConversationDeliveryInput): Promise<boolean | void>;
   editMessage(
@@ -268,6 +269,10 @@ export class ConversationComposerStore extends Store<ConversationComposerStorePr
     }
     const builtin = parsePiBuiltinCommand(text);
     if (builtin?.name === "handoff" || builtin?.name === "handoffandresolve") {
+      if (this.props.canHandoff?.() === false) {
+        this.reportError(new Error("Session Family members cannot be handed off"));
+        return { handled: true, result: false };
+      }
       if (
         this.draftStore.attachments.length ||
         this.draftStore.annotationDraft.annotations.length

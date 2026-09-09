@@ -38,6 +38,7 @@ export interface ProjectSessionStoreProps extends SessionTarget {
   worktreeOperation: WorktreeStoreProps["operation"];
   openCommandPane(pane: "changelog" | "tree" | "resources"): Promise<void>;
   projectName(): string;
+  familyId(): string | undefined;
   abort(): Promise<void>;
   renameSession(name: string): Promise<void>;
   handoffSession(entryId: string, prompt?: string, resolveSource?: boolean): Promise<boolean>;
@@ -99,6 +100,9 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   }
   get sessionId() {
     return this.props.sessionId;
+  }
+  get canHandoff() {
+    return !this.props.familyId();
   }
   get canonicalParts() {
     return this.model.uiParts;
@@ -236,6 +240,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
         queueWhileStreaming: () => true,
         openCommandPane: (pane) => this.props.openCommandPane(pane),
         renameSession: (name) => this.props.renameSession(name),
+        canHandoff: () => this.canHandoff,
         handoffSession: (entryId, prompt, resolveSource) =>
           this.props.handoffSession(entryId, prompt, resolveSource),
         deliver: (input) => this.deliverComposerMessage(input),
@@ -298,10 +303,16 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       },
       chat: {
         stoppable: () => this.model.backgroundWorkActive,
-        commands: () =>
-          this.props.pendingSessions.isTemporary(this.sessionId)
+        commands: () => {
+          const commands = this.props.pendingSessions.isTemporary(this.sessionId)
             ? this.stagedCommandStore.commands
-            : this.model.commands,
+            : this.model.commands;
+          return this.canHandoff
+            ? commands
+            : commands.filter(
+                (command) => command.name !== "handoff" && command.name !== "handoffandresolve",
+              );
+        },
         placeholder: () =>
           this.isStreaming
             ? "Add the next instruction…"
