@@ -55,8 +55,8 @@ export const App = observer(function App() {
   const reviews = root.reviewsStore;
   const settings = root.settingsStore;
   const session = store.activeSession;
-  const composer = session?.composerStore;
-  const chatConfiguration = session?.configurationStore;
+  const composer = session?.conversationSessionStore.composerStore;
+  const chatConfiguration = session?.conversationSessionStore.configurationStore;
   const extensionUi = root.extensionUiStore;
   const artifactInteractions = session?.artifactInteractionStore;
   const shell = root.appShellStore;
@@ -244,7 +244,7 @@ export const App = observer(function App() {
             <SidebarIcon />
           </IconButton>
         )}
-        <WorkLogControls store={paneSession.chatStore} />
+        <WorkLogControls store={paneSession.conversationSessionStore.chatStore} />
         <IconButton
           tooltip={`Terminal (${terminal.toggleAcceleratorHint})`}
           disabled={!terminal.available}
@@ -305,7 +305,7 @@ export const App = observer(function App() {
     ? store.sessionRegistry.pendingSessions.isDraft(session.sessionId)
     : false;
   const worktreeConfigurationMode = sessionIsDraft
-    ? session?.composerStore.pendingSessionDraftStore.editing
+    ? session?.conversationSessionStore.composerStore.pendingSessionDraftStore.editing
       ? "edit-draft"
       : "activate-draft"
     : sessionIsTemporary
@@ -329,7 +329,7 @@ export const App = observer(function App() {
       }
       canManage={canManageWorktree(session.sessionId)}
       configurationMode={worktreeConfigurationMode}
-      onConfigured={() => session.composerStore.draftStore.requestFocus()}
+      onConfigured={() => session.conversationSessionStore.composerStore.draftStore.requestFocus()}
     />
   ) : undefined;
   const renderProjectPaneHeader = (
@@ -399,7 +399,7 @@ export const App = observer(function App() {
             <span>Changes</span>
           </Button>
         )}
-        <WorkLogControls store={paneSession.chatStore} />
+        <WorkLogControls store={paneSession.conversationSessionStore.chatStore} />
         <IconButton
           tooltip={`Terminal (${terminal.toggleAcceleratorHint})`}
           disabled={!terminal.available}
@@ -418,7 +418,7 @@ export const App = observer(function App() {
     const temporary = store.sessionRegistry.pendingSessions.isTemporary(paneSession.sessionId);
     const draft = store.sessionRegistry.pendingSessions.isDraft(paneSession.sessionId);
     const configurationMode = draft
-      ? paneSession.composerStore.pendingSessionDraftStore.editing
+      ? paneSession.conversationSessionStore.composerStore.pendingSessionDraftStore.editing
         ? "edit-draft"
         : "activate-draft"
       : temporary
@@ -428,13 +428,13 @@ export const App = observer(function App() {
     const focused = root.sessionLayoutStore.focusedSessionId === paneSession.sessionId;
     const errorMessage =
       paneError?.message ??
-      paneSession.composerStore.error ??
-      paneSession.configurationStore.error ??
+      paneSession.conversationSessionStore.composerStore.error ??
+      paneSession.conversationSessionStore.configurationStore.error ??
       paneSession.artifactInteractionStore.error;
     const errorDetails = paneError
       ? paneError.details
-      : (paneSession.composerStore.errorDetails ??
-        paneSession.configurationStore.errorDetails ??
+      : (paneSession.conversationSessionStore.composerStore.errorDetails ??
+        paneSession.conversationSessionStore.configurationStore.errorDetails ??
         paneSession.artifactInteractionStore.errorDetails);
     return {
       transcriptBehavior: projectTranscriptBehaviorFor(paneSession),
@@ -473,7 +473,9 @@ export const App = observer(function App() {
           }
           canManage={canManageWorktree(paneSession.sessionId)}
           configurationMode={configurationMode}
-          onConfigured={() => paneSession.composerStore.draftStore.requestFocus()}
+          onConfigured={() =>
+            paneSession.conversationSessionStore.composerStore.draftStore.requestFocus()
+          }
         />
       ),
       status:
@@ -503,7 +505,7 @@ export const App = observer(function App() {
             projectSidebarVisible={!sidebarCollapsed}
             projectSidebarWidth={sidebarWidth}
             onProjectSidebarWidthChange={setSidebarWidth}
-            projectChat={session.chatStore}
+            projectChat={session.conversationSessionStore.chatStore}
             projectComposerHeader={projectComposerHeader}
             sessionTitle={store.sessionTitle}
             terminalDock={

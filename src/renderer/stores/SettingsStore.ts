@@ -55,7 +55,7 @@ export class SettingsStore extends Store<SettingsStoreProps> {
     return this.props.activeSession();
   }
   get configuration() {
-    return this.activeSession?.configurationStore;
+    return this.activeSession?.conversationSessionStore.configurationStore;
   }
   get piSettings() {
     return this.activeSession?.model.piSettings;

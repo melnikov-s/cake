@@ -290,7 +290,8 @@ export class KanbanStore extends Store<KanbanStoreProps> {
     try {
       if (source === "draft") {
         const draft = this.props.registry.findSession(sessionId);
-        if (!draft || !(await draft.chatStore.activateDraft())) return false;
+        if (!draft || !(await draft.conversationSessionStore.chatStore.activateDraft()))
+          return false;
       }
 
       await this.client.projectWorkflow.moveSession(

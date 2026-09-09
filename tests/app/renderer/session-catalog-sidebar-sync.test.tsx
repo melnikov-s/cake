@@ -168,7 +168,7 @@ describe("Project Session catalog to sidebar synchronization", () => {
     await act(async () => {
       activation = root.sessionRegistry
         .findSession(firstId)!
-        .composerStore.activateDraftSession({ kind: "current" });
+        .conversationSessionStore.composerStore.activateDraftSession({ kind: "current" });
       await Promise.resolve();
     });
     expect(root.sessionRegistry.pendingSessions.isDraft(firstId)).toBe(false);

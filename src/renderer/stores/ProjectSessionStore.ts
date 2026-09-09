@@ -5,14 +5,14 @@ import type { ChatConfiguration, ModelPreset } from "../../ipc/session-contract"
 import type { ProjectPendingSessionsStore } from "./ProjectPendingSessionsStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { ReviewsStore } from "./ReviewsStore";
-import { ConversationComposerStore, type ComposerDeliveryInput } from "./ConversationComposerStore";
+import type { ComposerDeliveryInput } from "./ConversationComposerStore";
 import type {
   ProjectSessionPromptInput,
   ProjectSessionStartInput,
 } from "../../domain/project-session-data";
 import { parseScheduledMessage } from "../../utils/scheduled-message-time";
-import { ChatConfigurationStore } from "./ChatConfigurationStore";
-import { ChatStore, type QueuedPrompt as ChatQueuedPrompt } from "./ChatStore";
+import type { QueuedPrompt as ChatQueuedPrompt } from "./ChatStore";
+import { ConversationSessionStore } from "./ConversationSessionStore";
 import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import { ArtifactInteractionStore } from "./ArtifactInteractionStore";
 import { MessageCommentsStore } from "./MessageCommentsStore";
@@ -147,12 +147,12 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
         event.operationId &&
         this.props.operations.includes(event.operationId, this.composerOwner)
       )
-        this.composerStore.receive(event);
+        this.conversationSessionStore.receive(event);
       return;
     }
     if (event.type === "agent-availability-changed" && event.availability.state === "unavailable") {
       if (this.props.operations.active(this.composerOwner).length > 0)
-        this.composerStore.receive(event);
+        this.conversationSessionStore.receive(event);
       if (this.artifactRequestActive) this.artifactInteractionStore.receive(event);
     }
   }
@@ -161,10 +161,6 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
     return (
       this.props.pendingSessions.isTemporary(this.sessionId) || Boolean(this.model.sessionFile)
     );
-  }
-
-  get canSubmit() {
-    return this.props.canSubmit() && Boolean(this.composerStore.draftStore.hasContent);
   }
 
   @computed
@@ -182,7 +178,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
 
   depart() {
     this.markRead();
-    this.composerStore.cancelDraftEdit();
+    this.conversationSessionStore.composerStore.cancelDraftEdit();
   }
 
   private get latestTurnErrored() {
@@ -220,52 +216,122 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   }
 
   @child
-  get composerStore(): ConversationComposerStore {
-    return createStore(ConversationComposerStore, {
-      projectPath: () => this.workspacePath,
-      sessionId: () => this.sessionId,
-      canonicalParts: () => this.canonicalParts,
-      canSubmit: () => this.canSubmit,
-      isStreaming: () => this.isStreaming,
-      queueWhileStreaming: () => true,
-      openCommandPane: (pane) => this.props.openCommandPane(pane),
-      selectModel: async (value) => {
-        await this.configurationStore.selectModel(value);
-        return !this.signal.aborted && !this.configurationStore.error;
-      },
-      renameSession: (name) => this.props.renameSession(name),
-      handoffSession: (entryId, prompt, resolveSource) =>
-        this.props.handoffSession(entryId, prompt, resolveSource),
-      deliver: (input) => this.deliverComposerMessage(input),
-      editMessage: (input) =>
-        this.client.projectSessions.editMessage(input, { signal: this.signal }),
-      compact: (sessionId, instructions) =>
-        this.client.projectSessions.compact({ sessionId, instructions }, { signal: this.signal }),
-      clearQueue: async () => {
-        await this.client.projectSessions.clearQueue(
-          { sessionId: this.sessionId },
-          { signal: this.signal },
-        );
-      },
-      scheduleMessage: (sessionId, args) => this.scheduleMessage(sessionId, args),
+  get stagedCommandStore(): StagedSessionCommandStore {
+    return createStore(StagedSessionCommandStore);
+  }
+
+  @child
+  get conversationSessionStore(): ConversationSessionStore {
+    return createStore(ConversationSessionStore, {
+      sessionId: this.sessionId,
+      model: this.model,
       operations: this.props.operations,
-      operationOwner: this.composerOwner,
-      draftSessionPrompt: (sessionId) => this.props.pendingSessions.draftPrompt(sessionId),
-      isDeferredSession: (sessionId) => this.props.pendingSessions.isTemporary(sessionId),
-      createDraftSession: async (sessionId, text, attachments) => {
-        await this.props.pendingSessions.createDraft(sessionId, text, attachments);
-        return true;
+      composerOperationOwner: this.composerOwner,
+      configurationOperationOwner: this.configurationOwner,
+      canSubmit: this.props.canSubmit,
+      composer: {
+        projectPath: () => this.workspacePath,
+        queueWhileStreaming: () => true,
+        openCommandPane: (pane) => this.props.openCommandPane(pane),
+        renameSession: (name) => this.props.renameSession(name),
+        handoffSession: (entryId, prompt, resolveSource) =>
+          this.props.handoffSession(entryId, prompt, resolveSource),
+        deliver: (input) => this.deliverComposerMessage(input),
+        editMessage: (input) =>
+          this.client.projectSessions.editMessage(input, { signal: this.signal }),
+        compact: (sessionId, instructions) =>
+          this.client.projectSessions.compact({ sessionId, instructions }, { signal: this.signal }),
+        clearQueue: async () => {
+          await this.client.projectSessions.clearQueue(
+            { sessionId: this.sessionId },
+            { signal: this.signal },
+          );
+        },
+        scheduleMessage: (sessionId, args) => this.scheduleMessage(sessionId, args),
+        draftSessionPrompt: (sessionId) => this.props.pendingSessions.draftPrompt(sessionId),
+        isDeferredSession: (sessionId) => this.props.pendingSessions.isTemporary(sessionId),
+        createDraftSession: async (sessionId, text, attachments) => {
+          await this.props.pendingSessions.createDraft(sessionId, text, attachments);
+          return true;
+        },
+        updateDraftSession: async (sessionId, text, attachments) => {
+          await this.props.pendingSessions.updateDraft(sessionId, text, attachments);
+          return true;
+        },
+        activateDraftSession: (sessionId) => this.props.pendingSessions.activateDraft(sessionId),
+        applyGeneratedDraftName: (sessionId, title) =>
+          this.props.pendingSessions.applyGeneratedDraftName(sessionId, title),
+        configureDraftActivation: (choice) => this.props.configureDraftActivation(choice),
+        sessionCreationChoice: this.props.sessionCreationChoice,
+        editorText: (entryId) =>
+          this.model.tree.find((entry) => entry.piId === entryId)?.editorText,
       },
-      updateDraftSession: async (sessionId, text, attachments) => {
-        await this.props.pendingSessions.updateDraft(sessionId, text, attachments);
-        return true;
+      configuration: {
+        deferredNewSession: () => this.props.pendingSessions.isTemporary(this.sessionId),
+        effectiveConfiguration: () => this.props.newSessionRequest()?.configuration,
+        setPendingConfiguration: (configuration) =>
+          this.props.pendingSessions.setConfiguration(this.sessionId, configuration),
+        setConfiguration: (configuration) =>
+          this.client.projectSessions.applyConfiguration(
+            { sessionId: this.sessionId, configuration },
+            { signal: this.signal },
+          ),
+        setModel: (provider, modelId) =>
+          this.client.projectSessions.setModel(
+            { sessionId: this.sessionId, provider, modelId },
+            { signal: this.signal },
+          ),
+        setThinkingLevel: (level) =>
+          this.client.projectSessions.setThinkingLevel(
+            { sessionId: this.sessionId, level },
+            { signal: this.signal },
+          ),
+        setFastMode: (enabled) =>
+          this.client.projectSessions.setFastMode(
+            { sessionId: this.sessionId, enabled },
+            { signal: this.signal },
+          ),
       },
-      activateDraftSession: (sessionId) => this.props.pendingSessions.activateDraft(sessionId),
-      applyGeneratedDraftName: (sessionId, title) =>
-        this.props.pendingSessions.applyGeneratedDraftName(sessionId, title),
-      configureDraftActivation: (choice) => this.props.configureDraftActivation(choice),
-      sessionCreationChoice: this.props.sessionCreationChoice,
-      editorText: (entryId) => this.model.tree.find((entry) => entry.piId === entryId)?.editorText,
+      chat: {
+        stoppable: () => this.model.backgroundWorkActive,
+        commands: () =>
+          this.props.pendingSessions.isTemporary(this.sessionId)
+            ? this.stagedCommandStore.commands
+            : this.model.commands,
+        placeholder: () =>
+          this.isStreaming
+            ? "Add the next instruction…"
+            : `Ask Cake to work in ${this.props.projectName()}…`,
+        inputLabel: () => "Message",
+        userMessagePresentation: {
+          setMarkdown: (entryId, renderAsMarkdown) =>
+            this.client.projectSessions.setUserMessageMarkdown(
+              { sessionId: this.sessionId, entryId, renderAsMarkdown },
+              { signal: this.signal },
+            ),
+        },
+        sessionCreationChoice: this.props.sessionCreationChoice,
+        draftActivationCandidates: this.props.draftActivationCandidates,
+        isDraftSession: () => this.props.pendingSessions.isDraft(this.sessionId),
+        abort: () => this.props.abort(),
+        addAttachments: () =>
+          this.conversationSessionStore.composerStore.draftStore.addAttachments(),
+        suggestFiles: (prefix) =>
+          this.conversationSessionStore.composerStore.draftStore.suggestFiles(prefix),
+        rewordWorkingDirectory: () => this.workspacePath,
+        steeringPrompts: () => this.runtimeQueuedPrompts,
+        scheduledMessages: {
+          messages: () => this.model.scheduledMessages,
+          cancel: (id) => this.client.scheduledMessages.cancel(id, { signal: this.signal }),
+        },
+        fallbackError: () => ({
+          message: this.stagedCommandStore.error,
+          details: this.stagedCommandStore.errorDetails,
+        }),
+      },
+      modelPresets: this.props.modelPresets,
+      openModelPresetSettings: this.props.openModelPresetSettings,
+      settings: this.props.settings,
     });
   }
 
@@ -321,155 +387,6 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       { signal: this.signal },
     );
     return !this.signal.aborted;
-  }
-
-  @child
-  get configurationStore(): ChatConfigurationStore {
-    return createStore(ChatConfigurationStore, {
-      session: () => this.model,
-      operations: this.props.operations,
-      operationOwner: this.configurationOwner,
-      presets: this.props.modelPresets,
-      openPresetSettings: this.props.openModelPresetSettings,
-      deferredNewSession: () => this.props.pendingSessions.isTemporary(this.sessionId),
-      effectiveConfiguration: () => this.props.newSessionRequest()?.configuration,
-      setPendingConfiguration: (configuration) =>
-        this.props.pendingSessions.setConfiguration(this.sessionId, configuration),
-      setConfiguration: (configuration) =>
-        this.client.projectSessions.applyConfiguration(
-          { sessionId: this.sessionId, configuration },
-          { signal: this.signal },
-        ),
-      setModel: (provider, modelId) =>
-        this.client.projectSessions.setModel(
-          { sessionId: this.sessionId, provider, modelId },
-          { signal: this.signal },
-        ),
-      setThinkingLevel: (level) =>
-        this.client.projectSessions.setThinkingLevel(
-          { sessionId: this.sessionId, level },
-          { signal: this.signal },
-        ),
-      setFastMode: (enabled) =>
-        this.client.projectSessions.setFastMode(
-          { sessionId: this.sessionId, enabled },
-          { signal: this.signal },
-        ),
-    });
-  }
-
-  @child
-  get stagedCommandStore(): StagedSessionCommandStore {
-    return createStore(StagedSessionCommandStore);
-  }
-
-  @child
-  get chatStore(): ChatStore {
-    return createStore(ChatStore, {
-      id: () => this.sessionId,
-      parts: () => this.composerStore.parts,
-      streaming: () => this.isStreaming,
-      draft: () => this.composerStore.draftStore.text,
-      setDraft: (value) => this.composerStore.draftStore.setText(value),
-      submitting: () =>
-        this.composerStore.deliveryStore.activeOperations.length > 0 ||
-        this.model.activeTurnIds.length > 0,
-      stoppable: () => this.model.backgroundWorkActive,
-      configuration: () => this.configurationStore,
-      commands: () =>
-        this.props.pendingSessions.isTemporary(this.sessionId)
-          ? this.stagedCommandStore.commands
-          : this.model.commands,
-      placeholder: () =>
-        this.isStreaming
-          ? "Add the next instruction…"
-          : `Ask Cake to work in ${this.props.projectName()}…`,
-      inputLabel: () => "Message",
-      canSubmit: () => this.canSubmit,
-      submit: (_draft, options) =>
-        this.composerStore.submit(undefined, options?.renderUserMessageAsMarkdown ?? false),
-      userMessagePresentation: {
-        setMarkdown: (entryId, renderAsMarkdown) =>
-          this.client.projectSessions.setUserMessageMarkdown(
-            { sessionId: this.sessionId, entryId, renderAsMarkdown },
-            { signal: this.signal },
-          ),
-      },
-      activateDraft: (choice) => this.composerStore.activateDraftSession(choice),
-      sessionCreationChoice: this.props.sessionCreationChoice,
-      draftActivationCandidates: this.props.draftActivationCandidates,
-      editLastUserMessage: (entryId) => this.composerStore.beginEditMessage(entryId),
-      isDraftSession: () => this.props.pendingSessions.isDraft(this.sessionId),
-      editingMessage: () => this.composerStore.editingMessage,
-      abort: () => this.props.abort(),
-      attachments: () => this.composerStore.draftStore.visibleAttachments,
-      addAttachments: () => this.composerStore.draftStore.addAttachments(),
-      addPastedImages: (files) => this.composerStore.draftStore.addPastedImages(files),
-      removeAttachment: (index) => this.composerStore.draftStore.removeAttachment(index),
-      annotations: () => this.composerStore.draftStore.annotationDraft.annotations,
-      addAnnotation: (annotation) => this.composerStore.draftStore.annotationDraft.add(annotation),
-      updateAnnotation: (id, update) =>
-        this.composerStore.draftStore.annotationDraft.update(id, update),
-      removeAnnotation: (id) => this.composerStore.draftStore.annotationDraft.remove(id),
-      suggestFiles: (prefix) => this.composerStore.draftStore.suggestFiles(prefix),
-      focusRequestRevision: () => this.composerStore.draftStore.focusRequestRevision,
-      composerReword: {
-        showContextMenu: (selection, x, y) =>
-          this.client.electron.showComposerContextMenu(
-            { selection, x, y },
-            { signal: this.signal },
-          ),
-        rewordSelection: (selection, prompt) =>
-          this.client.workspaces.rewordComposerSelection(
-            {
-              selection,
-              prompt,
-              workingDirectory: this.props.workspacePath,
-            },
-            { signal: this.signal },
-          ),
-      },
-      usage: () => this.model.usage,
-      queuedPrompts: () => {
-        return [
-          ...this.composerStore.promptQueueStore.prompts.map((entry) => ({
-            ...entry,
-            state: "queued" as const,
-            editable: true,
-          })),
-          ...this.runtimeQueuedPrompts,
-        ];
-      },
-      steerQueuedPrompt: (id) => this.composerStore.promptQueueStore.steer(id),
-      editQueuedPrompt: (id) => this.composerStore.promptQueueStore.edit(id),
-      removeQueuedPrompt: (id) => this.composerStore.promptQueueStore.remove(id),
-      cancelSteering: () => this.composerStore.promptQueueStore.cancelSteering(),
-      scheduledMessages: {
-        messages: () => this.model.scheduledMessages,
-        cancel: (id) => this.client.scheduledMessages.cancel(id, { signal: this.signal }),
-      },
-      hideThinking: () => Boolean(this.model.piSettings?.hideThinkingBlock),
-      error: () => ({
-        message:
-          this.composerStore.error ??
-          this.configurationStore.error ??
-          this.stagedCommandStore.error,
-        details:
-          this.composerStore.errorDetails ??
-          this.configurationStore.errorDetails ??
-          this.stagedCommandStore.errorDetails,
-      }),
-      workLogPresentation: {
-        viewMode: () => this.props.settings?.()?.workLogViewMode,
-        setViewMode: (mode) => {
-          this.props.settings?.()?.setWorkLogViewMode(mode);
-        },
-        expansion: () => this.props.settings?.()?.workLogsExpansion,
-        setExpansion: (expansion) => {
-          this.props.settings?.()?.setWorkLogsExpansion(expansion);
-        },
-      },
-    });
   }
 
   @child

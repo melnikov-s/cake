@@ -25,8 +25,16 @@ describe("CakeChatRegistryStore", () => {
     const { root, subject: collection, catalog, models } = createCollection();
     const sessionId = collection.sessionId!;
     const session = collection.registry.find(sessionId)!;
+    const conversation = session.conversationSessionStore;
+    const composer = conversation.composerStore;
+    const configuration = conversation.configurationStore;
+    const chat = conversation.chatStore;
 
     expect(collection.registry.load(sessionId)).toBe(session);
+    expect(session.conversationSessionStore).toBe(conversation);
+    expect(conversation.composerStore).toBe(composer);
+    expect(conversation.configurationStore).toBe(configuration);
+    expect(conversation.chatStore).toBe(chat);
     collection.pendingSessions.markMaterialized(sessionId);
     applySnapshot(catalog, {
       loaded: true,
@@ -43,6 +51,7 @@ describe("CakeChatRegistryStore", () => {
     });
 
     expect(collection.registry.find(sessionId)).toBe(session);
+    expect(session.conversationSessionStore).toBe(conversation);
     expect(collection.pendingSessions.isPending(sessionId)).toBe(false);
     expect(collection.registry.observationTargets).toEqual([{ sessionId, tools: [] }]);
 

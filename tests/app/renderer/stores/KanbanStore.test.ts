@@ -53,7 +53,10 @@ function fixture(options?: {
   const forgetResolvedSession = vi.fn(async () => undefined);
   const activateDraft = vi.fn(async () => true);
   const registry = {
-    findSession: () => ({ chatStore: { activateDraft }, model: {} }),
+    findSession: () => ({
+      conversationSessionStore: { chatStore: { activateDraft } },
+      model: {},
+    }),
     pendingSessions: {
       configuration: () => undefined,
       draftPrompt: () => ({ text: "Build a Kanban board", attachments: [], resolved: false }),

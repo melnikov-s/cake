@@ -68,7 +68,16 @@ describe("SessionRegistryStore materialization", () => {
     const fixture = registryFixture();
     const first = fixture.registry.load("session-1", "/project");
 
+    const conversation = first.conversationSessionStore;
+    const composer = conversation.composerStore;
+    const configuration = conversation.configurationStore;
+    const chat = conversation.chatStore;
+
     expect(fixture.registry.load("session-1", "/project")).toBe(first);
+    expect(first.conversationSessionStore).toBe(conversation);
+    expect(conversation.composerStore).toBe(composer);
+    expect(conversation.configurationStore).toBe(configuration);
+    expect(conversation.chatStore).toBe(chat);
     expect(() => fixture.registry.load("session-1", "/other-project")).toThrow(
       "Session ID collision detected: session-1",
     );
@@ -80,7 +89,7 @@ describe("SessionRegistryStore materialization", () => {
   it("restores pending lifecycles and keyed loaded Store state from a window snapshot", async () => {
     const fixture = registryFixture();
     const staged = fixture.registry.pendingSessions.prepareStaged("/project", "staged");
-    staged.composerStore.draftStore.setText("Keep staged input");
+    staged.conversationSessionStore.composerStore.draftStore.setText("Keep staged input");
     fixture.registry.pendingSessions.prepare("/project", "draft");
     fixture.registry.pendingSessions.setName("draft", "Saved draft");
     fixture.registry.pendingSessions.setConfiguration("draft", {
@@ -98,7 +107,9 @@ describe("SessionRegistryStore materialization", () => {
     const restoredDraft = restored.registry.findSession("draft")!;
 
     expect(restored.registry.pendingSessions.isStaged("staged")).toBe(true);
-    expect(restoredStaged.composerStore.draftStore.text).toBe("Keep staged input");
+    expect(restoredStaged.conversationSessionStore.composerStore.draftStore.text).toBe(
+      "Keep staged input",
+    );
     expect(restored.registry.pendingSessions.isDraft("draft")).toBe(true);
     expect(restored.registry.pendingSessions.draftPrompt("draft")?.text).toBe("Do this later");
     expect(restored.registry.pendingSessions.name("draft")).toBe("Saved draft");
@@ -110,6 +121,28 @@ describe("SessionRegistryStore materialization", () => {
     });
     expect(restored.registry.findSession("staged")).toBe(restoredStaged);
     expect(restored.registry.findSession("draft")).toBe(restoredDraft);
+    expect(toSnapshot(restored.registry)).toMatchObject({
+      children: {
+        sessions: expect.arrayContaining([
+          expect.objectContaining({
+            key: "staged",
+            children: {
+              conversationSessionStore: expect.objectContaining({
+                children: {
+                  composerStore: expect.objectContaining({
+                    children: {
+                      draftStore: expect.objectContaining({
+                        state: expect.objectContaining({ text: "Keep staged input" }),
+                      }),
+                    },
+                  }),
+                },
+              }),
+            },
+          }),
+        ]),
+      },
+    });
 
     restored.dispose();
   });
@@ -122,7 +155,7 @@ describe("SessionRegistryStore materialization", () => {
     parent.model.streaming = true;
     child.model.streaming = true;
 
-    await child.chatStore.abort();
+    await child.conversationSessionStore.chatStore.abort();
 
     expect(abort).toHaveBeenCalledExactlyOnceWith("child");
     fixture.dispose();

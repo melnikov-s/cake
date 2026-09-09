@@ -13,9 +13,11 @@ import { SessionSplitLayout } from "./session-split-layout";
 
 type ConversationChatProps = Omit<ComponentProps<typeof Chat>, "store">;
 
-type ConversationSessionStore = Store & { readonly chatStore: ChatStore };
+type PrimarySessionStore = Store & {
+  readonly conversationSessionStore: { readonly chatStore: ChatStore };
+};
 
-interface ConversationSplitLayoutProps<T extends ConversationSessionStore> {
+interface ConversationSplitLayoutProps<T extends PrimarySessionStore> {
   store: SessionLayoutStore;
   findSession(sessionId: string): T | undefined;
   chatProps(session: T, pane: SessionPaneNode): ConversationChatProps;
@@ -28,7 +30,7 @@ interface ConversationSplitLayoutProps<T extends ConversationSessionStore> {
   onClose(paneId: string): void;
 }
 
-export function ConversationSplitLayout<T extends ConversationSessionStore>({
+export function ConversationSplitLayout<T extends PrimarySessionStore>({
   store,
   findSession,
   chatProps,
@@ -59,7 +61,10 @@ export function ConversationSplitLayout<T extends ConversationSessionStore>({
         if (!session) return <LoadingState label={loadingLabel} />;
         return (
           <StoreProvider key={pane.paneId} store={session}>
-            <Chat store={session.chatStore} {...chatProps(session, pane)} />
+            <Chat
+              store={session.conversationSessionStore.chatStore}
+              {...chatProps(session, pane)}
+            />
           </StoreProvider>
         );
       }}

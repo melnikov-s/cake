@@ -127,13 +127,13 @@ export class RootStore extends Store<{
     if (!messageId) return true;
     const session = this.sessionRegistry.findSession(sessionId);
     if (!session) return false;
-    const message = session.chatStore.parts.find(
+    const message = session.conversationSessionStore.chatStore.parts.find(
       (part) =>
         part.id === messageId ||
         (part.kind === "text" && part.entryId !== undefined && part.entryId === messageId),
     );
     if (!message) return false;
-    session.chatStore.transcriptInteraction.navigateToMessage(message.id);
+    session.conversationSessionStore.chatStore.transcriptInteraction.navigateToMessage(message.id);
     return true;
   }
 
@@ -391,10 +391,11 @@ export class RootStore extends Store<{
     const chat =
       selection.kind === "cake-chat"
         ? selection.sessionId
-          ? this.cakeChatCollectionStore.registry.find(selection.sessionId)?.chatStore
+          ? this.cakeChatCollectionStore.registry.find(selection.sessionId)
+              ?.conversationSessionStore.chatStore
           : undefined
         : projectSelected
-          ? this.projectWorkbenchStore.activeSession?.chatStore
+          ? this.projectWorkbenchStore.activeSession?.conversationSessionStore.chatStore
           : undefined;
     switch (action) {
       case "toggle-agent-editor":
@@ -529,7 +530,7 @@ export class RootStore extends Store<{
       return;
     }
     this.showWorkbench();
-    this.projectWorkbenchStore.activeSession?.composerStore.draftStore.requestFocus();
+    this.projectWorkbenchStore.activeSession?.conversationSessionStore.composerStore.draftStore.requestFocus();
   }
   dismissTopSecondarySurface() {
     if (this.projectWorkbenchStore.sessionContinuationStore.prompt) {
@@ -942,12 +943,15 @@ export class RootStore extends Store<{
       setDraft: (value) => {
         const session = this.projectWorkbenchStore.activeSession;
         if (session)
-          session.composerStore.draftStore.setText(
-            resolveDraftUpdate(value, session.composerStore.draftStore.text),
+          session.conversationSessionStore.composerStore.draftStore.setText(
+            resolveDraftUpdate(
+              value,
+              session.conversationSessionStore.composerStore.draftStore.text,
+            ),
           );
       },
       requestComposerFocus: () =>
-        this.projectWorkbenchStore.activeSession?.composerStore.draftStore.requestFocus(),
+        this.projectWorkbenchStore.activeSession?.conversationSessionStore.composerStore.draftStore.requestFocus(),
     });
   }
 

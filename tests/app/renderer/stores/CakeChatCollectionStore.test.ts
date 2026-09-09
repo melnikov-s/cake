@@ -23,10 +23,10 @@ describe("CakeChatCollectionStore", () => {
         {} as Client,
       );
       const session = store.activeSession!;
-      const submitted = await session.chatStore.submit(command);
+      const submitted = await session.conversationSessionStore.chatStore.submit(command);
       expect(submitted).toBe(false);
-      expect(session.chatStore.draft).toBe(command);
-      expect(session.composerStore.error).toBeDefined();
+      expect(session.conversationSessionStore.chatStore.draft).toBe(command);
+      expect(session.conversationSessionStore.composerStore.error).toBeDefined();
       root[Symbol.dispose]();
       catalog[Symbol.dispose]();
       models[Symbol.dispose]();
@@ -60,13 +60,17 @@ describe("CakeChatCollectionStore", () => {
       mimeType: "image/png",
       data: "image",
     };
-    session.composerStore.draftStore.attachments.push(image);
-    expect(await session.chatStore.submit(text)).toBe(false);
-    expect(session.composerStore.draftStore.attachments).toEqual([image]);
+    session.conversationSessionStore.composerStore.draftStore.attachments.push(image);
+    expect(await session.conversationSessionStore.chatStore.submit(text)).toBe(false);
+    expect(session.conversationSessionStore.composerStore.draftStore.attachments).toEqual([image]);
     expect(fail).toHaveBeenCalledOnce();
-    expect(session.chatStore.draft).toBe(text);
-    expect(session.composerStore.deliveryStore.optimisticUserMessages.pending).toEqual([]);
-    expect(session.composerStore.deliveryStore.activeOperations).toEqual([]);
+    expect(session.conversationSessionStore.chatStore.draft).toBe(text);
+    expect(
+      session.conversationSessionStore.composerStore.deliveryStore.optimisticUserMessages.pending,
+    ).toEqual([]);
+    expect(session.conversationSessionStore.composerStore.deliveryStore.activeOperations).toEqual(
+      [],
+    );
     root[Symbol.dispose]();
     catalog[Symbol.dispose]();
     models[Symbol.dispose]();
@@ -88,9 +92,11 @@ describe("CakeChatCollectionStore", () => {
     );
     const session = store.activeSession!;
     store.pendingSessions.createDraft(session.sessionId, "Saved message", []);
-    expect(await session.chatStore.activateDraft()).toBe(false);
-    expect(session.chatStore.draft).toBe("Saved message");
-    expect(session.composerStore.deliveryStore.optimisticUserMessages.pending).toEqual([]);
+    expect(await session.conversationSessionStore.chatStore.activateDraft()).toBe(false);
+    expect(session.conversationSessionStore.chatStore.draft).toBe("Saved message");
+    expect(
+      session.conversationSessionStore.composerStore.deliveryStore.optimisticUserMessages.pending,
+    ).toEqual([]);
     root[Symbol.dispose]();
     catalog[Symbol.dispose]();
     models[Symbol.dispose]();
@@ -116,15 +122,15 @@ describe("CakeChatCollectionStore", () => {
     );
     const session = store.activeSession!;
 
-    session.chatStore.setDraft("Hello Cake");
-    const submission = session.chatStore.submit();
-    expect(session.composerStore.parts).toEqual([
+    session.conversationSessionStore.chatStore.setDraft("Hello Cake");
+    const submission = session.conversationSessionStore.chatStore.submit();
+    expect(session.conversationSessionStore.composerStore.parts).toEqual([
       expect.objectContaining({ text: "Hello Cake", deliveryState: "sending" }),
     ]);
 
     acceptPrompt();
     await submission;
-    expect(session.composerStore.parts).toEqual([
+    expect(session.conversationSessionStore.composerStore.parts).toEqual([
       expect.objectContaining({ text: "Hello Cake", deliveryState: "sending" }),
     ]);
 
@@ -138,8 +144,10 @@ describe("CakeChatCollectionStore", () => {
         status: "complete",
       }),
     );
-    expect(session.composerStore.deliveryStore.optimisticUserMessages.pending).toEqual([]);
-    expect(session.composerStore.parts).toEqual([
+    expect(
+      session.conversationSessionStore.composerStore.deliveryStore.optimisticUserMessages.pending,
+    ).toEqual([]);
+    expect(session.conversationSessionStore.composerStore.parts).toEqual([
       expect.objectContaining({ id: "canonical-user-1", deliveryState: undefined }),
     ]);
     root[Symbol.dispose]();
@@ -188,7 +196,7 @@ describe("CakeChatCollectionStore", () => {
     );
     const session = store.activeSession!;
 
-    await session.chatStore.submit("/name Shared composer title");
+    await session.conversationSessionStore.chatStore.submit("/name Shared composer title");
 
     expect(store.summaries).toMatchObject([
       { sessionId: session.sessionId, title: "Shared composer title" },
@@ -267,7 +275,7 @@ describe("CakeChatCollectionStore", () => {
     );
     const session = store.activeSession!;
 
-    session.chatStore.addAnnotation({
+    session.conversationSessionStore.chatStore.addAnnotation({
       messageId: "assistant-1",
       entryId: "entry-1",
       selectedText: "important detail",
@@ -277,7 +285,7 @@ describe("CakeChatCollectionStore", () => {
       contextAfter: " follows.",
       comment: "Explain this",
     });
-    await session.chatStore.submit();
+    await session.conversationSessionStore.chatStore.submit();
 
     expect(prompt).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -297,7 +305,7 @@ describe("CakeChatCollectionStore", () => {
       }),
       expect.any(Object),
     );
-    expect(session.chatStore.annotations).toEqual([]);
+    expect(session.conversationSessionStore.chatStore.annotations).toEqual([]);
     root[Symbol.dispose]();
     catalog[Symbol.dispose]();
     models[Symbol.dispose]();
@@ -362,7 +370,7 @@ describe("CakeChatCollectionStore", () => {
     const session = store.activeSession;
     expect(session).toBeDefined();
 
-    await session!.chatStore.submit("Hello Cake");
+    await session!.conversationSessionStore.chatStore.submit("Hello Cake");
 
     expect(prompt).toHaveBeenNthCalledWith(
       1,
@@ -399,7 +407,7 @@ describe("CakeChatCollectionStore", () => {
       children: { pendingSessions: { state: { sessions: [] } } },
     });
 
-    await session!.chatStore.submit("Follow up");
+    await session!.conversationSessionStore.chatStore.submit("Follow up");
 
     expect(prompt).toHaveBeenNthCalledWith(
       2,

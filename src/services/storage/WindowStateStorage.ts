@@ -1,7 +1,7 @@
 import { Context, Effect, FileSystem, Layer, Path, Schema, Semaphore } from "effect";
 import { atomicWriteFile, type AtomicFileStage } from "./internal/atomicFile";
 
-const WINDOW_STATE_DOCUMENT_VERSION = 7;
+const WINDOW_STATE_DOCUMENT_VERSION = 8;
 const WINDOW_STATE_DOCUMENT_NAME = "window-state.json";
 
 const JsonRecord = Schema.Record(Schema.String, Schema.Json);
@@ -444,6 +444,72 @@ const migrateVersion6WindowState = (snapshot: Schema.Schema.Type<typeof Schema.J
   };
 };
 
+/** Nests primary-session conversation children beneath their shared lifecycle owner. */
+const migrateVersion7WindowState = (snapshot: Schema.Schema.Type<typeof Schema.Json>) => {
+  const migrateSession = (value: Schema.Schema.Type<typeof Schema.Json>) => {
+    const session = decodeJsonRecord(value);
+    const children = decodeJsonRecord(session?.children);
+    if (!session || !children || children.conversationSessionStore !== undefined) return value;
+    const nextChildren = { ...children };
+    const conversationChildren: Record<string, Schema.Schema.Type<typeof Schema.Json>> = {};
+    for (const name of ["composerStore", "configurationStore", "chatStore"] as const) {
+      if (nextChildren[name] !== undefined) conversationChildren[name] = nextChildren[name];
+      delete nextChildren[name];
+    }
+    if (Object.keys(conversationChildren).length === 0) return value;
+    return {
+      ...session,
+      children: {
+        ...nextChildren,
+        conversationSessionStore: { state: {}, children: conversationChildren },
+      },
+    };
+  };
+
+  const root = decodeJsonRecord(snapshot);
+  const rootChildren = decodeJsonRecord(root?.children);
+  if (!root || !rootChildren) return snapshot;
+  const nextRootChildren = { ...rootChildren };
+
+  const registry = decodeJsonRecord(rootChildren.sessionRegistry);
+  const registryChildren = decodeJsonRecord(registry?.children);
+  if (registry && registryChildren && Array.isArray(registryChildren.sessions))
+    nextRootChildren.sessionRegistry = {
+      ...registry,
+      children: {
+        ...registryChildren,
+        sessions: registryChildren.sessions.map(migrateSession),
+      },
+    };
+
+  const collection = decodeJsonRecord(rootChildren.cakeChatCollectionStore);
+  const collectionChildren = decodeJsonRecord(collection?.children);
+  const cakeRegistry = decodeJsonRecord(collectionChildren?.registry);
+  const cakeRegistryChildren = decodeJsonRecord(cakeRegistry?.children);
+  if (
+    collection &&
+    collectionChildren &&
+    cakeRegistry &&
+    cakeRegistryChildren &&
+    Array.isArray(cakeRegistryChildren.sessions)
+  )
+    nextRootChildren.cakeChatCollectionStore = {
+      ...collection,
+      children: {
+        ...collectionChildren,
+        registry: {
+          ...cakeRegistry,
+          children: {
+            ...cakeRegistryChildren,
+            sessions: cakeRegistryChildren.sessions.map(migrateSession),
+          },
+        },
+      },
+    };
+
+  return { ...root, children: nextRootChildren };
+};
+
 const migrateLegacyWindowState = Effect.fn("WindowStateStorage.migrateLegacy")(function* (
   legacy: LegacyWindowState,
 ) {
@@ -683,8 +749,10 @@ const migrateLegacyWindowState = Effect.fn("WindowStateStorage.migrateLegacy")(f
   ).pipe(
     Effect.mapError((cause) => new WindowStateMalformedDocumentError({ message: cause.message })),
   );
-  return migrateVersion6WindowState(
-    migrateVersion5WindowState(migrateVersion4WindowState(migrateVersion3WindowState(decoded))),
+  return migrateVersion7WindowState(
+    migrateVersion6WindowState(
+      migrateVersion5WindowState(migrateVersion4WindowState(migrateVersion3WindowState(decoded))),
+    ),
   );
 });
 
@@ -730,42 +798,14 @@ export const makeWindowStateStorageLive = (userDataDirectory: string) =>
         if (envelope._tag === "Success") {
           if (envelope.success.version === WINDOW_STATE_DOCUMENT_VERSION)
             return envelope.success.data;
-          if (envelope.success.version === 2) {
-            const migrated = migrateVersion6WindowState(
-              migrateVersion5WindowState(
-                migrateVersion4WindowState(
-                  migrateVersion3WindowState(migrateVersion2WindowState(envelope.success.data)),
-                ),
-              ),
-            );
-            yield* saveUnlocked(migrated);
-            return migrated;
-          }
-          if (envelope.success.version === 3) {
-            const migrated = migrateVersion6WindowState(
-              migrateVersion5WindowState(
-                migrateVersion4WindowState(migrateVersion3WindowState(envelope.success.data)),
-              ),
-            );
-            yield* saveUnlocked(migrated);
-            return migrated;
-          }
-          if (envelope.success.version === 4) {
-            const migrated = migrateVersion6WindowState(
-              migrateVersion5WindowState(migrateVersion4WindowState(envelope.success.data)),
-            );
-            yield* saveUnlocked(migrated);
-            return migrated;
-          }
-          if (envelope.success.version === 5) {
-            const migrated = migrateVersion6WindowState(
-              migrateVersion5WindowState(envelope.success.data),
-            );
-            yield* saveUnlocked(migrated);
-            return migrated;
-          }
-          if (envelope.success.version === 6) {
-            const migrated = migrateVersion6WindowState(envelope.success.data);
+          if (envelope.success.version >= 2 && envelope.success.version <= 7) {
+            let migrated = envelope.success.data;
+            if (envelope.success.version <= 2) migrated = migrateVersion2WindowState(migrated);
+            if (envelope.success.version <= 3) migrated = migrateVersion3WindowState(migrated);
+            if (envelope.success.version <= 4) migrated = migrateVersion4WindowState(migrated);
+            if (envelope.success.version <= 5) migrated = migrateVersion5WindowState(migrated);
+            if (envelope.success.version <= 6) migrated = migrateVersion6WindowState(migrated);
+            migrated = migrateVersion7WindowState(migrated);
             yield* saveUnlocked(migrated);
             return migrated;
           }

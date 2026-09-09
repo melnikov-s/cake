@@ -61,7 +61,8 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
   get configuration() {
     const context = this.context;
     return context
-      ? this.props.sessionRegistry.findSession(context.sessionId)?.configurationStore
+      ? this.props.sessionRegistry.findSession(context.sessionId)?.conversationSessionStore
+          .configurationStore
       : undefined;
   }
   threadStreaming(threadId: string) {

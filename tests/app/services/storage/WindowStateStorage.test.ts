@@ -65,12 +65,18 @@ const CakeChatComposerProjection = Schema.Struct({
               Schema.Struct({
                 state: Schema.Record(Schema.String, Schema.Json),
                 children: Schema.Struct({
-                  chatStore: Schema.Struct({ state: Schema.Record(Schema.String, Schema.Json) }),
-                  composerStore: Schema.Struct({
-                    state: Schema.Record(Schema.String, Schema.Json),
+                  conversationSessionStore: Schema.Struct({
                     children: Schema.Struct({
-                      draftStore: Schema.Struct({
+                      chatStore: Schema.Struct({
                         state: Schema.Record(Schema.String, Schema.Json),
+                      }),
+                      composerStore: Schema.Struct({
+                        state: Schema.Record(Schema.String, Schema.Json),
+                        children: Schema.Struct({
+                          draftStore: Schema.Struct({
+                            state: Schema.Record(Schema.String, Schema.Json),
+                          }),
+                        }),
                       }),
                     }),
                   }),
@@ -134,17 +140,22 @@ describe("WindowStateStorage", () => {
                         key: "cake-chat-1",
                         state: {},
                         children: {
-                          chatStore: { state: {}, children: {} },
-                          composerStore: {
+                          conversationSessionStore: {
                             state: {},
                             children: {
-                              draftStore: {
-                                state: {
-                                  text: "Keep this draft",
-                                  attachments: [attachment],
-                                  annotations: [annotation],
+                              chatStore: { state: {}, children: {} },
+                              composerStore: {
+                                state: {},
+                                children: {
+                                  draftStore: {
+                                    state: {
+                                      text: "Keep this draft",
+                                      attachments: [attachment],
+                                      annotations: [annotation],
+                                    },
+                                    children: {},
+                                  },
                                 },
-                                children: {},
                               },
                             },
                           },
@@ -307,25 +318,30 @@ describe("WindowStateStorage", () => {
                     key: "project-session-1",
                     state: {},
                     children: {
-                      chatStore: { state: {}, children: {} },
+                      conversationSessionStore: {
+                        state: {},
+                        children: {
+                          chatStore: { state: {}, children: {} },
+                          composerStore: {
+                            state: {},
+                            children: {
+                              draftStore: {
+                                state: {
+                                  text: "Primary draft",
+                                  attachments: [],
+                                  annotations: [],
+                                },
+                                children: {},
+                              },
+                            },
+                          },
+                        },
+                      },
                       messageCommentsStore: {
                         state: {},
                         children: {
                           draftChatStore: {
                             state: { localDraft: "Comment draft" },
-                            children: {},
-                          },
-                        },
-                      },
-                      composerStore: {
-                        state: {},
-                        children: {
-                          draftStore: {
-                            state: {
-                              text: "Primary draft",
-                              attachments: [],
-                              annotations: [],
-                            },
                             children: {},
                           },
                         },
@@ -447,6 +463,68 @@ describe("WindowStateStorage", () => {
     );
   });
 
+  it.effect("nests version-seven Project and Cake Chat conversation children", () => {
+    const conversationChildren = {
+      composerStore: {
+        state: {},
+        children: { draftStore: { state: { text: "Restored" }, children: {} } },
+      },
+      configurationStore: { state: { catalogModels: [] }, children: {} },
+      chatStore: { state: {}, children: {} },
+    };
+    const snapshot = {
+      state: {},
+      children: {
+        sessionRegistry: {
+          state: {},
+          children: {
+            sessions: [
+              {
+                key: "project-1",
+                state: { ideMode: true },
+                children: { ...conversationChildren, worktreeStore: { state: {}, children: {} } },
+              },
+            ],
+          },
+        },
+        cakeChatCollectionStore: {
+          state: {},
+          children: {
+            registry: {
+              state: {},
+              children: {
+                sessions: [{ key: "cake-chat-1", state: {}, children: conversationChildren }],
+              },
+            },
+          },
+        },
+      },
+    };
+
+    return withStorage(JSON.stringify({ version: 7, data: snapshot }), (storage) =>
+      Effect.gen(function* () {
+        const loaded = (yield* storage.load()) as unknown as typeof snapshot;
+        const project = loaded.children.sessionRegistry.children.sessions[0]!;
+        const cakeChat =
+          loaded.children.cakeChatCollectionStore.children.registry.children.sessions[0]!;
+        assert.deepStrictEqual(project.state, { ideMode: true });
+        assert.deepStrictEqual(project.children.worktreeStore, { state: {}, children: {} });
+        const projectChildren = project.children as Record<string, unknown>;
+        const cakeChatChildren = cakeChat.children as Record<string, unknown>;
+        assert.deepStrictEqual(
+          (projectChildren.conversationSessionStore as { children: unknown }).children,
+          conversationChildren,
+        );
+        assert.deepStrictEqual(
+          (cakeChatChildren.conversationSessionStore as { children: unknown }).children,
+          conversationChildren,
+        );
+        assert.equal("composerStore" in projectChildren, false);
+        assert.equal("chatStore" in cakeChatChildren, false);
+      }),
+    );
+  });
+
   it.effect("places unversioned Cake Chat input under the shared composer Store", () => {
     const attachment = {
       kind: "image",
@@ -470,9 +548,10 @@ describe("WindowStateStorage", () => {
         const session =
           projection.children.cakeChatCollectionStore.children.registry.children.sessions[0]!;
         assert.deepStrictEqual(session.state, {});
-        assert.deepStrictEqual(session.children.chatStore.state, {});
-        assert.deepStrictEqual(session.children.composerStore.state, {});
-        assert.deepStrictEqual(session.children.composerStore.children.draftStore.state, {
+        const conversation = session.children.conversationSessionStore;
+        assert.deepStrictEqual(conversation.children.chatStore.state, {});
+        assert.deepStrictEqual(conversation.children.composerStore.state, {});
+        assert.deepStrictEqual(conversation.children.composerStore.children.draftStore.state, {
           text: "Keep this draft",
           attachments: [attachment],
           annotations: [],

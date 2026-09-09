@@ -181,7 +181,7 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
     const pending = pendingSessionId ? this.registry.find(pendingSessionId) : undefined;
     const session = pending ?? this.prepareNewSession();
     this.selectSession(session.sessionId);
-    if (prompt?.trim()) await session.chatStore.submit(prompt);
+    if (prompt?.trim()) await session.conversationSessionStore.chatStore.submit(prompt);
   }
 
   focusPane(paneId: string) {
@@ -199,7 +199,7 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
       return undefined;
     }
     this.selectionRevision += 1;
-    session.requestFocus();
+    session.conversationSessionStore.composerStore.draftStore.requestFocus();
     return { paneId, sessionId: session.sessionId };
   }
 
@@ -220,7 +220,8 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
   }
 
   reportError(error: unknown, context?: string) {
-    if (this.activeSession) this.activeSession.reportError(error, context);
+    if (this.activeSession)
+      this.activeSession.conversationSessionStore.composerStore.reportError(error, context);
     else {
       const described = describeError(error, context);
       this.error = described.message;

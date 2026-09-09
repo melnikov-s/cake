@@ -123,8 +123,10 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       operations: this.props.operations,
       editorText: (entryId) =>
         this.session?.tree.find((entry) => entry.piId === entryId)?.editorText,
-      setDraft: (value) => this.activeSession?.composerStore.draftStore.setText(value),
-      requestComposerFocus: () => this.activeSession?.composerStore.draftStore.requestFocus(),
+      setDraft: (value) =>
+        this.activeSession?.conversationSessionStore.composerStore.draftStore.setText(value),
+      requestComposerFocus: () =>
+        this.activeSession?.conversationSessionStore.composerStore.draftStore.requestFocus(),
       reportError: (error) => this.setError(error),
     });
   }
@@ -216,7 +218,9 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     const session = this.sessionRegistry.findSession(sessionId);
     if (!session) return false;
     if (this.sessionRegistry.pendingSessions.isTemporary(sessionId)) return true;
-    const command = session.composerStore.draftStore.text.trim().toLocaleLowerCase();
+    const command = session.conversationSessionStore.composerStore.draftStore.text
+      .trim()
+      .toLocaleLowerCase();
     const local = command === "/tree" || command === "/resources" || command === "/changelog";
     return local || this.agentAvailability === "available";
   }
@@ -337,7 +341,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       this.activeSession &&
       this.sessionRegistry.pendingSessions.isStaged(this.activeSession.sessionId)
     ) {
-      this.activeSession.composerStore.draftStore.requestFocus();
+      this.activeSession.conversationSessionStore.composerStore.draftStore.requestFocus();
       return;
     }
     if (!path) {
@@ -488,15 +492,19 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   }
 
   private suspendEmbeddedEditor() {
-    this.activeSession?.composerStore.draftStore.setEditorContextAttachment(undefined);
+    this.activeSession?.conversationSessionStore.composerStore.draftStore.setEditorContextAttachment(
+      undefined,
+    );
     this.embeddedEditorStore.suspend();
   }
 
   /** Explicitly returns the active session to its Agent presentation. */
   backToAgent() {
-    this.activeSession?.composerStore.draftStore.setEditorContextAttachment(undefined);
+    this.activeSession?.conversationSessionStore.composerStore.draftStore.setEditorContextAttachment(
+      undefined,
+    );
     this.embeddedEditorStore.hide();
-    this.activeSession?.composerStore.draftStore.requestFocus();
+    this.activeSession?.conversationSessionStore.composerStore.draftStore.requestFocus();
   }
 
   restoreSessionPresentation() {
@@ -520,7 +528,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     this.markSessionRead(sessionId);
     this.extensionUi.clear();
     this.commandPaneStore.dismiss();
-    session.composerStore.draftStore.requestFocus();
+    session.conversationSessionStore.composerStore.draftStore.requestFocus();
     void session.stagedCommandStore.load(path);
   }
 
@@ -585,7 +593,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     this.restoreSessionPresentation();
     this.extensionUi.clear();
     this.commandPaneStore.dismiss();
-    session.composerStore.draftStore.requestFocus();
+    session.conversationSessionStore.composerStore.draftStore.requestFocus();
     return true;
   }
 
@@ -724,7 +732,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     ) {
       this.embeddedEditorStore.receive(event);
       if (event.workspacePath === this.projectOpenStore.projectPath)
-        this.activeSession?.composerStore.draftStore.setEditorContextAttachment(
+        this.activeSession?.conversationSessionStore.composerStore.draftStore.setEditorContextAttachment(
           this.embeddedEditorStore.visible
             ? this.embeddedEditorStore.activeContextAttachment
             : undefined,

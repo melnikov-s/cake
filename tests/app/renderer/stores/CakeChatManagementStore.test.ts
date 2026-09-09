@@ -49,7 +49,9 @@ describe("CakeChatManagementStore", () => {
     await Promise.all([first, second]);
 
     expect(calls).toEqual(["start:first", "start:second", "finish:second"]);
-    expect(collection.activeSession?.composerStore.error).toContain("first failed");
+    expect(collection.activeSession?.conversationSessionStore.composerStore.error).toContain(
+      "first failed",
+    );
 
     root[Symbol.dispose]();
     catalog[Symbol.dispose]();

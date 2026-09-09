@@ -425,10 +425,15 @@ The window Store hierarchy mirrors the product surfaces:
   session starts. The Working
   Directory remains routing/storage context for the Pi runtime, not part of
   session identity. Cake Chat never enters this registry.
-- Each `ProjectSessionStore` owns that session's activity,
-  message composer, projected scheduled-message controls, chat configuration, session-local Agent/IDE presentation preference and IDE
-  chat-drawer geometry, managed-worktree status and action presentation, artifacts, and message comments. `ConversationComposerStore`
-  coordinates focused children: `ComposerDraftStore` owns the persisted coherent unsent draft and focus requests,
+- Each `ProjectSessionStore` owns that session's activity, session-local Agent/IDE presentation preference and IDE
+  chat-drawer geometry, managed-worktree status and action presentation, artifacts, and message comments. Project Sessions and Cake Chat
+  Sessions each compose one `ConversationSessionStore`, the window-local active-conversation aggregate whose lifetime matches its owning
+  primary session. It owns the stable `ChatStore`, `ConversationComposerStore`, and `ChatConfigurationStore` children plus their common
+  delivery, configuration, transcript-interaction, draft, and operation wiring. Pi remains transcript and runtime authority; persisted
+  renderer draft state remains in the aggregate's focused child Stores; and operation concurrency remains with the delivery,
+  configuration, and shared operation-coordinator owners. Kind-specific parents supply cohesive Project or Cake Chat capabilities rather
+  than forwarding each child API. Secondary chats continue to compose `ChatStore` directly.
+  `ConversationComposerStore` coordinates focused children: `ComposerDraftStore` owns the persisted coherent unsent draft and focus requests,
   `PromptQueueStore` owns transient editable follow-ups and settled-turn draining, `ConversationDeliveryStore` owns optimistic
   projection and operation-correlated delivery recovery, and `PendingSessionDraftStore` owns the distinct saved-draft lifecycle.
   Managed Worktree landing sequencing,
@@ -482,8 +487,8 @@ The window Store hierarchy mirrors the product surfaces:
   the window snapshot; management operations and catalog hydration remain process-lifetime state.
   Main/Pi remain authoritative for materialized Cake Chat metadata and transcripts.
 
-  Each keyed session retains its own draft, attachments, configuration, transcript projection, and
-  streaming state while another Cake Chat session is selected. Like a new project chat, a new Cake
+  Each keyed session retains one stable `ConversationSessionStore` aggregate with its own draft, attachments, configuration,
+  transcript projection, and streaming state while another Cake Chat session is selected. Like a new project chat, a new Cake
   Chat begins as one renderer-owned pending session and creates its Pi runtime on the first prompt;
   its identity and draft may be restored from window state without implying that a transcript file
   exists. Each visible Cake Chat pane may hold its own pending conversation and retains an
@@ -515,8 +520,10 @@ flowchart TD
   CakeChat --> CakePending["CakeChatPendingSessionsStore"]
   CakeChat --> CakeManagement["CakeChatManagementStore"]
   CakeRegistry --> CakeSession["CakeChatSessionStore per loaded meta-session"]
-  CakeSession --> CakeComposer["ConversationComposerStore"]
-  CakeSession --> MetaChat["ChatStore"]
+  CakeSession --> CakeConversation["ConversationSessionStore"]
+  CakeConversation --> CakeComposer["ConversationComposerStore"]
+  CakeConversation --> MetaConfig["ChatConfigurationStore"]
+  CakeConversation --> MetaChat["ChatStore"]
   Root --> Settings["SettingsStore"]
   Root --> ProjectSettings["ProjectSettingsStore"]
   Root --> Kanban["KanbanStore"]
@@ -528,14 +535,15 @@ flowchart TD
   Registry --> ObservationRetention["SessionObservationRetentionStore"]
   Registry --> Session["ProjectSessionStore (one per loaded target)"]
   Session --> Model["Session"]
-  Session --> Composer["ConversationComposerStore"]
+  Session --> Conversation["ConversationSessionStore"]
+  Conversation --> Composer["ConversationComposerStore"]
   Composer --> ComposerDraft["ComposerDraftStore"]
   Composer --> PromptQueue["PromptQueueStore"]
   Composer --> Delivery["ConversationDeliveryStore"]
   Composer --> PendingDraft["PendingSessionDraftStore"]
-  Session --> Config["ChatConfigurationStore"]
+  Conversation --> Config["ChatConfigurationStore"]
   Session --> Worktree["WorktreeStore"]
-  Session --> Chat["ChatStore"]
+  Conversation --> Chat["ChatStore"]
   Chat --> TranscriptInteraction["TranscriptInteractionStore"]
   Chat --> WorkLogPresentation["WorkLogPresentationStore"]
   Chat --> ScheduledInteraction["ScheduledMessageInteractionStore"]
