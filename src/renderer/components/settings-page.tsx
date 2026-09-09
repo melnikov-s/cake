@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { observer } from "r-state-tree/react";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
@@ -10,6 +11,82 @@ import { ModelPresetSettings } from "./model-preset-settings";
 import { SettingsLinesField } from "./settings/settings-lines-field";
 import { SettingsPackagesField } from "./settings/settings-packages-field";
 import { SettingsTextField } from "./settings/settings-text-field";
+import { Input } from "./ui/input";
+import { SearchIcon } from "./ui/icons";
+import type { SettingsPageId } from "../stores/SettingsStore";
+
+type SettingsNavItem = {
+  page: SettingsPageId;
+  label: string;
+  description?: string;
+  keywords: string;
+};
+
+const SETTINGS_NAV_GROUPS: ReadonlyArray<{
+  label: string;
+  items: readonly SettingsNavItem[];
+}> = [
+  {
+    label: "Intelligence",
+    items: [
+      {
+        page: "models",
+        label: "Models",
+        description: "Defaults and presets",
+        keywords: "current chat reasoning utility default agent model fast mode",
+      },
+      {
+        page: "providers",
+        label: "Providers",
+        description: "Accounts and API keys",
+        keywords: "authentication login oauth token api key accounts",
+      },
+      {
+        page: "agent",
+        label: "Agent",
+        description: "Behavior and content",
+        keywords:
+          "auto compact retry thinking steering follow-up images skill commands cache notices",
+      },
+    ],
+  },
+  {
+    label: "Pi runtime",
+    items: [
+      {
+        page: "runtime",
+        label: "Execution & resources",
+        keywords: "shell npm packages extensions skills prompts reload paths command",
+      },
+      {
+        page: "network",
+        label: "Network & privacy",
+        keywords: "transport websocket sse timeout trust safety anthropic usage warning telemetry",
+      },
+    ],
+  },
+  {
+    label: "Application",
+    items: [
+      {
+        page: "appearance",
+        label: "Appearance",
+        keywords: "theme light dark system work logs expansion view mode",
+      },
+      {
+        page: "hotkeys",
+        label: "Hotkeys",
+        description: "Keyboard shortcuts",
+        keywords: "keys shortcuts keyboard bindings commands",
+      },
+      {
+        page: "editor",
+        label: "VS Code",
+        keywords: "editor embedded sidebar auto hide width vscode",
+      },
+    ],
+  },
+];
 
 function queueMode(value: string) {
   if (value === "one-at-a-time" || value === "all") return value;
@@ -49,6 +126,23 @@ export const SettingsPage = observer(function SettingsPage({
   const error = settings.error;
   const providerGroups = settings.providerGroups;
   const utilityModel = utility.model;
+  const [searchQuery, setSearchQuery] = useState("");
+  const searchTerms = searchQuery.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+  const visibleNavGroups = SETTINGS_NAV_GROUPS.map((group) => ({
+    ...group,
+    items:
+      searchTerms.length > 0
+        ? group.items.filter((item) => {
+            const searchableText =
+              `${item.label} ${item.description ?? ""} ${item.keywords}`.toLocaleLowerCase();
+            return searchTerms.every((term) => searchableText.includes(term));
+          })
+        : group.items,
+  })).filter((group) => group.items.length > 0);
+  const searchResultCount = visibleNavGroups.reduce(
+    (count, group) => count + group.items.length,
+    0,
+  );
   return (
     <div className="grid h-full min-h-0 grid-cols-[220px_minmax(0,1fr)]">
       <aside
@@ -56,75 +150,50 @@ export const SettingsPage = observer(function SettingsPage({
         className="min-h-0 border-r border-border/65 bg-sidebar px-3 py-5"
       >
         <h1 className="px-2 text-lg font-bold text-foreground">Settings</h1>
-        <p className="mb-6 mt-1 px-2 text-[11px] leading-relaxed text-muted-foreground">
+        <p className="mb-4 mt-1 px-2 text-[11px] leading-relaxed text-muted-foreground">
           Cake and Pi preferences
         </p>
+        <div className="relative mb-6">
+          <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground">
+            <SearchIcon size={13} />
+          </span>
+          <Input
+            type="search"
+            size="sm"
+            aria-label="Search settings"
+            placeholder="Search settings…"
+            className="pl-8"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") setSearchQuery("");
+            }}
+          />
+        </div>
         <nav className="grid gap-5" aria-label="Settings pages">
-          <div>
-            <p className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/75">
-              Intelligence
-            </p>
-            <div className="grid gap-0.5">
-              <NavItem
-                label="Models"
-                description="Defaults and presets"
-                active={activePage === "models"}
-                onClick={() => settings.selectPage("models")}
-              />
-              <NavItem
-                label="Providers"
-                description="Accounts and API keys"
-                active={activePage === "providers"}
-                onClick={() => settings.selectPage("providers")}
-              />
-              <NavItem
-                label="Agent"
-                description="Behavior and content"
-                active={activePage === "agent"}
-                onClick={() => settings.selectPage("agent")}
-              />
+          {visibleNavGroups.map((group) => (
+            <div key={group.label}>
+              <p className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/75">
+                {group.label}
+              </p>
+              <div className="grid gap-0.5">
+                {group.items.map((item) => (
+                  <NavItem
+                    key={item.page}
+                    label={item.label}
+                    description={item.description}
+                    active={activePage === item.page}
+                    onClick={() => settings.selectPage(item.page)}
+                  />
+                ))}
+              </div>
             </div>
-          </div>
-          <div>
-            <p className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/75">
-              Pi runtime
+          ))}
+          {searchTerms.length > 0 && searchResultCount === 0 && (
+            <p className="px-2 text-xs leading-relaxed text-muted-foreground" role="status">
+              No settings found for “{searchQuery.trim()}”.
             </p>
-            <div className="grid gap-0.5">
-              <NavItem
-                label="Execution & resources"
-                active={activePage === "runtime"}
-                onClick={() => settings.selectPage("runtime")}
-              />
-              <NavItem
-                label="Network & privacy"
-                active={activePage === "network"}
-                onClick={() => settings.selectPage("network")}
-              />
-            </div>
-          </div>
-          <div>
-            <p className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/75">
-              Application
-            </p>
-            <div className="grid gap-0.5">
-              <NavItem
-                label="Appearance"
-                active={activePage === "appearance"}
-                onClick={() => settings.selectPage("appearance")}
-              />
-              <NavItem
-                label="Hotkeys"
-                description="Keyboard shortcuts"
-                active={activePage === "hotkeys"}
-                onClick={() => settings.selectPage("hotkeys")}
-              />
-              <NavItem
-                label="VS Code"
-                active={activePage === "editor"}
-                onClick={() => settings.selectPage("editor")}
-              />
-            </div>
-          </div>
+          )}
         </nav>
       </aside>
       <div className="min-h-0 overflow-y-auto [scrollbar-gutter:stable]">
