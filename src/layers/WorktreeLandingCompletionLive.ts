@@ -6,7 +6,6 @@ import type { SessionArchiveStorage } from "../services/storage/SessionArchiveSt
 import type { SessionCatalogChanges } from "../services/session-catalogs/SessionCatalogChanges";
 import type { Terminal } from "../services/terminal/Terminal";
 import type { ProjectSessionConfiguration } from "../services/project-sessions/ProjectSessionConfiguration";
-import type { ProjectSessionLifecycle } from "../services/project-sessions/ProjectSessionLifecycle";
 import type { SessionFamilyStorage } from "../services/storage/SessionFamilyStorage";
 import type { ManagedWorktrees } from "../services/worktrees/ManagedWorktrees";
 import * as projectSessionLifecycle from "../domain/projectSessionLifecycle";
@@ -21,7 +20,6 @@ type Dependencies =
   | SessionCatalogChanges
   | Terminal
   | ProjectSessionConfiguration
-  | ProjectSessionLifecycle
   | SessionFamilyStorage
   | ManagedWorktrees;
 

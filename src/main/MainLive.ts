@@ -8,7 +8,6 @@ import * as scheduledMessages from "../domain/scheduledMessages";
 import * as sessionFamilies from "../domain/sessionFamilies";
 import { makeCakeIpcServerLive } from "../ipc/server/CakeIpcServer";
 import { makeDiscussionSessionEnvironmentLive } from "../layers/DiscussionSessionEnvironmentLive";
-import { makeProjectSessionLifecycleLive } from "../layers/ProjectSessionLifecycleLive";
 import { makeSubagentEnvironmentLive } from "../layers/SubagentEnvironmentLive";
 import { WorktreeLandingAgentLive } from "../layers/WorktreeLandingAgentLive";
 import { WorktreeLandingCompletionLive } from "../layers/WorktreeLandingCompletionLive";
@@ -148,10 +147,6 @@ export const makeMainLive = (options: MainLiveOptions) => {
     RewordingRequestsLive,
     SubagentCoordinatorLive,
     WorktreeLandingCoordinatorLive,
-    makeProjectSessionLifecycleLive({
-      projectSessionDirectory: paths.piSessions,
-      resolvedProjectSessionDirectory: paths.piResolvedSessions,
-    }),
     RendererRequestCoordinatorLive,
     makeInlineWidgetsLive({ paths, publish: publishInlineWidget }),
     makeSubagentEnvironmentLive({

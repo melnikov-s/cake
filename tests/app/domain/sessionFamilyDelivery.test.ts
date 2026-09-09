@@ -9,7 +9,6 @@ import { defaultApplicationState } from "../../../src/domain/application-data";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { makeProjectSessionRuntimeMechanismTestLayer } from "./projectSessionRuntimeTestLayer";
-import { ProjectSessionLifecycle } from "../../../src/services/project-sessions/ProjectSessionLifecycle";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
@@ -60,9 +59,6 @@ const environment = Layer.mergeAll(
   Layer.mock(ManagedWorktrees, {
     records: () => Effect.succeed([]),
     proposeSquashMessage: () => Effect.void,
-  }),
-  Layer.mock(ProjectSessionLifecycle, {
-    setProjectSessionResolved: () => Effect.void,
   }),
   SessionCatalogChanges.layer,
 );
@@ -251,10 +247,11 @@ describe("Session Family outcome delivery", () => {
       Effect.provide(
         Layer.mergeAll(
           familyStorageHarness().layer,
+          environment,
+          Layer.mock(PiSessions, { currentStatus: () => Effect.succeed(undefined) }),
           Layer.mock(SessionArchiveStorage, {
             locate: (id) => Effect.succeed(id === childId ? undefined : ("active" as const)),
           }),
-          Layer.mock(ProjectSessionLifecycle, {}),
         ),
       ),
     ),

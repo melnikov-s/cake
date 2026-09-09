@@ -5,7 +5,6 @@ import type { ProjectSessionRuntimeIntegrations } from "../../../src/services/pi
 import { ProjectSessionRuntimeHost } from "../../../src/services/pi/ProjectSessionRuntimeHost";
 import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
 import { ProjectSessionConfiguration } from "../../../src/services/project-sessions/ProjectSessionConfiguration";
-import { ProjectSessionLifecycle } from "../../../src/services/project-sessions/ProjectSessionLifecycle";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
@@ -13,6 +12,7 @@ import { SubagentCoordinatorLive } from "../../../src/services/subagents/Subagen
 import { SubagentEnvironment } from "../../../src/services/subagents/SubagentEnvironment";
 import { VsCodeServer } from "../../../src/services/vscode/VsCodeServer";
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
+import { Terminal } from "../../../src/services/terminal/Terminal";
 
 const defaultIntegrations: ProjectSessionRuntimeIntegrations = {
   requestUi: async () => undefined,
@@ -59,6 +59,9 @@ export const makeProjectSessionRuntimeMechanismTestLayer = (
       windowsForWorkspace: () => [],
       centerTrafficLights: () => undefined,
     }),
+    Layer.mock(Terminal, {
+      closeWorkingDirectory: () => Effect.void,
+    }),
     Layer.mock(VsCodeServer, {
       enterProjectEditor: () => Effect.void,
       openProjectLocation: (_workingDirectory, location) =>
@@ -84,9 +87,6 @@ export const makeProjectSessionRuntimeTestLayer = (
 ) =>
   Layer.mergeAll(
     makeProjectSessionRuntimeMechanismTestLayer(integrations),
-    Layer.mock(ProjectSessionLifecycle, {
-      setProjectSessionResolved: () => Effect.void,
-    }),
     SessionCatalogChanges.layer,
     Layer.mock(SessionArchiveStorage, {
       locate: () => Effect.succeed("active" as const),

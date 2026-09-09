@@ -1,4 +1,3 @@
-import { ProjectSessionLifecycle } from "../../../src/services/project-sessions/ProjectSessionLifecycle";
 import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
 import { Deferred, Effect, Fiber, Layer, Queue, Stream, SubscriptionRef } from "effect";
@@ -28,6 +27,8 @@ import { ProjectSessionConfiguration } from "../../../src/services/project-sessi
 import { SubagentEnvironment } from "../../../src/services/subagents/SubagentEnvironment";
 import { VsCodeServer } from "../../../src/services/vscode/VsCodeServer";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
+import { ArtifactStorage } from "../../../src/services/storage/ArtifactStorage";
+import { ReviewStorage } from "../../../src/services/storage/ReviewStorage";
 import {
   SessionArchiveStorage,
   SessionArchiveStorageError,
@@ -130,8 +131,7 @@ const makeLayer = (
     onCreateRuntime?(): void;
     onArchive?(sessionId: string): void;
     archiveErrorSessionId?: string;
-    onLifecycleResolve?(sessionId: string, resolved: boolean): void;
-    onRestore?(): void;
+    onRestore?(sessionId: string): void;
     onCatalog?(): void;
     catalog?(workingDirectory: string): Stream.Stream<SessionSummary, unknown>;
     catalogModifiedAt?(): string;
@@ -161,6 +161,10 @@ const makeLayer = (
     onCleanupResolved?(): void;
     onRestoreResolved?(): void;
     onCloseWorkingDirectory?(): void;
+    onFamilyTransition?(stage: "begin" | "finish", resolved?: boolean): void;
+    onRemoveFamilyProject?(projectPath: string): void;
+    initialResolvedSessionIds?: ReadonlyArray<string>;
+    familyTransitionResolved?: boolean;
     family?: {
       readonly familyId: string;
       readonly parentSessionId: string;
@@ -175,7 +179,10 @@ const makeLayer = (
     };
   } = {},
 ) => {
-  const resolvedSessionIds = new Set(hooks.resolvedOnDisk ? ["session-1"] : []);
+  const resolvedSessionIds = new Set([
+    ...(hooks.resolvedOnDisk ? ["session-1"] : []),
+    ...(hooks.initialResolvedSessionIds ?? []),
+  ]);
   const configuredInitial =
     initial.projects.length > 0
       ? initial
@@ -259,10 +266,6 @@ const makeLayer = (
   return Layer.mergeAll(
     application,
     SessionCatalogChanges.layer,
-    Layer.mock(ProjectSessionLifecycle, {
-      setProjectSessionResolved: (sessionId, resolved) =>
-        Effect.sync(() => hooks.onLifecycleResolve?.(sessionId, resolved)),
-    }),
     Layer.succeed(SessionFamilyStorage, {
       list: () => Effect.succeed(hooks.family ? [hooks.family] : []),
       familyForMember: (sessionId) =>
@@ -274,10 +277,24 @@ const makeLayer = (
             : undefined,
         ),
       addChild: () => Effect.die("Unexpected family child creation"),
-      state: () => Effect.succeed({ families: [], transitions: [], turns: [] }),
+      state: () =>
+        Effect.succeed({
+          families: [],
+          transitions:
+            hooks.family && hooks.familyTransitionResolved !== undefined
+              ? [
+                  {
+                    parentSessionId: hooks.family.parentSessionId,
+                    resolved: hooks.familyTransitionResolved,
+                  },
+                ]
+              : [],
+          turns: [],
+        }),
       withMemberLock: (_id, effect) => effect,
-      beginTransition: () => Effect.void,
-      finishTransition: () => Effect.void,
+      beginTransition: (_parentSessionId, resolved) =>
+        Effect.sync(() => hooks.onFamilyTransition?.("begin", resolved)),
+      finishTransition: () => Effect.sync(() => hooks.onFamilyTransition?.("finish")),
       recordTurn: () => Effect.void,
       settleTurn: () => Effect.void,
       reportTurns: () => Effect.void,
@@ -285,6 +302,7 @@ const makeLayer = (
       markNoticeAttempt: () => Effect.void,
       completeNotice: () => Effect.void,
       removeUnmaterializedChild: () => Effect.void,
+      removeProject: (projectPath) => Effect.sync(() => hooks.onRemoveFamilyProject?.(projectPath)),
     }),
     makePiSessionsLayer(adapter),
     SubagentCoordinatorLive,
@@ -344,6 +362,13 @@ const makeLayer = (
           sessionDirectory: "/subagents",
           trusted: true,
         }),
+    }),
+    Layer.mock(ArtifactStorage, { deleteSession: () => Effect.void }),
+    Layer.mock(ReviewStorage, {
+      agentSessionDirectory: () => "/reviews/agent",
+      reviewContextPath: () => "/reviews/context.md",
+      discussionParentContextPath: () => "/reviews/discussion.md",
+      deleteSession: () => Effect.void,
     }),
     Layer.succeed(
       SessionArchiveStorage,
@@ -408,7 +433,7 @@ const makeLayer = (
         restoreProject: (sessionId) =>
           Effect.sync(() => {
             resolvedSessionIds.delete(sessionId);
-            hooks.onRestore?.();
+            hooks.onRestore?.(sessionId);
             return undefined;
           }),
         deleteResolvedProject: () => Effect.void,
@@ -1246,8 +1271,8 @@ describe("Project Sessions domain", () => {
     },
   );
 
-  it.effect("resolves a Session Family once through its parent", () => {
-    const lifecycleCalls: Array<[string, boolean]> = [];
+  it.effect("resolves every Session Family member inside one journaled archive sequence", () => {
+    const events: string[] = [];
     const family = {
       familyId: "family-1",
       parentSessionId: "parent",
@@ -1274,13 +1299,99 @@ describe("Project Sessions domain", () => {
       const result = yield* projectSessionLifecycle.resolveWorkingDirectory("/project");
       assert.deepEqual(result.resolvedSessionIds, ["parent", "child"]);
       assert.deepEqual(result.failures, []);
-      assert.deepEqual(lifecycleCalls, [["parent", true]]);
+      assert.deepEqual(events, ["begin:true", "archive:parent", "archive:child", "finish"]);
     }).pipe(
       Effect.provide(
         makeLayer(defaultApplicationState(), {
           family,
           catalog: () => Stream.fromIterable([session("parent"), session("child")]),
-          onLifecycleResolve: (sessionId, resolved) => lifecycleCalls.push([sessionId, resolved]),
+          onArchive: (sessionId) => events.push(`archive:${sessionId}`),
+          onFamilyTransition: (stage, resolved) =>
+            events.push(stage === "begin" ? `begin:${String(resolved)}` : stage),
+        }),
+      ),
+    );
+  });
+
+  it.effect("restores every Session Family member inside one journaled restore sequence", () => {
+    const events: string[] = [];
+    const family = {
+      familyId: "family-1",
+      parentSessionId: "parent",
+      projectPath: "/project",
+      workingDirectory: "/project",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      children: [
+        {
+          sessionId: "child",
+          requestId: "request-1",
+          createdAt: "2026-01-01T00:00:01.000Z",
+        },
+      ],
+    };
+    return projectSessionLifecycle.restore({ sessionId: "parent" }).pipe(
+      Effect.tap(() =>
+        Effect.sync(() => {
+          assert.deepEqual(events, ["begin:false", "restore:parent", "restore:child", "finish"]);
+        }),
+      ),
+      Effect.provide(
+        makeLayer(defaultApplicationState(), {
+          family,
+          initialResolvedSessionIds: ["parent", "child"],
+          onRestore: (sessionId) => events.push(`restore:${sessionId}`),
+          onFamilyTransition: (stage, resolved) =>
+            events.push(stage === "begin" ? `begin:${String(resolved)}` : stage),
+        }),
+      ),
+    );
+  });
+
+  it.effect("replays a partial family journal even when the parent already moved", () => {
+    const archived: string[] = [];
+    const family = {
+      familyId: "family-1",
+      parentSessionId: "parent",
+      projectPath: "/project",
+      workingDirectory: "/project",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      children: [
+        {
+          sessionId: "child",
+          requestId: "request-1",
+          createdAt: "2026-01-01T00:00:01.000Z",
+        },
+      ],
+    };
+    return projectSessionLifecycle.recoverFamilyTransition("parent", true).pipe(
+      Effect.tap(() =>
+        Effect.sync(() => {
+          assert.deepEqual(archived, ["child"]);
+        }),
+      ),
+      Effect.provide(
+        makeLayer(defaultApplicationState(), {
+          family,
+          familyTransitionResolved: true,
+          initialResolvedSessionIds: ["parent"],
+          onArchive: (sessionId) => archived.push(sessionId),
+        }),
+      ),
+    );
+  });
+
+  it.effect("removes family metadata after cascading Project Session deletion", () => {
+    const removedProjects: string[] = [];
+    return projectSessionLifecycle.deleteProjectSessions("/project", []).pipe(
+      Effect.tap(() =>
+        Effect.sync(() => {
+          assert.deepEqual(removedProjects, ["/project"]);
+        }),
+      ),
+      Effect.provide(
+        makeLayer(defaultApplicationState(), {
+          sessionExists: false,
+          onRemoveFamilyProject: (projectPath) => removedProjects.push(projectPath),
         }),
       ),
     );

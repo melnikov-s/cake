@@ -9,7 +9,6 @@ import { AgentAvailability } from "../services/pi/AgentAvailability";
 import { ProjectSessionRuntimeHost } from "../services/pi/ProjectSessionRuntimeHost";
 import { rewordSelectionWithProjectContext } from "../services/pi/runtime/rewording-agent";
 import { inspectWorkspace } from "../services/pi/runtime/session-discovery";
-import { ProjectSessionLifecycle } from "../services/project-sessions/ProjectSessionLifecycle";
 import { ProjectAccess } from "../services/projects/ProjectAccess";
 import { ProjectConfiguration } from "../services/projects/ProjectConfiguration";
 import { RewordingRequests } from "../services/projects/RewordingRequests";
@@ -27,7 +26,7 @@ import type {
 } from "./application-data";
 import { defaultProjectWorkflow } from "./application-data";
 import { inspect as inspectProjectSession } from "./projectSessionMetadata";
-import { moveWorkflowSession as moveProjectSessionWorkflow } from "./projectSessionLifecycle";
+import * as projectSessionLifecycle from "./projectSessionLifecycle";
 import { ProjectError } from "./project-error";
 import {
   observeState,
@@ -311,7 +310,10 @@ export const moveWorkflowSession = Effect.fn("Projects.moveWorkflowSession")(fun
   readonly destination: ProjectWorkflowSessionDestination;
 }) {
   yield* requireAllowed(request.projectPath);
-  return yield* mapProjectError("moveProjectWorkflowSession", moveProjectSessionWorkflow(request));
+  return yield* mapProjectError(
+    "moveProjectWorkflowSession",
+    projectSessionLifecycle.moveWorkflowSession(request),
+  );
 });
 
 export const describeWorkflowSession = Effect.fn("Projects.describeWorkflowSession")(
@@ -409,14 +411,13 @@ export const remove = Effect.fn("Projects.remove")(function* (
   const access = yield* ProjectAccess;
   const electron = yield* Electron;
   const integrations = yield* ProjectSessionRuntimeHost;
-  const lifecycle = yield* ProjectSessionLifecycle;
   const worktrees = yield* ManagedWorktrees;
   const records = yield* mapProjectError("removeProject", worktrees.records());
   const projectWorktrees = records.filter((record) => record.projectPath === request.path);
   if (request.deleteSessions)
     yield* mapProjectError(
       "removeProject",
-      lifecycle.deleteProjectSessions(request.path, projectWorktrees),
+      projectSessionLifecycle.deleteProjectSessions(request.path, projectWorktrees),
     );
   const workingDirectories = new Set([
     request.path,
@@ -436,10 +437,9 @@ export const deleteSession = Effect.fn("Projects.deleteSession")(function* (
   request: Payload<"delete-session">,
 ) {
   const application = yield* ApplicationState;
-  const lifecycle = yield* ProjectSessionLifecycle;
   yield* mapProjectError(
     "deleteSession",
-    lifecycle.deleteResolvedProjectSession(request.sessionId),
+    projectSessionLifecycle.deleteResolved(request.sessionId),
   );
   return { state: application.snapshot() };
 });

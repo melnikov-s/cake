@@ -14,7 +14,7 @@ import parentSessionFamilyPromptTemplate from "../services/pi/runtime/prompts/pa
 import { renderPromptTemplate } from "../services/pi/runtime/prompt-template";
 import { ProjectAccess } from "../services/projects/ProjectAccess";
 import { ProjectSessionConfiguration } from "../services/project-sessions/ProjectSessionConfiguration";
-import { ProjectSessionLifecycle } from "../services/project-sessions/ProjectSessionLifecycle";
+import * as projectSessionLifecycle from "./projectSessionLifecycle";
 import { SessionCatalogChanges } from "../services/session-catalogs/SessionCatalogChanges";
 import { ApplicationState } from "../services/storage/ApplicationState";
 import { SessionArchiveStorage } from "../services/storage/SessionArchiveStorage";
@@ -23,6 +23,7 @@ import type { SubagentCoordinator } from "../services/subagents/SubagentCoordina
 import type { SubagentEnvironment } from "../services/subagents/SubagentEnvironment";
 import { VsCodeServer } from "../services/vscode/VsCodeServer";
 import { ManagedWorktrees } from "../services/worktrees/ManagedWorktrees";
+import type { Terminal } from "../services/terminal/Terminal";
 import { toJsonValue } from "../utils/to-json-value";
 
 const FamilyMessageInput = Schema.Struct({
@@ -60,7 +61,6 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
   const configuration = yield* ProjectSessionConfiguration;
   const electron = yield* Electron;
   const runtimeHost = yield* ProjectSessionRuntimeHost;
-  const lifecycle = yield* ProjectSessionLifecycle;
   const sessions = yield* PiSessions;
   const families = yield* SessionFamilyStorage;
   const catalogs = yield* SessionCatalogChanges;
@@ -80,7 +80,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
     | SubagentCoordinator
     | SubagentEnvironment
     | ManagedWorktrees
-    | ProjectSessionLifecycle
+    | Terminal
     | VsCodeServer
   >();
   const run = Effect.runPromiseWith(context);
@@ -188,7 +188,10 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
         deferResolution: family === undefined,
         setResolved: (resolved) =>
           run(
-            lifecycle.setProjectSessionResolved(sessionId, resolved, location.workingDirectory),
+            (resolved ? projectSessionLifecycle.resolve : projectSessionLifecycle.restore)({
+              sessionId,
+              workingDirectory: location.workingDirectory,
+            }),
           ).then(() => undefined),
         createSession: (input, signal) =>
           runtimeIntegrations.requestApplicationControl(

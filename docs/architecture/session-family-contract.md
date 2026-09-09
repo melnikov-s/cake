@@ -91,10 +91,11 @@ retirement. Individual member delete, handoff, relocation, and resolve/restore
 paths reject family members. Ordinary forks are standalone and never inherit
 membership.
 
-`sessionFamilies` is the shared main-process domain for creation, admission,
-lifecycle transitions, and outcome delivery. The existing Project Session
-environment wires its runtime callbacks; both resolution entry points use the
-same lifecycle policy. Per-parent admission locks cover initial creation and
+`sessionFamilies` owns creation, turn admission, and outcome delivery.
+`projectSessionLifecycle` owns the one standalone and family archive, restore,
+recovery, and deletion policy. The Project Session environment wires its runtime
+callbacks to those free domain Effects; both resolution entry points use the same
+lifecycle operations. Per-parent admission locks cover initial creation and
 the complete archive/restore operation. Startup replays incomplete journals
 before the RPC server is exposed. An incomplete journal continues to block new
 work until recovery succeeds.

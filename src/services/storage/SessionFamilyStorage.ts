@@ -94,6 +94,7 @@ export class SessionFamilyStorage extends Context.Service<
     readonly removeUnmaterializedChild: (
       sessionId: string,
     ) => Effect.Effect<void, SessionFamilyStorageError>;
+    readonly removeProject: (projectPath: string) => Effect.Effect<void, SessionFamilyStorageError>;
     readonly list: () => Effect.Effect<ReadonlyArray<SessionFamily>, SessionFamilyStorageError>;
     readonly familyForMember: (
       sessionId: string,
@@ -411,6 +412,22 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
             })),
           })),
       );
+      const removeProject = Effect.fn("SessionFamilyStorage.removeProject")((projectPath: string) =>
+        update((document) => {
+          const removedParents = new Set(
+            document.families
+              .filter((family) => family.projectPath === projectPath)
+              .map((family) => family.parentSessionId),
+          );
+          return {
+            families: document.families.filter((family) => family.projectPath !== projectPath),
+            transitions: document.transitions.filter(
+              (transition) => !removedParents.has(transition.parentSessionId),
+            ),
+            turns: document.turns.filter((turn) => !removedParents.has(turn.parentSessionId)),
+          };
+        }),
+      );
       return SessionFamilyStorage.of({
         list,
         familyForMember,
@@ -426,6 +443,7 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
         markNoticeAttempt,
         completeNotice,
         removeUnmaterializedChild,
+        removeProject,
       });
     }),
   );

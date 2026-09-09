@@ -6,7 +6,6 @@ import type { PiSessions } from "../services/pi/PiSessions";
 import type { ProjectSessionRuntimeHost } from "../services/pi/ProjectSessionRuntimeHost";
 import type { ProjectAccess } from "../services/projects/ProjectAccess";
 import type { ProjectSessionConfiguration } from "../services/project-sessions/ProjectSessionConfiguration";
-import type { ProjectSessionLifecycle } from "../services/project-sessions/ProjectSessionLifecycle";
 import type { SessionCatalogChanges } from "../services/session-catalogs/SessionCatalogChanges";
 import type { ApplicationState } from "../services/storage/ApplicationState";
 import type { SessionArchiveStorage } from "../services/storage/SessionArchiveStorage";
@@ -15,6 +14,7 @@ import type { SubagentCoordinator } from "../services/subagents/SubagentCoordina
 import type { SubagentEnvironment } from "../services/subagents/SubagentEnvironment";
 import type { VsCodeServer } from "../services/vscode/VsCodeServer";
 import type { ManagedWorktrees } from "../services/worktrees/ManagedWorktrees";
+import type { Terminal } from "../services/terminal/Terminal";
 import {
   WorktreeLandingAgent,
   WorktreeLandingAgentError,
@@ -41,13 +41,13 @@ export const WorktreeLandingAgentLive = Layer.effect(
       | PiSessions
       | ProjectAccess
       | ProjectSessionConfiguration
-      | ProjectSessionLifecycle
       | ProjectSessionRuntimeHost
       | SessionArchiveStorage
       | SessionCatalogChanges
       | SessionFamilyStorage
       | SubagentCoordinator
       | SubagentEnvironment
+      | Terminal
       | VsCodeServer
     >();
     const dependencies = Context.omit(Scope.Scope)(context);

@@ -5,7 +5,7 @@ import type { ChatConfiguration } from "../ipc/session-contract";
 import { PiModels } from "../services/pi/PiModels";
 import { PiSessions, type PiSessionAcquireOptions } from "../services/pi/PiSessions";
 import type { ProjectSessionLocation } from "./project-session-data";
-import { ProjectSessionLifecycle } from "../services/project-sessions/ProjectSessionLifecycle";
+import * as projectSessionLifecycle from "./projectSessionLifecycle";
 import {
   SessionArchiveStorage,
   type SessionArchiveLocation,
@@ -13,7 +13,6 @@ import {
 import {
   SessionFamilyStorage,
   SessionFamilyStorageError,
-  type SessionFamily,
   type FamilyTurn,
 } from "../services/storage/SessionFamilyStorage";
 import { SessionCatalogChanges } from "../services/session-catalogs/SessionCatalogChanges";
@@ -62,57 +61,6 @@ export const admitTurn = Effect.fn("SessionFamilies.admitTurn")(function* (
           reported: false,
         });
       yield* accept;
-    }),
-  );
-});
-
-/** The journal survives partial moves; retries always finish its original intent. */
-export const transition = Effect.fn("SessionFamilies.transition")(function* <E, R>(
-  family: SessionFamily,
-  resolved: boolean,
-  sessionDirectory: string,
-  move: (sessionId: string, resolved: boolean) => Effect.Effect<void, E, R>,
-) {
-  const storage = yield* SessionFamilyStorage;
-  const sessions = yield* PiSessions;
-  yield* storage.withMemberLock(
-    family.parentSessionId,
-    Effect.gen(function* () {
-      const current = yield* storage.familyForMember(family.parentSessionId);
-      if (!current) return yield* failure("The Session Family no longer exists");
-      const state = yield* storage.state();
-      const journal = state.transitions.find(
-        (item) => item.parentSessionId === current.parentSessionId,
-      );
-      if (journal && journal.resolved !== resolved)
-        return yield* failure(
-          "Complete the pending family lifecycle operation before reversing it",
-        );
-      const members = [
-        current.parentSessionId,
-        ...current.children.map((child) => child.sessionId),
-      ];
-      for (const sessionId of members) {
-        const status = yield* sessions.currentStatus({
-          sessionId,
-          workingDirectory: current.workingDirectory,
-          sessionDirectory,
-        });
-        if (status?.streaming || status?.pending)
-          return yield* failure(
-            `Session Family member ${sessionId} is active or has pending input`,
-          );
-      }
-      if (
-        resolved &&
-        state.turns.some(
-          (turn) => turn.parentSessionId === current.parentSessionId && !turn.reported,
-        )
-      )
-        return yield* failure("The Session Family has an undelivered child outcome");
-      if (!journal) yield* storage.beginTransition(current.parentSessionId, resolved);
-      for (const sessionId of members) yield* move(sessionId, resolved);
-      yield* storage.finishTransition(current.parentSessionId);
     }),
   );
 });
@@ -233,7 +181,6 @@ export const initialize = Effect.fn("SessionFamilies.initialize")(function* (
 ) {
   const storage = yield* SessionFamilyStorage;
   const archive = yield* SessionArchiveStorage;
-  const lifecycle = yield* ProjectSessionLifecycle;
   for (const family of yield* storage.list()) {
     for (const child of family.children) {
       if (
@@ -262,7 +209,10 @@ export const initialize = Effect.fn("SessionFamilies.initialize")(function* (
     if (!turn.outcome) yield* storage.settleTurn(turn.turnId, "aborted");
   }
   for (const journal of (yield* storage.state()).transitions)
-    yield* lifecycle.setProjectSessionResolved(journal.parentSessionId, journal.resolved);
+    yield* projectSessionLifecycle.recoverFamilyTransition(
+      journal.parentSessionId,
+      journal.resolved,
+    );
 });
 
 export const deliver = Effect.fn("SessionFamilies.deliverNotice")(function* (turn: FamilyTurn) {

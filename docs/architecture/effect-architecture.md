@@ -161,12 +161,14 @@ MainLive
 ├── StorageLive                  # focused storage and application-state capabilities
 ├── NativeServicesLive           # Electron, Git/worktrees, project access, terminal, VS Code
 ├── PiLive                       # Pi sessions, models, resources, and availability
-├── SessionWorkflowsLive         # session environments, lifecycle, runtime hosts, coordinators
+├── SessionWorkflowsLive         # session environments, runtime hosts, coordinators
 ├── BackgroundWorkersLive        # scheduled delivery and Session Family recovery
 └── RpcLive                      # the Electron Effect RPC server
 ```
 
-These are ownership-oriented capability groups, not separate runtimes or service facades. They
+Project Session lifecycle is free domain policy in `projectSessionLifecycle`, not a capability or
+Layer in this graph. These are ownership-oriented capability groups, not separate runtimes or
+service facades. They
 reuse the same Layer values throughout the graph, so Effect Layer memoization shares each
 process capability and resource even when more than one feature group depends on it. Background
 workers and RPC acquire only after the session workflow graph is available, and every scoped

@@ -10,7 +10,6 @@ import { MainApplication } from "../../../src/main/MainApplication";
 import { Electron, type ElectronWindowLifecycle } from "../../../src/services/electron/Electron";
 import { PiSessions } from "../../../src/services/pi/PiSessions";
 import { RendererRequestCoordinator } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
-import { ProjectSessionLifecycle } from "../../../src/services/project-sessions/ProjectSessionLifecycle";
 import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
 import { RewordingRequests } from "../../../src/services/projects/RewordingRequests";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
@@ -79,7 +78,6 @@ const testLayer = (input?: {
       windowsForWorkspace: () => [],
       centerTrafficLights: () => {},
     }),
-    Layer.mock(ProjectSessionLifecycle, {}),
     Layer.mock(ProjectAccess, {
       allow: (path) => Effect.sync(() => input?.allow?.(path)),
       clearOwner: (ownerId) => Effect.sync(() => input?.clearOwner?.(ownerId)),

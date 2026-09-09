@@ -71,6 +71,22 @@ describe("SessionFamilyStorage", () => {
     }).pipe(Effect.provide(testLayer())),
   );
 
+  it.effect("removes project families with their transition and turn journals", () =>
+    Effect.gen(function* () {
+      const storage = yield* SessionFamilyStorage;
+      yield* storage.addChild(child("request-1", "child-1"));
+      yield* storage.beginTransition("parent", true);
+      yield* storage.recordTurn({
+        sessionId: "child-1",
+        parentSessionId: "parent",
+        turnId: "turn-1",
+        reported: false,
+      });
+      yield* storage.removeProject("/project");
+      assert.deepEqual(yield* storage.state(), { families: [], transitions: [], turns: [] });
+    }).pipe(Effect.provide(testLayer())),
+  );
+
   it.effect("rejects grandchildren and Working Directory changes", () =>
     Effect.gen(function* () {
       const storage = yield* SessionFamilyStorage;
