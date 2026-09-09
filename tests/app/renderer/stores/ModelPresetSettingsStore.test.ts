@@ -1,6 +1,10 @@
 import { child, createStore, mount, Store } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
-import type { ModelOption, ModelPreset } from "../../../../src/ipc/session-contract";
+import type {
+  ApplicationState,
+  ModelOption,
+  ModelPreset,
+} from "../../../../src/ipc/session-contract";
 import { ModelPresetSettingsStore } from "../../../../src/renderer/stores/ModelPresetSettingsStore";
 import type { Client } from "../../../../src/renderer/client/Client";
 import { ClientContext } from "../../../../src/renderer/stores/context/ClientContext";
@@ -132,6 +136,14 @@ function mountStore(initial?: Projection, models?: ModelOption[]) {
     },
   } as unknown as Client;
   const root = mount(createStore(HarnessStore, { client: client }));
+  root.settings.applyApplicationState(0, {
+    projects: [],
+    unreadSessionIds: [],
+    trustedProjectPaths: [],
+    fastModeSessionIds: [],
+    modelPresets: initial?.presets ?? [],
+    defaultModelPresetId: initial?.defaultPresetId,
+  } satisfies ApplicationState);
   return {
     ...controlled,
     store: root.settings,
@@ -140,18 +152,40 @@ function mountStore(initial?: Projection, models?: ModelOption[]) {
 }
 
 describe("ModelPresetSettingsStore", () => {
-  it("hydrates presets and the session-less model catalog through focused queries", async () => {
+  it("reads presets from application state and hydrates only the session-less model catalog", async () => {
     const existing = preset();
     const { client, store, dispose } = mountStore({
       presets: [existing],
       defaultPresetId: existing.id,
     });
     await store.hydrate();
-    expect(client.listModelPresets).toHaveBeenCalledOnce();
+    expect(client.listModelPresets).not.toHaveBeenCalled();
     expect(client.listModels).toHaveBeenCalledOnce();
     expect(store.presets).toEqual([existing]);
     expect(store.defaultPresetId).toBe(existing.id);
     expect(store.loading).toBe(false);
+    dispose();
+  });
+
+  it("applies ongoing authoritative preset and default revisions", async () => {
+    const existing = preset();
+    const replacement = preset({
+      id: "00000000-0000-4000-8000-000000000002",
+      name: "External preset",
+    });
+    const { store, dispose } = mountStore({ presets: [existing] });
+
+    store.applyApplicationState(1, {
+      projects: [],
+      unreadSessionIds: [],
+      trustedProjectPaths: [],
+      fastModeSessionIds: [],
+      modelPresets: [replacement],
+      defaultModelPresetId: replacement.id,
+    });
+
+    expect(store.presets).toEqual([replacement]);
+    expect(store.defaultPresetId).toBe(replacement.id);
     dispose();
   });
 
@@ -248,6 +282,55 @@ describe("ModelPresetSettingsStore", () => {
     await secondSave;
     expect(client.createModelPreset).toHaveBeenCalledTimes(2);
     expect(store.presets.at(-1)?.name).toBe("Latest");
+    dispose();
+  });
+
+  it("preserves an optimistic reorder across an unrelated application revision", async () => {
+    const first = preset({ name: "First" });
+    const second = preset({ id: "00000000-0000-4000-8000-000000000002", name: "Second" });
+    const pending = deferred<Projection>();
+    const { client, store, dispose } = mountStore({ presets: [first, second] });
+    client.reorderModelPresets.mockReturnValueOnce(pending.promise);
+
+    const save = store.reorderPreset(first.id, second.id);
+    await vi.waitFor(() => expect(client.reorderModelPresets).toHaveBeenCalledOnce());
+    store.applyApplicationState(1, {
+      projects: [],
+      unreadSessionIds: [],
+      trustedProjectPaths: [],
+      fastModeSessionIds: [],
+      utilityModel: { provider: "openai", modelId: "utility", thinkingLevel: "off" },
+      modelPresets: [first, second],
+    });
+    expect(store.presets.map((value) => value.name)).toEqual(["Second", "First"]);
+
+    pending.resolve({ presets: [second, first] });
+    await save;
+    expect(store.presets.map((value) => value.name)).toEqual(["Second", "First"]);
+    dispose();
+  });
+
+  it("retains a newer authoritative preset revision across an in-flight command", async () => {
+    const existing = preset();
+    const external = { ...existing, name: "Changed elsewhere" };
+    const pending = deferred<Projection>();
+    const { client, store, dispose } = mountStore({ presets: [existing] });
+    client.updateModelPreset.mockReturnValueOnce(pending.promise);
+
+    const save = store.updatePreset({ ...existing, name: "Local edit" });
+    await vi.waitFor(() => expect(client.updateModelPreset).toHaveBeenCalledOnce());
+    store.applyApplicationState(1, {
+      projects: [],
+      unreadSessionIds: [],
+      trustedProjectPaths: [],
+      fastModeSessionIds: [],
+      modelPresets: [external],
+    });
+    expect(store.presets[0]?.name).toBe("Local edit");
+
+    pending.resolve({ presets: [{ ...existing, name: "Stale completion" }] });
+    await save;
+    expect(store.presets).toEqual([external]);
     dispose();
   });
 

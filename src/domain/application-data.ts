@@ -195,9 +195,11 @@ const RendererApplicationFields = {
   fastModeSessionIds: SessionIds,
   utilityModel: Schema.optionalKey(UtilityModel),
   vscodeServerPath: Schema.optionalKey(boundedString(4_096)),
+  modelPresets: boundedArray(ModelPreset, 100),
+  defaultModelPresetId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
 };
 
-/** Broad renderer projection. Model Presets hydrate through their focused RPC group. */
+/** Broad renderer projection of current main-owned application state. */
 export const RendererApplicationState = Schema.Struct(RendererApplicationFields);
 
 export const RendererApplicationProjection = Schema.Struct({
@@ -206,11 +208,7 @@ export const RendererApplicationProjection = Schema.Struct({
 });
 
 /** Current main-owned Application value. Storage envelope versioning is separate. */
-export const ApplicationState = Schema.Struct({
-  ...RendererApplicationFields,
-  modelPresets: boundedArray(ModelPreset, 100),
-  defaultModelPresetId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
-}).check(
+export const ApplicationState = Schema.Struct(RendererApplicationFields).check(
   Schema.makeFilter(
     (state) => {
       const projectPaths = state.projects.map((project) => project.path);

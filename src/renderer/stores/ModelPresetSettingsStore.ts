@@ -1,5 +1,10 @@
-import { Store, observable, snapshot } from "r-state-tree";
-import type { ChatConfiguration, ModelOption, ModelPreset } from "../../ipc/session-contract";
+import { Store, batch, observable, snapshot } from "r-state-tree";
+import type {
+  ApplicationState,
+  ChatConfiguration,
+  ModelOption,
+  ModelPreset,
+} from "../../ipc/session-contract";
 import { ClientContext } from "./context/ClientContext";
 import { describeError } from "../lib/error-details";
 
@@ -7,6 +12,22 @@ interface ModelPresetProjection {
   readonly presets: readonly ModelPreset[];
   readonly defaultPresetId?: string;
 }
+
+const samePresetProjection = (left: ModelPresetProjection, right: ModelPresetProjection): boolean =>
+  left.defaultPresetId === right.defaultPresetId &&
+  left.presets.length === right.presets.length &&
+  left.presets.every((preset, index) => {
+    const candidate = right.presets[index];
+    return (
+      candidate !== undefined &&
+      preset.id === candidate.id &&
+      preset.name === candidate.name &&
+      preset.provider === candidate.provider &&
+      preset.modelId === candidate.modelId &&
+      preset.thinkingLevel === candidate.thinkingLevel &&
+      preset.fastMode === candidate.fastMode
+    );
+  });
 
 export type ModelPresetResolutionStatus =
   | "available"
@@ -17,8 +38,10 @@ export type ModelPresetResolutionStatus =
   | "unsupported-fast-mode";
 
 /**
- * Owns the one renderer model-preset collection, default new-session
- * configuration, and serialized optimistic semantic command queue.
+ * Owns the settings view of the authoritative model-preset projection and its
+ * serialized optimistic command queue. Revisions update the rollback baseline
+ * during a command without replacing the optimistic view; a newer preset
+ * revision wins over a stale command response when the command settles.
  */
 export class ModelPresetSettingsStore extends Store {
   readonly presets: ModelPreset[] = observable([]);
@@ -35,6 +58,8 @@ export class ModelPresetSettingsStore extends Store {
   private hydration: Promise<void> | undefined;
   private persistedPresets: ModelPreset[] = [];
   private persistedDefaultPresetId: string | undefined;
+  private applicationRevision = -1;
+  private presetProjectionRevision = -1;
   private readonly authoritativeIds = new Map<string, string>();
 
   get client() {
@@ -44,6 +69,24 @@ export class ModelPresetSettingsStore extends Store {
   hydrate() {
     this.hydration ??= this.performHydration();
     return this.hydration;
+  }
+
+  applyApplicationState(revision: number, state: ApplicationState) {
+    if (revision <= this.applicationRevision) return;
+    this.applicationRevision = revision;
+    const projection = {
+      presets: state.modelPresets,
+      defaultPresetId: state.defaultModelPresetId,
+    };
+    if (
+      !samePresetProjection(projection, {
+        presets: this.persistedPresets,
+        defaultPresetId: this.persistedDefaultPresetId,
+      })
+    )
+      this.presetProjectionRevision = revision;
+    this.acceptAuthoritative(projection);
+    if (!this.saving) this.restorePersisted();
   }
 
   get modelsByProvider() {
@@ -178,38 +221,40 @@ export class ModelPresetSettingsStore extends Store {
   }
 
   private async performHydration() {
-    const [presets, models] = await Promise.allSettled([
-      this.client.modelPresets.list({ signal: this.signal }),
-      this.client.models.list({ signal: this.signal }),
-    ]);
-    if (this.signal.aborted) return;
-    if (presets.status === "fulfilled") {
-      this.acceptAuthoritative(presets.value);
-      this.restorePersisted();
-    } else this.setError(presets.reason);
-    if (models.status === "fulfilled")
-      this.catalogModels.splice(0, this.catalogModels.length, ...models.value);
-    else if (presets.status === "fulfilled") this.setError(models.reason);
-    this.loading = false;
+    try {
+      const models = await this.client.models.list({ signal: this.signal });
+      if (this.signal.aborted) return;
+      this.catalogModels.splice(0, this.catalogModels.length, ...models);
+    } catch (error) {
+      if (!this.signal.aborted) this.setError(error);
+    } finally {
+      if (!this.signal.aborted) this.loading = false;
+    }
   }
 
   private beginOptimistic(presets: readonly ModelPreset[], defaultPresetId: string | undefined) {
     const revision = ++this.commandRevision;
-    this.presets.splice(0, this.presets.length, ...presets.map((preset) => ({ ...preset })));
-    this.defaultPresetId = defaultPresetId;
-    this.saving = true;
-    this.error = undefined;
-    this.errorDetails = undefined;
+    batch(() => {
+      this.presets.splice(0, this.presets.length, ...presets.map((preset) => ({ ...preset })));
+      this.defaultPresetId = defaultPresetId;
+      this.saving = true;
+      this.error = undefined;
+      this.errorDetails = undefined;
+    });
     return revision;
   }
 
   private enqueue(revision: number, command: () => Promise<ModelPresetProjection>) {
     const pending = this.commandQueue
       .catch(() => undefined)
-      .then(command)
-      .then((state) => {
+      .then(async () => {
+        const basePresetProjectionRevision = this.presetProjectionRevision;
+        return { state: await command(), basePresetProjectionRevision };
+      })
+      .then(({ state, basePresetProjectionRevision }) => {
         if (this.signal.aborted) return;
-        this.acceptAuthoritative(state);
+        if (this.presetProjectionRevision === basePresetProjectionRevision)
+          this.acceptAuthoritative(state);
         if (revision === this.commandRevision) this.restorePersisted();
       })
       .catch((error) => {
@@ -234,12 +279,14 @@ export class ModelPresetSettingsStore extends Store {
   }
 
   private restorePersisted() {
-    this.presets.splice(
-      0,
-      this.presets.length,
-      ...this.persistedPresets.map((preset) => ({ ...preset })),
-    );
-    this.defaultPresetId = this.persistedDefaultPresetId;
+    batch(() => {
+      this.presets.splice(
+        0,
+        this.presets.length,
+        ...this.persistedPresets.map((preset) => ({ ...preset })),
+      );
+      this.defaultPresetId = this.persistedDefaultPresetId;
+    });
   }
 
   private setError(error: unknown) {

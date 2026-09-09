@@ -10,6 +10,7 @@ const applicationState = (utilityModel?: UtilityModel): ApplicationState => ({
   unreadSessionIds: [],
   trustedProjectPaths: [],
   fastModeSessionIds: [],
+  modelPresets: [],
   utilityModel,
 });
 
