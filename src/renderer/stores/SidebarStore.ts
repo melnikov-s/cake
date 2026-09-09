@@ -300,7 +300,7 @@ export class SidebarStore extends Store<SidebarStoreProps> {
     familyChildSessionIds?: readonly string[];
   }) {
     const own = this.sessionActivity(session.sessionId);
-    if (!session.familyChildSessionIds) return own;
+    if (!session.familyChildSessionIds || !this.isFamilyCollapsed(session.sessionId)) return own;
     const activities = [
       own,
       ...session.familyChildSessionIds.map((id) => this.sessionActivity(id)),

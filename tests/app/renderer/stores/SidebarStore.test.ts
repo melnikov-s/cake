@@ -80,6 +80,39 @@ describe("SidebarStore catalog demand", () => {
     store[Symbol.dispose]();
   });
 
+  it("shows child activity on the parent only while its family is collapsed", () => {
+    const activities = new Map([
+      ["parent", undefined],
+      ["child", "running" as const],
+    ]);
+    const store = mount(
+      createStore(SidebarStore, {
+        projects: { orderedProjectPaths: [] } as unknown as ProjectCatalogStore,
+        catalog: {
+          find: (sessionId: string) => ({ sessionId, unread: false }),
+        } as unknown as SessionCatalogStore,
+        sessions: {
+          findSession: (sessionId: string) => ({ activity: activities.get(sessionId) }),
+        } as unknown as SessionRegistryStore,
+        cakeChat: () => ({ summaries: [] }) as unknown as CakeChatCollectionStore,
+        setSessionResolved: async () => undefined,
+        setSessionWorkflowStatus: async () => undefined,
+        setCakeChatSessionResolved: async () => undefined,
+        deleteSession: async () => undefined,
+        deleteCakeChatSession: async () => undefined,
+        setSessionUnread: async () => undefined,
+        embeddedEditorSettings: embeddedEditorSettings(),
+      }),
+    );
+    const parent = { sessionId: "parent", familyChildSessionIds: ["child"] };
+
+    expect(store.sessionActivityForDisplay(parent)).toBeUndefined();
+    store.toggleFamilyCollapsed("parent");
+    expect(store.sessionActivityForDisplay(parent)).toBe("running");
+    expect(store.sessionActivityForDisplay({ sessionId: "child" })).toBe("running");
+    store[Symbol.dispose]();
+  });
+
   it("provides custom workflow statuses and the current status to the native menu", async () => {
     const status = {
       id: "b925b5dd-9661-4f1a-9f40-406be3c96c27",
