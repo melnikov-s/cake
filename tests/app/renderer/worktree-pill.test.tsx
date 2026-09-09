@@ -93,6 +93,7 @@ describe("WorktreePill", () => {
     actions: WorktreeStore,
     record?: WorktreeRecord,
     configurationMode?: "new-session" | "activate-draft" | "edit-draft",
+    canManage = true,
   ) {
     act(() =>
       root.render(
@@ -102,6 +103,7 @@ describe("WorktreePill", () => {
           record={record}
           sessionId="session"
           projectPath="/project"
+          canManage={canManage}
           configurationMode={configurationMode}
           onConfigured={vi.fn()}
         />,
@@ -222,5 +224,20 @@ describe("WorktreePill", () => {
     expect(button("Commit & merge").disabled).toBe(true);
     expect(button("Merge & resolve").disabled).toBe(true);
     expect(button("Discard & resolve").disabled).toBe(true);
+  });
+
+  it("hides worktree management actions from family child sessions", () => {
+    render(
+      actionStore({ aheadCount: 1, dirtyCount: 1, behindCount: 1 }),
+      undefined,
+      undefined,
+      false,
+    );
+
+    expect(container.textContent).toContain("session");
+    expect(button("Rebase")).toBeUndefined();
+    expect(button("Commit & merge")).toBeUndefined();
+    expect(button("Merge & resolve")).toBeUndefined();
+    expect(button("Discard & resolve")).toBeUndefined();
   });
 });
