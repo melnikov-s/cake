@@ -148,14 +148,17 @@ describe("ProjectSessionIntegrationHost application controls", () => {
     host[Symbol.dispose]();
   });
 
-  it("settles a pending request when its tool call is aborted", async () => {
+  it("settles a pending request when its tool call is aborted and ignores its late response", async () => {
     const controller = new AbortController();
+    let request: Extract<CakeEvent, { type: "project-session-control-requested" }> | undefined;
     const host = new ProjectSessionIntegrationHost({
       workspacePath: "/projects/cake",
       agentDir: "/agent",
       sessionDir: "/sessions",
       emit: vi.fn(),
-      emitApplicationControl: vi.fn(),
+      emitApplicationControl: (event) => {
+        request = event;
+      },
     });
 
     const pending = host
@@ -171,6 +174,15 @@ describe("ProjectSessionIntegrationHost application controls", () => {
     controller.abort();
 
     await expect(pending).resolves.toEqual({ ok: false, error: "The request was cancelled." });
+    if (!request) throw new Error("Expected a control request");
+    const { controlRequestId } = request;
+    expect(() =>
+      host.dispatch({
+        type: "respond-project-session-control",
+        controlRequestId,
+        result: { ok: true },
+      }),
+    ).not.toThrow();
     host[Symbol.dispose]();
   });
 });

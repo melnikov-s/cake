@@ -178,8 +178,7 @@ export class ProjectSessionIntegrationHost {
     }
     if (command.type === "respond-project-session-control") {
       const settle = this.pendingControls.get(command.controlRequestId);
-      if (!settle) throw new Error("That Project Session control request is no longer pending");
-      settle(command.result);
+      if (settle) settle(command.result);
       return;
     }
     const pending = this.pendingArtifacts.get(command.artifactRequestId);

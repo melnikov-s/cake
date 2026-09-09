@@ -142,12 +142,18 @@ export const ProjectSessionIntegrationsLive: Layer.Layer<
       respondControl: Effect.fn("ProjectSessionIntegrations.respondControl")(
         (sessionId, controlRequestId, result) =>
           Effect.try({
-            try: () =>
-              requireSession(sessionId).host.dispatch({
+            try: () => {
+              // Releasing a runtime settles its pending controls before a renderer
+              // can finish an application mutation that stops the calling session.
+              // Its eventual acknowledgement is therefore an expected late response.
+              const integration = sessions.get(sessionId);
+              if (!integration) return;
+              integration.host.dispatch({
                 type: "respond-project-session-control",
                 controlRequestId,
                 result,
-              }),
+              });
+            },
             catch: (cause) => runtimeError("respondControl", cause),
           }),
       ),
