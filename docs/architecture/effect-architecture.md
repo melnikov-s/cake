@@ -720,23 +720,21 @@ src/
 │   ├── electron/
 │   └── widgets/
 ├── domain/                   # Cake product contexts containing cohesive free Effect modules and owned data
-│   ├── application/          # Application state, availability, and cross-context catalog projections
+│   ├── application/          # Application state, availability, catalog projections, and embedded-editor policy
 │   ├── artifacts/            # Artifact data, errors, and operations
 │   ├── cake-chats/           # Cake Chat data, metadata, locations, runtime, lifecycle, and operations
-│   ├── conversations/        # Shared conversation data and operations
+│   ├── conversations/        # Shared conversation data, operations, and cross-session coordination
 │   ├── discussion-sessions/  # Discussion Session data and operations
+│   ├── model-presets/        # Model Preset operations and Cake model-selection policy
 │   ├── project-sessions/     # Project Session data, metadata, locations, runtime, lifecycle, and operations
 │   ├── projects/             # Project errors and operations
+│   ├── reviews/              # Review policy and operations
 │   ├── scheduled-messages/   # Scheduled Message data and operations
+│   ├── session-families/     # Session Family lifecycle and delivery policy
 │   ├── subagents/            # Subagent Session data, controls, and operations
-│   ├── worktrees/            # Managed Worktree data, cleanup, landing, and operations
-│   ├── cross-session-coordination.ts
-│   ├── embeddedEditor.ts
-│   ├── modelPresets.ts
-│   ├── reviews.ts
-│   ├── sessionFamilies.ts
-│   ├── utilityWork.ts
-│   └── workingDirectoryTerminals.ts
+│   ├── terminals/            # Working Directory terminal operations
+│   ├── utility-work/         # Bounded utility-model operations and output policy
+│   └── worktrees/            # Managed Worktree data, cleanup, landing, and operations
 ├── layers/                   # Production composition adapters joining domains to callback APIs
 ├── config/                   # Decoded process configuration values
 ├── ipc/

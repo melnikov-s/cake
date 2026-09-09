@@ -7,7 +7,7 @@ import {
 import { createHash } from "node:crypto";
 import { Option, Schema } from "effect";
 import { artifactPointerSchema, type ArtifactPointer } from "../../../ipc/artifact-contract";
-import { parseCrossSessionMessage } from "../../../domain/cross-session-coordination";
+import { parseCrossSessionMessage } from "../../../domain/conversations/cross-session-coordination";
 import {
   attachmentSchema,
   toolOutputContentArraySchema,

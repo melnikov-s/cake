@@ -1,5 +1,5 @@
 import { Effect, Stream } from "effect";
-import * as workingDirectoryTerminals from "../../domain/workingDirectoryTerminals";
+import * as workingDirectoryTerminals from "../../domain/terminals/workingDirectoryTerminals";
 import { NativeEvents } from "../../services/electron/NativeEvents";
 import { RendererConnection } from "../protocol/RendererConnectionMiddleware";
 import { TerminalRpc } from "../protocol/TerminalRpc";

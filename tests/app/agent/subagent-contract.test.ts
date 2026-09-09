@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 import { describe, expect, it, vi } from "vitest";
-import { resolveCakeModelSelection } from "../../../src/domain/cake-model-selection";
+import { resolveCakeModelSelection } from "../../../src/domain/model-presets/cake-model-selection";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
 import { createAgentControlOperations } from "../../../src/services/pi/runtime/cake-runtime";
 import { subagentTaskSchema } from "../../../src/services/pi/runtime/subagent-contract";

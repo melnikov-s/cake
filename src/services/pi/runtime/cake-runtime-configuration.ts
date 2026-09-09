@@ -10,7 +10,7 @@ import {
   resolveCakeModelSelection,
   type CakeModelSelection,
   type ExplicitCakeModelSelection,
-} from "../../../domain/cake-model-selection";
+} from "../../../domain/model-presets/cake-model-selection";
 import type {
   ChatConfiguration,
   ModelOption,

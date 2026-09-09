@@ -1,22 +1,25 @@
-import { acquireOptions as acquireProjectSessionOptions } from "./project-sessions/projectSessionRuntime";
-import * as projectSessionLocations from "./project-sessions/projectSessionLocations";
+import { acquireOptions as acquireProjectSessionOptions } from "../project-sessions/projectSessionRuntime";
+import * as projectSessionLocations from "../project-sessions/projectSessionLocations";
 import { DateTime, Effect, Schedule } from "effect";
-import type { ChatConfiguration } from "../ipc/session-contract";
-import { PiModels } from "../services/pi/PiModels";
-import { PiSessions, type PiSessionAcquireOptions } from "../services/pi/PiSessions";
-import type { ProjectSessionLocation } from "./project-sessions/project-session-data";
-import * as projectSessionLifecycle from "./project-sessions/projectSessionLifecycle";
+import type { ChatConfiguration } from "../../ipc/session-contract";
+import { PiModels } from "../../services/pi/PiModels";
+import { PiSessions, type PiSessionAcquireOptions } from "../../services/pi/PiSessions";
+import type { ProjectSessionLocation } from "../project-sessions/project-session-data";
+import * as projectSessionLifecycle from "../project-sessions/projectSessionLifecycle";
 import {
   SessionArchiveStorage,
   type SessionArchiveLocation,
-} from "../services/storage/SessionArchiveStorage";
+} from "../../services/storage/SessionArchiveStorage";
 import {
   SessionFamilyStorage,
   SessionFamilyStorageError,
   type FamilyTurn,
-} from "../services/storage/SessionFamilyStorage";
-import { SessionCatalogChanges } from "../services/session-catalogs/SessionCatalogChanges";
-import { encodeCrossSessionMessage, parseCrossSessionMessage } from "./cross-session-coordination";
+} from "../../services/storage/SessionFamilyStorage";
+import { SessionCatalogChanges } from "../../services/session-catalogs/SessionCatalogChanges";
+import {
+  encodeCrossSessionMessage,
+  parseCrossSessionMessage,
+} from "../conversations/cross-session-coordination";
 
 const failure = (message: string) =>
   new SessionFamilyStorageError({ operation: "familyLifecycle", message });

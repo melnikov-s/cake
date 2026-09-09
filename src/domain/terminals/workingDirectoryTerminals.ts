@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { Terminal, type TerminalWorkingDirectoryTarget } from "../services/terminal/Terminal";
+import { Terminal, type TerminalWorkingDirectoryTarget } from "../../services/terminal/Terminal";
 
 export const open = Effect.fn("WorkingDirectoryTerminals.open")(function* (
   ownerId: number,

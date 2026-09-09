@@ -7,7 +7,7 @@ import {
   ConversationEvent,
   ConversationSnapshot,
 } from "../conversations/conversation-data";
-import { CrossSessionMessageMetadata } from "../cross-session-coordination";
+import { CrossSessionMessageMetadata } from "../conversations/cross-session-coordination";
 
 const boundedId = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
 const boundedPath = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4_096));

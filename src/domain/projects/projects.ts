@@ -48,7 +48,7 @@ import {
   REWORD_CHARACTER_LIMIT,
   rewordSelection,
   utilityModelSelection,
-} from "../utilityWork";
+} from "../utility-work/utilityWork";
 
 type Payload<Type extends keyof typeof cakeRpcPayloadSchemas> =
   (typeof cakeRpcPayloadSchemas)[Type]["Type"];

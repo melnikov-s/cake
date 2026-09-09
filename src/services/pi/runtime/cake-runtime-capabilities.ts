@@ -10,7 +10,7 @@ import { Effect, Option, Schema } from "effect";
 import {
   CakeModelSelection,
   type ExplicitCakeModelSelection,
-} from "../../../domain/cake-model-selection";
+} from "../../../domain/model-presets/cake-model-selection";
 import type { SubagentTaskInput as DomainSubagentTaskInput } from "../../../domain/subagents/subagent-data";
 import { jsonObjectSchema, type JsonObject, type JsonValue } from "../../../ipc/json-contract";
 import { artifactRecordSchema, type CakeArtifactV1 } from "../../../ipc/artifact-contract";

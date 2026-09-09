@@ -1,10 +1,10 @@
-import * as sessionFamilies from "../sessionFamilies";
+import * as sessionFamilies from "../session-families/sessionFamilies";
 import { Effect, Schema, Schedule } from "effect";
 import { setSessionFastMode } from "../application/application";
-import { encodeCrossSessionMessage } from "../cross-session-coordination";
+import { encodeCrossSessionMessage } from "../conversations/cross-session-coordination";
 import type { ProjectSessionLocation } from "./project-session-data";
 import { makeSubagentControl } from "../subagents/subagentControl";
-import { generateSessionTitle, utilityModelSelection } from "../utilityWork";
+import { generateSessionTitle, utilityModelSelection } from "../utility-work/utilityWork";
 import { Electron } from "../../services/electron/Electron";
 import type { PiModels } from "../../services/pi/PiModels";
 import { PiSessions, type PiSessionAcquireOptions } from "../../services/pi/PiSessions";

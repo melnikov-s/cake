@@ -15,10 +15,10 @@ import type {
   CoordinationThread,
   CrossSessionDeliveryStatus,
   CrossSessionMessageMetadata,
-} from "../../domain/cross-session-coordination";
+} from "../../domain/conversations/cross-session-coordination";
 import type { QueuedConversationMessages } from "../../domain/conversations/conversation-data";
 import { isActiveSessionActivity, type SessionActivity } from "../lib/session-activity";
-import { CakeModelSelection } from "../../domain/cake-model-selection";
+import { CakeModelSelection } from "../../domain/model-presets/cake-model-selection";
 
 const bounded = (minimum: number, maximum: number) =>
   Schema.String.check(Schema.isMinLength(minimum), Schema.isMaxLength(maximum));

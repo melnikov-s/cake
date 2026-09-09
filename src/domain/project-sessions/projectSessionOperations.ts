@@ -40,7 +40,7 @@ import {
 } from "./project-session-data";
 import { SessionArchiveStorage } from "../../services/storage/SessionArchiveStorage";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
-import { encodeCrossSessionMessage } from "../cross-session-coordination";
+import { encodeCrossSessionMessage } from "../conversations/cross-session-coordination";
 import { SessionCatalogChanges } from "../../services/session-catalogs/SessionCatalogChanges";
 import {
   archiveLocation,

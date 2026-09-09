@@ -2,7 +2,7 @@ import { Effect, Stream } from "effect";
 import * as artifacts from "../artifacts/artifacts";
 import * as managedWorktrees from "../worktrees/managedWorktrees";
 import * as projectSessionLocations from "./projectSessionLocations";
-import * as reviews from "../reviews";
+import * as reviews from "../reviews/reviews";
 import * as subagents from "../subagents/subagents";
 import {
   forgetProjectSessions,

@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import * as modelPresets from "../../domain/modelPresets";
+import * as modelPresets from "../../domain/model-presets/modelPresets";
 import { PiModels } from "../../services/pi/PiModels";
 import { ModelRpc } from "../protocol/ModelRpc";
 

@@ -1,7 +1,7 @@
 import { Effect, Schema } from "effect";
-import { PiModels } from "../services/pi/PiModels";
-import type { ModelSelection } from "../services/pi/model-data";
-import { PROJECT_WORKFLOW_SESSION_DESCRIPTION_MAX_LENGTH } from "./application/application-data";
+import { PiModels } from "../../services/pi/PiModels";
+import type { ModelSelection } from "../../services/pi/model-data";
+import { PROJECT_WORKFLOW_SESSION_DESCRIPTION_MAX_LENGTH } from "../application/application-data";
 
 const USER_CONTEXT_LIMIT = 8_000;
 const TITLE_CHARACTER_LIMIT = 80;

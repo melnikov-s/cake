@@ -1,5 +1,5 @@
 import { Effect, Stream } from "effect";
-import * as embeddedEditor from "../../domain/embeddedEditor";
+import * as embeddedEditor from "../../domain/application/embeddedEditor";
 import { NativeEvents } from "../../services/electron/NativeEvents";
 import { VsCodeServer } from "../../services/vscode/VsCodeServer";
 import { RendererConnection } from "../protocol/RendererConnectionMiddleware";

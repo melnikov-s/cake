@@ -5,7 +5,7 @@ import {
   type ProjectRecord as ProjectRecordType,
 } from "../domain/application/application-data";
 import { artifactRecordSchema } from "./artifact-contract";
-import { CrossSessionMessageMetadata } from "../domain/cross-session-coordination";
+import { CrossSessionMessageMetadata } from "../domain/conversations/cross-session-coordination";
 import { ipcProjectionArray, ipcProjectionString } from "./projection";
 import { sourceLocationSchema } from "./source-location";
 

@@ -9,7 +9,7 @@ import {
   normalizeSessionTitle,
   normalizeWorktreeName,
   rewordSelection,
-} from "../../../src/domain/utilityWork";
+} from "../../../src/domain/utility-work/utilityWork";
 import {
   makePiModelsLayer,
   type PiModels,

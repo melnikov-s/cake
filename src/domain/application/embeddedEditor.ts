@@ -1,6 +1,6 @@
 import { Effect } from "effect";
-import { setVscodeServerPath } from "./application/application";
-import { VsCodeServer, VsCodeServerError } from "../services/vscode/VsCodeServer";
+import { setVscodeServerPath } from "./application";
+import { VsCodeServer, VsCodeServerError } from "../../services/vscode/VsCodeServer";
 
 /** Persists the selected binary and then refreshes the concrete server projection. */
 export const setServerPath = Effect.fn("EmbeddedEditor.setServerPath")(function* (

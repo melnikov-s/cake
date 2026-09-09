@@ -4,7 +4,7 @@ import { runIsolatedSession } from "../../../src/services/pi/runtime/isolated-se
 import {
   dictationRewordingGuidance,
   REWORD_CHARACTER_LIMIT,
-} from "../../../src/domain/utilityWork";
+} from "../../../src/domain/utility-work/utilityWork";
 import type { IsolatedSessionResult } from "../../../src/services/pi/runtime/isolated-session-runner";
 
 vi.mock("../../../src/services/pi/runtime/isolated-session-runner", () => ({

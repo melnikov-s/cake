@@ -1,5 +1,5 @@
 import { Effect, Schema } from "effect";
-import { CakeModelSelection } from "../../../domain/cake-model-selection";
+import { CakeModelSelection } from "../../../domain/model-presets/cake-model-selection";
 
 const defaultKey = <S extends Schema.Top>(schema: S, value: S["Type"]) =>
   schema.pipe(Schema.withDecodingDefaultKey(Effect.succeed(value)));

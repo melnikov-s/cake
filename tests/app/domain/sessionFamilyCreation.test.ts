@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
 import { Deferred, Effect, Layer, Stream } from "effect";
 import { describe } from "vitest";
-import { createChild } from "../../../src/domain/sessionFamilies";
+import { createChild } from "../../../src/domain/session-families/sessionFamilies";
 import { PiModels } from "../../../src/services/pi/PiModels";
 import { makePiSessionsLayer } from "../../../src/services/pi/PiSessions";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";

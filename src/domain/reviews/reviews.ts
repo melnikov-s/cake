@@ -1,5 +1,5 @@
 import { Effect, Schema } from "effect";
-import { ReviewStorage } from "../services/storage/ReviewStorage";
+import { ReviewStorage } from "../../services/storage/ReviewStorage";
 
 class ReviewError extends Schema.TaggedError<ReviewError>()("ReviewError", {
   operation: Schema.String,

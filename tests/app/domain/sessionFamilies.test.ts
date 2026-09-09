@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
 import { Effect, Layer } from "effect";
 import { describe } from "vitest";
-import { admitTurn } from "../../../src/domain/sessionFamilies";
+import { admitTurn } from "../../../src/domain/session-families/sessionFamilies";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";

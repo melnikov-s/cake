@@ -4,7 +4,7 @@ import {
   encodeCrossSessionMessage,
   parseCrossSessionMessage,
   type CrossSessionMessageMetadata,
-} from "../../../src/domain/cross-session-coordination";
+} from "../../../src/domain/conversations/cross-session-coordination";
 import { projectQueuedMessages } from "../../../src/services/pi/runtime/session-projection";
 
 const metadata: CrossSessionMessageMetadata = {

@@ -11,7 +11,7 @@ import {
   resolve,
   setDefault,
   update,
-} from "../../../src/domain/modelPresets";
+} from "../../../src/domain/model-presets/modelPresets";
 import {
   defaultApplicationState,
   type ApplicationState as ApplicationStateValue,

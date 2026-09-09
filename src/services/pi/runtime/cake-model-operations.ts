@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import type { CakeModelPresetCatalog } from "../../../domain/cake-model-selection";
+import type { CakeModelPresetCatalog } from "../../../domain/model-presets/cake-model-selection";
 import type { CakeOperationDefinition } from "./cake-operation-registry";
 
 /** Exposes Cake-owned model presets without provider credentials. */

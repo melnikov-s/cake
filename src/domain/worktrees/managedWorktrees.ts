@@ -2,7 +2,7 @@ import { Effect, Option, Stream } from "effect";
 import * as projectSessionLocations from "../project-sessions/projectSessionLocations";
 import { defaultProjectSettings } from "../application/application-data";
 import { getState, trustProject } from "../application/application";
-import { generateWorktreeName, utilityModelSelection } from "../utilityWork";
+import { generateWorktreeName, utilityModelSelection } from "../utility-work/utilityWork";
 import { PiSessions } from "../../services/pi/PiSessions";
 import { ProjectAccess } from "../../services/projects/ProjectAccess";
 import { SessionCatalogChanges } from "../../services/session-catalogs/SessionCatalogChanges";

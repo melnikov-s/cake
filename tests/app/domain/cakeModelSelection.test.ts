@@ -5,7 +5,7 @@ import {
   CakeModelSelection,
   resolveCakeModelSelection,
   type CakeModelPresetCatalog,
-} from "../../../src/domain/cake-model-selection";
+} from "../../../src/domain/model-presets/cake-model-selection";
 
 const catalog: CakeModelPresetCatalog = {
   presets: [

@@ -3,10 +3,10 @@ import {
   ModelPreset,
   type ApplicationState,
   type ModelPreset as ModelPresetValue,
-} from "./application/application-data";
-import { PiModels } from "../services/pi/PiModels";
-import type { ModelSelection } from "../services/pi/model-data";
-import { ApplicationState as ApplicationStateOwner } from "../services/storage/ApplicationState";
+} from "../application/application-data";
+import { PiModels } from "../../services/pi/PiModels";
+import type { ModelSelection } from "../../services/pi/model-data";
+import { ApplicationState as ApplicationStateOwner } from "../../services/storage/ApplicationState";
 
 export const ModelPresetCreateInput = Schema.Struct({
   name: Schema.String.check(Schema.isMaxLength(80)),

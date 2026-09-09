@@ -5,7 +5,7 @@ import { Effect, Layer } from "effect";
 import type { CakePaths } from "../config/CakePaths";
 import * as cakeChatLocations from "../domain/cake-chats/cakeChatLocations";
 import * as scheduledMessages from "../domain/scheduled-messages/scheduledMessages";
-import * as sessionFamilies from "../domain/sessionFamilies";
+import * as sessionFamilies from "../domain/session-families/sessionFamilies";
 import { makeCakeIpcServerLive } from "../ipc/server/CakeIpcServer";
 import { makeDiscussionSessionEnvironmentLive } from "../layers/DiscussionSessionEnvironmentLive";
 import { makeSubagentEnvironmentLive } from "../layers/SubagentEnvironmentLive";

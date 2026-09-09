@@ -2,7 +2,7 @@ import type { Event } from "electron";
 import { Cause, Deferred, Effect, Queue, Stream } from "effect";
 import { initialize } from "../domain/application/application";
 import { initializeRegisteredProjectAccess } from "../domain/projects/projects";
-import * as workingDirectoryTerminals from "../domain/workingDirectoryTerminals";
+import * as workingDirectoryTerminals from "../domain/terminals/workingDirectoryTerminals";
 import { Electron } from "../services/electron/Electron";
 import { RendererRequestCoordinator } from "../services/renderer-requests/RendererRequestCoordinator";
 import type { PiSessions } from "../services/pi/PiSessions";

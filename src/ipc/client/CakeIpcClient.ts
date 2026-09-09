@@ -93,7 +93,7 @@ import type {
   ModelPresetProjection,
   ModelPresetUpdateInput,
   ModelPresetValidationError,
-} from "../../domain/modelPresets";
+} from "../../domain/model-presets/modelPresets";
 import type {
   ModelSelection,
   PiModel,

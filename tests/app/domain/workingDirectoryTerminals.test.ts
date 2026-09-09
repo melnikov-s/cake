@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
 import { Effect, Layer, Stream } from "effect";
 import { describe } from "vitest";
-import * as workingDirectoryTerminals from "../../../src/domain/workingDirectoryTerminals";
+import * as workingDirectoryTerminals from "../../../src/domain/terminals/workingDirectoryTerminals";
 import { Terminal, type TerminalEvent } from "../../../src/services/terminal/Terminal";
 
 const ownerId = 41;

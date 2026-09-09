@@ -18,7 +18,7 @@ import type {
   UiPart,
   UtilityModel,
 } from "../../../ipc/session-contract";
-import type { CakeModelPresetCatalog } from "../../../domain/cake-model-selection";
+import type { CakeModelPresetCatalog } from "../../../domain/model-presets/cake-model-selection";
 import type {
   ParallelSubagentInput as DomainParallelSubagentInput,
   SubagentTaskInput as DomainSubagentTaskInput,

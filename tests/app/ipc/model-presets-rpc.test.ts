@@ -5,7 +5,7 @@ import {
   ModelPresetOrderInput,
   ModelPresetProjection,
   ModelPresetUpdateInput,
-} from "../../../src/domain/modelPresets";
+} from "../../../src/domain/model-presets/modelPresets";
 import { CakeIpcClient } from "../../../src/ipc/client/CakeIpcClient";
 import { ModelSelection } from "../../../src/services/pi/model-data";
 import { makeRuntime } from "../../../src/renderer/runtime";
