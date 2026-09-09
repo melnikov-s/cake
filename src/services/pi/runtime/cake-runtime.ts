@@ -4,7 +4,6 @@ import {
   SessionManager,
   SettingsManager,
   createAgentSession,
-  type AgentSessionEvent,
   type InlineExtension,
   type SlashCommandInfo,
 } from "@earendil-works/pi-coding-agent";
@@ -16,7 +15,6 @@ import { Effect, Option, Schema } from "effect";
 import type {
   Attachment,
   ChatConfiguration,
-  PiSettings,
   PiSettingUpdate,
   ExtensionUiEvent,
   ExtensionUiIntent,
@@ -24,16 +22,10 @@ import type {
   SessionSnapshot,
   SessionUsage,
   ThinkingLevel,
-  ToolOutputContent,
   UiPart,
   UtilityModel,
 } from "../../../ipc/session-contract";
-import {
-  SESSION_TITLE_MAX_LENGTH,
-  parsePiBuiltinCommand,
-  piBuiltinSlashCommands,
-  slashCommandSchema,
-} from "../../../ipc/session-contract";
+import { SESSION_TITLE_MAX_LENGTH, parsePiBuiltinCommand } from "../../../ipc/session-contract";
 import {
   CakeModelSelection,
   resolveCakeModelSelection,
@@ -96,7 +88,7 @@ import type {
   ReviewParentContext,
 } from "./sidecar-runtime";
 import { assertSessionPath } from "./session-path";
-import { ResponseRetryController, type ResponseRetryNotice } from "./response-retry";
+import { ResponseRetryController } from "./response-retry";
 import { ReloadableResourceLoader } from "./ReloadableResourceLoader";
 import { applyPiSetting } from "./settings-translation";
 import { cakeWorkspaceSessionDirectory, findSessionFile } from "./session-discovery";
@@ -114,17 +106,9 @@ import {
   type SubagentTaskInput,
 } from "./subagent-contract";
 import {
-  boundedProjectionKey,
-  cakeOperationCommand,
-  createLiveMessageProjector,
-  formatToolInput,
-  formatToolResult,
   formatUnknown,
   imageContent,
   projectArtifactPointers,
-  projectQueuedMessages,
-  projectSessionEntries,
-  projectTree,
   promptText,
   reviewRunEntrySchema,
   reviewRunEntryType,
@@ -133,12 +117,14 @@ import {
   textFromContent,
   userMessagePresentationEntrySchema,
   userMessagePresentationEntryType,
-  toolArtifactId,
-  toolFilePath,
-  toolResultOutputContent,
-  toolResultDiff,
   type ReviewRunEntry,
 } from "./session-projection";
+import {
+  activeCompactionNotice,
+  createCakeRuntimeEventProjection,
+  projectRetryNotice,
+} from "./cake-runtime-event-projection";
+import { projectCakeRuntimeSnapshot } from "./cake-runtime-snapshot";
 
 export const piRuntimeVersion = "0.84.0" as const;
 const commonPrompt = renderPromptTemplate(commonPromptTemplate);
@@ -314,17 +300,6 @@ interface GlobalControlTool {
   examples?: readonly { input?: JsonObject; description?: string }[];
   result?: string;
   limitations?: readonly string[];
-}
-
-function retryNotice(event: ResponseRetryNotice): Extract<UiPart, { kind: "notice" }> {
-  return {
-    id: "active-retry",
-    kind: "notice",
-    tone: "warning",
-    title: `Retry ${event.attempt}/${event.maxAttempts}`,
-    detail: event.errorMessage,
-    retryAt: Date.now() + event.delayMs,
-  };
 }
 
 function createFastModeExtension(isEnabled: () => boolean): InlineExtension {
@@ -1408,7 +1383,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       options.onEvent({
         type: "part-updated",
         sessionId: cakeSessionId,
-        part: retryNotice(event),
+        part: projectRetryNotice(event),
       }),
     onFinished: () =>
       options.onEvent({
@@ -1434,8 +1409,6 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
   let reloadInFlight: Promise<void> | undefined;
   let sessionNamingInFlight = false;
   const sessionNamingController = new AbortController();
-  let usageUpdateTimer: ReturnType<typeof setTimeout> | undefined;
-  let lastUsageUpdateAt = 0;
   const generateTitle = options.generateSessionTitle;
   const initialCatalog = compatibilityCatalog(
     resourceLoader,
@@ -1527,44 +1500,11 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     return [...extensionCommands, ...templateCommands, ...skillCommands];
   }
 
-  function currentUsage(): SessionUsage {
-    const stats = session.getSessionStats();
-    return {
-      tokens: stats.tokens,
-      cost: stats.cost,
-      context: stats.contextUsage
-        ? {
-            tokens: stats.contextUsage.tokens,
-            contextWindow: stats.contextUsage.contextWindow,
-            percent: stats.contextUsage.percent,
-          }
-        : undefined,
-    };
-  }
-
-  function publishUsageUpdate() {
-    if (usageUpdateTimer !== undefined) {
-      clearTimeout(usageUpdateTimer);
-      usageUpdateTimer = undefined;
-    }
-    if (disposed) return;
-    lastUsageUpdateAt = Date.now();
-    options.onEvent({ type: "usage-updated", sessionId: cakeSessionId, usage: currentUsage() });
-  }
-
-  function scheduleUsageUpdate() {
-    if (disposed || usageUpdateTimer !== undefined) return;
-    const delay = Math.max(0, 250 - (Date.now() - lastUsageUpdateAt));
-    if (delay === 0) publishUsageUpdate();
-    else usageUpdateTimer = setTimeout(publishUsageUpdate, delay);
-  }
-
   async function makeSnapshot(
     onCaptured?: (snapshot: SessionSnapshot) => void,
   ): Promise<SessionSnapshot> {
     // Resolve every asynchronous projection first. Pi can continue emitting live
-    // events while these are in flight, so reading mutable session state before
-    // an await would let an older snapshot overwrite newer renderer deltas.
+    // events while these are in flight, so read mutable state only afterwards.
     const [sessionFile, models, artifacts] = await Promise.all([
       options.auxiliary
         ? Promise.resolve(undefined)
@@ -1583,92 +1523,32 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
 
     // Capture all mutable Pi-owned state together after the final await. Once
     // this synchronous block starts, no live event can interleave before emit.
-    const sessionListed = sessionFile !== undefined;
-    const globalSettings = settingsManager.getGlobalSettings();
-    const branchParts = projectSessionEntries(session.sessionManager.getBranch(), undefined, {
-      live: session.isStreaming,
-    });
-    const queuedParts = allQueuedParts();
-    const snapshot: SessionSnapshot = {
+    const snapshot = projectCakeRuntimeSnapshot({
       workspacePath: options.cwd,
       sessionId: cakeSessionId,
-      sessionFile: session.sessionFile ?? "",
-      sessionListed,
-      parts: [
-        ...branchParts,
-        ...queuedParts,
-        // Snapshots must carry live compaction state so navigating away and
-        // back keeps the indicator visible while compaction runs.
+      sessionListed: sessionFile !== undefined,
+      auxiliary: Boolean(options.auxiliary),
+      session,
+      settingsManager,
+      models,
+      artifacts,
+      queuedParts: projection.queuedParts(),
+      transientParts: [
         ...(session.isCompacting ? [activeCompactionNotice()] : []),
         ...(turnRecoveryFailureDetail ? [recoveryFailureNotice(turnRecoveryFailureDetail)] : []),
       ],
-      model: session.model
-        ? { provider: session.model.provider, id: session.model.id, name: session.model.name }
-        : undefined,
       fastMode: fastModeEnabled(),
-      fastModeAvailable: supportsFastMode(session.model),
-      models,
-      thinkingLevel: session.thinkingLevel,
-      availableThinkingLevels: session.getAvailableThinkingLevels(),
-      piSettings: {
-        defaultProvider: settingsManager.getDefaultProvider(),
-        defaultModel: settingsManager.getDefaultModel(),
-        defaultThinkingLevel: settingsManager.getDefaultThinkingLevel(),
-        autoCompact: session.autoCompactionEnabled,
-        autoResizeImages: settingsManager.getImageAutoResize(),
-        blockImages: settingsManager.getBlockImages(),
-        enableSkillCommands: settingsManager.getEnableSkillCommands(),
-        steeringMode: session.steeringMode,
-        followUpMode: session.followUpMode,
-        transport: settingsManager.getTransport(),
-        httpIdleTimeoutMs: settingsManager.getHttpIdleTimeoutMs(),
-        hideThinkingBlock: settingsManager.getHideThinkingBlock(),
-        mermaidRenderingMode: settingsManager.getMermaidRenderingMode(),
-        showCacheMissNotices: settingsManager.getShowCacheMissNotices(),
-        collapseChangelog: settingsManager.getCollapseChangelog(),
-        quietStartup: settingsManager.getQuietStartup(),
-        enableInstallTelemetry: settingsManager.getEnableInstallTelemetry(),
-        defaultProjectTrust: settingsManager.getDefaultProjectTrust(),
-        doubleEscapeAction: settingsManager.getDoubleEscapeAction(),
-        treeFilterMode: settingsManager.getTreeFilterMode(),
-        anthropicExtraUsageWarning: settingsManager.getWarnings().anthropicExtraUsage ?? true,
-        retryEnabled: globalSettings.retry?.enabled ?? true,
-        shellPath: globalSettings.shellPath ?? "",
-        shellCommandPrefix: globalSettings.shellCommandPrefix ?? "",
-        npmCommand: globalSettings.npmCommand ?? [],
-        packages: globalSettings.packages ?? [],
-        extensions: globalSettings.extensions ?? [],
-        skills: globalSettings.skills ?? [],
-        prompts: globalSettings.prompts ?? [],
-        reloadPending: reloadCompleted < reloadRequested || Boolean(reloadInFlight),
-      } satisfies PiSettings,
-      streaming: session.isStreaming,
+      commands: piCommandCatalog(),
+      slashCommands: options.slashCommands,
+      usage: projection.currentUsage(),
+      compatibility: catalog,
+      extensionUi: extensionUiState,
       diagnostics: [
         ...extensionsResult.errors.map((error) => `${error.path}: ${error.error}`),
         ...(modelFallbackMessage ? [modelFallbackMessage] : []),
       ],
-      commands: options.auxiliary
-        ? []
-        : [
-            ...piBuiltinSlashCommands.filter(
-              (command) => !options.slashCommands || options.slashCommands.includes(command.name),
-            ),
-            ...piCommandCatalog(),
-          ].flatMap((command) => {
-            const parsed = Schema.decodeUnknownOption(slashCommandSchema)(command);
-            return Option.isSome(parsed) ? [parsed.value] : [];
-          }),
-      usage: currentUsage(),
-      compatibility: catalog,
-      extensionUi: {
-        title: extensionUiState.title,
-        statuses: extensionUiState.statuses.map((status) => ({ ...status })),
-      },
-      tree: options.auxiliary ? [] : projectTree(session.sessionManager),
-      artifacts,
-    };
-    // State capture and publication share one synchronous turn. Live events cannot
-    // overtake a snapshot after its fields have been read.
+      reloadPending: reloadCompleted < reloadRequested || Boolean(reloadInFlight),
+    });
     onCaptured?.(snapshot);
     return snapshot;
   }
@@ -1809,17 +1689,6 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     }
   }
 
-  const activeToolCalls = new Map<
-    string,
-    {
-      input: string;
-      command?: string;
-      artifactId?: string;
-      filePath?: string;
-      diff?: string;
-      outputContent?: ToolOutputContent[];
-    }
-  >();
   // Messages submitted while compaction is running. Pi rejects prompts during
   // manual compaction, so Cake holds them here and delivers them when the
   // compaction_end event reports the session is available again.
@@ -1831,64 +1700,15 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     renderUserMessageAsMarkdown: boolean;
   }[] = [];
   const turnCompletions = new RuntimeTurnCompletion();
-  const pendingUserPresentations: {
-    content: string;
-    renderUserMessageAsMarkdown: boolean;
-    consumed: boolean;
-  }[] = [];
-  const projectLiveMessage = createLiveMessageProjector({
-    deferProviderErrors: true,
-    renderUserMessageAsMarkdown: (message) => {
-      if (typeof message !== "object" || message === null) return false;
-      const content = textFromContent(Reflect.get(message, "content"));
-      return Boolean(
-        pendingUserPresentations.find(
-          (candidate) => !candidate.consumed && candidate.content === content,
-        )?.renderUserMessageAsMarkdown,
-      );
-    },
+  const projection = createCakeRuntimeEventProjection({
+    session,
+    sessionId: cakeSessionId,
+    emit: options.onEvent,
+    compactionQueuedMessages: () => compactionQueue.map((item) => item.text),
+    isDisposed: () => disposed,
   });
-  async function deliverTrackedUserMessage(
-    content: string,
-    renderUserMessageAsMarkdown: boolean,
-    deliver: () => Promise<void>,
-  ) {
-    const pending = { content, renderUserMessageAsMarkdown, consumed: false };
-    pendingUserPresentations.push(pending);
-    try {
-      await deliver();
-    } catch (error) {
-      if (!pending.consumed) {
-        const index = pendingUserPresentations.indexOf(pending);
-        if (index >= 0) pendingUserPresentations.splice(index, 1);
-      }
-      throw error;
-    }
-  }
-  const allQueuedParts = () =>
-    projectQueuedMessages(
-      session.getSteeringMessages(),
-      session.getFollowUpMessages(),
-      compactionQueue.map((item) => item.text),
-    );
-  let queuedPartIds = new Set(allQueuedParts().map((part) => part.id));
-  const activeCompactionNotice = (): Extract<UiPart, { kind: "notice" }> => ({
-    id: "active-compaction",
-    kind: "notice",
-    tone: "info",
-    title: "Compacting context",
-  });
-  function syncQueuedParts() {
-    const queuedParts = allQueuedParts();
-    const nextIds = new Set(queuedParts.map((part) => part.id));
-    for (const partId of queuedPartIds) {
-      if (!nextIds.has(partId))
-        options.onEvent({ type: "part-removed", sessionId: cakeSessionId, partId });
-    }
-    for (const part of queuedParts)
-      options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part });
-    queuedPartIds = nextIds;
-  }
+  const deliverTrackedUserMessage = projection.deliverTrackedUserMessage;
+  const syncQueuedParts = projection.syncQueuedParts;
   // The stream adapter replays pre-output throttling and successful empty
   // responses. This hidden continuation remains a bounded fallback for aborted
   // turns and for empty turns when automatic retry is disabled.
@@ -2080,183 +1900,34 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     await handleSettledTurnRecovery();
   }
 
-  const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
+  const unsubscribe = session.subscribe((event) => {
     if (disposed) return;
+    projection.projectEvent(event);
     if (event.type === "session_info_changed" && event.name)
       void options.sessionTitleChanged?.(cakeSessionId, event.name).catch(() => undefined);
-    if (event.type === "agent_start") {
-      options.onEvent({ type: "streaming", sessionId: cakeSessionId, streaming: true });
-    }
-    for (const part of projectLiveMessage(event)) {
-      options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part });
-    }
-    if (event.type === "message_update" && event.message.role === "assistant") {
-      // Pi estimates trailing context from its live message state. Coalesce the
-      // high-frequency stream while still keeping Cake's gauge live during output.
-      scheduleUsageUpdate();
-    }
-    if (event.type === "message_end") {
-      // Pi persists finalized messages after notifying subscribers. Publish in
-      // a microtask so billed totals and context include the completed message.
-      queueMicrotask(publishUsageUpdate);
-    }
-    if (event.type === "tool_execution_start") {
-      const call = {
-        input: formatToolInput(event.toolName, event.args),
-        command: event.toolName === "cake" ? cakeOperationCommand(event.args) : undefined,
-        artifactId: toolArtifactId(event.args),
-        filePath: toolFilePath(event.toolName, event.args),
-      };
-      activeToolCalls.set(event.toolCallId, call);
-      options.onEvent({
-        type: "part-updated",
-        sessionId: cakeSessionId,
-        part: {
-          id: boundedProjectionKey(`tool-${event.toolCallId}`),
-          kind: "tool",
-          name: event.toolName,
-          ...call,
-          state: "running",
-        },
-      });
-    }
-    if (event.type === "tool_execution_update") {
-      const call = activeToolCalls.get(event.toolCallId) ?? {
-        input: formatToolInput(event.toolName, event.args),
-        command: event.toolName === "cake" ? cakeOperationCommand(event.args) : undefined,
-        artifactId: toolArtifactId(event.args),
-        filePath: toolFilePath(event.toolName, event.args),
-        diff: undefined,
-      };
-      const diff = toolResultDiff(event.toolName, event.partialResult) ?? call.diff;
-      const outputContent = toolResultOutputContent(event.partialResult) ?? call.outputContent;
-      const nextCall = diff || outputContent ? { ...call, diff, outputContent } : call;
-      activeToolCalls.set(event.toolCallId, nextCall);
-      options.onEvent({
-        type: "part-updated",
-        sessionId: cakeSessionId,
-        part: {
-          id: boundedProjectionKey(`tool-${event.toolCallId}`),
-          kind: "tool",
-          name: event.toolName,
-          ...nextCall,
-          output: formatToolResult(event.partialResult),
-          state: "running",
-        },
-      });
-    }
-    if (event.type === "tool_execution_end") {
-      const call = activeToolCalls.get(event.toolCallId);
-      activeToolCalls.delete(event.toolCallId);
-      options.onEvent({
-        type: "part-updated",
-        sessionId: cakeSessionId,
-        part: {
-          id: boundedProjectionKey(`tool-${event.toolCallId}`),
-          kind: "tool",
-          name: event.toolName,
-          command:
-            call?.command ??
-            (event.toolName === "cake" ? cakeOperationCommand(event.result) : undefined),
-          input: call?.input ?? "",
-          output: formatToolResult(event.result),
-          artifactId: toolArtifactId(event.result) ?? call?.artifactId,
-          filePath: call?.filePath,
-          diff: toolResultDiff(event.toolName, event.result) ?? call?.diff,
-          outputContent: toolResultOutputContent(event.result) ?? call?.outputContent,
-          state: event.isError ? "error" : "success",
-        },
-      });
-    }
-    if (event.type === "auto_retry_start") {
-      for (const partId of projectLiveMessage.takeLastAssistantPartIds())
-        options.onEvent({ type: "part-removed", sessionId: cakeSessionId, partId });
-      options.onEvent({
-        type: "part-updated",
-        sessionId: cakeSessionId,
-        part: retryNotice(event),
-      });
-    }
-    if (event.type === "auto_retry_end")
-      options.onEvent({
-        type: "part-removed",
-        sessionId: cakeSessionId,
-        partId: "active-retry",
-      });
-    if (event.type === "compaction_start") {
-      const notice = activeCompactionNotice();
-      options.onEvent({
-        type: "part-updated",
-        sessionId: cakeSessionId,
-        part: event.reason === "manual" ? notice : { ...notice, detail: event.reason },
-      });
-    }
     if (event.type === "compaction_end") {
-      if (event.aborted) {
-        options.onEvent({
-          type: "part-updated",
-          sessionId: cakeSessionId,
-          part: {
-            id: "active-compaction",
-            kind: "notice",
-            tone: "warning",
-            title: "Compaction cancelled",
-            detail: event.errorMessage,
-          },
-        });
-      } else if (event.errorMessage) {
-        options.onEvent({
-          type: "part-updated",
-          sessionId: cakeSessionId,
-          part: {
-            id: "active-compaction",
-            kind: "notice",
-            tone: "error",
-            title: "Compaction failed",
-            detail: event.errorMessage,
-          },
-        });
-      } else {
-        options.onEvent({
-          type: "part-removed",
-          sessionId: cakeSessionId,
-          partId: "active-compaction",
-        });
-        emitSnapshotInBackground();
-      }
+      if (!event.aborted && !event.errorMessage) emitSnapshotInBackground();
       // Deliver anything submitted while compaction held the session. A retry
       // is still pending, so wait for the final compaction_end instead.
       if (!event.willRetry) void flushCompactionQueue();
     }
-    if (event.type === "queue_update") {
-      syncQueuedParts();
-    }
     if (event.type === "message_end" && event.message.role === "user") {
       const content = textFromContent(event.message.content);
       turnCompletions.consume(content);
-      const presentationIndex = pendingUserPresentations.findIndex(
-        (candidate) => candidate.content === content,
-      );
-      const presentation =
-        presentationIndex >= 0
-          ? pendingUserPresentations.splice(presentationIndex, 1)[0]
-          : undefined;
-      if (presentation) {
-        presentation.consumed = true;
-        if (presentation.renderUserMessageAsMarkdown)
-          queueMicrotask(() => {
-            if (disposed) return;
-            const target = session.sessionManager
-              .getEntries()
-              .findLast((entry) => entry.type === "message" && entry.message === event.message);
-            if (!target) return;
-            session.sessionManager.appendCustomEntry(userMessagePresentationEntryType, {
-              targetId: target.id,
-              renderAs: "markdown",
-            });
-            emitSnapshotInBackground();
+      const presentation = projection.consumeUserPresentation(content);
+      if (presentation?.renderUserMessageAsMarkdown)
+        queueMicrotask(() => {
+          if (disposed) return;
+          const target = session.sessionManager
+            .getEntries()
+            .findLast((entry) => entry.type === "message" && entry.message === event.message);
+          if (!target) return;
+          session.sessionManager.appendCustomEntry(userMessagePresentationEntryType, {
+            targetId: target.id,
+            renderAs: "markdown",
           });
-      }
+          emitSnapshotInBackground();
+        });
       if (!options.auxiliary) {
         // The user message is not appended to SessionManager until after subscribers run, so
         // pass the event payload while still using the active branch for reopened sessions.
@@ -2264,7 +1935,6 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       }
     }
     if (event.type === "agent_settled") {
-      options.onEvent({ type: "streaming", sessionId: cakeSessionId, streaming: false });
       turnCompletions.settle();
       void finishSettledTurn();
     }
@@ -2934,8 +2604,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       disposed = true;
       turnCompletions.cancel();
       sessionNamingController.abort();
-      if (usageUpdateTimer !== undefined) clearTimeout(usageUpdateTimer);
-      usageUpdateTimer = undefined;
+      projection.dispose();
       responseRetries.cancel();
       unsubscribe();
       const finish = async () => {
