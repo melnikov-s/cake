@@ -1770,6 +1770,40 @@ describe("Pi 0.84.0 foundation contract", () => {
 });
 
 describe("S1 Pi runtime", () => {
+  it("starts an idle session when steering delivery arrives", async () => {
+    const directory = await createTemporaryDirectory();
+    const agentDir = join(directory, "agent");
+    const marker = `__cakeIdleSteerHandled_${crypto.randomUUID().replaceAll("-", "")}`;
+    await mkdir(join(agentDir, "extensions"), { recursive: true });
+    await writeFile(
+      join(agentDir, "extensions", "idle-steer.ts"),
+      `export default function (pi) {
+        pi.registerCommand("idle-steer", {
+          description: "Mark an idle steering delivery as handled",
+          handler() { Reflect.set(globalThis, ${JSON.stringify(marker)}, true); },
+        });
+      }`,
+    );
+    const runtime = await createCakeRuntime({
+      cwd: directory,
+      agentDir,
+      sessionDir: join(directory, "sessions"),
+      trusted: true,
+      newSession: true,
+      requestUi: async () => undefined,
+      onEvent: () => undefined,
+    });
+    runtimes.push(runtime);
+
+    try {
+      await expect(runtime.prompt("/idle-steer", "steer", [])).resolves.toBeUndefined();
+      expect(Reflect.get(globalThis, marker)).toBe(true);
+      await expect(runtime.listQueuedMessages()).resolves.toEqual({ steering: [], followUp: [] });
+    } finally {
+      Reflect.deleteProperty(globalThis, marker);
+    }
+  });
+
   it("exposes delegation as hidden subagents rather than session construction", async () => {
     const directory = await createTemporaryDirectory();
     const runtime = await createCakeRuntime({

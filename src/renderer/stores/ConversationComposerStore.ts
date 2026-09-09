@@ -35,6 +35,7 @@ export interface ConversationComposerStoreProps {
   ): Promise<void>;
   compact(sessionId: string, instructions?: string): Promise<void>;
   clearQueue?(): Promise<void>;
+  cancelSteering?(): Promise<void>;
   scheduleMessage?(sessionId: string, args: string): Promise<boolean>;
   operations: SessionOperationCoordinatorStore;
   operationOwner: string;
@@ -103,6 +104,7 @@ export class ConversationComposerStore extends Store<ConversationComposerStorePr
         this.draftStore.requestFocus();
       },
       clearRemoteQueue: this.props.clearQueue,
+      cancelRemoteSteering: this.props.cancelSteering,
       clearOptimisticSteering: () => this.deliveryStore.clearOptimisticSteering(),
     });
   }

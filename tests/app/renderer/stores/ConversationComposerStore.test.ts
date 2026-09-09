@@ -76,6 +76,9 @@ class HarnessStore extends Store<{
       clearQueue: async () => {
         await this.props.client.projectSessions.clearQueue({ sessionId: "session-1" });
       },
+      cancelSteering: async () => {
+        await this.props.client.projectSessions.cancelSteering({ sessionId: "session-1" });
+      },
       operations: this.operations,
       operationOwner: "composer:session-1",
     });
@@ -271,7 +274,7 @@ describe("ConversationComposerStore", () => {
     model[Symbol.dispose]();
   });
 
-  it("shows an active steer until it is cancelled", async () => {
+  it("returns a cancelled local steer to its queue position", async () => {
     const model = Session.create({ sessionId: "session-1", workingDirectory: "/project" });
     const steer = vi.fn(async () => "turn-2");
     const clearQueue = vi.fn(async () => ({ steering: ["First message"], followUp: [] }));
@@ -279,13 +282,18 @@ describe("ConversationComposerStore", () => {
     const root = mount(
       createStore(HarnessStore, { client, model, existing: true, streaming: true }),
     );
-    root.composer.draftStore.setText("First message");
+    root.composer.promptQueueStore.enqueue("Before", [], false);
+    root.composer.promptQueueStore.enqueue("First message", [], false);
+    root.composer.promptQueueStore.enqueue("After", [], false);
+    const steered = root.composer.promptQueueStore.prompts[1]!;
 
-    await root.composer.submit();
-    root.composer.promptQueueStore.steer(root.composer.promptQueueStore.prompts[0]!.id);
+    root.composer.promptQueueStore.steer(steered.id);
 
     expect(steer).toHaveBeenCalledOnce();
-    expect(root.composer.promptQueueStore.prompts).toEqual([]);
+    expect(root.composer.promptQueueStore.prompts.map((entry) => entry.text)).toEqual([
+      "Before",
+      "After",
+    ]);
     expect(root.composer.parts).toEqual([
       expect.objectContaining({ text: "First message", deliveryState: "steering" }),
     ]);
@@ -293,6 +301,11 @@ describe("ConversationComposerStore", () => {
     await root.composer.promptQueueStore.cancelSteering();
 
     expect(clearQueue).toHaveBeenCalledOnce();
+    expect(root.composer.promptQueueStore.prompts.map((entry) => entry.text)).toEqual([
+      "Before",
+      "First message",
+      "After",
+    ]);
     expect(root.composer.parts).toEqual([]);
 
     root[Symbol.dispose]();

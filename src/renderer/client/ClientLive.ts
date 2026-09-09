@@ -242,6 +242,12 @@ export function makeClient(runtime: Pick<Runtime, "execute">): Client {
           withClient((client) => client.projectSessions.clearQueue(target)),
           options,
         ),
+      cancelSteering: (target, options) =>
+        run(
+          "projectSessions.cancelSteering",
+          withClient((client) => client.projectSessions.cancelSteering(target)),
+          options,
+        ),
       compact: (input, options) =>
         run(
           "projectSessions.compact",

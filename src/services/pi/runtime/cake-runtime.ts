@@ -618,6 +618,7 @@ export interface CakeRuntime {
   ): Promise<void>;
   listQueuedMessages(): Promise<{ steering: string[]; followUp: string[] }>;
   clearQueue(): Promise<{ steering: string[]; followUp: string[] }>;
+  cancelSteering(): Promise<{ steering: string[]; followUp: string[] }>;
   editMessage?(
     entryId: string,
     text: string,
@@ -2615,7 +2616,8 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         ? turnCompletions.track(
             turnId,
             promptText(text, attachments),
-            (delivery === "prompt" && !session.isStreaming) || text.startsWith("/"),
+            ((delivery === "prompt" || delivery === "steer") && !session.isStreaming) ||
+              text.startsWith("/"),
           )
         : undefined;
       try {
@@ -2638,11 +2640,29 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         }
         const content = promptText(text, attachments);
         const images = imageContent(attachments);
-        if (delivery === "steer")
-          await deliverTrackedUserMessage(content, renderUserMessageAsMarkdown, () =>
-            session.steer(content, images),
-          );
-        else if (delivery === "follow-up")
+        if (delivery === "steer") {
+          if (session.isStreaming)
+            await deliverTrackedUserMessage(content, renderUserMessageAsMarkdown, () =>
+              session.steer(content, images),
+            );
+          else {
+            try {
+              // Pi's steer API only queues input for an existing run. When the target has
+              // become idle, start a normal turn instead of stranding the message forever.
+              await deliverTrackedUserMessage(content, renderUserMessageAsMarkdown, () =>
+                withResponseRetries(() =>
+                  session.prompt(content, { images, source: "interactive" }),
+                ),
+              );
+            } catch (error) {
+              // Preserve steering intent if another turn started after the idle check.
+              if (!isAlreadyProcessingError(error)) throw error;
+              await deliverTrackedUserMessage(content, renderUserMessageAsMarkdown, () =>
+                session.steer(content, images),
+              );
+            }
+          }
+        } else if (delivery === "follow-up")
           await deliverTrackedUserMessage(content, renderUserMessageAsMarkdown, () =>
             session.followUp(content, images),
           );
@@ -2714,6 +2734,23 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       syncQueuedParts();
       await emitSnapshot();
       return { steering, followUp };
+    },
+    async cancelSteering() {
+      const queued = session.clearQueue();
+      for (const text of [...queued.steering, ...queued.followUp]) await session.followUp(text);
+      compactionQueue = compactionQueue.map((message) =>
+        message.delivery === "steer" ? { ...message, delivery: "follow-up" } : message,
+      );
+      syncQueuedParts();
+      await emitSnapshot();
+      return {
+        steering: [],
+        followUp: [
+          ...queued.steering,
+          ...queued.followUp,
+          ...compactionQueue.map((message) => message.text),
+        ],
+      };
     },
     async setUserMessageMarkdown(entryId, renderAsMarkdown) {
       if (disposed) throw new Error("The Cake runtime has been disposed");

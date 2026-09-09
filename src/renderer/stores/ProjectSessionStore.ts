@@ -254,6 +254,12 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
             { signal: this.signal },
           );
         },
+        cancelSteering: async () => {
+          await this.client.projectSessions.cancelSteering(
+            { sessionId: this.sessionId },
+            { signal: this.signal },
+          );
+        },
         scheduleMessage: (sessionId, args) => this.scheduleMessage(sessionId, args),
         draftSessionPrompt: (sessionId) =>
           this.props.pendingSessions.conversation(sessionId)?.draftPrompt,

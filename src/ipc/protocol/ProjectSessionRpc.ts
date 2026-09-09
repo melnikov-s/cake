@@ -72,6 +72,11 @@ export const ProjectSessionRpc = RpcGroup.make(
     success: QueuedProjectSessionMessages,
     error: ProjectSessionError,
   }),
+  Rpc.make("projectSessions.cancelSteering", {
+    payload: ProjectSessionTarget,
+    success: QueuedProjectSessionMessages,
+    error: ProjectSessionError,
+  }),
   Rpc.make("projectSessions.compact", {
     payload: { ...ProjectSessionTarget.fields, instructions: Schema.optional(Schema.String) },
     error: ProjectSessionError,

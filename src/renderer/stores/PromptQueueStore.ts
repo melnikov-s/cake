@@ -14,6 +14,7 @@ export interface PromptQueueStoreProps {
   deliver(entry: QueuedPrompt, delivery: "prompt" | "steer"): Promise<boolean>;
   restoreForEditing(entry: QueuedPrompt): void;
   clearRemoteQueue?(): Promise<void>;
+  cancelRemoteSteering?(): Promise<void>;
   clearOptimisticSteering?(): void;
 }
 
@@ -21,13 +22,17 @@ export interface PromptQueueStoreProps {
 export class PromptQueueStore extends Store<PromptQueueStoreProps> {
   readonly prompts: QueuedPrompt[] = observable([]);
   private draining = false;
+  private steering: Array<{ entry: QueuedPrompt; position: number }> = [];
 
   constructor(props: PromptQueueStore["props"]) {
     super(props);
     this.reaction(
       () => this.props.isStreaming(),
       (streaming, previousStreaming) => {
-        if (previousStreaming && !streaming) this.drain();
+        if (previousStreaming && !streaming) {
+          this.steering = [];
+          this.drain();
+        }
       },
     );
   }
@@ -53,20 +58,48 @@ export class PromptQueueStore extends Store<PromptQueueStoreProps> {
   }
 
   steer(id: string) {
+    const index = this.prompts.findIndex((entry) => entry.id === id);
     const entry = this.take(id);
     if (!entry) return;
-    void this.deliverAndRestore(entry, this.props.isStreaming() ? "steer" : "prompt");
+    const position = [...this.steering]
+      .sort((left, right) => left.position - right.position)
+      .reduce((candidate, active) => candidate + (active.position <= candidate ? 1 : 0), index);
+    const pending = { entry, position };
+    this.steering.push(pending);
+    void this.props
+      .deliver(entry, this.props.isStreaming() ? "steer" : "prompt")
+      .then((delivered) => {
+        if (delivered || this.signal.aborted) return;
+        this.restoreSteering(pending);
+      });
   }
 
   async cancelSteering() {
-    if (!this.props.clearRemoteQueue) return;
-    await this.props.clearRemoteQueue();
-    if (!this.signal.aborted) this.props.clearOptimisticSteering?.();
+    const local = this.steering.length > 0;
+    if (local) {
+      if (!this.props.clearRemoteQueue) return;
+      await this.props.clearRemoteQueue();
+    } else {
+      if (!this.props.cancelRemoteSteering) return;
+      await this.props.cancelRemoteSteering();
+    }
+    if (this.signal.aborted) return;
+    for (const pending of [...this.steering].sort((left, right) => left.position - right.position))
+      this.prompts.splice(Math.min(pending.position, this.prompts.length), 0, pending.entry);
+    this.steering = [];
+    this.props.clearOptimisticSteering?.();
   }
 
   private take(id: string) {
     const index = this.prompts.findIndex((entry) => entry.id === id);
     return index >= 0 ? this.prompts.splice(index, 1)[0] : undefined;
+  }
+
+  private restoreSteering(pending: { entry: QueuedPrompt; position: number }) {
+    const index = this.steering.indexOf(pending);
+    if (index < 0) return;
+    this.steering.splice(index, 1);
+    this.prompts.splice(Math.min(pending.position, this.prompts.length), 0, pending.entry);
   }
 
   private drain() {

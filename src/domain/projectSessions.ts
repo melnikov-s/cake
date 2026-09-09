@@ -1013,6 +1013,14 @@ export const clearQueue = Effect.fn("ProjectSessions.clearQueue")(function* (
   return yield* withHandle(target, (handle) => handle.clearQueue()).pipe(asError("clearQueue"));
 });
 
+export const cancelSteering = Effect.fn("ProjectSessions.cancelSteering")(function* (
+  target: ProjectSessionTarget,
+) {
+  return yield* withHandle(target, (handle) => handle.cancelSteering()).pipe(
+    asError("cancelSteering"),
+  );
+});
+
 export const getChangelog = Effect.fn("ProjectSessions.getChangelog")(function* (
   target: ProjectSessionTarget,
 ) {

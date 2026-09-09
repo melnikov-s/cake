@@ -49,8 +49,9 @@ the message through Pi's follow-up queue. A sender may explicitly request
 authoritative only in the destination Pi transcript; Cake metadata owns routing
 and correlation, not a second message copy. Pending input is projected
 beside the composer with its source-session attribution and is not rendered as
-transcript history. Routing is main-process policy and must not depend on
-renderer visibility.
+transcript history. Cancelling a pending steer demotes it to queued follow-up
+input instead of discarding the message. Routing is main-process policy and must
+not depend on renderer visibility.
 
 For each child turn, Cake durably correlates whether a parent-directed message
 was accepted. A normally settled, failed, or aborted child turn with no such

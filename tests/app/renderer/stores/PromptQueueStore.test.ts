@@ -6,6 +6,7 @@ import { PromptQueueStore } from "../../../../src/renderer/stores/PromptQueueSto
 class HarnessStore extends Store<{
   deliver(entry: QueuedPrompt, delivery: "prompt" | "steer"): Promise<boolean>;
   restore(entry: QueuedPrompt): void;
+  cancelRemoteSteering?(): Promise<void>;
 }> {
   streaming = true;
 
@@ -14,6 +15,7 @@ class HarnessStore extends Store<{
       isStreaming: () => this.streaming,
       deliver: this.props.deliver,
       restoreForEditing: this.props.restore,
+      cancelRemoteSteering: this.props.cancelRemoteSteering,
     });
   }
 }
@@ -29,6 +31,22 @@ describe("PromptQueueStore", () => {
     expect(restore).toHaveBeenCalledWith(expect.objectContaining({ text: "Second" }));
     root.queue.remove(root.queue.prompts[0]!.id);
     expect(root.queue.prompts).toEqual([]);
+    root[Symbol.dispose]();
+  });
+
+  it("cancels a non-local steer by returning it to the remote follow-up queue", async () => {
+    const cancelRemoteSteering = vi.fn(async () => undefined);
+    const root = mount(
+      createStore(HarnessStore, {
+        deliver: async () => true,
+        restore: () => undefined,
+        cancelRemoteSteering,
+      }),
+    );
+
+    await root.queue.cancelSteering();
+
+    expect(cancelRemoteSteering).toHaveBeenCalledOnce();
     root[Symbol.dispose]();
   });
 

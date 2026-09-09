@@ -129,6 +129,7 @@ export interface PiSessionHandle {
   ) => Effect.Effect<string, PiSessionError>;
   readonly listQueuedMessages: () => Effect.Effect<QueuedProjectSessionMessages, PiSessionError>;
   readonly clearQueue: () => Effect.Effect<QueuedProjectSessionMessages, PiSessionError>;
+  readonly cancelSteering: () => Effect.Effect<QueuedProjectSessionMessages, PiSessionError>;
   readonly editMessage: (
     entryId: string,
     text: string,
@@ -560,6 +561,7 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
           listQueuedMessages: () =>
             call("listQueuedMessages", (runtime) => runtime.listQueuedMessages()),
           clearQueue: () => call("clearQueue", (runtime) => runtime.clearQueue()),
+          cancelSteering: () => call("cancelSteering", (runtime) => runtime.cancelSteering()),
           editMessage: (entryId, text, attachments, renderUserMessageAsMarkdown) =>
             shared.runtime.editMessage
               ? call(

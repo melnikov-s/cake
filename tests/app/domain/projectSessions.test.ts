@@ -72,6 +72,7 @@ const fakeRuntime = (
   snapshot: async () => snapshot,
   listQueuedMessages: async () => ({ steering: [], followUp: [] }),
   clearQueue: async () => ({ steering: [], followUp: [] }),
+  cancelSteering: async () => ({ steering: [], followUp: [] }),
   prompt: async () => {
     await prompt();
     options.onEvent({ type: "streaming", sessionId: snapshot.sessionId, streaming: false });
