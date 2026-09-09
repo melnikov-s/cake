@@ -16,11 +16,11 @@ test("does not mount collapsed work-log activity until it is expanded", async ()
   const sessionDirectory = cakeWorkspaceSessionDirectory(project, join(cakeHome, "pi", "sessions"));
   const oldSource = Array.from(
     { length: 80 },
-    (_, index) => `export const old${index} = ${index};`,
+    (_, index) => `export const old${index} = ${index};${index === 0 ? "x".repeat(180) : ""}`,
   ).join("\n");
   const newSource = Array.from(
     { length: 80 },
-    (_, index) => `export const current${index} = ${index};`,
+    (_, index) => `export const current${index} = ${index};${index === 0 ? "y".repeat(180) : ""}`,
   ).join("\n");
 
   await Promise.all([
@@ -194,6 +194,25 @@ test("does not mount collapsed work-log activity until it is expanded", async ()
         )
         .toBeLessThanOrEqual(1);
     await expectPinnedDiffHeader();
+
+    // Wide code scrolls within this file only. The work-log viewport and the
+    // file header remain fitted to the transcript width.
+    const codeScroll = diffScroll.getByRole("table", { name: "Code changes" });
+    await expect
+      .poll(() => codeScroll.evaluate((element) => element.scrollWidth > element.clientWidth))
+      .toBe(true);
+    expect(
+      await diffScroll.evaluate((element) => element.scrollWidth - element.clientWidth),
+    ).toBeLessThanOrEqual(1);
+    const headerLeft = await fileHeader.evaluate((element) => element.getBoundingClientRect().left);
+    await codeScroll.evaluate((element) => element.scrollTo({ left: 120 }));
+    await expect
+      .poll(() => codeScroll.evaluate((element) => element.scrollLeft))
+      .toBeGreaterThan(0);
+    expect(await fileHeader.evaluate((element) => element.getBoundingClientRect().left)).toBe(
+      headerLeft,
+    );
+    expect(await fileHeader.getByText("src/app.ts").isVisible()).toBe(true);
 
     await diffScroll.evaluate((element) => element.scrollTo({ top: 100 }));
     await expectPinnedDiffHeader();

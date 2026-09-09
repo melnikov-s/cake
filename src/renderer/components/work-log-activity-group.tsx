@@ -218,7 +218,7 @@ export const ActivityGroup = observer(function ActivityGroup({
             <div
               ref={attachDiff}
               data-slot="work-log-diff-scroll"
-              className="min-h-0 shrink overflow-y-auto"
+              className="min-h-0 shrink overflow-x-hidden overflow-y-auto"
             >
               <div ref={diffContentRef} className="min-w-0">
                 <WorkLogDiff

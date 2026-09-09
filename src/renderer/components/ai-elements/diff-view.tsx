@@ -109,7 +109,7 @@ export function DiffView({
   return (
     <section
       className={cn(
-        "overflow-clip rounded-lg border border-border/80 bg-card/60 font-mono text-[11px]",
+        "min-w-0 max-w-full overflow-clip rounded-lg border border-border/80 bg-card/60 font-mono text-[11px]",
         className,
       )}
       aria-label={`${label}${filePath ? ` to ${filePath}` : ""}`}

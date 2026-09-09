@@ -29,7 +29,10 @@ export const WorkLogDiff = memo(function WorkLogDiff({
     ) : null;
 
   return (
-    <div className="grid" aria-label="Streaming file diff">
+    <div
+      className="grid min-w-0 max-w-full grid-cols-[minmax(0,1fr)]"
+      aria-label="Streaming file diff"
+    >
       {changes.map((change) => (
         <div className="contents" data-part-id={change.id} key={change.id}>
           <DiffView
