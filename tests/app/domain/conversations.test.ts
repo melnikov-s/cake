@@ -34,6 +34,7 @@ const makeHandle = (deliveries: string[], isStreaming: () => boolean): PiSession
   followUp: () => Effect.sync(() => deliveries.push("follow-up")).pipe(Effect.as("follow-up-turn")),
   listQueuedMessages: () => Effect.succeed({ steering: [], followUp: [] }),
   clearQueue: () => Effect.succeed({ steering: [], followUp: [] }),
+  cancelSteering: () => Effect.succeed({ steering: [], followUp: [] }),
   editMessage: () => Effect.void,
   setUserMessageMarkdown: () => Effect.void,
   abort: () => Effect.void,
