@@ -129,6 +129,32 @@ describe("TerminalStore", () => {
     expect(open).toHaveBeenCalledTimes(1);
   });
 
+  it("blocks new tabs until prompt-only terminals finish closing", async () => {
+    let finishClose!: () => void;
+    const open = vi.fn(async () => ({ terminalId: crypto.randomUUID(), shell: "zsh" }));
+    const closeWorkingDirectory = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finishClose = resolve;
+        }),
+    );
+    const store = mountTerminal(() => workingDirectoryTarget("/workspace/one"), {
+      open,
+      workingDirectoryStatus: async () => ({ runningProgramCount: 0 }),
+      closeWorkingDirectory,
+    });
+
+    const retiring = retirements.get(store)!.prepare(["/workspace/one"]);
+    await vi.waitFor(() => expect(closeWorkingDirectory).toHaveBeenCalledOnce());
+    await store.newTab();
+    expect(open).not.toHaveBeenCalled();
+
+    finishClose();
+    await expect(retiring).resolves.toBe(true);
+    await store.newTab();
+    expect(open).toHaveBeenCalledOnce();
+  });
+
   it("does not close terminals if their status could not be inspected", async () => {
     const closeWorkingDirectory = vi.fn(async () => undefined);
     const store = mountTerminal(() => workingDirectoryTarget("/workspace/one"), {

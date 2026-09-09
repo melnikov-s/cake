@@ -50,7 +50,7 @@ export class WorkingDirectoryRetirementStore extends Store<{
         (total, status) => total + status.runningProgramCount,
         0,
       );
-      if (runningProgramCount === 0) return this.close(directories);
+      if (runningProgramCount === 0) return await this.close(directories);
       return await new Promise<boolean>((finish) => {
         this.pending = { workingDirectories: directories, finish };
         this.confirmationRequest = { runningProgramCount };
