@@ -11,42 +11,62 @@ import { Message } from "../../../src/renderer/models/Message";
 import { Session } from "../../../src/renderer/models/Session";
 import { SessionCoordinationStore } from "../../../src/renderer/stores/SessionCoordinationStore";
 
-function createHost(overrides: Partial<AppControlHost> = {}): AppControlHost {
+type AppControlHostOverrides = Partial<
+  AppControlHost["state"] & AppControlHost["sessions"] & AppControlHost["presentation"]
+> & {
+  sessionCoordination?: AppControlHost["sessionCoordination"];
+};
+
+function createHost(overrides: AppControlHostOverrides = {}): AppControlHost {
   return {
-    sessionCoordination: mount(
-      createStore(SessionCoordinationStore, { sessionById: () => undefined }),
-    ),
-    currentSelection: () => ({ kind: "workbench" }),
-    projects: () => [],
-    sessions: () => [],
-    cakeChatSessions: () => [],
-    sessionActivity: () => undefined,
-    openSession: async () => false,
-    createSession: async () => {
-      throw new Error("not used");
+    sessionCoordination:
+      overrides.sessionCoordination ??
+      mount(createStore(SessionCoordinationStore, { sessionById: () => undefined })),
+    state: {
+      currentSelection: overrides.currentSelection ?? (() => ({ kind: "workbench" })),
+      projects: overrides.projects ?? (() => []),
+      sessions: overrides.sessions ?? (() => []),
+      cakeChatSessions: overrides.cakeChatSessions ?? (() => []),
+      sessionActivity: overrides.sessionActivity ?? (() => undefined),
+      ...(overrides.sessionLayout ? { sessionLayout: overrides.sessionLayout } : null),
     },
-    createDraftSession: async () => {
-      throw new Error("not used");
+    sessions: {
+      open: overrides.open ?? (async () => false),
+      create:
+        overrides.create ??
+        (async () => {
+          throw new Error("not used");
+        }),
+      createDraft:
+        overrides.createDraft ??
+        (async () => {
+          throw new Error("not used");
+        }),
+      sendMessage: overrides.sendMessage ?? (async () => "turn-1"),
+      compact: overrides.compact ?? (async () => undefined),
+      scheduleMessage:
+        overrides.scheduleMessage ??
+        (async () => {
+          throw new Error("not used");
+        }),
+      listScheduledMessages: overrides.listScheduledMessages ?? (async () => []),
+      cancelScheduledMessage: overrides.cancelScheduledMessage ?? (async () => undefined),
+      listPendingMessages:
+        overrides.listPendingMessages ?? (async () => ({ steering: [], followUp: [] })),
+      dequeuePendingMessages:
+        overrides.dequeuePendingMessages ?? (async () => ({ steering: [], followUp: [] })),
+      abort: overrides.abort ?? (async () => undefined),
+      rename: overrides.rename ?? (async () => undefined),
+      setResolved: overrides.setResolved ?? (async () => undefined),
+      setProjectSessionsResolved: overrides.setProjectSessionsResolved ?? (async () => 0),
+      setCakeChatSessionsResolved: overrides.setCakeChatSessionsResolved ?? (async () => 0),
+      setModel: overrides.setModel ?? (async () => undefined),
     },
-    sendSessionMessage: async () => "turn-1",
-    compactSession: async () => undefined,
-    scheduleSessionMessage: async () => {
-      throw new Error("not used");
+    presentation: {
+      splitView: overrides.splitView ?? (() => undefined),
+      showNotification: overrides.showNotification ?? (async () => undefined),
+      showAgentAction: overrides.showAgentAction ?? (() => undefined),
     },
-    listScheduledMessages: async () => [],
-    cancelScheduledMessage: async () => undefined,
-    listPendingMessages: async () => ({ steering: [], followUp: [] }),
-    dequeuePendingMessages: async () => ({ steering: [], followUp: [] }),
-    abortSession: async () => undefined,
-    renameSession: async () => undefined,
-    setSessionResolved: async () => undefined,
-    setSessionsResolved: async () => 0,
-    setCakeChatSessionsResolved: async () => 0,
-    setSessionModel: async () => undefined,
-    splitView: () => undefined,
-    showNotification: async () => undefined,
-    showAgentAction: () => undefined,
-    ...overrides,
   };
 }
 
@@ -255,7 +275,7 @@ describe("AppControlBridge", () => {
             lastOpenedAt: "2026-03-01T12:00:00.000Z",
           },
         ],
-        createSession,
+        create: createSession,
       }),
     );
     const model = {
@@ -309,7 +329,7 @@ describe("AppControlBridge", () => {
             lastOpenedAt: "2026-03-01T12:00:00.000Z",
           },
         ],
-        createSession,
+        create: createSession,
       }),
     );
 
@@ -344,7 +364,7 @@ describe("AppControlBridge", () => {
             lastOpenedAt: "2026-03-01T12:00:00.000Z",
           },
         ],
-        createDraftSession,
+        createDraft: createDraftSession,
       }),
     );
 
@@ -403,9 +423,9 @@ describe("AppControlBridge", () => {
           draft: false,
         },
       ],
-      sendSessionMessage,
-      compactSession,
-      scheduleSessionMessage,
+      sendMessage: sendSessionMessage,
+      compact: compactSession,
+      scheduleMessage: scheduleSessionMessage,
     });
     const bridge = new AppControlBridge(host);
 
@@ -470,8 +490,8 @@ describe("AppControlBridge", () => {
           },
         ],
         sessionActivity: () => "running",
-        sendSessionMessage,
-        abortSession,
+        sendMessage: sendSessionMessage,
+        abort: abortSession,
       }),
     );
 
@@ -554,7 +574,11 @@ describe("AppControlBridge", () => {
       },
     ];
     const bridge = new AppControlBridge(
-      createHost({ sessions: () => sessions, sendSessionMessage, showAgentAction }),
+      createHost({
+        sessions: () => sessions,
+        sendMessage: sendSessionMessage,
+        showAgentAction,
+      }),
     );
     const sourceA = {
       kind: "project-session" as const,
@@ -653,7 +677,7 @@ describe("AppControlBridge", () => {
           },
         ],
         sessionActivity: (sessionId) => (sessionId === "session-b" ? "waiting" : undefined),
-        sendSessionMessage,
+        sendMessage: sendSessionMessage,
       }),
     );
     const source = { kind: "project-session" as const, sessionId: "session-a", title: "A" };

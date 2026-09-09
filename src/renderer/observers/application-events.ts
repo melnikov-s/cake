@@ -15,10 +15,7 @@ export const observeApplicationEvents = (runtime: Runtime, root: RootStore) =>
           return;
         }
         if (storeEvent.type === "project-session-control-requested") {
-          void root.respondProjectSessionControl(storeEvent).catch((error) => {
-            if (!root.signal.aborted)
-              root.projectWorkbenchStore.setError(error, "Project Session control response");
-          });
+          void root.applicationControlStore.handleProjectSessionRequest(storeEvent);
           return;
         }
         root.extensionUiStore.receive(storeEvent);

@@ -3,7 +3,7 @@ import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordin
 
 /** Owns renderer-local progress for commands initiated by Cake application controls. */
 export class AppControlOperationStore extends Store<{
-  operations: SessionOperationCoordinatorStore;
+  operations: Pick<SessionOperationCoordinatorStore, "finish" | "start">;
 }> {
   async run<A>(action: (operationId: string) => Promise<A>): Promise<A> {
     const operationId = this.props.operations.start("app-control");

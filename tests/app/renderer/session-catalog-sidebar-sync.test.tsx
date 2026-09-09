@@ -117,7 +117,7 @@ describe("Project Session catalog to sidebar synchronization", () => {
 
   it("keeps one observed row from control-created draft through activation and authority", async () => {
     const create = () =>
-      root.appControl.invoke({
+      root.applicationControlStore.invoke({
         name: "sessions.create-draft",
         arguments: {
           workspacePath: projectPath,

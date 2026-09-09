@@ -50,7 +50,7 @@ describe("RootStore session navigation", () => {
       root.appShellStore.selectProjectSession("parent");
       root.projectWorkbenchStore.showLoadedSession("parent");
 
-      await root.respondProjectSessionControl({
+      await root.applicationControlStore.handleProjectSessionRequest({
         sessionId: "parent",
         controlRequestId: "00000000-0000-4000-8000-000000000000",
         invocation: {
@@ -72,7 +72,7 @@ describe("RootStore session navigation", () => {
         sessionId: "parent",
       });
 
-      await root.respondProjectSessionControl({
+      await root.applicationControlStore.handleProjectSessionRequest({
         sessionId: "parent",
         controlRequestId: "00000000-0000-4000-8000-000000000001",
         invocation: {
@@ -96,7 +96,7 @@ describe("RootStore session navigation", () => {
         sessionId: "child-1",
       });
 
-      await root.respondProjectSessionControl({
+      await root.applicationControlStore.handleProjectSessionRequest({
         sessionId: "parent",
         controlRequestId: "00000000-0000-4000-8000-000000000002",
         invocation: {
@@ -134,7 +134,7 @@ describe("RootStore session navigation", () => {
     const root = mountRootStore(client, { state: {}, children: {} }, async () => undefined, models);
 
     try {
-      await root.respondProjectSessionControl({
+      await root.applicationControlStore.handleProjectSessionRequest({
         sessionId: "source",
         controlRequestId: "00000000-0000-4000-8000-000000000003",
         invocation: {
@@ -224,7 +224,7 @@ describe("RootStore session navigation", () => {
     };
 
     try {
-      await root.respondProjectSessionControl({
+      await root.applicationControlStore.handleProjectSessionRequest({
         sessionId: "source-session",
         controlRequestId: "00000000-0000-4000-8000-000000000003",
         invocation: {
@@ -272,7 +272,7 @@ describe("RootStore session navigation", () => {
       expect(createdSummary).not.toHaveProperty("familyId");
       expect(createdSummary).not.toHaveProperty("familyParentSessionId");
 
-      await root.respondProjectSessionControl({
+      await root.applicationControlStore.handleProjectSessionRequest({
         sessionId: "source-session",
         controlRequestId: "00000000-0000-4000-8000-000000000004",
         invocation: {
@@ -344,7 +344,7 @@ describe("RootStore session navigation", () => {
     const root = mountRootStore(client, { state: {}, children: {} }, async () => undefined, models);
 
     try {
-      await root.respondProjectSessionControl({
+      await root.applicationControlStore.handleProjectSessionRequest({
         sessionId: "source-session",
         controlRequestId: "00000000-0000-4000-8000-000000000005",
         invocation: {

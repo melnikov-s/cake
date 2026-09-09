@@ -239,82 +239,88 @@ interface SessionCoordinationHost {
 
 export interface AppControlHost {
   sessionCoordination: SessionCoordinationHost;
-  currentSelection(): AppControlSelection;
-  sessionLayout?(source?: AgentControlSource): {
-    focusedSessionId?: string;
-    originSessionId?: string;
-    panes: Array<{
-      paneId: string;
-      sessionId: string;
-      number: number;
-      focused: boolean;
-      x: number;
-      y: number;
-      width: number;
-      height: number;
-    }>;
-    neighbors?: Record<
-      "left" | "right" | "above" | "below",
-      Array<{ paneId: string; sessionId: string }>
-    >;
+  state: {
+    currentSelection(): AppControlSelection;
+    sessionLayout?(source?: AgentControlSource): {
+      focusedSessionId?: string;
+      originSessionId?: string;
+      panes: Array<{
+        paneId: string;
+        sessionId: string;
+        number: number;
+        focused: boolean;
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+      }>;
+      neighbors?: Record<
+        "left" | "right" | "above" | "below",
+        Array<{ paneId: string; sessionId: string }>
+      >;
+    };
+    projects(): readonly ProjectRecord[];
+    sessions(): readonly SessionSummaryView[];
+    cakeChatSessions(): readonly CakeChatSummary[];
+    sessionActivity(sessionId: string): SessionActivity | undefined;
   };
-  projects(): readonly ProjectRecord[];
-  sessions(): readonly SessionSummaryView[];
-  cakeChatSessions(): readonly CakeChatSummary[];
-  sessionActivity(sessionId: string): SessionActivity | undefined;
-  openSession(sessionId: string, messageId?: string): Promise<boolean | void>;
-  createSession(input: {
-    workspacePath: string;
-    name: string;
-    initialPrompt: string;
-    model?: ChatConfiguration;
-    worktreeName?: string;
-  }): Promise<{ workspacePath: string; sessionId: string; managedWorktree?: WorktreeRecord }>;
-  createDraftSession(input: {
-    workspacePath: string;
-    name: string;
-    initialPrompt: string;
-    model?: ChatConfiguration;
-  }): Promise<{ workspacePath: string; sessionId: string }>;
-  sendSessionMessage(
-    sessionId: string,
-    text: string,
-    delivery: "prompt" | "follow-up" | "steer",
-    crossSession?: CrossSessionMessageMetadata,
-  ): Promise<string>;
-  compactSession(sessionId: string, instructions?: string): Promise<void>;
-  scheduleSessionMessage(input: {
-    targetSessionId: string;
-    text: string;
-    sendAt: string;
-  }): Promise<ScheduledMessage>;
-  listScheduledMessages(sessionId?: string): Promise<readonly ScheduledMessage[]>;
-  cancelScheduledMessage(id: string): Promise<void>;
-  listPendingMessages(sessionId: string): Promise<QueuedProjectSessionMessages>;
-  dequeuePendingMessages(sessionId: string): Promise<QueuedProjectSessionMessages>;
-  abortSession(sessionId: string): Promise<void>;
-  renameSession(sessionId: string, title: string): Promise<void>;
-  setSessionResolved(sessionId: string, resolved: boolean): Promise<void>;
-  setSessionsResolved(sessionIds: readonly string[], resolved: boolean): Promise<number>;
-  setCakeChatSessionsResolved(sessionIds: readonly string[], resolved: boolean): Promise<number>;
-  setSessionModel(sessionId: string, provider: string, modelId: string): Promise<void>;
-  splitView(
-    source: AgentControlSource,
-    direction: "right" | "down",
-  ): { kind: "project-session" | "cake-chat"; paneId: string; sessionId: string } | undefined;
-  showNotification(input: {
-    title: string;
-    body: string;
-    level: "info" | "success" | "warning" | "error";
-    source?: AgentControlSource;
-  }): Promise<void>;
-  showAgentAction(input: {
-    source: AgentControlSource;
-    message: string;
-    targetSessionId?: string;
-    targetKind?: "project-session" | "cake-chat";
-    coalesceKey: string;
-  }): void;
+  sessions: {
+    open(sessionId: string, messageId?: string): Promise<boolean | void>;
+    create(input: {
+      workspacePath: string;
+      name: string;
+      initialPrompt: string;
+      model?: ChatConfiguration;
+      worktreeName?: string;
+    }): Promise<{ workspacePath: string; sessionId: string; managedWorktree?: WorktreeRecord }>;
+    createDraft(input: {
+      workspacePath: string;
+      name: string;
+      initialPrompt: string;
+      model?: ChatConfiguration;
+    }): Promise<{ workspacePath: string; sessionId: string }>;
+    sendMessage(
+      sessionId: string,
+      text: string,
+      delivery: "prompt" | "follow-up" | "steer",
+      crossSession?: CrossSessionMessageMetadata,
+    ): Promise<string>;
+    compact(sessionId: string, instructions?: string): Promise<void>;
+    scheduleMessage(input: {
+      targetSessionId: string;
+      text: string;
+      sendAt: string;
+    }): Promise<ScheduledMessage>;
+    listScheduledMessages(sessionId?: string): Promise<readonly ScheduledMessage[]>;
+    cancelScheduledMessage(id: string): Promise<void>;
+    listPendingMessages(sessionId: string): Promise<QueuedProjectSessionMessages>;
+    dequeuePendingMessages(sessionId: string): Promise<QueuedProjectSessionMessages>;
+    abort(sessionId: string): Promise<void>;
+    rename(sessionId: string, title: string): Promise<void>;
+    setResolved(sessionId: string, resolved: boolean): Promise<void>;
+    setProjectSessionsResolved(sessionIds: readonly string[], resolved: boolean): Promise<number>;
+    setCakeChatSessionsResolved(sessionIds: readonly string[], resolved: boolean): Promise<number>;
+    setModel(sessionId: string, provider: string, modelId: string): Promise<void>;
+  };
+  presentation: {
+    splitView(
+      source: AgentControlSource,
+      direction: "right" | "down",
+    ): { kind: "project-session" | "cake-chat"; paneId: string; sessionId: string } | undefined;
+    showNotification(input: {
+      title: string;
+      body: string;
+      level: "info" | "success" | "warning" | "error";
+      source?: AgentControlSource;
+    }): Promise<void>;
+    showAgentAction(input: {
+      source: AgentControlSource;
+      message: string;
+      targetSessionId?: string;
+      targetKind?: "project-session" | "cake-chat";
+      coalesceKey: string;
+    }): void;
+  };
 }
 
 export interface AppControlSession {
@@ -336,7 +342,7 @@ export interface AppControlSession {
 
 export interface AppControlState {
   selection: AppControlSelection;
-  sessionLayout?: ReturnType<NonNullable<AppControlHost["sessionLayout"]>>;
+  sessionLayout?: ReturnType<NonNullable<AppControlHost["state"]["sessionLayout"]>>;
   projectCount: number;
   sessionCount: number;
   projects: Array<{ path: string; name: string; sessionCount: number }>;
@@ -712,21 +718,21 @@ export class AppControlBridge {
   getAppState(source?: AgentControlSource): AppControlState {
     const sessions = this.sortedSessions();
     const state: AppControlState = {
-      selection: this.host.currentSelection(),
-      projectCount: this.host.projects().length,
+      selection: this.host.state.currentSelection(),
+      projectCount: this.host.state.projects().length,
       sessionCount: sessions.length,
-      projects: this.host.projects().map((project) => ({
+      projects: this.host.state.projects().map((project) => ({
         path: project.path,
         name: project.name,
         sessionCount: sessions.filter((session) => session.workingDirectory === project.path)
           .length,
       })),
       attentionSessions: sessions
-        .filter((session) => this.host.sessionActivity(session.sessionId))
+        .filter((session) => this.host.state.sessionActivity(session.sessionId))
         .map((session) => this.toControlSession(session)),
       recentSessions: sessions.map((session) => this.toControlSession(session)),
     };
-    const sessionLayout = this.host.sessionLayout?.(source);
+    const sessionLayout = this.host.state.sessionLayout?.(source);
     if (sessionLayout) state.sessionLayout = sessionLayout;
     return state;
   }
@@ -735,7 +741,7 @@ export class AppControlBridge {
     const result = await this.invokeResult(untrustedInput, source);
     if (source && result.ok && result.name !== "send_notification") {
       const receipt = this.agentActionReceipt(result, source);
-      if (receipt) this.host.showAgentAction({ source, ...receipt });
+      if (receipt) this.host.presentation.showAgentAction({ source, ...receipt });
     }
     return toJsonValue(result);
   }
@@ -773,7 +779,7 @@ export class AppControlBridge {
           error: `Cake could not find session ${unknownProject}.`,
         };
       const knownCakeChatIds = new Set(
-        this.host.cakeChatSessions().map((session) => session.sessionId),
+        this.host.state.cakeChatSessions().map((session) => session.sessionId),
       );
       const unknownCakeChat = cakeChatIds.find((sessionId) => !knownCakeChatIds.has(sessionId));
       if (unknownCakeChat)
@@ -784,10 +790,13 @@ export class AppControlBridge {
         };
       const [projectCount, cakeChatCount] = await Promise.all([
         projectIds.length
-          ? this.host.setSessionsResolved([...new Set(projectIds)], input.resolved)
+          ? this.host.sessions.setProjectSessionsResolved([...new Set(projectIds)], input.resolved)
           : 0,
         cakeChatIds.length
-          ? this.host.setCakeChatSessionsResolved([...new Set(cakeChatIds)], input.resolved)
+          ? this.host.sessions.setCakeChatSessionsResolved(
+              [...new Set(cakeChatIds)],
+              input.resolved,
+            )
           : 0,
       ]);
       return toStrictJson({
@@ -814,7 +823,7 @@ export class AppControlBridge {
           name: invocation.name,
           error: "Cake can only split a pane for a calling conversation.",
         };
-      const split = this.host.splitView(source, invocation.arguments.direction);
+      const split = this.host.presentation.splitView(source, invocation.arguments.direction);
       if (!split)
         return {
           ok: false,
@@ -829,7 +838,7 @@ export class AppControlBridge {
       };
     }
     if (invocation.name === "send_notification") {
-      await this.host.showNotification({
+      await this.host.presentation.showNotification({
         title: invocation.arguments.title,
         body: invocation.arguments.body,
         level: invocation.arguments.level,
@@ -863,11 +872,11 @@ export class AppControlBridge {
       return {
         ok: true,
         name: invocation.name,
-        messages: await this.host.listScheduledMessages(invocation.arguments.sessionId),
+        messages: await this.host.sessions.listScheduledMessages(invocation.arguments.sessionId),
       };
     }
     if (invocation.name === "cancel_scheduled_message") {
-      await this.host.cancelScheduledMessage(invocation.arguments.id);
+      await this.host.sessions.cancelScheduledMessage(invocation.arguments.id);
       return {
         ok: true,
         name: invocation.name,
@@ -923,17 +932,17 @@ export class AppControlBridge {
       return {
         ok: true,
         name: invocation.name,
-        messages: await this.host.listPendingMessages(sessionId),
+        messages: await this.host.sessions.listPendingMessages(sessionId),
       };
     if (invocation.name === "dequeue_pending_messages")
       return {
         ok: true,
         name: invocation.name,
-        messages: await this.host.dequeuePendingMessages(sessionId),
+        messages: await this.host.sessions.dequeuePendingMessages(sessionId),
       };
     if (invocation.name === "get_session_status") {
-      const activity = this.host.sessionActivity(sessionId);
-      const current = this.host.currentSelection();
+      const activity = this.host.state.sessionActivity(sessionId);
+      const current = this.host.state.currentSelection();
       return {
         ok: true,
         name: invocation.name,
@@ -945,8 +954,8 @@ export class AppControlBridge {
     if (invocation.name === "open_session") {
       const { messageId } = invocation.arguments;
       const messageFound = messageId
-        ? await this.host.openSession(sessionId, messageId)
-        : await this.host.openSession(sessionId);
+        ? await this.host.sessions.open(sessionId, messageId)
+        : await this.host.sessions.open(sessionId);
       if (messageId && messageFound === false)
         return {
           ok: false,
@@ -963,8 +972,10 @@ export class AppControlBridge {
       if (!source) {
         const delivery =
           invocation.arguments.delivery ??
-          (isActiveSessionActivity(this.host.sessionActivity(sessionId)) ? "queue" : "prompt");
-        const turnId = await this.host.sendSessionMessage(
+          (isActiveSessionActivity(this.host.state.sessionActivity(sessionId))
+            ? "queue"
+            : "prompt");
+        const turnId = await this.host.sessions.sendMessage(
           sessionId,
           invocation.arguments.text,
           delivery === "queue" ? "follow-up" : delivery,
@@ -1025,11 +1036,11 @@ export class AppControlBridge {
       );
     }
     if (invocation.name === "compact_session") {
-      await this.host.compactSession(sessionId, invocation.arguments.instructions);
+      await this.host.sessions.compact(sessionId, invocation.arguments.instructions);
       return { ok: true, name: invocation.name, target, status: "compacted" };
     }
     if (invocation.name === "schedule_session_message") {
-      const scheduledMessage = await this.host.scheduleSessionMessage({
+      const scheduledMessage = await this.host.sessions.scheduleMessage({
         targetSessionId: sessionId,
         text: invocation.arguments.text,
         sendAt: invocation.arguments.sendAt,
@@ -1043,25 +1054,25 @@ export class AppControlBridge {
       };
     }
     if (invocation.name === "abort_session") {
-      if (!isActiveSessionActivity(this.host.sessionActivity(sessionId))) {
+      if (!isActiveSessionActivity(this.host.state.sessionActivity(sessionId))) {
         return {
           ok: false,
           name: invocation.name,
           error: "That session is not currently running.",
         };
       }
-      await this.host.abortSession(sessionId);
+      await this.host.sessions.abort(sessionId);
       return { ok: true, name: invocation.name, target, status: "stopping" };
     }
     if (invocation.name === "rename_session") {
-      await this.host.renameSession(sessionId, invocation.arguments.title);
+      await this.host.sessions.rename(sessionId, invocation.arguments.title);
       return { ok: true, name: invocation.name, target, title: invocation.arguments.title };
     }
     if (invocation.name === "set_session_resolved") {
-      await this.host.setSessionResolved(sessionId, invocation.arguments.resolved);
+      await this.host.sessions.setResolved(sessionId, invocation.arguments.resolved);
       return { ok: true, name: invocation.name, target, resolved: invocation.arguments.resolved };
     }
-    await this.host.setSessionModel(
+    await this.host.sessions.setModel(
       sessionId,
       invocation.arguments.provider,
       invocation.arguments.modelId,
@@ -1099,7 +1110,9 @@ export class AppControlBridge {
     }
     const delivery =
       requestedDelivery ??
-      (isActiveSessionActivity(this.host.sessionActivity(targetSessionId)) ? "queue" : "prompt");
+      (isActiveSessionActivity(this.host.state.sessionActivity(targetSessionId))
+        ? "queue"
+        : "prompt");
     const messageId = crypto.randomUUID();
     const sequence = thread.messages.length + 1;
     const metadata: CrossSessionMessageMetadata = {
@@ -1128,7 +1141,7 @@ export class AppControlBridge {
     // participants cannot receive the same message number or exceed the limit.
     this.host.sessionCoordination.record(thread, message);
     try {
-      message.turnId = await this.host.sendSessionMessage(
+      message.turnId = await this.host.sessions.sendMessage(
         targetSessionId,
         text,
         delivery === "queue" ? "follow-up" : delivery,
@@ -1180,7 +1193,8 @@ export class AppControlBridge {
     source: AgentControlSource,
   ): AgentActionReceipt | undefined {
     const projectTitle = (sessionId: string) =>
-      this.host.sessions().find((session) => session.sessionId === sessionId)?.title ?? "Session";
+      this.host.state.sessions().find((session) => session.sessionId === sessionId)?.title ??
+      "Session";
     const projectTarget = (sessionId: string) => ({
       targetSessionId: sessionId,
       targetKind: "project-session" as const,
@@ -1318,22 +1332,22 @@ export class AppControlBridge {
   }
 
   private sortedSessions() {
-    return [...this.host.sessions()].sort((left, right) =>
+    return [...this.host.state.sessions()].sort((left, right) =>
       right.modifiedAt.localeCompare(left.modifiedAt),
     );
   }
 
   private knownSession(sessionId: string) {
-    return this.host.sessions().find((session) => session.sessionId === sessionId);
+    return this.host.state.sessions().find((session) => session.sessionId === sessionId);
   }
 
   private async createSession(
     input: typeof appControlArgumentSchemas.create_session.Type,
   ): Promise<AppControlResult> {
-    if (!this.host.projects().some((project) => project.path === input.workspacePath)) {
+    if (!this.host.state.projects().some((project) => project.path === input.workspacePath)) {
       return { ok: false, name: "create_session", error: "Cake could not find that project." };
     }
-    const created = await this.host.createSession(input);
+    const created = await this.host.sessions.create(input);
     const result: Extract<AppControlResult, { ok: true; name: "create_session" }> = {
       ok: true,
       name: "create_session",
@@ -1349,14 +1363,14 @@ export class AppControlBridge {
   private async createDraftSession(
     input: typeof appControlArgumentSchemas.create_draft_session.Type,
   ): Promise<AppControlResult> {
-    if (!this.host.projects().some((project) => project.path === input.workspacePath)) {
+    if (!this.host.state.projects().some((project) => project.path === input.workspacePath)) {
       return {
         ok: false,
         name: "create_draft_session",
         error: "Cake could not find that project.",
       };
     }
-    const created = await this.host.createDraftSession(input);
+    const created = await this.host.sessions.createDraft(input);
     return {
       ok: true,
       name: "create_draft_session",
@@ -1379,7 +1393,10 @@ export class AppControlBridge {
         error: `Cake could not find session ${unknown}.`,
       };
     const uniqueSessionIds = [...new Set(sessionIds)];
-    const sessionCount = await this.host.setSessionsResolved(uniqueSessionIds, resolved);
+    const sessionCount = await this.host.sessions.setProjectSessionsResolved(
+      uniqueSessionIds,
+      resolved,
+    );
     return {
       ok: true,
       name: "set_sessions_resolved",
@@ -1393,7 +1410,9 @@ export class AppControlBridge {
     sessionIds,
     resolved,
   }: typeof appControlArgumentSchemas.set_cake_chat_sessions_resolved.Type): Promise<AppControlResult> {
-    const knownIds = new Set(this.host.cakeChatSessions().map((session) => session.sessionId));
+    const knownIds = new Set(
+      this.host.state.cakeChatSessions().map((session) => session.sessionId),
+    );
     const unknown = sessionIds.find((sessionId) => !knownIds.has(sessionId));
     if (unknown)
       return {
@@ -1402,7 +1421,10 @@ export class AppControlBridge {
         error: `Cake could not find Cake Chat session ${unknown}.`,
       };
     const uniqueSessionIds = [...new Set(sessionIds)];
-    const sessionCount = await this.host.setCakeChatSessionsResolved(uniqueSessionIds, resolved);
+    const sessionCount = await this.host.sessions.setCakeChatSessionsResolved(
+      uniqueSessionIds,
+      resolved,
+    );
     return {
       ok: true,
       name: "set_cake_chat_sessions_resolved",
@@ -1413,7 +1435,7 @@ export class AppControlBridge {
   }
 
   private toControlSession(session: SessionSummaryView): AppControlSession {
-    const activity = this.host.sessionActivity(session.sessionId);
+    const activity = this.host.state.sessionActivity(session.sessionId);
     const result = {
       workspacePath: session.workingDirectory,
       workspaceName: session.projectName,
