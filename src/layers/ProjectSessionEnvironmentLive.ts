@@ -464,7 +464,7 @@ export const makeProjectSessionEnvironmentLive = (
           return restoredLocation;
         }),
         forkToWorkingDirectory: Effect.fn("ProjectSessionEnvironment.forkToWorkingDirectory")(
-          function* ({ sessionId, source, destination }) {
+          function* ({ sessionId, title, source, destination }) {
             const forked = yield* Effect.tryPromise({
               try: async () => {
                 const sourceFile = await findSessionFile(
@@ -477,6 +477,7 @@ export const makeProjectSessionEnvironmentLive = (
                   sourceFile,
                   destination.workingDirectory,
                   options.sessionDirectory,
+                  title,
                 );
               },
               catch: (cause) => environmentError("forkToWorkingDirectory", cause),
@@ -484,6 +485,13 @@ export const makeProjectSessionEnvironmentLive = (
             yield* access
               .rememberSessionLocation(destination.workingDirectory, forked.sessionId)
               .pipe(Effect.mapError((cause) => environmentError("forkToWorkingDirectory", cause)));
+            yield* Effect.tryPromise({
+              try: () =>
+                projectRuntime
+                  .forWorkingDirectory(destination.workingDirectory)
+                  .setSessionTitleMetadata?.(forked.sessionId, title) ?? Promise.resolve(),
+              catch: (cause) => environmentError("forkToWorkingDirectory", cause),
+            });
             return forked.sessionId;
           },
         ),

@@ -2163,10 +2163,11 @@ describe("S1 Pi runtime", () => {
     expect(titles.get(second.sessionId)).toBe("Named session");
     await second.navigate("assistant-tools");
     expect((await second.snapshot()).tree[0]).toMatchObject({ id: "user-1", active: true });
-    const fork = await second.fork("user-1");
+    const fork = await second.fork("user-1", "First session (1)");
     expect(fork.sessionId).not.toBe(second.sessionId);
     expect(fork.sessionFile.startsWith(`${sessionDir}/`)).toBe(true);
     expect(fork.sessionFile).toMatch(/\.jsonl$/);
+    expect(titles.get(fork.sessionId)).toBe("First session (1)");
 
     const requestedSessionId = crypto.randomUUID();
     const isolated = await createCakeRuntime({

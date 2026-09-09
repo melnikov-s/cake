@@ -202,6 +202,36 @@ const publishCatalogStatus = Effect.fn("ProjectSessions.publishCatalogStatus")(f
 });
 
 const ACTIVE_CATALOG_LOCATION_CONCURRENCY = 32;
+const COPY_TITLE_SUFFIX = /^(.*) \((\d+)\)$/;
+
+const formatCopyTitle = (baseTitle: string, copyNumber: number) => {
+  const suffix = ` (${copyNumber})`;
+  return `${baseTitle.slice(0, SESSION_TITLE_MAX_LENGTH - suffix.length)}${suffix}`;
+};
+
+const copyTitleParts = (title: string) => {
+  const match = COPY_TITLE_SUFFIX.exec(title);
+  if (!match) return undefined;
+  const [, baseTitle = "", rawCopyNumber = ""] = match;
+  const copyNumber = Number(rawCopyNumber);
+  return Number.isSafeInteger(copyNumber) && copyNumber > 0 ? { baseTitle, copyNumber } : undefined;
+};
+
+const nextCopyTitle = (sourceTitle: string, existingTitles: ReadonlySet<string>) => {
+  const sourceParts = copyTitleParts(sourceTitle);
+  const baseTitle = sourceParts?.baseTitle ?? sourceTitle;
+  let copyNumber = (sourceParts?.copyNumber ?? 0) + 1;
+  for (const title of existingTitles) {
+    const parts = copyTitleParts(title);
+    if (
+      parts &&
+      parts.copyNumber >= copyNumber &&
+      formatCopyTitle(baseTitle, parts.copyNumber) === title
+    )
+      copyNumber = parts.copyNumber + 1;
+  }
+  return formatCopyTitle(baseTitle, copyNumber);
+};
 
 const catalogForState = Effect.fn("ProjectSessions.catalogForState")(function* (
   query: ProjectSessionCatalogQuery,
@@ -1065,6 +1095,26 @@ export const fork = Effect.fn("ProjectSessions.fork")(function* (input: {
     });
   const continuation = yield* withContinuationSource(input.target, "fork", (source) =>
     Effect.gen(function* () {
+      const state = yield* getState();
+      const projectCatalogs = yield* Effect.all(
+        [false, true].map((resolved) =>
+          catalogForState({ projectPath: source.projectPath, resolved }, state).pipe(
+            Effect.flatMap(Stream.runCollect),
+          ),
+        ),
+      );
+      const projectSessions = projectCatalogs.flatMap((catalog) => Array.from(catalog));
+      const sourceTitle =
+        projectSessions.find(
+          (session) =>
+            session.sessionId === input.target.sessionId &&
+            session.workingDirectory === source.workingDirectory,
+        )?.title ?? input.target.sessionId;
+      const forkTitle = nextCopyTitle(
+        sourceTitle,
+        new Set(projectSessions.map((session) => session.title)),
+      );
+
       let destination = source;
       let sessionId: string;
       if (
@@ -1072,7 +1122,7 @@ export const fork = Effect.fn("ProjectSessions.fork")(function* (input: {
         input.destinationWorkingDirectory === source.workingDirectory
       ) {
         const handle = yield* acquireTarget(source, input.target.sessionId, false);
-        const result = yield* handle.fork(input.entryId).pipe(asError("fork"));
+        const result = yield* handle.fork(input.entryId, forkTitle).pipe(asError("fork"));
         sessionId = result.sessionId;
       } else {
         const environment = yield* ProjectSessionEnvironment;
@@ -1094,6 +1144,7 @@ export const fork = Effect.fn("ProjectSessions.fork")(function* (input: {
           .forkToWorkingDirectory({
             sessionId: input.target.sessionId,
             entryId: input.entryId,
+            title: forkTitle,
             source,
             destination: selectedDestination,
           })

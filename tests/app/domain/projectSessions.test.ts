@@ -62,6 +62,7 @@ const fakeRuntime = (
     readonly workingDirectory: string;
     readonly sessionRoot: string;
   }) => void,
+  onForkTitle?: (title: string) => void,
 ): CakeRuntime => ({
   sessionId: snapshot.sessionId,
   sessionFile: snapshot.sessionFile,
@@ -84,7 +85,10 @@ const fakeRuntime = (
   login: async () => undefined,
   logout: async () => undefined,
   rename: async () => undefined,
-  fork: async () => ({ sessionId: "forked", sessionFile: "/sessions/forked.jsonl" }),
+  fork: async (_entryId, title) => {
+    onForkTitle?.(title);
+    return { sessionId: "forked", sessionFile: "/sessions/forked.jsonl" };
+  },
   handoff: async (_entryId, destination) => {
     onHandoff?.(destination);
     return { sessionId: "handoff", sessionFile: "/sessions/handoff.jsonl" };
@@ -123,6 +127,7 @@ const makeLayer = (
       readonly workingDirectory: string;
       readonly sessionRoot: string;
     }): void;
+    onForkTitle?(title: string): void;
     sessionExists?: boolean;
     resolvedOnDisk?: boolean;
     resolvedProjectEntries?: ReadonlyArray<{
@@ -192,7 +197,7 @@ const makeLayer = (
     createRuntime: (options) =>
       Effect.sync(() => {
         hooks.onCreateRuntime?.();
-        return fakeRuntime(options, hooks.prompt, hooks.onHandoff);
+        return fakeRuntime(options, hooks.prompt, hooks.onHandoff, hooks.onForkTitle);
       }),
     changelog: () => Effect.succeed("# Changelog"),
   };
@@ -781,6 +786,41 @@ describe("Project Sessions domain", () => {
           ],
           onHandoff: (destination) => {
             handoffDestination = destination;
+          },
+        }),
+      ),
+    );
+  });
+
+  it.effect("gives forks the next numbered copy title", () => {
+    let forkTitle: string | undefined;
+    const catalogEntry = (id: string, title: string): SessionSummary => ({
+      id,
+      title,
+      created: "2026-01-01T00:00:00.000Z",
+      modified: "2026-01-02T00:00:00.000Z",
+      messageCount: 2,
+      resolved: false,
+    });
+
+    return Effect.gen(function* () {
+      yield* projectSessions.fork({
+        target: { sessionId: "session-1", workingDirectory: "/project" },
+        entryId: "assistant-entry",
+      });
+
+      assert.equal(forkTitle, "Active branch (3)");
+    }).pipe(
+      Effect.provide(
+        makeLayer(defaultApplicationState(), {
+          catalog: () =>
+            Stream.fromIterable([
+              catalogEntry("session-1", "Active branch"),
+              catalogEntry("fork-1", "Active branch (1)"),
+              catalogEntry("fork-2", "Active branch (2)"),
+            ]),
+          onForkTitle: (title) => {
+            forkTitle = title;
           },
         }),
       ),

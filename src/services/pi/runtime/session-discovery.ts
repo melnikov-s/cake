@@ -62,12 +62,18 @@ export function cakeWorkspaceSessionDirectory(cwd: string, sessionRoot: string) 
   return workingDirectorySessionPath(cwd, sessionRoot);
 }
 
-export function forkWorkspaceSession(sourceFile: string, cwd: string, sessionRoot: string) {
+export function forkWorkspaceSession(
+  sourceFile: string,
+  cwd: string,
+  sessionRoot: string,
+  title: string,
+) {
   const manager = SessionManager.forkFrom(
     sourceFile,
     cwd,
     cakeWorkspaceSessionDirectory(cwd, sessionRoot),
   );
+  manager.appendSessionInfo(title);
   return { sessionId: manager.getSessionId(), sessionFile: manager.getSessionFile() ?? undefined };
 }
 

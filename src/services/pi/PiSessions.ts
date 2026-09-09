@@ -162,6 +162,7 @@ export interface PiSessionHandle {
   readonly rename: (name: string) => Effect.Effect<void, PiSessionError>;
   readonly fork: (
     entryId: string,
+    title: string,
   ) => Effect.Effect<{ readonly sessionId: string; readonly sessionFile: string }, PiSessionError>;
   readonly handoff: (
     entryId: string,
@@ -653,7 +654,7 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
           navigate: (entryId) => call("navigate", (runtime) => runtime.navigate(entryId)),
           compact: (instructions) => call("compact", (runtime) => runtime.compact(instructions)),
           rename: (name) => call("rename", (runtime) => runtime.rename(name)),
-          fork: (entryId) => call("fork", (runtime) => runtime.fork(entryId)),
+          fork: (entryId, title) => call("fork", (runtime) => runtime.fork(entryId, title)),
           handoff: (entryId, destination) =>
             call("handoff", (runtime) => runtime.handoff(entryId, destination)),
           reviewParentContext: () =>

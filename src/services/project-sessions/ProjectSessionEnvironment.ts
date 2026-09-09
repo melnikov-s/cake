@@ -53,6 +53,7 @@ export interface ProjectSessionEnvironmentService {
   readonly forkToWorkingDirectory: (input: {
     readonly sessionId: string;
     readonly entryId: string;
+    readonly title: string;
     readonly source: ProjectSessionLocation;
     readonly destination: ProjectSessionLocation;
   }) => Effect.Effect<string, ProjectSessionEnvironmentError>;

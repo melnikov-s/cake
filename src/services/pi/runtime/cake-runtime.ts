@@ -633,7 +633,7 @@ export interface CakeRuntime {
   login(provider: string, authType: "api_key" | "oauth"): Promise<void>;
   logout(provider: string): Promise<void>;
   rename(name: string): Promise<void>;
-  fork(entryId: string): Promise<{ sessionId: string; sessionFile: string }>;
+  fork(entryId: string, title: string): Promise<{ sessionId: string; sessionFile: string }>;
   handoff(
     entryId: string,
     destination?: { readonly workingDirectory: string; readonly sessionRoot: string },
@@ -2801,10 +2801,12 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       );
       await emitSnapshot();
     },
-    async fork(entryId) {
+    async fork(entryId, title) {
       const sessionFile = session.sessionManager.createBranchedSession(entryId);
       if (!sessionFile) throw new Error("The current session is not persisted");
       const forked = SessionManager.open(sessionFile, options.sessionDir, options.cwd);
+      forked.appendSessionInfo(title);
+      await options.sessionMetadata?.setTitle(forked.getSessionId(), title);
       return { sessionId: forked.getSessionId(), sessionFile };
     },
     async handoff(entryId, destination) {
