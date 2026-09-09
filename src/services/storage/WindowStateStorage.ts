@@ -175,6 +175,44 @@ const migrateVersion2WindowState = (snapshot: Schema.Schema.Type<typeof Schema.J
   };
 };
 
+const chatStoreChildNames = new Set(["chatStore", "chatStores", "draftChatStore"]);
+
+/** Retains local drafts for secondary ChatStore consumers whose draft ownership did not move. */
+const migrateStandaloneChatDrafts = (
+  snapshot: Schema.Schema.Type<typeof Schema.Json>,
+): Schema.Schema.Type<typeof Schema.Json> => {
+  const migrateStore = (
+    value: Schema.Schema.Type<typeof Schema.Json>,
+    isChatStore = false,
+  ): Schema.Schema.Type<typeof Schema.Json> => {
+    const store = decodeJsonRecord(value);
+    if (!store) return value;
+    const state = decodeJsonRecord(store.state);
+    const children = decodeJsonRecord(store.children);
+    const nextState = state ? { ...state } : undefined;
+    if (isChatStore && nextState?.draft !== undefined) {
+      nextState.localDraft ??= nextState.draft;
+      delete nextState.draft;
+    }
+    const nextChildren = children
+      ? Object.fromEntries(
+          Object.entries(children).map(([name, childValue]) => [
+            name,
+            Array.isArray(childValue)
+              ? childValue.map((child) => migrateStore(child, chatStoreChildNames.has(name)))
+              : migrateStore(childValue, chatStoreChildNames.has(name)),
+          ]),
+        )
+      : undefined;
+    const migrated = { ...store };
+    if (nextState) migrated.state = nextState;
+    if (nextChildren) migrated.children = nextChildren;
+    return migrated;
+  };
+
+  return migrateStore(snapshot);
+};
+
 /** Moves coherent draft state beneath ComposerDraftStore while retaining standalone Chat drafts. */
 const migrateVersion3WindowState = (snapshot: Schema.Schema.Type<typeof Schema.Json>) => {
   const migrateSession = (value: Schema.Schema.Type<typeof Schema.Json>) => {
@@ -254,7 +292,7 @@ const migrateVersion3WindowState = (snapshot: Schema.Schema.Type<typeof Schema.J
         loadedSessions: collectionChildren.loadedSessions.map(migrateSession),
       },
     };
-  return { ...root, children: nextChildren };
+  return migrateStandaloneChatDrafts({ ...root, children: nextChildren });
 };
 
 const migrateLegacyWindowState = Effect.fn("WindowStateStorage.migrateLegacy")(function* (

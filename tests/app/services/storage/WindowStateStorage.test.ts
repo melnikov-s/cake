@@ -150,6 +150,108 @@ describe("WindowStateStorage", () => {
     );
   });
 
+  it.effect("retains standalone secondary chat drafts while migrating primary drafts", () => {
+    const snapshot = {
+      state: {},
+      children: {
+        sessionRegistry: {
+          state: {},
+          children: {
+            sessions: [
+              {
+                key: "project-session-1",
+                state: {},
+                children: {
+                  chatStore: { state: { draft: "Primary draft" }, children: {} },
+                  messageCommentsStore: {
+                    state: {},
+                    children: {
+                      draftChatStore: {
+                        state: { draft: "Comment draft" },
+                        children: {},
+                      },
+                    },
+                  },
+                },
+              },
+            ],
+          },
+        },
+        reviewsStore: {
+          state: {},
+          children: {
+            chatStores: [
+              {
+                key: "review-1",
+                state: { draft: "Review reply" },
+                children: {},
+              },
+            ],
+          },
+        },
+      },
+    };
+
+    return withStorage(JSON.stringify({ version: 3, data: snapshot }), (storage) =>
+      Effect.gen(function* () {
+        const loaded = yield* storage.load();
+        assert.deepStrictEqual(loaded, {
+          state: {},
+          children: {
+            sessionRegistry: {
+              state: {},
+              children: {
+                sessions: [
+                  {
+                    key: "project-session-1",
+                    state: {},
+                    children: {
+                      chatStore: { state: {}, children: {} },
+                      messageCommentsStore: {
+                        state: {},
+                        children: {
+                          draftChatStore: {
+                            state: { localDraft: "Comment draft" },
+                            children: {},
+                          },
+                        },
+                      },
+                      composerStore: {
+                        state: {},
+                        children: {
+                          draftStore: {
+                            state: {
+                              text: "Primary draft",
+                              attachments: [],
+                              annotations: [],
+                            },
+                            children: {},
+                          },
+                        },
+                      },
+                    },
+                  },
+                ],
+              },
+            },
+            reviewsStore: {
+              state: {},
+              children: {
+                chatStores: [
+                  {
+                    key: "review-1",
+                    state: { localDraft: "Review reply" },
+                    children: {},
+                  },
+                ],
+              },
+            },
+          },
+        });
+      }),
+    );
+  });
+
   it.effect("places unversioned Cake Chat input under the shared composer Store", () => {
     const attachment = {
       kind: "image",
