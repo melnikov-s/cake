@@ -35,7 +35,7 @@ const WORKBENCH_LAYOUT_READY_TIMEOUT_MS = 10_000;
 // VS Code exposes editor-title actions to extensions, but those disappear when no
 // file is open and it has no public top-level title-bar contribution point. Cake
 // owns this managed web surface, so install its shell controls alongside the
-// built-in layout actions and keep them present across title-bar rerenders.
+// corresponding native title-bar controls and keep them present across rerenders.
 const VSCODE_SHELL_CONTROL_PREFIX = "__CAKE_SHELL_CONTROL__";
 
 function waitForWorkbenchLayoutScript(theme: "light" | "dark") {
@@ -73,28 +73,21 @@ function waitForWorkbenchLayoutScript(theme: "light" | "dark") {
   })`;
 }
 
-function projectSidebarVisibilityScript(visible: boolean, projectSidebarWidth: number) {
+function projectSidebarVisibilityScript(visible: boolean) {
   return `(() => {
     window.__cakeProjectSidebarVisible = ${JSON.stringify(visible)};
-    window.__cakeProjectSidebarWidth = ${JSON.stringify(projectSidebarWidth)};
     const control = document.getElementById("cake-toggle-project-sidebar");
     if (!control) return;
     control.style.display = window.__cakeProjectSidebarVisible ? "none" : "flex";
-    control.style.left = Math.max(84, window.__cakeProjectSidebarWidth - 34) + "px";
   })()`;
 }
 
-function vscodeShellControlsScript(
-  workspacePath: string,
-  projectSidebarVisible: boolean,
-  projectSidebarWidth: number,
-) {
+function vscodeShellControlsScript(workspacePath: string, projectSidebarVisible: boolean) {
   return `(() => {
     const cakeIconMarkup = ${JSON.stringify(cakeIconMarkup)};
     const controlPrefix = ${JSON.stringify(VSCODE_SHELL_CONTROL_PREFIX)};
     const workspace = ${JSON.stringify(workspacePath)};
     window.__cakeProjectSidebarVisible = ${JSON.stringify(projectSidebarVisible)};
-    window.__cakeProjectSidebarWidth = ${JSON.stringify(projectSidebarWidth)};
     const controls = [
       ["cake-back-to-agent", "Cake: Back to Agent", "cake", "back-to-agent", "start"],
       [
@@ -116,7 +109,13 @@ function vscodeShellControlsScript(
       const actions = document.querySelector(
         ".part.titlebar .titlebar-right .action-toolbar-container .actions-container",
       );
+      const commandCenter = document.querySelector(".part.titlebar .command-center");
+      const navigationActions = commandCenter?.querySelector(
+        ":scope > .monaco-toolbar > .monaco-action-bar > .actions-container",
+      );
       if (!(actions instanceof HTMLElement)) return;
+      const projectSidebarActions =
+        navigationActions instanceof HTMLElement ? navigationActions : actions;
       const secondarySidebarAction = actions.querySelector(
         '[aria-label*="Toggle Secondary Side Bar"], [title*="Toggle Secondary Side Bar"]',
       );
@@ -126,7 +125,12 @@ function vscodeShellControlsScript(
         if (existing) {
           if (id === "cake-toggle-project-sidebar") {
             existing.style.display = window.__cakeProjectSidebarVisible ? "none" : "flex";
-            existing.style.left = Math.max(84, window.__cakeProjectSidebarWidth - 34) + "px";
+            if (
+              existing.parentElement !== projectSidebarActions ||
+              projectSidebarActions.firstElementChild !== existing
+            ) {
+              projectSidebarActions.prepend(existing);
+            }
           }
           continue;
         }
@@ -135,12 +139,6 @@ function vscodeShellControlsScript(
         item.className = "action-item";
         if (id === "cake-toggle-project-sidebar") {
           item.style.display = window.__cakeProjectSidebarVisible ? "none" : "flex";
-          item.style.position = "fixed";
-          item.style.left = Math.max(84, window.__cakeProjectSidebarWidth - 34) + "px";
-          item.style.top = "0";
-          item.style.zIndex = "10";
-          item.style.height = "35px";
-          item.style.alignItems = "center";
         }
         const action = document.createElement("a");
         action.className = icon === "cake" ? "action-label" : "action-label codicon codicon-" + icon;
@@ -161,7 +159,8 @@ function vscodeShellControlsScript(
         action.setAttribute("aria-label", label);
         action.title = label;
         item.append(action);
-        if (placement === "start") actions.prepend(item);
+        if (id === "cake-toggle-project-sidebar") projectSidebarActions.prepend(item);
+        else if (placement === "start") actions.prepend(item);
         else actions.append(item);
       }
     };
@@ -487,7 +486,6 @@ export class VsCodeServerManager {
         vscodeShellControlsScript(
           workspacePath,
           (this.requestedBounds.get(webContentsId)?.x ?? 0) > 0,
-          this.requestedBounds.get(webContentsId)?.projectSidebarWidth ?? 292,
         ),
       );
     } catch (error) {
@@ -510,14 +508,9 @@ export class VsCodeServerManager {
     this.requestedBounds.set(webContentsId, bounds);
     const entry = this.views.get(webContentsId);
     if (!entry) return;
-    if (
-      projectSidebarWasVisible !== projectSidebarVisible ||
-      previousBounds?.projectSidebarWidth !== bounds.projectSidebarWidth
-    )
+    if (projectSidebarWasVisible !== projectSidebarVisible)
       void entry.view.webContents
-        .executeJavaScript(
-          projectSidebarVisibilityScript(projectSidebarVisible, bounds.projectSidebarWidth),
-        )
+        .executeJavaScript(projectSidebarVisibilityScript(projectSidebarVisible))
         .catch(() => undefined);
     this.applyRequestedBounds(webContentsId, entry.view);
     const instance = this.servers.get(entry.workspacePath);

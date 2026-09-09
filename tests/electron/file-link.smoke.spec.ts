@@ -168,16 +168,25 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
         }
         return false;
       });
-    const vsCodeTitleActionX = (label: string) =>
+    const isVsCodeTitleActionPinnedToNavigation = (label: string) =>
       application.evaluate(async ({ webContents }, actionLabel) => {
         for (const contents of webContents.getAllWebContents()) {
           if (!contents.getURL().startsWith("http://127.0.0.1:")) continue;
-          const x = await contents.executeJavaScript(`document.querySelector(
-            '[aria-label*="${actionLabel}"], [title*="${actionLabel}"]',
-          )?.getBoundingClientRect().x`);
-          if (typeof x === "number") return x;
+          const pinned = await contents.executeJavaScript(`(() => {
+            const action = document.querySelector(
+              '[aria-label*="${actionLabel}"], [title*="${actionLabel}"]',
+            )?.closest(".action-item");
+            const commandCenter = document.querySelector(".part.titlebar .command-center");
+            const navigationActions = commandCenter?.querySelector(
+              ":scope > .monaco-toolbar > .monaco-action-bar > .actions-container",
+            );
+            return action instanceof HTMLElement && navigationActions instanceof HTMLElement &&
+              navigationActions.firstElementChild === action &&
+              getComputedStyle(action).position !== "fixed";
+          })()`);
+          if (pinned) return true;
         }
-        return undefined;
+        return false;
       }, label);
     const areVsCodeTitleActionsOrdered = (leftLabel: string, rightLabel: string) =>
       application.evaluate(
@@ -300,11 +309,8 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
       .poll(() => areVsCodeTitleActionsOrdered("Toggle Sessions Sidebar", "Back to Agent"))
       .toBe(true);
     await expect
-      .poll(async () => {
-        const x = await vsCodeTitleActionX("Toggle Sessions Sidebar");
-        return x === undefined ? Number.POSITIVE_INFINITY : Math.abs(x - 274);
-      })
-      .toBeLessThan(4);
+      .poll(() => isVsCodeTitleActionPinnedToNavigation("Toggle Sessions Sidebar"))
+      .toBe(true);
 
     expect(await clickVsCodeTitleAction("Back to Agent")).toBe(true);
     await expect(vscodeWorkspace).toBeHidden();
