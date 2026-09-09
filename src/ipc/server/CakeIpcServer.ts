@@ -5,7 +5,8 @@ import { RendererConnectionMiddlewareLive } from "../protocol/RendererConnection
 import { ElectronRpcServerProtocolLive } from "../transport/ElectronRpcServerProtocol";
 import { applicationStateHandlers } from "./ApplicationStateHandlers";
 import { artifactHandlers } from "./ArtifactHandlers";
-import { cakeChatHandlers } from "./CakeChatHandlers";
+import type { CakeChatRuntimeConfiguration } from "../../domain/cakeChatRuntime";
+import { makeCakeChatHandlers } from "./CakeChatHandlers";
 import { discussionHandlers } from "./DiscussionHandlers";
 import { electronHandlers } from "./ElectronHandlers";
 import { makeFoundationHandlers } from "./FoundationHandlers";
@@ -20,11 +21,14 @@ import { terminalHandlers } from "./TerminalHandlers";
 import { vscodeHandlers } from "./VsCodeHandlers";
 import { workspaceHandlers } from "./WorkspaceHandlers";
 
-export const makeCakeIpcServerLive = (homeDirectory: string) => {
+export const makeCakeIpcServerLive = (
+  homeDirectory: string,
+  cakeChatConfiguration: CakeChatRuntimeConfiguration,
+) => {
   const handlers = CakeRpc.toLayer({
     ...applicationStateHandlers,
     ...artifactHandlers,
-    ...cakeChatHandlers,
+    ...makeCakeChatHandlers(cakeChatConfiguration),
     ...discussionHandlers,
     ...electronHandlers,
     ...makeFoundationHandlers(homeDirectory),

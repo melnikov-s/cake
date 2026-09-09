@@ -25,11 +25,8 @@ import { SessionCatalogChanges } from "../services/session-catalogs/SessionCatal
 import { SessionFamilyStorage } from "../services/storage/SessionFamilyStorage";
 
 export interface ProjectSessionLifecycleLiveOptions {
-  readonly homeDirectory: string;
   readonly projectSessionDirectory: string;
   readonly resolvedProjectSessionDirectory: string;
-  readonly cakeChatSessionDirectory: string;
-  readonly resolvedCakeChatSessionDirectory: string;
 }
 
 const lifecycleError = (operation: string, cause: unknown) =>
@@ -85,20 +82,6 @@ export const makeProjectSessionLifecycleLive = (
         streamWorkspaceSessions(workingDirectory, options.projectSessionDirectory).pipe(
           Stream.mapError((cause) => lifecycleError("catalogSessions", cause)),
         );
-      const setCakeChatResolved = Effect.fn("ProjectSessionLifecycle.setCakeChatResolved")(
-        function* (sessionId: string, resolved: boolean) {
-          const location = {
-            cwd: options.homeDirectory,
-            activeRoot: options.cakeChatSessionDirectory,
-            resolvedRoot: options.resolvedCakeChatSessionDirectory,
-            direct: true as const,
-          };
-          if (resolved) yield* run("setCakeChatResolved", archive.resolve(sessionId, location));
-          else yield* run("setCakeChatResolved", archive.restore(sessionId, location));
-          yield* catalogs.publish({ _tag: "CakeChatSessionStatusChanged", sessionId, resolved });
-        },
-      );
-
       const setOneProjectSessionResolved = Effect.fn(
         "ProjectSessionLifecycle.setOneProjectSessionResolved",
       )(function* (sessionId: string, resolved: boolean, workingDirectory: string) {
@@ -307,7 +290,6 @@ export const makeProjectSessionLifecycleLive = (
       );
 
       return ProjectSessionLifecycle.of({
-        setCakeChatResolved,
         setProjectSessionResolved,
         deleteResolvedProjectSession,
         deleteProjectSessions,

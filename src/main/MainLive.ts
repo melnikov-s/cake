@@ -3,10 +3,10 @@ import { join } from "node:path";
 import type { App } from "electron";
 import { Effect, Layer } from "effect";
 import type { CakePaths } from "../config/CakePaths";
+import * as cakeChatLocations from "../domain/cakeChatLocations";
 import * as scheduledMessages from "../domain/scheduledMessages";
 import * as sessionFamilies from "../domain/sessionFamilies";
 import { makeCakeIpcServerLive } from "../ipc/server/CakeIpcServer";
-import { makeCakeChatEnvironmentLive } from "../layers/CakeChatEnvironmentLive";
 import { makeDiscussionSessionEnvironmentLive } from "../layers/DiscussionSessionEnvironmentLive";
 import { makeProjectSessionLifecycleLive } from "../layers/ProjectSessionLifecycleLive";
 import { makeSubagentEnvironmentLive } from "../layers/SubagentEnvironmentLive";
@@ -149,11 +149,8 @@ export const makeMainLive = (options: MainLiveOptions) => {
     SubagentCoordinatorLive,
     WorktreeLandingCoordinatorLive,
     makeProjectSessionLifecycleLive({
-      homeDirectory,
       projectSessionDirectory: paths.piSessions,
       resolvedProjectSessionDirectory: paths.piResolvedSessions,
-      cakeChatSessionDirectory: paths.piGlobalChatSessions,
-      resolvedCakeChatSessionDirectory: paths.piGlobalChatResolvedSessions,
     }),
     RendererRequestCoordinatorLive,
     makeInlineWidgetsLive({ paths, publish: publishInlineWidget }),
@@ -173,18 +170,10 @@ export const makeMainLive = (options: MainLiveOptions) => {
   }).pipe(Layer.provide(SessionFoundationLive));
   const SessionRuntimeLive = Layer.merge(SessionFoundationLive, RuntimeHostLive);
 
-  const SessionEnvironmentsLive = Layer.mergeAll(
-    makeCakeChatEnvironmentLive({
-      homeDirectory,
-      agentDirectory: paths.piAgent,
-      sessionDirectory: paths.piGlobalChatSessions,
-      resolvedSessionDirectory: paths.piGlobalChatResolvedSessions,
-    }),
-    makeDiscussionSessionEnvironmentLive({
-      agentDirectory: paths.piAgent,
-      parentSessionDirectory: paths.piSessions,
-    }),
-  ).pipe(Layer.provide(SessionRuntimeLive));
+  const SessionEnvironmentsLive = makeDiscussionSessionEnvironmentLive({
+    agentDirectory: paths.piAgent,
+    parentSessionDirectory: paths.piSessions,
+  }).pipe(Layer.provide(SessionRuntimeLive));
   const SessionWorkflowsLive = Layer.mergeAll(
     SessionRuntimeLive,
     SessionEnvironmentsLive,
@@ -209,7 +198,14 @@ export const makeMainLive = (options: MainLiveOptions) => {
     ),
   ).pipe(Layer.provide(SessionWorkflowsLive));
 
-  const RpcLive = makeCakeIpcServerLive(homeDirectory).pipe(Layer.provide(SessionWorkflowsLive));
+  const RpcLive = makeCakeIpcServerLive(homeDirectory, {
+    location: cakeChatLocations.make({
+      homeDirectory,
+      sessionDirectory: paths.piGlobalChatSessions,
+      resolvedSessionDirectory: paths.piGlobalChatResolvedSessions,
+    }),
+    agentDirectory: paths.piAgent,
+  }).pipe(Layer.provide(SessionWorkflowsLive));
 
   const MainLive = Layer.mergeAll(SessionWorkflowsLive, BackgroundWorkersLive, RpcLive);
   return MainLive;

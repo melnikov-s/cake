@@ -54,7 +54,7 @@ type PendingRequest =
       readonly completion: Deferred.Deferred<JsonValue | undefined>;
     };
 
-export class RendererRequestCoordinatorError extends Schema.TaggedError<RendererRequestCoordinatorError>()(
+class RendererRequestCoordinatorError extends Schema.TaggedError<RendererRequestCoordinatorError>()(
   "RendererRequestCoordinatorError",
   { operation: Schema.String, message: Schema.String },
 ) {}

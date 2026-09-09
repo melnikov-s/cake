@@ -1,10 +1,8 @@
 import { Effect, Stream } from "effect";
 import type { SessionSummary } from "../ipc/session-contract";
-import { PiSessionError, PiSessions } from "../services/pi/PiSessions";
-import {
-  CakeChatEnvironment,
-  CakeChatEnvironmentError,
-} from "../services/cake-chats/CakeChatEnvironment";
+import { PiSessions, type PiSessionError } from "../services/pi/PiSessions";
+import type { CakeChatLocation } from "./cakeChatLocations";
+import { archiveLocation } from "./cakeChatLocations";
 import type { CakeChatCatalogUpdate } from "./catalog-data";
 import { SessionArchiveStorage } from "../services/storage/SessionArchiveStorage";
 import { toJsonValue } from "../utils/to-json-value";
@@ -24,27 +22,17 @@ type CakeChatCatalogEvent = Extract<CakeChatCatalogUpdate, { _tag: "Event" }>["e
 
 export const asError = (operation: string) =>
   Effect.mapError(
-    (error: PiSessionError | CakeChatEnvironmentError | unknown) =>
+    (error: PiSessionError | unknown) =>
       new CakeChatError({
         operation,
-        message:
-          error instanceof PiSessionError || error instanceof CakeChatEnvironmentError
-            ? error.message
-            : error instanceof Error
-              ? error.message
-              : String(error),
+        message: error instanceof Error ? error.message : String(error),
       }),
   );
 
 const errorValue = (operation: string, error: unknown) =>
   new CakeChatError({
     operation,
-    message:
-      error instanceof PiSessionError || error instanceof CakeChatEnvironmentError
-        ? error.message
-        : error instanceof Error
-          ? error.message
-          : String(error),
+    message: error instanceof Error ? error.message : String(error),
   });
 
 const summary = (item: SessionSummary, resolved: boolean): CakeChatSummary => {
@@ -63,18 +51,10 @@ const summary = (item: SessionSummary, resolved: boolean): CakeChatSummary => {
 
 export const sessionNamespace = Effect.fn("CakeChats.sessionNamespace")(function* (
   sessionId: string,
+  location: CakeChatLocation,
 ) {
-  const environment = yield* CakeChatEnvironment;
   const archive = yield* SessionArchiveStorage;
-  const location = yield* environment.location().pipe(asError("locate"));
-  return yield* archive
-    .locate(sessionId, {
-      cwd: location.workingDirectory,
-      activeRoot: location.sessionDirectory,
-      resolvedRoot: location.resolvedSessionDirectory,
-      direct: true,
-    })
-    .pipe(asError("locate"));
+  return yield* archive.locate(sessionId, archiveLocation(location)).pipe(asError("locate"));
 });
 
 export const publishCatalogChange = Effect.fn("CakeChats.publishCatalogChange")(function* (
@@ -87,11 +67,10 @@ export const publishCatalogChange = Effect.fn("CakeChats.publishCatalogChange")(
 
 const catalogForState = Effect.fn("CakeChats.catalogForState")(function* (
   query: CakeChatCatalogQuery,
+  location: CakeChatLocation,
 ) {
-  const environment = yield* CakeChatEnvironment;
   const sessions = yield* PiSessions;
   const archive = yield* SessionArchiveStorage;
-  const location = yield* environment.location().pipe(asError("list"));
   const source: Stream.Stream<SessionSummary, unknown> = query.resolved
     ? archive.resolved({
         cwd: location.workingDirectory,
@@ -113,6 +92,7 @@ const catalogForState = Effect.fn("CakeChats.catalogForState")(function* (
 const catalogEventForChange = Effect.fn("CakeChats.catalogEventForChange")(function* (
   query: CakeChatCatalogQuery,
   change: SessionCatalogChange,
+  location: CakeChatLocation,
 ) {
   if (change._tag === "CakeChatSessionRemoved")
     return { _tag: "Removed", sessionId: change.sessionId } as const;
@@ -124,10 +104,8 @@ const catalogEventForChange = Effect.fn("CakeChats.catalogEventForChange")(funct
     };
   if (change._tag !== "CakeChatSessionChanged") return undefined;
   if (change.resolved !== query.resolved) return undefined;
-  const environment = yield* CakeChatEnvironment;
   const sessions = yield* PiSessions;
   const archive = yield* SessionArchiveStorage;
-  const location = yield* environment.location().pipe(asError("catalog"));
   const item = change.resolved
     ? yield* archive.resolvedEntry(change.sessionId, {
         cwd: location.workingDirectory,
@@ -151,10 +129,11 @@ const catalogEventForChange = Effect.fn("CakeChats.catalogEventForChange")(funct
 /** Scoped Cake Chat metadata observation: one lazy scan, then targeted mutations. */
 export const observeCatalog = Effect.fn("CakeChats.observeCatalog")(function* (
   query: CakeChatCatalogQuery,
+  location: CakeChatLocation,
 ) {
   const catalogs = yield* SessionCatalogChanges;
   const initial = Stream.fromEffect(
-    Stream.unwrap(catalogForState(query)).pipe(
+    Stream.unwrap(catalogForState(query, location)).pipe(
       Stream.runCollect,
       Effect.map((sessions) => {
         const all = Array.from(sessions);
@@ -180,7 +159,7 @@ export const observeCatalog = Effect.fn("CakeChats.observeCatalog")(function* (
             | CakeChatCatalogEvent
             | undefined
           >(item)
-        : catalogEventForChange(query, item),
+        : catalogEventForChange(query, item, location),
     ),
     Stream.filter(
       (
@@ -218,11 +197,12 @@ export const observeCatalog = Effect.fn("CakeChats.observeCatalog")(function* (
   );
 });
 
-export const inspect = Effect.fn("CakeChats.inspect")(function* (sessionId: string) {
-  const environment = yield* CakeChatEnvironment;
+export const inspect = Effect.fn("CakeChats.inspect")(function* (
+  sessionId: string,
+  location: CakeChatLocation,
+) {
   const sessions = yield* PiSessions;
-  const namespace = yield* sessionNamespace(sessionId);
-  const location = yield* environment.location().pipe(asError("inspect"));
+  const namespace = yield* sessionNamespace(sessionId, location);
   const preview = yield* sessions
     .inspect({
       workingDirectory: location.workingDirectory,

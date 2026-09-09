@@ -214,9 +214,8 @@ owns runtime disposal. Composition adapters execute only the Promise callbacks
 that Pi requires, using the narrow dependency Context captured when the adapter
 is built and forwarding Pi's `AbortSignal`. The existing imperative Managed
 Worktree engine has one explicitly listed adapter while that engine remains a
-Promise contract. Domain functions, RPC handlers, Cake-owned environment
-services, Electron lifecycle processing, and VS Code state propagation compose
-Effects instead of executing them. Runtime construction is restricted to
+Promise contract. Domain functions, RPC handlers, Electron lifecycle processing,
+and VS Code state propagation compose Effects instead of executing them. Runtime construction is restricted to
 `main.ts` and `runtime.ts`. Tests may execute Effects in test
 infrastructure; the ReviewStorage test constructor therefore lives under
 `tests/`, not production source. `Stream.runForEach` and other Stream consumers

@@ -7,10 +7,6 @@ export class ProjectSessionLifecycleError extends Schema.TaggedError<ProjectSess
 ) {}
 
 export interface ProjectSessionLifecycleService {
-  readonly setCakeChatResolved: (
-    sessionId: string,
-    resolved: boolean,
-  ) => Effect.Effect<void, ProjectSessionLifecycleError>;
   readonly setProjectSessionResolved: (
     sessionId: string,
     resolved: boolean,
