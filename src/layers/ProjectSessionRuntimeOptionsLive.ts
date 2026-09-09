@@ -55,7 +55,7 @@ export const makeProjectSessionRuntimeOptionsLive = (
       const modelPresets = () => {
         const state = application.snapshot();
         return {
-          presets: state.modelPresets.map(({ id, name, modelId }) => ({ id, name, modelId })),
+          presets: state.modelPresets.map((preset) => ({ ...preset })),
           defaultPresetId: state.defaultModelPresetId,
         };
       };

@@ -1,6 +1,7 @@
 import { resolve } from "node:path";
 import type { SourceLocation } from "../../ipc/source-location";
-import type { ModelPreset, UtilityModel } from "../../ipc/session-contract";
+import type { UtilityModel } from "../../ipc/session-contract";
+import type { CakeModelPresetCatalog } from "../../domain/cake-model-selection";
 import type { WorktreeLandingCoordinator } from "../../ipc/worktree-contract";
 import type { JsonValue } from "../../ipc/json-contract";
 import type {
@@ -110,10 +111,7 @@ export interface ProjectSessionIntegrationHostOptions {
   readonly isTrusted?: () => boolean;
   readonly utilityModel?: () => UtilityModel | undefined;
   readonly generateSessionTitle?: NonNullable<CakeRuntimeOptions["generateSessionTitle"]>;
-  readonly modelPresets?: () => {
-    readonly presets: readonly Pick<ModelPreset, "id" | "name" | "modelId">[];
-    readonly defaultPresetId?: string;
-  };
+  readonly modelPresets?: () => CakeModelPresetCatalog;
   readonly worktreeLanding?: WorktreeLandingCoordinator;
   readonly fastMode?: (sessionId: string) => boolean;
   readonly setFastMode?: (sessionId: string, enabled: boolean) => Promise<void>;

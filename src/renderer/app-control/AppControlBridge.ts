@@ -18,6 +18,7 @@ import type {
 } from "../../domain/cross-session-coordination";
 import type { QueuedProjectSessionMessages } from "../../domain/project-session-data";
 import { isActiveSessionActivity, type SessionActivity } from "../lib/session-activity";
+import { CakeModelSelection } from "../../domain/cake-model-selection";
 
 const bounded = (minimum: number, maximum: number) =>
   Schema.String.check(Schema.isMinLength(minimum), Schema.isMaxLength(maximum));
@@ -494,6 +495,15 @@ const sessionResolutionSchema = Schema.Struct({
   resolved: Schema.Boolean,
 });
 
+const createSessionOperationSchema = Schema.Struct({
+  ...appControlArgumentSchemas.create_session.fields,
+  model: Schema.optionalKey(CakeModelSelection),
+});
+const createDraftSessionOperationSchema = Schema.Struct({
+  ...appControlArgumentSchemas.create_draft_session.fields,
+  model: Schema.optionalKey(CakeModelSelection),
+});
+
 const modelControlOperations = [
   operation(
     "app.state",
@@ -525,18 +535,50 @@ const modelControlOperations = [
     "Open one explicitly targeted project session, optionally at a specific transcript message.",
     appControlArgumentSchemas.open_session,
   ),
-  operation(
-    "sessions.create",
-    "sessions",
-    "Create, configure, name, and start a project session in the background, optionally with an exact model or in a new managed worktree.",
-    appControlArgumentSchemas.create_session,
-  ),
-  operation(
-    "sessions.create-draft",
-    "sessions",
-    "Create, configure, name, and save an initial prompt as a background Cake-owned draft without starting a Pi session.",
-    appControlArgumentSchemas.create_draft_session,
-  ),
+  {
+    ...operation(
+      "sessions.create",
+      "sessions",
+      "Create, configure, name, and start a project session in the background, optionally from a model preset or in a new managed worktree.",
+      createSessionOperationSchema,
+    ),
+    guidance: [
+      "When model is omitted, the new session inherits the calling Cake Chat's current model, thinking level, and Fast mode setting.",
+    ],
+    examples: [
+      {
+        input: {
+          workspacePath: "/path/to/project",
+          name: "Authentication follow-up",
+          initialPrompt: "Review the authentication flow and implement the next changes.",
+          model: "Sol",
+        },
+        description: "Select a configured preset by name.",
+      },
+    ],
+  },
+  {
+    ...operation(
+      "sessions.create-draft",
+      "sessions",
+      "Create, configure, name, and save an initial prompt as a background Cake-owned draft without starting a Pi session.",
+      createDraftSessionOperationSchema,
+    ),
+    guidance: [
+      "When model is omitted, the draft snapshots the calling Cake Chat's current model, thinking level, and Fast mode setting.",
+    ],
+    examples: [
+      {
+        input: {
+          workspacePath: "/path/to/project",
+          name: "Authentication follow-up",
+          initialPrompt: "Review the authentication flow and propose the next changes.",
+          model: "Sol",
+        },
+        description: "Select a configured preset by name.",
+      },
+    ],
+  },
   operation(
     "sessions.send",
     "sessions",

@@ -1,30 +1,33 @@
 import { Schema } from "effect";
-import type { ModelPreset } from "../../../ipc/session-contract";
+import type { CakeModelPresetCatalog } from "../../../domain/cake-model-selection";
 import type { CakeOperationDefinition } from "./cake-operation-registry";
 
-/** Exposes only the preset lookup fields an agent needs to name a model. */
+/** Exposes Cake-owned model presets without provider credentials. */
 export function createCakeModelOperations(
-  readPresets: () => {
-    readonly presets: readonly Pick<ModelPreset, "id" | "name" | "modelId">[];
-    readonly defaultPresetId?: string;
-  },
+  readPresets: () => CakeModelPresetCatalog,
 ): CakeOperationDefinition[] {
   return [
     {
       command: "models.list",
       topic: "models",
-      summary: "List configured model preset names and model IDs.",
+      summary: "List configured model presets and their complete execution settings.",
       inputSchema: Schema.Struct({}),
       examples: [{}],
-      result: "Configured presets containing only name and modelId.",
+      result:
+        "Configured preset names, providers, model IDs, thinking levels, Fast mode settings, and current default without credentials.",
       execute: async () => {
         const state = readPresets();
         return {
-          presets: state.presets.map(({ id, name, modelId }) => ({
-            name,
-            modelId,
-            default: id === state.defaultPresetId,
-          })),
+          presets: state.presets.map(
+            ({ id, name, provider, modelId, thinkingLevel, fastMode }) => ({
+              name,
+              provider,
+              modelId,
+              thinkingLevel,
+              fastMode,
+              default: id === state.defaultPresetId,
+            }),
+          ),
         };
       },
     },

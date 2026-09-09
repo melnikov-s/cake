@@ -172,6 +172,15 @@ A named Cake-owned configuration that resolves to a Model Selection. Cake
 preserves an unresolved preset and reports its state rather than silently
 substituting another model.
 
+Public Cake operations accept a model as either a configured preset name or an
+explicit provider, model ID, thinking level, and optional Fast mode setting. A
+string always names a preset; it is never interpreted as a raw model ID. Cake
+resolves a preset from authoritative application configuration when the
+operation executes and passes the resulting concrete selection to Pi. The
+result is a snapshot, not a live binding to later preset edits. When a creation
+operation documents model inheritance, omitting the model snapshots the calling
+session's current model, thinking level, and Fast mode setting instead.
+
 ### Utility Model Preference
 
 Cake's selected Model Preset for bounded, non-session work such as titles and

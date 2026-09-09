@@ -61,7 +61,17 @@ describe("AppControlBridge", () => {
     expect(target.tools.some((tool) => tool.command === "app.split")).toBe(true);
     expect(target.tools.some((tool) => tool.command === "sessions.create-draft")).toBe(true);
     expect(target.tools.some((tool) => tool.command === "notifications.send")).toBe(true);
-    expect(target.tools.every((tool) => !("guidance" in tool))).toBe(true);
+    const create = target.tools.find((tool) => tool.command === "sessions.create");
+    expect(create && "guidance" in create ? create.guidance : undefined).toContainEqual(
+      expect.stringContaining("inherits"),
+    );
+    expect(create?.examples?.[0]?.input).toMatchObject({ model: "Sol" });
+    const parameters = JSON.stringify(create?.parameters);
+    expect(parameters).toContain('"type":"string"');
+    expect(parameters).toContain('"provider"');
+    expect(parameters).toContain('"modelId"');
+    expect(parameters).toContain('"thinkingLevel"');
+    expect(parameters).toContain('"fastMode"');
   });
 
   it("describes the live pane layout relative to the calling project session", async () => {

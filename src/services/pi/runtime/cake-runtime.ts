@@ -24,7 +24,6 @@ import type {
   SessionSnapshot,
   SessionUsage,
   ThinkingLevel,
-  ModelPreset,
   ToolOutputContent,
   UiPart,
   UtilityModel,
@@ -35,6 +34,16 @@ import {
   piBuiltinSlashCommands,
   slashCommandSchema,
 } from "../../../ipc/session-contract";
+import {
+  CakeModelSelection,
+  resolveCakeModelSelection,
+  type CakeModelPresetCatalog,
+  type ExplicitCakeModelSelection,
+} from "../../../domain/cake-model-selection";
+import type {
+  ParallelSubagentInput as DomainParallelSubagentInput,
+  SubagentTaskInput as DomainSubagentTaskInput,
+} from "../../../domain/subagent-data";
 import {
   jsonObjectSchema,
   jsonValueSchema,
@@ -102,7 +111,6 @@ import { renderPromptTemplate } from "./prompt-template";
 import {
   parallelSubagentSchema,
   subagentTaskSchema,
-  type ParallelSubagentTasksInput,
   type SubagentTaskInput,
 } from "./subagent-contract";
 import {
@@ -150,22 +158,7 @@ const cakeProjectSystemPrompt = renderPromptTemplate(projectPromptTemplate, {
 export const projectSessionCreateInputSchema = Schema.Struct({
   name: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(500))),
   initialPrompt: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(100_000))),
-  model: Schema.optionalKey(
-    Schema.Struct({
-      provider: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(256))),
-      modelId: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(512))),
-      thinkingLevel: Schema.Literals([
-        "off",
-        "minimal",
-        "low",
-        "medium",
-        "high",
-        "xhigh",
-        "max",
-      ]).pipe(Schema.withDecodingDefaultKey(Effect.succeed("off" as const))),
-      fastMode: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
-    }),
-  ),
+  model: Schema.optionalKey(CakeModelSelection),
   worktreeName: Schema.optionalKey(
     Schema.String.check(Schema.isPattern(/^[a-z0-9][a-z0-9-]{0,62}$/)),
   ),
@@ -217,10 +210,7 @@ export interface CakeRuntimeOptions {
   openExternal?(url: string): Promise<void>;
   reviewContextPath?(sessionId: string): string;
   utilityModel?(): UtilityModel | undefined;
-  modelPresets?(): {
-    readonly presets: readonly Pick<ModelPreset, "id" | "name" | "modelId">[];
-    readonly defaultPresetId?: string;
-  };
+  modelPresets?(): CakeModelPresetCatalog;
   fastMode?: {
     get(): boolean;
     set(enabled: boolean): Promise<void>;
@@ -273,20 +263,20 @@ export interface CakeRuntimeOptions {
   };
   agentControl?: {
     run(
-      input: SubagentTaskInput,
+      input: DomainSubagentTaskInput,
       parentSessionId: string,
       signal: AbortSignal,
       onUpdate?: (value: JsonValue) => void,
       anchorPartId?: string,
     ): Promise<JsonValue>;
     start(
-      input: SubagentTaskInput,
+      input: DomainSubagentTaskInput,
       parentSessionId: string,
       signal: AbortSignal,
       anchorPartId?: string,
     ): Promise<JsonValue>;
     parallel(
-      input: ParallelSubagentTasksInput,
+      input: DomainParallelSubagentInput,
       parentSessionId: string,
       signal: AbortSignal,
       onUpdate?: (value: JsonValue) => void,
@@ -350,8 +340,9 @@ function createFastModeExtension(isEnabled: () => boolean): InlineExtension {
   };
 }
 
-function createGlobalControlOperations(
+export function createGlobalControlOperations(
   control: NonNullable<CakeRuntimeOptions["globalControl"]>,
+  resolveModel: (selection: CakeModelSelection | undefined) => ExplicitCakeModelSelection,
 ): CakeOperationDefinition[] {
   return control.tools.map((tool) => ({
     command: tool.command,
@@ -364,8 +355,19 @@ function createGlobalControlOperations(
     result: tool.result ?? "A bounded result from Cake's authoritative application control.",
     limitations: tool.limitations,
     async execute(input, context) {
+      const decodedInput = Schema.decodeUnknownSync(jsonObjectSchema)(input);
+      const argumentsValue = ["sessions.create", "sessions.create-draft"].includes(tool.command)
+        ? {
+            ...decodedInput,
+            model: resolveModel(
+              decodedInput.model === undefined
+                ? undefined
+                : Schema.decodeUnknownSync(CakeModelSelection)(decodedInput.model),
+            ),
+          }
+        : decodedInput;
       const result = await control.invoke(
-        { name: tool.command, arguments: Schema.decodeUnknownSync(jsonValueSchema)(input) },
+        { name: tool.command, arguments: argumentsValue },
         context.signal,
       );
       const object = Schema.decodeUnknownOption(jsonObjectSchema)(result);
@@ -378,9 +380,10 @@ function createGlobalControlOperations(
   }));
 }
 
-function createAgentControlOperations(
+export function createAgentControlOperations(
   control: NonNullable<CakeRuntimeOptions["agentControl"]>,
   parentSessionId: () => string | undefined,
+  resolveModel: (selection: CakeModelSelection | undefined) => ExplicitCakeModelSelection,
 ): CakeOperationDefinition[] {
   const promptSchema = Schema.Struct({
     handleId: Schema.String.check(Schema.isUUID()),
@@ -393,7 +396,21 @@ function createAgentControlOperations(
     "Use subagents.run for ordinary single-task delegation so the result returns in the same tool call. Use subagents.start only for explicitly background work; Cake automatically delivers its completion, so do not poll it.",
     "subagents.wait is an optional synchronization barrier for background work, not a required completion mechanism.",
     "Handles are parent-owned. Delegation depth defaults to zero and is capped at one; parallel batches contain at most eight tasks.",
+    "When model is omitted, a subagent inherits the calling session's current model, thinking level, and Fast mode setting.",
   ];
+  const resolveTask = (input: SubagentTaskInput): DomainSubagentTaskInput => {
+    const model = resolveModel(input.model);
+    return {
+      ...input,
+      model: {
+        prefer: "exact",
+        provider: model.provider,
+        modelId: model.modelId,
+        thinkingLevel: model.thinkingLevel,
+      },
+      fastMode: model.fastMode,
+    };
+  };
   const operation = <Input>(definition: {
     command: string;
     summary: string;
@@ -440,13 +457,12 @@ function createAgentControlOperations(
       example: {
         task: "Inspect the authentication flow",
         profile: "scout",
-        model: { prefer: "current" },
-        fastMode: false,
+        model: "Sol",
         maxDepth: 0,
         retain: false,
       },
       run: (input, parent, signal, onUpdate, anchor) =>
-        control.run(input, parent, signal, onUpdate, anchor),
+        control.run(resolveTask(input), parent, signal, onUpdate, anchor),
     }),
     operation({
       command: "subagents.start",
@@ -456,13 +472,12 @@ function createAgentControlOperations(
       example: {
         task: "Monitor the test run",
         profile: "worker",
-        model: { prefer: "current" },
-        fastMode: false,
+        model: "Sol",
         maxDepth: 0,
         retain: false,
       },
       run: (input, parent, signal, _onUpdate, anchor) =>
-        control.start(input, parent, signal, anchor),
+        control.start(resolveTask(input), parent, signal, anchor),
     }),
     operation({
       command: "subagents.parallel",
@@ -473,15 +488,14 @@ function createAgentControlOperations(
           {
             task: "Inspect tests",
             profile: "scout",
-            model: { prefer: "current" },
-            fastMode: false,
+            model: "Sol",
             maxDepth: 0,
             retain: false,
           },
         ],
       },
       run: (input, parent, signal, onUpdate, anchor) =>
-        control.parallel(input, parent, signal, onUpdate, anchor),
+        control.parallel({ tasks: input.tasks.map(resolveTask) }, parent, signal, onUpdate, anchor),
     }),
     operation({
       command: "subagents.prompt",
@@ -655,32 +669,24 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     contextStatus(): JsonValue;
     compact(instructions?: string): Promise<JsonValue>;
     rename(title: string): Promise<JsonValue>;
-    createSession(
-      input: {
-        name: string;
-        initialPrompt: string;
-        model?: ChatConfiguration;
-        worktreeName?: string;
-      },
-      signal: AbortSignal,
-    ): Promise<JsonValue>;
+    createSession(input: ProjectSessionCreateInput, signal: AbortSignal): Promise<JsonValue>;
     createDraftSession(
-      input: { name: string; initialPrompt: string; model?: ChatConfiguration },
+      input: { name: string; initialPrompt: string; model?: CakeModelSelection },
       signal: AbortSignal,
     ): Promise<JsonValue>;
     createChildSession(
       input: {
         title: string;
         initialPrompt: string;
-        model?: { provider: string; modelId: string };
-        thinkingLevel?: ThinkingLevel;
+        model?: CakeModelSelection;
         placement: "none" | "right" | "down";
       },
       requestId: string,
       signal: AbortSignal,
     ): Promise<JsonValue>;
     invokeAppControl(command: string, input: JsonObject, signal: AbortSignal): Promise<JsonValue>;
-    setModel(provider: string, modelId: string, reasoning?: ThinkingLevel): Promise<JsonValue>;
+    resolveModelSelection(selection: CakeModelSelection | undefined): ExplicitCakeModelSelection;
+    setModel(model: CakeModelSelection): Promise<JsonValue>;
     setResolved(resolved: boolean): Promise<JsonValue>;
   }
   interface RuntimeOperationApiReference {
@@ -792,8 +798,9 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
             input: {
               name: "Authentication follow-up",
               initialPrompt: "Review the authentication flow and implement the next changes.",
+              model: "Sol",
             },
-            description: "Start an independent session in the Project root.",
+            description: "Select a configured preset and start in the Project root.",
           },
           {
             input: {
@@ -827,25 +834,14 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
           "This operation returns after the initial child turn is accepted; do not wait or poll for the child, and finish the parent turn normally.",
           "Pane placement defaults to none. Set placement to right or down only when the child should be opened beside the parent.",
           "A child cannot create another child; it must ask its parent for further delegation.",
+          "When model is omitted, the child inherits the calling session's current model, thinking level, and Fast mode setting.",
         ],
         inputSchema: Schema.Struct({
           title: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(500))),
           initialPrompt: Schema.Trim.pipe(
             Schema.check(Schema.isMinLength(1), Schema.isMaxLength(100_000)),
           ),
-          model: Schema.optionalKey(
-            Schema.Struct({
-              provider: Schema.Trim.pipe(
-                Schema.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
-              ),
-              modelId: Schema.Trim.pipe(
-                Schema.check(Schema.isMinLength(1), Schema.isMaxLength(512)),
-              ),
-            }),
-          ),
-          thinkingLevel: Schema.optionalKey(
-            Schema.Literals(["off", "minimal", "low", "medium", "high", "xhigh", "max"]),
-          ),
+          model: Schema.optionalKey(CakeModelSelection),
           placement: Schema.Literals(["none", "right", "down"]).pipe(
             Schema.withDecodingDefaultKey(Effect.succeed("none" as const)),
           ),
@@ -855,8 +851,10 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
             input: {
               title: "Storage implementation",
               initialPrompt: "Implement the storage slice and message me when it is ready.",
+              model: "Sol",
               placement: "right",
             },
+            description: "Select a configured preset by name.",
           },
         ],
         result: "The stable child session identity and initial-turn launch outcome.",
@@ -870,8 +868,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
             input as {
               title: string;
               initialPrompt: string;
-              model?: { provider: string; modelId: string };
-              thinkingLevel?: ThinkingLevel;
+              model?: CakeModelSelection;
               placement: "none" | "right" | "down";
             },
             context.toolCallId,
@@ -885,46 +882,30 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
           "Create a saved draft in the calling Project Session's project without starting a Pi session.",
         guidance: [
           "This operation derives the project from the calling session and never accepts a workspacePath or sessionId.",
+          "When model is omitted, the draft snapshots the calling session's current model, thinking level, and Fast mode setting.",
         ],
         inputSchema: Schema.Struct({
           name: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(500))),
           initialPrompt: Schema.Trim.pipe(
             Schema.check(Schema.isMinLength(1), Schema.isMaxLength(100_000)),
           ),
-          model: Schema.optionalKey(
-            Schema.Struct({
-              provider: Schema.Trim.pipe(
-                Schema.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
-              ),
-              modelId: Schema.Trim.pipe(
-                Schema.check(Schema.isMinLength(1), Schema.isMaxLength(512)),
-              ),
-              thinkingLevel: Schema.Literals([
-                "off",
-                "minimal",
-                "low",
-                "medium",
-                "high",
-                "xhigh",
-                "max",
-              ]).pipe(Schema.withDecodingDefaultKey(Effect.succeed("off" as const))),
-              fastMode: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
-            }),
-          ),
+          model: Schema.optionalKey(CakeModelSelection),
         }),
         examples: [
           {
             input: {
               name: "Authentication follow-up",
               initialPrompt: "Review the authentication flow and propose the next changes.",
+              model: "Sol",
             },
+            description: "Select a configured preset by name.",
           },
         ],
         result: "The saved draft session ID and confirmation that renderer persistence completed.",
         execute: (input, context) => {
           // SAFETY: CakeOperationRegistry parsed input with this operation's schema.
           return api().createDraftSession(
-            input as { name: string; initialPrompt: string; model?: ChatConfiguration },
+            input as { name: string; initialPrompt: string; model?: CakeModelSelection },
             context.signal,
           );
         },
@@ -1100,23 +1081,22 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       {
         command: "session.set-model",
         topic: "sessions",
-        summary: "Set the calling session's exact provider, model, and optional reasoning level.",
+        summary:
+          "Set the calling session's model from a configured preset or explicit configuration.",
         guidance: [
           "Singular session.* operations always target the calling session and never accept a sessionId.",
         ],
-        inputSchema: Schema.Struct({
-          provider: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
-          id: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(512)),
-          reasoning: Schema.optionalKey(
-            Schema.Literals(["off", "minimal", "low", "medium", "high", "xhigh", "max"]),
-          ),
-        }),
-        examples: [{ input: { provider: "openai", id: "gpt-5", reasoning: "high" } }],
-        result: "The committed model and reasoning selection.",
+        inputSchema: Schema.Struct({ model: CakeModelSelection }),
+        examples: [
+          {
+            input: { model: "Sol" },
+            description: "Select a configured preset by name.",
+          },
+        ],
+        result: "The committed provider, model ID, thinking level, and Fast mode setting.",
         execute: (input) => {
           // SAFETY: CakeOperationRegistry parsed input with this operation's schema.
-          const value = input as { provider: string; id: string; reasoning?: ThinkingLevel };
-          return api().setModel(value.provider, value.id, value.reasoning);
+          return api().setModel((input as { model: CakeModelSelection }).model);
         },
       },
       {
@@ -1209,6 +1189,10 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
           ["session.info", "session.usage", "context.status"].includes(definition.command),
         )
       : definitions;
+  const resolveApiModel = (selection: CakeModelSelection | undefined) => {
+    if (!operationApi.current) throw new Error("The Cake session is not ready");
+    return operationApi.current.resolveModelSelection(selection);
+  };
   const globalControl = options.globalControl;
   const detectedWorktree = globalControl ? undefined : await detectGitWorktree(options.cwd);
   const detectedWorktreePrompt = detectedWorktree
@@ -1226,7 +1210,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
               createCakeGatewayExtension((pi) =>
                 filterRuntimeOperations([
                   ...localOperations(),
-                  ...createGlobalControlOperations(globalControl),
+                  ...createGlobalControlOperations(globalControl, resolveApiModel),
                   ...(options.modelPresets ? createCakeModelOperations(options.modelPresets) : []),
                   ...createCakeArtifactOperations(pi, {
                     persistArtifact,
@@ -1243,6 +1227,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
                     ? createAgentControlOperations(
                         options.agentControl,
                         () => runtimeIdentity.sessionId,
+                        resolveApiModel,
                       )
                     : []),
                 ]),
@@ -1289,6 +1274,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
                     ? createAgentControlOperations(
                         options.agentControl,
                         () => runtimeIdentity.sessionId,
+                        resolveApiModel,
                       )
                     : []),
                 ]),
@@ -2250,7 +2236,24 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     emitSnapshotInBackground();
   }
 
+  const currentModelSelection = (): ExplicitCakeModelSelection | undefined =>
+    session.model
+      ? {
+          provider: session.model.provider,
+          modelId: session.model.id,
+          thinkingLevel: session.thinkingLevel,
+          fastMode: fastModeEnabled(),
+        }
+      : undefined;
+  const resolveOperationModel = (selection: CakeModelSelection | undefined) =>
+    resolveCakeModelSelection(
+      selection,
+      options.modelPresets?.() ?? { presets: [] },
+      currentModelSelection(),
+    );
+
   operationApi.current = {
+    resolveModelSelection: resolveOperationModel,
     info() {
       const info: JsonObject = {
         sessionId: cakeSessionId,
@@ -2314,25 +2317,18 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     async createSession(input, signal) {
       if (!options.currentSessionControl?.createSession)
         throw new Error("This Cake runtime cannot create project sessions");
-      const model = session.model;
-      if (!model) throw new Error("The calling session does not have a model to inherit");
       return options.currentSessionControl.createSession(
-        {
-          ...input,
-          model: input.model ?? {
-            provider: model.provider,
-            modelId: model.id,
-            thinkingLevel: session.thinkingLevel,
-            fastMode: fastModeEnabled(),
-          },
-        },
+        { ...input, model: resolveOperationModel(input.model) },
         signal,
       );
     },
     async createDraftSession(input, signal) {
       if (!options.currentSessionControl?.createDraftSession)
         throw new Error("This Cake runtime cannot create project draft sessions");
-      return options.currentSessionControl.createDraftSession(input, signal);
+      return options.currentSessionControl.createDraftSession(
+        { ...input, model: resolveOperationModel(input.model) },
+        signal,
+      );
     },
     async createChildSession(input, requestId, signal) {
       if (!options.currentSessionControl?.createChildSession)
@@ -2345,12 +2341,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
           title: input.title,
           initialPrompt: input.initialPrompt,
           placement: input.placement,
-          model: {
-            provider: input.model?.provider ?? current.provider,
-            modelId: input.model?.modelId ?? current.id,
-            thinkingLevel: input.thinkingLevel ?? session.thinkingLevel,
-            fastMode: fastModeEnabled(),
-          },
+          model: resolveOperationModel(input.model),
         },
         signal,
       );
@@ -2403,19 +2394,28 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       await reportAgentAction(resolved ? "resolve" : "restore");
       return { sessionId: cakeSessionId, resolved, resolveOnSettle: false };
     },
-    async setModel(provider, modelId, reasoning) {
-      const model = modelRuntime.getModel(provider, modelId);
-      if (!model) throw new Error(`Unknown model ${provider}/${modelId}`);
+    async setModel(selection) {
+      const configuration = resolveOperationModel(selection);
+      const model = modelRuntime.getModel(configuration.provider, configuration.modelId);
+      if (!model)
+        throw new Error(`Unknown model ${configuration.provider}/${configuration.modelId}`);
+      const supportedThinkingLevels = getSupportedThinkingLevels(model);
+      if (!supportedThinkingLevels.includes(configuration.thinkingLevel))
+        throw new Error(
+          `Thinking level ${configuration.thinkingLevel} is unavailable for ${configuration.provider}/${configuration.modelId}`,
+        );
+      if (configuration.fastMode && !supportsFastMode(model))
+        throw new Error(
+          `Fast mode is unavailable for ${configuration.provider}/${configuration.modelId}`,
+        );
       await session.setModel(model);
       currentModel = session.model;
-      if (reasoning) session.setThinkingLevel(reasoning);
+      session.setThinkingLevel(configuration.thinkingLevel);
+      if (options.fastMode) await options.fastMode.set(configuration.fastMode);
+      fastMode = configuration.fastMode;
       await emitSnapshot();
-      await reportAgentAction("set-model", `${provider}/${modelId}`);
-      return {
-        provider,
-        id: modelId,
-        reasoning: session.thinkingLevel,
-      };
+      await reportAgentAction("set-model", `${configuration.provider}/${configuration.modelId}`);
+      return configuration;
     },
   };
 

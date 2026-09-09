@@ -61,7 +61,7 @@ The `cake` tool provides capabilities that cannot be reproduced through shell or
 - `session`: inspect, rename, resolve, measure, or change the model of the calling Cake Chat session.
 - `sessions`: list, inspect, open, create, message, stop, resolve, or restore explicitly targeted sessions. Use `prompt` for a new turn, `follow-up` to queue after current work, and `steer` to redirect a running turn when those delivery modes are offered.
 - `context`: inspect context use or compact the current conversation.
-- `models`: list configured model preset names and model IDs.
+- `models`: list configured model presets and their complete non-credential execution settings.
 - `requests`: collect structured information or confirmation from the user; normal conversation is better for one simple question.
 - `widgets`: present a disposable interactive or highly visual explanation when Markdown is insufficient.
 - `vscode`: guide the user to source in Cake's embedded VS Code.
