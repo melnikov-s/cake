@@ -1,7 +1,8 @@
-import { createStore, mount } from "r-state-tree";
+import { createStore, effect, mount } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
 import { ProjectPendingSessionsStore } from "../../../../src/renderer/stores/ProjectPendingSessionsStore";
 import type { ProjectSessionStore } from "../../../../src/renderer/stores/ProjectSessionStore";
+import { PendingConversationStore } from "../../../../src/renderer/stores/PendingConversationStore";
 
 interface PendingSessionStub {
   sessionId: string;
@@ -55,8 +56,11 @@ describe("ProjectPendingSessionsStore", () => {
   it("owns staged, saved-draft, relocated, and materialized transitions", async () => {
     const { sessions, store, persistNow } = fixture();
     const session = store.prepareStaged("/project", "draft-1");
-    store.setName("draft-1", " Planned work ");
-    store.setConfiguration("draft-1", {
+    const pendingConversation = store.conversation("draft-1")!;
+    expect(pendingConversation).toBeInstanceOf(PendingConversationStore);
+    expect(store.conversation("draft-1")).toBe(pendingConversation);
+    pendingConversation.setName(" Planned work ");
+    pendingConversation.setConfiguration({
       provider: "openai",
       modelId: "gpt-5",
       thinkingLevel: "high",
@@ -67,12 +71,20 @@ describe("ProjectPendingSessionsStore", () => {
 
     expect(store.isStaged("draft-1")).toBe(false);
     expect(store.isDraft("draft-1")).toBe(true);
-    expect(store.name("draft-1")).toBe("Planned work");
+    expect(pendingConversation.name).toBe("Planned work");
     expect(session.workspacePath).toBe("/worktree");
     expect(sessions.get("draft-1")?.stagedCommandStore.load).toHaveBeenCalledWith("/worktree");
     expect(persistNow).toHaveBeenCalledOnce();
 
-    const prompt = store.activateDraft("draft-1");
+    let projectedResolved = false;
+    const stopProjection = effect(() => {
+      projectedResolved = store.summaries[0]?.resolved ?? false;
+    });
+    pendingConversation.setDraftResolved(true);
+    expect(projectedResolved).toBe(true);
+    stopProjection();
+
+    const prompt = pendingConversation.activateDraft();
     expect(prompt?.text).toBe("Do this later");
     expect(store.isTemporary("draft-1")).toBe(true);
     expect(store.materialize("draft-1", "/worktree")).toBe(session);

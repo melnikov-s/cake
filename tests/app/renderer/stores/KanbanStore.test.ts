@@ -58,8 +58,10 @@ function fixture(options?: {
       model: {},
     }),
     pendingSessions: {
-      configuration: () => undefined,
-      draftPrompt: () => ({ text: "Build a Kanban board", attachments: [], resolved: false }),
+      conversation: () => ({
+        configuration: undefined,
+        draftPrompt: { text: "Build a Kanban board", attachments: [], resolved: false },
+      }),
     },
   } as unknown as SessionRegistryStore;
   const catalog = {

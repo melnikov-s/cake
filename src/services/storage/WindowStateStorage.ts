@@ -1,7 +1,7 @@
 import { Context, Effect, FileSystem, Layer, Path, Schema, Semaphore } from "effect";
 import { atomicWriteFile, type AtomicFileStage } from "./internal/atomicFile";
 
-const WINDOW_STATE_DOCUMENT_VERSION = 8;
+const WINDOW_STATE_DOCUMENT_VERSION = 9;
 const WINDOW_STATE_DOCUMENT_NAME = "window-state.json";
 
 const JsonRecord = Schema.Record(Schema.String, Schema.Json);
@@ -9,6 +9,39 @@ const decodeJsonRecord = (value: Schema.Schema.Type<typeof Schema.Json> | undefi
   const result = Schema.decodeUnknownResult(JsonRecord)(value);
   return result._tag === "Success" ? result.success : undefined;
 };
+const compactJsonRecord = (
+  values: Record<string, Schema.Schema.Type<typeof Schema.Json> | undefined>,
+): Schema.Schema.Type<typeof Schema.Json> =>
+  Object.fromEntries(
+    Object.entries(values).flatMap(([key, value]) =>
+      value === undefined
+        ? []
+        : ([[key, value]] satisfies [string, Schema.Schema.Type<typeof Schema.Json>][]),
+    ),
+  );
+const decodeStringArray = (value: Schema.Schema.Type<typeof Schema.Json> | undefined) => {
+  const result = Schema.decodeUnknownResult(Schema.Array(Schema.String))(value);
+  return result._tag === "Success" ? [...result.success] : [];
+};
+const decodeString = (value: Schema.Schema.Type<typeof Schema.Json> | undefined) => {
+  const result = Schema.decodeUnknownResult(Schema.String)(value);
+  return result._tag === "Success" ? result.success : undefined;
+};
+const decodeNumber = (value: Schema.Schema.Type<typeof Schema.Json> | undefined) => {
+  const result = Schema.decodeUnknownResult(Schema.Number)(value);
+  return result._tag === "Success" ? result.success : undefined;
+};
+
+const LegacyPendingConversationSnapshot = Schema.Struct({
+  sessionId: Schema.String,
+  started: Schema.optionalKey(Schema.Boolean),
+  name: Schema.optionalKey(Schema.String),
+  configuration: Schema.optionalKey(Schema.Json),
+  draftPrompt: Schema.optionalKey(Schema.Json),
+  createdAt: Schema.optionalKey(Schema.String),
+  modifiedAt: Schema.optionalKey(Schema.String),
+  messageCount: Schema.optionalKey(Schema.Number),
+});
 
 const EmptyWindowSnapshot: Schema.Schema.Type<typeof Schema.Json> = {
   state: {},
@@ -510,6 +543,148 @@ const migrateVersion7WindowState = (snapshot: Schema.Schema.Type<typeof Schema.J
   return { ...root, children: nextRootChildren };
 };
 
+/** Extracts shared keyed pending-conversation children from the two collection owners. */
+const migrateVersion8WindowState = (snapshot: Schema.Schema.Type<typeof Schema.Json>) => {
+  const root = decodeJsonRecord(snapshot);
+  const rootChildren = decodeJsonRecord(root?.children);
+  if (!root || !rootChildren) return snapshot;
+  const nextRootChildren = { ...rootChildren };
+
+  const registry = decodeJsonRecord(rootChildren.sessionRegistry);
+  const registryChildren = decodeJsonRecord(registry?.children);
+  const projectPending = decodeJsonRecord(registryChildren?.pendingSessions);
+  const projectState = decodeJsonRecord(projectPending?.state);
+  if (registry && registryChildren && projectPending && projectState) {
+    const configurations = decodeJsonRecord(projectState.configurationsBySession) ?? {};
+    const names = decodeJsonRecord(projectState.namesBySession) ?? {};
+    const drafts = decodeJsonRecord(projectState.draftsBySession) ?? {};
+    const summaries = decodeJsonRecord(projectState.summaryMetadataBySession) ?? {};
+    const temporaryIds = decodeStringArray(projectState.temporarySessionIds);
+    const unlistedIds = decodeStringArray(projectState.unlistedNewSessionIds);
+    const conversationIds = [
+      ...new Set([
+        ...temporaryIds,
+        ...unlistedIds,
+        ...Object.keys(configurations),
+        ...Object.keys(names),
+        ...Object.keys(drafts),
+        ...Object.keys(summaries),
+      ]),
+    ];
+    const epoch = "1970-01-01T00:00:00.000Z";
+    const conversationChildren = conversationIds.map((sessionId) => {
+      const metadata = decodeJsonRecord(summaries[sessionId]);
+      const draftPrompt = drafts[sessionId];
+      return {
+        key: sessionId,
+        state: compactJsonRecord({
+          name: names[sessionId],
+          configuration: configurations[sessionId],
+          draftPrompt,
+          fallbackTitle: metadata?.fallbackTitle,
+          createdAt: decodeString(metadata?.createdAt) ?? epoch,
+          modifiedAt: decodeString(metadata?.modifiedAt) ?? epoch,
+          messageCount: draftPrompt === undefined && unlistedIds.includes(sessionId) ? 1 : 0,
+        }),
+        children: {},
+      };
+    });
+    const familyMetadataBySession = Object.fromEntries(
+      Object.entries(summaries).flatMap(([sessionId, value]) => {
+        const metadata = decodeJsonRecord(value);
+        if (!metadata) return [];
+        const familyId = decodeString(metadata.familyId);
+        const familyParentSessionId = decodeString(metadata.familyParentSessionId);
+        const familyChildOrder = decodeNumber(metadata.familyChildOrder);
+        const familyMetadata = compactJsonRecord({
+          familyId,
+          familyParentSessionId,
+          familyChildOrder,
+        });
+        return familyId !== undefined ||
+          familyParentSessionId !== undefined ||
+          familyChildOrder !== undefined
+          ? [[sessionId, familyMetadata]]
+          : [];
+      }),
+    );
+    const nextProjectState = { ...projectState };
+    delete nextProjectState.configurationsBySession;
+    delete nextProjectState.namesBySession;
+    delete nextProjectState.draftsBySession;
+    nextProjectState.conversationIds = conversationIds;
+    nextProjectState.summaryMetadataBySession = familyMetadataBySession;
+    nextRootChildren.sessionRegistry = {
+      ...registry,
+      children: {
+        ...registryChildren,
+        pendingSessions: {
+          ...projectPending,
+          state: nextProjectState,
+          children: {
+            ...decodeJsonRecord(projectPending.children),
+            conversations: conversationChildren,
+          },
+        },
+      },
+    };
+  }
+
+  const collection = decodeJsonRecord(rootChildren.cakeChatCollectionStore);
+  const collectionChildren = decodeJsonRecord(collection?.children);
+  const cakePending = decodeJsonRecord(collectionChildren?.pendingSessions);
+  const cakeState = decodeJsonRecord(cakePending?.state);
+  const decodedCakeSessions = Schema.decodeUnknownResult(
+    Schema.Array(LegacyPendingConversationSnapshot),
+  )(cakeState?.sessions);
+  if (
+    collection &&
+    collectionChildren &&
+    cakePending &&
+    cakeState &&
+    decodedCakeSessions._tag === "Success"
+  ) {
+    const sessions = decodedCakeSessions.success;
+    const conversationIds = sessions.map((session) => session.sessionId);
+    const pendingSessionIds = sessions
+      .filter((session) => session.started !== true)
+      .map((session) => session.sessionId);
+    const epoch = "1970-01-01T00:00:00.000Z";
+    const conversations = sessions.map((session) => ({
+      key: session.sessionId,
+      state: compactJsonRecord({
+        name: session.name,
+        configuration: session.configuration,
+        draftPrompt: session.draftPrompt,
+        createdAt: session.createdAt ?? epoch,
+        modifiedAt: session.modifiedAt ?? epoch,
+        messageCount: session.messageCount ?? 0,
+      }),
+      children: {},
+    }));
+    const remainingCakeState = Object.fromEntries(
+      Object.entries(cakeState).filter(([key]) => key !== "sessions"),
+    );
+    const nextCakeState = { ...remainingCakeState, conversationIds, pendingSessionIds };
+    nextRootChildren.cakeChatCollectionStore = {
+      ...collection,
+      children: {
+        ...collectionChildren,
+        pendingSessions: {
+          ...cakePending,
+          state: nextCakeState,
+          children: {
+            ...decodeJsonRecord(cakePending.children),
+            conversations,
+          },
+        },
+      },
+    };
+  }
+
+  return { ...root, children: nextRootChildren };
+};
+
 const migrateLegacyWindowState = Effect.fn("WindowStateStorage.migrateLegacy")(function* (
   legacy: LegacyWindowState,
 ) {
@@ -749,9 +924,11 @@ const migrateLegacyWindowState = Effect.fn("WindowStateStorage.migrateLegacy")(f
   ).pipe(
     Effect.mapError((cause) => new WindowStateMalformedDocumentError({ message: cause.message })),
   );
-  return migrateVersion7WindowState(
-    migrateVersion6WindowState(
-      migrateVersion5WindowState(migrateVersion4WindowState(migrateVersion3WindowState(decoded))),
+  return migrateVersion8WindowState(
+    migrateVersion7WindowState(
+      migrateVersion6WindowState(
+        migrateVersion5WindowState(migrateVersion4WindowState(migrateVersion3WindowState(decoded))),
+      ),
     ),
   );
 });
@@ -798,7 +975,7 @@ export const makeWindowStateStorageLive = (userDataDirectory: string) =>
         if (envelope._tag === "Success") {
           if (envelope.success.version === WINDOW_STATE_DOCUMENT_VERSION)
             return envelope.success.data;
-          if (envelope.success.version >= 2 && envelope.success.version <= 7) {
+          if (envelope.success.version >= 2 && envelope.success.version <= 8) {
             let migrated = envelope.success.data;
             if (envelope.success.version <= 2) migrated = migrateVersion2WindowState(migrated);
             if (envelope.success.version <= 3) migrated = migrateVersion3WindowState(migrated);
@@ -806,6 +983,7 @@ export const makeWindowStateStorageLive = (userDataDirectory: string) =>
             if (envelope.success.version <= 5) migrated = migrateVersion5WindowState(migrated);
             if (envelope.success.version <= 6) migrated = migrateVersion6WindowState(migrated);
             migrated = migrateVersion7WindowState(migrated);
+            migrated = migrateVersion8WindowState(migrated);
             yield* saveUnlocked(migrated);
             return migrated;
           }

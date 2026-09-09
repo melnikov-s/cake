@@ -248,7 +248,8 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
           );
         },
         scheduleMessage: (sessionId, args) => this.scheduleMessage(sessionId, args),
-        draftSessionPrompt: (sessionId) => this.props.pendingSessions.draftPrompt(sessionId),
+        draftSessionPrompt: (sessionId) =>
+          this.props.pendingSessions.conversation(sessionId)?.draftPrompt,
         isDeferredSession: (sessionId) => this.props.pendingSessions.isTemporary(sessionId),
         createDraftSession: async (sessionId, text, attachments) => {
           await this.props.pendingSessions.createDraft(sessionId, text, attachments);
@@ -258,9 +259,10 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
           await this.props.pendingSessions.updateDraft(sessionId, text, attachments);
           return true;
         },
-        activateDraftSession: (sessionId) => this.props.pendingSessions.activateDraft(sessionId),
+        activateDraftSession: (sessionId) =>
+          this.props.pendingSessions.conversation(sessionId)?.activateDraft(),
         applyGeneratedDraftName: (sessionId, title) =>
-          this.props.pendingSessions.applyGeneratedDraftName(sessionId, title),
+          this.props.pendingSessions.conversation(sessionId)?.applyGeneratedDraftName(title),
         configureDraftActivation: (choice) => this.props.configureDraftActivation(choice),
         sessionCreationChoice: this.props.sessionCreationChoice,
         editorText: (entryId) =>
@@ -270,7 +272,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
         deferredNewSession: () => this.props.pendingSessions.isTemporary(this.sessionId),
         effectiveConfiguration: () => this.props.newSessionRequest()?.configuration,
         setPendingConfiguration: (configuration) =>
-          this.props.pendingSessions.setConfiguration(this.sessionId, configuration),
+          this.props.pendingSessions.conversation(this.sessionId)?.setConfiguration(configuration),
         setConfiguration: (configuration) =>
           this.client.projectSessions.applyConfiguration(
             { sessionId: this.sessionId, configuration },

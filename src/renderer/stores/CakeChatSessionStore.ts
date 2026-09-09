@@ -90,15 +90,22 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
             { signal: this.signal },
           );
         },
-        draftSessionPrompt: (sessionId) => this.props.pendingSessions.draftPrompt(sessionId),
+        draftSessionPrompt: (sessionId) =>
+          this.props.pendingSessions.conversation(sessionId)?.draftPrompt,
         isDeferredSession: (sessionId) => this.props.pendingSessions.isPending(sessionId),
-        createDraftSession: (sessionId, text, attachments) =>
-          this.props.pendingSessions.createDraft(sessionId, text, attachments),
+        createDraftSession: (sessionId, text, attachments) => {
+          const conversation = this.props.pendingSessions.conversation(sessionId);
+          if (!conversation || !this.props.pendingSessions.isPending(sessionId)) return false;
+          conversation.createDraft(text, attachments);
+          return true;
+        },
         updateDraftSession: (sessionId, text, attachments) =>
-          this.props.pendingSessions.updateDraft(sessionId, text, attachments),
-        activateDraftSession: (sessionId) => this.props.pendingSessions.activateDraft(sessionId),
+          this.props.pendingSessions.conversation(sessionId)?.updateDraft(text, attachments) ??
+          false,
+        activateDraftSession: (sessionId) =>
+          this.props.pendingSessions.conversation(sessionId)?.activateDraft(),
         applyGeneratedDraftName: (sessionId, title) =>
-          this.props.pendingSessions.applyGeneratedDraftName(sessionId, title),
+          this.props.pendingSessions.conversation(sessionId)?.applyGeneratedDraftName(title),
         editorText: (entryId) =>
           this.model.tree.find((entry) => entry.piId === entryId)?.editorText,
       },
@@ -106,7 +113,7 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
         deferredNewSession: () => this.props.pendingSessions.isPending(this.sessionId),
         effectiveConfiguration: () => this.props.pendingSessions.configuration(this.sessionId),
         setPendingConfiguration: (configuration) =>
-          this.props.pendingSessions.setConfiguration(this.sessionId, configuration),
+          this.props.pendingSessions.conversation(this.sessionId)?.setConfiguration(configuration),
         setConfiguration: (configuration) =>
           this.client.cakeChats.applyConfiguration(
             { ...this.props.target(), configuration },
@@ -139,7 +146,8 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
               { signal: this.signal },
             ),
         },
-        isDraftSession: () => this.props.pendingSessions.isDraft(this.sessionId),
+        isDraftSession: () =>
+          this.props.pendingSessions.conversation(this.sessionId)?.isDraft ?? false,
         abort: () => this.abort(),
         configurationErrorFirst: true,
         errorTitle: "Cake Chat failed",

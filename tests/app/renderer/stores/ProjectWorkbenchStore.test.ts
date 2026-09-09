@@ -392,10 +392,10 @@ describe("ProjectWorkbenchStore startup selection", () => {
   });
 
   it("creates agent drafts in the background without changing the visible session", async () => {
+    const pendingConversation = { setName: vi.fn(), setConfiguration: vi.fn() };
     const pendingSessions = {
       prepare: vi.fn(),
-      setName: vi.fn(),
-      setConfiguration: vi.fn(),
+      conversation: vi.fn(() => pendingConversation),
       createDraft: vi.fn(async () => undefined),
     };
     const registry = {
@@ -424,10 +424,10 @@ describe("ProjectWorkbenchStore startup selection", () => {
 
   it("starts agent-created sessions in the background without changing the visible session", async () => {
     const start = vi.fn(async () => undefined);
+    const pendingConversation = { setName: vi.fn(), setConfiguration: vi.fn() };
     const pendingSessions = {
       prepare: vi.fn(),
-      setName: vi.fn(),
-      setConfiguration: vi.fn(),
+      conversation: vi.fn(() => pendingConversation),
       projectSubmission: vi.fn(),
       materialize: vi.fn(),
     };

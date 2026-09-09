@@ -91,7 +91,7 @@ describe("CakeChatCollectionStore", () => {
       { cakeChats: { prompt } } as unknown as Client,
     );
     const session = store.activeSession!;
-    store.pendingSessions.createDraft(session.sessionId, "Saved message", []);
+    store.pendingSessions.conversation(session.sessionId)!.createDraft("Saved message", []);
     expect(await session.conversationSessionStore.chatStore.activateDraft()).toBe(false);
     expect(session.conversationSessionStore.chatStore.draft).toBe("Saved message");
     expect(
@@ -248,7 +248,7 @@ describe("CakeChatCollectionStore", () => {
       { cakeChats: { deleteResolved } } as unknown as Client,
     );
     const sessionId = store.sessionId!;
-    store.pendingSessions.createDraft(sessionId, "Planned work", []);
+    store.pendingSessions.conversation(sessionId)!.createDraft("Planned work", []);
     await store.management.resolveSession(sessionId, true);
 
     await store.management.deleteSession(sessionId);
@@ -404,7 +404,12 @@ describe("CakeChatCollectionStore", () => {
       { sessionId: session!.sessionId, title: "Authoritative title", messageCount: 1 },
     ]);
     expect(toSnapshot(store)).toMatchObject({
-      children: { pendingSessions: { state: { sessions: [] } } },
+      children: {
+        pendingSessions: {
+          state: { conversationIds: [], pendingSessionIds: [] },
+          children: { conversations: [] },
+        },
+      },
     });
 
     await session!.conversationSessionStore.chatStore.submit("Follow up");

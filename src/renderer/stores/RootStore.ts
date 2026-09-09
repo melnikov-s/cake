@@ -1088,7 +1088,8 @@ export class RootStore extends Store<{
             if (
               !selection.sessionId ||
               (this.cakeChatCollectionStore.pendingSessions.isPending(selection.sessionId) &&
-                !this.cakeChatCollectionStore.pendingSessions.isDraft(selection.sessionId))
+                !this.cakeChatCollectionStore.pendingSessions.conversation(selection.sessionId)
+                  ?.isDraft)
             )
               return { kind: "new-cake-chat" as const };
             return {

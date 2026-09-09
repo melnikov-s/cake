@@ -24,7 +24,7 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
     const title = name.trim().slice(0, SESSION_TITLE_MAX_LENGTH);
     if (!title || this.signal.aborted) return;
     if (this.props.registry.pendingSessions.isTemporary(sessionId)) {
-      this.props.registry.pendingSessions.setName(sessionId, title);
+      this.props.registry.pendingSessions.conversation(sessionId)?.setName(title);
       return;
     }
     const operationId = this.props.operations.start("project-workbench");
@@ -44,7 +44,8 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
     this.resolvingSessionIds.add(sessionId);
     try {
       if (this.signal.aborted) return false;
-      if (this.props.registry.pendingSessions.setDraftResolved(sessionId, resolved)) return true;
+      if (this.props.registry.pendingSessions.conversation(sessionId)?.setDraftResolved(resolved))
+        return true;
       if (resolved && this.props.registry.pendingSessions.isTemporary(sessionId)) {
         this.props.registry.removeSession(sessionId);
         return true;

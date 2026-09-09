@@ -164,7 +164,10 @@ describe("WindowStateStorage", () => {
                     ],
                   },
                 },
-                pendingSessions: { state: { sessions: [] }, children: {} },
+                pendingSessions: {
+                  state: { conversationIds: [], pendingSessionIds: [] },
+                  children: { conversations: [] },
+                },
               },
             },
           },
@@ -191,7 +194,14 @@ describe("WindowStateStorage", () => {
             },
             temporarySessionIds: ["draft-1"],
             pendingSummaryMetadataBySession: {
-              "draft-1": { createdAt: "2026-01-01", modifiedAt: "2026-01-02" },
+              "draft-1": {
+                fallbackTitle: "Draft fallback",
+                createdAt: "2026-01-01",
+                modifiedAt: "2026-01-02",
+                familyId: "family-1",
+                familyParentSessionId: "parent-1",
+                familyChildOrder: 2,
+              },
             },
             stagedSessionIds: ["draft-1"],
           },
@@ -215,24 +225,42 @@ describe("WindowStateStorage", () => {
                 pendingSessions: {
                   state: {
                     unlistedNewSessionIds: ["draft-1"],
-                    configurationsBySession: {
-                      "draft-1": {
-                        provider: "openai",
-                        modelId: "gpt-5",
-                        thinkingLevel: "high",
-                      },
-                    },
-                    namesBySession: { "draft-1": "Draft" },
-                    draftsBySession: {
-                      "draft-1": { text: "Do this later", attachments: [], resolved: false },
-                    },
+                    conversationIds: ["draft-1"],
                     temporarySessionIds: ["draft-1"],
                     summaryMetadataBySession: {
-                      "draft-1": { createdAt: "2026-01-01", modifiedAt: "2026-01-02" },
+                      "draft-1": {
+                        familyId: "family-1",
+                        familyParentSessionId: "parent-1",
+                        familyChildOrder: 2,
+                      },
                     },
                     stagedSessionIds: ["draft-1"],
                   },
-                  children: {},
+                  children: {
+                    conversations: [
+                      {
+                        key: "draft-1",
+                        state: {
+                          configuration: {
+                            provider: "openai",
+                            modelId: "gpt-5",
+                            thinkingLevel: "high",
+                          },
+                          name: "Draft",
+                          fallbackTitle: "Draft fallback",
+                          draftPrompt: {
+                            text: "Do this later",
+                            attachments: [],
+                            resolved: false,
+                          },
+                          createdAt: "2026-01-01",
+                          modifiedAt: "2026-01-02",
+                          messageCount: 0,
+                        },
+                        children: {},
+                      },
+                    ],
+                  },
                 },
                 observationRetention: {
                   state: { materializedSessionIds: ["loaded-1"] },
@@ -300,14 +328,12 @@ describe("WindowStateStorage", () => {
                 pendingSessions: {
                   state: {
                     unlistedNewSessionIds: [],
-                    configurationsBySession: {},
-                    namesBySession: {},
-                    draftsBySession: {},
+                    conversationIds: [],
                     temporarySessionIds: [],
                     summaryMetadataBySession: {},
                     stagedSessionIds: [],
                   },
-                  children: {},
+                  children: { conversations: [] },
                 },
                 observationRetention: {
                   state: { materializedSessionIds: [] },
@@ -413,8 +439,23 @@ describe("WindowStateStorage", () => {
           },
         });
         assert.deepStrictEqual(collection.children.pendingSessions, {
-          state: { sessions: snapshot.children.cakeChatCollectionStore.state.pendingSessions },
-          children: {},
+          state: {
+            conversationIds: ["cake-chat-1"],
+            pendingSessionIds: ["cake-chat-1"],
+          },
+          children: {
+            conversations: [
+              {
+                key: "cake-chat-1",
+                state: {
+                  createdAt: "1970-01-01T00:00:00.000Z",
+                  modifiedAt: "1970-01-01T00:00:00.000Z",
+                  messageCount: 0,
+                },
+                children: {},
+              },
+            ],
+          },
         });
         assert.deepStrictEqual(collection.children.sessionLayoutStore, {
           state: {

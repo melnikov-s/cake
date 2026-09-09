@@ -372,9 +372,9 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     return {
       path: session.workspacePath,
       configuration:
-        this.sessionRegistry.pendingSessions.configuration(sessionId) ??
+        this.sessionRegistry.pendingSessions.conversation(sessionId)?.configuration ??
         this.props.defaultConfiguration?.(),
-      name: this.sessionRegistry.pendingSessions.name(sessionId),
+      name: this.sessionRegistry.pendingSessions.conversation(sessionId)?.name,
     };
   }
 
@@ -387,9 +387,9 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   ) {
     const sessionId = crypto.randomUUID();
     this.sessionRegistry.pendingSessions.prepare(path, sessionId);
-    this.sessionRegistry.pendingSessions.setName(sessionId, name);
-    if (configuration)
-      this.sessionRegistry.pendingSessions.setConfiguration(sessionId, configuration);
+    const conversation = this.sessionRegistry.pendingSessions.conversation(sessionId)!;
+    conversation.setName(name);
+    if (configuration) conversation.setConfiguration(configuration);
     try {
       await this.sessionRegistry.pendingSessions.createDraft(sessionId, initialPrompt, []);
       return sessionId;
@@ -409,9 +409,9 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   ) {
     const sessionId = crypto.randomUUID();
     this.sessionRegistry.pendingSessions.prepare(path, sessionId);
-    this.sessionRegistry.pendingSessions.setName(sessionId, name);
-    if (configuration)
-      this.sessionRegistry.pendingSessions.setConfiguration(sessionId, configuration);
+    const conversation = this.sessionRegistry.pendingSessions.conversation(sessionId)!;
+    conversation.setName(name);
+    if (configuration) conversation.setConfiguration(configuration);
     const input: ProjectSessionStartInput = configuration
       ? {
           sessionId,

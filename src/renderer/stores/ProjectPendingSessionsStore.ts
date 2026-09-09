@@ -1,11 +1,8 @@
-import { Store, batch, observable, snapshot } from "r-state-tree";
-import {
-  SESSION_TITLE_MAX_LENGTH,
-  type Attachment,
-  type ChatConfiguration,
-} from "../../ipc/session-contract";
+import { Store, batch, child, createStore, observable, snapshot } from "r-state-tree";
+import { SESSION_TITLE_MAX_LENGTH, type Attachment } from "../../ipc/session-contract";
 import type { ProjectSessionStore } from "./ProjectSessionStore";
 import type { SessionCatalogStore, PendingSessionSummary } from "./SessionCatalogStore";
+import { PendingConversationStore } from "./PendingConversationStore";
 
 export interface ProjectPendingSessionsStoreProps {
   catalog?: SessionCatalogStore;
@@ -18,55 +15,60 @@ export interface ProjectPendingSessionsStoreProps {
   projectName(workingDirectory: string): string;
 }
 
+interface ProjectPendingSummaryMetadata {
+  familyId?: string;
+  familyParentSessionId?: string;
+  familyChildOrder?: number;
+}
+
 /** Owns window-persisted staged, saved-draft, and starting Project Session workflows. */
 export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsStoreProps> {
+  @snapshot private readonly conversationIds: string[] = observable([]);
   // Pi may take time to include a newly started session in its disk-backed listing.
   @snapshot private readonly unlistedNewSessionIds: string[] = observable([]);
-  @snapshot private readonly configurationsBySession: Record<string, ChatConfiguration> =
-    observable({});
-  @snapshot private readonly namesBySession: Record<string, string> = observable({});
-  @snapshot private readonly draftsBySession: Record<
-    string,
-    { text: string; attachments: Attachment[]; resolved: boolean }
-  > = observable({});
   @snapshot private readonly temporarySessionIds: string[] = observable([]);
   @snapshot private readonly summaryMetadataBySession: Record<
     string,
-    {
-      fallbackTitle?: string;
-      createdAt: string;
-      modifiedAt: string;
-      familyId?: string;
-      familyParentSessionId?: string;
-      familyChildOrder?: number;
-    }
+    ProjectPendingSummaryMetadata
   > = observable({});
   /** Unsent, unsaved project chats retained by independent session panes. */
   @snapshot private readonly stagedSessionIds: string[] = observable([]);
   private readonly submittingSessionIds: string[] = observable([]);
 
+  @child
+  get conversations(): PendingConversationStore[] {
+    return this.conversationIds.map((sessionId) =>
+      createStore(PendingConversationStore, { key: sessionId, sessionId }),
+    );
+  }
+
+  conversation(sessionId: string) {
+    return this.conversations.find((conversation) => conversation.sessionId === sessionId);
+  }
+
   get summaries(): readonly PendingSessionSummary[] {
     const visibleIds = new Set([
-      ...Object.keys(this.draftsBySession),
+      ...this.conversations
+        .filter((conversation) => conversation.isDraft)
+        .map(({ sessionId }) => sessionId),
       ...this.submittingSessionIds,
       ...this.unlistedNewSessionIds,
     ]);
     return [...visibleIds].flatMap((sessionId) => {
       const session = this.props.session(sessionId);
-      if (!session) return [];
-      const draft = this.draftsBySession[sessionId];
+      const conversation = this.conversation(sessionId);
+      if (!session || !conversation) return [];
       const metadata = this.summaryMetadataBySession[sessionId];
       const managedWorktree = this.props.catalog?.managedWorktree(session.workspacePath);
       const projectPath = managedWorktree?.projectPath ?? session.workspacePath;
-      const epoch = "1970-01-01T00:00:00.000Z";
       return [
         {
           sessionId,
-          title: this.namesBySession[sessionId] ?? metadata?.fallbackTitle ?? "New chat",
-          createdAt: metadata?.createdAt ?? epoch,
-          modifiedAt: metadata?.modifiedAt ?? epoch,
-          messageCount: draft ? 0 : 1,
-          resolved: draft?.resolved ?? false,
+          title: conversation.title,
+          createdAt: conversation.createdAt,
+          modifiedAt: conversation.modifiedAt,
+          messageCount: conversation.messageCount,
+          resolved: conversation.resolved,
           unread: false,
           projectPath,
           projectName: this.props.projectName(projectPath),
@@ -80,7 +82,7 @@ export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsSto
             ? { familyChildOrder: metadata.familyChildOrder }
             : null),
           pending: true as const,
-          draft: draft !== undefined,
+          draft: conversation.isDraft,
         },
       ];
     });
@@ -89,6 +91,7 @@ export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsSto
   prepare(workingDirectory: string, sessionId: string) {
     const session = this.props.prepareIdentity(sessionId, workingDirectory);
     addUnique(this.temporarySessionIds, sessionId);
+    this.ensureConversation(sessionId);
     return session;
   }
 
@@ -103,13 +106,10 @@ export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsSto
     title: string,
     family: { familyId: string; parentSessionId: string; childOrder: number },
   ) {
-    const now = new Date().toISOString();
-    const current = this.summaryMetadataBySession[sessionId];
-    this.namesBySession[sessionId] = title;
+    const conversation = this.ensureConversation(sessionId);
+    conversation.setName(title);
+    conversation.fallbackTitle = title;
     this.summaryMetadataBySession[sessionId] = {
-      createdAt: current?.createdAt ?? now,
-      modifiedAt: now,
-      fallbackTitle: title,
       familyId: family.familyId,
       familyParentSessionId: family.parentSessionId,
       familyChildOrder: family.childOrder,
@@ -126,8 +126,7 @@ export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsSto
       removeValue(this.temporarySessionIds, sessionId);
       removeValue(this.submittingSessionIds, sessionId);
       removeValue(this.stagedSessionIds, sessionId);
-      delete this.configurationsBySession[sessionId];
-      delete this.draftsBySession[sessionId];
+      this.conversation(sessionId)?.markMaterialized();
       if (this.props.catalog?.authoritativeSessionIds.includes(sessionId))
         this.clearSummary(sessionId);
       else addUnique(this.unlistedNewSessionIds, sessionId);
@@ -139,7 +138,9 @@ export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsSto
     if (!this.temporarySessionIds.includes(sessionId) || !this.props.session(sessionId)) return;
     const title = text.trim().slice(0, SESSION_TITLE_MAX_LENGTH) || "New chat";
     addUnique(this.submittingSessionIds, sessionId);
-    this.updateSummaryMetadata(sessionId, title);
+    const conversation = this.ensureConversation(sessionId);
+    conversation.setFallbackTitle(title);
+    conversation.messageCount = Math.max(1, conversation.messageCount);
   }
 
   cancelSubmission(sessionId: string) {
@@ -155,11 +156,7 @@ export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsSto
   }
 
   isDraft(sessionId: string) {
-    return this.draftsBySession[sessionId] !== undefined;
-  }
-
-  draftPrompt(sessionId: string) {
-    return this.draftsBySession[sessionId];
+    return this.conversation(sessionId)?.isDraft ?? false;
   }
 
   async createDraft(sessionId: string, text: string, attachments: Attachment[]) {
@@ -169,45 +166,20 @@ export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsSto
     const projectPath =
       this.props.catalog?.projectOfManagedWorktree(session.workspacePath) ?? session.workspacePath;
     this.relocate(sessionId, projectPath);
-    this.draftsBySession[sessionId] = {
-      text,
-      attachments: attachments.map((attachment) => ({ ...attachment })),
-      resolved: false,
-    };
-    this.ensureSummaryMetadata(sessionId);
+    this.ensureConversation(sessionId).createDraft(text, attachments);
     removeValue(this.stagedSessionIds, sessionId);
     await this.props.persistNow();
   }
 
   async updateDraft(sessionId: string, text: string, attachments: Attachment[]) {
-    const current = this.draftsBySession[sessionId];
-    if (!current) throw new Error("Cake could not find that draft session");
-    this.draftsBySession[sessionId] = {
-      text,
-      attachments: attachments.map((attachment) => ({ ...attachment })),
-      resolved: current.resolved,
-    };
+    const conversation = this.conversation(sessionId);
+    if (!conversation?.updateDraft(text, attachments))
+      throw new Error("Cake could not find that draft session");
     await this.props.persistNow();
   }
 
-  activateDraft(sessionId: string) {
-    const current = this.draftsBySession[sessionId];
-    if (!current) return undefined;
-    delete this.draftsBySession[sessionId];
-    this.touchSummary(sessionId);
-    return current;
-  }
-
-  setDraftResolved(sessionId: string, resolved: boolean) {
-    const current = this.draftsBySession[sessionId];
-    if (!current) return false;
-    this.draftsBySession[sessionId] = { ...current, resolved };
-    this.touchSummary(sessionId);
-    return true;
-  }
-
   async deleteResolvedDraft(sessionId: string) {
-    if (!this.draftsBySession[sessionId]?.resolved) return false;
+    if (!this.conversation(sessionId)?.resolved) return false;
     this.props.removeSession(sessionId);
     await this.props.persistNow();
     return true;
@@ -221,68 +193,26 @@ export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsSto
     if (session.workspacePath === workingDirectory) return;
     this.props.relocateIdentity(sessionId, workingDirectory);
     void session.stagedCommandStore.load(workingDirectory);
-    if (this.isDraft(sessionId)) this.touchSummary(sessionId);
-  }
-
-  configuration(sessionId: string) {
-    return this.configurationsBySession[sessionId];
-  }
-
-  name(sessionId: string) {
-    return this.namesBySession[sessionId];
-  }
-
-  setName(sessionId: string, name: string) {
-    if (!this.temporarySessionIds.includes(sessionId))
-      throw new Error("Only an unsent session can receive an initial name.");
-    this.namesBySession[sessionId] = name.trim().slice(0, SESSION_TITLE_MAX_LENGTH);
-    this.touchSummary(sessionId);
-  }
-
-  applyGeneratedDraftName(sessionId: string, name: string) {
-    if (!this.isDraft(sessionId) || this.namesBySession[sessionId]) return;
-    this.setName(sessionId, name);
-  }
-
-  setConfiguration(sessionId: string, configuration: ChatConfiguration) {
-    this.configurationsBySession[sessionId] = configuration;
+    if (this.isDraft(sessionId)) this.conversation(sessionId)?.touch();
   }
 
   remove(sessionId: string) {
     removeValue(this.temporarySessionIds, sessionId);
     removeValue(this.stagedSessionIds, sessionId);
     removeValue(this.unlistedNewSessionIds, sessionId);
-    delete this.configurationsBySession[sessionId];
-    delete this.namesBySession[sessionId];
-    delete this.draftsBySession[sessionId];
+    removeValue(this.conversationIds, sessionId);
     delete this.summaryMetadataBySession[sessionId];
     removeValue(this.submittingSessionIds, sessionId);
   }
 
-  private ensureSummaryMetadata(sessionId: string) {
-    if (this.summaryMetadataBySession[sessionId]) return;
-    const now = new Date().toISOString();
-    this.summaryMetadataBySession[sessionId] = { createdAt: now, modifiedAt: now };
-  }
-
-  private updateSummaryMetadata(sessionId: string, fallbackTitle?: string) {
-    const current = this.summaryMetadataBySession[sessionId];
-    const now = new Date().toISOString();
-    this.summaryMetadataBySession[sessionId] = {
-      ...current,
-      createdAt: current?.createdAt ?? now,
-      modifiedAt: now,
-      fallbackTitle: fallbackTitle ?? current?.fallbackTitle,
-    };
-  }
-
-  private touchSummary(sessionId: string) {
-    this.updateSummaryMetadata(sessionId);
+  private ensureConversation(sessionId: string) {
+    addUnique(this.conversationIds, sessionId);
+    return this.conversation(sessionId)!;
   }
 
   private clearSummary(sessionId: string) {
     removeValue(this.unlistedNewSessionIds, sessionId);
-    delete this.namesBySession[sessionId];
+    removeValue(this.conversationIds, sessionId);
     delete this.summaryMetadataBySession[sessionId];
   }
 

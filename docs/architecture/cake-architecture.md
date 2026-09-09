@@ -399,10 +399,11 @@ The window Store hierarchy mirrors the product surfaces:
   identity does not create transcript observation demand after restart. Selecting,
   opening, or starting a session refreshes that retention, and eviction stops its live
   observation while preserving its loaded Store and Model for later reuse. Its
-  `ProjectPendingSessionsStore` child owns window-persisted pending names and
-  configurations, staged and temporary membership, saved prompts and attachments,
-  pending catalog summaries, materialization transitions, and relocation while a
-  Working Directory is chosen. Each visible split pane may contain an unsent, unsaved
+  `ProjectPendingSessionsStore` child owns staged and temporary membership,
+  pending catalog summaries, Project materialization transitions, and relocation while a
+  Working Directory is chosen. It composes one keyed `PendingConversationStore` per pending
+  identity for the window-persisted name, configuration, saved prompt and attachments,
+  resolution metadata, and timestamps shared with Cake Chat. Each visible split pane may contain an unsent, unsaved
   project chat. It is staged renderer state, not a session: it does not enter Pi's
   session catalog, and choosing
   New Chat while that pane is focused reopens its composer with its text, attachments,
@@ -435,7 +436,8 @@ The window Store hierarchy mirrors the product surfaces:
   than forwarding each child API. Secondary chats continue to compose `ChatStore` directly.
   `ConversationComposerStore` coordinates focused children: `ComposerDraftStore` owns the persisted coherent unsent draft and focus requests,
   `PromptQueueStore` owns transient editable follow-ups and settled-turn draining, `ConversationDeliveryStore` owns optimistic
-  projection and operation-correlated delivery recovery, and `PendingSessionDraftStore` owns the distinct saved-draft lifecycle.
+  projection and operation-correlated delivery recovery, and `PendingSessionDraftStore` owns only the transient saved-draft editing,
+  projection, and activation UI workflow over the owning `PendingConversationStore` data.
   Managed Worktree landing sequencing,
   recovery, queue policy, and Project Session prompts are authoritative main-process domain behavior; the renderer only starts, retries, dismisses,
   and projects those operations. Its `ChatStore` remains the common
@@ -473,10 +475,11 @@ The window Store hierarchy mirrors the product surfaces:
 - `CakeChatCollectionStore` is the collection-level coordinator for catalog initialization and
   genuine cross-child navigation. Its `CakeChatRegistryStore` owns persisted loaded target
   identities, keyed `CakeChatSessionStore` creation and lookup, and reconciliation with the
-  authoritative Cake Chat catalog. `CakeChatPendingSessionsStore` owns window-persisted pending
-  configuration, names, saved prompts and attachments, pending summaries, and the
-  pending-to-materialized lifecycle; each session composer continues to compose
-  `PendingSessionDraftStore` for saved-draft editing and activation behavior.
+  authoritative Cake Chat catalog. `CakeChatPendingSessionsStore` owns pending membership,
+  pending summaries, and the Cake Chat pending-to-materialized lifecycle. Like the Project owner,
+  it composes keyed `PendingConversationStore` children for shared window-persisted
+  per-conversation data and behavior; each session composer continues to compose
+  `PendingSessionDraftStore` for its transient UI workflow.
   `CakeChatManagementStore` owns rename, handoff, resolve, restore, and delete operations.
   Resolve/restore commands serialize in invocation order and delete waits for earlier resolution
   work; rename and handoff remain independent commands, with Store-lifetime cancellation and late
@@ -518,6 +521,7 @@ flowchart TD
   CakeChat --> CakeLayout["SessionLayoutStore"]
   CakeChat --> CakeRegistry["CakeChatRegistryStore"]
   CakeChat --> CakePending["CakeChatPendingSessionsStore"]
+  CakePending --> CakePendingConversation["PendingConversationStore per pending Cake Chat identity"]
   CakeChat --> CakeManagement["CakeChatManagementStore"]
   CakeRegistry --> CakeSession["CakeChatSessionStore per loaded meta-session"]
   CakeSession --> CakeConversation["ConversationSessionStore"]
@@ -532,6 +536,7 @@ flowchart TD
   Root --> Layout["SessionLayoutStore"]
   Workbench --> IDE["EmbeddedEditorStore"]
   Registry --> PendingSessions["ProjectPendingSessionsStore"]
+  PendingSessions --> ProjectPendingConversation["PendingConversationStore per pending Project identity"]
   Registry --> ObservationRetention["SessionObservationRetentionStore"]
   Registry --> Session["ProjectSessionStore (one per loaded target)"]
   Session --> Model["Session"]

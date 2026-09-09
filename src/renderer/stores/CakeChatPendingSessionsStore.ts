@@ -1,11 +1,8 @@
-import { Store, observable, snapshot } from "r-state-tree";
-import {
-  SESSION_TITLE_MAX_LENGTH,
-  type Attachment,
-  type ChatConfiguration,
-} from "../../ipc/session-contract";
+import { Store, child, createStore, observable, snapshot } from "r-state-tree";
+import type { ChatConfiguration } from "../../ipc/session-contract";
 import type { CakeChatSummary } from "../../domain/cake-chat-data";
 import type { JsonObject } from "../../ipc/json-contract";
+import { PendingConversationStore } from "./PendingConversationStore";
 
 export type CakeChatSummaryProjection = CakeChatSummary & { draft?: boolean };
 
@@ -26,145 +23,77 @@ interface NewCakeChatSessionRequest {
   name?: string;
 }
 
-interface PendingCakeChatSession {
-  sessionId: string;
-  started: boolean;
-  configuration?: ChatConfiguration;
-  name?: string;
-  draftPrompt?: { text: string; attachments: Attachment[]; resolved: boolean };
-  createdAt: string;
-  modifiedAt: string;
-  messageCount: number;
-}
-
 export interface CakeChatPendingSessionsStoreProps {
   defaultConfiguration?(): ChatConfiguration | undefined;
 }
 
-/** Owns persisted pending Cake Chat configuration, names, saved drafts, and materialization. */
+/** Owns the Cake Chat pending collection and its pending-to-materialized lifecycle. */
 export class CakeChatPendingSessionsStore extends Store<CakeChatPendingSessionsStoreProps> {
-  @snapshot private readonly sessions: PendingCakeChatSession[] = observable([]);
+  @snapshot private readonly conversationIds: string[] = observable([]);
+  @snapshot private readonly pendingSessionIds: string[] = observable([]);
 
-  get pendingSessions(): readonly PendingCakeChatSession[] {
-    return this.sessions;
+  @child
+  get conversations(): PendingConversationStore[] {
+    return this.conversationIds.map((sessionId) =>
+      createStore(PendingConversationStore, { key: sessionId, sessionId }),
+    );
+  }
+
+  conversation(sessionId: string) {
+    return this.conversations.find((conversation) => conversation.sessionId === sessionId);
   }
 
   get summaries(): readonly CakeChatSummaryProjection[] {
-    return this.sessions.map((pending) => this.summary(pending));
+    return this.conversations.map((conversation) => ({
+      sessionId: conversation.sessionId,
+      title: conversation.title,
+      createdAt: conversation.createdAt,
+      modifiedAt: conversation.modifiedAt,
+      messageCount: conversation.messageCount,
+      resolved: conversation.resolved,
+      draft: conversation.isDraft,
+    }));
   }
 
   firstUnstartedSessionId() {
-    return this.sessions.find((session) => !session.started)?.sessionId;
+    return this.pendingSessionIds[0];
   }
 
   create(sessionId: string, name?: string) {
-    if (this.sessionFor(sessionId)) return false;
-    const now = new Date().toISOString();
-    this.sessions.push({
-      sessionId,
-      started: false,
-      name,
-      createdAt: now,
-      modifiedAt: now,
-      messageCount: 0,
-    });
+    if (this.conversation(sessionId)) return false;
+    this.conversationIds.push(sessionId);
+    this.pendingSessionIds.push(sessionId);
+    const conversation = this.conversation(sessionId)!;
+    if (name !== undefined) conversation.name = name;
     return true;
   }
 
   remove(sessionId: string) {
-    const index = this.sessions.findIndex((pending) => pending.sessionId === sessionId);
-    if (index >= 0) this.sessions.splice(index, 1);
+    removeValue(this.conversationIds, sessionId);
+    removeValue(this.pendingSessionIds, sessionId);
   }
 
   /** Drops renderer-pending metadata once the authoritative catalog contains the session. */
   reconcileMaterialized(authoritativeSessionIds: ReadonlySet<string>) {
-    for (let index = this.sessions.length - 1; index >= 0; index -= 1)
-      if (authoritativeSessionIds.has(this.sessions[index]!.sessionId))
-        this.sessions.splice(index, 1);
+    for (let index = this.conversationIds.length - 1; index >= 0; index -= 1) {
+      const sessionId = this.conversationIds[index]!;
+      if (authoritativeSessionIds.has(sessionId)) this.remove(sessionId);
+    }
   }
 
   isPending(sessionId: string) {
-    return this.sessionFor(sessionId)?.started === false;
+    return this.pendingSessionIds.includes(sessionId);
   }
 
   configuration(sessionId: string) {
     return this.isPending(sessionId)
-      ? (this.sessionFor(sessionId)?.configuration ?? this.props.defaultConfiguration?.())
+      ? (this.conversation(sessionId)?.configuration ?? this.props.defaultConfiguration?.())
       : undefined;
   }
 
-  setConfiguration(sessionId: string, configuration: ChatConfiguration) {
-    if (!this.isPending(sessionId)) return;
-    this.update(sessionId, (pending) => ({ ...pending, configuration }));
-  }
-
-  isDraft(sessionId: string) {
-    return this.isPending(sessionId) && this.sessionFor(sessionId)?.draftPrompt !== undefined;
-  }
-
-  draftPrompt(sessionId: string) {
-    return this.isDraft(sessionId) ? this.sessionFor(sessionId)?.draftPrompt : undefined;
-  }
-
-  createDraft(sessionId: string, text: string, attachments: Attachment[]) {
-    if (!this.isPending(sessionId)) return false;
-    this.update(sessionId, (pending) => ({
-      ...pending,
-      draftPrompt: { text, attachments: attachments.slice(), resolved: false },
-      modifiedAt: new Date().toISOString(),
-    }));
-    return true;
-  }
-
-  updateDraft(sessionId: string, text: string, attachments: Attachment[]) {
-    if (!this.isDraft(sessionId)) return false;
-    this.update(sessionId, (pending) => ({
-      ...pending,
-      draftPrompt: {
-        text,
-        attachments: attachments.slice(),
-        resolved: pending.draftPrompt?.resolved ?? false,
-      },
-      modifiedAt: new Date().toISOString(),
-    }));
-    return true;
-  }
-
-  activateDraft(sessionId: string) {
-    if (!this.isDraft(sessionId)) return undefined;
-    const prompt = this.sessionFor(sessionId)?.draftPrompt;
-    this.update(sessionId, (pending) => ({
-      ...pending,
-      draftPrompt: undefined,
-      modifiedAt: new Date().toISOString(),
-    }));
-    return prompt;
-  }
-
-  applyGeneratedDraftName(sessionId: string, name: string) {
-    if (!this.isDraft(sessionId) || this.sessionFor(sessionId)?.name) return;
-    this.rename(sessionId, name);
-  }
-
   rename(sessionId: string, name: string) {
-    if (!this.isPending(sessionId)) return false;
-    const title = name.trim().slice(0, SESSION_TITLE_MAX_LENGTH);
-    if (!title) return false;
-    this.update(sessionId, (pending) => ({
-      ...pending,
-      name: title,
-      modifiedAt: new Date().toISOString(),
-    }));
-    return true;
-  }
-
-  setDraftResolved(sessionId: string, resolved: boolean) {
-    if (!this.isDraft(sessionId)) return false;
-    this.update(sessionId, (pending) => ({
-      ...pending,
-      draftPrompt: pending.draftPrompt ? { ...pending.draftPrompt, resolved } : undefined,
-      modifiedAt: new Date().toISOString(),
-    }));
+    if (!this.isPending(sessionId) || !name.trim()) return false;
+    this.conversation(sessionId)!.setName(name);
     return true;
   }
 
@@ -173,48 +102,23 @@ export class CakeChatPendingSessionsStore extends Store<CakeChatPendingSessionsS
     const request: NewCakeChatSessionRequest = { tools };
     const configuration = this.configuration(sessionId);
     if (configuration !== undefined) request.configuration = configuration;
-    const pending = this.sessionFor(sessionId);
-    if (pending?.name !== undefined) request.name = pending.name;
+    const name = this.conversation(sessionId)?.name;
+    if (name !== undefined) request.name = name;
     return request;
   }
 
   markMaterialized(sessionId: string) {
     if (!this.isPending(sessionId)) return;
-    this.update(sessionId, (pending) => ({
-      ...pending,
-      started: true,
-      configuration: undefined,
-      draftPrompt: undefined,
-      modifiedAt: new Date().toISOString(),
-      messageCount: Math.max(1, pending.messageCount),
-    }));
+    removeValue(this.pendingSessionIds, sessionId);
+    this.conversation(sessionId)?.markMaterialized();
   }
 
   isResolved(sessionId: string) {
-    return this.sessionFor(sessionId)?.draftPrompt?.resolved ?? false;
+    return this.conversation(sessionId)?.resolved ?? false;
   }
+}
 
-  private summary(pending: PendingCakeChatSession): CakeChatSummaryProjection {
-    return {
-      sessionId: pending.sessionId,
-      title: pending.name?.slice(0, SESSION_TITLE_MAX_LENGTH) ?? "New chat",
-      createdAt: pending.createdAt,
-      modifiedAt: pending.modifiedAt,
-      messageCount: pending.messageCount,
-      resolved: pending.draftPrompt?.resolved ?? false,
-      draft: pending.draftPrompt !== undefined,
-    };
-  }
-
-  private sessionFor(sessionId: string) {
-    return this.sessions.find((pending) => pending.sessionId === sessionId);
-  }
-
-  private update(
-    sessionId: string,
-    update: (pending: PendingCakeChatSession) => PendingCakeChatSession,
-  ) {
-    const index = this.sessions.findIndex((pending) => pending.sessionId === sessionId);
-    if (index >= 0) this.sessions.splice(index, 1, update(this.sessions[index]!));
-  }
+function removeValue(values: string[], value: string) {
+  const index = values.indexOf(value);
+  if (index >= 0) values.splice(index, 1);
 }

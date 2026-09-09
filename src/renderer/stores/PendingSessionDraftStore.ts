@@ -29,7 +29,7 @@ export interface PendingSessionDraftStoreProps {
   creationChoice?(): WorktreeDraftChoice;
 }
 
-/** Owns the distinct saved-draft lifecycle for a pending Project or Cake Chat session. */
+/** Owns transient composer editing/activation UI for a saved pending-conversation prompt. */
 export class PendingSessionDraftStore extends Store<PendingSessionDraftStoreProps> {
   editing = false;
 

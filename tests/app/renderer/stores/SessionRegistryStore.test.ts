@@ -91,8 +91,9 @@ describe("SessionRegistryStore materialization", () => {
     const staged = fixture.registry.pendingSessions.prepareStaged("/project", "staged");
     staged.conversationSessionStore.composerStore.draftStore.setText("Keep staged input");
     fixture.registry.pendingSessions.prepare("/project", "draft");
-    fixture.registry.pendingSessions.setName("draft", "Saved draft");
-    fixture.registry.pendingSessions.setConfiguration("draft", {
+    const pendingConversation = fixture.registry.pendingSessions.conversation("draft")!;
+    pendingConversation.setName("Saved draft");
+    pendingConversation.setConfiguration({
       provider: "openai",
       modelId: "gpt-5",
       thinkingLevel: "high",
@@ -111,9 +112,10 @@ describe("SessionRegistryStore materialization", () => {
       "Keep staged input",
     );
     expect(restored.registry.pendingSessions.isDraft("draft")).toBe(true);
-    expect(restored.registry.pendingSessions.draftPrompt("draft")?.text).toBe("Do this later");
-    expect(restored.registry.pendingSessions.name("draft")).toBe("Saved draft");
-    expect(restored.registry.pendingSessions.configuration("draft")).toMatchObject({
+    const restoredConversation = restored.registry.pendingSessions.conversation("draft")!;
+    expect(restoredConversation.draftPrompt?.text).toBe("Do this later");
+    expect(restoredConversation.name).toBe("Saved draft");
+    expect(restoredConversation.configuration).toMatchObject({
       provider: "openai",
       modelId: "gpt-5",
       thinkingLevel: "high",
@@ -322,7 +324,7 @@ describe("SessionRegistryStore materialization", () => {
     const { registry } = fixture;
     registry.pendingSessions.prepare("/project", "draft-1");
     await registry.pendingSessions.createDraft("draft-1", "Planned work", []);
-    registry.pendingSessions.setDraftResolved("draft-1", true);
+    registry.pendingSessions.conversation("draft-1")!.setDraftResolved(true);
 
     await expect(registry.pendingSessions.deleteResolvedDraft("draft-1")).resolves.toBe(true);
 

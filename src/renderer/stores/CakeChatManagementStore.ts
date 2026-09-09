@@ -62,7 +62,7 @@ export class CakeChatManagementStore extends Store<CakeChatManagementStoreProps>
   /** Resolution commands are serialized; the catalog stream remains the only projection writer. */
   async resolveSession(sessionId: string, resolved: boolean) {
     if (this.signal.aborted) return;
-    if (this.props.pendingSessions.setDraftResolved(sessionId, resolved)) return;
+    if (this.props.pendingSessions.conversation(sessionId)?.setDraftResolved(resolved)) return;
     if (resolved && this.props.pendingSessions.isPending(sessionId)) {
       this.props.discardPendingSession(sessionId);
       return;
@@ -74,7 +74,8 @@ export class CakeChatManagementStore extends Store<CakeChatManagementStoreProps>
     const ids = [...sessionIds];
     if (this.signal.aborted) return 0;
     const persistedIds = ids.filter((sessionId) => {
-      if (this.props.pendingSessions.setDraftResolved(sessionId, resolved)) return false;
+      if (this.props.pendingSessions.conversation(sessionId)?.setDraftResolved(resolved))
+        return false;
       if (!resolved || !this.props.pendingSessions.isPending(sessionId)) return true;
       this.props.discardPendingSession(sessionId);
       return false;
@@ -86,7 +87,7 @@ export class CakeChatManagementStore extends Store<CakeChatManagementStoreProps>
   async deleteSession(sessionId: string) {
     if (!this.props.isSessionResolved(sessionId) || this.signal.aborted) return;
     try {
-      if (this.props.pendingSessions.isDraft(sessionId)) {
+      if (this.props.pendingSessions.conversation(sessionId)?.isDraft) {
         this.props.removeSession(sessionId);
         return;
       }
