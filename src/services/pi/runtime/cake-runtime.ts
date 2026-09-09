@@ -1538,7 +1538,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         ...(turnRecoveryFailureDetail ? [recoveryFailureNotice(turnRecoveryFailureDetail)] : []),
       ],
       fastMode: fastModeEnabled(),
-      commands: piCommandCatalog(),
+      commands: options.auxiliary ? [] : piCommandCatalog(),
       slashCommands: options.slashCommands,
       usage: projection.currentUsage(),
       compatibility: catalog,
