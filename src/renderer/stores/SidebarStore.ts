@@ -201,40 +201,14 @@ export class SidebarStore extends Store<SidebarStoreProps> {
   }
 
   projectSessions(workspacePath: string, resolved = false) {
-    const { byId, roots } = this.sortedProjectSessionRoots(workspacePath, resolved);
-    const pinned = this.pinnedSession;
-    if (
-      pinned?.kind === "project-session" &&
-      pinned.groupKey === workspacePath &&
-      pinned.resolved === resolved
-    ) {
-      const currentIndex = roots.findIndex((session) => session.sessionId === pinned.sessionId);
-      if (currentIndex >= 0) {
-        const [selected] = roots.splice(currentIndex, 1);
-        roots.splice(Math.min(pinned.index, roots.length), 0, selected!);
-      }
-    }
-    return roots.flatMap((root) => {
-      if (!root.familyChildSessionIds || this.isFamilyCollapsed(root.sessionId)) return [root];
-      const children = root.familyChildSessionIds
-        .flatMap((id) => (byId.get(id) ? [byId.get(id)!] : []))
-        .sort((left, right) => (left.familyChildOrder ?? 0) - (right.familyChildOrder ?? 0));
-      return [root, ...children];
-    });
+    const { byId, roots } = this.orderedProjectSessionRoots(workspacePath, resolved);
+    return this.flattenProjectSessionRoots(byId, roots);
   }
 
   visibleProjectSessions(workspacePath: string, resolved = false) {
-    const sessions = this.projectSessions(workspacePath, resolved);
-    const limit = this.sessionLimit(workspacePath, resolved);
-    if (sessions.length <= limit) return sessions;
-    let end = limit;
-    while (
-      end < sessions.length &&
-      sessions[end]?.familyParentSessionId &&
-      sessions[end]!.familyParentSessionId !== sessions[end]!.sessionId
-    )
-      end += 1;
-    return sessions.slice(0, end);
+    const { byId, roots } = this.orderedProjectSessionRoots(workspacePath, resolved);
+    const visibleRoots = roots.slice(0, this.sessionLimit(workspacePath, resolved));
+    return this.flattenProjectSessionRoots(byId, visibleRoots);
   }
 
   isFamilyCollapsed(parentSessionId: string) {
@@ -262,7 +236,8 @@ export class SidebarStore extends Store<SidebarStoreProps> {
   hasMoreResolvedProjectSessions(projectPath: string) {
     return (
       this.props.catalog.hasMoreResolvedSessions(projectPath) ||
-      this.projectSessions(projectPath, true).length > this.sessionLimit(projectPath, true)
+      this.sortedProjectSessionRoots(projectPath, true).roots.length >
+        this.sessionLimit(projectPath, true)
     );
   }
 
@@ -371,6 +346,36 @@ export class SidebarStore extends Store<SidebarStoreProps> {
 
   sessionActivityTime(modified: string) {
     return formatRelativeSessionTime(modified, this.now);
+  }
+
+  private orderedProjectSessionRoots(workspacePath: string, resolved: boolean) {
+    const { byId, roots } = this.sortedProjectSessionRoots(workspacePath, resolved);
+    const pinned = this.pinnedSession;
+    if (
+      pinned?.kind === "project-session" &&
+      pinned.groupKey === workspacePath &&
+      pinned.resolved === resolved
+    ) {
+      const currentIndex = roots.findIndex((session) => session.sessionId === pinned.sessionId);
+      if (currentIndex >= 0) {
+        const [selected] = roots.splice(currentIndex, 1);
+        roots.splice(Math.min(pinned.index, roots.length), 0, selected!);
+      }
+    }
+    return { byId, roots };
+  }
+
+  private flattenProjectSessionRoots(
+    byId: ReturnType<SidebarStore["sortedProjectSessionRoots"]>["byId"],
+    roots: ReturnType<SidebarStore["sortedProjectSessionRoots"]>["roots"],
+  ) {
+    return roots.flatMap((root) => {
+      if (!root.familyChildSessionIds || this.isFamilyCollapsed(root.sessionId)) return [root];
+      const children = root.familyChildSessionIds
+        .flatMap((id) => (byId.get(id) ? [byId.get(id)!] : []))
+        .sort((left, right) => (left.familyChildOrder ?? 0) - (right.familyChildOrder ?? 0));
+      return [root, ...children];
+    });
   }
 
   private sortedProjectSessionRoots(workspacePath: string, resolved: boolean) {

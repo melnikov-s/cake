@@ -200,6 +200,69 @@ describe("SidebarStore catalog demand", () => {
     store[Symbol.dispose]();
   });
 
+  it("does not count expanded family children toward the project session limit", () => {
+    const summaries = Array.from({ length: 10 }, (_, index) => {
+      const parentId = `parent-${index}`;
+      const modifiedAt = new Date(Date.UTC(2026, 0, 20 - index)).toISOString();
+      return [
+        {
+          sessionId: parentId,
+          modifiedAt,
+          resolved: false,
+          draft: false,
+          projectPath: "/cake",
+          familyChildSessionIds: [`child-${index}`],
+        },
+        {
+          sessionId: `child-${index}`,
+          modifiedAt,
+          resolved: false,
+          draft: false,
+          projectPath: "/cake",
+          familyParentSessionId: parentId,
+          familyChildOrder: 0,
+        },
+      ];
+    }).flat();
+    const catalog = {
+      projectSessions: () => summaries,
+      find: (sessionId: string) => summaries.find((session) => session.sessionId === sessionId),
+    } as unknown as SessionCatalogStore;
+    const store = mount(
+      createStore(SidebarStore, {
+        projects: { orderedProjectPaths: [] } as unknown as ProjectCatalogStore,
+        catalog,
+        sessions: {} as SessionRegistryStore,
+        cakeChat: () => ({}) as CakeChatCollectionStore,
+        setSessionResolved: async () => undefined,
+        setSessionWorkflowStatus: async () => undefined,
+        setCakeChatSessionResolved: async () => undefined,
+        deleteSession: async () => undefined,
+        deleteCakeChatSession: async () => undefined,
+        setSessionUnread: async () => undefined,
+        embeddedEditorSettings: embeddedEditorSettings(),
+      }),
+    );
+
+    expect(store.visibleProjectSessions("/cake")).toHaveLength(20);
+    expect(store.visibleProjectSessions("/cake")).toEqual(store.projectSessions("/cake"));
+
+    summaries.push({
+      sessionId: "standalone-11",
+      modifiedAt: "2025-01-01T00:00:00.000Z",
+      resolved: false,
+      draft: false,
+      projectPath: "/cake",
+      familyChildSessionIds: [],
+    });
+    expect(store.projectSessions("/cake")).toHaveLength(21);
+    expect(store.visibleProjectSessions("/cake")).toHaveLength(20);
+    expect(store.visibleProjectSessions("/cake").map((session) => session.sessionId)).not.toContain(
+      "standalone-11",
+    );
+    store[Symbol.dispose]();
+  });
+
   it("treats sidebar visibility inside VS Code as a temporary override", () => {
     const store = mount(
       createStore(SidebarStore, {
