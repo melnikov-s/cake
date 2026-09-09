@@ -1,5 +1,5 @@
 import { createContext } from "r-state-tree";
-import type { CakeChatTarget } from "../../../domain/cake-chat-data";
+import type { CakeChatTarget } from "../../../domain/cake-chats/cake-chat-data";
 
 export type SettingsSessionContextValue =
   | {

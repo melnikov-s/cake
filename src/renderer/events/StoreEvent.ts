@@ -1,4 +1,4 @@
-import type { AgentAvailabilityEntry } from "../../domain/agent-availability-data";
+import type { AgentAvailabilityEntry } from "../../domain/application/agent-availability-data";
 import type { ArtifactRecord } from "../../ipc/artifact-contract";
 import type { CakeEvent } from "../../ipc/cake-rpc-contract";
 

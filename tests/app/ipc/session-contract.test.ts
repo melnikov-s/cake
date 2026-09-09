@@ -4,7 +4,7 @@ import {
   RendererApplicationProjection,
   RendererApplicationState,
   defaultApplicationState,
-} from "../../../src/domain/application-data";
+} from "../../../src/domain/application/application-data";
 import { applicationStateSchema, parsePiBuiltinCommand } from "../../../src/ipc/session-contract";
 
 it("uses the domain-owned renderer application schema at the IPC boundary", () => {

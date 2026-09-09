@@ -1,5 +1,5 @@
 import { useId, useState } from "react";
-import type { ProjectWorkflowColor } from "../../domain/application-data";
+import type { ProjectWorkflowColor } from "../../domain/application/application-data";
 import { Button } from "./ui/button";
 import { ColorPicker } from "./ui/color-picker";
 import { EditIcon, TrashIcon } from "./ui/icons";

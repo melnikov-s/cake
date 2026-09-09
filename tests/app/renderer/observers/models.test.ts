@@ -3,13 +3,16 @@ import { describe, expect, it, vi } from "vitest";
 import type {
   ProjectCatalogUpdate,
   SessionCatalogUpdate,
-} from "../../../../src/domain/catalog-data";
-import { TurnId, type ConversationSnapshot } from "../../../../src/domain/conversation-data";
-import type { ManagedWorktreeCatalogUpdate } from "../../../../src/domain/managed-worktree-data";
+} from "../../../../src/domain/application/catalog-data";
+import {
+  TurnId,
+  type ConversationSnapshot,
+} from "../../../../src/domain/conversations/conversation-data";
+import type { ManagedWorktreeCatalogUpdate } from "../../../../src/domain/worktrees/managed-worktree-data";
 import {
   ProjectSessionError,
   type ProjectSessionUpdate,
-} from "../../../../src/domain/project-session-data";
+} from "../../../../src/domain/project-sessions/project-session-data";
 import { CakeIpcClient, type CakeIpcClientService } from "../../../../src/ipc/client/CakeIpcClient";
 import { createModelObserver, observeStream } from "../../../../src/renderer/observers";
 import { observationFailureDetails } from "../../../../src/renderer/observers/models";

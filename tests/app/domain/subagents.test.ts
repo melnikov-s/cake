@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
 import { Deferred, Effect, Fiber, Layer, Queue, Ref, Stream, SubscriptionRef } from "effect";
 import { describe } from "vitest";
-import * as subagents from "../../../src/domain/subagents";
+import * as subagents from "../../../src/domain/subagents/subagents";
 import {
   defaultApplicationState,
   type ApplicationState as ApplicationStateValue,
-} from "../../../src/domain/application-data";
+} from "../../../src/domain/application/application-data";
 import type { SessionSnapshot } from "../../../src/ipc/session-contract";
 import {
   makePiSessionsLayer,

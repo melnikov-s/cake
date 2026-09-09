@@ -8,8 +8,8 @@ import type { Terminal } from "../services/terminal/Terminal";
 import type { ProjectSessionConfiguration } from "../services/project-sessions/ProjectSessionConfiguration";
 import type { SessionFamilyStorage } from "../services/storage/SessionFamilyStorage";
 import type { ManagedWorktrees } from "../services/worktrees/ManagedWorktrees";
-import * as projectSessionLifecycle from "../domain/projectSessionLifecycle";
-import { WorktreeLandingError } from "../domain/worktree-landing-data";
+import * as projectSessionLifecycle from "../domain/project-sessions/projectSessionLifecycle";
+import { WorktreeLandingError } from "../domain/worktrees/worktree-landing-data";
 import { WorktreeLandingCompletion } from "../services/worktrees/WorktreeLandingCompletion";
 
 type Dependencies =

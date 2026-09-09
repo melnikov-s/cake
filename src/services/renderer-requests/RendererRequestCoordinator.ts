@@ -1,6 +1,6 @@
 import { Context, Deferred, Effect, Layer, PubSub, Schema, Stream } from "effect";
-import type { CakeChatControlRequest } from "../../domain/cake-chat-data";
-import type { ProjectSessionControlInvocation } from "../../domain/project-session-data";
+import type { CakeChatControlRequest } from "../../domain/cake-chats/cake-chat-data";
+import type { ProjectSessionControlInvocation } from "../../domain/project-sessions/project-session-data";
 import type { ArtifactRecord } from "../../ipc/artifact-contract";
 import type { CakeEvent, cakeRpcPayloadSchemas } from "../../ipc/cake-rpc-contract";
 import type { JsonValue } from "../../ipc/json-contract";

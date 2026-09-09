@@ -4,7 +4,7 @@ import type { UtilityModel } from "../../ipc/session-contract";
 import type { CakeModelPresetCatalog } from "../../domain/cake-model-selection";
 import type { WorktreeLandingCoordinator } from "../../ipc/worktree-contract";
 import type { JsonValue } from "../../ipc/json-contract";
-import type { ProjectSessionControlInvocation } from "../../domain/project-session-data";
+import type { ProjectSessionControlInvocation } from "../../domain/project-sessions/project-session-data";
 import type { VscodeActionResult } from "../vscode/VsCodeServer";
 import {
   parseArtifactInput,

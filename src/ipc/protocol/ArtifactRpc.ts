@@ -1,5 +1,5 @@
 import { Rpc, RpcGroup } from "effect/unstable/rpc";
-import { ArtifactError } from "../../domain/artifact-data";
+import { ArtifactError } from "../../domain/artifacts/artifact-data";
 import {
   artifactEventSchema,
   cakeRpcPayloadSchemas,

@@ -1,5 +1,5 @@
 import { Rpc, RpcGroup } from "effect/unstable/rpc";
-import { ProjectError } from "../../domain/project-error";
+import { ProjectError } from "../../domain/projects/project-error";
 import { WorkspaceFileError } from "../../services/filesystem/WorkspaceFiles";
 import { cakeRpcPayloadSchemas, cakeRpcSuccessSchemas } from "../cake-rpc-contract";
 

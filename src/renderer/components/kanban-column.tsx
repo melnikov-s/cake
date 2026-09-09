@@ -1,6 +1,6 @@
 import type { DragEvent } from "react";
 import { observer } from "r-state-tree/react";
-import type { ProjectWorkflowColor } from "../../domain/application-data";
+import type { ProjectWorkflowColor } from "../../domain/application/application-data";
 import { kanbanColumnDragType, kanbanSessionDragType } from "../lib/kanban-drag";
 import { cn } from "../lib/utils";
 import type { KanbanColumnId, KanbanStore } from "../stores/KanbanStore";

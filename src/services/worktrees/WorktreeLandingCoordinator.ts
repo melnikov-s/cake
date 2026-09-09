@@ -1,5 +1,5 @@
 import { Context, Effect, FiberMap, Layer, SubscriptionRef } from "effect";
-import type { WorktreeLandingOperation } from "../../domain/worktree-landing-data";
+import type { WorktreeLandingOperation } from "../../domain/worktrees/worktree-landing-data";
 
 export interface WorktreeLandingCoordinatorState {
   readonly operations: ReadonlyMap<string, WorktreeLandingOperation>;

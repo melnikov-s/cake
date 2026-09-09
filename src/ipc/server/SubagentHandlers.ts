@@ -1,5 +1,5 @@
 import { Effect, Stream } from "effect";
-import * as subagents from "../../domain/subagents";
+import * as subagents from "../../domain/subagents/subagents";
 import { SubagentRpc } from "../protocol/SubagentRpc";
 
 export const subagentHandlers = SubagentRpc.of({

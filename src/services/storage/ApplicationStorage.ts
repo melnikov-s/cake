@@ -6,7 +6,7 @@ import {
   UtilityModel,
   defaultApplicationState,
   type ApplicationState as ApplicationStateValue,
-} from "../../domain/application-data";
+} from "../../domain/application/application-data";
 import { atomicWriteFile, type AtomicFileStage } from "./internal/atomicFile";
 
 const APPLICATION_DOCUMENT_VERSION = 1;

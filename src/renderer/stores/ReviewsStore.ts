@@ -1,5 +1,5 @@
 import { Store, child, createStore, observable } from "r-state-tree";
-import type { DiscussionAnchor } from "../../domain/discussion-session-data";
+import type { DiscussionAnchor } from "../../domain/discussion-sessions/discussion-session-data";
 import type { Annotation } from "../../ipc/session-contract";
 import { ClientContext } from "./context/ClientContext";
 import { ActiveProjectSessionContext } from "./context/ActiveProjectSessionContext";

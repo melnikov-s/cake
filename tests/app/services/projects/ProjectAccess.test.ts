@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
 import { Effect, Layer } from "effect";
 import { describe } from "vitest";
-import { defaultApplicationState } from "../../../../src/domain/application-data";
+import { defaultApplicationState } from "../../../../src/domain/application/application-data";
 import { makeProjectAccessLive } from "../../../../src/services/projects/ProjectAccessLive";
 import { ProjectAccess } from "../../../../src/services/projects/ProjectAccess";
 import { ApplicationState } from "../../../../src/services/storage/ApplicationState";

@@ -1,6 +1,6 @@
 import { Store, child, createStore, observable, snapshot } from "r-state-tree";
 import type { ChatConfiguration } from "../../ipc/session-contract";
-import type { CakeChatSummary } from "../../domain/cake-chat-data";
+import type { CakeChatSummary } from "../../domain/cake-chats/cake-chat-data";
 import type { JsonObject } from "../../ipc/json-contract";
 import { PendingConversationStore } from "./PendingConversationStore";
 

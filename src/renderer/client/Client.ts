@@ -1,13 +1,16 @@
 import type { Effect } from "effect";
-import type { ProjectSettings, ProjectWorkflowColor } from "../../domain/application-data";
+import type {
+  ProjectSettings,
+  ProjectWorkflowColor,
+} from "../../domain/application/application-data";
 import type {
   ResolvedManagedWorktreeCleanupPlan,
   ResolvedManagedWorktreeCleanupResult,
-} from "../../domain/managed-worktree-cleanup-data";
+} from "../../domain/worktrees/managed-worktree-cleanup-data";
 import type {
   WorktreeLandingOperation,
   WorktreeLandingSnapshot,
-} from "../../domain/worktree-landing-data";
+} from "../../domain/worktrees/worktree-landing-data";
 import type { CakeIpcClientService } from "../../ipc/client/CakeIpcClient";
 import type { EditorAnnotationSnapshot } from "../../ipc/editor-annotation";
 import type {
@@ -26,7 +29,7 @@ import type {
   SessionSnapshot,
   UtilityModel,
 } from "../../ipc/session-contract";
-import type { WorktreeRecord } from "../../domain/managed-worktree-data";
+import type { WorktreeRecord } from "../../domain/worktrees/managed-worktree-data";
 
 export interface ClientCommandOptions {
   readonly signal?: AbortSignal;

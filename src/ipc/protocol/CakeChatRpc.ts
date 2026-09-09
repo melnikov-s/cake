@@ -8,9 +8,9 @@ import {
   CakeChatPromptInput,
   CakeChatTarget,
   CakeChatUpdate,
-} from "../../domain/cake-chat-data";
-import { CakeChatCatalogUpdate } from "../../domain/catalog-data";
-import { ConversationSnapshot, TurnId } from "../../domain/conversation-data";
+} from "../../domain/cake-chats/cake-chat-data";
+import { CakeChatCatalogUpdate } from "../../domain/application/catalog-data";
+import { ConversationSnapshot, TurnId } from "../../domain/conversations/conversation-data";
 import { SESSION_TITLE_MAX_LENGTH, piSettingUpdateSchema } from "../session-contract";
 import { RendererConnectionMiddleware } from "./RendererConnectionMiddleware";
 

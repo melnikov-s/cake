@@ -1,11 +1,11 @@
 import { it } from "@effect/vitest";
 import { Effect, Layer, Queue, Stream } from "effect";
 import { describe, expect } from "vitest";
-import * as scheduledMessages from "../../../src/domain/scheduledMessages";
+import * as scheduledMessages from "../../../src/domain/scheduled-messages/scheduledMessages";
 import type {
   ScheduledMessage,
   ScheduledMessageUpdate,
-} from "../../../src/domain/scheduled-message-data";
+} from "../../../src/domain/scheduled-messages/scheduled-message-data";
 import { ScheduledMessages } from "../../../src/services/scheduled-messages/ScheduledMessages";
 import { ScheduledMessageStorage } from "../../../src/services/storage/ScheduledMessageStorage";
 

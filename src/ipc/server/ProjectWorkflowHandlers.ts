@@ -1,4 +1,4 @@
-import * as projects from "../../domain/projects";
+import * as projects from "../../domain/projects/projects";
 import { ProjectWorkflowRpc } from "../protocol/ProjectWorkflowRpc";
 
 export const projectWorkflowHandlers = ProjectWorkflowRpc.of({

@@ -1,5 +1,5 @@
 import type { HTMLAttributes } from "react";
-import type { ProjectWorkflowColor } from "../../../domain/application-data";
+import type { ProjectWorkflowColor } from "../../../domain/application/application-data";
 import { cn } from "../../lib/utils";
 
 const colorClasses = {

@@ -2,7 +2,7 @@ import { Context, Effect, FileSystem, Layer, Path, Schema, Semaphore } from "eff
 import {
   ScheduledMessage,
   type ScheduledMessage as ScheduledMessageValue,
-} from "../../domain/scheduled-message-data";
+} from "../../domain/scheduled-messages/scheduled-message-data";
 import { atomicWriteFile } from "./internal/atomicFile";
 
 const DOCUMENT_VERSION = 1;

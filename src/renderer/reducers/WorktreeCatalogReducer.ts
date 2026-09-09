@@ -1,5 +1,5 @@
 import { applySnapshot, batch } from "r-state-tree";
-import type { ManagedWorktreeCatalogUpdate } from "../../domain/managed-worktree-data";
+import type { ManagedWorktreeCatalogUpdate } from "../../domain/worktrees/managed-worktree-data";
 import { ManagedWorktree } from "../models/ManagedWorktree";
 import type { WorktreeCatalog } from "../models/WorktreeCatalog";
 

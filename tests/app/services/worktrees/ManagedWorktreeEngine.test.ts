@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { type GitRunner } from "../../../../src/services/git/Git";
 import { makeTestWorktreeStorageRepository } from "../../../helpers/worktree-storage-repository";
 import { ManagedWorktreeEngine } from "../../../../src/services/worktrees/ManagedWorktreeEngine";
-import type { WorktreeRecord } from "../../../../src/domain/managed-worktree-data";
+import type { WorktreeRecord } from "../../../../src/domain/worktrees/managed-worktree-data";
 
 const directories: string[] = [];
 

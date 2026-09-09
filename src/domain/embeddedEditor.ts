@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { setVscodeServerPath } from "./application";
+import { setVscodeServerPath } from "./application/application";
 import { VsCodeServer, VsCodeServerError } from "../services/vscode/VsCodeServer";
 
 /** Persists the selected binary and then refreshes the concrete server projection. */

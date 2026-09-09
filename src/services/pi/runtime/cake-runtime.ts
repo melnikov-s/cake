@@ -22,7 +22,7 @@ import type { CakeModelPresetCatalog } from "../../../domain/cake-model-selectio
 import type {
   ParallelSubagentInput as DomainParallelSubagentInput,
   SubagentTaskInput as DomainSubagentTaskInput,
-} from "../../../domain/subagent-data";
+} from "../../../domain/subagents/subagent-data";
 import { jsonValueSchema, type JsonObject, type JsonValue } from "../../../ipc/json-contract";
 import type {
   ArtifactRecord,

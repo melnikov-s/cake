@@ -11,7 +11,7 @@ import {
   CakeModelSelection,
   type ExplicitCakeModelSelection,
 } from "../../../domain/cake-model-selection";
-import type { SubagentTaskInput as DomainSubagentTaskInput } from "../../../domain/subagent-data";
+import type { SubagentTaskInput as DomainSubagentTaskInput } from "../../../domain/subagents/subagent-data";
 import { jsonObjectSchema, type JsonObject, type JsonValue } from "../../../ipc/json-contract";
 import { artifactRecordSchema, type CakeArtifactV1 } from "../../../ipc/artifact-contract";
 import { createCakeArtifactExtension } from "./artifact-extension";

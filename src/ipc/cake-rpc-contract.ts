@@ -11,8 +11,8 @@ import {
   repairedInlineWidgetSchema,
 } from "./inline-widget-contract";
 import { jsonValueSchema } from "./json-contract";
-import { ProjectSettings, ProjectWorkflowColor } from "../domain/application-data";
-import { ProjectSessionControlRequest } from "../domain/project-session-data";
+import { ProjectSettings, ProjectWorkflowColor } from "../domain/application/application-data";
+import { ProjectSessionControlRequest } from "../domain/project-sessions/project-session-data";
 import {
   applicationStateSchema,
   attachmentSchema,
@@ -21,8 +21,11 @@ import {
   slashCommandSchema,
   utilityModelSchema,
 } from "./session-contract";
-import { WorktreeLandingOperation, WorktreeLandingSnapshot } from "../domain/worktree-landing-data";
-import { WorktreeRecord } from "../domain/managed-worktree-data";
+import {
+  WorktreeLandingOperation,
+  WorktreeLandingSnapshot,
+} from "../domain/worktrees/worktree-landing-data";
+import { WorktreeRecord } from "../domain/worktrees/managed-worktree-data";
 
 const bounded = (minimum: number, maximum: number) =>
   Schema.String.check(Schema.isMinLength(minimum), Schema.isMaxLength(maximum));

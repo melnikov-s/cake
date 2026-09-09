@@ -1,8 +1,11 @@
 import { Schema } from "effect";
 import { applySnapshot, batch, toSnapshot, type Snapshot } from "r-state-tree";
-import type { CakeChatUpdate } from "../../domain/cake-chat-data";
-import type { ConversationEvent, ConversationSnapshot } from "../../domain/conversation-data";
-import type { ProjectSessionUpdate } from "../../domain/project-session-data";
+import type { CakeChatUpdate } from "../../domain/cake-chats/cake-chat-data";
+import type {
+  ConversationEvent,
+  ConversationSnapshot,
+} from "../../domain/conversations/conversation-data";
+import type { ProjectSessionUpdate } from "../../domain/project-sessions/project-session-data";
 import {
   extensionUiEventSchema,
   sessionUsageSchema,

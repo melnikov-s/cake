@@ -1,5 +1,5 @@
 import { Effect, Predicate, Schema } from "effect";
-import type { ModelPreset } from "./application-data";
+import type { ModelPreset } from "./application/application-data";
 import { ThinkingLevel } from "../services/pi/model-data";
 
 const trimmed = (maximum: number) =>

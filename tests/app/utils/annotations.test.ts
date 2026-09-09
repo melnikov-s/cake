@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 import { describe, expect, it } from "vitest";
-import { ProjectSessionPromptInput } from "../../../src/domain/project-session-data";
+import { ProjectSessionPromptInput } from "../../../src/domain/project-sessions/project-session-data";
 import { applyAnnotationUpdate, createAnnotation } from "../../../src/utils/annotations";
 
 const id = "eeae3d6e-4c89-4e7a-9169-ec21bb8d3b9d";

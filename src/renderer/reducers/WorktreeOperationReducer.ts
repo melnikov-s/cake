@@ -1,5 +1,5 @@
 import { applySnapshot, batch } from "r-state-tree";
-import type { WorktreeOperationCatalogUpdate } from "../../domain/worktree-operation-data";
+import type { WorktreeOperationCatalogUpdate } from "../../domain/worktrees/worktree-operation-data";
 import { WorktreeOperation } from "../models/WorktreeOperation";
 import type { WorktreeOperationCatalog } from "../models/WorktreeOperationCatalog";
 

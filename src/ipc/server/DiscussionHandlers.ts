@@ -1,5 +1,5 @@
 import { Stream } from "effect";
-import * as discussionSessions from "../../domain/discussionSessions";
+import * as discussionSessions from "../../domain/discussion-sessions/discussionSessions";
 import { DiscussionRpc } from "../protocol/DiscussionRpc";
 
 export const discussionHandlers = DiscussionRpc.of({

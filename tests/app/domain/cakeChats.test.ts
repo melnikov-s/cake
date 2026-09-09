@@ -2,15 +2,15 @@ import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
 import { Effect, Layer, Stream } from "effect";
 import { describe } from "vitest";
-import * as cakeChatMetadata from "../../../src/domain/cakeChatMetadata";
-import * as cakeChatOperations from "../../../src/domain/cakeChatOperations";
-import * as cakeChatContinuations from "../../../src/domain/cakeChatContinuations";
-import * as cakeChatLifecycle from "../../../src/domain/cakeChatLifecycle";
+import * as cakeChatMetadata from "../../../src/domain/cake-chats/cakeChatMetadata";
+import * as cakeChatOperations from "../../../src/domain/cake-chats/cakeChatOperations";
+import * as cakeChatContinuations from "../../../src/domain/cake-chats/cakeChatContinuations";
+import * as cakeChatLifecycle from "../../../src/domain/cake-chats/cakeChatLifecycle";
 import {
   defaultApplicationState,
   type ApplicationState as ApplicationStateValue,
-} from "../../../src/domain/application-data";
-import type { CakeChatRuntimeConfiguration } from "../../../src/domain/cakeChatRuntime";
+} from "../../../src/domain/application/application-data";
+import type { CakeChatRuntimeConfiguration } from "../../../src/domain/cake-chats/cakeChatRuntime";
 import { makePiSessionsLayer, type PiSessionsAdapter } from "../../../src/services/pi/PiSessions";
 import type {
   CakeRuntime,

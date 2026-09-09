@@ -1,6 +1,6 @@
 import { Effect, Stream } from "effect";
-import * as managedWorktrees from "../../domain/managedWorktrees";
-import * as worktreeLandings from "../../domain/worktreeLandings";
+import * as managedWorktrees from "../../domain/worktrees/managedWorktrees";
+import * as worktreeLandings from "../../domain/worktrees/worktreeLandings";
 import { ManagedWorktreeRpc } from "../protocol/ManagedWorktreeRpc";
 import { RendererConnection } from "../protocol/RendererConnectionMiddleware";
 import { ManagedWorktrees } from "../../services/worktrees/ManagedWorktrees";

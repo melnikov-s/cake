@@ -3,7 +3,7 @@ import type {
   ResolvedAgentModel,
   SubagentProfile,
   SubagentStatus,
-} from "../../domain/subagent-data";
+} from "../../domain/subagents/subagent-data";
 import type { SessionUsage, UiPart } from "../../ipc/session-contract";
 
 /** Passive renderer projection of one live Subagent activity. */

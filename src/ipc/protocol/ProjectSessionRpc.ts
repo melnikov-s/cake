@@ -1,8 +1,8 @@
 import { Schema } from "effect";
 import { Rpc, RpcGroup } from "effect/unstable/rpc";
-import { CakeChatConfiguration } from "../../domain/cake-chat-data";
-import { SessionCatalogUpdate } from "../../domain/catalog-data";
-import { QueuedConversationMessages, TurnId } from "../../domain/conversation-data";
+import { CakeChatConfiguration } from "../../domain/cake-chats/cake-chat-data";
+import { SessionCatalogUpdate } from "../../domain/application/catalog-data";
+import { QueuedConversationMessages, TurnId } from "../../domain/conversations/conversation-data";
 import {
   ProjectSessionError,
   ProjectSessionCatalogQuery,
@@ -12,7 +12,7 @@ import {
   ProjectSessionTarget,
   ProjectSessionUpdate,
   WorkingDirectoryResolutionResult,
-} from "../../domain/project-session-data";
+} from "../../domain/project-sessions/project-session-data";
 import { SESSION_TITLE_MAX_LENGTH, piSettingUpdateSchema } from "../session-contract";
 
 export const ProjectSessionRpc = RpcGroup.make(

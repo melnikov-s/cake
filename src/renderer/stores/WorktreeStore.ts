@@ -1,6 +1,6 @@
 import { Store } from "r-state-tree";
-import type { WorktreeLandingOperation } from "../../domain/worktree-landing-data";
-import type { WorktreeRecord } from "../../domain/managed-worktree-data";
+import type { WorktreeLandingOperation } from "../../domain/worktrees/worktree-landing-data";
+import type { WorktreeRecord } from "../../domain/worktrees/managed-worktree-data";
 import type { WorktreeLandRequest, WorktreeStatus } from "../../ipc/worktree-contract";
 import { describeError } from "../lib/error-details";
 import { ClientContext } from "./context/ClientContext";

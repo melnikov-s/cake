@@ -12,7 +12,7 @@ import {
   ApplicationWriteError,
   makeApplicationStorageLive,
 } from "../../../../src/services/storage/ApplicationStorage";
-import { defaultApplicationState } from "../../../../src/domain/application-data";
+import { defaultApplicationState } from "../../../../src/domain/application/application-data";
 
 interface FakeFileSystemControls {
   readonly files: Map<string, string>;

@@ -2,7 +2,7 @@ import { Model, id } from "r-state-tree";
 import type {
   WorktreeLandingPhase,
   WorktreeLandingOperation,
-} from "../../domain/worktree-landing-data";
+} from "../../domain/worktrees/worktree-landing-data";
 
 /** Passive process-lifetime projection of one main-owned landing operation. */
 export class WorktreeOperation extends Model {

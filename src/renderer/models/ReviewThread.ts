@@ -1,5 +1,8 @@
 import { Model, child, id } from "r-state-tree";
-import type { DiscussionAnchor, DiscussionThread } from "../../domain/discussion-session-data";
+import type {
+  DiscussionAnchor,
+  DiscussionThread,
+} from "../../domain/discussion-sessions/discussion-session-data";
 import type { SessionUsage } from "../../ipc/session-contract";
 import { Message } from "./Message";
 

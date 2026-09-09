@@ -19,7 +19,7 @@ import type {
   SubagentProfile,
   SubagentResult,
   SubagentStatus,
-} from "../../domain/subagent-data";
+} from "../../domain/subagents/subagent-data";
 
 export interface SubagentHandleState {
   readonly handleId: SubagentHandleId;

@@ -1,4 +1,4 @@
-import type { ProjectWorkflowColor } from "../../../domain/application-data";
+import type { ProjectWorkflowColor } from "../../../domain/application/application-data";
 import { cn } from "../../lib/utils";
 import { Button } from "./button";
 import { StatusSwatch } from "./status-swatch";

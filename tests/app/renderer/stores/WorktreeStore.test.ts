@@ -1,6 +1,6 @@
 import { createStore, observable } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
-import type { WorktreeLandingOperation } from "../../../../src/domain/worktree-landing-data";
+import type { WorktreeLandingOperation } from "../../../../src/domain/worktrees/worktree-landing-data";
 import type { WorktreeStatus } from "../../../../src/ipc/worktree-contract";
 import type { Client } from "../../../../src/renderer/client/Client";
 import { WorktreeStore } from "../../../../src/renderer/stores/WorktreeStore";

@@ -1,5 +1,5 @@
 import { Effect, Stream } from "effect";
-import * as artifacts from "../../domain/artifacts";
+import * as artifacts from "../../domain/artifacts/artifacts";
 import { NativeEvents } from "../../services/electron/NativeEvents";
 import { ArtifactRpc } from "../protocol/ArtifactRpc";
 import { RendererConnection } from "../protocol/RendererConnectionMiddleware";

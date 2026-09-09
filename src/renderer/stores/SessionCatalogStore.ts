@@ -2,7 +2,7 @@ import { Store, computed, observable } from "r-state-tree";
 import type { SessionCatalog } from "../models/SessionCatalog";
 import type { SessionSummary } from "../models/SessionSummary";
 import type { WorktreeCatalog } from "../models/WorktreeCatalog";
-import type { WorktreeRecord } from "../../domain/managed-worktree-data";
+import type { WorktreeRecord } from "../../domain/worktrees/managed-worktree-data";
 import { compareSessionSummariesForSidebar } from "../../utils/session-summary-order";
 
 export interface PendingSessionSummary {

@@ -719,25 +719,23 @@ src/
 │   ├── terminal/
 │   ├── electron/
 │   └── widgets/
-├── domain/                   # Cohesive free Effect modules
-│   ├── application.ts
-│   ├── projects.ts
-│   ├── conversations.ts
-│   ├── projectSessionMetadata.ts
-│   ├── projectSessionOperations.ts
-│   ├── projectSessionContinuations.ts
-│   ├── projectSessionLifecycle.ts
-│   ├── cakeChatMetadata.ts
-│   ├── cakeChatOperations.ts
-│   ├── cakeChatContinuations.ts
-│   ├── cakeChatLifecycle.ts
-│   ├── discussionSessions.ts
-│   ├── subagents.ts
+├── domain/                   # Cake product contexts containing cohesive free Effect modules and owned data
+│   ├── application/          # Application state, availability, and cross-context catalog projections
+│   ├── artifacts/            # Artifact data, errors, and operations
+│   ├── cake-chats/           # Cake Chat data, metadata, locations, runtime, lifecycle, and operations
+│   ├── conversations/        # Shared conversation data and operations
+│   ├── discussion-sessions/  # Discussion Session data and operations
+│   ├── project-sessions/     # Project Session data, metadata, locations, runtime, lifecycle, and operations
+│   ├── projects/             # Project errors and operations
+│   ├── scheduled-messages/   # Scheduled Message data and operations
+│   ├── subagents/            # Subagent Session data, controls, and operations
+│   ├── worktrees/            # Managed Worktree data, cleanup, landing, and operations
+│   ├── cross-session-coordination.ts
+│   ├── embeddedEditor.ts
 │   ├── modelPresets.ts
-│   ├── utilityWork.ts
-│   ├── managedWorktrees.ts
 │   ├── reviews.ts
-│   ├── artifacts.ts
+│   ├── sessionFamilies.ts
+│   ├── utilityWork.ts
 │   └── workingDirectoryTerminals.ts
 ├── layers/                   # Production composition adapters joining domains to callback APIs
 ├── config/                   # Decoded process configuration values

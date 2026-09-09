@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
 import { Effect, Layer, Stream } from "effect";
 import { describe } from "vitest";
-import * as discussionSessions from "../../../src/domain/discussionSessions";
+import * as discussionSessions from "../../../src/domain/discussion-sessions/discussionSessions";
 import {
   makeDiscussionSessionEnvironmentLayer,
   type DiscussionSessionRecord,
@@ -15,7 +15,7 @@ import type {
 import { makeProjectSessionRuntimeTestLayer } from "./projectSessionRuntimeTestLayer";
 import type { SessionSnapshot } from "../../../src/ipc/session-contract";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
-import { defaultApplicationState } from "../../../src/domain/application-data";
+import { defaultApplicationState } from "../../../src/domain/application/application-data";
 
 const makeSnapshot = (sessionId: string, sessionFile: string): SessionSnapshot => ({
   workspacePath: "/project",

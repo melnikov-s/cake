@@ -1,6 +1,6 @@
 import { Model, child, computed, id, modelRef, observable, transient } from "r-state-tree";
 import type { SessionSnapshot, ThinkingLevel, UiPart } from "../../ipc/session-contract";
-import type { CakeChatControlRequest } from "../../domain/cake-chat-data";
+import type { CakeChatControlRequest } from "../../domain/cake-chats/cake-chat-data";
 import { Artifact } from "./Artifact";
 import { CompatibilityResource } from "./CompatibilityResource";
 import { Message } from "./Message";

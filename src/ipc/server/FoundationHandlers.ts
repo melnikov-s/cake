@@ -1,5 +1,5 @@
 import { Duration, Effect, Stream } from "effect";
-import * as projects from "../../domain/projects";
+import * as projects from "../../domain/projects/projects";
 import { NativeEvents } from "../../services/electron/NativeEvents";
 import { ProjectAccess } from "../../services/projects/ProjectAccess";
 import { WindowStateStorage } from "../../services/storage/WindowStateStorage";

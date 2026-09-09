@@ -2,7 +2,7 @@ import { Context, Effect, Layer, SubscriptionRef, type Stream } from "effect";
 import {
   defaultApplicationState,
   type ApplicationState as ApplicationStateValue,
-} from "../../domain/application-data";
+} from "../../domain/application/application-data";
 import {
   ApplicationStorage,
   type ApplicationEncodeError,

@@ -1,5 +1,5 @@
 import { Store, child, createStore, untracked } from "r-state-tree";
-import type { ProjectSessionControlInvocation } from "../../domain/project-session-data";
+import type { ProjectSessionControlInvocation } from "../../domain/project-sessions/project-session-data";
 import type { JsonValue } from "../../ipc/json-contract";
 import type { ChatConfiguration } from "../../ipc/session-contract";
 import type { Client } from "../client/Client";

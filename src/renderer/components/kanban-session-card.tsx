@@ -1,5 +1,5 @@
 import type { DragEvent } from "react";
-import type { ProjectWorkflowColor } from "../../domain/application-data";
+import type { ProjectWorkflowColor } from "../../domain/application/application-data";
 import { ActionCard } from "./ui/action-card";
 import { Badge } from "./ui/badge";
 import { StatusSwatch } from "./ui/status-swatch";

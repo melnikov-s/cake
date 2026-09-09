@@ -9,7 +9,7 @@ import type { ComposerDeliveryInput } from "./ConversationComposerStore";
 import type {
   ProjectSessionPromptInput,
   ProjectSessionStartInput,
-} from "../../domain/project-session-data";
+} from "../../domain/project-sessions/project-session-data";
 import { parseScheduledMessage } from "../../utils/scheduled-message-time";
 import type { QueuedPrompt as ChatQueuedPrompt } from "./ChatStore";
 import { ConversationSessionStore } from "./ConversationSessionStore";

@@ -9,7 +9,7 @@ import type { SessionCatalogStore } from "./SessionCatalogStore";
 import { SessionObservationRetentionStore } from "./SessionObservationRetentionStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { WorktreeStoreProps } from "./WorktreeStore";
-import type { WorktreeLandingOperation } from "../../domain/worktree-landing-data";
+import type { WorktreeLandingOperation } from "../../domain/worktrees/worktree-landing-data";
 import type { ExistingWorktreeCandidate, WorktreeDraftChoice } from "./WorktreeCreationStore";
 
 export interface SessionRegistryStoreProps {

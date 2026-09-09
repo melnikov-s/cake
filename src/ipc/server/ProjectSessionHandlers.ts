@@ -1,10 +1,10 @@
 import { Effect, Stream } from "effect";
-import { ProjectSessionError } from "../../domain/project-session-data";
-import * as projects from "../../domain/projects";
-import * as projectSessionMetadata from "../../domain/projectSessionMetadata";
-import * as projectSessionOperations from "../../domain/projectSessionOperations";
-import * as projectSessionContinuations from "../../domain/projectSessionContinuations";
-import * as projectSessionLifecycle from "../../domain/projectSessionLifecycle";
+import { ProjectSessionError } from "../../domain/project-sessions/project-session-data";
+import * as projects from "../../domain/projects/projects";
+import * as projectSessionMetadata from "../../domain/project-sessions/projectSessionMetadata";
+import * as projectSessionOperations from "../../domain/project-sessions/projectSessionOperations";
+import * as projectSessionContinuations from "../../domain/project-sessions/projectSessionContinuations";
+import * as projectSessionLifecycle from "../../domain/project-sessions/projectSessionLifecycle";
 import { ProjectSessionRpc } from "../protocol/ProjectSessionRpc";
 import { RendererConnection } from "../protocol/RendererConnectionMiddleware";
 import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";

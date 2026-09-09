@@ -3,22 +3,22 @@ import { it } from "@effect/vitest";
 import { Deferred, Effect, Fiber, Layer, Queue, Stream, SubscriptionRef } from "effect";
 import * as TestClock from "effect/testing/TestClock";
 import { describe, vi } from "vitest";
-import * as projectSessionMetadata from "../../../src/domain/projectSessionMetadata";
-import * as projectSessionOperations from "../../../src/domain/projectSessionOperations";
-import * as projectSessionContinuations from "../../../src/domain/projectSessionContinuations";
-import * as projectSessionLifecycle from "../../../src/domain/projectSessionLifecycle";
-import type { SessionCatalogUpdate } from "../../../src/domain/catalog-data";
-import { getState } from "../../../src/domain/application";
+import * as projectSessionMetadata from "../../../src/domain/project-sessions/projectSessionMetadata";
+import * as projectSessionOperations from "../../../src/domain/project-sessions/projectSessionOperations";
+import * as projectSessionContinuations from "../../../src/domain/project-sessions/projectSessionContinuations";
+import * as projectSessionLifecycle from "../../../src/domain/project-sessions/projectSessionLifecycle";
+import type { SessionCatalogUpdate } from "../../../src/domain/application/catalog-data";
+import { getState } from "../../../src/domain/application/application";
 import {
   defaultApplicationState,
   type ApplicationState as ApplicationStateValue,
-} from "../../../src/domain/application-data";
+} from "../../../src/domain/application/application-data";
 import { makePiSessionsLayer, type PiSessionsAdapter } from "../../../src/services/pi/PiSessions";
 import type {
   CakeRuntime,
   CakeRuntimeOptions,
 } from "../../../src/services/pi/runtime/cake-runtime";
-import type { ProjectSessionLocation } from "../../../src/domain/project-session-data";
+import type { ProjectSessionLocation } from "../../../src/domain/project-sessions/project-session-data";
 import { Electron } from "../../../src/services/electron/Electron";
 import { PiModels } from "../../../src/services/pi/PiModels";
 import { ProjectSessionRuntimeHost } from "../../../src/services/pi/ProjectSessionRuntimeHost";
@@ -42,7 +42,7 @@ import {
   type SessionCatalogChange,
 } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import type { SessionSnapshot, SessionSummary } from "../../../src/ipc/session-contract";
-import type { WorktreeRecord } from "../../../src/domain/managed-worktree-data";
+import type { WorktreeRecord } from "../../../src/domain/worktrees/managed-worktree-data";
 
 const snapshot: SessionSnapshot = {
   workspacePath: "/project",

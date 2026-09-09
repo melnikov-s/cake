@@ -5,8 +5,8 @@ import {
   ProjectWorkflowMutation,
   ProjectWorkflowSessionDetails,
   ProjectWorkflowSessionDestination,
-} from "../../domain/application-data";
-import { ProjectError } from "../../domain/project-error";
+} from "../../domain/application/application-data";
+import { ProjectError } from "../../domain/projects/project-error";
 
 export const ProjectWorkflowRpc = RpcGroup.make(
   Rpc.make("projectWorkflow.mutate", {

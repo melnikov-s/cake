@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 import { Rpc, RpcGroup } from "effect/unstable/rpc";
-import { DiscussionCatalogUpdate } from "../../domain/catalog-data";
+import { DiscussionCatalogUpdate } from "../../domain/application/catalog-data";
 import {
   DiscussionSessionAcceptedTurn,
   DiscussionSessionCreateInput,
@@ -9,7 +9,7 @@ import {
   DiscussionSessionTarget,
   DiscussionSessionUpdate,
   DiscussionThread,
-} from "../../domain/discussion-session-data";
+} from "../../domain/discussion-sessions/discussion-session-data";
 
 const catalogTarget = {
   workingDirectory: DiscussionSessionTarget.fields.workingDirectory,

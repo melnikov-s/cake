@@ -15,7 +15,7 @@ import {
 import {
   defaultApplicationState,
   type ApplicationState as ApplicationStateValue,
-} from "../../../src/domain/application-data";
+} from "../../../src/domain/application/application-data";
 import { makePiModelsLayer, type PiModels } from "../../../src/services/pi/PiModels";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import {

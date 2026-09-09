@@ -2,8 +2,8 @@ import { Context, Schema, type Effect, type Stream } from "effect";
 import type {
   ManagedWorktreeCatalogUpdate,
   WorktreeRecord,
-} from "../../domain/managed-worktree-data";
-import type { ProjectSettings } from "../../domain/application-data";
+} from "../../domain/worktrees/managed-worktree-data";
+import type { ProjectSettings } from "../../domain/application/application-data";
 import type {
   WorktreeLandOutcome,
   WorktreeLandRequest,

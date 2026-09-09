@@ -2,21 +2,21 @@ import { Context, Effect, Layer, type Schema, type Stream } from "effect";
 import { RpcClient } from "effect/unstable/rpc";
 import type { RpcClientError } from "effect/unstable/rpc";
 import { CakeRpc, type FoundationFailure } from "../protocol/CakeRpc";
-import type { ArtifactError } from "../../domain/artifact-data";
+import type { ArtifactError } from "../../domain/artifacts/artifact-data";
 import type { ElectronError } from "../../services/electron/Electron";
 import type { InlineWidgetError } from "../../services/widgets/InlineWidgets";
 import type { TerminalError } from "../../services/terminal/Terminal";
 import type {
   ResolvedManagedWorktreeCleanupPlan,
   ResolvedManagedWorktreeCleanupResult,
-} from "../../domain/managed-worktree-cleanup-data";
-import type { WorktreeLandingError } from "../../domain/worktree-landing-data";
-import type { ManagedWorktreeCatalogUpdate } from "../../domain/managed-worktree-data";
-import type { WorktreeOperationCatalogUpdate } from "../../domain/worktree-operation-data";
+} from "../../domain/worktrees/managed-worktree-cleanup-data";
+import type { WorktreeLandingError } from "../../domain/worktrees/worktree-landing-data";
+import type { ManagedWorktreeCatalogUpdate } from "../../domain/worktrees/managed-worktree-data";
+import type { WorktreeOperationCatalogUpdate } from "../../domain/worktrees/worktree-operation-data";
 import type { ManagedWorktreeError } from "../../services/worktrees/ManagedWorktrees";
 import type { VsCodeServerError } from "../../services/vscode/VsCodeServer";
 import type { WorkspaceFileError } from "../../services/filesystem/WorkspaceFiles";
-import type { ProjectError } from "../../domain/project-error";
+import type { ProjectError } from "../../domain/projects/project-error";
 import type {
   CakeEvent as CakeEventEnvelope,
   CakeRpcOperation,
@@ -31,8 +31,8 @@ import type {
   ProjectWorkflowMutation,
   ProjectWorkflowSessionDetails,
   ProjectWorkflowSessionDestination,
-} from "../../domain/application-data";
-import type { AgentAvailabilitySnapshot } from "../../domain/agent-availability-data";
+} from "../../domain/application/application-data";
+import type { AgentAvailabilitySnapshot } from "../../domain/application/agent-availability-data";
 import type { PiSettingUpdate } from "../session-contract";
 import type {
   ProjectSessionError,
@@ -43,12 +43,12 @@ import type {
   ProjectSessionTarget,
   ProjectSessionUpdate,
   WorkingDirectoryResolutionResult,
-} from "../../domain/project-session-data";
+} from "../../domain/project-sessions/project-session-data";
 import type {
   ConversationSnapshot,
   QueuedConversationMessages,
   TurnId,
-} from "../../domain/conversation-data";
+} from "../../domain/conversations/conversation-data";
 import type {
   CakeChatConfiguration,
   CakeChatCatalogQuery,
@@ -57,7 +57,7 @@ import type {
   CakeChatPromptInput,
   CakeChatTarget,
   CakeChatUpdate,
-} from "../../domain/cake-chat-data";
+} from "../../domain/cake-chats/cake-chat-data";
 import type {
   DiscussionSessionCreateInput,
   DiscussionSessionError,
@@ -65,20 +65,24 @@ import type {
   DiscussionSessionTarget,
   DiscussionSessionUpdate,
   DiscussionThread,
-} from "../../domain/discussion-session-data";
+} from "../../domain/discussion-sessions/discussion-session-data";
 import type {
   CakeChatCatalogUpdate,
   DiscussionCatalogUpdate,
   ProjectCatalogUpdate,
   SessionCatalogUpdate,
-} from "../../domain/catalog-data";
-import type { SubagentError, SubagentHandleId, SubagentUpdate } from "../../domain/subagent-data";
+} from "../../domain/application/catalog-data";
+import type {
+  SubagentError,
+  SubagentHandleId,
+  SubagentUpdate,
+} from "../../domain/subagents/subagent-data";
 import type {
   ScheduleMessageInput,
   ScheduledMessage,
   ScheduledMessageError,
   ScheduledMessageUpdate,
-} from "../../domain/scheduled-message-data";
+} from "../../domain/scheduled-messages/scheduled-message-data";
 import type {
   DefaultModelPresetNotFoundError,
   DuplicateModelPresetIdError,

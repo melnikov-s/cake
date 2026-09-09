@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { ConversationSnapshot } from "../../../../src/domain/conversation-data";
-import type { ProjectSessionUpdate } from "../../../../src/domain/project-session-data";
+import type { ConversationSnapshot } from "../../../../src/domain/conversations/conversation-data";
+import type { ProjectSessionUpdate } from "../../../../src/domain/project-sessions/project-session-data";
 import { Session } from "../../../../src/renderer/models/Session";
 import { applyProjectSessionUpdate } from "../../../../src/renderer/reducers/ConversationReducer";
 

@@ -6,8 +6,8 @@ import type { SessionCatalogStore } from "./SessionCatalogStore";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
 import type { CakeChatCollectionStore } from "./CakeChatCollectionStore";
 import { ClientContext } from "./context/ClientContext";
-import type { ProjectSessionCatalogQuery } from "../../domain/project-session-data";
-import type { CakeChatCatalogQuery } from "../../domain/cake-chat-data";
+import type { ProjectSessionCatalogQuery } from "../../domain/project-sessions/project-session-data";
+import type { CakeChatCatalogQuery } from "../../domain/cake-chats/cake-chat-data";
 import type { EmbeddedEditorSettingsStore } from "./EmbeddedEditorSettingsStore";
 import type { SessionActivity } from "../lib/session-activity";
 

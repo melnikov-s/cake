@@ -1,10 +1,10 @@
 import { Schema } from "effect";
 import { applySnapshot, batch, type Snapshot } from "r-state-tree";
-import type { DiscussionCatalogUpdate } from "../../domain/catalog-data";
+import type { DiscussionCatalogUpdate } from "../../domain/application/catalog-data";
 import type {
   DiscussionSessionUpdate,
   DiscussionThread,
-} from "../../domain/discussion-session-data";
+} from "../../domain/discussion-sessions/discussion-session-data";
 import { sessionSnapshotSchema, uiPartSchema } from "../../ipc/session-contract";
 import { ReviewThread } from "../models/ReviewThread";
 import type { Session } from "../models/Session";

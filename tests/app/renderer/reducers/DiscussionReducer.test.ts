@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { DiscussionThread } from "../../../../src/domain/discussion-session-data";
+import type { DiscussionThread } from "../../../../src/domain/discussion-sessions/discussion-session-data";
 import { Session } from "../../../../src/renderer/models/Session";
 import { applyDiscussionCatalogUpdate } from "../../../../src/renderer/reducers/DiscussionReducer";
 

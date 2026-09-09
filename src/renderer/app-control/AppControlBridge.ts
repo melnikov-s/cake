@@ -6,17 +6,17 @@ import {
   type ChatConfiguration,
   type ProjectRecord,
 } from "../../ipc/session-contract";
-import type { CakeChatSummary } from "../../domain/cake-chat-data";
+import type { CakeChatSummary } from "../../domain/cake-chats/cake-chat-data";
 import type { SessionSummary } from "../models/SessionSummary";
-import type { WorktreeRecord } from "../../domain/managed-worktree-data";
-import type { ScheduledMessage } from "../../domain/scheduled-message-data";
+import type { WorktreeRecord } from "../../domain/worktrees/managed-worktree-data";
+import type { ScheduledMessage } from "../../domain/scheduled-messages/scheduled-message-data";
 import type {
   CoordinationMessage,
   CoordinationThread,
   CrossSessionDeliveryStatus,
   CrossSessionMessageMetadata,
 } from "../../domain/cross-session-coordination";
-import type { QueuedConversationMessages } from "../../domain/conversation-data";
+import type { QueuedConversationMessages } from "../../domain/conversations/conversation-data";
 import { isActiveSessionActivity, type SessionActivity } from "../lib/session-activity";
 import { CakeModelSelection } from "../../domain/cake-model-selection";
 

@@ -1,6 +1,6 @@
 import { Store } from "r-state-tree";
 import { SESSION_TITLE_MAX_LENGTH } from "../../ipc/session-contract";
-import type { CakeChatTarget } from "../../domain/cake-chat-data";
+import type { CakeChatTarget } from "../../domain/cake-chats/cake-chat-data";
 import { ClientContext } from "./context/ClientContext";
 import type { CakeChatPendingSessionsStore } from "./CakeChatPendingSessionsStore";
 

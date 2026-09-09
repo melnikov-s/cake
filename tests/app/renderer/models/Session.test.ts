@@ -1,6 +1,6 @@
 import { toSnapshot } from "r-state-tree";
 import { expect, it } from "vitest";
-import type { ConversationSnapshot } from "../../../../src/domain/conversation-data";
+import type { ConversationSnapshot } from "../../../../src/domain/conversations/conversation-data";
 import { Session } from "../../../../src/renderer/models/Session";
 import {
   messageSnapshots,

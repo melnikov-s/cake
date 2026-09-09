@@ -3,7 +3,7 @@ import {
   type ProjectWorkflowColor,
   type ProjectWorkflowMutation,
   validateProjectWorkflowColumnName,
-} from "../../domain/application-data";
+} from "../../domain/application/application-data";
 import type { Project } from "../models/Project";
 import { ClientContext } from "./context/ClientContext";
 import type { ProjectCatalogStore } from "./ProjectCatalogStore";

@@ -5,7 +5,7 @@ import { describe } from "vitest";
 import { deliver, initialize } from "../../../src/domain/sessionFamilies";
 import { parseCrossSessionMessage } from "../../../src/domain/cross-session-coordination";
 import { makePiSessionsLayer, PiSessions } from "../../../src/services/pi/PiSessions";
-import { defaultApplicationState } from "../../../src/domain/application-data";
+import { defaultApplicationState } from "../../../src/domain/application/application-data";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { makeProjectSessionRuntimeMechanismTestLayer } from "./projectSessionRuntimeTestLayer";

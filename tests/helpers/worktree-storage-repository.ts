@@ -1,5 +1,5 @@
 import { readFile, rename, rm, writeFile } from "node:fs/promises";
-import type { WorktreeRecord } from "../../src/domain/managed-worktree-data";
+import type { WorktreeRecord } from "../../src/domain/worktrees/managed-worktree-data";
 import type { WorktreeStorageRepository } from "../../src/services/storage/WorktreeStorage";
 
 export const makeTestWorktreeStorageRepository = (

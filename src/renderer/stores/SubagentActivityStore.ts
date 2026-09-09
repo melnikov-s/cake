@@ -9,7 +9,7 @@ import {
 } from "../../utils/subagent-runs";
 import { ClientContext } from "./context/ClientContext";
 import { ChatStore } from "./ChatStore";
-import { SubagentHandleId } from "../../domain/subagent-data";
+import { SubagentHandleId } from "../../domain/subagents/subagent-data";
 
 type ToolPart = Extract<UiPart, { kind: "tool" }>;
 

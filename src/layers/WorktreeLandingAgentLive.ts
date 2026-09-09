@@ -1,5 +1,5 @@
 import { Context, Effect, Layer, Scope } from "effect";
-import * as projectSessionOperations from "../domain/projectSessionOperations";
+import * as projectSessionOperations from "../domain/project-sessions/projectSessionOperations";
 import type { Electron } from "../services/electron/Electron";
 import type { PiModels } from "../services/pi/PiModels";
 import type { PiSessions } from "../services/pi/PiSessions";

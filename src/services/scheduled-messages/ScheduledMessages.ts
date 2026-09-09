@@ -2,7 +2,7 @@ import { Context, Effect, Layer, SubscriptionRef, type Stream } from "effect";
 import type {
   ScheduledMessage,
   ScheduledMessageSnapshot,
-} from "../../domain/scheduled-message-data";
+} from "../../domain/scheduled-messages/scheduled-message-data";
 import {
   ScheduledMessageStorage,
   type ScheduledMessageStorageError,

@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WorktreePill } from "../../../src/renderer/components/worktree-pill";
 import type { WorktreeCreationStore } from "../../../src/renderer/stores/WorktreeCreationStore";
 import type { WorktreeStore } from "../../../src/renderer/stores/WorktreeStore";
-import type { WorktreeRecord } from "../../../src/domain/managed-worktree-data";
+import type { WorktreeRecord } from "../../../src/domain/worktrees/managed-worktree-data";
 
 function actionStore({
   aheadCount,

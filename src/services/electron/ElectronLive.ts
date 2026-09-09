@@ -12,7 +12,7 @@ import {
   type MenuItemConstructorOptions,
   type WebContents,
 } from "electron";
-import type { ProjectWorkflowColor } from "../../domain/application-data";
+import type { ProjectWorkflowColor } from "../../domain/application/application-data";
 import type { CakeEvent } from "../../ipc/cake-rpc-contract";
 import { shouldAllowNavigation } from "./navigation-policy";
 import {

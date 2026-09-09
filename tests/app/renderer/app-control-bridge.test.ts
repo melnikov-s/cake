@@ -1,7 +1,7 @@
 import { Schema } from "effect";
 import { createStore, mount } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
-import { CakeChatTarget } from "../../../src/domain/cake-chat-data";
+import { CakeChatTarget } from "../../../src/domain/cake-chats/cake-chat-data";
 import {
   AppControlBridge,
   type AppControlHost,

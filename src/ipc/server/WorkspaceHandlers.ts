@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import * as projects from "../../domain/projects";
+import * as projects from "../../domain/projects/projects";
 import { WorkspaceFiles } from "../../services/filesystem/WorkspaceFiles";
 import { WorkspaceRpc } from "../protocol/WorkspaceRpc";
 import { RendererConnection } from "../protocol/RendererConnectionMiddleware";

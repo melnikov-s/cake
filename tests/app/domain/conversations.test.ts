@@ -6,7 +6,7 @@ import {
   deliver,
   deliverWhenAvailable,
   projectQueuedMessages,
-} from "../../../src/domain/conversations";
+} from "../../../src/domain/conversations/conversations";
 import type { PiSessionHandle } from "../../../src/services/pi/PiSessions";
 import type { SessionSnapshot } from "../../../src/ipc/session-contract";
 

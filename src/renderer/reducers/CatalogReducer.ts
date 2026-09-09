@@ -6,9 +6,9 @@ import type {
   CakeChatCatalogUpdate,
   ProjectCatalogUpdate,
   SessionCatalogUpdate,
-} from "../../domain/catalog-data";
-import type { ProjectSessionCatalogQuery } from "../../domain/project-session-data";
-import type { CakeChatCatalogQuery } from "../../domain/cake-chat-data";
+} from "../../domain/application/catalog-data";
+import type { ProjectSessionCatalogQuery } from "../../domain/project-sessions/project-session-data";
+import type { CakeChatCatalogQuery } from "../../domain/cake-chats/cake-chat-data";
 import type { CakeChatCatalog } from "../models/CakeChatCatalog";
 import type { ProjectCatalog } from "../models/ProjectCatalog";
 import type { SessionCatalog } from "../models/SessionCatalog";

@@ -1,5 +1,5 @@
 import { Stream } from "effect";
-import * as scheduledMessages from "../../domain/scheduledMessages";
+import * as scheduledMessages from "../../domain/scheduled-messages/scheduledMessages";
 import { ScheduledMessageRpc } from "../protocol/ScheduledMessageRpc";
 
 export const scheduledMessageHandlers = ScheduledMessageRpc.of({

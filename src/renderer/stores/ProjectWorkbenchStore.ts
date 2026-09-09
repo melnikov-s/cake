@@ -1,5 +1,5 @@
 import { Store, batch, child, createStore, effect as reactiveEffect } from "r-state-tree";
-import type { ProjectSessionStartInput } from "../../domain/project-session-data";
+import type { ProjectSessionStartInput } from "../../domain/project-sessions/project-session-data";
 import type { SourceLocation } from "../../ipc/source-location";
 import type { ChatConfiguration } from "../../ipc/session-contract";
 import { reviewThreadAnnotations } from "../../utils/review-thread-annotations";
@@ -7,7 +7,7 @@ import type { StoreEvent } from "../events/StoreEvent";
 import type {
   AgentAvailabilitySnapshot,
   AgentAvailabilityState,
-} from "../../domain/agent-availability-data";
+} from "../../domain/application/agent-availability-data";
 import { EmbeddedEditorStore } from "./EmbeddedEditorStore";
 import type { ReviewsStore } from "./ReviewsStore";
 import type { ExtensionUiStore } from "./ExtensionUiStore";

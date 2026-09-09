@@ -1,6 +1,6 @@
 import { findModelById, toSnapshot } from "r-state-tree";
 import { describe, expect, it } from "vitest";
-import type { ConversationSnapshot } from "../../../../src/domain/conversation-data";
+import type { ConversationSnapshot } from "../../../../src/domain/conversations/conversation-data";
 import { Artifact } from "../../../../src/renderer/models/Artifact";
 import { applyArtifactUpdate } from "../../../../src/renderer/reducers/ArtifactReducer";
 import { RootProjection } from "../../../../src/renderer/models/RootProjection";

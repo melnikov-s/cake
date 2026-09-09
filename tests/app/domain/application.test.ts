@@ -17,8 +17,8 @@ import {
   trustProject,
   revokeProjectTrust,
   upsertProject,
-} from "../../../src/domain/application";
-import { defaultApplicationState } from "../../../src/domain/application-data";
+} from "../../../src/domain/application/application";
+import { defaultApplicationState } from "../../../src/domain/application/application-data";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import {
   ApplicationStorage,

@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 import { Rpc, RpcGroup } from "effect/unstable/rpc";
-import { ProjectCatalogUpdate } from "../../domain/catalog-data";
+import { ProjectCatalogUpdate } from "../../domain/application/catalog-data";
 import {
   WindowStateEncodeError,
   WindowStateMalformedDocumentError,

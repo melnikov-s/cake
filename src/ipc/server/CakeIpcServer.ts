@@ -5,7 +5,7 @@ import { RendererConnectionMiddlewareLive } from "../protocol/RendererConnection
 import { ElectronRpcServerProtocolLive } from "../transport/ElectronRpcServerProtocol";
 import { applicationStateHandlers } from "./ApplicationStateHandlers";
 import { artifactHandlers } from "./ArtifactHandlers";
-import type { CakeChatRuntimeConfiguration } from "../../domain/cakeChatRuntime";
+import type { CakeChatRuntimeConfiguration } from "../../domain/cake-chats/cakeChatRuntime";
 import { makeCakeChatHandlers } from "./CakeChatHandlers";
 import { discussionHandlers } from "./DiscussionHandlers";
 import { electronHandlers } from "./ElectronHandlers";

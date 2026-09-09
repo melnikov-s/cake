@@ -1,10 +1,10 @@
 import { Effect, Stream } from "effect";
-import * as cakeChatMetadata from "../../domain/cakeChatMetadata";
-import * as cakeChatOperations from "../../domain/cakeChatOperations";
-import * as cakeChatContinuations from "../../domain/cakeChatContinuations";
-import * as cakeChatLifecycle from "../../domain/cakeChatLifecycle";
-import { CakeChatError } from "../../domain/cake-chat-data";
-import type { CakeChatRuntimeConfiguration } from "../../domain/cakeChatRuntime";
+import * as cakeChatMetadata from "../../domain/cake-chats/cakeChatMetadata";
+import * as cakeChatOperations from "../../domain/cake-chats/cakeChatOperations";
+import * as cakeChatContinuations from "../../domain/cake-chats/cakeChatContinuations";
+import * as cakeChatLifecycle from "../../domain/cake-chats/cakeChatLifecycle";
+import { CakeChatError } from "../../domain/cake-chats/cake-chat-data";
+import type { CakeChatRuntimeConfiguration } from "../../domain/cake-chats/cakeChatRuntime";
 import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
 import { CakeChatRpc } from "../protocol/CakeChatRpc";
 import { RendererConnection } from "../protocol/RendererConnectionMiddleware";

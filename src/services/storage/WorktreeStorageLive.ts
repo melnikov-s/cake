@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { Effect, Layer, Schema } from "effect";
-import { WorktreeRecord } from "../../domain/managed-worktree-data";
+import { WorktreeRecord } from "../../domain/worktrees/managed-worktree-data";
 import { AtomicFileWriter } from "./internal/AtomicFileWriter";
 import {
   WorktreeStorage,

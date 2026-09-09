@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { observer } from "r-state-tree/react";
-import type { ProjectWorkflowColor } from "../../domain/application-data";
+import type { ProjectWorkflowColor } from "../../domain/application/application-data";
 import type { KanbanColumnId, KanbanStore } from "../stores/KanbanStore";
 import { kanbanSessionDragType } from "../lib/kanban-drag";
 import { cn } from "../lib/utils";

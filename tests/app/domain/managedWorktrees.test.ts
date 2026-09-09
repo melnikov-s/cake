@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
 import { Effect, Layer, Stream } from "effect";
 import { describe } from "vitest";
-import * as managedWorktrees from "../../../src/domain/managedWorktrees";
-import { defaultApplicationState } from "../../../src/domain/application-data";
+import * as managedWorktrees from "../../../src/domain/worktrees/managedWorktrees";
+import { defaultApplicationState } from "../../../src/domain/application/application-data";
 import { PiSessions } from "../../../src/services/pi/PiSessions";
 import { ProjectSessionConfiguration } from "../../../src/services/project-sessions/ProjectSessionConfiguration";
 import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
@@ -15,7 +15,7 @@ import { ApplicationState } from "../../../src/services/storage/ApplicationState
 import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { Terminal } from "../../../src/services/terminal/Terminal";
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
-import type { WorktreeRecord } from "../../../src/domain/managed-worktree-data";
+import type { WorktreeRecord } from "../../../src/domain/worktrees/managed-worktree-data";
 
 const record = (
   projectPath: string,

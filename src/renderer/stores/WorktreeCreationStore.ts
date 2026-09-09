@@ -1,5 +1,5 @@
 import { Store, observable } from "r-state-tree";
-import type { WorktreeRecord } from "../../domain/managed-worktree-data";
+import type { WorktreeRecord } from "../../domain/worktrees/managed-worktree-data";
 import { suggestedWorktreeName } from "../../utils/worktree-name";
 import { ClientContext } from "./context/ClientContext";
 import type { SessionCatalogStore } from "./SessionCatalogStore";

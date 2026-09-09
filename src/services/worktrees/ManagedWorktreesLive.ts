@@ -1,6 +1,6 @@
 import { Effect, Layer, PubSub, Stream } from "effect";
 import type { ChildProcessSpawner } from "effect/unstable/process";
-import type { ManagedWorktreeCatalogUpdate } from "../../domain/managed-worktree-data";
+import type { ManagedWorktreeCatalogUpdate } from "../../domain/worktrees/managed-worktree-data";
 import type { Git } from "../git/Git";
 import type { WorktreeStorage } from "../storage/WorktreeStorage";
 import { makeManagedWorktreeEngineAdapter } from "./ManagedWorktreeEngineAdapter";
