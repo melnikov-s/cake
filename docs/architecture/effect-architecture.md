@@ -157,19 +157,20 @@ provides all privileged Services and `CakeIpcServer`.
 
 ```text
 MainLive
-├── PiLive
-│   ├── PiSessions
-│   ├── PiModels
-│   └── PiAgentResources
-├── Effect Platform Services
-├── GitLive
-├── StorageLive
-├── VsCodeServerLive
-├── TerminalLive
-├── InlineWidgetsLive
-├── ElectronLive
-└── CakeIpcServerLive
+├── PlatformLive                 # immutable Effect platform and process configuration
+├── StorageLive                  # focused storage and application-state capabilities
+├── NativeServicesLive           # Electron, Git/worktrees, project access, terminal, VS Code
+├── PiLive                       # Pi sessions, models, resources, and availability
+├── SessionWorkflowsLive         # session environments, lifecycle, runtime hosts, coordinators
+├── BackgroundWorkersLive        # scheduled delivery and Session Family recovery
+└── RpcLive                      # the Electron Effect RPC server
 ```
+
+These are ownership-oriented capability groups, not separate runtimes or service facades. They
+reuse the same Layer values throughout the graph, so Effect Layer memoization shares each
+process capability and resource even when more than one feature group depends on it. Background
+workers and RPC acquire only after the session workflow graph is available, and every scoped
+resource remains owned by the one `MainLive` process Scope.
 
 `MainApplication` is the Effect program for Electron startup, window lifecycle,
 RPC registration, and shutdown. Asynchronous native window-close notifications
@@ -180,11 +181,12 @@ children. Native close-veto callbacks that require an
 immediate result remain synchronous, and synchronous manager notifications are
 queued into their owning Layer's ordered Effect consumer.
 
-`src/main/main.ts` is the visible composition root: it imports and assembles
-`MainLive`, creates the one process runtime, and starts that program. Ordinary
-Layers are the default composition mechanism. Cake does not introduce an
-OpenCode-style custom Layer graph until concrete composition or replacement
-problems justify it.
+`src/main/MainLive.ts` is the production Layer composition root. It assembles the named
+capability and feature groups above without adding forwarding Services. `src/main/main.ts` is the
+process entry point: it supplies Electron/assets/configuration, creates the one `ManagedRuntime`
+from `MainLive`, and starts `MainApplication`. Ordinary Layers and their built-in memoization are
+the composition mechanism. Cake does not introduce an OpenCode-style custom Layer graph until
+concrete composition or replacement problems justify it.
 
 A minimal bootstrap Layer can start the application shell without loading
 project resources, VS Code Server, terminals, or Project Session runtimes.
@@ -744,7 +746,8 @@ src/
 │   ├── server/               # CakeIpcServer handlers and main transport Layer
 │   └── transport/            # Electron RPC protocol adapters
 ├── main/
-│   ├── main.ts              # MainLive assembly and process runtime
+│   ├── main.ts              # Electron process entry point and sole production runtime
+│   ├── MainLive.ts          # Named production Layer capability/feature composition
 │   ├── MainApplication.ts   # Effect-native Electron application program
 │   └── BootstrapLive.ts     # Immutable platform bootstrap capabilities
 ├── preload/
