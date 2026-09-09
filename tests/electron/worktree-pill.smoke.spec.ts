@@ -142,7 +142,7 @@ test("chooses an isolated worktree without disturbing the new-chat composer", as
   }
 });
 
-test("shows only resolve after a worktree is merged and removes the checkout", async () => {
+test("lands new commits from an already-landed worktree before resolving it", async () => {
   test.setTimeout(60_000);
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-landed-worktree-pill-"));
   const userData = join(temporaryRoot, "user-data");
@@ -160,6 +160,9 @@ test("shows only resolve after a worktree is merged and removes the checkout", a
   await execFileAsync("git", ["worktree", "add", "-b", "agent/finished", worktreePath], {
     cwd: project,
   });
+  await writeFile(join(worktreePath, "follow-up.ts"), "export const followUp = true;\n");
+  await execFileAsync("git", ["add", "-A"], { cwd: worktreePath });
+  await execFileAsync("git", ["commit", "-m", "follow-up after landing"], { cwd: worktreePath });
   const sessionDirectory = cakeWorkspaceSessionDirectory(
     worktreePath,
     join(cakeHome, "pi", "sessions"),
@@ -230,9 +233,20 @@ test("shows only resolve after a worktree is merged and removes the checkout", a
 
   try {
     const page = await application.firstWindow();
+    const landNewCommit = page.getByRole("button", { name: "Land new commit", exact: true });
+    await expect(landNewCommit).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText("1 new commit since landing", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Resolve", exact: true })).toHaveCount(0);
+    await landNewCommit.click();
     await expect(page.getByRole("button", { name: "Resolve", exact: true })).toBeVisible({
       timeout: 20_000,
     });
+    await expect
+      .poll(async () =>
+        (await execFileAsync("git", ["log", "-1", "--format=%s"], { cwd: project })).stdout.trim(),
+      )
+      .toBe("follow-up after landing");
+
     const composerWorktreeIcon = page.locator('.workbench-composer [data-worktree-state="landed"]');
     await expect(composerWorktreeIcon).toHaveAttribute("aria-label", "Merged worktree");
     await expect(composerWorktreeIcon).toHaveClass(/text-worktree-merged/);

@@ -193,6 +193,29 @@ describe("WorktreeService", { timeout: 20_000 }, () => {
     });
   });
 
+  it("lands new commits created after the worktree was previously landed", async () => {
+    const repo = await repository();
+    const worktrees = service();
+    const record = await worktrees.create(repo);
+    await writeFile(join(record.worktreePath, "feature.ts"), "export const a = 1;\n");
+    await commitAll(record.worktreePath, "feature one");
+    await worktrees.land(record.worktreePath, { request: { strategy: "preserve" } });
+
+    await writeFile(join(record.worktreePath, "feature-2.ts"), "export const b = 2;\n");
+    await commitAll(record.worktreePath, "feature two");
+    const secondHead = (await git(record.worktreePath, "rev-parse", "HEAD")).stdout.trim();
+
+    await expect(worktrees.status(record.worktreePath)).resolves.toMatchObject({
+      aheadCount: 1,
+      record: { state: "landed" },
+    });
+    await expect(
+      worktrees.land(record.worktreePath, { request: { strategy: "preserve" } }),
+    ).resolves.toEqual({ outcome: "landed", commit: secondHead });
+    expect((await git(repo, "rev-parse", "main")).stdout.trim()).toBe(secondHead);
+    expect((await git(repo, "log", "-1", "--format=%s")).stdout.trim()).toBe("feature two");
+  });
+
   it("rebases deterministically when the target branch advances", async () => {
     const repo = await repository();
     const worktrees = service();

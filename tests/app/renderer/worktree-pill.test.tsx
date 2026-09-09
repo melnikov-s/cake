@@ -241,6 +241,31 @@ describe("WorktreePill", () => {
     expect(button("Resolve")).toBeDefined();
   });
 
+  it("offers to land commits added after the previous landing", () => {
+    const actions = actionStore({ aheadCount: 1, dirtyCount: 0 });
+    const status = actions.status;
+    if (!status) throw new Error("Expected worktree status");
+    actions.status = {
+      ...status,
+      record: { ...status.record, state: "landed" },
+    };
+    render(actions, {
+      projectPath: "/project",
+      worktreePath: "/worktree",
+      branch: "agent/session",
+      baseBranch: "main",
+      state: "landed",
+      createdAt: new Date(0).toISOString(),
+    });
+
+    expect(container.textContent).toContain("1 new commit since landing");
+    expect(button("Land new commit").disabled).toBe(false);
+    expect(button("Resolve")).toBeUndefined();
+
+    act(() => button("Land new commit").click());
+    expect(actions.commitAndMerge).toHaveBeenCalledOnce();
+  });
+
   it("keeps merge actions visible but disabled when there is nothing to land", () => {
     vi.useFakeTimers();
     render(actionStore({ aheadCount: 0, dirtyCount: 0 }));

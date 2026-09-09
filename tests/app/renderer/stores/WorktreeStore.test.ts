@@ -92,6 +92,36 @@ describe("WorktreeStore", () => {
     }
   });
 
+  it("keeps a repeat landing active while the accepted operation projection catches up", async () => {
+    const status: WorktreeStatus = {
+      ...worktreeStatus("/worktree"),
+      record: { ...worktreeStatus("/worktree").record, state: "landed" },
+    };
+    const cancelLanding = vi.fn(async () => undefined);
+    const landing = vi.fn(async () => ({ status }));
+    const activity = observable({ workspacePath: "/worktree", enabled: false });
+    const { root, subject: store } = mountWithClient(createStore(WorktreeStore, props(activity)), {
+      managedWorktrees: {
+        landing,
+        startLanding: vi.fn(async () => operation("waiting")),
+        cancelLanding,
+      },
+    } as unknown as Client);
+    try {
+      activity.enabled = true;
+      await vi.waitFor(() => expect(landing).toHaveBeenCalledOnce());
+      await vi.waitFor(() => expect(store.status).toBeDefined());
+      await new Promise<void>((resolve) => queueMicrotask(resolve));
+      activity.enabled = false;
+      await store.commitAndMerge();
+
+      expect(store.phase).toBe("landing");
+      expect(cancelLanding).not.toHaveBeenCalled();
+    } finally {
+      root[Symbol.dispose]();
+    }
+  });
+
   it("shows waiting only for the matching authoritative queue reservation", async () => {
     let status = worktreeStatus("/worktree");
     const current = operation("waiting");

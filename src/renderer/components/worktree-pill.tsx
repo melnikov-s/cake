@@ -213,6 +213,7 @@ export const WorktreePill = observer(function WorktreePill({
   const hasUncommittedChanges = (status?.dirtyCount ?? 0) > 0;
   const hasCommits = (status?.aheadCount ?? 0) > 0;
   const hasWorkToMerge = hasUncommittedChanges || hasCommits;
+  const hasNewCommitsSinceLanding = landed && status?.record.state === "landed" && hasCommits;
   const statusDisabledReason = status ? undefined : "Loading worktree status…";
   const sessionDisabledReason = actions.isSessionRunning
     ? "Wait for the session to finish before using worktree actions."
@@ -245,6 +246,19 @@ export const WorktreePill = observer(function WorktreePill({
               ? "Commit & merge"
               : "Merge";
   const mergeAndResolveLabel = "Merge & resolve";
+  const newCommitCount = status?.aheadCount ?? 0;
+  const landNewCommitsLabel =
+    actions.phase === "committing"
+      ? "Committing…"
+      : actions.isQueued
+        ? "Waiting to land…"
+        : actions.phase === "landing"
+          ? "Landing…"
+          : actions.phase === "resolving"
+            ? "Resolving conflicts…"
+            : hasUncommittedChanges
+              ? `Commit & land ${newCommitCount === 1 ? "new commit" : "new commits"}`
+              : `Land ${newCommitCount === 1 ? "new commit" : "new commits"}`;
   const targetWarning = status?.targetDirty
     ? "The merge target has uncommitted changes."
     : status && !status.targetOnBranch
@@ -282,7 +296,7 @@ export const WorktreePill = observer(function WorktreePill({
             )}
           </span>
           <div className="flex min-w-0 flex-wrap items-center justify-end gap-1 @max-[560px]/worktree:w-full @max-[560px]/worktree:justify-start">
-            {status && !landed && status.behindCount > 0 && (
+            {status && (!landed || hasNewCommitsSinceLanding) && status.behindCount > 0 && (
               <WorktreePillAction
                 icon={<RebaseIcon />}
                 aria-label="Rebase"
@@ -335,7 +349,24 @@ export const WorktreePill = observer(function WorktreePill({
                 </WorktreePillAction>
               </>
             )}
-            {landed && (
+            {hasNewCommitsSinceLanding && (
+              <WorktreePillAction
+                icon={<MergeIcon />}
+                aria-label={landNewCommitsLabel}
+                tooltip="Land commits added since the previous landing"
+                disabledReason={mergeDisabledReason}
+                onClick={() => {
+                  if (status?.targetDirty) {
+                    setConfirmation("dirty-target");
+                    return;
+                  }
+                  run(actions.commitAndMerge());
+                }}
+              >
+                {landNewCommitsLabel}
+              </WorktreePillAction>
+            )}
+            {landed && !hasNewCommitsSinceLanding && (
               <WorktreePillAction
                 icon={<ResolveIcon />}
                 aria-label="Resolve"
@@ -422,6 +453,11 @@ export const WorktreePill = observer(function WorktreePill({
             )}
           </div>
         </div>
+        {hasNewCommitsSinceLanding && !actions.isQueued && (
+          <p className="px-2 text-xs text-muted-foreground">
+            {newCommitCount} new {newCommitCount === 1 ? "commit" : "commits"} since landing
+          </p>
+        )}
         {actions.isQueued && (
           <p className="px-2 text-xs text-muted-foreground">
             Another merge is in progress. This merge will start automatically when it finishes.

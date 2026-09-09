@@ -294,7 +294,11 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     workspacePath: string,
   ) {
     if (!operation) {
-      if (this.status?.record.state === "landed" && this.startedLandingOperationId) {
+      if (
+        this.status?.record.state === "landed" &&
+        this.status.aheadCount === 0 &&
+        this.startedLandingOperationId
+      ) {
         await this.finishLanded(
           workspacePath,
           this.startedLandingOperationId,
@@ -303,7 +307,9 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
         return;
       }
       // A snapshot requested concurrently with start may predate main's accepted operation.
-      if (this.startedLandingOperationId && this.status?.record.state !== "landed") return;
+      // A previously landed worktree remains landed while its additional commits are in flight,
+      // so only an ahead count of zero can independently prove completion.
+      if (this.startedLandingOperationId) return;
       if (this.phase !== "discarding" && this.phase !== "resolving-session") this.phase = "idle";
       this.operationId = undefined;
       this.stalled = false;

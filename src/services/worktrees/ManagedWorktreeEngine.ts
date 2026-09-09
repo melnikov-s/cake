@@ -250,10 +250,10 @@ export class ManagedWorktreeEngine implements WorktreeLandingCoordinator {
     const normalized = resolveNormalized(worktreePath);
     const record = this.allRecords.find(
       (entry) =>
-        (entry.state ?? "active") === "active" &&
+        ["active", "landed"].includes(entry.state ?? "active") &&
         resolveNormalized(entry.worktreePath) === normalized,
     );
-    if (!record) throw new Error("Cake could not find that active worktree");
+    if (!record) throw new Error("Cake could not find that worktree");
     return this.withRepositoryLock(record.projectPath, async () => {
       if (!existsSync(record.worktreePath)) {
         await this.closeRecord(record, "missing");
@@ -287,10 +287,10 @@ export class ManagedWorktreeEngine implements WorktreeLandingCoordinator {
     const normalized = resolveNormalized(worktreePath);
     const record = this.allRecords.find(
       (entry) =>
-        (entry.state ?? "active") === "active" &&
+        ["active", "landed"].includes(entry.state ?? "active") &&
         resolveNormalized(entry.worktreePath) === normalized,
     );
-    if (!record) throw new Error("Cake could not find that active worktree");
+    if (!record) throw new Error("Cake could not find that worktree");
     const operationId = options.operationId ?? `direct:${normalized}`;
     await this.acquireLanding(record, operationId, options.signal);
     try {
@@ -317,10 +317,10 @@ export class ManagedWorktreeEngine implements WorktreeLandingCoordinator {
     const normalized = resolveNormalized(worktreePath);
     const record = this.allRecords.find(
       (entry) =>
-        (entry.state ?? "active") === "active" &&
+        ["active", "landed"].includes(entry.state ?? "active") &&
         resolveNormalized(entry.worktreePath) === normalized,
     );
-    if (!record) throw new Error("Cake could not find that active worktree");
+    if (!record) throw new Error("Cake could not find that worktree");
     await this.acquireLanding(record, operationId, signal);
   }
 
@@ -505,10 +505,10 @@ export class ManagedWorktreeEngine implements WorktreeLandingCoordinator {
     const normalized = resolveNormalized(input.workspacePath);
     const record = this.allRecords.find(
       (entry) =>
-        (entry.state ?? "active") === "active" &&
+        ["active", "landed"].includes(entry.state ?? "active") &&
         resolveNormalized(entry.worktreePath) === normalized,
     );
-    if (!record) throw new Error("Cake could not find an active worktree for this workspace");
+    if (!record) throw new Error("Cake could not find a worktree for this workspace");
     if (await this.revParseExists(record.worktreePath, "MERGE_HEAD"))
       throw new Error("Complete the in-progress merge before proposing the squash message");
     if (await this.rebaseInProgress(record.worktreePath))
