@@ -34,6 +34,7 @@ export class Message extends Model {
   artifactId: string | undefined;
   filePath: string | undefined;
   diff: string | undefined;
+  inputStreaming: boolean | undefined;
   state: PartState | undefined;
   title: string | undefined;
   url: string | undefined;
@@ -87,6 +88,7 @@ export class Message extends Model {
         this.artifactId = part.artifactId;
         this.filePath = part.filePath;
         this.diff = part.diff;
+        this.inputStreaming = part.inputStreaming;
         this.state = part.state;
         return true;
       case "source":
@@ -170,6 +172,7 @@ export class Message extends Model {
           artifactId: this.artifactId,
           filePath: this.filePath,
           diff: this.diff,
+          inputStreaming: this.inputStreaming,
           state: this.state!,
         };
       case "source":

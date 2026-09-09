@@ -252,6 +252,7 @@ export const uiPartSchema = Schema.Union([
     artifactId: Schema.optional(stringRange(1, 256)),
     filePath: Schema.optional(stringMax(8_192)),
     diff: Schema.optional(boundedText),
+    inputStreaming: Schema.optional(Schema.Boolean),
     state: Schema.Literals(["approval", "running", "success", "error", "denied", "interrupted"]),
   }),
   Schema.Struct({

@@ -38,8 +38,8 @@ export const WorkLogDiff = memo(function WorkLogDiff({
           <DiffView
             diff={change.diff}
             filePath={toWorkspaceRelativePath(change.path, workspacePath)}
-            label={streaming ? "Streaming changes" : "File changes"}
-            highlightCode={!streaming}
+            label={change.streaming ? "Streaming changes" : "File changes"}
+            highlightCode={!change.streaming}
             onOpenSourceLocation={onOpenSourceLocation}
             className={changeClassName}
             headerClassName={headerClassName}

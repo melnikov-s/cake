@@ -162,6 +162,39 @@ describe("Cake-owned conversation components", () => {
     expect(html).not.toContain(workspacePath);
   });
 
+  it("labels only the file whose tool input is streaming as streaming", () => {
+    const html = renderToStaticMarkup(
+      <WorkLogDiff
+        parts={[
+          {
+            id: "settled-edit",
+            kind: "tool",
+            name: "edit",
+            input: "",
+            filePath: "src/settled.ts",
+            diff: "+const settled = true;",
+            inputStreaming: false,
+            state: "running",
+          },
+          {
+            id: "streaming-edit",
+            kind: "tool",
+            name: "edit",
+            input: "",
+            filePath: "src/streaming.ts",
+            diff: "+const streaming = true;",
+            inputStreaming: true,
+            state: "running",
+          },
+        ]}
+        streaming
+      />,
+    );
+
+    expect(html).toContain('aria-label="File changes to src/settled.ts"');
+    expect(html).toContain('aria-label="Streaming changes to src/streaming.ts"');
+  });
+
   it("renders edit calls as a readable code diff", () => {
     const html = renderToStaticMarkup(
       <Tool

@@ -60,10 +60,51 @@ describe("workLogChanges", () => {
     ];
 
     expect(workLogChangeChunks(parts)).toEqual([
-      expect.objectContaining({ id: "edit-app-1", path: "src/app.ts", diff: "-one\n+two" }),
-      expect.objectContaining({ id: "edit-other", path: "src/other.ts", diff: "-a\n+b" }),
-      expect.objectContaining({ id: "edit-app-2", path: "src/app.ts", diff: "-two\n+three" }),
+      expect.objectContaining({
+        id: "edit-app-1",
+        path: "src/app.ts",
+        diff: "-one\n+two",
+        streaming: false,
+      }),
+      expect.objectContaining({
+        id: "edit-other",
+        path: "src/other.ts",
+        diff: "-a\n+b",
+        streaming: false,
+      }),
+      expect.objectContaining({
+        id: "edit-app-2",
+        path: "src/app.ts",
+        diff: "-two\n+three",
+        streaming: false,
+      }),
     ]);
     expect(workLogChanges(parts)).toHaveLength(2);
+  });
+
+  it("retains each file chunk's own input streaming state", () => {
+    const parts = [
+      {
+        id: "settled-edit",
+        kind: "tool" as const,
+        name: "edit",
+        input: JSON.stringify({ path: "src/settled.ts", edits: [{ newText: "settled" }] }),
+        inputStreaming: false,
+        state: "running" as const,
+      },
+      {
+        id: "streaming-write",
+        kind: "tool" as const,
+        name: "write",
+        input: JSON.stringify({ path: "src/streaming.ts", content: "streaming" }),
+        inputStreaming: true,
+        state: "running" as const,
+      },
+    ];
+
+    expect(workLogChangeChunks(parts)).toEqual([
+      expect.objectContaining({ id: "settled-edit", streaming: false }),
+      expect.objectContaining({ id: "streaming-write", streaming: true }),
+    ]);
   });
 });

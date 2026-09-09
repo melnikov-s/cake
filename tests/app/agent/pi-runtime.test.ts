@@ -945,6 +945,53 @@ describe("Pi 0.84.0 foundation contract", () => {
     expect(afterTool[0]).toMatchObject({ id: "stream-2-text-0", text: "Here is the result." });
   });
 
+  it("marks only the tool call receiving argument deltas as input streaming", () => {
+    const project = createLiveMessageProjector();
+    const message = {
+      role: "assistant",
+      content: [
+        {
+          type: "toolCall",
+          id: "settled-edit",
+          name: "edit",
+          arguments: { path: "src/settled.ts", edits: [{ newText: "settled" }] },
+        },
+        {
+          type: "toolCall",
+          id: "streaming-edit",
+          name: "edit",
+          arguments: { path: "src/streaming.ts", edits: [{ newText: "partial" }] },
+        },
+      ],
+    };
+
+    project({ type: "message_start", message } as unknown as AgentSessionEvent);
+    const parts = project({
+      type: "message_update",
+      message,
+      assistantMessageEvent: { type: "toolcall_delta", contentIndex: 1, delta: "partial" },
+    } as unknown as AgentSessionEvent);
+
+    expect(parts).toEqual([
+      expect.objectContaining({ id: "tool-settled-edit", inputStreaming: false }),
+      expect.objectContaining({ id: "tool-streaming-edit", inputStreaming: true }),
+    ]);
+
+    const ended = project({
+      type: "message_update",
+      message,
+      assistantMessageEvent: {
+        type: "toolcall_end",
+        contentIndex: 1,
+        toolCall: message.content[1],
+      },
+    } as unknown as AgentSessionEvent);
+    expect(ended).toEqual([
+      expect.objectContaining({ id: "tool-settled-edit", inputStreaming: false }),
+      expect.objectContaining({ id: "tool-streaming-edit", inputStreaming: false }),
+    ]);
+  });
+
   it("defers live provider errors and exposes partial parts for retry cleanup", () => {
     const project = createLiveMessageProjector({ deferProviderErrors: true });
     const partial = {

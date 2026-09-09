@@ -224,6 +224,7 @@ function partsFromMessage(
   streaming = false,
   entryId?: string,
   renderUserMessageAsMarkdown = false,
+  streamingToolContentIndex?: number,
 ): UiPart[] {
   if (typeof message !== "object" || message === null) return [];
   const role = Reflect.get(message, "role");
@@ -369,6 +370,7 @@ function partsFromMessage(
             input: formatToolInput(name, args),
             artifactId: toolArtifactId(args),
             filePath: toolFilePath(name, args),
+            inputStreaming: index === streamingToolContentIndex,
             state: "running",
           },
         ];
@@ -474,7 +476,19 @@ export function createLiveMessageProjector(
     }
     if (event.type === "message_update") {
       activeStreamId ??= nextStreamId();
-      const parts = partsFromMessage(event.message, activeStreamId, true);
+      const update = event.assistantMessageEvent;
+      const streamingToolContentIndex =
+        update.type === "toolcall_start" || update.type === "toolcall_delta"
+          ? update.contentIndex
+          : undefined;
+      const parts = partsFromMessage(
+        event.message,
+        activeStreamId,
+        true,
+        undefined,
+        false,
+        streamingToolContentIndex,
+      );
       for (const part of parts) activeAssistantPartIds.add(part.id);
       return parts;
     }

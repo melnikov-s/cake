@@ -334,6 +334,34 @@ test("streaming work logs keep their DOM and follow their own bottom", async () 
       expect(await originalContent.evaluate((element) => element.isConnected)).toBe(true);
     }
     sendDelta({ tool_calls: [{ index: 0, function: { arguments: '"}]}' } }] });
+
+    // Beginning a second file settles the first tool input. Only the file whose
+    // arguments are currently growing stays plain.
+    sendDelta({
+      tool_calls: [
+        {
+          index: 1,
+          id: "stream-write",
+          type: "function",
+          function: {
+            name: "write",
+            arguments: '{"path":"second.ts","content":"export const second =',
+          },
+        },
+      ],
+    });
+    const settledFileDiff = diff.getByLabel("File changes to fixture.ts");
+    const streamingFileDiff = diff.getByLabel("Streaming changes to second.ts");
+    await expect(streamingFileDiff).toBeVisible();
+    await expect.poll(() => settledFileDiff.locator(".syntax-token").count()).toBeGreaterThan(0);
+    await expect(streamingFileDiff.locator(".syntax-token")).toHaveCount(0);
+    sendDelta({
+      tool_calls: [{ index: 1, function: { arguments: ' 2;"}' } }],
+    });
+    await expect(streamingFileDiff).toContainText("export const second = 2;");
+    await expect.poll(() => settledFileDiff.locator(".syntax-token").count()).toBeGreaterThan(0);
+    await expect(streamingFileDiff.locator(".syntax-token")).toHaveCount(0);
+
     response?.write(
       `data: ${JSON.stringify({ id: "stream-fixture", object: "chat.completion.chunk", created: 0, model: "fixture-model", choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }] })}\n\ndata: [DONE]\n\n`,
     );

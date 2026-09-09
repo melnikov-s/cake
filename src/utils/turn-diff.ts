@@ -26,6 +26,7 @@ export interface WorkLogChange {
 
 export interface WorkLogChangeChunk extends WorkLogChange {
   id: string;
+  streaming: boolean;
 }
 
 export function toolDiff(part: Extract<UiPart, { kind: "tool" }>) {
@@ -87,6 +88,7 @@ export function workLogChangeChunks(parts: readonly UiPart[]): WorkLogChangeChun
       additions: stats.additions,
       deletions: stats.deletions,
       diff,
+      streaming: part.inputStreaming === true,
     });
   }
   return chunks;
