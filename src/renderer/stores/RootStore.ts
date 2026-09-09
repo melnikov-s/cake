@@ -293,18 +293,15 @@ export class RootStore extends Store<{
           ? {
               name:
                 invocation._tag === "CreateSession" ? "sessions.create" : "sessions.create-draft",
-              arguments: invocation.model
-                ? {
-                    workspacePath: projectPath,
-                    name: invocation.name,
-                    initialPrompt: invocation.initialPrompt,
-                    model: invocation.model,
-                  }
-                : {
-                    workspacePath: projectPath,
-                    name: invocation.name,
-                    initialPrompt: invocation.initialPrompt,
-                  },
+              arguments: {
+                workspacePath: projectPath,
+                name: invocation.name,
+                initialPrompt: invocation.initialPrompt,
+                ...(invocation.model ? { model: invocation.model } : null),
+                ...(invocation._tag === "CreateSession" && invocation.worktreeName !== undefined
+                  ? { worktreeName: invocation.worktreeName }
+                  : null),
+              },
             }
           : undefined;
     const result = appInvocation

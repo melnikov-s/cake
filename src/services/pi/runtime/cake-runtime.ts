@@ -147,6 +147,31 @@ const cakeProjectSystemPrompt = renderPromptTemplate(projectPromptTemplate, {
   projectInteractionPrompt,
 });
 
+export const projectSessionCreateInputSchema = Schema.Struct({
+  name: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(500))),
+  initialPrompt: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(100_000))),
+  model: Schema.optionalKey(
+    Schema.Struct({
+      provider: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(256))),
+      modelId: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(512))),
+      thinkingLevel: Schema.Literals([
+        "off",
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+      ]).pipe(Schema.withDecodingDefaultKey(Effect.succeed("off" as const))),
+      fastMode: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
+    }),
+  ),
+  worktreeName: Schema.optionalKey(
+    Schema.String.check(Schema.isPattern(/^[a-z0-9][a-z0-9-]{0,62}$/)),
+  ),
+});
+type ProjectSessionCreateInput = typeof projectSessionCreateInputSchema.Type;
+
 export interface RuntimeUiRequest {
   kind: "confirm" | "text" | "secret" | "select" | "manual_code" | "editor";
   title: string;
@@ -215,7 +240,12 @@ export interface CakeRuntimeOptions {
     deferResolution?: boolean;
     setResolved(resolved: boolean): Promise<void>;
     createSession?(
-      input: { name: string; initialPrompt: string; model: ChatConfiguration },
+      input: {
+        name: string;
+        initialPrompt: string;
+        model: ChatConfiguration;
+        worktreeName?: string;
+      },
       signal: AbortSignal,
     ): Promise<JsonValue>;
     createDraftSession?(
@@ -626,7 +656,12 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     compact(instructions?: string): Promise<JsonValue>;
     rename(title: string): Promise<JsonValue>;
     createSession(
-      input: { name: string; initialPrompt: string; model?: ChatConfiguration },
+      input: {
+        name: string;
+        initialPrompt: string;
+        model?: ChatConfiguration;
+        worktreeName?: string;
+      },
       signal: AbortSignal,
     ): Promise<JsonValue>;
     createDraftSession(
@@ -742,52 +777,42 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       {
         command: "session.create",
         topic: "sessions",
-        summary: "Create, name, and start a Project Session in the calling session's project.",
+        summary:
+          "Create, name, and start an independent Project Session in the calling session's project.",
         guidance: [
-          "This operation derives the project from the calling session and never accepts a workspacePath or sessionId.",
+          "This singular Project Session-local operation derives the project from the caller and never accepts a workspacePath or sessionId. Cake Chat uses the separate plural sessions.create application control.",
+          "Set worktreeName to create and register a new Cake-managed worktree before the Pi-backed session starts. Do not run git worktree add or try to rebind an already-started session.",
+          "When worktreeName is omitted, the independent session starts in the Project root, preserving the existing behavior.",
           "When model is omitted, the new session inherits the calling session's current model, thinking level, and Fast mode setting.",
+          "Use sessions.create-child only for a Session Family child that shares the caller's exact Working Directory.",
         ],
-        inputSchema: Schema.Struct({
-          name: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(500))),
-          initialPrompt: Schema.Trim.pipe(
-            Schema.check(Schema.isMinLength(1), Schema.isMaxLength(100_000)),
-          ),
-          model: Schema.optionalKey(
-            Schema.Struct({
-              provider: Schema.Trim.pipe(
-                Schema.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
-              ),
-              modelId: Schema.Trim.pipe(
-                Schema.check(Schema.isMinLength(1), Schema.isMaxLength(512)),
-              ),
-              thinkingLevel: Schema.Literals([
-                "off",
-                "minimal",
-                "low",
-                "medium",
-                "high",
-                "xhigh",
-                "max",
-              ]).pipe(Schema.withDecodingDefaultKey(Effect.succeed("off" as const))),
-              fastMode: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
-            }),
-          ),
-        }),
+        inputSchema: projectSessionCreateInputSchema,
         examples: [
           {
             input: {
               name: "Authentication follow-up",
               initialPrompt: "Review the authentication flow and implement the next changes.",
             },
+            description: "Start an independent session in the Project root.",
+          },
+          {
+            input: {
+              name: "Investigate rendering",
+              initialPrompt: "Investigate the rendering issue and implement a focused fix.",
+              worktreeName: "investigate-rendering",
+            },
+            description: "Start an independent session in a new Cake-managed worktree.",
           },
         ],
-        result: "The started session ID and the Project path used to create it.",
+        result:
+          "The started session ID, actual Working Directory, and managed-worktree record when one was requested.",
+        limitations: [
+          "This creates an independent Project Session, not a Session Family child.",
+          "An active Project Session cannot be relocated to the newly created worktree.",
+        ],
         execute: (input, context) => {
           // SAFETY: CakeOperationRegistry parsed input with this operation's schema.
-          return api().createSession(
-            input as { name: string; initialPrompt: string; model?: ChatConfiguration },
-            context.signal,
-          );
+          return api().createSession(input as ProjectSessionCreateInput, context.signal);
         },
       },
       {

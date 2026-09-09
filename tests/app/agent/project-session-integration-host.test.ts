@@ -52,7 +52,7 @@ describe("ProjectSessionIntegrationHost application controls", () => {
     host[Symbol.dispose]();
   });
 
-  it("carries an exact model configuration for a started child session", async () => {
+  it("carries an exact model configuration and managed worktree name for a started session", async () => {
     let request: Extract<CakeEvent, { type: "project-session-control-requested" }> | undefined;
     const host = new ProjectSessionIntegrationHost({
       workspacePath: "/projects/cake",
@@ -77,6 +77,7 @@ describe("ProjectSessionIntegrationHost application controls", () => {
           _tag: "CreateSession",
           name: "Implementation session",
           initialPrompt: "Implement the approved changes.",
+          worktreeName: "implementation-session",
           model,
         },
         new AbortController().signal,
@@ -90,6 +91,7 @@ describe("ProjectSessionIntegrationHost application controls", () => {
         _tag: "CreateSession",
         name: "Implementation session",
         initialPrompt: "Implement the approved changes.",
+        worktreeName: "implementation-session",
         model,
       },
     });

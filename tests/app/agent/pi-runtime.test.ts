@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createCakeRuntime,
   piRuntimeVersion,
+  projectSessionCreateInputSchema,
   type CakeRuntime,
   type CakeRuntimeEvent,
 } from "../../../src/services/pi/runtime/cake-runtime";
@@ -92,6 +93,151 @@ describe("Pi 0.84.0 foundation contract", () => {
     if (!runtime.getReviewParentContext) throw new Error("Expected a project runtime");
     const { activeTools } = runtime.getReviewParentContext();
     expect(activeTools).toContain("cake");
+  });
+
+  it("accepts only managed worktree names supported by Project Session-local session.create", () => {
+    expect(
+      Schema.decodeUnknownSync(projectSessionCreateInputSchema)({
+        name: "Investigate rendering",
+        initialPrompt: "Investigate the renderer.",
+        worktreeName: "investigate-rendering",
+      }),
+    ).toEqual({
+      name: "Investigate rendering",
+      initialPrompt: "Investigate the renderer.",
+      worktreeName: "investigate-rendering",
+    });
+    expect(() =>
+      Schema.decodeUnknownSync(projectSessionCreateInputSchema)({
+        name: "Investigate rendering",
+        initialPrompt: "Investigate the renderer.",
+        worktreeName: "Invalid Worktree",
+      }),
+    ).toThrow();
+  });
+
+  it("forwards a Project Session-local managed-worktree creation request unchanged", async () => {
+    const directory = await createTemporaryDirectory();
+    const agentDir = join(directory, "agent");
+    let requestCount = 0;
+    const server = createServer((_request, response) => {
+      requestCount += 1;
+      response.writeHead(200, { "content-type": "text/event-stream" });
+      const chunk = (delta: object, finishReason: string | null = null) =>
+        `data: ${JSON.stringify({
+          id: `fixture-completion-${requestCount}`,
+          object: "chat.completion.chunk",
+          created: Math.floor(Date.now() / 1_000),
+          model: "fixture-model",
+          choices: [{ index: 0, delta, finish_reason: finishReason }],
+        })}\n\n`;
+      if (requestCount === 1) {
+        response.write(chunk({ role: "assistant" }));
+        response.write(
+          chunk({
+            tool_calls: [
+              {
+                index: 0,
+                id: "create-session-call",
+                type: "function",
+                function: {
+                  name: "cake",
+                  arguments: JSON.stringify({
+                    command: "session.create",
+                    input: {
+                      name: "Investigate rendering",
+                      initialPrompt: "Investigate the renderer and implement the focused fix.",
+                      worktreeName: "investigate-rendering",
+                      model: {
+                        provider: "openai-codex",
+                        modelId: "gpt-5.6-sol",
+                        thinkingLevel: "high",
+                        fastMode: true,
+                      },
+                    },
+                  }),
+                },
+              },
+            ],
+          }),
+        );
+        response.write(chunk({}, "tool_calls"));
+      } else {
+        response.write(chunk({ role: "assistant", content: "Created the independent session." }));
+        response.write(chunk({}, "stop"));
+      }
+      response.end("data: [DONE]\n\n");
+    });
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", resolve);
+    });
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("Expected a TCP test server");
+    await mkdir(join(directory, ".pi", "extensions"), { recursive: true });
+    await writeFile(
+      join(directory, ".pi", "extensions", "fixture-provider.ts"),
+      `export default function (pi) { pi.registerProvider("fixture-provider", ${JSON.stringify({
+        name: "Fixture provider",
+        baseUrl: `http://127.0.0.1:${(address as AddressInfo).port}/v1`,
+        apiKey: "fixture",
+        api: "openai-completions",
+        models: [
+          {
+            id: "fixture-model",
+            name: "Fixture model",
+            reasoning: false,
+            input: ["text"],
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+            contextWindow: 4_096,
+            maxTokens: 1_024,
+          },
+        ],
+      })}); }\n`,
+    );
+    const createSession = vi.fn(async () => ({
+      ok: true,
+      sessionId: "created-session",
+      workspacePath: "/projects/.cake-worktrees/investigate-rendering",
+    }));
+    try {
+      const runtime = await createCakeRuntime({
+        cwd: directory,
+        agentDir,
+        sessionDir: join(directory, "sessions"),
+        trusted: true,
+        newSession: true,
+        requestUi: async () => undefined,
+        currentSessionControl: {
+          resolved: () => false,
+          setResolved: async () => undefined,
+          createSession,
+        },
+        onEvent: () => undefined,
+      });
+      runtimes.push(runtime);
+      await runtime.setModel("fixture-provider", "fixture-model");
+      await runtime.prompt("Create the investigation session", "prompt", []);
+
+      expect(createSession).toHaveBeenCalledWith(
+        {
+          name: "Investigate rendering",
+          initialPrompt: "Investigate the renderer and implement the focused fix.",
+          worktreeName: "investigate-rendering",
+          model: {
+            provider: "openai-codex",
+            modelId: "gpt-5.6-sol",
+            thinkingLevel: "high",
+            fastMode: true,
+          },
+        },
+        expect.any(AbortSignal),
+      );
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
   });
 
   it("executes ! and !! commands without starting a model turn", async () => {

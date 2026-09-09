@@ -80,6 +80,9 @@ export const ProjectSessionControlInvocation = Schema.TaggedUnion({
   CreateSession: {
     name: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(500)),
     initialPrompt: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(100_000)),
+    worktreeName: Schema.optionalKey(
+      Schema.String.check(Schema.isPattern(/^[a-z0-9][a-z0-9-]{0,62}$/)),
+    ),
     model: Schema.Struct({
       provider: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
       modelId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(512)),

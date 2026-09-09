@@ -222,10 +222,18 @@ describe("AppControlBridge", () => {
     );
   });
 
-  it("creates and starts a session with an exact model configuration", async () => {
+  it("creates and starts a session with an exact model configuration in a managed worktree", async () => {
+    const managedWorktree = {
+      projectPath: "/projects/cake",
+      worktreePath: "/projects/.cake-worktrees/implementation-session",
+      branch: "agent/implementation-session",
+      baseBranch: "main",
+      createdAt: "2026-03-01T12:00:00.000Z",
+    };
     const createSession = vi.fn(async () => ({
-      workspacePath: "/projects/cake",
+      workspacePath: managedWorktree.worktreePath,
       sessionId: "session-new",
+      managedWorktree,
     }));
     const bridge = new AppControlBridge(
       createHost({
@@ -255,22 +263,58 @@ describe("AppControlBridge", () => {
           name: "Implementation session",
           initialPrompt: "Implement the approved changes",
           model,
+          worktreeName: "implementation-session",
         },
       }),
     ).resolves.toEqual({
       ok: true,
       name: "create_session",
-      workspacePath: "/projects/cake",
+      workspacePath: managedWorktree.worktreePath,
       sessionId: "session-new",
       title: "Implementation session",
       status: "started",
+      managedWorktree,
     });
     expect(createSession).toHaveBeenCalledWith({
       workspacePath: "/projects/cake",
       name: "Implementation session",
       initialPrompt: "Implement the approved changes",
       model,
+      worktreeName: "implementation-session",
     });
+  });
+
+  it("rejects invalid managed worktree names before session creation", async () => {
+    const createSession = vi.fn(async () => ({
+      workspacePath: "/projects/cake",
+      sessionId: "session-new",
+    }));
+    const bridge = new AppControlBridge(
+      createHost({
+        projects: () => [
+          {
+            path: "/projects/cake",
+            name: "Cake",
+            addedAt: "2026-03-01T12:00:00.000Z",
+            lastOpenedAt: "2026-03-01T12:00:00.000Z",
+          },
+        ],
+        createSession,
+      }),
+    );
+
+    await expect(
+      bridge.invoke({
+        name: "sessions.create",
+        arguments: {
+          workspacePath: "/projects/cake",
+          name: "Implementation session",
+          initialPrompt: "Implement the approved changes",
+          worktreeName: "Invalid Worktree",
+        },
+      }),
+    ).rejects.toThrow();
+    expect(createSession).not.toHaveBeenCalled();
   });
 
   it("creates a saved draft without starting a Pi session", async () => {

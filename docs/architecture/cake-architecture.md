@@ -360,8 +360,11 @@ The window Store hierarchy mirrors the product surfaces:
   Resolving one session preserves those terminals; retiring or discarding the Working Directory
   closes the complete collection. Embedded VS Code temporarily replaces the Project Session split
   presentation without destroying its layout.
-  `WorktreeCreationStore` owns both staged-session disposition and worktree
-  selection and Cake Chat's coordinated create-worktree-then-create-named-session workflow.
+  `WorktreeCreationStore` owns staged-session disposition and worktree selection plus the
+  coordinated create-worktree-then-create-named-session workflow used by Cake Chat and a Project
+  Session agent's singular `session.create` control. That local control creates an independent
+  Project Session at the Project root when `worktreeName` is omitted; when supplied, Cake creates
+  and registers the Managed Worktree before starting Pi in its path.
   Fork and handoff are continuation workflows rather than permanent Working Directory bindings:
   both default to the parent's current Working Directory and can instead target a child Managed
   Worktree based on the current worktree, the Project root with no Managed Worktree, or a new

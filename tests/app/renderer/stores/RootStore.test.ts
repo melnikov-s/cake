@@ -119,6 +119,207 @@ describe("RootStore session navigation", () => {
     }
   });
 
+  it("routes independent session creation through a new managed worktree when requested", async () => {
+    const models = RootProjection.create();
+    const parentWorktreePath = "/projects/.cake-worktrees/parent-task";
+    applySnapshot(models.projects, {
+      projects: [
+        {
+          path: projectPath,
+          name: "Example",
+          addedAt: "2026-01-01T00:00:00.000Z",
+          lastOpenedAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    });
+    applySnapshot(models.sessionCatalog, {
+      sessions: [sessionSummary("source-session", parentWorktreePath)],
+      resolvedHasMoreByProject: {},
+    });
+    const managedWorktree = {
+      projectPath,
+      worktreePath,
+      branch: "agent/example-task",
+      baseBranch: "main",
+      createdAt: "2026-01-01T00:00:00.000Z",
+    };
+    const createWorktree = vi.fn(async () => managedWorktree);
+    const start = vi.fn(async () => undefined);
+    const controlResults: unknown[] = [];
+    const respondControl = vi.fn(
+      async (_sessionId: string, _controlRequestId: string, result: unknown) => {
+        controlResults.push(result);
+      },
+    );
+    const client = {
+      managedWorktrees: { create: createWorktree },
+      projectSessions: { start, respondControl },
+    } as unknown as Client;
+    const root = mountRootStore(client, { state: {}, children: {} }, async () => undefined, models);
+    const model = {
+      provider: "openai-codex",
+      modelId: "gpt-5.6-sol",
+      thinkingLevel: "high" as const,
+      fastMode: true,
+    };
+
+    try {
+      await root.respondProjectSessionControl({
+        sessionId: "source-session",
+        controlRequestId: "00000000-0000-4000-8000-000000000003",
+        invocation: {
+          _tag: "CreateSession",
+          name: "Investigate rendering",
+          initialPrompt: "Investigate the renderer and implement the focused fix.",
+          worktreeName: "example-task",
+          model,
+        },
+      });
+
+      expect(createWorktree).toHaveBeenCalledWith(
+        expect.objectContaining({
+          path: projectPath,
+          worktreeName: "example-task",
+        }),
+      );
+      expect(start).toHaveBeenCalledWith(
+        expect.objectContaining({
+          workingDirectory: worktreePath,
+          name: "Investigate rendering",
+          text: "Investigate the renderer and implement the focused fix.",
+          configuration: model,
+        }),
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
+      const managedResult = controlResults[0];
+      expect(managedResult).toMatchObject({
+        ok: true,
+        name: "create_session",
+        workspacePath: worktreePath,
+        status: "started",
+        managedWorktree,
+      });
+      if (!managedResult || typeof managedResult !== "object" || !("sessionId" in managedResult))
+        throw new Error("Expected the created session identity");
+      const createdSessionId = String(managedResult.sessionId);
+      expect(root.sessionRegistry.findSession(createdSessionId)?.workspacePath).toBe(worktreePath);
+      const createdSummary = root.sessionCatalogStore.find(createdSessionId);
+      expect(createdSummary).toMatchObject({
+        sessionId: createdSessionId,
+        projectPath,
+        workingDirectory: worktreePath,
+      });
+      expect(createdSummary).not.toHaveProperty("familyId");
+      expect(createdSummary).not.toHaveProperty("familyParentSessionId");
+
+      await root.respondProjectSessionControl({
+        sessionId: "source-session",
+        controlRequestId: "00000000-0000-4000-8000-000000000004",
+        invocation: {
+          _tag: "CreateSession",
+          name: "Project-root follow-up",
+          initialPrompt: "Continue the project-root investigation.",
+          model,
+        },
+      });
+
+      expect(createWorktree).toHaveBeenCalledTimes(1);
+      expect(start).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          workingDirectory: projectPath,
+          name: "Project-root follow-up",
+          text: "Continue the project-root investigation.",
+          configuration: model,
+        }),
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
+      expect(controlResults[1]).toMatchObject({
+        ok: true,
+        workspacePath: projectPath,
+        status: "started",
+      });
+      expect(controlResults[1]).not.toHaveProperty("managedWorktree");
+    } finally {
+      root[Symbol.dispose]();
+      models[Symbol.dispose]();
+    }
+  });
+
+  it("does not start a session at the Project root when managed worktree creation fails", async () => {
+    const models = RootProjection.create();
+    applySnapshot(models.projects, {
+      projects: [
+        {
+          path: projectPath,
+          name: "Example",
+          addedAt: "2026-01-01T00:00:00.000Z",
+          lastOpenedAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    });
+    applySnapshot(models.sessionCatalog, {
+      sessions: [sessionSummary("source-session", projectPath)],
+      resolvedHasMoreByProject: {},
+    });
+    const start = vi.fn(async () => undefined);
+    const responses: Array<{
+      sessionId: string;
+      controlRequestId: string;
+      result: unknown;
+      options: unknown;
+    }> = [];
+    const respondControl = vi.fn(
+      async (sessionId: string, controlRequestId: string, result: unknown, options: unknown) => {
+        responses.push({ sessionId, controlRequestId, result, options });
+      },
+    );
+    const client = {
+      managedWorktrees: {
+        create: vi.fn(async () => {
+          throw new Error("managed checkout setup failed");
+        }),
+      },
+      projectSessions: { start, respondControl },
+    } as unknown as Client;
+    const root = mountRootStore(client, { state: {}, children: {} }, async () => undefined, models);
+
+    try {
+      await root.respondProjectSessionControl({
+        sessionId: "source-session",
+        controlRequestId: "00000000-0000-4000-8000-000000000005",
+        invocation: {
+          _tag: "CreateSession",
+          name: "Isolated investigation",
+          initialPrompt: "Investigate in isolation.",
+          worktreeName: "isolated-investigation",
+          model: {
+            provider: "openai-codex",
+            modelId: "gpt-5.6-sol",
+            thinkingLevel: "high",
+            fastMode: false,
+          },
+        },
+      });
+
+      expect(start).not.toHaveBeenCalled();
+      expect(responses).toEqual([
+        {
+          sessionId: "source-session",
+          controlRequestId: "00000000-0000-4000-8000-000000000005",
+          result: expect.objectContaining({
+            ok: false,
+            name: "sessions.create",
+            error: "managed checkout setup failed",
+          }),
+          options: expect.objectContaining({ signal: expect.any(AbortSignal) }),
+        },
+      ]);
+    } finally {
+      root[Symbol.dispose]();
+      models[Symbol.dispose]();
+    }
+  });
+
   it("closes the selected Kanban board when its navigation icon is invoked again", () => {
     const models = RootProjection.create();
     applySnapshot(models.projects, {
