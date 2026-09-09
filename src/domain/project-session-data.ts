@@ -102,6 +102,16 @@ export const ProjectSessionControlInvocation = Schema.TaggedUnion({
       }),
     ),
   },
+  ForkSession: {
+    entryId: boundedId,
+    prompt: Schema.optionalKey(
+      Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(100_000)),
+    ),
+    title: Schema.optionalKey(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(500))),
+    resolveSource: Schema.Boolean,
+    placement: Schema.Literals(["none", "right", "down"]),
+    destinationWorkingDirectory: Schema.optionalKey(boundedPath),
+  },
   ProjectChildSession: {
     childSessionId: boundedId,
     title: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(500)),

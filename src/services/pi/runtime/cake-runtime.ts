@@ -252,6 +252,14 @@ export interface CakeRuntimeOptions {
       },
       signal: AbortSignal,
     ): Promise<JsonValue>;
+    forkSession?(input: {
+      entryId: string;
+      prompt?: string;
+      title?: string;
+      resolveSource: boolean;
+      placement: "none" | "right" | "down";
+      destinationWorkingDirectory?: string;
+    }): Promise<JsonValue>;
     routeFamilyMessage?(input: JsonObject, signal: AbortSignal): Promise<JsonValue | undefined>;
     invokeAppControl?(command: string, input: JsonObject, signal: AbortSignal): Promise<JsonValue>;
   };
@@ -684,6 +692,14 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       requestId: string,
       signal: AbortSignal,
     ): Promise<JsonValue>;
+    forkSession(input: {
+      entryId?: string;
+      prompt?: string;
+      title?: string;
+      resolveSource: boolean;
+      placement: "none" | "right" | "down";
+      destinationWorkingDirectory?: string;
+    }): Promise<JsonValue>;
     invokeAppControl(command: string, input: JsonObject, signal: AbortSignal): Promise<JsonValue>;
     resolveModelSelection(selection: CakeModelSelection | undefined): ExplicitCakeModelSelection;
     setModel(model: CakeModelSelection): Promise<JsonValue>;
@@ -874,6 +890,61 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
             context.toolCallId,
             context.signal,
           ),
+      },
+      {
+        command: "session.fork",
+        topic: "sessions",
+        summary:
+          "Fork the calling session at a specific transcript entry or, when omitted, at the latest settled entry.",
+        guidance: [
+          "Singular session.* operations always target the calling session and never accept a sessionId.",
+          "Omit entryId to fork the whole active conversation through its latest settled message.",
+          "When called during an active response, the fork is created after that response settles so an omitted entryId includes the completed response.",
+          "When prompt is provided, the fork starts with that message. The source is resolved only after the fork and prompt succeed.",
+        ],
+        inputSchema: Schema.Struct({
+          entryId: Schema.optionalKey(
+            Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+          ),
+          prompt: Schema.optionalKey(
+            Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(100_000))),
+          ),
+          title: Schema.optionalKey(
+            Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(500))),
+          ),
+          resolveSource: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
+          placement: Schema.Literals(["none", "right", "down"]).pipe(
+            Schema.withDecodingDefaultKey(Effect.succeed("none" as const)),
+          ),
+          destinationWorkingDirectory: Schema.optionalKey(
+            Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(32_768)),
+          ),
+        }),
+        examples: [
+          {
+            input: {
+              prompt: "Continue by implementing the agreed approach.",
+              title: "Implement fork tool",
+              resolveSource: true,
+              placement: "right",
+            },
+          },
+        ],
+        result:
+          "A fork-on-settle receipt. After the turn settles, Cake creates and optionally starts the fork, then resolves the source when requested.",
+        execute: (input) => {
+          // SAFETY: CakeOperationRegistry parsed input with this operation's schema.
+          return api().forkSession(
+            input as {
+              entryId?: string;
+              prompt?: string;
+              title?: string;
+              resolveSource: boolean;
+              placement: "none" | "right" | "down";
+              destinationWorkingDirectory?: string;
+            },
+          );
+        },
       },
       {
         command: "session.create-draft",
@@ -1166,6 +1237,8 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
           options.currentSessionControl?.createSession !== undefined) &&
         (operation.command !== "session.create-draft" ||
           options.currentSessionControl?.createDraftSession !== undefined) &&
+        (operation.command !== "session.fork" ||
+          options.currentSessionControl?.forkSession !== undefined) &&
         (operation.command !== "sessions.create-child" ||
           options.currentSessionControl?.createChildSession !== undefined) &&
         (!operation.command.startsWith("sessions.") ||
@@ -1960,7 +2033,42 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         partId: INTERRUPTED_TURN_NOTICE_PART_ID,
       });
   }
+  interface PendingSessionFork {
+    readonly entryId?: string;
+    readonly prompt?: string;
+    readonly title?: string;
+    readonly resolveSource: boolean;
+    readonly placement: "none" | "right" | "down";
+    readonly destinationWorkingDirectory?: string;
+  }
+  let forkOnSettle: PendingSessionFork | undefined;
+
   async function finishSettledTurn() {
+    if (forkOnSettle) {
+      await emitSnapshot().catch(() => undefined);
+      if (disposed || session.isStreaming) return;
+      const pending = forkOnSettle;
+      forkOnSettle = undefined;
+      const entryId = pending.entryId ?? session.sessionManager.getLeafId();
+      try {
+        if (!entryId) throw new Error("The current session does not contain a message to fork");
+        await options.currentSessionControl?.forkSession?.({ ...pending, entryId });
+      } catch (error) {
+        if (disposed) return;
+        options.onEvent({
+          type: "part-updated",
+          sessionId: cakeSessionId,
+          part: {
+            id: "session-fork-failed",
+            kind: "notice",
+            tone: "error",
+            title: "Could not fork session",
+            detail: error instanceof Error ? error.message : String(error),
+          },
+        });
+      }
+      return;
+    }
     if (resolveOnSettle) {
       await emitSnapshot().catch(() => undefined);
       if (disposed) return;
@@ -2345,6 +2453,16 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         },
         signal,
       );
+    },
+    async forkSession(input) {
+      if (!options.currentSessionControl?.forkSession)
+        throw new Error("This Project Session cannot be forked by its agent");
+      forkOnSettle = input;
+      return {
+        sessionId: cakeSessionId,
+        forkOnSettle: true,
+        resolveSource: input.resolveSource,
+      };
     },
     async invokeAppControl(command, input, signal) {
       const familyResult =

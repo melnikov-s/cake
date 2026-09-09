@@ -270,6 +270,13 @@ export const makeProjectSessionEnvironmentLive = (
                         }));
                       return toJsonValue({ ...result, presentation });
                     },
+                forkSession: family
+                  ? undefined
+                  : (input) =>
+                      runtimeIntegrations.requestApplicationControl(
+                        { _tag: "ForkSession", ...input },
+                        new AbortController().signal,
+                      ),
                 routeFamilyMessage: (untrustedInput, signal) =>
                   run(
                     Effect.scoped(

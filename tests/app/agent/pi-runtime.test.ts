@@ -559,6 +559,136 @@ describe("Pi 0.84.0 foundation contract", () => {
     }
   });
 
+  it("forks at the latest settled entry after the calling turn completes", async () => {
+    const directory = await createTemporaryDirectory();
+    const agentDir = join(directory, "agent");
+    let releaseFinalResponse!: () => void;
+    const finalResponseReleased = new Promise<void>((resolve) => {
+      releaseFinalResponse = resolve;
+    });
+    let markFinalRequestStarted!: () => void;
+    const finalRequestStarted = new Promise<void>((resolve) => {
+      markFinalRequestStarted = resolve;
+    });
+    let requestCount = 0;
+    const server = createServer((_request, response) => {
+      requestCount += 1;
+      response.writeHead(200, { "content-type": "text/event-stream" });
+      const chunk = (delta: object, finishReason: string | null = null) =>
+        `data: ${JSON.stringify({
+          id: `fixture-completion-${requestCount}`,
+          object: "chat.completion.chunk",
+          created: Math.floor(Date.now() / 1_000),
+          model: "fixture-model",
+          choices: [{ index: 0, delta, finish_reason: finishReason }],
+        })}\n\n`;
+      if (requestCount === 1) {
+        response.write(chunk({ role: "assistant" }));
+        response.write(
+          chunk({
+            tool_calls: [
+              {
+                index: 0,
+                id: "fork-call",
+                type: "function",
+                function: {
+                  name: "cake",
+                  arguments: JSON.stringify({
+                    command: "session.fork",
+                    input: {
+                      prompt: "Continue in the fork.",
+                      title: "Forked work",
+                      resolveSource: true,
+                      placement: "right",
+                    },
+                  }),
+                },
+              },
+            ],
+          }),
+        );
+        response.write(chunk({}, "tool_calls"));
+        response.end("data: [DONE]\n\n");
+        return;
+      }
+      markFinalRequestStarted();
+      void finalResponseReleased.then(() => {
+        response.write(chunk({ role: "assistant", content: "Forking after this response." }));
+        response.write(chunk({}, "stop"));
+        response.end("data: [DONE]\n\n");
+      });
+    });
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", resolve);
+    });
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("Expected a TCP test server");
+    await mkdir(join(directory, ".pi", "extensions"), { recursive: true });
+    await writeFile(
+      join(directory, ".pi", "extensions", "fixture-provider.ts"),
+      `export default function (pi) { pi.registerProvider("fixture-provider", ${JSON.stringify({
+        name: "Fixture provider",
+        baseUrl: `http://127.0.0.1:${(address as AddressInfo).port}/v1`,
+        apiKey: "fixture",
+        api: "openai-completions",
+        models: [
+          {
+            id: "fixture-model",
+            name: "Fixture model",
+            reasoning: false,
+            input: ["text"],
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+            contextWindow: 4_096,
+            maxTokens: 1_024,
+          },
+        ],
+      })}); }\n`,
+    );
+    const forkSession = vi.fn(async () => ({ ok: true, sessionId: "forked" }));
+    let prompt: Promise<void> | undefined;
+    try {
+      const runtime = await createCakeRuntime({
+        cwd: directory,
+        agentDir,
+        sessionDir: join(directory, "sessions"),
+        trusted: true,
+        newSession: true,
+        requestUi: async () => undefined,
+        currentSessionControl: {
+          resolved: () => false,
+          setResolved: async () => undefined,
+          forkSession,
+        },
+        onEvent: () => undefined,
+      });
+      runtimes.push(runtime);
+      await runtime.setModel("fixture-provider", "fixture-model");
+      prompt = runtime.prompt("Fork this session", "prompt", []);
+
+      await finalRequestStarted;
+      expect(forkSession).not.toHaveBeenCalled();
+
+      releaseFinalResponse();
+      await prompt;
+      prompt = undefined;
+      await vi.waitFor(() => expect(forkSession).toHaveBeenCalledOnce());
+      expect(forkSession).toHaveBeenCalledWith({
+        entryId: expect.any(String),
+        prompt: "Continue in the fork.",
+        title: "Forked work",
+        resolveSource: true,
+        placement: "right",
+      });
+    } finally {
+      releaseFinalResponse();
+      await prompt?.catch(() => undefined);
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
+  });
+
   it("applies a configuration atomically and treats unsupported fast mode as best-effort", async () => {
     const directory = await createTemporaryDirectory();
     await mkdir(join(directory, ".pi", "extensions"), { recursive: true });

@@ -220,6 +220,63 @@ export class RootStore extends Store<{
     };
   }
 
+  private async forkProjectSession(
+    sourceSessionId: string,
+    input: Extract<ProjectSessionControlRequest["invocation"], { _tag: "ForkSession" }>,
+  ): Promise<JsonValue> {
+    const sourceWorkingDirectory = this.requireProjectSessionWorkingDirectory(sourceSessionId);
+    const destinationWorkingDirectory = input.destinationWorkingDirectory ?? sourceWorkingDirectory;
+    const result = await this.client.projectSessions.handoff(
+      {
+        sessionId: sourceSessionId,
+        workingDirectory: sourceWorkingDirectory,
+        entryId: input.entryId,
+        resolveSource: input.resolveSource,
+        destinationWorkingDirectory,
+        ...(input.prompt === undefined ? null : { prompt: input.prompt }),
+      },
+      { signal: this.signal },
+    );
+    if (input.title !== undefined)
+      await this.client.projectSessions.rename(
+        {
+          sessionId: result.sessionId,
+          workingDirectory: destinationWorkingDirectory,
+          name: input.title,
+        },
+        { signal: this.signal },
+      );
+    if (input.placement === "none")
+      return {
+        ok: true,
+        sessionId: result.sessionId,
+        placement: input.placement,
+        sourceResolved: input.resolveSource,
+      };
+
+    this.sessionRegistry.load(result.sessionId, destinationWorkingDirectory);
+    await this.client.projectSessions.open(
+      { sessionId: result.sessionId, workingDirectory: destinationWorkingDirectory },
+      { signal: this.signal },
+    );
+    const paneId = this.sessionLayoutStore.showChildSession(
+      sourceSessionId,
+      result.sessionId,
+      input.placement === "right" ? "x" : "y",
+    );
+    if (!paneId) throw new Error("Cake could not open the fork beside its source session.");
+    this.projectWorkbenchStore.dismissSecondarySurfaces();
+    this.selectProjectSessionForShell(result.sessionId);
+    this.projectWorkbenchStore.showLoadedSession(result.sessionId);
+    return {
+      ok: true,
+      sessionId: result.sessionId,
+      placement: input.placement,
+      paneId,
+      sourceResolved: input.resolveSource,
+    };
+  }
+
   private async projectChildSession(
     parentSessionId: string,
     input: Extract<ProjectSessionControlRequest["invocation"], { _tag: "ProjectChildSession" }>,
@@ -262,6 +319,21 @@ export class RootStore extends Store<{
     if (this.respondedProjectSessionControlIds.has(request.controlRequestId)) return;
     this.respondedProjectSessionControlIds.add(request.controlRequestId);
     const invocation = request.invocation;
+    if (invocation._tag === "ForkSession") {
+      const result = await this.forkProjectSession(request.sessionId, invocation).catch(
+        (error) => ({
+          ok: false as const,
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
+      await this.client.projectSessions.respondControl(
+        request.sessionId,
+        request.controlRequestId,
+        result,
+        { signal: this.signal },
+      );
+      return;
+    }
     if (invocation._tag === "ProjectChildSession") {
       const result = await this.projectChildSession(request.sessionId, invocation).catch(
         (error) => ({

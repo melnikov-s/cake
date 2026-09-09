@@ -119,6 +119,66 @@ describe("RootStore session navigation", () => {
     }
   });
 
+  it("forks the calling project session with an optional prompt and title", async () => {
+    const models = RootProjection.create();
+    applySnapshot(models.sessionCatalog, {
+      sessions: [sessionSummary("source", projectPath)],
+      resolvedHasMoreByProject: {},
+    });
+    const handoff = vi.fn(async () => ({ sessionId: "forked" }));
+    const rename = vi.fn(async () => undefined);
+    const respondControl = vi.fn(async () => undefined);
+    const client = {
+      projectSessions: { handoff, rename, respondControl },
+    } as unknown as Client;
+    const root = mountRootStore(client, { state: {}, children: {} }, async () => undefined, models);
+
+    try {
+      await root.respondProjectSessionControl({
+        sessionId: "source",
+        controlRequestId: "00000000-0000-4000-8000-000000000003",
+        invocation: {
+          _tag: "ForkSession",
+          entryId: "entry-1",
+          prompt: "Continue in the fork.",
+          title: "Forked work",
+          resolveSource: true,
+          placement: "none",
+        },
+      });
+
+      expect(handoff).toHaveBeenCalledWith(
+        {
+          sessionId: "source",
+          workingDirectory: projectPath,
+          entryId: "entry-1",
+          prompt: "Continue in the fork.",
+          resolveSource: true,
+          destinationWorkingDirectory: projectPath,
+        },
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
+      expect(rename).toHaveBeenCalledWith(
+        { sessionId: "forked", workingDirectory: projectPath, name: "Forked work" },
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
+      expect(respondControl).toHaveBeenCalledWith(
+        "source",
+        "00000000-0000-4000-8000-000000000003",
+        {
+          ok: true,
+          sessionId: "forked",
+          placement: "none",
+          sourceResolved: true,
+        },
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
+    } finally {
+      root[Symbol.dispose]();
+      models[Symbol.dispose]();
+    }
+  });
+
   it("routes independent session creation through a new managed worktree when requested", async () => {
     const models = RootProjection.create();
     const parentWorktreePath = "/projects/.cake-worktrees/parent-task";
