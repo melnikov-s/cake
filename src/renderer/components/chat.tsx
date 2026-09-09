@@ -248,6 +248,7 @@ export const Chat = observer(function Chat({
         input={
           activatingDraft ? undefined : (
             <ChatComposerInput
+              key={store.id}
               store={store}
               inputRef={composerInputRef}
               onReword={(selection) => void reword(selection)}
