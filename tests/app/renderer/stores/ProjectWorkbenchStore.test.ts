@@ -57,7 +57,53 @@ function mountWorkbench(
   return { ...mounted, operations, selectSession };
 }
 
-describe("ProjectWorkbenchStore cleanup workflows", () => {
+describe("ProjectWorkbenchStore", () => {
+  it("carries a saved draft name into new worktree preparation", async () => {
+    const relocate = vi.fn();
+    const registry = {
+      findSession: vi.fn(() => ({ sessionId: "draft-1", workspacePath: "/project" })),
+      pendingSessions: {
+        isTemporary: vi.fn(() => true),
+        conversation: vi.fn(() => ({ name: "Fix Worktree Naming" })),
+        relocate,
+      },
+    } as unknown as SessionRegistryStore;
+    const noteManagedWorktree = vi.fn();
+    const catalog = {
+      projectOfManagedWorktree: vi.fn(() => undefined),
+      noteManagedWorktree,
+    } as unknown as SessionCatalogStore;
+    const record = {
+      projectPath: "/project",
+      worktreePath: "/.project-worktrees/fix-worktree-naming",
+      branch: "agent/fix-worktree-naming",
+      baseBranch: "main",
+      state: "active" as const,
+      createdAt: "2026-01-01T00:00:00.000Z",
+    };
+    const create = vi.fn(async () => record);
+    const {
+      root,
+      subject: store,
+      operations,
+    } = mountWorkbench(registry, catalog, { managedWorktrees: { create } } as unknown as Client);
+
+    store.configureDraftActivation("draft-1", { kind: "new" });
+    await expect(store.prepareNewSession("draft-1", "Fix the draft workflow")).resolves.toBe(true);
+
+    expect(create).toHaveBeenCalledWith({
+      operationId: expect.any(String),
+      path: "/project",
+      baseWorktreePath: undefined,
+      worktreeName: "fix-worktree-naming",
+      firstUserMessage: "Fix the draft workflow",
+    });
+    expect(relocate).toHaveBeenCalledWith("draft-1", record.worktreePath);
+
+    root[Symbol.dispose]();
+    operations[Symbol.dispose]();
+  });
+
   it("confirms authoritative bulk cleanup candidates and delegates one semantic command", async () => {
     const prepare = vi.fn(async () => true);
     const inspectResolvedForProject = vi.fn(async () => ({

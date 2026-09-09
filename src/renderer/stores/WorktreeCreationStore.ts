@@ -1,5 +1,6 @@
 import { Store, observable } from "r-state-tree";
 import type { WorktreeRecord } from "../../ipc/worktree-contract";
+import { suggestedWorktreeName } from "../../utils/worktree-name";
 import { ClientContext } from "./context/ClientContext";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
@@ -84,6 +85,7 @@ export class WorktreeCreationStore extends Store<WorktreeCreationStoreProps> {
     sessionId: string,
     projectPath: string,
     firstUserMessage: string,
+    sessionName?: string,
   ): Promise<boolean> {
     const choice = this.choice(sessionId);
     if (choice.kind === "current") return true;
@@ -108,6 +110,7 @@ export class WorktreeCreationStore extends Store<WorktreeCreationStoreProps> {
           operationId,
           path: projectPath,
           baseWorktreePath: choice.baseWorktreePath,
+          worktreeName: sessionName?.trim() ? suggestedWorktreeName(sessionName) : undefined,
           firstUserMessage: firstUserMessage.trim() || undefined,
         });
         if (this.signal.aborted) return false;

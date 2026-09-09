@@ -462,7 +462,13 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     if (!session || !this.sessionRegistry.pendingSessions.isTemporary(sessionId)) return true;
     const projectPath =
       this.props.catalog.projectOfManagedWorktree(session.workspacePath) ?? session.workspacePath;
-    return this.worktreeCreationStore.prepare(sessionId, projectPath, firstUserMessage);
+    const sessionName = this.sessionRegistry.pendingSessions.conversation(sessionId)?.name;
+    return this.worktreeCreationStore.prepare(
+      sessionId,
+      projectPath,
+      firstUserMessage,
+      sessionName,
+    );
   }
 
   async resolveWorktreeWorkspace(
