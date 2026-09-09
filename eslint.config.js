@@ -7,9 +7,8 @@ const effectExecutionBoundaries = [
   "src/main/main.ts", // Process entry point, runtime disposal, and Electron smoke hooks.
   "src/renderer/runtime.ts", // The one window-owned renderer runtime.
   "src/layers/CakeChatEnvironmentLive.ts", // Final Promise callbacks supplied to Pi.
-  "src/layers/ProjectSessionEnvironmentLive.ts", // Final family/tool Promise callbacks supplied to Pi.
-  "src/layers/ProjectSessionRuntimeOptionsLive.ts", // Final Project Session callbacks supplied to Pi.
-  "src/services/pi/ProjectSessionIntegrationsLive.ts", // Artifact repository Promise callbacks supplied to Pi.
+  "src/domain/projectSessionRuntime.ts", // Final Project Session capability callbacks supplied to Pi.
+  "src/services/pi/ProjectSessionRuntimeHostLive.ts", // Artifact repository Promise callbacks supplied to Pi.
   "src/services/worktrees/ManagedWorktreeEngineAdapter.ts", // Existing imperative worktree engine port.
 ];
 const executionApi = "/^run(Fork|Callback|Promise|Sync)(Exit)?(With)?$/";

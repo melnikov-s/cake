@@ -5,7 +5,7 @@ import { describe } from "vitest";
 import * as managedWorktrees from "../../../src/domain/managedWorktrees";
 import { defaultApplicationState } from "../../../src/domain/application-data";
 import { PiSessions } from "../../../src/services/pi/PiSessions";
-import { ProjectSessionEnvironment } from "../../../src/services/project-sessions/ProjectSessionEnvironment";
+import { ProjectSessionConfiguration } from "../../../src/services/project-sessions/ProjectSessionConfiguration";
 import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
 import {
   SessionCatalogChanges,
@@ -57,21 +57,17 @@ const makeLayer = (options: {
     ],
   };
   const catalogChecks = new Map<string, number>();
-  const locations = options.records.map((worktree) => ({
-    projectPath: worktree.projectPath,
-    projectName: worktree.projectPath === "/project" ? "Project" : "Other",
-    workingDirectory: worktree.worktreePath,
-    sessionDirectory: `/sessions${worktree.worktreePath}`,
-    resolvedSessionDirectory: "/resolved-sessions",
-    managedWorktree: worktree,
-  }));
   return Layer.mergeAll(
     Layer.mock(ApplicationState, {
       current: () => Effect.succeed(applicationState),
       snapshot: () => applicationState,
     }),
     Layer.mock(ProjectAccess, { isAllowed: () => Effect.succeed(true) }),
-    Layer.mock(ProjectSessionEnvironment, { locations: () => Effect.succeed(locations) }),
+    Layer.succeed(ProjectSessionConfiguration, {
+      agentDirectory: "/agent",
+      sessionDirectory: "/sessions",
+      resolvedSessionDirectory: "/resolved-sessions",
+    }),
     Layer.mock(SessionArchiveStorage, {
       projectMigrationComplete: () => Effect.succeed(true),
       resolvedProjects: (projectPath) =>

@@ -9,7 +9,7 @@ import type { WorktreeRecord } from "../../../src/domain/managed-worktree-data";
 import { MainApplication } from "../../../src/main/MainApplication";
 import { Electron, type ElectronWindowLifecycle } from "../../../src/services/electron/Electron";
 import { PiSessions } from "../../../src/services/pi/PiSessions";
-import { ProjectSessionIntegrations } from "../../../src/services/pi/ProjectSessionIntegrations";
+import { ProjectSessionRuntimeHost } from "../../../src/services/pi/ProjectSessionRuntimeHost";
 import { ProjectSessionLifecycle } from "../../../src/services/project-sessions/ProjectSessionLifecycle";
 import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
 import { RewordingRequests } from "../../../src/services/projects/RewordingRequests";
@@ -90,7 +90,7 @@ const testLayer = (input?: {
       release: () => Effect.void,
       disposeOwner: (ownerId) => Effect.sync(() => input?.disposeRewordingOwner?.(ownerId)),
     }),
-    Layer.mock(ProjectSessionIntegrations, {
+    Layer.mock(ProjectSessionRuntimeHost, {
       cancelPendingRequests: (workingDirectory) =>
         Effect.sync(() => input?.cancelPendingRequests?.(workingDirectory)),
     }),

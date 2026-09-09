@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 import type { cakeRpcPayloadSchemas } from "../ipc/cake-rpc-contract";
-import { ProjectSessionIntegrations } from "../services/pi/ProjectSessionIntegrations";
+import { ProjectSessionRuntimeHost } from "../services/pi/ProjectSessionRuntimeHost";
 import { ProjectAccess } from "../services/projects/ProjectAccess";
 import { ArtifactStorage } from "../services/storage/ArtifactStorage";
 import { ArtifactError } from "./artifact-data";
@@ -34,14 +34,14 @@ const authorizedWorkingDirectory = Effect.fn("Artifacts.authorizedWorkingDirecto
 
 export const respond = Effect.fn("Artifacts.respond")(function* (request: ArtifactResponse) {
   yield* authorizedWorkingDirectory(request.sessionId);
-  const runtime = yield* ProjectSessionIntegrations;
+  const runtime = yield* ProjectSessionRuntimeHost;
   yield* runtime.respondArtifact(request.sessionId, request).pipe(asError("respond"));
   return { artifactRequestId: request.artifactRequestId };
 });
 
 export const respondUi = Effect.fn("Artifacts.respondUi")(function* (request: UiResponse) {
   yield* authorizedWorkingDirectory(request.sessionId);
-  const runtime = yield* ProjectSessionIntegrations;
+  const runtime = yield* ProjectSessionRuntimeHost;
   yield* runtime.respondUi(request.sessionId, request).pipe(asError("respondUi"));
   return { uiRequestId: request.uiRequestId };
 });

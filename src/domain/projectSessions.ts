@@ -33,11 +33,9 @@ import {
   projectQueuedMessages,
 } from "./conversations";
 import { PiSessionError, PiSessions, type PiSessionHandle } from "../services/pi/PiSessions";
-import {
-  ProjectSessionEnvironment,
-  ProjectSessionEnvironmentError,
-  type ProjectSessionLocation,
-} from "../services/project-sessions/ProjectSessionEnvironment";
+import type { ProjectSessionLocation } from "./project-session-data";
+import * as projectSessionLocations from "./projectSessionLocations";
+import { acquireOptions } from "./projectSessionRuntime";
 
 export {
   ProjectSessionPromptInput,
@@ -76,11 +74,11 @@ type CatalogStreamItem = InitialCatalogItem | ProjectSessionCatalogEvent;
 
 const asError = (operation: string) =>
   Effect.mapError(
-    (error: PiSessionError | ProjectSessionEnvironmentError | unknown) =>
+    (error: PiSessionError | unknown) =>
       new ProjectSessionError({
         operation,
         message:
-          error instanceof PiSessionError || error instanceof ProjectSessionEnvironmentError
+          error instanceof PiSessionError
             ? error.message
             : error instanceof Error
               ? error.message
@@ -273,8 +271,7 @@ const catalogForState = Effect.fn("ProjectSessions.catalogForState")(function* (
     if (migrationComplete) {
       source = archive.resolvedProjects(query.projectPath);
     } else {
-      const environment = yield* ProjectSessionEnvironment;
-      const locations = yield* environment
+      const locations = yield* projectSessionLocations
         .locations({ includeInactive: true })
         .pipe(asError("list"));
       const projectName =
@@ -316,9 +313,8 @@ const catalogForState = Effect.fn("ProjectSessions.catalogForState")(function* (
       ),
     );
   }
-  const environment = yield* ProjectSessionEnvironment;
   const sessions = yield* PiSessions;
-  const locations = yield* environment.locations().pipe(asError("list"));
+  const locations = yield* projectSessionLocations.locations().pipe(asError("list"));
   const locationCatalogs = Stream.fromIterable(
     locations.filter((location) => location.projectPath === query.projectPath),
   ).pipe(
@@ -405,8 +401,7 @@ const catalogEventForChange = Effect.fn("ProjectSessions.catalogEventForChange")
     } as const;
   }
   if (query.resolved) return undefined;
-  const environment = yield* ProjectSessionEnvironment;
-  const location = (yield* environment.locations().pipe(asError("catalog"))).find(
+  const location = (yield* projectSessionLocations.locations().pipe(asError("catalog"))).find(
     (candidate) => candidate.workingDirectory === change.workingDirectory,
   );
   if (!location || location.projectPath !== query.projectPath) return undefined;
@@ -507,8 +502,7 @@ const findLocation = Effect.fn("ProjectSessions.findLocation")(function* (
     (target.workingDirectory === undefined || target.workingDirectory === archived.workingDirectory)
   )
     return archivedLocation(archived);
-  const environment = yield* ProjectSessionEnvironment;
-  const locations = yield* environment.locations(options).pipe(asError("resolve"));
+  const locations = yield* projectSessionLocations.locations(options).pipe(asError("resolve"));
   const candidates = target.workingDirectory
     ? locations.filter((item) => item.workingDirectory === target.workingDirectory)
     : locations;
@@ -541,19 +535,17 @@ const acquireTarget = Effect.fn("ProjectSessions.acquireTarget")(function* (
   sessionId: string,
   newSession: boolean,
 ) {
-  const environment = yield* ProjectSessionEnvironment;
   const sessions = yield* PiSessions;
-  const options = yield* environment
-    .runtimeOptions({ location, sessionId, newSession })
-    .pipe(asError("acquire"));
+  const options = yield* acquireOptions({ location, sessionId, newSession }).pipe(
+    asError("acquire"),
+  );
   return yield* acquireConversation(sessions, options).pipe(asError("acquire"));
 });
 
 export const start = Effect.fn("ProjectSessions.start")(function* (
   input: ProjectSessionStartInput,
 ) {
-  const environment = yield* ProjectSessionEnvironment;
-  const locations = yield* environment.locations().pipe(asError("start"));
+  const locations = yield* projectSessionLocations.locations().pipe(asError("start"));
   const location = locations.find(
     (item) =>
       (input.projectPath === undefined || item.projectPath === input.projectPath) &&
@@ -632,8 +624,9 @@ const restoreIfResolved = Effect.fn("ProjectSessions.restoreIfResolved")(functio
       operation: "restore",
       message: `Session Family ${family.familyId} is resolved; restore it explicitly from parent ${family.parentSessionId} before messaging`,
     });
-  const environment = yield* ProjectSessionEnvironment;
-  const restored = yield* environment.restore(target.sessionId, location).pipe(asError("restore"));
+  const restored = yield* projectSessionLocations
+    .restore(target.sessionId, location)
+    .pipe(asError("restore"));
   yield* trustProject(restored.workingDirectory).pipe(asError("restore"));
   yield* publishCatalogStatus(target.sessionId, restored, false).pipe(asError("restore"));
   yield* publishCatalogChange(target.sessionId, restored, false).pipe(asError("restore"));
@@ -866,11 +859,14 @@ const withContinuationSource = Effect.fn("ProjectSessions.withContinuationSource
   // duration of the copy operation, then archive it again without publishing
   // an intermediate active state. The new transcript stays in the active
   // namespace while the source remains resolved from the user's perspective.
-  const environment = yield* ProjectSessionEnvironment;
-  const restored = yield* environment.restore(target.sessionId, source).pipe(asError(operation));
+  const restored = yield* projectSessionLocations
+    .restore(target.sessionId, source)
+    .pipe(asError(operation));
   const result = yield* use(restored).pipe(
     Effect.ensuring(
-      environment.archive(target.sessionId, restored).pipe(asError(operation), Effect.orDie),
+      projectSessionLocations
+        .archive(target.sessionId, restored)
+        .pipe(asError(operation), Effect.orDie),
     ),
   );
   return { result, source: restored, sourceWasResolved: true };
@@ -1206,8 +1202,7 @@ export const fork = Effect.fn("ProjectSessions.fork")(function* (input: {
         const result = yield* handle.fork(input.entryId, forkTitle).pipe(asError("fork"));
         sessionId = result.sessionId;
       } else {
-        const environment = yield* ProjectSessionEnvironment;
-        const locations = yield* environment.locations().pipe(asError("fork"));
+        const locations = yield* projectSessionLocations.locations().pipe(asError("fork"));
         const selectedDestination = locations.find(
           (item) => item.workingDirectory === input.destinationWorkingDirectory,
         );
@@ -1221,7 +1216,7 @@ export const fork = Effect.fn("ProjectSessions.fork")(function* (input: {
             operation: "fork",
             message: "The source and destination belong to different Projects",
           });
-        sessionId = yield* environment
+        sessionId = yield* projectSessionLocations
           .forkToWorkingDirectory({
             sessionId: input.target.sessionId,
             entryId: input.entryId,
@@ -1268,8 +1263,7 @@ export const handoff = Effect.fn("ProjectSessions.handoff")(function* (input: {
         input.destinationWorkingDirectory !== undefined &&
         input.destinationWorkingDirectory !== source.workingDirectory
       ) {
-        const environment = yield* ProjectSessionEnvironment;
-        const locations = yield* environment.locations().pipe(asError("handoff"));
+        const locations = yield* projectSessionLocations.locations().pipe(asError("handoff"));
         const selectedDestination = locations.find(
           (item) => item.workingDirectory === input.destinationWorkingDirectory,
         );
@@ -1385,9 +1379,8 @@ export const resolve = Effect.fn("ProjectSessions.resolve")(function* (
             operation: "resolve",
             message: "Cake cannot resolve an empty Project Session",
           });
-        const environment = yield* ProjectSessionEnvironment;
         yield* subagents.releaseParent(target.sessionId).pipe(asError("resolve"));
-        yield* environment.archive(target.sessionId, location).pipe(asError("resolve"));
+        yield* projectSessionLocations.archive(target.sessionId, location).pipe(asError("resolve"));
         yield* managedWorktrees
           .cleanupResolved(location.workingDirectory, location.sessionDirectory)
           .pipe(asError("resolve"));
@@ -1404,8 +1397,7 @@ export const resolve = Effect.fn("ProjectSessions.resolve")(function* (
  */
 export const resolveWorkingDirectory = Effect.fn("ProjectSessions.resolveWorkingDirectory")(
   function* (workingDirectory: string) {
-    const environment = yield* ProjectSessionEnvironment;
-    const locations = (yield* environment
+    const locations = (yield* projectSessionLocations
       .locations({ includeInactive: true })
       .pipe(asError("resolveWorkingDirectory"))).filter(
       (location) => location.workingDirectory === workingDirectory,
@@ -1514,7 +1506,6 @@ export const restore = Effect.fn("ProjectSessions.restore")(function* (
             operation: "restore",
             message: "The session became a family parent; retry the family operation",
           });
-        const environment = yield* ProjectSessionEnvironment;
         const location = yield* findLocation(target);
         const archive = yield* SessionArchiveStorage;
         const namespace = yield* archive
@@ -1527,7 +1518,7 @@ export const restore = Effect.fn("ProjectSessions.restore")(function* (
             message: "Only a resolved Project Session can be restored",
           });
         yield* managedWorktrees.restoreResolved(location.workingDirectory).pipe(asError("restore"));
-        const restored = yield* environment
+        const restored = yield* projectSessionLocations
           .restore(target.sessionId, location)
           .pipe(asError("restore"));
         yield* trustProject(restored.workingDirectory).pipe(asError("restore"));

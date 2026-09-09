@@ -207,7 +207,7 @@ export class ProjectSessionIntegrationHost {
     this.pendingControls.clear();
   }
 
-  projectSessionRuntimeIntegrations(sessionId: string): ProjectSessionRuntimeIntegrations {
+  runtimeIntegrations(sessionId: string): ProjectSessionRuntimeIntegrations {
     const reviewContextPath = this.reviewRepository.reviewContextPath;
     return {
       requestUi: (request) => this.requestUi(request),

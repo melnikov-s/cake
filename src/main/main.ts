@@ -10,12 +10,11 @@ import { makePiModelsLive } from "../services/pi/live/PiModelsLive";
 import { makePiSessionsLive } from "../services/pi/PiSessions";
 import { makeSessionFamilyStorageLive } from "../services/storage/SessionFamilyStorage";
 import { AgentAvailability } from "../services/pi/AgentAvailability";
-import { ProjectSessionIntegrationsLive } from "../services/pi/ProjectSessionIntegrationsLive";
-import { makeProjectSessionRuntimeOptionsLive } from "../layers/ProjectSessionRuntimeOptionsLive";
-import { makeProjectSessionEnvironmentLive } from "../layers/ProjectSessionEnvironmentLive";
+import { makeProjectSessionRuntimeHostLive } from "../services/pi/ProjectSessionRuntimeHostLive";
 import { makeProjectSessionLifecycleLive } from "../layers/ProjectSessionLifecycleLive";
 import { makeProjectAccessLive } from "../services/projects/ProjectAccessLive";
 import { ProjectConfiguration } from "../services/projects/ProjectConfiguration";
+import { ProjectSessionConfiguration } from "../services/project-sessions/ProjectSessionConfiguration";
 import { RewordingRequestsLive } from "../services/projects/RewordingRequestsLive";
 import { makeCakeChatEnvironmentLive } from "../layers/CakeChatEnvironmentLive";
 import { makeDiscussionSessionEnvironmentLive } from "../layers/DiscussionSessionEnvironmentLive";
@@ -125,6 +124,11 @@ const baseLive = Layer.mergeAll(
   SubagentCoordinatorLive,
   WorktreeLandingCoordinatorLive,
   Layer.succeed(ProjectConfiguration, { agentDirectory: cakePaths.piAgent }),
+  Layer.succeed(ProjectSessionConfiguration, {
+    agentDirectory: cakePaths.piAgent,
+    sessionDirectory: cakePaths.piSessions,
+    resolvedSessionDirectory: cakePaths.piResolvedSessions,
+  }),
   RewordingRequestsLive,
 );
 const projectAccessLive = makeProjectAccessLive({
@@ -156,25 +160,17 @@ const lifecycleLive = makeProjectSessionLifecycleLive({
   resolvedCakeChatSessionDirectory: cakePaths.piGlobalChatResolvedSessions,
 }).pipe(Layer.provide(nativeLive));
 const sessionFoundationLive = Layer.merge(nativeLive, lifecycleLive);
-const projectSessionRuntimeOptionsLive = makeProjectSessionRuntimeOptionsLive({
+const projectSessionRuntimeHostLive = makeProjectSessionRuntimeHostLive({
   agentDirectory: cakePaths.piAgent,
   sessionDirectory: cakePaths.piSessions,
-  resolvedSessionDirectory: cakePaths.piResolvedSessions,
   widgetSessionDirectory: cakePaths.piWidgetSessions,
 }).pipe(Layer.provide(sessionFoundationLive));
-const runtimeOptionsGraphLive = Layer.merge(
-  sessionFoundationLive,
-  projectSessionRuntimeOptionsLive,
-);
-const integrationsLive = ProjectSessionIntegrationsLive.pipe(
-  Layer.provide(runtimeOptionsGraphLive),
-);
-const integrationGraphLive = Layer.merge(runtimeOptionsGraphLive, integrationsLive);
+const runtimeHostGraphLive = Layer.merge(sessionFoundationLive, projectSessionRuntimeHostLive);
 const inlineWidgetsLive = makeInlineWidgetsLive({
   paths: cakePaths,
   publish: publishInlineWidget,
-}).pipe(Layer.provide(integrationGraphLive));
-const runtimeLive = Layer.merge(integrationGraphLive, inlineWidgetsLive);
+}).pipe(Layer.provide(runtimeHostGraphLive));
+const runtimeLive = Layer.merge(runtimeHostGraphLive, inlineWidgetsLive);
 
 const subagentEnvironmentLive = makeSubagentEnvironmentLive({
   homeDirectory: homedir(),
@@ -183,11 +179,6 @@ const subagentEnvironmentLive = makeSubagentEnvironmentLive({
 }).pipe(Layer.provide(runtimeLive));
 const environmentDependenciesLive = Layer.merge(runtimeLive, subagentEnvironmentLive);
 const cakeSessionLive = Layer.mergeAll(
-  makeProjectSessionEnvironmentLive({
-    agentDirectory: cakePaths.piAgent,
-    sessionDirectory: cakePaths.piSessions,
-    resolvedSessionDirectory: cakePaths.piResolvedSessions,
-  }).pipe(Layer.provide(environmentDependenciesLive)),
   makeCakeChatEnvironmentLive({
     homeDirectory: homedir(),
     agentDirectory: cakePaths.piAgent,

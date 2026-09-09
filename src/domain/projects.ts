@@ -1,3 +1,4 @@
+import * as projectSessionLocations from "./projectSessionLocations";
 import type { WebContents } from "electron";
 import { Effect, Stream } from "effect";
 import type { cakeRpcPayloadSchemas } from "../ipc/cake-rpc-contract";
@@ -5,11 +6,10 @@ import { Electron } from "../services/electron/Electron";
 import { PiSessions } from "../services/pi/PiSessions";
 import { PiAgentResources } from "../services/pi/PiAgentResources";
 import { AgentAvailability } from "../services/pi/AgentAvailability";
-import { ProjectSessionIntegrations } from "../services/pi/ProjectSessionIntegrations";
+import { ProjectSessionRuntimeHost } from "../services/pi/ProjectSessionRuntimeHost";
 import { rewordSelectionWithProjectContext } from "../services/pi/runtime/rewording-agent";
 import { inspectWorkspace } from "../services/pi/runtime/session-discovery";
 import { ProjectSessionLifecycle } from "../services/project-sessions/ProjectSessionLifecycle";
-import { ProjectSessionEnvironment } from "../services/project-sessions/ProjectSessionEnvironment";
 import { ProjectAccess } from "../services/projects/ProjectAccess";
 import { ProjectConfiguration } from "../services/projects/ProjectConfiguration";
 import { RewordingRequests } from "../services/projects/RewordingRequests";
@@ -355,10 +355,9 @@ export const describeWorkflowSession = Effect.fn("Projects.describeWorkflowSessi
           message: "That session does not belong to this Project",
         });
     } else {
-      const environment = yield* ProjectSessionEnvironment;
       const location = (yield* mapProjectError(
         "describeWorkflowSession",
-        environment.locations(),
+        projectSessionLocations.locations(),
       )).find((candidate) => candidate.workingDirectory === request.workingDirectory);
       if (location?.projectPath !== request.projectPath)
         return yield* new ProjectError({
@@ -411,7 +410,7 @@ export const remove = Effect.fn("Projects.remove")(function* (
   yield* requireAllowed(request.path);
   const access = yield* ProjectAccess;
   const electron = yield* Electron;
-  const integrations = yield* ProjectSessionIntegrations;
+  const integrations = yield* ProjectSessionRuntimeHost;
   const lifecycle = yield* ProjectSessionLifecycle;
   const worktrees = yield* ManagedWorktrees;
   const records = yield* mapProjectError("removeProject", worktrees.records());
@@ -456,10 +455,10 @@ export const setSessionUnread = Effect.fn("Projects.setSessionUnread")(function*
     "setSessionUnread",
     access.resolveSessionWorkingDirectory(request.sessionId),
   );
-  const environment = yield* ProjectSessionEnvironment;
-  const location = (yield* mapProjectError("setSessionUnread", environment.locations())).find(
-    (candidate) => candidate.workingDirectory === workingDirectory,
-  );
+  const location = (yield* mapProjectError(
+    "setSessionUnread",
+    projectSessionLocations.locations(),
+  )).find((candidate) => candidate.workingDirectory === workingDirectory);
   if (!location)
     return yield* new ProjectError({
       operation: "setSessionUnread",

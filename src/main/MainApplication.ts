@@ -4,7 +4,7 @@ import { initialize } from "../domain/application";
 import { initializeRegisteredProjectAccess } from "../domain/projects";
 import * as workingDirectoryTerminals from "../domain/workingDirectoryTerminals";
 import { Electron } from "../services/electron/Electron";
-import { ProjectSessionIntegrations } from "../services/pi/ProjectSessionIntegrations";
+import { ProjectSessionRuntimeHost } from "../services/pi/ProjectSessionRuntimeHost";
 import type { PiSessions } from "../services/pi/PiSessions";
 import { ProjectAccess } from "../services/projects/ProjectAccess";
 import { RewordingRequests } from "../services/projects/RewordingRequests";
@@ -35,7 +35,7 @@ type MainApplicationServices =
   | Electron
   | PiSessions
   | ProjectAccess
-  | ProjectSessionIntegrations
+  | ProjectSessionRuntimeHost
   | RewordingRequests
   | Terminal
   | VsCodeServer
@@ -57,7 +57,7 @@ export const MainApplication = Effect.fn("MainApplication")(function* ({
     Effect.gen(function* () {
       const applicationState = yield* ApplicationState;
       const electron = yield* Electron;
-      const integrations = yield* ProjectSessionIntegrations;
+      const integrations = yield* ProjectSessionRuntimeHost;
       const access = yield* ProjectAccess;
       const rewordingRequests = yield* RewordingRequests;
       const vscode = yield* VsCodeServer;

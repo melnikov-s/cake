@@ -1,9 +1,9 @@
 import { Effect, Option, Stream } from "effect";
+import * as projectSessionLocations from "./projectSessionLocations";
 import { defaultProjectSettings } from "./application-data";
 import { getState, trustProject } from "./application";
 import { generateWorktreeName, utilityModelSelection } from "./utilityWork";
 import { PiSessions } from "../services/pi/PiSessions";
-import { ProjectSessionEnvironment } from "../services/project-sessions/ProjectSessionEnvironment";
 import { ProjectAccess } from "../services/projects/ProjectAccess";
 import { SessionCatalogChanges } from "../services/session-catalogs/SessionCatalogChanges";
 import {
@@ -108,8 +108,7 @@ const resolvedEntriesForProject = Effect.fn("ManagedWorktrees.resolvedEntriesFor
       });
     yield* requireAllowed(projectPath);
     const archive = yield* SessionArchiveStorage;
-    const environment = yield* ProjectSessionEnvironment;
-    const locations = yield* environment
+    const locations = yield* projectSessionLocations
       .locations({ includeInactive: true })
       .pipe(
         Effect.mapError((cause) =>

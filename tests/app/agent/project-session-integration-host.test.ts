@@ -16,7 +16,7 @@ describe("ProjectSessionIntegrationHost application controls", () => {
       },
     });
 
-    const integrations = host.projectSessionRuntimeIntegrations("source-session");
+    const integrations = host.runtimeIntegrations("source-session");
     const pending = integrations.requestApplicationControl(
       {
         _tag: "CreateDraft",
@@ -70,18 +70,16 @@ describe("ProjectSessionIntegrationHost application controls", () => {
       fastMode: true,
     };
 
-    const pending = host
-      .projectSessionRuntimeIntegrations("source-session")
-      .requestApplicationControl(
-        {
-          _tag: "CreateSession",
-          name: "Implementation session",
-          initialPrompt: "Implement the approved changes.",
-          worktreeName: "implementation-session",
-          model,
-        },
-        new AbortController().signal,
-      );
+    const pending = host.runtimeIntegrations("source-session").requestApplicationControl(
+      {
+        _tag: "CreateSession",
+        name: "Implementation session",
+        initialPrompt: "Implement the approved changes.",
+        worktreeName: "implementation-session",
+        model,
+      },
+      new AbortController().signal,
+    );
 
     expect(request).toEqual({
       type: "project-session-control-requested",
@@ -123,19 +121,17 @@ describe("ProjectSessionIntegrationHost application controls", () => {
       },
     });
 
-    const pending = host
-      .projectSessionRuntimeIntegrations("parent-session")
-      .requestApplicationControl(
-        {
-          _tag: "ProjectChildSession",
-          childSessionId: "child-session",
-          title: "Child task",
-          familyId: "family-1",
-          familyChildOrder: 0,
-          placement: "down",
-        },
-        new AbortController().signal,
-      );
+    const pending = host.runtimeIntegrations("parent-session").requestApplicationControl(
+      {
+        _tag: "ProjectChildSession",
+        childSessionId: "child-session",
+        title: "Child task",
+        familyId: "family-1",
+        familyChildOrder: 0,
+        placement: "down",
+      },
+      new AbortController().signal,
+    );
 
     expect(() => Schema.decodeUnknownSync(cakeEventSchema)(request)).not.toThrow();
     if (!request) throw new Error("Expected a control request");
@@ -161,16 +157,14 @@ describe("ProjectSessionIntegrationHost application controls", () => {
       },
     });
 
-    const pending = host
-      .projectSessionRuntimeIntegrations("source-session")
-      .requestApplicationControl(
-        {
-          _tag: "CreateDraft",
-          name: "Authentication follow-up",
-          initialPrompt: "Review the authentication flow.",
-        },
-        controller.signal,
-      );
+    const pending = host.runtimeIntegrations("source-session").requestApplicationControl(
+      {
+        _tag: "CreateDraft",
+        name: "Authentication follow-up",
+        initialPrompt: "Review the authentication flow.",
+      },
+      controller.signal,
+    );
     controller.abort();
 
     await expect(pending).resolves.toEqual({ ok: false, error: "The request was cancelled." });

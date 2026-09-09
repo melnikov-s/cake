@@ -12,7 +12,7 @@ import type {
   CakeRuntime,
   CakeRuntimeOptions,
 } from "../../../src/services/pi/runtime/cake-runtime";
-import { makeProjectSessionEnvironmentLayer } from "../../../src/services/project-sessions/ProjectSessionEnvironment";
+import { makeProjectSessionRuntimeTestLayer } from "./projectSessionRuntimeTestLayer";
 import type { SessionSnapshot } from "../../../src/ipc/session-contract";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { defaultApplicationState } from "../../../src/domain/application-data";
@@ -151,41 +151,25 @@ const makeLayer = () => {
       }),
     refreshParentIndex: () => Effect.void,
   });
-  const projects = makeProjectSessionEnvironmentLayer({
-    locations: () =>
-      Effect.succeed([
-        {
-          projectPath: "/project",
-          projectName: "Project",
-          workingDirectory: "/project",
-          sessionDirectory: "/cake/sessions",
-          resolvedSessionDirectory: "/cake/resolved",
-        },
-      ]),
-    runtimeOptions: ({ location, sessionId, newSession }) =>
-      Effect.succeed({
-        profile: { _tag: "ProjectSession" },
-        runtime: {
-          cwd: location.workingDirectory,
-          trusted: true,
-          agentDir: "/cake",
-          sessionDir: location.sessionDirectory,
-          sessionId,
-          newSession,
-          requestUi: async () => undefined,
-        },
-      }),
-    archive: () => Effect.void,
-    restore: (_sessionId, location) => Effect.succeed(location),
-    forkToWorkingDirectory: () => Effect.succeed("fork"),
-  });
+  const projectRuntime = makeProjectSessionRuntimeTestLayer();
   return {
     layer: Layer.mergeAll(
       makePiSessionsLayer(adapter),
       discussions,
-      projects,
+      projectRuntime,
       Layer.mock(ApplicationState, {
-        snapshot: defaultApplicationState,
+        snapshot: () => ({
+          ...defaultApplicationState(),
+          projects: [
+            {
+              path: "/project",
+              name: "Project",
+              addedAt: "2026-01-01T00:00:00.000Z",
+              lastOpenedAt: "2026-01-01T00:00:00.000Z",
+            },
+          ],
+          trustedProjectPaths: ["/project"],
+        }),
       }),
     ),
     options: runtimeOptions,

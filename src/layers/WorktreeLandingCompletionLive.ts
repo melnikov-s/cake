@@ -1,11 +1,11 @@
 import { Effect, Layer } from "effect";
 import type { ApplicationState } from "../services/storage/ApplicationState";
 import type { PiSessions } from "../services/pi/PiSessions";
-import type { ProjectSessionEnvironment } from "../services/project-sessions/ProjectSessionEnvironment";
 import type { SubagentCoordinator } from "../services/subagents/SubagentCoordinator";
 import type { SessionArchiveStorage } from "../services/storage/SessionArchiveStorage";
 import type { SessionCatalogChanges } from "../services/session-catalogs/SessionCatalogChanges";
 import type { Terminal } from "../services/terminal/Terminal";
+import type { ProjectSessionConfiguration } from "../services/project-sessions/ProjectSessionConfiguration";
 import type { ProjectSessionLifecycle } from "../services/project-sessions/ProjectSessionLifecycle";
 import type { SessionFamilyStorage } from "../services/storage/SessionFamilyStorage";
 import type { ManagedWorktrees } from "../services/worktrees/ManagedWorktrees";
@@ -16,11 +16,11 @@ import { WorktreeLandingCompletion } from "../services/worktrees/WorktreeLanding
 type Dependencies =
   | ApplicationState
   | PiSessions
-  | ProjectSessionEnvironment
   | SubagentCoordinator
   | SessionArchiveStorage
   | SessionCatalogChanges
   | Terminal
+  | ProjectSessionConfiguration
   | ProjectSessionLifecycle
   | SessionFamilyStorage
   | ManagedWorktrees;

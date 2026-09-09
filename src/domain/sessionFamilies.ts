@@ -1,11 +1,10 @@
+import { acquireOptions as acquireProjectSessionOptions } from "./projectSessionRuntime";
+import * as projectSessionLocations from "./projectSessionLocations";
 import { DateTime, Effect, Schedule } from "effect";
 import type { ChatConfiguration } from "../ipc/session-contract";
 import { PiModels } from "../services/pi/PiModels";
 import { PiSessions, type PiSessionAcquireOptions } from "../services/pi/PiSessions";
-import {
-  ProjectSessionEnvironment,
-  type ProjectSessionLocation,
-} from "../services/project-sessions/ProjectSessionEnvironment";
+import type { ProjectSessionLocation } from "./project-session-data";
 import { ProjectSessionLifecycle } from "../services/project-sessions/ProjectSessionLifecycle";
 import {
   SessionArchiveStorage,
@@ -272,8 +271,7 @@ export const deliver = Effect.fn("SessionFamilies.deliverNotice")(function* (tur
   if (!family || !turn.outcome || turn.reported) return;
   const state = yield* storage.state();
   if (state.transitions.some((item) => item.parentSessionId === family.parentSessionId)) return;
-  const environment = yield* ProjectSessionEnvironment;
-  const location = (yield* environment.locations()).find(
+  const location = (yield* projectSessionLocations.locations()).find(
     (item) => item.workingDirectory === family.workingDirectory,
   );
   if (!location)
@@ -312,7 +310,7 @@ export const deliver = Effect.fn("SessionFamilies.deliverNotice")(function* (tur
     }),
   );
   const parent = yield* sessions.acquire(
-    yield* environment.runtimeOptions({
+    yield* acquireProjectSessionOptions({
       location,
       sessionId: family.parentSessionId,
       newSession: false,

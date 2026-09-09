@@ -5,12 +5,16 @@ import { describe } from "vitest";
 import { deliver, initialize } from "../../../src/domain/sessionFamilies";
 import { parseCrossSessionMessage } from "../../../src/domain/cross-session-coordination";
 import { makePiSessionsLayer, PiSessions } from "../../../src/services/pi/PiSessions";
-import { ProjectSessionEnvironment } from "../../../src/services/project-sessions/ProjectSessionEnvironment";
+import { defaultApplicationState } from "../../../src/domain/application-data";
+import { ApplicationState } from "../../../src/services/storage/ApplicationState";
+import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
+import { makeProjectSessionRuntimeMechanismTestLayer } from "./projectSessionRuntimeTestLayer";
 import { ProjectSessionLifecycle } from "../../../src/services/project-sessions/ProjectSessionLifecycle";
+import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
-import { fakeRuntime, options, snapshot } from "../helpers/piRuntimeFixture";
+import { fakeRuntime, snapshot } from "../helpers/piRuntimeFixture";
 
 const location = {
   projectPath: "/project",
@@ -37,10 +41,31 @@ const outcome = {
   reported: false,
   outcome: "complete" as const,
 };
-const environment = Layer.mock(ProjectSessionEnvironment, {
-  locations: () => Effect.succeed([location]),
-  runtimeOptions: () => Effect.succeed(options()),
-});
+const environment = Layer.mergeAll(
+  makeProjectSessionRuntimeMechanismTestLayer(),
+  Layer.mock(ApplicationState, {
+    snapshot: () => ({
+      ...defaultApplicationState(),
+      projects: [
+        {
+          path: location.projectPath,
+          name: location.projectName,
+          addedAt: "2026-01-01T00:00:00.000Z",
+          lastOpenedAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+      trustedProjectPaths: [location.workingDirectory],
+    }),
+  }),
+  Layer.mock(ManagedWorktrees, {
+    records: () => Effect.succeed([]),
+    proposeSquashMessage: () => Effect.void,
+  }),
+  Layer.mock(ProjectSessionLifecycle, {
+    setProjectSessionResolved: () => Effect.void,
+  }),
+  SessionCatalogChanges.layer,
+);
 
 describe("Session Family outcome delivery", () => {
   it.effect("recovers an accepted reply when acknowledgement was interrupted", () => {

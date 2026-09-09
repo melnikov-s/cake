@@ -1,11 +1,20 @@
 import { Context, Effect, Layer, Scope } from "effect";
 import * as projectSessions from "../domain/projectSessions";
-import type { ProjectSessionEnvironment } from "../services/project-sessions/ProjectSessionEnvironment";
+import type { Electron } from "../services/electron/Electron";
+import type { PiModels } from "../services/pi/PiModels";
 import type { PiSessions } from "../services/pi/PiSessions";
+import type { ProjectSessionRuntimeHost } from "../services/pi/ProjectSessionRuntimeHost";
+import type { ProjectAccess } from "../services/projects/ProjectAccess";
+import type { ProjectSessionConfiguration } from "../services/project-sessions/ProjectSessionConfiguration";
+import type { ProjectSessionLifecycle } from "../services/project-sessions/ProjectSessionLifecycle";
 import type { SessionCatalogChanges } from "../services/session-catalogs/SessionCatalogChanges";
 import type { ApplicationState } from "../services/storage/ApplicationState";
 import type { SessionArchiveStorage } from "../services/storage/SessionArchiveStorage";
 import type { SessionFamilyStorage } from "../services/storage/SessionFamilyStorage";
+import type { SubagentCoordinator } from "../services/subagents/SubagentCoordinator";
+import type { SubagentEnvironment } from "../services/subagents/SubagentEnvironment";
+import type { VsCodeServer } from "../services/vscode/VsCodeServer";
+import type { ManagedWorktrees } from "../services/worktrees/ManagedWorktrees";
 import {
   WorktreeLandingAgent,
   WorktreeLandingAgentError,
@@ -26,11 +35,20 @@ export const WorktreeLandingAgentLive = Layer.effect(
     const context = yield* Effect.context<
       | Scope.Scope
       | ApplicationState
+      | Electron
+      | ManagedWorktrees
+      | PiModels
       | PiSessions
-      | ProjectSessionEnvironment
+      | ProjectAccess
+      | ProjectSessionConfiguration
+      | ProjectSessionLifecycle
+      | ProjectSessionRuntimeHost
       | SessionArchiveStorage
       | SessionCatalogChanges
       | SessionFamilyStorage
+      | SubagentCoordinator
+      | SubagentEnvironment
+      | VsCodeServer
     >();
     const dependencies = Context.omit(Scope.Scope)(context);
     return WorktreeLandingAgent.of({

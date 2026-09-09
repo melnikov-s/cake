@@ -4,11 +4,14 @@ import { describe, vi } from "vitest";
 import { Electron } from "../../../../src/services/electron/Electron";
 import { ArtifactStorage } from "../../../../src/services/storage/ArtifactStorage";
 import { ReviewStorage } from "../../../../src/services/storage/ReviewStorage";
-import { ProjectSessionIntegrations } from "../../../../src/services/pi/ProjectSessionIntegrations";
-import { ProjectSessionIntegrationsLive } from "../../../../src/services/pi/ProjectSessionIntegrationsLive";
-import { ProjectSessionRuntimeOptions } from "../../../../src/services/pi/ProjectSessionRuntimeOptions";
+import { ProjectSessionRuntimeHost } from "../../../../src/services/pi/ProjectSessionRuntimeHost";
+import { makeProjectSessionRuntimeHostLive } from "../../../../src/services/pi/ProjectSessionRuntimeHostLive";
 
-const layer = ProjectSessionIntegrationsLive.pipe(
+const layer = makeProjectSessionRuntimeHostLive({
+  agentDirectory: "/agent",
+  sessionDirectory: "/sessions",
+  widgetSessionDirectory: "/widgets",
+}).pipe(
   Layer.provide(
     Layer.mergeAll(
       Layer.mock(ArtifactStorage, {}),
@@ -22,9 +25,6 @@ const layer = ProjectSessionIntegrationsLive.pipe(
         windowsForWorkspace: () => [],
         centerTrafficLights: vi.fn(),
       }),
-      Layer.mock(ProjectSessionRuntimeOptions, {
-        forWorkingDirectory: () => ({ agentDir: "/agent", sessionDir: "/sessions" }),
-      }),
       Layer.mock(ReviewStorage, {
         agentSessionDirectory: () => "/reviews/agent",
         reviewContextPath: () => "/reviews/context.md",
@@ -34,11 +34,11 @@ const layer = ProjectSessionIntegrationsLive.pipe(
   ),
 );
 
-describe("ProjectSessionIntegrationsLive", () => {
+describe("ProjectSessionRuntimeHostLive", () => {
   it.effect("accepts a late control response after the session integration was released", () =>
     Effect.gen(function* () {
       const context = yield* Layer.build(layer);
-      const integrations = Context.get(context, ProjectSessionIntegrations);
+      const integrations = Context.get(context, ProjectSessionRuntimeHost);
 
       yield* integrations.respondControl("released-session", "completed-control", { ok: true });
     }),

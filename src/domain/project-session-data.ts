@@ -9,6 +9,17 @@ const boundedId = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(
 const boundedPath = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4_096));
 const boundedText = Schema.String.check(Schema.isMaxLength(262_144));
 
+export const ProjectSessionLocation = Schema.Struct({
+  projectPath: boundedPath,
+  projectName: Schema.String,
+  workingDirectory: boundedPath,
+  sessionDirectory: boundedPath,
+  resolvedSessionDirectory: boundedPath,
+  managedWorktree: Schema.optionalKey(ManagedWorktreeContext),
+  worktreeName: Schema.optionalKey(Schema.String),
+});
+export interface ProjectSessionLocation extends Schema.Schema.Type<typeof ProjectSessionLocation> {}
+
 export const ProjectSessionSummary = Schema.Struct({
   sessionId: boundedId,
   title: Schema.String.check(Schema.isMaxLength(SESSION_TITLE_MAX_LENGTH)),

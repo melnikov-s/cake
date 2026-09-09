@@ -1,7 +1,8 @@
+import * as projectSessionLocations from "./projectSessionLocations";
+import { acquireOptions as acquireProjectSessionOptions } from "./projectSessionRuntime";
 import { Effect, Schema, Stream } from "effect";
 import type { DiscussionCatalogUpdate } from "./catalog-data";
 import { PiSessionError, PiSessions } from "../services/pi/PiSessions";
-import { ProjectSessionEnvironment } from "../services/project-sessions/ProjectSessionEnvironment";
 import {
   DiscussionSessionEnvironment,
   DiscussionSessionEnvironmentError,
@@ -67,9 +68,8 @@ const projectThread = (
 const parentHandle = Effect.fn("DiscussionSessions.parentHandle")(function* (
   target: DiscussionSessionTarget,
 ) {
-  const environment = yield* ProjectSessionEnvironment;
   const sessions = yield* PiSessions;
-  const locations = yield* environment.locations().pipe(asError("parentContext"));
+  const locations = yield* projectSessionLocations.locations().pipe(asError("parentContext"));
   const location = locations.find(
     (candidate) => candidate.workingDirectory === target.workingDirectory,
   );
@@ -78,9 +78,11 @@ const parentHandle = Effect.fn("DiscussionSessions.parentHandle")(function* (
       operation: "parentContext",
       message: "The Discussion Session parent Working Directory is unavailable",
     });
-  const options = yield* environment
-    .runtimeOptions({ location, sessionId: target.parentSessionId, newSession: false })
-    .pipe(asError("parentContext"));
+  const options = yield* acquireProjectSessionOptions({
+    location,
+    sessionId: target.parentSessionId,
+    newSession: false,
+  }).pipe(asError("parentContext"));
   return yield* acquireConversation(sessions, options).pipe(asError("parentContext"));
 });
 

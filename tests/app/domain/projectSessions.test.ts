@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
 import { Deferred, Effect, Fiber, Layer, Queue, Stream, SubscriptionRef } from "effect";
 import * as TestClock from "effect/testing/TestClock";
-import { describe } from "vitest";
+import { describe, vi } from "vitest";
 import * as projectSessions from "../../../src/domain/projectSessions";
 import type { SessionCatalogUpdate } from "../../../src/domain/catalog-data";
 import { getState } from "../../../src/domain/application";
@@ -16,13 +16,19 @@ import type {
   CakeRuntime,
   CakeRuntimeOptions,
 } from "../../../src/services/pi/runtime/cake-runtime";
-import {
-  makeProjectSessionEnvironmentLayer,
-  ProjectSessionEnvironmentError,
-  type ProjectSessionLocation,
-} from "../../../src/services/project-sessions/ProjectSessionEnvironment";
+import type { ProjectSessionLocation } from "../../../src/domain/project-session-data";
+import { Electron } from "../../../src/services/electron/Electron";
+import { PiModels } from "../../../src/services/pi/PiModels";
+import { ProjectSessionRuntimeHost } from "../../../src/services/pi/ProjectSessionRuntimeHost";
+import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
+import { ProjectSessionConfiguration } from "../../../src/services/project-sessions/ProjectSessionConfiguration";
+import { SubagentEnvironment } from "../../../src/services/subagents/SubagentEnvironment";
+import { VsCodeServer } from "../../../src/services/vscode/VsCodeServer";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
-import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
+import {
+  SessionArchiveStorage,
+  SessionArchiveStorageError,
+} from "../../../src/services/storage/SessionArchiveStorage";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import { SubagentCoordinatorLive } from "../../../src/services/subagents/SubagentCoordinator";
 import { Terminal } from "../../../src/services/terminal/Terminal";
@@ -162,10 +168,24 @@ const makeLayer = (
   } = {},
 ) => {
   const resolvedSessionIds = new Set(hooks.resolvedOnDisk ? ["session-1"] : []);
+  const configuredInitial =
+    initial.projects.length > 0
+      ? initial
+      : {
+          ...initial,
+          projects: [
+            {
+              path: hooks.locations?.[0]?.projectPath ?? "/project",
+              name: hooks.locations?.[0]?.projectName ?? "Project",
+              addedAt: "2026-01-01T00:00:00.000Z",
+              lastOpenedAt: "2026-01-01T00:00:00.000Z",
+            },
+          ],
+        };
   const application = Layer.effect(
     ApplicationState,
     Effect.gen(function* () {
-      const projection = yield* SubscriptionRef.make({ revision: 0, state: initial });
+      const projection = yield* SubscriptionRef.make({ revision: 0, state: configuredInitial });
       return ApplicationState.of({
         initialize: () => Effect.succeed(SubscriptionRef.getUnsafe(projection).state),
         current: () => SubscriptionRef.get(projection).pipe(Effect.map((current) => current.state)),
@@ -216,6 +236,7 @@ const makeLayer = (
     createRuntime: (options) =>
       Effect.sync(() => {
         hooks.onCreateRuntime?.();
+        hooks.onRuntimeOptions?.(options.newSession ?? false);
         return fakeRuntime(
           options,
           hooks.prompt,
@@ -258,61 +279,62 @@ const makeLayer = (
     }),
     makePiSessionsLayer(adapter),
     SubagentCoordinatorLive,
-    makeProjectSessionEnvironmentLayer({
-      locations: (options) => {
-        hooks.onLocations?.(options);
-        return Effect.succeed(
-          hooks.locations ?? [
-            {
-              projectPath: "/project",
-              projectName: "Project",
-              workingDirectory: "/project",
-              sessionDirectory: "/sessions",
-              resolvedSessionDirectory: "/resolved-sessions",
-            },
-          ],
-        );
-      },
-      runtimeOptions: ({ location, sessionId, newSession }) =>
+    Layer.succeed(ProjectSessionConfiguration, {
+      agentDirectory: "/agent",
+      sessionDirectory: "/sessions",
+      resolvedSessionDirectory: "/resolved-sessions",
+    }),
+    Layer.mock(ProjectAccess, {
+      rememberSessionLocation: () => Effect.void,
+      isAllowed: () => Effect.succeed(true),
+    }),
+    Layer.mock(ProjectSessionRuntimeHost, {
+      runtimeIntegrations: () =>
         Effect.sync(() => {
-          hooks.onRuntimeOptions?.(newSession);
           return {
-            profile: { _tag: "ProjectSession" as const },
-            runtime: {
-              cwd: location.workingDirectory,
-              trusted: true,
-              agentDir: "/agent",
-              sessionDir: location.sessionDirectory,
-              resolvedSessionDir: location.resolvedSessionDirectory,
-              sessionId,
-              newSession,
-              requestUi: async () => undefined,
-              fastMode: {
-                get: () => initial.fastModeSessionIds.includes(sessionId),
-                set: async () => undefined,
-              },
+            requestUi: async () => undefined,
+            requestApplicationControl: async () => ({ ok: true }),
+            emitExtensionUiIntent: () => undefined,
+            persistArtifact: async () => {
+              throw new Error("Unexpected artifact persistence");
             },
+            requestArtifact: async () => undefined,
+            generateInlineWidget: async () => {
+              throw new Error("Unexpected widget generation");
+            },
+            listArtifacts: async () => [],
           };
         }),
-      archive: (sessionId) =>
-        hooks.archiveErrorSessionId === sessionId
-          ? Effect.fail(
-              new ProjectSessionEnvironmentError({
-                operation: "archive",
-                message: `Cannot archive ${sessionId}`,
-              }),
-            )
-          : Effect.sync(() => {
-              resolvedSessionIds.add(sessionId);
-              hooks.onArchive?.(sessionId);
-            }),
-      restore: (sessionId, location) =>
-        Effect.sync(() => {
-          resolvedSessionIds.delete(sessionId);
-          hooks.onRestore?.();
-          return location;
+      releaseSession: () => Effect.void,
+    }),
+    Layer.mock(PiModels, {}),
+    Layer.mock(Electron, {
+      openExternal: () => Effect.void,
+      sendTo: vi.fn(),
+      broadcast: vi.fn(),
+      requireRendererConnection: vi.fn(),
+      workspaceForConnection: vi.fn(),
+      associateWorkspace: vi.fn(),
+      forgetWorkspace: vi.fn(),
+      windowsForWorkspace: () => [],
+      centerTrafficLights: vi.fn(),
+    }),
+    Layer.mock(VsCodeServer, {
+      enterProjectEditor: () => Effect.void,
+      openProjectLocation: (_workingDirectory, location) =>
+        Effect.succeed({ status: "completed" as const, value: location }),
+      runProjectScript: (_workingDirectory, _source, input) =>
+        Effect.succeed({ status: "completed" as const, value: input }),
+      backToAgentForWindow: () => false,
+    }),
+    Layer.mock(SubagentEnvironment, {
+      location: (workingDirectory) =>
+        Effect.succeed({
+          workingDirectory,
+          agentDirectory: "/agent",
+          sessionDirectory: "/subagents",
+          trusted: true,
         }),
-      forkToWorkingDirectory: () => Effect.succeed("forked"),
     }),
     Layer.succeed(
       SessionArchiveStorage,
@@ -360,8 +382,26 @@ const makeLayer = (
                 resolved: true,
               });
         },
-        resolveProject: () => Effect.succeed(false),
-        restoreProject: () => Effect.succeed(undefined),
+        resolveProject: (sessionId) =>
+          hooks.archiveErrorSessionId === sessionId
+            ? Effect.fail(
+                new SessionArchiveStorageError({
+                  operation: "resolveProject",
+                  sessionId,
+                  message: `Cannot archive ${sessionId}`,
+                }),
+              )
+            : Effect.sync(() => {
+                resolvedSessionIds.add(sessionId);
+                hooks.onArchive?.(sessionId);
+                return true;
+              }),
+        restoreProject: (sessionId) =>
+          Effect.sync(() => {
+            resolvedSessionIds.delete(sessionId);
+            hooks.onRestore?.();
+            return undefined;
+          }),
         deleteResolvedProject: () => Effect.void,
         resolvedProjects: (projectPath) => {
           hooks.onResolvedCatalog?.();
@@ -407,9 +447,9 @@ const makeLayer = (
             : Effect.succeed({
                 version: 1 as const,
                 sessionId: "session-1",
-                projectPath: "/project",
-                projectName: "Project",
-                workingDirectory: "/project",
+                projectPath: hooks.locations?.[0]?.projectPath ?? "/project",
+                projectName: hooks.locations?.[0]?.projectName ?? "Project",
+                workingDirectory: hooks.locations?.[0]?.workingDirectory ?? "/project",
                 activeRoot: "/sessions",
                 resolvedRoot: "/resolved-sessions",
                 createdAt: "2026-01-01T00:00:00.000Z",
@@ -418,7 +458,24 @@ const makeLayer = (
       }),
     ),
     Layer.mock(ManagedWorktrees, {
-      records: () => Effect.succeed(hooks.worktreeRecords ?? []),
+      records: () => {
+        hooks.onLocations?.();
+        return Effect.succeed(
+          hooks.worktreeRecords ??
+            hooks.locations
+              ?.filter((location) => location.workingDirectory !== location.projectPath)
+              .map((location) => ({
+                projectPath: location.projectPath,
+                worktreePath: location.workingDirectory,
+                branch:
+                  location.managedWorktree?.branch ?? `agent/${location.worktreeName ?? "test"}`,
+                baseBranch: location.managedWorktree?.baseBranch ?? "main",
+                state: location.managedWorktree?.state ?? ("active" as const),
+                createdAt: location.managedWorktree?.createdAt ?? "2026-01-01T00:00:00.000Z",
+              })) ??
+            [],
+        );
+      },
       cleanupResolved: () =>
         Effect.sync(() => {
           hooks.onCleanupResolved?.();
@@ -1371,14 +1428,12 @@ describe("Project Sessions domain", () => {
   });
 
   it.effect("resolves a session from an inactive Managed Worktree location", () => {
-    let includeInactive = false;
     let archives = 0;
     return Effect.gen(function* () {
       yield* projectSessions.resolve({
         sessionId: "session-1",
         workingDirectory: "/discarded-worktree",
       });
-      assert.equal(includeInactive, true);
       assert.equal(archives, 1);
     }).pipe(
       Effect.provide(
@@ -1400,9 +1455,6 @@ describe("Project Sessions domain", () => {
               },
             },
           ],
-          onLocations: (options) => {
-            includeInactive = options?.includeInactive === true;
-          },
           onArchive: () => archives++,
         }),
       ),
