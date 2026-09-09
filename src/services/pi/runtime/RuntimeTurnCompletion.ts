@@ -48,6 +48,11 @@ export class RuntimeTurnCompletion {
     this.pending.delete(id);
   }
 
+  failHandledInput(id: string, error: unknown) {
+    this.pending.get(id)?.reject(error instanceof Error ? error : new Error(String(error)));
+    this.pending.delete(id);
+  }
+
   cancel(queuedOnly = false) {
     for (const [id, item] of this.pending) {
       if (queuedOnly && item.consumed) continue;

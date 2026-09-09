@@ -46,6 +46,14 @@ describe("RuntimeTurnCompletion", () => {
     await second;
   });
 
+  it("rejects a handled input that could not be dispatched", async () => {
+    const turns = new RuntimeTurnCompletion();
+    const pending = turns.track("failed", "implement");
+    turns.failHandledInput("failed", new Error("delivery failed"));
+    await expect(pending).rejects.toThrow("delivery failed");
+    expect(turns.executingIds()).toEqual([]);
+  });
+
   it("cancels pending input without completing it successfully", async () => {
     const turns = new RuntimeTurnCompletion();
     const running = turns.track("running", "implement");

@@ -63,14 +63,24 @@ export function createCakeRuntimeTurnController(input: {
     delivery: "steer" | "follow-up";
     renderUserMessageAsMarkdown: boolean;
   }[] = [];
+  let abortGeneration = 0;
+  let queueGeneration = 0;
 
   const assertActive = () => {
     if (input.isDisposed()) throw new Error("The Cake runtime has been disposed");
   };
 
-  const runCompact = async (instructions?: string) => {
+  const assertNotAborted = (generation: number) => {
     assertActive();
-    if (!session.isStreaming) await input.beforeIdleTurn();
+    if (generation !== abortGeneration) throw new Error("Session was aborted");
+  };
+
+  const runCompact = async (instructions?: string, generation?: number) => {
+    assertActive();
+    if (!session.isStreaming) {
+      await input.beforeIdleTurn();
+      if (generation !== undefined) assertNotAborted(generation);
+    }
     await session.compact(instructions || undefined);
     await input.emitSnapshot();
   };
@@ -89,11 +99,11 @@ export function createCakeRuntimeTurnController(input: {
   // requested queue policy if a run is active.
   const flushCompactionQueue = async () => {
     if (input.isDisposed() || compactionQueue.length === 0) return;
-    const queued = compactionQueue;
-    compactionQueue = [];
-    input.syncQueuedParts();
-    let index = 0;
-    for (const item of queued) {
+    const generation = queueGeneration;
+    while (!input.isDisposed() && generation === queueGeneration) {
+      const item = compactionQueue.shift();
+      if (!item) break;
+      input.syncQueuedParts();
       try {
         const content = promptText(item.text, item.attachments);
         const images = imageContent(item.attachments);
@@ -109,17 +119,16 @@ export function createCakeRuntimeTurnController(input: {
         if (
           item.turnId &&
           !session.isStreaming &&
+          !session.isCompacting &&
           session.getSteeringMessages().length === 0 &&
           session.getFollowUpMessages().length === 0
         )
           turnCompletions.finishHandledInput(item.turnId);
-      } catch {
-        // Delivery failed; keep the remainder queued for the next flush.
-        compactionQueue.unshift(...queued.slice(index));
-        input.syncQueuedParts();
-        break;
-      } finally {
-        index += 1;
+      } catch (error) {
+        // This flush is detached from the accepted-turn runner. Settle a failed
+        // delivery explicitly rather than leaving its correlation alive forever.
+        if (!input.isDisposed() && generation === queueGeneration && item.turnId)
+          turnCompletions.failHandledInput(item.turnId, error);
       }
     }
     input.emitSnapshotInBackground();
@@ -133,10 +142,11 @@ export function createCakeRuntimeTurnController(input: {
     turnId?: string,
   ) => {
     assertActive();
+    const generation = abortGeneration;
     input.recovery.onUserInput();
     const builtin = parsePiBuiltinCommand(text);
     if (builtin?.name === "compact") {
-      await runCompact(builtin.args || undefined);
+      await runCompact(builtin.args || undefined, generation);
       return;
     }
     const shellPrefix = text.startsWith("!!") ? "!!" : text.startsWith("!") ? "!" : undefined;
@@ -169,7 +179,10 @@ export function createCakeRuntimeTurnController(input: {
       await input.emitSnapshot();
       return;
     }
-    if (!session.isStreaming) await input.beforeIdleTurn();
+    if (!session.isStreaming) {
+      await input.beforeIdleTurn();
+      assertNotAborted(generation);
+    }
     const completion = turnId
       ? turnCompletions.track(turnId, promptText(text, attachments), true)
       : undefined;
@@ -228,10 +241,13 @@ export function createCakeRuntimeTurnController(input: {
       .findLast((entry) => entry.type === "message" && entry.message.role === "user");
     if (!lastUserEntry || lastUserEntry.id !== entryId)
       throw new Error("Only the last user message can be edited");
+    const generation = abortGeneration;
     input.recovery.onUserInput();
     const result = await session.navigateTree(entryId, { summarize: false });
     if (result.cancelled) throw new Error("Message editing was cancelled");
+    assertNotAborted(generation);
     await input.emitSnapshot();
+    assertNotAborted(generation);
     await deliverPrompt(
       promptText(text, attachments),
       imageContent(attachments),
@@ -244,7 +260,7 @@ export function createCakeRuntimeTurnController(input: {
     executingTurnIds: () => turnCompletions.executingIds(),
     prompt,
     editMessage,
-    compact: runCompact,
+    compact: (instructions) => runCompact(instructions),
     async listQueuedMessages() {
       return {
         steering: [
@@ -262,6 +278,7 @@ export function createCakeRuntimeTurnController(input: {
       };
     },
     async clearQueue() {
+      queueGeneration += 1;
       const queued = session.clearQueue();
       turnCompletions.cancel(true);
       const steering = [
@@ -308,7 +325,11 @@ export function createCakeRuntimeTurnController(input: {
       if (!willRetry) void flushCompactionQueue();
     },
     abort() {
+      abortGeneration += 1;
+      queueGeneration += 1;
       turnCompletions.cancel();
+      compactionQueue = [];
+      input.syncQueuedParts();
       input.recovery.onAbort();
       input.cancelResponseRetries();
       if (session.isBashRunning) {
@@ -317,6 +338,11 @@ export function createCakeRuntimeTurnController(input: {
       }
       return session.abort();
     },
-    dispose: () => turnCompletions.cancel(),
+    dispose() {
+      abortGeneration += 1;
+      queueGeneration += 1;
+      turnCompletions.cancel();
+      compactionQueue = [];
+    },
   };
 }
