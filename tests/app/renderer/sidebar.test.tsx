@@ -1125,6 +1125,46 @@ describe("Sidebar projects", () => {
     expect(setSessionResolved).toHaveBeenLastCalledWith("resolved", false);
   });
 
+  it("offers resolve for a renderer-owned draft session", () => {
+    const setSessionResolved = vi.fn();
+    const store = {
+      recentProjectPaths: ["/work/cake"],
+      projects: [{ path: "/work/cake", name: "Cake" }],
+      projectSessions: () => [
+        {
+          sessionId: "draft",
+          title: "Planned work",
+          modifiedAt: new Date(0).toISOString(),
+          draft: true,
+        },
+      ],
+      sessionLimit: () => 8,
+      sessionActivity: vi.fn(() => undefined),
+      sessionActivityTime: vi.fn(() => "Today"),
+      nameFromPath: () => "cake",
+      showMoreSessions: vi.fn(),
+      setSessionResolved,
+    } as unknown as ProjectWorkbenchStore;
+
+    act(() =>
+      root.render(
+        <Sidebar
+          {...sidebarProps(store)}
+          shell={{ selection: { kind: "project-session", sessionId: "draft" } } as any}
+          onOpenSettings={vi.fn()}
+          onToggle={vi.fn()}
+        />,
+      ),
+    );
+
+    const resolve = container.querySelector<HTMLButtonElement>(
+      '[aria-label="Resolve Planned work"]',
+    )!;
+    expect(resolve).not.toBeNull();
+    act(() => resolve.click());
+    expect(setSessionResolved).toHaveBeenCalledWith("draft", true);
+  });
+
   it("offers resolve on non-selected sessions without opening them", () => {
     const setSessionResolved = vi.fn();
     const openSession = vi.fn();

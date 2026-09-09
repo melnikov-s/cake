@@ -69,7 +69,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
   const isFamilyParent = Boolean(session.familyChildSessionIds?.length);
   const isFamilyChild =
     Boolean(session.familyParentSessionId) && session.familyParentSessionId !== session.sessionId;
-  const canResolve = !activity && !isFamilyChild && !session.draft;
+  const canResolve = !activity && !isFamilyChild;
   const activityLabel =
     activity === "waiting"
       ? "Waiting for your answer"
