@@ -220,9 +220,7 @@ export interface CakeRuntimeOptions {
     firstUserMessage: string;
     signal?: AbortSignal;
   }): Promise<string>;
-  sessionMetadata?: {
-    setTitle(sessionId: string, title: string): Promise<void>;
-  };
+  sessionTitleChanged?(sessionId: string, title: string): Promise<void>;
   currentSessionControl?: {
     resolved(): boolean;
     canResolve?(): boolean;
@@ -1708,10 +1706,6 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     );
   }
 
-  const loadedSessionTitle = activeSessionTitle();
-  if (!options.newSession && loadedSessionTitle !== "New chat")
-    await options.sessionMetadata?.setTitle(cakeSessionId, loadedSessionTitle);
-
   function emitSnapshotInBackground() {
     void emitSnapshot().catch(() => undefined);
   }
@@ -1801,11 +1795,6 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       .find(Boolean);
     const userText = firstUserMessage || currentUserMessage.trim();
     if (!userText) return;
-    await options.sessionMetadata?.setTitle(
-      cakeSessionId,
-      userText.slice(0, SESSION_TITLE_MAX_LENGTH),
-    );
-
     const utilityModel = options.utilityModel?.();
     if (!utilityModel || !generateTitle) return;
 
@@ -1819,10 +1808,6 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       if (disposed || !title || session.sessionManager.getSessionName()) return;
       const normalizedTitle = title.trim().slice(0, SESSION_TITLE_MAX_LENGTH);
       session.setSessionName(normalizedTitle);
-      await options.sessionMetadata?.setTitle(
-        cakeSessionId,
-        session.sessionManager.getSessionName() ?? normalizedTitle,
-      );
       await emitSnapshot();
     } catch {
       // Utility work is opportunistic. The first-message title remains the fallback.
@@ -2104,6 +2089,8 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
 
   const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
     if (disposed) return;
+    if (event.type === "session_info_changed" && event.name)
+      void options.sessionTitleChanged?.(cakeSessionId, event.name).catch(() => undefined);
     if (event.type === "agent_start") {
       options.onEvent({ type: "streaming", sessionId: cakeSessionId, streaming: true });
     }
@@ -2410,10 +2397,6 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     async rename(title) {
       const normalizedTitle = title.trim().slice(0, SESSION_TITLE_MAX_LENGTH);
       session.setSessionName(normalizedTitle);
-      await options.sessionMetadata?.setTitle(
-        cakeSessionId,
-        session.sessionManager.getSessionName() ?? normalizedTitle,
-      );
       await emitSnapshot();
       const committedTitle = session.sessionManager.getSessionName() ?? title.trim();
       await reportAgentAction("rename", committedTitle);
@@ -2913,19 +2896,13 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     async rename(name) {
       const normalizedName = name.trim().slice(0, SESSION_TITLE_MAX_LENGTH);
       session.setSessionName(normalizedName);
-      await options.sessionMetadata?.setTitle(
-        cakeSessionId,
-        session.sessionManager.getSessionName() ?? normalizedName,
-      );
       await emitSnapshot();
     },
     async fork(entryId, title) {
       const sessionFile = session.sessionManager.createBranchedSession(entryId);
       if (!sessionFile) throw new Error("The current session is not persisted");
-      const forked = SessionManager.open(sessionFile, options.sessionDir, options.cwd);
-      forked.appendSessionInfo(title);
-      await options.sessionMetadata?.setTitle(forked.getSessionId(), title);
-      return { sessionId: forked.getSessionId(), sessionFile };
+      session.sessionManager.appendSessionInfo(title);
+      return { sessionId: session.sessionManager.getSessionId(), sessionFile };
     },
     async handoff(entryId, destination) {
       const configuration = session.model
@@ -2951,7 +2928,6 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
           : undefined,
         title,
       );
-      await options.sessionMetadata?.setTitle(handedOff.sessionId, title);
       return handedOff;
     },
     async navigate(entryId) {

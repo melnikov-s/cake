@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import { access, mkdir, opendir, readFile, rename, rm } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { Effect, Layer, Schema, Stream } from "effect";
-import { SESSION_TITLE_MAX_LENGTH } from "../../ipc/session-contract";
 import {
   findSessionFileById,
   findSessionFileMetadataById,
@@ -17,7 +16,7 @@ import {
   type ProjectSessionArchiveMigrationSource,
   type SessionArchiveLocation,
 } from "./SessionArchiveStorage";
-import { SessionMetadataStorage } from "./SessionMetadataStorage";
+import { sessionTitleFromFile } from "../pi/runtime/session-title";
 import { AtomicFileWriter } from "./internal/AtomicFileWriter";
 import { KeyedSerialExecutor } from "../../utils/KeyedSerialExecutor";
 
@@ -41,8 +40,7 @@ const isMissing = (error: unknown): error is NodeJS.ErrnoException =>
 export const makeSessionArchiveStorageLive = (archiveMetadataRoot: string) =>
   Layer.effect(
     SessionArchiveStorage,
-    Effect.gen(function* () {
-      const metadata = yield* SessionMetadataStorage;
+    Effect.sync(() => {
       const writer = new AtomicFileWriter();
       const updates = new KeyedSerialExecutor<string>();
       const projectDirectory = (projectPath: string) =>
@@ -181,9 +179,6 @@ export const makeSessionArchiveStorageLive = (archiveMetadataRoot: string) =>
           },
           catch: (cause) => archiveError(operation, sessionId, cause),
         });
-        yield* metadata
-          .remove(sessionId)
-          .pipe(Effect.mapError((cause) => archiveError(operation, sessionId, cause)));
       });
 
       const locate = Effect.fn("SessionArchiveStorage.locate")(function* (
@@ -206,16 +201,17 @@ export const makeSessionArchiveStorageLive = (archiveMetadataRoot: string) =>
         streamSessionFiles(directoryInput(location, true)).pipe(
           Stream.mapEffect(
             (item) =>
-              metadata.title(item.id).pipe(
-                Effect.map((title) => ({
+              Effect.try({
+                try: () => ({
                   id: item.id,
-                  title: (title ?? item.id).slice(0, SESSION_TITLE_MAX_LENGTH),
+                  title: sessionTitleFromFile(item.path, location.cwd),
                   created: item.createdAt,
                   modified: item.modifiedAt,
                   messageCount: 0,
                   resolved: true,
-                })),
-              ),
+                }),
+                catch: (cause) => archiveError("resolved", item.id, cause),
+              }),
             { concurrency: 16 },
           ),
           Stream.mapError((cause) => archiveError("resolved", "", cause)),
@@ -230,12 +226,13 @@ export const makeSessionArchiveStorageLive = (archiveMetadataRoot: string) =>
           catch: (cause) => archiveError("resolvedEntry", sessionId, cause),
         });
         if (!item) return undefined;
-        const title = yield* metadata
-          .title(item.id)
-          .pipe(Effect.mapError((cause) => archiveError("resolvedEntry", sessionId, cause)));
+        const title = yield* Effect.try({
+          try: () => sessionTitleFromFile(item.path, location.cwd),
+          catch: (cause) => archiveError("resolvedEntry", sessionId, cause),
+        });
         return {
           id: item.id,
-          title: (title ?? item.id).slice(0, SESSION_TITLE_MAX_LENGTH),
+          title,
           created: item.createdAt,
           modified: item.modifiedAt,
           messageCount: 0,
@@ -270,13 +267,9 @@ export const makeSessionArchiveStorageLive = (archiveMetadataRoot: string) =>
             new Error(`Cake could not find session ${sessionId}`),
           );
         const moved = yield* move(sessionId, location, true);
-        const title = yield* metadata
-          .title(sessionId)
-          .pipe(Effect.mapError((cause) => archiveError("resolveProject", sessionId, cause)));
         const entryBase = {
           version: 1 as const,
           sessionId,
-          title: (title ?? sessionId).slice(0, SESSION_TITLE_MAX_LENGTH),
           projectPath: context.projectPath,
           projectName: context.projectName,
           workingDirectory: location.cwd,
@@ -396,7 +389,6 @@ export const makeSessionArchiveStorageLive = (archiveMetadataRoot: string) =>
                     const entryBase = {
                       version: 1 as const,
                       sessionId: item.id,
-                      title: item.title,
                       projectPath,
                       projectName,
                       workingDirectory: source.location.cwd,

@@ -343,7 +343,7 @@ describe("Pi 0.84.0 foundation contract", () => {
     const generateTitle = vi.fn(async ({ firstUserMessage }: { firstUserMessage: string }) => {
       return firstUserMessage === "Investigate session naming" ? "Generated title" : "Unexpected";
     });
-    const setTitle = vi.fn<(sessionId: string, title: string) => Promise<void>>(
+    const sessionTitleChanged = vi.fn<(sessionId: string, title: string) => Promise<void>>(
       async () => undefined,
     );
     const sessionDir = join(directory, "sessions");
@@ -359,7 +359,7 @@ describe("Pi 0.84.0 foundation contract", () => {
           thinkingLevel: "off",
         }),
         generateSessionTitle: generateTitle as never,
-        sessionMetadata: { setTitle },
+        sessionTitleChanged,
         requestUi: async () => undefined,
         onEvent: (event) => events.push(event),
       });
@@ -390,7 +390,6 @@ describe("Pi 0.84.0 foundation contract", () => {
         false,
       );
       await vi.waitFor(() => expect(generateTitle).toHaveBeenCalledOnce(), { timeout: 1_000 });
-      expect(setTitle).toHaveBeenCalledWith(runtime.sessionId, "Investigate session naming");
       expect(generateTitle).toHaveBeenCalledWith(
         expect.objectContaining({ firstUserMessage: "Investigate session naming" }),
       );
@@ -400,7 +399,7 @@ describe("Pi 0.84.0 foundation contract", () => {
         const sessionText = await readFile(runtime.sessionFile, "utf8");
         expect(sessionText).toContain('"name":"Generated title"');
       });
-      expect(setTitle).toHaveBeenCalledWith(runtime.sessionId, "Generated title");
+      expect(sessionTitleChanged).toHaveBeenCalledWith(runtime.sessionId, "Generated title");
       const entries = (await readFile(runtime.sessionFile, "utf8"))
         .trim()
         .split("\n")
@@ -776,6 +775,13 @@ describe("Pi 0.84.0 foundation contract", () => {
             timestamp: Date.now(),
           },
         },
+        {
+          type: "session_info",
+          id: "session-name-1",
+          parentId: "user-1",
+          timestamp,
+          name: "Named Cake Chat",
+        },
       ]
         .map((entry) => JSON.stringify(entry))
         .join("\n") + "\n",
@@ -785,7 +791,9 @@ describe("Pi 0.84.0 foundation contract", () => {
       streamWorkspaceSessions(directory, sessionDir, { direct: true }).pipe(Stream.runCollect),
     );
 
-    expect(summaries).toEqual([expect.objectContaining({ id: "cake-chat", title: "cake-chat" })]);
+    expect(summaries).toEqual([
+      expect.objectContaining({ id: "cake-chat", title: "Named Cake Chat" }),
+    ]);
   });
 
   it("reopens review sidecars as complete chat parts with persisted usage", async () => {
@@ -1947,7 +1955,7 @@ describe("S1 Pi runtime", () => {
     expect((await runtime.snapshot()).piSettings?.reloadPending).toBe(false);
   });
 
-  it("preserves a handoff title in Pi and Cake metadata", async () => {
+  it("preserves a handoff title in Pi metadata", async () => {
     const directory = await createTemporaryDirectory();
     const agentDir = join(directory, "agent");
     const sessionDir = join(directory, "sessions");
@@ -1974,21 +1982,16 @@ describe("S1 Pi runtime", () => {
       timestamp: Date.now(),
     });
     source.appendSessionInfo("Investigate session handoff");
-    const setTitle = vi.fn<(sessionId: string, title: string) => Promise<void>>(
-      async () => undefined,
-    );
     const runtime = await createCakeRuntime({
       cwd: directory,
       agentDir,
       sessionDir,
       sessionId: source.getSessionId(),
       trusted: false,
-      sessionMetadata: { setTitle },
       requestUi: async () => undefined,
       onEvent: () => undefined,
     });
     runtimes.push(runtime);
-    setTitle.mockClear();
 
     const handedOff = await runtime.handoff(assistantEntryId);
     const target = SessionManager.open(
@@ -1998,7 +2001,6 @@ describe("S1 Pi runtime", () => {
     );
 
     expect(target.getSessionName()).toBe("Investigate session handoff");
-    expect(setTitle).toHaveBeenCalledWith(handedOff.sessionId, "Investigate session handoff");
   });
 
   it("creates and reopens an authoritative persistent Pi session", async () => {
@@ -2295,10 +2297,8 @@ describe("S1 Pi runtime", () => {
       agentDir,
       sessionDir,
       trusted: false,
-      sessionMetadata: {
-        setTitle: async (sessionId, title) => {
-          titles.set(sessionId, title);
-        },
+      sessionTitleChanged: async (sessionId, title) => {
+        titles.set(sessionId, title);
       },
       requestUi: async () => undefined,
       onEvent: () => undefined,
@@ -2307,7 +2307,6 @@ describe("S1 Pi runtime", () => {
 
     expect(second.sessionId).toBe(first.sessionId);
     expect(second.sessionFile).toBe(first.sessionFile);
-    expect(titles.get(second.sessionId)).toBe("Hello");
     const reopenedParts = (await second.snapshot()).parts;
     expect(reopenedParts.some((part) => part.kind === "text" && part.text === "Hi")).toBe(true);
     expect(reopenedParts.filter((part) => part.kind === "review-run")).toEqual([
@@ -2338,14 +2337,20 @@ describe("S1 Pi runtime", () => {
     );
     expect((await second.snapshot()).tree[0]).toMatchObject({ id: "user-1", active: true });
     await second.rename("Named session");
-    expect(titles.get(second.sessionId)).toBe("Named session");
+    await vi.waitFor(() => expect(titles.get(second.sessionId)).toBe("Named session"));
     await second.navigate("assistant-tools");
     expect((await second.snapshot()).tree[0]).toMatchObject({ id: "user-1", active: true });
-    const fork = await second.fork("user-1", "First session (1)");
+    const fork = await second.fork("assistant-tools", "First session (1)");
     expect(fork.sessionId).not.toBe(second.sessionId);
     expect(fork.sessionFile.startsWith(`${sessionDir}/`)).toBe(true);
     expect(fork.sessionFile).toMatch(/\.jsonl$/);
-    expect(titles.get(fork.sessionId)).toBe("First session (1)");
+    expect(
+      SessionManager.open(
+        fork.sessionFile,
+        cakeWorkspaceSessionDirectory(directory, sessionDir),
+        directory,
+      ).getSessionName(),
+    ).toBe("First session (1)");
 
     const requestedSessionId = crypto.randomUUID();
     const isolated = await createCakeRuntime({

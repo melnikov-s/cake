@@ -64,6 +64,7 @@ const fakeRuntime = (
     readonly sessionRoot: string;
   }) => void,
   onForkTitle?: (title: string) => void,
+  onRename?: (name: string) => void,
 ): CakeRuntime => ({
   sessionId: snapshot.sessionId,
   sessionFile: snapshot.sessionFile,
@@ -85,7 +86,7 @@ const fakeRuntime = (
   recordReviewRun: () => undefined,
   login: async () => undefined,
   logout: async () => undefined,
-  rename: async () => undefined,
+  rename: async (name) => onRename?.(name),
   fork: async (_entryId, title) => {
     onForkTitle?.(title);
     return { sessionId: "forked", sessionFile: "/sessions/forked.jsonl" };
@@ -120,6 +121,8 @@ const makeLayer = (
     onCatalog?(): void;
     catalog?(workingDirectory: string): Stream.Stream<SessionSummary, unknown>;
     catalogModifiedAt?(): string;
+    catalogTitle?(): string;
+    onRename?(name: string): void;
     onResolvedCatalog?(): void;
     onMigrateProject?(): void;
     onLocations?(options?: { readonly includeInactive?: boolean }): void;
@@ -196,7 +199,7 @@ const makeLayer = (
         ? Effect.succeed(undefined)
         : Effect.succeed({
             id: "session-1",
-            title: "Active branch",
+            title: hooks.catalogTitle?.() ?? "Active branch",
             created: "2026-01-01T00:00:00.000Z",
             modified: hooks.catalogModifiedAt?.() ?? "2026-01-02T00:00:00.000Z",
             messageCount: 2,
@@ -212,7 +215,13 @@ const makeLayer = (
     createRuntime: (options) =>
       Effect.sync(() => {
         hooks.onCreateRuntime?.();
-        return fakeRuntime(options, hooks.prompt, hooks.onHandoff, hooks.onForkTitle);
+        return fakeRuntime(
+          options,
+          hooks.prompt,
+          hooks.onHandoff,
+          hooks.onForkTitle,
+          hooks.onRename,
+        );
       }),
     changelog: () => Effect.succeed("# Changelog"),
   };
@@ -332,17 +341,24 @@ const makeLayer = (
                 resolved: true,
               });
         },
-        resolvedEntry: () =>
-          hooks.sessionExists === false || !resolvedSessionIds.has("session-1")
+        resolvedEntry: (sessionId) => {
+          const entry = hooks.resolvedProjectEntries?.find(
+            (candidate) => candidate.sessionId === sessionId,
+          );
+          const resolved =
+            resolvedSessionIds.has(sessionId) ||
+            hooks.resolvedProjectEntries?.some((candidate) => candidate.sessionId === sessionId);
+          return hooks.sessionExists === false || !resolved
             ? Effect.succeed(undefined)
             : Effect.succeed({
-                id: "session-1",
-                title: "session-1",
+                id: sessionId,
+                title: entry?.title ?? sessionId,
                 created: "2026-01-01T00:00:00.000Z",
-                modified: "2026-01-02T00:00:00.000Z",
+                modified: entry?.modifiedAt ?? "2026-01-02T00:00:00.000Z",
                 messageCount: 0,
                 resolved: true,
-              }),
+              });
+        },
         resolveProject: () => Effect.succeed(false),
         restoreProject: () => Effect.succeed(undefined),
         deleteResolvedProject: () => Effect.void,
@@ -357,7 +373,6 @@ const makeLayer = (
                 entries.map((entry) => ({
                   version: 1 as const,
                   sessionId: entry.sessionId,
-                  title: entry.title ?? entry.sessionId,
                   projectPath,
                   projectName: "Project",
                   workingDirectory: "/project",
@@ -376,7 +391,6 @@ const makeLayer = (
             : Stream.make({
                 version: 1 as const,
                 sessionId: "session-1",
-                title: "session-1",
                 projectPath,
                 projectName: "Project",
                 workingDirectory: "/project",
@@ -392,7 +406,6 @@ const makeLayer = (
             : Effect.succeed({
                 version: 1 as const,
                 sessionId: "session-1",
-                title: "session-1",
                 projectPath: "/project",
                 projectName: "Project",
                 workingDirectory: "/project",
@@ -1440,6 +1453,47 @@ describe("Project Sessions domain", () => {
       assert.equal(observed[1]?._tag === "Event" ? observed[1].event._tag : undefined, "Upserted");
     }).pipe(Effect.provide(makeLayer())),
   );
+
+  it.effect("publishes a renamed title before the active turn settles", () => {
+    let title = "Active branch";
+    return Effect.gen(function* () {
+      const updates = yield* projectSessions.observeCatalog({
+        projectPath: "/project",
+        resolved: false,
+      });
+      const ready = yield* Deferred.make<void>();
+      const fiber = yield* updates.pipe(
+        Stream.tap((update) =>
+          update.revision === 1 ? Deferred.succeed(ready, undefined) : Effect.void,
+        ),
+        Stream.take(2),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      yield* Deferred.await(ready);
+
+      yield* projectSessions.rename({ sessionId: "session-1" }, "Renamed while running");
+
+      const observed = Array.from(yield* Fiber.join(fiber));
+      const renamed = observed[1];
+      assert.equal(renamed?._tag, "Event");
+      assert.equal(
+        renamed?._tag === "Event" && renamed.event._tag === "Upserted"
+          ? renamed.event.session.title
+          : undefined,
+        "Renamed while running",
+      );
+    }).pipe(
+      Effect.provide(
+        makeLayer(undefined, {
+          catalogTitle: () => title,
+          onRename: (name) => {
+            title = name;
+          },
+        }),
+      ),
+    );
+  });
 
   it.effect("observes a newly started runtime before its session file is discoverable", () => {
     let finishPrompt!: () => void;

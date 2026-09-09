@@ -12,7 +12,6 @@ export interface SessionArchiveLocation extends Schema.Schema.Type<typeof Sessio
 export const ProjectSessionArchiveMetadata = Schema.Struct({
   version: Schema.Literal(1),
   sessionId: Schema.String,
-  title: Schema.String,
   projectPath: Schema.String,
   projectName: Schema.String,
   workingDirectory: Schema.String,

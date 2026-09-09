@@ -3,7 +3,6 @@ import { setSessionFastMode } from "../domain/application";
 import { makeSubagentControl } from "../domain/subagentControl";
 import { jsonObjectSchema } from "../ipc/json-contract";
 import type { PiSessions } from "../services/pi/PiSessions";
-import { SessionMetadataStorage } from "../services/storage/SessionMetadataStorage";
 import { ProjectSessionLifecycle } from "../services/project-sessions/ProjectSessionLifecycle";
 import { ApplicationState } from "../services/storage/ApplicationState";
 import { SessionArchiveStorage } from "../services/storage/SessionArchiveStorage";
@@ -43,7 +42,6 @@ export const makeCakeChatEnvironmentLive = (
   never,
   | ApplicationState
   | PiSessions
-  | SessionMetadataStorage
   | ProjectSessionLifecycle
   | SessionArchiveStorage
   | SessionCatalogChanges
@@ -60,12 +58,10 @@ export const makeCakeChatEnvironmentLive = (
     Effect.gen(function* () {
       const application = yield* ApplicationState;
       const lifecycle = yield* ProjectSessionLifecycle;
-      const metadata = yield* SessionMetadataStorage;
       const catalogs = yield* SessionCatalogChanges;
       const storage = yield* SessionArchiveStorage;
       const context = yield* Effect.context<
         | ApplicationState
-        | SessionMetadataStorage
         | PiSessions
         | SessionCatalogChanges
         | SubagentCoordinator
@@ -119,22 +115,14 @@ export const makeCakeChatEnvironmentLive = (
                       () => undefined,
                     ),
                 },
-                sessionMetadata: {
-                  setTitle: (sessionId: string, title: string) =>
-                    run(
-                      metadata.setTitle(sessionId, title).pipe(
-                        Effect.flatMap((changed) =>
-                          changed
-                            ? catalogs.publish({
-                                _tag: "CakeChatSessionChanged",
-                                sessionId,
-                                resolved: false,
-                              })
-                            : Effect.void,
-                        ),
-                      ),
-                    ),
-                },
+                sessionTitleChanged: (sessionId: string) =>
+                  run(
+                    catalogs.publish({
+                      _tag: "CakeChatSessionChanged",
+                      sessionId,
+                      resolved: false,
+                    }),
+                  ),
                 agentControl: agentControl(getRuntimeOptions, options.homeDirectory),
                 globalControl: {
                   tools: input.tools.map((tool) => ({

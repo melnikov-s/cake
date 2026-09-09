@@ -325,14 +325,12 @@ interface PiSessions {
 }
 ```
 
-The catalog stream reads filename and filesystem metadata plus Cake's focused
-session-title repository. It never opens transcripts. Titles are Cake-owned
-metadata stored as one bounded record per stable session ID, independent of the
-active and resolved transcript namespaces. The runtime updates that record when
-a session is created, opened, or renamed; active and resolved catalogs consult
-the same record. Pi JSONL remains authoritative for transcript history. Cake's
-archive storage opens a transcript only for an explicit inspect, open, restore,
-or recovery operation.
+The catalog stream discovers sessions from filename and filesystem metadata, then opens each Pi
+JSONL transcript to derive its bounded title from the latest session-name entry or first user
+message. Pi is the sole durable title authority. Runtime title changes publish scoped catalog
+changes so active renderer projections update immediately. Cake's archive index stores routing and
+lifecycle metadata only; active and resolved catalogs derive titles from the transcript in either
+namespace.
 
 A `PiSessionHandle` exposes an observation Stream and operations such as
 prompt, steer, follow-up, abort, execute command, set model, compact, fork, and

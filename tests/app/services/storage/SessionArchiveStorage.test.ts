@@ -1,7 +1,7 @@
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect, Layer, Stream } from "effect";
+import { Effect, Stream } from "effect";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   cakeWorkspaceSessionDirectory,
@@ -9,10 +9,6 @@ import {
 } from "../../../../src/services/pi/runtime/session-discovery";
 import { SessionArchiveStorage } from "../../../../src/services/storage/SessionArchiveStorage";
 import { makeSessionArchiveStorageLive } from "../../../../src/services/storage/SessionArchiveStorageLive";
-import {
-  makeSessionMetadataStorageLive,
-  SessionMetadataStorage,
-} from "../../../../src/services/storage/SessionMetadataStorage";
 
 let metadataRoot = "";
 
@@ -21,11 +17,7 @@ const runArchive = <A, E>(
 ) =>
   Effect.runPromise(
     Effect.flatMap(SessionArchiveStorage, use).pipe(
-      Effect.provide(
-        makeSessionArchiveStorageLive(join(metadataRoot, "archive")).pipe(
-          Layer.provide(makeSessionMetadataStorageLive(metadataRoot)),
-        ),
-      ),
+      Effect.provide(makeSessionArchiveStorageLive(join(metadataRoot, "archive"))),
     ),
   );
 
@@ -69,13 +61,8 @@ async function fixture() {
 }
 
 describe("SessionArchiveStorage", () => {
-  it("lazily indexes legacy project archives from filename metadata", async () => {
+  it("lazily indexes legacy project archives from Pi transcripts", async () => {
     const location = await fixture();
-    await Effect.runPromise(
-      Effect.flatMap(SessionMetadataStorage, (metadata) =>
-        metadata.setTitle("session-1", "Legacy resolved session"),
-      ).pipe(Effect.provide(makeSessionMetadataStorageLive(metadataRoot))),
-    );
     await runArchive((storage) => storage.resolve("session-1", location));
 
     await expect(
@@ -90,7 +77,6 @@ describe("SessionArchiveStorage", () => {
     ).resolves.toEqual([
       expect.objectContaining({
         sessionId: "session-1",
-        title: "Legacy resolved session",
         worktreeName: "legacy-worktree",
       }),
     ]);
@@ -104,19 +90,13 @@ describe("SessionArchiveStorage", () => {
     ).resolves.toEqual([
       expect.objectContaining({
         sessionId: "session-1",
-        title: "Legacy resolved session",
         worktreeName: "legacy-worktree",
       }),
     ]);
   });
 
-  it("lists named project archives from Cake metadata and restores with one file move", async () => {
+  it("lists project archives from Pi transcripts and restores with one file move", async () => {
     const location = await fixture();
-    await Effect.runPromise(
-      Effect.flatMap(SessionMetadataStorage, (metadata) =>
-        metadata.setTitle("session-1", "Indexed project session"),
-      ).pipe(Effect.provide(makeSessionMetadataStorageLive(metadataRoot))),
-    );
 
     await runArchive((storage) =>
       storage.resolveProject("session-1", location, {
@@ -130,7 +110,6 @@ describe("SessionArchiveStorage", () => {
     ).resolves.toEqual([
       expect.objectContaining({
         sessionId: "session-1",
-        title: "Indexed project session",
         worktreeName: "archive-index",
       }),
     ]);
@@ -148,27 +127,20 @@ describe("SessionArchiveStorage", () => {
     ).toEqual([expect.objectContaining({ id: "session-1" })]);
   });
 
-  it("preserves Cake-owned titles across resolve and restore", async () => {
+  it("preserves Pi titles across resolve and restore", async () => {
     const location = await fixture();
-    await Effect.runPromise(
-      Effect.flatMap(SessionMetadataStorage, (metadata) =>
-        metadata.setTitle("session-1", "Named session"),
-      ).pipe(Effect.provide(makeSessionMetadataStorageLive(metadataRoot))),
-    );
 
     await runArchive((storage) => storage.resolve("session-1", location));
     await expect(
       runArchive((storage) => storage.resolvedEntry("session-1", location)),
-    ).resolves.toEqual(expect.objectContaining({ title: "Named session" }));
+    ).resolves.toEqual(expect.objectContaining({ title: "Archived work" }));
     await runArchive((storage) => storage.restore("session-1", location));
 
     await expect(
       Effect.runPromise(
-        Effect.flatMap(SessionMetadataStorage, (metadata) => metadata.title("session-1")).pipe(
-          Effect.provide(makeSessionMetadataStorageLive(metadataRoot)),
-        ),
+        streamWorkspaceSessions(location.cwd, location.activeRoot).pipe(Stream.runCollect),
       ),
-    ).resolves.toBe("Named session");
+    ).resolves.toEqual([expect.objectContaining({ title: "Archived work" })]);
   });
   it("moves a project session out of Pi's active root and restores it", async () => {
     const location = await fixture();

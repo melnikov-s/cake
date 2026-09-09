@@ -232,9 +232,8 @@ if the session is manually named while it is running. Failures are silent and
 leave Pi's first-message session-list title as the display fallback for active
 sessions. Configuring a utility model later makes an unnamed active session
 eligible after its next interaction; already named sessions are never
-regenerated automatically. A handoff inherits the source session's current title in both Pi's
-session-name metadata and Cake's session-title repository, so continuation never triggers a new
-title generation pass.
+regenerated automatically. A handoff inherits the source session's current title through Pi's session-name metadata, so
+continuation never triggers a new title generation pass.
 
 When the first prompt will create a managed worktree, Cake also attempts a
 bounded utility completion before creating the checkout or Pi Session. The
@@ -329,31 +328,30 @@ The window Store hierarchy mirrors the product surfaces:
   concurrently and join the same bounded initial projection, so worktree sessions
   do not appear as a delayed second catalog. The complete active catalog arrives as
   one coherent initial snapshot. The resolved lane and every resolved Project group
-  start visually collapsed, but their metadata-only archive catalogs remain demanded
-  for the window lifetime. Each registered Project therefore has its complete
-  resolved projection before its Kanban board or resolved navigation group opens.
-  This reads Cake's archive index only: it does not open transcripts, inspect Git,
-  discover Managed Worktrees, or acquire Pi runtimes. After the initial scan, session
-  mutations publish scoped catalog events that refresh only the affected metadata and
-  never restart catalogs from application-state revisions. Resolved groups display ten
+  start visually collapsed, but their archive catalogs remain demanded for the window lifetime.
+  Each registered Project therefore has its complete resolved projection before its Kanban board
+  or resolved navigation group opens. Catalog discovery reads Cake's routing index and each Pi
+  transcript's title without inspecting Git, discovering Managed Worktrees, or acquiring Pi
+  runtimes. After the initial scan, session mutations publish scoped catalog events that refresh
+  only the affected summary and never restart catalogs from application-state revisions. Resolved groups display ten
   loaded sessions at first and reveal ten more when the user chooses Show more.
-  Titles come from Cake's namespace-independent,
-  per-session metadata repository, so neither active nor resolved listing opens
-  transcript bodies. Session IDs are the canonical identity; duplicate IDs are
-  rejected. Resolved status derives solely from the active or archived
-  filesystem namespace, never from a persisted ID list. A Project Session's
-  resolved navigation record stores only bounded Cake-owned display and routing
-  metadata, including its title, Project, original Working Directory, and
-  historical worktree name. Resolved browsing reads those records without Pi,
-  Git, or Managed Worktree discovery. Existing archives are indexed once when
-  their registered Project catalog first initializes; that migration reads filename
-  metadata and Cake titles without opening transcript bodies. Resolving moves the Pi
+  Titles are derived from Pi's authoritative session-name entries, falling back to the first user
+  message. Catalog discovery reads each transcript while building its bounded summary projection;
+  subsequent runtime name changes publish scoped catalog events. Session IDs are the canonical
+  identity; duplicate IDs are rejected. Resolved status derives solely from the active or archived
+  filesystem namespace, never from a persisted ID list. A Project Session's resolved navigation
+  record stores only Cake-owned routing metadata: its Project, original Working Directory, and
+  historical worktree name. Resolved browsing combines those records with titles derived from Pi
+  transcripts without Git or Managed Worktree discovery. Existing archives are indexed once when
+  their registered Project catalog first initializes; that migration reads routing metadata and
+  derives titles from the archived transcripts. Resolving moves the Pi
   transcript between namespaces. After the final active Project Session in a landed
   Managed Worktree is resolved, Cake closes that Working Directory's terminals and
   removes the checkout and merged branch while retaining its Managed Worktree record.
   Restoring the first archived session recreates that checkout before restoring its
   transcript. Resolving one of several active sessions never retires their shared
-  Working Directory, and the Cake-owned title remains stable across both namespaces.
+  Working Directory. The title remains stable because it travels with Pi's transcript across both
+  namespaces.
 - Window-owned persistence infrastructure loads one versioned Store snapshot before
   mounting the Root Store, then watches the mounted Store tree and saves later
   snapshots through `Client`. Persistence is not a Store and never

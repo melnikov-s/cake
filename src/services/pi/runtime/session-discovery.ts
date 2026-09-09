@@ -6,14 +6,14 @@ import {
 import { CombinedAutocompleteProvider } from "@earendil-works/pi-tui";
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { Stream } from "effect";
+import { Effect, Stream } from "effect";
 import {
-  SESSION_TITLE_MAX_LENGTH,
   type FileSuggestion,
   type SessionPreview,
   type SessionSummary,
 } from "../../../ipc/session-contract";
 import { projectSessionEntries } from "./session-projection";
+import { sessionTitleFromFile } from "./session-title";
 import {
   findSessionFileMetadataById,
   findSessionFileById,
@@ -44,7 +44,7 @@ export async function loadWorkspaceSessionSummary(
   return item
     ? {
         id: item.id,
-        title: item.id.slice(0, SESSION_TITLE_MAX_LENGTH),
+        title: sessionTitleFromFile(item.path, cwd),
         created: item.createdAt,
         modified: item.modifiedAt,
         messageCount: 0,
@@ -113,14 +113,21 @@ export function streamWorkspaceSessions(
     root: sessionDir,
     direct: options.direct,
   }).pipe(
-    Stream.map((item) => ({
-      id: item.id,
-      title: item.id.slice(0, SESSION_TITLE_MAX_LENGTH),
-      created: item.createdAt,
-      modified: item.modifiedAt,
-      messageCount: 0,
-      resolved: false,
-    })),
+    Stream.mapEffect(
+      (item) =>
+        Effect.try({
+          try: () => ({
+            id: item.id,
+            title: sessionTitleFromFile(item.path, cwd),
+            created: item.createdAt,
+            modified: item.modifiedAt,
+            messageCount: 0,
+            resolved: false,
+          }),
+          catch: (cause) => cause,
+        }),
+      { concurrency: 16 },
+    ),
   );
 }
 

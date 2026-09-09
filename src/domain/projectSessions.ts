@@ -132,6 +132,12 @@ function applyFamilySummary(projected: ProjectSessionSummary, family?: SessionFa
   }
 }
 
+const archivedStorageLocation = (entry: ProjectSessionArchiveMetadata) => ({
+  cwd: entry.workingDirectory,
+  activeRoot: entry.activeRoot,
+  resolvedRoot: entry.resolvedRoot,
+});
+
 const archivedLocation = (entry: ProjectSessionArchiveMetadata): ProjectSessionLocation => {
   const location: ProjectSessionLocation = {
     projectPath: entry.projectPath,
@@ -147,12 +153,13 @@ const archivedLocation = (entry: ProjectSessionArchiveMetadata): ProjectSessionL
 
 const archivedSummary = (
   entry: ProjectSessionArchiveMetadata,
+  title: string,
   unreadIds: ReadonlySet<string>,
   family?: SessionFamily,
 ): ProjectSessionSummary => {
   const projected: ProjectSessionSummary = {
     sessionId: entry.sessionId,
-    title: entry.title.slice(0, SESSION_TITLE_MAX_LENGTH),
+    title: title.slice(0, SESSION_TITLE_MAX_LENGTH),
     createdAt: entry.createdAt,
     modifiedAt: entry.modifiedAt,
     messageCount: 0,
@@ -289,7 +296,20 @@ const catalogForState = Effect.fn("ProjectSessions.catalogForState")(function* (
       );
     }
     return source.pipe(
-      Stream.map((entry) => archivedSummary(entry, unread, familyByMember.get(entry.sessionId))),
+      Stream.mapEffect((entry) =>
+        archive
+          .resolvedEntry(entry.sessionId, archivedStorageLocation(entry))
+          .pipe(
+            Effect.map((item) =>
+              archivedSummary(
+                entry,
+                item?.title ?? entry.sessionId,
+                unread,
+                familyByMember.get(entry.sessionId),
+              ),
+            ),
+          ),
+      ),
       Stream.mapError(
         (error) => new ProjectSessionError({ operation: "list", message: error.message }),
       ),
@@ -338,16 +358,19 @@ const catalogEventForChange = Effect.fn("ProjectSessions.catalogEventForChange")
         storage.familyForMember(change.sessionId),
       ).pipe(asError("catalog"));
       const entry = yield* archive.resolvedProjectEntry(change.sessionId).pipe(asError("catalog"));
-      return entry
-        ? ({
-            _tag: "Upserted",
-            session: archivedSummary(
-              entry,
-              change.unread ? new Set([change.sessionId]) : new Set(),
-              family,
-            ),
-          } as const)
-        : undefined;
+      if (!entry) return undefined;
+      const item = yield* archive
+        .resolvedEntry(entry.sessionId, archivedStorageLocation(entry))
+        .pipe(asError("catalog"));
+      return {
+        _tag: "Upserted",
+        session: archivedSummary(
+          entry,
+          item?.title ?? entry.sessionId,
+          change.unread ? new Set([change.sessionId]) : new Set(),
+          family,
+        ),
+      } as const;
     }
     return {
       _tag: "StatusChanged" as const,
@@ -366,12 +389,19 @@ const catalogEventForChange = Effect.fn("ProjectSessions.catalogEventForChange")
     const family = yield* Effect.flatMap(SessionFamilyStorage, (storage) =>
       storage.familyForMember(change.sessionId),
     ).pipe(asError("catalog"));
-    return entry
-      ? ({
-          _tag: "Upserted",
-          session: archivedSummary(entry, new Set(state.unreadSessionIds), family),
-        } as const)
-      : ({ _tag: "Removed", sessionId: change.sessionId } as const);
+    if (!entry) return { _tag: "Removed", sessionId: change.sessionId } as const;
+    const item = yield* archive
+      .resolvedEntry(entry.sessionId, archivedStorageLocation(entry))
+      .pipe(asError("catalog"));
+    return {
+      _tag: "Upserted",
+      session: archivedSummary(
+        entry,
+        item?.title ?? entry.sessionId,
+        new Set(state.unreadSessionIds),
+        family,
+      ),
+    } as const;
   }
   if (query.resolved) return undefined;
   const environment = yield* ProjectSessionEnvironment;
@@ -1105,7 +1135,16 @@ export const rename = Effect.fn("ProjectSessions.rename")(function* (
   const normalized = name.trim().slice(0, SESSION_TITLE_MAX_LENGTH);
   if (!normalized)
     return yield* new ProjectSessionError({ operation: "rename", message: "Name is required" });
-  yield* withHandle(target, (handle) => handle.rename(normalized)).pipe(asError("rename"));
+  const location = yield* findLocation(target);
+  const archive = yield* SessionArchiveStorage;
+  const namespace = yield* archive
+    .locate(target.sessionId, archiveLocation(location))
+    .pipe(asError("rename"));
+  const handle = yield* acquireTarget(location, target.sessionId, false);
+  yield* handle.rename(normalized).pipe(asError("rename"));
+  yield* publishCatalogChange(target.sessionId, location, namespace === "resolved").pipe(
+    asError("rename"),
+  );
 });
 
 export const fork = Effect.fn("ProjectSessions.fork")(function* (input: {

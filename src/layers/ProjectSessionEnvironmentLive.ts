@@ -403,10 +403,8 @@ export const makeProjectSessionEnvironmentLive = (
                     signal,
                   ),
               },
-              sessionMetadata: {
-                setTitle: (targetSessionId, title) =>
-                  base.setSessionTitleMetadata?.(targetSessionId, title) ?? Promise.resolve(),
-              },
+              sessionTitleChanged: (targetSessionId, title) =>
+                base.sessionTitleChanged?.(targetSessionId, title) ?? Promise.resolve(),
               worktreeLandingControl: location.managedWorktree
                 ? {
                     proposeSquashMessage: (message) =>
@@ -492,13 +490,6 @@ export const makeProjectSessionEnvironmentLive = (
             yield* access
               .rememberSessionLocation(destination.workingDirectory, forked.sessionId)
               .pipe(Effect.mapError((cause) => environmentError("forkToWorkingDirectory", cause)));
-            yield* Effect.tryPromise({
-              try: () =>
-                projectRuntime
-                  .forWorkingDirectory(destination.workingDirectory)
-                  .setSessionTitleMetadata?.(forked.sessionId, title) ?? Promise.resolve(),
-              catch: (cause) => environmentError("forkToWorkingDirectory", cause),
-            });
             return forked.sessionId;
           },
         ),

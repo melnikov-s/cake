@@ -573,7 +573,9 @@ export const rename = Effect.fn("CakeChats.rename")(function* (
   const normalized = name.trim().slice(0, SESSION_TITLE_MAX_LENGTH);
   if (!normalized)
     return yield* new CakeChatError({ operation: "rename", message: "Name is required" });
+  const namespace = yield* sessionNamespace(target.sessionId);
   yield* withHandle(target, (handle) => handle.rename(normalized)).pipe(asError("rename"));
+  yield* publishCatalogChange(target.sessionId, namespace === "resolved").pipe(asError("rename"));
 });
 
 export const handoff = Effect.fn("CakeChats.handoff")(function* (input: {
