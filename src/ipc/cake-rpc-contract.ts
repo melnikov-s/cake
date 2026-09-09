@@ -431,7 +431,9 @@ export const cakeRpcPayloadSchemas = {
   }),
   "cancel-worktree-landing": Schema.Struct({
     ...requestBase,
+    operationId: bounded(1, 256),
     workspacePath: stringMax(4_096),
+    intent: Schema.Literals(["cancel", "acknowledge"]),
   }),
   "start-worktree-rebase": Schema.Struct({
     ...requestBase,

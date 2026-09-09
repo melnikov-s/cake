@@ -205,7 +205,11 @@ interface ManagedWorktreeCommands {
     options?: ClientCommandOptions,
   ): Promise<WorktreeLandingOperation>;
   cancelLanding(
-    input: { operationId: string; workspacePath: string },
+    input: {
+      operationId: string;
+      workspacePath: string;
+      intent: "cancel" | "acknowledge";
+    },
     options?: ClientCommandOptions,
   ): Promise<void>;
   startRebase(

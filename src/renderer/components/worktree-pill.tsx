@@ -214,7 +214,7 @@ export const WorktreePill = observer(function WorktreePill({
     : undefined;
   const operationDisabledReason =
     sessionDisabledReason ??
-    (actions.phase === "waiting"
+    (actions.isQueued
       ? "Another merge is already in progress. This merge will start automatically."
       : busy
         ? "A worktree operation is already in progress."
@@ -228,7 +228,7 @@ export const WorktreePill = observer(function WorktreePill({
   const mergeLabel =
     actions.phase === "committing"
       ? "Committing…"
-      : actions.phase === "waiting"
+      : actions.isQueued
         ? "Waiting to merge…"
         : actions.phase === "landing"
           ? "Merging…"
@@ -362,7 +362,7 @@ export const WorktreePill = observer(function WorktreePill({
                   </WorktreePillAction>
                 </>
               )}
-              {status && actions.phase === "waiting" && (
+              {status && actions.isQueued && (
                 <WorktreePillAction
                   icon={<CloseIcon size={14} />}
                   aria-label="Cancel queued merge"
@@ -417,7 +417,7 @@ export const WorktreePill = observer(function WorktreePill({
             </div>
           )}
         </div>
-        {actions.phase === "waiting" && (
+        {actions.isQueued && (
           <p className="px-2 text-xs text-muted-foreground">
             Another merge is in progress. This merge will start automatically when it finishes.
           </p>

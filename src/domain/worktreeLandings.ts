@@ -444,16 +444,49 @@ export const retry = Effect.fn("WorktreeLandings.retry")(function* (input: {
   return operation;
 });
 
-export const cancel = Effect.fn("WorktreeLandings.cancel")(function* (workspacePath: string) {
+export const acknowledge = Effect.fn("WorktreeLandings.acknowledge")(function* (
+  workspacePath: string,
+  operationId: string,
+) {
+  const coordinator = yield* WorktreeLandingCoordinator;
+  yield* SubscriptionRef.update(coordinator.state, (state) => {
+    const current = state.operations.get(workspacePath);
+    if (!current || current.operationId !== operationId || !isTerminal(current)) return state;
+    const operations = new Map(state.operations);
+    operations.delete(workspacePath);
+    return { operations };
+  });
+});
+
+export const cancel = Effect.fn("WorktreeLandings.cancel")(function* (
+  workspacePath: string,
+  operationId: string,
+) {
   const coordinator = yield* WorktreeLandingCoordinator;
   const current = (yield* SubscriptionRef.get(coordinator.state)).operations.get(workspacePath);
-  if (!current) return;
-  yield* FiberMap.remove(coordinator.fibers, workspacePath);
-  if (current.kind === "landing")
-    yield* (yield* ManagedWorktrees)
-      .cancelLanding(workspacePath, current.operationId)
+  // A delayed renderer request must never cancel a newer operation for the same worktree.
+  if (!current || current.operationId !== operationId) return;
+  if (current.phase !== "waiting" && current.phase !== "stalled")
+    return yield* new WorktreeLandingError({
+      operation: "cancel",
+      message: "This merge has already started and can no longer be canceled.",
+    });
+  const worktrees = yield* ManagedWorktrees;
+  if (current.kind === "landing" && current.phase === "waiting") {
+    // The engine owns the FIFO and must atomically prove that this entry is
+    // still pending. A status check here would race with queue promotion.
+    yield* worktrees
+      .cancelLanding(workspacePath, current.operationId, true)
       .pipe(asError("cancel"));
+    yield* FiberMap.remove(coordinator.fibers, workspacePath);
+  } else {
+    yield* FiberMap.remove(coordinator.fibers, workspacePath);
+    if (current.kind === "landing")
+      yield* worktrees.cancelLanding(workspacePath, current.operationId).pipe(asError("cancel"));
+  }
   yield* SubscriptionRef.update(coordinator.state, (state) => {
+    const latest = state.operations.get(workspacePath);
+    if (!latest || latest.operationId !== operationId) return state;
     const operations = new Map(state.operations);
     operations.delete(workspacePath);
     return { operations };

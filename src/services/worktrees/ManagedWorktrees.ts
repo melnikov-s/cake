@@ -39,6 +39,7 @@ export interface ManagedWorktreesService {
   readonly cancelLanding: (
     worktreePath: string,
     operationId: string,
+    onlyIfQueued?: boolean,
   ) => Effect.Effect<void, ManagedWorktreeError>;
   readonly rebase: (
     worktreePath: string,

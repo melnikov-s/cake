@@ -51,6 +51,7 @@ function services(options: {
   prompt?: (text: string) => void;
   promptWait?: Effect.Effect<void>;
   prepare?: Effect.Effect<void, ManagedWorktreeError>;
+  cancel?: (onlyIfQueued: boolean | undefined) => Effect.Effect<void, ManagedWorktreeError>;
 }) {
   const managed = ManagedWorktrees.of({
     records: () => Effect.succeed([record]),
@@ -65,7 +66,8 @@ function services(options: {
         options.events.push("land");
         return options.land?.() ?? ({ outcome: "landed" } as const);
       }),
-    cancelLanding: () => Effect.sync(() => void options.events.push("cancel")),
+    cancelLanding: (_workspacePath, _operationId, onlyIfQueued) =>
+      options.cancel?.(onlyIfQueued) ?? Effect.sync(() => void options.events.push("cancel")),
     rebase: () => Effect.fail(failure("rebase")),
     discard: () => Effect.fail(failure("discard")),
     cleanupResolved: () => Effect.fail(failure("cleanupResolved")),
@@ -277,13 +279,64 @@ describe("WorktreeLandings", () => {
     ),
   );
 
+  it.effect("rejects cancellation once a merge is no longer authoritatively queued", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const events: string[] = [];
+        const layer = services({
+          status: baseStatus,
+          events,
+          cancel: (onlyIfQueued) =>
+            onlyIfQueued
+              ? Effect.fail(
+                  new ManagedWorktreeError({
+                    operation: "cancelLanding",
+                    message: "This merge has already started and cannot be canceled.",
+                  }),
+                )
+              : Effect.void,
+        });
+        yield* Effect.gen(function* () {
+          const coordinator = yield* WorktreeLandingCoordinator;
+          yield* SubscriptionRef.update(coordinator.state, () => ({
+            operations: new Map([
+              [
+                workspacePath,
+                {
+                  operationId: "landing-started",
+                  workspacePath,
+                  sessionId: "session-1",
+                  kind: "landing" as const,
+                  phase: "waiting" as const,
+                  strategy: "preserve" as const,
+                  allowDirtyTarget: false,
+                },
+              ],
+            ]),
+          }));
+          const error = yield* worktreeLandings
+            .cancel(workspacePath, "landing-started")
+            .pipe(Effect.flip);
+          expect(error.operation).toBe("cancel");
+          expect(error.message).toMatch(/already started/i);
+          expect(events).toEqual([]);
+        }).pipe(Effect.provide(layer));
+      }),
+    ),
+  );
+
   it.effect("cancels a queued process-owned workflow explicitly", () =>
     Effect.scoped(
       Effect.gen(function* () {
         const events: string[] = [];
         const gate = yield* Deferred.make<void>();
         const layer = services({
-          status: baseStatus,
+          status: () => ({
+            ...baseStatus(),
+            landingState: "queued",
+            landingOperationId: "landing-4",
+            landingQueuePosition: 1,
+          }),
           events,
           prepare: Deferred.await(gate),
         });
@@ -297,7 +350,7 @@ describe("WorktreeLandings", () => {
             commitBeforeLanding: true,
           });
           yield* awaitPhase("waiting");
-          yield* worktreeLandings.cancel(workspacePath);
+          yield* worktreeLandings.cancel(workspacePath, "landing-4");
           const snapshot = yield* worktreeLandings.inspect({
             workspacePath,
             sessionId: "session-1",

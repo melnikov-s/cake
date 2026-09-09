@@ -82,7 +82,34 @@ describe("WorktreeStore", () => {
         }),
       );
       expect(projectSessions.prompt).not.toHaveBeenCalled();
+      expect(store.phase).toBe("landing");
+    } finally {
+      root[Symbol.dispose]();
+    }
+  });
+
+  it("shows waiting only for the matching authoritative queue reservation", async () => {
+    let status = worktreeStatus("/worktree");
+    const current = operation("waiting");
+    const { root, subject: store } = mountWithClient(createStore(WorktreeStore, props()), {
+      managedWorktrees: {
+        landing: vi.fn(async () => ({ status, operation: current })),
+      },
+    } as unknown as Client);
+    try {
+      await vi.waitFor(() => expect(store.status).toBeDefined());
+      expect(store.phase).toBe("landing");
+      expect(store.isQueued).toBe(false);
+
+      status = {
+        ...status,
+        landingState: "queued",
+        landingOperationId: current.operationId,
+        landingQueuePosition: 1,
+      };
+      await store.refresh();
       expect(store.phase).toBe("waiting");
+      expect(store.isQueued).toBe(true);
     } finally {
       root[Symbol.dispose]();
     }
@@ -116,6 +143,7 @@ describe("WorktreeStore", () => {
       expect(cancelLanding).toHaveBeenCalledWith({
         operationId: "landing-operation",
         workspacePath: "/worktree",
+        intent: "acknowledge",
       });
       expect(onResolveWorkspace).toHaveBeenCalledWith("/worktree");
     } finally {
@@ -147,7 +175,11 @@ describe("WorktreeStore", () => {
       current = operation("stalled", { pauseReason: "conflict" });
       await store.refresh();
       await store.cancelLanding();
-      expect(cancelLanding).toHaveBeenCalled();
+      expect(cancelLanding).toHaveBeenCalledWith({
+        operationId: "landing-operation",
+        workspacePath: "/worktree",
+        intent: "cancel",
+      });
       await store.rebase();
       expect(startRebase).toHaveBeenCalledWith(
         expect.objectContaining({ workspacePath: "/worktree", sessionId: "session-1" }),

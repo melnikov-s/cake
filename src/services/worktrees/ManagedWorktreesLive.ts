@@ -48,10 +48,11 @@ export const ManagedWorktreesLive: Layer.Layer<
           engine.land(worktreePath, { request, operationId, signal }),
         ),
       ),
-      cancelLanding: Effect.fn("ManagedWorktrees.cancelLanding")((worktreePath, operationId) =>
-        attempt("ManagedWorktrees.cancelLanding", () =>
-          engine.cancelLanding(worktreePath, operationId),
-        ),
+      cancelLanding: Effect.fn("ManagedWorktrees.cancelLanding")(
+        (worktreePath, operationId, onlyIfQueued) =>
+          attempt("ManagedWorktrees.cancelLanding", () =>
+            engine.cancelLanding(worktreePath, operationId, onlyIfQueued),
+          ),
       ),
       rebase: Effect.fn("ManagedWorktrees.rebase")((worktreePath) =>
         attempt("ManagedWorktrees.rebase", () => engine.rebase(worktreePath)),

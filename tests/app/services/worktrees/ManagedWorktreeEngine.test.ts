@@ -271,6 +271,43 @@ describe("WorktreeService decision logic", () => {
     await service.cancelLanding(second.worktreePath, "landing-2");
   });
 
+  it("does not let a canceled queue entry land after it was promoted", async () => {
+    const { service, record: first, invocations } = await setup();
+    const second = await service.create(first.projectPath, undefined, "second");
+    directories.push(second.worktreePath);
+    await mkdir(second.worktreePath, { recursive: true });
+
+    await service.prepareLanding(first.worktreePath, "landing-1");
+    const controller = new AbortController();
+    const secondReady = service.prepareLanding(second.worktreePath, "landing-2", controller.signal);
+    await expect
+      .poll(() => service.status(second.worktreePath).then((status) => status?.landingState))
+      .toBe("queued");
+
+    await service.cancelLanding(first.worktreePath, "landing-1");
+    await expect(service.cancelLanding(second.worktreePath, "landing-2", true)).rejects.toThrow(
+      /already started/i,
+    );
+    controller.abort();
+    await service.cancelLanding(second.worktreePath, "landing-2");
+    await secondReady;
+
+    await expect(
+      service.land(second.worktreePath, {
+        operationId: "landing-2",
+        request: { strategy: "preserve" },
+        signal: controller.signal,
+      }),
+    ).rejects.toThrow(/canceled/i);
+    expect(
+      invocations.filter(({ where, args }) => where === "target" && args[0] === "merge"),
+    ).toEqual([]);
+    await expect(service.records()).resolves.toEqual([
+      expect.objectContaining({ branch: first.branch, state: "active" }),
+      expect.objectContaining({ branch: second.branch, state: "active" }),
+    ]);
+  });
+
   it("advances waiting landings in FIFO order when paused reservations are canceled", async () => {
     const { service, record: first } = await setup();
     const second = await service.create(first.projectPath, undefined, "second");

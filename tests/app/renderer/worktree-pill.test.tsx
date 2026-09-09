@@ -46,6 +46,7 @@ function actionStore({
     },
     phase: "idle",
     isBusy: false,
+    isQueued: false,
     isSessionRunning: running,
     stalled: false,
     error: undefined,
@@ -139,6 +140,7 @@ describe("WorktreePill", () => {
   it("shows queued merges waiting and lets the user remove them from the queue", () => {
     const actions = actionStore({ aheadCount: 1, dirtyCount: 0 });
     actions.phase = "waiting";
+    Object.defineProperty(actions, "isQueued", { value: true });
     render(actions);
 
     expect(container.textContent).toContain("Waiting to merge…");
@@ -147,6 +149,16 @@ describe("WorktreePill", () => {
     );
     act(() => button("Cancel").click());
     expect(actions.cancelLanding).toHaveBeenCalledOnce();
+  });
+
+  it("does not describe startup as another merge without an authoritative queue entry", () => {
+    const actions = actionStore({ aheadCount: 1, dirtyCount: 0 });
+    actions.phase = "waiting";
+    Object.defineProperty(actions, "isBusy", { value: true });
+    render(actions);
+
+    expect(container.textContent).not.toContain("Another merge is in progress");
+    expect(button("Cancel")).toBeUndefined();
   });
 
   it("offers rebase only when the target branch has advanced", () => {

@@ -294,9 +294,11 @@ export class ManagedWorktreeEngine implements WorktreeLandingCoordinator {
     const operationId = options.operationId ?? `direct:${normalized}`;
     await this.acquireLanding(record, operationId, options.signal);
     try {
-      const outcome = await this.withRepositoryLock(record.projectPath, () =>
-        this.landRecord(record, options),
-      );
+      if (options.signal?.aborted) throw new Error("Worktree landing was canceled.");
+      const outcome = await this.withRepositoryLock(record.projectPath, () => {
+        if (options.signal?.aborted) throw new Error("Worktree landing was canceled.");
+        return this.landRecord(record, options);
+      });
       if (outcome.outcome === "landed") this.releaseLanding(record, operationId);
       return outcome;
     } catch (error) {
@@ -323,7 +325,11 @@ export class ManagedWorktreeEngine implements WorktreeLandingCoordinator {
   }
 
   /** Cancels a paused or queued landing and advances the next repository entry. */
-  async cancelLanding(worktreePath: string, operationId: string): Promise<void> {
+  async cancelLanding(
+    worktreePath: string,
+    operationId: string,
+    onlyIfQueued = false,
+  ): Promise<void> {
     await this.load();
     const normalized = resolveNormalized(worktreePath);
     const record = this.allRecords.find(
@@ -331,13 +337,20 @@ export class ManagedWorktreeEngine implements WorktreeLandingCoordinator {
     );
     if (!record) return;
     const queue = this.repositoryLandingQueues.get(record.projectPath);
-    if (!queue) return;
+    if (!queue) {
+      if (onlyIfQueued) throw new Error("This merge has already started and cannot be canceled.");
+      return;
+    }
     if (queue.active?.operationId === operationId) {
+      if (onlyIfQueued) throw new Error("This merge has already started and cannot be canceled.");
       this.releaseLanding(record, operationId);
       return;
     }
     const index = queue.pending.findIndex((entry) => entry.operationId === operationId);
-    if (index < 0) return;
+    if (index < 0) {
+      if (onlyIfQueued) throw new Error("This merge has already started and cannot be canceled.");
+      return;
+    }
     const [entry] = queue.pending.splice(index, 1);
     entry?.abort?.();
     entry?.reject(new Error("Worktree landing was canceled."));
@@ -712,6 +725,12 @@ export class ManagedWorktreeEngine implements WorktreeLandingCoordinator {
       }
       queue.pending.push(entry);
     });
+    if (
+      signal?.aborted ||
+      queue.active?.operationId !== operationId ||
+      queue.active.worktreePath !== normalized
+    )
+      throw new Error("Worktree landing was canceled.");
   }
 
   private releaseLanding(record: WorktreeRecord, operationId: string) {

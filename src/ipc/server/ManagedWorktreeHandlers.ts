@@ -35,9 +35,11 @@ export const managedWorktreeHandlers = ManagedWorktreeRpc.of({
       }),
     ).pipe(Effect.map((operation) => ({ requestId: request.requestId, operation }))),
   "managedWorktrees.cancel-worktree-landing": (request) =>
-    Effect.flatMap(RendererConnection, () => worktreeLandings.cancel(request.workspacePath)).pipe(
-      Effect.as({ requestId: request.requestId }),
-    ),
+    Effect.flatMap(RendererConnection, () =>
+      request.intent === "cancel"
+        ? worktreeLandings.cancel(request.workspacePath, request.operationId)
+        : worktreeLandings.acknowledge(request.workspacePath, request.operationId),
+    ).pipe(Effect.as({ requestId: request.requestId })),
   "managedWorktrees.start-worktree-rebase": (request) =>
     Effect.flatMap(RendererConnection, () =>
       worktreeLandings.startRebase({

@@ -276,7 +276,9 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
           (client) =>
             client.managedWorktrees["cancel-worktree-landing"]({
               requestId,
+              operationId: input.operationId,
               workspacePath: input.workspacePath,
+              intent: input.intent,
             }),
           requestId,
           options,
