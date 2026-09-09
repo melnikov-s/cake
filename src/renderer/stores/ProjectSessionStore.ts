@@ -2,7 +2,7 @@ import { Store, child, computed, createStore, snapshot } from "r-state-tree";
 import type { StoreEvent } from "../events/StoreEvent";
 import type { Session } from "../models/Session";
 import type { ChatConfiguration, ModelPreset } from "../../ipc/session-contract";
-import type { SessionRegistryStore } from "./SessionRegistryStore";
+import type { ProjectPendingSessionsStore } from "./ProjectPendingSessionsStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { ReviewsStore } from "./ReviewsStore";
 import { ConversationComposerStore, type ComposerDeliveryInput } from "./ConversationComposerStore";
@@ -30,7 +30,7 @@ export interface SessionTarget {
 
 export interface ProjectSessionStoreProps extends SessionTarget {
   model: Session;
-  registry: SessionRegistryStore;
+  pendingSessions: ProjectPendingSessionsStore;
   operations: SessionOperationCoordinatorStore;
   reviews(): ReviewsStore;
   canSubmit(): boolean;
@@ -159,7 +159,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
 
   get hydrated() {
     return (
-      this.props.registry.isTemporarySession(this.sessionId) || Boolean(this.model.sessionFile)
+      this.props.pendingSessions.isTemporary(this.sessionId) || Boolean(this.model.sessionFile)
     );
   }
 
@@ -250,19 +250,19 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       scheduleMessage: (sessionId, args) => this.scheduleMessage(sessionId, args),
       operations: this.props.operations,
       operationOwner: this.composerOwner,
-      draftSessionPrompt: (sessionId) => this.props.registry.draftSessionPrompt(sessionId),
-      isDeferredSession: (sessionId) => this.props.registry.isTemporarySession(sessionId),
+      draftSessionPrompt: (sessionId) => this.props.pendingSessions.draftPrompt(sessionId),
+      isDeferredSession: (sessionId) => this.props.pendingSessions.isTemporary(sessionId),
       createDraftSession: async (sessionId, text, attachments) => {
-        await this.props.registry.createDraftSession(sessionId, text, attachments);
+        await this.props.pendingSessions.createDraft(sessionId, text, attachments);
         return true;
       },
       updateDraftSession: async (sessionId, text, attachments) => {
-        await this.props.registry.updateDraftSession(sessionId, text, attachments);
+        await this.props.pendingSessions.updateDraft(sessionId, text, attachments);
         return true;
       },
-      activateDraftSession: (sessionId) => this.props.registry.activateDraftSession(sessionId),
+      activateDraftSession: (sessionId) => this.props.pendingSessions.activateDraft(sessionId),
       applyGeneratedDraftName: (sessionId, title) =>
-        this.props.registry.applyGeneratedDraftName(sessionId, title),
+        this.props.pendingSessions.applyGeneratedDraftName(sessionId, title),
       configureDraftActivation: (choice) => this.props.configureDraftActivation(choice),
       sessionCreationChoice: this.props.sessionCreationChoice,
       editorText: (entryId) => this.model.tree.find((entry) => entry.piId === entryId)?.editorText,
@@ -272,7 +272,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   private async deliverComposerMessage(input: ComposerDeliveryInput) {
     const pendingNewSession = this.props.newSessionRequest();
     if (pendingNewSession)
-      this.props.registry.projectNewSessionSubmission(input.sessionId, input.text);
+      this.props.pendingSessions.projectSubmission(input.sessionId, input.text);
     try {
       if (pendingNewSession && !(await this.props.prepareNewSession(input.text))) return false;
       const newSession = this.props.newSessionRequest();
@@ -288,7 +288,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
           Object.assign(startInput, { configuration: newSession.configuration });
         if (newSession.name !== undefined) Object.assign(startInput, { name: newSession.name });
         await this.client.projectSessions.start(startInput, { signal: this.signal });
-        this.props.registry.materializeNewSession(input.sessionId, newSession.path);
+        this.props.pendingSessions.materialize(input.sessionId, newSession.path);
       } else {
         const command =
           input.delivery === "steer"
@@ -304,7 +304,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       }
       return true;
     } catch (error) {
-      this.props.registry.cancelNewSessionSubmission(input.sessionId);
+      this.props.pendingSessions.cancelSubmission(input.sessionId);
       throw error;
     }
   }
@@ -331,10 +331,10 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       operationOwner: this.configurationOwner,
       presets: this.props.modelPresets,
       openPresetSettings: this.props.openModelPresetSettings,
-      deferredNewSession: () => this.props.registry.isTemporarySession(this.sessionId),
+      deferredNewSession: () => this.props.pendingSessions.isTemporary(this.sessionId),
       effectiveConfiguration: () => this.props.newSessionRequest()?.configuration,
       setPendingConfiguration: (configuration) =>
-        this.props.registry.setPendingConfiguration(this.sessionId, configuration),
+        this.props.pendingSessions.setConfiguration(this.sessionId, configuration),
       setConfiguration: (configuration) =>
         this.client.projectSessions.applyConfiguration(
           { sessionId: this.sessionId, configuration },
@@ -377,7 +377,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       stoppable: () => this.model.backgroundWorkActive,
       configuration: () => this.configurationStore,
       commands: () =>
-        this.props.registry.isTemporarySession(this.sessionId)
+        this.props.pendingSessions.isTemporary(this.sessionId)
           ? this.stagedCommandStore.commands
           : this.model.commands,
       placeholder: () =>
@@ -399,7 +399,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       sessionCreationChoice: this.props.sessionCreationChoice,
       draftActivationCandidates: this.props.draftActivationCandidates,
       editLastUserMessage: (entryId) => this.composerStore.beginEditMessage(entryId),
-      isDraftSession: () => this.props.registry.isDraftSession(this.sessionId),
+      isDraftSession: () => this.props.pendingSessions.isDraft(this.sessionId),
       editingMessage: () => this.composerStore.editingMessage,
       abort: () => this.props.abort(),
       attachments: () => this.composerStore.draftStore.visibleAttachments,
@@ -488,7 +488,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   @child
   get messageCommentsStore(): MessageCommentsStore {
     return createStore(MessageCommentsStore, {
-      sessionRegistry: this.props.registry,
+      sessionModel: () => this.model,
       reviews: this.props.reviews,
       context: () => ({ sessionId: this.sessionId }),
     });

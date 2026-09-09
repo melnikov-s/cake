@@ -168,7 +168,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       operations: this.props.operations,
       catalog: this.props.catalog,
       relocateTemporarySession: (sessionId, workspacePath) => {
-        this.sessionRegistry.relocateTemporarySession(sessionId, workspacePath);
+        this.sessionRegistry.pendingSessions.relocate(sessionId, workspacePath);
         if (this.activeSessionId === sessionId) this.projectPath = workspacePath;
       },
       reportError: (error) => this.setError(error),
@@ -207,7 +207,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   /** False for a staged or explicit draft session; Pi lists it only after activation. */
   get activeSessionExists(): boolean {
     const sessionId = this.activeSessionId;
-    return sessionId !== undefined && !this.sessionRegistry.isTemporarySession(sessionId);
+    return sessionId !== undefined && !this.sessionRegistry.pendingSessions.isTemporary(sessionId);
   }
 
   get sessionTitle() {
@@ -220,7 +220,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     if (!this.isActiveSession(sessionId) || this.activeOpenOperationId) return false;
     const session = this.sessionRegistry.findSession(sessionId);
     if (!session) return false;
-    if (this.sessionRegistry.isTemporarySession(sessionId)) return true;
+    if (this.sessionRegistry.pendingSessions.isTemporary(sessionId)) return true;
     const command = session.composerStore.draftStore.text.trim().toLocaleLowerCase();
     const local = command === "/tree" || command === "/resources" || command === "/changelog";
     return local || this.agentAvailability === "available";
@@ -277,17 +277,21 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       this.projectPath = selection.workspacePath;
       if (!this.sessionRegistry.findSession(selection.sessionId))
         this.sessionRegistry.load(selection.sessionId, selection.workspacePath);
-      else this.sessionRegistry.retainObservation(selection.sessionId);
+      else this.sessionRegistry.observationRetention.retain(selection.sessionId);
     }
     const path = this.projectPath;
     if (!path) return;
     const sessionId = this.activeSessionId;
-    const temporary = sessionId ? this.sessionRegistry.isTemporarySession(sessionId) : true;
+    const temporary = sessionId
+      ? this.sessionRegistry.pendingSessions.isTemporary(sessionId)
+      : true;
     await this.inspectPath(
       path,
       temporary,
       sessionId,
-      temporary && sessionId !== undefined && !this.sessionRegistry.isDraftSession(sessionId),
+      temporary &&
+        sessionId !== undefined &&
+        !this.sessionRegistry.pendingSessions.isDraft(sessionId),
     );
   }
 
@@ -377,7 +381,10 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   }
 
   async startNewSession(path = this.projectPath) {
-    if (this.activeSession && this.sessionRegistry.isStagedSession(this.activeSession.sessionId)) {
+    if (
+      this.activeSession &&
+      this.sessionRegistry.pendingSessions.isStaged(this.activeSession.sessionId)
+    ) {
       this.activeSession.composerStore.draftStore.requestFocus();
       return;
     }
@@ -399,12 +406,13 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
 
   newSessionRequest(sessionId: string) {
     const session = this.sessionRegistry.findSession(sessionId);
-    if (!session || !this.sessionRegistry.isTemporarySession(sessionId)) return undefined;
+    if (!session || !this.sessionRegistry.pendingSessions.isTemporary(sessionId)) return undefined;
     return {
       path: session.workspacePath,
       configuration:
-        this.sessionRegistry.pendingConfiguration(sessionId) ?? this.props.defaultConfiguration?.(),
-      name: this.sessionRegistry.pendingName(sessionId),
+        this.sessionRegistry.pendingSessions.configuration(sessionId) ??
+        this.props.defaultConfiguration?.(),
+      name: this.sessionRegistry.pendingSessions.name(sessionId),
     };
   }
 
@@ -416,11 +424,12 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     configuration?: ChatConfiguration,
   ) {
     const sessionId = crypto.randomUUID();
-    this.sessionRegistry.prepareNewSession(path, sessionId);
-    this.sessionRegistry.setPendingName(sessionId, name);
-    if (configuration) this.sessionRegistry.setPendingConfiguration(sessionId, configuration);
+    this.sessionRegistry.pendingSessions.prepare(path, sessionId);
+    this.sessionRegistry.pendingSessions.setName(sessionId, name);
+    if (configuration)
+      this.sessionRegistry.pendingSessions.setConfiguration(sessionId, configuration);
     try {
-      await this.sessionRegistry.createDraftSession(sessionId, initialPrompt, []);
+      await this.sessionRegistry.pendingSessions.createDraft(sessionId, initialPrompt, []);
       return sessionId;
     } catch (error) {
       this.sessionRegistry.removeSession(sessionId);
@@ -437,9 +446,10 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     renderUserMessageAsMarkdown = true,
   ) {
     const sessionId = crypto.randomUUID();
-    this.sessionRegistry.prepareNewSession(path, sessionId);
-    this.sessionRegistry.setPendingName(sessionId, name);
-    if (configuration) this.sessionRegistry.setPendingConfiguration(sessionId, configuration);
+    this.sessionRegistry.pendingSessions.prepare(path, sessionId);
+    this.sessionRegistry.pendingSessions.setName(sessionId, name);
+    if (configuration)
+      this.sessionRegistry.pendingSessions.setConfiguration(sessionId, configuration);
     const input: ProjectSessionStartInput = configuration
       ? {
           sessionId,
@@ -458,10 +468,10 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
           attachments: [],
           name,
         };
-    this.sessionRegistry.projectNewSessionSubmission(sessionId, name);
+    this.sessionRegistry.pendingSessions.projectSubmission(sessionId, name);
     try {
       await this.client.projectSessions.start(input, { signal: this.signal });
-      this.sessionRegistry.materializeNewSession(sessionId, path);
+      this.sessionRegistry.pendingSessions.materialize(sessionId, path);
       return sessionId;
     } catch (error) {
       this.sessionRegistry.removeSession(sessionId);
@@ -487,7 +497,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
 
   async prepareNewSession(sessionId: string, firstUserMessage: string) {
     const session = this.sessionRegistry.findSession(sessionId);
-    if (!session || !this.sessionRegistry.isTemporarySession(sessionId)) return true;
+    if (!session || !this.sessionRegistry.pendingSessions.isTemporary(sessionId)) return true;
     const projectPath =
       this.props.catalog.projectOfManagedWorktree(session.workspacePath) ?? session.workspacePath;
     return this.worktreeCreationStore.prepare(sessionId, projectPath, firstUserMessage);
@@ -539,8 +549,8 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     this.openRevision += 1;
     this.pendingOpen = undefined;
     const session = staged
-      ? this.sessionRegistry.prepareStagedSession(path, sessionId)
-      : this.sessionRegistry.prepareNewSession(path, sessionId);
+      ? this.sessionRegistry.pendingSessions.prepareStaged(path, sessionId)
+      : this.sessionRegistry.pendingSessions.prepare(path, sessionId);
     this.suspendEmbeddedEditor();
     this.projectPath = path;
     this.props.selectSession(sessionId);
@@ -573,7 +583,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       return;
     }
     const cached = this.showLoadedSession(sessionId);
-    if (cached && this.sessionRegistry.isTemporarySession(sessionId)) return;
+    if (cached && this.sessionRegistry.pendingSessions.isTemporary(sessionId)) return;
     try {
       await this.client.projectSessions.open(
         { sessionId, workingDirectory: workspacePath },
@@ -597,7 +607,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     const session = this.sessionRegistry.findSession(sessionId);
     // An identity-only registry entry must not replace the visible session.
     if (!session) return false;
-    this.sessionRegistry.retainObservation(sessionId);
+    this.sessionRegistry.observationRetention.retain(sessionId);
     this.suspendEmbeddedEditor();
     this.projectPath = session.workspacePath;
     this.restoreSessionPresentation();
@@ -878,7 +888,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
         this.reopenAfterAgentRestart = Boolean(
           this.projectPath &&
           this.session &&
-          !this.sessionRegistry.isTemporarySession(this.session.sessionId),
+          !this.sessionRegistry.pendingSessions.isTemporary(this.session.sessionId),
         );
         if (this.reopenAfterAgentRestart)
           this.draftAfterAgentRestart = this.activeSession?.composerStore.draftStore.text;

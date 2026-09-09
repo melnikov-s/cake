@@ -117,7 +117,7 @@ export class RootStore extends Store<{
   private retainProjectSessionObservation(sessionId: string) {
     const summary = this.sessionCatalogStore.find(sessionId);
     if (summary) this.sessionRegistry.load(sessionId, summary.workingDirectory);
-    else this.sessionRegistry.retainObservation(sessionId);
+    else this.sessionRegistry.observationRetention.retain(sessionId);
   }
 
   async openSession(sessionId: string, messageId?: string) {
@@ -560,7 +560,10 @@ export class RootStore extends Store<{
     const source = this.projectWorkbenchStore.activeSession;
     if (!source || !this.sessionLayoutStore.canSplit) return;
     const sessionId = crypto.randomUUID();
-    const session = this.sessionRegistry.prepareStagedSession(source.workspacePath, sessionId);
+    const session = this.sessionRegistry.pendingSessions.prepareStaged(
+      source.workspacePath,
+      sessionId,
+    );
     const paneId = this.sessionLayoutStore.splitFocused(sessionId, axis);
     if (!paneId) {
       this.sessionRegistry.removeSession(sessionId);
@@ -592,7 +595,7 @@ export class RootStore extends Store<{
     const result = this.sessionLayoutStore.closePane(paneId);
     if (!result) return;
     for (const sessionId of result.removedSessionIds) {
-      if (this.sessionRegistry.isStagedSession(sessionId))
+      if (this.sessionRegistry.pendingSessions.isStaged(sessionId))
         this.sessionRegistry.removeSession(sessionId);
     }
     if (result.focusedSessionId) {
@@ -706,7 +709,7 @@ export class RootStore extends Store<{
   }
 
   private async resolveProjectSession(sessionId: string, resolved: boolean) {
-    const rendererDraft = this.sessionRegistry.isDraftSession(sessionId);
+    const rendererDraft = this.sessionRegistry.pendingSessions.isDraft(sessionId);
     const changed = await this.projectWorkbenchStore.sessionManagementStore.resolveSession(
       sessionId,
       resolved,
@@ -899,7 +902,7 @@ export class RootStore extends Store<{
   get sessionCatalogStore(): SessionCatalogStore {
     return createStore(SessionCatalogStore, {
       model: this.sessionCatalogModel,
-      pendingSessions: () => this.sessionRegistry.pendingSummaries,
+      pendingSessions: () => this.sessionRegistry.pendingSessions.summaries,
     });
   }
 
@@ -940,7 +943,7 @@ export class RootStore extends Store<{
   /** Project Session targets currently eligible for Model observation. */
   get projectSessionObservationTargets() {
     const blockedPath = this.projectWorkbenchStore.pendingAuthorizationPath;
-    return this.sessionRegistry.observationSessions
+    return this.sessionRegistry.observationRetention.sessions
       .filter((session) => session.workspacePath !== blockedPath)
       .map((session) => ({
         sessionId: session.sessionId,
@@ -1061,7 +1064,7 @@ export class RootStore extends Store<{
       },
       restoreStagedSession: (projectPath) => {
         const sessionId = this.sessionLayoutStore.focusedSessionHistory.findLast((candidateId) => {
-          if (!this.sessionRegistry.isStagedSession(candidateId)) return false;
+          if (!this.sessionRegistry.pendingSessions.isStaged(candidateId)) return false;
           const session = this.sessionRegistry.findSession(candidateId);
           if (!session) return false;
           const candidateProjectPath =
@@ -1125,8 +1128,8 @@ export class RootStore extends Store<{
         const selection = this.appShellStore.selection;
         if (selection.kind === "project-session") {
           if (
-            this.sessionRegistry.isTemporarySession(selection.sessionId) &&
-            !this.sessionRegistry.isDraftSession(selection.sessionId)
+            this.sessionRegistry.pendingSessions.isTemporary(selection.sessionId) &&
+            !this.sessionRegistry.pendingSessions.isDraft(selection.sessionId)
           )
             return { kind: "new-project-chat" as const };
           const summary = this.sessionCatalogStore.find(selection.sessionId);

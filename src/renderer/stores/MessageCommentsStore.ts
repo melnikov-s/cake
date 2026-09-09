@@ -1,13 +1,13 @@
 import { Store, child, createStore } from "r-state-tree";
 import type { ReviewAnchor } from "../../ipc/review-contract";
 import type { Annotation } from "../../ipc/session-contract";
-import type { SessionRegistryStore } from "./SessionRegistryStore";
+import type { Session } from "../models/Session";
 import type { ReviewsStore } from "./ReviewsStore";
 import { ChatStore } from "./ChatStore";
 import { AnnotationDraftStore } from "./AnnotationDraftStore";
 
 export interface MessageCommentsStoreProps {
-  sessionRegistry: SessionRegistryStore;
+  sessionModel(sessionId: string): Session | undefined;
   reviews(): ReviewsStore;
   context(): { sessionId: string } | undefined;
 }
@@ -32,8 +32,8 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
     const context = this.props.context();
     if (!context) return [];
     return (
-      this.props.sessionRegistry
-        .findModel(context.sessionId)
+      this.props
+        .sessionModel(context.sessionId)
         ?.reviewThreads.filter((thread) => thread.anchor.view === "message") ?? []
     );
   }

@@ -150,6 +150,79 @@ describe("WindowStateStorage", () => {
     );
   });
 
+  it.effect("moves Project Session pending and retention state into focused child Stores", () => {
+    const snapshot = {
+      state: {},
+      children: {
+        sessionRegistry: {
+          state: {
+            targets: [{ sessionId: "draft-1", workspacePath: "/project" }],
+            unlistedNewSessionIds: ["draft-1"],
+            materializedSessionIds: ["loaded-1"],
+            pendingConfigurationsBySession: {
+              "draft-1": { provider: "openai", modelId: "gpt-5", thinkingLevel: "high" },
+            },
+            pendingNamesBySession: { "draft-1": "Draft" },
+            draftSessionsById: {
+              "draft-1": { text: "Do this later", attachments: [], resolved: false },
+            },
+            temporarySessionIds: ["draft-1"],
+            pendingSummaryMetadataBySession: {
+              "draft-1": { createdAt: "2026-01-01", modifiedAt: "2026-01-02" },
+            },
+            stagedSessionIds: ["draft-1"],
+          },
+          children: { sessions: [] },
+        },
+      },
+    };
+
+    return withStorage(JSON.stringify({ version: 4, data: snapshot }), (storage) =>
+      Effect.gen(function* () {
+        const loaded = yield* storage.load();
+        assert.deepStrictEqual(loaded, {
+          state: {},
+          children: {
+            sessionRegistry: {
+              state: {
+                targets: [{ sessionId: "draft-1", workspacePath: "/project" }],
+              },
+              children: {
+                sessions: [],
+                pendingSessions: {
+                  state: {
+                    unlistedNewSessionIds: ["draft-1"],
+                    configurationsBySession: {
+                      "draft-1": {
+                        provider: "openai",
+                        modelId: "gpt-5",
+                        thinkingLevel: "high",
+                      },
+                    },
+                    namesBySession: { "draft-1": "Draft" },
+                    draftsBySession: {
+                      "draft-1": { text: "Do this later", attachments: [], resolved: false },
+                    },
+                    temporarySessionIds: ["draft-1"],
+                    summaryMetadataBySession: {
+                      "draft-1": { createdAt: "2026-01-01", modifiedAt: "2026-01-02" },
+                    },
+                    stagedSessionIds: ["draft-1"],
+                  },
+                  children: {},
+                },
+                observationRetention: {
+                  state: { materializedSessionIds: ["loaded-1"] },
+                  children: {},
+                },
+              },
+            },
+          },
+        });
+      }),
+    );
+  });
+
   it.effect("retains standalone secondary chat drafts while migrating primary drafts", () => {
     const snapshot = {
       state: {},
@@ -201,6 +274,22 @@ describe("WindowStateStorage", () => {
             sessionRegistry: {
               state: {},
               children: {
+                pendingSessions: {
+                  state: {
+                    unlistedNewSessionIds: [],
+                    configurationsBySession: {},
+                    namesBySession: {},
+                    draftsBySession: {},
+                    temporarySessionIds: [],
+                    summaryMetadataBySession: {},
+                    stagedSessionIds: [],
+                  },
+                  children: {},
+                },
+                observationRetention: {
+                  state: { materializedSessionIds: [] },
+                  children: {},
+                },
                 sessions: [
                   {
                     key: "project-session-1",

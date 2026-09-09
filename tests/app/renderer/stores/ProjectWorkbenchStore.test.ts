@@ -141,7 +141,7 @@ describe("ProjectWorkbenchStore startup selection", () => {
     };
     const registry = {
       findSession: (sessionId: string) => (sessionId === "session-1" ? session : undefined),
-      isTemporarySession: () => false,
+      pendingSessions: { isTemporary: () => false },
     } as unknown as SessionRegistryStore;
     const catalog = {
       find: (sessionId: string) =>
@@ -181,8 +181,7 @@ describe("ProjectWorkbenchStore startup selection", () => {
     const registry = {
       findSession: () => undefined,
       load,
-      isTemporarySession: () => false,
-      isDraftSession: () => false,
+      pendingSessions: { isTemporary: () => false, isDraft: () => false },
     } as unknown as SessionRegistryStore;
     const {
       root,
@@ -257,7 +256,7 @@ describe("ProjectWorkbenchStore startup selection", () => {
     const registry = {
       findSession: (sessionId: string) =>
         sessionId === stagedSession.sessionId ? stagedSession : undefined,
-      isStagedSession: () => false,
+      pendingSessions: { isStaged: () => false },
     } as unknown as SessionRegistryStore;
     const restoreStagedSession = vi.fn(() => stagedSession.sessionId);
     const {
@@ -324,11 +323,14 @@ describe("ProjectWorkbenchStore startup selection", () => {
   });
 
   it("creates agent drafts in the background without changing the visible session", async () => {
+    const pendingSessions = {
+      prepare: vi.fn(),
+      setName: vi.fn(),
+      setConfiguration: vi.fn(),
+      createDraft: vi.fn(async () => undefined),
+    };
     const registry = {
-      prepareNewSession: vi.fn(),
-      setPendingName: vi.fn(),
-      setPendingConfiguration: vi.fn(),
-      createDraftSession: vi.fn(async () => undefined),
+      pendingSessions,
       removeSession: vi.fn(),
     } as unknown as SessionRegistryStore;
     const {
@@ -341,8 +343,8 @@ describe("ProjectWorkbenchStore startup selection", () => {
 
     const created = await store.createDraftSession("/other-project", "Draft", "Do this later");
 
-    expect(registry.prepareNewSession).toHaveBeenCalledWith("/other-project", created);
-    expect(registry.createDraftSession).toHaveBeenCalledWith(created, "Do this later", []);
+    expect(pendingSessions.prepare).toHaveBeenCalledWith("/other-project", created);
+    expect(pendingSessions.createDraft).toHaveBeenCalledWith(created, "Do this later", []);
     expect(store.projectPath).toBe("/visible-project");
     expect(store.activeSessionId).toBe("visible-session");
     expect(selectSession).not.toHaveBeenCalled();
@@ -353,12 +355,15 @@ describe("ProjectWorkbenchStore startup selection", () => {
 
   it("starts agent-created sessions in the background without changing the visible session", async () => {
     const start = vi.fn(async () => undefined);
+    const pendingSessions = {
+      prepare: vi.fn(),
+      setName: vi.fn(),
+      setConfiguration: vi.fn(),
+      projectSubmission: vi.fn(),
+      materialize: vi.fn(),
+    };
     const registry = {
-      prepareNewSession: vi.fn(),
-      setPendingName: vi.fn(),
-      setPendingConfiguration: vi.fn(),
-      projectNewSessionSubmission: vi.fn(),
-      materializeNewSession: vi.fn(),
+      pendingSessions,
       removeSession: vi.fn(),
     } as unknown as SessionRegistryStore;
     const {
@@ -385,7 +390,7 @@ describe("ProjectWorkbenchStore startup selection", () => {
       }),
       expect.any(Object),
     );
-    expect(registry.materializeNewSession).toHaveBeenCalledWith(created, "/other-project");
+    expect(pendingSessions.materialize).toHaveBeenCalledWith(created, "/other-project");
     expect(store.projectPath).toBe("/visible-project");
     expect(store.activeSessionId).toBe("visible-session");
     expect(selectSession).not.toHaveBeenCalled();

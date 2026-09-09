@@ -46,7 +46,9 @@ export class KanbanStore extends Store<KanbanStoreProps> {
       for (const session of this.sessions) {
         const details = this.detailsForSession(session.sessionId);
         if (session.draft) {
-          const firstUserMessage = this.props.registry.draftSessionPrompt(session.sessionId)?.text;
+          const firstUserMessage = this.props.registry.pendingSessions.draftPrompt(
+            session.sessionId,
+          )?.text;
           if (
             this.props.utilityModelConfigured() &&
             !details?.description &&
@@ -121,7 +123,7 @@ export class KanbanStore extends Store<KanbanStoreProps> {
     const loaded = this.props.registry.findSession(sessionId);
     const runtimeModel = loaded?.model.model;
     if (runtimeModel) return runtimeModel.name || runtimeModel.id;
-    const pending = this.props.registry.pendingConfiguration(sessionId);
+    const pending = this.props.registry.pendingSessions.configuration(sessionId);
     if (pending) return pending.modelId;
     const stored = this.detailsForSession(sessionId)?.model;
     return stored?.name || stored?.modelId;

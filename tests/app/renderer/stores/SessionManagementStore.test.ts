@@ -9,12 +9,14 @@ import { mountWithClient } from "../mount-with-client";
 
 describe("SessionManagementStore deletion", () => {
   it("deletes a resolved renderer draft without calling the Project Session backend", async () => {
-    const deleteResolvedDraftSession = vi.fn(async () => true);
+    const deleteResolvedDraft = vi.fn(async () => true);
     const deleteSession = vi.fn(async () => undefined);
     const operations = mount(createStore(SessionOperationCoordinatorStore));
     const registry = {
-      isDraftSession: (sessionId: string) => sessionId === "draft-1",
-      deleteResolvedDraftSession,
+      pendingSessions: {
+        isDraft: (sessionId: string) => sessionId === "draft-1",
+        deleteResolvedDraft,
+      },
       removeSession: vi.fn(),
     } as unknown as SessionRegistryStore;
     const catalog = {
@@ -33,7 +35,7 @@ describe("SessionManagementStore deletion", () => {
 
     await subject.deleteSession("draft-1");
 
-    expect(deleteResolvedDraftSession).toHaveBeenCalledWith("draft-1");
+    expect(deleteResolvedDraft).toHaveBeenCalledWith("draft-1");
     expect(deleteSession).not.toHaveBeenCalled();
     expect(registry.removeSession).not.toHaveBeenCalled();
 

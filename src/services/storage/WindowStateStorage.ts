@@ -1,7 +1,7 @@
 import { Context, Effect, FileSystem, Layer, Path, Schema, Semaphore } from "effect";
 import { atomicWriteFile, type AtomicFileStage } from "./internal/atomicFile";
 
-const WINDOW_STATE_DOCUMENT_VERSION = 4;
+const WINDOW_STATE_DOCUMENT_VERSION = 5;
 const WINDOW_STATE_DOCUMENT_NAME = "window-state.json";
 
 const JsonRecord = Schema.Record(Schema.String, Schema.Json);
@@ -295,6 +295,53 @@ const migrateVersion3WindowState = (snapshot: Schema.Schema.Type<typeof Schema.J
   return migrateStandaloneChatDrafts({ ...root, children: nextChildren });
 };
 
+/** Moves Project Session pending and observation policy into their focused child Stores. */
+const migrateVersion4WindowState = (snapshot: Schema.Schema.Type<typeof Schema.Json>) => {
+  const root = decodeJsonRecord(snapshot);
+  const rootChildren = decodeJsonRecord(root?.children);
+  const registry = decodeJsonRecord(rootChildren?.sessionRegistry);
+  const registryState = decodeJsonRecord(registry?.state);
+  const registryChildren = decodeJsonRecord(registry?.children);
+  if (!root || !rootChildren || !registry || !registryState) return snapshot;
+
+  const nextRegistryState = { ...registryState };
+  const take = (name: string) => {
+    const value = nextRegistryState[name];
+    delete nextRegistryState[name];
+    return value;
+  };
+  const stagedSessionIds = take("stagedSessionIds");
+  const stagedSessionId = Schema.decodeUnknownResult(Schema.String)(take("stagedSessionId"));
+  const pendingState = {
+    unlistedNewSessionIds: take("unlistedNewSessionIds") ?? [],
+    configurationsBySession: take("pendingConfigurationsBySession") ?? {},
+    namesBySession: take("pendingNamesBySession") ?? {},
+    draftsBySession: take("draftSessionsById") ?? {},
+    temporarySessionIds: take("temporarySessionIds") ?? [],
+    summaryMetadataBySession: take("pendingSummaryMetadataBySession") ?? {},
+    stagedSessionIds:
+      stagedSessionIds ?? (stagedSessionId._tag === "Success" ? [stagedSessionId.success] : []),
+  };
+  const observationState = {
+    materializedSessionIds: take("materializedSessionIds") ?? [],
+  };
+  return {
+    ...root,
+    children: {
+      ...rootChildren,
+      sessionRegistry: {
+        ...registry,
+        state: nextRegistryState,
+        children: {
+          ...registryChildren,
+          pendingSessions: { state: pendingState, children: {} },
+          observationRetention: { state: observationState, children: {} },
+        },
+      },
+    },
+  };
+};
+
 const migrateLegacyWindowState = Effect.fn("WindowStateStorage.migrateLegacy")(function* (
   legacy: LegacyWindowState,
 ) {
@@ -534,7 +581,7 @@ const migrateLegacyWindowState = Effect.fn("WindowStateStorage.migrateLegacy")(f
   ).pipe(
     Effect.mapError((cause) => new WindowStateMalformedDocumentError({ message: cause.message })),
   );
-  return migrateVersion3WindowState(decoded);
+  return migrateVersion4WindowState(migrateVersion3WindowState(decoded));
 });
 
 export const makeWindowStateStorageLive = (userDataDirectory: string) =>
@@ -580,14 +627,21 @@ export const makeWindowStateStorageLive = (userDataDirectory: string) =>
           if (envelope.success.version === WINDOW_STATE_DOCUMENT_VERSION)
             return envelope.success.data;
           if (envelope.success.version === 2) {
-            const migrated = migrateVersion3WindowState(
-              migrateVersion2WindowState(envelope.success.data),
+            const migrated = migrateVersion4WindowState(
+              migrateVersion3WindowState(migrateVersion2WindowState(envelope.success.data)),
             );
             yield* saveUnlocked(migrated);
             return migrated;
           }
           if (envelope.success.version === 3) {
-            const migrated = migrateVersion3WindowState(envelope.success.data);
+            const migrated = migrateVersion4WindowState(
+              migrateVersion3WindowState(envelope.success.data),
+            );
+            yield* saveUnlocked(migrated);
+            return migrated;
+          }
+          if (envelope.success.version === 4) {
+            const migrated = migrateVersion4WindowState(envelope.success.data);
             yield* saveUnlocked(migrated);
             return migrated;
           }

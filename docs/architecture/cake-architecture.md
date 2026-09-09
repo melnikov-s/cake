@@ -381,14 +381,19 @@ The window Store hierarchy mirrors the product surfaces:
   state and lifetime; the workbench does not re-export one-for-one child APIs.
 - The root-scoped `SessionRegistryStore` preserves one keyed
   `ProjectSessionStore` for every loaded project-session ID so background
-  project events and navigation share session identity. Persisted loaded-session
-  identity does not create transcript observation demand after restart. The selected
-  session and every session running in the current process are pinned for observation;
-  up to 20 additional idle sessions remain observed in a process-local LRU. Selecting,
+  project events and navigation share session identity. It owns target identity,
+  keyed creation and lookup, and Session-ID/Working-Directory collision protection.
+  Its `SessionObservationRetentionStore` child owns the process-local materialized
+  set, selected/running/visible pins, and 20-session idle LRU. Persisted loaded-session
+  identity does not create transcript observation demand after restart. Selecting,
   opening, or starting a session refreshes that retention, and eviction stops its live
-  observation while preserving its loaded Store and Model for later reuse. Each
-  visible split pane may contain an unsent, unsaved project chat. It is staged
-  renderer state, not a session: it does not enter Pi's session catalog, and choosing
+  observation while preserving its loaded Store and Model for later reuse. Its
+  `ProjectPendingSessionsStore` child owns window-persisted pending names and
+  configurations, staged and temporary membership, saved prompts and attachments,
+  pending catalog summaries, materialization transitions, and relocation while a
+  Working Directory is chosen. Each visible split pane may contain an unsent, unsaved
+  project chat. It is staged renderer state, not a session: it does not enter Pi's
+  session catalog, and choosing
   New Chat while that pane is focused reopens its composer with its text, attachments,
   configuration, and Working Directory intact. Cake persists staged pane input
   continuously in window state.
@@ -491,6 +496,8 @@ flowchart TD
   Workbench -. selects from .-> Registry
   Root --> Layout["SessionLayoutStore"]
   Workbench --> IDE["EmbeddedEditorStore"]
+  Registry --> PendingSessions["ProjectPendingSessionsStore"]
+  Registry --> ObservationRetention["SessionObservationRetentionStore"]
   Registry --> Session["ProjectSessionStore (one per loaded target)"]
   Session --> Model["Session"]
   Session --> Composer["ConversationComposerStore"]

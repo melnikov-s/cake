@@ -54,8 +54,10 @@ function fixture(options?: {
   const activateDraft = vi.fn(async () => true);
   const registry = {
     findSession: () => ({ chatStore: { activateDraft }, model: {} }),
-    pendingConfiguration: () => undefined,
-    draftSessionPrompt: () => ({ text: "Build a Kanban board", attachments: [], resolved: false }),
+    pendingSessions: {
+      configuration: () => undefined,
+      draftPrompt: () => ({ text: "Build a Kanban board", attachments: [], resolved: false }),
+    },
   } as unknown as SessionRegistryStore;
   const catalog = {
     find: (sessionId: string) => (sessionId === session.sessionId ? session : undefined),

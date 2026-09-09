@@ -158,7 +158,7 @@ describe("Project Session catalog to sidebar synchronization", () => {
         state: "active",
         createdAt: "2026-01-01T00:00:00.000Z",
       });
-      root.sessionRegistry.relocateTemporarySession(firstId, worktreePath);
+      root.sessionRegistry.pendingSessions.relocate(firstId, worktreePath);
       await root.openSession(firstId);
     });
     expect(root.sessionCatalogStore.find(firstId)?.projectPath).toBe(projectPath);
@@ -171,7 +171,7 @@ describe("Project Session catalog to sidebar synchronization", () => {
         .composerStore.activateDraftSession({ kind: "current" });
       await Promise.resolve();
     });
-    expect(root.sessionRegistry.isDraftSession(firstId)).toBe(false);
+    expect(root.sessionRegistry.pendingSessions.isDraft(firstId)).toBe(false);
     expect(row()).toHaveLength(1);
 
     await act(async () => {

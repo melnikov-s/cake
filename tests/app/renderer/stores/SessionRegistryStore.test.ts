@@ -1,4 +1,4 @@
-import { applySnapshot, createStore, mount, type StoreSnapshot } from "r-state-tree";
+import { applySnapshot, createStore, mount, toSnapshot, type StoreSnapshot } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
 import { SessionCatalog } from "../../../../src/renderer/models/SessionCatalog";
 import { SessionSummary } from "../../../../src/renderer/models/SessionSummary";
@@ -17,7 +17,7 @@ function registryFixture(
   const catalog = mount(
     createStore(SessionCatalogStore, {
       model: catalogModel,
-      pendingSessions: () => registryRef.current?.pendingSummaries ?? [],
+      pendingSessions: () => registryRef.current?.pendingSessions.summaries ?? [],
     }),
   );
   const operations = mount(createStore(SessionOperationCoordinatorStore));
@@ -62,11 +62,61 @@ function registryFixture(
 }
 
 describe("SessionRegistryStore materialization", () => {
+  it("preserves keyed identity and rejects a conflicting Working Directory", () => {
+    const fixture = registryFixture();
+    const first = fixture.registry.load("session-1", "/project");
+
+    expect(fixture.registry.load("session-1", "/project")).toBe(first);
+    expect(() => fixture.registry.load("session-1", "/other-project")).toThrow(
+      "Session ID collision detected: session-1",
+    );
+    expect(fixture.registry.findSession("session-1")).toBe(first);
+
+    fixture.dispose();
+  });
+
+  it("restores pending lifecycles and keyed loaded Store state from a window snapshot", async () => {
+    const fixture = registryFixture();
+    const staged = fixture.registry.pendingSessions.prepareStaged("/project", "staged");
+    staged.composerStore.draftStore.setText("Keep staged input");
+    fixture.registry.pendingSessions.prepare("/project", "draft");
+    fixture.registry.pendingSessions.setName("draft", "Saved draft");
+    fixture.registry.pendingSessions.setConfiguration("draft", {
+      provider: "openai",
+      modelId: "gpt-5",
+      thinkingLevel: "high",
+      fastMode: false,
+    });
+    await fixture.registry.pendingSessions.createDraft("draft", "Do this later", []);
+    const snapshot = toSnapshot(fixture.registry);
+    fixture.dispose();
+
+    const restored = registryFixture(snapshot);
+    const restoredStaged = restored.registry.findSession("staged")!;
+    const restoredDraft = restored.registry.findSession("draft")!;
+
+    expect(restored.registry.pendingSessions.isStaged("staged")).toBe(true);
+    expect(restoredStaged.composerStore.draftStore.text).toBe("Keep staged input");
+    expect(restored.registry.pendingSessions.isDraft("draft")).toBe(true);
+    expect(restored.registry.pendingSessions.draftPrompt("draft")?.text).toBe("Do this later");
+    expect(restored.registry.pendingSessions.name("draft")).toBe("Saved draft");
+    expect(restored.registry.pendingSessions.configuration("draft")).toMatchObject({
+      provider: "openai",
+      modelId: "gpt-5",
+      thinkingLevel: "high",
+      fastMode: false,
+    });
+    expect(restored.registry.findSession("staged")).toBe(restoredStaged);
+    expect(restored.registry.findSession("draft")).toBe(restoredDraft);
+
+    restored.dispose();
+  });
+
   it("routes stop to the session that owns the chat control", async () => {
     const abort = vi.fn(async () => undefined);
     const fixture = registryFixture(undefined, () => true, abort);
-    const parent = fixture.registry.prepareNewSession("/project", "parent");
-    const child = fixture.registry.prepareNewSession("/project", "child");
+    const parent = fixture.registry.pendingSessions.prepare("/project", "parent");
+    const child = fixture.registry.pendingSessions.prepare("/project", "child");
     parent.model.streaming = true;
     child.model.streaming = true;
 
@@ -78,16 +128,16 @@ describe("SessionRegistryStore materialization", () => {
 
   it("retains independent staged chats for multiple panes", () => {
     const fixture = registryFixture();
-    const first = fixture.registry.prepareStagedSession("/project", "staged-1");
-    const second = fixture.registry.prepareStagedSession("/project", "staged-2");
+    const first = fixture.registry.pendingSessions.prepareStaged("/project", "staged-1");
+    const second = fixture.registry.pendingSessions.prepareStaged("/project", "staged-2");
 
     expect(first).not.toBe(second);
-    expect(fixture.registry.isStagedSession("staged-1")).toBe(true);
-    expect(fixture.registry.isStagedSession("staged-2")).toBe(true);
+    expect(fixture.registry.pendingSessions.isStaged("staged-1")).toBe(true);
+    expect(fixture.registry.pendingSessions.isStaged("staged-2")).toBe(true);
 
     fixture.registry.removeSession("staged-1");
-    expect(fixture.registry.isStagedSession("staged-1")).toBe(false);
-    expect(fixture.registry.isStagedSession("staged-2")).toBe(true);
+    expect(fixture.registry.pendingSessions.isStaged("staged-1")).toBe(false);
+    expect(fixture.registry.pendingSessions.isStaged("staged-2")).toBe(true);
 
     fixture.dispose();
   });
@@ -96,10 +146,10 @@ describe("SessionRegistryStore materialization", () => {
     const fixture = registryFixture();
     const { registry } = fixture;
 
-    const stagedSession = registry.prepareNewSession("/project", "session-1");
-    registry.relocateTemporarySession("session-1", "/worktree");
+    const stagedSession = registry.pendingSessions.prepare("/project", "session-1");
+    registry.pendingSessions.relocate("session-1", "/worktree");
 
-    expect(registry.observationSessions).toEqual([]);
+    expect(registry.observationRetention.sessions).toEqual([]);
     expect(registry.findSession("session-1")).toBe(stagedSession);
     expect(stagedSession.workspacePath).toBe("/worktree");
 
@@ -107,17 +157,17 @@ describe("SessionRegistryStore materialization", () => {
       registry.findSession("session-1")!.stagedCommandStore,
       "invalidate",
     );
-    const materializedSession = registry.materializeNewSession("session-1", "/worktree");
+    const materializedSession = registry.pendingSessions.materialize("session-1", "/worktree");
 
     expect(materializedSession).toBe(stagedSession);
     expect(invalidate).toHaveBeenCalledOnce();
-    expect(registry.isTemporarySession("session-1")).toBe(false);
-    expect(registry.observationSessions).toHaveLength(1);
-    expect(registry.observationSessions[0]?.workspacePath).toBe("/worktree");
+    expect(registry.pendingSessions.isTemporary("session-1")).toBe(false);
+    expect(registry.observationRetention.sessions).toHaveLength(1);
+    expect(registry.observationRetention.sessions[0]?.workspacePath).toBe("/worktree");
     expect(fixture.catalog.find("session-1")?.workingDirectory).toBe("/worktree");
 
-    const session = registry.observationSessions[0]!;
-    const otherSession = registry.prepareNewSession("/project", "session-2");
+    const session = registry.observationRetention.sessions[0]!;
+    const otherSession = registry.pendingSessions.prepare("/project", "session-2");
     session.enterIde();
     session.toggleIdeChatSidebar();
     session.setIdeChatSidebarWidth(512);
@@ -170,9 +220,9 @@ describe("SessionRegistryStore materialization", () => {
       familyChildOrder: 1,
       pending: true,
     });
-    expect(fixture.registry.observationSessions.map((session) => session.sessionId)).toEqual([
-      "child",
-    ]);
+    expect(
+      fixture.registry.observationRetention.sessions.map((session) => session.sessionId),
+    ).toEqual(["child"]);
 
     fixture.dispose();
   });
@@ -180,9 +230,9 @@ describe("SessionRegistryStore materialization", () => {
   it("clears the pending summary when authority arrives after materialization", () => {
     const fixture = registryFixture();
     const { catalogModel, registry } = fixture;
-    registry.prepareNewSession("/project", "session-1");
-    registry.projectNewSessionSubmission("session-1", "Newest session");
-    registry.materializeNewSession("session-1", "/project");
+    registry.pendingSessions.prepare("/project", "session-1");
+    registry.pendingSessions.projectSubmission("session-1", "Newest session");
+    registry.pendingSessions.materialize("session-1", "/project");
     expect(fixture.catalog.find("session-1")).toMatchObject({ pending: true });
 
     catalogModel.sessions.push(
@@ -208,8 +258,8 @@ describe("SessionRegistryStore materialization", () => {
   it("does not retain a hidden pending summary when authority wins before materialization", () => {
     const fixture = registryFixture();
     const { catalogModel, registry } = fixture;
-    registry.prepareNewSession("/project", "session-1");
-    registry.projectNewSessionSubmission("session-1", "Newest session");
+    registry.pendingSessions.prepare("/project", "session-1");
+    registry.pendingSessions.projectSubmission("session-1", "Newest session");
     catalogModel.sessions.push(
       SessionSummary.create({
         sessionId: "session-1",
@@ -225,7 +275,7 @@ describe("SessionRegistryStore materialization", () => {
       }),
     );
 
-    registry.materializeNewSession("session-1", "/project");
+    registry.pendingSessions.materialize("session-1", "/project");
     applySnapshot(catalogModel, { sessions: [] });
 
     expect(fixture.catalog.sessions).toEqual([]);
@@ -235,13 +285,13 @@ describe("SessionRegistryStore materialization", () => {
   it("deletes a resolved draft from renderer-owned state", async () => {
     const fixture = registryFixture();
     const { registry } = fixture;
-    registry.prepareNewSession("/project", "draft-1");
-    await registry.createDraftSession("draft-1", "Planned work", []);
-    registry.setDraftSessionResolved("draft-1", true);
+    registry.pendingSessions.prepare("/project", "draft-1");
+    await registry.pendingSessions.createDraft("draft-1", "Planned work", []);
+    registry.pendingSessions.setDraftResolved("draft-1", true);
 
-    await expect(registry.deleteResolvedDraftSession("draft-1")).resolves.toBe(true);
+    await expect(registry.pendingSessions.deleteResolvedDraft("draft-1")).resolves.toBe(true);
 
-    expect(registry.isDraftSession("draft-1")).toBe(false);
+    expect(registry.pendingSessions.isDraft("draft-1")).toBe(false);
     expect(fixture.catalog.find("draft-1")).toBeUndefined();
     fixture.dispose();
   });
@@ -253,17 +303,21 @@ describe("SessionRegistryStore materialization", () => {
           { sessionId: "session-1", workspacePath: "/project" },
           { sessionId: "session-2", workspacePath: "/project" },
         ],
-        materializedSessionIds: ["session-1", "session-2"],
       },
-      children: {},
+      children: {
+        observationRetention: {
+          state: { materializedSessionIds: ["session-1", "session-2"] },
+          children: {},
+        },
+      },
     });
 
-    expect(fixture.registry.observationSessions).toEqual([]);
+    expect(fixture.registry.observationRetention.sessions).toEqual([]);
 
-    fixture.registry.retainObservation("session-2");
-    expect(fixture.registry.observationSessions.map((session) => session.sessionId)).toEqual([
-      "session-2",
-    ]);
+    fixture.registry.observationRetention.retain("session-2");
+    expect(
+      fixture.registry.observationRetention.sessions.map((session) => session.sessionId),
+    ).toEqual(["session-2"]);
 
     fixture.dispose();
   });
@@ -285,9 +339,9 @@ describe("SessionRegistryStore materialization", () => {
 
     fixture.registry.load("resolved-session", "/project");
 
-    expect(fixture.registry.observationSessions.map((session) => session.sessionId)).toEqual([
-      "resolved-session",
-    ]);
+    expect(
+      fixture.registry.observationRetention.sessions.map((session) => session.sessionId),
+    ).toEqual(["resolved-session"]);
 
     fixture.dispose();
   });
@@ -300,16 +354,20 @@ describe("SessionRegistryStore materialization", () => {
             { sessionId: "session-1", workspacePath: "/project" },
             { sessionId: "session-2", workspacePath: "/project" },
           ],
-          materializedSessionIds: ["session-1", "session-2"],
         },
-        children: {},
+        children: {
+          observationRetention: {
+            state: { materializedSessionIds: ["session-1", "session-2"] },
+            children: {},
+          },
+        },
       },
       (sessionId) => sessionId === "session-1",
     );
 
-    expect(fixture.registry.observationSessions.map((session) => session.sessionId)).toEqual([
-      "session-1",
-    ]);
+    expect(
+      fixture.registry.observationRetention.sessions.map((session) => session.sessionId),
+    ).toEqual(["session-1"]);
 
     fixture.dispose();
   });
@@ -322,18 +380,18 @@ describe("SessionRegistryStore materialization", () => {
 
     for (let index = 0; index < 21; index += 1) registry.load(`idle-${index}`, "/project");
 
-    expect(registry.observationSessions).toHaveLength(21);
-    expect(registry.observationSessions).toContain(running);
-    expect(registry.observationSessions.map((session) => session.sessionId)).not.toContain(
-      "idle-0",
-    );
+    expect(registry.observationRetention.sessions).toHaveLength(21);
+    expect(registry.observationRetention.sessions).toContain(running);
+    expect(
+      registry.observationRetention.sessions.map((session) => session.sessionId),
+    ).not.toContain("idle-0");
 
     running.model.streaming = false;
-    expect(registry.observationSessions).toHaveLength(20);
-    expect(registry.observationSessions).toContain(running);
-    expect(registry.observationSessions.map((session) => session.sessionId)).not.toContain(
-      "idle-1",
-    );
+    expect(registry.observationRetention.sessions).toHaveLength(20);
+    expect(registry.observationRetention.sessions).toContain(running);
+    expect(
+      registry.observationRetention.sessions.map((session) => session.sessionId),
+    ).not.toContain("idle-1");
 
     fixture.dispose();
   });

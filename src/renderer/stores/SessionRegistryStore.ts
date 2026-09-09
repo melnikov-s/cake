@@ -1,21 +1,15 @@
 import { Store, batch, child, createStore, observable, snapshot, updateStore } from "r-state-tree";
-import {
-  SESSION_TITLE_MAX_LENGTH,
-  type Attachment,
-  type ChatConfiguration,
-  type ModelPreset,
-} from "../../ipc/session-contract";
-import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
+import type { ChatConfiguration, ModelPreset } from "../../ipc/session-contract";
+import type { Session } from "../models/Session";
+import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
+import { ProjectPendingSessionsStore } from "./ProjectPendingSessionsStore";
+import { ProjectSessionStore, type SessionTarget } from "./ProjectSessionStore";
 import type { ReviewsStore } from "./ReviewsStore";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
-import type { PendingSessionSummary } from "./SessionCatalogStore";
-import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
-import { ProjectSessionStore, type SessionTarget } from "./ProjectSessionStore";
+import { SessionObservationRetentionStore } from "./SessionObservationRetentionStore";
+import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { WorktreeStoreProps } from "./WorktreeStore";
 import type { ExistingWorktreeCandidate, WorktreeDraftChoice } from "./WorktreeCreationStore";
-import type { Session } from "../models/Session";
-
-const IDLE_OBSERVATION_LIMIT = 20;
 
 export interface SessionRegistryStoreProps {
   catalog?: SessionCatalogStore;
@@ -27,7 +21,7 @@ export interface SessionRegistryStoreProps {
   isVisible?(sessionId: string): boolean;
   openCommandPane(pane: "changelog" | "tree" | "resources"): Promise<void>;
   persistNow(): Promise<void>;
-  projectName(workspacePath: string): string;
+  projectName(workingDirectory: string): string;
   abort(sessionId: string): Promise<void>;
   renameSession(sessionId: string, name: string): Promise<void>;
   handoffSession(entryId: string, prompt?: string, resolveSource?: boolean): Promise<boolean>;
@@ -47,40 +41,36 @@ export interface SessionRegistryStoreProps {
   settings?(): AppearanceSettingsStore | undefined;
 }
 
-/** Owns the keyed collection of loaded per-session Store instances for a window. */
+/** Owns the keyed collection and stable identity of loaded Project Session Stores for a window. */
 export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
   @snapshot readonly targets: SessionTarget[] = observable([]);
-  // Pi may take time to include a newly started session in its disk-backed listing.
-  // Retain all such sessions independently from unsent renderer-owned sessions.
-  @snapshot private readonly unlistedNewSessionIds: string[] = observable([]);
-  @snapshot private readonly materializedSessionIds: string[] = observable([]);
-  // A deferred new session has no runtime yet, so configuration changes are kept
-  // locally and delivered with the first prompt instead of runtime commands.
-  @snapshot private readonly pendingConfigurationsBySession: Record<string, ChatConfiguration> =
-    observable({});
-  @snapshot private readonly pendingNamesBySession: Record<string, string> = observable({});
-  @snapshot private readonly draftSessionsById: Record<
-    string,
-    { text: string; attachments: Attachment[]; resolved: boolean }
-  > = observable({});
-  @snapshot private readonly temporarySessionIds: string[] = observable([]);
-  @snapshot private readonly pendingSummaryMetadataBySession: Record<
-    string,
-    {
-      fallbackTitle?: string;
-      createdAt: string;
-      modifiedAt: string;
-      familyId?: string;
-      familyParentSessionId?: string;
-      familyChildOrder?: number;
-    }
-  > = observable({});
-  /** Unsent, unsaved project chats retained by independent session panes. */
-  @snapshot private readonly stagedSessionIds: string[] = observable([]);
   private readonly sessionsById = new Map<string, ProjectSessionStore>();
-  private readonly submittingSessionIds: string[] = observable([]);
-  /** Process-local LRU. Selected and running sessions are pinned outside this idle budget. */
-  private readonly recentObservationSessionIds: string[] = observable([]);
+
+  @child
+  get pendingSessions(): ProjectPendingSessionsStore {
+    return createStore(ProjectPendingSessionsStore, {
+      catalog: this.props.catalog,
+      session: (sessionId) => this.findSession(sessionId),
+      prepareIdentity: (sessionId, workingDirectory) =>
+        this.prepareIdentity(sessionId, workingDirectory),
+      relocateIdentity: (sessionId, workingDirectory) =>
+        this.relocateIdentity(sessionId, workingDirectory),
+      materializeIdentity: (sessionId, workingDirectory) =>
+        this.materializeIdentity(sessionId, workingDirectory),
+      removeSession: (sessionId) => this.removeSession(sessionId),
+      persistNow: this.props.persistNow,
+      projectName: this.props.projectName,
+    });
+  }
+
+  @child
+  get observationRetention(): SessionObservationRetentionStore {
+    return createStore(SessionObservationRetentionStore, {
+      sessions: () => this.sessions,
+      isActive: this.props.isActive,
+      isVisible: this.props.isVisible,
+    });
+  }
 
   @child
   get sessions(): ProjectSessionStore[] {
@@ -89,17 +79,16 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
         key: target.sessionId,
         ...target,
         model: this.props.sessionModel(target.sessionId, target.workspacePath),
-        registry: this,
+        pendingSessions: this.pendingSessions,
         operations: this.props.operations,
         reviews: this.props.reviews,
         canSubmit: () => this.props.canSubmit(target.sessionId),
         isActive: () => this.props.isActive(target.sessionId),
-        openCommandPane: (pane) => this.props.openCommandPane(pane),
+        openCommandPane: this.props.openCommandPane,
         projectName: () => this.props.projectName(target.workspacePath),
         abort: () => this.props.abort(target.sessionId),
         renameSession: (name) => this.props.renameSession(target.sessionId, name),
-        handoffSession: (entryId, prompt, resolveSource) =>
-          this.props.handoffSession(entryId, prompt, resolveSource),
+        handoffSession: this.props.handoffSession,
         modelPresets: () => this.props.modelPresets?.() ?? [],
         openModelPresetSettings: () => this.props.openModelPresetSettings?.(),
         newSessionRequest: () => this.props.newSessionRequest?.(target.sessionId),
@@ -134,10 +123,8 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
   }
 
   load(sessionId: string, workingDirectory: string) {
-    this.rememberSessionLocation(sessionId, workingDirectory);
-    const session = this.addTarget(sessionId, workingDirectory);
-    addUnique(this.materializedSessionIds, sessionId);
-    this.retainObservation(sessionId);
+    const session = this.prepareIdentity(sessionId, workingDirectory);
+    this.observationRetention.materialize(sessionId);
     return session;
   }
 
@@ -150,379 +137,49 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
   ) {
     return batch(() => {
       const session = this.load(sessionId, workingDirectory);
-      const now = new Date().toISOString();
-      const current = this.pendingSummaryMetadataBySession[sessionId];
-      this.pendingNamesBySession[sessionId] = title;
-      this.pendingSummaryMetadataBySession[sessionId] = {
-        createdAt: current?.createdAt ?? now,
-        modifiedAt: now,
-        fallbackTitle: title,
-        familyId: family.familyId,
-        familyParentSessionId: family.parentSessionId,
-        familyChildOrder: family.childOrder,
-      };
-      addUnique(this.unlistedNewSessionIds, sessionId);
+      this.pendingSessions.trackUnlistedFamilySession(sessionId, title, family);
       return session;
     });
-  }
-
-  /** Project Sessions whose transcript projections should remain synchronized. */
-  get observationSessions() {
-    const recent = new Set(this.recentObservationSessionIds);
-    return this.sessions.filter(
-      (session) =>
-        this.isObservableSession(session) &&
-        (recent.has(session.sessionId) ||
-          this.props.isActive(session.sessionId) ||
-          this.props.isVisible?.(session.sessionId) ||
-          this.isRunning(session)),
-    );
-  }
-
-  /** Marks a user-visible or newly started session as most recently used. */
-  retainObservation(sessionId: string) {
-    if (!this.materializedSessionIds.includes(sessionId)) return;
-    this.touchObservationLru(sessionId);
-    this.trimObservationLru();
-  }
-
-  get pendingSummaries(): readonly PendingSessionSummary[] {
-    const visibleIds = new Set([
-      ...Object.keys(this.draftSessionsById),
-      ...this.submittingSessionIds,
-      ...this.unlistedNewSessionIds,
-    ]);
-    return [...visibleIds].flatMap((sessionId) => {
-      const target = this.targets.find((candidate) => candidate.sessionId === sessionId);
-      if (!target) return [];
-      const draft = this.draftSessionsById[sessionId];
-      const metadata = this.pendingSummaryMetadataBySession[sessionId];
-      const managedWorktree = this.props.catalog?.managedWorktree(target.workspacePath);
-      const projectPath = managedWorktree?.projectPath ?? target.workspacePath;
-      const epoch = "1970-01-01T00:00:00.000Z";
-      return [
-        {
-          sessionId,
-          title: this.pendingNamesBySession[sessionId] ?? metadata?.fallbackTitle ?? "New chat",
-          createdAt: metadata?.createdAt ?? epoch,
-          modifiedAt: metadata?.modifiedAt ?? epoch,
-          messageCount: draft ? 0 : 1,
-          resolved: draft?.resolved ?? false,
-          unread: false,
-          projectPath,
-          projectName: this.props.projectName(projectPath),
-          workingDirectory: target.workspacePath,
-          managedWorktree,
-          ...(metadata?.familyId !== undefined ? { familyId: metadata.familyId } : null),
-          ...(metadata?.familyParentSessionId !== undefined
-            ? { familyParentSessionId: metadata.familyParentSessionId }
-            : null),
-          ...(metadata?.familyChildOrder !== undefined
-            ? { familyChildOrder: metadata.familyChildOrder }
-            : null),
-          pending: true as const,
-          draft: draft !== undefined,
-        },
-      ];
-    });
-  }
-
-  /** Atomically transitions one successfully started renderer draft into an observed Pi Session. */
-  materializeNewSession(sessionId: string, workingDirectory: string) {
-    if (!this.temporarySessionIds.includes(sessionId))
-      throw new Error("Only a successfully started renderer draft can be materialized.");
-    return batch(() => {
-      this.findSession(sessionId)?.stagedCommandStore.invalidate();
-      this.rememberSessionLocation(sessionId, workingDirectory);
-      const session = this.addTarget(sessionId, workingDirectory);
-      addUnique(this.materializedSessionIds, sessionId);
-      this.retainObservation(sessionId);
-      removeValue(this.temporarySessionIds, sessionId);
-      removeValue(this.submittingSessionIds, sessionId);
-      removeValue(this.stagedSessionIds, sessionId);
-      delete this.pendingConfigurationsBySession[sessionId];
-      delete this.draftSessionsById[sessionId];
-      if (this.props.catalog?.authoritativeSessionIds.includes(sessionId))
-        this.clearPendingSummary(sessionId);
-      else addUnique(this.unlistedNewSessionIds, sessionId);
-      return session;
-    });
-  }
-
-  /** Publishes the first-message projection before Pi creates its authoritative session. */
-  projectNewSessionSubmission(sessionId: string, text: string) {
-    if (!this.temporarySessionIds.includes(sessionId)) return;
-    if (!this.targets.some((target) => target.sessionId === sessionId)) return;
-    const title = text.trim().slice(0, SESSION_TITLE_MAX_LENGTH) || "New chat";
-    addUnique(this.submittingSessionIds, sessionId);
-    this.updatePendingSummaryMetadata(sessionId, title);
-  }
-
-  cancelNewSessionSubmission(sessionId: string) {
-    removeValue(this.submittingSessionIds, sessionId);
-  }
-
-  prepareNewSession(workspacePath: string, sessionId: string) {
-    this.rememberSessionLocation(sessionId, workspacePath);
-    const session = this.addTarget(sessionId, workspacePath);
-    addUnique(this.temporarySessionIds, sessionId);
-    return session;
-  }
-
-  prepareStagedSession(workspacePath: string, sessionId: string) {
-    const session = this.prepareNewSession(workspacePath, sessionId);
-    addUnique(this.stagedSessionIds, sessionId);
-    return session;
-  }
-
-  isStagedSession(sessionId: string) {
-    return this.stagedSessionIds.includes(sessionId);
-  }
-
-  isTemporarySession(sessionId: string) {
-    return this.temporarySessionIds.includes(sessionId);
-  }
-
-  isDraftSession(sessionId: string) {
-    return this.draftSessionsById[sessionId] !== undefined;
-  }
-
-  draftSessionPrompt(sessionId: string) {
-    return this.draftSessionsById[sessionId];
-  }
-
-  async createDraftSession(sessionId: string, text: string, attachments: Attachment[]) {
-    if (!this.temporarySessionIds.includes(sessionId))
-      throw new Error("Only a new session can be saved as a draft");
-    const session = this.findSession(sessionId)!;
-    const projectPath =
-      this.props.catalog?.projectOfManagedWorktree(session.workspacePath) ?? session.workspacePath;
-    this.relocateTemporarySession(sessionId, projectPath);
-    this.draftSessionsById[sessionId] = {
-      text,
-      attachments: attachments.map((attachment) => ({ ...attachment })),
-      resolved: false,
-    };
-    this.ensurePendingSummaryMetadata(sessionId);
-    removeValue(this.stagedSessionIds, sessionId);
-    await this.props.persistNow();
-  }
-
-  async updateDraftSession(sessionId: string, text: string, attachments: Attachment[]) {
-    const current = this.draftSessionsById[sessionId];
-    if (!current) throw new Error("Cake could not find that draft session");
-    this.draftSessionsById[sessionId] = {
-      text,
-      attachments: attachments.map((attachment) => ({ ...attachment })),
-      resolved: current.resolved,
-    };
-    await this.props.persistNow();
-  }
-
-  activateDraftSession(sessionId: string) {
-    const current = this.draftSessionsById[sessionId];
-    if (!current) return undefined;
-    delete this.draftSessionsById[sessionId];
-    this.touchPendingSummary(sessionId);
-    return current;
-  }
-
-  setDraftSessionResolved(sessionId: string, resolved: boolean) {
-    const current = this.draftSessionsById[sessionId];
-    if (!current) return false;
-    this.draftSessionsById[sessionId] = { ...current, resolved };
-    this.touchPendingSummary(sessionId);
-    return true;
-  }
-
-  async deleteResolvedDraftSession(sessionId: string) {
-    if (!this.draftSessionsById[sessionId]?.resolved) return false;
-    this.removeSession(sessionId);
-    await this.props.persistNow();
-    return true;
-  }
-
-  relocateTemporarySession(sessionId: string, workspacePath: string) {
-    if (!this.temporarySessionIds.includes(sessionId))
-      throw new Error("Only an unsent session can choose another worktree.");
-    const session = this.findSession(sessionId);
-    const index = this.targets.findIndex((target) => target.sessionId === sessionId);
-    if (!session || index < 0) throw new Error("Cake could not find that draft session.");
-    const previousPath = session.workspacePath;
-    if (previousPath === workspacePath) return;
-    this.targets.splice(index, 1, { sessionId, workspacePath });
-    updateStore(session, { ...session.props, workspacePath });
-    void session.stagedCommandStore.load(workspacePath);
-    if (this.isDraftSession(sessionId)) this.touchPendingSummary(sessionId);
-  }
-
-  pendingConfiguration(sessionId: string) {
-    return this.pendingConfigurationsBySession[sessionId];
-  }
-
-  pendingName(sessionId: string) {
-    return this.pendingNamesBySession[sessionId];
-  }
-
-  setPendingName(sessionId: string, name: string) {
-    if (!this.temporarySessionIds.includes(sessionId))
-      throw new Error("Only an unsent session can receive an initial name.");
-    this.pendingNamesBySession[sessionId] = name.trim().slice(0, SESSION_TITLE_MAX_LENGTH);
-    this.touchPendingSummary(sessionId);
-  }
-
-  applyGeneratedDraftName(sessionId: string, name: string) {
-    if (!this.isDraftSession(sessionId) || this.pendingNamesBySession[sessionId]) return;
-    this.setPendingName(sessionId, name);
-  }
-
-  setPendingConfiguration(sessionId: string, configuration: ChatConfiguration) {
-    this.pendingConfigurationsBySession[sessionId] = configuration;
   }
 
   removeSession(sessionId: string) {
     const index = this.targets.findIndex((target) => target.sessionId === sessionId);
     if (index >= 0) this.targets.splice(index, 1);
     this.sessionsById.delete(sessionId);
-    removeValue(this.temporarySessionIds, sessionId);
-    removeValue(this.stagedSessionIds, sessionId);
-    removeValue(this.unlistedNewSessionIds, sessionId);
-    removeValue(this.materializedSessionIds, sessionId);
-    removeValue(this.recentObservationSessionIds, sessionId);
-    delete this.pendingConfigurationsBySession[sessionId];
-    delete this.pendingNamesBySession[sessionId];
-    delete this.draftSessionsById[sessionId];
-    delete this.pendingSummaryMetadataBySession[sessionId];
-    removeValue(this.submittingSessionIds, sessionId);
+    this.pendingSessions.remove(sessionId);
+    this.observationRetention.remove(sessionId);
   }
 
-  private isRunning(session: ProjectSessionStore) {
-    return (
-      session.model.streaming ||
-      session.model.activeTurnIds.length > 0 ||
-      session.model.backgroundWorkActive
-    );
-  }
-
-  private isObservableSession(session: ProjectSessionStore) {
-    return this.materializedSessionIds.includes(session.sessionId);
-  }
-
-  private touchObservationLru(sessionId: string) {
-    removeValue(this.recentObservationSessionIds, sessionId);
-    this.recentObservationSessionIds.push(sessionId);
-  }
-
-  private trimObservationLru() {
-    for (let index = this.recentObservationSessionIds.length - 1; index >= 0; index -= 1) {
-      const sessionId = this.recentObservationSessionIds[index]!;
-      const session = this.findSession(sessionId);
-      if (session && this.isObservableSession(session)) continue;
-      this.recentObservationSessionIds.splice(index, 1);
-    }
-    const idleIds = this.recentObservationSessionIds.filter((sessionId) => {
-      const session = this.findSession(sessionId)!;
-      return (
-        !this.props.isActive(sessionId) &&
-        !this.props.isVisible?.(sessionId) &&
-        !this.isRunning(session)
-      );
-    });
-    while (idleIds.length > IDLE_OBSERVATION_LIMIT) {
-      const sessionId = idleIds.shift()!;
-      removeValue(this.recentObservationSessionIds, sessionId);
-    }
-  }
-
-  private addTarget(sessionId: string, workspacePath: string) {
+  private prepareIdentity(sessionId: string, workingDirectory: string) {
+    this.assertSessionLocation(sessionId, workingDirectory);
     const existing = this.findSession(sessionId);
     if (existing) return existing;
-    this.targets.push({ sessionId, workspacePath });
+    this.targets.push({ sessionId, workspacePath: workingDirectory });
     return this.findSession(sessionId)!;
   }
 
-  private rememberSessionLocation(sessionId: string, workspacePath: string) {
+  private materializeIdentity(sessionId: string, workingDirectory: string) {
+    this.assertSessionLocation(sessionId, workingDirectory);
+    const session = this.relocateIdentity(sessionId, workingDirectory);
+    this.observationRetention.materialize(sessionId);
+    return session;
+  }
+
+  private relocateIdentity(sessionId: string, workingDirectory: string) {
+    const session = this.findSession(sessionId);
+    const index = this.targets.findIndex((target) => target.sessionId === sessionId);
+    if (!session || index < 0) throw new Error("Cake could not find that draft session.");
+    if (session.workspacePath === workingDirectory) return session;
+    this.targets.splice(index, 1, { sessionId, workspacePath: workingDirectory });
+    updateStore(session, { ...session.props, workspacePath: workingDirectory });
+    return session;
+  }
+
+  private assertSessionLocation(sessionId: string, workingDirectory: string) {
     const prior =
       this.targets.find((target) => target.sessionId === sessionId)?.workspacePath ??
       this.props.catalog?.find(sessionId)?.workingDirectory;
-    if (prior && prior !== workspacePath)
+    if (prior && prior !== workingDirectory)
       throw new Error(`Session ID collision detected: ${sessionId}`);
   }
-
-  private ensurePendingSummaryMetadata(sessionId: string) {
-    if (this.pendingSummaryMetadataBySession[sessionId]) return;
-    const now = new Date().toISOString();
-    this.pendingSummaryMetadataBySession[sessionId] = { createdAt: now, modifiedAt: now };
-  }
-
-  private updatePendingSummaryMetadata(sessionId: string, fallbackTitle?: string) {
-    const current = this.pendingSummaryMetadataBySession[sessionId];
-    const now = new Date().toISOString();
-    this.pendingSummaryMetadataBySession[sessionId] = {
-      ...current,
-      createdAt: current?.createdAt ?? now,
-      modifiedAt: now,
-      fallbackTitle: fallbackTitle ?? current?.fallbackTitle,
-    };
-  }
-
-  private touchPendingSummary(sessionId: string) {
-    this.updatePendingSummaryMetadata(sessionId);
-  }
-
-  private clearPendingSummary(sessionId: string) {
-    removeValue(this.unlistedNewSessionIds, sessionId);
-    delete this.pendingNamesBySession[sessionId];
-    delete this.pendingSummaryMetadataBySession[sessionId];
-  }
-
-  private reconcileAuthoritativeSessions(sessionIds: readonly string[]) {
-    const authoritative = new Set(sessionIds);
-    for (let index = this.unlistedNewSessionIds.length - 1; index >= 0; index -= 1) {
-      const sessionId = this.unlistedNewSessionIds[index]!;
-      if (authoritative.has(sessionId)) this.clearPendingSummary(sessionId);
-    }
-  }
-
-  constructor(props: SessionRegistryStore["props"]) {
-    super(props);
-    this.reaction(
-      () => this.props.catalog?.authoritativeSessionIds ?? [],
-      (sessionIds) => this.reconcileAuthoritativeSessions(sessionIds),
-    );
-    this.reaction(
-      () =>
-        this.sessions.map((session) => ({
-          sessionId: session.sessionId,
-          active: this.props.isActive(session.sessionId),
-          running: this.isRunning(session),
-          resolved: this.props.catalog?.find(session.sessionId)?.resolved ?? false,
-        })),
-      (sessions, previousSessions) => {
-        const previousById = new Map(
-          previousSessions.map((session) => [session.sessionId, session]),
-        );
-        for (const session of sessions) {
-          const previous = previousById.get(session.sessionId);
-          if (
-            previous &&
-            ((previous.active && !session.active) || (previous.running && !session.running))
-          )
-            this.touchObservationLru(session.sessionId);
-        }
-        this.trimObservationLru();
-      },
-    );
-  }
-}
-
-function addUnique(values: string[], value: string) {
-  if (!values.includes(value)) values.push(value);
-}
-
-function removeValue(values: string[], value: string) {
-  const index = values.indexOf(value);
-  if (index < 0) return false;
-  values.splice(index, 1);
-  return true;
 }

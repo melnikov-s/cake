@@ -23,8 +23,8 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
   async renameSession(sessionId: string, name: string) {
     const title = name.trim().slice(0, SESSION_TITLE_MAX_LENGTH);
     if (!title || this.signal.aborted) return;
-    if (this.props.registry.isTemporarySession(sessionId)) {
-      this.props.registry.setPendingName(sessionId, title);
+    if (this.props.registry.pendingSessions.isTemporary(sessionId)) {
+      this.props.registry.pendingSessions.setName(sessionId, title);
       return;
     }
     const operationId = this.props.operations.start("project-workbench");
@@ -44,8 +44,8 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
     this.resolvingSessionIds.add(sessionId);
     try {
       if (this.signal.aborted) return false;
-      if (this.props.registry.setDraftSessionResolved(sessionId, resolved)) return true;
-      if (resolved && this.props.registry.isTemporarySession(sessionId)) {
+      if (this.props.registry.pendingSessions.setDraftResolved(sessionId, resolved)) return true;
+      if (resolved && this.props.registry.pendingSessions.isTemporary(sessionId)) {
         this.props.registry.removeSession(sessionId);
         return true;
       }
@@ -64,8 +64,8 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
   async deleteSession(sessionId: string) {
     if (!this.props.catalog.find(sessionId)?.resolved || this.signal.aborted) return;
     try {
-      if (this.props.registry.isDraftSession(sessionId)) {
-        await this.props.registry.deleteResolvedDraftSession(sessionId);
+      if (this.props.registry.pendingSessions.isDraft(sessionId)) {
+        await this.props.registry.pendingSessions.deleteResolvedDraft(sessionId);
         return;
       }
       await this.client.workspaces.deleteSession(sessionId, { signal: this.signal });

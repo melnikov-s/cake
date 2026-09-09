@@ -294,9 +294,11 @@ export const App = observer(function App() {
     />
   );
   const sessionIsTemporary = session
-    ? store.sessionRegistry.isTemporarySession(session.sessionId)
+    ? store.sessionRegistry.pendingSessions.isTemporary(session.sessionId)
     : false;
-  const sessionIsDraft = session ? store.sessionRegistry.isDraftSession(session.sessionId) : false;
+  const sessionIsDraft = session
+    ? store.sessionRegistry.pendingSessions.isDraft(session.sessionId)
+    : false;
   const worktreeConfigurationMode = sessionIsDraft
     ? session?.composerStore.pendingSessionDraftStore.editing
       ? "edit-draft"
@@ -377,7 +379,7 @@ export const App = observer(function App() {
           <TreeIcon />
           <span>Tree</span>
         </Button>
-        {!store.sessionRegistry.isTemporarySession(paneSession.sessionId) && (
+        {!store.sessionRegistry.pendingSessions.isTemporary(paneSession.sessionId) && (
           <Button
             className="h-7.5 shrink-0 gap-1.5 rounded-lg px-2 text-xs font-normal"
             variant="ghost"
@@ -408,8 +410,8 @@ export const App = observer(function App() {
     );
   };
   const projectChatProps = (paneSession: NonNullable<typeof session>) => {
-    const temporary = store.sessionRegistry.isTemporarySession(paneSession.sessionId);
-    const draft = store.sessionRegistry.isDraftSession(paneSession.sessionId);
+    const temporary = store.sessionRegistry.pendingSessions.isTemporary(paneSession.sessionId);
+    const draft = store.sessionRegistry.pendingSessions.isDraft(paneSession.sessionId);
     const configurationMode = draft
       ? paneSession.composerStore.pendingSessionDraftStore.editing
         ? "edit-draft"
