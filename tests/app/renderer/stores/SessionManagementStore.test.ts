@@ -7,7 +7,7 @@ import { SessionOperationCoordinatorStore } from "../../../../src/renderer/store
 import type { SessionRegistryStore } from "../../../../src/renderer/stores/SessionRegistryStore";
 import { mountWithClient } from "../mount-with-client";
 
-describe("SessionManagementStore deletion", () => {
+describe("SessionManagementStore", () => {
   it("deletes a resolved renderer draft without calling the Project Session backend", async () => {
     const deleteResolvedDraft = vi.fn(async () => true);
     const deleteSession = vi.fn(async () => undefined);
@@ -38,6 +38,49 @@ describe("SessionManagementStore deletion", () => {
     expect(deleteResolvedDraft).toHaveBeenCalledWith("draft-1");
     expect(deleteSession).not.toHaveBeenCalled();
     expect(registry.removeSession).not.toHaveBeenCalled();
+
+    root[Symbol.dispose]();
+    operations[Symbol.dispose]();
+  });
+
+  it("resolves a requested Session Family through its parent once", async () => {
+    const resolve = vi.fn(async () => undefined);
+    const operations = mount(createStore(SessionOperationCoordinatorStore));
+    const registry = {
+      pendingSessions: {
+        conversation: () => undefined,
+        isTemporary: () => false,
+      },
+    } as unknown as SessionRegistryStore;
+    const catalog = {
+      find: (sessionId: string) =>
+        ["parent", "child"].includes(sessionId)
+          ? {
+              sessionId,
+              workingDirectory: "/project",
+              familyParentSessionId: "parent",
+            }
+          : undefined,
+    } as SessionCatalogStore;
+    const reportError = vi.fn();
+    const { root, subject } = mountWithClient(
+      createStore(SessionManagementStore, {
+        operations,
+        catalog,
+        registry,
+        reportError,
+      }),
+      { projectSessions: { resolve } } as unknown as Client,
+    );
+
+    await expect(subject.resolveSessionsById(["child", "parent"], true)).resolves.toBe(2);
+
+    expect(resolve).toHaveBeenCalledOnce();
+    expect(resolve).toHaveBeenCalledWith(
+      { sessionId: "parent", workingDirectory: "/project" },
+      expect.anything(),
+    );
+    expect(reportError).not.toHaveBeenCalled();
 
     root[Symbol.dispose]();
     operations[Symbol.dispose]();

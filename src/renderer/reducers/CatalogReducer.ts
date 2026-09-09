@@ -119,11 +119,13 @@ export function applySessionCatalogGroupUpdate(
       if (existing) applySnapshot(existing, session);
       else model.sessions.push(SessionSummary.create(session));
     }
-    if (event._tag === "Removed") {
-      const index = model.sessions.findIndex(
-        (session) => session.sessionId === event.sessionId && belongsToGroup(session),
-      );
-      if (index >= 0) model.sessions.splice(index, 1);
+    if (event._tag === "Removed" || event._tag === "RemovedBatch") {
+      const removedIds = new Set(event._tag === "Removed" ? [event.sessionId] : event.sessionIds);
+      for (let index = model.sessions.length - 1; index >= 0; index -= 1) {
+        const session = model.sessions[index]!;
+        if (removedIds.has(session.sessionId) && belongsToGroup(session))
+          model.sessions.splice(index, 1);
+      }
     } else if (event._tag === "StatusChanged") {
       const existing = model.find(event.sessionId);
       if (existing && belongsToGroup(existing)) {

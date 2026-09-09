@@ -245,6 +245,12 @@ it("upserts a batch in place and preserves ordering and other lanes", () => {
   });
   expect(catalog.sessions.map((session) => session.sessionId)).toEqual(["one", "two", "resolved"]);
   expect(catalog.find("two")?.unread).toBe(true);
+  applySessionCatalogGroupUpdate(catalog, query, {
+    _tag: "Event",
+    revision: 3,
+    event: { _tag: "RemovedBatch", sessionIds: ["one", "two"] },
+  });
+  expect(catalog.sessions.map((session) => session.sessionId)).toEqual(["two", "resolved"]);
   catalog[Symbol.dispose]();
 });
 

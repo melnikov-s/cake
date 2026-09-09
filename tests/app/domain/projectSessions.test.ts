@@ -1336,6 +1336,64 @@ describe("Project Sessions domain", () => {
     );
   });
 
+  it.effect("publishes one active-catalog removal for a resolved Session Family", () => {
+    const family = {
+      familyId: "family-1",
+      parentSessionId: "parent",
+      projectPath: "/project",
+      workingDirectory: "/project",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      children: [
+        {
+          sessionId: "child",
+          requestId: "request-1",
+          createdAt: "2026-01-01T00:00:01.000Z",
+        },
+      ],
+    };
+    const session = (id: string): SessionSummary => ({
+      id,
+      title: id,
+      created: "2026-01-01T00:00:00.000Z",
+      modified: "2026-01-02T00:00:00.000Z",
+      messageCount: 1,
+      resolved: false,
+    });
+    return Effect.gen(function* () {
+      const updates = yield* projectSessionMetadata.observeCatalog({
+        projectPath: "/project",
+        resolved: false,
+      });
+      const ready = yield* Deferred.make<void>();
+      const fiber = yield* updates.pipe(
+        Stream.tap((update) =>
+          update._tag === "Snapshot" ? Deferred.succeed(ready, undefined) : Effect.void,
+        ),
+        Stream.take(2),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      yield* Deferred.await(ready);
+
+      yield* projectSessionLifecycle.resolve({ sessionId: "parent" });
+
+      const observed = Array.from(yield* Fiber.join(fiber));
+      assert.equal(observed[1]?._tag, "Event");
+      if (observed[1]?._tag !== "Event") return;
+      assert.deepEqual(observed[1].event, {
+        _tag: "RemovedBatch",
+        sessionIds: ["parent", "child"],
+      });
+    }).pipe(
+      Effect.provide(
+        makeLayer(defaultApplicationState(), {
+          family,
+          catalog: () => Stream.fromIterable([session("parent"), session("child")]),
+        }),
+      ),
+    );
+  });
+
   it.effect("restores every Session Family member inside one journaled restore sequence", () => {
     const events: string[] = [];
     const family = {
@@ -1426,10 +1484,15 @@ describe("Project Sessions domain", () => {
     return projectSessionLifecycle.recoverFamilyTransition("parent", false).pipe(
       Effect.tap(() =>
         Effect.sync(() => {
-          assert.deepEqual(
-            changes.filter((change) => change.sessionId === "parent").map((change) => change._tag),
-            ["ProjectSessionStatusChanged", "ProjectSessionChanged"],
-          );
+          assert.deepEqual(changes, [
+            {
+              _tag: "ProjectSessionsTransitioned",
+              sessionIds: ["parent", "child"],
+              projectPath: "/project",
+              workingDirectory: "/project",
+              resolved: false,
+            },
+          ]);
         }),
       ),
       Effect.provide(

@@ -87,9 +87,20 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
 
   async resolveSessionsById(sessionIds: readonly string[], resolved: boolean) {
     if (this.signal.aborted) return 0;
+    const requestedIds = new Set(sessionIds);
+    const plans = new Map<string, number>();
+    for (const sessionId of requestedIds) {
+      const session = this.props.catalog.find(sessionId);
+      const parentSessionId = session?.familyParentSessionId;
+      const targetSessionId =
+        parentSessionId && parentSessionId !== sessionId && requestedIds.has(parentSessionId)
+          ? parentSessionId
+          : sessionId;
+      plans.set(targetSessionId, (plans.get(targetSessionId) ?? 0) + 1);
+    }
     let resolvedCount = 0;
-    for (const sessionId of sessionIds) {
-      if (await this.resolveSession(sessionId, resolved)) resolvedCount += 1;
+    for (const [sessionId, requestedCount] of plans) {
+      if (await this.resolveSession(sessionId, resolved)) resolvedCount += requestedCount;
     }
     return resolvedCount;
   }

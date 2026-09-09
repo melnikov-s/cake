@@ -167,7 +167,10 @@ export const observe = Effect.fn("ProjectSessions.observe")(function* (
           ? item.resolved
           : item._tag === "ProjectSessionStatusChanged" && item.sessionId === target.sessionId
             ? item.resolved
-            : undefined,
+            : item._tag === "ProjectSessionsTransitioned" &&
+                item.sessionIds.includes(target.sessionId)
+              ? item.resolved
+              : undefined,
       ),
       Stream.filter((resolved): resolved is boolean => resolved !== undefined),
     );

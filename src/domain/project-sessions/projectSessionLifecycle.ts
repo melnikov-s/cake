@@ -69,6 +69,7 @@ const archiveMember = Effect.fn("ProjectSessions.archiveMember")(function* (
   sessionId: string,
   location: ProjectSessionLocation,
   operation: string,
+  publish = true,
 ) {
   const archive = yield* SessionArchiveStorage;
   const namespace = yield* archive
@@ -79,13 +80,14 @@ const archiveMember = Effect.fn("ProjectSessions.archiveMember")(function* (
   if (namespace === "active")
     yield* projectSessionLocations.archive(sessionId, location).pipe(asError(operation));
   yield* setSessionUnread(sessionId, false).pipe(asError(operation));
-  yield* publishCatalogStatus(sessionId, location, true).pipe(asError(operation));
+  if (publish) yield* publishCatalogStatus(sessionId, location, true).pipe(asError(operation));
 });
 
 const restoreMember = Effect.fn("ProjectSessions.restoreMember")(function* (
   sessionId: string,
   location: ProjectSessionLocation,
   operation: string,
+  publish = true,
 ) {
   const archive = yield* SessionArchiveStorage;
   const namespace = yield* archive
@@ -96,8 +98,10 @@ const restoreMember = Effect.fn("ProjectSessions.restoreMember")(function* (
     namespace === "resolved"
       ? yield* projectSessionLocations.restore(sessionId, location).pipe(asError(operation))
       : location;
-  yield* publishCatalogStatus(sessionId, restored, false).pipe(asError(operation));
-  yield* publishCatalogChange(sessionId, restored, false).pipe(asError(operation));
+  if (publish) {
+    yield* publishCatalogStatus(sessionId, restored, false).pipe(asError(operation));
+    yield* publishCatalogChange(sessionId, restored, false).pipe(asError(operation));
+  }
   return restored;
 });
 
@@ -141,7 +145,8 @@ const transitionFamily = Effect.fn("ProjectSessions.transitionFamily")(function*
         }
         if (!journal) yield* storage.beginTransition(current.parentSessionId, resolved);
         if (resolved) {
-          for (const sessionId of members) yield* archiveMember(sessionId, location, operation);
+          for (const sessionId of members)
+            yield* archiveMember(sessionId, location, operation, false);
           yield* managedWorktrees
             .cleanupResolved(location.workingDirectory, location.sessionDirectory)
             .pipe(asError(operation));
@@ -149,9 +154,19 @@ const transitionFamily = Effect.fn("ProjectSessions.transitionFamily")(function*
           yield* managedWorktrees
             .restoreResolved(location.workingDirectory)
             .pipe(asError(operation));
-          for (const sessionId of members) yield* restoreMember(sessionId, location, operation);
+          for (const sessionId of members)
+            yield* restoreMember(sessionId, location, operation, false);
           yield* trustProject(location.workingDirectory).pipe(asError(operation));
         }
+        yield* (yield* SessionCatalogChanges)
+          .publish({
+            _tag: "ProjectSessionsTransitioned",
+            sessionIds: members,
+            projectPath: location.projectPath,
+            workingDirectory: location.workingDirectory,
+            resolved,
+          })
+          .pipe(asError(operation));
         yield* storage.finishTransition(current.parentSessionId);
       }),
     )
