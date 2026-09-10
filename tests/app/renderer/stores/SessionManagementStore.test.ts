@@ -43,6 +43,45 @@ describe("SessionManagementStore", () => {
     operations[Symbol.dispose]();
   });
 
+  it("restores a Session Family through its parent when messaging a resolved child", async () => {
+    const restore = vi.fn(async () => undefined);
+    const operations = mount(createStore(SessionOperationCoordinatorStore));
+    const registry = {
+      pendingSessions: {
+        conversation: () => undefined,
+        isTemporary: () => false,
+      },
+    } as unknown as SessionRegistryStore;
+    const catalog = {
+      find: (sessionId: string) =>
+        ["parent", "child"].includes(sessionId)
+          ? {
+              sessionId,
+              workingDirectory: "/project",
+              familyParentSessionId: "parent",
+            }
+          : undefined,
+    } as SessionCatalogStore;
+    const { root, subject } = mountWithClient(
+      createStore(SessionManagementStore, {
+        operations,
+        catalog,
+        registry,
+        reportError: vi.fn(),
+      }),
+      { projectSessions: { restore } } as unknown as Client,
+    );
+
+    await expect(subject.resolveSession("child", false)).resolves.toBe(true);
+
+    expect(restore).toHaveBeenCalledWith(
+      { sessionId: "parent", workingDirectory: "/project" },
+      expect.anything(),
+    );
+    root[Symbol.dispose]();
+    operations[Symbol.dispose]();
+  });
+
   it("resolves a requested Session Family through its parent once", async () => {
     const resolve = vi.fn(async () => undefined);
     const operations = mount(createStore(SessionOperationCoordinatorStore));

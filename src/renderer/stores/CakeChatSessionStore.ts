@@ -63,6 +63,8 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
         handoffSession: (entryId, prompt, resolveSource) =>
           this.props.management.handoff(this.sessionId, entryId, prompt, resolveSource),
         deliver: async (input) => {
+          const active = this.props.management.ensureSessionActive(this.sessionId);
+          if (active !== true && !(await active)) return false;
           const target = this.props.target();
           const newSession = this.props.pendingSessions.newSessionRequest(this.sessionId);
           const prompt = {

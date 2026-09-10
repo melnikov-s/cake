@@ -48,6 +48,7 @@ export interface ProjectSessionStoreProps extends SessionTarget {
     | { path: string; configuration?: ChatConfiguration; name?: string }
     | undefined;
   prepareNewSession(firstUserMessage: string): Promise<boolean>;
+  ensureSessionActive(): boolean | Promise<boolean>;
   configureDraftActivation(choice: WorktreeDraftChoice): void;
   sessionCreationChoice(): WorktreeDraftChoice;
   draftActivationCandidates(): ExistingWorktreeCandidate[];
@@ -362,6 +363,10 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       this.props.pendingSessions.projectSubmission(input.sessionId, input.text);
     try {
       if (pendingNewSession && !(await this.props.prepareNewSession(input.text))) return false;
+      if (!pendingNewSession) {
+        const active = this.props.ensureSessionActive();
+        if (active !== true && !(await active)) return false;
+      }
       const newSession = this.props.newSessionRequest();
       if (newSession) {
         const startInput: ProjectSessionStartInput = {

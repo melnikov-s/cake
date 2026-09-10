@@ -61,13 +61,18 @@ export class CakeChatManagementStore extends Store<CakeChatManagementStoreProps>
 
   /** Resolution commands are serialized; the catalog stream remains the only projection writer. */
   async resolveSession(sessionId: string, resolved: boolean) {
-    if (this.signal.aborted) return;
-    if (this.props.pendingSessions.conversation(sessionId)?.setDraftResolved(resolved)) return;
+    if (this.signal.aborted) return false;
+    if (this.props.pendingSessions.conversation(sessionId)?.setDraftResolved(resolved)) return true;
     if (resolved && this.props.pendingSessions.isPending(sessionId)) {
       this.props.discardPendingSession(sessionId);
-      return;
+      return true;
     }
-    await this.enqueueResolution([sessionId], resolved, false);
+    return this.enqueueResolution([sessionId], resolved, false);
+  }
+
+  ensureSessionActive(sessionId: string) {
+    if (!this.props.isSessionResolved(sessionId)) return true;
+    return this.resolveSession(sessionId, false);
   }
 
   async resolveSessions(sessionIds: readonly string[], resolved: boolean) {
@@ -108,15 +113,20 @@ export class CakeChatManagementStore extends Store<CakeChatManagementStoreProps>
           const target = this.props.target(sessionId);
           if (resolved) await this.client.cakeChats.resolve(target, { signal: this.signal });
           else await this.client.cakeChats.restore(target, { signal: this.signal });
-          if (this.signal.aborted) return;
+          if (this.signal.aborted) return false;
         }
+        return true;
       } catch (error) {
         if (!this.signal.aborted) this.props.reportError(error);
         if (rethrow) throw error;
+        return false;
       }
     };
     const result = this.resolutionQueue.then(run, run);
-    this.resolutionQueue = result.catch(() => undefined);
+    this.resolutionQueue = result.then(
+      () => undefined,
+      () => undefined,
+    );
     return result;
   }
 }

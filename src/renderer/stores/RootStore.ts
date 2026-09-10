@@ -766,6 +766,10 @@ export class RootStore extends Store<{
       newSessionRequest: (sessionId) => this.projectWorkbenchStore.newSessionRequest(sessionId),
       prepareNewSession: (sessionId, firstUserMessage) =>
         this.projectWorkbenchStore.prepareNewSession(sessionId, firstUserMessage),
+      ensureSessionActive: (sessionId) => {
+        if (!this.sessionCatalogStore.find(sessionId)?.resolved) return true;
+        return this.projectWorkbenchStore.sessionManagementStore.resolveSession(sessionId, false);
+      },
       configureDraftActivation: (sessionId, choice) =>
         this.projectWorkbenchStore.configureDraftActivation(sessionId, choice),
       sessionCreationChoice: (sessionId) =>

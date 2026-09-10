@@ -9,6 +9,50 @@ import { RootProjection } from "../../../../src/renderer/models/RootProjection";
 import { Message } from "../../../../src/renderer/models/Message";
 
 describe("CakeChatCollectionStore", () => {
+  it("restores a resolved Cake Chat before delivering its next message", async () => {
+    const calls: string[] = [];
+    const restore = vi.fn(async () => {
+      calls.push("restore");
+    });
+    const prompt = vi.fn(async () => {
+      calls.push("prompt");
+    });
+    const catalog = CakeChatCatalog.create({
+      loaded: true,
+      sessions: [
+        {
+          sessionId: "resolved-chat",
+          title: "Resolved chat",
+          createdAt: new Date(0).toISOString(),
+          modifiedAt: new Date(0).toISOString(),
+          messageCount: 1,
+          resolved: true,
+        },
+      ],
+    });
+    const models = RootProjection.create();
+    const { root, subject: store } = mountWithClient(
+      createStore(CakeChatCollectionStore, {
+        catalog,
+        sessionModel: (sessionId) => models.cakeChat(sessionId),
+        tools: () => [],
+      }),
+      { cakeChats: { restore, prompt } } as unknown as Client,
+    );
+    const session = store.registry.load("resolved-chat");
+
+    await expect(session.conversationSessionStore.chatStore.submit("Continue")).resolves.toBe(true);
+
+    expect(calls).toEqual(["restore", "prompt"]);
+    expect(restore).toHaveBeenCalledWith(
+      { sessionId: "resolved-chat", tools: [] },
+      expect.anything(),
+    );
+    root[Symbol.dispose]();
+    catalog[Symbol.dispose]();
+    models[Symbol.dispose]();
+  });
+
   it.each(["/model invalid", "/handoff continue", "/name"])(
     "retains rejected Cake Chat command %s for correction",
     async (command) => {

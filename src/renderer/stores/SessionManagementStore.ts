@@ -40,17 +40,26 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
   async resolveSession(sessionId: string, resolved: boolean) {
     const session = this.props.catalog.find(sessionId);
     if (!session || this.signal.aborted) return false;
-    if (this.resolvingSessionIds.has(sessionId)) return false;
-    this.resolvingSessionIds.add(sessionId);
+    if (this.props.registry.pendingSessions.conversation(sessionId)?.setDraftResolved(resolved))
+      return true;
+    if (resolved && this.props.registry.pendingSessions.isTemporary(sessionId)) {
+      this.props.registry.removeSession(sessionId);
+      return true;
+    }
+    const transitionSession =
+      session.familyParentSessionId && session.familyParentSessionId !== sessionId
+        ? this.props.catalog.find(session.familyParentSessionId)
+        : session;
+    if (!transitionSession) return false;
+    const transitionSessionId = transitionSession.sessionId;
+    if (this.resolvingSessionIds.has(transitionSessionId)) return false;
+    this.resolvingSessionIds.add(transitionSessionId);
     try {
       if (this.signal.aborted) return false;
-      if (this.props.registry.pendingSessions.conversation(sessionId)?.setDraftResolved(resolved))
-        return true;
-      if (resolved && this.props.registry.pendingSessions.isTemporary(sessionId)) {
-        this.props.registry.removeSession(sessionId);
-        return true;
-      }
-      const target = { sessionId, workingDirectory: session.workingDirectory };
+      const target = {
+        sessionId: transitionSessionId,
+        workingDirectory: transitionSession.workingDirectory,
+      };
       if (resolved) await this.client.projectSessions.resolve(target, { signal: this.signal });
       else await this.client.projectSessions.restore(target, { signal: this.signal });
       return !this.signal.aborted;
@@ -58,7 +67,7 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
       if (!this.signal.aborted) this.props.reportError(error);
       return false;
     } finally {
-      this.resolvingSessionIds.delete(sessionId);
+      this.resolvingSessionIds.delete(transitionSessionId);
     }
   }
 
