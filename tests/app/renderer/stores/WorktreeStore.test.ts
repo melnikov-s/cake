@@ -46,13 +46,13 @@ function operation(
 }
 
 const props = (
-  activity = observable({ workspacePath: "/worktree", enabled: true }),
+  activity = observable({ workspacePath: "/worktree", enabled: true, streaming: false }),
   projectedOperation: () => WorktreeLandingOperation | undefined = () => undefined,
 ) => ({
   workspacePath: () => activity.workspacePath,
   sessionId: () => "session-1",
   enabled: () => activity.enabled,
-  isStreaming: () => false,
+  isStreaming: () => activity.streaming,
   operation: projectedOperation,
   onLanded: vi.fn(),
   onDiscarded: vi.fn(),
@@ -63,6 +63,26 @@ const props = (
 });
 
 describe("WorktreeStore", () => {
+  it("refreshes worktree status when the session finishes changing files", async () => {
+    const activity = observable({ workspacePath: "/worktree", enabled: true, streaming: true });
+    let status = { ...worktreeStatus("/worktree"), aheadCount: 0, dirtyCount: 0 };
+    const landing = vi.fn(async () => ({ status }));
+    const { root, subject: store } = mountWithClient(createStore(WorktreeStore, props(activity)), {
+      managedWorktrees: { landing },
+    } as unknown as Client);
+    try {
+      await vi.waitFor(() => expect(store.status?.dirtyCount).toBe(0));
+      status = { ...status, dirtyCount: 2 };
+
+      activity.streaming = false;
+
+      await vi.waitFor(() => expect(store.status?.dirtyCount).toBe(2));
+      expect(landing).toHaveBeenCalledTimes(2);
+    } finally {
+      root[Symbol.dispose]();
+    }
+  });
+
   it("starts one semantic landing operation without owning Git or Pi prompt policy", async () => {
     const startLanding = vi.fn(async () => operation("waiting"));
     const projectSessions = { prompt: vi.fn() };
@@ -99,7 +119,7 @@ describe("WorktreeStore", () => {
     };
     const cancelLanding = vi.fn(async () => undefined);
     const landing = vi.fn(async () => ({ status }));
-    const activity = observable({ workspacePath: "/worktree", enabled: false });
+    const activity = observable({ workspacePath: "/worktree", enabled: false, streaming: false });
     const { root, subject: store } = mountWithClient(createStore(WorktreeStore, props(activity)), {
       managedWorktrees: {
         landing,
@@ -343,7 +363,7 @@ describe("WorktreeStore", () => {
   });
 
   it("ignores a late refresh after the selected working directory changes", async () => {
-    const activity = observable({ workspacePath: "/project", enabled: true });
+    const activity = observable({ workspacePath: "/project", enabled: true, streaming: false });
     let finishProject!: (value: { status: WorktreeStatus }) => void;
     const project = new Promise<{ status: WorktreeStatus }>((resolve) => {
       finishProject = resolve;

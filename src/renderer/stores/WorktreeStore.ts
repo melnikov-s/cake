@@ -58,6 +58,13 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
         if (workspacePath) void this.refresh(workspacePath);
       },
     );
+    this.reaction(
+      () => this.props.isStreaming(),
+      (streaming, previousStreaming) => {
+        const workspacePath = this.props.workspacePath();
+        if (previousStreaming && !streaming && workspacePath) void this.refresh(workspacePath);
+      },
+    );
     this.effect(() => {
       const workspacePath = this.props.workspacePath();
       if (this.props.enabled() && workspacePath) void this.refresh(workspacePath);
