@@ -51,11 +51,9 @@ function upsertSubagentActivity(model: Session, activity: SubagentActivityValue)
   target.anchorPartId = activity.anchorPartId;
   target.revision = activity.revision;
   target.task = activity.task;
-  target.profile = activity.profile;
   target.status = activity.status;
   target.resolvedModel = activity.resolvedModel;
   target.fastMode = activity.fastMode;
-  target.retained = activity.retained;
   target.streaming = activity.streaming;
   target.parts = activity.parts.map((part) => Schema.decodeUnknownSync(uiPartSchema)(part));
   target.usage =

@@ -49,7 +49,6 @@ describe("SubagentStatus", () => {
             handleId,
             revision: 1,
             task: "Inspect activity projection",
-            profile: "reviewer",
             status: "running",
             resolvedModel: {
               requested: "current",
@@ -60,7 +59,6 @@ describe("SubagentStatus", () => {
               fallbacks: [],
             },
             fastMode: false,
-            retained: false,
             streaming: true,
             parts: [
               {
@@ -94,9 +92,7 @@ describe("SubagentStatus", () => {
     )!;
     act(() => item.click());
 
-    expect(
-      document.body.querySelector('[role="dialog"][aria-label="reviewer subagent"]'),
-    ).not.toBeNull();
+    expect(document.body.querySelector('[role="dialog"][aria-label="Subagent"]')).not.toBeNull();
     expect(document.body.querySelector('[data-testid="subagent-log"]')?.textContent).toBe(
       "child-read",
     );
@@ -105,9 +101,7 @@ describe("SubagentStatus", () => {
       applySnapshot(model, { releasedSubagentHandleIds: [handleId] });
     });
     expect(container.querySelector('button[aria-label="1 subagents running"]')).toBeNull();
-    expect(
-      document.body.querySelector('[role="dialog"][aria-label="reviewer subagent"]'),
-    ).not.toBeNull();
+    expect(document.body.querySelector('[role="dialog"][aria-label="Subagent"]')).not.toBeNull();
     expect(document.body.textContent).toContain("Released");
   });
 });

@@ -42,9 +42,7 @@ const PiSessionCapabilityProfile = Schema.TaggedUnion({
   ProjectSession: {},
   CakeChatSession: {},
   DiscussionSession: {},
-  SubagentSession: {
-    profile: Schema.Literals(["scout", "planner", "reviewer", "worker"]),
-  },
+  SubagentSession: {},
 });
 export const PiSessionQuery = Schema.Struct({
   workingDirectory: Schema.String,
@@ -285,6 +283,7 @@ const runtimeFingerprint = (options: PiSessionAcquireOptions): string => {
     trusted: runtime.trusted,
     tools: runtime.tools ? [...runtime.tools].sort() : undefined,
     auxiliary: runtime.auxiliary ?? false,
+    isolatedSystemPrompt: runtime.isolatedSystemPrompt,
     slashCommands: runtime.slashCommands,
     // Relationship context is regenerated on acquisition and may change when a
     // standalone session is promoted. It does not redefine the live Pi runtime.

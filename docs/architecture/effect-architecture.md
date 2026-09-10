@@ -352,7 +352,7 @@ Cake domains choose a semantic capability profile:
 ProjectSession
 CakeChatSession
 DiscussionSession
-SubagentSession(profile)
+SubagentSession
 ```
 
 The Pi adapter translates that profile into tools, extension policy,

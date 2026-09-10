@@ -131,7 +131,8 @@ export function createAgentControlOperations(
     "Use subagents only when the user explicitly requested delegation, subagents, or parallel agent work.",
     "Use subagents.run for ordinary single-task delegation so the result returns in the same tool call. Use subagents.start only for explicitly background work; Cake automatically delivers its completion, so do not poll it.",
     "subagents.wait is an optional synchronization barrier for background work, not a required completion mechanism.",
-    "Handles are parent-owned. Delegation depth defaults to zero and is capped at one; parallel batches contain at most eight tasks.",
+    "Each subagent has read, bash, edit, and write tools, but no Cake controls, project instructions, skills, or recursive delegation.",
+    "Handles are parent-owned and remain available for follow-up until explicitly closed; parallel batches contain at most eight tasks.",
     "When model is omitted, a subagent inherits the calling session's current model, thinking level, and Fast mode setting.",
   ];
   const resolveTask = (input: SubagentTaskInput): DomainSubagentTaskInput => {
@@ -168,9 +169,7 @@ export function createAgentControlOperations(
     examples: [{ input: definition.example }],
     result:
       "A bounded handle, activity projection, or final delegated result with attributed usage.",
-    limitations: [
-      "Recursive delegation is unavailable unless this runtime was explicitly granted remaining depth.",
-    ],
+    limitations: ["Subagents cannot use Cake application controls or delegate further work."],
     async execute(input, context) {
       const parent = parentSessionId();
       if (!parent) throw new Error("The parent Cake session is not ready");
@@ -192,10 +191,7 @@ export function createAgentControlOperations(
       schema: subagentTaskSchema,
       example: {
         task: "Inspect the authentication flow",
-        profile: "scout",
         model: "Sol",
-        maxDepth: 0,
-        retain: false,
       },
       run: (input, parent, signal, onUpdate, anchor) =>
         control.run(resolveTask(input), parent, signal, onUpdate, anchor),
@@ -207,10 +203,7 @@ export function createAgentControlOperations(
       schema: subagentTaskSchema,
       example: {
         task: "Monitor the test run",
-        profile: "worker",
         model: "Sol",
-        maxDepth: 0,
-        retain: false,
       },
       run: (input, parent, signal, _onUpdate, anchor) =>
         control.start(resolveTask(input), parent, signal, anchor),
@@ -223,10 +216,7 @@ export function createAgentControlOperations(
         tasks: [
           {
             task: "Inspect tests",
-            profile: "scout",
             model: "Sol",
-            maxDepth: 0,
-            retain: false,
           },
         ],
       },
@@ -235,7 +225,7 @@ export function createAgentControlOperations(
     }),
     operation({
       command: "subagents.prompt",
-      summary: "Send a normal prompt to an idle retained subagent and wait for its turn.",
+      summary: "Send a normal prompt to an idle subagent and wait for its turn.",
       schema: promptSchema,
       example: { handleId: "00000000-0000-4000-8000-000000000000", text: "Continue" },
       run: (input, parent, signal) =>
@@ -1004,12 +994,16 @@ export async function createCakeRuntimeCapabilities(input: {
               cwd: options.cwd,
               agentDir,
               settingsManager,
-              appendSystemPromptOverride: (base) => [
-                ...base,
-                cakeProjectSystemPrompt,
-                ...(options.additionalSystemPrompt ? [options.additionalSystemPrompt] : []),
-                ...(detectedWorktreePrompt ? [detectedWorktreePrompt] : []),
-              ],
+              systemPrompt: options.isolatedSystemPrompt,
+              appendSystemPromptOverride: (base) =>
+                options.isolatedSystemPrompt
+                  ? []
+                  : [
+                      ...base,
+                      cakeProjectSystemPrompt,
+                      ...(options.additionalSystemPrompt ? [options.additionalSystemPrompt] : []),
+                      ...(detectedWorktreePrompt ? [detectedWorktreePrompt] : []),
+                    ],
               additionalSkillPaths: [],
               additionalPromptTemplatePaths: [],
               additionalExtensionPaths: [],
@@ -1017,6 +1011,7 @@ export async function createCakeRuntimeCapabilities(input: {
               noSkills: options.auxiliary,
               noPromptTemplates: options.auxiliary,
               noThemes: options.auxiliary,
+              noContextFiles: options.isolatedSystemPrompt !== undefined,
               extensionFactories: [
                 fastModeExtension,
                 createCakeGatewayExtension((pi) =>

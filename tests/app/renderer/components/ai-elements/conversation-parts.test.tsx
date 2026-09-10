@@ -455,7 +455,6 @@ describe("Cake-owned conversation components", () => {
           command: "subagents.start",
           input: JSON.stringify({
             task: "Inspect the session boundary",
-            profile: "reviewer",
             model: {
               prefer: "exact",
               provider: "openai-codex",
@@ -463,8 +462,6 @@ describe("Cake-owned conversation components", () => {
               thinkingLevel: "max",
             },
             instructions: "Focus on runtime validation.",
-            retain: false,
-            maxDepth: 0,
           }),
           output: JSON.stringify({ handleId }),
           state: "success",
@@ -478,7 +475,6 @@ describe("Cake-owned conversation components", () => {
           output: JSON.stringify({
             handleId,
             task: "Inspect the session boundary",
-            profile: "reviewer",
             status: "complete",
             resolvedModel: {
               requested: "exact",
@@ -514,7 +510,7 @@ describe("Cake-owned conversation components", () => {
         expansion={{ open: true, toggle: () => undefined }}
       />,
     );
-    expect(html).toContain("reviewer subagent");
+    expect(html).toContain("Subagent");
     expect(html).toContain("openai-codex/gpt-5.6-sol");
     expect(html).toContain("Inspect the session boundary");
     expect(html).toContain("Last activity: read");
@@ -534,7 +530,6 @@ describe("Cake-owned conversation components", () => {
           handleId,
           revision: 1,
           task: "Inspect the live boundary",
-          profile: "reviewer",
           status: "running",
           resolvedModel: {
             requested: "current",
@@ -545,7 +540,6 @@ describe("Cake-owned conversation components", () => {
             fallbacks: [],
           },
           fastMode: false,
-          retained: false,
           streaming: true,
           parts: [
             {
@@ -571,7 +565,7 @@ describe("Cake-owned conversation components", () => {
           kind: "tool",
           name: "cake",
           command: "subagents.start",
-          input: JSON.stringify({ task: "Inspect the live boundary", profile: "reviewer" }),
+          input: JSON.stringify({ task: "Inspect the live boundary" }),
           output: JSON.stringify({ handleId, status: "running" }),
           state: "success",
         }}
@@ -596,10 +590,7 @@ describe("Cake-owned conversation components", () => {
           name: "cake",
           command: "subagents.parallel",
           input: JSON.stringify({
-            tasks: [
-              { task: "Inspect storage", profile: "scout" },
-              { task: "Review rendering", profile: "reviewer" },
-            ],
+            tasks: [{ task: "Inspect storage" }, { task: "Review rendering" }],
           }),
           output: JSON.stringify({
             completed: 2,
@@ -608,14 +599,12 @@ describe("Cake-owned conversation components", () => {
               {
                 handleId: crypto.randomUUID(),
                 task: "Inspect storage",
-                profile: "scout",
                 status: "complete",
                 parts: [{ id: "storage-result", kind: "text", text: "Storage is sound." }],
               },
               {
                 handleId: crypto.randomUUID(),
                 task: "Review rendering",
-                profile: "reviewer",
                 status: "complete",
                 parts: [{ id: "render-result", kind: "text", text: "Rendering is sound." }],
               },
@@ -649,7 +638,6 @@ describe("Cake-owned conversation components", () => {
           output: JSON.stringify({
             handleId,
             task: "Tell a joke",
-            profile: "worker",
             status: "complete",
             parts: [
               {

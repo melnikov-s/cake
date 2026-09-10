@@ -82,7 +82,6 @@ test("opens a released subagent in a read-only popup chat", async () => {
   const sessionDirectory = cakeWorkspaceSessionDirectory(project, join(cakeHome, "pi", "sessions"));
   const request = {
     task: "Tell one short programming joke.",
-    profile: "worker",
     model: {
       prefer: "exact",
       provider: "openai-codex",
@@ -91,8 +90,6 @@ test("opens a released subagent in a read-only popup chat", async () => {
     },
     instructions: "Return only the joke.",
     fastMode: true,
-    maxDepth: 0,
-    retain: false,
   };
   const resolvedModel = {
     requested: "exact",
@@ -155,11 +152,8 @@ test("opens a released subagent in a read-only popup chat", async () => {
       toolResult("spawn-result", "spawn-call", timestamp, "call-spawn", "subagents.start", {
         handleId,
         task: request.task,
-        profile: request.profile,
         status: "running",
-        retained: false,
         fastMode: true,
-        maxDepth: 0,
         resolvedModel,
       }),
       assistantToolCall("poll-call", "spawn-result", timestamp, "call-poll", "subagents.wait", {
@@ -168,7 +162,6 @@ test("opens a released subagent in a read-only popup chat", async () => {
       toolResult("poll-result", "poll-call", timestamp, "call-poll", "subagents.wait", {
         handleId,
         task: request.task,
-        profile: request.profile,
         status: "running",
         resolvedModel,
         streaming: true,
@@ -180,7 +173,6 @@ test("opens a released subagent in a read-only popup chat", async () => {
       toolResult("wait-result", "wait-call", timestamp, "call-wait", "subagents.wait", {
         handleId,
         task: request.task,
-        profile: request.profile,
         status: "complete",
         resolvedModel,
         fastMode: true,
@@ -254,15 +246,15 @@ test("opens a released subagent in a read-only popup chat", async () => {
     await expect(subagent).not.toContainText(
       "The loop opened a bakery because it knew how to roll.",
     );
-    const openSubagentChat = subagent.getByRole("button", { name: "Open worker subagent chat" });
+    const openSubagentChat = subagent.getByRole("button", { name: "Open subagent chat" });
     await expect(openSubagentChat).toHaveCount(1);
 
     await openSubagentChat.click();
-    const popup = page.getByRole("dialog", { name: "worker subagent" });
+    const popup = page.getByRole("dialog", { name: "Subagent" });
     await expect(popup).toContainText("Released");
     await expect(popup).toContainText("The loop opened a bakery because it knew how to roll.");
     await expect(popup.locator("textarea")).toHaveCount(0);
-    await popup.getByRole("button", { name: "Close worker subagent" }).click();
+    await popup.getByRole("button", { name: "Close Subagent" }).click();
 
     await expect(page.getByRole("button", { name: /subagents running/ })).toHaveCount(0);
   } finally {
@@ -324,12 +316,10 @@ test("never restores an interrupted subagent as running", async () => {
       },
       assistantToolCall("spawn-call", "user-1", timestamp, "call-spawn", "subagents.start", {
         task: "Background work that never finished.",
-        profile: "worker",
       }),
       toolResult("spawn-result", "spawn-call", timestamp, "call-spawn", "subagents.start", {
         handleId,
         task: "Background work that never finished.",
-        profile: "worker",
         status: "running",
       }),
       // The previous process quit while waiting; no result was ever recorded.
@@ -361,9 +351,7 @@ test("never restores an interrupted subagent as running", async () => {
     await expect(subagent).toHaveCount(1);
     await expect(subagent).toHaveAttribute("data-status", "released");
     await expect(subagent).toContainText("Released");
-    await expect(subagent.getByRole("button", { name: "Open worker subagent chat" })).toHaveCount(
-      1,
-    );
+    await expect(subagent.getByRole("button", { name: "Open subagent chat" })).toHaveCount(1);
     await expect(log.locator(".animate-pulse")).toHaveCount(0);
   } finally {
     await application.close();

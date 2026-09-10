@@ -1944,6 +1944,30 @@ describe("S1 Pi runtime", () => {
     expect(auxiliary.artifacts).toEqual([]);
   });
 
+  it("isolates a subagent prompt and tools from Cake and project context", async () => {
+    const directory = await createTemporaryDirectory();
+    await writeFile(join(directory, "AGENTS.md"), "PROJECT INSTRUCTIONS MUST NOT LOAD");
+    const runtime = await createCakeRuntime({
+      cwd: directory,
+      agentDir: join(directory, "agent"),
+      sessionDir: join(directory, "sessions"),
+      trusted: true,
+      newSession: true,
+      auxiliary: true,
+      isolatedSystemPrompt: "You are a focused subagent.",
+      tools: ["read", "bash", "edit", "write"],
+      requestUi: async () => undefined,
+      onEvent: () => undefined,
+    });
+    runtimes.push(runtime);
+
+    const context = runtime.getReviewParentContext?.();
+    expect(context?.systemPrompt).toContain("You are a focused subagent.");
+    expect(context?.systemPrompt).not.toContain("PROJECT INSTRUCTIONS MUST NOT LOAD");
+    expect(context?.systemPrompt).not.toContain("Cake’s agent");
+    expect(context?.activeTools).toEqual(["read", "bash", "edit", "write"]);
+  });
+
   it("enables Cake application tools alongside the full coding toolset in global chat", async () => {
     const directory = await createTemporaryDirectory();
     const runtime = await createCakeRuntime({

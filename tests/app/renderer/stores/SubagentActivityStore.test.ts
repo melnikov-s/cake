@@ -25,13 +25,14 @@ class HarnessStore extends Store<{
 }
 
 function harness(model: Session, parts: () => readonly UiPart[] = () => []) {
+  const prompt = vi.fn(async () => undefined);
   const steer = vi.fn(async () => undefined);
   const abort = vi.fn(async () => undefined);
   const client = {
-    subagents: { steer, abort },
+    subagents: { prompt, steer, abort },
   } as unknown as Client;
   const root = mount(createStore(HarnessStore, { client, model, parts }));
-  return { root, store: root.activity, steer, abort };
+  return { root, store: root.activity, prompt, steer, abort };
 }
 
 const activity = (handleId: string) => ({
@@ -40,7 +41,6 @@ const activity = (handleId: string) => ({
   handleId,
   revision: 1,
   task: "Inspect the boundary",
-  profile: "reviewer" as const,
   status: "running" as const,
   resolvedModel: {
     requested: "current" as const,
@@ -51,7 +51,6 @@ const activity = (handleId: string) => ({
     fallbacks: [],
   },
   fastMode: false,
-  retained: false,
   streaming: true,
   parts: [
     {
@@ -87,6 +86,17 @@ describe("SubagentActivityStore", () => {
       { signal: fixture.store.signal },
     );
 
+    applySnapshot(model.subagentActivities[0]!, {
+      status: "complete",
+      streaming: false,
+    });
+    expect(chat.composerVisible).toBe(true);
+    await expect(chat.submit("One follow-up")).resolves.toBe(true);
+    expect(fixture.prompt).toHaveBeenCalledWith(
+      { parentSessionId: "parent", handleId, text: "One follow-up" },
+      { signal: fixture.store.signal },
+    );
+
     applySnapshot(model, { releasedSubagentHandleIds: [handleId] });
     expect(chat.composerVisible).toBe(false);
     expect(chat.parts).toEqual([expect.objectContaining({ text: "Inspecting now" })]);
@@ -102,7 +112,7 @@ describe("SubagentActivityStore", () => {
         kind: "tool",
         name: "cake",
         command: "subagents.start",
-        input: JSON.stringify({ task: "Tell a joke", profile: "worker" }),
+        input: JSON.stringify({ task: "Tell a joke" }),
         output: JSON.stringify({ handleId, status: "running" }),
         state: "success",
       },
@@ -115,7 +125,6 @@ describe("SubagentActivityStore", () => {
         output: JSON.stringify({
           handleId,
           task: "Tell a joke",
-          profile: "worker",
           status: "complete",
           parts: [
             {

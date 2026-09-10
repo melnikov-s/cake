@@ -24,11 +24,9 @@ const activity = {
   handleId,
   revision: 1,
   task: "Audit the boundary",
-  profile: "reviewer" as const,
   status: "running" as const,
   resolvedModel,
   fastMode: false,
-  retained: false,
   streaming: true,
   parts: [],
 };
@@ -72,7 +70,13 @@ describe("Subagent Effect RPC contract", () => {
       },
     });
     const client = await runtime.execute(Effect.service(CakeIpcClient));
-    expect(Object.keys(client.subagents ?? {})).toEqual(["observe", "steer", "abort", "close"]);
+    expect(Object.keys(client.subagents ?? {})).toEqual([
+      "observe",
+      "prompt",
+      "steer",
+      "abort",
+      "close",
+    ]);
     await runtime.dispose();
   });
 });

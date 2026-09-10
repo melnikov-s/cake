@@ -16,7 +16,6 @@ import type {
   SubagentActivity,
   SubagentError,
   SubagentHandleId,
-  SubagentProfile,
   SubagentResult,
   SubagentStatus,
 } from "../../domain/subagents/subagent-data";
@@ -27,13 +26,10 @@ export interface SubagentHandleState {
   readonly anchorPartId: string;
   readonly workingDirectory: string;
   readonly task: string;
-  readonly profile: SubagentProfile;
   readonly resolvedModel: ResolvedAgentModel;
   readonly tools: ReadonlyArray<string>;
   readonly instructions?: string;
   readonly fastMode: boolean;
-  readonly retain: boolean;
-  readonly remainingDepth: number;
   readonly notifyOnCompletion: boolean;
   readonly scope: Scope.Closeable;
   readonly completion: Deferred.Deferred<SubagentResult, SubagentError>;
@@ -103,11 +99,9 @@ export const activityOf = (handle: SubagentHandleState): SubagentActivity => {
     handleId: handle.handleId,
     revision: handle.activityRevision,
     task: handle.task,
-    profile: handle.profile,
     status: handle.status,
     resolvedModel: handle.resolvedModel,
     fastMode: handle.fastMode,
-    retained: handle.retain,
     streaming: handle.streaming,
     parts: handle.parts,
   };

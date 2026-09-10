@@ -68,7 +68,7 @@ export const SubagentStatus = observer(function SubagentStatus({
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-xs font-medium">{run.task}</span>
                     <span className="block truncate font-mono text-[10px] font-normal text-muted-foreground">
-                      {run.profile} · {run.status}
+                      Subagent · {run.status}
                     </span>
                   </span>
                 </Button>
@@ -81,7 +81,7 @@ export const SubagentStatus = observer(function SubagentStatus({
       {selectedRun && selectedChat && anchorRef.current && (
         <ChatPopover
           anchor={anchorRef.current}
-          title={`${selectedRun.profile} subagent`}
+          title="Subagent"
           eyebrow={selectedRun.released ? "Released" : selectedRun.status}
           onClose={() => setSelectedKey(undefined)}
         >

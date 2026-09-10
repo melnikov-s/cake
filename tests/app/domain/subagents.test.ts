@@ -18,6 +18,7 @@ import type {
   CakeRuntime,
   CakeRuntimeOptions,
 } from "../../../src/services/pi/runtime/cake-runtime";
+import { subagentSystemPrompt } from "../../../src/services/pi/runtime/subagent-system-prompt";
 import {
   SubagentCoordinator,
   SubagentCoordinatorLive,
@@ -233,7 +234,6 @@ const parent = (
 ): subagents.SubagentParentRuntime => ({
   parentSessionId,
   workingDirectory,
-  remainingDepth: 1,
   options: {
     ...fixture.parentOptions,
     runtime: {
@@ -435,36 +435,38 @@ describe("Subagents", () => {
     }),
   );
 
-  it.effect("enforces read-only tools and zero delegation depth before child acquisition", () =>
+  it.effect("gives the general subagent shell and file tools without Cake or delegation", () =>
     Effect.gen(function* () {
       const fixture = yield* makeFixture();
       const program = Effect.gen(function* () {
-        const receipt = yield* subagents.start(
-          { task: "Review the boundary", profile: "reviewer" },
-          parent(fixture),
-        );
+        const receipt = yield* subagents.start({ task: "Review the boundary" }, parent(fixture));
         const childId = yield* Queue.take(fixture.childStarted);
         const childOptions = (yield* Ref.get(fixture.constructedOptions)).find(
           (options) => options.sessionId === childId,
         );
         assert.ok(childOptions);
-        assert.deepEqual(childOptions.tools, ["read", "cake"]);
+        assert.deepEqual(childOptions.tools, ["read", "bash", "edit", "write"]);
         assert.equal(childOptions.agentControl, undefined);
+        assert.equal(childOptions.additionalSystemPrompt, undefined);
+        assert.equal(childOptions.isolatedSystemPrompt, subagentSystemPrompt());
         yield* completeChild(fixture, childId);
         yield* subagents.wait("parent", receipt.handleId);
+        const coordinator = yield* SubagentCoordinator;
+        assert.equal(
+          (yield* SubscriptionRef.get(coordinator.state)).handles.has(receipt.handleId),
+          true,
+        );
+        yield* subagents.close("parent", receipt.handleId);
       });
       yield* program.pipe(Effect.provide(fixture.layer));
     }),
   );
 
-  it.effect("serializes retained turns on the stable handle without another runtime", () =>
+  it.effect("serializes follow-up turns on the stable handle without another runtime", () =>
     Effect.gen(function* () {
       const fixture = yield* makeFixture();
       const program = Effect.gen(function* () {
-        const receipt = yield* subagents.start(
-          { task: "Initial turn", retain: true },
-          parent(fixture),
-        );
+        const receipt = yield* subagents.start({ task: "Initial turn" }, parent(fixture));
         const childId = yield* Queue.take(fixture.childStarted);
         yield* completeChild(fixture, childId);
         while ((yield* Ref.get(fixture.completions)).length === 0) yield* Effect.yieldNow;
@@ -487,14 +489,11 @@ describe("Subagents", () => {
     }),
   );
 
-  it.effect("does not rewrite a completed retained result when its parent aborts", () =>
+  it.effect("does not rewrite a completed result when its parent aborts", () =>
     Effect.gen(function* () {
       const fixture = yield* makeFixture();
       const program = Effect.gen(function* () {
-        const receipt = yield* subagents.start(
-          { task: "Keep this result", retain: true },
-          parent(fixture),
-        );
+        const receipt = yield* subagents.start({ task: "Keep this result" }, parent(fixture));
         const childId = yield* Queue.take(fixture.childStarted);
         yield* completeChild(fixture, childId);
         while ((yield* Ref.get(fixture.completions)).length === 0) yield* Effect.yieldNow;
@@ -533,14 +532,11 @@ describe("Subagents", () => {
     }),
   );
 
-  it.effect("parent release closes retained children", () =>
+  it.effect("parent release closes subagents", () =>
     Effect.gen(function* () {
       const fixture = yield* makeFixture();
       const program = Effect.gen(function* () {
-        const receipt = yield* subagents.start(
-          { task: "Retained child", retain: true },
-          parent(fixture),
-        );
+        const receipt = yield* subagents.start({ task: "Persistent child" }, parent(fixture));
         yield* Queue.take(fixture.childStarted);
         yield* subagents.releaseParent("parent");
         const coordinator = yield* SubagentCoordinator;

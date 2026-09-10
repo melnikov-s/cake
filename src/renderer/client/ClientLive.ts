@@ -532,6 +532,12 @@ export function makeClient(runtime: Pick<Runtime, "execute">): Client {
         ),
     },
     subagents: {
+      prompt: (input, options) =>
+        run(
+          "subagents.prompt",
+          withClient((client) => client.subagents.prompt(input)),
+          options,
+        ),
       steer: (input, options) =>
         run(
           "subagents.steer",

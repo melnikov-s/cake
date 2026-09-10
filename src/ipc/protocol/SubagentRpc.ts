@@ -14,6 +14,14 @@ export const SubagentRpc = RpcGroup.make(
     error: SubagentError,
     stream: true,
   }),
+  Rpc.make("subagents.prompt", {
+    payload: {
+      ...SubagentParent.fields,
+      handleId: SubagentHandleId,
+      text: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(262_144)),
+    },
+    error: SubagentError,
+  }),
   Rpc.make("subagents.steer", {
     payload: {
       ...SubagentParent.fields,

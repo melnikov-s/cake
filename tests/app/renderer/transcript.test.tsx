@@ -885,7 +885,6 @@ describe("Transcript scrolling", () => {
       command: "subagents.start",
       input: JSON.stringify({
         task: "Tell a joke",
-        profile: "worker",
         model: {
           prefer: "exact",
           provider: "openai-codex",
@@ -905,7 +904,6 @@ describe("Transcript scrolling", () => {
       output: JSON.stringify({
         handleId,
         task: "Tell a joke",
-        profile: "worker",
         status: "running",
       }),
       state: "success",
@@ -919,7 +917,6 @@ describe("Transcript scrolling", () => {
       output: JSON.stringify({
         handleId,
         task: "Tell a joke",
-        profile: "worker",
         status: "complete",
         resolvedModel: {
           requested: "exact",

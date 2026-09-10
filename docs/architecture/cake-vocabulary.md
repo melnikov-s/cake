@@ -88,9 +88,9 @@ read-only parent context and constrained capabilities.
 ### Subagent Session
 
 A private child Cake Session owned by another Cake Session. Cake owns its
-stable handle, capability profile, concurrency, recursion, retention, and
-visibility policy. It is never a Project Session and does not expose its
-backing Pi Session identity to the renderer.
+stable handle, fixed tool boundary, concurrency, retention, and visibility
+policy. It is never a Project Session and does not expose its backing Pi Session
+identity to the renderer.
 
 ### Session Family
 

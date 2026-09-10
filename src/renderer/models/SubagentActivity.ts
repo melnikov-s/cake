@@ -1,9 +1,5 @@
 import { Model, id } from "r-state-tree";
-import type {
-  ResolvedAgentModel,
-  SubagentProfile,
-  SubagentStatus,
-} from "../../domain/subagents/subagent-data";
+import type { ResolvedAgentModel, SubagentStatus } from "../../domain/subagents/subagent-data";
 import type { SessionUsage, UiPart } from "../../ipc/session-contract";
 
 /** Passive renderer projection of one live Subagent activity. */
@@ -13,7 +9,6 @@ export class SubagentActivity extends Model {
   @id handleId = "";
   revision = 0;
   task = "";
-  profile: SubagentProfile = "worker";
   status: SubagentStatus = "queued";
   resolvedModel: ResolvedAgentModel = {
     requested: "current",
@@ -24,7 +19,6 @@ export class SubagentActivity extends Model {
     fallbacks: [],
   };
   fastMode = false;
-  retained = false;
   streaming = false;
   parts: UiPart[] = [];
   usage: SessionUsage | undefined;

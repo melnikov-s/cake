@@ -10,11 +10,9 @@ import {
 } from "../ipc/session-contract";
 
 const statusSchema = Schema.Literals(["queued", "running", "complete", "error", "aborted"]);
-const profileSchema = Schema.Literals(["scout", "planner", "reviewer", "worker"]);
 const runPayloadFields = {
   handleId: Schema.optionalKey(Schema.String.check(Schema.isUUID())),
   task: Schema.optionalKey(Schema.String),
-  profile: Schema.optionalKey(profileSchema),
   status: Schema.optionalKey(statusSchema),
   resolvedModel: Schema.optionalKey(resolvedAgentModelSchema),
   streaming: Schema.optionalKey(Schema.Boolean),
@@ -42,7 +40,6 @@ export interface SubagentRun {
   anchorPartId: string;
   handleId?: string;
   task: string;
-  profile: "scout" | "planner" | "reviewer" | "worker";
   status: "queued" | "running" | "complete" | "error" | "aborted";
   resolvedModel?: typeof resolvedAgentModelSchema.Type;
   streaming: boolean;
@@ -96,7 +93,6 @@ function runFromPayload(
     anchorPartId,
     handleId,
     task: value.task ?? fallback?.task ?? `Delegated task ${index + 1}`,
-    profile: value.profile ?? fallback?.profile ?? "worker",
     status: settledStatus(value.status ?? fallback?.status, partState),
     resolvedModel: value.resolvedModel ?? fallback?.resolvedModel,
     streaming: false,

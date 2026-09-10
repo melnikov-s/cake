@@ -452,6 +452,11 @@ export interface CakeIpcClientService {
     readonly observe: (
       parentSessionId: string,
     ) => Stream.Stream<SubagentUpdate, SubagentError | TransportError>;
+    readonly prompt: (input: {
+      readonly parentSessionId: string;
+      readonly handleId: SubagentHandleId;
+      readonly text: string;
+    }) => Effect.Effect<void, SubagentError | TransportError>;
     readonly steer: (input: {
       readonly parentSessionId: string;
       readonly handleId: SubagentHandleId;
@@ -880,6 +885,9 @@ export const CakeIpcClientLive = Layer.effect(
       },
       subagents: {
         observe: (parentSessionId) => client("subagents.observe", { parentSessionId }),
+        prompt: Effect.fn("CakeIpcClient.subagents.prompt")((input) =>
+          client("subagents.prompt", input),
+        ),
         steer: Effect.fn("CakeIpcClient.subagents.steer")((input) =>
           client("subagents.steer", input),
         ),

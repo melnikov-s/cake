@@ -6,12 +6,9 @@ import { createAgentControlOperations } from "../../../src/services/pi/runtime/c
 import { subagentTaskSchema } from "../../../src/services/pi/runtime/subagent-contract";
 
 describe("subagent contract", () => {
-  it("inherits the model when omitted and defaults isolated one-shot execution settings", () => {
+  it("accepts one general-purpose subagent task shape", () => {
     expect(Schema.decodeUnknownSync(subagentTaskSchema)({ task: "Inspect the adapter" })).toEqual({
       task: "Inspect the adapter",
-      profile: "worker",
-      maxDepth: 0,
-      retain: false,
     });
   });
 

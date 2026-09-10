@@ -10,9 +10,6 @@ export const SubagentHandleId = Schema.String.check(Schema.isUUID(4)).pipe(
 );
 export type SubagentHandleId = Schema.Schema.Type<typeof SubagentHandleId>;
 
-export const SubagentProfile = Schema.Literals(["scout", "planner", "reviewer", "worker"]);
-export type SubagentProfile = Schema.Schema.Type<typeof SubagentProfile>;
-
 export const SubagentStatus = Schema.Literals([
   "queued",
   "running",
@@ -53,23 +50,17 @@ export interface ResolvedAgentModel extends Schema.Schema.Type<typeof ResolvedAg
 
 export const SubagentTaskInput = Schema.Struct({
   task: nonEmptyBoundedString(262_144),
-  profile: Schema.optionalKey(SubagentProfile),
   model: Schema.optionalKey(AgentModelPreference),
   instructions: Schema.optionalKey(boundedString(32_768)),
   fastMode: Schema.optionalKey(Schema.Boolean),
-  maxDepth: Schema.optionalKey(Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 1 }))),
-  retain: Schema.optionalKey(Schema.Boolean),
 });
 export interface SubagentTaskInput extends Schema.Schema.Type<typeof SubagentTaskInput> {}
 
 export const SubagentTask = Schema.Struct({
   task: SubagentTaskInput.fields.task,
-  profile: SubagentProfile,
   model: AgentModelPreference,
   instructions: Schema.optionalKey(boundedString(32_768)),
   fastMode: Schema.Boolean,
-  maxDepth: Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 1 })),
-  retain: Schema.Boolean,
 });
 export interface SubagentTask extends Schema.Schema.Type<typeof SubagentTask> {}
 
@@ -89,11 +80,9 @@ export const SubagentActivity = Schema.Struct({
   handleId: SubagentHandleId,
   revision: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
   task: SubagentTask.fields.task,
-  profile: SubagentProfile,
   status: SubagentStatus,
   resolvedModel: ResolvedAgentModel,
   fastMode: Schema.Boolean,
-  retained: Schema.Boolean,
   streaming: Schema.Boolean,
   parts: Schema.Array(Schema.Json).check(Schema.isMaxLength(10_000)),
   usage: Schema.optionalKey(Schema.Json),
@@ -104,7 +93,6 @@ export interface SubagentActivity extends Schema.Schema.Type<typeof SubagentActi
 export const SubagentResult = Schema.Struct({
   handleId: SubagentHandleId,
   task: SubagentTask.fields.task,
-  profile: SubagentProfile,
   status: SubagentStatus,
   resolvedModel: ResolvedAgentModel,
   fastMode: Schema.Boolean,
@@ -118,11 +106,8 @@ export interface SubagentResult extends Schema.Schema.Type<typeof SubagentResult
 export const SubagentStartReceipt = Schema.Struct({
   handleId: SubagentHandleId,
   task: SubagentTask.fields.task,
-  profile: SubagentProfile,
   status: SubagentStatus,
-  retained: Schema.Boolean,
   fastMode: Schema.Boolean,
-  maxDepth: Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 1 })),
   resolvedModel: ResolvedAgentModel,
 });
 export interface SubagentStartReceipt extends Schema.Schema.Type<typeof SubagentStartReceipt> {}

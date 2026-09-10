@@ -33,6 +33,7 @@ import {
   PiSessions,
   type PiSessionAcquireOptions,
 } from "../../services/pi/PiSessions";
+import { subagentSystemPrompt } from "../../services/pi/runtime/subagent-system-prompt";
 import {
   SubagentCoordinator,
   activityOf,
@@ -50,26 +51,13 @@ export * from "./subagent-data";
 
 const MAX_HANDLES_PER_PARENT = 8;
 const MAX_PRIVATE_RUNTIMES_PER_WORKING_DIRECTORY = 32;
-const RESULT_RETENTION = "5 minutes";
 const WAIT_TIMEOUT = "5 minutes";
 
-const READ_ONLY_TOOLS = new Set(["read", "grep", "find", "ls", "cake"]);
-const AUXILIARY_TOOLS = new Set(["read", "bash", "edit", "write", "grep", "find", "ls", "cake"]);
-
-const PROFILE_INSTRUCTIONS = {
-  scout: "Explore the codebase and report concise, evidence-backed findings. Do not modify files.",
-  planner:
-    "Analyze the requested work and return an implementation plan with relevant files, dependencies, risks, and verification. Do not modify files.",
-  reviewer:
-    "Review the requested code for correctness, security, and maintainability. Report concrete findings with file and line references. Do not modify files.",
-  worker:
-    "Complete the bounded implementation task, verify the result, and summarize changed files and checks. Do not delegate unless the caller explicitly granted delegation depth.",
-} as const;
+const SUBAGENT_TOOLS = ["read", "bash", "edit", "write"] as const;
 
 export interface SubagentParentRuntime {
   readonly parentSessionId: string;
   readonly workingDirectory: string;
-  readonly remainingDepth: number;
   readonly options: PiSessionAcquireOptions;
 }
 
@@ -102,30 +90,15 @@ const normalizeTask = Effect.fn("Subagents.normalizeTask")(function* (input: Sub
   );
   const task: SubagentTask = {
     task: decoded.task,
-    profile: decoded.profile ?? "worker",
     model: decoded.model ?? { prefer: "current" },
     fastMode: decoded.fastMode ?? false,
-    maxDepth: decoded.maxDepth ?? 0,
-    retain: decoded.retain ?? false,
   };
   if (decoded.instructions !== undefined)
     Object.assign(task, { instructions: decoded.instructions });
   return task;
 });
 
-const toolsForProfile = (profile: SubagentTask["profile"], parentTools: readonly string[]) => {
-  const nonDelegating = parentTools.filter((name) => AUXILIARY_TOOLS.has(name));
-  return profile === "worker"
-    ? nonDelegating
-    : nonDelegating.filter((name) => READ_ONLY_TOOLS.has(name));
-};
-
-const systemPrompt = (task: SubagentTask) => {
-  const profile = `## Subagent role: ${task.profile}\n\n${PROFILE_INSTRUCTIONS[task.profile]}`;
-  return task.instructions
-    ? `${profile}\n\n## Additional instructions\n\n${task.instructions}`
-    : profile;
-};
+const systemPrompt = (task: SubagentTask) => subagentSystemPrompt(task.instructions);
 
 const fallbackReason = (snapshot: SessionSnapshot, provider: string, modelId: string) => {
   const model = snapshot.models.find((item) => item.provider === provider && item.id === modelId);
@@ -210,7 +183,6 @@ interface PreparedTask {
   readonly parent: SubagentParentRuntime;
   readonly resolvedModel: ResolvedAgentModel;
   readonly tools: ReadonlyArray<string>;
-  readonly remainingDepth: number;
 }
 
 const prepareTasks = Effect.fn("Subagents.prepareTasks")(function* (
@@ -222,30 +194,13 @@ const prepareTasks = Effect.fn("Subagents.prepareTasks")(function* (
   const coordinator = yield* SubagentCoordinator;
   const application = yield* getState();
   const current = yield* SubscriptionRef.get(coordinator.state);
-  const privateParent = [...current.handles.values()].find(
-    (handle) => handle.privateSessionId === parent.parentSessionId,
-  );
-  const effectiveParent: SubagentParentRuntime = privateParent
-    ? {
-        parentSessionId: parent.parentSessionId,
-        workingDirectory: privateParent.workingDirectory,
-        remainingDepth: Math.max(0, privateParent.remainingDepth - 1),
-        options: privateParent.runtimeOptions,
-      }
-    : parent;
-  const { snapshot, parentTools } = yield* Effect.scoped(
+  const effectiveParent = parent;
+  const snapshot = yield* Effect.scoped(
     Effect.gen(function* () {
       const parentHandle = yield* sessions
         .acquire(effectiveParent.options)
         .pipe(asError("preflight"));
-      const snapshot = yield* parentHandle.snapshot().pipe(asError("preflight"));
-      const parentTools = yield* parentHandle.reviewParentContext().pipe(
-        Effect.map((context) => context.activeTools ?? []),
-        Effect.catchTag("PiSessionError", () =>
-          Effect.succeed(["read", "bash", "edit", "write", "grep", "find", "ls", "cake"]),
-        ),
-      );
-      return { snapshot, parentTools };
+      return yield* parentHandle.snapshot().pipe(asError("preflight"));
     }),
   );
   const owned = [...current.handles.values()].filter(
@@ -282,8 +237,7 @@ const prepareTasks = Effect.fn("Subagents.prepareTasks")(function* (
           input,
           parent: effectiveParent,
           resolvedModel,
-          tools: toolsForProfile(input.profile, parentTools),
-          remainingDepth: Math.min(input.maxDepth, Math.max(0, effectiveParent.remainingDepth)),
+          tools: [...SUBAGENT_TOOLS],
         };
       }),
     catch: (cause) =>
@@ -334,7 +288,6 @@ const snapshotResult = (
   const result: SubagentResult = {
     handleId: handle.handleId,
     task: handle.task,
-    profile: handle.profile,
     status,
     resolvedModel: handle.resolvedModel,
     fastMode: handle.fastMode,
@@ -417,7 +370,7 @@ const observeTurn = Effect.fn("Subagents.observeTurn")(function* (
   if (!piHandle)
     return yield* new SubagentError({
       operation: delivery,
-      message: "The retained subagent is still starting",
+      message: "The subagent is still starting",
     });
   const ready = yield* Deferred.make<void>();
   const settled = yield* Ref.make<ReadonlyMap<string, { outcome: string; message?: string }>>(
@@ -625,7 +578,6 @@ const failHandle = Effect.fn("Subagents.failHandle")(function* (
   const result: SubagentResult = {
     handleId: handle.handleId,
     task: handle.task,
-    profile: handle.profile,
     status: aborted ? "aborted" : "error",
     resolvedModel: handle.resolvedModel,
     fastMode: handle.fastMode,
@@ -654,10 +606,8 @@ const startPrepared = Effect.fn("Subagents.startPrepared")(function* (
     const parentHandle = yield* sessions
       .acquire(prepared.parent.options)
       .pipe(Effect.provideService(Scope.Scope, scope), asError("start"));
-    const agentControl =
-      prepared.remainingDepth === 0 ? undefined : prepared.parent.options.runtime.agentControl;
     const runtimeOptions: PiSessionAcquireOptions = {
-      profile: { _tag: "SubagentSession", profile: prepared.input.profile },
+      profile: { _tag: "SubagentSession" },
       runtime: {
         cwd: location.workingDirectory,
         trusted: location.trusted,
@@ -668,9 +618,8 @@ const startPrepared = Effect.fn("Subagents.startPrepared")(function* (
         auxiliary: true,
         tools: [...prepared.tools],
         slashCommands: [],
-        additionalSystemPrompt: systemPrompt(prepared.input),
+        isolatedSystemPrompt: systemPrompt(prepared.input),
         requestUi: async () => undefined,
-        agentControl,
         fastMode: {
           get: () => prepared.input.fastMode,
           set: async () => undefined,
@@ -683,13 +632,10 @@ const startPrepared = Effect.fn("Subagents.startPrepared")(function* (
       anchorPartId,
       workingDirectory: prepared.parent.workingDirectory,
       task: prepared.input.task,
-      profile: prepared.input.profile,
       resolvedModel: prepared.resolvedModel,
       tools: prepared.tools,
       instructions: prepared.input.instructions,
       fastMode: prepared.input.fastMode,
-      retain: prepared.input.retain,
-      remainingDepth: prepared.remainingDepth,
       notifyOnCompletion,
       scope,
       completion,
@@ -721,23 +667,6 @@ const startPrepared = Effect.fn("Subagents.startPrepared")(function* (
         onSuccess: () => Effect.void,
         onFailure: (cause) => failHandle(handleId, cause),
       }),
-      Effect.ensuring(
-        Effect.gen(function* () {
-          const current = yield* requireHandleById(handleId).pipe(
-            Effect.catchTag("SubagentError", () => Effect.succeed(undefined)),
-          );
-          if (current && !current.retain) {
-            if (current.privateSessionId) yield* releaseDirectChildren(current.privateSessionId);
-            yield* Scope.close(current.scope, Exit.void);
-            yield* mutateHandle(handleId, (released) => ({ ...released, piHandle: undefined }));
-          }
-        }),
-      ),
-      Effect.andThen(
-        prepared.input.retain
-          ? Effect.void
-          : Effect.sleep(RESULT_RETENTION).pipe(Effect.andThen(remove(handleId))),
-      ),
     );
     yield* FiberMap.run(coordinator.fibers, handleId, worker);
     return {
@@ -745,11 +674,8 @@ const startPrepared = Effect.fn("Subagents.startPrepared")(function* (
       receipt: {
         handleId,
         task: prepared.input.task,
-        profile: prepared.input.profile,
         status: "queued",
-        retained: prepared.input.retain,
         fastMode: prepared.input.fastMode,
-        maxDepth: prepared.remainingDepth,
         resolvedModel: prepared.resolvedModel,
       } satisfies SubagentStartReceipt,
     };
@@ -763,14 +689,6 @@ const startPrepared = Effect.fn("Subagents.startPrepared")(function* (
         : Effect.void,
     ),
   );
-});
-
-const remove = Effect.fn("Subagents.remove")(function* (handleId: SubagentHandleId) {
-  const coordinator = yield* SubagentCoordinator;
-  const handle = (yield* SubscriptionRef.get(coordinator.state)).handles.get(handleId);
-  if (!handle) return;
-  yield* SubscriptionRef.update(coordinator.state, (state) => removeHandle(state, handleId));
-  yield* Scope.close(handle.scope, Exit.void);
 });
 
 export const start = Effect.fn("Subagents.start")(function* (
@@ -916,12 +834,6 @@ export const wait = Effect.fn("Subagents.wait")(function* (
     ),
   );
   if (observer) yield* Fiber.interrupt(observer);
-  if (!handle.retain)
-    yield* Effect.sleep("500 millis").pipe(
-      Effect.andThen(FiberMap.remove(coordinator.fibers, handle.handleId)),
-      Effect.andThen(remove(handle.handleId)),
-      Effect.forkIn(coordinator.scope),
-    );
   return jsonValue(completed);
 });
 
@@ -932,12 +844,6 @@ export const prompt = Effect.fn("Subagents.prompt")(function* (
   delivery: "prompt" | "follow-up",
 ) {
   const handle = yield* requireHandle(parentSessionId, rawHandleId);
-  if (!handle.retain)
-    return yield* new SubagentError({
-      operation: delivery,
-      message:
-        "This subagent was created for one-shot work. Spawn with retain: true to use multi-turn prompts.",
-    });
   const normalized = text.trim();
   if (!normalized)
     return yield* new SubagentError({ operation: delivery, message: "Prompt text is required" });
@@ -966,7 +872,7 @@ export const prompt = Effect.fn("Subagents.prompt")(function* (
   if (!claimed)
     return yield* new SubagentError({
       operation: delivery,
-      message: "That retained subagent already has active work; steer or abort it instead",
+      message: "That subagent already has active work; steer or abort it instead",
     });
   const slot = yield* RcMap.get(coordinator.slots, handle.workingDirectory).pipe(
     Effect.provideService(Scope.Scope, handle.scope),

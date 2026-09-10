@@ -91,6 +91,8 @@ export interface CakeRuntimeOptions {
   sessionId?: string;
   sessionFile?: string;
   additionalSystemPrompt?: string;
+  /** Replaces Pi's normal prompt and disables context-file loading for an isolated runtime. */
+  isolatedSystemPrompt?: string;
   tools?: string[];
   auxiliary?: boolean;
   /** Subset of builtin slash command names to advertise; defaults to all of them. */

@@ -26,12 +26,10 @@ export const makeSubagentControl =
   (
     options: () => PiSessionAcquireOptions,
     workingDirectory: string,
-    remainingDepth = 1,
   ): NonNullable<CakeRuntimeOptions["agentControl"]> => {
     const parent = (parentSessionId: string): subagents.SubagentParentRuntime => ({
       parentSessionId,
       workingDirectory,
-      remainingDepth,
       options: options(),
     });
     return {

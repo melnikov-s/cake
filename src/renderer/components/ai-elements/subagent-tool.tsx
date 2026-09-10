@@ -101,7 +101,7 @@ export const SubagentTool = observer(function SubagentTool({
           }
         />
         <strong className="font-mono font-semibold">
-          {parallel ? "Delegated work" : `${runs[0]?.profile ?? "worker"} subagent`}
+          {parallel ? "Delegated work" : "Subagent"}
         </strong>
         {timer}
         <span className="ml-auto text-muted-foreground">
@@ -137,7 +137,7 @@ export const SubagentTool = observer(function SubagentTool({
                           : "pending"
                 }
               />
-              {parallel && <strong className="shrink-0 font-mono text-xs">{run.profile}</strong>}
+              {parallel && <strong className="shrink-0 font-mono text-xs">Subagent</strong>}
               <div className="min-w-0 flex-1">
                 <p className="truncate text-xs" title={run.task}>
                   {run.task}
@@ -155,8 +155,8 @@ export const SubagentTool = observer(function SubagentTool({
               </div>
               {subagents && renderChat && (
                 <IconButton
-                  tooltip={`Open ${run.profile} subagent chat`}
-                  aria-label={`Open ${run.profile} subagent chat`}
+                  tooltip="Open subagent chat"
+                  aria-label="Open subagent chat"
                   onClick={(event) => setPopup({ key: run.key, anchor: event.currentTarget })}
                 >
                   <ChatIcon />
@@ -170,7 +170,7 @@ export const SubagentTool = observer(function SubagentTool({
       {popup && popupRun && popupChat && renderChat && (
         <ChatPopover
           anchor={popup.anchor}
-          title={`${popupRun.profile} subagent`}
+          title="Subagent"
           eyebrow={popupRun.released ? "Released" : popupRun.status}
           onClose={() => setPopup(undefined)}
         >

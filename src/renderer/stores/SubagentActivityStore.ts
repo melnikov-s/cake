@@ -33,7 +33,6 @@ export class SubagentActivityStore extends Store<{
         anchorPartId: activity.anchorPartId,
         handleId: activity.handleId,
         task: activity.task,
-        profile: activity.profile,
         status: activity.status,
         resolvedModel: {
           ...activity.resolvedModel,
@@ -68,9 +67,9 @@ export class SubagentActivityStore extends Store<{
     return run ? [run] : this.runs.filter((candidate) => candidate.anchorPartId === anchorPartId);
   }
 
-  private canSteer(key: string) {
+  private canMessage(key: string) {
     const run = this.run(key);
-    return Boolean(run?.handleId && !run.released && run.status === "running" && run.streaming);
+    return Boolean(run?.handleId && !run.released && run.status !== "queued");
   }
 
   @child
@@ -95,20 +94,25 @@ export class SubagentActivityStore extends Store<{
         },
         configuration: () => undefined,
         commands: () => [],
-        placeholder: () => (this.canSteer(run.key) ? "Steer this subagent…" : "Subagent released"),
-        inputLabel: () => "Steer subagent",
-        canSubmit: (draft) => this.canSteer(run.key) && Boolean(draft.trim()),
+        placeholder: () =>
+          this.run(run.key)?.status === "running"
+            ? "Steer this subagent…"
+            : this.canMessage(run.key)
+              ? "Message this subagent…"
+              : "Subagent unavailable",
+        inputLabel: () => "Message subagent",
+        canSubmit: (draft) => this.canMessage(run.key) && Boolean(draft.trim()),
         submit: async (draft) => {
           const current = this.run(run.key);
-          if (!current?.handleId || !this.canSteer(run.key)) return false;
-          await this.client.subagents.steer(
-            {
-              parentSessionId: this.props.sessionId,
-              handleId: SubagentHandleId.make(current.handleId),
-              text: draft.trim(),
-            },
-            { signal: this.signal },
-          );
+          if (!current?.handleId || !this.canMessage(run.key)) return false;
+          const input = {
+            parentSessionId: this.props.sessionId,
+            handleId: SubagentHandleId.make(current.handleId),
+            text: draft.trim(),
+          };
+          if (current.status === "running")
+            await this.client.subagents.steer(input, { signal: this.signal });
+          else await this.client.subagents.prompt(input, { signal: this.signal });
           return true;
         },
         abort: async () => {
@@ -122,7 +126,7 @@ export class SubagentActivityStore extends Store<{
             { signal: this.signal },
           );
         },
-        composerVisible: () => this.canSteer(run.key),
+        composerVisible: () => this.canMessage(run.key),
         usage: () => this.run(run.key)?.usage,
         error: () => ({ message: this.run(run.key)?.error }),
       }),
