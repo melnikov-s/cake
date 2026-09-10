@@ -1,4 +1,4 @@
-import { Store, child, createStore } from "r-state-tree";
+import { Store, child, createStore, effect as reactiveEffect } from "r-state-tree";
 import type { Session } from "../models/Session";
 import type { ModelPreset } from "../../ipc/session-contract";
 import { ClientContext } from "./context/ClientContext";
@@ -63,8 +63,12 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
         handoffSession: (entryId, prompt, resolveSource) =>
           this.props.management.handoff(this.sessionId, entryId, prompt, resolveSource),
         deliver: async (input) => {
+          const observedSnapshotRevision = this.model.observedSnapshotRevision;
           const active = this.props.management.ensureSessionActive(this.sessionId);
-          if (active !== true && !(await active)) return false;
+          if (active !== true) {
+            if (!(await active)) return false;
+            if (!(await this.waitForActiveProjection(observedSnapshotRevision))) return false;
+          }
           const target = this.props.target();
           const newSession = this.props.pendingSessions.newSessionRequest(this.sessionId);
           const prompt = {
@@ -157,6 +161,29 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       openModelPresetSettings: this.props.openModelPresetSettings,
       settings: this.props.settings,
       resetOperationOwnersOnDispose: true,
+    });
+  }
+
+  /** Keeps the optimistic message and loading response visible until live observation is attached. */
+  private waitForActiveProjection(afterRevision: number): Promise<boolean> {
+    if (!this.model.resolved && this.model.observedSnapshotRevision > afterRevision)
+      return Promise.resolve(true);
+    if (this.signal.aborted) return Promise.resolve(false);
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (ready: boolean) => {
+        if (settled) return;
+        settled = true;
+        this.signal.removeEventListener("abort", abort);
+        dispose();
+        resolve(ready);
+      };
+      const abort = () => finish(false);
+      this.signal.addEventListener("abort", abort, { once: true });
+      const dispose = reactiveEffect(() => {
+        if (!this.model.resolved && this.model.observedSnapshotRevision > afterRevision)
+          queueMicrotask(() => finish(true));
+      });
     });
   }
 

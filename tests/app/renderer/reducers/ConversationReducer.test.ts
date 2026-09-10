@@ -22,7 +22,10 @@ function conversation(extensionUi: ConversationSnapshot["extensionUi"]): Convers
   };
 }
 
-function snapshot(extensionUi: ConversationSnapshot["extensionUi"]): ProjectSessionUpdate {
+function snapshot(
+  extensionUi: ConversationSnapshot["extensionUi"],
+  resolved = false,
+): ProjectSessionUpdate {
   return {
     _tag: "Snapshot",
     revision: 1,
@@ -34,7 +37,7 @@ function snapshot(extensionUi: ConversationSnapshot["extensionUi"]): ProjectSess
         workingDirectory: "/cake",
       },
       projectName: "Cake",
-      resolved: false,
+      resolved,
       unread: false,
       conversation: conversation(extensionUi),
     },
@@ -42,6 +45,19 @@ function snapshot(extensionUi: ConversationSnapshot["extensionUi"]): ProjectSess
 }
 
 describe("ConversationReducer", () => {
+  it("projects whether the observed transcript is resolved", () => {
+    const session = Session.create({ sessionId: "session", workingDirectory: "/cake" });
+
+    applyProjectSessionUpdate(session, "session", snapshot({ statuses: [] }, true));
+    expect(session.resolved).toBe(true);
+    expect(session.observedSnapshotRevision).toBe(1);
+
+    applyProjectSessionUpdate(session, "session", snapshot({ statuses: [] }));
+    expect(session.resolved).toBe(false);
+    expect(session.observedSnapshotRevision).toBe(2);
+    session[Symbol.dispose]();
+  });
+
   it("hydrates current extension status and title from a snapshot", () => {
     const session = Session.create({ sessionId: "session", workingDirectory: "/cake" });
 

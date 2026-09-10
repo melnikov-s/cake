@@ -31,7 +31,11 @@ export function applyProjectSessionUpdate(
       update.snapshot.identity.sessionId !== sessionId
     )
       throw new Error(`Project Session identity collision: ${sessionId}`);
-    applyConversationSnapshot(model, update.snapshot.conversation, false);
+    batch(() => {
+      applyConversationSnapshot(model, update.snapshot.conversation, false);
+      model.resolved = update.snapshot.resolved;
+      model.observedSnapshotRevision += 1;
+    });
     return;
   }
   if (update.sessionId !== sessionId)
@@ -46,7 +50,11 @@ export function applyCakeChatUpdate(model: Session, sessionId: string, update: C
       update.snapshot.identity.sessionId !== sessionId
     )
       throw new Error(`Cake Chat identity collision: ${sessionId}`);
-    applyConversationSnapshot(model, update.snapshot.conversation, false);
+    batch(() => {
+      applyConversationSnapshot(model, update.snapshot.conversation, false);
+      model.resolved = update.snapshot.resolved;
+      model.observedSnapshotRevision += 1;
+    });
     return;
   }
   if (update.sessionId !== sessionId)

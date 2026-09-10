@@ -18,6 +18,8 @@ describe("ProjectSessionStore", () => {
       calls.push("prompt");
     });
     const models = RootProjection.create();
+    const model = models.projectSession("resolved-session", "/project");
+    model.resolved = true;
     const operations = mount(createStore(SessionOperationCoordinatorStore));
     const pendingSessions = {
       isTemporary: () => false,
@@ -29,7 +31,7 @@ describe("ProjectSessionStore", () => {
       createStore(ProjectSessionStore, {
         workspacePath: "/project",
         sessionId: "resolved-session",
-        model: models.projectSession("resolved-session", "/project"),
+        model,
         pendingSessions,
         operations,
         reviews: () => {
@@ -60,7 +62,18 @@ describe("ProjectSessionStore", () => {
       { projectSessions: { prompt } } as unknown as Client,
     );
 
-    await expect(session.conversationSessionStore.chatStore.submit("Continue")).resolves.toBe(true);
+    const submission = session.conversationSessionStore.chatStore.submit("Continue");
+
+    expect(session.conversationSessionStore.chatStore.parts).toEqual([
+      expect.objectContaining({ text: "Continue", deliveryState: "sending" }),
+    ]);
+    expect(session.conversationSessionStore.chatStore.loading).toBe(true);
+    await Promise.resolve();
+    expect(prompt).not.toHaveBeenCalled();
+
+    model.resolved = false;
+    model.observedSnapshotRevision += 1;
+    await expect(submission).resolves.toBe(true);
 
     expect(calls).toEqual(["restore", "prompt"]);
     expect(ensureSessionActive).toHaveBeenCalledOnce();

@@ -40,8 +40,20 @@ describe("CakeChatCollectionStore", () => {
       { cakeChats: { restore, prompt } } as unknown as Client,
     );
     const session = store.registry.load("resolved-chat");
+    session.model.resolved = true;
 
-    await expect(session.conversationSessionStore.chatStore.submit("Continue")).resolves.toBe(true);
+    const submission = session.conversationSessionStore.chatStore.submit("Continue");
+
+    expect(session.conversationSessionStore.chatStore.parts).toEqual([
+      expect.objectContaining({ text: "Continue", deliveryState: "sending" }),
+    ]);
+    expect(session.conversationSessionStore.chatStore.loading).toBe(true);
+    await Promise.resolve();
+    expect(prompt).not.toHaveBeenCalled();
+
+    session.model.resolved = false;
+    session.model.observedSnapshotRevision += 1;
+    await expect(submission).resolves.toBe(true);
 
     expect(calls).toEqual(["restore", "prompt"]);
     expect(restore).toHaveBeenCalledWith(

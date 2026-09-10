@@ -17,6 +17,10 @@ export class Session extends Model {
   workingDirectory = "";
   @id sessionId = "";
   sessionFile = "";
+  /** Whether the observed transcript is still the read-only resolved projection. */
+  resolved = false;
+  /** Window-local marker for complete outer Project/Cake Chat snapshots. */
+  @transient observedSnapshotRevision = 0;
   @child(Message) parts: Message[] = observable([]);
   @modelRef(LlmModel) model: LlmModel | undefined;
   fastMode = false;
