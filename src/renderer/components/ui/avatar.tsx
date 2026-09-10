@@ -11,15 +11,17 @@ const styles = {
 } as const;
 
 const statusColorClasses = {
-  rose: "border-workflow-rose/70 bg-workflow-rose/65",
-  peach: "border-workflow-peach/70 bg-workflow-peach/65",
-  amber: "border-workflow-amber/70 bg-workflow-amber/65",
-  lime: "border-workflow-lime/70 bg-workflow-lime/65",
-  mint: "border-workflow-mint/70 bg-workflow-mint/65",
-  sky: "border-workflow-sky/70 bg-workflow-sky/65",
-  blue: "border-workflow-blue/70 bg-workflow-blue/65",
-  violet: "border-workflow-violet/70 bg-workflow-violet/65",
+  rose: "text-workflow-rose",
+  peach: "text-workflow-peach",
+  amber: "text-workflow-amber",
+  lime: "text-workflow-lime",
+  mint: "text-workflow-mint",
+  sky: "text-workflow-sky",
+  blue: "text-workflow-blue",
+  violet: "text-workflow-violet",
 } satisfies Record<ProjectWorkflowColor, string>;
+
+const sessionBodyPlaceholder = "#abcdef";
 
 export interface AvatarProps extends HTMLAttributes<HTMLSpanElement> {
   kind: "project" | "session";
@@ -29,20 +31,42 @@ export interface AvatarProps extends HTMLAttributes<HTMLSpanElement> {
 
 /** Deterministic DiceBear avatar with Cake-owned sizing, status color, and accessibility. */
 export function Avatar({ kind, seed, statusColor, className, ...props }: AvatarProps) {
-  const uri = useMemo(() => new DiceBearAvatar(styles[kind], { seed }).toDataUri(), [kind, seed]);
+  const avatar = useMemo(() => {
+    if (kind === "project") {
+      return {
+        uri: new DiceBearAvatar(styles.project, {
+          seed,
+          backgroundColor: "#00000000",
+        }).toDataUri(),
+      };
+    }
+
+    const svg = new DiceBearAvatar(styles.session, {
+      seed,
+      bodyColor: sessionBodyPlaceholder,
+    })
+      .toString()
+      .replace(/<metadata[\s\S]*?<\/metadata>/, "")
+      .replaceAll(sessionBodyPlaceholder, "currentColor");
+    return { svg };
+  }, [kind, seed]);
+
   return (
     <span
       data-slot="avatar"
       className={cn(
-        "inline-grid size-5 shrink-0 place-items-center overflow-hidden border",
-        kind === "project" ? "rounded-md border-border bg-muted" : "rounded-full border-border",
+        "inline-grid size-5 shrink-0 place-items-center [&_svg]:size-full",
         kind === "session" &&
-          (statusColor ? statusColorClasses[statusColor] : "bg-muted text-muted-foreground"),
+          (statusColor ? statusColorClasses[statusColor] : "text-muted-foreground"),
         className,
       )}
       {...props}
     >
-      <img className="size-full" src={uri} alt="" aria-hidden="true" />
+      {"uri" in avatar ? (
+        <img className="size-full" src={avatar.uri} alt="" aria-hidden="true" />
+      ) : (
+        <span className="contents" dangerouslySetInnerHTML={{ __html: avatar.svg }} />
+      )}
     </span>
   );
 }
