@@ -14,19 +14,22 @@ interface ComposerSelection {
 export const ChatComposerInput = observer(function ChatComposerInput({
   store,
   inputRef,
+  focusEnabled,
   onReword,
   onPromptedReword,
   onSubmit,
 }: {
   store: ChatStore;
   inputRef: RefObject<HTMLTextAreaElement | null>;
+  focusEnabled: boolean;
   onReword(selection: ComposerSelection): void;
   onPromptedReword(selection: ComposerSelection): void;
   onSubmit(value: string): Promise<void>;
 }) {
   return (
     <SlashCommandCombobox
-      autoFocus
+      autoFocus={focusEnabled}
+      focusEnabled={focusEnabled}
       aria-label={store.inputLabel}
       aria-busy={store.rewording}
       inputRef={(input) => {

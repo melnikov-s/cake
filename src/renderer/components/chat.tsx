@@ -107,6 +107,7 @@ export const Chat = observer(function Chat({
   className = "",
   embedded = false,
   compact = false,
+  composerFocusEnabled = true,
 }: {
   store: ChatStore;
   transcriptBehavior?: ChatTranscriptBehavior;
@@ -120,6 +121,7 @@ export const Chat = observer(function Chat({
   className?: string;
   embedded?: boolean;
   compact?: boolean;
+  composerFocusEnabled?: boolean;
 }) {
   const layoutRef = useRef<HTMLDivElement>(null);
   const composerDockRef = useRef<HTMLDivElement>(null);
@@ -204,6 +206,7 @@ export const Chat = observer(function Chat({
       store={nestedStore}
       embedded
       compact
+      composerFocusEnabled={composerFocusEnabled}
       transcriptBehavior={
         transcriptBehavior?.openSourceLocation || transcriptBehavior?.workspacePath
           ? {
@@ -251,6 +254,7 @@ export const Chat = observer(function Chat({
               key={store.id}
               store={store}
               inputRef={composerInputRef}
+              focusEnabled={composerFocusEnabled}
               onReword={(selection) => void reword(selection)}
               onPromptedReword={setPromptedSelection}
               onSubmit={(value) => submitMessage(value)}

@@ -245,6 +245,43 @@ describe("SlashCommandCombobox", () => {
     expect(document.activeElement).toBe(input);
   });
 
+  it("does not replay an inactive composer's stale focus request", () => {
+    act(() =>
+      root.render(
+        <SlashCommandCombobox
+          aria-label="Message"
+          commands={[]}
+          focusEnabled={false}
+          focusRequestRevision={1}
+          value=""
+          onValueChange={vi.fn()}
+          onSubmit={vi.fn()}
+        />,
+      ),
+    );
+    const input = container.querySelector<HTMLTextAreaElement>('[role="combobox"]')!;
+    const elsewhere = document.createElement("button");
+    container.appendChild(elsewhere);
+    elsewhere.focus();
+
+    act(() =>
+      root.render(
+        <SlashCommandCombobox
+          aria-label="Message"
+          commands={[]}
+          focusEnabled
+          focusRequestRevision={1}
+          value=""
+          onValueChange={vi.fn()}
+          onSubmit={vi.fn()}
+        />,
+      ),
+    );
+
+    expect(document.activeElement).toBe(elsewhere);
+    expect(document.activeElement).not.toBe(input);
+  });
+
   it("renders Pi CLI built-ins with their argument hints", () => {
     const builtin: SlashCommand = {
       name: "model",

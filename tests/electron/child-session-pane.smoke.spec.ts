@@ -138,6 +138,7 @@ test("opens family children beside their parent and reuses the child pane", asyn
     const childInput = childPane.getByLabel("Message");
     await expect(childPane).toHaveAttribute("data-session-id", firstChildSessionId);
     await expect(childPane).toHaveAttribute("data-focused", "true");
+    await expect(childInput).toBeFocused();
     await expect(
       page.locator(`.session-item[data-session-id="${firstChildSessionId}"]`),
     ).toHaveClass(/active/);

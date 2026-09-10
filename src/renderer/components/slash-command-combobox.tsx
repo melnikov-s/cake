@@ -20,6 +20,7 @@ interface SlashCommandComboboxProps extends Omit<
   "onChange" | "onInput" | "onKeyDown" | "onSubmit" | "value"
 > {
   commands: ReadonlyArray<SlashCommand>;
+  focusEnabled?: boolean;
   focusRequestRevision?: number;
   value: string;
   suggestFiles?(prefix: string): Promise<ReadonlyArray<FileSuggestion>>;
@@ -93,6 +94,7 @@ export function findFileMention(text: string, cursor: number): FileMention | und
 
 export function SlashCommandCombobox({
   commands,
+  focusEnabled = true,
   focusRequestRevision,
   value,
   suggestFiles,
@@ -104,6 +106,7 @@ export function SlashCommandCombobox({
 }: SlashCommandComboboxProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const suggestFilesRef = useRef(suggestFiles);
+  const lastFocusRequestRevision = useRef(focusRequestRevision);
   const requestRevision = useRef(0);
   const pendingCursor = useRef<number | undefined>(undefined);
   const listboxId = useId();
@@ -147,10 +150,12 @@ export function SlashCommandCombobox({
   }, [value]);
 
   useEffect(() => {
-    if (!focusRequestRevision) return;
+    const previousRevision = lastFocusRequestRevision.current;
+    lastFocusRequestRevision.current = focusRequestRevision;
+    if (!focusEnabled || !focusRequestRevision || focusRequestRevision === previousRevision) return;
     const frame = requestAnimationFrame(() => inputRef.current?.focus());
     return () => cancelAnimationFrame(frame);
-  }, [focusRequestRevision]);
+  }, [focusEnabled, focusRequestRevision]);
 
   useLayoutEffect(() => {
     if (pendingCursor.current === undefined) return;

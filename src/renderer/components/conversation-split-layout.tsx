@@ -63,6 +63,7 @@ export function ConversationSplitLayout<T extends PrimarySessionStore>({
           <StoreProvider key={pane.paneId} store={session}>
             <Chat
               store={session.conversationSessionStore.chatStore}
+              composerFocusEnabled={store.focusedPaneId === pane.paneId}
               {...chatProps(session, pane)}
             />
           </StoreProvider>
