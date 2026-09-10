@@ -98,6 +98,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
   };
   return (
     <div
+      data-animated-list-key={session.sessionId}
       data-session-id={session.sessionId}
       data-family-role={isFamilyChild ? "child" : isFamilyParent ? "parent" : "root"}
       className={cn(

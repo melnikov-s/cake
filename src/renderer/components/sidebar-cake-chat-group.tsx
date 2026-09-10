@@ -7,6 +7,7 @@ import { Button } from "./ui/button";
 import { CakeIcon, ChevronIcon, PlusIcon } from "./ui/icons";
 import { IconButton } from "./ui/icon-button";
 import { SidebarSessionItem } from "./sidebar-session-item";
+import { AnimatedList } from "./ui/animated-list";
 
 export interface SidebarCakeChatGroupProps {
   store: SidebarStore;
@@ -80,7 +81,7 @@ export const SidebarCakeChatGroup = observer(function SidebarCakeChatGroup({
         )}
       </div>
       {expanded && (
-        <div className="mt-0.5 flex flex-col space-y-0.5 pl-1">
+        <AnimatedList className="mt-0.5 flex flex-col space-y-0.5 pl-1">
           {visibleSessions.map((session) => {
             const selected =
               shell.selection.kind === "cake-chat" &&
@@ -118,7 +119,7 @@ export const SidebarCakeChatGroup = observer(function SidebarCakeChatGroup({
               Show more
             </Button>
           )}
-        </div>
+        </AnimatedList>
       )}
     </div>
   );

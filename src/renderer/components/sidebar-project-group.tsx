@@ -18,6 +18,7 @@ import type { ProjectWorkbenchStore } from "../stores/ProjectWorkbenchStore";
 import type { SidebarStore } from "../stores/SidebarStore";
 import { ProjectActionDialog, type ProjectAction } from "./project-action-dialog";
 import { Avatar } from "./ui/avatar";
+import { AnimatedList } from "./ui/animated-list";
 import type { AppearanceSettingsStore } from "../stores/AppearanceSettingsStore";
 
 export interface SidebarProjectGroupProps {
@@ -177,7 +178,7 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
         )}
       </div>
       {expanded && (
-        <div
+        <AnimatedList
           className={cn("mt-0.5 flex flex-col space-y-0.5 pl-4", focusMode && "mt-1 gap-1 pl-5")}
         >
           {visibleSessions.map((session) => (
@@ -225,7 +226,7 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
               Show more
             </Button>
           )}
-        </div>
+        </AnimatedList>
       )}
       {projectAction && (
         <ProjectActionDialog

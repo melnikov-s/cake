@@ -73,6 +73,11 @@ export const ExpandIcon = ({ size = 15, strokeWidth }: { size?: number; strokeWi
     <path d="M9 4H4v5M15 4h5v5M20 15v5h-5M4 15v5h5" />
   </Icon>
 );
+export const ShrinkIcon = ({ size = 15, strokeWidth }: { size?: number; strokeWidth?: number }) => (
+  <Icon size={size} strokeWidth={strokeWidth}>
+    <path d="M4 9h5V4M20 9h-5V4M15 20v-5h5M9 20v-5H4" />
+  </Icon>
+);
 export const LightningIcon = () => (
   <svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
     <path d="M13.4 2 4 13.1h6.6L9.7 22 20 9.7h-6.8L13.4 2Z" />
