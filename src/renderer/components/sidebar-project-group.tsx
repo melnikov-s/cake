@@ -110,7 +110,7 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
           data-slot="project-label"
           variant="ghost"
           className={cn(
-            "h-7 min-w-0 flex-1 justify-start px-1 text-xs font-medium text-inherit hover:text-foreground",
+            "h-7 min-w-0 flex-1 justify-start px-1 text-[13px] font-medium text-inherit hover:text-foreground",
             focusMode && "h-9 text-base font-semibold",
           )}
           type="button"
@@ -218,7 +218,7 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
             <Button
               variant="ghost"
               className={cn(
-                "h-7 justify-start px-2 text-xs text-muted-foreground hover:text-foreground",
+                "h-7 justify-start px-2 text-[13px] text-muted-foreground hover:text-foreground",
                 focusMode && "h-9 text-sm",
               )}
               onClick={() => store.showMoreSessions(path, resolved)}

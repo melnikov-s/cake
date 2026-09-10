@@ -58,7 +58,7 @@ export const SidebarCakeChatGroup = observer(function SidebarCakeChatGroup({
         <Button
           data-slot="project-label"
           variant="ghost"
-          className="h-7 min-w-0 flex-1 justify-start gap-2 px-1 text-xs font-medium text-inherit hover:text-foreground"
+          className="h-7 min-w-0 flex-1 justify-start gap-2 px-1 text-[13px] font-medium text-inherit hover:text-foreground"
           type="button"
           aria-label={
             resolved ? `${expanded ? "Collapse" : "Expand"} Cake Chat resolved` : "New Cake Chat"
@@ -113,7 +113,7 @@ export const SidebarCakeChatGroup = observer(function SidebarCakeChatGroup({
             : sessions.length > visibleSessions.length) && (
             <Button
               variant="ghost"
-              className="h-7 justify-start px-2 text-xs text-muted-foreground hover:text-foreground"
+              className="h-7 justify-start px-2 text-[13px] text-muted-foreground hover:text-foreground"
               onClick={() => store.showMoreSessions("cake-chat", resolved)}
             >
               Show more

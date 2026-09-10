@@ -102,7 +102,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
       data-session-id={session.sessionId}
       data-family-role={isFamilyChild ? "child" : isFamilyParent ? "parent" : "root"}
       className={cn(
-        "session-item group relative grid min-h-11 w-full items-center rounded-md py-1 text-xs select-none transition-colors",
+        "session-item group relative grid min-h-11 w-full items-center rounded-md py-1 text-[13px] select-none transition-colors",
         focusMode && "min-h-14 text-sm [&_[data-slot=avatar]]:size-7 [&_svg]:size-5",
         avatarsEnabled
           ? isFamilyParent
@@ -239,7 +239,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
             <span
               data-slot="session-description"
               className={cn(
-                "flex w-full min-w-0 items-center gap-1.5 text-[10px] font-normal leading-none",
+                "flex w-full min-w-0 items-center gap-1.5 text-[11px] font-normal leading-none",
                 focusMode && "text-xs leading-tight",
                 selected ? "text-primary/80" : "text-muted-foreground/80",
               )}
@@ -261,7 +261,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
               )}
               <time
                 className={cn(
-                  "session-time shrink-0 whitespace-nowrap text-[10px] tabular-nums text-muted-foreground",
+                  "session-time shrink-0 whitespace-nowrap text-[11px] tabular-nums text-muted-foreground",
                   focusMode && "text-xs",
                 )}
                 dateTime={session.modifiedAt}

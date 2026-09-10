@@ -101,7 +101,7 @@ export const Sidebar = observer(function Sidebar({
             />
             <div
               data-slot="projects-heading"
-              className="mt-0.5 flex items-center justify-between px-1.5 py-2 text-xs font-medium text-muted-foreground"
+              className="mt-0.5 flex items-center justify-between px-1.5 py-2 text-[13px] font-medium text-muted-foreground"
             >
               <span>Projects</span>
               <div>
@@ -113,7 +113,7 @@ export const Sidebar = observer(function Sidebar({
           </>
         )}
         {projectPaths.length === 0 ? (
-          <p className="mx-2 my-1.5 text-xs leading-relaxed text-muted-foreground">
+          <p className="mx-2 my-1.5 text-[13px] leading-relaxed text-muted-foreground">
             Add a folder to start a project.
           </p>
         ) : (
@@ -146,14 +146,14 @@ export const Sidebar = observer(function Sidebar({
         >
           <div
             className={cn(
-              "flex items-center justify-between px-1.5 pt-2.5 text-xs font-medium text-muted-foreground",
+              "flex items-center justify-between px-1.5 pt-2.5 text-[13px] font-medium text-muted-foreground",
               focusMode && "text-sm",
             )}
             id="resolved-lane-heading"
           >
             <DisclosureTrigger
               className={cn(
-                "h-[27px] px-1.5 text-xs font-medium text-muted-foreground hover:text-foreground",
+                "h-[27px] px-1.5 text-[13px] font-medium text-muted-foreground hover:text-foreground",
                 focusMode && "h-9 text-sm",
               )}
               open={store.resolvedLaneExpanded}
@@ -202,7 +202,7 @@ export const Sidebar = observer(function Sidebar({
           <Button
             variant="ghost"
             className={cn(
-              "h-9 w-full justify-start gap-2 px-2 text-xs font-medium text-muted-foreground hover:bg-sidebar-hover hover:text-foreground",
+              "h-9 w-full justify-start gap-2 px-2 text-[13px] font-medium text-muted-foreground hover:bg-sidebar-hover hover:text-foreground",
               shell.selection.kind === "settings" && "bg-sidebar-hover text-foreground",
             )}
             aria-label="Open settings"
