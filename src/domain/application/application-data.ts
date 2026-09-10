@@ -95,7 +95,6 @@ const ProjectWorkflowAssignment = Schema.Struct({
 });
 export const ProjectWorkflowSessionDetails = Schema.Struct({
   sessionId: nonEmptyBoundedString(256),
-  avatarSeed: Schema.optionalKey(nonEmptyBoundedString(128)),
   model: Schema.optionalKey(
     Schema.Struct({
       provider: nonEmptyBoundedString(256),

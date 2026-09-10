@@ -33,15 +33,10 @@ describe("Session Family creation", () => {
     () =>
       Effect.gen(function* () {
         const result = yield* Effect.scoped(
-          createChild(
-            "parent",
-            location,
-            input,
-            (id) =>
-              Effect.succeed(
-                options({ cwd: location.workingDirectory, sessionId: id, newSession: true }),
-              ),
-            () => Effect.void,
+          createChild("parent", location, input, (id) =>
+            Effect.succeed(
+              options({ cwd: location.workingDirectory, sessionId: id, newSession: true }),
+            ),
           ),
         );
         assert.equal(result.launch.status, "failed");
@@ -70,15 +65,10 @@ describe("Session Family creation", () => {
   it.effect("removes the reservation when configuration fails before the initial prompt", () =>
     Effect.gen(function* () {
       const result = yield* Effect.scoped(
-        createChild(
-          "parent",
-          location,
-          input,
-          (id) =>
-            Effect.succeed(
-              options({ cwd: location.workingDirectory, sessionId: id, newSession: true }),
-            ),
-          () => Effect.void,
+        createChild("parent", location, input, (id) =>
+          Effect.succeed(
+            options({ cwd: location.workingDirectory, sessionId: id, newSession: true }),
+          ),
         ),
       );
       assert.equal(result.launch.status, "failed");
@@ -136,14 +126,14 @@ describe("Session Family creation", () => {
           Effect.succeed(
             options({ cwd: location.workingDirectory, sessionId: id, newSession: true }),
           );
-        const first = yield* createChild("parent", location, input, factory, () => Effect.void);
+        const first = yield* createChild("parent", location, input, factory);
         assert.equal(
           disposed,
           false,
           "The admission lock must not dispose the child runtime lease",
         );
         yield* Deferred.await(started);
-        const second = yield* createChild("parent", location, input, factory, () => Effect.void);
+        const second = yield* createChild("parent", location, input, factory);
         assert.equal(first.childSessionId, second.childSessionId);
         assert.equal(first.familyChildOrder, 0);
         assert.equal(second.familyChildOrder, 0);

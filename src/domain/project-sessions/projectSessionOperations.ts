@@ -6,7 +6,6 @@ import {
   type PiSettingUpdate,
 } from "../../ipc/session-contract";
 import {
-  ensureProjectWorkflowSessionAvatarSeed,
   getState,
   setProjectWorkflowSessionStatus,
   trustProject,
@@ -47,7 +46,6 @@ import { SessionArchiveStorage } from "../../services/storage/SessionArchiveStor
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import { encodeCrossSessionMessage } from "../conversations/cross-session-coordination";
 import { SessionCatalogChanges } from "../../services/session-catalogs/SessionCatalogChanges";
-import { avatarSeedFromInitialPrompt } from "./projectSessionAvatar";
 import {
   archiveLocation,
   asError,
@@ -91,11 +89,6 @@ export const start = Effect.fn("ProjectSessions.start")(function* (
       operation: "start",
       message: "The Working Directory is not associated with that Project",
     });
-  yield* ensureProjectWorkflowSessionAvatarSeed(
-    location.projectPath,
-    input.sessionId,
-    avatarSeedFromInitialPrompt(input.text),
-  ).pipe(asError("start"));
   const handle = yield* acquireTarget(location, input.sessionId, true);
   if (input.workflowStatusId)
     yield* setProjectWorkflowSessionStatus(

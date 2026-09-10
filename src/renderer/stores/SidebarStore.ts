@@ -324,14 +324,7 @@ export class SidebarStore extends Store<SidebarStoreProps> {
   }
 
   sessionAvatarSeed(sessionId: string) {
-    const session = this.props.catalog.find(sessionId);
-    if (!session) return sessionId;
-    return (
-      this.props.projects
-        .find(session.projectPath)
-        ?.workflow.sessionDetails.find((details) => details.sessionId === sessionId)?.avatarSeed ??
-      sessionId
-    );
+    return sessionId;
   }
 
   sessionActivity(sessionId: string): SessionActivity | undefined {

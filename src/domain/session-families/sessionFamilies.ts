@@ -68,12 +68,11 @@ export const admitTurn = Effect.fn("SessionFamilies.admitTurn")(function* (
   );
 });
 
-export const createChild = Effect.fn("SessionFamilies.createChild")(function* <E, R, E2, R2>(
+export const createChild = Effect.fn("SessionFamilies.createChild")(function* <E, R>(
   parentSessionId: string,
   location: ProjectSessionLocation,
   input: { requestId: string; title: string; initialPrompt: string; model: ChatConfiguration },
   runtimeOptions: (sessionId: string) => Effect.Effect<PiSessionAcquireOptions, E, R>,
-  persistAvatarSeed: (sessionId: string) => Effect.Effect<void, E2, R2>,
 ) {
   const storage = yield* SessionFamilyStorage;
   const sessions = yield* PiSessions;
@@ -123,7 +122,6 @@ export const createChild = Effect.fn("SessionFamilies.createChild")(function* <E
           message: "Child reservation missing",
         });
       yield* publish(parentSessionId);
-      yield* persistAvatarSeed(child.sessionId);
       const target = {
         sessionId: child.sessionId,
         workingDirectory: location.workingDirectory,

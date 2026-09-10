@@ -7,7 +7,6 @@ import * as projectSessionMetadata from "../../../src/domain/project-sessions/pr
 import * as projectSessionOperations from "../../../src/domain/project-sessions/projectSessionOperations";
 import * as projectSessionContinuations from "../../../src/domain/project-sessions/projectSessionContinuations";
 import * as projectSessionLifecycle from "../../../src/domain/project-sessions/projectSessionLifecycle";
-import { avatarSeedFromInitialPrompt } from "../../../src/domain/project-sessions/projectSessionAvatar";
 import type { SessionCatalogUpdate } from "../../../src/domain/application/catalog-data";
 import { getState } from "../../../src/domain/application/application";
 import {
@@ -1804,11 +1803,6 @@ describe("Project Sessions domain", () => {
 
       const project = (yield* getState()).projects.find(
         (candidate) => candidate.path === "/project",
-      );
-      assert.equal(
-        project?.workflow?.sessionDetails.find((details) => details.sessionId === "session-1")
-          ?.avatarSeed,
-        avatarSeedFromInitialPrompt("First message"),
       );
       assert.deepEqual(project?.workflow?.assignments, [
         {

@@ -3,13 +3,11 @@ import { it } from "@effect/vitest";
 import { Effect, Layer } from "effect";
 import { describe } from "vitest";
 import {
-  ensureProjectWorkflowSessionAvatarSeed,
   forgetProjectSessions,
   mutateProjectWorkflow,
   removeProject,
   renameProject,
   setProjectSettings,
-  setProjectWorkflowSessionDetails,
   setProjectWorkflowSessionStatus,
   setSessionFastMode,
   setSessionUnread,
@@ -165,31 +163,6 @@ describe("Application domain", () => {
         });
         assert.deepEqual(deleted.columns.at(-1)?.id, secondColumnId);
         assert.deepEqual(deleted.assignments, []);
-      }),
-    ),
-  );
-
-  it.effect("sets a Session avatar seed once and preserves its other workflow details", () =>
-    run(
-      Effect.gen(function* () {
-        yield* upsertProject("/work/cake", "Cake");
-        yield* setProjectWorkflowSessionDetails("/work/cake", {
-          sessionId: "session-1",
-          description: "Existing description",
-        });
-        yield* ensureProjectWorkflowSessionAvatarSeed("/work/cake", "session-1", "first-seed");
-        const workflow = yield* ensureProjectWorkflowSessionAvatarSeed(
-          "/work/cake",
-          "session-1",
-          "replacement-seed",
-        );
-        assert.deepEqual(workflow.sessionDetails, [
-          {
-            sessionId: "session-1",
-            avatarSeed: "first-seed",
-            description: "Existing description",
-          },
-        ]);
       }),
     ),
   );

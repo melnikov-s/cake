@@ -192,24 +192,11 @@ describe("SidebarStore catalog demand", () => {
     store[Symbol.dispose]();
   });
 
-  it("resolves persisted Session avatar seeds and falls back to the Session ID", () => {
-    const sessions = [
-      { sessionId: "seeded", projectPath: "/cake" },
-      { sessionId: "legacy", projectPath: "/cake" },
-    ];
+  it("uses the stable Session ID as the avatar seed", () => {
     const store = mount(
       createStore(SidebarStore, {
-        projects: {
-          orderedProjectPaths: ["/cake"],
-          find: () => ({
-            workflow: {
-              sessionDetails: [{ sessionId: "seeded", avatarSeed: "prompt-seed" }],
-            },
-          }),
-        } as unknown as ProjectCatalogStore,
-        catalog: {
-          find: (sessionId: string) => sessions.find((session) => session.sessionId === sessionId),
-        } as unknown as SessionCatalogStore,
+        projects: { orderedProjectPaths: [] } as unknown as ProjectCatalogStore,
+        catalog: {} as unknown as SessionCatalogStore,
         sessions: {} as SessionRegistryStore,
         cakeChat: () => ({ summaries: [] }) as unknown as CakeChatCollectionStore,
         setSessionResolved: async () => undefined,
@@ -222,8 +209,7 @@ describe("SidebarStore catalog demand", () => {
       }),
     );
 
-    expect(store.sessionAvatarSeed("seeded")).toBe("prompt-seed");
-    expect(store.sessionAvatarSeed("legacy")).toBe("legacy");
+    expect(store.sessionAvatarSeed("session-1")).toBe("session-1");
     store[Symbol.dispose]();
   });
 
