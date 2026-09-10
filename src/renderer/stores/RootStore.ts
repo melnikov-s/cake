@@ -925,6 +925,7 @@ export class RootStore extends Store<{
       projects: this.projectCatalogStore,
       catalog: this.sessionCatalogStore,
       sessions: this.sessionRegistry,
+      worktreeOperations: this.props.projection.worktreeOperations,
       cakeChat: () => this.cakeChatCollectionStore,
       selectedConversation: () => {
         const selection = this.appShellStore.selection;

@@ -272,9 +272,11 @@ describe("Sidebar projects", () => {
     expect(
       container.querySelector('[data-session-id="waiting"] [aria-label="Waiting for your answer"]'),
     ).not.toBeNull();
-    expect(
-      container.querySelector('[data-session-id="running"] [aria-label="Running"]'),
-    ).not.toBeNull();
+    const runningStatus = container.querySelector(
+      '[data-session-id="running"] [aria-label="Running"]',
+    );
+    expect(runningStatus?.classList.contains("animate-pulse")).toBe(true);
+    expect(runningStatus?.classList.contains("bg-accent")).toBe(true);
     expect(
       container.querySelector('[data-session-id="ready"] [aria-label="Ready, unread"]'),
     ).not.toBeNull();

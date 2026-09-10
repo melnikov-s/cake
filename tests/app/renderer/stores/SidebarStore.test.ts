@@ -8,6 +8,7 @@ import { SidebarStore } from "../../../../src/renderer/stores/SidebarStore";
 import type { EmbeddedEditorSettingsStore } from "../../../../src/renderer/stores/EmbeddedEditorSettingsStore";
 import type { Client } from "../../../../src/renderer/client/Client";
 import { mountWithClient } from "../mount-with-client";
+import { WorktreeOperationCatalog } from "../../../../src/renderer/models/WorktreeOperationCatalog";
 
 const embeddedEditorSettings = (sidebarAutoHide: "never" | "always" | "below-width" = "never") =>
   ({ sidebarAutoHide, sidebarAutoHideWidth: 1440 }) as EmbeddedEditorSettingsStore;
@@ -174,6 +175,53 @@ describe("SidebarStore catalog demand", () => {
     store.toggleFamilyCollapsed("parent");
     expect(store.sessionActivityForDisplay(parent)).toBe("running");
     expect(store.sessionActivityForDisplay({ sessionId: "child" })).toBe("running");
+    store[Symbol.dispose]();
+  });
+
+  it("shows queued worktree merges as running session activity", () => {
+    const worktreeOperations = WorktreeOperationCatalog.create({
+      operations: [
+        {
+          operationId: "merge-1",
+          workspacePath: "/cake-worktree",
+          sessionId: "queued-session",
+          kind: "landing",
+          phase: "waiting",
+          allowDirtyTarget: false,
+        },
+        {
+          operationId: "merge-2",
+          workspacePath: "/other-worktree",
+          sessionId: "merging-session",
+          kind: "landing",
+          phase: "landing",
+          allowDirtyTarget: false,
+        },
+      ],
+    });
+    const store = mount(
+      createStore(SidebarStore, {
+        projects: { orderedProjectPaths: [] } as unknown as ProjectCatalogStore,
+        catalog: {
+          find: (sessionId: string) => ({ sessionId, unread: false }),
+        } as unknown as SessionCatalogStore,
+        sessions: {
+          findSession: () => undefined,
+        } as unknown as SessionRegistryStore,
+        worktreeOperations,
+        cakeChat: () => ({ summaries: [] }) as unknown as CakeChatCollectionStore,
+        setSessionResolved: async () => undefined,
+        setSessionWorkflowStatus: async () => undefined,
+        setCakeChatSessionResolved: async () => undefined,
+        deleteSession: async () => undefined,
+        deleteCakeChatSession: async () => undefined,
+        setSessionUnread: async () => undefined,
+        embeddedEditorSettings: embeddedEditorSettings(),
+      }),
+    );
+
+    expect(store.sessionActivity("queued-session")).toBe("running");
+    expect(store.sessionActivity("merging-session")).toBeUndefined();
     store[Symbol.dispose]();
   });
 

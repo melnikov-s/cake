@@ -10,11 +10,13 @@ import type { ProjectSessionCatalogQuery } from "../../domain/project-sessions/p
 import type { CakeChatCatalogQuery } from "../../domain/cake-chats/cake-chat-data";
 import type { EmbeddedEditorSettingsStore } from "./EmbeddedEditorSettingsStore";
 import type { SessionActivity } from "../lib/session-activity";
+import type { WorktreeOperationCatalog } from "../models/WorktreeOperationCatalog";
 
 export interface SidebarStoreProps {
   projects: ProjectCatalogStore;
   catalog: SessionCatalogStore;
   sessions: SessionRegistryStore;
+  worktreeOperations?: WorktreeOperationCatalog;
   cakeChat(): CakeChatCollectionStore;
   selectedConversation?(): { kind: "project-session" | "cake-chat"; sessionId: string } | undefined;
   setSessionResolved(sessionId: string, resolved: boolean): Promise<void>;
@@ -299,6 +301,13 @@ export class SidebarStore extends Store<SidebarStoreProps> {
   sessionActivity(sessionId: string): SessionActivity | undefined {
     const activity = this.props.sessions.findSession(sessionId)?.activity;
     if (activity) return activity;
+    const waitingToMerge = this.props.worktreeOperations?.operations.some(
+      (operation) =>
+        operation.sessionId === sessionId &&
+        operation.kind === "landing" &&
+        operation.phase === "waiting",
+    );
+    if (waitingToMerge) return "running";
     return this.props.catalog.find(sessionId)?.unread ? "unread" : undefined;
   }
 
