@@ -63,6 +63,7 @@ export const WorktreePill = observer(function WorktreePill({
   const [existingOpen, setExistingOpen] = useState(false);
   const [confirmation, setConfirmation] = useState<ConfirmationKind>();
   const { anchor: warningAnchor, hide: hideWarning, show: showWarning } = useTooltip();
+  const { anchor: branchAnchor, hide: hideBranch, show: showBranch } = useTooltip();
   const choice = creation.choice(sessionId);
   // Session-start choices are the only surface that needs the full worktree candidate list.
   const candidates = configurationMode ? creation.candidates(projectPath) : [];
@@ -272,10 +273,21 @@ export const WorktreePill = observer(function WorktreePill({
         data-slot="worktree-pill"
         className="@container/worktree mx-4 -mb-5 flex flex-col gap-1 rounded-t-[1.75rem] border border-b-0 border-border/85 bg-card px-5 pt-3 pb-8"
       >
-        <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 text-xs">
-          <span className="flex h-7.5 min-w-0 shrink items-center gap-1.5 px-2 text-xs font-normal text-foreground">
+        <div
+          className="flex min-w-0 flex-nowrap items-center gap-2 text-xs"
+          data-testid="worktree-pill-toolbar"
+        >
+          <span
+            className="flex h-7.5 min-w-0 shrink items-center gap-1.5 px-2 text-xs font-normal text-foreground @max-[700px]/worktree:shrink-0"
+            data-testid="worktree-branch"
+            tabIndex={0}
+            onMouseEnter={(event) => showBranch(event.currentTarget)}
+            onMouseLeave={hideBranch}
+            onFocus={(event) => showBranch(event.currentTarget)}
+            onBlur={hideBranch}
+          >
             <WorktreeStatusIcon state={record.state} className="shrink-0" />
-            <span className="truncate max-w-56">{branch}</span>
+            <span className="max-w-56 truncate @max-[700px]/worktree:sr-only">{branch}</span>
             {targetWarning && (
               <span
                 className="shrink-0 cursor-default text-amber-600 dark:text-amber-400"
@@ -294,8 +306,11 @@ export const WorktreePill = observer(function WorktreePill({
             {targetWarning && warningAnchor && (
               <TooltipBubble label={targetWarning} anchor={warningAnchor} />
             )}
+            {branchAnchor && (
+              <TooltipBubble label={branch} anchor={branchAnchor} placement="above" />
+            )}
           </span>
-          <div className="flex min-w-0 flex-wrap items-center justify-end gap-1 @max-[560px]/worktree:w-full @max-[560px]/worktree:justify-start">
+          <div className="ml-auto flex min-w-0 flex-nowrap items-center justify-end gap-1">
             {status && (!landed || hasNewCommitsSinceLanding) && status.behindCount > 0 && (
               <WorktreePillAction
                 icon={<RebaseIcon />}

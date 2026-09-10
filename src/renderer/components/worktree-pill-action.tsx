@@ -40,14 +40,14 @@ export function WorktreePillAction({
       disabled={disabled || Boolean(disabledReason)}
       aria-label={ariaLabel ?? tooltip}
       className={cn(
-        "flex h-7.5 shrink-0 items-center gap-1.5 rounded-lg bg-transparent px-2 text-xs font-normal text-muted-foreground shadow-none transition-colors hover:bg-muted hover:text-foreground @max-[460px]/worktree:w-7.5 @max-[460px]/worktree:gap-0 @max-[460px]/worktree:px-0",
+        "flex h-7.5 shrink-0 items-center gap-1.5 rounded-lg bg-transparent px-2 text-xs font-normal text-muted-foreground shadow-none transition-colors hover:bg-muted hover:text-foreground @max-[500px]/worktree:w-7.5 @max-[500px]/worktree:gap-0 @max-[500px]/worktree:px-0",
         isDestructive &&
           "text-muted-foreground hover:bg-destructive/10 hover:text-destructive active:bg-destructive/15",
         className,
       )}
     >
       {icon && <span className="shrink-0">{icon}</span>}
-      <span className="@max-[460px]/worktree:sr-only">{children}</span>
+      <span className="@max-[500px]/worktree:sr-only">{children}</span>
     </Control>
   );
 

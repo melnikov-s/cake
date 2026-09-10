@@ -124,12 +124,47 @@ test("chooses an isolated worktree without disturbing the new-chat composer", as
         (element) => document.querySelector('[data-slot="chat"]') === element,
       ),
     ).toBe(true);
-    await expect(page.locator('[data-slot="worktree-pill"]')).toBeVisible();
+    const pill = page.getByTestId("worktree-pill");
+    await expect(pill).toBeVisible();
     const merge = page.getByRole("button", { name: "Merge", exact: true });
     await expect(merge).toBeVisible({ timeout: 5_000 });
 
-    await page.setViewportSize({ width: 420, height: 800 });
-    const pill = page.getByTestId("worktree-pill");
+    const resizePillTo = async (targetWidth: number) => {
+      await pill.evaluate((element, width) => {
+        element.style.width = `${width}px`;
+        element.style.maxWidth = "none";
+        element.style.flex = "none";
+      }, targetWidth);
+      await expect
+        .poll(() => pill.evaluate((element) => element.getBoundingClientRect().width))
+        .toBe(targetWidth);
+    };
+
+    // The branch label gives up its space before the action labels do.
+    await resizePillTo(560);
+    const branch = page.getByTestId("worktree-branch");
+    const branchLabel = (await branch.textContent())?.trim();
+    if (!branchLabel) throw new Error("Expected a worktree branch label");
+    await expect
+      .poll(() =>
+        branch
+          .getByText(branchLabel, { exact: true })
+          .evaluate((element) => getComputedStyle(element).position),
+      )
+      .toBe("absolute");
+    await expect.poll(() => merge.evaluate((element) => element.clientWidth)).toBeGreaterThan(32);
+    await branch.hover();
+    await expect(page.getByRole("tooltip", { name: branchLabel })).toBeVisible();
+    await expect
+      .poll(() =>
+        page
+          .getByTestId("worktree-pill-toolbar")
+          .evaluate((element) => element.scrollWidth <= element.clientWidth),
+      )
+      .toBe(true);
+
+    // At the next breakpoint, actions retain their icons and accessible names only.
+    await resizePillTo(450);
     await expect
       .poll(() => pill.evaluate((element) => element.scrollWidth <= element.clientWidth))
       .toBe(true);
