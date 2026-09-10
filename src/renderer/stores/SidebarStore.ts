@@ -9,7 +9,7 @@ import { ClientContext } from "./context/ClientContext";
 import type { ProjectSessionCatalogQuery } from "../../domain/project-sessions/project-session-data";
 import type { CakeChatCatalogQuery } from "../../domain/cake-chats/cake-chat-data";
 import type { EmbeddedEditorSettingsStore } from "./EmbeddedEditorSettingsStore";
-import type { SessionActivity } from "../lib/session-activity";
+import { isActiveSessionActivity, type SessionActivity } from "../lib/session-activity";
 import type { WorktreeOperationCatalog } from "../models/WorktreeOperationCatalog";
 
 export interface SidebarStoreProps {
@@ -58,6 +58,8 @@ export class SidebarStore extends Store<SidebarStoreProps> {
         index: number;
       }
     | undefined;
+  /** Prevents transcript writes from continually reordering a lane while it has active turns. */
+  private readonly activeLaneOrders = observable(new Map<string, readonly string[]>());
   resolvedLaneExpanded = false;
   now = Date.now();
 
@@ -90,7 +92,21 @@ export class SidebarStore extends Store<SidebarStoreProps> {
       },
       () => this.pinSelectedSession(),
     );
+    this.reaction(
+      () =>
+        (this.props.catalog.sessions ?? []).map((session) =>
+          [
+            session.sessionId,
+            session.projectPath,
+            session.resolved,
+            session.familyParentSessionId,
+            isActiveSessionActivity(this.sessionActivity(session.sessionId)),
+          ].join(":"),
+        ),
+      () => this.syncActiveLaneOrders(),
+    );
     this.pinSelectedSession();
+    this.syncActiveLaneOrders();
   }
 
   get visible() {
@@ -299,7 +315,7 @@ export class SidebarStore extends Store<SidebarStoreProps> {
   }
 
   sessionActivity(sessionId: string): SessionActivity | undefined {
-    const activity = this.props.sessions.findSession(sessionId)?.activity;
+    const activity = this.props.sessions.findSession?.(sessionId)?.activity;
     if (activity) return activity;
     const waitingToMerge = this.props.worktreeOperations?.operations.some(
       (operation) =>
@@ -419,7 +435,11 @@ export class SidebarStore extends Store<SidebarStoreProps> {
     });
   }
 
-  private sortedProjectSessionRoots(workspacePath: string, resolved: boolean) {
+  private sortedProjectSessionRoots(
+    workspacePath: string,
+    resolved: boolean,
+    preserveActiveOrder = true,
+  ) {
     const sessions = this.props.catalog
       .projectSessions(workspacePath)
       .filter((item) => item.resolved === resolved);
@@ -448,7 +468,43 @@ export class SidebarStore extends Store<SidebarStoreProps> {
         { modifiedAt: latestActivity(right), draft: right.draft },
       ),
     );
+    const frozenOrder = preserveActiveOrder
+      ? this.activeLaneOrders.get(this.laneKey(workspacePath, resolved))
+      : undefined;
+    if (frozenOrder) {
+      const frozenIds = new Set(frozenOrder);
+      const rootsById = new Map(roots.map((root) => [root.sessionId, root]));
+      const newlyAdded = roots.filter((root) => !frozenIds.has(root.sessionId));
+      const frozen = frozenOrder.flatMap((id) => (rootsById.has(id) ? [rootsById.get(id)!] : []));
+      roots.splice(0, roots.length, ...newlyAdded, ...frozen);
+    }
     return { byId, roots };
+  }
+
+  private syncActiveLaneOrders() {
+    const activeLanes = new Map<string, { workspacePath: string; resolved: boolean }>();
+    for (const session of this.props.catalog.sessions ?? []) {
+      if (!isActiveSessionActivity(this.sessionActivity(session.sessionId))) continue;
+      activeLanes.set(this.laneKey(session.projectPath, session.resolved), {
+        workspacePath: session.projectPath,
+        resolved: session.resolved,
+      });
+    }
+    for (const key of this.activeLaneOrders.keys()) {
+      if (!activeLanes.has(key)) this.activeLaneOrders.delete(key);
+    }
+    for (const [key, lane] of activeLanes) {
+      if (this.activeLaneOrders.has(key)) continue;
+      const { roots } = this.sortedProjectSessionRoots(lane.workspacePath, lane.resolved, false);
+      this.activeLaneOrders.set(
+        key,
+        roots.map((root) => root.sessionId),
+      );
+    }
+  }
+
+  private laneKey(workspacePath: string, resolved: boolean) {
+    return `${resolved ? "resolved" : "active"}:${workspacePath}`;
   }
 
   private pinSelectedSession() {

@@ -110,6 +110,88 @@ describe("SidebarStore catalog demand", () => {
     store[Symbol.dispose]();
   });
 
+  it("keeps session rows stable while their lane has active turns", () => {
+    const activities = observable({
+      newest: undefined as "running" | undefined,
+      middle: undefined as "running" | undefined,
+      oldest: undefined as "running" | undefined,
+    });
+    const summaries = observable([
+      {
+        sessionId: "newest",
+        modifiedAt: "2026-01-03T00:00:00.000Z",
+        resolved: false,
+        draft: false,
+        projectPath: "/cake",
+      },
+      {
+        sessionId: "middle",
+        modifiedAt: "2026-01-02T00:00:00.000Z",
+        resolved: false,
+        draft: false,
+        projectPath: "/cake",
+      },
+      {
+        sessionId: "oldest",
+        modifiedAt: "2026-01-01T00:00:00.000Z",
+        resolved: false,
+        draft: false,
+        projectPath: "/cake",
+      },
+    ]);
+    const catalog = {
+      sessions: summaries,
+      projectSessions: () => summaries,
+      find: (sessionId: string) => summaries.find((session) => session.sessionId === sessionId),
+    } as unknown as SessionCatalogStore;
+    const store = mount(
+      createStore(SidebarStore, {
+        projects: { orderedProjectPaths: [] } as unknown as ProjectCatalogStore,
+        catalog,
+        sessions: {
+          findSession: (sessionId: keyof typeof activities) => ({
+            activity: activities[sessionId],
+          }),
+        } as unknown as SessionRegistryStore,
+        cakeChat: () => ({ summaries: [] }) as unknown as CakeChatCollectionStore,
+        setSessionResolved: async () => undefined,
+        setSessionWorkflowStatus: async () => undefined,
+        setCakeChatSessionResolved: async () => undefined,
+        deleteSession: async () => undefined,
+        deleteCakeChatSession: async () => undefined,
+        setSessionUnread: async () => undefined,
+        embeddedEditorSettings: embeddedEditorSettings(),
+      }),
+    );
+
+    activities.newest = "running";
+    activities.middle = "running";
+    activities.oldest = "running";
+    summaries[2]!.modifiedAt = "2026-01-06T00:00:00.000Z";
+    summaries[1]!.modifiedAt = "2026-01-05T00:00:00.000Z";
+    expect(store.projectSessions("/cake").map((session) => session.sessionId)).toEqual([
+      "newest",
+      "middle",
+      "oldest",
+    ]);
+
+    activities.newest = undefined;
+    activities.middle = undefined;
+    expect(store.projectSessions("/cake").map((session) => session.sessionId)).toEqual([
+      "newest",
+      "middle",
+      "oldest",
+    ]);
+
+    activities.oldest = undefined;
+    expect(store.projectSessions("/cake").map((session) => session.sessionId)).toEqual([
+      "oldest",
+      "middle",
+      "newest",
+    ]);
+    store[Symbol.dispose]();
+  });
+
   it("resolves persisted Session avatar seeds and falls back to the Session ID", () => {
     const sessions = [
       { sessionId: "seeded", projectPath: "/cake" },
