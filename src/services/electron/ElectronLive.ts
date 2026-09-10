@@ -284,15 +284,30 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
         { role: "fileMenu" },
         { role: "editMenu" },
         { role: "viewMenu" },
-        ...(process.env.CAKE_MANUAL_RELOAD === "1"
+        ...(process.env.ELECTRON_RENDERER_URL || process.env.CAKE_MANUAL_RELOAD === "1"
           ? [
               {
                 label: "Developer",
                 submenu: [
-                  {
-                    label: "Reload Cake",
-                    click: () => BrowserWindow.getFocusedWindow()?.webContents.reload(),
-                  },
+                  ...(process.env.ELECTRON_RENDERER_URL
+                    ? [
+                        {
+                          label: "Toggle Developer Tools",
+                          accelerator:
+                            process.platform === "darwin" ? "Alt+Command+I" : "Ctrl+Shift+I",
+                          click: () =>
+                            BrowserWindow.getFocusedWindow()?.webContents.toggleDevTools(),
+                        } satisfies MenuItemConstructorOptions,
+                      ]
+                    : []),
+                  ...(process.env.CAKE_MANUAL_RELOAD === "1"
+                    ? [
+                        {
+                          label: "Reload Cake",
+                          click: () => BrowserWindow.getFocusedWindow()?.webContents.reload(),
+                        } satisfies MenuItemConstructorOptions,
+                      ]
+                    : []),
                 ],
               } satisfies MenuItemConstructorOptions,
             ]

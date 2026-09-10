@@ -13,7 +13,6 @@ import {
 import { useStickToBottom } from "use-stick-to-bottom";
 import { untracked } from "r-state-tree";
 import { observer } from "r-state-tree/react";
-import { cn } from "@/lib/utils";
 import {
   Conversation,
   VirtualizedConversation,
@@ -21,17 +20,13 @@ import {
 } from "@/components/ai-elements/conversation";
 import { AnnotationDraftPopover } from "@/components/annotation-draft-popover";
 import { ChatTranscriptFooter } from "./chat-transcript-footer";
-import { ChangedFiles } from "@/components/changed-files";
 import { LoadingState } from "@/components/ui/loading-state";
 import { SideChatContext } from "@/components/side-chat-context";
 import { workLogChanges } from "../../utils/turn-diff";
 import type { ChatStore, TranscriptScrollPosition } from "../stores/ChatStore";
 import {
-  ActivityGroup,
   ErrorNotice,
-  ReviewRunMessage,
   TranscriptList,
-  TranscriptPart,
   captureTranscriptSelection,
   chatWorkIsActive,
   errorNoticeFollowsUser,
@@ -41,6 +36,7 @@ import {
   type TranscriptItem,
   type TranscriptSelectionCapture,
 } from "./chat-transcript-parts";
+import { ChatTranscriptItem } from "./chat-transcript-item";
 
 export {
   captureMessageSelection,
@@ -288,19 +284,6 @@ export const ChatTranscript = observer(function ChatTranscript({
     document.addEventListener("contextmenu", handler);
     return () => document.removeEventListener("contextmenu", handler);
   }, [behavior.showSelectionContextMenu, messageComments, openSelectionDraft, sideChat, store]);
-  const changedFiles = (
-    <ChangedFiles
-      parts={parts}
-      workspacePath={behavior.workspacePath}
-      open={store.transcriptInteraction.changedFilesOpen}
-      onOpenChange={(open) => store.transcriptInteraction.setChangedFilesOpen(open)}
-      onOpenFile={
-        behavior.openSourceLocation
-          ? (path) => behavior.openSourceLocation?.({ path, view: "changes" })
-          : undefined
-      }
-    />
-  );
   const selectionOverlays = (
     <>
       {annotationDraft && (
@@ -314,36 +297,16 @@ export const ChatTranscript = observer(function ChatTranscript({
     </>
   );
   const renderItem = (item: TranscriptItem, index: number) => (
-    <div
+    <ChatTranscriptItem
       key={item.id}
-      data-slot="transcript-item"
-      data-transcript-item-index={index}
-      data-transcript-anchor-id={
-        item.kind === "activity-group" || item.kind === "source-group" ? item.parts[0]?.id : item.id
-      }
-      className={cn(
-        "min-w-0 pb-5 in-[.chat-layout-compact]:pb-3.5",
-        errorNoticeFollowsUser(items, index) && "pt-3",
-      )}
-    >
-      {item.kind === "activity-group" ? (
-        <ActivityGroup groupId={item.id} parts={item.parts} behavior={transcriptBehavior} />
-      ) : item.kind === "source-group" ? (
-        <div className="flex flex-wrap items-center gap-2" data-slot="source-group">
-          {item.parts.map((part) => (
-            <TranscriptPart key={part.id} part={part} behavior={transcriptBehavior} />
-          ))}
-        </div>
-      ) : item.kind === "changed-files" ? (
-        changedFiles
-      ) : item.kind === "loading-state" ? (
-        <LoadingState startedAt={store.transcriptInteraction.loadingStartedAt} />
-      ) : item.kind === "review-run" ? (
-        <ReviewRunMessage run={item} onOpen={transcriptBehavior.onOpenReviewRun} />
-      ) : (
-        <TranscriptPart part={item} behavior={transcriptBehavior} />
-      )}
-    </div>
+      item={item}
+      index={index}
+      errorFollowsUser={errorNoticeFollowsUser(items, index)}
+      parts={parts}
+      behavior={transcriptBehavior}
+      changedFilesOpen={store.transcriptInteraction.changedFilesOpen}
+      loadingStartedAt={store.transcriptInteraction.loadingStartedAt}
+    />
   );
   return (
     <>

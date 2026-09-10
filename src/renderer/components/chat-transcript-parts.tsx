@@ -7,11 +7,8 @@ export {
   type TranscriptSelectionCapture,
 } from "./chat-message";
 export {
-  ActivityGroup,
   ErrorNotice,
-  ReviewRunMessage,
   TranscriptList,
-  TranscriptPart,
   errorNoticeFollowsUser,
   groupTranscriptParts,
   type TranscriptItem,

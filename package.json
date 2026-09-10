@@ -75,6 +75,7 @@
     "@playwright/test": "1.62.1",
     "@types/mdast": "4.0.4",
     "electron": "43.3.0",
+    "electron-devtools-installer": "4.0.0",
     "electron-vite": "5.0.0",
     "eslint": "10.8.0",
     "jsdom": "^26.1.0",

@@ -28,6 +28,7 @@ export interface MainApplicationOptions {
   readonly platform?: NodeJS.Platform;
   readonly reportDefect?: (cause: Cause.Cause<unknown>) => void;
   readonly initializeNativeProtocols?: () => void;
+  readonly initializeDeveloperTools?: () => Promise<void>;
 }
 
 type MainApplicationServices =
@@ -47,6 +48,7 @@ export const MainApplication = Effect.fn("MainApplication")(function* ({
   platform = process.platform,
   reportDefect,
   initializeNativeProtocols = handleInlineWidgetScheme,
+  initializeDeveloperTools,
 }: MainApplicationOptions): Effect.fn.Return<void, unknown, MainApplicationServices> {
   yield* Effect.annotateCurrentSpan({
     "cake.application": "main",
@@ -119,6 +121,16 @@ export const MainApplication = Effect.fn("MainApplication")(function* ({
       yield* Effect.promise(() => application.whenReady()).pipe(
         Effect.withSpan("MainApplication.electronReady"),
       );
+      if (initializeDeveloperTools)
+        yield* Effect.tryPromise({
+          try: initializeDeveloperTools,
+          catch: (cause) => cause,
+        }).pipe(
+          Effect.catch((cause) =>
+            Effect.logWarning("Unable to install Electron developer tools", cause),
+          ),
+          Effect.withSpan("MainApplication.initializeDeveloperTools"),
+        );
       yield* initialize();
       yield* initializeRegisteredProjectAccess();
       yield* vscode.refreshStatus();

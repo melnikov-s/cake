@@ -40,8 +40,20 @@ const MainLive = makeMainLive({
   },
 });
 
+const initializeDeveloperTools =
+  process.env.ELECTRON_RENDERER_URL && process.env.CAKE_ELECTRON_SMOKE !== "1"
+    ? async () => {
+        const { installExtension, REACT_DEVELOPER_TOOLS } =
+          await import("electron-devtools-installer");
+        const extension = await installExtension(REACT_DEVELOPER_TOOLS, {
+          loadExtensionOptions: { allowFileAccess: true },
+        });
+        console.info(`[cake.main] Added Electron extension: ${extension.name}`);
+      }
+    : undefined;
+
 const mainRuntime = ManagedRuntime.make(MainLive);
-const mainProgram = MainApplication({ application: app });
+const mainProgram = MainApplication({ application: app, initializeDeveloperTools });
 void mainRuntime
   .runPromiseExit(
     mainProgram.pipe(
