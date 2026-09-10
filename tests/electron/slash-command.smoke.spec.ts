@@ -79,12 +79,14 @@ test("selects and runs slash commands from the composer with the keyboard", asyn
     expect(expandedSize.height).toBeLessThanOrEqual(321);
     expect(expandedSize.scrollHeight).toBeGreaterThan(expandedSize.height);
 
-    await composer.fill("/");
+    await composer.fill("existing prompt");
+    await composer.press("Home");
+    await composer.pressSequentially("/");
     await expect(page.getByRole("listbox", { name: "Slash commands" })).toBeVisible();
     await expect(page.getByRole("option", { name: /compact/ })).toHaveCount(0);
     await expect(page.getByRole("option", { name: /handoff/ })).toHaveCount(0);
     await composer.press("Tab");
-    await expect(composer).toHaveValue("/model ");
+    await expect(composer).toHaveValue("/model existing prompt");
 
     await composer.fill("/tree");
     await composer.press("Enter");

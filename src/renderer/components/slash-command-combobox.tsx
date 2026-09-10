@@ -29,6 +29,11 @@ interface SlashCommandComboboxProps extends Omit<
   inputRef?(input: HTMLTextAreaElement | null): void;
 }
 
+interface CommandQuery {
+  end: number;
+  prefix: string;
+}
+
 interface FileMention {
   start: number;
   end: number;
@@ -41,6 +46,12 @@ const pathDelimiters = new Set([" ", "\t", "\n", "'", "=", "\r"]);
 
 function isTokenStart(text: string, index: number) {
   return index === 0 || pathDelimiters.has(text[index - 1] ?? "");
+}
+
+function findCommandQuery(text: string, cursor: number): CommandQuery | undefined {
+  const match = /^\s*\/([^\s]*)$/.exec(text.slice(0, cursor));
+  if (!match) return undefined;
+  return { end: cursor, prefix: match[1]!.toLocaleLowerCase() };
 }
 
 export function findFileMention(text: string, cursor: number): FileMention | undefined {
@@ -106,13 +117,18 @@ export function SlashCommandCombobox({
     items: [],
   });
   const draft = inputValue.trimStart();
-  const commandPrefix = draft.slice(1).toLocaleLowerCase();
+  const commandQuery = useMemo(() => findCommandQuery(inputValue, cursor), [cursor, inputValue]);
   const filteredCommands = useMemo(
-    () => commands.filter((command) => command.name.toLocaleLowerCase().startsWith(commandPrefix)),
-    [commands, commandPrefix],
+    () =>
+      commandQuery
+        ? commands.filter((command) =>
+            command.name.toLocaleLowerCase().startsWith(commandQuery.prefix),
+          )
+        : [],
+    [commands, commandQuery],
   );
-  const commandEligible = draft.startsWith("/") && !/\s/.test(draft) && filteredCommands.length > 0;
-  const commandOpen = commandEligible && dismissedValue !== inputValue;
+  const commandOpen =
+    Boolean(commandQuery) && filteredCommands.length > 0 && dismissedValue !== inputValue;
   const fileMention = useMemo(() => findFileMention(inputValue, cursor), [cursor, inputValue]);
   const fileOpen = Boolean(
     fileMention && fileResults.items.length > 0 && dismissedMention !== fileMention.key,
@@ -175,9 +191,22 @@ export function SlashCommandCombobox({
     onValueChange(nextValue);
   };
 
-  const chooseCommand = (command: SlashCommand) => {
-    commitValue(`/${command.name} `);
+  const completeCommand = (command: SlashCommand, includeTrailingSpace: boolean) => {
+    if (!commandQuery) return;
+    const afterQuery = inputValue.slice(commandQuery.end);
+    const separator = afterQuery.length > 0 && !/^\s/.test(afterQuery) ? " " : "";
+    const trailingSpace = afterQuery.length === 0 && includeTrailingSpace ? " " : "";
+    const nextValue = `/${command.name}${separator}${trailingSpace}${afterQuery}`;
+    const nextCursor = command.name.length + 1 + separator.length + trailingSpace.length;
+    pendingCursor.current = nextCursor;
+    setCursor(nextCursor);
+    commitValue(nextValue);
     requestAnimationFrame(() => inputRef.current?.focus());
+    return nextValue;
+  };
+
+  const chooseCommand = (command: SlashCommand) => {
+    completeCommand(command, true);
   };
 
   const restoreFocusAfterSubmit = async (submittedValue?: string) => {
@@ -189,9 +218,8 @@ export function SlashCommandCombobox({
   };
 
   const executeCommand = (command: SlashCommand) => {
-    const commandValue = `/${command.name}`;
-    commitValue(commandValue);
-    void onSubmit(commandValue);
+    const commandValue = completeCommand(command, false);
+    if (commandValue !== undefined) void onSubmit(commandValue);
   };
 
   const chooseFile = (item: FileSuggestion) => {

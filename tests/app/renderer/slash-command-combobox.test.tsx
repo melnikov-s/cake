@@ -83,6 +83,38 @@ describe("SlashCommandCombobox", () => {
     expect(onSubmit).toHaveBeenCalledWith("/models");
   });
 
+  it("offers commands at the caret while preserving text entered after it", () => {
+    function ControlledCombobox() {
+      const [value, setValue] = useState("summarize this");
+      return (
+        <SlashCommandCombobox
+          aria-label="Message"
+          commands={[command("help"), command("models")]}
+          value={value}
+          onValueChange={setValue}
+          onSubmit={vi.fn()}
+        />
+      );
+    }
+    act(() => root.render(<ControlledCombobox />));
+    const input = container.querySelector<HTMLTextAreaElement>('[role="combobox"]')!;
+    const valueSetter = Object.getOwnPropertyDescriptor(
+      HTMLTextAreaElement.prototype,
+      "value",
+    )!.set!;
+
+    act(() => {
+      valueSetter.call(input, "/summarize this");
+      input.setSelectionRange(1, 1);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    expect(input.getAttribute("aria-expanded")).toBe("true");
+    act(() => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true })));
+    expect(input.value).toBe("/help summarize this");
+    expect(input.selectionStart).toBe(6);
+  });
+
   it.each(["Tab", "ArrowLeft", "ArrowRight"])("autocompletes with %s without submitting", (key) => {
     const onSubmit = vi.fn();
     function ControlledCombobox() {
