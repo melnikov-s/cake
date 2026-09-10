@@ -36,6 +36,7 @@ export interface SidebarSessionItemProps {
   workflowStatus?: { name: string; color: ProjectWorkflowColor };
   avatarSeed: string;
   avatarsEnabled: boolean;
+  focusMode?: boolean;
   onOpen(sessionId: string): void;
   onToggleFamily?(sessionId: string): void;
   familyCollapsed?: boolean;
@@ -59,6 +60,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
   workflowStatus,
   avatarSeed,
   avatarsEnabled,
+  focusMode = false,
   onOpen,
   onToggleFamily,
   familyCollapsed,
@@ -100,10 +102,15 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
       data-family-role={isFamilyChild ? "child" : isFamilyParent ? "parent" : "root"}
       className={cn(
         "session-item group relative grid min-h-11 w-full items-center rounded-md py-1 text-xs select-none transition-colors",
+        focusMode && "min-h-14 text-sm [&_[data-slot=avatar]]:size-7 [&_svg]:size-5",
         avatarsEnabled
           ? isFamilyParent
-            ? "grid-cols-[2.5rem_minmax(0,1fr)]"
-            : "grid-cols-[1.5rem_minmax(0,1fr)]"
+            ? focusMode
+              ? "grid-cols-[3rem_minmax(0,1fr)]"
+              : "grid-cols-[2.5rem_minmax(0,1fr)]"
+            : focusMode
+              ? "grid-cols-[2rem_minmax(0,1fr)]"
+              : "grid-cols-[1.5rem_minmax(0,1fr)]"
           : "grid-cols-[1.25rem_minmax(0,1fr)]",
         isFamilyChild && "ml-5 w-[calc(100%-1.25rem)]",
         selected
@@ -171,7 +178,10 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
         />
       ) : (
         <NavItem
-          className="session-row col-start-2 bg-transparent hover:bg-transparent"
+          className={cn(
+            "session-row col-start-2 bg-transparent hover:bg-transparent",
+            focusMode && "py-2 text-sm",
+          )}
           active={selected}
           onClick={() => onOpen(session.sessionId)}
           onContextMenu={(event) => {
@@ -229,6 +239,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
               data-slot="session-description"
               className={cn(
                 "flex w-full min-w-0 items-center gap-1.5 text-[10px] font-normal leading-none",
+                focusMode && "text-xs leading-tight",
                 selected ? "text-primary/80" : "text-muted-foreground/80",
               )}
             >
@@ -248,7 +259,10 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
                 </>
               )}
               <time
-                className="session-time shrink-0 whitespace-nowrap text-[10px] tabular-nums text-muted-foreground"
+                className={cn(
+                  "session-time shrink-0 whitespace-nowrap text-[10px] tabular-nums text-muted-foreground",
+                  focusMode && "text-xs",
+                )}
                 dateTime={session.modifiedAt}
                 title={new Date(session.modifiedAt).toLocaleString()}
               >

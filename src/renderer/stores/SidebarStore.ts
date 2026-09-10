@@ -34,6 +34,8 @@ export class SidebarStore extends Store<SidebarStoreProps> {
 
   @snapshot hidden = false;
   @snapshot width = 292;
+  /** Window-local presentation mode that narrows navigation to one Project. */
+  @snapshot focusedProjectPath: string | undefined;
   private ideActive = false;
   private ideHidden: boolean | undefined;
   private ideVisibilityManuallySet = false;
@@ -95,6 +97,21 @@ export class SidebarStore extends Store<SidebarStoreProps> {
 
   get sessions() {
     return this.props.catalog.sessions;
+  }
+
+  get focusModeProjectPath() {
+    const path = this.focusedProjectPath;
+    return path && this.props.projects.find(path) ? path : undefined;
+  }
+
+  focusProject(path: string) {
+    if (!this.props.projects.find(path)) return;
+    this.focusedProjectPath = path;
+    this.expandedActiveGroups[path] = true;
+  }
+
+  leaveProjectFocus() {
+    this.focusedProjectPath = undefined;
   }
 
   managedWorktree(workingDirectory: string) {

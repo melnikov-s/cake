@@ -621,6 +621,7 @@ export class RootStore extends Store<{
       .map((session) => session.sessionId);
     const removed = await this.projectWorkbenchStore.removeProject(path, deleteSessions);
     if (!removed) return false;
+    if (this.sidebarStore.focusedProjectPath === path) this.sidebarStore.leaveProjectFocus();
     const target = this.appShellStore.removeSessionsFromHistory(sessionIds);
     if (deleteSessions) {
       for (const sessionId of sessionIds) {

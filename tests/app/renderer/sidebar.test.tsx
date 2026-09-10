@@ -45,6 +45,9 @@ function sidebarProps(store: ProjectWorkbenchStore) {
       resolvedWorktreeCount: fixture.resolvedWorktreeCount ?? (() => 0),
       resolvedLaneExpanded: fixture.resolvedLaneExpanded ?? false,
       toggleResolvedLane: fixture.toggleResolvedLane ?? vi.fn(),
+      focusModeProjectPath: fixture.focusModeProjectPath,
+      focusProject: fixture.focusProject ?? vi.fn(),
+      leaveProjectFocus: fixture.leaveProjectFocus ?? vi.fn(),
       isActiveGroupExpanded: fixture.isActiveGroupExpanded ?? (() => true),
       toggleActiveGroupExpanded: fixture.toggleActiveGroupExpanded ?? vi.fn(),
       isResolvedGroupExpanded: fixture.isResolvedGroupExpanded ?? (() => false),
@@ -842,6 +845,52 @@ describe("Sidebar projects", () => {
 
     const emptyProject = container.querySelector<HTMLElement>('[data-slot="project-group"]');
     expect(emptyProject).not.toBeNull();
+  });
+
+  it("focuses navigation on one project across active and resolved sessions", () => {
+    const leaveProjectFocus = vi.fn();
+    const store = {
+      recentProjectPaths: ["/work/cake", "/work/other"],
+      projects: [
+        { path: "/work/cake", name: "Cake" },
+        { path: "/work/other", name: "Other" },
+      ],
+      focusModeProjectPath: "/work/cake",
+      leaveProjectFocus,
+      projectSessions: (path: string, resolved = false) => [
+        {
+          sessionId: `${resolved ? "resolved" : "active"}:${path}`,
+          title: resolved ? "Finished Cake work" : "Current Cake work",
+          modifiedAt: new Date(0).toISOString(),
+        },
+      ],
+      sessionLimit: () => 8,
+      sessionActivity: vi.fn(),
+      sessionActivityTime: vi.fn(() => "Today"),
+      nameFromPath: (path: string) => path.split("/").at(-1),
+      showMoreSessions: vi.fn(),
+      resolvedLaneExpanded: true,
+      isResolvedGroupExpanded: () => true,
+    } as unknown as ProjectWorkbenchStore;
+
+    act(() =>
+      root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onToggle={vi.fn()} />),
+    );
+
+    const sidebar = container.querySelector('[data-slot="sidebar"]');
+    expect(sidebar?.getAttribute("data-focus-mode")).toBe("true");
+    expect(container.textContent).toContain("Current Cake work");
+    expect(container.textContent).toContain("Finished Cake work");
+    expect(container.textContent).not.toContain("Other");
+    expect(container.textContent).not.toContain("Cake Chat");
+    expect(container.querySelector('[aria-label="Open settings"]')).toBeNull();
+
+    act(() =>
+      container
+        .querySelector<HTMLButtonElement>('[aria-label="Exit focus mode for cake"]')
+        ?.click(),
+    );
+    expect(leaveProjectFocus).toHaveBeenCalledOnce();
   });
 
   it("navigates session history from the window tools when steps are available", () => {

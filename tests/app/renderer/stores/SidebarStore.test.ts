@@ -13,6 +13,35 @@ const embeddedEditorSettings = (sidebarAutoHide: "never" | "always" | "below-wid
   ({ sidebarAutoHide, sidebarAutoHideWidth: 1440 }) as EmbeddedEditorSettingsStore;
 
 describe("SidebarStore catalog demand", () => {
+  it("owns persistent project focus presentation state", () => {
+    const store = mount(
+      createStore(SidebarStore, {
+        projects: {
+          find: (path: string) => (path === "/cake" ? { path } : undefined),
+        } as unknown as ProjectCatalogStore,
+        catalog: {} as SessionCatalogStore,
+        sessions: {} as SessionRegistryStore,
+        cakeChat: () => ({ summaries: [] }) as unknown as CakeChatCollectionStore,
+        setSessionResolved: async () => undefined,
+        setSessionWorkflowStatus: async () => undefined,
+        setCakeChatSessionResolved: async () => undefined,
+        deleteSession: async () => undefined,
+        deleteCakeChatSession: async () => undefined,
+        setSessionUnread: async () => undefined,
+        embeddedEditorSettings: embeddedEditorSettings(),
+      }),
+    );
+
+    store.focusProject("/missing");
+    expect(store.focusModeProjectPath).toBeUndefined();
+    store.focusProject("/cake");
+    expect(store.focusModeProjectPath).toBe("/cake");
+    expect(store.isActiveGroupExpanded("/cake")).toBe(true);
+    store.leaveProjectFocus();
+    expect(store.focusModeProjectPath).toBeUndefined();
+    store[Symbol.dispose]();
+  });
+
   it("keeps the selected session in its current slot until it is deselected", () => {
     const selection = observable({
       current: undefined as

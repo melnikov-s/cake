@@ -54,11 +54,17 @@ export const Sidebar = observer(function Sidebar({
   onGoForward(): void;
   onToggle: () => void;
 }) {
-  const projectPaths = projects.orderedProjectPaths;
+  const focusedProjectPath = store.focusModeProjectPath;
+  const projectPaths = focusedProjectPath ? [focusedProjectPath] : projects.orderedProjectPaths;
+  const focusMode = focusedProjectPath !== undefined;
   return (
     <aside
       data-slot="sidebar"
-      className="flex h-full min-w-0 flex-col overflow-hidden border-r border-border/72 bg-sidebar select-none"
+      data-focus-mode={focusMode ? "true" : undefined}
+      className={cn(
+        "flex h-full min-w-0 flex-col overflow-hidden border-r border-border/72 bg-sidebar select-none",
+        focusMode && "[&_svg]:size-5",
+      )}
     >
       <div className="flex h-[46px] shrink-0 items-center gap-1 pl-[103px] pr-3 [app-region:drag]">
         <IconButton tooltip="Toggle sidebar" onClick={onToggle}>
@@ -83,25 +89,29 @@ export const Sidebar = observer(function Sidebar({
       </div>
       <div className="flex min-w-0 flex-wrap gap-1.5 px-3 pb-2 empty:hidden"></div>
       <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-3 pb-4 pt-2">
-        <SidebarCakeChatGroup
-          store={store}
-          cakeChat={cakeChat}
-          shell={shell}
-          resolved={false}
-          onOpenCakeChat={onOpenCakeChat}
-          onCreateCakeChat={onCreateCakeChat}
-        />
-        <div
-          data-slot="projects-heading"
-          className="mt-0.5 flex items-center justify-between px-1.5 py-2 text-xs font-medium text-muted-foreground"
-        >
-          <span>Projects</span>
-          <div>
-            <IconButton tooltip="Add project" onClick={onChooseProject}>
-              <FolderPlusIcon />
-            </IconButton>
-          </div>
-        </div>
+        {!focusMode && (
+          <>
+            <SidebarCakeChatGroup
+              store={store}
+              cakeChat={cakeChat}
+              shell={shell}
+              resolved={false}
+              onOpenCakeChat={onOpenCakeChat}
+              onCreateCakeChat={onCreateCakeChat}
+            />
+            <div
+              data-slot="projects-heading"
+              className="mt-0.5 flex items-center justify-between px-1.5 py-2 text-xs font-medium text-muted-foreground"
+            >
+              <span>Projects</span>
+              <div>
+                <IconButton tooltip="Add project" onClick={onChooseProject}>
+                  <FolderPlusIcon />
+                </IconButton>
+              </div>
+            </div>
+          </>
+        )}
         {projectPaths.length === 0 ? (
           <p className="mx-2 my-1.5 text-xs leading-relaxed text-muted-foreground">
             Add a folder to start a project.
@@ -117,6 +127,10 @@ export const Sidebar = observer(function Sidebar({
               appearance={appearance}
               path={path}
               resolved={false}
+              focusMode={focusMode}
+              onToggleFocus={(path) =>
+                focusMode ? store.leaveProjectFocus() : store.focusProject(path)
+              }
               onCreateSession={onCreateSession}
               onOpenSession={onOpenSession}
               onRemoveProject={onRemoveProject}
@@ -131,11 +145,17 @@ export const Sidebar = observer(function Sidebar({
           aria-label="Resolved sessions"
         >
           <div
-            className="flex items-center justify-between px-1.5 pt-2.5 text-xs font-medium text-muted-foreground"
+            className={cn(
+              "flex items-center justify-between px-1.5 pt-2.5 text-xs font-medium text-muted-foreground",
+              focusMode && "text-sm",
+            )}
             id="resolved-lane-heading"
           >
             <DisclosureTrigger
-              className="h-[27px] px-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
+              className={cn(
+                "h-[27px] px-1.5 text-xs font-medium text-muted-foreground hover:text-foreground",
+                focusMode && "h-9 text-sm",
+              )}
               open={store.resolvedLaneExpanded}
               aria-controls="resolved-lane-content"
               aria-label={`${store.resolvedLaneExpanded ? "Collapse" : "Expand"} Resolved`}
@@ -145,14 +165,16 @@ export const Sidebar = observer(function Sidebar({
           </div>
           {store.resolvedLaneExpanded && (
             <div id="resolved-lane-content" className="mt-1">
-              <SidebarCakeChatGroup
-                store={store}
-                cakeChat={cakeChat}
-                shell={shell}
-                resolved
-                onOpenCakeChat={onOpenCakeChat}
-                onCreateCakeChat={onCreateCakeChat}
-              />
+              {!focusMode && (
+                <SidebarCakeChatGroup
+                  store={store}
+                  cakeChat={cakeChat}
+                  shell={shell}
+                  resolved
+                  onOpenCakeChat={onOpenCakeChat}
+                  onCreateCakeChat={onCreateCakeChat}
+                />
+              )}
               {projectPaths.map((path) => (
                 <SidebarProjectGroup
                   key={`resolved:${path}`}
@@ -163,6 +185,7 @@ export const Sidebar = observer(function Sidebar({
                   appearance={appearance}
                   path={path}
                   resolved
+                  focusMode={focusMode}
                   onCreateSession={onCreateSession}
                   onOpenSession={onOpenSession}
                   onRemoveProject={onRemoveProject}
@@ -174,21 +197,23 @@ export const Sidebar = observer(function Sidebar({
           )}
         </section>
       </div>
-      <div className="min-h-[52px] border-t border-border/65 px-3 py-2 text-muted-foreground">
-        <Button
-          variant="ghost"
-          className={cn(
-            "h-9 w-full justify-start gap-2 px-2 text-xs font-medium text-muted-foreground hover:bg-sidebar-hover hover:text-foreground",
-            shell.selection.kind === "settings" && "bg-sidebar-hover text-foreground",
-          )}
-          aria-label="Open settings"
-          aria-current={shell.selection.kind === "settings" ? "page" : undefined}
-          onClick={onOpenSettings}
-        >
-          <SettingsIcon />
-          <span>Settings</span>
-        </Button>
-      </div>
+      {!focusMode && (
+        <div className="min-h-[52px] border-t border-border/65 px-3 py-2 text-muted-foreground">
+          <Button
+            variant="ghost"
+            className={cn(
+              "h-9 w-full justify-start gap-2 px-2 text-xs font-medium text-muted-foreground hover:bg-sidebar-hover hover:text-foreground",
+              shell.selection.kind === "settings" && "bg-sidebar-hover text-foreground",
+            )}
+            aria-label="Open settings"
+            aria-current={shell.selection.kind === "settings" ? "page" : undefined}
+            onClick={onOpenSettings}
+          >
+            <SettingsIcon />
+            <span>Settings</span>
+          </Button>
+        </div>
+      )}
       <ProjectSettingsDialog store={projectSettings} />
     </aside>
   );

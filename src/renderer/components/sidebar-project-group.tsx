@@ -2,7 +2,14 @@ import { useState } from "react";
 import { observer } from "r-state-tree/react";
 import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
-import { ChevronIcon, KanbanIcon, PlusIcon, SettingsIcon } from "./ui/icons";
+import {
+  ChevronIcon,
+  ExpandIcon,
+  KanbanIcon,
+  PlusIcon,
+  SettingsIcon,
+  ShrinkIcon,
+} from "./ui/icons";
 import { IconButton } from "./ui/icon-button";
 import { SidebarSessionItem } from "./sidebar-session-item";
 import type { AppShellStore } from "../stores/AppShellStore";
@@ -21,6 +28,8 @@ export interface SidebarProjectGroupProps {
   appearance: AppearanceSettingsStore;
   path: string;
   resolved: boolean;
+  focusMode?: boolean;
+  onToggleFocus?(path: string): void;
   onCreateSession(workspacePath: string): void;
   onOpenSession(sessionId: string): void;
   onRemoveProject(path: string, deleteSessions: boolean): Promise<boolean>;
@@ -37,6 +46,8 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
   appearance,
   path,
   resolved,
+  focusMode = false,
+  onToggleFocus,
   onCreateSession,
   onOpenSession,
   onRemoveProject,
@@ -56,14 +67,23 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
     : sessions.length > visibleSessions.length;
   const kanbanSelected = shell.selection.kind === "kanban" && shell.selection.projectPath === path;
   return (
-    <div data-slot="project-group" className={cn("mb-3 last:mb-0", empty && "mb-1")}>
+    <div
+      data-slot="project-group"
+      className={cn("mb-3 last:mb-0", empty && "mb-1")}
+      data-focus-mode={focusMode ? "true" : undefined}
+    >
       <div
-        className="group/proj flex h-8 w-full items-center gap-1 px-1 select-none text-muted-foreground"
+        className={cn(
+          "group/proj flex h-8 w-full items-center gap-1 px-1 select-none text-muted-foreground",
+          focusMode &&
+            "h-11 gap-2 px-1.5 text-foreground [&_[data-slot=avatar]]:size-7 [&_svg]:size-5",
+        )}
         title={path}
       >
         <IconButton
           className={cn(
             "size-5 flex items-center justify-center rounded text-muted-foreground hover:text-foreground transition-transform duration-150",
+            focusMode && "size-7",
             !expanded && "-rotate-90",
           )}
           aria-expanded={expanded}
@@ -88,7 +108,10 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
         <Button
           data-slot="project-label"
           variant="ghost"
-          className="h-7 min-w-0 flex-1 justify-start px-1 text-xs font-medium text-inherit hover:text-foreground"
+          className={cn(
+            "h-7 min-w-0 flex-1 justify-start px-1 text-xs font-medium text-inherit hover:text-foreground",
+            focusMode && "h-9 text-base font-semibold",
+          )}
           type="button"
           aria-label={
             resolved
@@ -110,6 +133,18 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
         </Button>
         {!resolved && (
           <>
+            <IconButton
+              className={cn(
+                "size-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-sidebar-hover opacity-0 group-hover/proj:opacity-100 focus-visible:opacity-100 transition-opacity",
+                focusMode && "size-8 opacity-100",
+              )}
+              tooltip={focusMode ? "Exit project focus" : "Focus on project"}
+              ariaLabel={`${focusMode ? "Exit focus mode for" : "Focus on"} ${projects.nameFromPath(path)}`}
+              aria-pressed={focusMode}
+              onClick={() => onToggleFocus?.(path)}
+            >
+              {focusMode ? <ShrinkIcon size={19} /> : <ExpandIcon />}
+            </IconButton>
             <IconButton
               className={cn(
                 "size-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-sidebar-hover opacity-0 group-hover/proj:opacity-100 focus-visible:opacity-100 transition-opacity",
@@ -142,7 +177,9 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
         )}
       </div>
       {expanded && (
-        <div className="mt-0.5 flex flex-col space-y-0.5 pl-4">
+        <div
+          className={cn("mt-0.5 flex flex-col space-y-0.5 pl-4", focusMode && "mt-1 gap-1 pl-5")}
+        >
           {visibleSessions.map((session) => (
             <SidebarSessionItem
               key={session.sessionId}
@@ -159,6 +196,7 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
               workflowStatus={store.sessionWorkflowStatus(session.sessionId)}
               avatarSeed={store.sessionAvatarSeed(session.sessionId)}
               avatarsEnabled={appearance.sessionAvatarsEnabled}
+              focusMode={focusMode}
               onOpen={onOpenSession}
               onToggleFamily={(sessionId) => store.toggleFamilyCollapsed(sessionId)}
               familyCollapsed={store.isFamilyCollapsed(session.sessionId)}
@@ -178,7 +216,10 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
           {hasMore && (
             <Button
               variant="ghost"
-              className="h-7 justify-start px-2 text-xs text-muted-foreground hover:text-foreground"
+              className={cn(
+                "h-7 justify-start px-2 text-xs text-muted-foreground hover:text-foreground",
+                focusMode && "h-9 text-sm",
+              )}
               onClick={() => store.showMoreSessions(path, resolved)}
             >
               Show more

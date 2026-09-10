@@ -104,6 +104,9 @@ export const App = observer(function App() {
   const sidebarCollapsed = !sidebar.visible;
   const projectSidebarVisible = !sidebarCollapsed && surface !== "settings" && surface !== "kanban";
   const sidebarWidth = sidebar.width;
+  const displayedSidebarWidth = sidebar.focusModeProjectPath
+    ? Math.max(sidebarWidth, 360)
+    : sidebarWidth;
   const [commandPaneWidth, setCommandPaneWidth] = useState(420);
   const [resizingPanel, setResizingPanel] = useState(false);
   const sidebarMax = Math.max(
@@ -112,7 +115,7 @@ export const App = observer(function App() {
   );
   const commandPaneMax = Math.max(
     320,
-    window.innerWidth - (sidebarCollapsed ? 0 : sidebarWidth) - 360,
+    window.innerWidth - (sidebarCollapsed ? 0 : displayedSidebarWidth) - 360,
   );
   const returnToWorkbench = useCallback(() => {
     root.returnToWorkbench();
@@ -525,7 +528,7 @@ export const App = observer(function App() {
             reviews={reviews}
             projectSidebar={projectSidebar}
             projectSidebarVisible={!sidebarCollapsed}
-            projectSidebarWidth={sidebarWidth}
+            projectSidebarWidth={displayedSidebarWidth}
             onProjectSidebarWidthChange={setSidebarWidth}
             projectChat={session.conversationSessionStore.chatStore}
             projectComposerHeader={projectComposerHeader}
@@ -545,7 +548,9 @@ export const App = observer(function App() {
       </>
     );
   const shellStyle: CSSProperties & Record<"--sidebar-width" | "--right-pane-width", string> = {
-    "--sidebar-width": projectSidebarVisible ? `${Math.min(sidebarWidth, sidebarMax)}px` : "0px",
+    "--sidebar-width": projectSidebarVisible
+      ? `${Math.min(displayedSidebarWidth, sidebarMax)}px`
+      : "0px",
     "--right-pane-width": store.commandPaneStore.pane
       ? `${Math.min(commandPaneWidth, commandPaneMax)}px`
       : "0px",
@@ -564,7 +569,7 @@ export const App = observer(function App() {
         <ResizeHandle
           className="left-[calc(var(--sidebar-width)-5px)] max-[820px]:left-[calc(min(var(--sidebar-width),230px)-5px)]"
           label="Resize project sidebar"
-          value={sidebarWidth}
+          value={displayedSidebarWidth}
           min={220}
           max={sidebarMax}
           edge="left"
