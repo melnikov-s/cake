@@ -382,6 +382,40 @@ describe("Transcript scrolling", () => {
     expect(message.querySelector("h1, strong")).toBeNull();
   });
 
+  it("does not render an empty message box for an annotation-only user message", () => {
+    const parts: UiPart[] = [
+      {
+        id: "user-annotation-text",
+        kind: "text",
+        role: "user",
+        text: "",
+        status: "complete",
+        entryId: "user-annotation-entry",
+      },
+      {
+        id: "user-annotation",
+        kind: "annotation",
+        annotations: [
+          {
+            id: "00000000-0000-4000-8000-000000000001",
+            messageId: "assistant-1",
+            entryId: "assistant-entry-1",
+            selectedText: "Keep this constraint",
+            startOffset: 0,
+            endOffset: 20,
+            contextBefore: "",
+            contextAfter: "",
+          },
+        ],
+      },
+    ];
+
+    act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith(parts)} />));
+
+    expect(container.querySelector('[data-slot="message-content"]')).toBeNull();
+    expect(container.querySelector('[aria-label="View 1 annotation"]')).not.toBeNull();
+  });
+
   it("renders opted-in user input as Markdown", () => {
     const parts: UiPart[] = [
       {

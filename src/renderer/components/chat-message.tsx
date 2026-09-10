@@ -87,27 +87,29 @@ export const ChatTextMessage = forwardRef<
       <MessageLabel>
         {assistant ? (part.status === "streaming" ? "Cake · working" : "Cake") : userLabel}
       </MessageLabel>
-      <MessageContent
-        ref={contentRef}
-        className={cn(
-          assistant
-            ? "bg-card text-foreground"
-            : "border-user-message-foreground/20 bg-user-message text-user-message-foreground",
-          !assistant && part.renderAs !== "markdown" && "whitespace-pre-wrap",
-        )}
-      >
-        {assistant || part.renderAs === "markdown" ? (
-          <Markdown
-            streaming={part.status === "streaming"}
-            normalizeLatexDelimiters={part.status !== "streaming"}
-            onOpenSourceLocation={onOpenSourceLocation}
-          >
-            {part.text}
-          </Markdown>
-        ) : (
-          part.text
-        )}
-      </MessageContent>
+      {part.text ? (
+        <MessageContent
+          ref={contentRef}
+          className={cn(
+            assistant
+              ? "bg-card text-foreground"
+              : "border-user-message-foreground/20 bg-user-message text-user-message-foreground",
+            !assistant && part.renderAs !== "markdown" && "whitespace-pre-wrap",
+          )}
+        >
+          {assistant || part.renderAs === "markdown" ? (
+            <Markdown
+              streaming={part.status === "streaming"}
+              normalizeLatexDelimiters={part.status !== "streaming"}
+              onOpenSourceLocation={onOpenSourceLocation}
+            >
+              {part.text}
+            </Markdown>
+          ) : (
+            part.text
+          )}
+        </MessageContent>
+      ) : null}
       {children}
     </Message>
   );
