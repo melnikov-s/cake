@@ -29,6 +29,20 @@ describe("FullscreenSurface", () => {
     else delete (document as Partial<Document>).elementFromPoint;
   });
 
+  it("keeps its header clear of the native window controls", () => {
+    act(() =>
+      root.render(
+        <FullscreenSurfaceFixture>
+          <FullscreenSurface eyebrow="Image preview" title="Preview" onClose={() => undefined}>
+            <p>Preview body</p>
+          </FullscreenSurface>
+        </FullscreenSurfaceFixture>,
+      ),
+    );
+
+    expect(document.body.querySelector("header")?.classList).toContain("pl-[84px]");
+  });
+
   it("dismisses on Escape when no layer is stacked above", () => {
     let closed = false;
     act(() =>

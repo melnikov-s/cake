@@ -70,7 +70,7 @@ export function FullscreenSurface({
       onMouseDown={onClose}
     >
       <header
-        className="flex items-center justify-between border-b border-border bg-card px-5 py-3"
+        className="flex items-center justify-between border-b border-border bg-card py-3 pr-5 pl-[84px]"
         onMouseDown={(event) => event.stopPropagation()}
       >
         <div>
