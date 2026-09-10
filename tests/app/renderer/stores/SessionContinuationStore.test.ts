@@ -11,9 +11,13 @@ afterEach(() => {
   for (const disposable of disposables.splice(0)) disposable[Symbol.dispose]();
 });
 
-function setup(options?: { workspacePath?: string; canBranch?: boolean }) {
+function setup(options?: {
+  workspacePath?: string;
+  canBranch?: boolean;
+  createWorktree?: () => Promise<string>;
+}) {
   const operations = mount(createStore(SessionOperationCoordinatorStore));
-  const createWorktree = vi.fn(async () => "/created-worktree");
+  const createWorktree = vi.fn(options?.createWorktree ?? (async () => "/created-worktree"));
   const openSession = vi.fn(async () => undefined);
   const fork = vi.fn(async () => ({ sessionId: "forked" }));
   const handoff = vi.fn(async () => ({ sessionId: "handed-off" }));
@@ -81,6 +85,28 @@ describe("SessionContinuationStore", () => {
       expect.any(Object),
     );
     expect(openSession).toHaveBeenCalledWith("handed-off", "/created-worktree");
+  });
+
+  it("shows preparation while a worktree setup script and fork are running", async () => {
+    let finishWorktree: ((path: string) => void) | undefined;
+    const worktree = new Promise<string>((resolve) => {
+      finishWorktree = resolve;
+    });
+    const { store, fork, openSession } = setup({ createWorktree: () => worktree });
+    store.forkAt("assistant-entry");
+    store.selectDestination("new-worktree");
+
+    const confirmation = store.confirmPrompt();
+
+    expect(store.prompt).toBeUndefined();
+    expect(store.preparation).toMatchObject({ kind: "fork" });
+    expect(fork).not.toHaveBeenCalled();
+
+    finishWorktree?.("/created-worktree");
+    await confirmation;
+
+    expect(openSession).toHaveBeenCalledWith("forked", "/created-worktree");
+    expect(store.preparation).toBeUndefined();
   });
 
   it("does not select child-worktree branching outside a managed worktree", () => {

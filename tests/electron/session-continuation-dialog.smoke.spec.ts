@@ -57,6 +57,10 @@ test("forks and hands off sessions across working directories", async () => {
           name: "project",
           addedAt: timestamp,
           lastOpenedAt: timestamp,
+          settings: {
+            worktreeCreateCommand: "",
+            worktreeSetupCommands: 'node -e "setTimeout(() => {}, 1500)"',
+          },
         },
       ],
       trustedProjectPaths: [],
@@ -182,6 +186,9 @@ test("forks and hands off sessions across working directories", async () => {
     await newWorktreeDestination.focus();
     await page.keyboard.press("Enter");
     await expect(dialog).toHaveCount(0);
+    const forkLoader = page.getByRole("status", { name: "Forking conversation in progress" });
+    await expect(forkLoader).toBeVisible();
+    await expect(page.getByText("Here is the plan.")).toHaveCount(0);
     // The forked conversation opens in its new worktree (the worktree pill shows its
     // branch) instead of failing with "Cake could not find that session". The forked
     // transcript carries the parent's content.
