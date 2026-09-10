@@ -1,7 +1,7 @@
 import { Effect, Option, Stream } from "effect";
 import * as projectSessionLocations from "../project-sessions/projectSessionLocations";
 import { defaultProjectSettings } from "../application/application-data";
-import { getState, trustProject } from "../application/application";
+import { getState, revokeProjectTrust, trustProject } from "../application/application";
 import { generateWorktreeName, utilityModelSelection } from "../utility-work/utilityWork";
 import { PiSessions } from "../../services/pi/PiSessions";
 import { ProjectAccess } from "../../services/projects/ProjectAccess";
@@ -95,6 +95,9 @@ export const discard = Effect.fn("ManagedWorktrees.discard")(function* (
     .closeWorkingDirectory(workingDirectory)
     .pipe(Effect.mapError((cause) => policyError("ManagedWorktrees.discard", cause)));
   yield* (yield* ManagedWorktrees).discard(workingDirectory, keepBranch);
+  yield* revokeProjectTrust(workingDirectory).pipe(
+    Effect.mapError((cause) => policyError("ManagedWorktrees.discard", cause)),
+  );
 });
 
 const resolvedEntriesForProject = Effect.fn("ManagedWorktrees.resolvedEntriesForProject")(
@@ -263,6 +266,7 @@ export const discardResolvedForProject = Effect.fn("ManagedWorktrees.discardReso
           });
         yield* terminals.closeWorkingDirectory(workingDirectory);
         yield* worktrees.discard(workingDirectory, false);
+        yield* revokeProjectTrust(workingDirectory);
       }).pipe(
         Effect.mapError((cause) =>
           policyError("ManagedWorktrees.discardResolvedForProject", cause),
@@ -316,6 +320,9 @@ export const cleanupResolved = Effect.fn("ManagedWorktrees.cleanupResolved")(fun
     .closeWorkingDirectory(workingDirectory)
     .pipe(Effect.mapError((cause) => policyError("ManagedWorktrees.cleanupResolved", cause)));
   yield* worktrees.cleanupResolved(workingDirectory);
+  yield* revokeProjectTrust(workingDirectory).pipe(
+    Effect.mapError((cause) => policyError("ManagedWorktrees.cleanupResolved", cause)),
+  );
 });
 
 /** Recreates a checkout retired by resolution before its first transcript is restored. */
@@ -326,5 +333,10 @@ export const restoreResolved = Effect.fn("ManagedWorktrees.restoreResolved")(fun
   const record = (yield* worktrees.records()).find(
     (candidate) => candidate.worktreePath === workingDirectory && candidate.state === "resolved",
   );
-  if (record) yield* worktrees.restoreResolved(workingDirectory);
+  if (!record) return;
+  const restored = yield* worktrees.restoreResolved(workingDirectory);
+  if (restored && (yield* getState()).trustedProjectPaths.includes(restored.projectPath))
+    yield* trustProject(restored.worktreePath).pipe(
+      Effect.mapError((cause) => policyError("ManagedWorktrees.restoreResolved", cause)),
+    );
 });
