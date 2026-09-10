@@ -99,15 +99,19 @@ describe("Application domain", () => {
     ),
   );
 
-  it.effect("deduplicates trust and enforces its bound", () =>
+  it.effect("deduplicates trust without limiting the number of trusted paths", () =>
     run(
       Effect.gen(function* () {
         yield* trustProject("/work/cake");
         const duplicate = yield* trustProject("/work/cake");
         assert.deepEqual(duplicate.trustedProjectPaths, ["/work/cake"]);
-        for (let index = 1; index < 200; index++) yield* trustProject(`/work/${index}`);
-        const error = yield* Effect.flip(trustProject("/work/overflow"));
-        assert.equal(error._tag, "ApplicationPolicyError");
+        for (let index = 1; index <= 200; index++) yield* trustProject(`/work/${index}`);
+        const expanded = yield* trustProject("/work/beyond-the-project-registry-bound");
+        assert.equal(expanded.trustedProjectPaths.length, 202);
+        assert.equal(
+          expanded.trustedProjectPaths.at(-1),
+          "/work/beyond-the-project-registry-bound",
+        );
       }),
     ),
   );

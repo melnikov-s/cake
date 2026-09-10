@@ -292,8 +292,6 @@ export const trustProject = Effect.fn("Application.trustProject")(function* (pat
   const owner = yield* ApplicationStateOwner;
   return yield* owner.transact((current) => {
     if (current.trustedProjectPaths.includes(path)) return Effect.succeed(current);
-    if (current.trustedProjectPaths.length >= 200)
-      return Effect.fail(new ApplicationPolicyError({ message: "Project trust registry is full" }));
     return validate({
       ...current,
       trustedProjectPaths: [...current.trustedProjectPaths, path],

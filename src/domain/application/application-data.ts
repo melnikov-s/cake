@@ -192,7 +192,7 @@ const SessionIds = boundedArray(boundedString(256), 10_000).check(Schema.isUniqu
 const RendererApplicationFields = {
   projects: boundedArray(ProjectRecord, 200),
   unreadSessionIds: SessionIds,
-  trustedProjectPaths: boundedArray(boundedString(4_096), 200).check(Schema.isUnique()),
+  trustedProjectPaths: Schema.Array(boundedString(4_096)).check(Schema.isUnique()),
   fastModeSessionIds: SessionIds,
   utilityModel: Schema.optionalKey(UtilityModel),
   vscodeServerPath: Schema.optionalKey(boundedString(4_096)),
