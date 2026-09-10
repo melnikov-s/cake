@@ -149,6 +149,14 @@ describe("SidebarStore catalog demand", () => {
         projects: { orderedProjectPaths: [] } as unknown as ProjectCatalogStore,
         catalog,
         sessions: {
+          sessions: (Object.keys(activities) as Array<keyof typeof activities>).map(
+            (sessionId) => ({
+              sessionId,
+              get activity() {
+                return activities[sessionId];
+              },
+            }),
+          ),
           findSession: (sessionId: keyof typeof activities) => ({
             activity: activities[sessionId],
           }),
@@ -189,6 +197,44 @@ describe("SidebarStore catalog demand", () => {
       "middle",
       "newest",
     ]);
+    store[Symbol.dispose]();
+  });
+
+  it("tracks active lane order without querying every catalog session's activity", () => {
+    const summaries = observable(
+      Array.from({ length: 100 }, (_, index) => ({
+        sessionId: `session-${index}`,
+        modifiedAt: `2026-01-01T00:00:${String(index).padStart(2, "0")}.000Z`,
+        resolved: false,
+        draft: false,
+        projectPath: "/cake",
+      })),
+    );
+    const findSession = vi.fn(() => undefined);
+    const store = mount(
+      createStore(SidebarStore, {
+        projects: { orderedProjectPaths: [] } as unknown as ProjectCatalogStore,
+        catalog: {
+          sessions: summaries,
+          projectSessions: () => summaries,
+          find: (sessionId: string) => summaries.find((session) => session.sessionId === sessionId),
+        } as unknown as SessionCatalogStore,
+        sessions: {
+          sessions: [{ sessionId: "session-50", activity: "running" }],
+          findSession,
+        } as unknown as SessionRegistryStore,
+        cakeChat: () => ({ summaries: [] }) as unknown as CakeChatCollectionStore,
+        setSessionResolved: async () => undefined,
+        setSessionWorkflowStatus: async () => undefined,
+        setCakeChatSessionResolved: async () => undefined,
+        deleteSession: async () => undefined,
+        deleteCakeChatSession: async () => undefined,
+        setSessionUnread: async () => undefined,
+        embeddedEditorSettings: embeddedEditorSettings(),
+      }),
+    );
+
+    expect(findSession).not.toHaveBeenCalled();
     store[Symbol.dispose]();
   });
 
@@ -271,7 +317,13 @@ describe("SidebarStore catalog demand", () => {
       createStore(SidebarStore, {
         projects: { orderedProjectPaths: [] } as unknown as ProjectCatalogStore,
         catalog: {
-          find: (sessionId: string) => ({ sessionId, unread: false }),
+          find: (sessionId: string) => ({
+            sessionId,
+            unread: false,
+            projectPath: "/cake",
+            resolved: false,
+          }),
+          projectSessions: () => [],
         } as unknown as SessionCatalogStore,
         sessions: {
           findSession: () => undefined,

@@ -114,26 +114,36 @@ export function applySessionCatalogGroupUpdate(
       });
   }
   batch(() => {
+    let needsSort = false;
     for (const session of incoming) {
       const existing = model.find(session.sessionId);
-      if (existing) applySnapshot(existing, session);
-      else model.sessions.push(SessionSummary.create(session));
+      if (existing) {
+        needsSort ||=
+          existing.resolved !== session.resolved || existing.modifiedAt !== session.modifiedAt;
+        applySnapshot(existing, session);
+      } else {
+        model.sessions.push(SessionSummary.create(session));
+        needsSort = true;
+      }
     }
     if (event._tag === "Removed" || event._tag === "RemovedBatch") {
       const removedIds = new Set(event._tag === "Removed" ? [event.sessionId] : event.sessionIds);
       for (let index = model.sessions.length - 1; index >= 0; index -= 1) {
         const session = model.sessions[index]!;
-        if (removedIds.has(session.sessionId) && belongsToGroup(session))
+        if (removedIds.has(session.sessionId) && belongsToGroup(session)) {
           model.sessions.splice(index, 1);
+          needsSort = true;
+        }
       }
     } else if (event._tag === "StatusChanged") {
       const existing = model.find(event.sessionId);
       if (existing && belongsToGroup(existing)) {
+        needsSort ||= existing.resolved !== event.resolved;
         existing.resolved = event.resolved;
         existing.unread = event.unread;
       }
     }
-    model.sessions.sort(compareSessionSummaries);
+    if (needsSort) model.sessions.sort(compareSessionSummaries);
   });
 }
 

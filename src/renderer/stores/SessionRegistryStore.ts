@@ -125,7 +125,9 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
   findSession(sessionId: string) {
     const cached = this.sessionsById.get(sessionId);
     if (cached) return cached;
-    const session = this.sessions.find((candidate) => candidate.sessionId === sessionId);
+    const index = this.targets.findIndex((target) => target.sessionId === sessionId);
+    if (index < 0) return undefined;
+    const session = this.sessions[index];
     if (session) this.sessionsById.set(sessionId, session);
     return session;
   }

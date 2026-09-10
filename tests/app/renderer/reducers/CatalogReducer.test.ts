@@ -1,3 +1,4 @@
+import { effect } from "r-state-tree";
 import { describe, expect, it } from "vitest";
 import {
   applyCakeChatCatalogGroupUpdate,
@@ -195,6 +196,41 @@ it("updates project entries without resnapshotting unrelated workflow state", ()
   });
   expect(catalog.projects).toEqual([second]);
   expect(second.workflow).toBe(workflow);
+  catalog[Symbol.dispose]();
+});
+
+it("does not invalidate the catalog for an unchanged session upsert", () => {
+  const session = {
+    sessionId: "session-1",
+    modifiedAt: "2026-01-02",
+    createdAt: "2026-01-01",
+    title: "Session",
+    messageCount: 1,
+    resolved: false,
+    unread: false,
+    projectPath: "/project",
+    projectName: "Project",
+    workingDirectory: "/project",
+  };
+  const catalog = SessionCatalog.create({ sessions: [session] });
+  let reactions = 0;
+  const stop = effect(() => {
+    catalog.sessions.map((item) => [item.sessionId, item.title, item.modifiedAt]);
+    reactions += 1;
+  });
+
+  applySessionCatalogGroupUpdate(
+    catalog,
+    { projectPath: "/project", resolved: false },
+    {
+      _tag: "Event",
+      revision: 2,
+      event: { _tag: "Upserted", session: { ...session } },
+    },
+  );
+
+  expect(reactions).toBe(1);
+  stop();
   catalog[Symbol.dispose]();
 });
 

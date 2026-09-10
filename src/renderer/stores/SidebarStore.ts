@@ -93,20 +93,11 @@ export class SidebarStore extends Store<SidebarStoreProps> {
       () => this.pinSelectedSession(),
     );
     this.reaction(
-      () =>
-        (this.props.catalog.sessions ?? []).map((session) =>
-          [
-            session.sessionId,
-            session.projectPath,
-            session.resolved,
-            session.familyParentSessionId,
-            isActiveSessionActivity(this.sessionActivity(session.sessionId)),
-          ].join(":"),
-        ),
-      () => this.syncActiveLaneOrders(),
+      () => this.activeLaneMemberships(),
+      (memberships) => this.syncActiveLaneOrders(memberships),
     );
     this.pinSelectedSession();
-    this.syncActiveLaneOrders();
+    this.syncActiveLaneOrders(this.activeLaneMemberships());
   }
 
   get visible() {
@@ -494,14 +485,39 @@ export class SidebarStore extends Store<SidebarStoreProps> {
     return { byId, roots };
   }
 
-  private syncActiveLaneOrders() {
+  private activeLaneMemberships() {
+    const activeSessionIds = new Set<string>();
+    for (const session of this.props.sessions.sessions ?? []) {
+      if (isActiveSessionActivity(session.activity)) activeSessionIds.add(session.sessionId);
+    }
+    for (const operation of this.props.worktreeOperations?.operations ?? []) {
+      if (operation.kind === "landing" && operation.phase === "waiting")
+        activeSessionIds.add(operation.sessionId);
+    }
+    return [...activeSessionIds].flatMap((sessionId) => {
+      const summary = this.props.catalog.find(sessionId);
+      return summary
+        ? [
+            {
+              sessionId,
+              workspacePath: summary.projectPath,
+              resolved: summary.resolved,
+            },
+          ]
+        : [];
+    });
+  }
+
+  private syncActiveLaneOrders(
+    memberships: ReadonlyArray<{
+      sessionId: string;
+      workspacePath: string;
+      resolved: boolean;
+    }>,
+  ) {
     const activeLanes = new Map<string, { workspacePath: string; resolved: boolean }>();
-    for (const session of this.props.catalog.sessions ?? []) {
-      if (!isActiveSessionActivity(this.sessionActivity(session.sessionId))) continue;
-      activeLanes.set(this.laneKey(session.projectPath, session.resolved), {
-        workspacePath: session.projectPath,
-        resolved: session.resolved,
-      });
+    for (const membership of memberships) {
+      activeLanes.set(this.laneKey(membership.workspacePath, membership.resolved), membership);
     }
     for (const key of this.activeLaneOrders.keys()) {
       if (!activeLanes.has(key)) this.activeLaneOrders.delete(key);
