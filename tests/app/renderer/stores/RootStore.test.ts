@@ -404,6 +404,7 @@ describe("RootStore session navigation", () => {
     try {
       root.appShellStore.selectProjectSession("worktree-session");
       const resolving = root.projectWorkbenchStore.resolveWorktreeWorkspace(worktreePath, {
+        initiatingSessionId: "worktree-session",
         workingDirectoryRetired: true,
       });
       root.appShellStore.selectProjectSession("current-session");

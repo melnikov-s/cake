@@ -17,7 +17,7 @@ export interface WorktreeStoreProps {
   retirement: WorkingDirectoryRetirementWorkflow;
   onResolveWorkspace(
     workspacePath: string,
-    options?: { workingDirectoryRetired?: boolean },
+    options: { initiatingSessionId: string; workingDirectoryRetired?: boolean },
   ): Promise<void> | void;
 }
 
@@ -251,11 +251,12 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
 
   async resolve() {
     const workspacePath = this.requiredWorkspacePath();
+    const initiatingSessionId = this.requiredSessionId();
     if (this.isBusy) throw new Error("A worktree operation is already in progress.");
     this.phase = "resolving-session";
     this.error = undefined;
     try {
-      await this.props.onResolveWorkspace(workspacePath);
+      await this.props.onResolveWorkspace(workspacePath, { initiatingSessionId });
       if (!this.signal.aborted) this.phase = "idle";
     } catch (error) {
       this.fail(error);
@@ -286,7 +287,10 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
       this.stalled = false;
       if (record) await this.props.onDiscarded({ ...record, state: "discarded" });
       if (resolve)
-        await this.props.onResolveWorkspace(workspacePath, { workingDirectoryRetired: true });
+        await this.props.onResolveWorkspace(workspacePath, {
+          initiatingSessionId: this.requiredSessionId(),
+          workingDirectoryRetired: true,
+        });
     } catch (error) {
       this.fail(error);
       throw error;

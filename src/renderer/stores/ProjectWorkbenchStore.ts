@@ -474,12 +474,9 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
 
   async resolveWorktreeWorkspace(
     workspacePath: string,
-    options?: { workingDirectoryRetired?: boolean },
+    options: { initiatingSessionId: string; workingDirectoryRetired?: boolean },
   ) {
-    if (
-      !options?.workingDirectoryRetired &&
-      !(await this.props.retirement.prepare([workspacePath]))
-    )
+    if (!options.workingDirectoryRetired && !(await this.props.retirement.prepare([workspacePath])))
       return;
     try {
       const result = await this.client.projectSessions.resolveWorkingDirectory(
@@ -487,7 +484,11 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
         { signal: this.signal },
       );
       if (this.signal.aborted) return;
-      await this.props.onWorktreeSessionsResolved(result.resolvedSessionIds, result.projectPath);
+      // Resolving a Working Directory can archive several sessions. Only replace the
+      // visible conversation when the session whose action started this workflow is
+      // still focused; a sibling selected while resolution was in flight must stay put.
+      if (this.props.activeSessionId() === options.initiatingSessionId)
+        await this.props.onWorktreeSessionsResolved(result.resolvedSessionIds, result.projectPath);
       if (result.failures.length > 0)
         this.setError(
           new Error(result.failures.map((failure) => failure.message).join("\n")),

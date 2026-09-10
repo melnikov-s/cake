@@ -177,7 +177,7 @@ describe("ProjectWorkbenchStore", () => {
       {} as SessionRegistryStore,
       { sessions: [] } as unknown as SessionCatalogStore,
       { projectSessions: { resolveWorkingDirectory } } as unknown as Client,
-      undefined,
+      "session-1",
       undefined,
       {
         prepareWorkingDirectoryRetirement: prepare,
@@ -185,7 +185,7 @@ describe("ProjectWorkbenchStore", () => {
       },
     );
 
-    await store.resolveWorktreeWorkspace("/worktree");
+    await store.resolveWorktreeWorkspace("/worktree", { initiatingSessionId: "session-1" });
 
     expect(prepare).toHaveBeenCalledWith(["/worktree"]);
     expect(resolveWorkingDirectory).toHaveBeenCalledWith(
@@ -193,6 +193,52 @@ describe("ProjectWorkbenchStore", () => {
       expect.any(Object),
     );
     expect(onResolved).toHaveBeenCalledWith(["session-1", "session-2"], "/project");
+
+    root[Symbol.dispose]();
+    operations[Symbol.dispose]();
+  });
+
+  it("does not navigate when a sibling session becomes focused during workspace resolution", async () => {
+    type Resolution = {
+      projectPath: string;
+      workingDirectory: string;
+      resolvedSessionIds: string[];
+      failures: [];
+    };
+    let finishResolution!: (result: Resolution) => void;
+    const resolution = new Promise<Resolution>((resolve) => {
+      finishResolution = resolve;
+    });
+    const onResolved = vi.fn(async () => undefined);
+    const {
+      root,
+      subject: store,
+      operations,
+      selectSession,
+    } = mountWorkbench(
+      {} as SessionRegistryStore,
+      { sessions: [] } as unknown as SessionCatalogStore,
+      {
+        projectSessions: { resolveWorkingDirectory: vi.fn(() => resolution) },
+      } as unknown as Client,
+      "session-1",
+      undefined,
+      { onWorktreeSessionsResolved: onResolved },
+    );
+
+    const resolving = store.resolveWorktreeWorkspace("/worktree", {
+      initiatingSessionId: "session-1",
+    });
+    selectSession("session-2");
+    finishResolution({
+      projectPath: "/project",
+      workingDirectory: "/worktree",
+      resolvedSessionIds: ["session-1", "session-2"],
+      failures: [],
+    });
+    await resolving;
+
+    expect(onResolved).not.toHaveBeenCalled();
 
     root[Symbol.dispose]();
     operations[Symbol.dispose]();
