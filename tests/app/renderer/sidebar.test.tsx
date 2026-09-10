@@ -850,7 +850,7 @@ describe("Sidebar projects", () => {
       nameFromPath: (path: string) => path.split("/").at(-1),
       showMoreSessions: vi.fn(),
       resolvedLaneExpanded: true,
-      isResolvedGroupExpanded: () => true,
+      isResolvedGroupExpanded: () => false,
     } as unknown as ProjectWorkbenchStore;
 
     act(() =>
@@ -864,6 +864,22 @@ describe("Sidebar projects", () => {
     expect(container.textContent).not.toContain("Other");
     expect(container.textContent).not.toContain("Cake Chat");
     expect(container.querySelector('[aria-label="Open settings"]')).toBeNull();
+
+    const activeProject = container.querySelector<HTMLElement>(
+      '[data-slot="sidebar"] > div:nth-child(3) > [data-slot="project-group"]',
+    );
+    expect(activeProject?.querySelector("button")?.getAttribute("aria-label")).toBe(
+      "Exit focus mode for cake",
+    );
+    expect(container.querySelector('[aria-label="Focus on cake"]')).toBeNull();
+
+    const resolvedProject = container.querySelector<HTMLElement>(
+      '[data-slot="resolved-lane"] [data-slot="project-group"]',
+    );
+    expect(resolvedProject?.querySelector('[data-slot="project-label"]')).toBeNull();
+    expect(
+      resolvedProject?.querySelector('[data-session-id="resolved:/work/cake"]'),
+    ).not.toBeNull();
 
     act(() =>
       container

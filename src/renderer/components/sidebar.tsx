@@ -183,6 +183,7 @@ export const Sidebar = observer(function Sidebar({
                   path={path}
                   resolved
                   focusMode={focusMode}
+                  flattenSessions={focusMode}
                   onCreateSession={onCreateSession}
                   onOpenSession={onOpenSession}
                   onRemoveProject={onRemoveProject}
