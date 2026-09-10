@@ -114,7 +114,7 @@ export const SessionSplitLayout = observer(function SessionSplitLayout({
           data-slot="workspace-header"
           className={cn(
             "relative flex h-[52px] min-w-0 items-center gap-3 overflow-hidden border-b border-border/65 px-5 [app-region:drag]",
-            multiplePanes && "bg-muted/20",
+            multiplePanes && "bg-muted/20 pr-10",
             multiplePanes && focused && "bg-muted/35",
             headerClassName?.(node),
           )}
@@ -144,7 +144,11 @@ export const SessionSplitLayout = observer(function SessionSplitLayout({
               <SplitDownIcon />
             </IconButton>
             {multiplePanes && (
-              <IconButton tooltip="Close pane" onClick={() => onClose(node.paneId)}>
+              <IconButton
+                className="absolute right-1 top-1/2 z-20 shrink-0 -translate-y-1/2 bg-background/95"
+                tooltip="Close pane"
+                onClick={() => onClose(node.paneId)}
+              >
                 <CloseIcon size={14} />
               </IconButton>
             )}

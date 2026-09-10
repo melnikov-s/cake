@@ -62,9 +62,37 @@ test("splits project chats while retaining independent drafts and pane focus", a
     await expect(panes.nth(1)).toHaveAttribute("data-focused", "true");
     const secondInput = panes.nth(1).getByLabel("Message");
     await expect(secondInput).toBeFocused();
+
+    const splitHandleBounds = await page
+      .getByRole("separator", { name: "Resize session columns" })
+      .boundingBox();
+    expect(splitHandleBounds).not.toBeNull();
+    await page.mouse.move(
+      splitHandleBounds!.x + splitHandleBounds!.width / 2,
+      splitHandleBounds!.y + splitHandleBounds!.height / 2,
+    );
+    await page.mouse.down();
+    await page.mouse.move(0, splitHandleBounds!.y + splitHandleBounds!.height / 2);
+    await page.mouse.up();
+
+    const narrowPaneBounds = await panes.nth(0).boundingBox();
+    const narrowPaneCloseBounds = await panes
+      .nth(0)
+      .getByRole("button", { name: "Close pane" })
+      .boundingBox();
+    expect(narrowPaneBounds).not.toBeNull();
+    expect(narrowPaneCloseBounds).not.toBeNull();
+    expect(narrowPaneCloseBounds!.x).toBeGreaterThanOrEqual(narrowPaneBounds!.x);
+    expect(narrowPaneCloseBounds!.x + narrowPaneCloseBounds!.width).toBeLessThanOrEqual(
+      narrowPaneBounds!.x + narrowPaneBounds!.width,
+    );
+
     await secondInput.fill("right draft");
 
-    await panes.nth(0).locator("header").click();
+    await panes
+      .nth(0)
+      .locator('[data-slot="chat"]')
+      .click({ position: { x: 24, y: 80 } });
     await expect(panes.nth(0)).toHaveAttribute("data-focused", "true");
     await expect(firstInput).toHaveValue("left draft");
     await expect(secondInput).toHaveValue("right draft");
@@ -77,7 +105,10 @@ test("splits project chats while retaining independent drafts and pane focus", a
     await rightPane.locator('[data-slot="chat"]').click({ position: { x: 24, y: 80 } });
     await expect(rightPane).toHaveAttribute("data-focused", "true");
 
-    await panes.nth(0).locator("header").click();
+    await panes
+      .nth(0)
+      .locator('[data-slot="chat"]')
+      .click({ position: { x: 24, y: 80 } });
     await page.keyboard.press(
       process.platform === "darwin" ? "Meta+Alt+ArrowRight" : "Control+Alt+ArrowRight",
     );
