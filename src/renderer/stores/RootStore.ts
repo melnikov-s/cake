@@ -1,4 +1,5 @@
 import { Store, child, createStore, untracked } from "r-state-tree";
+import type { CakeHotkeyActionId } from "../../domain/application/cake-settings-data";
 import type { ProjectSessionControlInvocation } from "../../domain/project-sessions/project-session-data";
 import type { JsonValue } from "../../ipc/json-contract";
 import type { ChatConfiguration } from "../../ipc/session-contract";
@@ -32,7 +33,7 @@ import { SessionLayoutStore, type SessionSplitAxis } from "./SessionLayoutStore"
 import { SessionCoordinationStore } from "./SessionCoordinationStore";
 import { resolveDraftUpdate } from "../../utils/resolve-draft-update";
 import type { RootProjection } from "../models/RootProjection";
-import { formatHotkey, type HotkeyActionId } from "../lib/hotkeys";
+import { formatHotkey } from "../lib/hotkeys";
 import { UiHintModeStore } from "./UiHintModeStore";
 
 export class RootStore extends Store<{
@@ -408,7 +409,7 @@ export class RootStore extends Store<{
     if (pane) this.focusSessionPane(pane.paneId);
   }
 
-  handleHotkey(action: HotkeyActionId) {
+  handleHotkey(action: CakeHotkeyActionId) {
     if (action !== "show-ui-hints") this.uiHintModeStore.close();
     const selection = this.appShellStore.selection;
     const projectSelected = selection.kind === "project-session";
@@ -1172,6 +1173,14 @@ export class RootStore extends Store<{
         sessionActivity: (sessionId) => this.sidebarStore.sessionActivity(sessionId),
         managedWorktree: (workingDirectory) =>
           this.sessionCatalogStore.managedWorktree(workingDirectory),
+      },
+      settings: {
+        get: (section) => this.settingsStore.settingsSection(section),
+        update: async (input) => {
+          const view = this.settingsStore.updateSettings(input);
+          await this.props.flushWindowState();
+          return view;
+        },
       },
       sessions: {
         open: (sessionId, messageId) => this.openSession(sessionId, messageId),

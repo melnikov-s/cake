@@ -19,6 +19,16 @@ import type {
 import type { QueuedConversationMessages } from "../../domain/conversations/conversation-data";
 import { isActiveSessionActivity, type SessionActivity } from "../lib/session-activity";
 import { CakeModelSelection } from "../../domain/model-presets/cake-model-selection";
+import {
+  cakeSettingsSections,
+  type CakeSettingsSectionId,
+  type CakeSettingsSectionView,
+  type CakeSettingsUpdate,
+} from "../../domain/application/cake-settings-data";
+import {
+  CakeSettingsGetInput,
+  CakeSettingsUpdateInput,
+} from "../../domain/application/cake-settings-schema";
 
 const bounded = (minimum: number, maximum: number) =>
   Schema.String.check(Schema.isMinLength(minimum), Schema.isMaxLength(maximum));
@@ -265,6 +275,10 @@ export interface AppControlHost {
     sessionActivity(sessionId: string): SessionActivity | undefined;
     managedWorktree(workingDirectory: string): WorktreeRecord | undefined;
   };
+  settings: {
+    get(section: CakeSettingsSectionId): CakeSettingsSectionView;
+    update(input: CakeSettingsUpdate): Promise<CakeSettingsSectionView>;
+  };
   sessions: {
     open(sessionId: string, messageId?: string): Promise<boolean | void>;
     create(input: {
@@ -367,6 +381,28 @@ interface CoordinationThreadView {
 
 export type AppControlResult =
   | { ok: true; name: "get_app_state"; state: AppControlState }
+  | {
+      ok: true;
+      command: "settings.sections";
+      name: "settings.sections";
+      sections: typeof cakeSettingsSections;
+    }
+  | {
+      ok: true;
+      command: "settings.get";
+      name: "settings.get";
+      scope: "window";
+      section: CakeSettingsSectionId;
+      settings: CakeSettingsSectionView["settings"];
+    }
+  | {
+      ok: true;
+      command: "settings.update";
+      name: "settings.update";
+      scope: "window";
+      section: CakeSettingsSectionId;
+      settings: CakeSettingsSectionView["settings"];
+    }
   | {
       ok: true;
       name: "split_view";
@@ -524,6 +560,36 @@ const modelControlOperations = [
     "Split the calling conversation pane to the right or down and open a new chat in it.",
     appControlArgumentSchemas.split_view,
   ),
+  operation(
+    "settings.sections",
+    "settings",
+    "List the Cake settings sections available to agents, including scope and writability.",
+    emptyArgumentsSchema,
+  ),
+  operation(
+    "settings.get",
+    "settings",
+    "Read the effective settings for one Cake settings section in the invoking window.",
+    CakeSettingsGetInput,
+  ),
+  {
+    ...operation(
+      "settings.update",
+      "settings",
+      "Patch one Cake settings section in the invoking window and return its committed effective settings.",
+      CakeSettingsUpdateInput,
+    ),
+    guidance: [
+      "Call settings.get before updating a section. Unspecified fields remain unchanged.",
+      "For hotkeys, null restores the default binding and an empty string disables the shortcut.",
+    ],
+    examples: [
+      {
+        input: { section: "appearance", changes: { theme: "dark" } },
+        description: "Use Cake's dark appearance in this window.",
+      },
+    ],
+  },
   operation(
     "sessions.list",
     "sessions",
@@ -754,6 +820,35 @@ export class AppControlBridge {
     const gatewayInvocation = Schema.decodeUnknownSync(
       Schema.Struct({ name: Schema.String, arguments: jsonObjectSchema }),
     )(untrustedInput);
+    if (gatewayInvocation.name === "settings.sections")
+      return {
+        ok: true,
+        command: "settings.sections",
+        name: "settings.sections",
+        sections: cakeSettingsSections,
+      };
+    if (gatewayInvocation.name === "settings.get") {
+      const input = Schema.decodeUnknownSync(CakeSettingsGetInput)(gatewayInvocation.arguments);
+      const view = this.host.settings.get(input.section);
+      return toStrictJson({
+        ok: true,
+        command: "settings.get",
+        name: "settings.get",
+        scope: "window",
+        ...view,
+      });
+    }
+    if (gatewayInvocation.name === "settings.update") {
+      const input = Schema.decodeUnknownSync(CakeSettingsUpdateInput)(gatewayInvocation.arguments);
+      const view = await this.host.settings.update(input);
+      return toStrictJson({
+        ok: true,
+        command: "settings.update",
+        name: "settings.update",
+        scope: "window",
+        ...view,
+      });
+    }
     if (gatewayInvocation.name === "sessions.list") {
       const state = this.getAppState(source);
       return toStrictJson({
@@ -1241,6 +1336,11 @@ export class AppControlBridge {
             : `current:${result.action}:${result.detail ?? ""}`,
       };
     }
+    if (result.name === "settings.update")
+      return {
+        message: `Updated Cake ${result.section} settings`,
+        coalesceKey: `settings:${result.section}`,
+      };
     if (result.name === "split_view")
       return {
         message: `Split this chat ${result.direction === "right" ? "to the right" : "down"}`,

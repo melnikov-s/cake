@@ -1,17 +1,16 @@
 import { snapshot, Store } from "r-state-tree";
-
-export type EmbeddedEditorSidebarAutoHide = "never" | "always" | "below-width";
+import type { CakeEditorSettings } from "../../domain/application/cake-settings-data";
 
 /** Owns persisted window preferences for the embedded VS Code presentation. */
 export class EmbeddedEditorSettingsStore extends Store<Record<string, never>> {
-  @snapshot sidebarAutoHide: EmbeddedEditorSidebarAutoHide = "never";
-  @snapshot sidebarAutoHideWidth = 1440;
+  @snapshot sidebarAutoHide: CakeEditorSettings["sidebarAutoHide"] = "never";
+  @snapshot sidebarAutoHideWidth: CakeEditorSettings["sidebarAutoHideWidth"] = 1440;
 
-  setSidebarAutoHide(mode: EmbeddedEditorSidebarAutoHide) {
+  setSidebarAutoHide(mode: CakeEditorSettings["sidebarAutoHide"]) {
     this.sidebarAutoHide = mode;
   }
 
-  setSidebarAutoHideWidth(width: number) {
+  setSidebarAutoHideWidth(width: CakeEditorSettings["sidebarAutoHideWidth"]) {
     this.sidebarAutoHideWidth = width;
   }
 }

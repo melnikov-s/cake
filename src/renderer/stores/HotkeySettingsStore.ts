@@ -1,51 +1,49 @@
 import { snapshot, Store } from "r-state-tree";
 import {
-  defaultHotkeyBinding,
-  hotkeyActionIds,
-  hotkeyDefinitions,
-  hotkeyFromKeyboardEvent,
-  type HotkeyActionId,
-} from "../lib/hotkeys";
+  cakeHotkeyActionIds,
+  type CakeHotkeyActionId,
+} from "../../domain/application/cake-settings-data";
+import { defaultHotkeyBinding, hotkeyDefinitions, hotkeyFromKeyboardEvent } from "../lib/hotkeys";
 
 /** Owns Cake's persisted, window-scoped application hotkey preferences. */
 export class HotkeySettingsStore extends Store {
-  @snapshot bindings: Partial<Record<HotkeyActionId, string>> = {};
+  @snapshot bindings: Partial<Record<CakeHotkeyActionId, string>> = {};
 
   get definitions() {
     return hotkeyDefinitions;
   }
 
-  bindingFor(id: HotkeyActionId) {
+  bindingFor(id: CakeHotkeyActionId) {
     return this.bindings[id] ?? defaultHotkeyBinding(id);
   }
 
-  actionForEvent(event: KeyboardEvent): HotkeyActionId | undefined {
+  actionForEvent(event: KeyboardEvent): CakeHotkeyActionId | undefined {
     const binding = hotkeyFromKeyboardEvent(event);
     return binding ? this.actionForBinding(binding) : undefined;
   }
 
-  actionForBinding(binding: string): HotkeyActionId | undefined {
-    return hotkeyActionIds.find((id) => this.bindingFor(id) === binding);
+  actionForBinding(binding: string): CakeHotkeyActionId | undefined {
+    return cakeHotkeyActionIds.find((id) => this.bindingFor(id) === binding);
   }
 
-  assign(id: HotkeyActionId, binding: string) {
+  assign(id: CakeHotkeyActionId, binding: string) {
     const bindings = { ...this.bindings };
-    for (const actionId of hotkeyActionIds) {
+    for (const actionId of cakeHotkeyActionIds) {
       if (actionId !== id && this.bindingFor(actionId) === binding) bindings[actionId] = "";
     }
     bindings[id] = binding;
     this.bindings = bindings;
   }
 
-  clear(id: HotkeyActionId) {
+  clear(id: CakeHotkeyActionId) {
     this.bindings = { ...this.bindings, [id]: "" };
   }
 
-  reset(id: HotkeyActionId) {
+  reset(id: CakeHotkeyActionId) {
     const bindings = { ...this.bindings };
     delete bindings[id];
     const defaultBinding = defaultHotkeyBinding(id);
-    for (const actionId of hotkeyActionIds) {
+    for (const actionId of cakeHotkeyActionIds) {
       if (actionId !== id && this.bindingFor(actionId) === defaultBinding) bindings[actionId] = "";
     }
     this.bindings = bindings;

@@ -1,36 +1,8 @@
+import type { CakeHotkeyActionId } from "../../domain/application/cake-settings-data";
 import { isMacPlatform } from "./platform";
 
-export const hotkeyActionIds = [
-  "toggle-agent-editor",
-  "open-editor",
-  "open-changes",
-  "toggle-terminal",
-  "new-terminal-tab",
-  "toggle-sidebar",
-  "toggle-session-tree",
-  "split-right",
-  "split-down",
-  "focus-left",
-  "focus-right",
-  "focus-above",
-  "focus-below",
-  "focus-pane-1",
-  "focus-pane-2",
-  "focus-pane-3",
-  "focus-pane-4",
-  "history-back",
-  "history-forward",
-  "show-ui-hints",
-  "toggle-work-logs",
-  "cycle-work-log-view",
-  "open-hovered-message",
-  "open-settings",
-] as const;
-
-export type HotkeyActionId = (typeof hotkeyActionIds)[number];
-
 export interface HotkeyDefinition {
-  readonly id: HotkeyActionId;
+  readonly id: CakeHotkeyActionId;
   readonly group: "Editor & tools" | "Panes" | "Navigation" | "Conversation";
   readonly label: string;
   readonly description: string;
@@ -230,7 +202,7 @@ declare global {
 
 const definitionById = new Map(hotkeyDefinitions.map((definition) => [definition.id, definition]));
 
-export function defaultHotkeyBinding(id: HotkeyActionId) {
+export function defaultHotkeyBinding(id: CakeHotkeyActionId) {
   return definitionById.get(id)?.defaultBinding ?? "";
 }
 

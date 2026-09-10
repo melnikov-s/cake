@@ -12,6 +12,10 @@ import {
   type ExplicitCakeModelSelection,
 } from "../../../domain/model-presets/cake-model-selection";
 import type { SubagentTaskInput as DomainSubagentTaskInput } from "../../../domain/subagents/subagent-data";
+import {
+  CakeSettingsGetInput,
+  CakeSettingsUpdateInput,
+} from "../../../domain/application/cake-settings-schema";
 import { jsonObjectSchema, type JsonObject, type JsonValue } from "../../../ipc/json-contract";
 import { artifactRecordSchema, type CakeArtifactV1 } from "../../../ipc/artifact-contract";
 import { createCakeArtifactExtension } from "./artifact-extension";
@@ -448,6 +452,40 @@ export async function createCakeRuntimeCapabilities(input: {
         examples: [{ input: { direction: "right" } }],
         result: "The new pane and conversation identity.",
         execute: invokeAppControl("app.split"),
+      },
+      {
+        command: "settings.sections",
+        topic: "settings",
+        summary:
+          "List the Cake settings sections available to agents, including scope and writability.",
+        inputSchema: empty,
+        examples: [{}],
+        result: "The available settings section IDs, descriptions, scopes, and writability.",
+        execute: invokeAppControl("settings.sections"),
+      },
+      {
+        command: "settings.get",
+        topic: "settings",
+        summary: "Read the effective settings for one Cake settings section in this window.",
+        inputSchema: CakeSettingsGetInput,
+        examples: [{ input: { section: "appearance" } }],
+        result: "The section's effective current settings and window scope.",
+        execute: invokeAppControl("settings.get"),
+      },
+      {
+        command: "settings.update",
+        topic: "settings",
+        summary:
+          "Patch one Cake settings section in this window and return its committed effective settings.",
+        guidance: [
+          "Call settings.get before updating a section. Unspecified fields remain unchanged.",
+          "For hotkeys, null restores the default binding and an empty string disables the shortcut.",
+        ],
+        inputSchema: CakeSettingsUpdateInput,
+        examples: [{ input: { section: "appearance", changes: { theme: "dark" } } }],
+        result:
+          "The section's committed effective settings after window-state persistence completes.",
+        execute: invokeAppControl("settings.update"),
       },
       {
         command: "session.info",
@@ -914,7 +952,14 @@ export async function createCakeRuntimeCapabilities(input: {
         (operation.command !== "session.resolve" ||
           (options.currentSessionControl !== undefined &&
             options.currentSessionControl.canResolve?.() !== false)) &&
-        (!["app.state", "app.split", "notifications.send"].includes(operation.command) ||
+        (![
+          "app.state",
+          "app.split",
+          "settings.sections",
+          "settings.get",
+          "settings.update",
+          "notifications.send",
+        ].includes(operation.command) ||
           options.currentSessionControl?.invokeAppControl !== undefined) &&
         (operation.command !== "session.create" ||
           options.currentSessionControl?.createSession !== undefined) &&

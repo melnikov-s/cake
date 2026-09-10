@@ -35,6 +35,28 @@ function createHost(
       sessionActivity: () => undefined,
       managedWorktree: () => undefined,
     },
+    settings: {
+      get: () => ({
+        section: "appearance",
+        settings: {
+          theme: "system",
+          projectAvatarsEnabled: true,
+          sessionAvatarsEnabled: true,
+          workLogViewMode: "auto",
+          workLogsExpansion: "collapsed",
+        },
+      }),
+      update: async () => ({
+        section: "appearance",
+        settings: {
+          theme: "system",
+          projectAvatarsEnabled: true,
+          sessionAvatarsEnabled: true,
+          workLogViewMode: "auto",
+          workLogsExpansion: "collapsed",
+        },
+      }),
+    },
     sessions: {
       open: async () => false,
       create:

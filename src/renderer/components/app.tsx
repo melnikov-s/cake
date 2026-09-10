@@ -44,8 +44,8 @@ import {
   cakeHotkeyEventName,
   cakeNativeHotkeyInputEventName,
   hotkeyFromKeyboardEvent,
-  type HotkeyActionId,
 } from "@/lib/hotkeys";
+import type { CakeHotkeyActionId } from "../../domain/application/cake-settings-data";
 import { cn } from "@/lib/utils";
 import type { SourceLocation } from "../../ipc/source-location";
 import { toWorkspaceRelativePath } from "../../utils/workspace-relative-path";
@@ -170,7 +170,7 @@ export const App = observer(function App() {
   useEffect(() => {
     const recordingHotkey = () =>
       Boolean(document.querySelector('[data-slot="hotkey-recorder"][data-recording="true"]'));
-    const runAction = (action: HotkeyActionId, target: EventTarget | null) => {
+    const runAction = (action: CakeHotkeyActionId, target: EventTarget | null) => {
       if (action === "new-terminal-tab" && target instanceof Element && target.closest(".xterm"))
         return;
       if (action === "open-hovered-message")

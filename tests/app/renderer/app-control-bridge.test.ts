@@ -15,6 +15,7 @@ type AppControlHostOverrides = Partial<
   AppControlHost["state"] & AppControlHost["sessions"] & AppControlHost["presentation"]
 > & {
   sessionCoordination?: AppControlHost["sessionCoordination"];
+  settings?: AppControlHost["settings"];
 };
 
 function createHost(overrides: AppControlHostOverrides = {}): AppControlHost {
@@ -31,6 +32,30 @@ function createHost(overrides: AppControlHostOverrides = {}): AppControlHost {
       managedWorktree: overrides.managedWorktree ?? (() => undefined),
       ...(overrides.sessionLayout ? { sessionLayout: overrides.sessionLayout } : null),
     },
+    settings:
+      overrides.settings ??
+      ({
+        get: () => ({
+          section: "appearance",
+          settings: {
+            theme: "system",
+            projectAvatarsEnabled: true,
+            sessionAvatarsEnabled: true,
+            workLogViewMode: "auto",
+            workLogsExpansion: "collapsed",
+          },
+        }),
+        update: async () => ({
+          section: "appearance",
+          settings: {
+            theme: "system",
+            projectAvatarsEnabled: true,
+            sessionAvatarsEnabled: true,
+            workLogViewMode: "auto",
+            workLogsExpansion: "collapsed",
+          },
+        }),
+      } satisfies AppControlHost["settings"]),
     sessions: {
       open: overrides.open ?? (async () => false),
       create:
@@ -82,6 +107,9 @@ describe("AppControlBridge", () => {
     expect(target.tools.some((tool) => tool.command === "app.split")).toBe(true);
     expect(target.tools.some((tool) => tool.command === "sessions.create-draft")).toBe(true);
     expect(target.tools.some((tool) => tool.command === "notifications.send")).toBe(true);
+    expect(target.tools.some((tool) => tool.command === "settings.sections")).toBe(true);
+    expect(target.tools.some((tool) => tool.command === "settings.get")).toBe(true);
+    expect(target.tools.some((tool) => tool.command === "settings.update")).toBe(true);
     const create = target.tools.find((tool) => tool.command === "sessions.create");
     expect(create && "guidance" in create ? create.guidance : undefined).toContainEqual(
       expect.stringContaining("inherits"),
@@ -190,6 +218,78 @@ describe("AppControlBridge", () => {
         },
       },
     });
+  });
+
+  it("lists, reads, and updates Cake settings through the invoking window", async () => {
+    const get = vi.fn(() => ({
+      section: "appearance" as const,
+      settings: {
+        theme: "system" as const,
+        projectAvatarsEnabled: true,
+        sessionAvatarsEnabled: true,
+        workLogViewMode: "auto" as const,
+        workLogsExpansion: "collapsed" as const,
+      },
+    }));
+    const update = vi.fn(async () => ({
+      section: "appearance" as const,
+      settings: {
+        theme: "dark" as const,
+        projectAvatarsEnabled: true,
+        sessionAvatarsEnabled: true,
+        workLogViewMode: "auto" as const,
+        workLogsExpansion: "collapsed" as const,
+      },
+    }));
+    const bridge = new AppControlBridge(createHost({ settings: { get, update } }));
+
+    await expect(
+      bridge.invoke({ name: "settings.sections", arguments: {} }),
+    ).resolves.toMatchObject({
+      ok: true,
+      command: "settings.sections",
+      sections: [
+        { id: "appearance", scope: "window", writable: true },
+        { id: "editor", scope: "window", writable: true },
+        { id: "hotkeys", scope: "window", writable: true },
+      ],
+    });
+    await expect(
+      bridge.invoke({ name: "settings.get", arguments: { section: "appearance" } }),
+    ).resolves.toMatchObject({
+      ok: true,
+      command: "settings.get",
+      scope: "window",
+      section: "appearance",
+      settings: { theme: "system" },
+    });
+    await expect(
+      bridge.invoke({
+        name: "settings.update",
+        arguments: { section: "appearance", changes: { theme: "dark" } },
+      }),
+    ).resolves.toMatchObject({
+      ok: true,
+      command: "settings.update",
+      scope: "window",
+      section: "appearance",
+      settings: { theme: "dark" },
+    });
+    expect(get).toHaveBeenCalledWith("appearance");
+    expect(update).toHaveBeenCalledWith({ section: "appearance", changes: { theme: "dark" } });
+
+    await expect(
+      bridge.invoke({
+        name: "settings.update",
+        arguments: { section: "appearance", changes: {} },
+      }),
+    ).rejects.toThrow();
+    await expect(
+      bridge.invoke({
+        name: "settings.update",
+        arguments: { section: "editor", changes: { sidebarAutoHideWidth: 900 } },
+      }),
+    ).rejects.toThrow();
   });
 
   it("routes attributed notifications through the application host without a receipt", async () => {

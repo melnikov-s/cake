@@ -1,11 +1,13 @@
 import { observer } from "r-state-tree/react";
-import type {
-  EmbeddedEditorSettingsStore,
-  EmbeddedEditorSidebarAutoHide,
-} from "../stores/EmbeddedEditorSettingsStore";
+import type { CakeEditorSettings } from "../../domain/application/cake-settings-data";
+import type { EmbeddedEditorSettingsStore } from "../stores/EmbeddedEditorSettingsStore";
 import { Select } from "./ui/select";
 
-const autoHideModes: readonly EmbeddedEditorSidebarAutoHide[] = ["never", "always", "below-width"];
+const autoHideModes: readonly CakeEditorSettings["sidebarAutoHide"][] = [
+  "never",
+  "always",
+  "below-width",
+];
 const widthOptions = [1024, 1280, 1440, 1728, 1920] as const;
 
 export const SettingsEmbeddedEditorSection = observer(function SettingsEmbeddedEditorSection({
@@ -65,7 +67,12 @@ export const SettingsEmbeddedEditorSection = observer(function SettingsEmbeddedE
               aria-label="VS Code sidebar auto-hide window width"
               className="h-8 max-w-xs text-xs"
               value={String(settings.sidebarAutoHideWidth)}
-              onChange={(event) => settings.setSidebarAutoHideWidth(Number(event.target.value))}
+              onChange={(event) => {
+                const width = widthOptions.find(
+                  (candidate) => candidate === Number(event.target.value),
+                );
+                if (width) settings.setSidebarAutoHideWidth(width);
+              }}
             >
               {widthOptions.map((width) => (
                 <option key={width} value={width}>
