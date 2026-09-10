@@ -60,7 +60,19 @@ test("creates a custom status and drags an active session into it", async () => 
     await projectGroup.hover();
     await projectGroup.getByRole("button", { name: "Open Kanban board for project" }).click();
     await expect(page.locator('[data-slot="kanban-board"]')).toBeVisible();
+    await expect(page.getByRole("complementary")).toHaveCount(0);
+    await expect(page.locator('[data-slot="workspace-settings"]')).toHaveCount(0);
+    await expect(page.locator('[data-slot="header-sidebar-toggle"]')).toBeHidden();
+    await expect(page.getByRole("button", { name: "Back to workspace" })).toBeVisible();
     await expect(page.getByRole("button", { name: /^Terminal \(/ })).toHaveCount(0);
+    await expect
+      .poll(() =>
+        page.locator('[data-slot="workspace"]').evaluate((element) => {
+          const bounds = element.getBoundingClientRect();
+          return bounds.left === 0 && bounds.right === window.innerWidth;
+        }),
+      )
+      .toBe(true);
 
     await page.getByRole("button", { name: "Add status" }).click();
     await page.getByLabel("Status name").fill("In review");
@@ -73,9 +85,6 @@ test("creates a custom status and drags an active session into it", async () => 
       .locator('[data-session-id="kanban-session"]');
     await card.dragTo(customColumn);
     await expect(customColumn.locator('[data-session-id="kanban-session"]')).toBeVisible();
-    await expect(
-      projectGroup.locator('[data-session-id="kanban-session"] [aria-label="Status: In review"]'),
-    ).toBeVisible();
 
     await expect(card).toBeEnabled();
 
@@ -122,8 +131,9 @@ test("creates a custom status and drags an active session into it", async () => 
       })
       .toBe(1);
 
-    await projectGroup.getByRole("button", { name: "Close Kanban board for project" }).click();
+    await page.getByRole("button", { name: "Back to workspace" }).click();
     await expect(page.locator('[data-slot="kanban-board"]')).toHaveCount(0);
+    await expect(page.getByRole("complementary")).toBeVisible();
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

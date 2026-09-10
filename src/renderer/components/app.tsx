@@ -102,7 +102,7 @@ export const App = observer(function App() {
             ? extensionUi.errorDetails
             : artifactInteractions?.errorDetails;
   const sidebarCollapsed = !sidebar.visible;
-  const projectSidebarVisible = !sidebarCollapsed && surface !== "settings";
+  const projectSidebarVisible = !sidebarCollapsed && surface !== "settings" && surface !== "kanban";
   const sidebarWidth = sidebar.width;
   const [commandPaneWidth, setCommandPaneWidth] = useState(420);
   const [resizingPanel, setResizingPanel] = useState(false);
@@ -588,7 +588,7 @@ export const App = observer(function App() {
               : undefined
         }
       >
-        {surface !== "settings" && (
+        {surface !== "settings" && surface !== "kanban" && (
           <IconButton
             className={cn(
               "absolute bottom-[9.5px] left-4 z-20 hidden size-8 place-items-center rounded-lg bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground max-[620px]:grid",
@@ -606,15 +606,15 @@ export const App = observer(function App() {
             data-slot="workspace-header"
             className={cn(
               "relative flex h-[52px] w-full max-w-full min-w-0 items-center justify-between overflow-hidden border-b border-border/65 px-5 [app-region:drag] max-[620px]:pl-[84px]",
-              sidebarCollapsed && surface !== "settings" && "pl-[124px]",
-              surface === "settings" && "pl-[84px]",
+              sidebarCollapsed && surface !== "settings" && surface !== "kanban" && "pl-[124px]",
+              (surface === "settings" || surface === "kanban") && "pl-[84px]",
             )}
           >
             <div className="flex w-0 min-w-0 flex-1 items-center gap-3">
               <IconButton
                 className={cn(
                   "absolute left-[84px] top-[9px] z-20 size-7 place-items-center rounded-lg bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground [app-region:no-drag]",
-                  surface === "settings"
+                  surface === "settings" || surface === "kanban"
                     ? "hidden"
                     : sidebarCollapsed
                       ? "grid"
@@ -626,10 +626,10 @@ export const App = observer(function App() {
               >
                 <SidebarIcon />
               </IconButton>
-              {surface === "settings" && (
+              {(surface === "settings" || surface === "kanban") && (
                 <IconButton
                   className="grid size-7 place-items-center rounded-lg bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground [app-region:no-drag]"
-                  tooltip="Back to chat"
+                  tooltip={surface === "kanban" ? "Back to workspace" : "Back to chat"}
                   onClick={returnToWorkbench}
                 >
                   <BackIcon />
