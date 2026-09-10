@@ -10,6 +10,7 @@ import { ChatConfigurationStore, type ChatConfigurationStoreProps } from "./Chat
 import { ChatStore, type ChatStoreProps, type QueuedPrompt } from "./ChatStore";
 import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
+import { SideChatStore } from "./SideChatStore";
 import type { ExistingWorktreeCandidate, WorktreeDraftChoice } from "./WorktreeCreationStore";
 import type { ScheduledMessageCapabilities } from "./ScheduledMessageInteractionStore";
 import type { UserMessagePresentationCapabilities } from "./TranscriptInteractionStore";
@@ -124,6 +125,13 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
       operationOwner: this.props.configurationOperationOwner,
       presets: this.props.modelPresets,
       openPresetSettings: this.props.openModelPresetSettings,
+    });
+  }
+
+  @child
+  get sideChatStore(): SideChatStore {
+    return createStore(SideChatStore, {
+      onClose: () => this.composerStore.draftStore.requestFocus(),
     });
   }
 

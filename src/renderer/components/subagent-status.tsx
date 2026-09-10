@@ -1,9 +1,8 @@
-import { useRef, useState, type ReactNode } from "react";
+import { useContext, useState } from "react";
 import { observer } from "r-state-tree/react";
 import type { SubagentActivityStore } from "../stores/SubagentActivityStore";
-import type { ChatStore } from "../stores/ChatStore";
 import { cn } from "@/lib/utils";
-import { ChatPopover } from "./message-comment-popover";
+import { SideChatContext } from "./side-chat-context";
 import { Button } from "./ui/button";
 import { ChatIcon } from "./ui/icons";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
@@ -12,24 +11,16 @@ import { StatusDot } from "./ui/status-dot";
 /** Persistent access to every active private worker owned by this conversation. */
 export const SubagentStatus = observer(function SubagentStatus({
   store,
-  renderChat,
 }: {
   store: SubagentActivityStore;
-  renderChat(store: ChatStore): ReactNode;
 }) {
-  const anchorRef = useRef<HTMLDivElement>(null);
+  const sideChat = useContext(SideChatContext);
   const [listOpen, setListOpen] = useState(false);
-  const [selectedKey, setSelectedKey] = useState<string>();
   const activeRuns = store.activeRuns;
-  const selectedRun = selectedKey ? store.run(selectedKey) : undefined;
-  const selectedChat = selectedRun ? store.chatStore(selectedRun.key) : undefined;
   const count = activeRuns.length;
 
   return (
-    <div
-      ref={anchorRef}
-      className={cn("pointer-events-auto flex min-w-0 justify-end", count > 0 && "mb-1.5")}
-    >
+    <div className={cn("pointer-events-auto flex min-w-0 justify-end", count > 0 && "mb-1.5")}>
       {count > 0 && (
         <Popover open={listOpen} onOpenChange={setListOpen}>
           <PopoverTrigger
@@ -60,7 +51,17 @@ export const SubagentStatus = observer(function SubagentStatus({
                   className="h-auto min-w-0 justify-start gap-2 px-2.5 py-2 text-left"
                   variant="ghost"
                   onClick={() => {
-                    setSelectedKey(run.key);
+                    const chatStore = store.chatStore(run.key);
+                    if (chatStore && sideChat)
+                      sideChat.open({
+                        key: `subagent:${run.key}`,
+                        title: "Subagent",
+                        eyebrow: () => {
+                          const current = store.run(run.key);
+                          return current?.released ? "Released" : (current?.status ?? run.status);
+                        },
+                        chatStore,
+                      });
                     setListOpen(false);
                   }}
                 >
@@ -76,17 +77,6 @@ export const SubagentStatus = observer(function SubagentStatus({
             </div>
           </PopoverContent>
         </Popover>
-      )}
-
-      {selectedRun && selectedChat && anchorRef.current && (
-        <ChatPopover
-          anchor={anchorRef.current}
-          title="Subagent"
-          eyebrow={selectedRun.released ? "Released" : selectedRun.status}
-          onClose={() => setSelectedKey(undefined)}
-        >
-          {renderChat(selectedChat)}
-        </ChatPopover>
       )}
     </div>
   );

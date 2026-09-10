@@ -1,11 +1,10 @@
-import { useState, type ReactNode } from "react";
+import { useContext, type ReactNode } from "react";
 import { observer } from "r-state-tree/react";
 import type { UiPart } from "../../../ipc/session-contract";
 import { toolOperationName } from "../../../utils/cake-tool";
 import { historicalSubagentRuns, type SubagentRun } from "../../../utils/subagent-runs";
 import type { SubagentActivityStore } from "../../stores/SubagentActivityStore";
-import type { ChatStore } from "../../stores/ChatStore";
-import { ChatPopover } from "../message-comment-popover";
+import { SideChatContext } from "../side-chat-context";
 import { IconButton } from "../ui/icon-button";
 import { ChatIcon } from "../ui/icons";
 import { StatusDot } from "../ui/status-dot";
@@ -38,19 +37,17 @@ export const SubagentTool = observer(function SubagentTool({
   protocolParts,
   subagents,
   timer,
-  renderChat,
 }: {
   part: ToolPart;
   startPart?: ToolPart;
   protocolParts?: ToolPart[];
   subagents?: SubagentActivityStore;
-  /** Retained for the shared Tool API; subagent detail now lives in the popup chat. */
+  /** Retained for the shared Tool API; subagent detail now lives in the side chat. */
   live?: boolean;
   timer?: ReactNode;
   expansion?: { open: boolean; toggle(): void };
-  renderChat?(store: ChatStore): ReactNode;
 }) {
-  const [popup, setPopup] = useState<{ key: string; anchor: HTMLElement }>();
+  const sideChat = useContext(SideChatContext);
   const persistedParts = protocolParts ?? (startPart ? [startPart, part] : [part]);
   const runs = subagents?.runsForTool(part, startPart) ?? historicalSubagentRuns(persistedParts);
   const waitCount = persistedParts.filter(
@@ -80,8 +77,6 @@ export const SubagentTool = observer(function SubagentTool({
     (run) => !run.released && (run.status === "queued" || run.status === "running"),
   ).length;
   const completedCount = runs.filter((run) => run.status === "complete").length;
-  const popupRun = popup ? runs.find((run) => run.key === popup.key) : undefined;
-  const popupChat = popupRun && subagents ? subagents.chatStore(popupRun.key) : undefined;
   const parallel = toolOperationName(part) === "subagents.parallel";
 
   return (
@@ -153,11 +148,23 @@ export const SubagentTool = observer(function SubagentTool({
                     .join(" · ")}
                 </p>
               </div>
-              {subagents && renderChat && (
+              {subagents && sideChat && (
                 <IconButton
                   tooltip="Open subagent chat"
                   aria-label="Open subagent chat"
-                  onClick={(event) => setPopup({ key: run.key, anchor: event.currentTarget })}
+                  onClick={() => {
+                    const chatStore = subagents.chatStore(run.key);
+                    if (!chatStore) return;
+                    sideChat.open({
+                      key: `subagent:${run.key}`,
+                      title: "Subagent",
+                      eyebrow: () => {
+                        const current = subagents.run(run.key);
+                        return current?.released ? "Released" : (current?.status ?? run.status);
+                      },
+                      chatStore,
+                    });
+                  }}
                 >
                   <ChatIcon />
                 </IconButton>
@@ -166,17 +173,6 @@ export const SubagentTool = observer(function SubagentTool({
           );
         })}
       </div>
-
-      {popup && popupRun && popupChat && renderChat && (
-        <ChatPopover
-          anchor={popup.anchor}
-          title="Subagent"
-          eyebrow={popupRun.released ? "Released" : popupRun.status}
-          onClose={() => setPopup(undefined)}
-        >
-          {renderChat(popupChat)}
-        </ChatPopover>
-      )}
     </div>
   );
 });

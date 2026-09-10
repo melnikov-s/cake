@@ -71,7 +71,7 @@ function toolResult(
   };
 }
 
-test("opens a released subagent in a read-only popup chat", async () => {
+test("opens a released subagent in a read-only side chat", async () => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-subagent-work-log-smoke-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
@@ -250,11 +250,15 @@ test("opens a released subagent in a read-only popup chat", async () => {
     await expect(openSubagentChat).toHaveCount(1);
 
     await openSubagentChat.click();
-    const popup = page.getByRole("dialog", { name: "Subagent" });
-    await expect(popup).toContainText("Released");
-    await expect(popup).toContainText("The loop opened a bakery because it knew how to roll.");
-    await expect(popup.locator("textarea")).toHaveCount(0);
-    await popup.getByRole("button", { name: "Close Subagent" }).click();
+    const sideChat = page.getByRole("complementary", { name: "Subagent" });
+    await expect(page.locator('[data-slot="side-chat-layout"]')).toHaveAttribute(
+      "data-presentation",
+      "side-by-side",
+    );
+    await expect(sideChat).toContainText("Released");
+    await expect(sideChat).toContainText("The loop opened a bakery because it knew how to roll.");
+    await expect(sideChat.locator("textarea")).toHaveCount(0);
+    await sideChat.getByRole("button", { name: "Close Subagent" }).click();
 
     await expect(page.getByRole("button", { name: /subagents running/ })).toHaveCount(0);
   } finally {

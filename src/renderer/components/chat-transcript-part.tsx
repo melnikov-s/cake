@@ -178,7 +178,6 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
         subagentStartPart={subagentStartPart}
         subagentParts={subagentParts}
         subagents={behavior.subagents}
-        renderChat={behavior.renderChat}
         live={live}
         omitDiff={omitToolDiff}
         workspacePath={behavior.workspacePath}

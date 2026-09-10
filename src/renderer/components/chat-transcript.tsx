@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useContext,
   useEffect,
   useImperativeHandle,
   useLayoutEffect,
@@ -22,10 +23,7 @@ import { AnnotationDraftPopover } from "@/components/annotation-draft-popover";
 import { ChatTranscriptFooter } from "./chat-transcript-footer";
 import { ChangedFiles } from "@/components/changed-files";
 import { LoadingState } from "@/components/ui/loading-state";
-import {
-  MessageCommentDraftPopover,
-  type MessageCommentAnchorRect,
-} from "@/components/message-comment-popover";
+import { SideChatContext } from "@/components/side-chat-context";
 import { workLogChanges } from "../../utils/turn-diff";
 import type { ChatStore, TranscriptScrollPosition } from "../stores/ChatStore";
 import {
@@ -66,7 +64,6 @@ export const ChatTranscript = observer(function ChatTranscript({
   error: errorOverride,
   virtualized = true,
   ref,
-  renderChat,
 }: {
   store: ChatStore;
   behavior?: ChatTranscriptBehavior;
@@ -75,8 +72,8 @@ export const ChatTranscript = observer(function ChatTranscript({
   error?: { message: string; details?: string; title?: string };
   virtualized?: boolean;
   ref?: Ref<ChatTranscriptHandle>;
-  renderChat(store: ChatStore): ReactNode;
 }) {
+  const sideChat = useContext(SideChatContext);
   const virtuosoRef = useRef<VirtualizedConversationHandle>(null);
   const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
   const pendingSelectionRef = useRef<TranscriptSelectionCapture | undefined>(undefined);
@@ -84,7 +81,6 @@ export const ChatTranscript = observer(function ChatTranscript({
     () => untracked(() => store.transcriptInteraction.transcriptScrollPosition),
     [store],
   );
-  const [draftAnchor, setDraftAnchor] = useState<MessageCommentAnchorRect>();
   const [annotationDraft, setAnnotationDraft] = useState<TranscriptSelectionCapture>();
   const {
     scrollRef,
@@ -148,8 +144,12 @@ export const ChatTranscript = observer(function ChatTranscript({
     ...(showAssistantLoading ? [{ kind: "loading-state" as const, id: "loading-state" }] : []),
   ];
   const transcriptBehavior = useMemo<CanonicalTranscriptBehavior>(
-    () => ({ store, ...behavior, renderChat }),
-    [behavior, renderChat, store],
+    () => ({
+      store,
+      ...behavior,
+      openSideChat: sideChat ? (target) => sideChat.open(target) : undefined,
+    }),
+    [behavior, sideChat, store],
   );
   const messageNavigationRequest = store.transcriptInteraction.messageNavigationRequest;
   const messageNavigationItemIndex = messageNavigationRequest
@@ -239,12 +239,17 @@ export const ChatTranscript = observer(function ChatTranscript({
   const messageComments = behavior.messageComments;
   const openSelectionDraft = useCallback(
     (capture: TranscriptSelectionCapture) => {
-      if (!messageComments) return;
+      if (!messageComments || !sideChat) return;
       messageComments.prepareDraft(capture.selection);
       pendingSelectionRef.current = undefined;
-      setDraftAnchor(capture.rect);
+      sideChat.open({
+        key: `selection-draft:${store.id}`,
+        title: "Chat about this",
+        eyebrow: () => "Selection",
+        chatStore: messageComments.draftChatStore,
+      });
     },
-    [messageComments],
+    [messageComments, sideChat, store.id],
   );
   useEffect(() => {
     const showContextMenu = behavior.showSelectionContextMenu;
@@ -267,7 +272,7 @@ export const ChatTranscript = observer(function ChatTranscript({
       event.preventDefault();
       pendingSelectionRef.current = capture;
       void showContextMenu({
-        canChat: Boolean(messageComments),
+        canChat: Boolean(messageComments && sideChat),
         canAnnotate: Boolean(store.canAnnotate),
       })
         .then((action) => {
@@ -282,7 +287,7 @@ export const ChatTranscript = observer(function ChatTranscript({
     };
     document.addEventListener("contextmenu", handler);
     return () => document.removeEventListener("contextmenu", handler);
-  }, [behavior.showSelectionContextMenu, messageComments, openSelectionDraft, store]);
+  }, [behavior.showSelectionContextMenu, messageComments, openSelectionDraft, sideChat, store]);
   const changedFiles = (
     <ChangedFiles
       parts={parts}
@@ -298,14 +303,6 @@ export const ChatTranscript = observer(function ChatTranscript({
   );
   const selectionOverlays = (
     <>
-      {draftAnchor && messageComments && (
-        <MessageCommentDraftPopover
-          anchor={draftAnchor}
-          chatStore={messageComments.draftChatStore}
-          renderChat={renderChat}
-          onClose={() => setDraftAnchor(undefined)}
-        />
-      )}
       {annotationDraft && (
         <AnnotationDraftPopover
           anchor={annotationDraft.rect}

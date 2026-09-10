@@ -12,7 +12,7 @@ import { IconButton } from "@/components/ui/icon-button";
 import { CheckIcon, CloseIcon, EditIcon, TrashIcon } from "@/components/ui/icons";
 import { Textarea } from "@/components/ui/textarea";
 import type { Annotation } from "../../ipc/session-contract";
-import type { MessageCommentAnchorRect } from "./message-comment-popover";
+import type { MessageCommentAnchorRect } from "./message-comment-anchor";
 
 function anchorRect(anchor: HTMLElement | MessageCommentAnchorRect) {
   return anchor instanceof HTMLElement ? anchor.getBoundingClientRect() : anchor;

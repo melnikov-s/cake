@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createStore, mount, observable } from "r-state-tree";
 import type { Annotation, UiPart } from "../../../src/ipc/session-contract";
 import { cakeHotkeyEventName } from "../../../src/renderer/lib/hotkeys";
+import { workLogChangeChunks } from "../../../src/utils/turn-diff";
 
 const { scrollToIndex, virtualizedLifecycle, virtualizedProps } = vi.hoisted(() => ({
   scrollToIndex: vi.fn(),
@@ -51,6 +52,7 @@ vi.mock("@/components/ai-elements/conversation", () => ({
 }));
 
 import { Chat } from "../../../src/renderer/components/chat";
+import { SideChatLayout } from "../../../src/renderer/components/side-chat-layout";
 import {
   captureMessageSelection,
   chatWorkIsActive,
@@ -59,6 +61,7 @@ import {
   type ChatTranscriptBehavior,
 } from "../../../src/renderer/components/chat-transcript";
 import { MessageCommentsStore } from "../../../src/renderer/stores/MessageCommentsStore";
+import { SideChatStore } from "../../../src/renderer/stores/SideChatStore";
 import type { ChatConfigurationStore } from "../../../src/renderer/stores/ChatConfigurationStore";
 import { ChatStore, type TranscriptScrollPosition } from "../../../src/renderer/stores/ChatStore";
 import { FullscreenSurfaceFixture } from "./fullscreen-surface-fixture";
@@ -152,6 +155,9 @@ function Transcript({
   const changedFilesStateRef = useRef(observable({ open: false }));
   const changedFilesChurningRef = useRef<boolean | undefined>(undefined);
   const transcriptScrollPositionsRef = useRef(new Map<string, TranscriptScrollPosition>());
+  const sideChatRef = useRef<SideChatStore>(undefined);
+  if (!sideChatRef.current) sideChatRef.current = mount(createStore(SideChatStore, {}));
+  useEffect(() => () => sideChatRef.current?.[Symbol.dispose](), []);
   const store = {
     id: sessionId,
     parts,
@@ -181,6 +187,15 @@ function Transcript({
       },
     },
     workLogPresentation: {
+      changeSummary: (summaryParts: readonly UiPart[]) =>
+        workLogChangeChunks(summaryParts).reduce(
+          (summary, change) => ({
+            editCount: summary.editCount + 1,
+            additions: summary.additions + change.additions,
+            deletions: summary.deletions + change.deletions,
+          }),
+          { editCount: 0, additions: 0, deletions: 0 },
+        ),
       viewMode: workLogViewMode,
       setViewMode: () => undefined,
       cycleViewMode: () => undefined,
@@ -235,16 +250,20 @@ function Transcript({
     error: undefined,
   } as unknown as ChatStore;
   return (
-    <ChatTranscript
-      store={store}
-      behavior={transcriptBehavior}
-      empty={empty}
-      footer={footer}
-      error={error ? { message: error, details: errorDetails, title: errorTitle } : undefined}
-      virtualized={virtualized}
-      key={sessionId}
-      renderChat={(nestedStore) => <Chat store={nestedStore} embedded compact />}
-    />
+    <SideChatLayout
+      store={sideChatRef.current}
+      renderChat={(sideChatStore) => <Chat store={sideChatStore} embedded compact />}
+    >
+      <ChatTranscript
+        store={store}
+        behavior={transcriptBehavior}
+        empty={empty}
+        footer={footer}
+        error={error ? { message: error, details: errorDetails, title: errorTitle } : undefined}
+        virtualized={virtualized}
+        key={sessionId}
+      />
+    </SideChatLayout>
   );
 }
 
@@ -1356,7 +1375,7 @@ describe("Transcript scrolling", () => {
     await contextMenu.trigger();
 
     const dialog = document.body.querySelector<HTMLElement>(
-      '[role="dialog"][aria-label="Chat about this"]',
+      '[data-slot="side-panel"][aria-label="Chat about this"]',
     )!;
     expect(dialog).not.toBeNull();
     expect(dialog.querySelector('.transcript [data-slot="message-content"]')?.textContent).toBe(
@@ -1669,7 +1688,7 @@ describe("Transcript scrolling", () => {
       expect.objectContaining({ messageId: "user-1", selectedText: "settings shape" }),
     );
     expect(
-      document.body.querySelector('[role="dialog"][aria-label="Chat about this"]'),
+      document.body.querySelector('[data-slot="side-panel"][aria-label="Chat about this"]'),
     ).not.toBeNull();
     draftChat[Symbol.dispose]();
   });
@@ -1823,7 +1842,7 @@ describe("Transcript scrolling", () => {
     await contextMenu.trigger();
     expect(document.body.querySelector('[role="dialog"]')).toBe(fullscreen);
     expect(
-      document.body.querySelector('[role="dialog"][aria-label="Chat about this"]'),
+      document.body.querySelector('[data-slot="side-panel"][aria-label="Chat about this"]'),
     ).not.toBeNull();
     expect(comments.prepareDraft).toHaveBeenCalledWith(
       expect.objectContaining({ selectedText: "important" }),
@@ -1836,7 +1855,7 @@ describe("Transcript scrolling", () => {
     window.getSelection()?.removeAllRanges();
     draftChat[Symbol.dispose]();
   });
-  it("restores a selection marker and reopens its persisted chat", () => {
+  it("restores a selection marker and opens its persisted side chat", () => {
     const now = new Date(0).toISOString();
     const thread = {
       id: "thread-1",
@@ -1926,7 +1945,9 @@ describe("Transcript scrolling", () => {
     );
     expect(marker).not.toBeNull();
     act(() => marker!.click());
-    const chat = document.body.querySelector('[role="dialog"][aria-label="Selection chat"]');
+    const chat = document.body.querySelector(
+      '[data-slot="side-panel"][aria-label="Selection chat"]',
+    );
     expect(chat?.textContent).toContain("Why this word?");
     expect(chat?.textContent).toContain("Because it carries the point.");
     expect(chat?.querySelector(".transcript")).not.toBeNull();
@@ -1939,35 +1960,12 @@ describe("Transcript scrolling", () => {
       "Medium",
     );
 
-    const titlebar = chat!.querySelector<HTMLElement>("header")!;
-    Object.defineProperty(chat, "getBoundingClientRect", {
-      configurable: true,
-      value: () => ({
-        left: 100,
-        top: 100,
-        right: 620,
-        bottom: 500,
-        width: 520,
-        height: 400,
-        x: 100,
-        y: 100,
-        toJSON: () => ({}),
-      }),
-    });
-    titlebar.setPointerCapture = vi.fn();
     act(() =>
-      titlebar.dispatchEvent(
-        new MouseEvent("pointerdown", { bubbles: true, button: 0, clientX: 120, clientY: 120 }),
-      ),
+      chat!.querySelector<HTMLButtonElement>('[aria-label="Close Selection chat"]')!.click(),
     );
-    act(() =>
-      document.dispatchEvent(
-        new MouseEvent("pointermove", { bubbles: true, clientX: 170, clientY: 190 }),
-      ),
-    );
-    act(() => document.dispatchEvent(new MouseEvent("pointerup", { bubbles: true })));
-    expect((chat as HTMLElement).style.left).toBe("150px");
-    expect((chat as HTMLElement).style.top).toBe("170px");
+    expect(
+      document.body.querySelector('[data-slot="side-panel"][aria-label="Selection chat"]'),
+    ).toBeNull();
     threadChat[Symbol.dispose]();
   });
 

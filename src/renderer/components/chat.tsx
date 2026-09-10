@@ -201,22 +201,6 @@ export const Chat = observer(function Chat({
       end: selection.start + rewritten.length,
     });
   };
-  const renderNestedChat = (nestedStore: ChatStore) => (
-    <Chat
-      store={nestedStore}
-      embedded
-      compact
-      composerFocusEnabled={composerFocusEnabled}
-      transcriptBehavior={
-        transcriptBehavior?.openSourceLocation || transcriptBehavior?.workspacePath
-          ? {
-              openSourceLocation: transcriptBehavior.openSourceLocation,
-              workspacePath: transcriptBehavior.workspacePath,
-            }
-          : undefined
-      }
-    />
-  );
   const composer = composerVisible && (
     <div
       ref={composerDockRef}
@@ -234,10 +218,7 @@ export const Chat = observer(function Chat({
           (transcriptBehavior?.subagents || composerHeader) && (
             <>
               {transcriptBehavior?.subagents && (
-                <SubagentStatus
-                  store={transcriptBehavior.subagents}
-                  renderChat={renderNestedChat}
-                />
+                <SubagentStatus store={transcriptBehavior.subagents} />
               )}
               {composerHeader}
             </>
@@ -375,7 +356,6 @@ export const Chat = observer(function Chat({
         virtualized={!compact}
         key={store.id}
         ref={transcriptRef}
-        renderChat={renderNestedChat}
       />
       {!composerVisible && store.scheduledMessageInteraction.messages.length > 0 && (
         <div className="border-t border-border bg-background px-6 py-2 max-[620px]:px-2.5">

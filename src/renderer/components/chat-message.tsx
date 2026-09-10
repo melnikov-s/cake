@@ -18,10 +18,6 @@ import { FullscreenSurface } from "@/components/fullscreen-surface";
 import { FullscreenButton } from "@/components/ui/fullscreen-button";
 import { IconButton } from "@/components/ui/icon-button";
 import { ChatIcon, CheckIcon, CopyIcon, ForkIcon, HandoffIcon } from "@/components/ui/icons";
-import {
-  MessageCommentThreadPopover,
-  type MessageCommentAnchorRect,
-} from "@/components/message-comment-popover";
 import { AnnotationItemPopover } from "./annotation-item-popover";
 import type { ArtifactRecord } from "../../ipc/artifact-contract";
 import type { SourceLocation } from "../../ipc/source-location";
@@ -31,6 +27,8 @@ import type { ChatStore } from "../stores/ChatStore";
 import type { InlineWidgetStore } from "../stores/InlineWidgetStore";
 import type { MessageCommentsStore, MessageSelectionAnchor } from "../stores/MessageCommentsStore";
 import type { SubagentActivityStore } from "../stores/SubagentActivityStore";
+import type { SideChatTarget } from "../stores/SideChatStore";
+import type { MessageCommentAnchorRect } from "./message-comment-anchor";
 
 export function chatWorkIsActive(
   parts: UiPart[],
@@ -273,7 +271,7 @@ export interface ChatTranscriptBehavior {
 
 export interface CanonicalTranscriptBehavior extends ChatTranscriptBehavior {
   store: ChatStore;
-  renderChat(store: ChatStore): ReactNode;
+  openSideChat?(target: SideChatTarget): void;
 }
 
 export const AssistantTextMessage = observer(function AssistantTextMessage({
@@ -285,10 +283,6 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
 }) {
   const [copied, setCopied] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
-  const [openThread, setOpenThread] = useState<{
-    id: string;
-    anchor: HTMLElement | MessageCommentAnchorRect;
-  }>();
   const [openAnnotation, setOpenAnnotation] = useState<{
     id: string;
     anchor: HTMLElement | MessageCommentAnchorRect;
@@ -423,9 +417,6 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
     draftAnnotations.map((a) => `${a.id}:${a.startOffset}:${a.endOffset}`).join("|"),
   ]);
 
-  const activeThread = openThread
-    ? commentThreads.find((thread) => thread.id === openThread.id)
-    : undefined;
   const activeAnnotation = openAnnotation
     ? draftAnnotations.find((annotation) => annotation.id === openAnnotation.id)
     : undefined;
@@ -453,7 +444,16 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
               style={markerPositions[thread.id]}
               tooltip={thread.anchor.selectedText}
               ariaLabel={`Open selection chat ${index + 1}`}
-              onClick={(event) => setOpenThread({ id: thread.id, anchor: event.currentTarget })}
+              onClick={() => {
+                const chatStore = behavior.messageComments?.chatStore(thread.id);
+                if (!chatStore) return;
+                behavior.openSideChat?.({
+                  key: `selection-thread:${thread.id}`,
+                  title: "Selection chat",
+                  eyebrow: () => "Selection",
+                  chatStore,
+                });
+              }}
             >
               <ChatIcon size={15} />
               <b className="absolute -top-1.5 -right-1.5 grid min-w-[15px] h-[15px] px-1 place-items-center rounded-full border-2 border-background bg-accent text-accent-foreground font-mono font-bold text-[8px]">
@@ -478,15 +478,6 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
               <ChatIcon size={15} />
             </IconButton>
           ),
-      )}
-      {activeThread && behavior.messageComments && (
-        <MessageCommentThreadPopover
-          anchor={openThread!.anchor}
-          thread={activeThread}
-          store={behavior.messageComments}
-          renderChat={behavior.renderChat}
-          onClose={() => setOpenThread(undefined)}
-        />
       )}
       {activeAnnotation && (
         <AnnotationItemPopover

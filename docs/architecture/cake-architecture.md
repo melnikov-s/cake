@@ -199,7 +199,7 @@ the shared `Chat` component and routes user prompts, steering, and abort intents
 through the parent-scoped handle; the renderer never receives or attaches to the
 private Pi Session identity. A completed handle remains available for follow-up
 until it is explicitly closed or its parent runtime is released. After release, the
-popup remains a read-only projection reconstructed from the parent transcript.
+side chat remains a read-only projection reconstructed from the parent transcript.
 Closing a private parent also releases its private descendants. Cake projects live
 child tool activity, usage, cost, and the final answer through the parent tool call
 rather than exposing a second transcript.
@@ -371,8 +371,13 @@ The window Store hierarchy mirrors the product surfaces:
   focused pane and prepares an unsent conversation: a Project Session in the same Working
   Directory or a Cake Chat Session with Cake-wide controls. The single sidebar targets the
   focused pane; selecting a session already visible in another pane focuses that pane rather than
-  duplicating it. Every visible pane pins its conversation for observation. Command-pane,
-  extension UI, and embedded-editor operations target the focused pane where those capabilities
+  duplicating it. Every primary conversation pane owns one transient side-chat slot. Selection
+  chats and Subagent Sessions replace the current contents of that slot rather than entering the
+  persisted split tree. Wide panes present the slot as a resizable right-hand side chat; narrow
+  panes let it replace only its parent conversation until the user closes it. Side-chat selection
+  and width live with the primary session's renderer Store and are not persisted. Every visible
+  pane pins its conversation for observation. Command-pane, extension UI, and embedded-editor
+  operations target the focused pane where those capabilities
   apply. The window-level terminal dock spans the workbench and follows the focused Project
   Session pane's Working Directory. Its tab collections are keyed by canonical Working Directory,
   so sessions in one checkout share terminals while different Managed Worktrees remain isolated.

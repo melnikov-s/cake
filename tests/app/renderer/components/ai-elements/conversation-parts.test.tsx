@@ -328,7 +328,7 @@ describe("Cake-owned conversation components", () => {
     );
     expect(html).toContain('title="bash for file in *.ts; do echo &quot;$file&quot; done"');
     expect(html).toContain("for file in *.ts; do");
-    expect(html).toContain("language-bash");
+    expect(html).toContain('data-language="bash"');
     expect(html).not.toContain("&quot;command&quot;");
   });
 

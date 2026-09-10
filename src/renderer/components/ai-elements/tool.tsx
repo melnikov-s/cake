@@ -174,7 +174,6 @@ export function Tool({
   subagentStartPart,
   subagentParts,
   subagents,
-  renderChat,
   live = false,
   omitDiff,
   workspacePath,
@@ -188,7 +187,6 @@ export function Tool({
   subagentStartPart?: Extract<UiPart, { kind: "tool" }>;
   subagentParts?: Extract<UiPart, { kind: "tool" }>[];
   subagents?: SubagentActivityStore;
-  renderChat?(store: ChatStore): ReactNode;
   /** True while this conversation's runtime may still be producing subagent work. */
   live?: boolean;
   omitDiff?: boolean;
@@ -213,7 +211,6 @@ export function Tool({
         startPart={subagentStartPart}
         protocolParts={subagentParts}
         subagents={subagents}
-        renderChat={renderChat}
         live={live}
         timer={timer}
         expansion={expansion}

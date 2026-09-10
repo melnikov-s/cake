@@ -70,10 +70,7 @@ describe("ActivityGroup", () => {
       }),
     );
     store.workLogPresentation.setExpansion("expanded");
-    const behavior = {
-      store,
-      renderChat: () => null,
-    } as CanonicalTranscriptBehavior;
+    const behavior = { store } as CanonicalTranscriptBehavior;
 
     await act(async () => {
       root.render(<ActivityGroup groupId="group-1" parts={parts} behavior={behavior} />);
@@ -123,10 +120,7 @@ describe("ActivityGroup", () => {
         submit: async () => true,
       }),
     );
-    const behavior = {
-      store,
-      renderChat: () => null,
-    } as CanonicalTranscriptBehavior;
+    const behavior = { store } as CanonicalTranscriptBehavior;
 
     await act(async () => {
       root.render(<ActivityGroup groupId="group-1" parts={parts} behavior={behavior} />);

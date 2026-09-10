@@ -61,7 +61,7 @@ function parseDiff(diff: string): DiffLine[] {
   });
 }
 
-export function diffStats(diff: string) {
+function diffStats(diff: string) {
   const lines = parseDiff(diff);
   return {
     additions: lines.filter((line) => line.kind === "add").length,
