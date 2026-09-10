@@ -6,7 +6,7 @@ import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/ses
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
-test("customizes statuses and assigns one from the transcript avatar", async () => {
+test("customizes statuses and assigns one from the sidebar avatar", async () => {
   test.setTimeout(60_000);
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-session-status-"));
   const userData = join(temporaryRoot, "user-data");
@@ -115,15 +115,15 @@ test("customizes statuses and assigns one from the transcript avatar", async () 
     await expect(page.getByLabel("In review status name")).toBeVisible();
     await page.getByRole("button", { name: "Cancel" }).click();
 
-    const userMessage = page.locator("article", { hasText: "Categorize this work" });
-    const picker = userMessage.getByRole("button", {
+    const sessionItem = page.locator(`[data-session-id="${sessionId}"]`);
+    const picker = sessionItem.getByRole("button", {
       name: "Change session status. Current status: Unlabelled",
     });
     await expect(picker).toBeVisible();
     await picker.click();
     await page.getByRole("radio", { name: "In review" }).click();
     await expect(
-      userMessage.getByRole("button", {
+      sessionItem.getByRole("button", {
         name: "Change session status. Current status: In review",
       }),
     ).toBeVisible();

@@ -79,9 +79,16 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
 
   async setSessionStatus(sessionId: string, statusId?: string) {
     const session = this.props.catalog.find(sessionId);
-    if (!session || session.resolved || this.signal.aborted) return false;
+    const pendingSession = this.props.registry.findSession(sessionId);
+    const projectPath =
+      session?.projectPath ??
+      (pendingSession
+        ? (this.props.catalog.projectOfManagedWorktree(pendingSession.workspacePath) ??
+          pendingSession.workspacePath)
+        : undefined);
+    if (!projectPath || session?.resolved || this.signal.aborted) return false;
     if (this.transitioningSessionIds.has(sessionId)) return false;
-    const project = this.props.projects.find(session.projectPath);
+    const project = this.props.projects.find(projectPath);
     if (!project) return false;
     if (statusId && !project.workflow.columns.some((status) => status.id === statusId)) {
       this.props.reportError(new Error("That custom status no longer exists"));
@@ -90,14 +97,14 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
 
     this.transitioningSessionIds.add(sessionId);
     try {
-      if (session.draft) {
-        const draft = this.props.registry.findSession(sessionId);
-        if (!draft || !(await draft.conversationSessionStore.chatStore.activateDraft()))
-          return false;
+      if (this.props.registry.pendingSessions.isTemporary(sessionId)) {
+        await this.props.registry.pendingSessions.setWorkflowStatus(sessionId, statusId);
+        return !this.signal.aborted;
       }
+      if (!session) return false;
       await this.client.projectWorkflow.moveSession(
         {
-          projectPath: session.projectPath,
+          projectPath,
           sessionId,
           workingDirectory: session.workingDirectory,
           destination: statusId ? { _tag: "Custom", statusId } : { _tag: "Active" },

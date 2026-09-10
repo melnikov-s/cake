@@ -16,13 +16,11 @@ import { cn } from "@/lib/utils";
 import { Message, MessageContent, MessageLabel } from "@/components/ai-elements/message";
 import { FullscreenSurface } from "@/components/fullscreen-surface";
 import { FullscreenButton } from "@/components/ui/fullscreen-button";
+import { Avatar } from "@/components/ui/avatar";
 import { IconButton } from "@/components/ui/icon-button";
-import {
-  AvatarStatusPicker,
-  type AvatarStatusPickerProps,
-} from "@/components/ui/avatar-status-picker";
 import { ChatIcon, CheckIcon, CopyIcon, ForkIcon, HandoffIcon } from "@/components/ui/icons";
 import { AnnotationItemPopover } from "./annotation-item-popover";
+import type { ProjectWorkflowColor } from "../../domain/application/application-data";
 import type { ArtifactRecord } from "../../ipc/artifact-contract";
 import type { SourceLocation } from "../../ipc/source-location";
 import type { UiPart } from "../../ipc/session-contract";
@@ -65,10 +63,14 @@ export const ChatTextMessage = forwardRef<
     onMouseEnter?: MouseEventHandler<HTMLElement>;
     onMouseLeave?: MouseEventHandler<HTMLElement>;
     onOpenSourceLocation?(location: SourceLocation): void;
-    statusPicker?: AvatarStatusPickerProps;
+    sessionAvatar?: {
+      seed: string;
+      statusColor?: ProjectWorkflowColor;
+      statusName?: string;
+    };
   }
 >(function ChatTextMessage(
-  { part, contentRef, children, onMouseEnter, onMouseLeave, onOpenSourceLocation, statusPicker },
+  { part, contentRef, children, onMouseEnter, onMouseLeave, onOpenSourceLocation, sessionAvatar },
   ref,
 ) {
   const assistant = part.role === "assistant";
@@ -89,10 +91,15 @@ export const ChatTextMessage = forwardRef<
           : "group/msg relative ml-auto w-[min(88%,42rem)]",
       )}
     >
-      {!assistant && statusPicker && (
-        <AvatarStatusPicker
-          {...statusPicker}
-          className={cn("absolute -left-9 top-7", statusPicker.className)}
+      {assistant && sessionAvatar && (
+        <Avatar
+          kind="session"
+          seed={sessionAvatar.seed}
+          statusColor={sessionAvatar.statusColor}
+          className="absolute -left-9 top-7 size-6"
+          role="img"
+          aria-label="Session avatar"
+          title={sessionAvatar.statusName ?? "Unlabelled"}
         />
       )}
       <MessageLabel>
@@ -276,11 +283,15 @@ export interface ChatTranscriptBehavior {
   artifacts?: { records: ArtifactRecord[]; interaction: ArtifactInteractionStore };
   messageComments?: MessageCommentsStore;
   subagents?: SubagentActivityStore;
+  sessionAvatar?: {
+    seed: string;
+    statusColor?: ProjectWorkflowColor;
+    statusName?: string;
+  };
   showSelectionContextMenu?(input: {
     canChat: boolean;
     canAnnotate: boolean;
   }): Promise<"chat-about-selection" | "add-annotation" | undefined>;
-  sessionStatus?: AvatarStatusPickerProps;
 }
 
 export interface CanonicalTranscriptBehavior extends ChatTranscriptBehavior {
@@ -443,6 +454,7 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
       onMouseEnter={() => (hoveredRef.current = true)}
       onMouseLeave={() => (hoveredRef.current = false)}
       onOpenSourceLocation={behavior.openSourceLocation}
+      sessionAvatar={behavior.sessionAvatar}
     >
       <FullscreenButton
         className="absolute -top-1.5 right-0 grid size-7 place-items-center rounded-md bg-transparent p-0 text-muted-foreground opacity-0 hover:bg-muted hover:text-foreground group-hover/msg:opacity-100 group-focus-within/msg:opacity-100 transition-opacity"

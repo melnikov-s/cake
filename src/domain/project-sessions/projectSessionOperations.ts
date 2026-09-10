@@ -8,6 +8,7 @@ import {
 import {
   ensureProjectWorkflowSessionAvatarSeed,
   getState,
+  setProjectWorkflowSessionStatus,
   trustProject,
 } from "../application/application";
 import {
@@ -96,6 +97,12 @@ export const start = Effect.fn("ProjectSessions.start")(function* (
     avatarSeedFromInitialPrompt(input.text),
   ).pipe(asError("start"));
   const handle = yield* acquireTarget(location, input.sessionId, true);
+  if (input.workflowStatusId)
+    yield* setProjectWorkflowSessionStatus(
+      location.projectPath,
+      input.sessionId,
+      input.workflowStatusId,
+    ).pipe(asError("start"));
   if (input.configuration)
     yield* handle.applyConfiguration(input.configuration).pipe(asError("start"));
   if (input.name?.trim()) yield* handle.rename(input.name.trim()).pipe(asError("start"));

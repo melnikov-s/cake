@@ -1797,6 +1797,7 @@ describe("Project Sessions domain", () => {
         sessionId: "session-1",
         workingDirectory: "/project",
         text: "First message",
+        workflowStatusId: "00000000-0000-4000-8000-000000000001",
         attachments: [],
         renderUserMessageAsMarkdown: false,
       });
@@ -1809,6 +1810,12 @@ describe("Project Sessions domain", () => {
           ?.avatarSeed,
         avatarSeedFromInitialPrompt("First message"),
       );
+      assert.deepEqual(project?.workflow?.assignments, [
+        {
+          sessionId: "session-1",
+          statusId: "00000000-0000-4000-8000-000000000001",
+        },
+      ]);
       const observed = Array.from(yield* Fiber.join(fiber));
       assert.equal(observed[1]?._tag, "Event");
       assert.equal(observed[1]?._tag === "Event" ? observed[1].event._tag : undefined, "Upserted");

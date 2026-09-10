@@ -3,7 +3,7 @@
  */
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { ChatTextMessage } from "../../../src/renderer/components/chat-message";
 
 const metadata = {
@@ -22,7 +22,7 @@ const metadata = {
 };
 
 describe("cross-session message presentation", () => {
-  it("places the session status avatar beside a user message", () => {
+  it("renders the assistant Session avatar as a non-interactive identity", () => {
     const container = document.createElement("div");
     document.body.appendChild(container);
     const root = createRoot(container);
@@ -33,25 +33,24 @@ describe("cross-session message presentation", () => {
           part={{
             id: "message-1",
             kind: "text",
-            role: "user",
+            role: "assistant",
             text: "Categorize this session",
             status: "complete",
           }}
-          statusPicker={{
+          sessionAvatar={{
             seed: "categorize-this-session",
-            statuses: [{ id: "feature", name: "Feature", color: "blue" }],
-            value: "feature",
-            onChange: vi.fn(),
+            statusColor: "blue",
+            statusName: "Feature",
           }}
         />,
       );
     });
 
-    const picker = container.querySelector<HTMLButtonElement>(
-      '[aria-label="Change session status. Current status: Feature"]',
+    const avatar = container.querySelector<HTMLElement>(
+      '[role="img"][aria-label="Session avatar"]',
     );
-    expect(picker).not.toBeNull();
-    expect(picker?.classList).toContain("-left-9");
+    expect(avatar?.title).toBe("Feature");
+    expect(avatar?.closest("button")).toBeNull();
     act(() => root.unmount());
     container.remove();
   });

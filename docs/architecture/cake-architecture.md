@@ -309,9 +309,11 @@ The window Store hierarchy mirrors the product surfaces:
   lifecycle. Main-process Project Session domain operations authoritatively normalize custom
   status names and enforce lifecycle, custom-status, and Session Family transition policy.
   `ProjectSettingsStore` owns custom-status configuration, while `SessionManagementStore`
-  serializes status and lifecycle transitions. Session avatars in the transcript gutter and sidebar open the same
-  color-coded status picker; sidebar context menus retain equivalent transitions. Draft is never
-  a return destination after activation. `SessionCatalogStore` owns the currently demanded, activity-sorted
+  serializes status and lifecycle transitions. A pending Session's avatar sits beside the composer
+  and opens the same color-coded status picker used by active Session avatars in the sidebar; it
+  animates away when the Session activates. Assistant-message gutter avatars remain
+  non-interactive identity markers. Sidebar context menus retain equivalent transitions.
+  Draft is never a return destination after activation. `SessionCatalogStore` owns the currently demanded, activity-sorted
   session metadata projection plus cached ID and project-group indexes. A separate
   window-lifetime `WorktreeCatalog` Model owns the authoritative Managed Worktree
   projection keyed by Working Directory. Session summaries retain only their stable
@@ -413,7 +415,7 @@ The window Store hierarchy mirrors the product surfaces:
   pending catalog summaries, Project materialization transitions, and relocation while a
   Working Directory is chosen. It composes one keyed `PendingConversationStore` per pending
   identity for the window-persisted name, configuration, saved prompt and attachments,
-  resolution metadata, and timestamps shared with Cake Chat. Each visible split pane may contain an unsent, unsaved
+  pending workflow status, resolution metadata, and timestamps shared with Cake Chat. Each visible split pane may contain an unsent, unsaved
   project chat. It is staged renderer state, not a session: it does not enter Pi's
   session catalog, and choosing
   New Chat while that pane is focused reopens its composer with its text, attachments,
@@ -431,9 +433,10 @@ The window Store hierarchy mirrors the product surfaces:
   carries draft and resolved presentation metadata until activation. Saving the
   staged chat as a draft also frees New Chat to create one new staged composer. A
   saved draft has no message input; its composer surface contains only checkout and
-  model selection plus the activation action. Activation clears the draft state and
-  uses the ordinary first-prompt path; Pi remains the transcript authority once the
-  session starts. The Working
+  model selection plus the activation action. Its composer avatar remains available for choosing
+  a custom status without activating the draft. Activation clears the draft state, applies that
+  pending status after Pi accepts the ordinary first-prompt path, and then animates the avatar
+  away; Pi remains the transcript authority once the session starts. The Working
   Directory remains routing/storage context for the Pi runtime, not part of
   session identity. Cake Chat never enters this registry.
 - Each `ProjectSessionStore` owns that session's activity, session-local Agent/IDE presentation preference and IDE

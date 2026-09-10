@@ -104,6 +104,7 @@ export const Chat = observer(function Chat({
   status,
   composerContent,
   composerHeader,
+  composerLeadingAccessory,
   pluginActions,
   className = "",
   embedded = false,
@@ -118,6 +119,7 @@ export const Chat = observer(function Chat({
   status?: ReactNode;
   composerContent?: ReactNode;
   composerHeader?: ReactNode;
+  composerLeadingAccessory?: { content: ReactNode; visible: boolean };
   pluginActions?: ReactNode;
   className?: string;
   embedded?: boolean;
@@ -248,6 +250,8 @@ export const Chat = observer(function Chat({
           )
         }
         toolbarSeparated={!activatingDraft}
+        leadingAccessory={composerLeadingAccessory?.content}
+        leadingAccessoryVisible={composerLeadingAccessory?.visible}
         toolbarLeading={
           !activatingDraft && (
             <>

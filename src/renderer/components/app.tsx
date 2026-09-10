@@ -24,6 +24,7 @@ import {
   VsCodeIcon,
 } from "@/components/ui/icons";
 import { LoadingState } from "@/components/ui/loading-state";
+import { AvatarStatusPicker } from "@/components/ui/avatar-status-picker";
 import { ResizeHandle } from "@/components/ui/resize-handle";
 import { UiHintMode } from "@/components/ui/ui-hint-mode";
 import { IdeWorkspace } from "@/components/ide-workspace";
@@ -207,18 +208,7 @@ export const App = observer(function App() {
 
   const projectTranscriptBehaviorFor = (paneSession: NonNullable<typeof session>) => {
     const summary = root.sessionCatalogStore.find(paneSession.sessionId);
-    const sessionStatus =
-      settings.appearance.sessionAvatarsEnabled && summary && !summary.draft && !summary.resolved
-        ? {
-            seed: sidebar.sessionAvatarSeed(paneSession.sessionId),
-            statuses: sidebar.sessionWorkflowStatuses(paneSession.sessionId),
-            value: sidebar.sessionWorkflowStatusId(paneSession.sessionId),
-            disabled: store.sessionManagementStore.isStatusPending(paneSession.sessionId),
-            onChange: (statusId?: string) => {
-              void store.sessionManagementStore.setSessionStatus(paneSession.sessionId, statusId);
-            },
-          }
-        : undefined;
+    const workflowStatus = sidebar.sessionWorkflowStatus(paneSession.sessionId);
     return {
       workspacePath: paneSession.workspacePath,
       onFork: (entryId: string) => {
@@ -260,7 +250,14 @@ export const App = observer(function App() {
       showSelectionContextMenu: (input: { canChat: boolean; canAnnotate: boolean }) =>
         root.showTranscriptSelectionContextMenu(input),
       inlineWidgets: root.inlineWidgetStore,
-      sessionStatus,
+      sessionAvatar:
+        settings.appearance.sessionAvatarsEnabled && summary && !summary.draft
+          ? {
+              seed: sidebar.sessionAvatarSeed(paneSession.sessionId),
+              statusColor: workflowStatus?.color,
+              statusName: workflowStatus?.name,
+            }
+          : undefined,
       artifacts: {
         records: paneSession.model.artifacts.map((artifact) => artifact.value),
         interaction: paneSession.artifactInteractionStore,
@@ -482,6 +479,28 @@ export const App = observer(function App() {
       : (paneSession.conversationSessionStore.composerStore.errorDetails ??
         paneSession.conversationSessionStore.configurationStore.errorDetails ??
         paneSession.artifactInteractionStore.errorDetails);
+    const summary = root.sessionCatalogStore.find(paneSession.sessionId);
+    const composerLeadingAccessory =
+      settings.appearance.sessionAvatarsEnabled && !summary?.resolved
+        ? {
+            visible: temporary,
+            content: (
+              <AvatarStatusPicker
+                seed={sidebar.sessionAvatarSeed(paneSession.sessionId)}
+                statuses={sidebar.sessionWorkflowStatuses(paneSession.sessionId)}
+                value={sidebar.sessionWorkflowStatusId(paneSession.sessionId)}
+                disabled={store.sessionManagementStore.isStatusPending(paneSession.sessionId)}
+                className="size-10 [&_[data-slot=avatar]]:size-9"
+                onChange={(statusId) => {
+                  void store.sessionManagementStore.setSessionStatus(
+                    paneSession.sessionId,
+                    statusId,
+                  );
+                }}
+              />
+            ),
+          }
+        : undefined;
     return {
       transcriptBehavior: projectTranscriptBehaviorFor(paneSession),
       empty: paneSession.hydrated ? (
@@ -507,6 +526,7 @@ export const App = observer(function App() {
         />
       ),
       error: errorMessage ? { message: errorMessage, details: errorDetails } : undefined,
+      composerLeadingAccessory,
       composerHeader: (
         <WorktreePill
           creation={store.worktreeCreationStore}

@@ -20,6 +20,7 @@ export class PendingConversationStore extends Store<PendingConversationStoreProp
   @snapshot name: string | undefined;
   @snapshot configuration: ChatConfiguration | undefined;
   @snapshot draftPrompt: PendingConversationPrompt | undefined;
+  @snapshot workflowStatusId: string | undefined;
   @snapshot fallbackTitle: string | undefined;
   @snapshot createdAt = new Date().toISOString();
   @snapshot modifiedAt = this.createdAt;
@@ -52,6 +53,11 @@ export class PendingConversationStore extends Store<PendingConversationStoreProp
 
   setFallbackTitle(title: string) {
     this.fallbackTitle = title.trim().slice(0, SESSION_TITLE_MAX_LENGTH) || "New chat";
+    this.touch();
+  }
+
+  setWorkflowStatus(statusId?: string) {
+    this.workflowStatusId = statusId;
     this.touch();
   }
 

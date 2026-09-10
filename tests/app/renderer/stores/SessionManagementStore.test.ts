@@ -129,7 +129,7 @@ describe("SessionManagementStore", () => {
     operations[Symbol.dispose]();
   });
 
-  it("activates a draft and assigns or clears its custom status", async () => {
+  it("keeps a selected status with a draft until the Session becomes active", async () => {
     const statusId = "b925b5dd-9661-4f1a-9f40-406be3c96c27";
     const session = {
       sessionId: "session-1",
@@ -139,11 +139,16 @@ describe("SessionManagementStore", () => {
       resolved: false,
     };
     const moveSession = vi.fn(async () => undefined);
-    const activateDraft = vi.fn(async () => true);
+    const setWorkflowStatus = vi.fn(async () => undefined);
+    let temporary = true;
     const operations = mount(createStore(SessionOperationCoordinatorStore));
     const registry = {
-      findSession: () => ({ conversationSessionStore: { chatStore: { activateDraft } } }),
-      pendingSessions: { conversation: () => undefined, isTemporary: () => false },
+      findSession: () => ({ workspacePath: "/work/cake" }),
+      pendingSessions: {
+        conversation: () => undefined,
+        isTemporary: () => temporary,
+        setWorkflowStatus,
+      },
     } as unknown as SessionRegistryStore;
     const { root, subject } = mountWithClient(
       createStore(SessionManagementStore, {
@@ -165,12 +170,10 @@ describe("SessionManagementStore", () => {
     );
 
     expect(await subject.setSessionStatus("session-1", statusId)).toBe(true);
-    expect(activateDraft).toHaveBeenCalledOnce();
-    expect(moveSession).toHaveBeenLastCalledWith(
-      expect.objectContaining({ destination: { _tag: "Custom", statusId } }),
-      expect.objectContaining({ signal: expect.any(AbortSignal) }),
-    );
+    expect(setWorkflowStatus).toHaveBeenCalledWith("session-1", statusId);
+    expect(moveSession).not.toHaveBeenCalled();
 
+    temporary = false;
     session.draft = false;
     expect(await subject.setSessionStatus("session-1")).toBe(true);
     expect(moveSession).toHaveBeenLastCalledWith(

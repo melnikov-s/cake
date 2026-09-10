@@ -33,7 +33,7 @@ export const ProjectStatusSettings = observer(function ProjectStatusSettings({
           Session statuses
         </h3>
         <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-          Color-code sessions with the avatar picker beside each message. Changes save immediately.
+          Pick a label from the avatar beside a new or draft chat. Changes save immediately.
         </p>
       </div>
 

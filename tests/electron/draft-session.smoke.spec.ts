@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
@@ -36,8 +36,9 @@ test("restores, edits, resolves, and activates a project draft session", async (
     }),
   );
   await mkdir(join(cakeHome, "state"), { recursive: true });
+  const applicationDocument = join(cakeHome, "state", "application.json");
   await writeFile(
-    join(cakeHome, "state", "application.json"),
+    applicationDocument,
     JSON.stringify({
       schemaVersion: 1,
       projects: [
@@ -74,6 +75,18 @@ test("restores, edits, resolves, and activates a project draft session", async (
     await expect(page.getByRole("button", { name: "New worktree" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Draft", exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Activate draft" })).toBeVisible();
+    const draftStatus = page.locator('[data-slot="composer-leading-accessory"]');
+    const draftStatusPicker = draftStatus.getByRole("button", {
+      name: "Change session status. Current status: Unlabelled",
+    });
+    await expect(draftStatusPicker).toBeVisible();
+    await draftStatusPicker.click();
+    await page.getByRole("radio", { name: "Feature" }).click();
+    await expect(
+      draftStatus.getByRole("button", {
+        name: "Change session status. Current status: Feature",
+      }),
+    ).toBeVisible();
     const draftToolbar = page.locator('[data-slot="composer-toolbar"]');
     await expect(draftToolbar).toHaveCSS("border-top-width", "0px");
 
@@ -121,7 +134,25 @@ test("restores, edits, resolves, and activates a project draft session", async (
     await page.getByRole("button", { name: "Current checkout" }).click();
     await page.getByRole("button", { name: "Activate draft" }).click();
     await expect(page.getByText("Draft", { exact: true })).toHaveCount(0);
-    await expect(page.getByText("Edited plan", { exact: true })).toBeVisible();
+    await expect(
+      page.locator('[data-slot="message-content"]', { hasText: "Edited plan" }),
+    ).toBeVisible();
+    await expect(draftStatus).toHaveCSS("opacity", "0");
+    await expect(draftStatus).toHaveAttribute("inert", "");
+    await expect
+      .poll(async () => {
+        const stored = JSON.parse(await readFile(applicationDocument, "utf8"));
+        const state = stored.data ?? stored;
+        const workflow = state.projects[0].workflow;
+        const feature = workflow.columns.find(
+          (status: { name: string }) => status.name === "Feature",
+        );
+        return workflow.assignments.some(
+          (assignment: { sessionId: string; statusId: string }) =>
+            assignment.sessionId === sessionId && assignment.statusId === feature?.id,
+        );
+      })
+      .toBe(true);
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

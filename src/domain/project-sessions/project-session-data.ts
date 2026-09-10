@@ -215,6 +215,7 @@ export const ProjectSessionStartInput = Schema.Struct({
   workingDirectory: boundedPath,
   configuration: Schema.optionalKey(ChatConfiguration),
   name: Schema.optionalKey(Schema.String),
+  workflowStatusId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
   text: boundedText,
   attachments: Schema.Array(Attachment).check(Schema.isMaxLength(20)),
   renderUserMessageAsMarkdown: Schema.Boolean,

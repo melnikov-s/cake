@@ -295,12 +295,22 @@ export class SidebarStore extends Store<SidebarStoreProps> {
 
   sessionWorkflowStatuses(sessionId: string) {
     const session = this.props.catalog.find(sessionId);
-    return session ? (this.props.projects.find(session.projectPath)?.workflow.columns ?? []) : [];
+    const pendingSession = this.props.sessions.findSession(sessionId);
+    const projectPath =
+      session?.projectPath ??
+      (pendingSession
+        ? (this.props.catalog.projectOfManagedWorktree(pendingSession.workspacePath) ??
+          pendingSession.workspacePath)
+        : undefined);
+    return projectPath ? (this.props.projects.find(projectPath)?.workflow.columns ?? []) : [];
   }
 
   sessionWorkflowStatusId(sessionId: string) {
+    const pendingStatusId =
+      this.props.sessions.pendingSessions.conversation(sessionId)?.workflowStatusId;
+    if (this.props.sessions.pendingSessions.isTemporary(sessionId)) return pendingStatusId;
     const session = this.props.catalog.find(sessionId);
-    if (!session || session.draft || session.resolved) return undefined;
+    if (!session || session.resolved) return undefined;
     const workflow = this.props.projects.find(session.projectPath)?.workflow;
     const statusId = workflow?.assignments.find(
       (assignment) => assignment.sessionId === sessionId,

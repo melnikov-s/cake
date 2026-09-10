@@ -57,7 +57,6 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
           renderAs: userMessageRendersAsMarkdown ? "markdown" : undefined,
         }}
         onOpenSourceLocation={behavior.openSourceLocation}
-        statusPicker={behavior.sessionStatus}
       >
         <div className="ml-auto flex min-h-[30px] items-center gap-2" aria-label="User actions">
           {part.entryId &&
