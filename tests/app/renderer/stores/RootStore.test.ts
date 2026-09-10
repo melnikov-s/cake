@@ -380,41 +380,6 @@ describe("RootStore session navigation", () => {
     }
   });
 
-  it("closes the selected Kanban board when its navigation icon is invoked again", () => {
-    const models = RootProjection.create();
-    applySnapshot(models.projects, {
-      projects: [
-        {
-          path: projectPath,
-          name: "Example",
-          addedAt: "2026-01-01T00:00:00.000Z",
-          lastOpenedAt: "2026-01-01T00:00:00.000Z",
-        },
-      ],
-    });
-    const root = mountRootStore(
-      {} as Client,
-      { state: {}, children: {} },
-      async () => undefined,
-      models,
-    );
-    const returnToWorkbench = vi.spyOn(root, "returnToWorkbench").mockImplementation(() => {
-      root.appShellStore.showWorkbench();
-    });
-
-    try {
-      root.showKanban(projectPath);
-      expect(root.appShellStore.surface).toBe("kanban");
-
-      root.showKanban(projectPath);
-      expect(returnToWorkbench).toHaveBeenCalledOnce();
-      expect(root.appShellStore.surface).toBe("workbench");
-    } finally {
-      root[Symbol.dispose]();
-      models[Symbol.dispose]();
-    }
-  });
-
   it("does not replace a session selected while worktree resolution is in flight", async () => {
     const models = RootProjection.create();
     applySnapshot(models.sessionCatalog, {

@@ -1,6 +1,7 @@
 import { createStore, mount } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
 import type { Client } from "../../../../src/renderer/client/Client";
+import type { ProjectCatalogStore } from "../../../../src/renderer/stores/ProjectCatalogStore";
 import type { SessionCatalogStore } from "../../../../src/renderer/stores/SessionCatalogStore";
 import { SessionManagementStore } from "../../../../src/renderer/stores/SessionManagementStore";
 import { SessionOperationCoordinatorStore } from "../../../../src/renderer/stores/SessionOperationCoordinatorStore";
@@ -27,6 +28,7 @@ describe("SessionManagementStore", () => {
       createStore(SessionManagementStore, {
         operations,
         catalog,
+        projects: { find: () => undefined } as unknown as ProjectCatalogStore,
         registry,
         reportError: vi.fn(),
       }),
@@ -66,6 +68,7 @@ describe("SessionManagementStore", () => {
       createStore(SessionManagementStore, {
         operations,
         catalog,
+        projects: { find: () => undefined } as unknown as ProjectCatalogStore,
         registry,
         reportError: vi.fn(),
       }),
@@ -106,6 +109,7 @@ describe("SessionManagementStore", () => {
       createStore(SessionManagementStore, {
         operations,
         catalog,
+        projects: { find: () => undefined } as unknown as ProjectCatalogStore,
         registry,
         reportError,
       }),
@@ -120,6 +124,59 @@ describe("SessionManagementStore", () => {
       expect.anything(),
     );
     expect(reportError).not.toHaveBeenCalled();
+
+    root[Symbol.dispose]();
+    operations[Symbol.dispose]();
+  });
+
+  it("activates a draft and assigns or clears its custom status", async () => {
+    const statusId = "b925b5dd-9661-4f1a-9f40-406be3c96c27";
+    const session = {
+      sessionId: "session-1",
+      projectPath: "/work/cake",
+      workingDirectory: "/work/cake",
+      draft: true,
+      resolved: false,
+    };
+    const moveSession = vi.fn(async () => undefined);
+    const activateDraft = vi.fn(async () => true);
+    const operations = mount(createStore(SessionOperationCoordinatorStore));
+    const registry = {
+      findSession: () => ({ conversationSessionStore: { chatStore: { activateDraft } } }),
+      pendingSessions: { conversation: () => undefined, isTemporary: () => false },
+    } as unknown as SessionRegistryStore;
+    const { root, subject } = mountWithClient(
+      createStore(SessionManagementStore, {
+        operations,
+        catalog: { find: () => session } as unknown as SessionCatalogStore,
+        projects: {
+          find: () => ({
+            workflow: {
+              columns: [{ id: statusId, name: "Feature", color: "blue" }],
+              assignments: [],
+              sessionDetails: [],
+            },
+          }),
+        } as unknown as ProjectCatalogStore,
+        registry,
+        reportError: vi.fn(),
+      }),
+      { projectWorkflow: { moveSession } } as unknown as Client,
+    );
+
+    expect(await subject.setSessionStatus("session-1", statusId)).toBe(true);
+    expect(activateDraft).toHaveBeenCalledOnce();
+    expect(moveSession).toHaveBeenLastCalledWith(
+      expect.objectContaining({ destination: { _tag: "Custom", statusId } }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+
+    session.draft = false;
+    expect(await subject.setSessionStatus("session-1")).toBe(true);
+    expect(moveSession).toHaveBeenLastCalledWith(
+      expect.objectContaining({ destination: { _tag: "Active" } }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
 
     root[Symbol.dispose]();
     operations[Symbol.dispose]();

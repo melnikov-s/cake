@@ -51,13 +51,6 @@ export const PlusIcon = () => (
     <path d="M12 5v14M5 12h14" />
   </Icon>
 );
-export const KanbanIcon = () => (
-  <Icon>
-    <rect x="3" y="4" width="5" height="16" rx="1.5" />
-    <rect x="10" y="4" width="5" height="10" rx="1.5" />
-    <rect x="17" y="4" width="4" height="13" rx="1.5" />
-  </Icon>
-);
 export const GripIcon = () => (
   <Icon size={14}>
     <circle cx="8" cy="6" r="1" fill="currentColor" stroke="none" />

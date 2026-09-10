@@ -3,7 +3,7 @@
  */
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ChatTextMessage } from "../../../src/renderer/components/chat-message";
 
 const metadata = {
@@ -22,6 +22,40 @@ const metadata = {
 };
 
 describe("cross-session message presentation", () => {
+  it("places the session status avatar beside a user message", () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    act(() => {
+      root.render(
+        <ChatTextMessage
+          part={{
+            id: "message-1",
+            kind: "text",
+            role: "user",
+            text: "Categorize this session",
+            status: "complete",
+          }}
+          statusPicker={{
+            seed: "categorize-this-session",
+            statuses: [{ id: "feature", name: "Feature", color: "blue" }],
+            value: "feature",
+            onChange: vi.fn(),
+          }}
+        />,
+      );
+    });
+
+    const picker = container.querySelector<HTMLButtonElement>(
+      '[aria-label="Change session status. Current status: Feature"]',
+    );
+    expect(picker).not.toBeNull();
+    expect(picker?.classList).toContain("-left-9");
+    act(() => root.unmount());
+    container.remove();
+  });
+
   it("labels session-authored messages separately from user-authored messages", () => {
     const container = document.createElement("div");
     document.body.appendChild(container);

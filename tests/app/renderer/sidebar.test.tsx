@@ -54,6 +54,16 @@ function sidebarProps(store: ProjectWorkbenchStore) {
       toggleResolvedGroupExpanded: fixture.toggleResolvedGroupExpanded ?? vi.fn(),
       sessionActivity: fixture.sessionActivity,
       sessionWorkflowStatus: fixture.sessionWorkflowStatus ?? (() => undefined),
+      sessionWorkflowStatusId:
+        fixture.sessionWorkflowStatusId ??
+        ((sessionId: string) =>
+          fixture.sessionWorkflowStatus?.(sessionId) ? "fixture-status" : undefined),
+      sessionWorkflowStatuses:
+        fixture.sessionWorkflowStatuses ??
+        ((sessionId: string) => {
+          const status = fixture.sessionWorkflowStatus?.(sessionId);
+          return status ? [{ id: "fixture-status", ...status }] : [];
+        }),
       sessionAvatarSeed: fixture.sessionAvatarSeed ?? ((sessionId: string) => sessionId),
       managedWorktree: fixture.managedWorktree ?? (() => undefined),
       sessionActivityForDisplay:
@@ -79,7 +89,6 @@ function sidebarProps(store: ProjectWorkbenchStore) {
       registry: { find: vi.fn() },
       management: { renameSession: fixture.renameCakeChatSession ?? vi.fn() },
     } as any,
-    onOpenKanban: fixture.openKanban ?? vi.fn(),
     onOpenCakeChat: vi.fn(),
     onCreateCakeChat: vi.fn(),
     onOpenSession: fixture.openSession ?? vi.fn(),
@@ -127,7 +136,6 @@ describe("Sidebar projects", () => {
 
   it("keeps active project sessions expanded with an independent disclosure control", () => {
     const startNewSession = vi.fn();
-    const openKanban = vi.fn();
     const store = {
       recentProjectPaths: ["/work/cake"],
       projectPath: "/work/cake",
@@ -150,14 +158,7 @@ describe("Sidebar projects", () => {
     } as unknown as ProjectWorkbenchStore;
 
     act(() =>
-      root.render(
-        <Sidebar
-          {...sidebarProps(store)}
-          onOpenSettings={vi.fn()}
-          onOpenKanban={openKanban}
-          onToggle={vi.fn()}
-        />,
-      ),
+      root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onToggle={vi.fn()} />),
     );
 
     expect(container.querySelector('[aria-label="Collapse Cake"]')).not.toBeNull();
@@ -168,31 +169,6 @@ describe("Sidebar projects", () => {
       container.querySelector<HTMLButtonElement>('[aria-label="Start new chat in cake"]')!.click(),
     );
     expect(startNewSession).toHaveBeenCalledWith("/work/cake");
-
-    act(() =>
-      container
-        .querySelector<HTMLButtonElement>('[aria-label="Open Kanban board for cake"]')!
-        .click(),
-    );
-    expect(openKanban).toHaveBeenCalledWith("/work/cake");
-
-    act(() =>
-      root.render(
-        <Sidebar
-          {...sidebarProps(store)}
-          shell={{ selection: { kind: "kanban", projectPath: "/work/cake" } } as any}
-          onOpenSettings={vi.fn()}
-          onOpenKanban={openKanban}
-          onToggle={vi.fn()}
-        />,
-      ),
-    );
-    act(() =>
-      container
-        .querySelector<HTMLButtonElement>('[aria-label="Close Kanban board for cake"]')!
-        .click(),
-    );
-    expect(openKanban).toHaveBeenCalledTimes(2);
   });
 
   it("shows project sessions ten at a time", () => {
@@ -401,7 +377,9 @@ describe("Sidebar projects", () => {
       "family-worktree",
     );
     expect(child.querySelector('[aria-label="Ready, unread"]')).not.toBeNull();
-    expect(child.querySelector('[aria-label="Status: In review"]')).not.toBeNull();
+    expect(
+      child.querySelector('[aria-label="Change session status. Current status: In review"]'),
+    ).not.toBeNull();
   });
 
   it("leaves long titles intact for CSS ellipsis and shows relative activity", () => {
@@ -1359,7 +1337,9 @@ describe("Sidebar projects", () => {
       container
         .querySelector('[data-session-id="session-1"] [data-slot="session-leading"]')
         ?.contains(
-          container.querySelector('[data-session-id="session-1"] [aria-label="Status: In review"]'),
+          container.querySelector(
+            '[data-session-id="session-1"] [aria-label="Change session status. Current status: In review"]',
+          ),
         ),
     ).toBe(true);
     await act(async () => {
@@ -1375,6 +1355,50 @@ describe("Sidebar projects", () => {
     });
 
     expect(setSessionWorkflowStatus).toHaveBeenCalledWith("session-1", "status-review");
+  });
+
+  it("sets a project session status from its color-coded avatar picker", async () => {
+    const setSessionWorkflowStatus = vi.fn();
+    const statuses = [
+      { id: "status-feature", name: "Feature", color: "blue" },
+      { id: "status-bug", name: "Bug", color: "rose" },
+    ];
+    const store = {
+      recentProjectPaths: ["/work/cake"],
+      projects: [{ path: "/work/cake", name: "Cake" }],
+      projectSessions: () => [
+        { sessionId: "session-1", title: "Follow up", modifiedAt: new Date(0).toISOString() },
+      ],
+      sessionLimit: () => 8,
+      sessionActivity: vi.fn(),
+      sessionActivityTime: vi.fn(() => "Today"),
+      sessionWorkflowStatus: () => statuses[0],
+      sessionWorkflowStatusId: () => "status-feature",
+      sessionWorkflowStatuses: () => statuses,
+      nameFromPath: () => "cake",
+      showMoreSessions: vi.fn(),
+      setSessionWorkflowStatus,
+    } as unknown as ProjectWorkbenchStore;
+
+    act(() =>
+      root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onToggle={vi.fn()} />),
+    );
+    act(() => {
+      container
+        .querySelector<HTMLButtonElement>(
+          '[aria-label="Change session status. Current status: Feature"]',
+        )!
+        .click();
+    });
+    const bugOption = Array.from(document.body.querySelectorAll<HTMLButtonElement>("button")).find(
+      (button) => button.textContent?.trim() === "Bug",
+    );
+    expect(bugOption).toBeDefined();
+    await act(async () => {
+      bugOption!.click();
+      await Promise.resolve();
+    });
+    expect(setSessionWorkflowStatus).toHaveBeenCalledWith("session-1", "status-bug");
   });
 
   it("restores workflow squares when Session avatars are disabled", () => {

@@ -136,6 +136,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     return createStore(SessionManagementStore, {
       operations: this.props.operations,
       catalog: this.props.catalog,
+      projects: this.props.projects,
       registry: this.sessionRegistry,
       reportError: (error) => this.setError(error),
     });

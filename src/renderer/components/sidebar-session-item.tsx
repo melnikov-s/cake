@@ -15,6 +15,7 @@ import type { SessionActivity } from "../lib/session-activity";
 import { StatusDot } from "./ui/status-dot";
 import { StatusSwatch } from "./ui/status-swatch";
 import { Avatar } from "./ui/avatar";
+import { AvatarStatusPicker } from "./ui/avatar-status-picker";
 
 export interface SidebarSessionItemProps {
   store: SidebarStore;
@@ -42,7 +43,7 @@ export interface SidebarSessionItemProps {
   familyCollapsed?: boolean;
   onRename(sessionId: string, name: string): void;
   onResolve(sessionId: string, resolved: boolean): void;
-  onSetStatus?(sessionId: string, statusId: string): void;
+  onSetStatus?(sessionId: string, statusId?: string): void;
   onDelete(sessionId: string): void;
   /** Omitted on surfaces without unread support; enables the context-menu toggle. */
   onMarkUnread?(sessionId: string, unread: boolean): void;
@@ -76,6 +77,9 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
   const isFamilyChild =
     Boolean(session.familyParentSessionId) && session.familyParentSessionId !== session.sessionId;
   const canResolve = !activity && !isFamilyChild;
+  const statusId = store.sessionWorkflowStatusId(session.sessionId);
+  const statuses = store.sessionWorkflowStatuses(session.sessionId);
+  const canSetStatus = !session.draft && !resolved && Boolean(onSetStatus);
   const activityLabel =
     activity === "waiting"
       ? "Waiting for your answer"
@@ -141,14 +145,26 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
             </IconButton>
           )}
           {avatarsEnabled ? (
-            <Avatar
-              kind="session"
-              seed={avatarSeed}
-              statusColor={workflowStatus?.color}
-              title={workflowStatus?.name ?? "No workflow status"}
-              role="img"
-              aria-label={workflowStatus ? `Status: ${workflowStatus.name}` : "No workflow status"}
-            />
+            canSetStatus ? (
+              <AvatarStatusPicker
+                seed={avatarSeed}
+                statuses={statuses}
+                value={statusId}
+                className="size-6"
+                onChange={(nextStatusId) => onSetStatus?.(session.sessionId, nextStatusId)}
+              />
+            ) : (
+              <Avatar
+                kind="session"
+                seed={avatarSeed}
+                statusColor={workflowStatus?.color}
+                title={workflowStatus?.name ?? "No workflow status"}
+                role="img"
+                aria-label={
+                  workflowStatus ? `Status: ${workflowStatus.name}` : "No workflow status"
+                }
+              />
+            )
           ) : (
             workflowStatus && (
               <StatusSwatch
@@ -212,8 +228,17 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
                   onResolve(session.sessionId, true);
                 else if (action?.action === "unresolve" && !isFamilyChild)
                   onResolve(session.sessionId, false);
+                else if (
+                  action?.action === "set-status" &&
+                  action.statusId === "resolved" &&
+                  !isFamilyChild
+                )
+                  onResolve(session.sessionId, true);
                 else if (action?.action === "set-status")
-                  onSetStatus?.(session.sessionId, action.statusId);
+                  onSetStatus?.(
+                    session.sessionId,
+                    action.statusId === "active" ? undefined : action.statusId,
+                  );
                 else if (action?.action === "delete" && !isFamilyChild) onDelete(session.sessionId);
               });
             });

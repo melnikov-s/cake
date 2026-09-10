@@ -304,17 +304,14 @@ The window Store hierarchy mirrors the product surfaces:
   navigation presentation and filtering, visibility, and width; neither Store
   opens sessions directly.
 - `ProjectCatalogStore` owns registered Project records and their window-local
-  ordering. Each Project may carry Cake-owned custom workflow columns and per-session
-  assignments. `Draft`, `Active`, and `Resolved` remain derived system columns;
-  custom statuses subdivide only Active and never redefine transcript lifecycle. Main-process
-  Project Session domain operations authoritatively normalize custom status names and enforce
-  lifecycle, custom-column, and Session Family transition policy. `KanbanStore` owns board
-  presentation, drag/drop orchestration, pending-card state, immediate UX validation and errors,
-  and bounded background card-description generation; it invokes one semantic transition command
-  rather than composing authoritative lifecycle mutations. Sidebar session rows project a
-  custom status swatch in their indentation gutter and offer the same valid lifecycle and
-  custom-status transitions through their native context menu; Draft is never a return
-  destination after activation. React owns only an in-progress drag gesture. `SessionCatalogStore` owns the currently demanded, activity-sorted
+  ordering. Each Project may carry Cake-owned custom statuses and per-session assignments.
+  `Draft`, active-session custom statuses, and `Resolved` remain separate from transcript
+  lifecycle. Main-process Project Session domain operations authoritatively normalize custom
+  status names and enforce lifecycle, custom-status, and Session Family transition policy.
+  `ProjectSettingsStore` owns custom-status configuration, while `SessionManagementStore`
+  serializes status and lifecycle transitions. Session avatars in the transcript gutter and sidebar open the same
+  color-coded status picker; sidebar context menus retain equivalent transitions. Draft is never
+  a return destination after activation. `SessionCatalogStore` owns the currently demanded, activity-sorted
   session metadata projection plus cached ID and project-group indexes. A separate
   window-lifetime `WorktreeCatalog` Model owns the authoritative Managed Worktree
   projection keyed by Working Directory. Session summaries retain only their stable
@@ -332,8 +329,8 @@ The window Store hierarchy mirrors the product surfaces:
   do not appear as a delayed second catalog. The complete active catalog arrives as
   one coherent initial snapshot. The resolved lane and every resolved Project group
   start visually collapsed, but their archive catalogs remain demanded for the window lifetime.
-  Each registered Project therefore has its complete resolved projection before its Kanban board
-  or resolved navigation group opens. Catalog discovery reads Cake's routing index and each Pi
+  Each registered Project therefore has its complete resolved projection before its resolved
+  navigation group opens. Catalog discovery reads Cake's routing index and each Pi
   transcript's title without inspecting Git, discovering Managed Worktrees, or acquiring Pi
   runtimes. After the initial scan, session mutations publish scoped catalog events that refresh
   only the affected summary and never restart catalogs from application-state revisions. Resolved groups display ten
@@ -548,7 +545,6 @@ flowchart TD
   CakeConversation --> MetaChat["ChatStore"]
   Root --> Settings["SettingsStore"]
   Root --> ProjectSettings["ProjectSettingsStore"]
-  Root --> Kanban["KanbanStore"]
   Persistence["Window snapshot persistence (infrastructure)"] -. watches .-> Root
   Workbench -. selects from .-> Registry
   Root --> Layout["SessionLayoutStore"]

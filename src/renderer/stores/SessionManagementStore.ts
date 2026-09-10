@@ -1,20 +1,22 @@
-import { Store } from "r-state-tree";
+import { Store, observable } from "r-state-tree";
 import { SESSION_TITLE_MAX_LENGTH } from "../../ipc/session-contract";
 import { ClientContext } from "./context/ClientContext";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
+import type { ProjectCatalogStore } from "./ProjectCatalogStore";
 
 export interface SessionManagementStoreProps {
   operations: SessionOperationCoordinatorStore;
   catalog: SessionCatalogStore;
+  projects: ProjectCatalogStore;
   registry: SessionRegistryStore;
   reportError(error: unknown): void;
 }
 
-/** Owns Project Session rename, archive/restore, deletion, and unread commands. */
+/** Owns Project Session rename, status, archive/restore, deletion, and unread commands. */
 export class SessionManagementStore extends Store<SessionManagementStoreProps> {
-  private readonly resolvingSessionIds = new Set<string>();
+  private readonly transitioningSessionIds = observable(new Set<string>());
 
   get client() {
     return ClientContext.consume(this)!;
@@ -52,8 +54,8 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
         : session;
     if (!transitionSession) return false;
     const transitionSessionId = transitionSession.sessionId;
-    if (this.resolvingSessionIds.has(transitionSessionId)) return false;
-    this.resolvingSessionIds.add(transitionSessionId);
+    if (this.transitioningSessionIds.has(transitionSessionId)) return false;
+    this.transitioningSessionIds.add(transitionSessionId);
     try {
       if (this.signal.aborted) return false;
       const target = {
@@ -67,7 +69,47 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
       if (!this.signal.aborted) this.props.reportError(error);
       return false;
     } finally {
-      this.resolvingSessionIds.delete(transitionSessionId);
+      this.transitioningSessionIds.delete(transitionSessionId);
+    }
+  }
+
+  isStatusPending(sessionId: string) {
+    return this.transitioningSessionIds.has(sessionId);
+  }
+
+  async setSessionStatus(sessionId: string, statusId?: string) {
+    const session = this.props.catalog.find(sessionId);
+    if (!session || session.resolved || this.signal.aborted) return false;
+    if (this.transitioningSessionIds.has(sessionId)) return false;
+    const project = this.props.projects.find(session.projectPath);
+    if (!project) return false;
+    if (statusId && !project.workflow.columns.some((status) => status.id === statusId)) {
+      this.props.reportError(new Error("That custom status no longer exists"));
+      return false;
+    }
+
+    this.transitioningSessionIds.add(sessionId);
+    try {
+      if (session.draft) {
+        const draft = this.props.registry.findSession(sessionId);
+        if (!draft || !(await draft.conversationSessionStore.chatStore.activateDraft()))
+          return false;
+      }
+      await this.client.projectWorkflow.moveSession(
+        {
+          projectPath: session.projectPath,
+          sessionId,
+          workingDirectory: session.workingDirectory,
+          destination: statusId ? { _tag: "Custom", statusId } : { _tag: "Active" },
+        },
+        { signal: this.signal },
+      );
+      return !this.signal.aborted;
+    } catch (error) {
+      if (!this.signal.aborted) this.props.reportError(error);
+      return false;
+    } finally {
+      this.transitioningSessionIds.delete(sessionId);
     }
   }
 

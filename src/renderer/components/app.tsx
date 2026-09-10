@@ -28,7 +28,6 @@ import { ResizeHandle } from "@/components/ui/resize-handle";
 import { UiHintMode } from "@/components/ui/ui-hint-mode";
 import { IdeWorkspace } from "@/components/ide-workspace";
 import { SettingsPage } from "@/components/settings-page";
-import { KanbanBoard } from "@/components/kanban-board";
 import { ToastHost } from "@/components/toast-host";
 import { WorktreePill } from "@/components/worktree-pill";
 import { WorkLogControls } from "@/components/work-log-controls";
@@ -103,7 +102,7 @@ export const App = observer(function App() {
             ? extensionUi.errorDetails
             : artifactInteractions?.errorDetails;
   const sidebarCollapsed = !sidebar.visible;
-  const projectSidebarVisible = !sidebarCollapsed && surface !== "settings" && surface !== "kanban";
+  const projectSidebarVisible = !sidebarCollapsed && surface !== "settings";
   const sidebarWidth = sidebar.width;
   const displayedSidebarWidth = sidebar.focusModeProjectPath
     ? Math.max(sidebarWidth, 360)
@@ -206,46 +205,68 @@ export const App = observer(function App() {
     };
   }, [root, settings.hotkeys]);
 
-  const projectTranscriptBehaviorFor = (paneSession: NonNullable<typeof session>) => ({
-    workspacePath: paneSession.workspacePath,
-    onFork: (entryId: string) => {
-      root.focusSessionPane(root.sessionLayoutStore.paneForSession(paneSession.sessionId)!.paneId);
-      void store.sessionContinuationStore.forkAt(entryId);
-    },
-    onHandoff: paneSession.canHandoff
-      ? (entryId: string) => {
-          root.focusSessionPane(
-            root.sessionLayoutStore.paneForSession(paneSession.sessionId)!.paneId,
-          );
-          void store.sessionContinuationStore.handoffAt(entryId);
-        }
-      : undefined,
-    openSourceLocation: (location: SourceLocation) => {
-      root.focusSessionPane(root.sessionLayoutStore.paneForSession(paneSession.sessionId)!.paneId);
-      void store
-        .openFileInIde({
-          ...location,
-          path: toWorkspaceRelativePath(location.path, paneSession.workspacePath),
-        })
-        .catch(() => undefined);
-    },
-    onOpenReviewRun: (threadId?: string) => {
-      root.focusSessionPane(root.sessionLayoutStore.paneForSession(paneSession.sessionId)!.paneId);
-      if (threadId) void store.openReviewThread(threadId);
-    },
-    waitingForUser:
-      paneSession.sessionId === root.sessionLayoutStore.focusedSessionId &&
-      Boolean(extensionUi.request || paneSession.artifactInteractionStore.request),
-    messageComments: paneSession.messageCommentsStore,
-    subagents: paneSession.subagentActivityStore,
-    showSelectionContextMenu: (input: { canChat: boolean; canAnnotate: boolean }) =>
-      root.showTranscriptSelectionContextMenu(input),
-    inlineWidgets: root.inlineWidgetStore,
-    artifacts: {
-      records: paneSession.model.artifacts.map((artifact) => artifact.value),
-      interaction: paneSession.artifactInteractionStore,
-    },
-  });
+  const projectTranscriptBehaviorFor = (paneSession: NonNullable<typeof session>) => {
+    const summary = root.sessionCatalogStore.find(paneSession.sessionId);
+    const sessionStatus =
+      settings.appearance.sessionAvatarsEnabled && summary && !summary.draft && !summary.resolved
+        ? {
+            seed: sidebar.sessionAvatarSeed(paneSession.sessionId),
+            statuses: sidebar.sessionWorkflowStatuses(paneSession.sessionId),
+            value: sidebar.sessionWorkflowStatusId(paneSession.sessionId),
+            disabled: store.sessionManagementStore.isStatusPending(paneSession.sessionId),
+            onChange: (statusId?: string) => {
+              void store.sessionManagementStore.setSessionStatus(paneSession.sessionId, statusId);
+            },
+          }
+        : undefined;
+    return {
+      workspacePath: paneSession.workspacePath,
+      onFork: (entryId: string) => {
+        root.focusSessionPane(
+          root.sessionLayoutStore.paneForSession(paneSession.sessionId)!.paneId,
+        );
+        void store.sessionContinuationStore.forkAt(entryId);
+      },
+      onHandoff: paneSession.canHandoff
+        ? (entryId: string) => {
+            root.focusSessionPane(
+              root.sessionLayoutStore.paneForSession(paneSession.sessionId)!.paneId,
+            );
+            void store.sessionContinuationStore.handoffAt(entryId);
+          }
+        : undefined,
+      openSourceLocation: (location: SourceLocation) => {
+        root.focusSessionPane(
+          root.sessionLayoutStore.paneForSession(paneSession.sessionId)!.paneId,
+        );
+        void store
+          .openFileInIde({
+            ...location,
+            path: toWorkspaceRelativePath(location.path, paneSession.workspacePath),
+          })
+          .catch(() => undefined);
+      },
+      onOpenReviewRun: (threadId?: string) => {
+        root.focusSessionPane(
+          root.sessionLayoutStore.paneForSession(paneSession.sessionId)!.paneId,
+        );
+        if (threadId) void store.openReviewThread(threadId);
+      },
+      waitingForUser:
+        paneSession.sessionId === root.sessionLayoutStore.focusedSessionId &&
+        Boolean(extensionUi.request || paneSession.artifactInteractionStore.request),
+      messageComments: paneSession.messageCommentsStore,
+      subagents: paneSession.subagentActivityStore,
+      showSelectionContextMenu: (input: { canChat: boolean; canAnnotate: boolean }) =>
+        root.showTranscriptSelectionContextMenu(input),
+      inlineWidgets: root.inlineWidgetStore,
+      sessionStatus,
+      artifacts: {
+        records: paneSession.model.artifacts.map((artifact) => artifact.value),
+        interaction: paneSession.artifactInteractionStore,
+      },
+    };
+  };
   const projectTranscriptBehavior = session ? projectTranscriptBehaviorFor(session) : undefined;
   const cakeChatTranscriptBehaviorFor = (paneSession: NonNullable<typeof cakeChatSession>) => ({
     onHandoff: (entryId: string) => {
@@ -319,7 +340,6 @@ export const App = observer(function App() {
       appearance={root.settingsStore.appearance}
       onToggle={toggleSidebar}
       onOpenSettings={openSettings}
-      onOpenKanban={(projectPath) => root.showKanban(projectPath)}
       onOpenCakeChat={openCakeChat}
       onCreateCakeChat={createCakeChat}
       onOpenSession={openSession}
@@ -595,7 +615,7 @@ export const App = observer(function App() {
               : undefined
         }
       >
-        {surface !== "settings" && surface !== "kanban" && (
+        {surface !== "settings" && (
           <IconButton
             className={cn(
               "absolute bottom-[9.5px] left-4 z-20 hidden size-8 place-items-center rounded-lg bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground max-[620px]:grid",
@@ -613,15 +633,15 @@ export const App = observer(function App() {
             data-slot="workspace-header"
             className={cn(
               "relative flex h-[52px] w-full max-w-full min-w-0 items-center justify-between overflow-hidden border-b border-border/65 px-5 [app-region:drag] max-[620px]:pl-[84px]",
-              sidebarCollapsed && surface !== "settings" && surface !== "kanban" && "pl-[124px]",
-              (surface === "settings" || surface === "kanban") && "pl-[84px]",
+              sidebarCollapsed && surface !== "settings" && "pl-[124px]",
+              surface === "settings" && "pl-[84px]",
             )}
           >
             <div className="flex w-0 min-w-0 flex-1 items-center gap-3">
               <IconButton
                 className={cn(
                   "absolute left-[84px] top-[9px] z-20 size-7 place-items-center rounded-lg bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground [app-region:no-drag]",
-                  surface === "settings" || surface === "kanban"
+                  surface === "settings"
                     ? "hidden"
                     : sidebarCollapsed
                       ? "grid"
@@ -633,10 +653,10 @@ export const App = observer(function App() {
               >
                 <SidebarIcon />
               </IconButton>
-              {(surface === "settings" || surface === "kanban") && (
+              {surface === "settings" && (
                 <IconButton
                   className="grid size-7 place-items-center rounded-lg bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground [app-region:no-drag]"
-                  tooltip={surface === "kanban" ? "Back to workspace" : "Back to chat"}
+                  tooltip="Back to chat"
                   onClick={returnToWorkbench}
                 >
                   <BackIcon />
@@ -645,12 +665,10 @@ export const App = observer(function App() {
               <strong className="block min-w-0 max-w-full truncate text-[13px] font-semibold">
                 {surface === "settings"
                   ? "Settings"
-                  : surface === "kanban"
-                    ? `${root.kanbanStore.project?.name ?? "Project"} · Kanban`
-                    : surface === "cake-chat"
-                      ? "Cake Chat"
-                      : (extensionUi.title ??
-                        (session ? `[${projectOpen.projectName}] ${store.sessionTitle}` : "Cake"))}
+                  : surface === "cake-chat"
+                    ? "Cake Chat"
+                    : (extensionUi.title ??
+                      (session ? `[${projectOpen.projectName}] ${store.sessionTitle}` : "Cake"))}
               </strong>
             </div>
             <div className="flex min-w-0 shrink-0 items-center gap-1.5 [app-region:no-drag]">
@@ -670,11 +688,6 @@ export const App = observer(function App() {
           <div className="h-full min-h-0 w-full overflow-hidden">
             <SettingsPage settings={settings} />
           </div>
-        ) : surface === "kanban" ? (
-          <KanbanBoard
-            store={root.kanbanStore}
-            sessionAvatarsEnabled={root.settingsStore.appearance.sessionAvatarsEnabled}
-          />
         ) : cakeChatCollection ? (
           cakeChatSession ? (
             <ConversationSplitLayout

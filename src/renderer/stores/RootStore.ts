@@ -25,7 +25,6 @@ import { ApplicationControlStore } from "./ApplicationControlStore";
 import { ProjectCatalogStore } from "./ProjectCatalogStore";
 import { ProjectSettingsStore } from "./ProjectSettingsStore";
 import { NotificationStore } from "./NotificationStore";
-import { KanbanStore } from "./KanbanStore";
 import { ToastStore } from "./ToastStore";
 import { TerminalStore, type TerminalTarget } from "./TerminalStore";
 import { WorkingDirectoryRetirementStore } from "./WorkingDirectoryRetirementStore";
@@ -593,19 +592,6 @@ export class RootStore extends Store<{
     return this.client.electron.showTranscriptSelectionContextMenu(input, { signal: this.signal });
   }
 
-  showKanban(projectPath: string) {
-    if (!this.projectCatalogStore.find(projectPath)) return;
-    if (
-      this.appShellStore.selection.kind === "kanban" &&
-      this.appShellStore.selection.projectPath === projectPath
-    ) {
-      this.returnToWorkbench();
-      return;
-    }
-    this.projectWorkbenchStore.dismissSecondarySurfaces();
-    this.appShellStore.showKanban(projectPath);
-  }
-
   showSettings() {
     this.projectWorkbenchStore.dismissSecondarySurfaces();
     this.appShellStore.showSettings();
@@ -631,10 +617,8 @@ export class RootStore extends Store<{
     }
     if (target) await this.navigateToHistoryEntry(target);
     else if (
-      (this.appShellStore.selection.kind === "project-session" &&
-        sessionIds.includes(this.appShellStore.selection.sessionId)) ||
-      (this.appShellStore.selection.kind === "kanban" &&
-        this.appShellStore.selection.projectPath === path)
+      this.appShellStore.selection.kind === "project-session" &&
+      sessionIds.includes(this.appShellStore.selection.sessionId)
     )
       this.showEmptyWorkbench();
     return true;
@@ -724,10 +708,6 @@ export class RootStore extends Store<{
       : undefined;
     this.sessionLayoutStore.removeSessions(sessionIds);
     for (const sessionId of sessionIds) this.sessionRegistry.removeSession(sessionId);
-    if (this.appShellStore.selection.kind === "kanban") {
-      this.appShellStore.removeSessionsFromHistory(sessionIds);
-      return;
-    }
     await this.forgetResolvedSessions(sessionIds, fallbackProjectPath ?? activeProjectPath);
   }
 
@@ -880,23 +860,6 @@ export class RootStore extends Store<{
     return createStore(ProjectSettingsStore, { projects: this.projectCatalogStore });
   }
 
-  @child
-  get kanbanStore(): KanbanStore {
-    return createStore(KanbanStore, {
-      projects: this.projectCatalogStore,
-      catalog: this.sessionCatalogStore,
-      registry: this.sessionRegistry,
-      selectedProjectPath: () =>
-        this.appShellStore.selection.kind === "kanban"
-          ? this.appShellStore.selection.projectPath
-          : undefined,
-      utilityModelConfigured: () => Boolean(this.settingsStore.utilityModel.model),
-      openSession: (sessionId) => this.openSession(sessionId),
-      forgetResolvedSession: (sessionId) => this.forgetResolvedProjectSessions([sessionId]),
-      reportError: (error) => this.projectWorkbenchStore.setError(error, "Project Kanban"),
-    });
-  }
-
   get projectSessionCatalogQueries() {
     return this.sidebarStore.projectSessionCatalogQueries;
   }
@@ -943,7 +906,10 @@ export class RootStore extends Store<{
         await this.resolveProjectSession(sessionId, resolved);
       },
       setSessionWorkflowStatus: async (sessionId, statusId) => {
-        await this.kanbanStore.moveSession(sessionId, statusId);
+        await this.projectWorkbenchStore.sessionManagementStore.setSessionStatus(
+          sessionId,
+          statusId === "active" ? undefined : statusId,
+        );
       },
       setCakeChatSessionResolved: (sessionId, resolved) =>
         this.resolveCakeChatSession(sessionId, resolved),

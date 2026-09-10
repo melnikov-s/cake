@@ -80,8 +80,8 @@ describe("utility work", () => {
       const description = yield* run(
         generateSessionDescription({
           selection,
-          title: "Add Kanban",
-          firstUserMessage: "Build a project-scoped session Kanban board.",
+          title: "Add statuses",
+          firstUserMessage: "Build customizable project session statuses.",
         }),
         (input) =>
           Effect.sync(() => {
@@ -93,7 +93,7 @@ describe("utility work", () => {
       assert.equal(description, "Organize project sessions with custom workflow statuses.");
       assert.ok(received);
       assert.equal(received.maximumOutputCharacters, 560);
-      assert.match(received.context, /Build a project-scoped session Kanban board/);
+      assert.match(received.context, /Build customizable project session statuses/);
     }),
   );
 

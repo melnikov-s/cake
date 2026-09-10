@@ -136,18 +136,21 @@ describe("Application domain", () => {
           name: "In progress now",
           color: "mint",
         });
-        assert.deepEqual(updated.columns[0], {
-          id: columnId,
-          name: "In progress now",
-          color: "mint",
-        });
+        assert.deepEqual(
+          updated.columns.find((column) => column.id === columnId),
+          {
+            id: columnId,
+            name: "In progress now",
+            color: "mint",
+          },
+        );
         const reordered = yield* mutateProjectWorkflow("/work/cake", {
           _tag: "MoveColumn",
           columnId,
-          index: 1,
+          index: 5,
         });
         assert.deepEqual(
-          reordered.columns.map((column) => column.id),
+          reordered.columns.slice(-2).map((column) => column.id),
           [secondColumnId, columnId],
         );
         const assigned = yield* setProjectWorkflowSessionStatus(
@@ -160,10 +163,7 @@ describe("Application domain", () => {
           _tag: "DeleteColumn",
           columnId,
         });
-        assert.deepEqual(
-          deleted.columns.map((column) => column.id),
-          [secondColumnId],
-        );
+        assert.deepEqual(deleted.columns.at(-1)?.id, secondColumnId);
         assert.deepEqual(deleted.assignments, []);
       }),
     ),
@@ -210,7 +210,7 @@ describe("Application domain", () => {
           _tag: "UpdateColumn",
           columnId: "b925b5dd-9661-4f1a-9f40-406be3c96c27",
           name: "  Waiting  ",
-        })).columns[0];
+        })).columns.find((column) => column.id === "b925b5dd-9661-4f1a-9f40-406be3c96c27");
         assert.equal(normalized?.name, "Waiting");
         const duplicate = yield* Effect.flip(
           mutateProjectWorkflow("/work/cake", {

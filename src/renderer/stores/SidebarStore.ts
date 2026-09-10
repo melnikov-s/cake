@@ -20,7 +20,7 @@ export interface SidebarStoreProps {
   cakeChat(): CakeChatCollectionStore;
   selectedConversation?(): { kind: "project-session" | "cake-chat"; sessionId: string } | undefined;
   setSessionResolved(sessionId: string, resolved: boolean): Promise<void>;
-  setSessionWorkflowStatus(sessionId: string, statusId: string): Promise<void>;
+  setSessionWorkflowStatus(sessionId: string, statusId?: string): Promise<void>;
   setCakeChatSessionResolved(sessionId: string, resolved: boolean): Promise<void>;
   deleteSession(sessionId: string): Promise<void>;
   deleteCakeChatSession(sessionId: string): Promise<void>;
@@ -218,7 +218,7 @@ export class SidebarStore extends Store<SidebarStoreProps> {
     });
   }
 
-  setSessionWorkflowStatus(sessionId: string, statusId: string) {
+  setSessionWorkflowStatus(sessionId: string, statusId?: string) {
     return this.props.setSessionWorkflowStatus(sessionId, statusId);
   }
 
@@ -293,14 +293,24 @@ export class SidebarStore extends Store<SidebarStoreProps> {
     this.sessionLimits[key] = this.sessionLimit(groupKey, resolved) + 10;
   }
 
-  sessionWorkflowStatus(sessionId: string) {
+  sessionWorkflowStatuses(sessionId: string) {
+    const session = this.props.catalog.find(sessionId);
+    return session ? (this.props.projects.find(session.projectPath)?.workflow.columns ?? []) : [];
+  }
+
+  sessionWorkflowStatusId(sessionId: string) {
     const session = this.props.catalog.find(sessionId);
     if (!session || session.draft || session.resolved) return undefined;
     const workflow = this.props.projects.find(session.projectPath)?.workflow;
     const statusId = workflow?.assignments.find(
       (assignment) => assignment.sessionId === sessionId,
     )?.statusId;
-    return workflow?.columns.find((column) => column.id === statusId);
+    return workflow?.columns.some((column) => column.id === statusId) ? statusId : undefined;
+  }
+
+  sessionWorkflowStatus(sessionId: string) {
+    const statusId = this.sessionWorkflowStatusId(sessionId);
+    return this.sessionWorkflowStatuses(sessionId).find((column) => column.id === statusId);
   }
 
   sessionAvatarSeed(sessionId: string) {

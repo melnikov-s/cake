@@ -17,6 +17,10 @@ import { Message, MessageContent, MessageLabel } from "@/components/ai-elements/
 import { FullscreenSurface } from "@/components/fullscreen-surface";
 import { FullscreenButton } from "@/components/ui/fullscreen-button";
 import { IconButton } from "@/components/ui/icon-button";
+import {
+  AvatarStatusPicker,
+  type AvatarStatusPickerProps,
+} from "@/components/ui/avatar-status-picker";
 import { ChatIcon, CheckIcon, CopyIcon, ForkIcon, HandoffIcon } from "@/components/ui/icons";
 import { AnnotationItemPopover } from "./annotation-item-popover";
 import type { ArtifactRecord } from "../../ipc/artifact-contract";
@@ -61,9 +65,10 @@ export const ChatTextMessage = forwardRef<
     onMouseEnter?: MouseEventHandler<HTMLElement>;
     onMouseLeave?: MouseEventHandler<HTMLElement>;
     onOpenSourceLocation?(location: SourceLocation): void;
+    statusPicker?: AvatarStatusPickerProps;
   }
 >(function ChatTextMessage(
-  { part, contentRef, children, onMouseEnter, onMouseLeave, onOpenSourceLocation },
+  { part, contentRef, children, onMouseEnter, onMouseLeave, onOpenSourceLocation, statusPicker },
   ref,
 ) {
   const assistant = part.role === "assistant";
@@ -79,9 +84,17 @@ export const ChatTextMessage = forwardRef<
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
       className={cn(
-        assistant ? "group/msg relative mr-auto w-full" : "group/msg ml-auto w-[min(88%,42rem)]",
+        assistant
+          ? "group/msg relative mr-auto w-full"
+          : "group/msg relative ml-auto w-[min(88%,42rem)]",
       )}
     >
+      {!assistant && statusPicker && (
+        <AvatarStatusPicker
+          {...statusPicker}
+          className={cn("absolute -left-9 top-7", statusPicker.className)}
+        />
+      )}
       <MessageLabel>
         {assistant ? (part.status === "streaming" ? "Cake · working" : "Cake") : userLabel}
       </MessageLabel>
@@ -267,6 +280,7 @@ export interface ChatTranscriptBehavior {
     canChat: boolean;
     canAnnotate: boolean;
   }): Promise<"chat-about-selection" | "add-annotation" | undefined>;
+  sessionStatus?: AvatarStatusPickerProps;
 }
 
 export interface CanonicalTranscriptBehavior extends ChatTranscriptBehavior {

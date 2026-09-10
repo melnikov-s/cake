@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from "./ui/dialog";
 import { Textarea } from "./ui/textarea";
+import { ProjectStatusSettings } from "./project-status-settings";
 
 const variables = [
   ["{projectPath}", "registered project directory"],
@@ -44,7 +45,7 @@ export const ProjectSettingsDialog = observer(function ProjectSettingsDialog({
           <DialogHeader>
             <DialogTitle id="project-settings-title">{store.projectName} settings</DialogTitle>
             <DialogDescription id="project-settings-description">
-              Configure how Cake creates and prepares managed worktrees for this project.
+              Configure session statuses and how Cake prepares managed worktrees for this project.
             </DialogDescription>
           </DialogHeader>
 
@@ -107,6 +108,8 @@ export const ProjectSettingsDialog = observer(function ProjectSettingsDialog({
               </dl>
             </div>
 
+            <ProjectStatusSettings store={store} />
+
             {store.error && (
               <p role="alert" className="text-xs text-destructive">
                 {store.error}
@@ -121,7 +124,7 @@ export const ProjectSettingsDialog = observer(function ProjectSettingsDialog({
               onClick={() => store.resetDefaults()}
               disabled={store.saving}
             >
-              Restore defaults
+              Restore worktree defaults
             </Button>
             <div className="flex gap-2">
               <Button

@@ -140,7 +140,12 @@ export const ProjectWorkflow = Schema.Struct({
 export interface ProjectWorkflow extends Schema.Schema.Type<typeof ProjectWorkflow> {}
 
 export const defaultProjectWorkflow = (): ProjectWorkflow => ({
-  columns: [],
+  columns: [
+    { id: "00000000-0000-4000-8000-000000000001", name: "Feature", color: "blue" },
+    { id: "00000000-0000-4000-8000-000000000002", name: "Bug", color: "rose" },
+    { id: "00000000-0000-4000-8000-000000000003", name: "Research", color: "violet" },
+    { id: "00000000-0000-4000-8000-000000000004", name: "Chore", color: "amber" },
+  ],
   assignments: [],
   sessionDetails: [],
 });
