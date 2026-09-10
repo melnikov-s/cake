@@ -268,6 +268,17 @@ export class SidebarStore extends Store<SidebarStoreProps> {
     return workflow?.columns.find((column) => column.id === statusId);
   }
 
+  sessionAvatarSeed(sessionId: string) {
+    const session = this.props.catalog.find(sessionId);
+    if (!session) return sessionId;
+    return (
+      this.props.projects
+        .find(session.projectPath)
+        ?.workflow.sessionDetails.find((details) => details.sessionId === sessionId)?.avatarSeed ??
+      sessionId
+    );
+  }
+
   sessionActivity(sessionId: string): SessionActivity | undefined {
     const activity = this.props.sessions.findSession(sessionId)?.activity;
     if (activity) return activity;

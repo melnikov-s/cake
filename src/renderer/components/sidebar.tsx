@@ -13,6 +13,7 @@ import type { SidebarStore } from "../stores/SidebarStore";
 import type { CakeChatCollectionStore } from "../stores/CakeChatCollectionStore";
 import type { AppShellStore } from "../stores/AppShellStore";
 import type { ProjectSettingsStore } from "../stores/ProjectSettingsStore";
+import type { AppearanceSettingsStore } from "../stores/AppearanceSettingsStore";
 
 export const Sidebar = observer(function Sidebar({
   store,
@@ -21,6 +22,7 @@ export const Sidebar = observer(function Sidebar({
   cakeChat,
   shell,
   projectSettings,
+  appearance,
   onOpenSettings,
   onOpenKanban,
   onOpenCakeChat,
@@ -39,6 +41,7 @@ export const Sidebar = observer(function Sidebar({
   cakeChat: CakeChatCollectionStore;
   shell: AppShellStore;
   projectSettings: ProjectSettingsStore;
+  appearance: AppearanceSettingsStore;
   onOpenSettings: () => void;
   onOpenKanban(projectPath: string): void;
   onOpenCakeChat(sessionId?: string): void;
@@ -111,6 +114,7 @@ export const Sidebar = observer(function Sidebar({
               projects={projects}
               chat={chat}
               shell={shell}
+              appearance={appearance}
               path={path}
               resolved={false}
               onCreateSession={onCreateSession}
@@ -156,6 +160,7 @@ export const Sidebar = observer(function Sidebar({
                   projects={projects}
                   chat={chat}
                   shell={shell}
+                  appearance={appearance}
                   path={path}
                   resolved
                   onCreateSession={onCreateSession}

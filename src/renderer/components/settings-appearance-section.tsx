@@ -1,5 +1,6 @@
 import { observer } from "r-state-tree/react";
 import { Select } from "./ui/select";
+import { SettingsToggle } from "./settings/settings-toggle";
 import type { AppearanceSettingsStore } from "../stores/AppearanceSettingsStore";
 
 export const SettingsAppearanceSection = observer(function SettingsAppearanceSection({
@@ -46,6 +47,20 @@ export const SettingsAppearanceSection = observer(function SettingsAppearanceSec
             <option value="dark">Dark</option>
           </Select>
         </label>
+        <SettingsToggle
+          id="setting-project-avatars"
+          label="Project avatars"
+          description="Show deterministic Slice avatars for Projects."
+          checked={appearance.projectAvatarsEnabled}
+          onChange={(enabled) => appearance.setProjectAvatarsEnabled(enabled)}
+        />
+        <SettingsToggle
+          id="setting-session-avatars"
+          label="Session avatars"
+          description="Show deterministic Gaze avatars colored by workflow status."
+          checked={appearance.sessionAvatarsEnabled}
+          onChange={(enabled) => appearance.setSessionAvatarsEnabled(enabled)}
+        />
       </div>
     </section>
   );

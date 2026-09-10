@@ -36,6 +36,7 @@ export interface KanbanColumnProps {
   title: string;
   color?: ProjectWorkflowColor;
   customIndex?: number;
+  sessionAvatarsEnabled: boolean;
   dragItem?: KanbanDragItem;
   dropActive?: boolean;
   onDragItemChange(item: KanbanDragItem | undefined): void;
@@ -48,6 +49,7 @@ export const KanbanColumn = observer(function KanbanColumn({
   title,
   color,
   customIndex,
+  sessionAvatarsEnabled,
   dragItem,
   dropActive,
   onDragItemChange,
@@ -128,6 +130,8 @@ export const KanbanColumn = observer(function KanbanColumn({
             model={store.modelForSession(session.sessionId)}
             description={store.detailsForSession(session.sessionId)?.description}
             status={store.statusForSession(session.sessionId)}
+            avatarSeed={store.detailsForSession(session.sessionId)?.avatarSeed ?? session.sessionId}
+            avatarsEnabled={sessionAvatarsEnabled}
             busy={store.isSessionPending(session.sessionId)}
             onOpen={() => void store.openSession(session.sessionId)}
             onDragStart={(event) => {

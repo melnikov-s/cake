@@ -7,6 +7,7 @@ import * as projectSessionMetadata from "../../../src/domain/project-sessions/pr
 import * as projectSessionOperations from "../../../src/domain/project-sessions/projectSessionOperations";
 import * as projectSessionContinuations from "../../../src/domain/project-sessions/projectSessionContinuations";
 import * as projectSessionLifecycle from "../../../src/domain/project-sessions/projectSessionLifecycle";
+import { avatarSeedFromInitialPrompt } from "../../../src/domain/project-sessions/projectSessionAvatar";
 import type { SessionCatalogUpdate } from "../../../src/domain/application/catalog-data";
 import { getState } from "../../../src/domain/application/application";
 import {
@@ -1800,6 +1801,14 @@ describe("Project Sessions domain", () => {
         renderUserMessageAsMarkdown: false,
       });
 
+      const project = (yield* getState()).projects.find(
+        (candidate) => candidate.path === "/project",
+      );
+      assert.equal(
+        project?.workflow?.sessionDetails.find((details) => details.sessionId === "session-1")
+          ?.avatarSeed,
+        avatarSeedFromInitialPrompt("First message"),
+      );
       const observed = Array.from(yield* Fiber.join(fiber));
       assert.equal(observed[1]?._tag, "Event");
       assert.equal(observed[1]?._tag === "Event" ? observed[1].event._tag : undefined, "Upserted");

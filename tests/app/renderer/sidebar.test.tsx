@@ -51,6 +51,7 @@ function sidebarProps(store: ProjectWorkbenchStore) {
       toggleResolvedGroupExpanded: fixture.toggleResolvedGroupExpanded ?? vi.fn(),
       sessionActivity: fixture.sessionActivity,
       sessionWorkflowStatus: fixture.sessionWorkflowStatus ?? (() => undefined),
+      sessionAvatarSeed: fixture.sessionAvatarSeed ?? ((sessionId: string) => sessionId),
       managedWorktree: fixture.managedWorktree ?? (() => undefined),
       sessionActivityForDisplay:
         fixture.sessionActivityForDisplay ??
@@ -88,6 +89,10 @@ function sidebarProps(store: ProjectWorkbenchStore) {
     projectSettings: {
       projectPath: undefined,
       open: fixture.openProjectSettings ?? vi.fn(),
+    } as any,
+    appearance: {
+      projectAvatarsEnabled: true,
+      sessionAvatarsEnabled: true,
     } as any,
   };
 }
@@ -481,13 +486,15 @@ describe("Sidebar projects", () => {
 
     const openIcon = container.querySelector('[data-worktree-state="active"]');
     const mergedIcon = container.querySelector('[data-worktree-state="landed"]');
-    const mainStatusIcon = container.querySelector('[data-session-id="main"] [role="img"]');
+    const mainWorktreeIcon = container.querySelector(
+      '[data-session-id="main"] [data-worktree-state]',
+    );
     const mainSession = container.querySelector('[data-session-id="main"]');
     expect(openIcon?.classList.contains("text-worktree-open")).toBe(true);
     expect(openIcon?.getAttribute("aria-label")).toBe("Open worktree");
     expect(mergedIcon?.classList.contains("text-worktree-merged")).toBe(true);
     expect(mergedIcon?.getAttribute("aria-label")).toBe("Merged worktree");
-    expect(mainStatusIcon).toBeNull();
+    expect(mainWorktreeIcon).toBeNull();
     expect(mainSession?.textContent).not.toContain("main");
     expect(openIcon?.querySelectorAll("circle")).toHaveLength(2);
   });
@@ -1317,6 +1324,37 @@ describe("Sidebar projects", () => {
     });
 
     expect(setSessionWorkflowStatus).toHaveBeenCalledWith("session-1", "status-review");
+  });
+
+  it("restores workflow squares when Session avatars are disabled", () => {
+    const store = {
+      recentProjectPaths: ["/work/cake"],
+      projects: [{ path: "/work/cake", name: "Cake" }],
+      projectSessions: () => [
+        { sessionId: "session-1", title: "Follow up", modifiedAt: new Date(0).toISOString() },
+      ],
+      sessionLimit: () => 8,
+      sessionActivity: vi.fn(),
+      sessionActivityTime: vi.fn(() => "Today"),
+      sessionWorkflowStatus: () => ({ name: "In review", color: "violet" }),
+      nameFromPath: () => "cake",
+      showMoreSessions: vi.fn(),
+    } as unknown as ProjectWorkbenchStore;
+
+    act(() =>
+      root.render(
+        <Sidebar
+          {...sidebarProps(store)}
+          appearance={{ projectAvatarsEnabled: false, sessionAvatarsEnabled: false } as any}
+          onOpenSettings={vi.fn()}
+          onToggle={vi.fn()}
+        />,
+      ),
+    );
+
+    const session = container.querySelector('[data-session-id="session-1"]');
+    expect(session?.querySelector('[data-slot="avatar"]')).toBeNull();
+    expect(session?.querySelector('[aria-label="Status: In review"]')).not.toBeNull();
   });
 
   it("marks a project session unread from the native session menu", async () => {

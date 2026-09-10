@@ -10,12 +10,15 @@ import type { ProjectCatalogStore } from "../stores/ProjectCatalogStore";
 import type { ProjectWorkbenchStore } from "../stores/ProjectWorkbenchStore";
 import type { SidebarStore } from "../stores/SidebarStore";
 import { ProjectActionDialog, type ProjectAction } from "./project-action-dialog";
+import { Avatar } from "./ui/avatar";
+import type { AppearanceSettingsStore } from "../stores/AppearanceSettingsStore";
 
 export interface SidebarProjectGroupProps {
   store: SidebarStore;
   projects: ProjectCatalogStore;
   chat: ProjectWorkbenchStore;
   shell: AppShellStore;
+  appearance: AppearanceSettingsStore;
   path: string;
   resolved: boolean;
   onCreateSession(workspacePath: string): void;
@@ -31,6 +34,7 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
   projects,
   chat,
   shell,
+  appearance,
   path,
   resolved,
   onCreateSession,
@@ -73,6 +77,14 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
         >
           <ChevronIcon />
         </IconButton>
+        {appearance.projectAvatarsEnabled && (
+          <Avatar
+            kind="project"
+            seed={projects.nameForPath(path)}
+            title={`Avatar for ${projects.nameForPath(path)}`}
+            aria-hidden="true"
+          />
+        )}
         <Button
           data-slot="project-label"
           variant="ghost"
@@ -145,6 +157,8 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
               resolved={resolved}
               activity={store.sessionActivityForDisplay(session)}
               workflowStatus={store.sessionWorkflowStatus(session.sessionId)}
+              avatarSeed={store.sessionAvatarSeed(session.sessionId)}
+              avatarsEnabled={appearance.sessionAvatarsEnabled}
               onOpen={onOpenSession}
               onToggleFamily={(sessionId) => store.toggleFamilyCollapsed(sessionId)}
               familyCollapsed={store.isFamilyCollapsed(session.sessionId)}

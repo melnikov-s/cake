@@ -312,6 +312,7 @@ export const App = observer(function App() {
       cakeChat={root.cakeChatCollectionStore}
       shell={shell}
       projectSettings={root.projectSettingsStore}
+      appearance={root.settingsStore.appearance}
       onToggle={toggleSidebar}
       onOpenSettings={openSettings}
       onOpenKanban={(projectPath) => root.showKanban(projectPath)}
@@ -664,7 +665,10 @@ export const App = observer(function App() {
             <SettingsPage settings={settings} />
           </div>
         ) : surface === "kanban" ? (
-          <KanbanBoard store={root.kanbanStore} />
+          <KanbanBoard
+            store={root.kanbanStore}
+            sessionAvatarsEnabled={root.settingsStore.appearance.sessionAvatarsEnabled}
+          />
         ) : cakeChatCollection ? (
           cakeChatSession ? (
             <ConversationSplitLayout

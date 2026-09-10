@@ -14,6 +14,7 @@ import { WorktreeStatusIcon } from "./worktree-status-icon";
 import type { SessionActivity } from "../lib/session-activity";
 import { StatusDot } from "./ui/status-dot";
 import { StatusSwatch } from "./ui/status-swatch";
+import { Avatar } from "./ui/avatar";
 
 export interface SidebarSessionItemProps {
   store: SidebarStore;
@@ -33,6 +34,8 @@ export interface SidebarSessionItemProps {
   resolved: boolean;
   activity?: SessionActivity;
   workflowStatus?: { name: string; color: ProjectWorkflowColor };
+  avatarSeed: string;
+  avatarsEnabled: boolean;
   onOpen(sessionId: string): void;
   onToggleFamily?(sessionId: string): void;
   familyCollapsed?: boolean;
@@ -54,6 +57,8 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
   resolved,
   activity,
   workflowStatus,
+  avatarSeed,
+  avatarsEnabled,
   onOpen,
   onToggleFamily,
   familyCollapsed,
@@ -94,7 +99,12 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
       data-session-id={session.sessionId}
       data-family-role={isFamilyChild ? "child" : isFamilyParent ? "parent" : "root"}
       className={cn(
-        "session-item group relative grid min-h-11 w-full grid-cols-[1.25rem_minmax(0,1fr)] items-center rounded-md py-1 text-xs select-none transition-colors",
+        "session-item group relative grid min-h-11 w-full items-center rounded-md py-1 text-xs select-none transition-colors",
+        avatarsEnabled
+          ? isFamilyParent
+            ? "grid-cols-[2.5rem_minmax(0,1fr)]"
+            : "grid-cols-[1.5rem_minmax(0,1fr)]"
+          : "grid-cols-[1.25rem_minmax(0,1fr)]",
         isFamilyChild && "ml-5 w-[calc(100%-1.25rem)]",
         selected
           ? "active bg-sidebar-active text-primary font-semibold"
@@ -108,34 +118,34 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
           data-slot="session-leading"
           className="relative flex h-full items-center justify-center"
         >
-          {isFamilyParent ? (
-            <>
-              <IconButton
-                className={cn(
-                  "size-5 shrink-0 text-muted-foreground transition-transform",
-                  familyCollapsed && "-rotate-90",
-                )}
-                tooltip={familyCollapsed ? "Expand child sessions" : "Collapse child sessions"}
-                ariaLabel={`${familyCollapsed ? "Expand" : "Collapse"} children of ${session.title}`}
-                aria-expanded={!familyCollapsed}
-                onClick={() => onToggleFamily?.(session.sessionId)}
-              >
-                <ChevronIcon />
-              </IconButton>
-              {workflowStatus && (
-                <StatusSwatch
-                  color={workflowStatus.color}
-                  className="absolute -left-2"
-                  title={workflowStatus.name}
-                  role="img"
-                  aria-label={`Status: ${workflowStatus.name}`}
-                />
+          {isFamilyParent && (
+            <IconButton
+              className={cn(
+                "size-5 shrink-0 text-muted-foreground transition-transform",
+                familyCollapsed && "-rotate-90",
               )}
-            </>
+              tooltip={familyCollapsed ? "Expand child sessions" : "Collapse child sessions"}
+              ariaLabel={`${familyCollapsed ? "Expand" : "Collapse"} children of ${session.title}`}
+              aria-expanded={!familyCollapsed}
+              onClick={() => onToggleFamily?.(session.sessionId)}
+            >
+              <ChevronIcon />
+            </IconButton>
+          )}
+          {avatarsEnabled ? (
+            <Avatar
+              kind="session"
+              seed={avatarSeed}
+              statusColor={workflowStatus?.color}
+              title={workflowStatus?.name ?? "No workflow status"}
+              role="img"
+              aria-label={workflowStatus ? `Status: ${workflowStatus.name}` : "No workflow status"}
+            />
           ) : (
             workflowStatus && (
               <StatusSwatch
                 color={workflowStatus.color}
+                className={isFamilyParent ? "absolute -left-2" : undefined}
                 title={workflowStatus.name}
                 role="img"
                 aria-label={`Status: ${workflowStatus.name}`}

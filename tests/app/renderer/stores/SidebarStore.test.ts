@@ -80,6 +80,41 @@ describe("SidebarStore catalog demand", () => {
     store[Symbol.dispose]();
   });
 
+  it("resolves persisted Session avatar seeds and falls back to the Session ID", () => {
+    const sessions = [
+      { sessionId: "seeded", projectPath: "/cake" },
+      { sessionId: "legacy", projectPath: "/cake" },
+    ];
+    const store = mount(
+      createStore(SidebarStore, {
+        projects: {
+          orderedProjectPaths: ["/cake"],
+          find: () => ({
+            workflow: {
+              sessionDetails: [{ sessionId: "seeded", avatarSeed: "prompt-seed" }],
+            },
+          }),
+        } as unknown as ProjectCatalogStore,
+        catalog: {
+          find: (sessionId: string) => sessions.find((session) => session.sessionId === sessionId),
+        } as unknown as SessionCatalogStore,
+        sessions: {} as SessionRegistryStore,
+        cakeChat: () => ({ summaries: [] }) as unknown as CakeChatCollectionStore,
+        setSessionResolved: async () => undefined,
+        setSessionWorkflowStatus: async () => undefined,
+        setCakeChatSessionResolved: async () => undefined,
+        deleteSession: async () => undefined,
+        deleteCakeChatSession: async () => undefined,
+        setSessionUnread: async () => undefined,
+        embeddedEditorSettings: embeddedEditorSettings(),
+      }),
+    );
+
+    expect(store.sessionAvatarSeed("seeded")).toBe("prompt-seed");
+    expect(store.sessionAvatarSeed("legacy")).toBe("legacy");
+    store[Symbol.dispose]();
+  });
+
   it("shows child activity on the parent only while its family is collapsed", () => {
     const activities = new Map([
       ["parent", undefined],

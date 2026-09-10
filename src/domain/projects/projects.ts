@@ -380,6 +380,7 @@ export const describeWorkflowSession = Effect.fn("Projects.describeWorkflowSessi
         : undefined;
     const details: ProjectWorkflowSessionDetails = {
       sessionId: request.sessionId,
+      ...(existing?.avatarSeed ? { avatarSeed: existing.avatarSeed } : undefined),
       ...(existing?.model
         ? { model: existing.model }
         : preview?.model

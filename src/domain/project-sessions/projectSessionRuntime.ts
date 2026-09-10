@@ -1,8 +1,12 @@
 import * as sessionFamilies from "../session-families/sessionFamilies";
 import { Effect, Schema, Schedule } from "effect";
-import { setSessionFastMode } from "../application/application";
+import {
+  ensureProjectWorkflowSessionAvatarSeed,
+  setSessionFastMode,
+} from "../application/application";
 import { encodeCrossSessionMessage } from "../conversations/cross-session-coordination";
 import type { ProjectSessionLocation } from "./project-session-data";
+import { avatarSeedFromInitialPrompt } from "./projectSessionAvatar";
 import { makeSubagentControl } from "../subagents/subagentControl";
 import { generateSessionTitle, utilityModelSelection } from "../utility-work/utilityWork";
 import { Electron } from "../../services/electron/Electron";
@@ -205,12 +209,22 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
           : async (input, signal) => {
               const result = await run(
                 Effect.scoped(
-                  sessionFamilies.createChild(sessionId, location, input, (childId) =>
-                    acquireOptions({
-                      location,
-                      sessionId: childId,
-                      newSession: true,
-                    }),
+                  sessionFamilies.createChild(
+                    sessionId,
+                    location,
+                    input,
+                    (childId) =>
+                      acquireOptions({
+                        location,
+                        sessionId: childId,
+                        newSession: true,
+                      }),
+                    (childId) =>
+                      ensureProjectWorkflowSessionAvatarSeed(
+                        location.projectPath,
+                        childId,
+                        avatarSeedFromInitialPrompt(input.initialPrompt),
+                      ).pipe(Effect.asVoid),
                   ),
                 ),
                 { signal },

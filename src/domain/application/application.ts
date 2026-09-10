@@ -118,7 +118,12 @@ const mutateWorkflowValue = Effect.fn("Application.mutateWorkflowValue")(functio
         readonly sessionId: string;
         readonly statusId?: string;
       }
-    | { readonly _tag: "SetSessionDetails"; readonly details: ProjectWorkflowSessionDetails },
+    | { readonly _tag: "SetSessionDetails"; readonly details: ProjectWorkflowSessionDetails }
+    | {
+        readonly _tag: "EnsureSessionAvatarSeed";
+        readonly sessionId: string;
+        readonly seed: string;
+      },
 ) {
   if (mutation._tag === "AddColumn") {
     if (workflow.columns.length >= 20)
@@ -142,6 +147,19 @@ const mutateWorkflowValue = Effect.fn("Application.mutateWorkflowValue")(functio
         mutation.details,
       ],
     };
+  if (mutation._tag === "EnsureSessionAvatarSeed") {
+    const existing = workflow.sessionDetails.find(
+      (details) => details.sessionId === mutation.sessionId,
+    );
+    if (existing?.avatarSeed) return workflow;
+    return {
+      ...workflow,
+      sessionDetails: [
+        ...workflow.sessionDetails.filter((details) => details.sessionId !== mutation.sessionId),
+        { ...existing, sessionId: mutation.sessionId, avatarSeed: mutation.seed },
+      ],
+    };
+  }
   if (mutation._tag === "SetSessionStatus") {
     const assignments = workflow.assignments.filter(
       (assignment) => assignment.sessionId !== mutation.sessionId,
@@ -206,7 +224,12 @@ const mutateProjectWorkflowValue = Effect.fn("Application.mutateProjectWorkflowV
         readonly sessionId: string;
         readonly statusId?: string;
       }
-    | { readonly _tag: "SetSessionDetails"; readonly details: ProjectWorkflowSessionDetails },
+    | { readonly _tag: "SetSessionDetails"; readonly details: ProjectWorkflowSessionDetails }
+    | {
+        readonly _tag: "EnsureSessionAvatarSeed";
+        readonly sessionId: string;
+        readonly seed: string;
+      },
 ) {
   const owner = yield* ApplicationStateOwner;
   const state = yield* owner.transact((current) => {
@@ -249,6 +272,12 @@ export const setProjectWorkflowSessionDetails = Effect.fn(
   "Application.setProjectWorkflowSessionDetails",
 )((path: string, details: ProjectWorkflowSessionDetails) =>
   mutateProjectWorkflowValue(path, { _tag: "SetSessionDetails", details }),
+);
+
+export const ensureProjectWorkflowSessionAvatarSeed = Effect.fn(
+  "Application.ensureProjectWorkflowSessionAvatarSeed",
+)((path: string, sessionId: string, seed: string) =>
+  mutateProjectWorkflowValue(path, { _tag: "EnsureSessionAvatarSeed", sessionId, seed }),
 );
 
 export const removeProject = Effect.fn("Application.removeProject")(function* (path: string) {

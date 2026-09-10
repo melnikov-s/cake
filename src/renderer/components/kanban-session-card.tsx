@@ -3,6 +3,7 @@ import type { ProjectWorkflowColor } from "../../domain/application/application-
 import { ActionCard } from "./ui/action-card";
 import { Badge } from "./ui/badge";
 import { StatusSwatch } from "./ui/status-swatch";
+import { Avatar } from "./ui/avatar";
 
 export interface KanbanSessionCardProps {
   session: {
@@ -16,6 +17,8 @@ export interface KanbanSessionCardProps {
   model?: string;
   description?: string;
   status?: { name: string; color: ProjectWorkflowColor };
+  avatarSeed: string;
+  avatarsEnabled: boolean;
   busy: boolean;
   onOpen(): void;
   onDragStart(event: DragEvent<HTMLButtonElement>): void;
@@ -28,6 +31,8 @@ export function KanbanSessionCard({
   model,
   description,
   status,
+  avatarSeed,
+  avatarsEnabled,
   busy,
   onOpen,
   onDragStart,
@@ -38,6 +43,19 @@ export function KanbanSessionCard({
     <ActionCard
       data-session-id={session.sessionId}
       className="cursor-grab flex-col items-stretch gap-2.5 p-3 active:cursor-grabbing"
+      icon={
+        avatarsEnabled ? (
+          <Avatar
+            kind="session"
+            seed={avatarSeed}
+            statusColor={status?.color}
+            className="size-8"
+            title={status?.name ?? "No workflow status"}
+            role="img"
+            aria-label={status ? `Status: ${status.name}` : "No workflow status"}
+          />
+        ) : undefined
+      }
       title={session.title}
       description={description}
       descriptionClassName="whitespace-normal break-words leading-relaxed"
@@ -52,7 +70,7 @@ export function KanbanSessionCard({
           </Badge>
         ) : status ? (
           <span className="flex min-w-0 items-center gap-1 text-[10px] font-normal text-muted-foreground">
-            <StatusSwatch color={status.color} />
+            {!avatarsEnabled && <StatusSwatch color={status.color} />}
             <span className="truncate">{status.name}</span>
           </span>
         ) : undefined

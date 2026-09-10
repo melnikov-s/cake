@@ -12,7 +12,13 @@ import { PlusIcon, ResolveIcon } from "./ui/icons";
 import { Input } from "./ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 
-export const KanbanBoard = observer(function KanbanBoard({ store }: { store: KanbanStore }) {
+export const KanbanBoard = observer(function KanbanBoard({
+  store,
+  sessionAvatarsEnabled,
+}: {
+  store: KanbanStore;
+  sessionAvatarsEnabled: boolean;
+}) {
   const [dragItem, setDragItem] = useState<KanbanDragItem>();
   const [dragTargetColumnId, setDragTargetColumnId] = useState<KanbanColumnId>();
   const [addOpen, setAddOpen] = useState(false);
@@ -107,6 +113,7 @@ export const KanbanBoard = observer(function KanbanBoard({ store }: { store: Kan
           store={store}
           id="draft"
           title="Draft"
+          sessionAvatarsEnabled={sessionAvatarsEnabled}
           dragItem={dragItem}
           dropActive={dragTargetColumnId === "draft"}
           onDragItemChange={setDragItem}
@@ -116,6 +123,7 @@ export const KanbanBoard = observer(function KanbanBoard({ store }: { store: Kan
           store={store}
           id="active"
           title="Active"
+          sessionAvatarsEnabled={sessionAvatarsEnabled}
           dragItem={dragItem}
           dropActive={dragTargetColumnId === "active"}
           onDragItemChange={setDragItem}
@@ -129,6 +137,7 @@ export const KanbanBoard = observer(function KanbanBoard({ store }: { store: Kan
             title={column.name}
             color={column.color}
             customIndex={index}
+            sessionAvatarsEnabled={sessionAvatarsEnabled}
             dragItem={dragItem}
             dropActive={dragTargetColumnId === column.id}
             onDragItemChange={setDragItem}
@@ -139,6 +148,7 @@ export const KanbanBoard = observer(function KanbanBoard({ store }: { store: Kan
           store={store}
           id="resolved"
           title="Resolved"
+          sessionAvatarsEnabled={sessionAvatarsEnabled}
           dragItem={dragItem}
           dropActive={dragTargetColumnId === "resolved"}
           onDragItemChange={setDragItem}

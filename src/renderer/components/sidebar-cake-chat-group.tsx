@@ -94,6 +94,8 @@ export const SidebarCakeChatGroup = observer(function SidebarCakeChatGroup({
                 selected={selected}
                 resolved={resolved}
                 activity={running ? "running" : undefined}
+                avatarSeed={session.sessionId}
+                avatarsEnabled={false}
                 onOpen={onOpenCakeChat}
                 onRename={(sessionId, name) =>
                   void cakeChat.management.renameSession(sessionId, name)
