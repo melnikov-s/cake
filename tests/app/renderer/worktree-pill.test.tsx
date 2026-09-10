@@ -4,6 +4,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ChatTranscriptControlsContext } from "../../../src/renderer/components/chat-transcript-controls-context";
 import { WorktreePill } from "../../../src/renderer/components/worktree-pill";
 import type { WorktreeCreationStore } from "../../../src/renderer/stores/WorktreeCreationStore";
 import type { WorktreeStore } from "../../../src/renderer/stores/WorktreeStore";
@@ -95,19 +96,24 @@ describe("WorktreePill", () => {
     record?: WorktreeRecord,
     configurationMode?: "new-session" | "activate-draft" | "edit-draft",
     resolved = false,
+    scrollToBottom?: () => void,
   ) {
     act(() =>
       root.render(
-        <WorktreePill
-          creation={creation}
-          actions={actions}
-          record={record}
-          sessionId="session"
-          projectPath="/project"
-          resolved={resolved}
-          configurationMode={configurationMode}
-          onConfigured={vi.fn()}
-        />,
+        <ChatTranscriptControlsContext.Provider
+          value={scrollToBottom ? { scrollToBottom } : undefined}
+        >
+          <WorktreePill
+            creation={creation}
+            actions={actions}
+            record={record}
+            sessionId="session"
+            projectPath="/project"
+            resolved={resolved}
+            configurationMode={configurationMode}
+            onConfigured={vi.fn()}
+          />
+        </ChatTranscriptControlsContext.Provider>,
       ),
     );
   }
@@ -167,6 +173,17 @@ describe("WorktreePill", () => {
 
     render(actionStore({ aheadCount: 1, dirtyCount: 0 }));
     expect(button("Rebase")).toBeUndefined();
+  });
+
+  it("scrolls the chat to the bottom when starting a worktree command", () => {
+    const scrollToBottom = vi.fn();
+    const actions = actionStore({ aheadCount: 1, dirtyCount: 1 });
+    render(actions, undefined, undefined, false, scrollToBottom);
+
+    act(() => button("Commit & merge").click());
+
+    expect(actions.commitAndMerge).toHaveBeenCalledOnce();
+    expect(scrollToBottom).toHaveBeenCalledOnce();
   });
 
   it("does not derive draft worktree candidates for an existing session", () => {

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useContext, useState } from "react";
 import { observer } from "r-state-tree/react";
 import type { WorktreeCreationStore } from "../stores/WorktreeCreationStore";
 import type { WorktreeStore } from "../stores/WorktreeStore";
@@ -11,6 +11,7 @@ import {
   ConfirmationRequest,
   ConfirmationTitle,
 } from "./ai-elements/confirmation";
+import { ChatTranscriptControlsContext } from "./chat-transcript-controls-context";
 import { Button } from "./ui/button";
 import { DialogBackdrop } from "./ui/dialog";
 import { IconButton } from "./ui/icon-button";
@@ -62,6 +63,7 @@ export const WorktreePill = observer(function WorktreePill({
 }: WorktreePillProps) {
   const [existingOpen, setExistingOpen] = useState(false);
   const [confirmation, setConfirmation] = useState<ConfirmationKind>();
+  const transcriptControls = useContext(ChatTranscriptControlsContext);
   const { anchor: warningAnchor, hide: hideWarning, show: showWarning } = useTooltip();
   const { anchor: branchAnchor, hide: hideBranch, show: showBranch } = useTooltip();
   const choice = creation.choice(sessionId);
@@ -77,6 +79,7 @@ export const WorktreePill = observer(function WorktreePill({
   };
   const run = (operation: Promise<unknown>) => {
     setConfirmation(undefined);
+    transcriptControls?.scrollToBottom();
     void operation.catch(() => undefined);
   };
 

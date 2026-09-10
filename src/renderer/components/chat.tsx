@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { observer } from "r-state-tree/react";
 import { cn } from "@/lib/utils";
 import { AnnotationSummary } from "@/components/annotation-summary";
@@ -7,6 +7,7 @@ import { ChatComposerInput } from "@/components/chat-composer-input";
 import { ChatSubmitAction } from "@/components/chat-submit-action";
 import { ImagePreview } from "@/components/image-preview";
 import { ChatTranscript, type ChatTranscriptBehavior } from "@/components/chat-transcript";
+import { ChatTranscriptControlsContext } from "@/components/chat-transcript-controls-context";
 import { QueuedPrompts } from "@/components/queued-prompts";
 import { ScheduledPrompts } from "@/components/scheduled-prompts";
 import { RewordPromptDialog } from "@/components/reword-prompt-dialog";
@@ -135,6 +136,10 @@ export const Chat = observer(function Chat({
   }>();
   const composerVisible = store.composerVisible;
   const activatingDraft = store.isDraftSession && !store.editingMessage;
+  const transcriptControls = useMemo(
+    () => ({ scrollToBottom: () => transcriptRef.current?.scrollToBottom() }),
+    [],
+  );
   const submitMessage = async (value?: string) => {
     if (store.canSubmitValue(value)) void transcriptRef.current?.scrollToBottom();
     await store.submit(value);
@@ -338,31 +343,33 @@ export const Chat = observer(function Chat({
     </div>
   );
   return (
-    <div
-      ref={layoutRef}
-      data-slot="chat"
-      className={cn(
-        "relative grid h-full w-full max-w-full min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_auto] overflow-hidden",
-        compact && "chat-layout-compact",
-        className,
-      )}
-    >
-      <ChatTranscript
-        store={store}
-        behavior={transcriptBehavior}
-        empty={empty}
-        footer={footer}
-        error={error}
-        virtualized={!compact}
-        key={store.id}
-        ref={transcriptRef}
-      />
-      {!composerVisible && store.scheduledMessageInteraction.messages.length > 0 && (
-        <div className="border-t border-border bg-background px-6 py-2 max-[620px]:px-2.5">
-          <ScheduledPrompts store={store.scheduledMessageInteraction} />
-        </div>
-      )}
-      {composer}
-    </div>
+    <ChatTranscriptControlsContext.Provider value={transcriptControls}>
+      <div
+        ref={layoutRef}
+        data-slot="chat"
+        className={cn(
+          "relative grid h-full w-full max-w-full min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_auto] overflow-hidden",
+          compact && "chat-layout-compact",
+          className,
+        )}
+      >
+        <ChatTranscript
+          store={store}
+          behavior={transcriptBehavior}
+          empty={empty}
+          footer={footer}
+          error={error}
+          virtualized={!compact}
+          key={store.id}
+          ref={transcriptRef}
+        />
+        {!composerVisible && store.scheduledMessageInteraction.messages.length > 0 && (
+          <div className="border-t border-border bg-background px-6 py-2 max-[620px]:px-2.5">
+            <ScheduledPrompts store={store.scheduledMessageInteraction} />
+          </div>
+        )}
+        {composer}
+      </div>
+    </ChatTranscriptControlsContext.Provider>
   );
 });

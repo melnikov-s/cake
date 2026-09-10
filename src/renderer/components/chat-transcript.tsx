@@ -92,6 +92,7 @@ export const ChatTranscript = observer(function ChatTranscript({
   });
   const atBottom = useRef(!restoredScrollPosition || restoredScrollPosition.kind === "bottom");
   const scrollToBottom = useCallback(() => {
+    atBottom.current = true;
     if (virtualized)
       virtuosoRef.current?.scrollToIndex({ index: "LAST", align: "end", behavior: "auto" });
     else void scrollCompactToBottom("instant");
