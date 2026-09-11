@@ -373,9 +373,10 @@ export async function createCakeRuntimeCapabilities(input: {
   options: CakeRuntimeOptions;
   agentDir: string;
   settingsManager: SettingsManager;
-  fastModeExtension: InlineExtension;
+  /** Cake-owned in-process extensions that shape provider requests. */
+  requestExtensions: readonly InlineExtension[];
 }): Promise<CakeRuntimeCapabilities> {
-  const { options, agentDir, settingsManager, fastModeExtension } = input;
+  const { options, agentDir, settingsManager, requestExtensions } = input;
   const persistArtifact =
     options.persistArtifact ??
     (async (artifact: CakeArtifactV1) =>
@@ -1012,7 +1013,7 @@ export async function createCakeRuntimeCapabilities(input: {
               agentDir,
               settingsManager,
               extensionFactories: [
-                fastModeExtension,
+                ...requestExtensions,
                 createCakeGatewayExtension((pi) =>
                   filterRuntimeOperations([
                     ...localOperations(),
@@ -1067,7 +1068,7 @@ export async function createCakeRuntimeCapabilities(input: {
               noThemes: options.auxiliary,
               noContextFiles: options.isolatedSystemPrompt !== undefined,
               extensionFactories: [
-                fastModeExtension,
+                ...requestExtensions,
                 createCakeGatewayExtension((pi) =>
                   filterRuntimeOperations([
                     ...localOperations(),

@@ -57,6 +57,7 @@ import { createCakeRuntimeTurnController } from "./cake-runtime-turn-controller"
 import { createCakeRuntimeRecovery } from "./cake-runtime-recovery";
 import { createCakeRuntimeResourceLifecycle } from "./cake-runtime-resources";
 import { createCakeRuntimeCapabilities, type GlobalControlTool } from "./cake-runtime-capabilities";
+import { createPromptCacheLineage } from "./prompt-cache-lineage";
 import {
   createCakeRuntimeConfiguration,
   createCakeRuntimeConfigurationState,
@@ -270,11 +271,12 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     modelsStorePath: `${agentDir}/models-cache.json`,
   });
   const configurationState = createCakeRuntimeConfigurationState(options.fastMode);
+  const promptCacheLineage = createPromptCacheLineage();
   const capabilities = await createCakeRuntimeCapabilities({
     options,
     agentDir,
     settingsManager,
-    fastModeExtension: configurationState.fastModeExtension,
+    requestExtensions: [configurationState.fastModeExtension, promptCacheLineage.extension],
   });
   const sessionDir = options.globalControl
     ? resolve(options.sessionDir)
@@ -328,6 +330,12 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
   const cakeSessionId = session.sessionManager.getSessionId();
   configurationState.attachModel(session.model);
   capabilities.setSessionId(cakeSessionId);
+  // Ancestors of a Working Directory fork live under sibling workspace session
+  // directories, so lineage resolution is bounded by the shared session root.
+  await promptCacheLineage.attach({
+    sessionManager: session.sessionManager,
+    sessionRoot: resolve(options.sessionDir),
+  });
   let disposed = false;
   let disposePromise: Promise<void> | undefined;
   const emitPart = (part: UiPart) =>

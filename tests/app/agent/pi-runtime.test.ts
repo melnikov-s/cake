@@ -2157,6 +2157,206 @@ describe("S1 Pi runtime", () => {
     expect((await runtime.snapshot()).piSettings?.reloadPending).toBe(false);
   });
 
+  it("routes a fork's provider requests with the source session's prompt cache key", async () => {
+    const directory = await createTemporaryDirectory();
+    const agentDir = join(directory, "agent");
+    const sessionDir = join(directory, "sessions");
+    const requestBodies: Array<Record<string, unknown>> = [];
+    const server = createServer((request, response) => {
+      let body = "";
+      request.on("data", (chunk) => {
+        body += String(chunk);
+      });
+      request.on("end", () => {
+        requestBodies.push(JSON.parse(body));
+        response.writeHead(200, { "content-type": "text/event-stream" });
+        const item = {
+          type: "message",
+          id: "msg_1",
+          role: "assistant",
+          status: "completed",
+          content: [{ type: "output_text", text: "Acknowledged.", annotations: [] }],
+        };
+        for (const event of [
+          { type: "response.created", response: { id: "resp_1" } },
+          { type: "response.output_item.added", output_index: 0, item: { ...item, content: [] } },
+          {
+            type: "response.output_text.delta",
+            output_index: 0,
+            content_index: 0,
+            delta: "Acknowledged.",
+          },
+          { type: "response.output_item.done", output_index: 0, item },
+          {
+            type: "response.completed",
+            response: {
+              id: "resp_1",
+              status: "completed",
+              output: [item],
+              usage: { input_tokens: 10, output_tokens: 2, total_tokens: 12 },
+            },
+          },
+        ])
+          response.write(`data: ${JSON.stringify(event)}\n\n`);
+        response.end();
+      });
+    });
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", resolve);
+    });
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("Expected a TCP test server");
+    await mkdir(join(agentDir, "extensions"), { recursive: true });
+    await writeFile(
+      join(agentDir, "extensions", "fixture-provider.ts"),
+      `export default function (pi) { pi.registerProvider("fixture-responses", ${JSON.stringify({
+        name: "Fixture responses provider",
+        baseUrl: `http://127.0.0.1:${(address as AddressInfo).port}/v1`,
+        apiKey: "fixture",
+        api: "openai-responses",
+        models: [
+          {
+            id: "fixture-model",
+            name: "Fixture model",
+            reasoning: false,
+            input: ["text"],
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+            contextWindow: 4_096,
+            maxTokens: 1_024,
+          },
+        ],
+      })}); }\n`,
+    );
+
+    try {
+      const source = await createCakeRuntime({
+        cwd: directory,
+        agentDir,
+        sessionDir,
+        trusted: true,
+        newSession: true,
+        requestUi: async () => undefined,
+        onEvent: () => undefined,
+      });
+      runtimes.push(source);
+      await source.setModel("fixture-responses", "fixture-model");
+      await source.prompt("First question", "prompt", []);
+      expect(requestBodies).toHaveLength(1);
+      expect(requestBodies[0]?.prompt_cache_key).toBe(source.sessionId);
+
+      const forkPoint = (await source.snapshot()).tree.at(-1)?.id;
+      if (!forkPoint) throw new Error("Expected a fork point");
+      const fork = await source.fork(forkPoint, "Forked");
+      const forked = await createCakeRuntime({
+        cwd: directory,
+        agentDir,
+        sessionDir,
+        sessionId: fork.sessionId,
+        trusted: true,
+        requestUi: async () => undefined,
+        onEvent: () => undefined,
+      });
+      runtimes.push(forked);
+      expect(forked.sessionId).toBe(fork.sessionId);
+
+      // The fork's first request shares its whole prefix with the source, so it
+      // must land on the same provider cache shard: same key as the source.
+      await forked.prompt("Continue in the fork", "prompt", []);
+      expect(requestBodies).toHaveLength(2);
+      expect(requestBodies[1]?.prompt_cache_key).toBe(source.sessionId);
+      expect(requestBodies[1]?.prompt_cache_key).not.toBe(fork.sessionId);
+
+      // The source itself is unaffected and keeps its own key.
+      await source.prompt("Continue in the source", "prompt", []);
+      expect(requestBodies).toHaveLength(3);
+      expect(requestBodies[2]?.prompt_cache_key).toBe(source.sessionId);
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
+  });
+
+  it("forks into a separate session file without repointing the live source runtime", async () => {
+    const directory = await createTemporaryDirectory();
+    const agentDir = join(directory, "agent");
+    const sessionDir = join(directory, "sessions");
+    const source = SessionManager.create(
+      directory,
+      cakeWorkspaceSessionDirectory(directory, sessionDir),
+    );
+    source.appendMessage({ role: "user", content: "Hello", timestamp: Date.now() });
+    const forkPointId = source.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: "Hi" }],
+      api: "anthropic-messages",
+      provider: "anthropic",
+      model: "fixture",
+      usage: zeroUsage,
+      stopReason: "stop",
+      timestamp: Date.now(),
+    });
+    source.appendMessage({ role: "user", content: "Keep going", timestamp: Date.now() });
+    const sourceSessionId = source.getSessionId();
+    const sourceSessionFile = source.getSessionFile()!;
+
+    const runtime = await createCakeRuntime({
+      cwd: directory,
+      agentDir,
+      sessionDir,
+      sessionId: sourceSessionId,
+      trusted: false,
+      requestUi: async () => undefined,
+      onEvent: () => undefined,
+    });
+    runtimes.push(runtime);
+
+    const fork = await runtime.fork(forkPointId, "Forked copy");
+
+    // The fork is a distinct persisted Pi Session branched at the fork point.
+    expect(fork.sessionId).not.toBe(sourceSessionId);
+    expect(fork.sessionFile).not.toBe(sourceSessionFile);
+    const forked = SessionManager.open(
+      fork.sessionFile,
+      cakeWorkspaceSessionDirectory(directory, sessionDir),
+      directory,
+    );
+    expect(forked.getSessionId()).toBe(fork.sessionId);
+    expect(forked.getSessionName()).toBe("Forked copy");
+    expect(forked.getHeader()?.parentSession).toBe(sourceSessionFile);
+    expect(projectSessionEntries(forked.getBranch())).not.toContainEqual(
+      expect.objectContaining({ kind: "text", role: "user", text: "Keep going" }),
+    );
+
+    // The live source runtime keeps its own identity, file, and tree so that
+    // continuing to chat in the source (and its prompt cache key) still targets
+    // the source session rather than the fork.
+    expect(runtime.sessionId).toBe(sourceSessionId);
+    expect(runtime.sessionFile).toBe(sourceSessionFile);
+    const snapshot = await runtime.snapshot();
+    expect(snapshot.sessionId).toBe(sourceSessionId);
+    expect(snapshot.sessionFile).toBe(sourceSessionFile);
+    expect(snapshot.parts).toContainEqual(
+      expect.objectContaining({ kind: "text", role: "user", text: "Keep going" }),
+    );
+
+    await runtime.rename("Source renamed after fork");
+    const sourceEntries = SessionManager.open(
+      sourceSessionFile,
+      cakeWorkspaceSessionDirectory(directory, sessionDir),
+      directory,
+    );
+    expect(sourceEntries.getSessionName()).toBe("Source renamed after fork");
+    expect(
+      SessionManager.open(
+        fork.sessionFile,
+        cakeWorkspaceSessionDirectory(directory, sessionDir),
+        directory,
+      ).getSessionName(),
+    ).toBe("Forked copy");
+  });
+
   it("tool-compacts onto a clean branch while keeping the live Pi Session identity", async () => {
     const directory = await createTemporaryDirectory();
     const agentDir = join(directory, "agent");

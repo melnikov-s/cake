@@ -1,4 +1,5 @@
-import type { AgentSession } from "@earendil-works/pi-coding-agent";
+import { SessionManager, type AgentSession } from "@earendil-works/pi-coding-agent";
+import { existsSync } from "node:fs";
 import type { JsonValue } from "../../../ipc/json-contract";
 import { SESSION_TITLE_MAX_LENGTH, type UtilityModel } from "../../../ipc/session-contract";
 import type { CakeRuntimeOptions } from "./cake-runtime";
@@ -122,10 +123,24 @@ export function createCakeRuntimeContinuations(input: {
     },
     rename,
     async fork(entryId, title) {
-      const sessionFile = session.sessionManager.createBranchedSession(entryId);
+      const sourceSessionFile = session.sessionFile;
+      if (!sourceSessionFile || !existsSync(sourceSessionFile))
+        throw new Error(
+          "This session has not been saved yet. Wait for the first assistant response before forking it.",
+        );
+      // Branch a separate SessionManager opened on the source file, as Pi's own
+      // AgentSessionRuntime.fork() does. Branching the live session manager in
+      // place would repoint this still-running source runtime at the fork's
+      // file while its Agent keeps the source session ID (and prompt cache key).
+      const forked = SessionManager.open(
+        sourceSessionFile,
+        session.sessionManager.getSessionDir(),
+        options.cwd,
+      );
+      const sessionFile = forked.createBranchedSession(entryId);
       if (!sessionFile) throw new Error("The current session is not persisted");
-      session.sessionManager.appendSessionInfo(title);
-      return { sessionId: session.sessionManager.getSessionId(), sessionFile };
+      forked.appendSessionInfo(title);
+      return { sessionId: forked.getSessionId(), sessionFile };
     },
     async toolCompact(entryId) {
       const configuration = session.model
