@@ -11,7 +11,7 @@ import { SessionOperationCoordinatorStore } from "../../../../src/renderer/store
 import { mountWithClient } from "../mount-with-client";
 
 describe("ProjectSessionStore", () => {
-  it("restores a resolved session before delivering its next message", async () => {
+  it("restores a resolved session before delivering a message or changing its model", async () => {
     const calls: string[] = [];
     const ensureSessionActive = vi.fn(async () => {
       calls.push("restore");
@@ -19,6 +19,9 @@ describe("ProjectSessionStore", () => {
     });
     const prompt = vi.fn(async () => {
       calls.push("prompt");
+    });
+    const setModel = vi.fn(async () => {
+      calls.push("model");
     });
     const models = RootProjection.create();
     const model = models.projectSession("resolved-session", "/project");
@@ -62,7 +65,7 @@ describe("ProjectSessionStore", () => {
         retirement: { prepare: async () => true },
         onResolveWorktree: () => undefined,
       }),
-      { projectSessions: { prompt } } as unknown as Client,
+      { projectSessions: { prompt, setModel } } as unknown as Client,
     );
 
     const submission = session.conversationSessionStore.chatStore.submit("Continue");
@@ -79,7 +82,19 @@ describe("ProjectSessionStore", () => {
     await expect(submission).resolves.toBe(true);
 
     expect(calls).toEqual(["restore", "prompt"]);
-    expect(ensureSessionActive).toHaveBeenCalledOnce();
+
+    model.resolved = true;
+    const selection =
+      session.conversationSessionStore.configurationStore.selectModel("openai/gpt-5");
+    await Promise.resolve();
+    expect(setModel).not.toHaveBeenCalled();
+
+    model.resolved = false;
+    model.observedSnapshotRevision += 1;
+    await selection;
+
+    expect(calls).toEqual(["restore", "prompt", "restore", "model"]);
+    expect(ensureSessionActive).toHaveBeenCalledTimes(2);
     root[Symbol.dispose]();
     operations[Symbol.dispose]();
     models[Symbol.dispose]();

@@ -341,24 +341,32 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
         setPendingConfiguration: (configuration) =>
           this.props.pendingSessions.conversation(this.sessionId)?.setConfiguration(configuration),
         setConfiguration: (configuration) =>
-          this.client.projectSessions.applyConfiguration(
-            { sessionId: this.sessionId, configuration },
-            { signal: this.signal },
+          this.configureActiveSession(() =>
+            this.client.projectSessions.applyConfiguration(
+              { sessionId: this.sessionId, configuration },
+              { signal: this.signal },
+            ),
           ),
         setModel: (provider, modelId) =>
-          this.client.projectSessions.setModel(
-            { sessionId: this.sessionId, provider, modelId },
-            { signal: this.signal },
+          this.configureActiveSession(() =>
+            this.client.projectSessions.setModel(
+              { sessionId: this.sessionId, provider, modelId },
+              { signal: this.signal },
+            ),
           ),
         setThinkingLevel: (level) =>
-          this.client.projectSessions.setThinkingLevel(
-            { sessionId: this.sessionId, level },
-            { signal: this.signal },
+          this.configureActiveSession(() =>
+            this.client.projectSessions.setThinkingLevel(
+              { sessionId: this.sessionId, level },
+              { signal: this.signal },
+            ),
           ),
         setFastMode: (enabled) =>
-          this.client.projectSessions.setFastMode(
-            { sessionId: this.sessionId, enabled },
-            { signal: this.signal },
+          this.configureActiveSession(() =>
+            this.client.projectSessions.setFastMode(
+              { sessionId: this.sessionId, enabled },
+              { signal: this.signal },
+            ),
           ),
       },
       chat: {
@@ -411,12 +419,8 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
     try {
       if (pendingNewSession && !(await this.props.prepareNewSession(input.text))) return false;
       if (!pendingNewSession) {
-        const observedSnapshotRevision = this.model.observedSnapshotRevision;
-        const active = this.props.ensureSessionActive();
-        if (active !== true) {
-          if (!(await active)) return false;
-          if (!(await this.waitForActiveProjection(observedSnapshotRevision))) return false;
-        }
+        const active = this.ensureActiveProjection();
+        if (active !== true && !(await active)) return false;
       }
       const newSession = this.props.newSessionRequest();
       if (newSession) {
@@ -456,7 +460,23 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
     }
   }
 
-  /** Keeps the optimistic message and loading response visible until live observation is attached. */
+  private async configureActiveSession(command: () => Promise<void>) {
+    const active = this.ensureActiveProjection();
+    if (active !== true && !(await active)) return;
+    await command();
+  }
+
+  private ensureActiveProjection(): boolean | Promise<boolean> {
+    const observedSnapshotRevision = this.model.observedSnapshotRevision;
+    const active = this.props.ensureSessionActive();
+    if (active === true) return true;
+    if (active === false) return false;
+    return active.then((restored) =>
+      restored ? this.waitForActiveProjection(observedSnapshotRevision) : false,
+    );
+  }
+
+  /** Keeps pending interaction state visible until live observation is attached. */
   private waitForActiveProjection(afterRevision: number): Promise<boolean> {
     if (!this.model.resolved && this.model.observedSnapshotRevision > afterRevision)
       return Promise.resolve(true);

@@ -63,12 +63,8 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
         toolCompactSession: (entryId, prompt) =>
           this.props.management.toolCompact(this.sessionId, entryId, prompt),
         deliver: async (input) => {
-          const observedSnapshotRevision = this.model.observedSnapshotRevision;
-          const active = this.props.management.ensureSessionActive(this.sessionId);
-          if (active !== true) {
-            if (!(await active)) return false;
-            if (!(await this.waitForActiveProjection(observedSnapshotRevision))) return false;
-          }
+          const active = this.ensureActiveProjection();
+          if (active !== true && !(await active)) return false;
           const target = this.props.target();
           const newSession = this.props.pendingSessions.newSessionRequest(this.sessionId);
           const prompt = {
@@ -120,24 +116,32 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
         setPendingConfiguration: (configuration) =>
           this.props.pendingSessions.conversation(this.sessionId)?.setConfiguration(configuration),
         setConfiguration: (configuration) =>
-          this.client.cakeChats.applyConfiguration(
-            { ...this.props.target(), configuration },
-            { signal: this.signal },
+          this.configureActiveSession(() =>
+            this.client.cakeChats.applyConfiguration(
+              { ...this.props.target(), configuration },
+              { signal: this.signal },
+            ),
           ),
         setModel: (provider, modelId) =>
-          this.client.cakeChats.setModel(
-            { ...this.props.target(), provider, modelId },
-            { signal: this.signal },
+          this.configureActiveSession(() =>
+            this.client.cakeChats.setModel(
+              { ...this.props.target(), provider, modelId },
+              { signal: this.signal },
+            ),
           ),
         setThinkingLevel: (level) =>
-          this.client.cakeChats.setThinkingLevel(
-            { ...this.props.target(), level },
-            { signal: this.signal },
+          this.configureActiveSession(() =>
+            this.client.cakeChats.setThinkingLevel(
+              { ...this.props.target(), level },
+              { signal: this.signal },
+            ),
           ),
         setFastMode: (enabled) =>
-          this.client.cakeChats.setFastMode(
-            { ...this.props.target(), enabled },
-            { signal: this.signal },
+          this.configureActiveSession(() =>
+            this.client.cakeChats.setFastMode(
+              { ...this.props.target(), enabled },
+              { signal: this.signal },
+            ),
           ),
       },
       chat: {
@@ -164,7 +168,22 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
     });
   }
 
-  /** Keeps the optimistic message and loading response visible until live observation is attached. */
+  private async configureActiveSession(command: () => Promise<void>) {
+    const active = this.ensureActiveProjection();
+    if (active !== true && !(await active)) return;
+    await command();
+  }
+
+  private ensureActiveProjection(): boolean | Promise<boolean> {
+    const observedSnapshotRevision = this.model.observedSnapshotRevision;
+    const active = this.props.management.ensureSessionActive(this.sessionId);
+    if (active === true) return true;
+    return active.then((restored) =>
+      restored ? this.waitForActiveProjection(observedSnapshotRevision) : false,
+    );
+  }
+
+  /** Keeps pending interaction state visible until live observation is attached. */
   private waitForActiveProjection(afterRevision: number): Promise<boolean> {
     if (!this.model.resolved && this.model.observedSnapshotRevision > afterRevision)
       return Promise.resolve(true);

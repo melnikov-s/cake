@@ -9,13 +9,16 @@ import { RootProjection } from "../../../../src/renderer/models/RootProjection";
 import { Message } from "../../../../src/renderer/models/Message";
 
 describe("CakeChatCollectionStore", () => {
-  it("restores a resolved Cake Chat before delivering its next message", async () => {
+  it("restores a resolved Cake Chat before delivering a message or changing its model", async () => {
     const calls: string[] = [];
     const restore = vi.fn(async () => {
       calls.push("restore");
     });
     const prompt = vi.fn(async () => {
       calls.push("prompt");
+    });
+    const setModel = vi.fn(async () => {
+      calls.push("model");
     });
     const catalog = CakeChatCatalog.create({
       loaded: true,
@@ -37,7 +40,7 @@ describe("CakeChatCollectionStore", () => {
         sessionModel: (sessionId) => models.cakeChat(sessionId),
         tools: () => [],
       }),
-      { cakeChats: { restore, prompt } } as unknown as Client,
+      { cakeChats: { restore, prompt, setModel } } as unknown as Client,
     );
     const session = store.registry.load("resolved-chat");
     session.model.resolved = true;
@@ -60,6 +63,19 @@ describe("CakeChatCollectionStore", () => {
       { sessionId: "resolved-chat", tools: [] },
       expect.anything(),
     );
+
+    session.model.resolved = true;
+    const selection =
+      session.conversationSessionStore.configurationStore.selectModel("openai/gpt-5");
+    await Promise.resolve();
+    expect(setModel).not.toHaveBeenCalled();
+
+    session.model.resolved = false;
+    session.model.observedSnapshotRevision += 1;
+    await selection;
+
+    expect(calls).toEqual(["restore", "prompt", "restore", "model"]);
+    expect(restore).toHaveBeenCalledTimes(2);
     root[Symbol.dispose]();
     catalog[Symbol.dispose]();
     models[Symbol.dispose]();
