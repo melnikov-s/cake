@@ -1,4 +1,10 @@
-import { ModelRuntime } from "@earendil-works/pi-coding-agent";
+import {
+  createAgentSession,
+  DefaultResourceLoader,
+  ModelRuntime,
+  SessionManager,
+  SettingsManager,
+} from "@earendil-works/pi-coding-agent";
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai/compat";
 import type { SimpleStreamOptions } from "@earendil-works/pi-ai";
 import { Cache, Clock, Duration, Effect, Exit, Layer } from "effect";
@@ -105,6 +111,56 @@ export const makeSessionlessRuntimeCache = Effect.fn("PiModelsLive.makeRuntimeCa
   });
 });
 
+/**
+ * Build the process-wide catalog runtime and let the agent-directory extensions
+ * register their providers on it, so the deferred-chat picker and bounded
+ * completions see the same providers a runtime-backed session does.
+ *
+ * Extension `registerProvider` calls are queued at load and flushed only when a
+ * session binds the extension runner to a runtime; pi 0.84 exposes no lighter
+ * path. A throwaway in-memory session is opened against this runtime and
+ * disposed. Disposal does not unregister providers, so they outlive it.
+ *
+ * `cwd` is the agent directory rather than the process cwd, so no project's
+ * `.pi/` is consulted: project extensions belong to project sessions, not the
+ * shared catalog. Extension loading is best-effort — a failure leaves the
+ * built-in catalog rather than no catalog.
+ */
+export async function createSessionlessRuntime(agentDirectory: string): Promise<ModelRuntime> {
+  const modelRuntime = await ModelRuntime.create({
+    authPath: `${agentDirectory}/auth.json`,
+    modelsPath: `${agentDirectory}/models.json`,
+    modelsStorePath: `${agentDirectory}/models-cache.json`,
+  });
+  try {
+    const settingsManager = SettingsManager.create(agentDirectory, agentDirectory, {
+      projectTrusted: true,
+    });
+    const resourceLoader = new DefaultResourceLoader({
+      cwd: agentDirectory,
+      agentDir: agentDirectory,
+      settingsManager,
+      noSkills: true,
+      noPromptTemplates: true,
+      noThemes: true,
+      noContextFiles: true,
+    });
+    await resourceLoader.reload({ resolveProjectTrust: async () => true });
+    const { session } = await createAgentSession({
+      cwd: agentDirectory,
+      agentDir: agentDirectory,
+      modelRuntime,
+      resourceLoader,
+      settingsManager,
+      sessionManager: SessionManager.inMemory(),
+    });
+    session.dispose();
+  } catch {
+    // Built-in catalog only.
+  }
+  return modelRuntime;
+}
+
 export const makePiModelsLive = (agentDirectory: string) =>
   Layer.effect(
     PiModels,
@@ -116,12 +172,7 @@ export const makePiModelsLive = (agentDirectory: string) =>
       // 0.84 exposes no disposal operation and Cake persists no projection.
       const runtimes = yield* makeSessionlessRuntimeCache(
         Effect.tryPromise({
-          try: () =>
-            ModelRuntime.create({
-              authPath: `${agentDirectory}/auth.json`,
-              modelsPath: `${agentDirectory}/models.json`,
-              modelsStorePath: `${agentDirectory}/models-cache.json`,
-            }),
+          try: () => createSessionlessRuntime(agentDirectory),
           catch: (cause) => cause,
         }),
       );
