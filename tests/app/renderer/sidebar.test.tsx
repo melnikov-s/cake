@@ -208,6 +208,37 @@ describe("Sidebar projects", () => {
     expect(container.textContent).not.toContain("Show more");
   });
 
+  it("shows every active session in project focus while keeping resolved sessions paginated", () => {
+    const sessions = (resolved: boolean) =>
+      Array.from({ length: 11 }, (_, index) => ({
+        sessionId: `${resolved ? "resolved" : "active"}-${index + 1}`,
+        title: `${resolved ? "Resolved" : "Active"} session ${index + 1}`,
+        modifiedAt: new Date(index).toISOString(),
+      }));
+    const store = {
+      recentProjectPaths: ["/work/cake"],
+      projects: [{ path: "/work/cake", name: "Cake" }],
+      focusModeProjectPath: "/work/cake",
+      projectSessions: (_path: string, resolved = false) => sessions(resolved),
+      sessionLimit: () => 10,
+      showMoreSessions: vi.fn(),
+      sessionActivity: vi.fn(),
+      sessionActivityTime: vi.fn(() => "Today"),
+      nameFromPath: () => "cake",
+      resolvedLaneExpanded: true,
+    } as unknown as ProjectWorkbenchStore;
+
+    act(() =>
+      root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onToggle={vi.fn()} />),
+    );
+
+    const groups = container.querySelectorAll<HTMLElement>('[data-slot="project-group"]');
+    expect(groups[0]?.querySelectorAll("[data-session-id]")).toHaveLength(11);
+    expect(groups[0]?.textContent).not.toContain("Show more");
+    expect(groups[1]?.querySelectorAll("[data-session-id]")).toHaveLength(10);
+    expect(groups[1]?.textContent).toContain("Show more");
+  });
+
   it("shows waiting, running, ready-unread, and error indicators for sessions", () => {
     const store = {
       recentProjectPaths: ["/work/cake"],

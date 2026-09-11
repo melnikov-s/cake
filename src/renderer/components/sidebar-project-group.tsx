@@ -51,7 +51,8 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
   const [projectAction, setProjectAction] = useState<ProjectAction>();
   const [actionBusy, setActionBusy] = useState(false);
   const sessions = store.projectSessions(path, resolved);
-  const visibleSessions = store.visibleProjectSessions(path, resolved);
+  const visibleSessions =
+    focusMode && !resolved ? sessions : store.visibleProjectSessions(path, resolved);
   const expanded =
     flattenSessions ||
     (focusMode && !resolved) ||
@@ -59,7 +60,7 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
   const empty = sessions.length === 0;
   const hasMore = resolved
     ? store.hasMoreResolvedProjectSessions(path)
-    : sessions.length > visibleSessions.length;
+    : !focusMode && sessions.length > visibleSessions.length;
   return (
     <div
       data-slot="project-group"
