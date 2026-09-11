@@ -178,9 +178,8 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
     windows.set(window.id, window);
     window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     window.webContents.on("before-input-event", (event, input) => {
-      // macOS reserves Command+Backquote for window cycling, so it never reaches the renderer.
-      // Claim that physical key here and forward it through the validated native-event stream so
-      // both the configurable hotkey dispatcher and recorder can handle it.
+      // Native Command+Backquote is claimed by the application-menu accelerator below. Keep this
+      // fallback for Backquote input delivered directly to Chromium and for modifier variants.
       if (process.platform !== "darwin" || !input.meta || input.code !== "Backquote") return;
       event.preventDefault();
       if (input.type !== "keyDown" || input.isAutoRepeat) return;
@@ -330,11 +329,29 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
             },
             {
               label: "Toggle Terminal",
-              click: () => {
+              // macOS handles Command+Backquote in the application menu before Chromium's
+              // `before-input-event`. Keep a native accelerator here so Cake receives it.
+              ...(process.platform === "darwin" ? { accelerator: "CommandOrControl+`" } : null),
+              click: (_menuItem, _window, event) => {
                 const focused = BrowserWindow.getFocusedWindow();
                 const target =
                   focused && windows.has(focused.id) ? focused : [...windows.values()].at(-1);
-                if (target) sendTo(target.webContents, { type: "terminal-toggle-requested" });
+                if (!target) return;
+                if (process.platform === "darwin" && event.triggeredByAccelerator) {
+                  sendTo(target.webContents, {
+                    type: "application-hotkey-input",
+                    key: "`",
+                    code: "Backquote",
+                    metaKey: true,
+                    ctrlKey: false,
+                    altKey: false,
+                    shiftKey: false,
+                    repeat: false,
+                    isComposing: false,
+                  });
+                  return;
+                }
+                sendTo(target.webContents, { type: "terminal-toggle-requested" });
               },
             },
             ...windowMenuTail,
