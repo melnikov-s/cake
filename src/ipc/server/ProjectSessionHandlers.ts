@@ -78,6 +78,10 @@ export const projectSessionHandlers = ProjectSessionRpc.of({
     projectSessionOperations.listQueuedMessages(target),
   "projectSessions.clearQueue": (target) => projectSessionOperations.clearQueue(target),
   "projectSessions.cancelSteering": (target) => projectSessionOperations.cancelSteering(target),
+  "projectSessions.removeQueuedMessage": ({ partId, ...target }) =>
+    projectSessionOperations.removeQueuedMessage(target, partId),
+  "projectSessions.steerQueuedMessage": ({ partId, ...target }) =>
+    projectSessionOperations.steerQueuedMessage(target, partId),
   "projectSessions.compact": ({ instructions, ...target }) =>
     projectSessionOperations.compact(target, instructions),
   "projectSessions.editMessage": (input) => projectSessionOperations.editMessage(input),

@@ -1,3 +1,25 @@
+import type { ScheduledMessageOrigin } from "../domain/scheduled-messages/scheduled-message-envelope";
+
+export interface ScheduledOriginDescription {
+  /** Compact clock-time summary for inline labels. */
+  summary: string;
+  /** Full local timestamps for hover text. */
+  detail: string;
+}
+
+const clock = (iso: string) =>
+  new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+/** Describes when a delivered scheduled message was created and when its schedule fired. */
+export function describeScheduledOrigin(
+  origin: Pick<ScheduledMessageOrigin, "createdAt" | "sendAt">,
+): ScheduledOriginDescription {
+  return {
+    summary: `scheduled ${clock(origin.createdAt)} · sent ${clock(origin.sendAt)}`,
+    detail: `Scheduled ${new Date(origin.createdAt).toLocaleString()} · sent ${new Date(origin.sendAt).toLocaleString()}`,
+  };
+}
+
 export interface ParsedScheduledMessage {
   sendAt: string;
   text: string;

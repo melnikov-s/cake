@@ -6,6 +6,7 @@ import {
 } from "../domain/application/application-data";
 import { artifactRecordSchema } from "./artifact-contract";
 import { CrossSessionMessageMetadata } from "../domain/conversations/cross-session-coordination";
+import { ScheduledMessageOrigin } from "../domain/scheduled-messages/scheduled-message-envelope";
 import { ipcProjectionArray, ipcProjectionString } from "./projection";
 import { sourceLocationSchema } from "./source-location";
 
@@ -219,6 +220,7 @@ export const uiPartSchema = Schema.Union([
     deliveryState: Schema.optional(Schema.Literals(["sending", "queued", "steering"])),
     draft: Schema.optional(Schema.Boolean),
     crossSession: Schema.optional(CrossSessionMessageMetadata),
+    scheduled: Schema.optional(ScheduledMessageOrigin),
   }),
   Schema.Struct({
     ...partBase,

@@ -104,6 +104,8 @@ const makeLayer = (
     listQueuedMessages: async () => ({ steering: [], followUp: [] }),
     clearQueue: async () => ({ steering: [], followUp: [] }),
     cancelSteering: async () => ({ steering: [], followUp: [] }),
+    removeQueuedMessage: async () => ({ steering: [], followUp: [] }),
+    steerQueuedMessage: async () => ({ steering: [], followUp: [] }),
     prompt: async () => {
       options.onEvent({ type: "streaming", sessionId: snapshot.sessionId, streaming: false });
     },

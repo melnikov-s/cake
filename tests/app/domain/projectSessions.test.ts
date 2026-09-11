@@ -87,6 +87,8 @@ const fakeRuntime = (
   listQueuedMessages: async () => ({ steering: [], followUp: [] }),
   clearQueue: async () => ({ steering: [], followUp: [] }),
   cancelSteering: async () => ({ steering: [], followUp: [] }),
+  removeQueuedMessage: async () => ({ steering: [], followUp: [] }),
+  steerQueuedMessage: async () => ({ steering: [], followUp: [] }),
   prompt: async (_text, delivery) => {
     onOperation?.(delivery);
     await prompt();

@@ -133,6 +133,8 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (): Effect.
       listQueuedMessages: async () => ({ steering: [], followUp: [] }),
       clearQueue: async () => ({ steering: [], followUp: [] }),
       cancelSteering: async () => ({ steering: [], followUp: [] }),
+      removeQueuedMessage: async () => ({ steering: [], followUp: [] }),
+      steerQueuedMessage: async () => ({ steering: [], followUp: [] }),
       prompt: async () => {
         if (isParent) return;
         const gate = Deferred.makeUnsafe<void>();

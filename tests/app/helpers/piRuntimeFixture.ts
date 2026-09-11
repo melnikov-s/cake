@@ -53,6 +53,8 @@ export function fakeRuntime(
     listQueuedMessages: async () => ({ steering: [], followUp: [] }),
     clearQueue: async () => ({ steering: [], followUp: [] }),
     cancelSteering: async () => ({ steering: [], followUp: [] }),
+    removeQueuedMessage: async () => ({ steering: [], followUp: [] }),
+    steerQueuedMessage: async () => ({ steering: [], followUp: [] }),
     prompt: async () => undefined,
     setUserMessageMarkdown: async () => undefined,
     compact: async () => undefined,

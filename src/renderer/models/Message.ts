@@ -10,6 +10,7 @@ type NoticeTone = Extract<UiPart, { kind: "notice" }>["tone"];
 type DeliveryState = Extract<UiPart, { kind: "text" }>["deliveryState"];
 type TextRenderAs = Extract<UiPart, { kind: "text" }>["renderAs"];
 type CrossSessionMetadata = Extract<UiPart, { kind: "text" }>["crossSession"];
+type ScheduledOrigin = Extract<UiPart, { kind: "text" }>["scheduled"];
 
 export class Message extends Model {
   @id id = "";
@@ -25,6 +26,7 @@ export class Message extends Model {
   deliveryState: DeliveryState | undefined;
   renderAs: TextRenderAs | undefined;
   crossSession: CrossSessionMetadata | undefined;
+  scheduled: ScheduledOrigin | undefined;
   name: string | undefined;
   command: string | undefined;
   excludeFromContext: boolean | undefined;
@@ -64,6 +66,7 @@ export class Message extends Model {
         this.deliveryState = part.deliveryState;
         this.renderAs = part.renderAs;
         this.crossSession = part.crossSession;
+        this.scheduled = part.scheduled;
         return true;
       case "skill":
         this.name = part.name;
@@ -139,6 +142,7 @@ export class Message extends Model {
           deliveryState: this.deliveryState,
           renderAs: this.renderAs,
           crossSession: this.crossSession,
+          scheduled: this.scheduled,
         };
       case "skill":
         return { id: this.partKey, kind: this.kind, name: this.name!, content: this.content! };

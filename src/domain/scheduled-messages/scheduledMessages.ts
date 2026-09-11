@@ -7,6 +7,7 @@ import {
   type ScheduledMessage,
   type ScheduledMessageUpdate,
 } from "./scheduled-message-data";
+import { encodeScheduledMessage, scheduledMessageOrigin } from "./scheduled-message-envelope";
 import { ScheduledMessages } from "../../services/scheduled-messages/ScheduledMessages";
 
 const asError = (operation: string) =>
@@ -125,7 +126,7 @@ export const observe = Effect.fn("ScheduledMessages.observe")(function* (targetS
 const deliverOne = Effect.fn("ScheduledMessages.deliverOne")(function* (message: ScheduledMessage) {
   yield* projectSessionOperations.sendAutomatically({
     sessionId: message.targetSessionId,
-    text: message.text,
+    text: encodeScheduledMessage(message.text, scheduledMessageOrigin(message)),
     attachments: [],
     renderUserMessageAsMarkdown: false,
   });

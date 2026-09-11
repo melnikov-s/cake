@@ -152,6 +152,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
               renderUserMessageAsMarkdown: part.renderAs === "markdown",
               state: part.deliveryState,
               source: part.crossSession,
+              scheduled: part.scheduled,
               editable: false,
             },
           ]
@@ -397,6 +398,18 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
           this.conversationSessionStore.composerStore.draftStore.suggestFiles(prefix),
         rewordWorkingDirectory: () => this.workspacePath,
         steeringPrompts: () => this.runtimeQueuedPrompts,
+        removeRuntimeQueuedPrompt: async (partId) => {
+          await this.client.projectSessions.removeQueuedMessage(
+            { sessionId: this.sessionId, partId },
+            { signal: this.signal },
+          );
+        },
+        steerRuntimeQueuedPrompt: async (partId) => {
+          await this.client.projectSessions.steerQueuedMessage(
+            { sessionId: this.sessionId, partId },
+            { signal: this.signal },
+          );
+        },
         scheduledMessages: {
           messages: () => this.model.scheduledMessages,
           cancel: (id) => this.client.scheduledMessages.cancel(id, { signal: this.signal }),

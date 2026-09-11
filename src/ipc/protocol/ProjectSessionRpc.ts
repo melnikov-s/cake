@@ -76,6 +76,16 @@ export const ProjectSessionRpc = RpcGroup.make(
     success: QueuedConversationMessages,
     error: ProjectSessionError,
   }),
+  Rpc.make("projectSessions.removeQueuedMessage", {
+    payload: { ...ProjectSessionTarget.fields, partId: Schema.String },
+    success: QueuedConversationMessages,
+    error: ProjectSessionError,
+  }),
+  Rpc.make("projectSessions.steerQueuedMessage", {
+    payload: { ...ProjectSessionTarget.fields, partId: Schema.String },
+    success: QueuedConversationMessages,
+    error: ProjectSessionError,
+  }),
   Rpc.make("projectSessions.compact", {
     payload: { ...ProjectSessionTarget.fields, instructions: Schema.optional(Schema.String) },
     error: ProjectSessionError,

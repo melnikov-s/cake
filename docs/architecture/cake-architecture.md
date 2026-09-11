@@ -71,11 +71,17 @@ replace the complete transcript projection. Compaction entries remain visible
 as durable timeline events. Steering and follow-up queues are transient Pi
 runtime state: Cake overlays `queue_update` projections while messages wait and
 removes them when Pi consumes the corresponding user message into the branch.
-Scheduled messages are different: Cake owns each durable, cancellable delivery
-intent until its deadline. The destination session projects that pending intent
-beside its composer. At the deadline Cake restores the Project Session when
-necessary and submits an ordinary prompt, or a follow-up when its runtime is
-busy; after acceptance, Pi again becomes the sole message authority.
+Pi only exposes whole-queue clearing, so removing or promoting one held message
+clears the queue and re-enqueues the remainder in its original order and
+delivery kind. Scheduled messages are different: Cake owns each durable,
+cancellable delivery intent until its deadline. The destination session
+projects that pending intent beside its composer. At the deadline Cake restores
+the Project Session when necessary and submits an ordinary prompt, or a
+follow-up when its runtime is busy; after acceptance, Pi again becomes the sole
+message authority. Like cross-session sender identity, the schedule's origin
+(when it was created and when it fired) travels inside that ordinary Pi user
+message as schema-validated metadata, so the transcript, the queue overlay, and
+the model all see the same provenance without a second Cake-owned record.
 
 Cross-session coordination is a lightweight Cake-owned workflow over ordinary
 Pi messages. A window-scoped `SessionCoordinationStore` binds two participants,

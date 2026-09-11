@@ -423,6 +423,24 @@ export const cancelSteering = Effect.fn("ProjectSessions.cancelSteering")(functi
   ).pipe(Effect.map(projectQueuedMessages), asError("cancelSteering"));
 });
 
+export const removeQueuedMessage = Effect.fn("ProjectSessions.removeQueuedMessage")(function* (
+  target: ProjectSessionTarget,
+  partId: string,
+) {
+  return yield* useConversation(acquireExistingTarget(target), (handle) =>
+    handle.removeQueuedMessage(partId),
+  ).pipe(Effect.map(projectQueuedMessages), asError("removeQueuedMessage"));
+});
+
+export const steerQueuedMessage = Effect.fn("ProjectSessions.steerQueuedMessage")(function* (
+  target: ProjectSessionTarget,
+  partId: string,
+) {
+  return yield* useConversation(acquireExistingTarget(target), (handle) =>
+    handle.steerQueuedMessage(partId),
+  ).pipe(Effect.map(projectQueuedMessages), asError("steerQueuedMessage"));
+});
+
 export const getChangelog = Effect.fn("ProjectSessions.getChangelog")(function* (
   target: ProjectSessionTarget,
 ) {

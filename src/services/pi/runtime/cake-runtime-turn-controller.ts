@@ -3,7 +3,12 @@ import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { Attachment, UiPart } from "../../../ipc/session-contract";
 import { parsePiBuiltinCommand } from "../../../ipc/session-contract";
 import { RuntimeTurnCompletion } from "./RuntimeTurnCompletion";
-import { imageContent, promptText, shellCommandPart } from "./session-projection";
+import {
+  imageContent,
+  locateQueuedMessage,
+  promptText,
+  shellCommandPart,
+} from "./session-projection";
 
 interface TurnRecoveryHooks {
   readonly onUserInput: () => void;
@@ -30,6 +35,12 @@ export interface CakeRuntimeTurnController {
   readonly listQueuedMessages: () => Promise<{ steering: string[]; followUp: string[] }>;
   readonly clearQueue: () => Promise<{ steering: string[]; followUp: string[] }>;
   readonly cancelSteering: () => Promise<{ steering: string[]; followUp: string[] }>;
+  readonly removeQueuedMessage: (
+    partId: string,
+  ) => Promise<{ steering: string[]; followUp: string[] }>;
+  readonly steerQueuedMessage: (
+    partId: string,
+  ) => Promise<{ steering: string[]; followUp: string[] }>;
   readonly consumeUserMessage: (content: string) => void;
   readonly settleTurn: () => void;
   readonly compactionEnded: (willRetry: boolean) => void;
@@ -255,28 +266,89 @@ export function createCakeRuntimeTurnController(input: {
     );
   };
 
+  const listQueuedMessages = async () => ({
+    steering: [
+      ...session.getSteeringMessages(),
+      ...compactionQueue
+        .filter((message) => message.delivery === "steer")
+        .map((message) => message.text),
+    ],
+    followUp: [
+      ...session.getFollowUpMessages(),
+      ...compactionQueue
+        .filter((message) => message.delivery === "follow-up")
+        .map((message) => message.text),
+    ],
+  });
+
+  // Pi only exposes whole-queue clearing, so per-item changes clear the queue
+  // and re-enqueue the remainder in its original order and delivery kind.
+  const requeue = async (steering: readonly string[], followUp: readonly string[]) => {
+    for (const text of steering)
+      await session.prompt(text, { source: "interactive", streamingBehavior: "steer" });
+    for (const text of followUp)
+      await session.prompt(text, { source: "interactive", streamingBehavior: "followUp" });
+  };
+
+  const editQueuedMessage = async (
+    partId: string,
+    edit: (
+      queued: { steering: string[]; followUp: string[] },
+      location: { list: "steering" | "followUp"; index: number },
+    ) => string | undefined,
+    editPending: (item: (typeof compactionQueue)[number], index: number) => void,
+  ) => {
+    assertActive();
+    const location = locateQueuedMessage(
+      partId,
+      session.getSteeringMessages(),
+      session.getFollowUpMessages(),
+      compactionQueue.map((item) => item.text),
+    );
+    if (!location) return listQueuedMessages();
+    if (location.list === "pending") {
+      editPending(compactionQueue[location.index]!, location.index);
+    } else {
+      const queued = session.clearQueue();
+      const removed = edit(queued, { list: location.list, index: location.index });
+      if (removed !== undefined) turnCompletions.cancelQueued(removed);
+      await requeue(queued.steering, queued.followUp);
+    }
+    input.syncQueuedParts();
+    await input.emitSnapshot();
+    return listQueuedMessages();
+  };
+
   return {
     compactionQueuedMessages: () => compactionQueue.map((item) => item.text),
     executingTurnIds: () => turnCompletions.executingIds(),
     prompt,
     editMessage,
     compact: (instructions) => runCompact(instructions),
-    async listQueuedMessages() {
-      return {
-        steering: [
-          ...session.getSteeringMessages(),
-          ...compactionQueue
-            .filter((message) => message.delivery === "steer")
-            .map((message) => message.text),
-        ],
-        followUp: [
-          ...session.getFollowUpMessages(),
-          ...compactionQueue
-            .filter((message) => message.delivery === "follow-up")
-            .map((message) => message.text),
-        ],
-      };
-    },
+    listQueuedMessages,
+    removeQueuedMessage: (partId) =>
+      editQueuedMessage(
+        partId,
+        (queued, location) => queued[location.list].splice(location.index, 1)[0],
+        (item, index) => {
+          compactionQueue.splice(index, 1);
+          if (item.turnId)
+            turnCompletions.failHandledInput(item.turnId, new Error("Queued input was canceled"));
+        },
+      ),
+    steerQueuedMessage: (partId) =>
+      editQueuedMessage(
+        partId,
+        (queued, location) => {
+          if (location.list === "steering") return undefined;
+          const [text] = queued.followUp.splice(location.index, 1);
+          if (text !== undefined) queued.steering.push(text);
+          return undefined;
+        },
+        (item) => {
+          item.delivery = "steer";
+        },
+      ),
     async clearQueue() {
       queueGeneration += 1;
       const queued = session.clearQueue();

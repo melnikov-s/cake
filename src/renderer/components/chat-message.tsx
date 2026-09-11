@@ -18,7 +18,14 @@ import { FullscreenSurface } from "@/components/fullscreen-surface";
 import { FullscreenButton } from "@/components/ui/fullscreen-button";
 import { Avatar } from "@/components/ui/avatar";
 import { IconButton } from "@/components/ui/icon-button";
-import { ChatIcon, CheckIcon, CopyIcon, ForkIcon, TreeIcon } from "@/components/ui/icons";
+import {
+  ChatIcon,
+  CheckIcon,
+  ClockIcon,
+  CopyIcon,
+  ForkIcon,
+  TreeIcon,
+} from "@/components/ui/icons";
 import { AnnotationItemPopover } from "./annotation-item-popover";
 import type { WorkflowStatusColor } from "../../domain/application/application-data";
 import type { ArtifactRecord } from "../../ipc/artifact-contract";
@@ -31,6 +38,7 @@ import type { MessageCommentsStore, MessageSelectionAnchor } from "../stores/Mes
 import type { SubagentActivityStore } from "../stores/SubagentActivityStore";
 import type { SideChatTarget } from "../stores/SideChatStore";
 import type { MessageCommentAnchorRect } from "./message-comment-anchor";
+import { describeScheduledOrigin } from "../../utils/scheduled-message-time";
 
 export function chatWorkIsActive(
   parts: UiPart[],
@@ -77,9 +85,16 @@ export const ChatTextMessage = forwardRef<
   const senderLabel = part.crossSession
     ? `${part.crossSession.sender.title} · session message · ${part.crossSession.sequence}${part.crossSession.maxMessages ? `/${part.crossSession.maxMessages}` : ""}`
     : undefined;
+  const scheduled = part.scheduled ? describeScheduledOrigin(part.scheduled) : undefined;
   const userLabel =
     senderLabel ??
-    (part.deliveryState === "sending" ? "You · sending" : part.draft ? "You · draft" : "You");
+    (scheduled
+      ? `You · ${scheduled.summary}`
+      : part.deliveryState === "sending"
+        ? "You · sending"
+        : part.draft
+          ? "You · draft"
+          : "You");
   const working = part.status === "streaming";
   return (
     <Message
@@ -104,6 +119,11 @@ export const ChatTextMessage = forwardRef<
             title={sessionAvatar.statusName ?? "Unlabelled"}
           />
           {working && <span>working</span>}
+        </MessageLabel>
+      ) : scheduled && !assistant ? (
+        <MessageLabel className="flex items-center gap-1" title={scheduled.detail}>
+          <ClockIcon />
+          <span>{userLabel}</span>
         </MessageLabel>
       ) : (
         <MessageLabel>{assistant ? (working ? "Cake · working" : "Cake") : userLabel}</MessageLabel>

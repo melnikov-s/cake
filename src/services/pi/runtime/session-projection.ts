@@ -8,6 +8,7 @@ import { createHash } from "node:crypto";
 import { Option, Schema } from "effect";
 import { artifactPointerSchema, type ArtifactPointer } from "../../../ipc/artifact-contract";
 import { parseCrossSessionMessage } from "../../../domain/conversations/cross-session-coordination";
+import { parseScheduledMessage } from "../../../domain/scheduled-messages/scheduled-message-envelope";
 import {
   attachmentSchema,
   toolOutputContentArraySchema,
@@ -232,10 +233,8 @@ function partsFromMessage(
 
   if (role === "user") {
     const parts: UiPart[] = [];
-    const crossSession = parseCrossSessionMessage(textFromContent(content));
-    const parsedContext = parseContextAttachmentBlocks(
-      crossSession?.text ?? textFromContent(content),
-    );
+    const envelope = parseUserMessageEnvelope(textFromContent(content));
+    const parsedContext = parseContextAttachmentBlocks(envelope.text);
     const text = parsedContext.text;
     const skill = parseSkillBlock(text);
     if (skill) {
@@ -255,7 +254,8 @@ function partsFromMessage(
           text: skill.userMessage,
           status: "complete",
           renderAs: renderUserMessageAsMarkdown ? "markdown" : undefined,
-          crossSession: crossSession?.metadata,
+          crossSession: envelope.crossSession,
+          scheduled: envelope.scheduled,
         });
     } else if (text)
       parts.push({
@@ -266,7 +266,8 @@ function partsFromMessage(
         text,
         status: "complete",
         renderAs: renderUserMessageAsMarkdown ? "markdown" : undefined,
-        crossSession: crossSession?.metadata,
+        crossSession: envelope.crossSession,
+        scheduled: envelope.scheduled,
       });
     parsedContext.attachments.forEach((attachment, index) => {
       if (attachment.kind === "annotation") {
@@ -521,45 +522,92 @@ export function reviewRunPart(run: ReviewRunEntry): Extract<UiPart, { kind: "rev
   return { id: `review-run-${run.operationId}`, kind: "review-run", ...run };
 }
 
+type UserMessageEnvelope = {
+  readonly text: string;
+  readonly crossSession?: Extract<UiPart, { kind: "text" }>["crossSession"];
+  readonly scheduled?: Extract<UiPart, { kind: "text" }>["scheduled"];
+};
+
+/** Strips Cake's provenance envelope from a Pi user message and surfaces its metadata. */
+function parseUserMessageEnvelope(content: string): UserMessageEnvelope {
+  const scheduled = parseScheduledMessage(content);
+  if (scheduled) return { text: scheduled.text, scheduled: scheduled.origin };
+  const crossSession = parseCrossSessionMessage(content);
+  if (crossSession) return { text: crossSession.text, crossSession: crossSession.metadata };
+  return { text: content };
+}
+
+export type QueuedMessageList = "steering" | "followUp" | "pending";
+
+const queuedMessageLists: ReadonlyArray<{
+  readonly list: QueuedMessageList;
+  readonly idPrefix: string;
+  readonly deliveryState: "steering" | "queued";
+}> = [
+  { list: "steering", idPrefix: "queued-steering", deliveryState: "steering" },
+  { list: "followUp", idPrefix: "queued-follow-up", deliveryState: "queued" },
+  { list: "pending", idPrefix: "queued-pending", deliveryState: "queued" },
+];
+
+/** Stable projected part ids aligned with the raw queue positions; empty texts have none. */
+function queuedMessageIds(
+  idPrefix: string,
+  deliveryState: "steering" | "queued",
+  messages: readonly string[],
+): Array<string | undefined> {
+  const occurrences = new Map<string, number>();
+  return messages.map((text) => {
+    if (!text) return undefined;
+    const occurrence = (occurrences.get(text) ?? 0) + 1;
+    occurrences.set(text, occurrence);
+    const digest = createHash("sha256")
+      .update(`${deliveryState}\0${text}`)
+      .digest("hex")
+      .slice(0, 24);
+    return `${idPrefix}-${digest}-${occurrence}`;
+  });
+}
+
 export function projectQueuedMessages(
   steering: readonly string[],
   followUp: readonly string[],
   pending: readonly string[] = [],
 ): UiPart[] {
-  const project = (
-    idPrefix: string,
-    deliveryState: "steering" | "queued",
-    messages: readonly string[],
-  ) => {
-    const occurrences = new Map<string, number>();
-    return messages.flatMap((text): UiPart[] => {
-      if (!text) return [];
-      const crossSession = parseCrossSessionMessage(text);
-      const visibleText = crossSession?.text ?? text;
-      const occurrence = (occurrences.get(text) ?? 0) + 1;
-      occurrences.set(text, occurrence);
-      const digest = createHash("sha256")
-        .update(`${deliveryState}\0${text}`)
-        .digest("hex")
-        .slice(0, 24);
+  const queues = { steering, followUp, pending };
+  return queuedMessageLists.flatMap(({ list, idPrefix, deliveryState }) => {
+    const messages = queues[list];
+    return queuedMessageIds(idPrefix, deliveryState, messages).flatMap((id, index): UiPart[] => {
+      if (id === undefined) return [];
+      const envelope = parseUserMessageEnvelope(messages[index]!);
       return [
         {
-          id: `${idPrefix}-${digest}-${occurrence}`,
+          id,
           kind: "text",
           role: "user",
-          text: visibleText,
+          text: envelope.text,
           status: "complete",
           deliveryState,
-          crossSession: crossSession?.metadata,
+          crossSession: envelope.crossSession,
+          scheduled: envelope.scheduled,
         },
       ];
     });
-  };
-  return [
-    ...project("queued-steering", "steering", steering),
-    ...project("queued-follow-up", "queued", followUp),
-    ...project("queued-pending", "queued", pending),
-  ];
+  });
+}
+
+/** Resolves a projected queued part id back to its raw queue and position. */
+export function locateQueuedMessage(
+  partId: string,
+  steering: readonly string[],
+  followUp: readonly string[],
+  pending: readonly string[] = [],
+): { readonly list: QueuedMessageList; readonly index: number } | undefined {
+  const queues = { steering, followUp, pending };
+  for (const { list, idPrefix, deliveryState } of queuedMessageLists) {
+    const index = queuedMessageIds(idPrefix, deliveryState, queues[list]).indexOf(partId);
+    if (index >= 0) return { list, index };
+  }
+  return undefined;
 }
 
 export function projectSessionEntries(

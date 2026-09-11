@@ -7,7 +7,7 @@ import { ConversationSessionStore } from "../../../../src/renderer/stores/Conver
 import { SessionOperationCoordinatorStore } from "../../../../src/renderer/stores/SessionOperationCoordinatorStore";
 import { mountWithClient } from "../mount-with-client";
 
-function fixture() {
+function fixture(chatOverrides: Partial<ConversationSessionStore["props"]["chat"]> = {}) {
   const models = RootProjection.create();
   const model = models.projectSession("session-1", "/project");
   const operations = mount(createStore(SessionOperationCoordinatorStore));
@@ -44,6 +44,7 @@ function fixture() {
         inputLabel: () => "Message",
         userMessagePresentation: { setMarkdown: async () => undefined },
         abort,
+        ...chatOverrides,
       },
       modelPresets: () => [],
       openModelPresetSettings: () => undefined,
@@ -139,6 +140,79 @@ describe("ConversationSessionStore", () => {
       { selection: "Rough wording", prompt: undefined },
       expect.any(Object),
     );
+
+    fixtureValue.dispose();
+  });
+
+  it("routes queue edits to the local queue or Pi's held queue by prompt identity", async () => {
+    const removeRuntimeQueuedPrompt = vi.fn(async () => undefined);
+    const steerRuntimeQueuedPrompt = vi.fn(async () => undefined);
+    const fixtureValue = fixture({
+      steeringPrompts: () => [
+        {
+          id: "queued-follow-up-abc-1",
+          text: "Check the build",
+          attachments: [],
+          renderUserMessageAsMarkdown: false,
+          state: "queued",
+          editable: false,
+          scheduled: {
+            version: 1,
+            id: "8de1a807-dc99-49ee-8d35-7a3ed20bef06",
+            createdAt: "2026-09-04T11:59:00.000Z",
+            sendAt: "2026-09-04T12:02:00.000Z",
+          },
+        },
+      ],
+      removeRuntimeQueuedPrompt,
+      steerRuntimeQueuedPrompt,
+    });
+    const { subject, model, deliver } = fixtureValue;
+    const chat = subject.chatStore;
+
+    model.streaming = true;
+    await chat.submit("Local follow-up");
+    const local = subject.composerStore.promptQueueStore.prompts[0]!;
+    expect(chat.queuedPrompts.map((entry) => entry.id)).toEqual([
+      local.id,
+      "queued-follow-up-abc-1",
+    ]);
+
+    chat.removeQueuedPrompt("queued-follow-up-abc-1");
+    expect(removeRuntimeQueuedPrompt).toHaveBeenCalledWith("queued-follow-up-abc-1");
+    expect(subject.composerStore.promptQueueStore.prompts).toHaveLength(1);
+
+    chat.steerQueuedPrompt("queued-follow-up-abc-1");
+    expect(steerRuntimeQueuedPrompt).toHaveBeenCalledWith("queued-follow-up-abc-1");
+    expect(deliver).not.toHaveBeenCalled();
+
+    chat.removeQueuedPrompt(local.id);
+    expect(subject.composerStore.promptQueueStore.prompts).toHaveLength(0);
+    expect(removeRuntimeQueuedPrompt).toHaveBeenCalledOnce();
+
+    fixtureValue.dispose();
+  });
+
+  it("surfaces a failed runtime queue edit as a composer error", async () => {
+    const fixtureValue = fixture({
+      steeringPrompts: () => [
+        {
+          id: "queued-follow-up-abc-1",
+          text: "Check the build",
+          attachments: [],
+          renderUserMessageAsMarkdown: false,
+          state: "queued",
+          editable: false,
+        },
+      ],
+      removeRuntimeQueuedPrompt: async () => {
+        throw new Error("Session was aborted");
+      },
+    });
+    const { subject } = fixtureValue;
+
+    subject.chatStore.removeQueuedPrompt("queued-follow-up-abc-1");
+    await vi.waitFor(() => expect(subject.error.message).toBe("Session was aborted"));
 
     fixtureValue.dispose();
   });

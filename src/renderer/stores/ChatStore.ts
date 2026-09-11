@@ -27,6 +27,8 @@ import {
 export interface QueuedPrompt extends ComposerQueuedPrompt {
   state: "queued" | "steering";
   source?: Extract<UiPart, { kind: "text" }>["crossSession"];
+  scheduled?: Extract<UiPart, { kind: "text" }>["scheduled"];
+  /** Whether the prompt text can be pulled back into the composer; runtime-held prompts cannot. */
   editable?: boolean;
 }
 

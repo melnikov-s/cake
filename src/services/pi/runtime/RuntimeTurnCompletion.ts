@@ -53,6 +53,14 @@ export class RuntimeTurnCompletion {
     this.pending.delete(id);
   }
 
+  /** Rejects one unconsumed correlation whose input was removed from the queue. */
+  cancelQueued(content: string) {
+    const match = [...this.pending].find(([, item]) => !item.consumed && item.content === content);
+    if (!match) return;
+    this.pending.delete(match[0]);
+    match[1].reject(new Error("Queued input was canceled"));
+  }
+
   cancel(queuedOnly = false) {
     for (const [id, item] of this.pending) {
       if (queuedOnly && item.consumed) continue;

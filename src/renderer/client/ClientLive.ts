@@ -254,6 +254,18 @@ export function makeClient(runtime: Pick<Runtime, "execute">): Client {
           withClient((client) => client.projectSessions.cancelSteering(target)),
           options,
         ),
+      removeQueuedMessage: (input, options) =>
+        run(
+          "projectSessions.removeQueuedMessage",
+          withClient((client) => client.projectSessions.removeQueuedMessage(input)),
+          options,
+        ),
+      steerQueuedMessage: (input, options) =>
+        run(
+          "projectSessions.steerQueuedMessage",
+          withClient((client) => client.projectSessions.steerQueuedMessage(input)),
+          options,
+        ),
       compact: (input, options) =>
         run(
           "projectSessions.compact",

@@ -198,6 +198,20 @@ describe("Chat", () => {
             },
           },
           {
+            id: "scheduled-message",
+            text: "Check the build",
+            attachments: [],
+            renderUserMessageAsMarkdown: false,
+            state: "queued",
+            editable: false,
+            scheduled: {
+              version: 1,
+              id: "8de1a807-dc99-49ee-8d35-7a3ed20bef06",
+              createdAt: "2026-09-04T11:59:00.000Z",
+              sendAt: "2026-09-04T12:02:00.000Z",
+            },
+          },
+          {
             id: "steering",
             text: "Change direction",
             attachments: [],
@@ -230,6 +244,27 @@ describe("Chat", () => {
     expect(
       container.querySelector('[aria-label="Edit queued prompt: Child work is complete"]'),
     ).toBeNull();
+    expect(container.querySelector('[aria-label^="Scheduled message: scheduled"]')).not.toBeNull();
+    expect(
+      container.querySelector('[aria-label="Edit queued prompt: Check the build"]'),
+    ).toBeNull();
+
+    // Prompts Pi already holds cannot be pulled back into the composer, but can
+    // still be dropped or promoted through the runtime queue.
+    await act(async () => {
+      container
+        .querySelector<HTMLButtonElement>('[aria-label="Remove queued prompt: Check the build"]')!
+        .click();
+    });
+    expect(removeQueuedPrompt).toHaveBeenLastCalledWith("scheduled-message");
+    await act(async () => {
+      container
+        .querySelector<HTMLButtonElement>(
+          '[aria-label="Send now as steering: Child work is complete"]',
+        )!
+        .click();
+    });
+    expect(steerQueuedPrompt).toHaveBeenLastCalledWith("family-message");
 
     await act(async () => {
       container

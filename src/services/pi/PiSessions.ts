@@ -128,6 +128,8 @@ export interface PiSessionHandle {
   readonly listQueuedMessages: () => Effect.Effect<PiQueuedMessages, PiSessionError>;
   readonly clearQueue: () => Effect.Effect<PiQueuedMessages, PiSessionError>;
   readonly cancelSteering: () => Effect.Effect<PiQueuedMessages, PiSessionError>;
+  readonly removeQueuedMessage: (partId: string) => Effect.Effect<PiQueuedMessages, PiSessionError>;
+  readonly steerQueuedMessage: (partId: string) => Effect.Effect<PiQueuedMessages, PiSessionError>;
   readonly editMessage: (
     entryId: string,
     text: string,
@@ -563,6 +565,10 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
             call("listQueuedMessages", (runtime) => runtime.listQueuedMessages()),
           clearQueue: () => call("clearQueue", (runtime) => runtime.clearQueue()),
           cancelSteering: () => call("cancelSteering", (runtime) => runtime.cancelSteering()),
+          removeQueuedMessage: (partId) =>
+            call("removeQueuedMessage", (runtime) => runtime.removeQueuedMessage(partId)),
+          steerQueuedMessage: (partId) =>
+            call("steerQueuedMessage", (runtime) => runtime.steerQueuedMessage(partId)),
           editMessage: (entryId, text, attachments, renderUserMessageAsMarkdown) =>
             shared.runtime.editMessage
               ? call(

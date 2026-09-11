@@ -1,8 +1,9 @@
 import { observer } from "r-state-tree/react";
-import { ChatIcon, EditIcon, RemoveIcon, SteerIcon } from "@/components/ui/icons";
+import { ChatIcon, ClockIcon, EditIcon, RemoveIcon, SteerIcon } from "@/components/ui/icons";
 import { IconButton } from "@/components/ui/icon-button";
 import { LoadingSpinner } from "@/components/ui/loading-state";
 import type { ChatStore } from "../stores/ChatStore";
+import { describeScheduledOrigin } from "../../utils/scheduled-message-time";
 
 /** Queued prompts stacked above the composer while a session streams. */
 export const QueuedPrompts = observer(function QueuedPrompts({ store }: { store: ChatStore }) {
@@ -17,6 +18,7 @@ export const QueuedPrompts = observer(function QueuedPrompts({ store }: { store:
         const label =
           entry.text ||
           `${entry.attachments.length} attachment${entry.attachments.length === 1 ? "" : "s"}`;
+        const scheduled = entry.scheduled ? describeScheduledOrigin(entry.scheduled) : undefined;
         return (
           <div
             className="flex items-center justify-between gap-2 rounded-md bg-muted px-2 py-1 text-xs"
@@ -31,6 +33,15 @@ export const QueuedPrompts = observer(function QueuedPrompts({ store }: { store:
                   aria-label={`Message from ${entry.source.sender.title}`}
                 >
                   <ChatIcon size={13} />
+                </span>
+              )}
+              {scheduled && (
+                <span
+                  className="shrink-0 text-muted-foreground"
+                  title={scheduled.detail}
+                  aria-label={`Scheduled message: ${scheduled.summary}`}
+                >
+                  <ClockIcon />
                 </span>
               )}
               <span className="min-w-0 flex-1 truncate" title={label}>
@@ -53,7 +64,7 @@ export const QueuedPrompts = observer(function QueuedPrompts({ store }: { store:
                 </>
               ) : (
                 <>
-                  {entry.editable !== false && store.canSteerQueuedPrompt && (
+                  {store.canSteerQueuedPrompt && (
                     <IconButton
                       tooltip="Send now as steering"
                       ariaLabel={`Send now as steering: ${label}`}
@@ -71,7 +82,7 @@ export const QueuedPrompts = observer(function QueuedPrompts({ store }: { store:
                       <EditIcon />
                     </IconButton>
                   )}
-                  {entry.editable !== false && store.canRemoveQueuedPrompt && (
+                  {store.canRemoveQueuedPrompt && (
                     <IconButton
                       tooltip="Remove"
                       ariaLabel={`Remove queued prompt: ${label}`}

@@ -368,6 +368,12 @@ export interface CakeIpcClientService {
     readonly cancelSteering: (
       target: ProjectSessionTarget,
     ) => Effect.Effect<QueuedConversationMessages, ProjectSessionError | TransportError>;
+    readonly removeQueuedMessage: (
+      input: ProjectSessionTarget & { readonly partId: string },
+    ) => Effect.Effect<QueuedConversationMessages, ProjectSessionError | TransportError>;
+    readonly steerQueuedMessage: (
+      input: ProjectSessionTarget & { readonly partId: string },
+    ) => Effect.Effect<QueuedConversationMessages, ProjectSessionError | TransportError>;
     readonly compact: (
       input: ProjectSessionTarget & { readonly instructions?: string },
     ) => Effect.Effect<void, ProjectSessionError | TransportError>;
@@ -828,6 +834,12 @@ export const CakeIpcClientLive = Layer.effect(
         ),
         cancelSteering: Effect.fn("CakeIpcClient.projectSessions.cancelSteering")((target) =>
           client("projectSessions.cancelSteering", target),
+        ),
+        removeQueuedMessage: Effect.fn("CakeIpcClient.projectSessions.removeQueuedMessage")(
+          (input) => client("projectSessions.removeQueuedMessage", input),
+        ),
+        steerQueuedMessage: Effect.fn("CakeIpcClient.projectSessions.steerQueuedMessage")((input) =>
+          client("projectSessions.steerQueuedMessage", input),
         ),
         compact: Effect.fn("CakeIpcClient.projectSessions.compact")((input) =>
           client("projectSessions.compact", input),

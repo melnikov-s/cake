@@ -1,6 +1,10 @@
 import { it } from "@effect/vitest";
-import { Effect, Layer, Queue, Stream } from "effect";
-import { describe, expect } from "vitest";
+import { Effect, Fiber, Layer, Queue, Stream } from "effect";
+import * as TestClock from "effect/testing/TestClock";
+import { describe, expect, vi } from "vitest";
+import type { ProjectSessionPromptInput } from "../../../src/domain/project-sessions/project-session-data";
+import * as projectSessionOperations from "../../../src/domain/project-sessions/projectSessionOperations";
+import { parseScheduledMessage } from "../../../src/domain/scheduled-messages/scheduled-message-envelope";
 import * as scheduledMessages from "../../../src/domain/scheduled-messages/scheduledMessages";
 import type {
   ScheduledMessage,
@@ -59,5 +63,63 @@ describe("ScheduledMessages", () => {
       });
       expect(saved).toEqual([[message], []]);
     }).pipe(Effect.provide(makeLayer(saved)));
+  });
+
+  it.effect("delivers a due message as an automatic send carrying its scheduled origin", () => {
+    const saved: ScheduledMessage[][] = [];
+    const sent: ProjectSessionPromptInput[] = [];
+    const sendAutomatically = vi
+      .spyOn(projectSessionOperations, "sendAutomatically")
+      .mockImplementation((input) =>
+        Effect.sync(() => {
+          sent.push(input);
+          return "turn-1" as never;
+        }),
+      );
+    const due: ScheduledMessage = {
+      ...message,
+      createdAt: "1970-01-01T00:00:00.000Z",
+      sendAt: "1970-01-01T00:00:05.000Z",
+      createdBySessionId: "scheduler-session",
+    };
+    return Effect.gen(function* () {
+      yield* scheduledMessages.initialize();
+      const state = yield* ScheduledMessages;
+      yield* state.transact((current) => Effect.succeed([...current, due]));
+
+      // SAFETY: sendAutomatically is the worker's only Project Session dependency
+      // and is replaced by the spy above, so its declared requirements never run.
+      const worker = yield* Effect.forkScoped(
+        scheduledMessages.runWorker as Effect.Effect<never, never, ScheduledMessages>,
+      );
+      yield* TestClock.adjust("1 second");
+      expect(sent).toEqual([]);
+      expect(yield* scheduledMessages.list("session-1")).toEqual([due]);
+
+      yield* TestClock.adjust("5 seconds");
+      yield* Fiber.interrupt(worker);
+
+      expect(sent).toHaveLength(1);
+      expect(sent[0]).toMatchObject({
+        sessionId: "session-1",
+        attachments: [],
+        renderUserMessageAsMarkdown: false,
+      });
+      expect(parseScheduledMessage(sent[0]!.text)).toEqual({
+        text: "Check the build",
+        origin: {
+          version: 1,
+          id: due.id,
+          createdAt: due.createdAt,
+          sendAt: due.sendAt,
+          createdBySessionId: "scheduler-session",
+        },
+      });
+      expect(yield* scheduledMessages.list("session-1")).toEqual([]);
+      expect(saved.at(-1)).toEqual([]);
+    }).pipe(
+      Effect.provide(makeLayer(saved)),
+      Effect.ensuring(Effect.sync(() => sendAutomatically.mockRestore())),
+    );
   });
 });

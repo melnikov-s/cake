@@ -46,6 +46,10 @@ export class PromptQueueStore extends Store<PromptQueueStoreProps> {
     });
   }
 
+  has(id: string) {
+    return this.prompts.some((entry) => entry.id === id);
+  }
+
   remove(id: string) {
     this.take(id);
   }

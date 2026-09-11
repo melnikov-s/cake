@@ -45,6 +45,10 @@ interface ConversationChatCapabilities {
   draftActivationCandidates?(): ExistingWorktreeCandidate[];
   isDraftSession?(): boolean;
   steeringPrompts?(): readonly QueuedPrompt[];
+  /** Drops a prompt Pi is already holding in its queue, identified by its projected part id. */
+  removeRuntimeQueuedPrompt?(partId: string): Promise<void>;
+  /** Promotes a prompt Pi is already holding as a follow-up to steer the active turn. */
+  steerRuntimeQueuedPrompt?(partId: string): Promise<void>;
   scheduledMessages?: ScheduledMessageCapabilities;
   rewordWorkingDirectory?(): string | undefined;
   fallbackError?(): { message?: string; details?: string };
@@ -185,13 +189,21 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
           ]
         : undefined,
       steerQueuedPrompt: this.props.composer.queueWhileStreaming
-        ? (id) => this.composerStore.promptQueueStore.steer(id)
+        ? (id) => {
+            if (this.composerStore.promptQueueStore.has(id))
+              this.composerStore.promptQueueStore.steer(id);
+            else this.editRuntimeQueuedPrompt(id, capabilities.steerRuntimeQueuedPrompt);
+          }
         : undefined,
       editQueuedPrompt: this.props.composer.queueWhileStreaming
         ? (id) => this.composerStore.promptQueueStore.edit(id)
         : undefined,
       removeQueuedPrompt: this.props.composer.queueWhileStreaming
-        ? (id) => this.composerStore.promptQueueStore.remove(id)
+        ? (id) => {
+            if (this.composerStore.promptQueueStore.has(id))
+              this.composerStore.promptQueueStore.remove(id);
+            else this.editRuntimeQueuedPrompt(id, capabilities.removeRuntimeQueuedPrompt);
+          }
         : undefined,
       cancelSteering: this.props.composer.queueWhileStreaming
         ? () => this.composerStore.promptQueueStore.cancelSteering()
@@ -243,5 +255,15 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
 
   receive(event: StoreEvent) {
     this.composerStore.receive(event);
+  }
+
+  private editRuntimeQueuedPrompt(
+    partId: string,
+    edit: ((partId: string) => Promise<void>) | undefined,
+  ) {
+    if (!edit) return;
+    void edit(partId).catch((error: unknown) => {
+      if (!this.signal.aborted) this.composerStore.reportError(error, "Queued prompt");
+    });
   }
 }
