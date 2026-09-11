@@ -6,7 +6,10 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { resolve } from "node:path";
 import { Schema } from "effect";
-import { registerPendingExtensionProviders } from "./extension-providers";
+import {
+  registerAgentDirectoryExtensionProviders,
+  registerPendingExtensionProviders,
+} from "./extension-providers";
 import type {
   Attachment,
   ChatConfiguration,
@@ -305,10 +308,12 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         : SessionManager.continueRecent(options.cwd, sessionDir)));
   // Extension providers must exist before createAgentSession resolves the
   // initial model, or a default or resumed model on one of them falls back.
-  const providerErrors = await registerPendingExtensionProviders(
-    capabilities.resourceLoader,
-    modelRuntime,
-  );
+  // An auxiliary session loads no extensions of its own, so it takes the
+  // agent directory's providers directly: a model that works in the main chat
+  // must work in its side chats.
+  const providerErrors = options.auxiliary
+    ? await registerAgentDirectoryExtensionProviders(agentDir, modelRuntime)
+    : await registerPendingExtensionProviders(capabilities.resourceLoader, modelRuntime);
   const agentSessionOptions = {
     cwd: options.cwd,
     agentDir,

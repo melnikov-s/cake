@@ -1,4 +1,9 @@
-import type { ModelRuntime, ResourceLoader } from "@earendil-works/pi-coding-agent";
+import {
+  DefaultResourceLoader,
+  SettingsManager,
+  type ModelRuntime,
+  type ResourceLoader,
+} from "@earendil-works/pi-coding-agent";
 
 /**
  * Registers the providers that extensions queued while loading, so they exist
@@ -47,4 +52,43 @@ export async function registerPendingExtensionProviders(
   // providers as configured.
   await modelRuntime.refresh({ allowNetwork: false });
   return errors;
+}
+
+/**
+ * Registers the providers of the agent directory's extensions on a runtime
+ * whose own session loads no extensions: auxiliary sessions, isolated runs,
+ * and the shared model catalog.
+ *
+ * Which models a runtime can reach is a separate concern from which extension
+ * behavior (hooks, tools, commands, UI) binds to a session. A model chosen for
+ * the main chat should resolve in a side chat too, so agent-directory
+ * extensions contribute providers everywhere while their behavior binds only
+ * where extensions load. `cwd` is the agent directory rather than a project,
+ * so no project's `.pi/` is consulted. Best-effort: failures are returned as
+ * messages and leave the built-in providers in place.
+ */
+export async function registerAgentDirectoryExtensionProviders(
+  agentDirectory: string,
+  modelRuntime: ModelRuntime,
+): Promise<string[]> {
+  try {
+    const settingsManager = SettingsManager.create(agentDirectory, agentDirectory, {
+      projectTrusted: true,
+    });
+    const resourceLoader = new DefaultResourceLoader({
+      cwd: agentDirectory,
+      agentDir: agentDirectory,
+      settingsManager,
+      noSkills: true,
+      noPromptTemplates: true,
+      noThemes: true,
+      noContextFiles: true,
+    });
+    await resourceLoader.reload({ resolveProjectTrust: async () => true });
+    return await registerPendingExtensionProviders(resourceLoader, modelRuntime);
+  } catch (error) {
+    return [
+      `Agent-directory extension providers unavailable: ${error instanceof Error ? error.message : String(error)}`,
+    ];
+  }
 }

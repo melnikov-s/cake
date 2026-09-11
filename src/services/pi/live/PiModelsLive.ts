@@ -1,15 +1,11 @@
-import {
-  DefaultResourceLoader,
-  ModelRuntime,
-  SettingsManager,
-} from "@earendil-works/pi-coding-agent";
+import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai/compat";
 import type { SimpleStreamOptions } from "@earendil-works/pi-ai";
 import { Cache, Clock, Duration, Effect, Exit, Layer } from "effect";
 import { makePiModels, PiModels } from "../PiModels";
 import type { BoundedCompletionInput, PiModel } from "../model-data";
 import { CODEX_FAST_MODE_SERVICE_TIER, supportsFastMode } from "../fast-mode";
-import { registerPendingExtensionProviders } from "../runtime/extension-providers";
+import { registerAgentDirectoryExtensionProviders } from "../runtime/extension-providers";
 
 interface CatalogModel {
   readonly id: string;
@@ -111,18 +107,10 @@ export const makeSessionlessRuntimeCache = Effect.fn("PiModelsLive.makeRuntimeCa
 });
 
 /**
- * Build the process-wide catalog runtime and let the agent-directory extensions
- * register their providers on it, so the deferred-chat picker and bounded
- * completions see the same providers a runtime-backed session does.
- *
- * Extension `registerProvider` calls are queued while the loader runs; they are
- * flushed onto this runtime the same way a session runtime flushes them before
- * resolving its model.
- *
- * `cwd` is the agent directory rather than the process cwd, so no project's
- * `.pi/` is consulted: project extensions belong to project sessions, not the
- * shared catalog. Extension loading is best-effort — a failure leaves the
- * built-in catalog rather than no catalog.
+ * Build the process-wide catalog runtime with the agent-directory extensions'
+ * providers registered, so the deferred-chat picker and bounded completions see
+ * the same providers a runtime-backed session does. Best-effort: a failure
+ * leaves the built-in catalog rather than no catalog.
  */
 export async function createSessionlessRuntime(agentDirectory: string): Promise<ModelRuntime> {
   const modelRuntime = await ModelRuntime.create({
@@ -130,24 +118,7 @@ export async function createSessionlessRuntime(agentDirectory: string): Promise<
     modelsPath: `${agentDirectory}/models.json`,
     modelsStorePath: `${agentDirectory}/models-cache.json`,
   });
-  try {
-    const settingsManager = SettingsManager.create(agentDirectory, agentDirectory, {
-      projectTrusted: true,
-    });
-    const resourceLoader = new DefaultResourceLoader({
-      cwd: agentDirectory,
-      agentDir: agentDirectory,
-      settingsManager,
-      noSkills: true,
-      noPromptTemplates: true,
-      noThemes: true,
-      noContextFiles: true,
-    });
-    await resourceLoader.reload({ resolveProjectTrust: async () => true });
-    await registerPendingExtensionProviders(resourceLoader, modelRuntime);
-  } catch {
-    // Built-in catalog only.
-  }
+  await registerAgentDirectoryExtensionProviders(agentDirectory, modelRuntime);
   return modelRuntime;
 }
 

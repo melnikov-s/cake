@@ -7,6 +7,7 @@ import {
   type SessionManager,
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
+import { registerAgentDirectoryExtensionProviders } from "./extension-providers";
 import { canonicalPathIsInsideRoot } from "./workspace-paths";
 import type {
   SessionSnapshot,
@@ -114,6 +115,10 @@ export async function runIsolatedSession(
     modelsPath: `${options.agentDir}/models.json`,
     modelsStorePath: `${options.agentDir}/models-cache.json`,
   });
+  // No extensions bind to an isolated session, but the agent directory's
+  // providers still apply so a utility model reachable from a main chat is
+  // reachable here.
+  await registerAgentDirectoryExtensionProviders(options.agentDir, modelRuntime);
   const resourceRoot = options.resourceRoot;
   const resourceLoader = new DefaultResourceLoader({
     cwd: options.cwd,

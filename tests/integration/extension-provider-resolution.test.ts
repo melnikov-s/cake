@@ -14,14 +14,19 @@ afterEach(async () => {
   );
 });
 
-/** A project whose `.pi/extensions` registers a provider, and an agent
- *  directory whose settings default to that provider's model. */
-async function createProject() {
+/** A project and an agent directory whose settings default to a model on an
+ *  extension-registered provider. The extension lives either in the project's
+ *  `.pi/extensions` or in the agent directory's `extensions`. */
+async function createProject(extensionHome: "project" | "agent-directory" = "project") {
   const directory = await mkdtemp(join(tmpdir(), "cake-extension-provider-"));
   directories.push(directory);
-  await mkdir(join(directory, ".pi", "extensions"), { recursive: true });
+  const extensions =
+    extensionHome === "project"
+      ? join(directory, ".pi", "extensions")
+      : join(directory, "agent", "extensions");
+  await mkdir(extensions, { recursive: true });
   await writeFile(
-    join(directory, ".pi", "extensions", "fixture-provider.ts"),
+    join(extensions, "fixture-provider.ts"),
     `export default function (pi) { pi.registerProvider("fixture-provider", ${JSON.stringify({
       name: "Fixture provider",
       baseUrl: "http://127.0.0.1:9/v1",
@@ -48,7 +53,7 @@ async function createProject() {
   return directory;
 }
 
-async function openRuntime(directory: string) {
+async function openRuntime(directory: string, options: { auxiliary?: boolean } = {}) {
   const runtime = await createCakeRuntime({
     cwd: directory,
     agentDir: join(directory, "agent"),
@@ -57,6 +62,7 @@ async function openRuntime(directory: string) {
     newSession: true,
     requestUi: async () => undefined,
     onEvent: () => undefined,
+    ...(options.auxiliary ? { auxiliary: true, tools: ["read"] } : {}),
   });
   runtimes.push(runtime);
   return runtime;
@@ -76,6 +82,20 @@ describe("extension provider model resolution", () => {
       expect(snapshot.diagnostics.filter((line) => /Using|Could not restore/.test(line))).toEqual(
         [],
       );
+    } finally {
+      delete process.env.OPENAI_API_KEY;
+    }
+  });
+
+  it("gives an auxiliary session the agent directory's extension providers", async () => {
+    // Side chats and other auxiliary sessions load no extensions of their own.
+    const directory = await createProject("agent-directory");
+    process.env.OPENAI_API_KEY = "fallback-bait";
+    try {
+      const runtime = await openRuntime(directory, { auxiliary: true });
+      const snapshot = await runtime.snapshot();
+
+      expect(snapshot.model).toMatchObject({ provider: "fixture-provider", id: "fixture-model" });
     } finally {
       delete process.env.OPENAI_API_KEY;
     }
