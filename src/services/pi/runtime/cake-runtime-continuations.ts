@@ -2,8 +2,7 @@ import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { JsonValue } from "../../../ipc/json-contract";
 import { SESSION_TITLE_MAX_LENGTH, type UtilityModel } from "../../../ipc/session-contract";
 import type { CakeRuntimeOptions } from "./cake-runtime";
-import { cakeWorkspaceSessionDirectory } from "./session-discovery";
-import { createConversationHandoff } from "./session-handoff";
+import { appendToolCompactedBranch } from "./session-tool-compaction";
 import { textFromContent } from "./session-projection";
 
 interface PendingSessionFork {
@@ -20,10 +19,7 @@ export interface CakeRuntimeContinuations {
   nameSessionFromFirstMessage(currentUserMessage: string): Promise<void>;
   rename(name: string, reportAction?: boolean): Promise<string>;
   fork(entryId: string, title: string): Promise<{ sessionId: string; sessionFile: string }>;
-  handoff(
-    entryId: string,
-    destination?: { readonly workingDirectory: string; readonly sessionRoot: string },
-  ): Promise<{ sessionId: string; sessionFile: string }>;
+  toolCompact(entryId: string): Promise<{ sessionId: string; sessionFile: string }>;
   scheduleFork(input: PendingSessionFork): JsonValue;
   setResolved(resolved: boolean): Promise<JsonValue>;
   finishSettledTurn(): Promise<void>;
@@ -131,7 +127,7 @@ export function createCakeRuntimeContinuations(input: {
       session.sessionManager.appendSessionInfo(title);
       return { sessionId: session.sessionManager.getSessionId(), sessionFile };
     },
-    async handoff(entryId, destination) {
+    async toolCompact(entryId) {
       const configuration = session.model
         ? {
             provider: session.model.provider,
@@ -139,21 +135,15 @@ export function createCakeRuntimeContinuations(input: {
             thinkingLevel: session.thinkingLevel,
           }
         : undefined;
-      return createConversationHandoff(
-        session.sessionManager,
-        entryId,
-        configuration,
-        destination
-          ? {
-              workingDirectory: destination.workingDirectory,
-              sessionDirectory: cakeWorkspaceSessionDirectory(
-                destination.workingDirectory,
-                destination.sessionRoot,
-              ),
-            }
-          : undefined,
-        activeSessionTitle(),
-      );
+      const previousLeafId = session.sessionManager.getLeafId();
+      const result = appendToolCompactedBranch(session.sessionManager, entryId, configuration);
+      if (!result.sessionFile) throw new Error("The current session is not persisted");
+      if (previousLeafId) session.sessionManager.branch(previousLeafId);
+      else session.sessionManager.resetLeaf();
+      const navigation = await session.navigateTree(result.leafId, { summarize: false });
+      if (navigation.cancelled) throw new Error("Tool compaction navigation was cancelled");
+      await emitSnapshot();
+      return { sessionId: result.sessionId, sessionFile: result.sessionFile };
     },
     scheduleFork(pending) {
       if (!options.currentSessionControl?.forkSession)

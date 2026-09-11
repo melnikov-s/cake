@@ -28,7 +28,7 @@ import {
   createLiveMessageProjector,
   formatToolResult,
   formatUnknown,
-  handoffEntryType,
+  toolCompactEntryType,
   promptText,
   projectQueuedMessages,
   projectSessionEntries,
@@ -45,6 +45,14 @@ import {
 
 const temporaryDirectories: string[] = [];
 const runtimes: Array<FoundationRuntime | CakeRuntime> = [];
+const zeroUsage = {
+  input: 0,
+  output: 0,
+  cacheRead: 0,
+  cacheWrite: 0,
+  totalTokens: 0,
+  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+};
 
 afterEach(async () => {
   for (const runtime of runtimes.splice(0)) runtime.dispose();
@@ -1281,34 +1289,34 @@ describe("Pi 0.84.0 foundation contract", () => {
     ]);
   });
 
-  it("projects a persisted handoff preamble as an info notice before the dialogue", () => {
+  it("projects a tool-compaction preamble as an info notice before the dialogue", () => {
+    const detail =
+      "This conversation branch was tool compacted. 2 tool calls and results were omitted.";
     const parts = projectSessionEntries([
       {
         type: "custom_message",
-        id: "handoff-entry",
+        id: "tool-compact-entry",
         parentId: null,
         timestamp: new Date(0).toISOString(),
-        customType: handoffEntryType,
-        content:
-          "This session is a handoff from a previous Cake session stored at /tmp/source.jsonl. 2 tool calls and results were omitted to save context.",
+        customType: toolCompactEntryType,
+        content: detail,
         display: true,
       },
       {
         type: "message",
-        id: "user-after-handoff",
-        parentId: "handoff-entry",
+        id: "user-after-tool-compact",
+        parentId: "tool-compact-entry",
         timestamp: new Date(0).toISOString(),
         message: { role: "user", content: "Pick up from here", timestamp: 0 },
       },
     ] as never);
     expect(parts).toEqual([
       {
-        id: "entry-handoff-entry-custom",
+        id: "entry-tool-compact-entry-custom",
         kind: "notice",
         tone: "info",
-        title: "Handoff",
-        detail:
-          "This session is a handoff from a previous Cake session stored at /tmp/source.jsonl. 2 tool calls and results were omitted to save context.",
+        title: "Tool compact",
+        detail,
       },
       expect.objectContaining({ kind: "text", role: "user", text: "Pick up from here" }),
     ]);
@@ -2149,7 +2157,7 @@ describe("S1 Pi runtime", () => {
     expect((await runtime.snapshot()).piSettings?.reloadPending).toBe(false);
   });
 
-  it("preserves a handoff title in Pi metadata", async () => {
+  it("tool-compacts onto a clean branch while keeping the live Pi Session identity", async () => {
     const directory = await createTemporaryDirectory();
     const agentDir = join(directory, "agent");
     const sessionDir = join(directory, "sessions");
@@ -2158,24 +2166,37 @@ describe("S1 Pi runtime", () => {
       cakeWorkspaceSessionDirectory(directory, sessionDir),
     );
     source.appendMessage({ role: "user", content: "Investigate this", timestamp: Date.now() });
+    source.appendMessage({
+      role: "assistant",
+      content: [
+        { type: "text", text: "I will inspect it." },
+        { type: "toolCall", id: "call-1", name: "read", arguments: { path: "large.ts" } },
+      ],
+      api: "anthropic-messages",
+      provider: "anthropic",
+      model: "fixture",
+      usage: zeroUsage,
+      stopReason: "toolUse",
+      timestamp: Date.now(),
+    });
+    source.appendMessage({
+      role: "toolResult",
+      toolCallId: "call-1",
+      toolName: "read",
+      content: [{ type: "text", text: "large tool output" }],
+      isError: false,
+      timestamp: Date.now(),
+    });
     const assistantEntryId = source.appendMessage({
       role: "assistant",
       content: [{ type: "text", text: "Investigation complete" }],
       api: "anthropic-messages",
       provider: "anthropic",
       model: "fixture",
-      usage: {
-        input: 0,
-        output: 0,
-        cacheRead: 0,
-        cacheWrite: 0,
-        totalTokens: 0,
-        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-      },
+      usage: zeroUsage,
       stopReason: "stop",
       timestamp: Date.now(),
     });
-    source.appendSessionInfo("Investigate session handoff");
     const runtime = await createCakeRuntime({
       cwd: directory,
       agentDir,
@@ -2187,14 +2208,24 @@ describe("S1 Pi runtime", () => {
     });
     runtimes.push(runtime);
 
-    const handedOff = await runtime.handoff(assistantEntryId);
-    const target = SessionManager.open(
-      handedOff.sessionFile,
+    const compacted = await runtime.toolCompact(assistantEntryId);
+    const snapshot = await runtime.snapshot();
+    const persisted = SessionManager.open(
+      compacted.sessionFile,
       cakeWorkspaceSessionDirectory(directory, sessionDir),
       directory,
     );
 
-    expect(target.getSessionName()).toBe("Investigate session handoff");
+    expect(compacted.sessionId).toBe(source.getSessionId());
+    expect(persisted.getTree()).toHaveLength(2);
+    expect(snapshot.parts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "notice", title: "Tool compact" }),
+        expect.objectContaining({ kind: "text", text: "Investigation complete" }),
+      ]),
+    );
+    expect(snapshot.parts.some((part) => part.kind === "tool")).toBe(false);
+    expect(snapshot.tree.filter((entry) => entry.messageRole === "user")).toHaveLength(2);
   });
 
   it("creates and reopens an authoritative persistent Pi session", async () => {

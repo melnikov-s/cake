@@ -1,5 +1,5 @@
 import { Effect, Stream } from "effect";
-import { getState, setSessionFastMode } from "../application/application";
+import { getState } from "../application/application";
 import * as projectSessionLocations from "./projectSessionLocations";
 import type { ProjectSessionLocation } from "./project-session-data";
 import { ProjectSessionError, type ProjectSessionTarget } from "./project-session-data";
@@ -14,7 +14,7 @@ import {
   publishCatalogChange,
 } from "./projectSessionMetadata";
 import { acquireTarget, prompt } from "./projectSessionOperations";
-import { resolve } from "./projectSessionLifecycle";
+import { resolve, restore } from "./projectSessionLifecycle";
 
 const withContinuationSource = Effect.fn("ProjectSessions.withContinuationSource")(function* <
   A,
@@ -22,7 +22,7 @@ const withContinuationSource = Effect.fn("ProjectSessions.withContinuationSource
   R,
 >(
   target: ProjectSessionTarget,
-  operation: "fork" | "handoff",
+  operation: "fork",
   use: (location: ProjectSessionLocation) => Effect.Effect<A, E, R>,
 ) {
   const source = yield* findLocation(target);
@@ -133,79 +133,32 @@ export const fork = Effect.fn("ProjectSessions.fork")(function* (input: {
   return { sessionId: continuation.result.sessionId };
 });
 
-export const handoff = Effect.fn("ProjectSessions.handoff")(function* (input: {
+export const toolCompact = Effect.fn("ProjectSessions.toolCompact")(function* (input: {
   readonly target: ProjectSessionTarget;
   readonly entryId: string;
   readonly prompt?: string;
-  readonly destinationWorkingDirectory?: string;
-  readonly resolveSource?: boolean;
 }) {
-  const family = yield* Effect.flatMap(SessionFamilyStorage, (storage) =>
-    storage.familyForMember(input.target.sessionId),
-  ).pipe(asError("handoff"));
-  if (family)
-    return yield* new ProjectSessionError({
-      operation: "handoff",
-      message: "Session Family members cannot be handed off or relocated",
-    });
-  const state = yield* getState();
-  const inheritFastMode = state.fastModeSessionIds.includes(input.target.sessionId);
-  const continuation = yield* withContinuationSource(input.target, "handoff", (source) =>
-    Effect.gen(function* () {
-      let destination = source;
-      if (
-        input.destinationWorkingDirectory !== undefined &&
-        input.destinationWorkingDirectory !== source.workingDirectory
-      ) {
-        const locations = yield* projectSessionLocations.locations().pipe(asError("handoff"));
-        const selectedDestination = locations.find(
-          (item) => item.workingDirectory === input.destinationWorkingDirectory,
-        );
-        if (!selectedDestination)
-          return yield* new ProjectSessionError({
-            operation: "handoff",
-            message: "Cake could not find the destination Working Directory",
-          });
-        if (selectedDestination.projectPath !== source.projectPath)
-          return yield* new ProjectSessionError({
-            operation: "handoff",
-            message: "The source and destination belong to different Projects",
-          });
-        destination = selectedDestination;
-      }
-      const handle = yield* acquireTarget(source, input.target.sessionId, false);
-      const result = yield* handle
-        .handoff(
-          input.entryId,
-          destination === source
-            ? undefined
-            : {
-                workingDirectory: destination.workingDirectory,
-                sessionRoot: destination.sessionDirectory,
-              },
-        )
-        .pipe(asError("handoff"));
-      return { result, destination };
-    }),
-  );
-  if (inheritFastMode)
-    yield* setSessionFastMode(continuation.result.result.sessionId, true).pipe(asError("handoff"));
+  let source = yield* findLocation(input.target);
+  const archive = yield* SessionArchiveStorage;
+  const namespace = yield* archive
+    .locate(input.target.sessionId, archiveLocation(source))
+    .pipe(asError("toolCompact"));
+  if (namespace === "resolved") {
+    yield* restore(input.target);
+    source = yield* findLocation(input.target);
+  }
+
+  const handle = yield* acquireTarget(source, input.target.sessionId, false);
+  const result = yield* handle.toolCompact(input.entryId).pipe(asError("toolCompact"));
   const continuationPrompt = input.prompt?.trim();
   if (continuationPrompt)
     yield* prompt({
-      sessionId: continuation.result.result.sessionId,
-      workingDirectory: continuation.result.destination.workingDirectory,
+      sessionId: result.sessionId,
+      workingDirectory: source.workingDirectory,
       text: continuationPrompt,
       attachments: [],
       renderUserMessageAsMarkdown: false,
     });
-  if (input.resolveSource && !continuation.sourceWasResolved) yield* resolve(input.target);
-  // prompt already announced the new summary after writing its first message.
-  if (!continuationPrompt)
-    yield* publishCatalogChange(
-      continuation.result.result.sessionId,
-      continuation.result.destination,
-      false,
-    );
-  return { sessionId: continuation.result.result.sessionId };
+  else yield* publishCatalogChange(result.sessionId, source, false);
+  return { sessionId: result.sessionId };
 });

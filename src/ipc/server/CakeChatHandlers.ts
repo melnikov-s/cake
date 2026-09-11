@@ -70,15 +70,14 @@ export const makeCakeChatHandlers = (configuration: CakeChatRuntimeConfiguration
       cakeChatOperations.logout(target, provider, configuration),
     "cakeChats.rename": ({ name, ...target }) =>
       cakeChatOperations.rename(target, name, configuration),
-    "cakeChats.handoff": ({ entryId, prompt, resolveSource, ...target }) => {
-      const input: Parameters<typeof cakeChatContinuations.handoff>[0] = {
+    "cakeChats.toolCompact": ({ entryId, prompt, ...target }) => {
+      const input: Parameters<typeof cakeChatContinuations.toolCompact>[0] = {
         target,
         entryId,
         configuration,
       };
       if (prompt !== undefined) Object.assign(input, { prompt });
-      if (resolveSource !== undefined) Object.assign(input, { resolveSource });
-      return cakeChatContinuations.handoff(input);
+      return cakeChatContinuations.toolCompact(input);
     },
     "cakeChats.resolve": (target) => cakeChatLifecycle.resolve(target, configuration),
     "cakeChats.restore": (target) => cakeChatLifecycle.restore(target, configuration.location),

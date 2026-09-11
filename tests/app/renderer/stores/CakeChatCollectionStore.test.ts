@@ -65,7 +65,7 @@ describe("CakeChatCollectionStore", () => {
     models[Symbol.dispose]();
   });
 
-  it.each(["/model invalid", "/handoff continue", "/name"])(
+  it.each(["/model invalid", "/toolcompact continue", "/name"])(
     "retains rejected Cake Chat command %s for correction",
     async (command) => {
       const catalog = CakeChatCatalog.create({ loaded: true, sessions: [] });

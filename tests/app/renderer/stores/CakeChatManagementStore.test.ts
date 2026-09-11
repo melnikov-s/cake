@@ -58,30 +58,28 @@ describe("CakeChatManagementStore", () => {
     models[Symbol.dispose]();
   });
 
-  it("ignores a late handoff result after disposal", async () => {
-    let finishHandoff!: () => void;
-    const handoff = vi.fn(
+  it("ignores a late toolCompact result after disposal", async () => {
+    let finishToolCompact!: () => void;
+    const toolCompact = vi.fn(
       () =>
         new Promise<{ sessionId: string }>((resolve) => {
-          finishHandoff = () => resolve({ sessionId: "late-session" });
+          finishToolCompact = () => resolve({ sessionId: "late-session" });
         }),
     );
-    const open = vi.fn(async () => undefined);
     const {
       root,
       subject: collection,
       catalog,
       models,
     } = mountCollection({
-      cakeChats: { handoff, open },
+      cakeChats: { toolCompact },
     } as unknown as Client);
 
-    const result = collection.management.handoff(collection.sessionId!, "entry-1");
+    const result = collection.management.toolCompact(collection.sessionId!, "entry-1");
     root[Symbol.dispose]();
-    finishHandoff();
+    finishToolCompact();
 
     await expect(result).resolves.toBe(false);
-    expect(open).not.toHaveBeenCalled();
     catalog[Symbol.dispose]();
     models[Symbol.dispose]();
   });

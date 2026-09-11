@@ -446,13 +446,8 @@ export const piBuiltinSlashCommands = [
     argumentHint: "<10s|5m|2h|1d|ISO time> <message>",
   },
   {
-    name: "handoff",
-    description: "Continue in a new session without tool history",
-    argumentHint: "[first instruction]",
-  },
-  {
-    name: "handoffandresolve",
-    description: "Hand off, then resolve the source session",
+    name: "toolcompact",
+    description: "Compact tool activity while preserving the visible conversation",
     argumentHint: "[first instruction]",
   },
 ].map((command) =>

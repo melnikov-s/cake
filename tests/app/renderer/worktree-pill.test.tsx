@@ -208,7 +208,7 @@ describe("WorktreePill", () => {
     expect(select).toHaveBeenCalledWith("session", { kind: "draft" });
   });
 
-  it("keeps projected worktree controls visible while live status is loading after handoff", () => {
+  it("keeps projected worktree controls visible while live status is loading after session continuation", () => {
     const actions = actionStore({ aheadCount: 0, dirtyCount: 0 });
     actions.status = undefined;
 

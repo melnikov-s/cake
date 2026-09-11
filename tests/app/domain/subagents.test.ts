@@ -167,7 +167,10 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (): Effect.
       logout: async () => undefined,
       rename: async () => undefined,
       fork: async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" }),
-      handoff: async () => ({ sessionId: "handoff", sessionFile: "/sessions/handoff.jsonl" }),
+      toolCompact: async () => ({
+        sessionId: "toolCompact",
+        sessionFile: "/sessions/toolCompact.jsonl",
+      }),
       navigate: async () => undefined,
       dispose: () => undefined,
     };

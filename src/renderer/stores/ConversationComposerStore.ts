@@ -28,8 +28,7 @@ export interface ConversationComposerStoreProps {
   createSideChat?(prompt: string): Promise<boolean>;
   selectModel(value: string): Promise<boolean | void>;
   renameSession(name: string): Promise<boolean | void>;
-  canHandoff?(): boolean;
-  handoffSession(entryId: string, prompt?: string, resolveSource?: boolean): Promise<boolean>;
+  toolCompactSession(entryId: string, prompt?: string): Promise<boolean>;
   deliver(input: ConversationDeliveryInput): Promise<boolean | void>;
   editMessage(
     input: Omit<ConversationDeliveryInput, "delivery"> & { entryId: string },
@@ -248,8 +247,7 @@ export class ConversationComposerStore extends Store<ConversationComposerStorePr
     if (command === "/tree" || command === "/resources" || command === "/changelog") return true;
     const name = parsePiBuiltinCommand(text)?.name;
     return (
-      name === "handoff" ||
-      name === "handoffandresolve" ||
+      name === "toolcompact" ||
       (name === "sidechat" && Boolean(this.props.createSideChat)) ||
       name === "model" ||
       name === "name" ||
@@ -272,16 +270,12 @@ export class ConversationComposerStore extends Store<ConversationComposerStorePr
       return { handled: true, result: true };
     }
     const builtin = parsePiBuiltinCommand(text);
-    if (builtin?.name === "handoff" || builtin?.name === "handoffandresolve") {
-      if (this.props.canHandoff?.() === false) {
-        this.reportError(new Error("Session Family members cannot be handed off"));
-        return { handled: true, result: false };
-      }
+    if (builtin?.name === "toolcompact") {
       if (
         this.draftStore.attachments.length ||
         this.draftStore.annotationDraft.annotations.length
       ) {
-        this.reportError(new Error("Remove attachments before using /handoff"));
+        this.reportError(new Error("Remove attachments before using /toolcompact"));
         return { handled: true, result: false };
       }
       const assistantPart = this.props
@@ -295,16 +289,12 @@ export class ConversationComposerStore extends Store<ConversationComposerStorePr
         );
       const entryId = assistantPart?.kind === "text" ? assistantPart.entryId : undefined;
       if (!entryId) {
-        this.reportError(new Error("Handoff requires a completed assistant response"));
+        this.reportError(new Error("Tool compaction requires a completed assistant response"));
         return { handled: true, result: false };
       }
-      const handedOff = await this.props.handoffSession(
-        entryId,
-        builtin.args || undefined,
-        builtin.name === "handoffandresolve",
-      );
-      if (handedOff && this.draftStore.text.trim() === text) this.draftStore.setText("");
-      return { handled: true, result: handedOff };
+      const compacted = await this.props.toolCompactSession(entryId, builtin.args || undefined);
+      if (compacted && this.draftStore.text.trim() === text) this.draftStore.setText("");
+      return { handled: true, result: compacted };
     }
     if (builtin?.name === "sidechat" && this.props.createSideChat) {
       if (!builtin.args.trim()) {

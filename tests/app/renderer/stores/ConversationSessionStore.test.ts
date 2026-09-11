@@ -27,7 +27,7 @@ function fixture() {
       composer: {
         queueWhileStreaming: () => true,
         renameSession: async () => undefined,
-        handoffSession: async () => false,
+        toolCompactSession: async () => false,
         deliver,
         editMessage,
         compact: async () => undefined,

@@ -73,7 +73,7 @@ This is a capability map, not the complete operation protocol. Call the gateway 
 
 ### Commands and resources
 
-Cake Chat exposes the user-facing Pi slash commands `/compact`, `/model`, `/handoff`, and `/handoffandresolve`. Explain these when asked, but do not tell the user to operate a terminal. The gateway is a model tool and is not the same thing as a slash command. Pi settings, model providers, skills, prompts, and extensions are loaded from `~/.cake/pi/`, not standalone `~/.pi/agent/`. For implementation questions about Pi features, read the version-matched Pi documentation and examples installed with Cake rather than guessing an API.
+Cake Chat exposes the user-facing Pi slash commands `/compact`, `/model`, and `/toolcompact`. Explain these when asked, but do not tell the user to operate a terminal. The gateway is a model tool and is not the same thing as a slash command. Pi settings, model providers, skills, prompts, and extensions are loaded from `~/.cake/pi/`, not standalone `~/.pi/agent/`. For implementation questions about Pi features, read the version-matched Pi documentation and examples installed with Cake rather than guessing an API.
 
 ### Interaction policy
 

@@ -7,14 +7,13 @@ import type { CakeChatPendingSessionsStore } from "./CakeChatPendingSessionsStor
 export interface CakeChatManagementStoreProps {
   pendingSessions: CakeChatPendingSessionsStore;
   target(sessionId: string): CakeChatTarget;
-  openSession(sessionId: string): Promise<void>;
   removeSession(sessionId: string): void;
   discardPendingSession(sessionId: string): void;
   isSessionResolved(sessionId: string): boolean;
   reportError(error: unknown, context?: string): void;
 }
 
-/** Owns Cake Chat rename, handoff, resolve, restore, and delete workflows. */
+/** Owns Cake Chat rename, tool compaction, resolve, restore, and delete workflows. */
 export class CakeChatManagementStore extends Store<CakeChatManagementStoreProps> {
   private resolutionQueue: Promise<void> = Promise.resolve();
 
@@ -22,19 +21,16 @@ export class CakeChatManagementStore extends Store<CakeChatManagementStoreProps>
     return ClientContext.consume(this)!;
   }
 
-  async handoff(sessionId: string, entryId: string, prompt?: string, resolveSource = false) {
+  async toolCompact(sessionId: string, entryId: string, prompt?: string) {
     try {
-      const result = await this.client.cakeChats.handoff(
+      await this.client.cakeChats.toolCompact(
         {
           ...this.props.target(sessionId),
           entryId,
           prompt: prompt?.trim() || undefined,
-          resolveSource,
         },
         { signal: this.signal },
       );
-      if (this.signal.aborted) return false;
-      await this.props.openSession(result.sessionId);
       return !this.signal.aborted;
     } catch (error) {
       if (!this.signal.aborted) this.props.reportError(error);

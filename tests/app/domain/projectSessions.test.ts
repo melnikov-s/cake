@@ -75,10 +75,7 @@ const snapshot: SessionSnapshot = {
 const fakeRuntime = (
   options: CakeRuntimeOptions,
   prompt: () => Promise<void> = async () => undefined,
-  onHandoff?: (destination?: {
-    readonly workingDirectory: string;
-    readonly sessionRoot: string;
-  }) => void,
+  onToolCompact?: () => void,
   onForkTitle?: (title: string) => void,
   onRename?: (name: string) => void,
   onOperation?: (operation: string) => void,
@@ -112,9 +109,9 @@ const fakeRuntime = (
     onForkTitle?.(title);
     return { sessionId: "forked", sessionFile: "/sessions/forked.jsonl" };
   },
-  handoff: async (_entryId, destination) => {
-    onHandoff?.(destination);
-    return { sessionId: "handoff", sessionFile: "/sessions/handoff.jsonl" };
+  toolCompact: async () => {
+    onToolCompact?.();
+    return { sessionId: snapshot.sessionId, sessionFile: snapshot.sessionFile };
   },
   navigate: async () => undefined,
   dispose: () => undefined,
@@ -150,10 +147,7 @@ const makeLayer = (
     locations?: ReadonlyArray<ProjectSessionLocation>;
     onRuntimeOptions?(newSession: boolean): void;
     prompt?(): Promise<void>;
-    onHandoff?(destination?: {
-      readonly workingDirectory: string;
-      readonly sessionRoot: string;
-    }): void;
+    onToolCompact?(): void;
     onForkTitle?(title: string): void;
     onOperation?(operation: string): void;
     sessionExists?: boolean;
@@ -263,7 +257,7 @@ const makeLayer = (
         return fakeRuntime(
           options,
           hooks.prompt,
-          hooks.onHandoff,
+          hooks.onToolCompact,
           hooks.onForkTitle,
           hooks.onRename,
           hooks.onOperation,
@@ -1052,17 +1046,19 @@ describe("Project Sessions domain", () => {
     }).pipe(Effect.provide(makeLayer())),
   );
 
-  it.effect("handoffs without constructing a destination runtime and copies Fast mode", () => {
+  it.effect("tool-compacts without changing session identity or Fast mode", () => {
     let runtimeConstructions = 0;
+    let compacted = false;
     return Effect.gen(function* () {
-      const result = yield* projectSessionContinuations.handoff({
+      const result = yield* projectSessionContinuations.toolCompact({
         target: { sessionId: "session-1", workingDirectory: "/project" },
         entryId: "assistant-entry",
       });
-      assert.equal(result.sessionId, "handoff");
+      assert.equal(result.sessionId, "session-1");
+      assert.equal(compacted, true);
       assert.equal(runtimeConstructions, 1);
       const state = yield* getState();
-      assert.deepEqual(state.fastModeSessionIds, ["session-1", "handoff"]);
+      assert.deepEqual(state.fastModeSessionIds, ["session-1"]);
     }).pipe(
       Effect.provide(
         makeLayer(
@@ -1079,82 +1075,36 @@ describe("Project Sessions domain", () => {
             trustedProjectPaths: ["/project"],
             fastModeSessionIds: ["session-1"],
           },
-          { onCreateRuntime: () => runtimeConstructions++ },
+          {
+            onCreateRuntime: () => runtimeConstructions++,
+            onToolCompact: () => {
+              compacted = true;
+            },
+          },
         ),
       ),
     );
   });
 
-  it.effect("announces a prompted handoff destination only once", () => {
+  it.effect("announces a prompted tool compaction once", () => {
     const changes: SessionCatalogChange[] = [];
     return Effect.gen(function* () {
-      yield* projectSessionContinuations.handoff({
+      yield* projectSessionContinuations.toolCompact({
         target: { sessionId: "session-1", workingDirectory: "/project" },
         entryId: "assistant-entry",
         prompt: "Continue",
       });
 
-      assert.deepEqual(
+      assert.equal(
         changes.filter(
-          (change) => change._tag === "ProjectSessionChanged" && change.sessionId === "handoff",
-        ),
-        [
-          {
-            _tag: "ProjectSessionChanged",
-            sessionId: "handoff",
-            projectPath: "/project",
-            workingDirectory: "/project",
-            resolved: false,
-          },
-        ],
+          (change) => change._tag === "ProjectSessionChanged" && change.sessionId === "session-1",
+        ).length,
+        1,
       );
     }).pipe(
       Effect.provide(
         makeLayer(defaultApplicationState(), {
           onCatalogChange: (change) => changes.push(change),
-        }),
-      ),
-    );
-  });
-
-  it.effect("handoffs into another Working Directory", () => {
-    let handoffDestination:
-      | { readonly workingDirectory: string; readonly sessionRoot: string }
-      | undefined;
-    return Effect.gen(function* () {
-      const result = yield* projectSessionContinuations.handoff({
-        target: { sessionId: "session-1", workingDirectory: "/project" },
-        entryId: "assistant-entry",
-        destinationWorkingDirectory: "/project-worktree",
-      });
-
-      assert.equal(result.sessionId, "handoff");
-      assert.deepEqual(handoffDestination, {
-        workingDirectory: "/project-worktree",
-        sessionRoot: "/sessions",
-      });
-    }).pipe(
-      Effect.provide(
-        makeLayer(defaultApplicationState(), {
-          locations: [
-            {
-              projectPath: "/project",
-              projectName: "Project",
-              workingDirectory: "/project",
-              sessionDirectory: "/sessions",
-              resolvedSessionDirectory: "/resolved-sessions",
-            },
-            {
-              projectPath: "/project",
-              projectName: "Project",
-              workingDirectory: "/project-worktree",
-              sessionDirectory: "/sessions",
-              resolvedSessionDirectory: "/resolved-sessions",
-            },
-          ],
-          onHandoff: (destination) => {
-            handoffDestination = destination;
-          },
         }),
       ),
     );
@@ -1227,37 +1177,31 @@ describe("Project Sessions domain", () => {
     },
   );
 
-  it.effect(
-    "handoffs a resolved session into an active copy while keeping its source resolved",
-    () => {
-      let runtimeConstructions = 0;
-      let restores = 0;
-      let archives = 0;
-      return Effect.gen(function* () {
-        const target = { sessionId: "session-1", workingDirectory: "/project" };
-        const result = yield* projectSessionContinuations.handoff({
-          target,
-          entryId: "assistant-entry",
-        });
-        const source = yield* projectSessionMetadata.inspect(target);
+  it.effect("restores a resolved session before tool compaction", () => {
+    let runtimeConstructions = 0;
+    let restores = 0;
+    return Effect.gen(function* () {
+      const target = { sessionId: "session-1", workingDirectory: "/project" };
+      const result = yield* projectSessionContinuations.toolCompact({
+        target,
+        entryId: "assistant-entry",
+      });
+      const source = yield* projectSessionMetadata.inspect(target);
 
-        assert.equal(result.sessionId, "handoff");
-        assert.equal(source.resolved, true);
-        assert.equal(runtimeConstructions, 1);
-        assert.equal(restores, 1);
-        assert.equal(archives, 1);
-      }).pipe(
-        Effect.provide(
-          makeLayer(defaultApplicationState(), {
-            resolvedOnDisk: true,
-            onCreateRuntime: () => runtimeConstructions++,
-            onRestore: () => restores++,
-            onArchive: () => archives++,
-          }),
-        ),
-      );
-    },
-  );
+      assert.equal(result.sessionId, "session-1");
+      assert.equal(source.resolved, false);
+      assert.equal(runtimeConstructions, 1);
+      assert.equal(restores, 1);
+    }).pipe(
+      Effect.provide(
+        makeLayer(defaultApplicationState(), {
+          resolvedOnDisk: true,
+          onCreateRuntime: () => runtimeConstructions++,
+          onRestore: () => restores++,
+        }),
+      ),
+    );
+  });
 
   it.effect("maps restore location failures to the restore operation", () =>
     Effect.gen(function* () {

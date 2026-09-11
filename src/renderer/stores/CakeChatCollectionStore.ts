@@ -58,7 +58,6 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
     return createStore(CakeChatManagementStore, {
       pendingSessions: this.pendingSessions,
       target: (sessionId) => this.registry.target(sessionId),
-      openSession: (sessionId) => this.open(sessionId),
       removeSession: (sessionId) => this.removeSession(sessionId),
       discardPendingSession: (sessionId) => this.discardPendingSession(sessionId),
       isSessionResolved: (sessionId) => this.isSessionResolved(sessionId),

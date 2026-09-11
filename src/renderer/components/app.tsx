@@ -217,14 +217,6 @@ export const App = observer(function App() {
         );
         void store.sessionContinuationStore.forkAt(entryId);
       },
-      onHandoff: paneSession.canHandoff
-        ? (entryId: string) => {
-            root.focusSessionPane(
-              root.sessionLayoutStore.paneForSession(paneSession.sessionId)!.paneId,
-            );
-            void store.sessionContinuationStore.handoffAt(entryId);
-          }
-        : undefined,
       openSourceLocation: (location: SourceLocation) => {
         root.focusSessionPane(
           root.sessionLayoutStore.paneForSession(paneSession.sessionId)!.paneId,
@@ -265,13 +257,6 @@ export const App = observer(function App() {
     };
   };
   const projectTranscriptBehavior = session ? projectTranscriptBehaviorFor(session) : undefined;
-  const cakeChatTranscriptBehaviorFor = (paneSession: NonNullable<typeof cakeChatSession>) => ({
-    onHandoff: (entryId: string) => {
-      const pane = cakeChatCollection?.sessionLayoutStore.paneForSession(paneSession.sessionId);
-      if (pane) root.focusCakeChatPane(pane.paneId);
-      void cakeChatCollection?.management.handoff(paneSession.sessionId, entryId);
-    },
-  });
   const renderCakeChatPaneHeader = (
     pane: SessionPaneNode,
     paneSession: NonNullable<typeof cakeChatSession>,
@@ -308,8 +293,8 @@ export const App = observer(function App() {
       </>
     );
   };
-  const cakeChatProps = (paneSession: NonNullable<typeof cakeChatSession>) => ({
-    transcriptBehavior: cakeChatTranscriptBehaviorFor(paneSession),
+  const cakeChatProps = () => ({
+    transcriptBehavior: {},
     empty: (
       <div className="grid min-h-[calc(100vh-330px)] place-items-center content-center p-10 text-center">
         <span className="grid size-14 rotate-3 place-items-center rounded-bl-[14px] rounded-br-[20px] rounded-tl-[20px] rounded-tr-[14px] border border-border bg-card/75 shadow-[0_20px_70px_-30px_hsl(var(--shadow)/0.5)]">

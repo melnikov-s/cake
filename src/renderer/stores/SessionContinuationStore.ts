@@ -27,7 +27,6 @@ export interface SessionContinuationStoreProps {
 }
 
 export interface SessionContinuationPrompt {
-  kind: "fork" | "handoff";
   sessionId: string;
   entryId: string;
   projectPath: string;
@@ -35,11 +34,10 @@ export interface SessionContinuationPrompt {
   canBranchFromCurrentWorktree: boolean;
   destination: SessionContinuationDestination;
   worktreeName: string;
-  continuationPrompt?: string;
   resolveParent: boolean;
 }
 
-/** Owns full-context forks and clean-context handoffs into replacement sessions. */
+/** Owns detached full-context forks and in-place tool compaction. */
 export class SessionContinuationStore extends Store<SessionContinuationStoreProps> {
   prompt: SessionContinuationPrompt | undefined;
   private activeOperationId: string | undefined;
@@ -49,11 +47,35 @@ export class SessionContinuationStore extends Store<SessionContinuationStoreProp
   }
 
   forkAt(entryId: string) {
-    return this.requestContinuation("fork", entryId);
+    return this.requestContinuation(entryId);
   }
 
-  async handoffAt(entryId: string, prompt?: string, resolveSource = false) {
-    return this.requestContinuation("handoff", entryId, prompt, resolveSource);
+  async toolCompactAt(entryId: string, prompt?: string) {
+    const context = this.props.sessionContext();
+    if (!context) {
+      this.props.reportError("There is no active session to compact");
+      return false;
+    }
+    if (this.signal.aborted || this.prompt || this.activeOperationId) return false;
+    this.props.closeCommandPane();
+    this.activeOperationId = this.props.operations.start("project-workbench");
+    try {
+      await this.client.projectSessions.toolCompact(
+        {
+          sessionId: context.sessionId,
+          workingDirectory: context.workspacePath,
+          entryId,
+          prompt: prompt?.trim() || undefined,
+        },
+        { signal: this.signal },
+      );
+      return !this.signal.aborted;
+    } catch (error) {
+      if (!this.signal.aborted) this.props.reportError(error);
+      return false;
+    } finally {
+      this.clearActiveOperation();
+    }
   }
 
   selectDestination(destination: SessionContinuationDestination) {
@@ -120,29 +142,20 @@ export class SessionContinuationStore extends Store<SessionContinuationStoreProp
     this.prompt = undefined;
   }
 
-  private requestContinuation(
-    kind: SessionContinuationPrompt["kind"],
-    entryId: string,
-    continuationPrompt?: string,
-    resolveParent = false,
-  ) {
+  private requestContinuation(entryId: string) {
     const context = this.props.sessionContext();
     if (!context) {
-      this.props.reportError(
-        `There is no active session to ${kind === "fork" ? "fork" : "hand off"}`,
-      );
+      this.props.reportError("There is no active session to fork");
       return false;
     }
     if (this.signal.aborted || this.prompt || this.activeOperationId) return false;
     this.props.closeCommandPane();
     this.prompt = {
       ...context,
-      kind,
       entryId,
       destination: "existing",
       worktreeName: suggestedWorktreeName(this.props.sessionTitle()),
-      continuationPrompt: continuationPrompt?.trim() || undefined,
-      resolveParent,
+      resolveParent: false,
     };
     return true;
   }
@@ -163,26 +176,8 @@ export class SessionContinuationStore extends Store<SessionContinuationStoreProp
       resolveSource: prompt.resolveParent,
       destinationWorkingDirectory,
     };
-    const result =
-      prompt.kind === "fork"
-        ? await this.client.projectSessions.fork(target, { signal: this.signal })
-        : await this.client.projectSessions.handoff(target, { signal: this.signal });
+    const result = await this.client.projectSessions.fork(target, { signal: this.signal });
     if (this.signal.aborted) return;
     await this.props.openSession(result.sessionId, destinationWorkingDirectory);
-    if (prompt.kind !== "handoff" || !prompt.continuationPrompt || this.signal.aborted) return;
-    void this.client.projectSessions
-      .prompt(
-        {
-          sessionId: result.sessionId,
-          workingDirectory: destinationWorkingDirectory,
-          text: prompt.continuationPrompt,
-          attachments: [],
-          renderUserMessageAsMarkdown: false,
-        },
-        { signal: this.signal },
-      )
-      .catch((error: unknown) => {
-        if (!this.signal.aborted) this.props.reportError(error);
-      });
   }
 }

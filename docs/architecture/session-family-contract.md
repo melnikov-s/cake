@@ -87,8 +87,8 @@ the journal records only incomplete work. When archiving the family removes the
 final active Project Session from a landed Managed Worktree, Cake retires that
 checkout; restoring the family recreates it before restoring the first transcript.
 An unrelated active Project Session sharing the Working Directory prevents this
-retirement. Individual member delete, handoff, relocation, and resolve/restore
-paths reject family members. Ordinary forks are standalone and never inherit
+retirement. Individual member delete, relocation, and resolve/restore paths reject
+family members. Ordinary forks are standalone and never inherit
 membership.
 
 `sessionFamilies` owns creation, turn admission, and outcome delivery.

@@ -112,11 +112,9 @@ export const SessionContinuationDialog = observer(function SessionContinuationDi
 
   if (!prompt) return null;
 
-  const isFork = prompt.kind === "fork";
   const createsWorktree =
     prompt.destination === "branch-worktree" || prompt.destination === "new-worktree";
-  const title = isFork ? "Fork this conversation" : "Hand off this conversation";
-  const action = isFork ? "Fork conversation" : "Hand off conversation";
+  const title = "Fork this conversation";
   const visibleDestinations = destinations.filter((destination) =>
     destinationIsVisible(prompt, destination.value),
   );
@@ -200,7 +198,7 @@ export const SessionContinuationDialog = observer(function SessionContinuationDi
             )}
             <div className="mt-4 flex items-center justify-between gap-4">
               <span id="resolve-parent-label" className="text-sm">
-                Resolve the parent conversation after {isFork ? "forking" : "handoff"}
+                Resolve the parent conversation after forking
               </span>
               <Switch
                 checked={prompt.resolveParent}
@@ -216,7 +214,7 @@ export const SessionContinuationDialog = observer(function SessionContinuationDi
               >
                 Cancel
               </ConfirmationAction>
-              <ConfirmationAction type="submit">{action}</ConfirmationAction>
+              <ConfirmationAction type="submit">Fork conversation</ConfirmationAction>
             </ConfirmationActions>
           </form>
         </ConfirmationRequest>

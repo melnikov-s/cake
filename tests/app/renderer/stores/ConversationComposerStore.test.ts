@@ -12,9 +12,8 @@ class HarnessStore extends Store<{
   model: Session;
   existing?: boolean;
   streaming?: boolean;
-  canHandoff?: boolean;
   createSideChat?: (prompt: string) => Promise<boolean>;
-  handoffSession?: (entryId: string, prompt?: string, resolveSource?: boolean) => Promise<boolean>;
+  toolCompactSession?: (entryId: string, prompt?: string) => Promise<boolean>;
 }> {
   draft = "First message";
   submissionOrder: string[] = [];
@@ -58,8 +57,7 @@ class HarnessStore extends Store<{
       createSideChat: this.props.createSideChat,
       selectModel: async () => undefined,
       renameSession: async () => undefined,
-      canHandoff: () => this.props.canHandoff ?? true,
-      handoffSession: this.props.handoffSession ?? (async () => false),
+      toolCompactSession: this.props.toolCompactSession ?? (async () => false),
       deliver: async (input) => {
         if (this.props.existing) {
           const command =
@@ -113,7 +111,7 @@ class DraftHarnessStore extends Store<{ client: Client }> {
       openCommandPane: async () => undefined,
       selectModel: async () => undefined,
       renameSession: async () => undefined,
-      handoffSession: async () => false,
+      toolCompactSession: async () => false,
       deliver: async (input) => {
         await this.props.client.projectSessions.prompt({
           sessionId: input.sessionId,
@@ -138,7 +136,7 @@ class DraftHarnessStore extends Store<{ client: Client }> {
 }
 
 describe("ConversationComposerStore", () => {
-  it("allows handoff-and-resolve while VS Code contributes automatic source context", async () => {
+  it("allows tool compaction while VS Code contributes automatic source context", async () => {
     const model = Session.create({
       sessionId: "session-1",
       workingDirectory: "/project",
@@ -154,12 +152,12 @@ describe("ConversationComposerStore", () => {
         },
       ],
     });
-    const handoffSession = vi.fn(async () => true);
+    const toolCompactSession = vi.fn(async () => true);
     const client = { projectSessions: {} } as unknown as Client;
     const root = mount(
-      createStore(HarnessStore, { client, model, existing: true, handoffSession }),
+      createStore(HarnessStore, { client, model, existing: true, toolCompactSession }),
     );
-    root.composer.draftStore.setText("/handoffandresolve Continue cleanly");
+    root.composer.draftStore.setText("/toolcompact Continue cleanly");
     root.composer.draftStore.setEditorContextAttachment({
       kind: "source",
       name: "active.ts",
@@ -171,45 +169,8 @@ describe("ConversationComposerStore", () => {
 
     await root.composer.submit();
 
-    expect(handoffSession).toHaveBeenCalledWith("assistant-entry", "Continue cleanly", true);
+    expect(toolCompactSession).toHaveBeenCalledWith("assistant-entry", "Continue cleanly");
     expect(root.composer.draftStore.text).toBe("");
-    root[Symbol.dispose]();
-    model[Symbol.dispose]();
-  });
-
-  it("rejects a typed handoff command when the session belongs to a family", async () => {
-    const model = Session.create({
-      sessionId: "session-1",
-      workingDirectory: "/project",
-      parts: [
-        {
-          id: "assistant-part",
-          kind: "text",
-          role: "assistant",
-          text: "Completed response",
-          status: "complete",
-          piId: "assistant-entry",
-          partKey: "assistant-part",
-        },
-      ],
-    });
-    const handoffSession = vi.fn(async () => true);
-    const client = { projectSessions: {} } as unknown as Client;
-    const root = mount(
-      createStore(HarnessStore, {
-        client,
-        model,
-        existing: true,
-        canHandoff: false,
-        handoffSession,
-      }),
-    );
-    root.composer.draftStore.setText("/handoff Continue cleanly");
-
-    await expect(root.composer.submit()).resolves.toBe(false);
-
-    expect(handoffSession).not.toHaveBeenCalled();
-    expect(root.composer.error).toBe("Session Family members cannot be handed off");
     root[Symbol.dispose]();
     model[Symbol.dispose]();
   });

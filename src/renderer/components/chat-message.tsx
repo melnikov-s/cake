@@ -18,7 +18,7 @@ import { FullscreenSurface } from "@/components/fullscreen-surface";
 import { FullscreenButton } from "@/components/ui/fullscreen-button";
 import { Avatar } from "@/components/ui/avatar";
 import { IconButton } from "@/components/ui/icon-button";
-import { ChatIcon, CheckIcon, CopyIcon, ForkIcon, HandoffIcon } from "@/components/ui/icons";
+import { ChatIcon, CheckIcon, CopyIcon, ForkIcon } from "@/components/ui/icons";
 import { AnnotationItemPopover } from "./annotation-item-popover";
 import type { ProjectWorkflowColor } from "../../domain/application/application-data";
 import type { ArtifactRecord } from "../../ipc/artifact-contract";
@@ -274,7 +274,6 @@ export interface ChatTranscriptBehavior {
   /** Project root used to present workspace files without machine-specific prefixes. */
   workspacePath?: string;
   onFork?(entryId: string): void;
-  onHandoff?(entryId: string): void;
   onOpenReviewRun?(threadId?: string): void;
   /** Opens a structured workspace source location in Cake's embedded VS Code IDE. */
   openSourceLocation?(location: SourceLocation): void;
@@ -535,15 +534,6 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
               onClick={() => behavior.onFork!(part.entryId!)}
             >
               <ForkIcon />
-            </IconButton>
-          )}
-          {part.entryId && behavior.onHandoff && (
-            <IconButton
-              tooltip="Hand off without tool history"
-              ariaLabel="Hand off response without tool history into new chat"
-              onClick={() => behavior.onHandoff!(part.entryId!)}
-            >
-              <HandoffIcon />
             </IconButton>
           )}
         </div>

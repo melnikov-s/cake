@@ -20,8 +20,7 @@ function setup(options?: {
   const createWorktree = vi.fn(options?.createWorktree ?? (async () => "/created-worktree"));
   const openSession = vi.fn(async () => undefined);
   const fork = vi.fn(async () => ({ sessionId: "forked" }));
-  const handoff = vi.fn(async () => ({ sessionId: "handed-off" }));
-  const prompt = vi.fn(async () => "turn-1");
+  const toolCompact = vi.fn(async () => ({ sessionId: "source" }));
   const { root, subject } = mountWithClient(
     createStore(SessionContinuationStore, {
       operations,
@@ -37,10 +36,10 @@ function setup(options?: {
       openSession,
       reportError: vi.fn(),
     }),
-    { projectSessions: { fork, handoff, prompt } } as unknown as Client,
+    { projectSessions: { fork, toolCompact } } as unknown as Client,
   );
   disposables.push(root, operations);
-  return { store: subject, createWorktree, openSession, fork, handoff, prompt };
+  return { store: subject, createWorktree, openSession, fork, toolCompact };
 }
 
 describe("SessionContinuationStore", () => {
@@ -65,33 +64,21 @@ describe("SessionContinuationStore", () => {
     expect(openSession).toHaveBeenCalledWith("forked", "/project");
   });
 
-  it("hands off into a child worktree and can resolve its parent", async () => {
-    const { store, createWorktree, openSession, handoff, prompt } = setup();
-    await store.handoffAt("assistant-entry", "Continue cleanly", true);
-    store.selectDestination("branch-worktree");
-    store.setWorktreeName("continued-child");
+  it("tool-compacts the current session without opening a continuation dialog", async () => {
+    const { store, createWorktree, openSession, toolCompact } = setup();
 
-    await store.confirmPrompt();
+    const result = await store.toolCompactAt("assistant-entry", "Continue cleanly");
 
-    expect(createWorktree).toHaveBeenCalledWith("/project", "continued-child", "/current-worktree");
-    expect(handoff).toHaveBeenCalledWith(
+    expect(result).toBe(true);
+    expect(store.prompt).toBeUndefined();
+    expect(createWorktree).not.toHaveBeenCalled();
+    expect(openSession).not.toHaveBeenCalled();
+    expect(toolCompact).toHaveBeenCalledWith(
       {
         sessionId: "source",
         workingDirectory: "/current-worktree",
         entryId: "assistant-entry",
-        resolveSource: true,
-        destinationWorkingDirectory: "/created-worktree",
-      },
-      expect.any(Object),
-    );
-    expect(openSession).toHaveBeenCalledWith("handed-off", "/created-worktree");
-    expect(prompt).toHaveBeenCalledWith(
-      {
-        sessionId: "handed-off",
-        workingDirectory: "/created-worktree",
-        text: "Continue cleanly",
-        attachments: [],
-        renderUserMessageAsMarkdown: false,
+        prompt: "Continue cleanly",
       },
       expect.any(Object),
     );

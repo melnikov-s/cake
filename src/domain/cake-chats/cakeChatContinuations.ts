@@ -1,34 +1,26 @@
 import { Effect } from "effect";
-import { getState, setSessionFastMode } from "../application/application";
 import { TurnId, use as useConversation } from "../conversations/conversations";
 import { type CakeChatTarget } from "./cake-chat-data";
 import { acquireForUse, acquireTarget } from "./cakeChatOperations";
 import { asError, publishCatalogChange } from "./cakeChatMetadata";
 import type { CakeChatRuntimeConfiguration } from "./cakeChatRuntime";
-import { resolve } from "./cakeChatLifecycle";
 
-export const handoff = Effect.fn("CakeChats.handoff")(function* (input: {
+export const toolCompact = Effect.fn("CakeChats.toolCompact")(function* (input: {
   readonly target: CakeChatTarget;
   readonly entryId: string;
   readonly prompt?: string;
-  readonly resolveSource?: boolean;
   readonly configuration: CakeChatRuntimeConfiguration;
 }) {
-  const state = yield* getState();
-  const inheritFastMode = state.fastModeSessionIds.includes(input.target.sessionId);
-  const handedOff = yield* useConversation(
+  const compacted = yield* useConversation(
     acquireForUse(input.target, input.configuration),
-    (handle) => handle.handoff(input.entryId),
-  ).pipe(asError("handoff"));
-  if (inheritFastMode)
-    yield* setSessionFastMode(handedOff.sessionId, true).pipe(asError("handoff"));
+    (handle) => handle.toolCompact(input.entryId),
+  ).pipe(asError("toolCompact"));
   let turnId: TurnId | undefined;
   if (input.prompt?.trim()) {
-    const target = { ...input.target, sessionId: handedOff.sessionId };
+    const target = { ...input.target, sessionId: compacted.sessionId };
     const next = yield* acquireTarget(target, false, input.configuration);
-    turnId = TurnId.make(yield* next.prompt(input.prompt.trim()).pipe(asError("handoff")));
+    turnId = TurnId.make(yield* next.prompt(input.prompt.trim()).pipe(asError("toolCompact")));
   }
-  if (input.resolveSource) yield* resolve(input.target, input.configuration);
-  yield* publishCatalogChange(handedOff.sessionId, false);
-  return turnId ? { sessionId: handedOff.sessionId, turnId } : { sessionId: handedOff.sessionId };
+  yield* publishCatalogChange(compacted.sessionId, false);
+  return turnId ? { sessionId: compacted.sessionId, turnId } : { sessionId: compacted.sessionId };
 });

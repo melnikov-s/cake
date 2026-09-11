@@ -143,13 +143,11 @@ export const ProjectSessionRpc = RpcGroup.make(
     payload: { ...ProjectSessionTarget.fields, provider: Schema.String },
     error: ProjectSessionError,
   }),
-  Rpc.make("projectSessions.handoff", {
+  Rpc.make("projectSessions.toolCompact", {
     payload: {
       ...ProjectSessionTarget.fields,
       entryId: Schema.String,
       prompt: Schema.optional(Schema.String),
-      destinationWorkingDirectory: Schema.optional(Schema.String),
-      resolveSource: Schema.optional(Schema.Boolean),
     },
     success: Schema.Struct({ sessionId: Schema.String }),
     error: ProjectSessionError,

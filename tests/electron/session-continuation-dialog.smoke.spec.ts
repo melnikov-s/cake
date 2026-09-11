@@ -19,7 +19,7 @@ async function seedGitRepository(project: string) {
   await git("commit", "-m", "base");
 }
 
-test("forks and hands off sessions across working directories", async () => {
+test("forks sessions across working directories", async () => {
   test.setTimeout(120_000);
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-fork-dialog-smoke-"));
   const userData = join(temporaryRoot, "user-data");
@@ -211,61 +211,6 @@ test("forks and hands off sessions across working directories", async () => {
     await expect(composer).toHaveValue("Continue in the fork");
     await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
     await expect(page.getByText("Cake could not find that session")).toHaveCount(0);
-
-    // Hand the worktree fork back to the project root. The handoff dialog offers
-    // both a child branch and a checkout-free destination, and writes the abridged
-    // transcript into the selected Working Directory.
-    const rootHandoff = page.getByRole("button", {
-      name: "Hand off response without tool history into new chat",
-    });
-    await expect(rootHandoff).toBeEnabled();
-    await rootHandoff.click();
-    const rootHandoffDialog = page.getByRole("dialog", { name: "Hand off this conversation" });
-    await expect(
-      rootHandoffDialog.getByRole("button", { name: "Branch off the current worktree" }),
-    ).toBeEnabled();
-    await rootHandoffDialog
-      .getByRole("button", { name: "Use the project root (no worktree)" })
-      .click();
-    await rootHandoffDialog.getByRole("button", { name: "Hand off conversation" }).click();
-    await expect(page.getByText("Here is the plan.")).toBeVisible();
-    await expect(page.getByRole("combobox", { name: "Message" })).toHaveValue("");
-    await expect(page.getByRole("button", { name: "Start new chat in project" })).toHaveCount(1);
-    await expect(page.getByText("Cake could not find that session")).toHaveCount(0);
-
-    // Continue from the now-resolved parent. Handoff should create and open an
-    // active copy without restoring the parent in the sidebar.
-    await page.getByRole("button", { name: "Expand Resolved" }).click();
-    await page.getByRole("button", { name: "Expand project resolved" }).last().click();
-    const resolvedParent = page.locator(
-      `[data-slot="resolved-lane"] [data-session-id="${sessionId}"]`,
-    );
-    await expect(resolvedParent).toBeVisible();
-    await resolvedParent.locator(".session-row").click();
-    const handoff = page.getByRole("button", {
-      name: "Hand off response without tool history into new chat",
-    });
-    await expect(handoff).toBeVisible();
-    await handoff.click({ force: true });
-    const handoffDialog = page.getByRole("dialog", { name: "Hand off this conversation" });
-    await expect(handoffDialog).toBeVisible();
-    await expect(
-      handoffDialog.getByRole("button", { name: "Use the current working directory" }),
-    ).toHaveAttribute("aria-pressed", "true");
-    await expect(
-      handoffDialog.getByRole("switch", {
-        name: "Resolve the parent conversation after handoff",
-      }),
-    ).not.toBeChecked();
-    await handoffDialog.getByRole("button", { name: "Hand off conversation" }).click();
-
-    await expect(page.getByText("Here is the plan.")).toBeVisible();
-    await expect(page.getByRole("combobox", { name: "Message" })).toBeVisible();
-    await expect(page.getByText("Cake could not find that session")).toHaveCount(0);
-    await expect(resolvedParent).toBeVisible();
-    expect(
-      await page.evaluate(() => Reflect.get(window, "continuationEmptySessionFlashes")),
-    ).toEqual([]);
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

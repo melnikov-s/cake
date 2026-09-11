@@ -84,7 +84,7 @@ test("selects and runs slash commands from the composer with the keyboard", asyn
     await composer.pressSequentially("/");
     await expect(page.getByRole("listbox", { name: "Slash commands" })).toBeVisible();
     await expect(page.getByRole("option", { name: /compact/ })).toHaveCount(0);
-    await expect(page.getByRole("option", { name: /handoff/ })).toHaveCount(0);
+    await expect(page.getByRole("option", { name: /toolcompact/ })).toHaveCount(0);
     await composer.press("Tab");
     await expect(composer).toHaveValue("/model existing prompt");
 

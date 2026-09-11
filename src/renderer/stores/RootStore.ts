@@ -238,14 +238,13 @@ export class RootStore extends Store<{
   ): Promise<JsonValue> {
     const sourceWorkingDirectory = this.requireProjectSessionWorkingDirectory(sourceSessionId);
     const destinationWorkingDirectory = input.destinationWorkingDirectory ?? sourceWorkingDirectory;
-    const result = await this.client.projectSessions.handoff(
+    const result = await this.client.projectSessions.fork(
       {
         sessionId: sourceSessionId,
         workingDirectory: sourceWorkingDirectory,
         entryId: input.entryId,
         resolveSource: input.resolveSource,
         destinationWorkingDirectory,
-        ...(input.prompt === undefined ? null : { prompt: input.prompt }),
       },
       { signal: this.signal },
     );
@@ -255,6 +254,17 @@ export class RootStore extends Store<{
           sessionId: result.sessionId,
           workingDirectory: destinationWorkingDirectory,
           name: input.title,
+        },
+        { signal: this.signal },
+      );
+    if (input.prompt !== undefined)
+      await this.client.projectSessions.prompt(
+        {
+          sessionId: result.sessionId,
+          workingDirectory: destinationWorkingDirectory,
+          text: input.prompt,
+          attachments: [],
+          renderUserMessageAsMarkdown: false,
         },
         { signal: this.signal },
       );
@@ -736,12 +746,8 @@ export class RootStore extends Store<{
       abort: (sessionId) => this.projectWorkbenchStore.abortSession(sessionId),
       renameSession: (sessionId, name) =>
         this.projectWorkbenchStore.sessionManagementStore.renameSession(sessionId, name),
-      handoffSession: (entryId, prompt, resolveSource) =>
-        this.projectWorkbenchStore.sessionContinuationStore.handoffAt(
-          entryId,
-          prompt,
-          resolveSource,
-        ),
+      toolCompactSession: (entryId, prompt) =>
+        this.projectWorkbenchStore.sessionContinuationStore.toolCompactAt(entryId, prompt),
       modelPresets: () => this.settingsStore.modelPresets.presets,
       openModelPresetSettings: () => this.showModelPresetSettings(),
       newSessionRequest: (sessionId) => this.projectWorkbenchStore.newSessionRequest(sessionId),

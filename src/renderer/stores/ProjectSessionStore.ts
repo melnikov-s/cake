@@ -48,7 +48,7 @@ export interface ProjectSessionStoreProps extends SessionTarget {
   familyId(): string | undefined;
   abort(): Promise<void>;
   renameSession(name: string): Promise<void>;
-  handoffSession(entryId: string, prompt?: string, resolveSource?: boolean): Promise<boolean>;
+  toolCompactSession(entryId: string, prompt?: string): Promise<boolean>;
   modelPresets(): readonly ModelPreset[];
   openModelPresetSettings(): void;
   newSessionRequest():
@@ -123,9 +123,6 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   }
   get sessionId() {
     return this.props.sessionId;
-  }
-  get canHandoff() {
-    return !this.props.familyId();
   }
   @computed
   get sideChatThreads() {
@@ -299,9 +296,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
         openCommandPane: (pane) => this.props.openCommandPane(pane),
         createSideChat: (prompt) => this.createSideChat(prompt),
         renameSession: (name) => this.props.renameSession(name),
-        canHandoff: () => this.canHandoff,
-        handoffSession: (entryId, prompt, resolveSource) =>
-          this.props.handoffSession(entryId, prompt, resolveSource),
+        toolCompactSession: (entryId, prompt) => this.props.toolCompactSession(entryId, prompt),
         deliver: (input) => this.deliverComposerMessage(input),
         editMessage: (input) =>
           this.client.projectSessions.editMessage(input, { signal: this.signal }),
@@ -368,16 +363,10 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       },
       chat: {
         stoppable: () => this.model.backgroundWorkActive,
-        commands: () => {
-          const commands = this.props.pendingSessions.isTemporary(this.sessionId)
+        commands: () =>
+          this.props.pendingSessions.isTemporary(this.sessionId)
             ? this.stagedCommandStore.commands
-            : this.model.commands;
-          return this.canHandoff
-            ? commands
-            : commands.filter(
-                (command) => command.name !== "handoff" && command.name !== "handoffandresolve",
-              );
-        },
+            : this.model.commands,
         placeholder: () =>
           this.isStreaming
             ? "Add the next instruction…"

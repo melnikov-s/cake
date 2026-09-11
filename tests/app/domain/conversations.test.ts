@@ -50,7 +50,7 @@ const makeHandle = (deliveries: string[], isStreaming: () => boolean): PiSession
   compact: () => Effect.void,
   rename: () => Effect.void,
   fork: () => Effect.die("Unexpected fork"),
-  handoff: () => Effect.die("Unexpected handoff"),
+  toolCompact: () => Effect.die("Unexpected toolCompact"),
   reviewParentContext: () => Effect.die("Unexpected parent-context request"),
   notifySubagentCompletion: () => Effect.void,
   reload: () => Effect.void,

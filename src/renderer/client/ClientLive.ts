@@ -326,10 +326,10 @@ export function makeClient(runtime: Pick<Runtime, "execute">): Client {
           withClient((client) => client.projectSessions.logout(input)),
           options,
         ),
-      handoff: (input, options) =>
+      toolCompact: (input, options) =>
         run(
-          "projectSessions.handoff",
-          withClient((client) => client.projectSessions.handoff(input)),
+          "projectSessions.toolCompact",
+          withClient((client) => client.projectSessions.toolCompact(input)),
           options,
         ),
       rename: (target, options) =>
@@ -468,10 +468,10 @@ export function makeClient(runtime: Pick<Runtime, "execute">): Client {
           withClient((client) => client.cakeChats.rename(input)),
           options,
         ),
-      handoff: (input, options) =>
+      toolCompact: (input, options) =>
         run(
-          "cakeChats.handoff",
-          withClient((client) => client.cakeChats.handoff(input)),
+          "cakeChats.toolCompact",
+          withClient((client) => client.cakeChats.toolCompact(input)),
           options,
         ),
       resolve: (target, options) =>

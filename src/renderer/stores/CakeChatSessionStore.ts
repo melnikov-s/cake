@@ -60,8 +60,8 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       canSubmit: () => true,
       composer: {
         renameSession: (name) => this.props.management.renameSession(this.sessionId, name),
-        handoffSession: (entryId, prompt, resolveSource) =>
-          this.props.management.handoff(this.sessionId, entryId, prompt, resolveSource),
+        toolCompactSession: (entryId, prompt) =>
+          this.props.management.toolCompact(this.sessionId, entryId, prompt),
         deliver: async (input) => {
           const observedSnapshotRevision = this.model.observedSnapshotRevision;
           const active = this.props.management.ensureSessionActive(this.sessionId);

@@ -26,7 +26,7 @@ export interface SessionRegistryStoreProps {
   projectName(workingDirectory: string): string;
   abort(sessionId: string): Promise<void>;
   renameSession(sessionId: string, name: string): Promise<void>;
-  handoffSession(entryId: string, prompt?: string, resolveSource?: boolean): Promise<boolean>;
+  toolCompactSession(entryId: string, prompt?: string): Promise<boolean>;
   modelPresets?(): readonly ModelPreset[];
   openModelPresetSettings?(): void;
   newSessionRequest?(
@@ -95,7 +95,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
           this.pendingSessions.familyId(target.sessionId),
         abort: () => this.props.abort(target.sessionId),
         renameSession: (name) => this.props.renameSession(target.sessionId, name),
-        handoffSession: this.props.handoffSession,
+        toolCompactSession: this.props.toolCompactSession,
         modelPresets: () => this.props.modelPresets?.() ?? [],
         openModelPresetSettings: () => this.props.openModelPresetSettings?.(),
         newSessionRequest: () => this.props.newSessionRequest?.(target.sessionId),

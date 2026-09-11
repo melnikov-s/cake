@@ -125,11 +125,12 @@ describe("RootStore session navigation", () => {
       sessions: [sessionSummary("source", projectPath)],
       resolvedHasMoreByProject: {},
     });
-    const handoff = vi.fn(async () => ({ sessionId: "forked" }));
+    const fork = vi.fn(async () => ({ sessionId: "forked" }));
     const rename = vi.fn(async () => undefined);
+    const prompt = vi.fn(async () => "turn-1");
     const respondControl = vi.fn(async () => undefined);
     const client = {
-      projectSessions: { handoff, rename, respondControl },
+      projectSessions: { fork, prompt, rename, respondControl },
     } as unknown as Client;
     const root = mountRootStore(client, { state: {}, children: {} }, async () => undefined, models);
 
@@ -147,12 +148,11 @@ describe("RootStore session navigation", () => {
         },
       });
 
-      expect(handoff).toHaveBeenCalledWith(
+      expect(fork).toHaveBeenCalledWith(
         {
           sessionId: "source",
           workingDirectory: projectPath,
           entryId: "entry-1",
-          prompt: "Continue in the fork.",
           resolveSource: true,
           destinationWorkingDirectory: projectPath,
         },
@@ -160,6 +160,16 @@ describe("RootStore session navigation", () => {
       );
       expect(rename).toHaveBeenCalledWith(
         { sessionId: "forked", workingDirectory: projectPath, name: "Forked work" },
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
+      expect(prompt).toHaveBeenCalledWith(
+        {
+          sessionId: "forked",
+          workingDirectory: projectPath,
+          text: "Continue in the fork.",
+          attachments: [],
+          renderUserMessageAsMarkdown: false,
+        },
         expect.objectContaining({ signal: expect.any(AbortSignal) }),
       );
       expect(respondControl).toHaveBeenCalledWith(

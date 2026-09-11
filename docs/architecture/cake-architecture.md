@@ -236,8 +236,9 @@ if the session is manually named while it is running. Failures are silent and
 leave Pi's first-message session-list title as the display fallback for active
 sessions. Configuring a utility model later makes an unnamed active session
 eligible after its next interaction; already named sessions are never
-regenerated automatically. A handoff inherits the source session's current title through Pi's session-name metadata, so
-continuation never triggers a new title generation pass.
+regenerated automatically. Tool compaction keeps the existing Pi Session identity and title. A fork inherits the
+source session's current title through Pi's session-name metadata, so continuation never triggers a new title
+generation pass.
 
 When the first prompt will create a managed worktree, Cake also attempts a
 bounded utility completion before creating the checkout or Pi Session. The
@@ -392,11 +393,15 @@ The window Store hierarchy mirrors the product surfaces:
   Session agent's singular `session.create` control. That local control creates an independent
   Project Session at the Project root when `worktreeName` is omitted; when supplied, Cake creates
   and registers the Managed Worktree before starting Pi in its path.
-  Fork and handoff are continuation workflows rather than permanent Working Directory bindings:
-  both default to the parent's current Working Directory and can instead target a child Managed
-  Worktree based on the current worktree, the Project root with no Managed Worktree, or a new
-  Managed Worktree based on the Project's default branch. Resolving the parent is an independent,
-  explicit choice for every destination; an already resolved parent remains resolved.
+  Forks are continuation workflows rather than permanent Working Directory bindings. They create
+  a detached Pi Session and can target a child Managed Worktree based on the current worktree, the
+  Project root with no Managed Worktree, or a new Managed Worktree based on the Project's default
+  branch. Resolution remains a separate lifecycle action; an already resolved source remains
+  resolved. Tool compaction is not a continuation workflow: `/toolcompact` always targets the
+  latest completed assistant response, appends a root branch that replays visible user and
+  assistant text without tool activity, keeps the Pi Session ID and Working Directory, and leaves
+  the complete original branch reachable through the session tree. It has no per-message action or
+  destination dialog.
   `EmbeddedEditorStore` realizes the selected Project Session's IDE presentation preference and
   owns native-editor lifecycle, bounds, and Source Control navigation. The native VS Code view
   occupies the source pane, the ordinary Cake sidebar may occupy the left pane, and Cake's shared
@@ -499,10 +504,11 @@ The window Store hierarchy mirrors the product surfaces:
   it composes keyed `PendingConversationStore` children for shared window-persisted
   per-conversation data and behavior; each session composer continues to compose
   `PendingSessionDraftStore` for its transient UI workflow.
-  `CakeChatManagementStore` owns rename, handoff, resolve, restore, and delete operations.
+  `CakeChatManagementStore` owns rename, tool compaction, resolve, restore, and delete operations.
+  Tool compaction has the same in-place session-tree semantics as it does for Project Sessions.
   Resolve/restore commands serialize in invocation order and delete waits for earlier resolution
-  work; rename and handoff remain independent commands, with Store-lifetime cancellation and late
-  result rejection. The collection also composes its independent `SessionLayoutStore`, whose
+  work; rename and tool compaction remain independent commands, with Store-lifetime cancellation
+  and late result rejection. The collection also composes its independent `SessionLayoutStore`, whose
   focused session is the Cake Chat collection selection. This avoids a second persisted selection
   ID while `AppShellStore` remains the authority for the window's mutually exclusive application
   surface. The layout, registry identities, pending records, and session composer drafts persist in

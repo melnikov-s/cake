@@ -264,11 +264,10 @@ export interface CakeIpcClientService {
     readonly rename: (
       input: CakeChatTarget & { readonly name: string },
     ) => Effect.Effect<void, CakeChatError | TransportError>;
-    readonly handoff: (
+    readonly toolCompact: (
       input: CakeChatTarget & {
         readonly entryId: string;
         readonly prompt?: string;
-        readonly resolveSource?: boolean;
       },
     ) => Effect.Effect<
       { readonly sessionId: string; readonly turnId?: TurnId },
@@ -415,12 +414,10 @@ export interface CakeIpcClientService {
     readonly logout: (
       input: ProjectSessionTarget & { readonly provider: string },
     ) => Effect.Effect<void, ProjectSessionError | TransportError>;
-    readonly handoff: (
+    readonly toolCompact: (
       input: ProjectSessionTarget & {
         readonly entryId: string;
         readonly prompt?: string;
-        readonly destinationWorkingDirectory?: string;
-        readonly resolveSource?: boolean;
       },
     ) => Effect.Effect<{ readonly sessionId: string }, ProjectSessionError | TransportError>;
     readonly rename: (
@@ -740,8 +737,8 @@ export const CakeIpcClientLive = Layer.effect(
         rename: Effect.fn("CakeIpcClient.cakeChats.rename")((input) =>
           client("cakeChats.rename", input),
         ),
-        handoff: Effect.fn("CakeIpcClient.cakeChats.handoff")((input) =>
-          client("cakeChats.handoff", input),
+        toolCompact: Effect.fn("CakeIpcClient.cakeChats.toolCompact")((input) =>
+          client("cakeChats.toolCompact", input),
         ),
         resolve: Effect.fn("CakeIpcClient.cakeChats.resolve")((target) =>
           client("cakeChats.resolve", target),
@@ -860,8 +857,8 @@ export const CakeIpcClientLive = Layer.effect(
         logout: Effect.fn("CakeIpcClient.projectSessions.logout")((input) =>
           client("projectSessions.logout", input),
         ),
-        handoff: Effect.fn("CakeIpcClient.projectSessions.handoff")((input) =>
-          client("projectSessions.handoff", input),
+        toolCompact: Effect.fn("CakeIpcClient.projectSessions.toolCompact")((input) =>
+          client("projectSessions.toolCompact", input),
         ),
         rename: Effect.fn("CakeIpcClient.projectSessions.rename")((input) =>
           client("projectSessions.rename", input),

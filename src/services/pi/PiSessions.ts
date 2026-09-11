@@ -162,9 +162,8 @@ export interface PiSessionHandle {
     entryId: string,
     title: string,
   ) => Effect.Effect<{ readonly sessionId: string; readonly sessionFile: string }, PiSessionError>;
-  readonly handoff: (
+  readonly toolCompact: (
     entryId: string,
-    destination?: { readonly workingDirectory: string; readonly sessionRoot: string },
   ) => Effect.Effect<{ readonly sessionId: string; readonly sessionFile: string }, PiSessionError>;
   readonly reviewParentContext: () => Effect.Effect<ReviewParentContext, PiSessionError>;
   readonly notifySubagentCompletion: (
@@ -655,8 +654,7 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
           compact: (instructions) => call("compact", (runtime) => runtime.compact(instructions)),
           rename: (name) => call("rename", (runtime) => runtime.rename(name)),
           fork: (entryId, title) => call("fork", (runtime) => runtime.fork(entryId, title)),
-          handoff: (entryId, destination) =>
-            call("handoff", (runtime) => runtime.handoff(entryId, destination)),
+          toolCompact: (entryId) => call("toolCompact", (runtime) => runtime.toolCompact(entryId)),
           reviewParentContext: () =>
             Effect.try({
               try: () => shared.runtime.getReviewParentContext?.(),

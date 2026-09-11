@@ -101,19 +101,13 @@ export const projectSessionHandlers = ProjectSessionRpc.of({
     projectSessionOperations.login(target, provider, authType),
   "projectSessions.logout": ({ provider, ...target }) =>
     projectSessionOperations.logout(target, provider),
-  "projectSessions.handoff": ({
-    entryId,
-    prompt,
-    destinationWorkingDirectory,
-    resolveSource,
-    ...target
-  }) => {
-    const input: Parameters<typeof projectSessionContinuations.handoff>[0] = { target, entryId };
+  "projectSessions.toolCompact": ({ entryId, prompt, ...target }) => {
+    const input: Parameters<typeof projectSessionContinuations.toolCompact>[0] = {
+      target,
+      entryId,
+    };
     if (prompt !== undefined) Object.assign(input, { prompt });
-    if (destinationWorkingDirectory !== undefined)
-      Object.assign(input, { destinationWorkingDirectory });
-    if (resolveSource !== undefined) Object.assign(input, { resolveSource });
-    return projectSessionContinuations.handoff(input);
+    return projectSessionContinuations.toolCompact(input);
   },
   "projectSessions.rename": ({ name, ...target }) => projectSessionOperations.rename(target, name),
   "projectSessions.fork": ({ entryId, destinationWorkingDirectory, resolveSource, ...target }) => {

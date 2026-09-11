@@ -141,7 +141,10 @@ const makeLayer = (
     },
     rename: async () => undefined,
     fork: async () => ({ sessionId: "fork", sessionFile: "/fork.jsonl" }),
-    handoff: async () => ({ sessionId: "handoff", sessionFile: "/handoff.jsonl" }),
+    toolCompact: async () => ({
+      sessionId: snapshot.sessionId,
+      sessionFile: snapshot.sessionFile,
+    }),
     navigate: async () => undefined,
     dispose: () => undefined,
   });
@@ -251,20 +254,20 @@ describe("Cake Chats domain", () => {
     }).pipe(Effect.provide(fixture.layer));
   });
 
-  it.effect("handoffs without constructing a destination runtime and copies Fast mode", () => {
+  it.effect("tool-compacts in the session tree without changing identity or Fast mode", () => {
     const fixture = makeLayer({
       ...defaultApplicationState(),
       fastModeSessionIds: ["cake-chat-1"],
     });
     return Effect.gen(function* () {
-      const result = yield* cakeChatContinuations.handoff({
+      const result = yield* cakeChatContinuations.toolCompact({
         target: { sessionId: "cake-chat-1", tools: [] },
         entryId: "assistant-entry",
         configuration,
       });
-      assert.equal(result.sessionId, "handoff");
+      assert.equal(result.sessionId, "cake-chat-1");
       assert.equal(fixture.created(), 1);
-      assert.deepEqual(fixture.state().fastModeSessionIds, ["cake-chat-1", "handoff"]);
+      assert.deepEqual(fixture.state().fastModeSessionIds, ["cake-chat-1"]);
     }).pipe(Effect.provide(fixture.layer));
   });
 
@@ -446,7 +449,7 @@ describe("Cake Chats domain", () => {
       assert.equal(options.agentDir, "/cake");
       assert.equal(options.sessionDir, "/cake/global");
       assert.equal(options.resolvedSessionDir, "/cake/global-resolved");
-      assert.deepEqual(options.slashCommands, ["compact", "model", "handoff", "handoffandresolve"]);
+      assert.deepEqual(options.slashCommands, ["compact", "model", "toolcompact"]);
       assert.equal(options.currentSessionControl?.resolved(), false);
       assert.ok(options.agentControl);
       assert.deepEqual(options.globalControl?.tools[0]?.parameters, {

@@ -102,12 +102,11 @@ export const CakeChatRpc = RpcGroup.make(
     },
     error: CakeChatError,
   }),
-  Rpc.make("cakeChats.handoff", {
+  Rpc.make("cakeChats.toolCompact", {
     payload: {
       ...CakeChatTarget.fields,
       entryId: Schema.String,
       prompt: Schema.optional(Schema.String),
-      resolveSource: Schema.optional(Schema.Boolean),
     },
     success: Schema.Struct({ sessionId: Schema.String, turnId: Schema.optional(TurnId) }),
     error: CakeChatError,

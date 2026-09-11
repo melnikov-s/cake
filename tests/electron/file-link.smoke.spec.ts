@@ -413,17 +413,9 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
     await expect(page.locator(".transcript").getByText(/Phase 4 — Model references/)).toBeVisible();
 
     const composer = page.getByRole("combobox", { name: "Message", exact: true });
-    await composer.fill("/handoffandresolve Continue cleanly");
+    await composer.fill("/toolcompact");
     await page.getByRole("button", { name: "Send" }).click();
-    const handoffDialog = page.getByRole("dialog", { name: "Hand off this conversation" });
-    await expect(handoffDialog).toBeVisible();
-    await expect(
-      handoffDialog.getByRole("switch", {
-        name: "Resolve the parent conversation after handoff",
-      }),
-    ).toBeChecked();
-    await expect.poll(vscodeIsVisible).toBe(false);
-    await handoffDialog.getByRole("button", { name: "Cancel" }).click();
+    await expect(composer).toHaveValue("");
     await expect.poll(vscodeIsVisible).toBe(true);
     await composer.fill("Keep this IDE draft");
 

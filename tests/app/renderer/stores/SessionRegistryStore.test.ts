@@ -42,7 +42,7 @@ function registryFixture(
       projectName: (workingDirectory) => workingDirectory,
       abort,
       renameSession: async () => undefined,
-      handoffSession: async () => false,
+      toolCompactSession: async () => false,
       onWorktreeLanded: () => undefined,
       onWorktreeDiscarded: () => undefined,
       retirement: {
@@ -264,45 +264,15 @@ describe("SessionRegistryStore materialization", () => {
       familyChildOrder: 1,
       pending: true,
     });
-    expect(parent.canHandoff).toBe(false);
-    expect(child.canHandoff).toBe(false);
     expect(
       parent.conversationSessionStore.chatStore.commands.map((command) => command.name),
-    ).toEqual(["compact", "model", "name", "sidechat", "schedule"]);
+    ).toEqual(["compact", "model", "name", "sidechat", "schedule", "toolcompact"]);
     expect(
       child.conversationSessionStore.chatStore.commands.map((command) => command.name),
-    ).toEqual(["compact", "model", "name", "sidechat", "schedule"]);
+    ).toEqual(["compact", "model", "name", "sidechat", "schedule", "toolcompact"]);
     expect(
       fixture.registry.observationRetention.sessions.map((session) => session.sessionId),
     ).toEqual(["parent", "child"]);
-
-    fixture.dispose();
-  });
-
-  it("removes handoff capabilities from a family parent", () => {
-    const fixture = registryFixture();
-    fixture.catalogModel.sessions.push(
-      SessionSummary.create({
-        sessionId: "parent",
-        title: "Parent",
-        createdAt: "1970-01-01T00:00:00.000Z",
-        modifiedAt: "1970-01-01T00:00:00.000Z",
-        resolved: false,
-        projectPath: "/project",
-        projectName: "project",
-        workingDirectory: "/project",
-        familyId: "family",
-        familyParentSessionId: "parent",
-        familyChildSessionIds: ["child"],
-      }),
-    );
-    const parent = fixture.registry.load("parent", "/project");
-    parent.model.commands = piBuiltinSlashCommands;
-
-    expect(parent.canHandoff).toBe(false);
-    expect(
-      parent.conversationSessionStore.chatStore.commands.map((command) => command.name),
-    ).toEqual(["compact", "model", "name", "sidechat", "schedule"]);
 
     fixture.dispose();
   });

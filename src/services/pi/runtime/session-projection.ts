@@ -24,8 +24,8 @@ export const userMessagePresentationEntrySchema = Schema.Struct({
   renderAs: Schema.Literals(["markdown", "plain"]),
 });
 export type UserMessagePresentation = typeof userMessagePresentationEntrySchema.Type;
-/** Marks the orientation preamble appended as the first entry of a handoff session. */
-export const handoffEntryType = "cake.handoff/v1";
+/** Marks the orientation preamble on a tool-compacted session-tree branch. */
+export const toolCompactEntryType = "cake.tool-compact/v1";
 export const reviewRunEntrySchema = Schema.Struct({
   operationId: Schema.String.check(Schema.isUUID()),
   threadIds: Schema.Array(
@@ -684,7 +684,7 @@ export function projectSessionEntries(
           id: `entry-${entry.id}-custom`,
           kind: "notice",
           tone: "info",
-          title: entry.customType === handoffEntryType ? "Handoff" : entry.customType,
+          title: entry.customType === toolCompactEntryType ? "Tool compact" : entry.customType,
           detail: textFromContent(entry.content),
         });
       continue;

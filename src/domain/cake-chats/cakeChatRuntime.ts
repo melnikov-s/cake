@@ -68,7 +68,7 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
       resolvedSessionDir: configuration.location.resolvedSessionDirectory,
       newSession,
       sessionId: target.sessionId,
-      slashCommands: ["compact", "model", "handoff", "handoffandresolve"],
+      slashCommands: ["compact", "model", "toolcompact"],
       requestUi: async () => undefined,
       modelPresets,
       fastMode: {
