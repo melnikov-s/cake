@@ -25,6 +25,7 @@ export interface ConversationComposerStoreProps {
   isStreaming(): boolean;
   queueWhileStreaming?(): boolean;
   openCommandPane?(pane: "changelog" | "tree" | "resources"): Promise<void>;
+  createSideChat?(prompt: string): Promise<boolean>;
   selectModel(value: string): Promise<boolean | void>;
   renameSession(name: string): Promise<boolean | void>;
   canHandoff?(): boolean;
@@ -249,6 +250,7 @@ export class ConversationComposerStore extends Store<ConversationComposerStorePr
     return (
       name === "handoff" ||
       name === "handoffandresolve" ||
+      (name === "sidechat" && Boolean(this.props.createSideChat)) ||
       name === "model" ||
       name === "name" ||
       (name === "schedule" && Boolean(this.props.scheduleMessage))
@@ -303,6 +305,23 @@ export class ConversationComposerStore extends Store<ConversationComposerStorePr
       );
       if (handedOff && this.draftStore.text.trim() === text) this.draftStore.setText("");
       return { handled: true, result: handedOff };
+    }
+    if (builtin?.name === "sidechat" && this.props.createSideChat) {
+      if (!builtin.args.trim()) {
+        this.reportError(new Error("Usage: /sidechat <prompt>"));
+        return { handled: true, result: false };
+      }
+      if (
+        this.draftStore.attachments.length ||
+        this.draftStore.annotationDraft.annotations.length
+      ) {
+        this.reportError(new Error("Remove attachments before using /sidechat"));
+        return { handled: true, result: false };
+      }
+      const created = await this.props.createSideChat(builtin.args.trim());
+      if (created && this.draftStore.text.trim() === text) this.draftStore.setText("");
+      if (!created) this.reportError(new Error("Could not create side chat"));
+      return { handled: true, result: created };
     }
     if (builtin?.name === "model") {
       if (builtin.args.indexOf("/") < 1) {

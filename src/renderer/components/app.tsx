@@ -32,6 +32,7 @@ import { SettingsPage } from "@/components/settings-page";
 import { ToastHost } from "@/components/toast-host";
 import { WorktreePill } from "@/components/worktree-pill";
 import { WorkLogControls } from "@/components/work-log-controls";
+import { SideChatsMenu } from "@/components/side-chats-menu";
 import { Sidebar } from "@/components/sidebar";
 import { ErrorNotice } from "@/components/error-notice";
 import { SessionContinuationDialog } from "@/components/session-continuation-dialog";
@@ -441,6 +442,7 @@ export const App = observer(function App() {
             <span>Changes</span>
           </Button>
         )}
+        <SideChatsMenu store={paneSession} onOpen={focusPane} />
         <WorkLogControls store={paneSession.conversationSessionStore.chatStore} />
         <IconButton
           tooltip={`Terminal (${terminal.toggleAcceleratorHint})`}

@@ -206,6 +206,11 @@ export function reviewSidecarSystemPrompt(
     ]
       .filter(Boolean)
       .join("\n\n");
+  if (thread.anchor.view === "session")
+    return [
+      ...common,
+      "This is a session-level side chat without a selection anchor. Answer the user's question directly and use the parent conversation projection when useful.",
+    ].join("\n\n");
 
   const point = (value: ReviewThreadRecord["anchor"]["start"]) =>
     `diff row ${value.diffLine}${value.oldLine ? `, old line ${value.oldLine}` : ""}${value.newLine ? `, new line ${value.newLine}` : ""}${value.column === undefined ? "" : `, column ${value.column}`}`;

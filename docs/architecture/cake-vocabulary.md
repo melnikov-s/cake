@@ -81,9 +81,10 @@ separate from Project Session catalogs.
 
 ### Discussion Session
 
-A Cake Session anchored to an assistant message, review, or source location.
-Cake owns the anchor; Pi owns the sidecar transcript. It receives regenerated,
-read-only parent context and constrained capabilities.
+A lightweight Cake Session associated with a parent Project Session. It may be
+session-level or anchored to an assistant message, review, or source location.
+Cake owns that scope and any anchor; Pi owns the sidecar transcript. It receives
+regenerated, read-only parent context and constrained capabilities.
 
 ### Subagent Session
 

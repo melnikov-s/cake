@@ -18,7 +18,7 @@ const reviewPointSchema = Schema.Struct({
 });
 const reviewAnchorSchema = Schema.Struct({
   path: bounded(1, 8_192),
-  view: Schema.optional(Schema.Literals(["file", "message"])),
+  view: Schema.optional(Schema.Literals(["file", "message", "session"])),
   start: reviewPointSchema,
   end: reviewPointSchema,
   selectedText: boundedReviewText,

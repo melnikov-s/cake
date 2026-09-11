@@ -425,10 +425,21 @@ const builtinSourceInfo = {
   scope: "temporary",
   origin: "top-level",
 } as const;
+const cakeBuiltinSourceInfo = {
+  path: "builtin:cake",
+  source: "Cake",
+  scope: "temporary",
+  origin: "top-level",
+} as const;
 export const piBuiltinSlashCommands = [
   { name: "compact", description: "Manually compact the session context" },
   { name: "model", description: "Switch model", argumentHint: "<provider/model>" },
   { name: "name", description: "Rename the current session" },
+  {
+    name: "sidechat",
+    description: "Start a side chat",
+    argumentHint: "<prompt>",
+  },
   {
     name: "schedule",
     description: "Schedule a message to this session",
@@ -448,7 +459,7 @@ export const piBuiltinSlashCommands = [
   Schema.decodeUnknownSync(slashCommandSchema)({
     ...command,
     source: "builtin",
-    sourceInfo: builtinSourceInfo,
+    sourceInfo: command.name === "sidechat" ? cakeBuiltinSourceInfo : builtinSourceInfo,
   }),
 );
 

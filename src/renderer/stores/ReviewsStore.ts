@@ -46,11 +46,11 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
   }
 
   codeThreadsForSession(sessionId: string) {
-    return this.threadsForSession(sessionId).filter((thread) => thread.anchor.view !== "message");
+    return this.threadsForSession(sessionId).filter((thread) => thread.anchor.view === "file");
   }
 
   get codeThreads() {
-    return this.threads.filter((thread) => thread.anchor.view !== "message");
+    return this.threads.filter((thread) => thread.anchor.view === "file");
   }
   get openThreads() {
     return this.codeThreads.filter((thread) => thread.status === "open");
@@ -60,13 +60,19 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
   }
   get configuration() {
     const context = this.context;
-    return context
-      ? this.props.sessionRegistry.findSession(context.sessionId)?.conversationSessionStore
-          .configurationStore
-      : undefined;
+    return context ? this.configurationForSession(context.sessionId) : undefined;
+  }
+  private configurationForSession(sessionId: string) {
+    return this.props.sessionRegistry.findSession(sessionId)?.conversationSessionStore
+      .configurationStore;
+  }
+  private thread(threadId: string) {
+    return this.props.sessionRegistry.sessions
+      .flatMap((session) => session.model.reviewThreads)
+      .find((thread) => thread.id === threadId);
   }
   threadStreaming(threadId: string) {
-    return this.threads.find((thread) => thread.id === threadId)?.streaming ?? false;
+    return this.thread(threadId)?.streaming ?? false;
   }
 
   selectThread(threadId: string) {
@@ -159,40 +165,50 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
 
   @child
   get chatStores(): ChatStore[] {
-    return this.threads.map((thread) =>
-      createStore(ChatStore, {
-        key: thread.id,
-        id: () => thread.id,
-        parts: () => [
-          {
-            id: `anchor:${thread.id}`,
-            kind: "text" as const,
-            role: "user" as const,
-            text: thread.anchor.selectedText,
-            status: "complete" as const,
-          },
-          ...thread.uiParts,
-        ],
-        streaming: () => thread.streaming,
-        submitting: () => false,
-        configuration: () => this.configuration,
-        commands: () => [],
-        placeholder: () => "Ask a follow-up…",
-        inputLabel: () =>
-          thread.anchor.view === "message" ? "Reply to selection chat" : "Reply to code chat",
-        canSubmit: (draft) =>
-          Boolean(draft.trim() || this.annotationsFor(thread.id).length) &&
-          thread.status === "open" &&
-          !thread.streaming,
-        submit: (draft) => this.replyThread(thread.id, draft, this.annotationsFor(thread.id)),
-        annotations: () => this.annotationsFor(thread.id),
-        addAnnotation: (annotation) => this.ensureAnnotationDraft(thread.id).add(annotation),
-        updateAnnotation: (id, update) => this.annotationDraft(thread.id)?.update(id, update),
-        removeAnnotation: (id) => this.annotationDraft(thread.id)?.remove(id),
-        composerVisible: () => thread.status === "open" && !thread.streaming,
-        error: () => ({ message: this.error, details: this.errorDetails }),
-        usage: () => thread.usage,
-      }),
+    return this.props.sessionRegistry.sessions.flatMap((session) =>
+      session.model.reviewThreads.map((thread) =>
+        createStore(ChatStore, {
+          key: thread.id,
+          id: () => thread.id,
+          parts: () => [
+            ...(thread.anchor.selectedText
+              ? [
+                  {
+                    id: `anchor:${thread.id}`,
+                    kind: "text" as const,
+                    role: "user" as const,
+                    text: thread.anchor.selectedText,
+                    status: "complete" as const,
+                  },
+                ]
+              : []),
+            ...thread.uiParts,
+          ],
+          streaming: () => thread.streaming,
+          submitting: () => false,
+          configuration: () => this.configurationForSession(thread.parentSessionId),
+          commands: () => [],
+          placeholder: () => "Ask a follow-up…",
+          inputLabel: () =>
+            thread.anchor.view === "message"
+              ? "Reply to selection side chat"
+              : thread.anchor.view === "session"
+                ? "Reply to side chat"
+                : "Reply to code chat",
+          canSubmit: (draft) =>
+            Boolean(draft.trim() || this.annotationsFor(thread.id).length) &&
+            thread.status === "open" &&
+            !thread.streaming,
+          submit: (draft) => this.replyThread(thread.id, draft, this.annotationsFor(thread.id)),
+          annotations: () => this.annotationsFor(thread.id),
+          addAnnotation: (annotation) => this.ensureAnnotationDraft(thread.id).add(annotation),
+          updateAnnotation: (id, update) => this.annotationDraft(thread.id)?.update(id, update),
+          removeAnnotation: (id) => this.annotationDraft(thread.id)?.remove(id),
+          composerVisible: () => thread.status === "open" && !thread.streaming,
+          error: () => ({ message: this.error, details: this.errorDetails }),
+          usage: () => thread.usage,
+        }),
+      ),
     );
   }
 
@@ -206,7 +222,36 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
     annotations: readonly Annotation[] = [],
   ) {
     const context = this.context;
-    if (!context || (!body.trim() && annotations.length === 0)) return undefined;
+    if (!context) return undefined;
+    return this.createThreadForSession(context, anchor, body, annotations);
+  }
+
+  async createSideChat(context: { sessionId: string; workingDirectory: string }, prompt: string) {
+    const trimmedPrompt = prompt.trim();
+    if (!trimmedPrompt) return undefined;
+    return this.createThreadForSession(
+      context,
+      {
+        path: `session:${context.sessionId}`,
+        view: "session",
+        start: { diffLine: 0 },
+        end: { diffLine: 0 },
+        selectedText: "",
+        contextBefore: "",
+        contextAfter: "",
+        diff: "",
+      },
+      trimmedPrompt,
+    );
+  }
+
+  private async createThreadForSession(
+    context: { sessionId: string; workingDirectory: string },
+    anchor: DiscussionAnchor,
+    body: string,
+    annotations: readonly Annotation[] = [],
+  ) {
+    if (!body.trim() && annotations.length === 0) return undefined;
     this.clearError();
     try {
       const thread = await this.client.discussionSessions.create(
@@ -218,7 +263,7 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
         { signal: this.signal },
       );
       if (this.signal.aborted) return undefined;
-      await this.promptThread(thread.id, body.trim(), annotations);
+      await this.promptThreadForSession(context, thread.id, body.trim(), annotations);
       return thread.id;
     } catch (error) {
       if (!this.signal.aborted) this.reportError(error);
@@ -267,9 +312,22 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
     text: string,
     annotations: readonly Annotation[] = [],
   ) {
-    const context = this.context;
+    const thread = this.thread(threadId);
+    const context = thread
+      ? { sessionId: thread.parentSessionId, workingDirectory: thread.workingDirectory }
+      : this.context;
     if (!context) throw new Error("There is no active Project Session");
+    await this.promptThreadForSession(context, threadId, text, annotations);
+  }
+
+  private async promptThreadForSession(
+    context: { sessionId: string; workingDirectory: string },
+    threadId: string,
+    text: string,
+    annotations: readonly Annotation[] = [],
+  ) {
     const session = this.props.sessionRegistry.findModel(context.sessionId);
+    const model = session?.model;
     await this.client.discussionSessions.prompt(
       {
         parentSessionId: context.sessionId,
@@ -277,7 +335,7 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
         threadId,
         text,
         annotations: [...annotations],
-        model: session?.model,
+        model: model ? { provider: model.provider, id: model.modelId } : undefined,
         thinkingLevel: session?.thinkingLevel,
       },
       { signal: this.signal },

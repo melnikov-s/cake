@@ -13,6 +13,7 @@ class HarnessStore extends Store<{
   existing?: boolean;
   streaming?: boolean;
   canHandoff?: boolean;
+  createSideChat?: (prompt: string) => Promise<boolean>;
   handoffSession?: (entryId: string, prompt?: string, resolveSource?: boolean) => Promise<boolean>;
 }> {
   draft = "First message";
@@ -54,6 +55,7 @@ class HarnessStore extends Store<{
       isStreaming: () => this.props.streaming ?? false,
       queueWhileStreaming: () => true,
       openCommandPane: async () => undefined,
+      createSideChat: this.props.createSideChat,
       selectModel: async () => undefined,
       renameSession: async () => undefined,
       canHandoff: () => this.props.canHandoff ?? true,
@@ -208,6 +210,40 @@ describe("ConversationComposerStore", () => {
 
     expect(handoffSession).not.toHaveBeenCalled();
     expect(root.composer.error).toBe("Session Family members cannot be handed off");
+    root[Symbol.dispose]();
+    model[Symbol.dispose]();
+  });
+
+  it("creates a side chat from /sidechat without sending to the parent session", async () => {
+    const createSideChat = vi.fn(async () => true);
+    const client = { projectSessions: {} } as unknown as Client;
+    const model = Session.create({ sessionId: "session-1", workingDirectory: "/project" });
+    const root = mount(
+      createStore(HarnessStore, { client, model, existing: true, createSideChat }),
+    );
+    root.composer.draftStore.setText("/sidechat Compare the two approaches");
+
+    await expect(root.composer.submit()).resolves.toBe(true);
+
+    expect(createSideChat).toHaveBeenCalledWith("Compare the two approaches");
+    expect(root.composer.draftStore.text).toBe("");
+    root[Symbol.dispose]();
+    model[Symbol.dispose]();
+  });
+
+  it("reports usage when /sidechat has no prompt", async () => {
+    const createSideChat = vi.fn(async () => true);
+    const client = { projectSessions: {} } as unknown as Client;
+    const model = Session.create({ sessionId: "session-1", workingDirectory: "/project" });
+    const root = mount(
+      createStore(HarnessStore, { client, model, existing: true, createSideChat }),
+    );
+    root.composer.draftStore.setText("/sidechat");
+
+    await expect(root.composer.submit()).resolves.toBe(false);
+
+    expect(createSideChat).not.toHaveBeenCalled();
+    expect(root.composer.error).toBe("Usage: /sidechat <prompt>");
     root[Symbol.dispose]();
     model[Symbol.dispose]();
   });

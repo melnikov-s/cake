@@ -141,7 +141,7 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
           ),
       },
       chat: {
-        commands: () => this.model.commands,
+        commands: () => this.model.commands.filter((command) => command.name !== "sidechat"),
         placeholder: () => "Ask Cake to find or control a task…",
         inputLabel: () => "Message Cake Chat",
         userMessagePresentation: {

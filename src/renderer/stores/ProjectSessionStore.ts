@@ -76,6 +76,21 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   @snapshot ideChatSidebarWidth = 420;
   private artifactRequestActive = false;
   private readSettledTurnRevision = 0;
+  private pendingSideChatThreadId: string | undefined;
+
+  constructor(props: ProjectSessionStore["props"]) {
+    super(props);
+    this.reaction(
+      () =>
+        Boolean(
+          this.pendingSideChatThreadId &&
+          this.sideChatThreads.some((thread) => thread.id === this.pendingSideChatThreadId),
+        ),
+      (ready) => {
+        if (ready && this.pendingSideChatThreadId) this.openSideChat(this.pendingSideChatThreadId);
+      },
+    );
+  }
 
   enterIde() {
     this.ideMode = true;
@@ -111,6 +126,16 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   }
   get canHandoff() {
     return !this.props.familyId();
+  }
+  @computed
+  get sideChatThreads() {
+    return this.model.reviewThreads
+      .filter(
+        (thread) =>
+          thread.status === "open" &&
+          (thread.anchor.view === "message" || thread.anchor.view === "session"),
+      )
+      .toSorted((left, right) => right.updatedAt.localeCompare(left.updatedAt));
   }
   get canonicalParts() {
     return this.model.uiParts;
@@ -229,6 +254,31 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
     });
   }
 
+  openSideChat(threadId: string) {
+    const thread = this.sideChatThreads.find((candidate) => candidate.id === threadId);
+    const chatStore = this.props.reviews().chatStore(threadId);
+    if (!thread || !chatStore) return false;
+    this.pendingSideChatThreadId = undefined;
+    this.conversationSessionStore.sideChatStore.open({
+      key: `discussion:${thread.id}`,
+      title: "Side chat",
+      eyebrow: () => (thread.anchor.view === "message" ? "Selection" : "Session"),
+      chatStore,
+    });
+    return true;
+  }
+
+  private async createSideChat(prompt: string) {
+    if (this.props.pendingSessions.isTemporary(this.sessionId)) return false;
+    const threadId = await this.props
+      .reviews()
+      .createSideChat({ sessionId: this.sessionId, workingDirectory: this.workspacePath }, prompt);
+    if (!threadId) return false;
+    this.pendingSideChatThreadId = threadId;
+    this.openSideChat(threadId);
+    return true;
+  }
+
   @child
   get stagedCommandStore(): StagedSessionCommandStore {
     return createStore(StagedSessionCommandStore);
@@ -247,6 +297,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
         projectPath: () => this.workspacePath,
         queueWhileStreaming: () => true,
         openCommandPane: (pane) => this.props.openCommandPane(pane),
+        createSideChat: (prompt) => this.createSideChat(prompt),
         renameSession: (name) => this.props.renameSession(name),
         canHandoff: () => this.canHandoff,
         handoffSession: (entryId, prompt, resolveSource) =>

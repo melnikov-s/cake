@@ -475,7 +475,7 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
                 if (!chatStore) return;
                 behavior.openSideChat?.({
                   key: `selection-thread:${thread.id}`,
-                  title: "Selection chat",
+                  title: "Side chat",
                   eyebrow: () => "Selection",
                   chatStore,
                 });

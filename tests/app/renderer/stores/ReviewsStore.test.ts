@@ -22,6 +22,8 @@ describe("ReviewsStore", () => {
     const prompt = vi.fn(async () => ({ turnId: crypto.randomUUID() }));
     const thread = {
       id: "thread-1",
+      parentSessionId: "parent-1",
+      workingDirectory: "/project",
       anchor: {
         path: "session:parent-1/message/assistant-1",
         view: "message" as const,
@@ -38,8 +40,19 @@ describe("ReviewsStore", () => {
       uiParts: [],
       usage: undefined,
     };
+    const sessionModel = {
+      reviewThreads: [thread],
+      model: {
+        id: '["openai-codex","gpt-5.6-sol"]',
+        provider: "openai-codex",
+        modelId: "gpt-5.6-sol",
+        name: "Sol",
+      },
+      thinkingLevel: "medium",
+    };
     const sessionRegistry = {
-      findModel: () => ({ reviewThreads: [thread] }),
+      sessions: [{ model: sessionModel }],
+      findModel: () => sessionModel,
       findSession: () => undefined,
     } as unknown as SessionRegistryStore;
     const { root, subject } = mountWithClient(
@@ -72,10 +85,65 @@ describe("ReviewsStore", () => {
             comment: "Go deeper",
           }),
         ],
+        model: { provider: "openai-codex", id: "gpt-5.6-sol" },
+        thinkingLevel: "medium",
       }),
       expect.any(Object),
     );
     expect(chat.annotations).toEqual([]);
+    root[Symbol.dispose]();
+  });
+
+  it("creates a session-level side chat with the parent model configuration", async () => {
+    const create = vi.fn(async () => ({ id: "thread-2" }));
+    const prompt = vi.fn(async () => ({ turnId: crypto.randomUUID() }));
+    const sessionModel = {
+      reviewThreads: [],
+      model: {
+        id: '["openai-codex","gpt-5.6-sol"]',
+        provider: "openai-codex",
+        modelId: "gpt-5.6-sol",
+      },
+      thinkingLevel: "high",
+    };
+    const sessionRegistry = {
+      sessions: [],
+      findModel: () => sessionModel,
+      findSession: () => undefined,
+    } as unknown as SessionRegistryStore;
+    const { root, subject } = mountWithClient(
+      createStore(ReviewsHarnessStore, { sessionRegistry }),
+      { discussionSessions: { create, prompt } } as unknown as Client,
+    );
+
+    await expect(
+      subject.reviews.createSideChat(
+        { sessionId: "parent-1", workingDirectory: "/project" },
+        "Compare the two approaches",
+      ),
+    ).resolves.toBe("thread-2");
+
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        parentSessionId: "parent-1",
+        workingDirectory: "/project",
+        anchor: expect.objectContaining({
+          path: "session:parent-1",
+          view: "session",
+          selectedText: "",
+        }),
+      }),
+      expect.any(Object),
+    );
+    expect(prompt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        threadId: "thread-2",
+        text: "Compare the two approaches",
+        model: { provider: "openai-codex", id: "gpt-5.6-sol" },
+        thinkingLevel: "high",
+      }),
+      expect.any(Object),
+    );
     root[Symbol.dispose]();
   });
 });

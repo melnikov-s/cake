@@ -90,12 +90,13 @@ silently abort unrelated destination work; an already consumed or otherwise
 uncancellable late arrival remains visibly attributed to the closed exchange
 and never causes autonomous continuation.
 
-All inline threads—code reviews and assistant-message discussions—run as
-independent lightweight Pi Sessions using the same runtime pipeline. Their
-anchors belong to Cake; their replies remain authoritative in the referenced Pi
-sidecar session. Before each reply, Cake regenerates a read-only Markdown
-projection of the parent session's current active branch. The sidecar receives
-only its anchor, nearby context, its own short history, and read-only file tools.
+All side chats—session-level discussions, code reviews, and assistant-message
+discussions—run as independent lightweight Pi Sessions using the same runtime
+pipeline. Their parent scope and optional anchors belong to Cake; their replies
+remain authoritative in the referenced Pi sidecar session. Before each reply,
+Cake regenerates a read-only Markdown projection of the parent session's current
+active branch. The sidecar receives only its scope or anchor, nearby context, its
+own short history, and read-only file tools.
 Both assistant-message and code-anchored chats are read-only; the code anchor
 changes the source material, not the sidecar's authority. Neither kind forks or
 records work in the parent transcript. A single derived Markdown

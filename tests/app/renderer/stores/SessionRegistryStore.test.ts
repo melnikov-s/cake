@@ -268,10 +268,10 @@ describe("SessionRegistryStore materialization", () => {
     expect(child.canHandoff).toBe(false);
     expect(
       parent.conversationSessionStore.chatStore.commands.map((command) => command.name),
-    ).toEqual(["compact", "model", "name", "schedule"]);
+    ).toEqual(["compact", "model", "name", "sidechat", "schedule"]);
     expect(
       child.conversationSessionStore.chatStore.commands.map((command) => command.name),
-    ).toEqual(["compact", "model", "name", "schedule"]);
+    ).toEqual(["compact", "model", "name", "sidechat", "schedule"]);
     expect(
       fixture.registry.observationRetention.sessions.map((session) => session.sessionId),
     ).toEqual(["parent", "child"]);
@@ -302,7 +302,7 @@ describe("SessionRegistryStore materialization", () => {
     expect(parent.canHandoff).toBe(false);
     expect(
       parent.conversationSessionStore.chatStore.commands.map((command) => command.name),
-    ).toEqual(["compact", "model", "name", "schedule"]);
+    ).toEqual(["compact", "model", "name", "sidechat", "schedule"]);
 
     fixture.dispose();
   });

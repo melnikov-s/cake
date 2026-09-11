@@ -260,7 +260,7 @@ export const ChatTranscript = observer(function ChatTranscript({
       pendingSelectionRef.current = undefined;
       sideChat.open({
         key: `selection-draft:${store.id}`,
-        title: "Chat about this",
+        title: "Side chat",
         eyebrow: () => "Selection",
         chatStore: messageComments.draftChatStore,
       });

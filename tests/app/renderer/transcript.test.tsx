@@ -1375,7 +1375,7 @@ describe("Transcript scrolling", () => {
     await contextMenu.trigger();
 
     const dialog = document.body.querySelector<HTMLElement>(
-      '[data-slot="side-panel"][aria-label="Chat about this"]',
+      '[data-slot="side-panel"][aria-label="Side chat"]',
     )!;
     expect(dialog).not.toBeNull();
     expect(dialog.querySelector('.transcript [data-slot="message-content"]')?.textContent).toBe(
@@ -1688,7 +1688,7 @@ describe("Transcript scrolling", () => {
       expect.objectContaining({ messageId: "user-1", selectedText: "settings shape" }),
     );
     expect(
-      document.body.querySelector('[data-slot="side-panel"][aria-label="Chat about this"]'),
+      document.body.querySelector('[data-slot="side-panel"][aria-label="Side chat"]'),
     ).not.toBeNull();
     draftChat[Symbol.dispose]();
   });
@@ -1842,7 +1842,7 @@ describe("Transcript scrolling", () => {
     await contextMenu.trigger();
     expect(document.body.querySelector('[role="dialog"]')).toBe(fullscreen);
     expect(
-      document.body.querySelector('[data-slot="side-panel"][aria-label="Chat about this"]'),
+      document.body.querySelector('[data-slot="side-panel"][aria-label="Side chat"]'),
     ).not.toBeNull();
     expect(comments.prepareDraft).toHaveBeenCalledWith(
       expect.objectContaining({ selectedText: "important" }),
@@ -1945,9 +1945,7 @@ describe("Transcript scrolling", () => {
     );
     expect(marker).not.toBeNull();
     act(() => marker!.click());
-    const chat = document.body.querySelector(
-      '[data-slot="side-panel"][aria-label="Selection chat"]',
-    );
+    const chat = document.body.querySelector('[data-slot="side-panel"][aria-label="Side chat"]');
     expect(chat?.textContent).toContain("Why this word?");
     expect(chat?.textContent).toContain("Because it carries the point.");
     expect(chat?.querySelector(".transcript")).not.toBeNull();
@@ -1960,11 +1958,9 @@ describe("Transcript scrolling", () => {
       "Medium",
     );
 
-    act(() =>
-      chat!.querySelector<HTMLButtonElement>('[aria-label="Close Selection chat"]')!.click(),
-    );
+    act(() => chat!.querySelector<HTMLButtonElement>('[aria-label="Close Side chat"]')!.click());
     expect(
-      document.body.querySelector('[data-slot="side-panel"][aria-label="Selection chat"]'),
+      document.body.querySelector('[data-slot="side-panel"][aria-label="Side chat"]'),
     ).toBeNull();
     threadChat[Symbol.dispose]();
   });

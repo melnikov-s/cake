@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -13,6 +14,13 @@ test("focuses annotation input and opens a responsive, resizable selection side 
   const cakeHome = join(temporaryRoot, "cake-home");
   const sessionId = "message-selection-session";
   const sessionDirectory = cakeWorkspaceSessionDirectory(project, join(cakeHome, "pi", "sessions"));
+  const reviewDirectory = join(
+    cakeHome,
+    "state",
+    "reviews",
+    digestKey(project),
+    digestKey(sessionId),
+  );
   const timestamp = new Date(0).toISOString();
   const assistantMarkdown = [
     "The settings shape is explicit:",
@@ -30,6 +38,7 @@ test("focuses annotation input and opens a responsive, resizable selection side 
     mkdir(userData, { recursive: true }),
     mkdir(project, { recursive: true }),
     mkdir(sessionDirectory, { recursive: true }),
+    mkdir(reviewDirectory, { recursive: true }),
   ]);
   await writeFile(
     join(userData, "window-state.json"),
@@ -51,6 +60,38 @@ test("focuses annotation input and opens a responsive, resizable selection side 
       projects: [{ path: project, name: "project", addedAt: timestamp, lastOpenedAt: timestamp }],
       trustedProjectPaths: [],
     }),
+  );
+  await writeFile(
+    join(reviewDirectory, `${digestKey("existing-side-chat")}.json`),
+    `${JSON.stringify(
+      {
+        id: "existing-side-chat",
+        workspacePath: project,
+        sessionId,
+        anchor: {
+          path: `session:${sessionId}`,
+          view: "session",
+          start: { diffLine: 0 },
+          end: { diffLine: 0 },
+          selectedText: "",
+          contextBefore: "",
+          contextAfter: "",
+          diff: "",
+        },
+        pendingComments: [
+          {
+            id: "pending-side-chat-prompt",
+            body: "Compare the two approaches",
+            createdAt: timestamp,
+          },
+        ],
+        status: "open",
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      },
+      null,
+      2,
+    )}\n`,
   );
   await writeFile(
     join(sessionDirectory, `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`),
@@ -123,7 +164,13 @@ test("focuses annotation input and opens a responsive, resizable selection side 
     await expect(fullscreen).toBeVisible();
     await fullscreen.getByRole("button", { name: "Exit fullscreen Cake" }).click();
     await expect(fullscreen).toHaveCount(0);
-    await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible();
+    const composer = page.getByRole("combobox", { name: "Message", exact: true });
+    await expect(composer).toBeVisible();
+    await composer.fill("/");
+    await expect(
+      page.getByRole("option", { name: /sidechat <prompt> Start a side chat/ }),
+    ).toBeVisible();
+    await composer.fill("");
 
     await page.getByText("The settings shape is explicit:").hover();
     await page.keyboard.press(process.platform === "darwin" ? "Meta+Enter" : "Alt+Enter");
@@ -199,7 +246,7 @@ test("focuses annotation input and opens a responsive, resizable selection side 
       .toBe("UtilityModePreferences");
     await openSelectionMenu();
 
-    const dialog = page.getByRole("complementary", { name: "Chat about this" });
+    const dialog = page.getByRole("complementary", { name: "Side chat" });
     const input = page.getByLabel("Message about selected text");
     await expect(dialog).toBeVisible();
     const userMessages = dialog
@@ -236,11 +283,24 @@ test("focuses annotation input and opens a responsive, resizable selection side 
     await expect(dialog).toBeVisible();
     await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeHidden();
 
-    await dialog.getByRole("button", { name: "Close Chat about this" }).click();
+    await dialog.getByRole("button", { name: "Close Side chat" }).click();
     await expect(dialog).toHaveCount(0);
     await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible();
+
+    const sideChatsButton = page.getByRole("button", { name: "Side chats, 1 open" });
+    await sideChatsButton.click();
+    const sideChatsList = page.getByRole("dialog", { name: "Open side chats" });
+    await expect(sideChatsList).toContainText("Compare the two approaches");
+    await sideChatsList.getByRole("button", { name: /Compare the two approaches/ }).click();
+    const existingSideChat = page.getByRole("complementary", { name: "Side chat" });
+    await expect(existingSideChat).toBeVisible();
+    await existingSideChat.getByRole("button", { name: "Close Side chat" }).click();
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });
   }
 });
+
+function digestKey(value: string) {
+  return createHash("sha256").update(value).digest("hex");
+}

@@ -5,7 +5,11 @@ import {
   RendererApplicationState,
   defaultApplicationState,
 } from "../../../src/domain/application/application-data";
-import { applicationStateSchema, parsePiBuiltinCommand } from "../../../src/ipc/session-contract";
+import {
+  applicationStateSchema,
+  parsePiBuiltinCommand,
+  piBuiltinSlashCommands,
+} from "../../../src/ipc/session-contract";
 
 it("uses the domain-owned renderer application schema at the IPC boundary", () => {
   expect(applicationStateSchema).toBe(RendererApplicationState);
@@ -49,6 +53,13 @@ describe("parsePiBuiltinCommand", () => {
       name: "handoffandresolve",
       args: "Implement the plan",
     });
+    expect(parsePiBuiltinCommand("/sidechat Compare approaches")).toEqual({
+      name: "sidechat",
+      args: "Compare approaches",
+    });
+    expect(
+      piBuiltinSlashCommands.find((command) => command.name === "sidechat")?.sourceInfo,
+    ).toEqual(expect.objectContaining({ source: "Cake", path: "builtin:cake" }));
   });
 
   it("ignores non-commands and unknown commands", () => {

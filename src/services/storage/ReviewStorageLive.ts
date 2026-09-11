@@ -152,8 +152,12 @@ class ReviewRepository {
           `## Thread ${thread.id} · ${thread.status}`,
           thread.anchor.view === "message"
             ? `Assistant message: ${thread.anchor.messageId ?? "unknown"}${thread.anchor.entryId ? ` · Pi entry ${thread.anchor.entryId}` : ""}`
-            : `Code: ${thread.anchor.path} · diff rows ${thread.anchor.start.diffLine}-${thread.anchor.end.diffLine}`,
-          `> ${thread.anchor.selectedText.replaceAll("\n", "\n> ")}`,
+            : thread.anchor.view === "session"
+              ? "Session-level side chat"
+              : `Code: ${thread.anchor.path} · diff rows ${thread.anchor.start.diffLine}-${thread.anchor.end.diffLine}`,
+          thread.anchor.selectedText
+            ? `> ${thread.anchor.selectedText.replaceAll("\n", "\n> ")}`
+            : "",
           ...thread.parts.flatMap((part) =>
             part.kind === "text"
               ? [`### ${part.role === "user" ? "User" : "Assistant"}\n\n${part.text}`]
@@ -167,7 +171,7 @@ class ReviewRepository {
       });
       await this.writer.write(
         target,
-        `# Review threads\n\nParent session: ${sessionId}\n\nThis is a derived index of inline code reviews and assistant-message discussions.\n\n${sections.join("\n\n---\n\n")}\n`,
+        `# Side chats and review threads\n\nParent session: ${sessionId}\n\nThis is a derived index of session-level side chats, inline code reviews, and assistant-message discussions.\n\n${sections.join("\n\n---\n\n")}\n`,
       );
     });
   }

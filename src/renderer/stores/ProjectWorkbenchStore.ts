@@ -674,7 +674,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   async openReviewThread(threadId: string) {
     if (!this.activeSession || !this.projectOpenStore.projectPath) return;
     const thread = this.reviews.threads.find((item) => item.id === threadId);
-    if (!thread || thread.anchor.view === "message") return;
+    if (!thread || thread.anchor.view !== "file") return;
     this.reviews.selectThread(thread.id);
     await this.openFileInIde({
       path: thread.anchor.path,
