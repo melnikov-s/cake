@@ -3,7 +3,8 @@ import type { FileSystem, Path } from "effect";
 
 export type AtomicFileStage = "write" | "rename";
 
-/** Writes beside the target, atomically replaces it, and always removes leftovers. */
+/** Ensures the target's directory, writes beside the target, atomically
+ *  replaces it, and always removes leftovers. */
 export const atomicWriteFile = Effect.fn("atomicWriteFile")(function* <E>(
   fileSystem: FileSystem.FileSystem,
   path: Path.Path,
@@ -12,6 +13,12 @@ export const atomicWriteFile = Effect.fn("atomicWriteFile")(function* <E>(
   onError: (stage: AtomicFileStage, cause: unknown) => E,
 ) {
   const temporary = `${target}.${crypto.randomUUID()}.tmp`;
+
+  // Storage directories under CakePaths are not created anywhere else, so a
+  // first write on a fresh machine is what brings them into existence.
+  yield* fileSystem
+    .makeDirectory(path.dirname(target), { recursive: true })
+    .pipe(Effect.mapError((cause) => onError("write", cause)));
 
   return yield* Effect.acquireUseRelease(
     Effect.succeed(temporary),

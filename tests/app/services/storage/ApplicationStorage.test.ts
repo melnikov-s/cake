@@ -86,6 +86,7 @@ const makeFakeFileSystem = Effect.fn("makeFakeFileSystem")(function* (
             controls.activeWrites -= 1;
           }),
       ),
+    makeDirectory: () => Effect.void,
     chmod: () => Effect.void,
     rename: (source, target) => {
       if (controls.failRename) return Effect.fail(failure("rename"));

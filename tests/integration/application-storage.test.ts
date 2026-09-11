@@ -56,4 +56,24 @@ describe("ApplicationStorage filesystem integration", () => {
     const fileInfo = await (await import("node:fs/promises")).stat(target);
     assert.equal(fileInfo.mode & 0o777, 0o600);
   });
+
+  it("creates the state directory on the first save of a fresh installation", async () => {
+    const home = await mkdtemp(join(tmpdir(), "cake-application-storage-fresh-"));
+    directories.push(home);
+    // Nothing has created `state/` yet, as on a machine Cake has never run on.
+    const directory = join(home, "state");
+
+    const live = makeApplicationStorageLive(directory).pipe(
+      Layer.provideMerge(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer)),
+    );
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const storage = yield* ApplicationStorage;
+        yield* storage.save(defaultApplicationState());
+      }).pipe(Effect.provide(live)),
+    );
+
+    const document = JSON.parse(await readFile(join(directory, APPLICATION_DOCUMENT_NAME), "utf8"));
+    assert.deepEqual(document.data, defaultApplicationState());
+  });
 });

@@ -12,6 +12,7 @@ export const familyStorageHarness = (initialFiles = new Map<string, string>()) =
       return value === undefined ? Effect.fail(failure("readFileString")) : Effect.succeed(value);
     },
     writeFileString: (path, content) => Effect.sync(() => files.set(path, content)),
+    makeDirectory: () => Effect.void,
     chmod: () => Effect.void,
     rename: (source, target) =>
       Effect.gen(function* () {

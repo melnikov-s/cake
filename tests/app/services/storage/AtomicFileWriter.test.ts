@@ -27,4 +27,14 @@ describe("AtomicFileWriter", () => {
 
     expect(await readFile(target, "utf8")).toBe("latest");
   });
+
+  it("creates the target directory on first write", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cake-state-writer-"));
+    directories.push(directory);
+    const target = join(directory, "state", "nested", "application.json");
+
+    await new AtomicFileWriter().write(target, "first");
+
+    expect(await readFile(target, "utf8")).toBe("first");
+  });
 });

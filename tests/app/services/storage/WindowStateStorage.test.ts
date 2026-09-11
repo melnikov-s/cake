@@ -32,6 +32,7 @@ const withStorage = <A, E>(
         Effect.sync(() => {
           files.set(path, value);
         }),
+      makeDirectory: () => Effect.void,
       chmod: () => Effect.void,
       rename: (source, target) => {
         const value = files.get(source);
