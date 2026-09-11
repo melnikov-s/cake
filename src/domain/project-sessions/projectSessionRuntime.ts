@@ -343,7 +343,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
                 });
                 return toJsonValue({
                   ok: true,
-                  name: "send_session_message",
+                  command: "sessions.send",
                   targetTitle: `Project Session ${input.sessionId}`,
                   messageId,
                   threadId,

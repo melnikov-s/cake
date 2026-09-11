@@ -40,12 +40,25 @@ const sessionNavigationTargetSchema = Schema.Struct({
   messageId: Schema.optionalKey(bounded(1, 256)),
 });
 const emptyArgumentsSchema = Schema.Struct({});
+const sessionResolutionSchema = Schema.Struct({
+  targets: Schema.Array(
+    Schema.Struct({
+      kind: Schema.Literals(["project", "cake-chat"]),
+      sessionId: bounded(1, 256),
+    }),
+  ).check(Schema.isMinLength(1), Schema.isMaxLength(10_000)),
+  resolved: Schema.Boolean,
+});
 const appControlArgumentSchemas = {
-  get_app_state: emptyArgumentsSchema,
-  split_view: Schema.Struct({ direction: Schema.Literals(["right", "down"]) }),
-  get_session_status: sessionIdTargetSchema,
-  open_session: sessionNavigationTargetSchema,
-  create_session: Schema.Struct({
+  "app.state": emptyArgumentsSchema,
+  "app.split": Schema.Struct({ direction: Schema.Literals(["right", "down"]) }),
+  "settings.sections": emptyArgumentsSchema,
+  "settings.get": CakeSettingsGetInput,
+  "settings.update": CakeSettingsUpdateInput,
+  "sessions.list": emptyArgumentsSchema,
+  "sessions.info": sessionIdTargetSchema,
+  "sessions.open": sessionNavigationTargetSchema,
+  "sessions.create": Schema.Struct({
     workspacePath: bounded(1, 4_096),
     name: trimmed(1, 500),
     initialPrompt: trimmed(1, 100_000),
@@ -64,7 +77,7 @@ const appControlArgumentSchemas = {
     ),
     markdown: Schema.optionalKey(Schema.Boolean),
   }),
-  create_draft_session: Schema.Struct({
+  "sessions.create-draft": Schema.Struct({
     workspacePath: bounded(1, 4_096),
     name: trimmed(1, 500),
     initialPrompt: trimmed(1, 100_000),
@@ -79,7 +92,7 @@ const appControlArgumentSchemas = {
       }),
     ),
   }),
-  send_session_message: Schema.Struct({
+  "sessions.send": Schema.Struct({
     ...sessionIdTargetSchema.fields,
     text: trimmed(1, 100_000),
     delivery: Schema.optionalKey(Schema.Literals(["prompt", "queue", "steer"])),
@@ -88,105 +101,88 @@ const appControlArgumentSchemas = {
       Schema.Int.check(Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(1_000)),
     ),
   }),
-  reply_session_message: Schema.Struct({
+  "sessions.reply": Schema.Struct({
     text: trimmed(1, 100_000),
     delivery: Schema.optionalKey(Schema.Literals(["prompt", "queue", "steer"])),
     threadId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
   }),
-  get_session_thread: Schema.Struct({
+  "sessions.thread": Schema.Struct({
     threadId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
   }),
-  close_session_thread: Schema.Struct({
+  "sessions.close-thread": Schema.Struct({
     threadId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
   }),
-  compact_session: Schema.Struct({
+  "sessions.compact": Schema.Struct({
     ...sessionIdTargetSchema.fields,
     instructions: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(262_144))),
   }),
-  schedule_session_message: Schema.Struct({
+  "sessions.schedule": Schema.Struct({
     ...sessionIdTargetSchema.fields,
     text: trimmed(1, 100_000),
     sendAt: bounded(1, 64),
   }),
-  list_scheduled_messages: Schema.Struct({
+  "sessions.scheduled": Schema.Struct({
     sessionId: Schema.optionalKey(bounded(1, 256)),
   }),
-  cancel_scheduled_message: Schema.Struct({ id: bounded(1, 256) }),
-  list_pending_messages: sessionIdTargetSchema,
-  dequeue_pending_messages: sessionIdTargetSchema,
-  abort_session: sessionIdTargetSchema,
-  rename_session: Schema.Struct({
+  "sessions.cancel-scheduled": Schema.Struct({ id: bounded(1, 256) }),
+  "sessions.pending": sessionIdTargetSchema,
+  "sessions.dequeue": sessionIdTargetSchema,
+  "sessions.abort": sessionIdTargetSchema,
+  "sessions.rename": Schema.Struct({
     ...sessionIdTargetSchema.fields,
     title: trimmed(1, SESSION_TITLE_MAX_LENGTH),
   }),
-  set_session_resolved: Schema.Struct({
-    ...sessionIdTargetSchema.fields,
-    resolved: Schema.Boolean,
-  }),
-  set_sessions_resolved: Schema.Struct({
-    sessionIds: Schema.Array(bounded(1, 256)).check(
-      Schema.isMinLength(1),
-      Schema.isMaxLength(10_000),
-    ),
-    resolved: Schema.Boolean,
-  }),
-  set_cake_chat_sessions_resolved: Schema.Struct({
-    sessionIds: Schema.Array(bounded(1, 256)).check(
-      Schema.isMinLength(1),
-      Schema.isMaxLength(10_000),
-    ),
-    resolved: Schema.Boolean,
-  }),
-  set_session_model: Schema.Struct({
-    ...sessionIdTargetSchema.fields,
-    provider: trimmed(1, 100),
-    modelId: trimmed(1, 200),
-  }),
-  send_notification: Schema.Struct({
+  "sessions.resolve": sessionResolutionSchema,
+  "notifications.send": Schema.Struct({
     title: trimmed(1, 256),
     body: trimmed(1, 2_000),
     level: Schema.Literals(["info", "success", "warning", "error"]).pipe(
       Schema.withDecodingDefaultKey(Effect.succeed("info" as const)),
     ),
   }),
-  report_agent_action: Schema.Struct({
+  "agent.action": Schema.Struct({
     action: Schema.Literals(["compact", "rename", "resolve", "restore", "set-model"]),
     detail: Schema.optionalKey(trimmed(1, 500)),
   }),
 } as const;
 
-function invocation<Name extends keyof typeof appControlArgumentSchemas>(name: Name) {
-  return Schema.Struct({ name: Schema.Literal(name), arguments: appControlArgumentSchemas[name] });
+type AppControlCommand = keyof typeof appControlArgumentSchemas;
+
+function invocation<Command extends AppControlCommand>(command: Command) {
+  return Schema.Struct({
+    name: Schema.Literal(command),
+    arguments: appControlArgumentSchemas[command],
+  });
 }
 
 const appControlInvocationSchema = Schema.Union([
-  invocation("get_app_state"),
-  invocation("split_view"),
-  invocation("get_session_status"),
-  invocation("open_session"),
-  invocation("create_session"),
-  invocation("create_draft_session"),
-  invocation("send_session_message"),
-  invocation("reply_session_message"),
-  invocation("get_session_thread"),
-  invocation("close_session_thread"),
-  invocation("compact_session"),
-  invocation("schedule_session_message"),
-  invocation("list_scheduled_messages"),
-  invocation("cancel_scheduled_message"),
-  invocation("list_pending_messages"),
-  invocation("dequeue_pending_messages"),
-  invocation("abort_session"),
-  invocation("rename_session"),
-  invocation("set_session_resolved"),
-  invocation("set_sessions_resolved"),
-  invocation("set_cake_chat_sessions_resolved"),
-  invocation("set_session_model"),
-  invocation("send_notification"),
-  invocation("report_agent_action"),
+  invocation("app.state"),
+  invocation("app.split"),
+  invocation("settings.sections"),
+  invocation("settings.get"),
+  invocation("settings.update"),
+  invocation("sessions.list"),
+  invocation("sessions.info"),
+  invocation("sessions.open"),
+  invocation("sessions.create"),
+  invocation("sessions.create-draft"),
+  invocation("sessions.send"),
+  invocation("sessions.reply"),
+  invocation("sessions.thread"),
+  invocation("sessions.close-thread"),
+  invocation("sessions.compact"),
+  invocation("sessions.schedule"),
+  invocation("sessions.scheduled"),
+  invocation("sessions.cancel-scheduled"),
+  invocation("sessions.pending"),
+  invocation("sessions.dequeue"),
+  invocation("sessions.abort"),
+  invocation("sessions.rename"),
+  invocation("sessions.resolve"),
+  invocation("notifications.send"),
+  invocation("agent.action"),
 ]);
 
-type AppControlInvocation = typeof appControlInvocationSchema.Type;
 type SessionSummaryView = Pick<
   SessionSummary,
   | "workingDirectory"
@@ -312,10 +308,8 @@ export interface AppControlHost {
     dequeuePendingMessages(sessionId: string): Promise<QueuedConversationMessages>;
     abort(sessionId: string): Promise<void>;
     rename(sessionId: string, title: string): Promise<void>;
-    setResolved(sessionId: string, resolved: boolean): Promise<void>;
     setProjectSessionsResolved(sessionIds: readonly string[], resolved: boolean): Promise<number>;
     setCakeChatSessionsResolved(sessionIds: readonly string[], resolved: boolean): Promise<number>;
-    setModel(sessionId: string, provider: string, modelId: string): Promise<void>;
   };
   presentation: {
     splitView(
@@ -380,32 +374,18 @@ interface CoordinationThreadView {
 }
 
 export type AppControlResult =
-  | { ok: true; name: "get_app_state"; state: AppControlState }
+  | { ok: true; command: "app.state"; state: AppControlState }
+  | { ok: true; command: "settings.sections"; sections: typeof cakeSettingsSections }
   | {
       ok: true;
-      command: "settings.sections";
-      name: "settings.sections";
-      sections: typeof cakeSettingsSections;
-    }
-  | {
-      ok: true;
-      command: "settings.get";
-      name: "settings.get";
+      command: "settings.get" | "settings.update";
       scope: "window";
       section: CakeSettingsSectionId;
       settings: CakeSettingsSectionView["settings"];
     }
   | {
       ok: true;
-      command: "settings.update";
-      name: "settings.update";
-      scope: "window";
-      section: CakeSettingsSectionId;
-      settings: CakeSettingsSectionView["settings"];
-    }
-  | {
-      ok: true;
-      name: "split_view";
+      command: "app.split";
       direction: "right" | "down";
       kind: "project-session" | "cake-chat";
       paneId: string;
@@ -413,15 +393,21 @@ export type AppControlResult =
     }
   | {
       ok: true;
-      name: "get_session_status";
+      command: "sessions.list";
+      sessions: AppControlSession[];
+      attentionSessions: AppControlSession[];
+    }
+  | {
+      ok: true;
+      command: "sessions.info";
       session: AppControlSession;
       selected: boolean;
       status: SessionActivity | "idle";
     }
-  | { ok: true; name: "open_session"; opened: SessionTarget & { messageId?: string } }
+  | { ok: true; command: "sessions.open"; opened: SessionTarget & { messageId?: string } }
   | {
       ok: true;
-      name: "create_session";
+      command: "sessions.create";
       workspacePath: string;
       sessionId: string;
       title: string;
@@ -430,7 +416,7 @@ export type AppControlResult =
     }
   | {
       ok: true;
-      name: "create_draft_session";
+      command: "sessions.create-draft";
       workspacePath: string;
       sessionId: string;
       title: string;
@@ -438,7 +424,7 @@ export type AppControlResult =
     }
   | {
       ok: true;
-      name: "send_session_message" | "reply_session_message";
+      command: "sessions.send" | "sessions.reply";
       target: SessionTarget;
       targetTitle: string;
       messageId: string;
@@ -448,102 +434,52 @@ export type AppControlResult =
       delivery: "prompt" | "queue" | "steer";
       status: CrossSessionDeliveryStatus;
     }
+  | { ok: true; command: "sessions.thread"; thread: CoordinationThreadView }
+  | { ok: true; command: "sessions.close-thread"; thread: CoordinationThreadView; status: "closed" }
+  | { ok: true; command: "sessions.compact"; target: SessionTarget; status: "compacted" }
   | {
       ok: true;
-      name: "get_session_thread";
-      thread: CoordinationThreadView;
-    }
-  | {
-      ok: true;
-      name: "close_session_thread";
-      thread: CoordinationThreadView;
-      status: "closed";
-    }
-  | { ok: true; name: "compact_session"; target: SessionTarget; status: "compacted" }
-  | {
-      ok: true;
-      name: "schedule_session_message";
+      command: "sessions.schedule";
       target: SessionTarget;
       scheduledMessage: ScheduledMessage;
       status: "scheduled";
     }
-  | { ok: true; name: "list_scheduled_messages"; messages: readonly ScheduledMessage[] }
-  | { ok: true; name: "cancel_scheduled_message"; id: string; status: "cancelled" }
+  | { ok: true; command: "sessions.scheduled"; messages: readonly ScheduledMessage[] }
+  | { ok: true; command: "sessions.cancel-scheduled"; id: string; status: "cancelled" }
   | {
       ok: true;
-      name: "list_pending_messages" | "dequeue_pending_messages";
+      command: "sessions.pending" | "sessions.dequeue";
       messages: QueuedConversationMessages;
     }
-  | { ok: true; name: "abort_session"; target: SessionTarget; status: "stopping" }
-  | { ok: true; name: "rename_session"; target: SessionTarget; title: string }
-  | { ok: true; name: "set_session_resolved"; target: SessionTarget; resolved: boolean }
-  | {
-      ok: true;
-      name: "set_sessions_resolved";
-      sessionIds: string[];
-      resolved: boolean;
-      sessionCount: number;
-    }
-  | {
-      ok: true;
-      name: "set_cake_chat_sessions_resolved";
-      sessionIds: string[];
-      resolved: boolean;
-      sessionCount: number;
-    }
-  | {
-      ok: true;
-      name: "set_session_model";
-      target: SessionTarget;
-      provider: string;
-      modelId: string;
-      status: "changing";
-    }
-  | { ok: true; name: "send_notification"; status: "queued" }
-  | {
-      ok: true;
-      name: "report_agent_action";
-      action: "compact" | "rename" | "resolve" | "restore" | "set-model";
-      detail?: string;
-    }
-  | {
-      ok: true;
-      command: "sessions.list";
-      name: "sessions.list";
-      sessions: AppControlSession[];
-      attentionSessions: AppControlSession[];
-    }
+  | { ok: true; command: "sessions.abort"; target: SessionTarget; status: "stopping" }
+  | { ok: true; command: "sessions.rename"; target: SessionTarget; title: string }
   | {
       ok: true;
       command: "sessions.resolve";
-      name: "sessions.resolve";
       targets: ReadonlyArray<{ kind: "project" | "cake-chat"; sessionId: string }>;
       resolved: boolean;
       sessionCount: number;
     }
-  | { ok: false; name: AppControlInvocation["name"]; error: string };
+  | { ok: true; command: "notifications.send"; status: "queued" }
+  | {
+      ok: true;
+      command: "agent.action";
+      action: "compact" | "rename" | "resolve" | "restore" | "set-model";
+      detail?: string;
+    }
+  | { ok: false; command: AppControlCommand; error: string };
 
 interface SessionTarget {
   workspacePath: string;
   sessionId: string;
 }
 
-const sessionResolutionSchema = Schema.Struct({
-  targets: Schema.Array(
-    Schema.Struct({
-      kind: Schema.Literals(["project", "cake-chat"]),
-      sessionId: bounded(1, 256),
-    }),
-  ).check(Schema.isMinLength(1), Schema.isMaxLength(10_000)),
-  resolved: Schema.Boolean,
-});
-
 const createSessionOperationSchema = Schema.Struct({
-  ...appControlArgumentSchemas.create_session.fields,
+  ...appControlArgumentSchemas["sessions.create"].fields,
   model: Schema.optionalKey(CakeModelSelection),
 });
 const createDraftSessionOperationSchema = Schema.Struct({
-  ...appControlArgumentSchemas.create_draft_session.fields,
+  ...appControlArgumentSchemas["sessions.create-draft"].fields,
   model: Schema.optionalKey(CakeModelSelection),
 });
 
@@ -552,32 +488,32 @@ const modelControlOperations = [
     "app.state",
     "app",
     "Inspect Cake's current selection, split-pane layout, directional neighbors, and project and session summaries.",
-    appControlArgumentSchemas.get_app_state,
+    appControlArgumentSchemas["app.state"],
   ),
   operation(
     "app.split",
     "app",
     "Split the calling conversation pane to the right or down and open a new chat in it.",
-    appControlArgumentSchemas.split_view,
+    appControlArgumentSchemas["app.split"],
   ),
   operation(
     "settings.sections",
     "settings",
     "List the Cake settings sections available to agents, including scope and writability.",
-    emptyArgumentsSchema,
+    appControlArgumentSchemas["settings.sections"],
   ),
   operation(
     "settings.get",
     "settings",
     "Read the effective settings for one Cake settings section in the invoking window.",
-    CakeSettingsGetInput,
+    appControlArgumentSchemas["settings.get"],
   ),
   {
     ...operation(
       "settings.update",
       "settings",
       "Patch one Cake settings section in the invoking window and return its committed effective settings.",
-      CakeSettingsUpdateInput,
+      appControlArgumentSchemas["settings.update"],
     ),
     guidance: [
       "Call settings.get before updating a section. Unspecified fields remain unchanged.",
@@ -594,19 +530,19 @@ const modelControlOperations = [
     "sessions.list",
     "sessions",
     "List all project sessions, ordered by recency, and attention-worthy project sessions.",
-    emptyArgumentsSchema,
+    appControlArgumentSchemas["sessions.list"],
   ),
   operation(
     "sessions.info",
     "sessions",
     "Inspect one explicitly targeted project session.",
-    appControlArgumentSchemas.get_session_status,
+    appControlArgumentSchemas["sessions.info"],
   ),
   operation(
     "sessions.open",
     "sessions",
     "Open one explicitly targeted project session, optionally at a specific transcript message.",
-    appControlArgumentSchemas.open_session,
+    appControlArgumentSchemas["sessions.open"],
   ),
   {
     ...operation(
@@ -656,105 +592,94 @@ const modelControlOperations = [
     "sessions.send",
     "sessions",
     "Send, queue, or steer a correlated message to one explicitly targeted session. The result is a visible delivery receipt; optional maxMessages bounds the exchange.",
-    appControlArgumentSchemas.send_session_message,
+    appControlArgumentSchemas["sessions.send"],
   ),
   operation(
     "sessions.reply",
     "sessions",
     "Reply to the originating session in the current open coordination thread without supplying a session ID.",
-    appControlArgumentSchemas.reply_session_message,
+    appControlArgumentSchemas["sessions.reply"],
   ),
   operation(
     "sessions.thread",
     "sessions",
     "Inspect the current coordination thread, correlated messages, delivery states, participants, and optional message limit.",
-    appControlArgumentSchemas.get_session_thread,
+    appControlArgumentSchemas["sessions.thread"],
   ),
   operation(
     "sessions.close-thread",
     "sessions",
     "Close the current coordination thread. Further replies are rejected; late arrivals remain attributed to the closed exchange.",
-    appControlArgumentSchemas.close_session_thread,
+    appControlArgumentSchemas["sessions.close-thread"],
   ),
   operation(
     "sessions.compact",
     "sessions",
     "Compact one explicitly targeted Project Session through Pi's normal compaction mechanism.",
-    appControlArgumentSchemas.compact_session,
+    appControlArgumentSchemas["sessions.compact"],
   ),
   operation(
     "sessions.schedule",
     "sessions",
     "Schedule a message for one explicitly targeted Project Session at an ISO timestamp.",
-    appControlArgumentSchemas.schedule_session_message,
+    appControlArgumentSchemas["sessions.schedule"],
   ),
   operation(
     "sessions.scheduled",
     "sessions",
     "List scheduled messages, optionally filtered to one Project Session.",
-    appControlArgumentSchemas.list_scheduled_messages,
+    appControlArgumentSchemas["sessions.scheduled"],
   ),
   operation(
     "sessions.cancel-scheduled",
     "sessions",
     "Cancel one scheduled message by its ID.",
-    appControlArgumentSchemas.cancel_scheduled_message,
+    appControlArgumentSchemas["sessions.cancel-scheduled"],
   ),
   operation(
     "sessions.pending",
     "sessions",
     "List all steering and follow-up messages currently queued in one explicitly targeted Project Session.",
-    appControlArgumentSchemas.list_pending_messages,
+    appControlArgumentSchemas["sessions.pending"],
   ),
   operation(
     "sessions.dequeue",
     "sessions",
     "Clear and return all steering and follow-up messages queued in one explicitly targeted Project Session. To edit queued content, dequeue it, modify the returned text, then use sessions.send.",
-    appControlArgumentSchemas.dequeue_pending_messages,
+    appControlArgumentSchemas["sessions.dequeue"],
   ),
   operation(
     "sessions.abort",
     "sessions",
     "Stop one explicitly targeted running session.",
-    appControlArgumentSchemas.abort_session,
+    appControlArgumentSchemas["sessions.abort"],
+  ),
+  operation(
+    "sessions.rename",
+    "sessions",
+    "Rename one explicitly targeted Project Session to a new title.",
+    appControlArgumentSchemas["sessions.rename"],
   ),
   operation(
     "notifications.send",
     "notifications",
     "Send a bounded native system notification without adding user input.",
-    appControlArgumentSchemas.send_notification,
+    appControlArgumentSchemas["notifications.send"],
   ),
   operation(
     "sessions.resolve",
     "sessions",
     "Idempotently resolve or restore explicit project or Cake Chat targets.",
-    sessionResolutionSchema,
+    appControlArgumentSchemas["sessions.resolve"],
   ),
 ] as const;
 
-const commandToLegacyName = {
-  "app.state": "get_app_state",
-  "app.split": "split_view",
-  "sessions.info": "get_session_status",
-  "sessions.open": "open_session",
-  "sessions.create": "create_session",
-  "sessions.create-draft": "create_draft_session",
-  "sessions.send": "send_session_message",
-  "sessions.reply": "reply_session_message",
-  "sessions.thread": "get_session_thread",
-  "sessions.close-thread": "close_session_thread",
-  "sessions.compact": "compact_session",
-  "sessions.schedule": "schedule_session_message",
-  "sessions.scheduled": "list_scheduled_messages",
-  "sessions.cancel-scheduled": "cancel_scheduled_message",
-  "sessions.pending": "list_pending_messages",
-  "sessions.dequeue": "dequeue_pending_messages",
-  "sessions.abort": "abort_session",
-  "notifications.send": "send_notification",
-  "agent.action": "report_agent_action",
-} as const;
-
-function operation(command: string, topic: string, summary: string, schema: Schema.Constraint) {
+function operation(
+  command: AppControlCommand,
+  topic: string,
+  summary: string,
+  schema: Schema.Constraint,
+) {
   const definition = {
     command,
     topic,
@@ -806,7 +731,7 @@ export class AppControlBridge {
 
   async invoke(untrustedInput: unknown, source?: AgentControlSource): Promise<JsonValue> {
     const result = await this.invokeResult(untrustedInput, source);
-    if (source && result.ok && result.name !== "send_notification") {
+    if (source && result.ok && result.command !== "notifications.send") {
       const receipt = this.agentActionReceipt(result, source);
       if (receipt) this.host.presentation.showAgentAction({ source, ...receipt });
     }
@@ -817,180 +742,94 @@ export class AppControlBridge {
     untrustedInput: unknown,
     source?: AgentControlSource,
   ): Promise<AppControlResult> {
-    const gatewayInvocation = Schema.decodeUnknownSync(
-      Schema.Struct({ name: Schema.String, arguments: jsonObjectSchema }),
-    )(untrustedInput);
-    if (gatewayInvocation.name === "settings.sections")
-      return {
-        ok: true,
-        command: "settings.sections",
-        name: "settings.sections",
-        sections: cakeSettingsSections,
-      };
-    if (gatewayInvocation.name === "settings.get") {
-      const input = Schema.decodeUnknownSync(CakeSettingsGetInput)(gatewayInvocation.arguments);
-      const view = this.host.settings.get(input.section);
-      return toStrictJson({
-        ok: true,
-        command: "settings.get",
-        name: "settings.get",
-        scope: "window",
-        ...view,
-      });
+    const invocation = Schema.decodeUnknownSync(appControlInvocationSchema)(untrustedInput);
+    const command = invocation.name;
+    if (invocation.name === "settings.sections")
+      return { ok: true, command: invocation.name, sections: cakeSettingsSections };
+    if (invocation.name === "settings.get") {
+      const view = this.host.settings.get(invocation.arguments.section);
+      return toStrictJson({ ok: true, command: invocation.name, scope: "window", ...view });
     }
-    if (gatewayInvocation.name === "settings.update") {
-      const input = Schema.decodeUnknownSync(CakeSettingsUpdateInput)(gatewayInvocation.arguments);
-      const view = await this.host.settings.update(input);
-      return toStrictJson({
-        ok: true,
-        command: "settings.update",
-        name: "settings.update",
-        scope: "window",
-        ...view,
-      });
+    if (invocation.name === "settings.update") {
+      const view = await this.host.settings.update(invocation.arguments);
+      return toStrictJson({ ok: true, command: invocation.name, scope: "window", ...view });
     }
-    if (gatewayInvocation.name === "sessions.list") {
+    if (invocation.name === "sessions.list") {
       const state = this.getAppState(source);
       return toStrictJson({
         ok: true,
-        command: "sessions.list",
-        name: "sessions.list",
+        command: invocation.name,
         sessions: state.recentSessions,
         attentionSessions: state.attentionSessions,
       });
     }
-    if (gatewayInvocation.name === "sessions.resolve") {
-      const input = Schema.decodeUnknownSync(sessionResolutionSchema)(gatewayInvocation.arguments);
-      const projectIds = input.targets
-        .filter((target) => target.kind === "project")
-        .map((target) => target.sessionId);
-      const cakeChatIds = input.targets
-        .filter((target) => target.kind === "cake-chat")
-        .map((target) => target.sessionId);
-      const unknownProject = projectIds.find((sessionId) => !this.knownSession(sessionId));
-      if (unknownProject)
-        return {
-          ok: false,
-          name: "set_sessions_resolved",
-          error: `Cake could not find session ${unknownProject}.`,
-        };
-      const knownCakeChatIds = new Set(
-        this.host.state.cakeChatSessions().map((session) => session.sessionId),
-      );
-      const unknownCakeChat = cakeChatIds.find((sessionId) => !knownCakeChatIds.has(sessionId));
-      if (unknownCakeChat)
-        return {
-          ok: false,
-          name: "set_cake_chat_sessions_resolved",
-          error: `Cake could not find Cake Chat session ${unknownCakeChat}.`,
-        };
-      const [projectCount, cakeChatCount] = await Promise.all([
-        projectIds.length
-          ? this.host.sessions.setProjectSessionsResolved([...new Set(projectIds)], input.resolved)
-          : 0,
-        cakeChatIds.length
-          ? this.host.sessions.setCakeChatSessionsResolved(
-              [...new Set(cakeChatIds)],
-              input.resolved,
-            )
-          : 0,
-      ]);
-      return toStrictJson({
-        ok: true,
-        command: "sessions.resolve",
-        name: "sessions.resolve",
-        targets: input.targets,
-        resolved: input.resolved,
-        sessionCount: projectCount + cakeChatCount,
-      });
-    }
-    const legacyName = Object.entries(commandToLegacyName).find(
-      ([command]) => command === gatewayInvocation.name,
-    )?.[1];
-    const invocation = Schema.decodeUnknownSync(appControlInvocationSchema)(
-      legacyName ? { name: legacyName, arguments: gatewayInvocation.arguments } : gatewayInvocation,
-    );
-    if (invocation.name === "get_app_state")
-      return { ok: true, name: invocation.name, state: this.getAppState(source) };
-    if (invocation.name === "split_view") {
+    if (invocation.name === "sessions.resolve") return this.resolveSessions(invocation.arguments);
+    if (invocation.name === "app.state")
+      return { ok: true, command: invocation.name, state: this.getAppState(source) };
+    if (invocation.name === "app.split") {
       if (!source)
         return {
           ok: false,
-          name: invocation.name,
+          command,
           error: "Cake can only split a pane for a calling conversation.",
         };
       const split = this.host.presentation.splitView(source, invocation.arguments.direction);
       if (!split)
-        return {
-          ok: false,
-          name: invocation.name,
-          error: "Cake could not split that conversation pane.",
-        };
+        return { ok: false, command, error: "Cake could not split that conversation pane." };
       return {
         ok: true,
-        name: invocation.name,
+        command: invocation.name,
         direction: invocation.arguments.direction,
         ...split,
       };
     }
-    if (invocation.name === "send_notification") {
+    if (invocation.name === "notifications.send") {
       await this.host.presentation.showNotification({
         title: invocation.arguments.title,
         body: invocation.arguments.body,
         level: invocation.arguments.level,
         source,
       });
-      return { ok: true, name: invocation.name, status: "queued" };
+      return { ok: true, command: invocation.name, status: "queued" };
     }
-    if (invocation.name === "report_agent_action") {
-      const result: Extract<AppControlResult, { name: "report_agent_action" }> = {
+    if (invocation.name === "agent.action") {
+      const result: Extract<AppControlResult, { command: "agent.action" }> = {
         ok: true,
-        name: invocation.name,
+        command: invocation.name,
         action: invocation.arguments.action,
       };
       if (invocation.arguments.detail) result.detail = invocation.arguments.detail;
       return result;
     }
-    if (invocation.name === "create_session") return this.createSession(invocation.arguments);
-    if (invocation.name === "create_draft_session")
+    if (invocation.name === "sessions.create") return this.createSession(invocation.arguments);
+    if (invocation.name === "sessions.create-draft")
       return this.createDraftSession(invocation.arguments);
-    if (invocation.name === "set_sessions_resolved")
-      return this.setSessionsResolved(invocation.arguments);
-    if (invocation.name === "set_cake_chat_sessions_resolved")
-      return this.setCakeChatSessionsResolved(invocation.arguments);
-    if (invocation.name === "list_scheduled_messages") {
+    if (invocation.name === "sessions.scheduled") {
       if (invocation.arguments.sessionId && !this.knownSession(invocation.arguments.sessionId))
-        return {
-          ok: false,
-          name: invocation.name,
-          error: "Cake could not find that session.",
-        };
+        return { ok: false, command, error: "Cake could not find that session." };
       return {
         ok: true,
-        name: invocation.name,
+        command: invocation.name,
         messages: await this.host.sessions.listScheduledMessages(invocation.arguments.sessionId),
       };
     }
-    if (invocation.name === "cancel_scheduled_message") {
+    if (invocation.name === "sessions.cancel-scheduled") {
       await this.host.sessions.cancelScheduledMessage(invocation.arguments.id);
       return {
         ok: true,
-        name: invocation.name,
+        command: invocation.name,
         id: invocation.arguments.id,
         status: "cancelled",
       };
     }
-    if (invocation.name === "reply_session_message") {
-      if (!source)
-        return { ok: false, name: invocation.name, error: "Reply requires a calling session." };
+    if (invocation.name === "sessions.reply") {
+      if (!source) return { ok: false, command, error: "Reply requires a calling session." };
       const thread = this.findThread(source.sessionId, invocation.arguments.threadId);
-      if (!thread)
-        return { ok: false, name: invocation.name, error: "There is no matching session thread." };
+      if (!thread) return { ok: false, command, error: "There is no matching session thread." };
       if (thread.state === "closed")
-        return { ok: false, name: invocation.name, error: "That session thread is closed." };
+        return { ok: false, command, error: "That session thread is closed." };
       const targetSessionId = thread.participants.find((id) => id !== source.sessionId);
-      if (!targetSessionId)
-        return { ok: false, name: invocation.name, error: "The thread has no reply target." };
+      if (!targetSessionId) return { ok: false, command, error: "The thread has no reply target." };
       return this.sendCrossSessionMessage(
         invocation.name,
         targetSessionId,
@@ -1000,54 +839,48 @@ export class AppControlBridge {
         thread,
       );
     }
-    if (invocation.name === "get_session_thread" || invocation.name === "close_session_thread") {
+    if (invocation.name === "sessions.thread" || invocation.name === "sessions.close-thread") {
       if (!source)
-        return {
-          ok: false,
-          name: invocation.name,
-          error: "Thread access requires a calling session.",
-        };
+        return { ok: false, command, error: "Thread access requires a calling session." };
       const thread = this.findThread(source.sessionId, invocation.arguments.threadId);
-      if (!thread)
-        return { ok: false, name: invocation.name, error: "There is no matching session thread." };
-      if (invocation.name === "close_session_thread") this.host.sessionCoordination.close(thread);
+      if (!thread) return { ok: false, command, error: "There is no matching session thread." };
+      if (invocation.name === "sessions.close-thread") this.host.sessionCoordination.close(thread);
       const view = this.threadView(thread);
-      return invocation.name === "close_session_thread"
-        ? { ok: true, name: invocation.name, thread: view, status: "closed" }
-        : { ok: true, name: invocation.name, thread: view };
+      return invocation.name === "sessions.close-thread"
+        ? { ok: true, command: invocation.name, thread: view, status: "closed" }
+        : { ok: true, command: invocation.name, thread: view };
     }
 
     const { sessionId } = invocation.arguments;
     const known = this.knownSession(sessionId);
-    if (!known)
-      return { ok: false, name: invocation.name, error: "Cake could not find that session." };
+    if (!known) return { ok: false, command, error: "Cake could not find that session." };
     const workspacePath = known.workingDirectory;
     const target = { workspacePath, sessionId };
 
-    if (invocation.name === "list_pending_messages")
+    if (invocation.name === "sessions.pending")
       return {
         ok: true,
-        name: invocation.name,
+        command: invocation.name,
         messages: await this.host.sessions.listPendingMessages(sessionId),
       };
-    if (invocation.name === "dequeue_pending_messages")
+    if (invocation.name === "sessions.dequeue")
       return {
         ok: true,
-        name: invocation.name,
+        command: invocation.name,
         messages: await this.host.sessions.dequeuePendingMessages(sessionId),
       };
-    if (invocation.name === "get_session_status") {
+    if (invocation.name === "sessions.info") {
       const activity = this.host.state.sessionActivity(sessionId);
       const current = this.host.state.currentSelection();
       return {
         ok: true,
-        name: invocation.name,
+        command: invocation.name,
         session: this.toControlSession(known),
         selected: current.kind === "project-session" && current.sessionId === sessionId,
         status: activity ?? "idle",
       };
     }
-    if (invocation.name === "open_session") {
+    if (invocation.name === "sessions.open") {
       const { messageId } = invocation.arguments;
       const messageFound = messageId
         ? await this.host.sessions.open(sessionId, messageId)
@@ -1055,16 +888,16 @@ export class AppControlBridge {
       if (messageId && messageFound === false)
         return {
           ok: false,
-          name: invocation.name,
+          command,
           error: `Cake could not find message ${messageId} in that session.`,
         };
       return {
         ok: true,
-        name: invocation.name,
+        command: invocation.name,
         opened: messageId ? { ...target, messageId } : target,
       };
     }
-    if (invocation.name === "send_session_message") {
+    if (invocation.name === "sessions.send") {
       if (!source) {
         const delivery =
           invocation.arguments.delivery ??
@@ -1078,7 +911,7 @@ export class AppControlBridge {
         );
         return {
           ok: true,
-          name: invocation.name,
+          command: invocation.name,
           target,
           targetTitle: known.title,
           messageId: turnId,
@@ -1090,19 +923,11 @@ export class AppControlBridge {
         ? this.host.sessionCoordination.get(invocation.arguments.threadId)
         : undefined;
       if (invocation.arguments.threadId && !thread)
-        return {
-          ok: false,
-          name: invocation.name,
-          error: "Cake could not find that session thread.",
-        };
+        return { ok: false, command, error: "Cake could not find that session thread." };
       if (thread && !thread.participants.includes(source.sessionId))
-        return {
-          ok: false,
-          name: invocation.name,
-          error: "The calling session is not in that thread.",
-        };
+        return { ok: false, command, error: "The calling session is not in that thread." };
       if (thread?.state === "closed")
-        return { ok: false, name: invocation.name, error: "That session thread is closed." };
+        return { ok: false, command, error: "That session thread is closed." };
       if (
         thread &&
         invocation.arguments.maxMessages !== undefined &&
@@ -1110,7 +935,7 @@ export class AppControlBridge {
       )
         return {
           ok: false,
-          name: invocation.name,
+          command,
           error: "The existing thread has a different message limit.",
         };
       if (!thread) {
@@ -1121,7 +946,7 @@ export class AppControlBridge {
         );
       }
       if (!thread.participants.includes(sessionId))
-        return { ok: false, name: invocation.name, error: "The target is not in that thread." };
+        return { ok: false, command, error: "The target is not in that thread." };
       return this.sendCrossSessionMessage(
         invocation.name,
         sessionId,
@@ -1131,11 +956,11 @@ export class AppControlBridge {
         thread,
       );
     }
-    if (invocation.name === "compact_session") {
+    if (invocation.name === "sessions.compact") {
       await this.host.sessions.compact(sessionId, invocation.arguments.instructions);
-      return { ok: true, name: invocation.name, target, status: "compacted" };
+      return { ok: true, command: invocation.name, target, status: "compacted" };
     }
-    if (invocation.name === "schedule_session_message") {
+    if (invocation.name === "sessions.schedule") {
       const scheduledMessage = await this.host.sessions.scheduleMessage({
         targetSessionId: sessionId,
         text: invocation.arguments.text,
@@ -1143,44 +968,60 @@ export class AppControlBridge {
       });
       return {
         ok: true,
-        name: invocation.name,
+        command: invocation.name,
         target,
         scheduledMessage,
         status: "scheduled",
       };
     }
-    if (invocation.name === "abort_session") {
-      if (!isActiveSessionActivity(this.host.state.sessionActivity(sessionId))) {
-        return {
-          ok: false,
-          name: invocation.name,
-          error: "That session is not currently running.",
-        };
-      }
+    if (invocation.name === "sessions.abort") {
+      if (!isActiveSessionActivity(this.host.state.sessionActivity(sessionId)))
+        return { ok: false, command, error: "That session is not currently running." };
       await this.host.sessions.abort(sessionId);
-      return { ok: true, name: invocation.name, target, status: "stopping" };
+      return { ok: true, command: invocation.name, target, status: "stopping" };
     }
-    if (invocation.name === "rename_session") {
-      await this.host.sessions.rename(sessionId, invocation.arguments.title);
-      return { ok: true, name: invocation.name, target, title: invocation.arguments.title };
-    }
-    if (invocation.name === "set_session_resolved") {
-      await this.host.sessions.setResolved(sessionId, invocation.arguments.resolved);
-      return { ok: true, name: invocation.name, target, resolved: invocation.arguments.resolved };
-    }
-    await this.host.sessions.setModel(
-      sessionId,
-      invocation.arguments.provider,
-      invocation.arguments.modelId,
+    await this.host.sessions.rename(sessionId, invocation.arguments.title);
+    return { ok: true, command: invocation.name, target, title: invocation.arguments.title };
+  }
+
+  private async resolveSessions(
+    input: (typeof appControlArgumentSchemas)["sessions.resolve"]["Type"],
+  ): Promise<AppControlResult> {
+    const command = "sessions.resolve";
+    const projectIds = input.targets
+      .filter((target) => target.kind === "project")
+      .map((target) => target.sessionId);
+    const cakeChatIds = input.targets
+      .filter((target) => target.kind === "cake-chat")
+      .map((target) => target.sessionId);
+    const unknownProject = projectIds.find((sessionId) => !this.knownSession(sessionId));
+    if (unknownProject)
+      return { ok: false, command, error: `Cake could not find session ${unknownProject}.` };
+    const knownCakeChatIds = new Set(
+      this.host.state.cakeChatSessions().map((session) => session.sessionId),
     );
-    return {
+    const unknownCakeChat = cakeChatIds.find((sessionId) => !knownCakeChatIds.has(sessionId));
+    if (unknownCakeChat)
+      return {
+        ok: false,
+        command,
+        error: `Cake could not find Cake Chat session ${unknownCakeChat}.`,
+      };
+    const [projectCount, cakeChatCount] = await Promise.all([
+      projectIds.length
+        ? this.host.sessions.setProjectSessionsResolved([...new Set(projectIds)], input.resolved)
+        : 0,
+      cakeChatIds.length
+        ? this.host.sessions.setCakeChatSessionsResolved([...new Set(cakeChatIds)], input.resolved)
+        : 0,
+    ]);
+    return toStrictJson({
       ok: true,
-      name: invocation.name,
-      target,
-      provider: invocation.arguments.provider,
-      modelId: invocation.arguments.modelId,
-      status: "changing",
-    };
+      command,
+      targets: input.targets,
+      resolved: input.resolved,
+      sessionCount: projectCount + cakeChatCount,
+    });
   }
 
   private findThread(sessionId: string, explicitThreadId?: string) {
@@ -1188,7 +1029,7 @@ export class AppControlBridge {
   }
 
   private async sendCrossSessionMessage(
-    name: "send_session_message" | "reply_session_message",
+    command: "sessions.send" | "sessions.reply",
     targetSessionId: string,
     text: string,
     requestedDelivery: "prompt" | "queue" | "steer" | undefined,
@@ -1197,12 +1038,12 @@ export class AppControlBridge {
   ): Promise<AppControlResult> {
     const target = this.knownSession(targetSessionId);
     if (!target)
-      return { ok: false, name, error: "Cake could not find the thread's target session." };
+      return { ok: false, command, error: "Cake could not find the thread's target session." };
     if (targetSessionId === source.sessionId)
-      return { ok: false, name, error: "A session thread requires two different sessions." };
+      return { ok: false, command, error: "A session thread requires two different sessions." };
     if (thread.maxMessages !== undefined && thread.messages.length >= thread.maxMessages) {
       this.host.sessionCoordination.close(thread);
-      return { ok: false, name, error: "That session thread reached its message limit." };
+      return { ok: false, command, error: "That session thread reached its message limit." };
     }
     const delivery =
       requestedDelivery ??
@@ -1251,7 +1092,7 @@ export class AppControlBridge {
       this.host.sessionCoordination.close(thread);
     return {
       ok: true,
-      name,
+      command,
       target: { workspacePath: target.workingDirectory, sessionId: targetSessionId },
       targetTitle: target.title,
       messageId,
@@ -1316,7 +1157,7 @@ export class AppControlBridge {
       }
       return receipt;
     };
-    if (result.name === "report_agent_action") {
+    if (result.command === "agent.action") {
       const messages = {
         compact: "Compacted this session",
         rename: `Renamed this session${result.detail ? ` to “${result.detail}”` : ""}`,
@@ -1336,104 +1177,73 @@ export class AppControlBridge {
             : `current:${result.action}:${result.detail ?? ""}`,
       };
     }
-    if (result.name === "settings.update")
+    if (result.command === "settings.update")
       return {
         message: `Updated Cake ${result.section} settings`,
         coalesceKey: `settings:${result.section}`,
       };
-    if (result.name === "split_view")
+    if (result.command === "app.split")
       return {
         message: `Split this chat ${result.direction === "right" ? "to the right" : "down"}`,
         targetSessionId: result.sessionId,
         targetKind: result.kind,
         coalesceKey: `split:${result.paneId}`,
       };
-    if (result.name === "open_session")
+    if (result.command === "sessions.open")
       return {
         message: `Opened “${projectTitle(result.opened.sessionId)}”`,
         coalesceKey: `open:${result.opened.sessionId}`,
       };
-    if (result.name === "create_session")
+    if (result.command === "sessions.create")
       return {
         message: `Created and started “${result.title}”`,
         ...projectTarget(result.sessionId),
         coalesceKey: `create:${result.sessionId}`,
       };
-    if (result.name === "create_draft_session")
+    if (result.command === "sessions.create-draft")
       return {
         message: `Created draft “${result.title}”`,
         ...projectTarget(result.sessionId),
         coalesceKey: `draft:${result.sessionId}`,
       };
-    if (result.name === "send_session_message" || result.name === "reply_session_message")
+    if (result.command === "sessions.send" || result.command === "sessions.reply")
       return {
         message: `${result.status === "queued" ? "Queued" : "Accepted"} message ${result.messageNumber ? `${result.messageNumber}${result.maxMessages ? `/${result.maxMessages}` : ""} for` : "for"} “${result.targetTitle}”`,
         ...projectTarget(result.target.sessionId),
         coalesceKey: `send:${result.messageId}:${result.status}`,
       };
-    if (result.name === "close_session_thread")
+    if (result.command === "sessions.close-thread")
       return {
         message: `Closed session exchange after ${result.thread.messageCount} messages`,
         coalesceKey: `thread-close:${result.thread.threadId}`,
       };
-    if (result.name === "compact_session")
+    if (result.command === "sessions.compact")
       return {
         message: `Compacted “${projectTitle(result.target.sessionId)}”`,
         ...projectTarget(result.target.sessionId),
         coalesceKey: `compact:${result.target.sessionId}`,
       };
-    if (result.name === "schedule_session_message")
+    if (result.command === "sessions.schedule")
       return {
         message: `Scheduled a message for “${projectTitle(result.target.sessionId)}”`,
         ...projectTarget(result.target.sessionId),
         coalesceKey: `schedule:${result.target.sessionId}`,
       };
-    if (result.name === "cancel_scheduled_message")
+    if (result.command === "sessions.cancel-scheduled")
       return { message: "Cancelled a scheduled message", coalesceKey: `cancel:${result.id}` };
-    if (result.name === "abort_session")
+    if (result.command === "sessions.abort")
       return {
         message: `Stopped “${projectTitle(result.target.sessionId)}”`,
         ...projectTarget(result.target.sessionId),
         coalesceKey: `abort:${result.target.sessionId}`,
       };
-    if (result.name === "rename_session")
+    if (result.command === "sessions.rename")
       return {
         message: `Renamed session to “${result.title}”`,
         ...projectTarget(result.target.sessionId),
         coalesceKey: `rename:${result.target.sessionId}`,
       };
-    if (result.name === "set_session_resolved")
-      return resolutionReceipt(
-        `${result.resolved ? "Resolved" : "Restored"} “${projectTitle(result.target.sessionId)}”`,
-        result.resolved,
-        [{ sessionId: result.target.sessionId, kind: "project-session" }],
-        { sessionId: result.target.sessionId, kind: "project-session" },
-      );
-    if (result.name === "set_session_model")
-      return {
-        message: `Changed the model for “${projectTitle(result.target.sessionId)}”`,
-        ...projectTarget(result.target.sessionId),
-        coalesceKey: `model:${result.target.sessionId}`,
-      };
-    if (result.name === "set_sessions_resolved")
-      return resolutionReceipt(
-        `${result.resolved ? "Resolved" : "Restored"} ${result.sessionCount} project ${result.sessionCount === 1 ? "session" : "sessions"}`,
-        result.resolved,
-        result.sessionIds.map((sessionId) => ({ sessionId, kind: "project-session" })),
-        result.sessionIds.length === 1
-          ? { sessionId: result.sessionIds[0]!, kind: "project-session" }
-          : undefined,
-      );
-    if (result.name === "set_cake_chat_sessions_resolved")
-      return resolutionReceipt(
-        `${result.resolved ? "Resolved" : "Restored"} ${result.sessionCount} Cake Chat ${result.sessionCount === 1 ? "session" : "sessions"}`,
-        result.resolved,
-        result.sessionIds.map((sessionId) => ({ sessionId, kind: "cake-chat" })),
-        result.sessionIds.length === 1
-          ? { sessionId: result.sessionIds[0]!, kind: "cake-chat" }
-          : undefined,
-      );
-    if (result.name === "sessions.resolve") {
+    if (result.command === "sessions.resolve") {
       const target = result.targets.length === 1 ? result.targets[0] : undefined;
       const targets = result.targets.map((item) => ({
         sessionId: item.sessionId,
@@ -1460,15 +1270,15 @@ export class AppControlBridge {
   }
 
   private async createSession(
-    input: typeof appControlArgumentSchemas.create_session.Type,
+    input: (typeof appControlArgumentSchemas)["sessions.create"]["Type"],
   ): Promise<AppControlResult> {
-    if (!this.host.state.projects().some((project) => project.path === input.workspacePath)) {
-      return { ok: false, name: "create_session", error: "Cake could not find that project." };
-    }
+    const command = "sessions.create";
+    if (!this.host.state.projects().some((project) => project.path === input.workspacePath))
+      return { ok: false, command, error: "Cake could not find that project." };
     const created = await this.host.sessions.create(input);
-    const result: Extract<AppControlResult, { ok: true; name: "create_session" }> = {
+    const result: Extract<AppControlResult, { ok: true; command: "sessions.create" }> = {
       ok: true,
-      name: "create_session",
+      command,
       workspacePath: created.workspacePath,
       sessionId: created.sessionId,
       title: input.name,
@@ -1479,76 +1289,19 @@ export class AppControlBridge {
   }
 
   private async createDraftSession(
-    input: typeof appControlArgumentSchemas.create_draft_session.Type,
+    input: (typeof appControlArgumentSchemas)["sessions.create-draft"]["Type"],
   ): Promise<AppControlResult> {
-    if (!this.host.state.projects().some((project) => project.path === input.workspacePath)) {
-      return {
-        ok: false,
-        name: "create_draft_session",
-        error: "Cake could not find that project.",
-      };
-    }
+    const command = "sessions.create-draft";
+    if (!this.host.state.projects().some((project) => project.path === input.workspacePath))
+      return { ok: false, command, error: "Cake could not find that project." };
     const created = await this.host.sessions.createDraft(input);
     return {
       ok: true,
-      name: "create_draft_session",
+      command,
       workspacePath: created.workspacePath,
       sessionId: created.sessionId,
       title: input.name,
       status: "saved-draft",
-    };
-  }
-
-  private async setSessionsResolved({
-    sessionIds,
-    resolved,
-  }: typeof appControlArgumentSchemas.set_sessions_resolved.Type): Promise<AppControlResult> {
-    const unknown = sessionIds.find((sessionId) => !this.knownSession(sessionId));
-    if (unknown)
-      return {
-        ok: false,
-        name: "set_sessions_resolved",
-        error: `Cake could not find session ${unknown}.`,
-      };
-    const uniqueSessionIds = [...new Set(sessionIds)];
-    const sessionCount = await this.host.sessions.setProjectSessionsResolved(
-      uniqueSessionIds,
-      resolved,
-    );
-    return {
-      ok: true,
-      name: "set_sessions_resolved",
-      sessionIds: uniqueSessionIds,
-      resolved,
-      sessionCount,
-    };
-  }
-
-  private async setCakeChatSessionsResolved({
-    sessionIds,
-    resolved,
-  }: typeof appControlArgumentSchemas.set_cake_chat_sessions_resolved.Type): Promise<AppControlResult> {
-    const knownIds = new Set(
-      this.host.state.cakeChatSessions().map((session) => session.sessionId),
-    );
-    const unknown = sessionIds.find((sessionId) => !knownIds.has(sessionId));
-    if (unknown)
-      return {
-        ok: false,
-        name: "set_cake_chat_sessions_resolved",
-        error: `Cake could not find Cake Chat session ${unknown}.`,
-      };
-    const uniqueSessionIds = [...new Set(sessionIds)];
-    const sessionCount = await this.host.sessions.setCakeChatSessionsResolved(
-      uniqueSessionIds,
-      resolved,
-    );
-    return {
-      ok: true,
-      name: "set_cake_chat_sessions_resolved",
-      sessionIds: uniqueSessionIds,
-      resolved,
-      sessionCount,
     };
   }
 

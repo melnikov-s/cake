@@ -135,12 +135,12 @@ export class ApplicationControlStore extends Store<{
     if (!appInvocation)
       return {
         ok: false,
-        name: invocation._tag === "CreateSession" ? "sessions.create" : "sessions.create-draft",
+        command: invocation._tag === "CreateSession" ? "sessions.create" : "sessions.create-draft",
         error: "Cake could not find the calling Project Session.",
       };
     return this.bridge.invoke(appInvocation, context.source).catch((error) => ({
       ok: false,
-      name: appInvocation.name,
+      command: appInvocation.name,
       error: errorMessage(error),
     }));
   }
@@ -165,7 +165,7 @@ export class ApplicationControlStore extends Store<{
       })
       .catch((error) => ({
         ok: false,
-        name: request.invocation.name,
+        command: request.invocation.name,
         error: errorMessage(error),
       }));
     if (this.signal.aborted) return;

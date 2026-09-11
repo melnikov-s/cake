@@ -17,6 +17,7 @@ import {
   CakeSettingsUpdateInput,
 } from "../../../domain/application/cake-settings-schema";
 import { jsonObjectSchema, type JsonObject, type JsonValue } from "../../../ipc/json-contract";
+import { SESSION_TITLE_MAX_LENGTH } from "../../../ipc/session-contract";
 import { artifactRecordSchema, type CakeArtifactV1 } from "../../../ipc/artifact-contract";
 import { createCakeArtifactExtension } from "./artifact-extension";
 import { createCakeArtifactOperations } from "./cake-artifact-operations";
@@ -106,16 +107,7 @@ export function createGlobalControlOperations(
             ),
           }
         : decodedInput;
-      const result = await control.invoke(
-        { name: tool.command, arguments: argumentsValue },
-        context.signal,
-      );
-      const object = Schema.decodeUnknownOption(jsonObjectSchema)(result);
-      if (Option.isNone(object)) return result;
-      const semanticResult = Object.fromEntries(
-        Object.entries(object.value).filter(([key]) => key !== "name"),
-      );
-      return { ...semanticResult, command: tool.command };
+      return control.invoke({ name: tool.command, arguments: argumentsValue }, context.signal);
     },
   }));
 }
@@ -398,7 +390,7 @@ export async function createCakeRuntimeCapabilities(input: {
   const operationApi: RuntimeOperationApiReference = {};
   const crossSessionReceiptSchema = Schema.Struct({
     ok: Schema.Literal(true),
-    name: Schema.Literals(["send_session_message", "reply_session_message"]),
+    command: Schema.Literals(["sessions.send", "sessions.reply"]),
     targetTitle: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(1_024)),
     messageId: Schema.String.check(Schema.isUUID(4)),
     threadId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
@@ -746,6 +738,23 @@ export async function createCakeRuntimeCapabilities(input: {
         examples: [{ input: { sessionId: "target-session-id" } }],
         result: "A confirmed stopping status, or an error when the target is not running.",
         execute: invokeAppControl("sessions.abort"),
+      },
+      {
+        command: "sessions.rename",
+        topic: "sessions",
+        summary: "Rename an explicitly targeted Project Session in any Cake project.",
+        guidance: [
+          "Use session.rename for the calling session. Use sessions.rename with a sessionId from sessions.list or a child creation result to rename any other Project Session, whether idle or running.",
+        ],
+        inputSchema: Schema.Struct({
+          sessionId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+          title: Schema.Trim.pipe(
+            Schema.check(Schema.isMinLength(1), Schema.isMaxLength(SESSION_TITLE_MAX_LENGTH)),
+          ),
+        }),
+        examples: [{ input: { sessionId: "target-session-id", title: "Storage implementation" } }],
+        result: "The target session identity and its committed title.",
+        execute: invokeAppControl("sessions.rename"),
       },
       {
         command: "sessions.reply",

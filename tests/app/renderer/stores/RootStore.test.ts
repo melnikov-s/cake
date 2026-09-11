@@ -264,7 +264,7 @@ describe("RootStore session navigation", () => {
       const managedResult = controlResults[0];
       expect(managedResult).toMatchObject({
         ok: true,
-        name: "create_session",
+        command: "sessions.create",
         workspacePath: worktreePath,
         status: "started",
         managedWorktree,
@@ -378,7 +378,7 @@ describe("RootStore session navigation", () => {
           controlRequestId: "00000000-0000-4000-8000-000000000005",
           result: expect.objectContaining({
             ok: false,
-            name: "sessions.create",
+            command: "sessions.create",
             error: "managed checkout setup failed",
           }),
           options: expect.objectContaining({ signal: expect.any(AbortSignal) }),

@@ -1220,9 +1220,6 @@ export class RootStore extends Store<{
                 .renameSession(sessionId, title)
                 .then(() => undefined)
             : this.projectWorkbenchStore.sessionManagementStore.renameSession(sessionId, title),
-        setResolved: async (sessionId, resolved) => {
-          await this.resolveProjectSession(sessionId, resolved);
-        },
         setProjectSessionsResolved: async (sessionIds, resolved) => {
           const count = await this.projectWorkbenchStore.sessionManagementStore.resolveSessionsById(
             sessionIds,
@@ -1240,13 +1237,6 @@ export class RootStore extends Store<{
           if (resolved) await this.forgetResolvedSessions(sessionIds);
           return count;
         },
-        setModel: (sessionId, provider, modelId) =>
-          this.applicationControlStore.runOperation(() =>
-            this.client.projectSessions.setModel(
-              { sessionId, provider, modelId },
-              { signal: this.signal },
-            ),
-          ),
       },
       presentation: {
         splitView: (source, direction) => {

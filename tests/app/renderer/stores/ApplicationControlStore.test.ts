@@ -78,10 +78,8 @@ function createHost(
       dequeuePendingMessages: async () => ({ steering: [], followUp: [] }),
       abort: async () => undefined,
       rename: async () => undefined,
-      setResolved: async () => undefined,
       setProjectSessionsResolved: async () => 0,
       setCakeChatSessionsResolved: async () => 0,
-      setModel: async () => undefined,
     },
     presentation: {
       splitView: () => undefined,
@@ -148,7 +146,7 @@ describe("ApplicationControlStore", () => {
     expect(respondProject).toHaveBeenCalledWith(
       "project-session",
       request.controlRequestId,
-      expect.objectContaining({ ok: true, name: "get_app_state" }),
+      expect.objectContaining({ ok: true, command: "app.state" }),
       expect.any(Object),
     );
 
@@ -196,7 +194,7 @@ describe("ApplicationControlStore", () => {
     expect(respondProject.mock.calls[1]?.[2]).toEqual({ ok: false, error: "child failed" });
     expect(respondProject.mock.calls[2]?.[2]).toMatchObject({
       ok: false,
-      name: "sessions.open",
+      command: "sessions.open",
     });
     store[Symbol.dispose]();
   });
@@ -231,7 +229,7 @@ describe("ApplicationControlStore", () => {
     await vi.waitFor(() => expect(respondCake).toHaveBeenCalledOnce());
     expect(respondCake).toHaveBeenCalledWith(
       request.controlRequestId,
-      expect.objectContaining({ ok: true, name: "get_app_state" }),
+      expect.objectContaining({ ok: true, command: "app.state" }),
       expect.any(Object),
     );
     await vi.waitFor(() =>

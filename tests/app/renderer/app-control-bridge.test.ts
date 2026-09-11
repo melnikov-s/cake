@@ -83,10 +83,8 @@ function createHost(overrides: AppControlHostOverrides = {}): AppControlHost {
         overrides.dequeuePendingMessages ?? (async () => ({ steering: [], followUp: [] })),
       abort: overrides.abort ?? (async () => undefined),
       rename: overrides.rename ?? (async () => undefined),
-      setResolved: overrides.setResolved ?? (async () => undefined),
       setProjectSessionsResolved: overrides.setProjectSessionsResolved ?? (async () => 0),
       setCakeChatSessionsResolved: overrides.setCakeChatSessionsResolved ?? (async () => 0),
-      setModel: overrides.setModel ?? (async () => undefined),
     },
     presentation: {
       splitView: overrides.splitView ?? (() => undefined),
@@ -110,6 +108,7 @@ describe("AppControlBridge", () => {
     expect(target.tools.some((tool) => tool.command === "settings.sections")).toBe(true);
     expect(target.tools.some((tool) => tool.command === "settings.get")).toBe(true);
     expect(target.tools.some((tool) => tool.command === "settings.update")).toBe(true);
+    expect(target.tools.some((tool) => tool.command === "sessions.rename")).toBe(true);
     const create = target.tools.find((tool) => tool.command === "sessions.create");
     expect(create && "guidance" in create ? create.guidance : undefined).toContainEqual(
       expect.stringContaining("inherits"),
@@ -189,7 +188,7 @@ describe("AppControlBridge", () => {
       bridge.invoke({ name: "app.split", arguments: { direction: "right" } }, source),
     ).resolves.toMatchObject({
       ok: true,
-      name: "split_view",
+      command: "app.split",
       direction: "right",
       kind: "cake-chat",
       paneId: "pane-new",
@@ -310,7 +309,7 @@ describe("AppControlBridge", () => {
         },
         source,
       ),
-    ).resolves.toEqual({ ok: true, name: "send_notification", status: "queued" });
+    ).resolves.toEqual({ ok: true, command: "notifications.send", status: "queued" });
     expect(showNotification).toHaveBeenCalledWith({
       title: "Build progress",
       body: "Tests reached 80%.",
@@ -383,7 +382,7 @@ describe("AppControlBridge", () => {
       ),
     ).resolves.toEqual({
       ok: true,
-      name: "report_agent_action",
+      command: "agent.action",
       action: "set-model",
       detail: "openai/gpt-5",
     });
@@ -443,7 +442,7 @@ describe("AppControlBridge", () => {
       }),
     ).resolves.toEqual({
       ok: true,
-      name: "create_session",
+      command: "sessions.create",
       workspacePath: managedWorktree.worktreePath,
       sessionId: "session-new",
       title: "Implementation session",
@@ -527,7 +526,7 @@ describe("AppControlBridge", () => {
       ),
     ).resolves.toEqual({
       ok: true,
-      name: "create_draft_session",
+      command: "sessions.create-draft",
       workspacePath: "/projects/cake",
       sessionId: "draft-1",
       title: "Draft session",
@@ -581,7 +580,7 @@ describe("AppControlBridge", () => {
       }),
     ).resolves.toMatchObject({
       ok: true,
-      name: "send_session_message",
+      command: "sessions.send",
       delivery: "queue",
       status: "queued",
       targetTitle: "Other project session",
@@ -592,7 +591,7 @@ describe("AppControlBridge", () => {
         name: "sessions.compact",
         arguments: { sessionId: "session-2", instructions: "Keep decisions" },
       }),
-    ).resolves.toMatchObject({ ok: true, name: "compact_session", status: "compacted" });
+    ).resolves.toMatchObject({ ok: true, command: "sessions.compact", status: "compacted" });
     await expect(
       bridge.invoke({
         name: "sessions.schedule",
@@ -604,7 +603,7 @@ describe("AppControlBridge", () => {
       }),
     ).resolves.toMatchObject({
       ok: true,
-      name: "schedule_session_message",
+      command: "sessions.schedule",
       status: "scheduled",
       scheduledMessage: { targetSessionId: "session-2", text: "Review this" },
     });
@@ -648,9 +647,75 @@ describe("AppControlBridge", () => {
     ).resolves.toMatchObject({ ok: true, delivery: "steer", status: "accepted" });
     await expect(
       bridge.invoke({ name: "sessions.abort", arguments: { sessionId: "session-2" } }),
-    ).resolves.toMatchObject({ ok: true, name: "abort_session", status: "stopping" });
+    ).resolves.toMatchObject({ ok: true, command: "sessions.abort", status: "stopping" });
     expect(sendSessionMessage).toHaveBeenCalledWith("session-2", "Change direction", "steer");
     expect(abortSession).toHaveBeenCalledWith("session-2");
+  });
+
+  it("renames an explicitly targeted session and reports the committed title", async () => {
+    const renameSession = vi.fn(async () => undefined);
+    const showAgentAction = vi.fn();
+    const bridge = new AppControlBridge(
+      createHost({
+        sessions: () => [
+          {
+            workingDirectory: "/projects/other",
+            projectName: "Other",
+            sessionId: "session-2",
+            title: "Untitled child",
+            modifiedAt: "2026-09-04T12:00:00.000Z",
+            messageCount: 2,
+            resolved: false,
+            draft: false,
+          },
+        ],
+        rename: renameSession,
+        showAgentAction,
+      }),
+    );
+    const source = {
+      kind: "project-session" as const,
+      sessionId: "session-1",
+      title: "Parent",
+    };
+
+    await expect(
+      bridge.invoke(
+        {
+          name: "sessions.rename",
+          arguments: { sessionId: "session-2", title: "  Storage implementation  " },
+        },
+        source,
+      ),
+    ).resolves.toMatchObject({
+      ok: true,
+      command: "sessions.rename",
+      target: { workspacePath: "/projects/other", sessionId: "session-2" },
+      title: "Storage implementation",
+    });
+    expect(renameSession).toHaveBeenCalledWith("session-2", "Storage implementation");
+    expect(showAgentAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source,
+        targetSessionId: "session-2",
+        targetKind: "project-session",
+        message: "Renamed session to “Storage implementation”",
+      }),
+    );
+
+    await expect(
+      bridge.invoke({
+        name: "sessions.rename",
+        arguments: { sessionId: "missing", title: "Nope" },
+      }),
+    ).resolves.toMatchObject({ ok: false, command: "sessions.rename" });
+    await expect(
+      bridge.invoke({
+        name: "sessions.rename",
+        arguments: { sessionId: "session-2", title: "  " },
+      }),
+    ).rejects.toThrow();
+    expect(renameSession).toHaveBeenCalledTimes(1);
   });
 
   it("keeps duplicate-title targets disambiguated by project and working directory", async () => {
