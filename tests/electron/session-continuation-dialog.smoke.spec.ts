@@ -26,6 +26,8 @@ test("forks sessions across working directories", async () => {
   const project = join(temporaryRoot, "project");
   const cakeHome = join(temporaryRoot, "cake-home");
   const sessionId = "fork-dialog-session";
+  const setupRelease = join(temporaryRoot, "release-worktree-setup");
+  const encodedSetupRelease = Buffer.from(setupRelease).toString("base64");
   const timestamp = new Date(0).toISOString();
   const sessionDirectory = cakeWorkspaceSessionDirectory(project, join(cakeHome, "pi", "sessions"));
   await Promise.all([
@@ -59,7 +61,7 @@ test("forks sessions across working directories", async () => {
           lastOpenedAt: timestamp,
           settings: {
             worktreeCreateCommand: "",
-            worktreeSetupCommands: 'node -e "setTimeout(() => {}, 1500)"',
+            worktreeSetupCommands: `node -e "const fs=require('fs');const p=Buffer.from('${encodedSetupRelease}','base64').toString();const i=setInterval(()=>{if(fs.existsSync(p))clearInterval(i)},25)"`,
           },
         },
       ],
@@ -126,17 +128,6 @@ test("forks sessions across working directories", async () => {
       name: "Fork response with full context into new chat",
     });
     await expect(fork).toBeVisible({ timeout: 20_000 });
-    await page.evaluate(() => {
-      const flashes: string[] = [];
-      Object.assign(window, { continuationEmptySessionFlashes: flashes });
-      new MutationObserver(() => {
-        for (const heading of document.querySelectorAll(".transcript h1")) {
-          const text = heading.textContent ?? "";
-          if (text.includes("What should we build") || text.includes("What can I help"))
-            flashes.push(text);
-        }
-      }).observe(document.body, { childList: true, subtree: true });
-    });
     await fork.click({ force: true });
 
     const dialog = page.getByRole("dialog", { name: "Fork this conversation" });
@@ -189,14 +180,13 @@ test("forks sessions across working directories", async () => {
     await expect(
       page.getByRole("status", { name: "Forking conversation in progress" }),
     ).toHaveCount(0);
-    await expect(page.getByText("Here is the plan.")).toBeVisible();
-    // The forked conversation opens in its new worktree (the worktree pill shows its
-    // branch) instead of failing with "Cake could not find that session". The forked
-    // transcript carries the parent's content.
+    // Selection moves to the fork as soon as its checkout exists, while setup is
+    // deliberately blocked. Runtime hydration and the copied transcript follow setup.
     await expect(page.getByText(/^focused-fix-[a-f0-9]{6}$/).first()).toBeVisible({
       timeout: 30_000,
     });
-    await expect(page.getByText("Here is the plan.")).toBeVisible();
+    await writeFile(setupRelease, "continue\n");
+    await expect(page.getByText("Here is the plan.")).toBeVisible({ timeout: 30_000 });
     await expect(page.getByRole("button", { name: "Start new chat in project" })).toHaveCount(1);
     await expect(
       page.getByRole("button", { name: /^Start new chat in focused-fix-[a-f0-9]{6}$/ }),

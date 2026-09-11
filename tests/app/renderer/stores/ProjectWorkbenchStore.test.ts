@@ -20,6 +20,7 @@ function mountWorkbench(
   workflow?: {
     prepareWorkingDirectoryRetirement?(workingDirectories: readonly string[]): Promise<boolean>;
     onWorktreeSessionsResolved?(sessionIds: readonly string[], projectPath: string): Promise<void>;
+    openSessionById?(sessionId: string): Promise<void>;
   },
 ) {
   let activeSessionId = initialActiveSessionId;
@@ -40,12 +41,16 @@ function mountWorkbench(
         recordOpened: vi.fn(),
       } as unknown as ProjectCatalogStore,
       globalStatuses: () => [],
-      reviews: () => ({}) as ReviewsStore,
+      reviews: () =>
+        ({
+          codeThreadsForSession: () => [],
+          threadStreaming: () => false,
+        }) as unknown as ReviewsStore,
       extensionUi: () => ({ clear: vi.fn() }) as unknown as ExtensionUiStore,
       catalog,
       startCakeChat: async () => undefined,
       onWorktreeSessionsResolved: workflow?.onWorktreeSessionsResolved ?? (async () => undefined),
-      openSessionById: async () => undefined,
+      openSessionById: workflow?.openSessionById ?? (async () => undefined),
       activeSessionId: () => activeSessionId,
       restoreStagedSession,
       selectSession,
@@ -251,7 +256,7 @@ describe("ProjectWorkbenchStore startup selection", () => {
     const open = vi.fn(async () => undefined);
     const session = {
       workspacePath: "/project",
-      model: { sessionId: "session-1" },
+      model: { sessionId: "session-1", sessionFile: "/sessions/session-1.jsonl" },
       ideMode: false,
       markRead: vi.fn(),
     };
@@ -432,6 +437,81 @@ describe("ProjectWorkbenchStore startup selection", () => {
     await opening;
     expect(selectSession).toHaveBeenCalledWith("session-1");
     expect(store.activeSessionId).toBe("session-1");
+    root[Symbol.dispose]();
+    operations[Symbol.dispose]();
+  });
+
+  it("selects a fork before its runtime waits for worktree setup", async () => {
+    let finishOpen: (() => void) | undefined;
+    const opened = new Promise<void>((resolve) => {
+      finishOpen = resolve;
+    });
+    const model = Session.create({ sessionId: "forked", workingDirectory: "/worktree" });
+    const session = loadedSessionStub(model, "/worktree");
+    const registry = {
+      findSession: (sessionId: string) => (sessionId === "forked" ? session : undefined),
+      load: vi.fn(() => session),
+      observationRetention: { retain: vi.fn(), materialize: vi.fn() },
+      pendingSessions: { isTemporary: () => false },
+    } as unknown as SessionRegistryStore;
+    const catalog = {
+      find: () => ({ sessionId: "forked", workingDirectory: "/worktree", unread: false }),
+      projectOfManagedWorktree: () => "/project",
+    } as unknown as SessionCatalogStore;
+    const {
+      root,
+      subject: store,
+      operations,
+      selectSession,
+    } = mountWorkbench(registry, catalog, {} as Client, undefined, undefined, {
+      openSessionById: () => opened,
+    });
+
+    const opening = store.openForkedSession("forked", "/worktree");
+
+    expect(registry.load).toHaveBeenCalledWith("forked", "/worktree");
+    expect(selectSession).toHaveBeenCalledWith("forked");
+    expect(store.activeSessionId).toBe("forked");
+
+    finishOpen?.();
+    await opening;
+    root[Symbol.dispose]();
+    operations[Symbol.dispose]();
+  });
+
+  it("opens the runtime for a selected identity-only fork", async () => {
+    const model = Session.create({ sessionId: "forked", workingDirectory: "/worktree" });
+    const session = loadedSessionStub(model, "/worktree");
+    const open = vi.fn(async () => {
+      model.sessionFile = "/sessions/forked.jsonl";
+    });
+    const registry = {
+      findSession: (sessionId: string) => (sessionId === "forked" ? session : undefined),
+      observationRetention: { retain: vi.fn() },
+      pendingSessions: { isTemporary: () => false },
+    } as unknown as SessionRegistryStore;
+    const catalog = {
+      find: () => ({ sessionId: "forked", workingDirectory: "/worktree", unread: false }),
+      projectOfManagedWorktree: () => "/project",
+    } as unknown as SessionCatalogStore;
+    const {
+      root,
+      subject: store,
+      operations,
+    } = mountWorkbench(
+      registry,
+      catalog,
+      { projectSessions: { open } } as unknown as Client,
+      "forked",
+    );
+    store.projectOpenStore.projectPath = "/worktree";
+
+    await store.openSession("forked");
+
+    expect(open).toHaveBeenCalledWith(
+      { sessionId: "forked", workingDirectory: "/worktree" },
+      expect.any(Object),
+    );
     root[Symbol.dispose]();
     operations[Symbol.dispose]();
   });

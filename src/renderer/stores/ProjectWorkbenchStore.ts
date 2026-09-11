@@ -160,10 +160,8 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       sessionContext: () => this.sessionContext(),
       sessionTitle: () => this.sessionTitle,
       closeCommandPane: () => this.commandPaneStore.close(),
-      openSession: async (sessionId, workingDirectory) => {
-        this.sessionRegistry.load(sessionId, workingDirectory);
-        await this.props.openSessionById(sessionId);
-      },
+      openSession: (sessionId, workingDirectory) =>
+        this.openForkedSession(sessionId, workingDirectory),
       reportError: (error) => this.setError(error),
     });
   }
@@ -548,6 +546,13 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     return this.openSessionTarget(sessionId, false);
   }
 
+  /** Selects a fork as soon as its checkout exists, without waiting for setup or hydration. */
+  async openForkedSession(sessionId: string, workingDirectory: string) {
+    this.sessionRegistry.load(sessionId, workingDirectory);
+    this.activateLoadedSession(sessionId);
+    await this.props.openSessionById(sessionId);
+  }
+
   private async openSessionTarget(sessionId: string, acceptedProjectOpen: boolean) {
     const revision = ++this.sessionOpenRevision;
     if (!acceptedProjectOpen) this.projectOpenStore.cancelPending();
@@ -562,7 +567,9 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     if (
       alreadyActive &&
       workspacePath === this.projectOpenStore.projectPath &&
-      sessionId === this.session?.sessionId
+      sessionId === this.session?.sessionId &&
+      (this.sessionRegistry.pendingSessions.isTemporary(sessionId) ||
+        Boolean(existingSession?.model.sessionFile))
     ) {
       this.props.selectSession(sessionId);
       this.restoreSessionPresentation();
