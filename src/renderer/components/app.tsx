@@ -563,6 +563,8 @@ export const App = observer(function App() {
             projectSidebarWidth={displayedSidebarWidth}
             onProjectSidebarWidthChange={setSidebarWidth}
             projectChat={session.conversationSessionStore.chatStore}
+            sideChat={session.conversationSessionStore.sideChatStore}
+            headerActions={<SideChatsMenu store={session} />}
             projectComposerHeader={projectComposerHeader}
             projectComposerLeadingAccessory={projectComposerLeadingAccessory(session)}
             sessionTitle={store.sessionTitle}

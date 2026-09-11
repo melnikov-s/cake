@@ -25,7 +25,8 @@ export const SideChatsMenu = observer(function SideChatsMenu({
   onOpen,
 }: {
   store: ProjectSessionStore;
-  onOpen(): void;
+  /** Focuses the surface that owns this menu before a chat opens, when several surfaces share a window. */
+  onOpen?(): void;
 }) {
   const [open, setOpen] = useState(false);
   const threads = store.sideChatThreads;
@@ -67,7 +68,7 @@ export const SideChatsMenu = observer(function SideChatsMenu({
                 className="h-auto min-w-0 justify-start gap-2 px-2.5 py-2 text-left"
                 variant="ghost"
                 onClick={() => {
-                  onOpen();
+                  onOpen?.();
                   if (store.openSideChat(thread.id)) setOpen(false);
                 }}
               >

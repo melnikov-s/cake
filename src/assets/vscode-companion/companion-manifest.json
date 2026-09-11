@@ -1,7 +1,7 @@
 {
   "name": "cake-companion",
   "displayName": "Cake Companion",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "private": true,
   "description": "Bridges embedded VS Code with Cake agent actions, source reveals, editor context, and discussions.",
   "license": "UNLICENSED",
@@ -53,23 +53,23 @@
       "editor/context": [
         {
           "command": "cake.addAnnotation",
-          "when": "editorHasSelection && resourceScheme == file",
+          "when": "editorHasSelection && (resourceScheme == file || resourceScheme == git)",
           "group": "cake@1"
         },
         {
           "command": "cake.askInSideChat",
-          "when": "editorHasSelection && resourceScheme == file",
+          "when": "editorHasSelection && (resourceScheme == file || resourceScheme == git)",
           "group": "cake@2"
         }
       ],
       "commandPalette": [
         {
           "command": "cake.addAnnotation",
-          "when": "editorHasSelection && resourceScheme == file"
+          "when": "editorHasSelection && (resourceScheme == file || resourceScheme == git)"
         },
         {
           "command": "cake.askInSideChat",
-          "when": "editorHasSelection && resourceScheme == file"
+          "when": "editorHasSelection && (resourceScheme == file || resourceScheme == git)"
         }
       ]
     }

@@ -89,17 +89,50 @@ function sendUserSelection(event) {
 }
 
 /**
- * Captures the active editor's non-empty selection for an explicit Cake action.
+ * Resolves the workspace file a text document presents. Diff editors show Git
+ * revision documents (`git:` scheme) beside or instead of the working-tree file,
+ * and the Git extension records the working-tree path in that URI's query.
+ */
+function documentFilePath(uri) {
+  if (uri.scheme === "file") return uri.fsPath;
+  if (uri.scheme !== "git") return undefined;
+  try {
+    const revisionPath = String(JSON.parse(uri.query)?.path || "");
+    if (revisionPath) return revisionPath;
+  } catch {
+    // Revision URIs mirror the file path, so fall back to it below.
+  }
+  return uri.fsPath;
+}
+
+/**
+ * Picks the editor an explicit Cake action targets. Editor context menus pass
+ * the clicked document's URI, which identifies the exact side of a diff editor;
+ * the command palette passes nothing and means the active editor.
+ */
+function explicitSelectionEditor(vscode, resource) {
+  const clicked =
+    resource instanceof vscode.Uri
+      ? vscode.window.visibleTextEditors.find(
+          (editor) => editor.document.uri.toString() === resource.toString(),
+        )
+      : undefined;
+  return clicked || vscode.window.activeTextEditor;
+}
+
+/**
+ * Captures an editor's non-empty selection for an explicit Cake action.
  * Unlike the implicit selection relay, this includes the selected source and a
  * few surrounding lines because the user asked Cake to look at exactly this code.
  */
-function captureExplicitSelection(vscode) {
-  const editor = vscode.window.activeTextEditor;
-  if (!editor || editor.document.uri.scheme !== "file") {
+function captureExplicitSelection(vscode, resource) {
+  const editor = explicitSelectionEditor(vscode, resource);
+  const filePath = editor ? documentFilePath(editor.document.uri) : undefined;
+  if (!editor || !filePath) {
     void vscode.window.showInformationMessage("Open a workspace file before using Cake.");
     return undefined;
   }
-  const relativePath = workspaceRelative(editor.document.uri.fsPath);
+  const relativePath = workspaceRelative(filePath);
   if (!relativePath) {
     void vscode.window.showInformationMessage("Cake can only use files inside this project.");
     return undefined;
@@ -144,8 +177,8 @@ function captureExplicitSelection(vscode) {
   };
 }
 
-async function addAnnotation(vscode) {
-  const selection = captureExplicitSelection(vscode);
+async function addAnnotation(vscode, resource) {
+  const selection = captureExplicitSelection(vscode, resource);
   if (!selection) return;
   const comment = await vscode.window.showInputBox({
     title: "Cake: Add annotation",
@@ -168,8 +201,8 @@ async function addAnnotation(vscode) {
   });
 }
 
-function askInSideChat(vscode) {
-  const selection = captureExplicitSelection(vscode);
+function askInSideChat(vscode, resource) {
+  const selection = captureExplicitSelection(vscode, resource);
   if (!selection) return;
   postBridge({ type: "ask-in-side-chat", ...selection });
 }
@@ -494,8 +527,12 @@ async function activate(context) {
         return;
       postBridge({ type: "open-annotation", sessionId, threadId });
     }),
-    vscode.commands.registerCommand("cake.addAnnotation", () => addAnnotation(vscode)),
-    vscode.commands.registerCommand("cake.askInSideChat", () => askInSideChat(vscode)),
+    vscode.commands.registerCommand("cake.addAnnotation", (resource) =>
+      addAnnotation(vscode, resource),
+    ),
+    vscode.commands.registerCommand("cake.askInSideChat", (resource) =>
+      askInSideChat(vscode, resource),
+    ),
     vscode.commands.registerCommand("cake.backToAgent", () =>
       postBridge({ type: "back-to-agent" }),
     ),
