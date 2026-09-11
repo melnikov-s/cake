@@ -6,6 +6,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { resolve } from "node:path";
 import { Schema } from "effect";
+import { registerPendingExtensionProviders } from "./extension-providers";
 import type {
   Attachment,
   ChatConfiguration,
@@ -302,6 +303,12 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       (requestedSessionFile
         ? SessionManager.open(requestedSessionFile, sessionDir, options.cwd)
         : SessionManager.continueRecent(options.cwd, sessionDir)));
+  // Extension providers must exist before createAgentSession resolves the
+  // initial model, or a default or resumed model on one of them falls back.
+  const providerErrors = await registerPendingExtensionProviders(
+    capabilities.resourceLoader,
+    modelRuntime,
+  );
   const agentSessionOptions = {
     cwd: options.cwd,
     agentDir,
@@ -407,6 +414,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       extensionUi: resources.extensionUi,
       diagnostics: [
         ...extensionsResult.errors.map((error) => `${error.path}: ${error.error}`),
+        ...providerErrors,
         ...(modelFallbackMessage ? [modelFallbackMessage] : []),
       ],
       reloadPending: resources.reloadPending(),

@@ -1,8 +1,6 @@
 import {
-  createAgentSession,
   DefaultResourceLoader,
   ModelRuntime,
-  SessionManager,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai/compat";
@@ -11,6 +9,7 @@ import { Cache, Clock, Duration, Effect, Exit, Layer } from "effect";
 import { makePiModels, PiModels } from "../PiModels";
 import type { BoundedCompletionInput, PiModel } from "../model-data";
 import { CODEX_FAST_MODE_SERVICE_TIER, supportsFastMode } from "../fast-mode";
+import { registerPendingExtensionProviders } from "../runtime/extension-providers";
 
 interface CatalogModel {
   readonly id: string;
@@ -116,10 +115,9 @@ export const makeSessionlessRuntimeCache = Effect.fn("PiModelsLive.makeRuntimeCa
  * register their providers on it, so the deferred-chat picker and bounded
  * completions see the same providers a runtime-backed session does.
  *
- * Extension `registerProvider` calls are queued at load and flushed only when a
- * session binds the extension runner to a runtime; pi 0.84 exposes no lighter
- * path. A throwaway in-memory session is opened against this runtime and
- * disposed. Disposal does not unregister providers, so they outlive it.
+ * Extension `registerProvider` calls are queued while the loader runs; they are
+ * flushed onto this runtime the same way a session runtime flushes them before
+ * resolving its model.
  *
  * `cwd` is the agent directory rather than the process cwd, so no project's
  * `.pi/` is consulted: project extensions belong to project sessions, not the
@@ -146,15 +144,7 @@ export async function createSessionlessRuntime(agentDirectory: string): Promise<
       noContextFiles: true,
     });
     await resourceLoader.reload({ resolveProjectTrust: async () => true });
-    const { session } = await createAgentSession({
-      cwd: agentDirectory,
-      agentDir: agentDirectory,
-      modelRuntime,
-      resourceLoader,
-      settingsManager,
-      sessionManager: SessionManager.inMemory(),
-    });
-    session.dispose();
+    await registerPendingExtensionProviders(resourceLoader, modelRuntime);
   } catch {
     // Built-in catalog only.
   }
