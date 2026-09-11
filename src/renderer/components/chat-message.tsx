@@ -80,6 +80,7 @@ export const ChatTextMessage = forwardRef<
   const userLabel =
     senderLabel ??
     (part.deliveryState === "sending" ? "You · sending" : part.draft ? "You · draft" : "You");
+  const working = part.status === "streaming";
   return (
     <Message
       ref={ref}
@@ -91,20 +92,22 @@ export const ChatTextMessage = forwardRef<
           : "group/msg relative ml-auto w-[min(88%,42rem)]",
       )}
     >
-      {assistant && sessionAvatar && (
-        <Avatar
-          kind="session"
-          seed={sessionAvatar.seed}
-          statusColor={sessionAvatar.statusColor}
-          className="absolute -left-9 top-7 size-6"
-          role="img"
-          aria-label="Session avatar"
-          title={sessionAvatar.statusName ?? "Unlabelled"}
-        />
+      {assistant && sessionAvatar ? (
+        <MessageLabel className="flex items-center gap-2">
+          <Avatar
+            kind="session"
+            seed={sessionAvatar.seed}
+            statusColor={sessionAvatar.statusColor}
+            className="size-6"
+            role="img"
+            aria-label="Cake"
+            title={sessionAvatar.statusName ?? "Unlabelled"}
+          />
+          {working && <span>working</span>}
+        </MessageLabel>
+      ) : (
+        <MessageLabel>{assistant ? (working ? "Cake · working" : "Cake") : userLabel}</MessageLabel>
       )}
-      <MessageLabel>
-        {assistant ? (part.status === "streaming" ? "Cake · working" : "Cake") : userLabel}
-      </MessageLabel>
       {part.text ? (
         <MessageContent
           ref={contentRef}

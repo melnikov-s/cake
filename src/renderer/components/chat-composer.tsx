@@ -36,7 +36,7 @@ export const ChatComposer = observer(function ChatComposer({
       className={cn(
         "workbench-composer pointer-events-auto mx-auto w-full min-w-0",
         leadingAccessory
-          ? "max-w-[51.25rem] @min-[352px]/composer-dock:max-w-[55.25rem] @min-[352px]/composer-dock:pl-16"
+          ? "max-w-[51.25rem] @lg/composer-dock:max-w-[55.25rem] @lg/composer-dock:pl-16"
           : "max-w-[51.25rem]",
         className,
       )}
@@ -47,7 +47,7 @@ export const ChatComposer = observer(function ChatComposer({
           <div
             data-slot="composer-leading-accessory"
             className={cn(
-              "absolute right-full top-7 mr-3 z-20 hidden transition-[opacity,transform] duration-300 ease-out @min-[352px]/composer-dock:block",
+              "absolute right-full top-7 mr-3 z-20 hidden transition-[opacity,transform] duration-300 ease-out @lg/composer-dock:block",
               leadingAccessoryVisible
                 ? "scale-100 opacity-100"
                 : "pointer-events-none translate-x-2 scale-75 opacity-0",

@@ -22,7 +22,7 @@ const metadata = {
 };
 
 describe("cross-session message presentation", () => {
-  it("renders the assistant Session avatar as a non-interactive identity", () => {
+  it("renders the assistant Session avatar as the non-interactive message label", () => {
     const container = document.createElement("div");
     document.body.appendChild(container);
     const root = createRoot(container);
@@ -46,11 +46,11 @@ describe("cross-session message presentation", () => {
       );
     });
 
-    const avatar = container.querySelector<HTMLElement>(
-      '[role="img"][aria-label="Session avatar"]',
-    );
+    const label = container.querySelector<HTMLElement>('[data-slot="message-label"]');
+    const avatar = label?.querySelector<HTMLElement>('[role="img"][aria-label="Cake"]');
     expect(avatar?.title).toBe("Feature");
     expect(avatar?.closest("button")).toBeNull();
+    expect(label?.textContent).toBe("");
     act(() => root.unmount());
     container.remove();
   });
