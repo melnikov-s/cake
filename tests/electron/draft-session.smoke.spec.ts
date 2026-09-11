@@ -137,8 +137,15 @@ test("restores, edits, resolves, and activates a project draft session", async (
     await expect(
       page.locator('[data-slot="message-content"]', { hasText: "Edited plan" }),
     ).toBeVisible();
-    await expect(draftStatus).toHaveCSS("opacity", "0");
-    await expect(draftStatus).toHaveAttribute("inert", "");
+    // The session avatar and status picker persist beside the composer after activation.
+    await expect(draftStatus).toHaveCSS("opacity", "1");
+    await expect(draftStatus).not.toHaveAttribute("inert");
+    await expect(draftStatus).toHaveAttribute("aria-hidden", "false");
+    await expect(
+      draftStatus.getByRole("button", {
+        name: "Change session status. Current status: Feature",
+      }),
+    ).toBeEnabled();
     await expect
       .poll(async () => {
         const stored = JSON.parse(await readFile(applicationDocument, "utf8"));
