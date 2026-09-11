@@ -1,15 +1,19 @@
 import { Store, child, createStore, observable } from "r-state-tree";
 import type { DiscussionAnchor } from "../../domain/discussion-sessions/discussion-session-data";
-import type { Annotation } from "../../ipc/session-contract";
+import type { Annotation, ChatConfiguration, ModelPreset } from "../../ipc/session-contract";
 import { ClientContext } from "./context/ClientContext";
 import { ActiveProjectSessionContext } from "./context/ActiveProjectSessionContext";
 import { describeError } from "../lib/error-details";
 import { ChatStore } from "./ChatStore";
+import { ChatConfigurationStore, type ChatConfigurationStoreProps } from "./ChatConfigurationStore";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
 import { AnnotationDraftStore } from "./AnnotationDraftStore";
 
 export interface ReviewsStoreProps {
   sessionRegistry: SessionRegistryStore;
+  operations: ChatConfigurationStoreProps["operations"];
+  modelPresets(): readonly ModelPreset[];
+  openModelPresetSettings(): void;
 }
 
 /** Shared Discussion Session workflow projected into chat and embedded VS Code. */
@@ -21,6 +25,11 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
   errorDetails: string | undefined;
   private readonly annotationDraftIds: string[] = observable(["code-review-draft"]);
   private readonly resolutionRevisions = new Map<string, number>();
+  /** Model choices made in a side chat's picker, kept per thread. */
+  private readonly threadConfigurations: Array<{
+    threadId: string;
+    configuration: ChatConfiguration;
+  }> = observable([]);
 
   get client() {
     return ClientContext.consume(this)!;
@@ -65,6 +74,46 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
   private configurationForSession(sessionId: string) {
     return this.props.sessionRegistry.findSession(sessionId)?.conversationSessionStore
       .configurationStore;
+  }
+  private get threadEntries() {
+    return this.props.sessionRegistry.sessions.flatMap((session) =>
+      session.model.reviewThreads.map((thread) => ({ session, thread })),
+    );
+  }
+  private threadConfigurationStore(threadId: string) {
+    const index = this.threadEntries.findIndex((entry) => entry.thread.id === threadId);
+    return index >= 0 ? this.threadConfigurationStores[index] : undefined;
+  }
+  /**
+   * The configuration a side chat prompt carries: the picker's choice for that
+   * thread, else the model its sidecar last reported, else the parent's current
+   * model. A side chat starts where its parent is and then moves on its own.
+   */
+  threadConfiguration(threadId: string, parentSessionId: string): ChatConfiguration | undefined {
+    const chosen = this.threadConfigurations.find((entry) => entry.threadId === threadId);
+    if (chosen) return chosen.configuration;
+    const thread = this.thread(threadId);
+    if (thread?.model)
+      return {
+        provider: thread.model.provider,
+        modelId: thread.model.modelId,
+        thinkingLevel: thread.thinkingLevel ?? "off",
+        fastMode: false,
+      };
+    const parent = this.props.sessionRegistry.findModel(parentSessionId);
+    return parent?.model
+      ? {
+          provider: parent.model.provider,
+          modelId: parent.model.modelId,
+          thinkingLevel: parent.thinkingLevel,
+          fastMode: false,
+        }
+      : undefined;
+  }
+  private setThreadConfiguration(threadId: string, configuration: ChatConfiguration) {
+    const index = this.threadConfigurations.findIndex((entry) => entry.threadId === threadId);
+    if (index >= 0) this.threadConfigurations[index] = { threadId, configuration };
+    else this.threadConfigurations.push({ threadId, configuration });
   }
   private thread(threadId: string) {
     return this.props.sessionRegistry.sessions
@@ -163,6 +212,41 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
     });
   }
 
+  /**
+   * One picker per side chat. A side chat has no renderer session of its own,
+   * so its store runs in deferred mode: the parent's catalog lists the models
+   * and the choice stays local until the next prompt carries it.
+   */
+  @child
+  get threadConfigurationStores(): ChatConfigurationStore[] {
+    return this.threadEntries.map(({ session, thread }) => {
+      const write = (configuration: ChatConfiguration) =>
+        this.setThreadConfiguration(thread.id, configuration);
+      const current = () => this.threadConfiguration(thread.id, thread.parentSessionId);
+      return createStore(ChatConfigurationStore, {
+        key: `configuration:${thread.id}`,
+        session: () => session.model,
+        operations: this.props.operations,
+        operationOwner: `discussion:${thread.id}`,
+        presets: this.props.modelPresets,
+        openPresetSettings: this.props.openModelPresetSettings,
+        deferredNewSession: () => true,
+        effectiveConfiguration: current,
+        setPendingConfiguration: write,
+        setConfiguration: async (configuration) => write(configuration),
+        setModel: async (provider, modelId) => {
+          const base = current();
+          write({ thinkingLevel: "off", fastMode: false, ...base, provider, modelId });
+        },
+        setThinkingLevel: async (thinkingLevel) => {
+          const base = current();
+          if (base) write({ ...base, thinkingLevel });
+        },
+        setFastMode: async () => undefined,
+      });
+    });
+  }
+
   @child
   get chatStores(): ChatStore[] {
     return this.props.sessionRegistry.sessions.flatMap((session) =>
@@ -186,7 +270,7 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
           ],
           streaming: () => thread.streaming,
           submitting: () => false,
-          configuration: () => this.configurationForSession(thread.parentSessionId),
+          configuration: () => this.threadConfigurationStore(thread.id),
           commands: () => [],
           placeholder: () => "Ask a follow-up…",
           inputLabel: () =>
@@ -326,8 +410,7 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
     text: string,
     annotations: readonly Annotation[] = [],
   ) {
-    const session = this.props.sessionRegistry.findModel(context.sessionId);
-    const model = session?.model;
+    const configuration = this.threadConfiguration(threadId, context.sessionId);
     await this.client.discussionSessions.prompt(
       {
         parentSessionId: context.sessionId,
@@ -335,8 +418,10 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
         threadId,
         text,
         annotations: [...annotations],
-        model: model ? { provider: model.provider, id: model.modelId } : undefined,
-        thinkingLevel: session?.thinkingLevel,
+        model: configuration
+          ? { provider: configuration.provider, id: configuration.modelId }
+          : undefined,
+        thinkingLevel: configuration?.thinkingLevel,
       },
       { signal: this.signal },
     );

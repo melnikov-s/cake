@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { DiscussionThread } from "../../../../src/domain/discussion-sessions/discussion-session-data";
 import { Session } from "../../../../src/renderer/models/Session";
-import { applyDiscussionCatalogUpdate } from "../../../../src/renderer/reducers/DiscussionReducer";
+import {
+  applyDiscussionCatalogUpdate,
+  applyDiscussionUpdate,
+} from "../../../../src/renderer/reducers/DiscussionReducer";
 
 const thread = (id: string): DiscussionThread => ({
   id,
@@ -70,6 +73,60 @@ describe("DiscussionReducer", () => {
       }),
     ).toThrow();
     expect(session.reviewThreads).toHaveLength(0);
+    session[Symbol.dispose]();
+  });
+
+  it("keeps the sidecar's model across catalog updates that carry none", () => {
+    const session = Session.create({ sessionId: "session" });
+    applyDiscussionCatalogUpdate(session, "session", {
+      _tag: "Snapshot",
+      revision: 1,
+      parentSessionId: "session",
+      threads: [thread("one")],
+    });
+    const retained = session.reviewThreads[0]!;
+    expect(retained.model).toBeUndefined();
+
+    applyDiscussionUpdate(retained, "one", {
+      _tag: "Event",
+      revision: 2,
+      threadId: "one",
+      event: {
+        _tag: "SnapshotUpdated",
+        snapshot: {
+          workingDirectory: "/project",
+          sessionId: "sidecar",
+          sessionFile: "/sessions/sidecar.jsonl",
+          parts: [],
+          model: { provider: "google", id: "gemini-3.5-flash-lite", name: "Gemini" },
+          models: [],
+          thinkingLevel: "low",
+          availableThinkingLevels: ["off", "low"],
+          streaming: false,
+          diagnostics: [],
+          commands: [],
+          compatibility: { resources: [], diagnostics: [] },
+          extensionUi: { statuses: [] },
+          tree: [],
+        },
+      },
+    });
+    expect(retained.model).toEqual({
+      provider: "google",
+      modelId: "gemini-3.5-flash-lite",
+      name: "Gemini",
+    });
+    expect(retained.thinkingLevel).toBe("low");
+
+    applyDiscussionCatalogUpdate(session, "session", {
+      _tag: "Event",
+      revision: 3,
+      parentSessionId: "session",
+      event: { _tag: "Replaced", threads: [{ ...thread("one"), status: "resolved" }] },
+    });
+    expect(session.reviewThreads[0]).toBe(retained);
+    expect(retained.model?.modelId).toBe("gemini-3.5-flash-lite");
+    expect(retained.thinkingLevel).toBe("low");
     session[Symbol.dispose]();
   });
 });

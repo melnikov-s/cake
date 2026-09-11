@@ -6,6 +6,14 @@ import { ReviewsStore } from "../../../../src/renderer/stores/ReviewsStore";
 import type { SessionRegistryStore } from "../../../../src/renderer/stores/SessionRegistryStore";
 import { mountWithClient } from "../mount-with-client";
 
+const operations = {
+  start: () => "operation",
+  finish: () => undefined,
+  includes: () => false,
+  active: () => [],
+  reset: () => undefined,
+};
+
 class ReviewsHarnessStore extends Store<{ sessionRegistry: SessionRegistryStore }> {
   [ActiveProjectSessionContext.provide]() {
     return { sessionId: "parent-1", workingDirectory: "/project" };
@@ -13,7 +21,12 @@ class ReviewsHarnessStore extends Store<{ sessionRegistry: SessionRegistryStore 
 
   @child
   get reviews(): ReviewsStore {
-    return createStore(ReviewsStore, { sessionRegistry: this.props.sessionRegistry });
+    return createStore(ReviewsStore, {
+      sessionRegistry: this.props.sessionRegistry,
+      operations,
+      modelPresets: () => [],
+      openModelPresetSettings: () => undefined,
+    });
   }
 }
 
@@ -144,6 +157,139 @@ describe("ReviewsStore", () => {
       }),
       expect.any(Object),
     );
+    root[Symbol.dispose]();
+  });
+
+  it("prompts a side chat with its own recorded model rather than the parent's", async () => {
+    const prompt = vi.fn(async () => ({ turnId: crypto.randomUUID() }));
+    const thread = {
+      id: "thread-1",
+      parentSessionId: "parent-1",
+      workingDirectory: "/project",
+      anchor: {
+        path: "session:parent-1",
+        view: "session" as const,
+        start: { diffLine: 0 },
+        end: { diffLine: 0 },
+        selectedText: "",
+        contextBefore: "",
+        contextAfter: "",
+        diff: "",
+      },
+      status: "open" as const,
+      streaming: false,
+      uiParts: [],
+      usage: undefined,
+      // The sidecar already runs on its own model.
+      model: { provider: "google", modelId: "gemini-3.5-flash-lite", name: "Gemini" },
+      thinkingLevel: "low" as const,
+    };
+    const sessionModel = {
+      reviewThreads: [thread],
+      model: {
+        id: '["openai-codex","gpt-5.6-sol"]',
+        provider: "openai-codex",
+        modelId: "gpt-5.6-sol",
+        name: "Sol",
+      },
+      thinkingLevel: "high",
+      modelOptions: [],
+    };
+    const sessionRegistry = {
+      sessions: [{ model: sessionModel }],
+      findModel: () => sessionModel,
+      findSession: () => undefined,
+    } as unknown as SessionRegistryStore;
+    const { root, subject } = mountWithClient(
+      createStore(ReviewsHarnessStore, { sessionRegistry }),
+      { discussionSessions: { prompt } } as unknown as Client,
+    );
+
+    await subject.reviews.chatStore("thread-1")!.submit("Keep going");
+
+    expect(prompt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        threadId: "thread-1",
+        model: { provider: "google", id: "gemini-3.5-flash-lite" },
+        thinkingLevel: "low",
+      }),
+      expect.any(Object),
+    );
+    root[Symbol.dispose]();
+  });
+
+  it("changes a side chat's model without touching the parent session", async () => {
+    const prompt = vi.fn(async () => ({ turnId: crypto.randomUUID() }));
+    const thread = {
+      id: "thread-1",
+      parentSessionId: "parent-1",
+      workingDirectory: "/project",
+      anchor: {
+        path: "session:parent-1",
+        view: "session" as const,
+        start: { diffLine: 0 },
+        end: { diffLine: 0 },
+        selectedText: "",
+        contextBefore: "",
+        contextAfter: "",
+        diff: "",
+      },
+      status: "open" as const,
+      streaming: false,
+      uiParts: [],
+      usage: undefined,
+      model: undefined,
+      thinkingLevel: undefined,
+    };
+    const sessionModel = {
+      reviewThreads: [thread],
+      model: {
+        id: '["openai-codex","gpt-5.6-sol"]',
+        provider: "openai-codex",
+        modelId: "gpt-5.6-sol",
+        name: "Sol",
+      },
+      thinkingLevel: "high",
+      modelOptions: [],
+    };
+    const sessionRegistry = {
+      sessions: [{ model: sessionModel }],
+      findModel: () => sessionModel,
+      findSession: () => undefined,
+    } as unknown as SessionRegistryStore;
+    // Only discussion prompts are wired: any call that reaches the parent
+    // session (sessions.setModel and friends) would throw here.
+    const { root, subject } = mountWithClient(
+      createStore(ReviewsHarnessStore, { sessionRegistry }),
+      { discussionSessions: { prompt } } as unknown as Client,
+    );
+    const chat = subject.reviews.chatStore("thread-1")!;
+    const configuration = chat.configuration!;
+
+    // Starts where the parent is.
+    expect(configuration.effectiveConfiguration).toMatchObject({
+      provider: "openai-codex",
+      modelId: "gpt-5.6-sol",
+      thinkingLevel: "high",
+    });
+
+    await configuration.selectModel("google/gemini-3.5-flash-lite");
+    await chat.submit("Second opinion?");
+
+    expect(configuration.effectiveConfiguration).toMatchObject({
+      provider: "google",
+      modelId: "gemini-3.5-flash-lite",
+      thinkingLevel: "high",
+    });
+    expect(prompt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        threadId: "thread-1",
+        model: { provider: "google", id: "gemini-3.5-flash-lite" },
+        thinkingLevel: "high",
+      }),
+      expect.any(Object),
+    );
+    expect(sessionModel.model.modelId).toBe("gpt-5.6-sol");
     root[Symbol.dispose]();
   });
 });

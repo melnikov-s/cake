@@ -3,7 +3,7 @@ import type {
   DiscussionAnchor,
   DiscussionThread,
 } from "../../domain/discussion-sessions/discussion-session-data";
-import type { SessionUsage } from "../../ipc/session-contract";
+import type { SessionUsage, ThinkingLevel } from "../../ipc/session-contract";
 import { Message } from "./Message";
 
 export class ReviewThread extends Model {
@@ -22,6 +22,9 @@ export class ReviewThread extends Model {
   };
   @child(Message) parts: Message[] = [];
   usage: SessionUsage | undefined;
+  /** The sidecar session's current model, once it has run. */
+  model: { provider: string; modelId: string; name: string } | undefined;
+  thinkingLevel: ThinkingLevel | undefined;
   status: DiscussionThread["status"] = "open";
   streaming = false;
   createdAt = "";

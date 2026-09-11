@@ -939,6 +939,9 @@ export class RootStore extends Store<{
   get reviewsStore(): ReviewsStore {
     return createStore(ReviewsStore, {
       sessionRegistry: this.sessionRegistry,
+      operations: this.sessionOperationCoordinator,
+      modelPresets: () => this.settingsStore.modelPresets.presets,
+      openModelPresetSettings: () => this.showModelPresetSettings(),
     });
   }
 

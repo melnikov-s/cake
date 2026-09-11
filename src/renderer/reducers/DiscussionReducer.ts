@@ -1,4 +1,4 @@
-import { Schema } from "effect";
+import { Option, Schema } from "effect";
 import { applySnapshot, batch, type Snapshot } from "r-state-tree";
 import type { DiscussionCatalogUpdate } from "../../domain/application/catalog-data";
 import type {
@@ -22,7 +22,15 @@ export function applyDiscussionCatalogUpdate(
     threads.map((thread) => thread.id),
     "Discussion thread ID",
   );
-  const snapshots = threads.map((thread) => discussionSnapshot(thread));
+  // A catalog row carries no conversation; keep the model each thread already
+  // learned from its sidecar snapshot.
+  const snapshots = threads.map((thread) =>
+    discussionSnapshot(
+      thread,
+      undefined,
+      model.reviewThreads.find((candidate) => candidate.id === thread.id),
+    ),
+  );
   const retained = new Set(snapshots.map((thread) => thread.id));
   batch(() => {
     for (let index = model.reviewThreads.length - 1; index >= 0; index -= 1)
@@ -63,6 +71,21 @@ export function applyDiscussionUpdate(
   });
 }
 
+function decodeThreadModel(value: unknown): ReviewThread["model"] {
+  const decoded = Option.getOrUndefined(
+    Schema.decodeUnknownOption(sessionSnapshotSchema.fields.model)(value),
+  );
+  return decoded
+    ? { provider: decoded.provider, modelId: decoded.id, name: decoded.name }
+    : undefined;
+}
+
+function decodeThreadThinkingLevel(value: unknown): ReviewThread["thinkingLevel"] {
+  return Option.getOrUndefined(
+    Schema.decodeUnknownOption(sessionSnapshotSchema.fields.thinkingLevel)(value),
+  );
+}
+
 function toDiscussionThread(thread: ReviewThread): DiscussionThread {
   const snapshot: DiscussionThread = {
     id: thread.id,
@@ -86,15 +109,26 @@ function discussionSnapshot(
   conversation?: {
     readonly parts: readonly unknown[];
     readonly usage?: unknown;
+    readonly model?: unknown;
+    readonly thinkingLevel?: string;
     readonly streaming: boolean;
   },
+  current?: Pick<ReviewThread, "model" | "thinkingLevel">,
 ): Snapshot<ReviewThread> {
   const usage = Schema.decodeUnknownSync(sessionSnapshotSchema.fields.usage)(
     conversation?.usage ?? thread.usage,
   );
+  // The sidecar's model arrives only with a conversation snapshot; an update
+  // without one keeps what the thread already knows.
+  const model = conversation ? decodeThreadModel(conversation.model) : current?.model;
+  const thinkingLevel = conversation
+    ? decodeThreadThinkingLevel(conversation.thinkingLevel)
+    : current?.thinkingLevel;
   return {
     ...thread,
     usage,
+    model,
+    thinkingLevel,
     parts: messageSnapshots(
       (conversation?.parts ?? thread.parts).map((part) =>
         Schema.decodeUnknownSync(uiPartSchema)(part),
