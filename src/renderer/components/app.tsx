@@ -469,9 +469,10 @@ export const App = observer(function App() {
     const composerLeadingAccessory =
       settings.appearance.sessionAvatarsEnabled && !summary?.resolved
         ? {
-            visible: temporary,
+            visible: true,
             content: (
               <AvatarStatusPicker
+                animated
                 seed={sidebar.sessionAvatarSeed(paneSession.sessionId)}
                 statuses={sidebar.sessionWorkflowStatuses(paneSession.sessionId)}
                 value={sidebar.sessionWorkflowStatusId(paneSession.sessionId)}

@@ -58,7 +58,41 @@ test("promotes a staged chat immediately and leaves New Chat free for the next s
     const composer = page.getByLabel("Message");
     await expect(composer).toBeVisible({ timeout: 20_000 });
 
-    await composer.fill("First promoted session");
+    const avatar = page.locator('[data-slot="avatar"][data-animated="true"]');
+    await expect(avatar).toBeVisible();
+    const look = avatar.locator(".dbga-hop .dbga-look");
+    await expect(look).toHaveCount(1);
+    await page.mouse.move(1, 1);
+    await expect(look).toHaveAttribute("transform", /^translate\(/);
+    const firstLook = await look.getAttribute("transform");
+    await page.mouse.move(900, 600);
+    await expect.poll(() => look.getAttribute("transform")).not.toBe(firstLook);
+    // Capture actual Web Animations calls, including the short blink that can
+    // otherwise finish between Playwright polls.
+    await avatar.evaluate((element) => {
+      for (const target of element.querySelectorAll(".dbga-hop, .dbga-eye")) {
+        const animate = target.animate.bind(target);
+        target.animate = (...args: Parameters<Element["animate"]>) => {
+          element.setAttribute("data-animation-observed", "true");
+          return animate(...args);
+        };
+      }
+    });
+    await expect(avatar).toHaveAttribute("data-animation-observed", "true", { timeout: 10_000 });
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await expect(look).not.toHaveAttribute("transform");
+    await page.mouse.move(100, 100);
+    await expect(look).not.toHaveAttribute("transform");
+    expect(
+      await avatar.evaluate((element) => element.getAnimations({ subtree: true }).length),
+    ).toBe(0);
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+
+    await composer.click();
+    await expect(composer).toBeFocused();
+    await page.keyboard.type("First promoted session");
+    await expect(composer).toHaveValue("First promoted session");
+    await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
     await page.getByRole("button", { name: "Send" }).click();
     await expect(page.locator('[data-slot="workspace-header"] strong')).toHaveText(
       "[project] First promoted session",
@@ -66,6 +100,8 @@ test("promotes a staged chat immediately and leaves New Chat free for the next s
     const firstSession = page.locator(".session-item.active");
     await expect(firstSession).toHaveCount(1, { timeout: 20_000 });
 
+    await expect(avatar).toBeVisible();
+    await expect(avatar.locator(".dbga-hop .dbga-look")).toHaveCount(1);
     const firstSessionId = await firstSession.getAttribute("data-session-id");
     expect(firstSessionId).toBeTruthy();
     const stop = page.getByRole("button", { name: "Stop" });

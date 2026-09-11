@@ -123,7 +123,7 @@ test("customizes statuses and assigns one from the sidebar avatar", async () => 
     await expect(page.getByLabel("Project QA status name")).toBeVisible();
     await page.getByRole("button", { name: "Cancel" }).click();
 
-    const sessionItem = page.locator(`[data-session-id="${sessionId}"]`);
+    const sessionItem = page.locator(`.session-item[data-session-id="${sessionId}"]`);
     const picker = sessionItem.getByRole("button", {
       name: "Change session status. Current status: Unlabelled",
     });

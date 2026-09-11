@@ -15,6 +15,7 @@ export interface AvatarStatusPickerProps {
   }[];
   value?: string;
   disabled?: boolean;
+  animated?: boolean;
   className?: string;
   onChange(statusId?: string): void;
 }
@@ -25,6 +26,7 @@ export function AvatarStatusPicker({
   statuses,
   value,
   disabled = false,
+  animated = false,
   className,
   onChange,
 }: AvatarStatusPickerProps) {
@@ -44,7 +46,13 @@ export function AvatarStatusPicker({
         ariaLabel={`Change session status. Current status: ${label}`}
         disabled={disabled}
       >
-        <Avatar kind="session" seed={seed} statusColor={current?.color} className="size-6" />
+        <Avatar
+          kind="session"
+          seed={seed}
+          statusColor={current?.color}
+          animated={animated}
+          className="size-6"
+        />
       </PopoverIconTrigger>
       <PopoverContent
         align="start"

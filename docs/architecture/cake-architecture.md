@@ -315,7 +315,10 @@ The window Store hierarchy mirrors the product surfaces:
   `ProjectSettingsStore` owns Project-specific status configuration, and
   `SessionManagementStore` serializes status and lifecycle transitions. A pending Session's avatar sits beside the composer
   and opens the same color-coded status picker used by active Session avatars in the sidebar; it
-  animates away when the Session activates. Assistant-message gutter avatars remain
+  remains after the Session activates. Only this composer avatar follows the pointer and plays
+  occasional blinks, hops, wobbles, and stretches. These disposable DOM effects belong to the
+  shared Avatar primitive, pause in hidden documents, and respect reduced motion.
+  Assistant-message gutter avatars remain
   non-interactive identity markers. Sidebar context menus retain equivalent transitions.
   Draft is never a return destination after activation. `SessionCatalogStore` owns the currently demanded, activity-sorted
   session metadata projection plus cached ID and project-group indexes. A separate
@@ -443,8 +446,8 @@ The window Store hierarchy mirrors the product surfaces:
   saved draft has no message input; its composer surface contains only checkout and
   model selection plus the activation action. Its composer avatar remains available for choosing
   a custom status without activating the draft. Activation clears the draft state, applies that
-  pending status after Pi accepts the ordinary first-prompt path, and then animates the avatar
-  away; Pi remains the transcript authority once the session starts. The Working
+  pending status after Pi accepts the ordinary first-prompt path, and keeps the avatar
+  beside the composer; Pi remains the transcript authority once the session starts. The Working
   Directory remains routing/storage context for the Pi runtime, not part of
   session identity. Cake Chat never enters this registry.
 - Each `ProjectSessionStore` owns that session's activity, session-local Agent/IDE presentation preference and IDE
