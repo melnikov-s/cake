@@ -1,4 +1,4 @@
-import { useRef, type KeyboardEvent, type PointerEvent } from "react";
+import { useEffect, useRef, type KeyboardEvent, type PointerEvent } from "react";
 import { cn } from "@/lib/utils";
 
 export interface ResizeHandleProps {
@@ -9,6 +9,12 @@ export interface ResizeHandleProps {
   edge: "left" | "right" | "top" | "bottom";
   className?: string;
   onChange(value: number): void;
+  /**
+   * Provides a frame-coalesced pointer-drag preview. When supplied, `onChange`
+   * is deferred until pointer release so callers can preview geometry without
+   * re-rendering an expensive React tree for every pointer move.
+   */
+  onDrag?(value: number): void;
   onResizeStart?(): void;
   onResizeEnd?(): void;
 }
@@ -26,19 +32,51 @@ export function ResizeHandle({
   edge,
   className,
   onChange,
+  onDrag,
   onResizeStart,
   onResizeEnd,
 }: ResizeHandleProps) {
   const horizontal = edge === "top" || edge === "bottom";
   const direction = edge === "left" || edge === "top" ? 1 : -1;
-  const drag = useRef<{ pointerId: number; position: number; value: number } | undefined>(
-    undefined,
+  const drag = useRef<
+    | {
+        pointerId: number;
+        position: number;
+        value: number;
+        previewValue: number;
+        previewedValue?: number;
+        moved: boolean;
+      }
+    | undefined
+  >(undefined);
+  const previewFrame = useRef<number | undefined>(undefined);
+
+  useEffect(
+    () => () => {
+      if (previewFrame.current !== undefined) cancelAnimationFrame(previewFrame.current);
+    },
+    [],
   );
 
+  const flushPreview = () => {
+    if (previewFrame.current !== undefined) {
+      cancelAnimationFrame(previewFrame.current);
+      previewFrame.current = undefined;
+    }
+    const current = drag.current;
+    if (current?.moved && current.previewedValue !== current.previewValue) {
+      onDrag?.(current.previewValue);
+      current.previewedValue = current.previewValue;
+    }
+  };
+
   const finish = (event: PointerEvent<HTMLDivElement>) => {
-    if (drag.current?.pointerId !== event.pointerId) return;
+    const current = drag.current;
+    if (current?.pointerId !== event.pointerId) return;
+    flushPreview();
     drag.current = undefined;
     event.currentTarget.releasePointerCapture?.(event.pointerId);
+    if (onDrag && current.moved) onChange(current.previewValue);
     onResizeEnd?.();
   };
 
@@ -82,17 +120,34 @@ export function ResizeHandle({
           pointerId: event.pointerId,
           position: horizontal ? event.clientY : event.clientX,
           value,
+          previewValue: value,
+          moved: false,
         };
         event.currentTarget.setPointerCapture?.(event.pointerId);
         onResizeStart?.();
         event.preventDefault();
       }}
       onPointerMove={(event) => {
-        if (drag.current?.pointerId !== event.pointerId) return;
+        const current = drag.current;
+        if (current?.pointerId !== event.pointerId) return;
         const position = horizontal ? event.clientY : event.clientX;
-        onChange(
-          clamp(drag.current.value + (position - drag.current.position) * direction, min, max),
-        );
+        const next = clamp(current.value + (position - current.position) * direction, min, max);
+        current.previewValue = next;
+        current.moved = true;
+        event.currentTarget.setAttribute("aria-valuenow", String(Math.round(next)));
+        if (!onDrag) {
+          onChange(next);
+          return;
+        }
+        if (previewFrame.current !== undefined) return;
+        previewFrame.current = requestAnimationFrame(() => {
+          previewFrame.current = undefined;
+          const pending = drag.current;
+          if (pending?.moved) {
+            onDrag(pending.previewValue);
+            pending.previewedValue = pending.previewValue;
+          }
+        });
       }}
       onPointerUp={finish}
       onPointerCancel={finish}

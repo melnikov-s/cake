@@ -20,6 +20,7 @@ describe("ResizeHandle", () => {
   afterEach(() => {
     act(() => root.unmount());
     container.remove();
+    vi.unstubAllGlobals();
   });
 
   it("resizes from the keyboard and exposes separator values", () => {
@@ -46,6 +47,58 @@ describe("ResizeHandle", () => {
 
     expect(onChange).toHaveBeenNthCalledWith(1, 308);
     expect(onChange).toHaveBeenNthCalledWith(2, 220);
+  });
+
+  it("coalesces drag previews by frame and commits only on pointer release", () => {
+    const frames = new Map<number, FrameRequestCallback>();
+    let nextFrame = 1;
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      const id = nextFrame++;
+      frames.set(id, callback);
+      return id;
+    });
+    vi.stubGlobal("cancelAnimationFrame", (id: number) => frames.delete(id));
+    const onChange = vi.fn();
+    const onDrag = vi.fn();
+    act(() =>
+      root.render(
+        <ResizeHandle
+          label="Resize sidebar"
+          value={292}
+          min={220}
+          max={500}
+          edge="left"
+          onChange={onChange}
+          onDrag={onDrag}
+        />,
+      ),
+    );
+    const handle = container.querySelector<HTMLElement>('[role="separator"]')!;
+    const pointerEvent = (type: string, clientX: number) => {
+      const event = new MouseEvent(type, { bubbles: true, button: 0, clientX });
+      Object.defineProperty(event, "pointerId", { value: 7 });
+      return event;
+    };
+
+    act(() => handle.dispatchEvent(pointerEvent("pointerdown", 100)));
+    act(() => {
+      handle.dispatchEvent(pointerEvent("pointermove", 110));
+      handle.dispatchEvent(pointerEvent("pointermove", 124));
+    });
+
+    expect(onDrag).not.toHaveBeenCalled();
+    expect(onChange).not.toHaveBeenCalled();
+    expect(frames.size).toBe(1);
+
+    act(() => frames.values().next().value!(0));
+    expect(onDrag).toHaveBeenCalledOnce();
+    expect(onDrag).toHaveBeenLastCalledWith(316);
+    expect(onChange).not.toHaveBeenCalled();
+
+    act(() => handle.dispatchEvent(pointerEvent("pointerup", 124)));
+    expect(onDrag).toHaveBeenCalledOnce();
+    expect(onChange).toHaveBeenCalledOnce();
+    expect(onChange).toHaveBeenCalledWith(316);
   });
 
   it("reverses horizontal movement for a panel attached to the right edge", () => {

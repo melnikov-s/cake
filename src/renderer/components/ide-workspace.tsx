@@ -1,4 +1,4 @@
-import { useState, type ComponentProps, type CSSProperties, type ReactNode } from "react";
+import { useRef, useState, type ComponentProps, type CSSProperties, type ReactNode } from "react";
 import { observer } from "r-state-tree/react";
 import { cn } from "../lib/utils";
 import type { ChatTranscriptBehavior } from "./chat-message";
@@ -44,6 +44,7 @@ export const IdeWorkspace = observer(function IdeWorkspace({
   terminalDock?: ReactNode;
   transcriptBehavior: ChatTranscriptBehavior;
 }) {
+  const workspaceRef = useRef<HTMLElement>(null);
   const [resizing, setResizing] = useState(false);
   const chatSidebarMax = Math.max(
     320,
@@ -80,6 +81,7 @@ export const IdeWorkspace = observer(function IdeWorkspace({
 
   return (
     <main
+      ref={workspaceRef}
       className={cn(
         "relative flex h-screen min-h-0 w-screen overflow-hidden bg-background text-foreground",
         resizing && "cursor-col-resize select-none",
@@ -99,6 +101,9 @@ export const IdeWorkspace = observer(function IdeWorkspace({
             max={projectSidebarMax}
             edge="left"
             onChange={onProjectSidebarWidthChange}
+            onDrag={(width) =>
+              workspaceRef.current?.style.setProperty("--ide-project-sidebar-width", `${width}px`)
+            }
             onResizeStart={() => setResizing(true)}
             onResizeEnd={() => setResizing(false)}
           />
@@ -119,6 +124,9 @@ export const IdeWorkspace = observer(function IdeWorkspace({
                 max={chatSidebarMax}
                 edge="right"
                 onChange={(width) => editor.setChatSidebarWidth(width)}
+                onDrag={(width) =>
+                  workspaceRef.current?.style.setProperty("--ide-chat-sidebar-width", `${width}px`)
+                }
                 onResizeStart={() => setResizing(true)}
                 onResizeEnd={() => setResizing(false)}
               />

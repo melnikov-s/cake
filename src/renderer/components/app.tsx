@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { observer, StoreProvider, useStore } from "r-state-tree/react";
 import {
   Confirmation,
@@ -109,6 +109,7 @@ export const App = observer(function App() {
   const displayedSidebarWidth = sidebar.focusModeProjectPath
     ? Math.max(sidebarWidth, 360)
     : sidebarWidth;
+  const shellRef = useRef<HTMLElement>(null);
   const [commandPaneWidth, setCommandPaneWidth] = useState(420);
   const [resizingPanel, setResizingPanel] = useState(false);
   const sidebarMax = Math.max(
@@ -124,6 +125,16 @@ export const App = observer(function App() {
   }, [root]);
   const toggleSidebar = useCallback(() => sidebar.toggle(), [sidebar]);
   const setSidebarWidth = useCallback((width: number) => sidebar.setWidth(width), [sidebar]);
+  const previewSidebarWidth = useCallback(
+    (width: number) => {
+      const displayedWidth = sidebar.focusModeProjectPath ? Math.max(width, 360) : width;
+      shellRef.current?.style.setProperty(
+        "--sidebar-width",
+        `${Math.min(displayedWidth, sidebarMax)}px`,
+      );
+    },
+    [sidebar.focusModeProjectPath, sidebarMax],
+  );
   const openSettings = useCallback(() => root.showSettings(), [root]);
   const openCakeChat = useCallback(
     (sessionId?: string) => {
@@ -592,6 +603,7 @@ export const App = observer(function App() {
   };
   return (
     <main
+      ref={shellRef}
       className={cn(
         "relative grid h-screen w-screen max-w-[100vw] overflow-hidden bg-background text-foreground transition-[grid-template-columns] duration-180 ease-out",
         "grid-cols-[var(--sidebar-width)_minmax(0,1fr)_var(--right-pane-width)] max-[820px]:grid-cols-[min(var(--sidebar-width),230px)_minmax(0,1fr)_var(--right-pane-width)] max-[620px]:grid-cols-[0px_minmax(0,1fr)]",
@@ -609,6 +621,7 @@ export const App = observer(function App() {
           max={sidebarMax}
           edge="left"
           onChange={setSidebarWidth}
+          onDrag={previewSidebarWidth}
           onResizeStart={() => setResizingPanel(true)}
           onResizeEnd={() => setResizingPanel(false)}
         />
