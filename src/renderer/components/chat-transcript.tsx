@@ -98,9 +98,6 @@ export const ChatTranscript = observer(function ChatTranscript({
     else void scrollCompactToBottom("instant");
   }, [scrollCompactToBottom, virtualized]);
   useImperativeHandle(ref, () => ({ scrollToBottom }), [scrollToBottom]);
-  const handleBottomStateChange = useCallback((value: boolean) => {
-    atBottom.current = value;
-  }, []);
   const handleTotalHeightChange = useCallback(() => {
     if (atBottom.current)
       virtuosoRef.current?.scrollToIndex({ index: "LAST", align: "end", behavior: "auto" });
@@ -217,13 +214,35 @@ export const ChatTranscript = observer(function ChatTranscript({
     };
     const captureAndSchedule = () => {
       pendingPosition = captureScrollPosition();
-      if (pendingPosition) atBottom.current = pendingPosition.kind === "bottom";
+      // Content growth can leave the viewport temporarily above the new bottom
+      // before Virtuoso reports the new total height. Only explicit upward user
+      // input may cancel following; a scroll event alone is ambiguous because
+      // Virtuoso also emits them while measuring and realigning streamed output.
+      if (pendingPosition?.kind === "bottom") atBottom.current = true;
       if (!pendingPosition) return;
       if (saveTimer !== undefined) clearTimeout(saveTimer);
       saveTimer = setTimeout(commitScrollPosition, 100);
     };
+    const cancelFollowingForUpwardWheel = (event: WheelEvent) => {
+      if (event.deltaY >= 0) return;
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      let ancestor: Element | null = target;
+      while (ancestor && ancestor !== scroller) {
+        if (
+          ancestor instanceof HTMLElement &&
+          ancestor.scrollHeight > ancestor.clientHeight &&
+          ["auto", "scroll"].includes(getComputedStyle(ancestor).overflowY)
+        )
+          return;
+        ancestor = ancestor.parentElement;
+      }
+      atBottom.current = false;
+    };
+    scroller.addEventListener("wheel", cancelFollowingForUpwardWheel, { passive: true });
     scroller.addEventListener("scroll", captureAndSchedule, { passive: true });
     return () => {
+      scroller.removeEventListener("wheel", cancelFollowingForUpwardWheel);
       scroller.removeEventListener("scroll", captureAndSchedule);
       if (saveTimer !== undefined) clearTimeout(saveTimer);
       if (pendingPosition) store.transcriptInteraction.setTranscriptScrollPosition(pendingPosition);
@@ -347,7 +366,6 @@ export const ChatTranscript = observer(function ChatTranscript({
                 computeItemKey={(_index, item) => item.id}
                 initialTopMostItemIndex={openingItemLocation}
                 followOutput={false}
-                atBottomStateChange={handleBottomStateChange}
                 totalListHeightChanged={handleTotalHeightChange}
                 components={{ List: TranscriptList, Footer: ChatTranscriptFooter }}
                 itemContent={(index, item) => renderItem(item, index)}
