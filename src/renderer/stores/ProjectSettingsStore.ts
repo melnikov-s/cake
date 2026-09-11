@@ -2,16 +2,20 @@ import { Store, observable } from "r-state-tree";
 import {
   defaultProjectSettings,
   type ProjectSettings,
-  type ProjectWorkflowColor,
-  type ProjectWorkflowMutation,
-  validateProjectWorkflowColumnName,
+  type WorkflowStatusColor,
+  type WorkflowStatus,
+  type WorkflowStatusMutation,
+  validateWorkflowStatusName,
 } from "../../domain/application/application-data";
 import { ClientContext } from "./context/ClientContext";
 import { describeError } from "../lib/error-details";
 import type { ProjectCatalogStore } from "./ProjectCatalogStore";
 
 /** Owns the project-settings dialog draft and its serialized save workflow. */
-export class ProjectSettingsStore extends Store<{ projects: ProjectCatalogStore }> {
+export class ProjectSettingsStore extends Store<{
+  projects: ProjectCatalogStore;
+  globalStatuses(): ReadonlyArray<WorkflowStatus>;
+}> {
   projectPath: string | undefined;
   worktreeCreateCommand = "";
   worktreeSetupCommands = "";
@@ -70,8 +74,11 @@ export class ProjectSettingsStore extends Store<{ projects: ProjectCatalogStore 
     this.error = undefined;
   }
 
-  async addStatus(name: string, color: ProjectWorkflowColor) {
-    const validation = validateProjectWorkflowColumnName({ columns: this.statuses }, name);
+  async addStatus(name: string, color: WorkflowStatusColor) {
+    const validation = validateWorkflowStatusName(
+      { columns: [...this.props.globalStatuses(), ...this.statuses] },
+      name,
+    );
     if (!validation.ok || !this.projectPath || this.addingStatus) {
       if (!validation.ok) this.error = validation.message;
       return false;
@@ -87,11 +94,15 @@ export class ProjectSettingsStore extends Store<{ projects: ProjectCatalogStore 
     }
   }
 
-  async updateStatus(statusId: string, input: { name?: string; color?: ProjectWorkflowColor }) {
+  async updateStatus(statusId: string, input: { name?: string; color?: WorkflowStatusColor }) {
     const validation =
       input.name === undefined
         ? undefined
-        : validateProjectWorkflowColumnName({ columns: this.statuses }, input.name, statusId);
+        : validateWorkflowStatusName(
+            { columns: [...this.props.globalStatuses(), ...this.statuses] },
+            input.name,
+            statusId,
+          );
     if (validation && !validation.ok) {
       this.error = validation.message;
       return false;
@@ -108,7 +119,7 @@ export class ProjectSettingsStore extends Store<{ projects: ProjectCatalogStore 
     return this.mutatePendingStatus(statusId, { _tag: "DeleteColumn", columnId: statusId });
   }
 
-  private async mutatePendingStatus(statusId: string, mutation: ProjectWorkflowMutation) {
+  private async mutatePendingStatus(statusId: string, mutation: WorkflowStatusMutation) {
     if (this.pendingStatusIds.has(statusId)) return false;
     this.pendingStatusIds.add(statusId);
     try {
@@ -118,7 +129,7 @@ export class ProjectSettingsStore extends Store<{ projects: ProjectCatalogStore 
     }
   }
 
-  private async mutateStatus(mutation: ProjectWorkflowMutation) {
+  private async mutateStatus(mutation: WorkflowStatusMutation) {
     if (!this.projectPath || this.signal.aborted) return false;
     this.error = undefined;
     try {

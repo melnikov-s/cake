@@ -144,7 +144,7 @@ test("restores, edits, resolves, and activates a project draft session", async (
         const stored = JSON.parse(await readFile(applicationDocument, "utf8"));
         const state = stored.data ?? stored;
         const workflow = state.projects[0].workflow;
-        const feature = workflow.columns.find(
+        const feature = state.globalWorkflowStatuses.find(
           (status: { name: string }) => status.name === "Feature",
         );
         return workflow.assignments.some(

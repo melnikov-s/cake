@@ -7,6 +7,7 @@ import { mountWithClient } from "../mount-with-client";
 
 const applicationState = (utilityModel?: UtilityModel): ApplicationState => ({
   projects: [],
+  globalWorkflowStatuses: [],
   unreadSessionIds: [],
   trustedProjectPaths: [],
   fastModeSessionIds: [],

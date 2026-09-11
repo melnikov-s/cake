@@ -28,7 +28,8 @@ import type {
   RendererApplicationProjection,
   RendererApplicationState,
   ProjectWorkflow,
-  ProjectWorkflowMutation,
+  WorkflowStatus,
+  WorkflowStatusMutation,
   ProjectWorkflowSessionDetails,
   ProjectWorkflowSessionDestination,
 } from "../../domain/application/application-data";
@@ -166,9 +167,12 @@ export interface CakeIpcClientService {
     readonly observeCatalog: () => Stream.Stream<ProjectCatalogUpdate, TransportError>;
   };
   readonly projectWorkflow: {
+    readonly mutateGlobal: (input: {
+      readonly mutation: WorkflowStatusMutation;
+    }) => Effect.Effect<ReadonlyArray<WorkflowStatus>, ProjectError | TransportError>;
     readonly mutate: (input: {
       readonly projectPath: string;
-      readonly mutation: ProjectWorkflowMutation;
+      readonly mutation: WorkflowStatusMutation;
     }) => Effect.Effect<ProjectWorkflow, ProjectError | TransportError>;
     readonly moveSession: (input: {
       readonly projectPath: string;
@@ -647,6 +651,9 @@ export const CakeIpcClientLive = Layer.effect(
         observeCatalog: () => client("projects.observeCatalog", undefined),
       },
       projectWorkflow: {
+        mutateGlobal: Effect.fn("CakeIpcClient.projectWorkflow.mutateGlobal")((input) =>
+          client("projectWorkflow.mutateGlobal", input),
+        ),
         mutate: Effect.fn("CakeIpcClient.projectWorkflow.mutate")((input) =>
           client("projectWorkflow.mutate", input),
         ),

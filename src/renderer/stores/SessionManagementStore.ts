@@ -5,11 +5,13 @@ import type { SessionCatalogStore } from "./SessionCatalogStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
 import type { ProjectCatalogStore } from "./ProjectCatalogStore";
+import type { WorkflowStatus } from "../../domain/application/application-data";
 
 export interface SessionManagementStoreProps {
   operations: SessionOperationCoordinatorStore;
   catalog: SessionCatalogStore;
   projects: ProjectCatalogStore;
+  globalStatuses(): ReadonlyArray<WorkflowStatus>;
   registry: SessionRegistryStore;
   reportError(error: unknown): void;
 }
@@ -90,7 +92,12 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
     if (this.transitioningSessionIds.has(sessionId)) return false;
     const project = this.props.projects.find(projectPath);
     if (!project) return false;
-    if (statusId && !project.workflow.columns.some((status) => status.id === statusId)) {
+    if (
+      statusId &&
+      ![...this.props.globalStatuses(), ...project.workflow.columns].some(
+        (status) => status.id === statusId,
+      )
+    ) {
       this.props.reportError(new Error("That custom status no longer exists"));
       return false;
     }

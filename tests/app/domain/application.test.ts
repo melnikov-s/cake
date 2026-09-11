@@ -4,6 +4,7 @@ import { Effect, Layer } from "effect";
 import { describe } from "vitest";
 import {
   forgetProjectSessions,
+  mutateGlobalWorkflowStatuses,
   mutateProjectWorkflow,
   removeProject,
   renameProject,
@@ -18,7 +19,10 @@ import {
   revokeProjectTrust,
   upsertProject,
 } from "../../../src/domain/application/application";
-import { defaultApplicationState } from "../../../src/domain/application/application-data";
+import {
+  defaultApplicationState,
+  WORKFLOW_STATUS_COLORS,
+} from "../../../src/domain/application/application-data";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import {
   ApplicationStorage,
@@ -52,6 +56,11 @@ const run = <A, E>(effect: Effect.Effect<A, E, ApplicationState>) => {
 };
 
 describe("Application domain", () => {
+  it("offers 32 curated workflow colors", () => {
+    assert.equal(WORKFLOW_STATUS_COLORS.length, 32);
+    assert.equal(new Set(WORKFLOW_STATUS_COLORS).size, 32);
+  });
+
   it.effect("creates, touches, renames, and removes Projects with trust revocation", () =>
     run(
       Effect.gen(function* () {
@@ -163,6 +172,55 @@ describe("Application domain", () => {
         });
         assert.deepEqual(deleted.columns.at(-1)?.id, secondColumnId);
         assert.deepEqual(deleted.assignments, []);
+      }),
+    ),
+  );
+
+  it.effect("shares global statuses across Projects and clears their assignments on deletion", () =>
+    run(
+      Effect.gen(function* () {
+        yield* upsertProject("/work/cake", "Cake");
+        yield* upsertProject("/work/pi", "Pi");
+        const statusId = "b925b5dd-9661-4f1a-9f40-406be3c96c27";
+        const added = yield* mutateGlobalWorkflowStatuses({
+          _tag: "AddColumn",
+          column: { id: statusId, name: "In review", color: "cyan" },
+        });
+        assert.equal(
+          added.globalWorkflowStatuses.find((status) => status.id === statusId)?.name,
+          "In review",
+        );
+        yield* setProjectWorkflowSessionStatus("/work/cake", "session-1", statusId);
+        yield* setProjectWorkflowSessionStatus("/work/pi", "session-2", statusId);
+        const removed = yield* mutateGlobalWorkflowStatuses({
+          _tag: "DeleteColumn",
+          columnId: statusId,
+        });
+        assert.equal(
+          removed.globalWorkflowStatuses.some((status) => status.id === statusId),
+          false,
+        );
+        assert.deepEqual(removed.projects[0]?.workflow?.assignments, []);
+        assert.deepEqual(removed.projects[1]?.workflow?.assignments, []);
+      }),
+    ),
+  );
+
+  it.effect("rejects project statuses that duplicate a global status", () =>
+    run(
+      Effect.gen(function* () {
+        yield* upsertProject("/work/cake", "Cake");
+        const duplicate = yield* Effect.flip(
+          mutateProjectWorkflow("/work/cake", {
+            _tag: "AddColumn",
+            column: {
+              id: "b925b5dd-9661-4f1a-9f40-406be3c96c27",
+              name: "feature",
+              color: "coral",
+            },
+          }),
+        );
+        assert.equal(duplicate._tag, "ApplicationPolicyError");
       }),
     ),
   );

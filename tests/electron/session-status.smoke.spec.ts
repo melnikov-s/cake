@@ -102,17 +102,25 @@ test("customizes statuses and assigns one from the sidebar avatar", async () => 
     await expect(
       page.locator('[data-slot="message-content"]', { hasText: "Categorize this work" }),
     ).toBeVisible({ timeout: 20_000 });
+    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await page.getByRole("button", { name: /^Session statuses/ }).click();
+    await expect(page.getByRole("heading", { name: "Global statuses" })).toBeVisible();
+    await expect(page.getByLabel("Feature status name")).toHaveValue("Feature");
+    await page.getByLabel("New status name").fill("In review");
+    await page.getByRole("button", { name: "Add", exact: true }).click();
+    await expect(page.getByLabel("In review status name")).toBeVisible();
+
+    await page.getByRole("button", { name: "Back to chat" }).click();
     const projectGroup = page.locator('[data-slot="project-group"]', {
       hasText: "Status project",
     });
     await projectGroup.hover();
     await projectGroup.getByRole("button", { name: "Open settings for project" }).click();
-
-    await expect(page.getByRole("heading", { name: "Session statuses" })).toBeVisible();
-    await expect(page.getByLabel("Feature status name")).toHaveValue("Feature");
-    await page.getByLabel("New status name").fill("In review");
+    await expect(page.getByRole("heading", { name: "Project-specific statuses" })).toBeVisible();
+    await expect(page.getByLabel("Feature status name")).toHaveCount(0);
+    await page.getByLabel("New status name").fill("Project QA");
     await page.getByRole("button", { name: "Add", exact: true }).click();
-    await expect(page.getByLabel("In review status name")).toBeVisible();
+    await expect(page.getByLabel("Project QA status name")).toBeVisible();
     await page.getByRole("button", { name: "Cancel" }).click();
 
     const sessionItem = page.locator(`[data-session-id="${sessionId}"]`);
@@ -122,23 +130,32 @@ test("customizes statuses and assigns one from the sidebar avatar", async () => 
     await expect(picker).toBeVisible();
     await picker.click();
     await page.getByRole("radio", { name: "In review" }).click();
-    await expect(
-      sessionItem.getByRole("button", {
-        name: "Change session status. Current status: In review",
-      }),
-    ).toBeVisible();
+    const selectedPicker = sessionItem.getByRole("button", {
+      name: "Change session status. Current status: In review",
+    });
+    await expect(selectedPicker).toBeVisible();
+    await expect(selectedPicker.locator('[data-slot="avatar"]')).toHaveCSS(
+      "color",
+      "rgb(75, 168, 204)",
+    );
 
     await expect
       .poll(async () => {
         const stored = JSON.parse(await readFile(applicationDocument, "utf8"));
         const state = stored.data ?? stored;
         const workflow = state.projects[0].workflow;
-        const status = workflow.columns.find(
-          (column: { name: string }) => column.name === "In review",
+        const status = state.globalWorkflowStatuses.find(
+          (candidate: { name: string }) => candidate.name === "In review",
         );
-        return workflow.assignments.some(
-          (assignment: { sessionId: string; statusId: string }) =>
-            assignment.sessionId === sessionId && assignment.statusId === status?.id,
+        const hasProjectStatus = workflow.columns.some(
+          (candidate: { name: string }) => candidate.name === "Project QA",
+        );
+        return (
+          hasProjectStatus &&
+          workflow.assignments.some(
+            (assignment: { sessionId: string; statusId: string }) =>
+              assignment.sessionId === sessionId && assignment.statusId === status?.id,
+          )
         );
       })
       .toBe(true);

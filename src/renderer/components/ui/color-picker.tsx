@@ -1,22 +1,14 @@
-import type { ProjectWorkflowColor } from "../../../domain/application/application-data";
+import {
+  WORKFLOW_STATUS_COLORS,
+  type WorkflowStatusColor,
+} from "../../../domain/application/application-data";
 import { cn } from "../../lib/utils";
 import { Button } from "./button";
 import { StatusSwatch } from "./status-swatch";
 
-const projectWorkflowColors: readonly ProjectWorkflowColor[] = [
-  "rose",
-  "peach",
-  "amber",
-  "lime",
-  "mint",
-  "sky",
-  "blue",
-  "violet",
-];
-
 export interface ColorPickerProps {
-  value: ProjectWorkflowColor;
-  onChange(value: ProjectWorkflowColor): void;
+  value: WorkflowStatusColor;
+  onChange(value: WorkflowStatusColor): void;
   disabled?: boolean;
   label?: string;
 }
@@ -28,8 +20,8 @@ export function ColorPicker({
   label = "Status color",
 }: ColorPickerProps) {
   return (
-    <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label={label}>
-      {projectWorkflowColors.map((color) => (
+    <div className="grid grid-cols-8 gap-1.5" role="radiogroup" aria-label={label}>
+      {WORKFLOW_STATUS_COLORS.map((color) => (
         <Button
           key={color}
           type="button"

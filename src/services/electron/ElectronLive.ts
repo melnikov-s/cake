@@ -12,7 +12,8 @@ import {
   type MenuItemConstructorOptions,
   type WebContents,
 } from "electron";
-import type { ProjectWorkflowColor } from "../../domain/application/application-data";
+import type { WorkflowStatusColor } from "../../domain/application/application-data";
+import { workflowStatusPalette } from "../../utils/workflow-status-palette";
 import type { CakeEvent } from "../../ipc/cake-rpc-contract";
 import { shouldAllowNavigation } from "./navigation-policy";
 import {
@@ -54,21 +55,10 @@ const iconMenuEntry = ({ icon: iconPath, ...entry }: IconMenuEntry) => {
   return { ...entry, icon } satisfies MenuItemConstructorOptions;
 };
 
-const workflowStatusColors = {
-  rose: "#df7180",
-  peach: "#e79568",
-  amber: "#daa836",
-  lime: "#8db64b",
-  mint: "#4eae83",
-  sky: "#4ba8cc",
-  blue: "#638bdc",
-  violet: "#9a78d7",
-} satisfies Record<ProjectWorkflowColor, string>;
-
-const workflowStatusMenuIcon = (color: ProjectWorkflowColor) =>
+const workflowStatusMenuIcon = (color: WorkflowStatusColor) =>
   nativeImage.createFromDataURL(
     `data:image/svg+xml;charset=utf-8,${encodeURIComponent(
-      `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="10" rx="3" fill="${workflowStatusColors[color]}"/></svg>`,
+      `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="10" rx="3" fill="${workflowStatusPalette[color]}"/></svg>`,
     )}`,
   );
 

@@ -154,7 +154,7 @@ describe("ApplicationStorage", () => {
   );
 
   it.effect("loads a current version envelope", () =>
-    withStorage({ [documentPath]: JSON.stringify({ version: 1, data: current }) }, (storage) =>
+    withStorage({ [documentPath]: JSON.stringify({ version: 2, data: current }) }, (storage) =>
       Effect.gen(function* () {
         const loaded = yield* storage.load();
         assert.strictEqual(loaded.source, "current");
@@ -174,7 +174,7 @@ describe("ApplicationStorage", () => {
             const persistedText = controls.files.get(documentPath);
             assert.ok(persistedText);
             const persisted = JSON.parse(persistedText);
-            assert.strictEqual(persisted.version, 1);
+            assert.strictEqual(persisted.version, 2);
             assert.ok(!("schemaVersion" in persisted.data));
           }),
         );
@@ -182,16 +182,62 @@ describe("ApplicationStorage", () => {
     }),
   );
 
+  it.effect("migrates project defaults into the global status catalog", () => {
+    const featureId = "00000000-0000-4000-8000-000000000001";
+    const versionOne = {
+      projects: [
+        {
+          path: "/work/cake",
+          name: "Cake",
+          addedAt: "2026-01-01T00:00:00.000Z",
+          lastOpenedAt: "2026-01-01T00:00:00.000Z",
+          workflow: {
+            columns: [
+              { id: featureId, name: "Feature", color: "blue" },
+              {
+                id: "b925b5dd-9661-4f1a-9f40-406be3c96c27",
+                name: "In review",
+                color: "cyan",
+              },
+            ],
+            assignments: [{ sessionId: "session-1", statusId: featureId }],
+            sessionDetails: [],
+          },
+        },
+      ],
+      unreadSessionIds: [],
+      trustedProjectPaths: [],
+      fastModeSessionIds: [],
+      modelPresets: [],
+    };
+    return withStorage(
+      { [documentPath]: JSON.stringify({ version: 1, data: versionOne }) },
+      (storage) =>
+        Effect.gen(function* () {
+          const loaded = yield* storage.load();
+          assert.strictEqual(loaded.source, "migrated");
+          assert.equal(loaded.state.globalWorkflowStatuses[0]?.name, "Feature");
+          assert.deepEqual(
+            loaded.state.projects[0]?.workflow?.columns.map((status) => status.name),
+            ["In review"],
+          );
+          assert.deepEqual(loaded.state.projects[0]?.workflow?.assignments, [
+            { sessionId: "session-1", statusId: featureId },
+          ]);
+        }),
+    );
+  });
+
   it.effect("returns typed failures for malformed, future, and invalid documents", () =>
     Effect.gen(function* () {
       const cases = [
         ["{", ApplicationMalformedDocumentError],
         [JSON.stringify({ nope: true }), ApplicationMalformedDocumentError],
         [
-          JSON.stringify({ version: 1, data: { ...current, projects: "invalid" } }),
+          JSON.stringify({ version: 2, data: { ...current, projects: "invalid" } }),
           ApplicationDecodeError,
         ],
-        [JSON.stringify({ version: 2, data: current }), ApplicationUnsupportedVersionError],
+        [JSON.stringify({ version: 3, data: current }), ApplicationUnsupportedVersionError],
         [
           JSON.stringify({ version: 0, data: { schemaVersion: 1, projects: "invalid" } }),
           ApplicationMigrationError,

@@ -1,5 +1,8 @@
 import { Schema } from "effect";
 import { ThinkingLevel } from "../../services/pi/model-data";
+import { WORKFLOW_STATUS_COLORS } from "../../utils/workflow-status-palette";
+
+export { WORKFLOW_STATUS_COLORS } from "../../utils/workflow-status-palette";
 
 const boundedString = (maximum: number) => Schema.String.check(Schema.isMaxLength(maximum));
 const nonEmptyBoundedString = (maximum: number) =>
@@ -36,39 +39,31 @@ export const ProjectSettings = Schema.Struct({
 
 export interface ProjectSettings extends Schema.Schema.Type<typeof ProjectSettings> {}
 
-export const ProjectWorkflowColor = Schema.Literals([
-  "rose",
-  "peach",
-  "amber",
-  "lime",
-  "mint",
-  "sky",
-  "blue",
-  "violet",
-]);
-export type ProjectWorkflowColor = typeof ProjectWorkflowColor.Type;
+export const WorkflowStatusColor = Schema.Literals(WORKFLOW_STATUS_COLORS);
+export type WorkflowStatusColor = typeof WorkflowStatusColor.Type;
 
 export const PROJECT_WORKFLOW_SESSION_DESCRIPTION_MAX_LENGTH = 560;
 
-const ProjectWorkflowColumn = Schema.Struct({
+export const WorkflowStatus = Schema.Struct({
   id: Schema.String.check(Schema.isUUID(4)),
   name: Schema.String.check(Schema.isTrimmed(), Schema.isMinLength(1), Schema.isMaxLength(40)),
-  color: ProjectWorkflowColor,
+  color: WorkflowStatusColor,
 });
+export interface WorkflowStatus extends Schema.Schema.Type<typeof WorkflowStatus> {}
 
 const PROJECT_WORKFLOW_RESERVED_COLUMN_NAMES = new Set(["draft", "active", "resolved"]);
 const PROJECT_WORKFLOW_COLUMN_NAME_MAX_LENGTH = 40;
 
-export type ProjectWorkflowColumnNameValidation =
+export type WorkflowStatusNameValidation =
   | { readonly ok: true; readonly name: string }
   | { readonly ok: false; readonly message: string };
 
-/** Pure Project workflow policy shared with renderer-side fast validation. */
-export const validateProjectWorkflowColumnName = (
+/** Pure workflow-status policy shared with renderer-side fast validation. */
+export const validateWorkflowStatusName = (
   workflow: Pick<ProjectWorkflow, "columns">,
   name: string,
   currentColumnId?: string,
-): ProjectWorkflowColumnNameValidation => {
+): WorkflowStatusNameValidation => {
   const normalized = name.trim();
   if (!normalized) return { ok: false, message: "Status names cannot be empty" };
   if (normalized.length > PROJECT_WORKFLOW_COLUMN_NAME_MAX_LENGTH)
@@ -115,7 +110,7 @@ export interface ProjectWorkflowSessionDetails extends Schema.Schema.Type<
 > {}
 
 export const ProjectWorkflow = Schema.Struct({
-  columns: boundedArray(ProjectWorkflowColumn, 20),
+  columns: boundedArray(WorkflowStatus, 20),
   assignments: boundedArray(ProjectWorkflowAssignment, 10_000),
   sessionDetails: boundedArray(ProjectWorkflowSessionDetails, 10_000),
 }).check(
@@ -138,41 +133,43 @@ export const ProjectWorkflow = Schema.Struct({
 );
 export interface ProjectWorkflow extends Schema.Schema.Type<typeof ProjectWorkflow> {}
 
+export const defaultGlobalWorkflowStatuses = (): ReadonlyArray<WorkflowStatus> => [
+  { id: "00000000-0000-4000-8000-000000000001", name: "Feature", color: "blue" },
+  { id: "00000000-0000-4000-8000-000000000002", name: "Bug", color: "rose" },
+  { id: "00000000-0000-4000-8000-000000000003", name: "Research", color: "violet" },
+  { id: "00000000-0000-4000-8000-000000000004", name: "Chore", color: "amber" },
+];
+
 export const defaultProjectWorkflow = (): ProjectWorkflow => ({
-  columns: [
-    { id: "00000000-0000-4000-8000-000000000001", name: "Feature", color: "blue" },
-    { id: "00000000-0000-4000-8000-000000000002", name: "Bug", color: "rose" },
-    { id: "00000000-0000-4000-8000-000000000003", name: "Research", color: "violet" },
-    { id: "00000000-0000-4000-8000-000000000004", name: "Chore", color: "amber" },
-  ],
+  columns: [],
   assignments: [],
   sessionDetails: [],
 });
 
-const ProjectWorkflowColumnMutationInput = Schema.Struct({
-  id: ProjectWorkflowColumn.fields.id,
+const WorkflowStatusMutationInput = Schema.Struct({
+  id: WorkflowStatus.fields.id,
   name: boundedString(256),
-  color: ProjectWorkflowColor,
+  color: WorkflowStatusColor,
 });
 
-export const ProjectWorkflowMutation = Schema.TaggedUnion({
-  AddColumn: { column: ProjectWorkflowColumnMutationInput },
+export const WorkflowStatusMutation = Schema.TaggedUnion({
+  AddColumn: { column: WorkflowStatusMutationInput },
   UpdateColumn: {
-    columnId: ProjectWorkflowColumn.fields.id,
+    columnId: WorkflowStatus.fields.id,
     name: Schema.optionalKey(boundedString(256)),
-    color: Schema.optionalKey(ProjectWorkflowColor),
+    color: Schema.optionalKey(WorkflowStatusColor),
   },
   MoveColumn: {
-    columnId: ProjectWorkflowColumn.fields.id,
+    columnId: WorkflowStatus.fields.id,
     index: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0), Schema.isLessThanOrEqualTo(19)),
   },
-  DeleteColumn: { columnId: ProjectWorkflowColumn.fields.id },
+  DeleteColumn: { columnId: WorkflowStatus.fields.id },
 });
-export type ProjectWorkflowMutation = typeof ProjectWorkflowMutation.Type;
+export type WorkflowStatusMutation = typeof WorkflowStatusMutation.Type;
 
 export const ProjectWorkflowSessionDestination = Schema.TaggedUnion({
   Active: {},
-  Custom: { statusId: ProjectWorkflowColumn.fields.id },
+  Custom: { statusId: WorkflowStatus.fields.id },
   Resolved: {},
 });
 export type ProjectWorkflowSessionDestination = typeof ProjectWorkflowSessionDestination.Type;
@@ -195,6 +192,7 @@ const SessionIds = boundedArray(boundedString(256), 10_000).check(Schema.isUniqu
 
 const RendererApplicationFields = {
   projects: boundedArray(ProjectRecord, 200),
+  globalWorkflowStatuses: boundedArray(WorkflowStatus, 20),
   unreadSessionIds: SessionIds,
   trustedProjectPaths: Schema.Array(boundedString(4_096)).check(Schema.isUnique()),
   fastModeSessionIds: SessionIds,
@@ -209,13 +207,37 @@ const CurrentApplicationState = Schema.Struct(RendererApplicationFields).check(
     (state) => {
       const projectPaths = state.projects.map((project) => project.path);
       const presetIds = state.modelPresets.map((preset) => preset.id);
+      const globalStatusIds = state.globalWorkflowStatuses.map((status) => status.id);
+      const globalStatusNames = state.globalWorkflowStatuses.map((status) =>
+        status.name.toLocaleLowerCase(),
+      );
       return (
         new Set(projectPaths).size === projectPaths.length &&
         new Set(presetIds).size === presetIds.length &&
+        new Set(globalStatusIds).size === globalStatusIds.length &&
+        new Set(globalStatusNames).size === globalStatusNames.length &&
+        state.projects.every((project) => {
+          const workflow = project.workflow ?? defaultProjectWorkflow();
+          return (
+            workflow.columns.every(
+              (status) =>
+                !globalStatusIds.includes(status.id) &&
+                !globalStatusNames.includes(status.name.toLocaleLowerCase()),
+            ) &&
+            workflow.assignments.every((assignment) =>
+              [...globalStatusIds, ...workflow.columns.map((status) => status.id)].includes(
+                assignment.statusId,
+              ),
+            )
+          );
+        }) &&
         (state.defaultModelPresetId === undefined || presetIds.includes(state.defaultModelPresetId))
       );
     },
-    { expected: "unique Project and Model Preset identities with a valid default preset" },
+    {
+      expected:
+        "unique Project, Model Preset, and workflow status identities with valid references",
+    },
   ),
 );
 
@@ -243,6 +265,7 @@ export interface ModelPreset extends Schema.Schema.Type<typeof ModelPreset> {}
 
 export const defaultApplicationState = (): ApplicationState => ({
   projects: [],
+  globalWorkflowStatuses: [...defaultGlobalWorkflowStatuses()],
   unreadSessionIds: [],
   trustedProjectPaths: [],
   fastModeSessionIds: [],

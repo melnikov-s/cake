@@ -38,6 +38,12 @@ class HarnessStore extends Store {
   }
 }
 
+const externalStatus = {
+  id: "b925b5dd-9661-4f1a-9f40-406be3c96c27",
+  name: "In review",
+  color: "cyan" as const,
+};
+
 const externalPreset: ModelPreset = {
   id: "00000000-0000-4000-8000-000000000001",
   name: "Changed elsewhere",
@@ -57,6 +63,7 @@ describe("observeApplicationState", () => {
               revision: 7,
               state: {
                 projects: [],
+                globalWorkflowStatuses: [externalStatus],
                 unreadSessionIds: [],
                 trustedProjectPaths: [],
                 fastModeSessionIds: [],
@@ -77,6 +84,7 @@ describe("observeApplicationState", () => {
       .poll(() => harness.settings.modelPresets.presets[0]?.name)
       .toBe("Changed elsewhere");
     expect(harness.settings.modelPresets.defaultPresetId).toBe(externalPreset.id);
+    expect(harness.settings.globalStatuses.statuses).toEqual([externalStatus]);
 
     cancel();
     harness[Symbol.dispose]();

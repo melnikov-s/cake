@@ -5,11 +5,12 @@ import {
   ProjectRecord,
   UtilityModel,
   defaultApplicationState,
+  defaultGlobalWorkflowStatuses,
   type ApplicationState as ApplicationStateValue,
 } from "../../domain/application/application-data";
 import { atomicWriteFile, type AtomicFileStage } from "./internal/atomicFile";
 
-const APPLICATION_DOCUMENT_VERSION = 1;
+const APPLICATION_DOCUMENT_VERSION = 2;
 export const APPLICATION_DOCUMENT_NAME = "application.json";
 
 class ApplicationReadError extends Schema.TaggedError<ApplicationReadError>()(
@@ -93,6 +94,18 @@ const LegacyApplicationState = Schema.Struct({
 
 type LegacyApplicationState = typeof LegacyApplicationState.Type;
 
+const ApplicationStateV1 = Schema.Struct({
+  projects: Schema.Array(ProjectRecord),
+  unreadSessionIds: Schema.Array(Schema.String),
+  trustedProjectPaths: Schema.Array(Schema.String),
+  fastModeSessionIds: Schema.Array(Schema.String),
+  utilityModel: Schema.optionalKey(UtilityModel),
+  vscodeServerPath: Schema.optionalKey(Schema.String),
+  modelPresets: Schema.Array(ModelPreset),
+  defaultModelPresetId: Schema.optionalKey(Schema.String),
+});
+type ApplicationStateV1 = typeof ApplicationStateV1.Type;
+
 const messageOf = (cause: unknown): string =>
   cause instanceof Error ? cause.message : String(cause);
 
@@ -113,7 +126,7 @@ const migrateVersionZero = Effect.fn("ApplicationStorage.migrateVersionZero")((
     ? legacy.defaultModelPresetId
     : undefined;
   const vscodeServerPath = legacy.vscodeServerPath?.trim() || undefined;
-  const base: ApplicationStateValue = {
+  const base: ApplicationStateV1 = {
     projects,
     unreadSessionIds: dedupe(legacy.unreadSessionIds ?? []),
     trustedProjectPaths: dedupe(legacy.trustedProjectPaths ?? []),
@@ -127,6 +140,43 @@ const migrateVersionZero = Effect.fn("ApplicationStorage.migrateVersionZero")((
   return Effect.succeed(
     vscodeServerPath === undefined ? withDefault : { ...withDefault, vscodeServerPath },
   );
+});
+
+const migrateVersionOne = Effect.fn("ApplicationStorage.migrateVersionOne")((
+  state: ApplicationStateV1,
+) => {
+  const globalWorkflowStatuses = [...defaultGlobalWorkflowStatuses()];
+  const globalByName = new Map(
+    globalWorkflowStatuses.map((status) => [status.name.toLocaleLowerCase(), status]),
+  );
+  const globalIds = new Set(globalWorkflowStatuses.map((status) => status.id));
+  const projects = state.projects.map((project) => {
+    if (!project.workflow) return project;
+    const remappedIds = new Map<string, string>();
+    const columns = project.workflow.columns.flatMap((status) => {
+      const globalStatus = globalByName.get(status.name.toLocaleLowerCase());
+      if (globalStatus) {
+        remappedIds.set(status.id, globalStatus.id);
+        return [];
+      }
+      if (!globalIds.has(status.id)) return [status];
+      const id = crypto.randomUUID();
+      remappedIds.set(status.id, id);
+      return [{ ...status, id }];
+    });
+    return {
+      ...project,
+      workflow: {
+        ...project.workflow,
+        columns,
+        assignments: project.workflow.assignments.map((assignment) => ({
+          ...assignment,
+          statusId: remappedIds.get(assignment.statusId) ?? assignment.statusId,
+        })),
+      },
+    };
+  });
+  return Effect.succeed({ ...state, projects, globalWorkflowStatuses });
 });
 
 const writeError = (stage: AtomicFileStage, cause: unknown) =>
@@ -216,6 +266,17 @@ export const makeApplicationStorageLive = (userDataDirectory: string) =>
               ),
             );
             data = yield* migrateVersionZero(legacy);
+          } else if (version === 1) {
+            const previous = yield* Schema.decodeUnknownEffect(ApplicationStateV1)(data).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ApplicationMigrationError({
+                    fromVersion: 1,
+                    message: cause.message,
+                  }),
+              ),
+            );
+            data = yield* migrateVersionOne(previous);
           } else
             return yield* new ApplicationMigrationError({
               fromVersion: version,

@@ -1,7 +1,7 @@
 import type { Effect } from "effect";
 import type {
   ProjectSettings,
-  ProjectWorkflowColor,
+  WorkflowStatusColor,
 } from "../../domain/application/application-data";
 import type {
   ResolvedManagedWorktreeCleanupPlan,
@@ -96,7 +96,7 @@ interface ElectronCommands {
         statuses: ReadonlyArray<{
           id: string;
           name: string;
-          color: ProjectWorkflowColor;
+          color: WorkflowStatusColor;
         }>;
       };
     },

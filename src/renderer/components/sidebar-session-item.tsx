@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { observer } from "r-state-tree/react";
 import { SESSION_TITLE_MAX_LENGTH } from "../../ipc/session-contract";
-import type { ProjectWorkflowColor } from "../../domain/application/application-data";
+import type { WorkflowStatusColor } from "../../domain/application/application-data";
 import type { WorktreeRecord } from "../../domain/worktrees/managed-worktree-data";
 import { cn } from "../lib/utils";
 import { Badge } from "./ui/badge";
@@ -34,7 +34,7 @@ export interface SidebarSessionItemProps {
   paneNumber?: number;
   resolved: boolean;
   activity?: SessionActivity;
-  workflowStatus?: { name: string; color: ProjectWorkflowColor };
+  workflowStatus?: { name: string; color: WorkflowStatusColor };
   avatarSeed: string;
   avatarsEnabled: boolean;
   focusMode?: boolean;

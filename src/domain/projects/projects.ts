@@ -21,7 +21,7 @@ import { resolveRewordingWorkspace } from "../../services/projects/rewording-wor
 import type { ProjectCatalogUpdate } from "../application/catalog-data";
 import type {
   ProjectRecord,
-  ProjectWorkflowMutation,
+  WorkflowStatusMutation,
   ProjectWorkflowSessionDetails,
   ProjectWorkflowSessionDestination,
 } from "../application/application-data";
@@ -33,6 +33,7 @@ import {
   observeState,
   removeProject,
   renameProject,
+  mutateGlobalWorkflowStatuses,
   mutateProjectWorkflow,
   setProjectWorkflowSessionDetails,
   setProjectSettings as setApplicationProjectSettings,
@@ -293,9 +294,19 @@ export const setProjectSettings = Effect.fn("Projects.setProjectSettings")(funct
   };
 });
 
+export const mutateGlobalWorkflow = Effect.fn("Projects.mutateGlobalWorkflow")(function* (request: {
+  readonly mutation: WorkflowStatusMutation;
+}) {
+  const state = yield* mapProjectError(
+    "mutateGlobalWorkflowStatuses",
+    mutateGlobalWorkflowStatuses(request.mutation),
+  );
+  return state.globalWorkflowStatuses;
+});
+
 export const mutateWorkflow = Effect.fn("Projects.mutateWorkflow")(function* (request: {
   readonly projectPath: string;
-  readonly mutation: ProjectWorkflowMutation;
+  readonly mutation: WorkflowStatusMutation;
 }) {
   yield* requireAllowed(request.projectPath);
   return yield* mapProjectError(

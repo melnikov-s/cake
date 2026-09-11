@@ -49,7 +49,7 @@ describe("ApplicationStorage filesystem integration", () => {
     assert.equal(loaded.source, "migrated");
     assert.ok(!("resolvedSessionIds" in loaded.state));
     const document = JSON.parse(await readFile(target, "utf8"));
-    assert.equal(document.version, 1);
+    assert.equal(document.version, 2);
     assert.deepEqual(document.data, {
       ...defaultApplicationState(),
     });

@@ -15,6 +15,7 @@ import type { CakeChatSessionStore } from "./CakeChatSessionStore";
 import { UtilityModelSettingsStore } from "./UtilityModelSettingsStore";
 import { EmbeddedEditorSettingsStore } from "./EmbeddedEditorSettingsStore";
 import { HotkeySettingsStore } from "./HotkeySettingsStore";
+import { GlobalStatusSettingsStore } from "./GlobalStatusSettingsStore";
 
 export type SettingsPageId =
   | "models"
@@ -22,6 +23,7 @@ export type SettingsPageId =
   | "agent"
   | "runtime"
   | "network"
+  | "statuses"
   | "appearance"
   | "hotkeys"
   | "editor";
@@ -47,6 +49,9 @@ export class SettingsStore extends Store<SettingsStoreProps> {
   }
   @child get hotkeys(): HotkeySettingsStore {
     return createStore(HotkeySettingsStore);
+  }
+  @child get globalStatuses(): GlobalStatusSettingsStore {
+    return createStore(GlobalStatusSettingsStore);
   }
   @child get modelPresets(): ModelPresetSettingsStore {
     return createStore(ModelPresetSettingsStore);
@@ -80,6 +85,7 @@ export class SettingsStore extends Store<SettingsStoreProps> {
       this.providers.error ??
       this.utilityModel.error ??
       this.modelPresets.error ??
+      this.globalStatuses.error ??
       this.configuration?.error ??
       this.props.workbenchError()
     );
@@ -162,5 +168,6 @@ export class SettingsStore extends Store<SettingsStoreProps> {
   applyApplicationState(revision: number, state: ApplicationState) {
     this.utilityModel.applyApplicationState(revision, state);
     this.modelPresets.applyApplicationState(revision, state);
+    this.globalStatuses.applyApplicationState(revision, state);
   }
 }

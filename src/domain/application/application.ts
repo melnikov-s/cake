@@ -4,11 +4,12 @@ import {
   type ApplicationState,
   defaultProjectWorkflow,
   type ProjectSettings,
+  type WorkflowStatus,
   type ProjectWorkflow,
-  type ProjectWorkflowMutation,
+  type WorkflowStatusMutation,
   type ProjectWorkflowSessionDetails,
   type UtilityModel,
-  validateProjectWorkflowColumnName,
+  validateWorkflowStatusName,
 } from "./application-data";
 import { ApplicationState as ApplicationStateOwner } from "../../services/storage/ApplicationState";
 
@@ -111,8 +112,9 @@ export const setProjectSettings = Effect.fn("Application.setProjectSettings")(fu
 
 const mutateWorkflowValue = Effect.fn("Application.mutateWorkflowValue")(function* (
   workflow: ProjectWorkflow,
+  otherStatuses: ReadonlyArray<WorkflowStatus>,
   mutation:
-    | ProjectWorkflowMutation
+    | WorkflowStatusMutation
     | {
         readonly _tag: "SetSessionStatus";
         readonly sessionId: string;
@@ -123,9 +125,12 @@ const mutateWorkflowValue = Effect.fn("Application.mutateWorkflowValue")(functio
   if (mutation._tag === "AddColumn") {
     if (workflow.columns.length >= 20)
       return yield* new ApplicationPolicyError({
-        message: "A project can have at most 20 custom statuses",
+        message: "A status list can contain at most 20 statuses",
       });
-    const validation = validateProjectWorkflowColumnName(workflow, mutation.column.name);
+    const validation = validateWorkflowStatusName(
+      { columns: [...otherStatuses, ...workflow.columns] },
+      mutation.column.name,
+    );
     if (!validation.ok) return yield* new ApplicationPolicyError({ message: validation.message });
     return {
       ...workflow,
@@ -147,7 +152,9 @@ const mutateWorkflowValue = Effect.fn("Application.mutateWorkflowValue")(functio
       (assignment) => assignment.sessionId !== mutation.sessionId,
     );
     if (mutation.statusId !== undefined) {
-      if (!workflow.columns.some((column) => column.id === mutation.statusId))
+      if (
+        ![...otherStatuses, ...workflow.columns].some((column) => column.id === mutation.statusId)
+      )
         return yield* new ApplicationPolicyError({
           message: "That custom status no longer exists",
         });
@@ -162,7 +169,11 @@ const mutateWorkflowValue = Effect.fn("Application.mutateWorkflowValue")(functio
     const name =
       mutation.name === undefined
         ? undefined
-        : validateProjectWorkflowColumnName(workflow, mutation.name, mutation.columnId);
+        : validateWorkflowStatusName(
+            { columns: [...otherStatuses, ...workflow.columns] },
+            mutation.name,
+            mutation.columnId,
+          );
     if (name && !name.ok) return yield* new ApplicationPolicyError({ message: name.message });
     return {
       ...workflow,
@@ -200,7 +211,7 @@ const mutateWorkflowValue = Effect.fn("Application.mutateWorkflowValue")(functio
 const mutateProjectWorkflowValue = Effect.fn("Application.mutateProjectWorkflowValue")(function* (
   path: string,
   mutation:
-    | ProjectWorkflowMutation
+    | WorkflowStatusMutation
     | {
         readonly _tag: "SetSessionStatus";
         readonly sessionId: string;
@@ -216,6 +227,7 @@ const mutateProjectWorkflowValue = Effect.fn("Application.mutateProjectWorkflowV
     return Effect.gen(function* () {
       const workflow = yield* mutateWorkflowValue(
         project.workflow ?? defaultProjectWorkflow(),
+        current.globalWorkflowStatuses,
         mutation,
       );
       return yield* validate({
@@ -232,7 +244,48 @@ const mutateProjectWorkflowValue = Effect.fn("Application.mutateProjectWorkflowV
 });
 
 export const mutateProjectWorkflow = Effect.fn("Application.mutateProjectWorkflow")(
-  (path: string, mutation: ProjectWorkflowMutation) => mutateProjectWorkflowValue(path, mutation),
+  (path: string, mutation: WorkflowStatusMutation) => mutateProjectWorkflowValue(path, mutation),
+);
+
+export const mutateGlobalWorkflowStatuses = Effect.fn("Application.mutateGlobalWorkflowStatuses")(
+  function* (mutation: WorkflowStatusMutation) {
+    const owner = yield* ApplicationStateOwner;
+    return yield* owner.transact((current) => {
+      const workflow: ProjectWorkflow = {
+        columns: current.globalWorkflowStatuses,
+        assignments: [],
+        sessionDetails: [],
+      };
+      return Effect.gen(function* () {
+        const allProjectStatuses = current.projects.flatMap(
+          (project) => project.workflow?.columns ?? [],
+        );
+        const statuses = yield* mutateWorkflowValue(workflow, allProjectStatuses, mutation).pipe(
+          Effect.map((updated) => updated.columns),
+        );
+        return yield* validate({
+          ...current,
+          globalWorkflowStatuses: statuses,
+          projects:
+            mutation._tag === "DeleteColumn"
+              ? current.projects.map((project) =>
+                  project.workflow
+                    ? {
+                        ...project,
+                        workflow: {
+                          ...project.workflow,
+                          assignments: project.workflow.assignments.filter(
+                            (assignment) => assignment.statusId !== mutation.columnId,
+                          ),
+                        },
+                      }
+                    : project,
+                )
+              : current.projects,
+        });
+      });
+    });
+  },
 );
 
 export const setProjectWorkflowSessionStatus = Effect.fn(

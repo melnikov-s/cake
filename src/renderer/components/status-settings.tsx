@@ -1,20 +1,38 @@
 import { useState } from "react";
 import { observer } from "r-state-tree/react";
-import type { ProjectWorkflowColor } from "../../domain/application/application-data";
-import type { ProjectSettingsStore } from "../stores/ProjectSettingsStore";
+import type { WorkflowStatusColor } from "../../domain/application/application-data";
+import type { WorkflowStatus } from "../../domain/application/application-data";
 import { Button } from "./ui/button";
 import { ColorPicker } from "./ui/color-picker";
 import { IconButton } from "./ui/icon-button";
 import { PlusIcon, TrashIcon } from "./ui/icons";
 import { Input } from "./ui/input";
 
-export const ProjectStatusSettings = observer(function ProjectStatusSettings({
+export interface StatusSettingsStore {
+  readonly statuses: ReadonlyArray<WorkflowStatus>;
+  readonly addingStatus: boolean;
+  statusPending(statusId: string): boolean;
+  addStatus(name: string, color: WorkflowStatusColor): Promise<boolean>;
+  updateStatus(
+    statusId: string,
+    input: { name?: string; color?: WorkflowStatusColor },
+  ): Promise<boolean>;
+  deleteStatus(statusId: string): Promise<boolean>;
+}
+
+export const StatusSettings = observer(function StatusSettings({
   store,
+  title,
+  description,
+  placeholder = "New status",
 }: {
-  store: ProjectSettingsStore;
+  store: StatusSettingsStore;
+  title: string;
+  description: string;
+  placeholder?: string;
 }) {
   const [newName, setNewName] = useState("");
-  const [newColor, setNewColor] = useState<ProjectWorkflowColor>("sky");
+  const [newColor, setNewColor] = useState<WorkflowStatusColor>("sky");
   const [nameDrafts, setNameDrafts] = useState<Record<string, string>>({});
 
   const add = async () => {
@@ -30,11 +48,9 @@ export const ProjectStatusSettings = observer(function ProjectStatusSettings({
     >
       <div>
         <h3 id="status-labels-title" className="text-xs font-semibold text-foreground">
-          Session statuses
+          {title}
         </h3>
-        <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-          Pick a label from the avatar beside a new or draft chat. Changes save immediately.
-        </p>
+        <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">{description}</p>
       </div>
 
       <div className="grid gap-2">
@@ -107,7 +123,7 @@ export const ProjectStatusSettings = observer(function ProjectStatusSettings({
             size="sm"
             value={newName}
             maxLength={40}
-            placeholder="New status"
+            placeholder={placeholder}
             aria-label="New status name"
             onChange={(event) => setNewName(event.target.value)}
             onKeyDown={(event) => {

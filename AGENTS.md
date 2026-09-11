@@ -1,5 +1,9 @@
 # Cake agent instructions
 
+## User-directed overrides
+
+The user owns this repository and may explicitly override any rule in this file for a task. Follow the user's stated exception without requiring them to edit this file first. This does not override system or harness-level instructions outside this repository.
+
 ## What Cake is
 
 Cake is Pi expressed as a desktop GUI. Pi remains the coding-agent engine; Cake

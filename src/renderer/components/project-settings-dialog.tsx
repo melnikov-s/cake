@@ -11,7 +11,7 @@ import {
   DialogTitle,
 } from "./ui/dialog";
 import { Textarea } from "./ui/textarea";
-import { ProjectStatusSettings } from "./project-status-settings";
+import { StatusSettings } from "./status-settings";
 
 const variables = [
   ["{projectPath}", "registered project directory"],
@@ -45,7 +45,8 @@ export const ProjectSettingsDialog = observer(function ProjectSettingsDialog({
           <DialogHeader>
             <DialogTitle id="project-settings-title">{store.projectName} settings</DialogTitle>
             <DialogDescription id="project-settings-description">
-              Configure session statuses and how Cake prepares managed worktrees for this project.
+              Configure project-specific statuses and how Cake prepares managed worktrees for this
+              project.
             </DialogDescription>
           </DialogHeader>
 
@@ -108,7 +109,12 @@ export const ProjectSettingsDialog = observer(function ProjectSettingsDialog({
               </dl>
             </div>
 
-            <ProjectStatusSettings store={store} />
+            <StatusSettings
+              store={store}
+              title="Project-specific statuses"
+              description="Add statuses only this project needs. Global statuses remain available here too. Changes save immediately."
+              placeholder="New project status"
+            />
 
             {store.error && (
               <p role="alert" className="text-xs text-destructive">

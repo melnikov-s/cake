@@ -138,6 +138,7 @@ function mountStore(initial?: Projection, models?: ModelOption[]) {
   const root = mount(createStore(HarnessStore, { client: client }));
   root.settings.applyApplicationState(0, {
     projects: [],
+    globalWorkflowStatuses: [],
     unreadSessionIds: [],
     trustedProjectPaths: [],
     fastModeSessionIds: [],
@@ -177,6 +178,7 @@ describe("ModelPresetSettingsStore", () => {
 
     store.applyApplicationState(1, {
       projects: [],
+      globalWorkflowStatuses: [],
       unreadSessionIds: [],
       trustedProjectPaths: [],
       fastModeSessionIds: [],
@@ -329,6 +331,7 @@ describe("ModelPresetSettingsStore", () => {
     await vi.waitFor(() => expect(client.reorderModelPresets).toHaveBeenCalledOnce());
     store.applyApplicationState(1, {
       projects: [],
+      globalWorkflowStatuses: [],
       unreadSessionIds: [],
       trustedProjectPaths: [],
       fastModeSessionIds: [],
@@ -354,6 +357,7 @@ describe("ModelPresetSettingsStore", () => {
     await vi.waitFor(() => expect(client.updateModelPreset).toHaveBeenCalledOnce());
     store.applyApplicationState(1, {
       projects: [],
+      globalWorkflowStatuses: [],
       unreadSessionIds: [],
       trustedProjectPaths: [],
       fastModeSessionIds: [],

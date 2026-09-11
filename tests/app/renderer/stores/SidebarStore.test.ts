@@ -22,6 +22,7 @@ describe("SidebarStore catalog demand", () => {
         } as unknown as ProjectCatalogStore,
         catalog: {} as SessionCatalogStore,
         sessions: {} as SessionRegistryStore,
+        globalStatuses: () => [],
         cakeChat: () => ({ summaries: [] }) as unknown as CakeChatCollectionStore,
         setSessionResolved: async () => undefined,
         setSessionWorkflowStatus: async () => undefined,
@@ -81,6 +82,7 @@ describe("SidebarStore catalog demand", () => {
         projects: { orderedProjectPaths: [] } as unknown as ProjectCatalogStore,
         catalog,
         sessions: {} as SessionRegistryStore,
+        globalStatuses: () => [],
         cakeChat: () => ({ summaries: [] }) as unknown as CakeChatCollectionStore,
         selectedConversation: () => selection.current,
         setSessionResolved: async () => undefined,
@@ -161,6 +163,7 @@ describe("SidebarStore catalog demand", () => {
             activity: activities[sessionId],
           }),
         } as unknown as SessionRegistryStore,
+        globalStatuses: () => [],
         cakeChat: () => ({ summaries: [] }) as unknown as CakeChatCollectionStore,
         setSessionResolved: async () => undefined,
         setSessionWorkflowStatus: async () => undefined,
@@ -223,6 +226,7 @@ describe("SidebarStore catalog demand", () => {
           sessions: [{ sessionId: "session-50", activity: "running" }],
           findSession,
         } as unknown as SessionRegistryStore,
+        globalStatuses: () => [],
         cakeChat: () => ({ summaries: [] }) as unknown as CakeChatCollectionStore,
         setSessionResolved: async () => undefined,
         setSessionWorkflowStatus: async () => undefined,
@@ -244,6 +248,7 @@ describe("SidebarStore catalog demand", () => {
         projects: { orderedProjectPaths: [] } as unknown as ProjectCatalogStore,
         catalog: {} as unknown as SessionCatalogStore,
         sessions: {} as SessionRegistryStore,
+        globalStatuses: () => [],
         cakeChat: () => ({ summaries: [] }) as unknown as CakeChatCollectionStore,
         setSessionResolved: async () => undefined,
         setSessionWorkflowStatus: async () => undefined,
@@ -273,6 +278,7 @@ describe("SidebarStore catalog demand", () => {
         sessions: {
           findSession: (sessionId: string) => ({ activity: activities.get(sessionId) }),
         } as unknown as SessionRegistryStore,
+        globalStatuses: () => [],
         cakeChat: () => ({ summaries: [] }) as unknown as CakeChatCollectionStore,
         setSessionResolved: async () => undefined,
         setSessionWorkflowStatus: async () => undefined,
@@ -329,6 +335,7 @@ describe("SidebarStore catalog demand", () => {
           findSession: () => undefined,
         } as unknown as SessionRegistryStore,
         worktreeOperations,
+        globalStatuses: () => [],
         cakeChat: () => ({ summaries: [] }) as unknown as CakeChatCollectionStore,
         setSessionResolved: async () => undefined,
         setSessionWorkflowStatus: async () => undefined,
@@ -345,11 +352,16 @@ describe("SidebarStore catalog demand", () => {
     store[Symbol.dispose]();
   });
 
-  it("provides custom workflow statuses and the current status to the native menu", async () => {
-    const status = {
+  it("combines global and project statuses for the native session menu", async () => {
+    const projectStatus = {
       id: "b925b5dd-9661-4f1a-9f40-406be3c96c27",
       name: "In review",
       color: "violet" as const,
+    };
+    const globalStatus = {
+      id: "bcf5bcc1-9126-4192-a0a8-eadb851c5075",
+      name: "Feature",
+      color: "blue" as const,
     };
     const showSessionContextMenu = vi.fn(async () => undefined);
     const { root, subject } = mountWithClient(
@@ -358,8 +370,8 @@ describe("SidebarStore catalog demand", () => {
           orderedProjectPaths: ["/cake"],
           find: () => ({
             workflow: {
-              columns: [status],
-              assignments: [{ sessionId: "session-1", statusId: status.id }],
+              columns: [projectStatus],
+              assignments: [{ sessionId: "session-1", statusId: globalStatus.id }],
             },
           }),
         } as unknown as ProjectCatalogStore,
@@ -371,6 +383,7 @@ describe("SidebarStore catalog demand", () => {
           }),
         } as unknown as SessionCatalogStore,
         sessions: {} as SessionRegistryStore,
+        globalStatuses: () => [globalStatus],
         cakeChat: () => ({}) as CakeChatCollectionStore,
         setSessionResolved: async () => undefined,
         setSessionWorkflowStatus: async () => undefined,
@@ -394,8 +407,8 @@ describe("SidebarStore catalog demand", () => {
         unread: false,
         familyChild: undefined,
         workflow: {
-          currentStatus: status.id,
-          statuses: [status],
+          currentStatus: globalStatus.id,
+          statuses: [globalStatus, projectStatus],
         },
       });
     } finally {
@@ -409,6 +422,7 @@ describe("SidebarStore catalog demand", () => {
         projects: { orderedProjectPaths: [] } as unknown as ProjectCatalogStore,
         catalog: {} as SessionCatalogStore,
         sessions: {} as SessionRegistryStore,
+        globalStatuses: () => [],
         cakeChat: () => ({}) as CakeChatCollectionStore,
         setSessionResolved: async () => undefined,
         setSessionWorkflowStatus: async () => undefined,
@@ -465,6 +479,7 @@ describe("SidebarStore catalog demand", () => {
         projects: { orderedProjectPaths: [] } as unknown as ProjectCatalogStore,
         catalog,
         sessions: {} as SessionRegistryStore,
+        globalStatuses: () => [],
         cakeChat: () => ({}) as CakeChatCollectionStore,
         setSessionResolved: async () => undefined,
         setSessionWorkflowStatus: async () => undefined,
@@ -501,6 +516,7 @@ describe("SidebarStore catalog demand", () => {
         projects: { orderedProjectPaths: [] } as unknown as ProjectCatalogStore,
         catalog: {} as SessionCatalogStore,
         sessions: {} as SessionRegistryStore,
+        globalStatuses: () => [],
         cakeChat: () => ({}) as CakeChatCollectionStore,
         setSessionResolved: async () => undefined,
         setSessionWorkflowStatus: async () => undefined,
@@ -537,6 +553,7 @@ describe("SidebarStore catalog demand", () => {
         projects: { orderedProjectPaths: [] } as unknown as ProjectCatalogStore,
         catalog: {} as SessionCatalogStore,
         sessions: {} as SessionRegistryStore,
+        globalStatuses: () => [],
         cakeChat: () => ({}) as CakeChatCollectionStore,
         setSessionResolved: async () => undefined,
         setSessionWorkflowStatus: async () => undefined,
@@ -563,6 +580,7 @@ describe("SidebarStore catalog demand", () => {
         } as ProjectCatalogStore,
         catalog: {} as SessionCatalogStore,
         sessions: {} as SessionRegistryStore,
+        globalStatuses: () => [],
         cakeChat: () => ({}) as CakeChatCollectionStore,
         setSessionResolved: async () => undefined,
         setSessionWorkflowStatus: async () => undefined,

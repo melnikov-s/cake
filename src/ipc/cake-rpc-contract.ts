@@ -11,7 +11,7 @@ import {
   repairedInlineWidgetSchema,
 } from "./inline-widget-contract";
 import { jsonValueSchema } from "./json-contract";
-import { ProjectSettings, ProjectWorkflowColor } from "../domain/application/application-data";
+import { ProjectSettings, WorkflowStatusColor } from "../domain/application/application-data";
 import { ProjectSessionControlRequest } from "../domain/project-sessions/project-session-data";
 import {
   applicationStateSchema,
@@ -282,9 +282,9 @@ export const cakeRpcPayloadSchemas = {
           Schema.Struct({
             id: bounded(1, 256),
             name: bounded(1, 40),
-            color: ProjectWorkflowColor,
+            color: WorkflowStatusColor,
           }),
-        ).check(Schema.isMaxLength(20)),
+        ).check(Schema.isMaxLength(40)),
       }),
     ),
   }),

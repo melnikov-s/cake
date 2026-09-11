@@ -114,6 +114,18 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
     label: "Application",
     items: [
       {
+        page: "statuses",
+        label: "Session statuses",
+        description: "Global workflow labels",
+        settings: [
+          {
+            label: "Global session statuses",
+            targetId: "status-labels-title",
+            keywords: "workflow labels colors projects",
+          },
+        ],
+      },
+      {
         page: "appearance",
         label: "Appearance",
         settings: [

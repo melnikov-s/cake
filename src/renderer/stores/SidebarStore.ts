@@ -11,12 +11,14 @@ import type { CakeChatCatalogQuery } from "../../domain/cake-chats/cake-chat-dat
 import type { EmbeddedEditorSettingsStore } from "./EmbeddedEditorSettingsStore";
 import { isActiveSessionActivity, type SessionActivity } from "../lib/session-activity";
 import type { WorktreeOperationCatalog } from "../models/WorktreeOperationCatalog";
+import type { WorkflowStatus } from "../../domain/application/application-data";
 
 export interface SidebarStoreProps {
   projects: ProjectCatalogStore;
   catalog: SessionCatalogStore;
   sessions: SessionRegistryStore;
   worktreeOperations?: WorktreeOperationCatalog;
+  globalStatuses(): ReadonlyArray<WorkflowStatus>;
   cakeChat(): CakeChatCollectionStore;
   selectedConversation?(): { kind: "project-session" | "cake-chat"; sessionId: string } | undefined;
   setSessionResolved(sessionId: string, resolved: boolean): Promise<void>;
@@ -180,6 +182,7 @@ export class SidebarStore extends Store<SidebarStoreProps> {
   ) {
     const session = this.props.catalog.find(sessionId);
     const workflow = session ? this.props.projects.find(session.projectPath)?.workflow : undefined;
+    const statuses = session ? this.workflowStatuses(session.projectPath) : [];
     const assignedStatusId = workflow?.assignments.find(
       (assignment) => assignment.sessionId === sessionId,
     )?.statusId;
@@ -187,7 +190,7 @@ export class SidebarStore extends Store<SidebarStoreProps> {
       ? "draft"
       : resolved
         ? "resolved"
-        : workflow?.columns.some((status) => status.id === assignedStatusId)
+        : statuses.some((status) => status.id === assignedStatusId)
           ? (assignedStatusId ?? "active")
           : "active";
     return this.electron.showSessionContextMenu({
@@ -198,11 +201,11 @@ export class SidebarStore extends Store<SidebarStoreProps> {
       draft: session?.draft === true,
       unread,
       familyChild,
-      ...(workflow?.columns.length
+      ...(statuses.length
         ? {
             workflow: {
               currentStatus,
-              statuses: workflow.columns.map((status) => ({ ...status })),
+              statuses: statuses.map(({ id, name, color }) => ({ id, name, color })),
             },
           }
         : undefined),
@@ -284,6 +287,14 @@ export class SidebarStore extends Store<SidebarStoreProps> {
     this.sessionLimits[key] = this.sessionLimit(groupKey, resolved) + 10;
   }
 
+  private workflowStatuses(projectPath: string) {
+    const local = this.props.projects.find(projectPath)?.workflow.columns ?? [];
+    return [
+      ...this.props.globalStatuses().map((status) => ({ ...status, scope: "global" as const })),
+      ...local.map((status) => ({ ...status, scope: "project" as const })),
+    ];
+  }
+
   sessionWorkflowStatuses(sessionId: string) {
     const session = this.props.catalog.find(sessionId);
     const pendingSession = this.props.sessions.findSession(sessionId);
@@ -293,20 +304,25 @@ export class SidebarStore extends Store<SidebarStoreProps> {
         ? (this.props.catalog.projectOfManagedWorktree(pendingSession.workspacePath) ??
           pendingSession.workspacePath)
         : undefined);
-    return projectPath ? (this.props.projects.find(projectPath)?.workflow.columns ?? []) : [];
+    return projectPath ? this.workflowStatuses(projectPath) : [];
   }
 
   sessionWorkflowStatusId(sessionId: string) {
     const pendingStatusId =
       this.props.sessions.pendingSessions.conversation(sessionId)?.workflowStatusId;
-    if (this.props.sessions.pendingSessions.isTemporary(sessionId)) return pendingStatusId;
+    if (this.props.sessions.pendingSessions.isTemporary(sessionId))
+      return this.sessionWorkflowStatuses(sessionId).some((status) => status.id === pendingStatusId)
+        ? pendingStatusId
+        : undefined;
     const session = this.props.catalog.find(sessionId);
     if (!session || session.resolved) return undefined;
     const workflow = this.props.projects.find(session.projectPath)?.workflow;
     const statusId = workflow?.assignments.find(
       (assignment) => assignment.sessionId === sessionId,
     )?.statusId;
-    return workflow?.columns.some((column) => column.id === statusId) ? statusId : undefined;
+    return this.workflowStatuses(session.projectPath).some((column) => column.id === statusId)
+      ? statusId
+      : undefined;
   }
 
   sessionWorkflowStatus(sessionId: string) {

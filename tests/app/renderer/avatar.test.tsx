@@ -27,10 +27,11 @@ describe("Avatar", () => {
       <Avatar kind="session" seed="session" statusColor="violet" />,
     );
 
-    expect(markup).toContain("text-workflow-violet");
+    expect(markup).toContain('data-workflow-status-color="#9a78d7"');
+    expect(markup).toContain("data-workflow-status-color_type");
     expect(markup).toContain('fill="currentColor"');
     expect(markup).not.toContain("border");
-    expect(markup).not.toContain("bg-workflow-violet");
+    expect(markup).not.toContain("bg-current");
   });
 
   it("uses a neutral color when a Session has no workflow status", () => {

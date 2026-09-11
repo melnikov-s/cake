@@ -168,6 +168,12 @@ export function makeClient(runtime: Pick<Runtime, "execute">): Client {
         ),
     },
     projectWorkflow: {
+      mutateGlobal: (input, options) =>
+        run(
+          "projectWorkflow.mutateGlobal",
+          withClient((client) => client.projectWorkflow.mutateGlobal(input)),
+          options,
+        ),
       mutate: (input, options) =>
         run(
           "projectWorkflow.mutate",

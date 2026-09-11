@@ -13,7 +13,7 @@ const launch = (temporaryRoot: string) =>
       ...process.env,
       CAKE_ELECTRON_SMOKE: "1",
       CAKE_ELECTRON_USER_DATA: join(temporaryRoot, "user-data"),
-      CAKE_HOME: cakeHome,
+      CAKE_HOME: join(temporaryRoot, "cake-home"),
     },
   });
 
@@ -41,8 +41,12 @@ test("legacy Application storage migrates before normal renderer hydration", asy
     const document = JSON.parse(
       await readFile(join(cakeHome, "state", "application.json"), "utf8"),
     );
-    expect(document.version).toBe(1);
-    expect(document.data).toMatchObject({ projects: [], modelPresets: [] });
+    expect(document.version).toBe(2);
+    expect(document.data).toMatchObject({
+      projects: [],
+      modelPresets: [],
+      globalWorkflowStatuses: expect.any(Array),
+    });
     expect(document.data).not.toHaveProperty("schemaVersion");
   } finally {
     await application.close();

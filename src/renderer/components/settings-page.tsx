@@ -36,6 +36,7 @@ import { SettingsEmbeddedEditorSection } from "./settings-embedded-editor-sectio
 import { SettingsHotkeysSection } from "./settings-hotkeys-section";
 import { SettingsProvidersSection } from "./settings-providers-section";
 import type { SettingsStore } from "../stores/SettingsStore";
+import { StatusSettings } from "./status-settings";
 
 export const SettingsPage = observer(function SettingsPage({
   settings,
@@ -170,16 +171,20 @@ export const SettingsPage = observer(function SettingsPage({
                       ? "Execution & resources"
                       : activePage === "network"
                         ? "Network & privacy"
-                        : activePage === "appearance"
-                          ? "Appearance"
-                          : activePage === "hotkeys"
-                            ? "Hotkeys"
-                            : "VS Code"}
+                        : activePage === "statuses"
+                          ? "Session statuses"
+                          : activePage === "appearance"
+                            ? "Appearance"
+                            : activePage === "hotkeys"
+                              ? "Hotkeys"
+                              : "VS Code"}
             </h2>
             <p className="mt-1.5 text-xs text-muted-foreground">
               {activePage === "hotkeys"
                 ? "Customize Cake's application shortcuts. Changes take effect immediately."
-                : "Configure the same Pi runtime used by the CLI. Pi preferences follow you across projects."}
+                : activePage === "statuses"
+                  ? "Create the status labels available across all projects."
+                  : "Configure the same Pi runtime used by the CLI. Pi preferences follow you across projects."}
             </p>
           </div>
           {error && (
@@ -770,6 +775,15 @@ export const SettingsPage = observer(function SettingsPage({
                 )}
               </section>
             </>
+          )}
+
+          {activePage === "statuses" && (
+            <StatusSettings
+              store={settings.globalStatuses}
+              title="Global statuses"
+              description="Available in every project. Pick one from a session avatar; changes save immediately."
+              placeholder="New global status"
+            />
           )}
 
           {activePage === "providers" && (

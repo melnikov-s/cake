@@ -2,31 +2,21 @@ import { Avatar as DiceBearAvatar, Style } from "@dicebear/core";
 import gazeDefinition from "@dicebear/styles/gaze.json";
 import sliceDefinition from "@dicebear/styles/slice.json";
 import { useMemo, type HTMLAttributes } from "react";
-import type { ProjectWorkflowColor } from "../../../domain/application/application-data";
+import type { WorkflowStatusColor } from "../../../domain/application/application-data";
 import { cn } from "../../lib/utils";
+import { workflowStatusPalette } from "../../../utils/workflow-status-palette";
 
 const styles = {
   project: new Style(sliceDefinition),
   session: new Style(gazeDefinition),
 } as const;
 
-const statusColorClasses = {
-  rose: "text-workflow-rose",
-  peach: "text-workflow-peach",
-  amber: "text-workflow-amber",
-  lime: "text-workflow-lime",
-  mint: "text-workflow-mint",
-  sky: "text-workflow-sky",
-  blue: "text-workflow-blue",
-  violet: "text-workflow-violet",
-} satisfies Record<ProjectWorkflowColor, string>;
-
 const sessionBodyPlaceholder = "#abcdef";
 
 export interface AvatarProps extends HTMLAttributes<HTMLSpanElement> {
   kind: "project" | "session";
   seed: string;
-  statusColor?: ProjectWorkflowColor;
+  statusColor?: WorkflowStatusColor;
 }
 
 /** Deterministic DiceBear avatar with Cake-owned sizing, status color, and accessibility. */
@@ -57,9 +47,12 @@ export function Avatar({ kind, seed, statusColor, className, ...props }: AvatarP
       className={cn(
         "inline-grid size-5 shrink-0 place-items-center [&_svg]:size-full",
         kind === "session" &&
-          (statusColor ? statusColorClasses[statusColor] : "text-muted-foreground"),
+          (statusColor
+            ? "text-[attr(data-workflow-status-color_type(<color>))]"
+            : "text-muted-foreground"),
         className,
       )}
+      data-workflow-status-color={statusColor ? workflowStatusPalette[statusColor] : undefined}
       {...props}
     >
       {"uri" in avatar ? (

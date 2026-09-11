@@ -863,7 +863,10 @@ export class RootStore extends Store<{
 
   @child
   get projectSettingsStore(): ProjectSettingsStore {
-    return createStore(ProjectSettingsStore, { projects: this.projectCatalogStore });
+    return createStore(ProjectSettingsStore, {
+      projects: this.projectCatalogStore,
+      globalStatuses: () => this.settingsStore.globalStatuses.statuses,
+    });
   }
 
   get projectSessionCatalogQueries() {
@@ -900,6 +903,7 @@ export class RootStore extends Store<{
       catalog: this.sessionCatalogStore,
       sessions: this.sessionRegistry,
       worktreeOperations: this.props.projection.worktreeOperations,
+      globalStatuses: () => this.settingsStore.globalStatuses.statuses,
       cakeChat: () => this.cakeChatCollectionStore,
       selectedConversation: () => {
         const selection = this.appShellStore.selection;
@@ -980,6 +984,7 @@ export class RootStore extends Store<{
       sessionRegistry: this.sessionRegistry,
       operations: this.sessionOperationCoordinator,
       projects: this.projectCatalogStore,
+      globalStatuses: () => this.settingsStore.globalStatuses.statuses,
       defaultConfiguration: () => this.settingsStore.modelPresets.defaultConfiguration,
       reviews: () => this.reviewsStore,
       extensionUi: () => this.extensionUiStore,

@@ -425,7 +425,9 @@ export const moveWorkflowSession = Effect.fn("ProjectSessions.moveWorkflowSessio
       input.destination._tag === "Custom" ? input.destination.statusId : undefined;
     if (
       destinationStatusId !== undefined &&
-      !workflow.columns.some((column) => column.id === destinationStatusId)
+      ![...state.globalWorkflowStatuses, ...workflow.columns].some(
+        (column) => column.id === destinationStatusId,
+      )
     )
       return yield* error("moveWorkflowSession", "That custom status no longer exists");
     const target = { sessionId: input.sessionId, workingDirectory: input.workingDirectory };

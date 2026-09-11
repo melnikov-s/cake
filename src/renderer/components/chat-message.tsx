@@ -20,7 +20,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { IconButton } from "@/components/ui/icon-button";
 import { ChatIcon, CheckIcon, CopyIcon, ForkIcon } from "@/components/ui/icons";
 import { AnnotationItemPopover } from "./annotation-item-popover";
-import type { ProjectWorkflowColor } from "../../domain/application/application-data";
+import type { WorkflowStatusColor } from "../../domain/application/application-data";
 import type { ArtifactRecord } from "../../ipc/artifact-contract";
 import type { SourceLocation } from "../../ipc/source-location";
 import type { UiPart } from "../../ipc/session-contract";
@@ -65,7 +65,7 @@ export const ChatTextMessage = forwardRef<
     onOpenSourceLocation?(location: SourceLocation): void;
     sessionAvatar?: {
       seed: string;
-      statusColor?: ProjectWorkflowColor;
+      statusColor?: WorkflowStatusColor;
       statusName?: string;
     };
   }
@@ -284,7 +284,7 @@ export interface ChatTranscriptBehavior {
   subagents?: SubagentActivityStore;
   sessionAvatar?: {
     seed: string;
-    statusColor?: ProjectWorkflowColor;
+    statusColor?: WorkflowStatusColor;
     statusName?: string;
   };
   showSelectionContextMenu?(input: {
