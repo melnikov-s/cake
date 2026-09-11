@@ -1,5 +1,5 @@
 import { observer } from "r-state-tree/react";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverIconTrigger } from "@/components/ui/popover";
 import {
   DiffIcon,
   LogIcon,
@@ -17,11 +17,7 @@ export const WorkLogControls = observer(function WorkLogControls({ store }: { st
 
   return (
     <Popover>
-      <PopoverTrigger
-        className="flex h-7.5 shrink-0 items-center gap-1.5 rounded-lg bg-transparent px-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground [app-region:no-drag]"
-        aria-label="Work log display options"
-        title="Work log display options"
-      >
+      <PopoverIconTrigger className="w-10" tooltip="Work log display options">
         <span className="flex items-center gap-0.5">
           {viewMode === "auto" ? <SparkleIcon /> : viewMode === "diff" ? <DiffIcon /> : <LogIcon />}
           {expansion === "collapsed" ? (
@@ -32,7 +28,7 @@ export const WorkLogControls = observer(function WorkLogControls({ store }: { st
             <WorkLogFullyExpandedIcon />
           )}
         </span>
-      </PopoverTrigger>
+      </PopoverIconTrigger>
 
       <PopoverContent align="end" side="bottom" offset={6} className="w-56 p-2.5 shadow-lg">
         <section className="grid gap-1.5" aria-labelledby="work-log-view-mode-title">

@@ -5,7 +5,7 @@ import type { ProjectSessionStore } from "../stores/ProjectSessionStore";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { ChatIcon } from "./ui/icons";
-import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import { Popover, PopoverContent, PopoverIconTrigger } from "./ui/popover";
 import { StatusDot } from "./ui/status-dot";
 
 function threadTitle(thread: ReviewThread) {
@@ -30,21 +30,24 @@ export const SideChatsMenu = observer(function SideChatsMenu({
   const [open, setOpen] = useState(false);
   const threads = store.sideChatThreads;
 
+  if (threads.length === 0) return null;
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger
-        className="h-7.5 shrink-0 gap-1.5 rounded-lg px-2 text-xs font-normal"
-        variant="ghost"
-        size="sm"
-        aria-label={`Side chats, ${threads.length} open`}
+      <PopoverIconTrigger
+        className="relative"
+        tooltip={`Side chats, ${threads.length} open`}
         onClick={onOpen}
       >
         <ChatIcon size={14} />
-        <span>Side chats</span>
-        <Badge className="min-w-5 justify-center px-1" size="xs" variant="mono">
+        <Badge
+          className="absolute -right-1 -top-1 min-w-4 justify-center px-1"
+          size="xs"
+          variant="mono"
+        >
           {threads.length}
         </Badge>
-      </PopoverTrigger>
+      </PopoverIconTrigger>
       <PopoverContent
         align="end"
         className="w-[min(24rem,calc(100vw-24px))] p-2"

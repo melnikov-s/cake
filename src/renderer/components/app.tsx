@@ -400,27 +400,8 @@ export const App = observer(function App() {
             <SidebarIcon />
           </IconButton>
         )}
-        <Button
-          className="h-7.5 shrink-0 gap-1.5 rounded-lg px-2 text-xs font-normal"
-          variant="ghost"
-          size="sm"
-          aria-label="Open VS Code"
-          onClick={() => {
-            focusPane();
-            void store.openIde();
-          }}
-        >
-          <VsCodeIcon />
-          <span>VS Code</span>
-        </Button>
-        <Button
-          className={cn(
-            "h-7.5 shrink-0 gap-1.5 rounded-lg px-2 text-xs font-normal",
-            focused && store.commandPaneStore.pane === "tree" && "bg-muted text-foreground",
-          )}
-          variant="ghost"
-          size="sm"
-          aria-label="Session tree"
+        <IconButton
+          tooltip="Session tree"
           aria-pressed={focused && store.commandPaneStore.pane === "tree"}
           onClick={() => {
             focusPane();
@@ -428,25 +409,31 @@ export const App = observer(function App() {
           }}
         >
           <TreeIcon />
-          <span>Tree</span>
-        </Button>
+        </IconButton>
+        <SideChatsMenu store={paneSession} onOpen={focusPane} />
+        <div className="mx-0.5 h-4 w-px shrink-0 bg-border/60" aria-hidden="true" />
+        <WorkLogControls store={paneSession.conversationSessionStore.chatStore} />
+        <div className="mx-0.5 h-4 w-px shrink-0 bg-border/60" aria-hidden="true" />
+        <IconButton
+          tooltip="Open VS Code"
+          onClick={() => {
+            focusPane();
+            void store.openIde();
+          }}
+        >
+          <VsCodeIcon />
+        </IconButton>
         {!store.sessionRegistry.pendingSessions.isTemporary(paneSession.sessionId) && (
-          <Button
-            className="h-7.5 shrink-0 gap-1.5 rounded-lg px-2 text-xs font-normal"
-            variant="ghost"
-            size="sm"
-            aria-label="Open workspace changes in VS Code"
+          <IconButton
+            tooltip="Open workspace changes in VS Code"
             onClick={() => {
               focusPane();
               void store.openWorkspaceChanges();
             }}
           >
             <ChangesIcon />
-            <span>Changes</span>
-          </Button>
+          </IconButton>
         )}
-        <SideChatsMenu store={paneSession} onOpen={focusPane} />
-        <WorkLogControls store={paneSession.conversationSessionStore.chatStore} />
         <IconButton
           tooltip={`Terminal (${terminal.toggleAcceleratorHint})`}
           disabled={!terminal.available}
@@ -458,6 +445,7 @@ export const App = observer(function App() {
         >
           <TerminalIcon />
         </IconButton>
+        <div className="mx-0.5 h-4 w-px shrink-0 bg-border/60" aria-hidden="true" />
       </>
     );
   };

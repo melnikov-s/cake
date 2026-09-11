@@ -19,6 +19,17 @@ afterEach(() => {
 });
 
 describe("SideChatsMenu", () => {
+  it("stays hidden when there are no open chats", () => {
+    const store = { sideChatThreads: [] } as unknown as ProjectSessionStore;
+    const container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+
+    act(() => root!.render(<SideChatsMenu store={store} onOpen={vi.fn()} />));
+
+    expect(container.childElementCount).toBe(0);
+  });
+
   it("lists open chats and opens the selected thread", () => {
     const thread = ReviewThread.create({
       id: "thread-1",
