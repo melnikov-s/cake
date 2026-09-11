@@ -1,4 +1,4 @@
-import { useState, type CSSProperties, type ReactNode } from "react";
+import { useState, type ComponentProps, type CSSProperties, type ReactNode } from "react";
 import { observer } from "r-state-tree/react";
 import { cn } from "../lib/utils";
 import type { ChatTranscriptBehavior } from "./chat-message";
@@ -22,6 +22,7 @@ export const IdeWorkspace = observer(function IdeWorkspace({
   reviews,
   projectChat,
   projectComposerHeader,
+  projectComposerLeadingAccessory,
   projectSidebar,
   projectSidebarVisible,
   projectSidebarWidth,
@@ -34,6 +35,7 @@ export const IdeWorkspace = observer(function IdeWorkspace({
   reviews: ReviewsStore;
   projectChat: ChatStore;
   projectComposerHeader?: ReactNode;
+  projectComposerLeadingAccessory?: ComponentProps<typeof Chat>["composerLeadingAccessory"];
   projectSidebar: ReactNode;
   projectSidebarVisible: boolean;
   projectSidebarWidth: number;
@@ -154,6 +156,7 @@ export const IdeWorkspace = observer(function IdeWorkspace({
                     store={chat}
                     transcriptBehavior={transcriptBehavior}
                     composerHeader={contextualChat ? undefined : projectComposerHeader}
+                    composerLeadingAccessory={projectComposerLeadingAccessory}
                   />
                 </div>
               </aside>

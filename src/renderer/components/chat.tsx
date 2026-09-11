@@ -212,11 +212,12 @@ export const Chat = observer(function Chat({
     <div
       ref={composerDockRef}
       data-slot="composer-dock"
-      className={
+      className={cn(
+        "@container/composer-dock",
         embedded
           ? "min-w-0"
-          : "absolute inset-x-0 bottom-0 z-10 w-full max-w-full min-w-0 pointer-events-none bg-gradient-to-b from-transparent to-background/28 px-6 pb-4 pt-5 max-[620px]:px-2.5"
-      }
+          : "absolute inset-x-0 bottom-0 z-10 w-full max-w-full min-w-0 pointer-events-none bg-gradient-to-b from-transparent to-background/28 px-6 pb-4 pt-5 max-[620px]:px-2.5",
+      )}
     >
       <ChatComposer
         className={embedded ? "chat-embedded-workbench-composer" : undefined}

@@ -413,6 +413,10 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
     await expect(page.locator(".transcript").getByText(/Phase 4 — Model references/)).toBeVisible();
 
     const composer = page.getByRole("combobox", { name: "Message", exact: true });
+    const composerAvatar = page.locator(
+      'aside [data-slot="composer-leading-accessory"] [data-slot="avatar"][data-animated="true"]',
+    );
+    await expect(composerAvatar).toBeVisible();
     await composer.fill("/toolcompact");
     await page.getByRole("button", { name: "Send" }).click();
     await expect(composer).toHaveValue("");
@@ -458,9 +462,14 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
     await page.mouse.up();
     await expect(resizeHandle).toHaveAttribute("aria-valuenow", "380");
     await expect(page.locator("aside")).toHaveCSS("width", "380px");
+    await expect(composerAvatar).toBeHidden();
     await resizeHandle.focus();
     await resizeHandle.press("ArrowLeft");
     await expect(resizeHandle).toHaveAttribute("aria-valuenow", "396");
+    await expect(composerAvatar).toBeHidden();
+    await resizeHandle.press("ArrowLeft");
+    await expect(resizeHandle).toHaveAttribute("aria-valuenow", "412");
+    await expect(composerAvatar).toBeVisible();
     const drawerInput = page.getByRole("combobox", { name: "Message" });
     await expect(drawerInput).toHaveValue("Keep this IDE draft");
     await drawerInput.focus();

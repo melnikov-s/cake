@@ -443,6 +443,27 @@ export const App = observer(function App() {
       </>
     );
   };
+  const projectComposerLeadingAccessory = (paneSession: NonNullable<typeof session>) => {
+    const summary = root.sessionCatalogStore.find(paneSession.sessionId);
+    return settings.appearance.sessionAvatarsEnabled && !summary?.resolved
+      ? {
+          visible: true,
+          content: (
+            <AvatarStatusPicker
+              animated
+              seed={sidebar.sessionAvatarSeed(paneSession.sessionId)}
+              statuses={sidebar.sessionWorkflowStatuses(paneSession.sessionId)}
+              value={sidebar.sessionWorkflowStatusId(paneSession.sessionId)}
+              disabled={store.sessionManagementStore.isStatusPending(paneSession.sessionId)}
+              className="size-10 [&_[data-slot=avatar]]:size-9"
+              onChange={(statusId) => {
+                void store.sessionManagementStore.setSessionStatus(paneSession.sessionId, statusId);
+              }}
+            />
+          ),
+        }
+      : undefined;
+  };
   const projectChatProps = (paneSession: NonNullable<typeof session>) => {
     const temporary = store.sessionRegistry.pendingSessions.isTemporary(paneSession.sessionId);
     const draft = store.sessionRegistry.pendingSessions.isDraft(paneSession.sessionId);
@@ -465,29 +486,6 @@ export const App = observer(function App() {
       : (paneSession.conversationSessionStore.composerStore.errorDetails ??
         paneSession.conversationSessionStore.configurationStore.errorDetails ??
         paneSession.artifactInteractionStore.errorDetails);
-    const summary = root.sessionCatalogStore.find(paneSession.sessionId);
-    const composerLeadingAccessory =
-      settings.appearance.sessionAvatarsEnabled && !summary?.resolved
-        ? {
-            visible: true,
-            content: (
-              <AvatarStatusPicker
-                animated
-                seed={sidebar.sessionAvatarSeed(paneSession.sessionId)}
-                statuses={sidebar.sessionWorkflowStatuses(paneSession.sessionId)}
-                value={sidebar.sessionWorkflowStatusId(paneSession.sessionId)}
-                disabled={store.sessionManagementStore.isStatusPending(paneSession.sessionId)}
-                className="size-10 [&_[data-slot=avatar]]:size-9"
-                onChange={(statusId) => {
-                  void store.sessionManagementStore.setSessionStatus(
-                    paneSession.sessionId,
-                    statusId,
-                  );
-                }}
-              />
-            ),
-          }
-        : undefined;
     return {
       transcriptBehavior: projectTranscriptBehaviorFor(paneSession),
       empty: paneSession.hydrated ? (
@@ -513,7 +511,7 @@ export const App = observer(function App() {
         />
       ),
       error: errorMessage ? { message: errorMessage, details: errorDetails } : undefined,
-      composerLeadingAccessory,
+      composerLeadingAccessory: projectComposerLeadingAccessory(paneSession),
       composerHeader: (
         <WorktreePill
           creation={store.worktreeCreationStore}
@@ -560,6 +558,7 @@ export const App = observer(function App() {
             onProjectSidebarWidthChange={setSidebarWidth}
             projectChat={session.conversationSessionStore.chatStore}
             projectComposerHeader={projectComposerHeader}
+            projectComposerLeadingAccessory={projectComposerLeadingAccessory(session)}
             sessionTitle={store.sessionTitle}
             terminalDock={
               terminal.docked ? (
