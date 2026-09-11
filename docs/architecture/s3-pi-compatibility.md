@@ -1,7 +1,7 @@
 # S3 Pi ecosystem compatibility contract
 
 Cake loads extensions, tools, providers, commands, skills, prompt templates,
-and packages through Pi 0.84.0. `PiSessions`, `PiModels`, and
+and packages through Pi 0.85.1. `PiSessions`, `PiModels`, and
 `PiAgentResources` beneath `src/services/pi` are the only application Services
 that read Pi resource and extension types. They normalize discovery and runtime
 state into Cake-owned Effect Schemas before Effect RPC.
@@ -56,6 +56,6 @@ final acquisition releases it.
 
 The compatibility suite loads a real local Pi package containing a skill,
 prompt, extension command, custom provider, and MCP-shaped headless tool. It
-also loads Pi's shipped subagent example unchanged. Pi 0.84.0 does not ship an
+also loads Pi's shipped subagent example unchanged. Pi 0.85.1 does not ship an
 MCP extension fixture, so the suite exercises the relevant headless tool shape
 without claiming compatibility with an unavailable concrete package.

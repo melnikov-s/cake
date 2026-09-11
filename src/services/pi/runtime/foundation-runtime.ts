@@ -7,6 +7,7 @@ import {
   type ExtensionUIContext,
   type InlineExtension,
 } from "@earendil-works/pi-coding-agent";
+import { createUnavailableTheme } from "./extension-compatibility";
 
 type FoundationRuntimeEvent =
   | { type: "text-delta"; text: string }
@@ -74,9 +75,7 @@ function createFoundationUiContext(
     addAutocompleteProvider: noop,
     setEditorComponent: noop,
     getEditorComponent: () => undefined,
-    get theme() {
-      return unsupported("theme");
-    },
+    theme: createUnavailableTheme(),
     getAllThemes: () => [],
     getTheme: () => undefined,
     setTheme: () => ({ success: false, error: "Theme selection is not supported in S0" }),

@@ -80,7 +80,7 @@ function maximumObjectDepth(value: unknown) {
   return maximum;
 }
 
-describe("Pi 0.84.0 foundation contract", () => {
+describe("Pi 0.85.1 foundation contract", () => {
   it("enables the Cake gateway for project sessions", async () => {
     const directory = await createTemporaryDirectory();
     const runtime = await createCakeRuntime({
@@ -1705,7 +1705,7 @@ describe("Pi 0.84.0 foundation contract", () => {
 
   it("loads Pi's bundled changelog through its public package directory", () => {
     expect(loadPiChangelog()).toContain("# Changelog");
-    expect(loadPiChangelog()).toContain("0.84.0");
+    expect(loadPiChangelog()).toContain("0.85.1");
   });
 
   it("uses Pi's fuzzy @ provider for project file suggestions", async () => {
@@ -1739,7 +1739,7 @@ describe("Pi 0.84.0 foundation contract", () => {
     });
     runtimes.push(runtime);
 
-    expect(piRuntimeVersion).toBe("0.84.0");
+    expect(piRuntimeVersion).toBe("0.85.1");
     expect(runtime.sessionFile).toBeUndefined();
     expect(runtime.sessionId).toBeTruthy();
 

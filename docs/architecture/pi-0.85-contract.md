@@ -1,6 +1,6 @@
-# Pi 0.84.0 Service contract
+# Pi 0.85.1 Service contract
 
-Cake pins `@earendil-works/pi-coding-agent` 0.84.0. All ordinary application
+Cake pins `@earendil-works/pi-coding-agent` 0.85.1. All ordinary application
 imports of Pi packages live beneath `src/services/pi`. `PiLive` provides
 `PiSessions`, `PiModels`, and `PiAgentResources`; Cake domain operations and RPC
 never expose raw Pi objects.

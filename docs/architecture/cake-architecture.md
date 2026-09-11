@@ -625,7 +625,7 @@ privileges.
 - `docs/architecture/effect-architecture.md`: Effect Services, domain, RPC,
   Streams, Scopes, storage, renderer state, and source boundaries.
 - `docs/architecture/cake-storage.md`: persistent storage ownership.
-- `docs/architecture/pi-0.84-contract.md`: pinned Pi adapter assumptions.
+- `docs/architecture/pi-0.85-contract.md`: pinned Pi adapter assumptions.
 - `docs/architecture/s1-session-contract.md`: project-session lifecycle and
   renderer projection contract.
 - `docs/architecture/s3-pi-compatibility.md`: Pi resource and extension UI

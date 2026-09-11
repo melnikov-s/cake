@@ -29,9 +29,9 @@
   "dependencies": {
     "@dicebear/core": "10.7.0",
     "@dicebear/styles": "10.6.0",
-    "@earendil-works/pi-ai": "0.84.0",
-    "@earendil-works/pi-coding-agent": "0.84.0",
-    "@earendil-works/pi-tui": "0.84.0",
+    "@earendil-works/pi-ai": "0.85.1",
+    "@earendil-works/pi-coding-agent": "0.85.1",
+    "@earendil-works/pi-tui": "0.85.1",
     "@effect/platform-node-shared": "4.0.0-rc.111",
     "@preact/signals-react": "3.10.3",
     "@shikijs/langs": "3.23.0",
@@ -99,13 +99,12 @@
       "protobufjs"
     ],
     "minimumReleaseAgeExclude": [
-      "@earendil-works/pi-agent-core@0.84.0",
-      "@earendil-works/pi-ai@0.84.0",
-      "@earendil-works/pi-client@0.84.0",
-      "@earendil-works/pi-coding-agent@0.84.0",
-      "@earendil-works/pi-protocol@0.84.0",
-      "@earendil-works/pi-telemetry@0.84.0",
-      "@earendil-works/pi-tui@0.84.0"
+      "@earendil-works/chord@0.85.1",
+      "@earendil-works/pi-agent-core@0.85.1",
+      "@earendil-works/pi-ai@0.85.1",
+      "@earendil-works/pi-coding-agent@0.85.1",
+      "@earendil-works/pi-telemetry@0.85.1",
+      "@earendil-works/pi-tui@0.85.1"
     ]
   },
   "productName": "Cake"

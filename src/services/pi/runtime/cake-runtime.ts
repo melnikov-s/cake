@@ -71,7 +71,7 @@ export {
   projectSessionCreateInputSchema,
 } from "./cake-runtime-capabilities";
 
-export const piRuntimeVersion = "0.84.0" as const;
+export const piRuntimeVersion = "0.85.1" as const;
 
 export type CakeRuntimeEvent =
   | { type: "snapshot"; requestId?: string; snapshot: SessionSnapshot }

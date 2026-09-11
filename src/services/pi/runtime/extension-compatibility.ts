@@ -1,4 +1,4 @@
-import type { ExtensionUIContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionUIContext, Theme } from "@earendil-works/pi-coding-agent";
 import { createHash } from "node:crypto";
 import type { ExtensionUiEvent, ExtensionUiIntent } from "../../../ipc/session-contract";
 import type { RuntimeUiRequest } from "./runtime-ui-request";
@@ -127,10 +127,12 @@ export function createCakeExtensionUiContext(options: {
       degraded("setEditorComponent", "terminal editor components cannot replace the web composer");
     },
     getEditorComponent: () => undefined,
-    get theme() {
-      degraded("theme", "Pi TUI themes are not Cake renderer themes");
-      return unsupported("theme");
-    },
+    theme: createUnavailableTheme(() =>
+      degraded(
+        "theme",
+        "Pi TUI themes are not Cake renderer themes; styling renders as plain text",
+      ),
+    ),
     getAllThemes: () => [],
     getTheme(name) {
       degraded("getTheme", `Pi TUI theme ${name} is unavailable`);
@@ -147,8 +149,49 @@ export function createCakeExtensionUiContext(options: {
   };
 }
 
-function unsupported(name: string): never {
-  throw new Error(`Pi extension UI method ${name} is not supported by the Cake adapter`);
+const THEME_TEXT_STYLES = new Set([
+  "fg",
+  "bg",
+  "bold",
+  "italic",
+  "underline",
+  "inverse",
+  "strikethrough",
+]);
+const THEME_ANSI_GETTERS = new Set(["getFgAnsi", "getBgAnsi"]);
+
+/**
+ * A `Theme` for a host with no terminal. Reading it costs nothing: Pi's
+ * extension runner spreads the UI context (`{ ...ui }`) when it binds, so the
+ * member must not throw on access. Using it is where degradation is reported,
+ * once: styling methods return their text unchanged, ANSI lookups return no
+ * escape sequence, and `name` identifies the host.
+ */
+export function createUnavailableTheme(onUse?: () => void): Theme {
+  let reported = false;
+  const used = () => {
+    if (reported) return;
+    reported = true;
+    onUse?.();
+  };
+  return new Proxy({} as Theme, {
+    get(_target, property) {
+      if (typeof property !== "string") return undefined;
+      if (THEME_TEXT_STYLES.has(property)) {
+        used();
+        return (...args: unknown[]) => String(args.at(-1) ?? "");
+      }
+      if (THEME_ANSI_GETTERS.has(property)) {
+        used();
+        return () => "";
+      }
+      if (property === "name") {
+        used();
+        return "cake";
+      }
+      return undefined;
+    },
+  });
 }
 
 function boundedProjectionKey(value: string, maximum = 256) {
