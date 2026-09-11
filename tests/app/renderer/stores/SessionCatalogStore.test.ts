@@ -1,9 +1,10 @@
-import { applySnapshot, createStore, mount, toSnapshot } from "r-state-tree";
+import { applySnapshot, createStore, effect, mount, toSnapshot } from "r-state-tree";
 import { describe, expect, it } from "vitest";
 import type { WorktreeRecord } from "../../../../src/domain/worktrees/managed-worktree-data";
 import { SessionCatalog } from "../../../../src/renderer/models/SessionCatalog";
 import { WorktreeCatalog } from "../../../../src/renderer/models/WorktreeCatalog";
 import { SessionCatalogStore } from "../../../../src/renderer/stores/SessionCatalogStore";
+import { applySessionCatalogGroupUpdate } from "../../../../src/renderer/reducers/CatalogReducer";
 
 const worktree = (state: WorktreeRecord["state"] = "active"): WorktreeRecord => ({
   projectPath: "/project",
@@ -58,6 +59,78 @@ describe("SessionCatalogStore indexes", () => {
       "newer",
       "older",
     ]);
+    store[Symbol.dispose]();
+  });
+
+  it("does not invalidate one Project group for another Project's metadata update", () => {
+    const model = SessionCatalog.create({
+      sessions: [
+        session("project-session", "2026-01-02T00:00:00.000Z"),
+        {
+          ...session("other-session", "2026-01-01T00:00:00.000Z"),
+          projectPath: "/other",
+          projectName: "other",
+          workingDirectory: "/other",
+        },
+      ],
+    });
+    const store = mount(
+      createStore(SessionCatalogStore, { model, worktrees: WorktreeCatalog.create() }),
+    );
+    let otherProjectDerivations = 0;
+    const stop = effect(() => {
+      store.projectSessions("/other").map((current) => [current.sessionId, current.title]);
+      otherProjectDerivations += 1;
+    });
+
+    applySessionCatalogGroupUpdate(
+      model,
+      { projectPath: "/project", resolved: false },
+      {
+        _tag: "Event",
+        revision: 2,
+        event: {
+          _tag: "Upserted",
+          session: {
+            ...session("project-session", "2026-01-03T00:00:00.000Z"),
+            title: "Updated",
+          },
+        },
+      },
+    );
+    applySessionCatalogGroupUpdate(
+      model,
+      { projectPath: "/project", resolved: false },
+      {
+        _tag: "Event",
+        revision: 3,
+        event: {
+          _tag: "StatusChanged",
+          sessionId: "project-session",
+          resolved: true,
+          unread: false,
+        },
+      },
+    );
+    applySessionCatalogGroupUpdate(
+      model,
+      { projectPath: "/project", resolved: true },
+      {
+        _tag: "Event",
+        revision: 2,
+        event: {
+          _tag: "Upserted",
+          session: {
+            ...session("project-session", "2026-01-03T00:00:00.000Z"),
+            title: "Updated",
+            resolved: true,
+          },
+        },
+      },
+    );
+
+    expect(otherProjectDerivations).toBe(1);
+    stop();
     store[Symbol.dispose]();
   });
 

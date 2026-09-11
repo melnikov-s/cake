@@ -988,37 +988,42 @@ describe("Project Sessions domain", () => {
     );
   });
 
-  it.effect("moves a resolved session without restarting the active metadata stream", () => {
-    return Effect.gen(function* () {
-      const updates = yield* projectSessionMetadata.observeCatalog({
-        projectPath: "/project",
-        resolved: false,
-      });
-      const ready = yield* Deferred.make<void>();
-      const fiber = yield* updates.pipe(
-        Stream.tap((update) =>
-          update.revision === 1 ? Deferred.succeed(ready, undefined) : Effect.void,
-        ),
-        Stream.take(2),
-        Stream.runCollect,
-        Effect.forkChild,
-      );
-      yield* Deferred.await(ready);
-      yield* projectSessionLifecycle.resolve({
-        sessionId: "session-1",
-        workingDirectory: "/project",
-      });
-      const observed = Array.from(yield* Fiber.join(fiber));
-      assert.deepEqual(observed[1], {
-        _tag: "Event",
-        revision: 2,
-        event: {
-          _tag: "Removed",
+  it.effect(
+    "moves a resolved session in place without restarting the active metadata stream",
+    () => {
+      return Effect.gen(function* () {
+        const updates = yield* projectSessionMetadata.observeCatalog({
+          projectPath: "/project",
+          resolved: false,
+        });
+        const ready = yield* Deferred.make<void>();
+        const fiber = yield* updates.pipe(
+          Stream.tap((update) =>
+            update.revision === 1 ? Deferred.succeed(ready, undefined) : Effect.void,
+          ),
+          Stream.take(2),
+          Stream.runCollect,
+          Effect.forkChild,
+        );
+        yield* Deferred.await(ready);
+        yield* projectSessionLifecycle.resolve({
           sessionId: "session-1",
-        },
-      });
-    }).pipe(Effect.provide(makeLayer()));
-  });
+          workingDirectory: "/project",
+        });
+        const observed = Array.from(yield* Fiber.join(fiber));
+        assert.deepEqual(observed[1], {
+          _tag: "Event",
+          revision: 2,
+          event: {
+            _tag: "StatusChanged",
+            sessionId: "session-1",
+            resolved: true,
+            unread: false,
+          },
+        });
+      }).pipe(Effect.provide(makeLayer()));
+    },
+  );
 
   it.effect("streams Project and Working Directory metadata above PiSessions", () =>
     Effect.gen(function* () {
@@ -1070,6 +1075,38 @@ describe("Project Sessions domain", () => {
           },
           { onCreateRuntime: () => runtimeConstructions++ },
         ),
+      ),
+    );
+  });
+
+  it.effect("announces a prompted handoff destination only once", () => {
+    const changes: SessionCatalogChange[] = [];
+    return Effect.gen(function* () {
+      yield* projectSessionContinuations.handoff({
+        target: { sessionId: "session-1", workingDirectory: "/project" },
+        entryId: "assistant-entry",
+        prompt: "Continue",
+      });
+
+      assert.deepEqual(
+        changes.filter(
+          (change) => change._tag === "ProjectSessionChanged" && change.sessionId === "handoff",
+        ),
+        [
+          {
+            _tag: "ProjectSessionChanged",
+            sessionId: "handoff",
+            projectPath: "/project",
+            workingDirectory: "/project",
+            resolved: false,
+          },
+        ],
+      );
+    }).pipe(
+      Effect.provide(
+        makeLayer(defaultApplicationState(), {
+          onCatalogChange: (change) => changes.push(change),
+        }),
       ),
     );
   });
@@ -1903,11 +1940,13 @@ describe("Project Sessions domain", () => {
     );
   });
 
-  it.effect("activates an unresolved session without constructing a Pi runtime", () => {
+  it.effect("opens an unresolved session without catalog churn or a Pi runtime", () => {
     let runtimeConstructions = 0;
+    const changes: SessionCatalogChange[] = [];
     return Effect.gen(function* () {
       yield* projectSessionMetadata.open({ sessionId: "session-1" });
       assert.equal(runtimeConstructions, 0);
+      assert.deepEqual(changes, []);
     }).pipe(
       Effect.provide(
         makeLayer(
@@ -1922,7 +1961,10 @@ describe("Project Sessions domain", () => {
               },
             ],
           },
-          { onCreateRuntime: () => runtimeConstructions++ },
+          {
+            onCreateRuntime: () => runtimeConstructions++,
+            onCatalogChange: (change) => changes.push(change),
+          },
         ),
       ),
     );

@@ -190,19 +190,22 @@ export const handoff = Effect.fn("ProjectSessions.handoff")(function* (input: {
   );
   if (inheritFastMode)
     yield* setSessionFastMode(continuation.result.result.sessionId, true).pipe(asError("handoff"));
-  if (input.prompt?.trim())
+  const continuationPrompt = input.prompt?.trim();
+  if (continuationPrompt)
     yield* prompt({
       sessionId: continuation.result.result.sessionId,
       workingDirectory: continuation.result.destination.workingDirectory,
-      text: input.prompt.trim(),
+      text: continuationPrompt,
       attachments: [],
       renderUserMessageAsMarkdown: false,
     });
   if (input.resolveSource && !continuation.sourceWasResolved) yield* resolve(input.target);
-  yield* publishCatalogChange(
-    continuation.result.result.sessionId,
-    continuation.result.destination,
-    false,
-  );
+  // prompt already announced the new summary after writing its first message.
+  if (!continuationPrompt)
+    yield* publishCatalogChange(
+      continuation.result.result.sessionId,
+      continuation.result.destination,
+      false,
+    );
   return { sessionId: continuation.result.result.sessionId };
 });

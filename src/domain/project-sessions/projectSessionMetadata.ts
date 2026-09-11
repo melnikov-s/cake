@@ -382,7 +382,12 @@ const catalogEventForChange = Effect.fn("ProjectSessions.catalogEventForChange")
   if (change._tag === "ProjectSessionStatusChanged") {
     if (change.projectPath !== query.projectPath) return undefined;
     if (change.resolved !== query.resolved)
-      return { _tag: "Removed", sessionId: change.sessionId } as const;
+      return {
+        _tag: "StatusChanged" as const,
+        sessionId: change.sessionId,
+        resolved: change.resolved,
+        unread: change.unread,
+      };
     if (query.resolved) {
       const archive = yield* SessionArchiveStorage;
       const family = yield* Effect.flatMap(SessionFamilyStorage, (storage) =>
@@ -575,11 +580,6 @@ export const open = Effect.fn("ProjectSessions.open")(function* (target: Project
         message: `Cake could not find Project Session ${target.sessionId}`,
       });
   }
-  // Selection starts observation in the renderer's Model observer. Opening
-  // validates durable transcript state, but resolved sessions remain archived
-  // and are projected as read-only previews until an explicit restore or prompt.
-  if (namespace)
-    yield* publishCatalogChange(target.sessionId, location, namespace === "resolved").pipe(
-      asError("open"),
-    );
+  // Selection starts observation in the renderer's Model observer. Opening only
+  // validates durable transcript state; catalog mutations publish their own changes.
 });

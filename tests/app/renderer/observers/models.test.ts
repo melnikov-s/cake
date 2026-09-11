@@ -507,7 +507,7 @@ describe("createModelObserver", () => {
     cakeChats[Symbol.dispose]();
   });
 
-  it("updates and reorders one resolved Session summary", async () => {
+  it("updates one resolved Session summary without structurally reordering the catalog", async () => {
     const sessionUpdates: SessionCatalogUpdate[] = [
       {
         _tag: "Snapshot",
@@ -571,7 +571,7 @@ describe("createModelObserver", () => {
     });
 
     await vi.waitFor(() => expect(sessions.find("newer")?.resolved).toBe(true));
-    expect(sessions.sessions.map((session) => session.sessionId)).toEqual(["older", "newer"]);
+    expect(sessions.sessions.map((session) => session.sessionId)).toEqual(["newer", "older"]);
 
     observer.stop();
     projects[Symbol.dispose]();

@@ -234,7 +234,7 @@ it("does not invalidate the catalog for an unchanged session upsert", () => {
   catalog[Symbol.dispose]();
 });
 
-it("upserts a batch in place and preserves ordering and other lanes", () => {
+it("upserts a batch in place without reordering unrelated summaries", () => {
   const record = (sessionId: string, modifiedAt: string) => ({
     sessionId,
     modifiedAt,
@@ -268,7 +268,7 @@ it("upserts a batch in place and preserves ordering and other lanes", () => {
   expect(catalog.sessions).toBe(sessions);
   expect(catalog.find("one")).toBe(one);
   expect(catalog.find("resolved")).toBe(resolved);
-  expect(catalog.sessions.map((session) => session.sessionId)).toEqual(["two", "one", "resolved"]);
+  expect(catalog.sessions.map((session) => session.sessionId)).toEqual(["one", "resolved", "two"]);
   applySessionCatalogGroupUpdate(catalog, query, {
     _tag: "Event",
     revision: 2,
@@ -279,14 +279,14 @@ it("upserts a batch in place and preserves ordering and other lanes", () => {
       unread: true,
     },
   });
-  expect(catalog.sessions.map((session) => session.sessionId)).toEqual(["one", "two", "resolved"]);
+  expect(catalog.sessions.map((session) => session.sessionId)).toEqual(["one", "resolved", "two"]);
   expect(catalog.find("two")?.unread).toBe(true);
   applySessionCatalogGroupUpdate(catalog, query, {
     _tag: "Event",
     revision: 3,
     event: { _tag: "RemovedBatch", sessionIds: ["one", "two"] },
   });
-  expect(catalog.sessions.map((session) => session.sessionId)).toEqual(["two", "resolved"]);
+  expect(catalog.sessions.map((session) => session.sessionId)).toEqual(["resolved", "two"]);
   catalog[Symbol.dispose]();
 });
 

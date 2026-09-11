@@ -1,4 +1,4 @@
-import { Store, computed, observable } from "r-state-tree";
+import { Store, computed, observable, type ReadonlySignal } from "r-state-tree";
 import type { SessionCatalog } from "../models/SessionCatalog";
 import type { SessionSummary } from "../models/SessionSummary";
 import type { WorktreeCatalog } from "../models/WorktreeCatalog";
@@ -33,6 +33,11 @@ export class SessionCatalogStore extends Store<{
 }> {
   /** Bridges newly-created worktrees only until their first authoritative session projection. */
   private readonly pendingManagedWorktrees = observable(new Map<string, WorktreeRecord>());
+  /** Keeps catalog derivation scoped to the Project whose sidebar group consumes it. */
+  private readonly projectSessionGroups = new Map<
+    string,
+    ReadonlySignal<ReadonlyArray<SessionSummary | PendingSessionSummary>>
+  >();
 
   constructor(props: SessionCatalogStore["props"]) {
     super(props);
@@ -60,7 +65,12 @@ export class SessionCatalogStore extends Store<{
 
   @computed
   private get sessionIndex(): ReadonlyMap<string, SessionSummary | PendingSessionSummary> {
-    return new Map(this.sessions.map((session) => [session.sessionId, session]));
+    const index = new Map<string, SessionSummary | PendingSessionSummary>();
+    for (const session of this.props.model.sessions) index.set(session.sessionId, session);
+    for (const session of this.props.pendingSessions?.() ?? []) {
+      if (!index.has(session.sessionId)) index.set(session.sessionId, session);
+    }
+    return index;
   }
 
   find(sessionId: string) {
@@ -71,22 +81,26 @@ export class SessionCatalogStore extends Store<{
     return this.sessionIndex;
   }
 
-  @computed
-  get sessionsByProject(): ReadonlyMap<
-    string,
-    ReadonlyArray<SessionSummary | PendingSessionSummary>
-  > {
-    const grouped = new Map<string, Array<SessionSummary | PendingSessionSummary>>();
-    for (const session of this.sessions) {
-      const sessions = grouped.get(session.projectPath) ?? [];
-      sessions.push(session);
-      grouped.set(session.projectPath, sessions);
-    }
-    return grouped;
-  }
-
   projectSessions(projectPath: string) {
-    return this.sessionsByProject.get(projectPath) ?? [];
+    let group = this.projectSessionGroups.get(projectPath);
+    if (!group) {
+      group = computed(() => {
+        const authoritative = this.props.model.sessions.filter(
+          (session) => session.projectPath === projectPath,
+        );
+        const authoritativeIds = new Set(authoritative.map((session) => session.sessionId));
+        const pending = (this.props.pendingSessions?.() ?? []).filter(
+          (session) =>
+            session.projectPath === projectPath && !authoritativeIds.has(session.sessionId),
+        );
+        return [...authoritative, ...pending].sort((left, right) => {
+          if (left.resolved !== right.resolved) return left.resolved ? 1 : -1;
+          return compareSessionSummariesForSidebar(left, right);
+        });
+      });
+      this.projectSessionGroups.set(projectPath, group);
+    }
+    return group.value;
   }
 
   hasMoreResolvedSessions(projectPath: string) {
