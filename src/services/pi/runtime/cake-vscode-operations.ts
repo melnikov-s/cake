@@ -3,6 +3,7 @@ import type { JsonObject, JsonValue } from "../../../ipc/json-contract";
 import type { SourceLocation, SourcePosition } from "../../../ipc/source-location";
 import type { VscodeActionResult } from "../../vscode/VsCodeServer";
 import type { CakeOperationDefinition } from "./cake-operation-registry";
+import { createCakeVscodeDebugOperations } from "./cake-vscode-debug-operations";
 
 const coordinate = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 10_000_001 }));
 const vscodeOpenInputSchema = Schema.Struct({
@@ -170,5 +171,6 @@ export function createCakeVscodeOperations(control: VscodeControl): CakeOperatio
         return { ok: true, result: result.value };
       },
     },
+    ...createCakeVscodeDebugOperations(control),
   ];
 }

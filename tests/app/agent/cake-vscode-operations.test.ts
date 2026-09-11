@@ -13,10 +13,12 @@ function registry() {
       value: location,
     }),
   );
-  const runScript = vi.fn(async (_source: string, input: JsonValue) => ({
-    status: "completed" as const,
-    value: input,
-  }));
+  const runScript = vi.fn(
+    async (_source: string, input: JsonValue): Promise<VscodeActionResult<JsonValue>> => ({
+      status: "completed",
+      value: input,
+    }),
+  );
   return {
     enter,
     open,
@@ -79,6 +81,9 @@ describe("Cake VS Code operations", () => {
     expect(operations.topicHelp("vscode")).toContain("vscode.enter");
     expect(operations.topicHelp("vscode")).toContain("vscode.open");
     expect(operations.topicHelp("vscode")).toContain("vscode.script.run");
+    expect(operations.topicHelp("vscode")).toContain("vscode.debug.start");
+    expect(operations.topicHelp("vscode")).toContain("vscode.debug.stack");
+    expect(operations.topicHelp("vscode")).toContain("vscode.debug.evaluate");
     await operations.invoke(
       { command: "vscode.open", input: { path: "src/main.ts" } },
       {
@@ -151,6 +156,82 @@ describe("Cake VS Code operations", () => {
     expect(result.details).toMatchObject({
       result: { ok: true, result: { layout: "split" } },
     });
+  });
+
+  it.each([
+    ["vscode.debug.start", { configuration: "Debug Current Test" }, "startDebugging"],
+    ["vscode.debug.status", {}, "vscode.debug.breakpoints"],
+    ["vscode.debug.setBreakpoint", { path: "src/main.ts", line: 42 }, "addBreakpoints"],
+    ["vscode.debug.clearBreakpoints", {}, "removeBreakpoints"],
+    ["vscode.debug.stack", { threadId: 1, levels: 20 }, 'customRequest("stackTrace"'],
+    ["vscode.debug.scopes", { frameId: 7 }, 'customRequest("scopes"'],
+    ["vscode.debug.variables", { variablesReference: 12 }, 'customRequest("variables"'],
+    [
+      "vscode.debug.evaluate",
+      { expression: "user.id", frameId: 7, context: "watch" },
+      'customRequest("evaluate"',
+    ],
+    ["vscode.debug.control", { action: "next", threadId: 1 }, "input.action"],
+    ["vscode.debug.stop", {}, "stopDebugging"],
+  ])(
+    "runs the first-class debugger operation %s through a fixed script",
+    async (command, input, marker) => {
+      const { runScript, operations } = registry();
+
+      const result = await operations.invoke(
+        { command, input },
+        {
+          signal: new AbortController().signal,
+          toolCallId: `tool-${command}`,
+          runtime: {},
+        },
+      );
+
+      expect(runScript).toHaveBeenCalledWith(
+        expect.stringContaining(marker),
+        input,
+        expect.any(AbortSignal),
+      );
+      expect(result.details).toMatchObject({ result: input });
+    },
+  );
+
+  it("returns the VS Code mode recovery for debugger operations", async () => {
+    const { runScript, operations } = registry();
+    runScript.mockResolvedValueOnce({ status: "mode-required" });
+
+    const result = await operations.invoke(
+      { command: "vscode.debug.status" },
+      {
+        signal: new AbortController().signal,
+        toolCallId: "tool-debug-mode-required",
+        runtime: {},
+      },
+    );
+
+    expect(result.details).toMatchObject({
+      result: { ok: false, error: { code: "VSCODE_MODE_REQUIRED", retryable: true } },
+    });
+  });
+
+  it("bounds debugger reads and validates breakpoint selectors", async () => {
+    const { runScript, operations } = registry();
+    const context = {
+      signal: new AbortController().signal,
+      toolCallId: "tool-debug-validation",
+      runtime: {},
+    };
+
+    await expect(
+      operations.invoke(
+        { command: "vscode.debug.variables", input: { variablesReference: 1, count: 501 } },
+        context,
+      ),
+    ).rejects.toThrow();
+    await expect(
+      operations.invoke({ command: "vscode.debug.clearBreakpoints", input: { line: 10 } }, context),
+    ).rejects.toThrow("line requires path");
+    expect(runScript).not.toHaveBeenCalled();
   });
 
   it("rejects incomplete and reversed ranges before opening VS Code", async () => {
