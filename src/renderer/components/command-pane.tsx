@@ -88,7 +88,7 @@ export const CommandPane = observer(function CommandPane({
               id: entry.piId,
               parentId: entry.parentPiId,
             }))}
-            onNavigate={(id) => void commandPane.navigateTo(id)}
+            onNavigate={(id) => commandPane.requestNavigation(id)}
             onFork={(id) => void store.sessionContinuationStore.forkAt(id)}
           />
         ) : (

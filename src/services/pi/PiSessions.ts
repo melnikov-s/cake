@@ -155,7 +155,10 @@ export interface PiSessionHandle {
     authType: "api_key" | "oauth",
   ) => Effect.Effect<void, PiSessionError>;
   readonly logout: (provider: string) => Effect.Effect<void, PiSessionError>;
-  readonly navigate: (entryId: string) => Effect.Effect<void, PiSessionError>;
+  readonly navigate: (
+    entryId: string,
+    options: { readonly summarize: boolean; readonly customInstructions?: string },
+  ) => Effect.Effect<void, PiSessionError>;
   readonly compact: (instructions?: string) => Effect.Effect<void, PiSessionError>;
   readonly rename: (name: string) => Effect.Effect<void, PiSessionError>;
   readonly fork: (
@@ -650,7 +653,8 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
           login: (provider, authType) =>
             call("login", (runtime) => runtime.login(provider, authType)),
           logout: (provider) => call("logout", (runtime) => runtime.logout(provider)),
-          navigate: (entryId) => call("navigate", (runtime) => runtime.navigate(entryId)),
+          navigate: (entryId, options) =>
+            call("navigate", (runtime) => runtime.navigate(entryId, options)),
           compact: (instructions) => call("compact", (runtime) => runtime.compact(instructions)),
           rename: (name) => call("rename", (runtime) => runtime.rename(name)),
           fork: (entryId, title) => call("fork", (runtime) => runtime.fork(entryId, title)),

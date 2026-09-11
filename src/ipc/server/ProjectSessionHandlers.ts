@@ -92,8 +92,11 @@ export const projectSessionHandlers = ProjectSessionRpc.of({
   "projectSessions.setFastMode": ({ enabled, ...target }) =>
     projectSessionOperations.setFastMode(target, enabled),
   "projectSessions.getChangelog": (target) => projectSessionOperations.getChangelog(target),
-  "projectSessions.navigate": ({ entryId, ...target }) =>
-    projectSessionOperations.navigate(target, entryId),
+  "projectSessions.navigate": ({ entryId, summarize, customInstructions, ...target }) => {
+    const options = { summarize };
+    if (customInstructions !== undefined) Object.assign(options, { customInstructions });
+    return projectSessionOperations.navigate(target, entryId, options);
+  },
   "projectSessions.setPiSetting": ({ update, ...target }) =>
     projectSessionOperations.setPiSetting(target, update),
   "projectSessions.reload": (target) => projectSessionOperations.reload(target),

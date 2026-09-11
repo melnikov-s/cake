@@ -36,6 +36,7 @@ import { SideChatsMenu } from "@/components/side-chats-menu";
 import { Sidebar } from "@/components/sidebar";
 import { ErrorNotice } from "@/components/error-notice";
 import { SessionContinuationDialog } from "@/components/session-continuation-dialog";
+import { TreeNavigationDialog } from "@/components/tree-navigation-dialog";
 import { ConversationSplitLayout } from "@/components/conversation-split-layout";
 import { ArtifactsPanel } from "@/components/artifacts-panel";
 import { UiDialog } from "@/components/ui-dialog";
@@ -216,6 +217,12 @@ export const App = observer(function App() {
           root.sessionLayoutStore.paneForSession(paneSession.sessionId)!.paneId,
         );
         void store.sessionContinuationStore.forkAt(entryId);
+      },
+      onTree: (entryId: string) => {
+        root.focusSessionPane(
+          root.sessionLayoutStore.paneForSession(paneSession.sessionId)!.paneId,
+        );
+        store.commandPaneStore.requestNavigation(entryId);
       },
       openSourceLocation: (location: SourceLocation) => {
         root.focusSessionPane(
@@ -572,6 +579,7 @@ export const App = observer(function App() {
           <QuakeTerminal store={terminal} retirement={root.workingDirectoryRetirementStore} />
         )}
         <SessionContinuationDialog store={store.sessionContinuationStore} />
+        <TreeNavigationDialog store={store.commandPaneStore} />
       </>
     );
   const shellStyle: CSSProperties & Record<"--sidebar-width" | "--right-pane-width", string> = {
@@ -848,6 +856,7 @@ export const App = observer(function App() {
         </DialogBackdrop>
       )}
       <SessionContinuationDialog store={store.sessionContinuationStore} />
+      <TreeNavigationDialog store={store.commandPaneStore} />
       {extensionUi.request && (
         <DialogBackdrop>
           <UiDialog

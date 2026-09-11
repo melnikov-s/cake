@@ -72,6 +72,7 @@ interface TranscriptHarness {
   error?: string;
   errorDetails?: string;
   forkAt(entryId: string): void | Promise<void>;
+  treeAt(entryId: string): void | Promise<void>;
 }
 
 function storeWith(
@@ -86,6 +87,7 @@ function storeWith(
     errorDetails,
     isStreaming,
     forkAt: vi.fn(),
+    treeAt: vi.fn(),
   };
 }
 
@@ -291,6 +293,9 @@ function TestTranscript({ store, sessionId }: { store: TranscriptHarness; sessio
       behavior={{
         onFork: (entryId) => {
           void store.forkAt(entryId);
+        },
+        onTree: (entryId) => {
+          void store.treeAt(entryId);
         },
       }}
       empty={<div />}
@@ -1192,7 +1197,7 @@ describe("Transcript scrolling", () => {
     expect(container.querySelector('[data-slot="loading-state"]')).toBeNull();
   });
 
-  it("offers copy and fork actions on completed assistant messages only", async () => {
+  it("offers copy, fork, and tree actions on completed messages", async () => {
     const writeText = vi.fn(async () => undefined);
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
     const parts: UiPart[] = [
@@ -1236,6 +1241,20 @@ describe("Transcript scrolling", () => {
         .click(),
     );
     expect(store.forkAt).toHaveBeenCalledWith("assistant-entry");
+
+    act(() =>
+      container
+        .querySelector<HTMLButtonElement>('[aria-label="Continue from response in session tree"]')!
+        .click(),
+    );
+    expect(store.treeAt).toHaveBeenCalledWith("assistant-entry");
+
+    act(() =>
+      container
+        .querySelector<HTMLButtonElement>('[aria-label="Continue from message in session tree"]')!
+        .click(),
+    );
+    expect(store.treeAt).toHaveBeenCalledWith("user-entry");
   });
 
   it("captures a rendered Markdown selection as a stable message anchor", () => {

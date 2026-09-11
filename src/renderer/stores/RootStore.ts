@@ -570,6 +570,10 @@ export class RootStore extends Store<{
     this.projectWorkbenchStore.activeSession?.conversationSessionStore.composerStore.draftStore.requestFocus();
   }
   dismissTopSecondarySurface() {
+    if (this.projectWorkbenchStore.commandPaneStore.navigationPrompt) {
+      this.projectWorkbenchStore.commandPaneStore.cancelNavigation();
+      return;
+    }
     if (this.projectWorkbenchStore.sessionContinuationStore.prompt) {
       this.projectWorkbenchStore.sessionContinuationStore.cancelPrompt();
       return;

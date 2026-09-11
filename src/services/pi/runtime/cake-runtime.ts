@@ -246,7 +246,10 @@ export interface CakeRuntime {
   rename(name: string): Promise<void>;
   fork(entryId: string, title: string): Promise<{ sessionId: string; sessionFile: string }>;
   toolCompact(entryId: string): Promise<{ sessionId: string; sessionFile: string }>;
-  navigate(entryId: string): Promise<void>;
+  navigate(
+    entryId: string,
+    options: { summarize: boolean; customInstructions?: string },
+  ): Promise<void>;
   dispose(): void | Promise<void>;
 }
 
@@ -668,8 +671,8 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     },
     fork: continuations.fork,
     toolCompact: continuations.toolCompact,
-    async navigate(entryId) {
-      const result = await session.navigateTree(entryId, { summarize: false });
+    async navigate(entryId, options) {
+      const result = await session.navigateTree(entryId, options);
       if (result.cancelled) throw new Error("Session tree navigation was cancelled");
       await emitSnapshot();
     },

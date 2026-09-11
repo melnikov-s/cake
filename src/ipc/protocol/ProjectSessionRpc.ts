@@ -120,7 +120,12 @@ export const ProjectSessionRpc = RpcGroup.make(
     error: ProjectSessionError,
   }),
   Rpc.make("projectSessions.navigate", {
-    payload: { ...ProjectSessionTarget.fields, entryId: Schema.String },
+    payload: {
+      ...ProjectSessionTarget.fields,
+      entryId: Schema.String,
+      summarize: Schema.Boolean,
+      customInstructions: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(16_384))),
+    },
     error: ProjectSessionError,
   }),
   Rpc.make("projectSessions.setPiSetting", {

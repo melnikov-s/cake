@@ -4,6 +4,13 @@ import { ActiveProjectSessionContext } from "./context/ActiveProjectSessionConte
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 
 export type CommandPane = "changelog" | "tree" | "resources";
+export type TreeNavigationSummaryMode = "none" | "summary" | "custom";
+
+export interface TreeNavigationPrompt {
+  entryId: string;
+  summaryMode: TreeNavigationSummaryMode;
+  customInstructions: string;
+}
 
 export interface CommandPaneStoreProps {
   operations: SessionOperationCoordinatorStore;
@@ -18,6 +25,7 @@ export class CommandPaneStore extends Store<CommandPaneStoreProps> {
   pane: CommandPane | undefined;
   changelogMarkdown = "";
   changelogLoading = false;
+  navigationPrompt: TreeNavigationPrompt | undefined;
   private navigationRevision = 0;
 
   get client() {
@@ -45,6 +53,42 @@ export class CommandPaneStore extends Store<CommandPaneStoreProps> {
 
   dismiss() {
     this.pane = undefined;
+    this.navigationPrompt = undefined;
+  }
+
+  requestNavigation(entryId: string) {
+    if (!this.activeSession || this.signal.aborted || this.navigationPrompt) return false;
+    this.pane = undefined;
+    this.navigationPrompt = {
+      entryId,
+      summaryMode: "none",
+      customInstructions: "",
+    };
+    return true;
+  }
+
+  selectNavigationSummary(summaryMode: TreeNavigationSummaryMode) {
+    if (this.navigationPrompt) this.navigationPrompt = { ...this.navigationPrompt, summaryMode };
+  }
+
+  setNavigationInstructions(customInstructions: string) {
+    if (this.navigationPrompt)
+      this.navigationPrompt = { ...this.navigationPrompt, customInstructions };
+  }
+
+  cancelNavigation() {
+    this.navigationPrompt = undefined;
+  }
+
+  async confirmNavigation() {
+    const prompt = this.navigationPrompt;
+    if (!prompt) return false;
+    const customInstructions = prompt.customInstructions.trim();
+    if (prompt.summaryMode === "custom" && !customInstructions) return false;
+    this.navigationPrompt = undefined;
+    const options = { summarize: prompt.summaryMode !== "none" };
+    if (prompt.summaryMode === "custom") Object.assign(options, { customInstructions });
+    return this.navigateTo(prompt.entryId, options);
   }
 
   async refreshChangelog() {
@@ -66,23 +110,29 @@ export class CommandPaneStore extends Store<CommandPaneStoreProps> {
   }
 
   /** Navigation dispatch is latest-wins for draft restoration. */
-  async navigateTo(entryId: string) {
+  private async navigateTo(
+    entryId: string,
+    options: { summarize: boolean; customInstructions?: string },
+  ) {
     const context = this.activeSession;
-    if (!context || this.signal.aborted) return;
+    if (!context || this.signal.aborted) return false;
     const revision = ++this.navigationRevision;
     const editorText = this.props.editorText(entryId);
-    this.close();
     const operationId = this.props.operations.start("project-workbench");
     try {
       await this.client.projectSessions.navigate(
-        { sessionId: context.sessionId, entryId },
+        { sessionId: context.sessionId, entryId, ...options },
         { signal: this.signal },
       );
-      if (!this.signal.aborted && revision === this.navigationRevision && editorText !== undefined)
-        this.props.setDraft(editorText);
+      if (!this.signal.aborted && revision === this.navigationRevision) {
+        if (editorText !== undefined) this.props.setDraft(editorText);
+        this.props.requestComposerFocus();
+      }
+      return !this.signal.aborted;
     } catch (error) {
       if (!this.signal.aborted && revision === this.navigationRevision)
         this.props.reportError(error);
+      return false;
     } finally {
       this.props.operations.finish(operationId);
     }

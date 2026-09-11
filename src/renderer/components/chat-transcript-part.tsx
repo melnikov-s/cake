@@ -6,7 +6,7 @@ import { Source } from "@/components/ai-elements/source";
 import { Tool, ToolRunTimer } from "@/components/ai-elements/tool";
 import { AnnotationSummary } from "@/components/annotation-summary";
 import { IconButton } from "@/components/ui/icon-button";
-import { EditIcon, MarkdownIcon } from "@/components/ui/icons";
+import { EditIcon, MarkdownIcon, TreeIcon } from "@/components/ui/icons";
 import { ArtifactHost } from "@/components/artifact-host";
 import { CompactionMessage } from "@/components/compaction-message";
 import { ImagePreview } from "@/components/image-preview";
@@ -85,18 +85,26 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
                 <MarkdownIcon />
               </IconButton>
             )}
+          {part.entryId && behavior.onTree && !part.draft && (
+            <IconButton
+              className="pointer-events-none opacity-0 transition-opacity group-hover/msg:pointer-events-auto group-hover/msg:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
+              tooltip="Continue here in session tree"
+              ariaLabel="Continue from message in session tree"
+              onClick={() => behavior.onTree!(part.entryId!)}
+            >
+              <TreeIcon />
+            </IconButton>
+          )}
           {part.entryId === behavior.store.lastEditableUserEntryId &&
             behavior.store.canEditLastUserMessage && (
-              <>
-                <IconButton
-                  className="pointer-events-none opacity-0 transition-opacity group-hover/msg:pointer-events-auto group-hover/msg:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
-                  tooltip="Edit message"
-                  ariaLabel="Edit latest prompt"
-                  onClick={() => behavior.store.editLastUserMessage(part.entryId!)}
-                >
-                  <EditIcon />
-                </IconButton>
-              </>
+              <IconButton
+                className="pointer-events-none opacity-0 transition-opacity group-hover/msg:pointer-events-auto group-hover/msg:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
+                tooltip="Edit message"
+                ariaLabel="Edit latest prompt"
+                onClick={() => behavior.store.editLastUserMessage(part.entryId!)}
+              >
+                <EditIcon />
+              </IconButton>
             )}
         </div>
       </ChatTextMessage>
@@ -105,7 +113,17 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
     return (
       <div className="group/msg grid gap-2">
         <SkillMessage part={part} onOpenSourceLocation={behavior.openSourceLocation} />
-        <div className="ml-auto min-h-[30px]">
+        <div className="ml-auto flex min-h-[30px] items-center gap-2">
+          {part.entryId && behavior.onTree && (
+            <IconButton
+              className="pointer-events-none opacity-0 transition-opacity group-hover/msg:pointer-events-auto group-hover/msg:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
+              tooltip="Continue here in session tree"
+              ariaLabel="Continue from message in session tree"
+              onClick={() => behavior.onTree!(part.entryId!)}
+            >
+              <TreeIcon />
+            </IconButton>
+          )}
           {part.entryId === behavior.store.lastEditableUserEntryId &&
             behavior.store.canEditLastUserMessage && (
               <IconButton

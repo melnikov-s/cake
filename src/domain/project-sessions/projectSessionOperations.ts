@@ -437,10 +437,11 @@ export const getChangelog = Effect.fn("ProjectSessions.getChangelog")(function* 
 export const navigate = Effect.fn("ProjectSessions.navigate")(function* (
   target: ProjectSessionTarget,
   entryId: string,
+  options: { readonly summarize: boolean; readonly customInstructions?: string },
 ) {
-  yield* useConversation(acquireExistingTarget(target), (handle) => handle.navigate(entryId)).pipe(
-    asError("navigate"),
-  );
+  yield* useConversation(acquireExistingTarget(target), (handle) =>
+    handle.navigate(entryId, options),
+  ).pipe(asError("navigate"));
 });
 
 export const setPiSetting = Effect.fn("ProjectSessions.setPiSetting")(function* (

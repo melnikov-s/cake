@@ -18,7 +18,7 @@ import { FullscreenSurface } from "@/components/fullscreen-surface";
 import { FullscreenButton } from "@/components/ui/fullscreen-button";
 import { Avatar } from "@/components/ui/avatar";
 import { IconButton } from "@/components/ui/icon-button";
-import { ChatIcon, CheckIcon, CopyIcon, ForkIcon } from "@/components/ui/icons";
+import { ChatIcon, CheckIcon, CopyIcon, ForkIcon, TreeIcon } from "@/components/ui/icons";
 import { AnnotationItemPopover } from "./annotation-item-popover";
 import type { WorkflowStatusColor } from "../../domain/application/application-data";
 import type { ArtifactRecord } from "../../ipc/artifact-contract";
@@ -274,6 +274,7 @@ export interface ChatTranscriptBehavior {
   /** Project root used to present workspace files without machine-specific prefixes. */
   workspacePath?: string;
   onFork?(entryId: string): void;
+  onTree?(entryId: string): void;
   onOpenReviewRun?(threadId?: string): void;
   /** Opens a structured workspace source location in Cake's embedded VS Code IDE. */
   openSourceLocation?(location: SourceLocation): void;
@@ -534,6 +535,15 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
               onClick={() => behavior.onFork!(part.entryId!)}
             >
               <ForkIcon />
+            </IconButton>
+          )}
+          {part.entryId && behavior.onTree && (
+            <IconButton
+              tooltip="Continue here in session tree"
+              ariaLabel="Continue from response in session tree"
+              onClick={() => behavior.onTree!(part.entryId!)}
+            >
+              <TreeIcon />
             </IconButton>
           )}
         </div>

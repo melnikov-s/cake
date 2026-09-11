@@ -2563,7 +2563,7 @@ describe("S1 Pi runtime", () => {
     expect((await second.snapshot()).tree[0]).toMatchObject({ id: "user-1", active: true });
     await second.rename("Named session");
     await vi.waitFor(() => expect(titles.get(second.sessionId)).toBe("Named session"));
-    await second.navigate("assistant-tools");
+    await second.navigate("assistant-tools", { summarize: false });
     expect((await second.snapshot()).tree[0]).toMatchObject({ id: "user-1", active: true });
     const fork = await second.fork("assistant-tools", "First session (1)");
     expect(fork.sessionId).not.toBe(second.sessionId);

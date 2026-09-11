@@ -401,7 +401,11 @@ export interface CakeIpcClientService {
       target: ProjectSessionTarget,
     ) => Effect.Effect<string, ProjectSessionError | TransportError>;
     readonly navigate: (
-      input: ProjectSessionTarget & { readonly entryId: string },
+      input: ProjectSessionTarget & {
+        readonly entryId: string;
+        readonly summarize: boolean;
+        readonly customInstructions?: string;
+      },
     ) => Effect.Effect<void, ProjectSessionError | TransportError>;
     readonly setPiSetting: (
       input: ProjectSessionTarget & { readonly update: PiSettingUpdate },

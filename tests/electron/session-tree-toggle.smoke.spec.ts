@@ -6,7 +6,7 @@ import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/ses
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
-test("the session header tree button toggles the session tree pane", async () => {
+test("opens tree navigation from the session header and individual messages", async () => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-tree-toggle-smoke-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
@@ -112,9 +112,34 @@ test("the session header tree button toggles the session tree pane", async () =>
     await expect(treeButton).toHaveAttribute("aria-pressed", "true");
 
     // Close: the pane disappears and the button returns to its unpressed state.
-    await treeButton.click();
+    await page.keyboard.press("Escape");
     await expect(paneTitle).toBeHidden();
     await expect(treeButton).toHaveAttribute("aria-pressed", "false");
+
+    // Completed user and assistant messages can both open Pi tree navigation.
+    const assistantTree = page.getByRole("button", {
+      name: "Continue from response in session tree",
+    });
+    const userTree = page.getByRole("button", { name: "Continue from message in session tree" });
+    await expect(assistantTree).toBeVisible();
+    await expect(userTree).toBeVisible();
+
+    await assistantTree.click({ force: true });
+    const dialog = page.getByRole("dialog", { name: "Continue from this message" });
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole("button", { name: "Summarize with custom focus" }).click();
+    const summaryFocus = dialog.getByRole("textbox", { name: "Summary focus" });
+    await expect(summaryFocus).toBeFocused();
+    await summaryFocus.pressSequentially("Keep the implementation decisions");
+    await expect(summaryFocus).toHaveValue("Keep the implementation decisions");
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+    await expect(dialog).toBeHidden();
+
+    await userTree.click({ force: true });
+    await dialog.getByRole("button", { name: "Continue here" }).click();
+    await expect(dialog).toBeHidden();
+    await expect(composer).toHaveValue("Hello");
+    await expect(composer).toBeFocused();
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });
