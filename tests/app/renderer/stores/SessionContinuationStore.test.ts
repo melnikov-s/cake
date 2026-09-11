@@ -21,6 +21,7 @@ function setup(options?: {
   const openSession = vi.fn(async () => undefined);
   const fork = vi.fn(async () => ({ sessionId: "forked" }));
   const handoff = vi.fn(async () => ({ sessionId: "handed-off" }));
+  const prompt = vi.fn(async () => "turn-1");
   const { root, subject } = mountWithClient(
     createStore(SessionContinuationStore, {
       operations,
@@ -36,10 +37,10 @@ function setup(options?: {
       openSession,
       reportError: vi.fn(),
     }),
-    { projectSessions: { fork, handoff } } as unknown as Client,
+    { projectSessions: { fork, handoff, prompt } } as unknown as Client,
   );
   disposables.push(root, operations);
-  return { store: subject, createWorktree, openSession, fork, handoff };
+  return { store: subject, createWorktree, openSession, fork, handoff, prompt };
 }
 
 describe("SessionContinuationStore", () => {
@@ -65,7 +66,7 @@ describe("SessionContinuationStore", () => {
   });
 
   it("hands off into a child worktree and can resolve its parent", async () => {
-    const { store, createWorktree, openSession, handoff } = setup();
+    const { store, createWorktree, openSession, handoff, prompt } = setup();
     await store.handoffAt("assistant-entry", "Continue cleanly", true);
     store.selectDestination("branch-worktree");
     store.setWorktreeName("continued-child");
@@ -80,14 +81,23 @@ describe("SessionContinuationStore", () => {
         entryId: "assistant-entry",
         resolveSource: true,
         destinationWorkingDirectory: "/created-worktree",
-        prompt: "Continue cleanly",
       },
       expect.any(Object),
     );
     expect(openSession).toHaveBeenCalledWith("handed-off", "/created-worktree");
+    expect(prompt).toHaveBeenCalledWith(
+      {
+        sessionId: "handed-off",
+        workingDirectory: "/created-worktree",
+        text: "Continue cleanly",
+        attachments: [],
+        renderUserMessageAsMarkdown: false,
+      },
+      expect.any(Object),
+    );
   });
 
-  it("shows preparation while a worktree setup script and fork are running", async () => {
+  it("does not expose a full-screen preparation state while worktree creation is running", async () => {
     let finishWorktree: ((path: string) => void) | undefined;
     const worktree = new Promise<string>((resolve) => {
       finishWorktree = resolve;
@@ -99,14 +109,13 @@ describe("SessionContinuationStore", () => {
     const confirmation = store.confirmPrompt();
 
     expect(store.prompt).toBeUndefined();
-    expect(store.preparation).toMatchObject({ kind: "fork" });
+    expect("preparation" in store).toBe(false);
     expect(fork).not.toHaveBeenCalled();
 
     finishWorktree?.("/created-worktree");
     await confirmation;
 
     expect(openSession).toHaveBeenCalledWith("forked", "/created-worktree");
-    expect(store.preparation).toBeUndefined();
   });
 
   it("does not select child-worktree branching outside a managed worktree", () => {

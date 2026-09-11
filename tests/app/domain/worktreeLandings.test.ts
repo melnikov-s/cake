@@ -74,6 +74,9 @@ function services(options: {
     records: () => Effect.succeed(options.records?.() ?? [record]),
     observe: () => Stream.never,
     create: () => Effect.fail(failure("create")),
+    createWithBackgroundSetup: () => Effect.fail(failure("createWithBackgroundSetup")),
+    awaitSetup: () => Effect.void,
+    hasDeferredSetup: () => Effect.succeed(false),
     status: () => Effect.sync(options.status),
     setResolveAfterLanding: (_worktreePath, enabled) =>
       Effect.sync(() => options.events.push(`resolve-intent:${enabled}`)),

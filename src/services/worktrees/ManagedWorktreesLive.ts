@@ -1,4 +1,4 @@
-import { Effect, Layer, PubSub, Stream } from "effect";
+import { Deferred, Effect, HashMap, Layer, Option, PubSub, Ref, Stream } from "effect";
 import type { ChildProcessSpawner } from "effect/unstable/process";
 import type { ManagedWorktreeCatalogUpdate } from "../../domain/worktrees/managed-worktree-data";
 import type { Git } from "../git/Git";
@@ -20,7 +20,11 @@ export const ManagedWorktreesLive: Layer.Layer<
   ManagedWorktrees,
   Effect.gen(function* () {
     const engine = yield* makeManagedWorktreeEngineAdapter;
+    const scope = yield* Effect.scope;
     const changes = yield* PubSub.bounded<ManagedWorktreeCatalogUpdate>({ capacity: 1_024 });
+    const deferredSetups = yield* Ref.make(
+      HashMap.empty<string, Deferred.Deferred<void, ManagedWorktreeError>>(),
+    );
     const attempt = <A>(operation: string, execute: (signal: AbortSignal) => Promise<A>) =>
       Effect.tryPromise({
         try: execute,
@@ -63,6 +67,46 @@ export const ManagedWorktreesLive: Layer.Layer<
           return record;
         },
       ),
+      createWithBackgroundSetup: Effect.fn("ManagedWorktrees.createWithBackgroundSetup")(
+        function* (projectPath, baseWorktreePath, worktreeName, settings) {
+          const record = yield* attempt("ManagedWorktrees.createWithBackgroundSetup", () =>
+            engine.createWithoutSetup(projectPath, baseWorktreePath, worktreeName, settings),
+          );
+          const completion = yield* Deferred.make<void, ManagedWorktreeError>();
+          yield* Ref.update(deferredSetups, HashMap.set(record.worktreePath, completion));
+          yield* Effect.forkIn(
+            attempt("ManagedWorktrees.setup", () =>
+              engine.setup(record.worktreePath, settings),
+            ).pipe(
+              Effect.matchEffect({
+                onSuccess: () =>
+                  Deferred.succeed(completion, undefined).pipe(
+                    Effect.andThen(Ref.update(deferredSetups, HashMap.remove(record.worktreePath))),
+                    Effect.asVoid,
+                  ),
+                onFailure: (error) =>
+                  Deferred.fail(completion, error).pipe(
+                    Effect.andThen(Effect.logError("Managed Worktree setup failed", error)),
+                    Effect.asVoid,
+                  ),
+              }),
+            ),
+            scope,
+          );
+          yield* publish(record.worktreePath);
+          return record;
+        },
+      ),
+      awaitSetup: Effect.fn("ManagedWorktrees.awaitSetup")(function* (worktreePath) {
+        const completion = HashMap.get(yield* Ref.get(deferredSetups), worktreePath);
+        return yield* Option.match(completion, {
+          onNone: () => Effect.void,
+          onSome: Deferred.await,
+        });
+      }),
+      hasDeferredSetup: Effect.fn("ManagedWorktrees.hasDeferredSetup")(function* (worktreePath) {
+        return HashMap.has(yield* Ref.get(deferredSetups), worktreePath);
+      }),
       status: Effect.fn("ManagedWorktrees.status")(function* (worktreePath) {
         const status = yield* attempt("ManagedWorktrees.status", () => engine.status(worktreePath));
         yield* publish(worktreePath);

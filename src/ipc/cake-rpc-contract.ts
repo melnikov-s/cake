@@ -427,6 +427,7 @@ export const cakeRpcPayloadSchemas = {
       Schema.String.check(Schema.isPattern(/^[a-z0-9][a-z0-9-]{0,62}$/)),
     ),
     firstUserMessage: Schema.optional(bounded(1, 262_144)),
+    backgroundSetup: Schema.optional(Schema.Boolean),
   }),
   "get-worktree-landing": Schema.Struct({
     workspacePath: stringMax(4_096),

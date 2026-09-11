@@ -235,6 +235,7 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
               baseWorktreePath: input.baseWorktreePath,
               worktreeName: input.worktreeName,
               firstUserMessage: input.firstUserMessage,
+              backgroundSetup: input.backgroundSetup,
             }),
           options,
         ).then((response) => response.record),

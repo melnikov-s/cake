@@ -16,6 +16,7 @@ export const managedWorktreeHandlers = ManagedWorktreeRpc.of({
         baseWorktreePath: request.baseWorktreePath,
         worktreeName: request.worktreeName,
         firstUserMessage: request.firstUserMessage,
+        backgroundSetup: request.backgroundSetup,
       }),
     ).pipe(Effect.map((record) => ({ requestId: request.requestId, record }))),
   "managedWorktrees.get-worktree-landing": (request) =>

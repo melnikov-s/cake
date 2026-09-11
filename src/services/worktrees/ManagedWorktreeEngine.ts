@@ -89,20 +89,48 @@ export class ManagedWorktreeEngine implements WorktreeLandingCoordinator {
     worktreeName?: string,
     settings?: ProjectSettings,
   ): Promise<WorktreeRecord> {
+    return this.createWithSetupPolicy(projectPath, baseWorktreePath, worktreeName, settings, true);
+  }
+
+  /** Creates and registers the checkout before its optional setup script runs. */
+  async createWithoutSetup(
+    projectPath: string,
+    baseWorktreePath?: string,
+    worktreeName?: string,
+    settings?: ProjectSettings,
+  ): Promise<WorktreeRecord> {
+    return this.createWithSetupPolicy(projectPath, baseWorktreePath, worktreeName, settings, false);
+  }
+
+  private async createWithSetupPolicy(
+    projectPath: string,
+    baseWorktreePath: string | undefined,
+    worktreeName: string | undefined,
+    settings: ProjectSettings | undefined,
+    runSetup: boolean,
+  ) {
     await this.load();
     const registeredProjectPath = resolveNormalized(projectPath);
     const root = await realpath(await this.repositoryRoot(projectPath));
     return this.withRepositoryLock(root, () =>
-      this.createRecord(root, registeredProjectPath, baseWorktreePath, worktreeName, settings),
+      this.createRecord(
+        root,
+        registeredProjectPath,
+        baseWorktreePath,
+        worktreeName,
+        settings,
+        runSetup,
+      ),
     );
   }
 
   private async createRecord(
     root: string,
     registeredProjectPath: string,
-    baseWorktreePath?: string,
-    worktreeName?: string,
-    settings?: ProjectSettings,
+    baseWorktreePath: string | undefined,
+    worktreeName: string | undefined,
+    settings: ProjectSettings | undefined,
+    runSetup: boolean,
   ): Promise<WorktreeRecord> {
     const parent = baseWorktreePath
       ? this.allRecords.find(
@@ -154,13 +182,7 @@ export class ManagedWorktreeEngine implements WorktreeLandingCoordinator {
             `The worktree creation command checked out ${createdBranch}, not ${branch}`,
           );
       } else await this.git(root, "worktree", "add", "-b", branch, worktreePath, baseCommit);
-      if (settings?.worktreeSetupCommands.trim()) {
-        if (!this.commandRunner) throw new Error("Worktree setup command execution is unavailable");
-        await this.commandRunner(
-          worktreePath,
-          renderWorktreeCommand(settings.worktreeSetupCommands, variables),
-        );
-      }
+      if (runSetup) await this.runSetupCommand(worktreePath, settings, variables);
     } catch (error) {
       await this.git(root, "worktree", "remove", "--force", worktreePath).catch(() => undefined);
       await this.git(root, "branch", "-D", branch).catch(() => undefined);
@@ -181,6 +203,40 @@ export class ManagedWorktreeEngine implements WorktreeLandingCoordinator {
     this.allRecords = [...this.allRecords, record];
     await this.persist();
     return record;
+  }
+
+  /** Runs setup after a deferred checkout has already been registered and exposed. */
+  async setup(worktreePath: string, settings?: ProjectSettings): Promise<void> {
+    await this.load();
+    const normalized = resolveNormalized(worktreePath);
+    const record = this.allRecords.find(
+      (candidate) =>
+        (candidate.state ?? "active") === "active" &&
+        resolveNormalized(candidate.worktreePath) === normalized,
+    );
+    if (!record) throw new Error("Cake could not find that worktree");
+    await this.runSetupCommand(record.worktreePath, settings, {
+      projectPath: record.projectPath,
+      worktreePath: record.worktreePath,
+      worktreeName: record.branch.replace(/^agent\//, ""),
+      branchName: record.branch,
+      baseBranch: record.baseBranch,
+      baseCommit:
+        record.baseCommit ?? (await this.git(record.worktreePath, "rev-parse", "HEAD")).trim(),
+    });
+  }
+
+  private async runSetupCommand(
+    worktreePath: string,
+    settings: ProjectSettings | undefined,
+    variables: Parameters<typeof renderWorktreeCommand>[1],
+  ) {
+    if (!settings?.worktreeSetupCommands.trim()) return;
+    if (!this.commandRunner) throw new Error("Worktree setup command execution is unavailable");
+    await this.commandRunner(
+      worktreePath,
+      renderWorktreeCommand(settings.worktreeSetupCommands, variables),
+    );
   }
 
   async status(worktreePath: string): Promise<WorktreeStatus | undefined> {

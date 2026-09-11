@@ -6,6 +6,7 @@ import { type GitRunner } from "../../../../src/services/git/Git";
 import { makeTestWorktreeStorageRepository } from "../../../helpers/worktree-storage-repository";
 import { ManagedWorktreeEngine } from "../../../../src/services/worktrees/ManagedWorktreeEngine";
 import type { WorktreeRecord } from "../../../../src/domain/worktrees/managed-worktree-data";
+import { defaultProjectSettings } from "../../../../src/domain/application/application-data";
 
 const directories: string[] = [];
 
@@ -106,6 +107,47 @@ async function setup(mutate: (state: GitState) => void = () => undefined): Promi
 }
 
 describe("WorktreeService decision logic", () => {
+  it("can expose a checkout before running its setup script", async () => {
+    const repository = await mkdtemp(join(tmpdir(), "cake-worktree-background-"));
+    directories.push(repository);
+    const project = join(repository, "project");
+    await mkdir(project, { recursive: true });
+    const paths: { root: string; worktree?: string; project?: string } = { root: repository };
+    const { runner } = fakeGit(
+      {
+        repoBranch: "main",
+        targetBranch: "main",
+        head: "c-head",
+        targetHead: "c-target",
+        ahead: "0",
+        dirty: "",
+        targetDirty: "",
+        unmerged: "",
+        rebasing: false,
+      },
+      paths,
+    );
+    const commands: Array<{ workingDirectory: string; script: string }> = [];
+    const service = new ManagedWorktreeEngine(
+      makeTestWorktreeStorageRepository(join(repository, "worktrees.json")),
+      runner,
+      async (workingDirectory, script) => {
+        commands.push({ workingDirectory, script });
+      },
+    );
+    const settings = {
+      ...defaultProjectSettings(),
+      worktreeCreateCommand: "",
+      worktreeSetupCommands: "printf ready",
+    };
+
+    const record = await service.createWithoutSetup(project, undefined, "background", settings);
+    expect(commands).toEqual([]);
+
+    await service.setup(record.worktreePath, settings);
+    expect(commands).toEqual([{ workingDirectory: record.worktreePath, script: "printf ready" }]);
+  });
+
   it("persists records across service instances", async () => {
     const { service, record, storage } = await setup();
     await expect(service.records()).resolves.toEqual([record]);

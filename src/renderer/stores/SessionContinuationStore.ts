@@ -39,15 +39,9 @@ export interface SessionContinuationPrompt {
   resolveParent: boolean;
 }
 
-export interface SessionContinuationPreparation {
-  kind: SessionContinuationPrompt["kind"];
-  startedAt: number;
-}
-
 /** Owns full-context forks and clean-context handoffs into replacement sessions. */
 export class SessionContinuationStore extends Store<SessionContinuationStoreProps> {
   prompt: SessionContinuationPrompt | undefined;
-  preparation: SessionContinuationPreparation | undefined;
   private activeOperationId: string | undefined;
 
   get client() {
@@ -88,7 +82,6 @@ export class SessionContinuationStore extends Store<SessionContinuationStoreProp
       prompt.destination === "branch-worktree" || prompt.destination === "new-worktree";
     if (createsWorktree && !/^[a-z0-9][a-z0-9-]{0,62}$/.test(worktreeName)) return;
     this.prompt = undefined;
-    this.preparation = { kind: prompt.kind, startedAt: Date.now() };
     this.activeOperationId = this.props.operations.start("project-workbench");
     let destinationWorkingDirectory: string | undefined;
     try {
@@ -118,7 +111,6 @@ export class SessionContinuationStore extends Store<SessionContinuationStoreProp
     } catch (error) {
       if (!this.signal.aborted) this.props.reportError(error);
     } finally {
-      this.preparation = undefined;
       this.clearActiveOperation();
     }
   }
@@ -126,7 +118,6 @@ export class SessionContinuationStore extends Store<SessionContinuationStoreProp
   reset() {
     this.clearActiveOperation();
     this.prompt = undefined;
-    this.preparation = undefined;
   }
 
   private requestContinuation(
@@ -175,11 +166,23 @@ export class SessionContinuationStore extends Store<SessionContinuationStoreProp
     const result =
       prompt.kind === "fork"
         ? await this.client.projectSessions.fork(target, { signal: this.signal })
-        : await this.client.projectSessions.handoff(
-            { ...target, prompt: prompt.continuationPrompt },
-            { signal: this.signal },
-          );
-    if (!this.signal.aborted)
-      await this.props.openSession(result.sessionId, destinationWorkingDirectory);
+        : await this.client.projectSessions.handoff(target, { signal: this.signal });
+    if (this.signal.aborted) return;
+    await this.props.openSession(result.sessionId, destinationWorkingDirectory);
+    if (prompt.kind !== "handoff" || !prompt.continuationPrompt || this.signal.aborted) return;
+    void this.client.projectSessions
+      .prompt(
+        {
+          sessionId: result.sessionId,
+          workingDirectory: destinationWorkingDirectory,
+          text: prompt.continuationPrompt,
+          attachments: [],
+          renderUserMessageAsMarkdown: false,
+        },
+        { signal: this.signal },
+      )
+      .catch((error: unknown) => {
+        if (!this.signal.aborted) this.props.reportError(error);
+      });
   }
 }

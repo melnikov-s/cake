@@ -61,7 +61,11 @@ export class WorktreeCreationStore extends Store<WorktreeCreationStoreProps> {
   /** Creates a managed checkout for a session-creation workflow outside the draft UI. */
   async create(
     projectPath: string,
-    options?: { name?: string; baseWorktreePath?: string },
+    options?: {
+      name?: string;
+      baseWorktreePath?: string;
+      backgroundSetup?: boolean;
+    },
   ): Promise<WorktreeRecord> {
     const operationId = this.props.operations.start("project-workbench");
     try {
@@ -70,6 +74,7 @@ export class WorktreeCreationStore extends Store<WorktreeCreationStoreProps> {
         path: projectPath,
         baseWorktreePath: options?.baseWorktreePath,
         worktreeName: options?.name,
+        backgroundSetup: options?.backgroundSetup,
       });
       if (this.signal.aborted) throw new Error("Worktree creation was cancelled.");
       this.props.catalog.notePendingManagedWorktree(record);

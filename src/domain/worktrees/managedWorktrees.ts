@@ -58,6 +58,7 @@ export const create = Effect.fn("ManagedWorktrees.create")(function* (input: {
   readonly baseWorktreePath?: string;
   readonly worktreeName?: string;
   readonly firstUserMessage?: string;
+  readonly backgroundSetup?: boolean;
 }) {
   yield* requireAllowed(input.projectPath);
   const state = yield* getState();
@@ -68,13 +69,18 @@ export const create = Effect.fn("ManagedWorktrees.create")(function* (input: {
       firstUserMessage: input.firstUserMessage,
     }).pipe(Effect.catch(() => Effect.succeed(undefined)));
   }
-  const record = yield* (yield* ManagedWorktrees).create(
-    input.projectPath,
-    input.baseWorktreePath,
-    worktreeName,
+  const worktrees = yield* ManagedWorktrees;
+  const settings =
     state.projects.find((project) => project.path === input.projectPath)?.settings ??
-      defaultProjectSettings(),
-  );
+    defaultProjectSettings();
+  const record = yield* input.backgroundSetup
+    ? worktrees.createWithBackgroundSetup(
+        input.projectPath,
+        input.baseWorktreePath,
+        worktreeName,
+        settings,
+      )
+    : worktrees.create(input.projectPath, input.baseWorktreePath, worktreeName, settings);
   const access = yield* ProjectAccess;
   yield* access
     .allow(record.worktreePath)

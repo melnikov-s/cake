@@ -36,7 +36,10 @@ import {
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import { SubagentCoordinatorLive } from "../../../src/services/subagents/SubagentCoordinator";
 import { Terminal } from "../../../src/services/terminal/Terminal";
-import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
+import {
+  ManagedWorktrees,
+  type ManagedWorktreeError,
+} from "../../../src/services/worktrees/ManagedWorktrees";
 import {
   SessionCatalogChanges,
   type SessionCatalogChange,
@@ -162,6 +165,7 @@ const makeLayer = (
     }>;
     migrationComplete?: boolean;
     worktreeRecords?: ReadonlyArray<WorktreeRecord>;
+    deferredWorktreeSetup?: Effect.Effect<void, ManagedWorktreeError>;
     onCleanupResolved?(): void;
     onRestoreResolved?(): void;
     onCloseWorkingDirectory?(): void;
@@ -523,6 +527,8 @@ const makeLayer = (
             [],
         );
       },
+      awaitSetup: () => hooks.deferredWorktreeSetup ?? Effect.void,
+      hasDeferredSetup: () => Effect.succeed(hooks.deferredWorktreeSetup !== undefined),
       cleanupResolved: () =>
         Effect.sync(() => {
           hooks.onCleanupResolved?.();
@@ -1758,6 +1764,59 @@ describe("Project Sessions domain", () => {
       assert.match(turnId, /^[0-9a-f-]{36}$/);
     }).pipe(Effect.provide(makeLayer())),
   );
+
+  it.effect("previews a continuation while setup blocks runtime acquisition and turns", () => {
+    let runtimeConstructions = 0;
+    return Effect.gen(function* () {
+      const setup = yield* Deferred.make<void, ManagedWorktreeError>();
+      const layer = makeLayer(undefined, {
+        locations: [
+          {
+            projectPath: "/project",
+            projectName: "Project",
+            workingDirectory: "/worktree",
+            sessionDirectory: "/sessions",
+            resolvedSessionDirectory: "/resolved-sessions",
+            managedWorktree: {
+              projectPath: "/project",
+              worktreePath: "/worktree",
+              branch: "agent/background",
+              baseBranch: "main",
+              state: "active",
+              createdAt: "2026-01-01T00:00:00.000Z",
+            },
+          },
+        ],
+        deferredWorktreeSetup: Deferred.await(setup),
+        onCreateRuntime: () => runtimeConstructions++,
+      });
+      yield* Effect.gen(function* () {
+        const updates = yield* projectSessionOperations.observe({
+          sessionId: "session-1",
+          workingDirectory: "/worktree",
+        });
+        const initial = Array.from(yield* updates.pipe(Stream.take(1), Stream.runCollect));
+        assert.equal(initial[0]?._tag, "Snapshot");
+        assert.equal(runtimeConstructions, 0);
+
+        const turn = yield* projectSessionOperations
+          .prompt({
+            sessionId: "session-1",
+            workingDirectory: "/worktree",
+            text: "Continue after setup",
+            attachments: [],
+            renderUserMessageAsMarkdown: false,
+          })
+          .pipe(Effect.forkChild);
+        yield* Effect.yieldNow;
+        assert.equal(runtimeConstructions, 0);
+
+        yield* Deferred.succeed(setup, undefined);
+        yield* Fiber.join(turn);
+        assert.equal(runtimeConstructions, 1);
+      }).pipe(Effect.provide(layer));
+    });
+  });
 
   it.effect(
     "routes matching conversation controls through one acquired Project Session runtime",

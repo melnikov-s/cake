@@ -46,6 +46,7 @@ import { SessionArchiveStorage } from "../../services/storage/SessionArchiveStor
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import { encodeCrossSessionMessage } from "../conversations/cross-session-coordination";
 import { SessionCatalogChanges } from "../../services/session-catalogs/SessionCatalogChanges";
+import { ManagedWorktrees } from "../../services/worktrees/ManagedWorktrees";
 import {
   archiveLocation,
   asError,
@@ -62,6 +63,7 @@ export const acquireTarget = Effect.fn("ProjectSessions.acquireTarget")(function
   newSession: boolean,
 ) {
   const sessions = yield* PiSessions;
+  yield* (yield* ManagedWorktrees).awaitSetup(location.workingDirectory).pipe(asError("acquire"));
   const options = yield* acquireOptions({ location, sessionId, newSession }).pipe(
     asError("acquire"),
   );
@@ -215,45 +217,73 @@ export const observe = Effect.fn("ProjectSessions.observe")(function* (
             Effect.gen(function* () {
               const location = yield* findLocation(target);
               const state = yield* getState();
-              const handle = yield* acquireTarget(location, target.sessionId, false);
               const identity = {
                 _tag: "ProjectSession" as const,
                 sessionId: target.sessionId,
                 projectPath: location.projectPath,
                 workingDirectory: location.workingDirectory,
               };
-              return observeConversation(handle).pipe(
-                Stream.tap((update) =>
-                  update._tag === "Event" && update.event._tag === "TurnSettled"
-                    ? catalogs.publish({
-                        _tag: "ProjectSessionChanged",
-                        sessionId: target.sessionId,
-                        projectPath: location.projectPath,
-                        workingDirectory: location.workingDirectory,
-                        resolved: false,
-                      })
-                    : Effect.void,
+              const live = Stream.unwrap(
+                acquireTarget(location, target.sessionId, false).pipe(
+                  Effect.map((handle) =>
+                    observeConversation(handle).pipe(
+                      Stream.tap((update) =>
+                        update._tag === "Event" && update.event._tag === "TurnSettled"
+                          ? catalogs.publish({
+                              _tag: "ProjectSessionChanged",
+                              sessionId: target.sessionId,
+                              projectPath: location.projectPath,
+                              workingDirectory: location.workingDirectory,
+                              resolved: false,
+                            })
+                          : Effect.void,
+                      ),
+                      Stream.map((update): ProjectSessionUpdate => {
+                        if (update._tag === "Event")
+                          return {
+                            _tag: "Event",
+                            revision: update.revision,
+                            sessionId: target.sessionId,
+                            event: update.event,
+                          };
+                        const snapshot: ProjectSessionSnapshot = {
+                          identity,
+                          projectName: location.projectName,
+                          resolved: false,
+                          unread: state.unreadSessionIds.includes(target.sessionId),
+                          conversation: update.snapshot,
+                        };
+                        if (location.managedWorktree !== undefined)
+                          Object.assign(snapshot, { managedWorktree: location.managedWorktree });
+                        return { _tag: "Snapshot", revision: update.revision, snapshot };
+                      }),
+                    ),
+                  ),
                 ),
-                Stream.map((update): ProjectSessionUpdate => {
-                  if (update._tag === "Event")
-                    return {
-                      _tag: "Event",
-                      revision: update.revision,
-                      sessionId: target.sessionId,
-                      event: update.event,
-                    };
-                  const snapshot: ProjectSessionSnapshot = {
-                    identity,
-                    projectName: location.projectName,
-                    resolved: false,
-                    unread: state.unreadSessionIds.includes(target.sessionId),
-                    conversation: update.snapshot,
-                  };
-                  if (location.managedWorktree !== undefined)
-                    Object.assign(snapshot, { managedWorktree: location.managedWorktree });
-                  return { _tag: "Snapshot", revision: update.revision, snapshot };
-                }),
               );
+              const worktrees = yield* ManagedWorktrees;
+              if (!(yield* worktrees.hasDeferredSetup(location.workingDirectory))) return live;
+
+              // A continuation can be displayed from its durable transcript while checkout
+              // setup runs. Runtime acquisition above remains gated until setup completes.
+              const preview = yield* inspect(target);
+              const snapshot: ProjectSessionSnapshot = {
+                identity,
+                projectName: location.projectName,
+                resolved: false,
+                unread: state.unreadSessionIds.includes(target.sessionId),
+                conversation: projectPreviewSnapshot({
+                  ...preview,
+                  workspacePath: preview.workingDirectory,
+                }),
+              };
+              if (location.managedWorktree !== undefined)
+                Object.assign(snapshot, { managedWorktree: location.managedWorktree });
+              return Stream.succeed({
+                _tag: "Snapshot",
+                revision: 0,
+                snapshot,
+              } satisfies ProjectSessionUpdate).pipe(Stream.concat(live));
             }),
           ),
     ),

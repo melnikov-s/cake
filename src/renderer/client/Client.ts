@@ -185,6 +185,7 @@ interface ManagedWorktreeCommands {
       baseWorktreePath?: string;
       worktreeName?: string;
       firstUserMessage?: string;
+      backgroundSetup?: boolean;
     },
     options?: ClientCommandOptions,
   ): Promise<WorktreeRecord>;

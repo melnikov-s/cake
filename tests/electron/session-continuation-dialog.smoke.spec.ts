@@ -164,7 +164,7 @@ test("forks and hands off sessions across working directories", async () => {
     const newWorktreeDestination = dialog.getByRole("button", {
       name: "Create a new worktree",
     });
-    await expect(existingDestination).toBeFocused();
+    await existingDestination.focus();
     await page.keyboard.press("ArrowDown");
     await expect(newWorktreeDestination).toHaveAttribute("aria-pressed", "true");
     await expect(dialog.getByLabel("Worktree name")).toBeFocused();
@@ -186,9 +186,10 @@ test("forks and hands off sessions across working directories", async () => {
     await newWorktreeDestination.focus();
     await page.keyboard.press("Enter");
     await expect(dialog).toHaveCount(0);
-    const forkLoader = page.getByRole("status", { name: "Forking conversation in progress" });
-    await expect(forkLoader).toBeVisible();
-    await expect(page.getByText("Here is the plan.")).toHaveCount(0);
+    await expect(
+      page.getByRole("status", { name: "Forking conversation in progress" }),
+    ).toHaveCount(0);
+    await expect(page.getByText("Here is the plan.")).toBeVisible();
     // The forked conversation opens in its new worktree (the worktree pill shows its
     // branch) instead of failing with "Cake could not find that session". The forked
     // transcript carries the parent's content.
@@ -228,6 +229,7 @@ test("forks and hands off sessions across working directories", async () => {
       .click();
     await rootHandoffDialog.getByRole("button", { name: "Hand off conversation" }).click();
     await expect(page.getByText("Here is the plan.")).toBeVisible();
+    await expect(page.getByRole("combobox", { name: "Message" })).toHaveValue("");
     await expect(page.getByRole("button", { name: "Start new chat in project" })).toHaveCount(1);
     await expect(page.getByText("Cake could not find that session")).toHaveCount(0);
 

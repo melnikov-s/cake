@@ -150,6 +150,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
         const record = await this.worktreeCreationStore.create(projectPath, {
           name,
           baseWorktreePath,
+          backgroundSetup: true,
         });
         return record.worktreePath;
       },

@@ -56,7 +56,6 @@ export const App = observer(function App() {
   const root = useStore(RootStore);
   const store = root.projectWorkbenchStore;
   const projectOpen = store.projectOpenStore;
-  const continuationPreparation = store.sessionContinuationStore.preparation;
   const sidebar = root.sidebarStore;
   const projects = root.projectCatalogStore;
   const reviews = root.reviewsStore;
@@ -737,17 +736,6 @@ export const App = observer(function App() {
               <LoadingState label="Opening Cake Chat" />
             </div>
           )
-        ) : continuationPreparation ? (
-          <div className="grid h-full min-h-0 min-w-0 place-items-center content-center overflow-y-auto p-10 text-center">
-            <LoadingState
-              label={
-                continuationPreparation.kind === "fork"
-                  ? "Forking conversation"
-                  : "Handing off conversation"
-              }
-              startedAt={continuationPreparation.startedAt}
-            />
-          </div>
         ) : !session ? (
           selectedProjectSessionId ? (
             <div className="grid h-full min-h-0 min-w-0 place-items-center content-center overflow-y-auto p-10 text-center">
