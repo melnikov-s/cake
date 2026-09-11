@@ -99,7 +99,7 @@ test("chooses an isolated worktree without disturbing the new-chat composer", as
     await expect
       .poll(() => currentCheckout.evaluate((element) => element.clientWidth))
       .toBeLessThanOrEqual(32);
-    await expect(currentCheckout).toHaveAttribute("title", "Current checkout");
+    await expect(currentCheckout).toHaveAccessibleName("Current checkout");
     await currentCheckout.hover();
     await expect(page.getByRole("tooltip", { name: "Current checkout" })).toBeVisible();
 
@@ -140,21 +140,25 @@ test("chooses an isolated worktree without disturbing the new-chat composer", as
         .toBe(targetWidth);
     };
 
-    // The branch label gives up its space before the action labels do.
-    await resizePillTo(560);
+    // The branch uses the available toolbar space instead of disappearing at a fixed breakpoint.
+    await resizePillTo(680);
     const branch = page.getByTestId("worktree-branch");
     const branchLabel = (await branch.textContent())?.trim();
     if (!branchLabel) throw new Error("Expected a worktree branch label");
+    const visibleBranchLabel = branch.getByText(branchLabel, { exact: true });
+    await expect
+      .poll(() => visibleBranchLabel.evaluate((element) => getComputedStyle(element).position))
+      .toBe("static");
     await expect
       .poll(() =>
-        branch
-          .getByText(branchLabel, { exact: true })
-          .evaluate((element) => getComputedStyle(element).position),
+        visibleBranchLabel.evaluate((element) => element.scrollWidth <= element.clientWidth),
       )
-      .toBe("absolute");
-    await expect.poll(() => merge.evaluate((element) => element.clientWidth)).toBeGreaterThan(32);
+      .toBe(true);
     await branch.hover();
     await expect(page.getByRole("tooltip", { name: branchLabel })).toBeVisible();
+
+    await resizePillTo(560);
+    await expect.poll(() => merge.evaluate((element) => element.clientWidth)).toBeGreaterThan(32);
     await expect
       .poll(() =>
         page

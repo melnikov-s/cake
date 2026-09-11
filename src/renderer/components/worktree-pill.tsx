@@ -281,7 +281,7 @@ export const WorktreePill = observer(function WorktreePill({
           data-testid="worktree-pill-toolbar"
         >
           <span
-            className="flex h-7.5 min-w-0 shrink items-center gap-1.5 px-2 text-xs font-normal text-foreground @max-[700px]/worktree:shrink-0"
+            className="flex h-7.5 min-w-0 flex-1 items-center gap-1.5 px-2 text-xs font-normal text-foreground"
             data-testid="worktree-branch"
             tabIndex={0}
             onMouseEnter={(event) => showBranch(event.currentTarget)}
@@ -290,7 +290,7 @@ export const WorktreePill = observer(function WorktreePill({
             onBlur={hideBranch}
           >
             <WorktreeStatusIcon state={record.state} className="shrink-0" />
-            <span className="max-w-56 truncate @max-[700px]/worktree:sr-only">{branch}</span>
+            <span className="min-w-0 truncate">{branch}</span>
             {targetWarning && (
               <span
                 className="shrink-0 cursor-default text-amber-600 dark:text-amber-400"
