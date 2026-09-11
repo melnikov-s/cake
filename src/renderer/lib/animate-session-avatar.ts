@@ -66,9 +66,10 @@ export function animateSessionAvatar(host: HTMLElement): () => void {
     : 1;
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
   const animations = new Set<Animation>();
-  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timers = new Set<ReturnType<typeof setTimeout>>();
   let frame = 0;
   let pointer: { x: number; y: number } | undefined;
+  let lookPosition = { x: 0, y: 0 };
   const play = (target: Element, frames: Keyframe[], duration: number) => {
     const animation = target.animate(frames, { duration, easing: "ease-in-out" });
     animations.add(animation);
@@ -92,34 +93,58 @@ export function animateSessionAvatar(host: HTMLElement): () => void {
       );
     }
   };
-  const schedule = () => {
-    timer = setTimeout(
-      () => {
-        if (Math.random() < 0.7) blink();
-        else {
-          const motions = [
-            ["translateY(0)", "translateY(-3px)", "translateY(0)"],
-            ["rotate(0deg)", "rotate(-4deg)", "rotate(3deg)", "rotate(0deg)"],
-            ["scale(1)", "scale(1.025, 0.96)", "scale(0.985, 1.02)", "scale(1)"],
-          ];
-          const motion = motions[Math.floor(Math.random() * motions.length)]!;
-          play(
-            hop,
-            motion.map((transform) => ({
-              transform: `translate(50px, 50px) ${transform} translate(-50px, -50px)`,
-            })),
-            700,
-          );
-        }
-        schedule();
-      },
-      2500 + Math.random() * 4500,
+  const glance = () => {
+    const angle = Math.random() * Math.PI * 2;
+    const target = {
+      x: Math.cos(angle) * travelX,
+      y: Math.sin(angle) * travelY,
+    };
+    const transform = ({ x, y }: { x: number; y: number }) => `translate(${x}px, ${y}px)`;
+    play(
+      look,
+      [
+        { transform: transform(lookPosition) },
+        { transform: transform(target), offset: 0.25 },
+        { transform: transform(target), offset: 0.65 },
+        { transform: transform(lookPosition) },
+      ],
+      850,
     );
+  };
+  const bodyMotion = (motion: string[]) => {
+    play(
+      hop,
+      motion.map((transform) => ({
+        transform: `translate(50px, 50px) ${transform} translate(-50px, -50px)`,
+      })),
+      700,
+    );
+  };
+  const hopMotion = () => bodyMotion(["translateY(0)", "translateY(-3px)", "translateY(0)"]);
+  const wobble = () =>
+    bodyMotion(["rotate(0deg)", "rotate(-4deg)", "rotate(3deg)", "rotate(0deg)"]);
+  const squashAndStretch = () =>
+    bodyMotion(["scale(1)", "scale(1.025, 0.96)", "scale(0.985, 1.02)", "scale(1)"]);
+  const scheduleBetween = (action: () => void, minimum: number, maximum: number) => {
+    const scheduleNext = () => {
+      let timer: ReturnType<typeof setTimeout>;
+      timer = setTimeout(
+        () => {
+          timers.delete(timer);
+          action();
+          scheduleNext();
+        },
+        minimum + Math.random() * (maximum - minimum),
+      );
+      timers.add(timer);
+    };
+    scheduleNext();
   };
   const resetLook = () => {
     pointer = undefined;
     cancelAnimationFrame(frame);
     frame = 0;
+    lookPosition = { x: 0, y: 0 };
     look.removeAttribute("transform");
   };
   const updateLook = () => {
@@ -131,10 +156,11 @@ export function animateSessionAvatar(host: HTMLElement): () => void {
     const dx = local.x - (faceBox.x + faceBox.width / 2);
     const dy = local.y - (faceBox.y + faceBox.height / 2);
     const distance = Math.max(30, Math.hypot(dx, dy));
-    look.setAttribute(
-      "transform",
-      `translate(${(dx / distance) * travelX} ${(dy / distance) * travelY})`,
-    );
+    lookPosition = {
+      x: (dx / distance) * travelX,
+      y: (dy / distance) * travelY,
+    };
+    look.setAttribute("transform", `translate(${lookPosition.x} ${lookPosition.y})`);
   };
   const move = (event: PointerEvent) => {
     if (reduced.matches || document.hidden || event.pointerType === "touch") return;
@@ -142,14 +168,20 @@ export function animateSessionAvatar(host: HTMLElement): () => void {
     if (!frame) frame = requestAnimationFrame(updateLook);
   };
   const stop = () => {
-    clearTimeout(timer);
+    for (const timer of timers) clearTimeout(timer);
+    timers.clear();
     for (const animation of animations) animation.cancel();
     animations.clear();
     resetLook();
   };
   const refresh = () => {
     stop();
-    if (!reduced.matches && !document.hidden) schedule();
+    if (reduced.matches || document.hidden) return;
+    scheduleBetween(blink, 5_000, 8_000);
+    scheduleBetween(glance, 11_000, 15_000);
+    scheduleBetween(hopMotion, 20_000, 30_000);
+    scheduleBetween(wobble, 20_000, 30_000);
+    scheduleBetween(squashAndStretch, 20_000, 30_000);
   };
   window.addEventListener("pointermove", move, { passive: true });
   window.addEventListener("blur", resetLook);
