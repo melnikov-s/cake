@@ -21,6 +21,7 @@ function mountWorkbench(
     prepareWorkingDirectoryRetirement?(workingDirectories: readonly string[]): Promise<boolean>;
     onWorktreeSessionsResolved?(sessionIds: readonly string[], projectPath: string): Promise<void>;
     openSessionById?(sessionId: string): Promise<void>;
+    reviews?: Partial<ReviewsStore>;
   },
 ) {
   let activeSessionId = initialActiveSessionId;
@@ -45,6 +46,7 @@ function mountWorkbench(
         ({
           codeThreadsForSession: () => [],
           threadStreaming: () => false,
+          ...workflow?.reviews,
         }) as unknown as ReviewsStore,
       extensionUi: () => ({ clear: vi.fn() }) as unknown as ExtensionUiStore,
       catalog,
@@ -739,6 +741,103 @@ describe("ProjectWorkbenchStore startup selection", () => {
       message: "Cake could not find Project Session session-1",
       details: expect.stringContaining("Context:\nOpening Project Session"),
     });
+
+    root[Symbol.dispose]();
+    operations[Symbol.dispose]();
+  });
+
+  it("routes explicit VS Code selection actions to the code-chat draft and the project composer", () => {
+    const draftStore = {
+      addSourceAttachment: vi.fn(),
+      requestFocus: vi.fn(),
+      setEditorContextAttachment: vi.fn(),
+    };
+    const session = {
+      workspacePath: "/project",
+      model: { sessionId: "session-1", sessionFile: "/sessions/session-1.jsonl" },
+      ideMode: true,
+      showIdeChatSidebar: vi.fn(),
+      conversationSessionStore: { composerStore: { draftStore } },
+      markRead: vi.fn(),
+    };
+    const reviews = {
+      prepareDraft: vi.fn(),
+      cancelDraft: vi.fn(),
+      clearActiveThread: vi.fn(),
+    };
+    const registry = {
+      findSession: (sessionId: string) => (sessionId === "session-1" ? session : undefined),
+      pendingSessions: { isTemporary: () => false },
+    } as unknown as SessionRegistryStore;
+    const {
+      root,
+      subject: store,
+      operations,
+    } = mountWorkbench(
+      registry,
+      {} as SessionCatalogStore,
+      {} as unknown as Client,
+      "session-1",
+      undefined,
+      { reviews: reviews as unknown as Partial<ReviewsStore> },
+    );
+    store.projectOpenStore.projectPath = "/project";
+    store.embeddedEditorStore.visible = true;
+    const selection = {
+      path: "src/main.ts",
+      startLine: 4,
+      startColumn: 2,
+      endLine: 5,
+      endColumn: 8,
+      selectedText: "const answer =\n  calculate();",
+      contextBefore: "function run() {",
+      contextAfter: "}",
+    };
+
+    // Selections from another Working Directory never touch this session.
+    store.receive({
+      type: "embedded-editor-side-chat-requested",
+      workspacePath: "/elsewhere",
+      ...selection,
+    });
+    expect(reviews.prepareDraft).not.toHaveBeenCalled();
+
+    store.receive({
+      type: "embedded-editor-side-chat-requested",
+      workspacePath: "/project",
+      ...selection,
+    });
+    expect(reviews.clearActiveThread).toHaveBeenCalledTimes(1);
+    expect(reviews.prepareDraft).toHaveBeenCalledWith({
+      path: "src/main.ts",
+      view: "file",
+      start: { diffLine: 4, oldLine: 5, newLine: 5, column: 2 },
+      end: { diffLine: 5, oldLine: 6, newLine: 6, column: 8 },
+      selectedText: "const answer =\n  calculate();",
+      contextBefore: "function run() {",
+      contextAfter: "}",
+      diff: "",
+    });
+    expect(session.showIdeChatSidebar).toHaveBeenCalledTimes(1);
+    expect(draftStore.addSourceAttachment).not.toHaveBeenCalled();
+
+    store.receive({
+      type: "embedded-editor-annotation-requested",
+      workspacePath: "/project",
+      ...selection,
+      comment: "Why is this here?",
+    });
+    // The annotation lands in the project composer, so any code-chat draft steps aside.
+    expect(reviews.cancelDraft).toHaveBeenCalledTimes(1);
+    expect(reviews.clearActiveThread).toHaveBeenCalledTimes(2);
+    expect(draftStore.addSourceAttachment).toHaveBeenCalledWith({
+      kind: "source",
+      name: "src/main.ts",
+      location: { path: "src/main.ts", range: { start: { line: 4 }, end: { line: 5 } } },
+      selectedText: "const answer =\n  calculate();",
+      comment: "Why is this here?",
+    });
+    expect(session.showIdeChatSidebar).toHaveBeenCalledTimes(2);
 
     root[Symbol.dispose]();
     operations[Symbol.dispose]();

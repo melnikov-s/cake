@@ -285,6 +285,10 @@ function partsFromMessage(
         mediaType: "text/plain",
         attachmentKind: "source",
         location: attachment.location,
+        ...(attachment.selectedText !== undefined
+          ? { selectedText: attachment.selectedText }
+          : null),
+        ...(attachment.comment !== undefined ? { comment: attachment.comment } : null),
       });
     });
     if (Array.isArray(content)) {

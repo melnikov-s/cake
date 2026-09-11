@@ -607,6 +607,8 @@ export interface CakeIpcClientService {
         | "embedded-editor-toggle-sidebar"
         | "embedded-editor-selection-cleared"
         | "embedded-editor-entered"
+        | "embedded-editor-annotation-requested"
+        | "embedded-editor-side-chat-requested"
         | "renderer-events-ready"
       >,
       TransportError

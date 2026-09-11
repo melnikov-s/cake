@@ -4,13 +4,17 @@ import { Button } from "./ui/button";
 import { IconButton } from "./ui/icon-button";
 import { CloseIcon } from "./ui/icons";
 
-/** Composer context created from an explicit embedded-VS-Code user selection. */
+/**
+ * Composer context created from an embedded-VS-Code user selection. Implicit
+ * context carries only a location; an explicit annotation also quotes the
+ * selected source and the user's note.
+ */
 export function SourceAttachment({
   attachment,
   onOpen,
   onRemove,
 }: {
-  attachment: { name: string; location: SourceLocation };
+  attachment: { name: string; location: SourceLocation; selectedText?: string; comment?: string };
   onOpen?(location: SourceLocation): void;
   onRemove?(): void;
 }) {
@@ -25,6 +29,14 @@ export function SourceAttachment({
       <span className="block truncate pr-8 font-mono text-xs font-medium" title={label}>
         {label}
       </span>
+      {attachment.selectedText ? (
+        <pre className="mt-2 line-clamp-4 whitespace-pre-wrap border-l-2 border-border pl-2 font-mono text-xs text-foreground">
+          {attachment.selectedText}
+        </pre>
+      ) : null}
+      {attachment.comment ? (
+        <p className="mt-2 whitespace-pre-wrap text-xs text-foreground">{attachment.comment}</p>
+      ) : null}
       {onOpen ? (
         <Button
           className="mt-2"

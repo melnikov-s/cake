@@ -2,6 +2,10 @@ import { Store, batch, child, createStore, effect as reactiveEffect } from "r-st
 import type { ProjectSessionStartInput } from "../../domain/project-sessions/project-session-data";
 import type { SourceLocation } from "../../ipc/source-location";
 import type { ChatConfiguration } from "../../ipc/session-contract";
+import {
+  discussionAnchorFromEditorSelection,
+  sourceAttachmentFromEditorSelection,
+} from "../../utils/editor-selection";
 import { reviewThreadAnnotations } from "../../utils/review-thread-annotations";
 import type { StoreEvent } from "../events/StoreEvent";
 import type {
@@ -823,6 +827,25 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     if (event.type === "embedded-editor-entered") {
       if (event.workspacePath === this.projectOpenStore.projectPath)
         this.embeddedEditorStore.showAgentEditor();
+      return;
+    }
+    if (event.type === "embedded-editor-side-chat-requested") {
+      if (event.workspacePath !== this.projectOpenStore.projectPath || !this.activeSession) return;
+      // The IDE chat sidebar presents the code-chat draft in place of the project chat.
+      this.reviews.clearActiveThread();
+      this.reviews.prepareDraft(discussionAnchorFromEditorSelection(event));
+      this.embeddedEditorStore.showChatSidebar();
+      return;
+    }
+    if (event.type === "embedded-editor-annotation-requested") {
+      if (event.workspacePath !== this.projectOpenStore.projectPath || !this.activeSession) return;
+      // Annotations accumulate in the project composer, so surface it over any code chat.
+      this.reviews.cancelDraft();
+      this.reviews.clearActiveThread();
+      this.activeSession.conversationSessionStore.composerStore.draftStore.addSourceAttachment(
+        sourceAttachmentFromEditorSelection(event, event.comment),
+      );
+      this.embeddedEditorStore.showChatSidebar();
       return;
     }
     if (event.type === "agent-availability-changed") {

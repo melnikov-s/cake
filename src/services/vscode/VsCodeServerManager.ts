@@ -30,6 +30,8 @@ const START_TIMEOUT = 45_000;
 const COMPANION_START_TIMEOUT = 5_000;
 const COMPANION_SCRIPT_TIMEOUT = 30_000;
 const COMPANION_SCRIPT_RESULT_BYTES = 256_000;
+/** Explicit selections carry up to 48k of source plus context and a note, JSON-escaped. */
+const BRIDGE_MESSAGE_BYTES = 256_000;
 const VSCODE_BACKGROUND = { dark: "#121519", light: "#f5f7f9" } as const;
 const WORKBENCH_LAYOUT_READY_TIMEOUT_MS = 10_000;
 // VS Code exposes editor-title actions to extensions, but those disappear when no
@@ -197,6 +199,19 @@ export interface EmbeddedEditorState {
 const bounded = (minimum: number, maximum: number) =>
   Schema.String.check(Schema.isMinLength(minimum), Schema.isMaxLength(maximum));
 const workspaceMessage = { workspace: bounded(1, 4_096) };
+const nonNegativeInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
+/** An explicit, user-initiated VS Code selection handed to a Cake action. */
+const explicitSelectionMessage = {
+  ...workspaceMessage,
+  path: bounded(1, 8_192),
+  startLine: nonNegativeInt,
+  startColumn: nonNegativeInt,
+  endLine: nonNegativeInt,
+  endColumn: nonNegativeInt,
+  selectedText: bounded(1, 48_000),
+  contextBefore: bounded(0, 8_000),
+  contextAfter: bounded(0, 8_000),
+};
 const bridgeMessageSchema = Schema.Union([
   Schema.Struct({
     type: Schema.Literal("hello"),
@@ -217,10 +232,27 @@ const bridgeMessageSchema = Schema.Union([
     type: Schema.Literal("selection"),
     ...workspaceMessage,
     path: bounded(1, 8_192),
-    startLine: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
-    endLine: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+    startLine: nonNegativeInt,
+    endLine: nonNegativeInt,
   }),
+  Schema.Struct({
+    type: Schema.Literal("add-annotation"),
+    ...explicitSelectionMessage,
+    comment: Schema.optionalKey(bounded(1, 16_000)),
+  }),
+  Schema.Struct({ type: Schema.Literal("ask-in-side-chat"), ...explicitSelectionMessage }),
 ]);
+
+interface EmbeddedEditorExplicitSelection {
+  readonly path: string;
+  readonly startLine: number;
+  readonly startColumn: number;
+  readonly endLine: number;
+  readonly endColumn: number;
+  readonly selectedText: string;
+  readonly contextBefore: string;
+  readonly contextAfter: string;
+}
 
 /** Requests Cake posts to the companion extension's localhost server. */
 type CompanionRequest =
@@ -249,7 +281,16 @@ interface BroadcastTarget {
         }
       | { type: "embedded-editor-toggle-chat"; workspacePath: string }
       | { type: "embedded-editor-toggle-sidebar"; workspacePath: string }
-      | { type: "embedded-editor-selection-cleared"; workspacePath: string },
+      | { type: "embedded-editor-selection-cleared"; workspacePath: string }
+      | ({
+          type: "embedded-editor-annotation-requested";
+          workspacePath: string;
+          comment?: string;
+        } & EmbeddedEditorExplicitSelection)
+      | ({
+          type: "embedded-editor-side-chat-requested";
+          workspacePath: string;
+        } & EmbeddedEditorExplicitSelection),
   ): void;
   stateChanged(state: EmbeddedEditorState & { customPath?: string }): void;
 }
@@ -874,7 +915,7 @@ export class VsCodeServerManager {
       let size = 0;
       req.on("data", (chunk: Buffer) => {
         size += chunk.length;
-        if (size > 96_000) {
+        if (size > BRIDGE_MESSAGE_BYTES) {
           res.writeHead(413).end();
           req.destroy();
           return;
@@ -955,6 +996,32 @@ export class VsCodeServerManager {
       });
       return;
     }
+    // Explicit selection actions hand the user over to Cake's composer, so focus follows.
+    this.focusCakeWindow(message.value.workspace);
+    const selection: EmbeddedEditorExplicitSelection = {
+      path: message.value.path,
+      startLine: message.value.startLine,
+      startColumn: message.value.startColumn,
+      endLine: message.value.endLine,
+      endColumn: message.value.endColumn,
+      selectedText: message.value.selectedText,
+      contextBefore: message.value.contextBefore,
+      contextAfter: message.value.contextAfter,
+    };
+    if (message.value.type === "add-annotation") {
+      this.props.broadcast({
+        type: "embedded-editor-annotation-requested",
+        workspacePath: presentedWorkspace,
+        ...selection,
+        ...(message.value.comment !== undefined ? { comment: message.value.comment } : null),
+      });
+      return;
+    }
+    this.props.broadcast({
+      type: "embedded-editor-side-chat-requested",
+      workspacePath: presentedWorkspace,
+      ...selection,
+    });
   }
 
   private focusCakeWindow(workspacePath: string) {

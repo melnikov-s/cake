@@ -752,6 +752,8 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
         "embedded-editor-toggle-sidebar",
         "embedded-editor-selection-cleared",
         "embedded-editor-entered",
+        "embedded-editor-annotation-requested",
+        "embedded-editor-side-chat-requested",
       ),
     surfaces: (connectionId) =>
       focused(connectionId, "surfaces", "fullscreen-surface-close-requested"),

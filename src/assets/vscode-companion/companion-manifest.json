@@ -1,7 +1,7 @@
 {
   "name": "cake-companion",
   "displayName": "Cake Companion",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "private": true,
   "description": "Bridges embedded VS Code with Cake agent actions, source reveals, editor context, and discussions.",
   "license": "UNLICENSED",
@@ -26,6 +26,14 @@
         "title": "Cake: Reveal File"
       },
       {
+        "command": "cake.addAnnotation",
+        "title": "Cake: Add annotation"
+      },
+      {
+        "command": "cake.askInSideChat",
+        "title": "Cake: Ask in side chat"
+      },
+      {
         "command": "cake.backToAgent",
         "title": "Cake: Back to Agent",
         "icon": "$(arrow-left)"
@@ -40,7 +48,31 @@
         "title": "Cake: Toggle Chat Sidebar",
         "icon": "$(layout-sidebar-right)"
       }
-    ]
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "cake.addAnnotation",
+          "when": "editorHasSelection && resourceScheme == file",
+          "group": "cake@1"
+        },
+        {
+          "command": "cake.askInSideChat",
+          "when": "editorHasSelection && resourceScheme == file",
+          "group": "cake@2"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "cake.addAnnotation",
+          "when": "editorHasSelection && resourceScheme == file"
+        },
+        {
+          "command": "cake.askInSideChat",
+          "when": "editorHasSelection && resourceScheme == file"
+        }
+      ]
+    }
   },
   "activationEvents": ["*"],
   "engines": {

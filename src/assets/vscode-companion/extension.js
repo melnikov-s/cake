@@ -11,6 +11,10 @@ const BRIDGE_TOKEN = process.env.CAKE_BRIDGE_TOKEN || "";
 const WORKSPACE = process.env.CAKE_WORKSPACE_PATH || "";
 const HELLO_RETRIES = 5;
 const HELLO_RETRY_DELAY_MS = 2_000;
+const MAX_SELECTION_LENGTH = 48_000;
+const MAX_CONTEXT_LENGTH = 8_000;
+const MAX_COMMENT_LENGTH = 16_000;
+const SELECTION_CONTEXT_LINES = 3;
 
 let revealServer;
 let selectionSubscription;
@@ -82,6 +86,92 @@ function sendUserSelection(event) {
     startLine: editor.selection.start.line,
     endLine,
   });
+}
+
+/**
+ * Captures the active editor's non-empty selection for an explicit Cake action.
+ * Unlike the implicit selection relay, this includes the selected source and a
+ * few surrounding lines because the user asked Cake to look at exactly this code.
+ */
+function captureExplicitSelection(vscode) {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor || editor.document.uri.scheme !== "file") {
+    void vscode.window.showInformationMessage("Open a workspace file before using Cake.");
+    return undefined;
+  }
+  const relativePath = workspaceRelative(editor.document.uri.fsPath);
+  if (!relativePath) {
+    void vscode.window.showInformationMessage("Cake can only use files inside this project.");
+    return undefined;
+  }
+  const selection = editor.selection;
+  const selectedText = editor.document.getText(selection);
+  if (!selectedText) {
+    void vscode.window.showInformationMessage("Select some code before using Cake.");
+    return undefined;
+  }
+  if (selectedText.length > MAX_SELECTION_LENGTH) {
+    void vscode.window.showWarningMessage(
+      "That selection is too large for Cake. Select a smaller region and try again.",
+    );
+    return undefined;
+  }
+  const document = editor.document;
+  const lineText = (line) => document.lineAt(line).text;
+  const contextBefore = [];
+  for (
+    let line = Math.max(0, selection.start.line - SELECTION_CONTEXT_LINES);
+    line < selection.start.line;
+    line += 1
+  )
+    contextBefore.push(lineText(line));
+  const contextAfter = [];
+  for (
+    let line = selection.end.line + 1;
+    line <= Math.min(document.lineCount - 1, selection.end.line + SELECTION_CONTEXT_LINES);
+    line += 1
+  )
+    contextAfter.push(lineText(line));
+  return {
+    path: relativePath,
+    startLine: selection.start.line,
+    startColumn: selection.start.character,
+    endLine: selection.end.line,
+    endColumn: selection.end.character,
+    selectedText,
+    contextBefore: contextBefore.join("\n").slice(-MAX_CONTEXT_LENGTH),
+    contextAfter: contextAfter.join("\n").slice(0, MAX_CONTEXT_LENGTH),
+  };
+}
+
+async function addAnnotation(vscode) {
+  const selection = captureExplicitSelection(vscode);
+  if (!selection) return;
+  const comment = await vscode.window.showInputBox({
+    title: "Cake: Add annotation",
+    prompt:
+      "Add a note about this selection (optional). Press Enter to attach it to your next message.",
+    placeHolder: "Why does this matter?",
+    ignoreFocusOut: true,
+    validateInput: (value) =>
+      value.length > MAX_COMMENT_LENGTH
+        ? `Keep the note under ${MAX_COMMENT_LENGTH} characters.`
+        : undefined,
+  });
+  // Escape cancels the annotation; an empty note attaches the bare selection.
+  if (comment === undefined) return;
+  const trimmed = comment.trim();
+  postBridge({
+    type: "add-annotation",
+    ...selection,
+    ...(trimmed ? { comment: trimmed } : null),
+  });
+}
+
+function askInSideChat(vscode) {
+  const selection = captureExplicitSelection(vscode);
+  if (!selection) return;
+  postBridge({ type: "ask-in-side-chat", ...selection });
 }
 
 function scheduleUserSelection(event) {
@@ -404,6 +494,8 @@ async function activate(context) {
         return;
       postBridge({ type: "open-annotation", sessionId, threadId });
     }),
+    vscode.commands.registerCommand("cake.addAnnotation", () => addAnnotation(vscode)),
+    vscode.commands.registerCommand("cake.askInSideChat", () => askInSideChat(vscode)),
     vscode.commands.registerCommand("cake.backToAgent", () =>
       postBridge({ type: "back-to-agent" }),
     ),
@@ -431,8 +523,8 @@ async function activate(context) {
 }
 
 function deactivate() {
-  activitySubscription?.dispose();
-  if (activityTimer) clearTimeout(activityTimer);
+  selectionSubscription?.dispose();
+  if (selectionTimer) clearTimeout(selectionTimer);
   for (const decoration of revealDecorations) decoration.dispose();
   revealDecorations.clear();
   revealServer?.close();

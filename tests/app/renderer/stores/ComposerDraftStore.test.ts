@@ -47,6 +47,31 @@ describe("ComposerDraftStore", () => {
     store[Symbol.dispose]();
   });
 
+  it("lets an explicit annotation supersede the implicit editor context at the same location", () => {
+    const store = mount(createStore(ComposerDraftStore, {}));
+    const location = { path: "src/app.ts", range: { start: { line: 3 }, end: { line: 4 } } };
+    const context = { kind: "source" as const, name: "src/app.ts", location };
+    const annotation = { ...context, selectedText: "return total;", comment: "Rounding?" };
+    store.setEditorContextAttachment(context);
+    store.addSourceAttachment(annotation);
+
+    // The annotated copy is what the user sees and what gets sent, not the bare context.
+    expect(store.visibleAttachments).toEqual([annotation]);
+    expect(store.submissionAttachments).toEqual([annotation]);
+
+    // Annotating the same range again replaces the note instead of being ignored.
+    store.addSourceAttachment({ ...annotation, comment: "Off by one?" });
+    expect(store.attachments).toEqual([{ ...annotation, comment: "Off by one?" }]);
+
+    // Removing the visible chip removes the annotation and reveals the context again.
+    store.removeAttachment(0);
+    expect(store.attachments).toEqual([]);
+    expect(store.visibleAttachments).toEqual([context]);
+    store.removeAttachment(0);
+    expect(store.editorContextAttachment).toBeUndefined();
+    store[Symbol.dispose]();
+  });
+
   it("restores a failed submission without replacing the next draft", () => {
     const store = mount(createStore(ComposerDraftStore, {}));
     store.setText("Next message");

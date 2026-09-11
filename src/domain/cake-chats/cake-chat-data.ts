@@ -115,6 +115,8 @@ const Attachment = Schema.Union([
         end: Schema.Struct({ line: Schema.Int }),
       }),
     }),
+    selectedText: Schema.optionalKey(Schema.String),
+    comment: Schema.optionalKey(Schema.String),
   }),
   Schema.Struct({
     kind: Schema.Literal("annotation"),

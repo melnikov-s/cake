@@ -4,7 +4,13 @@ import type { CakeEvent } from "../../ipc/cake-rpc-contract";
 
 type NativePassthroughEvent = Extract<
   CakeEvent,
-  { type: "extension-ui-intent" | "project-session-control-requested" }
+  {
+    type:
+      | "extension-ui-intent"
+      | "project-session-control-requested"
+      | "embedded-editor-annotation-requested"
+      | "embedded-editor-side-chat-requested";
+  }
 >;
 
 export type StoreEvent =
@@ -125,7 +131,9 @@ export function toStoreEvent(event: CakeEvent): StoreEvent | undefined {
     event.type === "embedded-editor-toggle-chat" ||
     event.type === "embedded-editor-toggle-sidebar" ||
     event.type === "embedded-editor-selection-cleared" ||
-    event.type === "embedded-editor-entered"
+    event.type === "embedded-editor-entered" ||
+    event.type === "embedded-editor-annotation-requested" ||
+    event.type === "embedded-editor-side-chat-requested"
   )
     return event;
   return undefined;

@@ -241,6 +241,70 @@ describe("VsCodeServerManager startup", () => {
     });
   });
 
+  it("relays explicit selection actions with their source and note to the renderer", () => {
+    const broadcast = vi.fn();
+    manager = createManager({ root: "/unused", broadcast });
+    manager["presentedWorkspacePaths"].set("/real/project", "/linked/project");
+    const selection = {
+      workspace: "/real/project",
+      path: "src/main.ts",
+      startLine: 4,
+      startColumn: 2,
+      endLine: 5,
+      endColumn: 8,
+      selectedText: "const answer =\n  calculate();",
+      contextBefore: "function run() {",
+      contextAfter: "}",
+    };
+
+    manager["handleBridgeMessage"](
+      Buffer.from(JSON.stringify({ type: "add-annotation", ...selection, comment: "Why?" })),
+    );
+    expect(broadcast).toHaveBeenLastCalledWith({
+      type: "embedded-editor-annotation-requested",
+      workspacePath: "/linked/project",
+      path: "src/main.ts",
+      startLine: 4,
+      startColumn: 2,
+      endLine: 5,
+      endColumn: 8,
+      selectedText: "const answer =\n  calculate();",
+      contextBefore: "function run() {",
+      contextAfter: "}",
+      comment: "Why?",
+    });
+
+    manager["handleBridgeMessage"](
+      Buffer.from(JSON.stringify({ type: "add-annotation", ...selection })),
+    );
+    expect(broadcast).toHaveBeenLastCalledWith(
+      expect.not.objectContaining({ comment: expect.anything() }),
+    );
+
+    manager["handleBridgeMessage"](
+      Buffer.from(JSON.stringify({ type: "ask-in-side-chat", ...selection })),
+    );
+    expect(broadcast).toHaveBeenLastCalledWith({
+      type: "embedded-editor-side-chat-requested",
+      workspacePath: "/linked/project",
+      path: "src/main.ts",
+      startLine: 4,
+      startColumn: 2,
+      endLine: 5,
+      endColumn: 8,
+      selectedText: "const answer =\n  calculate();",
+      contextBefore: "function run() {",
+      contextAfter: "}",
+    });
+
+    // An empty selection is never an explicit action; the schema rejects it.
+    broadcast.mockClear();
+    manager["handleBridgeMessage"](
+      Buffer.from(JSON.stringify({ type: "ask-in-side-chat", ...selection, selectedText: "" })),
+    );
+    expect(broadcast).not.toHaveBeenCalled();
+  });
+
   it("applies Cake's theme on every start while preserving other user settings", async () => {
     root = await mkdtemp(join(tmpdir(), "cake-vscode-manager-"));
     manager = createManager({ root });

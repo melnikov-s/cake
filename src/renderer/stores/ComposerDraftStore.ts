@@ -37,14 +37,18 @@ export class ComposerDraftStore extends Store<ComposerDraftStoreProps> {
     return Boolean(this.text.trim() || this.attachments.length || this.annotations.length);
   }
 
+  /** The implicit editor context yields to an explicit attachment covering the same location. */
+  private get editorContextVisible() {
+    const context = this.editorContextAttachment;
+    return (
+      context !== undefined &&
+      !this.attachments.some((attachment) => sameSourceAttachment(attachment, context))
+    );
+  }
+
   get visibleAttachments(): Attachment[] {
     const explicit = this.attachments.filter((attachment) => attachment.kind !== "annotation");
-    const context = this.editorContextAttachment;
-    if (!context) return explicit;
-    return [
-      context,
-      ...explicit.filter((attachment) => !sameSourceAttachment(attachment, context)),
-    ];
+    return this.editorContextVisible ? [this.editorContextAttachment!, ...explicit] : explicit;
   }
 
   get submissionAttachments(): Attachment[] {
@@ -68,9 +72,13 @@ export class ComposerDraftStore extends Store<ComposerDraftStoreProps> {
     this.editorContextAttachment = attachment;
   }
 
+  /** Adds an explicit source attachment; annotating the same range again replaces its note. */
   addSourceAttachment(attachment: Extract<Attachment, { kind: "source" }>) {
-    if (!this.attachments.some((current) => sameSourceAttachment(current, attachment)))
-      this.attachments.push(attachment);
+    const existing = this.attachments.findIndex((current) =>
+      sameSourceAttachment(current, attachment),
+    );
+    if (existing >= 0) this.attachments.splice(existing, 1, attachment);
+    else this.attachments.push(attachment);
     this.requestFocus();
   }
 
@@ -122,7 +130,7 @@ export class ComposerDraftStore extends Store<ComposerDraftStoreProps> {
   }
 
   removeAttachment(index: number) {
-    if (this.editorContextAttachment) {
+    if (this.editorContextVisible) {
       if (index === 0) {
         this.editorContextAttachment = undefined;
         return;

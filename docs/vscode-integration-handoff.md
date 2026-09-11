@@ -98,6 +98,13 @@ These items should appear as understandable attachments or context chips. Users 
 
 Cake may use editor awareness to offer relevant context, but it should not silently send everything visible or open in VS Code to the model. Inclusion should remain explicit and legible to the user. The current selection attachment is created only by a non-empty, user-originated VS Code selection and sends only its workspace-relative path and line range. It does not send selected or nearby source text. Cake-directed source reveals are presentation-only decorations and must never become conversation context.
 
+Selected code also offers two explicit actions in VS Code's editor context menu, mirroring the transcript's selection menu:
+
+- **Cake: Add annotation** asks for an optional note, then attaches the selection (path, line range, selected source, note) to the project chat composer for the next message. Several annotations can accumulate before sending, and an explicit annotation supersedes the implicit current-selection chip for the same range.
+- **Cake: Ask in side chat** opens the IDE chat drawer in "Chat about selection" mode with the code quoted. Submitting creates a code discussion thread, which Phase four projects back into VS Code as a gutter marker and CodeLens.
+
+Because the user invoked them on a specific selection, these actions do include the selected source and a few surrounding lines.
+
 The IDE drawer should update appropriately as the active editor changes without unexpectedly replacing a draft or changing the active conversation.
 
 ## Phase six — Diagnostics, symbols, and tests

@@ -36,6 +36,18 @@ const nonNegativeInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
 const coordinate = Schema.Int.check(Schema.isBetween({ minimum: -1_000_000, maximum: 1_000_000 }));
 const requestBase = { requestId: uuid };
 const accepted = Schema.Struct({ requestId: uuid });
+/** An explicit VS Code selection the user handed to a Cake action; positions are zero-based. */
+const embeddedEditorExplicitSelectionFields = {
+  workspacePath: stringMax(4_096),
+  path: ipcProjectionString(8_192),
+  startLine: nonNegativeInt,
+  startColumn: nonNegativeInt,
+  endLine: nonNegativeInt,
+  endColumn: nonNegativeInt,
+  selectedText: ipcProjectionString(48_000),
+  contextBefore: ipcProjectionString(8_000),
+  contextAfter: ipcProjectionString(8_000),
+};
 
 const cakeEventSchemas = {
   "renderer-events-ready": Schema.Struct({
@@ -159,6 +171,15 @@ const cakeEventSchemas = {
     type: Schema.Literal("embedded-editor-entered"),
     workspacePath: stringMax(4_096),
   }),
+  "embedded-editor-annotation-requested": Schema.Struct({
+    type: Schema.Literal("embedded-editor-annotation-requested"),
+    ...embeddedEditorExplicitSelectionFields,
+    comment: Schema.optionalKey(ipcProjectionString(16_000)),
+  }),
+  "embedded-editor-side-chat-requested": Schema.Struct({
+    type: Schema.Literal("embedded-editor-side-chat-requested"),
+    ...embeddedEditorExplicitSelectionFields,
+  }),
 } as const;
 
 export const applicationEventSchema = Schema.Union([
@@ -196,6 +217,8 @@ export const embeddedEditorEventSchema = Schema.Union([
   cakeEventSchemas["embedded-editor-toggle-sidebar"],
   cakeEventSchemas["embedded-editor-selection-cleared"],
   cakeEventSchemas["embedded-editor-entered"],
+  cakeEventSchemas["embedded-editor-annotation-requested"],
+  cakeEventSchemas["embedded-editor-side-chat-requested"],
 ]);
 
 export const surfaceEventSchema = Schema.Union([
@@ -227,6 +250,8 @@ export const cakeEventSchema = Schema.Union([
   cakeEventSchemas["embedded-editor-toggle-sidebar"],
   cakeEventSchemas["embedded-editor-selection-cleared"],
   cakeEventSchemas["embedded-editor-entered"],
+  cakeEventSchemas["embedded-editor-annotation-requested"],
+  cakeEventSchemas["embedded-editor-side-chat-requested"],
 ]);
 
 const terminalTarget = Schema.Struct({

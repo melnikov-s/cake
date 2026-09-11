@@ -186,6 +186,9 @@ export const attachmentSchema = Schema.Union([
     kind: Schema.Literal("source"),
     name: stringMax(512),
     location: sourceAttachmentLocationSchema,
+    /** Present only for explicit user annotations; implicit editor context stays path-only. */
+    selectedText: Schema.optionalKey(ipcProjectionString(48_000).check(Schema.isMinLength(1))),
+    comment: Schema.optionalKey(ipcProjectionString(16_000).check(Schema.isMinLength(1))),
   }),
   Schema.Struct({
     kind: Schema.Literal("annotation"),
@@ -271,6 +274,8 @@ export const uiPartSchema = Schema.Union([
     attachmentKind: Schema.Literals(["file", "image", "source"]),
     data: Schema.optional(stringMax(20_000_000)),
     location: Schema.optional(sourceLocationSchema),
+    selectedText: Schema.optional(ipcProjectionString(48_000)),
+    comment: Schema.optional(ipcProjectionString(16_000)),
   }),
   Schema.Struct({
     ...partBase,
