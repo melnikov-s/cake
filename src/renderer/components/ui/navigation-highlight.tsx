@@ -81,9 +81,10 @@ export function NavigationHighlight({
       if (focused && !root.contains(focused)) focused = null;
       const selected = root.querySelector<HTMLElement>(selectedSelector);
       const preview = hovered ?? focused;
+      const hoverPreview = preview && preview !== selected ? preview : null;
       move(selection, selected, Boolean(selected));
-      // Fade hover into the arriving selection instead of stacking two fills.
-      move(hover, preview ?? selected, Boolean(preview && preview !== selected));
+      // Hover fades out where it is; only the selection layer moves on selection.
+      move(hover, hoverPreview, Boolean(hoverPreview));
     };
     const schedule = () => {
       if (!frame) frame = requestAnimationFrame(refresh);
