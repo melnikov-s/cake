@@ -115,7 +115,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
         "session-item group relative grid min-h-11 w-full items-center rounded-md py-1 text-[13px] select-none transition-colors duration-200 ease-out motion-reduce:transition-none",
         focusMode && "min-h-14 text-sm [&_[data-slot=avatar]]:size-7 [&_svg]:size-5",
         avatarsEnabled
-          ? isFamilyParent || session.familyDepth !== undefined
+          ? isFamilyChild
             ? focusMode
               ? "grid-cols-[3rem_minmax(0,1fr)]"
               : "grid-cols-[2.5rem_minmax(0,1fr)]"
@@ -143,6 +143,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
             <IconButton
               className={cn(
                 "size-5 shrink-0 text-muted-foreground transition-transform",
+                avatarsEnabled && "absolute right-full",
                 familyCollapsed && "-rotate-90",
               )}
               tooltip={familyCollapsed ? "Expand child sessions" : "Collapse child sessions"}
