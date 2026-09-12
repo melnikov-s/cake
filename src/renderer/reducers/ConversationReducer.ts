@@ -40,6 +40,10 @@ export function applyProjectSessionUpdate(
   }
   if (update.sessionId !== sessionId)
     throw new Error(`Project Session event identity collision: ${sessionId}`);
+  if (update._tag === "LifecycleChanged") {
+    model.resolved = update.resolved;
+    return;
+  }
   applyConversationEvent(model, update.event);
 }
 

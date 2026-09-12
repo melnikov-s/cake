@@ -188,31 +188,42 @@ export const observe = Effect.fn("ProjectSessions.observe")(function* (
     );
   const updates = resolvedStates.pipe(
     Stream.changes,
-    Stream.switchMap((resolved) =>
+    Stream.mapAccum(
+      () => true,
+      (initial, resolved) => [false, [{ initial, resolved }]] as const,
+    ),
+    Stream.switchMap(({ initial, resolved }) =>
       resolved
-        ? Stream.fromEffect(
-            Effect.gen(function* () {
-              const preview = yield* inspect(target);
-              const snapshot: ProjectSessionSnapshot = {
-                identity: {
-                  _tag: "ProjectSession",
-                  sessionId: target.sessionId,
-                  projectPath: preview.projectPath,
-                  workingDirectory: preview.workingDirectory,
-                },
-                projectName: (yield* findLocation(target)).projectName,
-                resolved: true,
-                unread: false,
-                conversation: projectPreviewSnapshot({
-                  ...preview,
-                  workspacePath: preview.workingDirectory,
-                }),
-              };
-              if (preview.managedWorktree !== undefined)
-                Object.assign(snapshot, { managedWorktree: preview.managedWorktree });
-              return { _tag: "Snapshot", revision: 0, snapshot } satisfies ProjectSessionUpdate;
-            }),
-          )
+        ? initial
+          ? Stream.fromEffect(
+              Effect.gen(function* () {
+                const preview = yield* inspect(target);
+                const snapshot: ProjectSessionSnapshot = {
+                  identity: {
+                    _tag: "ProjectSession",
+                    sessionId: target.sessionId,
+                    projectPath: preview.projectPath,
+                    workingDirectory: preview.workingDirectory,
+                  },
+                  projectName: (yield* findLocation(target)).projectName,
+                  resolved: true,
+                  unread: false,
+                  conversation: projectPreviewSnapshot({
+                    ...preview,
+                    workspacePath: preview.workingDirectory,
+                  }),
+                };
+                if (preview.managedWorktree !== undefined)
+                  Object.assign(snapshot, { managedWorktree: preview.managedWorktree });
+                return { _tag: "Snapshot", revision: 0, snapshot } satisfies ProjectSessionUpdate;
+              }),
+            )
+          : Stream.succeed({
+              _tag: "LifecycleChanged",
+              revision: 0,
+              sessionId: target.sessionId,
+              resolved: true,
+            } satisfies ProjectSessionUpdate)
         : Stream.unwrap(
             Effect.gen(function* () {
               const location = yield* findLocation(target);

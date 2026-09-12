@@ -84,6 +84,7 @@ export interface ProjectSessionSnapshot extends Schema.Schema.Type<typeof Projec
 export const ProjectSessionUpdate = Schema.TaggedUnion({
   Snapshot: { revision: Schema.Int, snapshot: ProjectSessionSnapshot },
   Event: { revision: Schema.Int, sessionId: boundedId, event: ConversationEvent },
+  LifecycleChanged: { revision: Schema.Int, sessionId: boundedId, resolved: Schema.Boolean },
 });
 export type ProjectSessionUpdate = Schema.Schema.Type<typeof ProjectSessionUpdate>;
 

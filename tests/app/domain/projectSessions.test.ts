@@ -79,6 +79,7 @@ const fakeRuntime = (
   onForkTitle?: (title: string) => void,
   onRename?: (name: string) => void,
   onOperation?: (operation: string) => void,
+  onDispose?: () => void,
 ): CakeRuntime => ({
   sessionId: snapshot.sessionId,
   sessionFile: snapshot.sessionFile,
@@ -116,7 +117,7 @@ const fakeRuntime = (
     return { sessionId: snapshot.sessionId, sessionFile: snapshot.sessionFile };
   },
   navigate: async () => undefined,
-  dispose: () => undefined,
+  dispose: () => onDispose?.(),
 });
 
 const makeLayer = (
@@ -155,6 +156,8 @@ const makeLayer = (
     onToolCompact?(): void;
     onForkTitle?(title: string): void;
     onOperation?(operation: string): void;
+    onInspect?(): void;
+    onDispose?(): void;
     sessionExists?: boolean;
     resolvedOnDisk?: boolean;
     resolvedProjectEntries?: ReadonlyArray<{
@@ -262,11 +265,14 @@ const makeLayer = (
             resolved: false,
           }),
     inspect: () =>
-      Effect.succeed({
-        workspacePath: snapshot.workspacePath,
-        sessionId: snapshot.sessionId,
-        sessionFile: snapshot.sessionFile,
-        parts: snapshot.parts,
+      Effect.sync(() => {
+        hooks.onInspect?.();
+        return {
+          workspacePath: snapshot.workspacePath,
+          sessionId: snapshot.sessionId,
+          sessionFile: snapshot.sessionFile,
+          parts: snapshot.parts,
+        };
       }),
     createRuntime: (options) =>
       Effect.sync(() => {
@@ -279,6 +285,7 @@ const makeLayer = (
           hooks.onForkTitle,
           hooks.onRename,
           hooks.onOperation,
+          hooks.onDispose,
         );
       }),
     changelog: () => Effect.succeed("# Changelog"),
@@ -1734,6 +1741,47 @@ describe("Project Sessions domain", () => {
     }).pipe(Effect.provide(makeLayer())),
   );
 
+  it.effect(
+    "releases an active runtime and emits only a lightweight lifecycle update when resolved",
+    () => {
+      let inspections = 0;
+      let disposals = 0;
+      return Effect.gen(function* () {
+        const updates = yield* projectSessionOperations.observe({ sessionId: "session-1" });
+        const initialReady = yield* Deferred.make<void>();
+        const fiber = yield* updates.pipe(
+          Stream.tap((update) =>
+            update.revision === 1 ? Deferred.succeed(initialReady, undefined) : Effect.void,
+          ),
+          Stream.take(2),
+          Stream.runCollect,
+          Effect.forkChild,
+        );
+        yield* Deferred.await(initialReady);
+
+        yield* projectSessionLifecycle.resolve({ sessionId: "session-1" });
+
+        const observed = Array.from(yield* Fiber.join(fiber));
+        assert.equal(observed[0]?._tag, "Snapshot");
+        assert.deepEqual(observed[1], {
+          _tag: "LifecycleChanged",
+          revision: 2,
+          sessionId: "session-1",
+          resolved: true,
+        });
+        assert.equal(inspections, 0);
+        assert.equal(disposals, 1);
+      }).pipe(
+        Effect.provide(
+          makeLayer(undefined, {
+            onInspect: () => inspections++,
+            onDispose: () => disposals++,
+          }),
+        ),
+      );
+    },
+  );
+
   it.effect("previews a continuation while setup blocks runtime acquisition and turns", () => {
     let runtimeConstructions = 0;
     return Effect.gen(function* () {
@@ -2000,6 +2048,7 @@ describe("Project Sessions domain", () => {
 
   it.effect("previews a resolved session without restoring or constructing its runtime", () => {
     let runtimeConstructions = 0;
+    let inspections = 0;
     let restores = 0;
     return Effect.gen(function* () {
       yield* projectSessionMetadata.open({ sessionId: "session-1" });
@@ -2019,6 +2068,7 @@ describe("Project Sessions domain", () => {
           status: "complete",
         });
       assert.equal(runtimeConstructions, 0);
+      assert.equal(inspections, 1);
       assert.equal(restores, 0);
     }).pipe(
       Effect.provide(
@@ -2037,6 +2087,7 @@ describe("Project Sessions domain", () => {
           },
           {
             onCreateRuntime: () => runtimeConstructions++,
+            onInspect: () => inspections++,
             onRestore: () => restores++,
             resolvedOnDisk: true,
           },

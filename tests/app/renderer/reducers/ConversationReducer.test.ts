@@ -4,12 +4,15 @@ import type { ProjectSessionUpdate } from "../../../../src/domain/project-sessio
 import { Session } from "../../../../src/renderer/models/Session";
 import { applyProjectSessionUpdate } from "../../../../src/renderer/reducers/ConversationReducer";
 
-function conversation(extensionUi: ConversationSnapshot["extensionUi"]): ConversationSnapshot {
+function conversation(
+  extensionUi: ConversationSnapshot["extensionUi"],
+  parts: ConversationSnapshot["parts"] = [],
+): ConversationSnapshot {
   return {
     workingDirectory: "/cake",
     sessionId: "session",
     sessionFile: "/cake/session.jsonl",
-    parts: [],
+    parts,
     models: [],
     thinkingLevel: "off",
     availableThinkingLevels: ["off"],
@@ -25,6 +28,7 @@ function conversation(extensionUi: ConversationSnapshot["extensionUi"]): Convers
 function snapshot(
   extensionUi: ConversationSnapshot["extensionUi"],
   resolved = false,
+  parts: ConversationSnapshot["parts"] = [],
 ): ProjectSessionUpdate {
   return {
     _tag: "Snapshot",
@@ -39,7 +43,7 @@ function snapshot(
       projectName: "Cake",
       resolved,
       unread: false,
-      conversation: conversation(extensionUi),
+      conversation: conversation(extensionUi, parts),
     },
   };
 }
@@ -55,6 +59,37 @@ describe("ConversationReducer", () => {
     applyProjectSessionUpdate(session, "session", snapshot({ statuses: [] }));
     expect(session.resolved).toBe(false);
     expect(session.observedSnapshotRevision).toBe(2);
+    session[Symbol.dispose]();
+  });
+
+  it("marks a session resolved without replacing its rendered transcript", () => {
+    const session = Session.create({ sessionId: "session", workingDirectory: "/cake" });
+    applyProjectSessionUpdate(
+      session,
+      "session",
+      snapshot({ statuses: [] }, false, [
+        {
+          id: "message",
+          kind: "text",
+          role: "user",
+          text: "Keep this rendered message",
+          status: "complete",
+        },
+      ]),
+    );
+    const parts = session.parts;
+
+    applyProjectSessionUpdate(session, "session", {
+      _tag: "LifecycleChanged",
+      revision: 2,
+      sessionId: "session",
+      resolved: true,
+    });
+
+    expect(session.resolved).toBe(true);
+    expect(session.parts).toBe(parts);
+    expect(session.uiParts[0]).toMatchObject({ text: "Keep this rendered message" });
+    expect(session.observedSnapshotRevision).toBe(1);
     session[Symbol.dispose]();
   });
 
