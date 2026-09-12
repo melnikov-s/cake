@@ -69,6 +69,9 @@ function createHost(
       setSessionLabels: async () => true,
     },
     sessions: {
+      inspect: async () => {
+        throw new Error("not used");
+      },
       open: async () => false,
       create:
         overrides.create ??

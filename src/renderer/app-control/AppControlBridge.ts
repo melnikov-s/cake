@@ -9,6 +9,7 @@ import {
 import type { CakeChatSummary } from "../../domain/cake-chats/cake-chat-data";
 import type { SessionSummary } from "../models/SessionSummary";
 import type { WorktreeRecord } from "../../domain/worktrees/managed-worktree-data";
+import type { ProjectSessionPreview } from "../../domain/project-sessions/project-session-data";
 import type { ScheduledMessage } from "../../domain/scheduled-messages/scheduled-message-data";
 import type {
   CoordinationMessage,
@@ -366,6 +367,7 @@ export interface AppControlHost {
     }): Promise<void>;
   };
   sessions: {
+    inspect(sessionId: string): Promise<ProjectSessionPreview>;
     open(sessionId: string, messageId?: string): Promise<boolean | void>;
     create(input: {
       workspacePath: string;
@@ -431,6 +433,8 @@ export interface AppControlSession {
   messageCount: number;
   resolved: boolean;
   draft: boolean;
+  sessionFile?: string;
+  firstUserMessage?: string;
   managedWorktree?: WorktreeRecord;
   familyId?: string;
   familyParentSessionId?: string;
@@ -698,12 +702,17 @@ const modelControlOperations = [
     "List all project sessions, ordered by recency, and attention-worthy project sessions.",
     appControlArgumentSchemas["sessions.list"],
   ),
-  operation(
-    "sessions.info",
-    "sessions",
-    "Inspect one explicitly targeted project session.",
-    appControlArgumentSchemas["sessions.info"],
-  ),
+  {
+    ...operation(
+      "sessions.info",
+      "sessions",
+      "Inspect one explicitly targeted project session.",
+      appControlArgumentSchemas["sessions.info"],
+    ),
+    guidance: ["sessionFile is the full path to Pi's authoritative JSONL transcript."],
+    result:
+      "The target's metadata, full sessionFile path, firstUserMessage, selection, and activity state.",
+  },
   operation(
     "sessions.open",
     "sessions",
@@ -1226,12 +1235,23 @@ export class AppControlBridge {
         messages: await this.host.sessions.dequeuePendingMessages(sessionId),
       };
     if (invocation.name === "sessions.info") {
+      const preview = known.draft ? undefined : await this.host.sessions.inspect(sessionId);
       const activity = this.host.state.sessionActivity(sessionId);
       const current = this.host.state.currentSelection();
       return {
         ok: true,
         command: invocation.name,
-        session: this.toControlSession(known),
+        session: {
+          ...this.toControlSession(known),
+          ...(preview
+            ? {
+                sessionFile: preview.sessionFile,
+                ...(preview.firstUserMessage
+                  ? { firstUserMessage: preview.firstUserMessage }
+                  : null),
+              }
+            : null),
+        },
         selected: current.kind === "project-session" && current.sessionId === sessionId,
         status: activity ?? "idle",
       };

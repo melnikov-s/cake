@@ -84,6 +84,11 @@ function createHost(overrides: AppControlHostOverrides = {}): AppControlHost {
       } satisfies AppControlHost["sessionLabels"]),
     ...(overrides.worktrees ? { worktrees: overrides.worktrees } : null),
     sessions: {
+      inspect:
+        overrides.inspect ??
+        (async () => {
+          throw new Error("not used");
+        }),
       open: overrides.open ?? (async () => false),
       create:
         overrides.create ??
@@ -1026,6 +1031,44 @@ describe("AppControlBridge", () => {
       globalLabelId,
     ]);
     expect(setSessionLabels).toHaveBeenNthCalledWith(2, "session-1", []);
+  });
+
+  it("returns the full transcript path and first user message for session info", async () => {
+    const sessions = [
+      {
+        workingDirectory: "/projects/alpha",
+        projectName: "Alpha",
+        sessionId: "session-a",
+        title: "Review",
+        modifiedAt: "2026-03-02T13:00:00.000Z",
+        messageCount: 3,
+        resolved: false,
+        draft: false,
+      },
+    ];
+    const inspect = vi.fn(async () => ({
+      sessionId: "session-a",
+      projectPath: "/projects/alpha",
+      workingDirectory: "/projects/alpha",
+      sessionFile: "/sessions/alpha/session-a.jsonl",
+      parts: [],
+      firstUserMessage: "Review the authentication flow.",
+      resolved: false,
+    }));
+    const bridge = new AppControlBridge(createHost({ sessions: () => sessions, inspect }));
+
+    await expect(
+      bridge.invoke({ name: "sessions.info", arguments: { sessionId: "session-a" } }),
+    ).resolves.toMatchObject({
+      ok: true,
+      command: "sessions.info",
+      session: {
+        sessionId: "session-a",
+        sessionFile: "/sessions/alpha/session-a.jsonl",
+        firstUserMessage: "Review the authentication flow.",
+      },
+    });
+    expect(inspect).toHaveBeenCalledWith("session-a");
   });
 
   it("keeps duplicate-title targets disambiguated by project and working directory", async () => {

@@ -533,13 +533,15 @@ export async function createCakeRuntimeCapabilities(input: {
         command: "session.info",
         topic: "sessions",
         summary:
-          "Return minimal identity, workspace, resolution, and model information for the calling session.",
+          "Return identity, transcript location, initial request, workspace, resolution, and model information for the calling session.",
         guidance: [
           "Singular session.* operations always target the calling session and never accept a sessionId.",
+          "sessionFile is the full path to Pi's authoritative JSONL transcript.",
         ],
         inputSchema: empty,
         examples: [{}],
-        result: "sessionId, title, workspacePath, resolved, and provider/model/reasoning only.",
+        result:
+          "The session identity, title, full sessionFile path, firstUserMessage, workspacePath, resolution state, and provider/model/reasoning.",
         execute: async () => api().info(),
       },
       {
@@ -756,6 +758,19 @@ export async function createCakeRuntimeCapabilities(input: {
         result:
           "Project Session identities, projects, paths, titles, activity, and resolution state.",
         execute: (_input, context) => api().invokeAppControl("sessions.list", {}, context.signal),
+      },
+      {
+        command: "sessions.info",
+        topic: "sessions",
+        summary: "Inspect one explicitly targeted Project Session.",
+        guidance: ["sessionFile is the full path to Pi's authoritative JSONL transcript."],
+        inputSchema: Schema.Struct({
+          sessionId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+        }),
+        examples: [{ input: { sessionId: "target-session-id" } }],
+        result:
+          "The target's metadata, full sessionFile path, firstUserMessage, selection, and activity state.",
+        execute: invokeAppControl("sessions.info"),
       },
       {
         command: "sessions.send",

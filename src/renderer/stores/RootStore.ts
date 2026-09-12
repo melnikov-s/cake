@@ -1236,6 +1236,8 @@ export class RootStore extends Store<{
         },
       },
       sessions: {
+        inspect: (sessionId) =>
+          this.client.projectSessions.inspect({ sessionId }, { signal: this.signal }),
         open: (sessionId, messageId) => this.openSession(sessionId, messageId),
         create: (input) => this.createPromptedSession(input),
         createDraft: (input) => this.createDraftSession(input),

@@ -540,9 +540,19 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
   capabilities.operationApi.current = {
     resolveModelSelection: configuration.resolveModelSelection,
     info() {
+      const firstUserMessage = session.sessionManager
+        .getBranch()
+        .flatMap((entry) =>
+          entry.type === "message" && entry.message.role === "user"
+            ? [textFromContent(entry.message.content).trim()]
+            : [],
+        )
+        .find(Boolean);
       const info: JsonObject = {
         sessionId: cakeSessionId,
         title: continuations.activeSessionTitle(),
+        sessionFile: session.sessionFile ?? "",
+        ...(firstUserMessage ? { firstUserMessage } : null),
         workspacePath: options.cwd,
         resolved: options.currentSessionControl?.resolved() ?? false,
         model: {
