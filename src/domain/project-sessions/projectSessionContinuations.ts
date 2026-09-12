@@ -1,8 +1,10 @@
 import { Effect, Stream } from "effect";
+import type { ArtifactPointer } from "../../ipc/artifact-contract";
 import * as projectSessionLocations from "./projectSessionLocations";
 import type { ProjectSessionLocation } from "./project-session-data";
 import { ProjectSessionError, type ProjectSessionTarget } from "./project-session-data";
 import { SessionArchiveStorage } from "../../services/storage/SessionArchiveStorage";
+import { ArtifactStorage } from "../../services/storage/ArtifactStorage";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import { PiSessions } from "../../services/pi/PiSessions";
 import {
@@ -129,12 +131,14 @@ export const fork = Effect.fn("ProjectSessions.fork")(function* (input: {
       const forkTitle = nextCopyTitle(sourceTitle, new Set(catalogTitles.flat()));
 
       let sessionId: string;
+      let artifactPointers: ReadonlyArray<ArtifactPointer>;
       if (destination === source) {
         const handle = yield* acquireTarget(source, input.target.sessionId, false);
         const result = yield* handle.fork(input.entryId, forkTitle).pipe(asError("fork"));
         sessionId = result.sessionId;
+        artifactPointers = result.artifactPointers;
       } else {
-        sessionId = yield* projectSessionLocations
+        const result = yield* projectSessionLocations
           .forkToWorkingDirectory({
             sessionId: input.target.sessionId,
             entryId: input.entryId,
@@ -143,7 +147,19 @@ export const fork = Effect.fn("ProjectSessions.fork")(function* (input: {
             destination,
           })
           .pipe(asError("fork"));
+        sessionId = result.sessionId;
+        artifactPointers = result.artifactPointers;
       }
+      const artifactStorage = yield* ArtifactStorage;
+      yield* artifactStorage
+        .inheritFork(
+          source.workingDirectory,
+          input.target.sessionId,
+          destination.workingDirectory,
+          sessionId,
+          artifactPointers,
+        )
+        .pipe(asError("fork"));
       return { sessionId, destination };
     }),
   );

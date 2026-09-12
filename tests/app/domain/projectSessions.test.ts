@@ -8,6 +8,7 @@ import * as projectSessionOperations from "../../../src/domain/project-sessions/
 import * as projectSessionContinuations from "../../../src/domain/project-sessions/projectSessionContinuations";
 import * as projectSessionLifecycle from "../../../src/domain/project-sessions/projectSessionLifecycle";
 import type { SessionCatalogUpdate } from "../../../src/domain/application/catalog-data";
+import type { ArtifactPointer } from "../../../src/ipc/artifact-contract";
 import { getState } from "../../../src/domain/application/application";
 import {
   defaultApplicationState,
@@ -79,6 +80,7 @@ const fakeRuntime = (
   onForkTitle?: (title: string) => void,
   onRename?: (name: string) => void,
   onOperation?: (operation: string) => void,
+  forkArtifactPointers: ReadonlyArray<ArtifactPointer> = [],
   onDispose?: () => void,
 ): CakeRuntime => ({
   sessionId: snapshot.sessionId,
@@ -110,7 +112,11 @@ const fakeRuntime = (
   rename: async (name) => onRename?.(name),
   fork: async (_entryId, title) => {
     onForkTitle?.(title);
-    return { sessionId: "forked", sessionFile: "/sessions/forked.jsonl" };
+    return {
+      sessionId: "forked",
+      sessionFile: "/sessions/forked.jsonl",
+      artifactPointers: forkArtifactPointers,
+    };
   },
   toolCompact: async () => {
     onToolCompact?.();
@@ -157,6 +163,14 @@ const makeLayer = (
     prompt?(): Promise<void>;
     onToolCompact?(): void;
     onForkTitle?(title: string): void;
+    forkArtifactPointers?: ReadonlyArray<ArtifactPointer>;
+    onInheritFork?(
+      sourceWorkingDirectory: string,
+      sourceSessionId: string,
+      destinationWorkingDirectory: string,
+      destinationSessionId: string,
+      pointers: ReadonlyArray<ArtifactPointer>,
+    ): void;
     onOperation?(operation: string): void;
     onInspect?(): void;
     onDispose?(): void;
@@ -296,6 +310,7 @@ const makeLayer = (
           hooks.onForkTitle,
           hooks.onRename,
           hooks.onOperation,
+          hooks.forkArtifactPointers,
           hooks.onDispose,
         );
       }),
@@ -411,7 +426,10 @@ const makeLayer = (
           trusted: true,
         }),
     }),
-    Layer.mock(ArtifactStorage, { deleteSession: () => Effect.void }),
+    Layer.mock(ArtifactStorage, {
+      inheritFork: (...args) => Effect.sync(() => hooks.onInheritFork?.(...args)),
+      deleteSession: () => Effect.void,
+    }),
     Layer.mock(ReviewStorage, {
       agentSessionDirectory: () => "/reviews/agent",
       reviewContextPath: () => "/reviews/context.md",
@@ -1180,6 +1198,47 @@ describe("Project Sessions domain", () => {
           ],
           onForkTitle: (title) => {
             forkTitle = title;
+          },
+        }),
+      ),
+    );
+  });
+
+  it.effect("associates only the fork runtime's reachable artifact revisions", () => {
+    const pointer: ArtifactPointer = {
+      protocol: "cake.artifact/v1",
+      artifactId: "artifact-before-entry",
+      sessionId: "session-1",
+      revision: 2,
+      kind: "table",
+      digest: "a".repeat(64),
+      fallback: { markdown: "| Before |" },
+    };
+    let inherited: ReadonlyArray<ArtifactPointer> | undefined;
+
+    return Effect.gen(function* () {
+      yield* projectSessionContinuations.fork({
+        target: { sessionId: "session-1", workingDirectory: "/project" },
+        entryId: "assistant-entry",
+      });
+
+      assert.deepEqual(inherited, [pointer]);
+    }).pipe(
+      Effect.provide(
+        makeLayer(defaultApplicationState(), {
+          forkArtifactPointers: [pointer],
+          onInheritFork: (
+            sourceWorkingDirectory,
+            sourceSessionId,
+            destinationWorkingDirectory,
+            destinationSessionId,
+            pointers,
+          ) => {
+            assert.equal(sourceWorkingDirectory, "/project");
+            assert.equal(sourceSessionId, "session-1");
+            assert.equal(destinationWorkingDirectory, "/project");
+            assert.equal(destinationSessionId, "forked");
+            inherited = pointers;
           },
         }),
       ),

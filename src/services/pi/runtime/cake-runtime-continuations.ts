@@ -1,10 +1,11 @@
 import { SessionManager, type AgentSession } from "@earendil-works/pi-coding-agent";
 import { existsSync } from "node:fs";
+import type { ArtifactPointer } from "../../../ipc/artifact-contract";
 import type { JsonValue } from "../../../ipc/json-contract";
 import { SESSION_TITLE_MAX_LENGTH, type UtilityModel } from "../../../ipc/session-contract";
 import type { CakeRuntimeOptions } from "./cake-runtime";
 import { appendToolCompactedBranch } from "./session-tool-compaction";
-import { textFromContent } from "./session-projection";
+import { projectArtifactPointers, textFromContent } from "./session-projection";
 
 interface PendingSessionFork {
   readonly entryId?: string;
@@ -19,7 +20,14 @@ export interface CakeRuntimeContinuations {
   activeSessionTitle(): string;
   nameSessionFromFirstMessage(currentUserMessage: string): Promise<void>;
   rename(name: string, reportAction?: boolean): Promise<string>;
-  fork(entryId: string, title: string): Promise<{ sessionId: string; sessionFile: string }>;
+  fork(
+    entryId: string,
+    title: string,
+  ): Promise<{
+    sessionId: string;
+    sessionFile: string;
+    artifactPointers: ReadonlyArray<ArtifactPointer>;
+  }>;
   toolCompact(entryId: string): Promise<{ sessionId: string; sessionFile: string }>;
   scheduleFork(input: PendingSessionFork): JsonValue;
   setResolved(resolved: boolean): Promise<JsonValue>;
@@ -140,7 +148,11 @@ export function createCakeRuntimeContinuations(input: {
       const sessionFile = forked.createBranchedSession(entryId);
       if (!sessionFile) throw new Error("The current session is not persisted");
       forked.appendSessionInfo(title);
-      return { sessionId: forked.getSessionId(), sessionFile };
+      return {
+        sessionId: forked.getSessionId(),
+        sessionFile,
+        artifactPointers: projectArtifactPointers(forked),
+      };
     },
     async toolCompact(entryId) {
       const configuration = session.model

@@ -262,7 +262,14 @@ export interface CakeRuntime {
   login(provider: string, authType: "api_key" | "oauth"): Promise<void>;
   logout(provider: string): Promise<void>;
   rename(name: string): Promise<void>;
-  fork(entryId: string, title: string): Promise<{ sessionId: string; sessionFile: string }>;
+  fork(
+    entryId: string,
+    title: string,
+  ): Promise<{
+    sessionId: string;
+    sessionFile: string;
+    artifactPointers: ReadonlyArray<ArtifactPointer>;
+  }>;
   toolCompact(entryId: string): Promise<{ sessionId: string; sessionFile: string }>;
   navigate(
     entryId: string,

@@ -14,6 +14,7 @@ import {
   Stream,
 } from "effect";
 import type { PiQueuedMessages } from "./conversation-data";
+import type { ArtifactPointer } from "../../ipc/artifact-contract";
 import { jsonValueSchema } from "../../ipc/json-contract";
 import type {
   Attachment,
@@ -171,7 +172,14 @@ export interface PiSessionHandle {
   readonly fork: (
     entryId: string,
     title: string,
-  ) => Effect.Effect<{ readonly sessionId: string; readonly sessionFile: string }, PiSessionError>;
+  ) => Effect.Effect<
+    {
+      readonly sessionId: string;
+      readonly sessionFile: string;
+      readonly artifactPointers: ReadonlyArray<ArtifactPointer>;
+    },
+    PiSessionError
+  >;
   readonly toolCompact: (
     entryId: string,
   ) => Effect.Effect<{ readonly sessionId: string; readonly sessionFile: string }, PiSessionError>;

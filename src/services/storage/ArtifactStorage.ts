@@ -1,5 +1,5 @@
 import { Context, Schema, type Effect } from "effect";
-import type { ArtifactRecord, CakeArtifactV1 } from "../../ipc/artifact-contract";
+import type { ArtifactPointer, ArtifactRecord, CakeArtifactV1 } from "../../ipc/artifact-contract";
 
 export class ArtifactStorageError extends Schema.TaggedError<ArtifactStorageError>()(
   "ArtifactStorageError",
@@ -23,6 +23,13 @@ export interface ArtifactStorageService {
   readonly linkSession: (
     record: ArtifactRecord,
     sessionId: string,
+  ) => Effect.Effect<void, ArtifactStorageError>;
+  readonly inheritFork: (
+    sourceWorkingDirectory: string,
+    sourceSessionId: string,
+    destinationWorkingDirectory: string,
+    destinationSessionId: string,
+    pointers: ReadonlyArray<ArtifactPointer>,
   ) => Effect.Effect<void, ArtifactStorageError>;
   readonly deleteSession: (
     workingDirectory: string,

@@ -4,15 +4,15 @@ import {
   hasTrustRequiringProjectResources,
 } from "@earendil-works/pi-coding-agent";
 import { CombinedAutocompleteProvider } from "@earendil-works/pi-tui";
-import { existsSync, readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { existsSync, readFileSync, unlinkSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { Effect, Stream } from "effect";
 import {
   type FileSuggestion,
   type SessionPreview,
   type SessionSummary,
 } from "../../../ipc/session-contract";
-import { projectSessionEntries } from "./session-projection";
+import { projectArtifactPointers, projectSessionEntries } from "./session-projection";
 import { sessionTitleFromFile } from "./session-title";
 import {
   findSessionFileMetadataById,
@@ -65,17 +65,30 @@ export function cakeWorkspaceSessionDirectory(cwd: string, sessionRoot: string) 
 
 export function forkWorkspaceSession(
   sourceFile: string,
-  cwd: string,
+  sourceCwd: string,
+  entryId: string,
+  destinationCwd: string,
   sessionRoot: string,
   title: string,
 ) {
-  const manager = SessionManager.forkFrom(
-    sourceFile,
-    cwd,
-    cakeWorkspaceSessionDirectory(cwd, sessionRoot),
-  );
-  manager.appendSessionInfo(title);
-  return { sessionId: manager.getSessionId(), sessionFile: manager.getSessionFile() ?? undefined };
+  const source = SessionManager.open(sourceFile, dirname(sourceFile), sourceCwd);
+  const branchFile = source.createBranchedSession(entryId);
+  if (!branchFile) throw new Error("The current session is not persisted");
+  try {
+    const manager = SessionManager.forkFrom(
+      branchFile,
+      destinationCwd,
+      cakeWorkspaceSessionDirectory(destinationCwd, sessionRoot),
+    );
+    manager.appendSessionInfo(title);
+    return {
+      sessionId: manager.getSessionId(),
+      sessionFile: manager.getSessionFile() ?? undefined,
+      artifactPointers: projectArtifactPointers(manager),
+    };
+  } finally {
+    unlinkSync(branchFile);
+  }
 }
 
 export async function suggestProjectFiles(options: {

@@ -104,7 +104,7 @@ const makeLayer = () => {
       login: async () => undefined,
       logout: async () => undefined,
       rename: async () => undefined,
-      fork: async () => ({ sessionId: "fork", sessionFile: "/fork.jsonl" }),
+      fork: async () => ({ sessionId: "fork", sessionFile: "/fork.jsonl", artifactPointers: [] }),
       toolCompact: async () => ({ sessionId: "toolCompact", sessionFile: "/toolCompact.jsonl" }),
       navigate: async () => undefined,
       dispose: () => undefined,

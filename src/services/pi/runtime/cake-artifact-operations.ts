@@ -171,7 +171,7 @@ export function createCakeArtifactOperations(
       topic: "widgets",
       summary: "Delegate and present one self-contained interactive or highly visual React widget.",
       guidance: [
-        "Use widgets when interactivity or visual presentation materially helps, especially when requested; prefer Markdown, tables, code, or Mermaid for simple textual explanations.",
+        "Prefer ordinary inline Markdown—including Mermaid and small tables—whenever it communicates the result clearly. Create a widget only for a substantial, reusable, or genuinely interactive/visual deliverable, especially when requested.",
         "Supply a complete presentation brief, bounded data, and a readable Markdown fallback. Do not write the generated React source yourself.",
       ],
       inputSchema: Schema.Struct({ widget: widgetSchema }),

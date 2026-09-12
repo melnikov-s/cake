@@ -115,6 +115,8 @@ export const forkToWorkingDirectory = Effect.fn("ProjectSessions.forkToWorkingDi
       try: () =>
         forkWorkspaceSession(
           sourceFile,
+          input.source.workingDirectory,
+          input.entryId,
           input.destination.workingDirectory,
           configuration.sessionDirectory,
           input.title,
@@ -122,6 +124,6 @@ export const forkToWorkingDirectory = Effect.fn("ProjectSessions.forkToWorkingDi
       catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
     });
     yield* access.rememberSessionLocation(input.destination.workingDirectory, forked.sessionId);
-    return forked.sessionId;
+    return forked;
   },
 );

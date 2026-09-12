@@ -61,10 +61,16 @@ infrastructure.
   cancellation, and routing remain in a focused renderer artifact workflow
   Store and the main artifact domain operations above `PiSessions`.
 - Cake indexes the persisted Pi session reference in window state and records
-  artifact session aliases when Pi materializes a new persistent session ID.
+  artifact session associations when Pi materializes a new persistent session ID.
   Hydration combines validated Pi pointers with that Cake index, so artifacts
   survive both renderer reload and application restart without guessing from
-  transcript content.
+  transcript content. Tool compaction and session-tree navigation retain the same
+  session association. A fork associates only the exact revisions referenced by
+  Pi's source branch through the selected fork entry; those records are snapshots,
+  so later source revisions or newly created source artifacts do not appear in the
+  fork. Historical content-addressed blobs are retained even after an association
+  is deleted because an older Pi transcript pointer may still become reachable
+  through a later fork; metadata deletion remains scoped to the deleted session.
 
 ## Branches, forks, and revision inheritance
 

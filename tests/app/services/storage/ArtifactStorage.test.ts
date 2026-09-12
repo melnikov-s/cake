@@ -56,6 +56,77 @@ describe("ArtifactStorage", () => {
     expect(await Effect.runPromise(storage.listSession("/project", "session-1"))).toEqual([]);
   });
 
+  it("freezes fork associations at the revisions reachable from the fork entry", async () => {
+    const root = await mkdtemp(join(tmpdir(), "cake-artifacts-"));
+    directories.push(root);
+    const storage = makeArtifactStorageTestAdapter(root).service;
+    const first = await Effect.runPromise(
+      storage.upsert("/project", { ...baseArtifact, revision: 1, title: "At fork" }),
+    );
+
+    await Effect.runPromise(
+      storage.upsert("/project", { ...baseArtifact, revision: 2, title: "After fork entry" }),
+    );
+    await Effect.runPromise(
+      storage.upsert("/project", {
+        ...baseArtifact,
+        id: "later-artifact",
+        revision: 1,
+        title: "Created later",
+      }),
+    );
+    await Effect.runPromise(
+      storage.inheritFork("/project", "session-1", "/project", "fork-1", [
+        {
+          protocol: "cake.artifact/v1",
+          artifactId: first.artifact.id,
+          sessionId: first.artifact.sessionId,
+          revision: first.artifact.revision,
+          kind: first.artifact.kind,
+          digest: first.digest,
+          fallback: first.artifact.fallback,
+        },
+      ]),
+    );
+
+    const inherited = await Effect.runPromise(storage.listSession("/project", "fork-1"));
+    expect(inherited).toHaveLength(1);
+    expect(inherited[0]?.artifact).toMatchObject({ id: "table-1", revision: 1, title: "At fork" });
+
+    await Effect.runPromise(storage.deleteSession("/project", "session-1"));
+    expect(
+      (await Effect.runPromise(storage.get("/project", "fork-1", "table-1")))?.artifact.revision,
+    ).toBe(1);
+    await Effect.runPromise(storage.deleteSession("/project", "fork-1"));
+    expect(await Effect.runPromise(storage.listSession("/project", "fork-1"))).toEqual([]);
+  });
+
+  it("rejects fork associations that do not match the source snapshot", async () => {
+    const root = await mkdtemp(join(tmpdir(), "cake-artifacts-"));
+    directories.push(root);
+    const storage = makeArtifactStorageTestAdapter(root).service;
+    const first = await Effect.runPromise(
+      storage.upsert("/project", { ...baseArtifact, revision: 1 }),
+    );
+
+    await expect(
+      Effect.runPromise(
+        storage.inheritFork("/project", "session-1", "/project", "fork-1", [
+          {
+            protocol: "cake.artifact/v1",
+            artifactId: first.artifact.id,
+            sessionId: first.artifact.sessionId,
+            revision: first.artifact.revision,
+            kind: first.artifact.kind,
+            digest: "f".repeat(64),
+            fallback: first.artifact.fallback,
+          },
+        ]),
+      ),
+    ).rejects.toThrow();
+    expect(await Effect.runPromise(storage.listSession("/project", "fork-1"))).toEqual([]);
+  });
+
   it("serializes revision validation and writes for the same artifact", async () => {
     const root = await mkdtemp(join(tmpdir(), "cake-artifacts-"));
     directories.push(root);

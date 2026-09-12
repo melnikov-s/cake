@@ -67,7 +67,11 @@ export function fakeRuntime(
     login: async () => undefined,
     logout: async () => undefined,
     rename: async () => undefined,
-    fork: async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" }),
+    fork: async () => ({
+      sessionId: "fork",
+      sessionFile: "/sessions/fork.jsonl",
+      artifactPointers: [],
+    }),
     toolCompact: async () => ({
       sessionId: "toolCompact",
       sessionFile: "/sessions/toolCompact.jsonl",

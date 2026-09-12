@@ -142,7 +142,7 @@ const makeLayer = (
       operations.push("logout");
     },
     rename: async () => undefined,
-    fork: async () => ({ sessionId: "fork", sessionFile: "/fork.jsonl" }),
+    fork: async () => ({ sessionId: "fork", sessionFile: "/fork.jsonl", artifactPointers: [] }),
     toolCompact: async () => ({
       sessionId: snapshot.sessionId,
       sessionFile: snapshot.sessionFile,

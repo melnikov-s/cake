@@ -5,6 +5,7 @@ import { join } from "node:path";
 import {
   artifactRecordSchema,
   parseArtifactInput,
+  type ArtifactPointer,
   type ArtifactRecord,
   type CakeArtifactV1,
 } from "../../ipc/artifact-contract";
@@ -89,6 +90,49 @@ class ArtifactRepository {
     await rm(this.recordDirectory(workspacePath, sessionId), { recursive: true, force: true });
   }
 
+  async inheritFork(
+    sourceWorkspacePath: string,
+    sourceSessionId: string,
+    destinationWorkspacePath: string,
+    destinationSessionId: string,
+    pointers: ReadonlyArray<ArtifactPointer>,
+  ): Promise<void> {
+    const sourceRecords = await this.listSession(sourceWorkspacePath, sourceSessionId);
+    const recordsById = new Map(sourceRecords.map((record) => [record.artifact.id, record]));
+    const inherited = await Promise.all(
+      pointers.map(async (pointer) => {
+        const serialized = await readFile(this.blobPath(pointer.digest), "utf8");
+        const digest = createHash("sha256").update(serialized).digest("hex");
+        const artifact = parseArtifactInput(JSON.parse(serialized));
+        if (
+          digest !== pointer.digest ||
+          artifact.id !== pointer.artifactId ||
+          artifact.sessionId !== pointer.sessionId ||
+          artifact.revision !== pointer.revision ||
+          artifact.kind !== pointer.kind
+        )
+          throw new Error(
+            `Artifact ${pointer.artifactId} revision ${pointer.revision} does not match its source pointer`,
+          );
+        const current = recordsById.get(pointer.artifactId);
+        if (!current)
+          throw new Error(
+            `Artifact ${pointer.artifactId} is not associated with source session ${sourceSessionId}`,
+          );
+        const now = new Date().toISOString();
+        return Schema.decodeUnknownSync(artifactRecordSchema)({
+          artifact,
+          workspacePath: destinationWorkspacePath,
+          digest,
+          createdAt: current?.createdAt ?? now,
+          updatedAt: current?.updatedAt ?? now,
+        });
+      }),
+    );
+
+    await Promise.all(inherited.map((record) => this.linkSession(record, destinationSessionId)));
+  }
+
   async get(
     workspacePath: string,
     sessionId: string,
@@ -123,7 +167,7 @@ class ArtifactRepository {
               await readFile(join(this.recordDirectory(workspacePath, sessionId), name), "utf8"),
             ),
           );
-          return this.get(metadata.workspacePath, metadata.sessionId, metadata.id);
+          return this.get(workspacePath, sessionId, metadata.id);
         }),
     );
     return records
@@ -210,6 +254,24 @@ const makeArtifactStorageService = (root: string) => {
     ),
     linkSession: Effect.fn("ArtifactStorage.linkSession")((record, sessionId) =>
       attempt("linkSession", () => repository.linkSession(record, sessionId)),
+    ),
+    inheritFork: Effect.fn("ArtifactStorage.inheritFork")(
+      (
+        sourceWorkingDirectory,
+        sourceSessionId,
+        destinationWorkingDirectory,
+        destinationSessionId,
+        pointers,
+      ) =>
+        attempt("inheritFork", () =>
+          repository.inheritFork(
+            sourceWorkingDirectory,
+            sourceSessionId,
+            destinationWorkingDirectory,
+            destinationSessionId,
+            pointers,
+          ),
+        ),
     ),
     deleteSession: Effect.fn("ArtifactStorage.deleteSession")((workingDirectory, sessionId) =>
       attempt("deleteSession", () => repository.deleteSession(workingDirectory, sessionId)),
