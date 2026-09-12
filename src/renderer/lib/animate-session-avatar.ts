@@ -1,4 +1,6 @@
 const svgNamespace = "http://www.w3.org/2000/svg";
+const randomBetween = (minimum: number, maximum: number) =>
+  minimum + Math.random() * (maximum - minimum);
 
 /** Prepare visible shapes before React owns the SVG markup. */
 export function materializeSessionAvatar(markup: string): string {
@@ -40,6 +42,10 @@ export function interactWithSessionAvatar(
   if (!look || !hop) return () => {};
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
   const animations = new Map<Element, Animation>();
+  let pressed = false;
+  let releaseTimer = 0;
+  const restingTransform = "translateY(0px)";
+  let curledTransform = restingTransform;
   const glanceEasings = [
     "cubic-bezier(0.22, 1, 0.36, 1)",
     "cubic-bezier(0.25, 0.8, 0.25, 1)",
@@ -84,19 +90,69 @@ export function interactWithSessionAvatar(
     }
     glance(false);
   };
-  const activate = (event: MouseEvent) => {
+  const isMainAction = (event: Event) => {
     // NavItem's main button is a direct child. Status, disclosure, and trailing
-    // actions must not impersonate selecting the item. Keyboard clicks work too.
+    // actions must not impersonate selecting the item.
     const button = event.target instanceof Element ? event.target.closest("button") : null;
-    if (button?.parentElement !== activationTarget || reduced.matches || document.hidden) return;
+    return button?.parentElement === activationTarget;
+  };
+  const press = (event: PointerEvent | KeyboardEvent) => {
+    if (
+      !isMainAction(event) ||
+      (event instanceof PointerEvent && event.button !== 0) ||
+      (event instanceof KeyboardEvent && (!["Enter", " "].includes(event.key) || event.repeat)) ||
+      reduced.matches ||
+      document.hidden
+    )
+      return;
+    window.clearTimeout(releaseTimer);
+    pressed = true;
+    const curlAngle = randomBetween(-3.5, 3.5);
+    const curlDepth = randomBetween(2, 4);
+    const squashY = randomBetween(0.88, 0.95);
+    const squashX = randomBetween(1.015, 1.055);
+    const curlDuration = randomBetween(60, 105);
+    curledTransform = `translate(50px, 50px) translateY(${curlDepth}px) rotate(${curlAngle}deg) scale(${squashX}, ${squashY}) translate(-50px, -50px)`;
+    const from = getComputedStyle(hop).transform;
+    hop.style.transform = curledTransform;
+    play(hop, [{ transform: from }, { transform: curledTransform }], curlDuration, "ease-out");
+  };
+  const scheduleRelease = (event: PointerEvent | KeyboardEvent) => {
+    if (
+      !pressed ||
+      (event instanceof KeyboardEvent && !["Enter", " "].includes(event.key)) ||
+      reduced.matches ||
+      document.hidden
+    )
+      return;
+    // A successful release emits click in the same task. Keep the curl through
+    // that click so activate can flow directly into the existing pop animation;
+    // otherwise gently restore after a cancelled or dragged-out press.
+    window.clearTimeout(releaseTimer);
+    releaseTimer = window.setTimeout(() => {
+      pressed = false;
+      const from = getComputedStyle(hop).transform;
+      hop.style.removeProperty("transform");
+      play(hop, [{ transform: from }, { transform: restingTransform }], 160, "ease-out");
+    });
+  };
+  const activate = (event: MouseEvent) => {
+    if (!isMainAction(event) || reduced.matches || document.hidden) return;
+    window.clearTimeout(releaseTimer);
+    pressed = false;
+    const from = getComputedStyle(hop).transform;
+    const jumpHeight = randomBetween(5, 9);
+    const jumpAngle = randomBetween(-20, 20) * (Math.PI / 180);
+    const jumpX = Math.sin(jumpAngle) * jumpHeight;
+    const jumpY = -Math.cos(jumpAngle) * jumpHeight;
+    const jumpRotation = randomBetween(-4, 4);
+    const jumpDuration = randomBetween(260, 390);
+    const apexTransform = `translate(50px, 50px) translate(${jumpX}px, ${jumpY}px) rotate(${jumpRotation}deg) scale(0.98, 1.03) translate(-50px, -50px)`;
+    hop.style.removeProperty("transform");
     play(
       hop,
-      [
-        { transform: "translateY(0)" },
-        { transform: "translateY(-7px)" },
-        { transform: "translateY(0)" },
-      ],
-      320,
+      [{ transform: from }, { transform: apexTransform }, { transform: restingTransform }],
+      jumpDuration,
     );
     for (const eye of hop.querySelectorAll<SVGGElement>(".dbga-eye")) {
       const box = eye.getBBox();
@@ -112,18 +168,26 @@ export function interactWithSessionAvatar(
           transform: `translateY(${y}px) scaleY(${scale}) translateY(${-y}px)`,
           offset,
         })),
-        280,
+        jumpDuration * 0.875,
       );
     }
   };
   const reset = () => {
+    window.clearTimeout(releaseTimer);
+    pressed = false;
     for (const animation of animations.values()) animation.cancel();
     animations.clear();
     look.style.removeProperty("transform");
+    hop.style.removeProperty("transform");
   };
   target.addEventListener("pointerenter", enter);
   target.addEventListener("pointerleave", leave);
+  activationTarget.addEventListener("pointerdown", press);
+  activationTarget.addEventListener("keydown", press);
   activationTarget.addEventListener("click", activate);
+  window.addEventListener("pointerup", scheduleRelease);
+  window.addEventListener("pointercancel", scheduleRelease);
+  window.addEventListener("keyup", scheduleRelease);
   window.addEventListener("blur", reset);
   document.addEventListener("visibilitychange", reset);
   reduced.addEventListener("change", reset);
@@ -131,7 +195,12 @@ export function interactWithSessionAvatar(
     reset();
     target.removeEventListener("pointerenter", enter);
     target.removeEventListener("pointerleave", leave);
+    activationTarget.removeEventListener("pointerdown", press);
+    activationTarget.removeEventListener("keydown", press);
     activationTarget.removeEventListener("click", activate);
+    window.removeEventListener("pointerup", scheduleRelease);
+    window.removeEventListener("pointercancel", scheduleRelease);
+    window.removeEventListener("keyup", scheduleRelease);
     window.removeEventListener("blur", reset);
     document.removeEventListener("visibilitychange", reset);
     reduced.removeEventListener("change", reset);
@@ -174,18 +243,102 @@ export function animateSessionAvatar(host: HTMLElement): () => void {
       )
     : 1;
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
-  const animations = new Set<Animation>();
+  const trigger = host.closest<HTMLButtonElement>("button");
+  const animations = new Map<Element, Animation>();
   const timers = new Set<ReturnType<typeof setTimeout>>();
   let frame = 0;
+  let pressed = false;
+  let releaseTimer = 0;
   let pointer: { x: number; y: number } | undefined;
   let lookPosition = { x: 0, y: 0 };
-  const play = (target: Element, frames: Keyframe[], duration: number) => {
-    const animation = target.animate(frames, { duration, easing: "ease-in-out" });
-    animations.add(animation);
+  const restingTransform = "translateY(0px)";
+  const play = (target: Element, frames: Keyframe[], duration: number, easing = "ease-in-out") => {
+    animations.get(target)?.cancel();
+    const animation = target.animate(frames, { duration, easing });
+    animations.set(target, animation);
     animation.onfinish = () => {
-      animations.delete(animation);
+      animations.delete(target);
       animation.cancel();
     };
+  };
+  const press = (event: PointerEvent | KeyboardEvent) => {
+    if (
+      (event instanceof PointerEvent && event.button !== 0) ||
+      (event instanceof KeyboardEvent && (!["Enter", " "].includes(event.key) || event.repeat)) ||
+      reduced.matches ||
+      document.hidden
+    )
+      return;
+    window.clearTimeout(releaseTimer);
+    pressed = true;
+    const curlTransform = `translate(50px, 50px) translateY(${randomBetween(2, 4)}px) rotate(${randomBetween(-3.5, 3.5)}deg) scale(${randomBetween(1.015, 1.055)}, ${randomBetween(0.88, 0.95)}) translate(-50px, -50px)`;
+    const from = getComputedStyle(hop).transform;
+    hop.style.transform = curlTransform;
+    play(
+      hop,
+      [{ transform: from }, { transform: curlTransform }],
+      randomBetween(60, 105),
+      "ease-out",
+    );
+  };
+  const scheduleRelease = (event: PointerEvent | KeyboardEvent) => {
+    if (
+      !pressed ||
+      (event instanceof KeyboardEvent && !["Enter", " "].includes(event.key)) ||
+      reduced.matches ||
+      document.hidden
+    )
+      return;
+    window.clearTimeout(releaseTimer);
+    releaseTimer = window.setTimeout(() => {
+      pressed = false;
+      const from = getComputedStyle(hop).transform;
+      hop.style.removeProperty("transform");
+      play(hop, [{ transform: from }, { transform: restingTransform }], 160, "ease-out");
+    });
+  };
+  const cancelPress = () => {
+    if (!pressed) return;
+    window.clearTimeout(releaseTimer);
+    pressed = false;
+    animations.get(hop)?.cancel();
+    animations.delete(hop);
+    hop.style.removeProperty("transform");
+  };
+  const activate = () => {
+    if (reduced.matches || document.hidden) return;
+    window.clearTimeout(releaseTimer);
+    pressed = false;
+    const from = getComputedStyle(hop).transform;
+    const height = randomBetween(5, 9);
+    const angle = randomBetween(-20, 20) * (Math.PI / 180);
+    const x = Math.sin(angle) * height;
+    const y = -Math.cos(angle) * height;
+    const duration = randomBetween(260, 390);
+    const apex = `translate(50px, 50px) translate(${x}px, ${y}px) rotate(${randomBetween(-4, 4)}deg) scale(0.98, 1.03) translate(-50px, -50px)`;
+    hop.style.removeProperty("transform");
+    play(
+      hop,
+      [{ transform: from }, { transform: apex }, { transform: restingTransform }],
+      duration,
+    );
+    for (const eye of eyes) {
+      const box = eye.getBBox();
+      const centerY = box.y + box.height / 2;
+      play(
+        eye,
+        [
+          { scale: 1, offset: 0 },
+          { scale: 0.05, offset: 0.25 },
+          { scale: 0.05, offset: 0.6 },
+          { scale: 1, offset: 1 },
+        ].map(({ scale, offset }) => ({
+          transform: `translateY(${centerY}px) scaleY(${scale}) translateY(${-centerY}px)`,
+          offset,
+        })),
+        duration * 0.875,
+      );
+    }
   };
   const blink = () => {
     for (const eye of eyes) {
@@ -220,20 +373,57 @@ export function animateSessionAvatar(host: HTMLElement): () => void {
       850,
     );
   };
-  const bodyMotion = (motion: string[]) => {
+  const bodyMotion = (motion: string[], duration: number) => {
     play(
       hop,
       motion.map((transform) => ({
         transform: `translate(50px, 50px) ${transform} translate(-50px, -50px)`,
       })),
-      700,
+      duration,
     );
   };
-  const hopMotion = () => bodyMotion(["translateY(0)", "translateY(-3px)", "translateY(0)"]);
-  const wobble = () =>
-    bodyMotion(["rotate(0deg)", "rotate(-4deg)", "rotate(3deg)", "rotate(0deg)"]);
-  const squashAndStretch = () =>
-    bodyMotion(["scale(1)", "scale(1.025, 0.96)", "scale(0.985, 1.02)", "scale(1)"]);
+  const hopMotion = () => {
+    if (pressed) return;
+    const height = randomBetween(5, 9);
+    const angle = randomBetween(-20, 20) * (Math.PI / 180);
+    const x = Math.sin(angle) * height;
+    const y = -Math.cos(angle) * height;
+    bodyMotion(
+      [
+        "translateY(0)",
+        `translate(${x}px, ${y}px) rotate(${randomBetween(-4, 4)}deg) scale(0.98, 1.03)`,
+        "translateY(0)",
+      ],
+      randomBetween(260, 390),
+    );
+  };
+  const wobble = () => {
+    if (pressed) return;
+    const angle = randomBetween(2.5, 5);
+    bodyMotion(
+      [
+        "rotate(0deg)",
+        `rotate(${-angle}deg)`,
+        `rotate(${randomBetween(angle * 0.6, angle)}deg)`,
+        "rotate(0deg)",
+      ],
+      randomBetween(520, 820),
+    );
+  };
+  const squashAndStretch = () => {
+    if (pressed) return;
+    const squashY = randomBetween(0.88, 0.96);
+    const squashX = randomBetween(1.015, 1.055);
+    bodyMotion(
+      [
+        "scale(1)",
+        `translateY(${randomBetween(1, 3)}px) rotate(${randomBetween(-3.5, 3.5)}deg) scale(${squashX}, ${squashY})`,
+        `scale(${randomBetween(0.975, 0.995)}, ${randomBetween(1.015, 1.04)})`,
+        "scale(1)",
+      ],
+      randomBetween(420, 760),
+    );
+  };
   const scheduleBetween = (action: () => void, minimum: number, maximum: number) => {
     const scheduleNext = () => {
       const timer = setTimeout(
@@ -276,10 +466,13 @@ export function animateSessionAvatar(host: HTMLElement): () => void {
     if (!frame) frame = requestAnimationFrame(updateLook);
   };
   const stop = () => {
+    window.clearTimeout(releaseTimer);
+    pressed = false;
     for (const timer of timers) clearTimeout(timer);
     timers.clear();
-    for (const animation of animations) animation.cancel();
+    for (const animation of animations.values()) animation.cancel();
     animations.clear();
+    hop.style.removeProperty("transform");
     resetLook();
   };
   const refresh = () => {
@@ -291,7 +484,14 @@ export function animateSessionAvatar(host: HTMLElement): () => void {
     scheduleBetween(wobble, 20_000, 30_000);
     scheduleBetween(squashAndStretch, 20_000, 30_000);
   };
+  trigger?.addEventListener("pointerdown", press);
+  trigger?.addEventListener("keydown", press);
+  trigger?.addEventListener("click", activate);
+  window.addEventListener("pointerup", scheduleRelease);
+  window.addEventListener("pointercancel", scheduleRelease);
+  window.addEventListener("keyup", scheduleRelease);
   window.addEventListener("pointermove", move, { passive: true });
+  window.addEventListener("blur", cancelPress);
   window.addEventListener("blur", resetLook);
   document.documentElement.addEventListener("pointerleave", resetLook);
   document.addEventListener("visibilitychange", refresh);
@@ -299,7 +499,14 @@ export function animateSessionAvatar(host: HTMLElement): () => void {
   refresh();
   return () => {
     stop();
+    trigger?.removeEventListener("pointerdown", press);
+    trigger?.removeEventListener("keydown", press);
+    trigger?.removeEventListener("click", activate);
+    window.removeEventListener("pointerup", scheduleRelease);
+    window.removeEventListener("pointercancel", scheduleRelease);
+    window.removeEventListener("keyup", scheduleRelease);
     window.removeEventListener("pointermove", move);
+    window.removeEventListener("blur", cancelPress);
     window.removeEventListener("blur", resetLook);
     document.documentElement.removeEventListener("pointerleave", resetLook);
     document.removeEventListener("visibilitychange", refresh);

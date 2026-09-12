@@ -23,39 +23,6 @@ const metadata = {
 };
 
 describe("cross-session message presentation", () => {
-  it("renders the assistant Session avatar as the non-interactive message label", () => {
-    const container = document.createElement("div");
-    document.body.appendChild(container);
-    const root = createRoot(container);
-
-    act(() => {
-      root.render(
-        <ChatTextMessage
-          part={{
-            id: "message-1",
-            kind: "text",
-            role: "assistant",
-            text: "Categorize this session",
-            status: "complete",
-          }}
-          sessionAvatar={{
-            seed: "categorize-this-session",
-            statusColor: "blue",
-            statusName: "Feature",
-          }}
-        />,
-      );
-    });
-
-    const label = container.querySelector<HTMLElement>('[data-slot="message-label"]');
-    const avatar = label?.querySelector<HTMLElement>('[role="img"][aria-label="Cake"]');
-    expect(avatar?.title).toBe("Feature");
-    expect(avatar?.closest("button")).toBeNull();
-    expect(label?.textContent).toBe("");
-    act(() => root.unmount());
-    container.remove();
-  });
-
   it("labels session-authored messages separately from user-authored messages", () => {
     const container = document.createElement("div");
     document.body.appendChild(container);

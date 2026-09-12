@@ -219,8 +219,6 @@ export const App = observer(function App() {
   }, [root, settings.hotkeys]);
 
   const projectTranscriptBehaviorFor = (paneSession: NonNullable<typeof session>) => {
-    const summary = root.sessionCatalogStore.find(paneSession.sessionId);
-    const workflowStatus = sidebar.sessionWorkflowStatus(paneSession.sessionId);
     return {
       workspacePath: paneSession.workspacePath,
       onFork: (entryId: string) => {
@@ -260,14 +258,6 @@ export const App = observer(function App() {
       showSelectionContextMenu: (input: { canChat: boolean; canAnnotate: boolean }) =>
         root.showTranscriptSelectionContextMenu(input),
       inlineWidgets: root.inlineWidgetStore,
-      sessionAvatar:
-        settings.appearance.sessionAvatarsEnabled && summary && !summary.draft
-          ? {
-              seed: sidebar.sessionAvatarSeed(paneSession.sessionId),
-              statusColor: workflowStatus?.color,
-              statusName: workflowStatus?.name,
-            }
-          : undefined,
       artifacts: {
         records: paneSession.model.artifacts.map((artifact) => artifact.value),
         interaction: paneSession.artifactInteractionStore,

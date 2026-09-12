@@ -16,7 +16,6 @@ import { cn } from "@/lib/utils";
 import { Message, MessageContent, MessageLabel } from "@/components/ai-elements/message";
 import { FullscreenSurface } from "@/components/fullscreen-surface";
 import { FullscreenButton } from "@/components/ui/fullscreen-button";
-import { Avatar } from "@/components/ui/avatar";
 import { IconButton } from "@/components/ui/icon-button";
 import {
   ChatIcon,
@@ -27,7 +26,6 @@ import {
   TreeIcon,
 } from "@/components/ui/icons";
 import { AnnotationItemPopover } from "./annotation-item-popover";
-import type { WorkflowStatusColor } from "../../domain/application/application-data";
 import type { ArtifactRecord } from "../../ipc/artifact-contract";
 import type { SourceLocation } from "../../ipc/source-location";
 import type { UiPart } from "../../ipc/session-contract";
@@ -71,14 +69,9 @@ export const ChatTextMessage = forwardRef<
     onMouseEnter?: MouseEventHandler<HTMLElement>;
     onMouseLeave?: MouseEventHandler<HTMLElement>;
     onOpenSourceLocation?(location: SourceLocation): void;
-    sessionAvatar?: {
-      seed: string;
-      statusColor?: WorkflowStatusColor;
-      statusName?: string;
-    };
   }
 >(function ChatTextMessage(
-  { part, contentRef, children, onMouseEnter, onMouseLeave, onOpenSourceLocation, sessionAvatar },
+  { part, contentRef, children, onMouseEnter, onMouseLeave, onOpenSourceLocation },
   ref,
 ) {
   const assistant = part.role === "assistant";
@@ -95,7 +88,6 @@ export const ChatTextMessage = forwardRef<
         : part.draft
           ? "You · draft"
           : "You");
-  const working = part.status === "streaming";
   return (
     <Message
       ref={ref}
@@ -107,27 +99,15 @@ export const ChatTextMessage = forwardRef<
           : "group/msg relative ml-auto w-[min(88%,42rem)]",
       )}
     >
-      {assistant && sessionAvatar ? (
-        <MessageLabel className="flex items-center gap-2">
-          <Avatar
-            kind="session"
-            seed={sessionAvatar.seed}
-            statusColor={sessionAvatar.statusColor}
-            className="size-6"
-            role="img"
-            aria-label="Cake"
-            title={sessionAvatar.statusName ?? "Unlabelled"}
-          />
-          {working && <span>working</span>}
-        </MessageLabel>
-      ) : scheduled && !assistant ? (
-        <MessageLabel className="flex items-center gap-1" title={scheduled.detail}>
-          <ClockIcon />
-          <span>{userLabel}</span>
-        </MessageLabel>
-      ) : (
-        <MessageLabel>{assistant ? (working ? "Cake · working" : "Cake") : userLabel}</MessageLabel>
-      )}
+      {!assistant &&
+        (scheduled ? (
+          <MessageLabel className="flex items-center gap-1" title={scheduled.detail}>
+            <ClockIcon />
+            <span>{userLabel}</span>
+          </MessageLabel>
+        ) : (
+          <MessageLabel>{userLabel}</MessageLabel>
+        ))}
       {part.text ? (
         <MessageContent
           ref={contentRef}
@@ -306,11 +286,6 @@ export interface ChatTranscriptBehavior {
   artifacts?: { records: ArtifactRecord[]; interaction: ArtifactInteractionStore };
   messageComments?: MessageCommentsStore;
   subagents?: SubagentActivityStore;
-  sessionAvatar?: {
-    seed: string;
-    statusColor?: WorkflowStatusColor;
-    statusName?: string;
-  };
   showSelectionContextMenu?(input: {
     canChat: boolean;
     canAnnotate: boolean;
@@ -477,7 +452,6 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
       onMouseEnter={() => (hoveredRef.current = true)}
       onMouseLeave={() => (hoveredRef.current = false)}
       onOpenSourceLocation={behavior.openSourceLocation}
-      sessionAvatar={behavior.sessionAvatar}
     >
       <FullscreenButton
         className="absolute -top-1.5 right-0 grid size-7 place-items-center rounded-md bg-transparent p-0 text-muted-foreground opacity-0 hover:bg-muted hover:text-foreground group-hover/msg:opacity-100 group-focus-within/msg:opacity-100 transition-opacity"
