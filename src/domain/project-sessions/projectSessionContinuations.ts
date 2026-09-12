@@ -1,14 +1,13 @@
 import { Effect, Stream } from "effect";
-import { getState } from "../application/application";
 import * as projectSessionLocations from "./projectSessionLocations";
 import type { ProjectSessionLocation } from "./project-session-data";
 import { ProjectSessionError, type ProjectSessionTarget } from "./project-session-data";
 import { SessionArchiveStorage } from "../../services/storage/SessionArchiveStorage";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
+import { PiSessions } from "../../services/pi/PiSessions";
 import {
   archiveLocation,
   asError,
-  catalogForState,
   findLocation,
   nextCopyTitle,
   publishCatalogChange,
@@ -66,36 +65,11 @@ export const fork = Effect.fn("ProjectSessions.fork")(function* (input: {
     });
   const continuation = yield* withContinuationSource(input.target, "fork", (source) =>
     Effect.gen(function* () {
-      const state = yield* getState();
-      const projectCatalogs = yield* Effect.all(
-        [false, true].map((resolved) =>
-          catalogForState({ projectPath: source.projectPath, resolved }, state).pipe(
-            Effect.flatMap(Stream.runCollect),
-          ),
-        ),
-      );
-      const projectSessions = projectCatalogs.flatMap((catalog) => Array.from(catalog));
-      const sourceTitle =
-        projectSessions.find(
-          (session) =>
-            session.sessionId === input.target.sessionId &&
-            session.workingDirectory === source.workingDirectory,
-        )?.title ?? input.target.sessionId;
-      const forkTitle = nextCopyTitle(
-        sourceTitle,
-        new Set(projectSessions.map((session) => session.title)),
-      );
-
       let destination = source;
-      let sessionId: string;
       if (
-        input.destinationWorkingDirectory === undefined ||
-        input.destinationWorkingDirectory === source.workingDirectory
+        input.destinationWorkingDirectory !== undefined &&
+        input.destinationWorkingDirectory !== source.workingDirectory
       ) {
-        const handle = yield* acquireTarget(source, input.target.sessionId, false);
-        const result = yield* handle.fork(input.entryId, forkTitle).pipe(asError("fork"));
-        sessionId = result.sessionId;
-      } else {
         const locations = yield* projectSessionLocations.locations().pipe(asError("fork"));
         const selectedDestination = locations.find(
           (item) => item.workingDirectory === input.destinationWorkingDirectory,
@@ -110,16 +84,65 @@ export const fork = Effect.fn("ProjectSessions.fork")(function* (input: {
             operation: "fork",
             message: "The source and destination belong to different Projects",
           });
+        destination = selectedDestination;
+      }
+
+      const sessions = yield* PiSessions;
+      const archive = yield* SessionArchiveStorage;
+      const titleLocations =
+        destination.workingDirectory === source.workingDirectory ? [source] : [source, destination];
+      const catalogTitles = yield* Effect.all(
+        titleLocations.map((location) =>
+          Effect.all(
+            {
+              active: sessions
+                .catalog({
+                  workingDirectory: location.workingDirectory,
+                  sessionDirectory: location.sessionDirectory,
+                })
+                .pipe(Stream.runCollect, asError("fork")),
+              resolved: archive
+                .resolved(archiveLocation(location))
+                .pipe(Stream.runCollect, asError("fork")),
+            },
+            { concurrency: "unbounded" },
+          ).pipe(
+            Effect.map(({ active, resolved }) =>
+              [...active, ...resolved].map((item) => item.title),
+            ),
+          ),
+        ),
+        { concurrency: "unbounded" },
+      );
+      const sourceTitle = yield* sessions
+        .catalogEntry(
+          {
+            workingDirectory: source.workingDirectory,
+            sessionDirectory: source.sessionDirectory,
+          },
+          input.target.sessionId,
+        )
+        .pipe(
+          asError("fork"),
+          Effect.map((entry) => entry?.title ?? input.target.sessionId),
+        );
+      const forkTitle = nextCopyTitle(sourceTitle, new Set(catalogTitles.flat()));
+
+      let sessionId: string;
+      if (destination === source) {
+        const handle = yield* acquireTarget(source, input.target.sessionId, false);
+        const result = yield* handle.fork(input.entryId, forkTitle).pipe(asError("fork"));
+        sessionId = result.sessionId;
+      } else {
         sessionId = yield* projectSessionLocations
           .forkToWorkingDirectory({
             sessionId: input.target.sessionId,
             entryId: input.entryId,
             title: forkTitle,
             source,
-            destination: selectedDestination,
+            destination,
           })
           .pipe(asError("fork"));
-        destination = selectedDestination;
       }
       return { sessionId, destination };
     }),

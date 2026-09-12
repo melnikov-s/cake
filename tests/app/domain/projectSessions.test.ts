@@ -137,13 +137,16 @@ const makeLayer = (
     onArchive?(sessionId: string): void;
     archiveErrorSessionId?: string;
     onRestore?(sessionId: string): void;
-    onCatalog?(): void;
+    onCatalog?(workingDirectory: string): void;
     onCatalogChange?(change: SessionCatalogChange): void;
     catalog?(workingDirectory: string): Stream.Stream<SessionSummary, unknown>;
+    resolvedCatalog?(
+      workingDirectory: string,
+    ): Stream.Stream<SessionSummary, SessionArchiveStorageError>;
     catalogModifiedAt?(): string;
     catalogTitle?(): string;
     onRename?(name: string): void;
-    onResolvedCatalog?(): void;
+    onResolvedCatalog?(workingDirectory: string): void;
     onMigrateProject?(): void;
     onLocations?(options?: { readonly includeInactive?: boolean }): void;
     locations?: ReadonlyArray<ProjectSessionLocation>;
@@ -234,7 +237,7 @@ const makeLayer = (
   );
   const adapter: PiSessionsAdapter = {
     catalog: (query) => {
-      hooks.onCatalog?.();
+      hooks.onCatalog?.(query.workingDirectory);
       if (hooks.catalog) return hooks.catalog(query.workingDirectory);
       return hooks.sessionExists === false || resolvedSessionIds.has("session-1")
         ? Stream.empty
@@ -412,8 +415,9 @@ const makeLayer = (
                 ? "resolved"
                 : "active",
           ),
-        resolved: () => {
-          hooks.onResolvedCatalog?.();
+        resolved: (location) => {
+          hooks.onResolvedCatalog?.(location.cwd);
+          if (hooks.resolvedCatalog) return hooks.resolvedCatalog(location.cwd);
           return hooks.sessionExists === false || resolvedSessionIds.size === 0
             ? Stream.empty
             : Stream.make({
@@ -465,7 +469,7 @@ const makeLayer = (
           }),
         deleteResolvedProject: () => Effect.void,
         resolvedProjects: (projectPath) => {
-          hooks.onResolvedCatalog?.();
+          hooks.onResolvedCatalog?.(projectPath);
           const entries = hooks.resolvedProjectEntries ?? [
             { sessionId: "session-1", modifiedAt: "2026-01-02T00:00:00.000Z" },
           ];
@@ -1114,6 +1118,8 @@ describe("Project Sessions domain", () => {
 
   it.effect("gives forks the next numbered copy title", () => {
     let forkTitle: string | undefined;
+    const activeCatalogs: string[] = [];
+    const resolvedCatalogs: string[] = [];
     const catalogEntry = (id: string, title: string): SessionSummary => ({
       id,
       title,
@@ -1129,16 +1135,31 @@ describe("Project Sessions domain", () => {
         entryId: "assistant-entry",
       });
 
-      assert.equal(forkTitle, "Active branch (3)");
+      assert.equal(forkTitle, "Renamed source (3)");
+      assert.deepEqual(activeCatalogs, ["/project"]);
+      assert.deepEqual(resolvedCatalogs, ["/project"]);
     }).pipe(
       Effect.provide(
         makeLayer(defaultApplicationState(), {
           catalog: () =>
             Stream.fromIterable([
-              catalogEntry("session-1", "Active branch"),
-              catalogEntry("fork-1", "Active branch (1)"),
-              catalogEntry("fork-2", "Active branch (2)"),
+              catalogEntry("unrelated-title", "Unrelated title"),
+              catalogEntry("fork-1", "Renamed source (1)"),
             ]),
+          resolvedCatalog: () => Stream.make(catalogEntry("fork-2", "Renamed source (2)")),
+          catalogTitle: () => "Renamed source",
+          onCatalog: (workingDirectory) => activeCatalogs.push(workingDirectory),
+          onResolvedCatalog: (workingDirectory) => resolvedCatalogs.push(workingDirectory),
+          worktreeRecords: [
+            {
+              projectPath: "/project",
+              worktreePath: "/project-worktree",
+              branch: "agent/unrelated",
+              baseBranch: "main",
+              createdAt: "2026-01-01T00:00:00.000Z",
+              state: "active",
+            },
+          ],
           onForkTitle: (title) => {
             forkTitle = title;
           },
