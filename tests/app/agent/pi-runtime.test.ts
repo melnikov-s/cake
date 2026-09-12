@@ -2047,6 +2047,7 @@ describe("S1 Pi runtime", () => {
       agentDir: agentDirectory,
       sessionDir: join(directory, "global-chat-sessions"),
       trusted: false,
+      tools: ["read", "bash", "edit", "write", "cake"],
       requestUi: async () => undefined,
       globalControl: {
         tools: [

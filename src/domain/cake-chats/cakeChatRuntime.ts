@@ -73,6 +73,9 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
       resolvedSessionDir: configuration.location.resolvedSessionDirectory,
       newSession,
       sessionId: target.sessionId,
+      // Pin the complete Cake Chat toolset instead of relying on Pi's default-tool
+      // selection, which does not necessarily activate extension tools.
+      tools: ["read", "bash", "edit", "write", "cake"],
       slashCommands: ["compact", "model", "toolcompact"],
       requestUi: async () => undefined,
       modelPresets,
