@@ -73,9 +73,6 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
       resolvedSessionDir: configuration.location.resolvedSessionDirectory,
       newSession,
       sessionId: target.sessionId,
-      // Global Cake Chat exposes its curated extension tools, not Pi's project
-      // filesystem/shell toolset.
-      tools: ["cake"],
       slashCommands: ["compact", "model", "toolcompact"],
       requestUi: async () => undefined,
       modelPresets,

@@ -270,7 +270,7 @@ describe("Cake Chats domain", () => {
       );
       assert.match(turnId, /^[0-9a-f-]{36}$/);
       assert.equal(fixture.created(), 1);
-      assert.deepEqual(fixture.runtimeOptions()[0]?.tools, ["cake"]);
+      assert.equal(fixture.runtimeOptions()[0]?.tools, undefined);
     }).pipe(Effect.provide(fixture.layer));
   });
 
