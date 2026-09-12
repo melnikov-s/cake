@@ -42,6 +42,7 @@ import {
   type ExtensionUiIntent,
   type SessionSnapshot,
 } from "../../../src/ipc/session-contract";
+import { listAppControlTools } from "../../../src/renderer/app-control/AppControlBridge";
 
 const temporaryDirectories: string[] = [];
 const runtimes: Array<FoundationRuntime | CakeRuntime> = [];
@@ -2050,14 +2051,7 @@ describe("S1 Pi runtime", () => {
       tools: ["read", "bash", "edit", "write", "cake"],
       requestUi: async () => undefined,
       globalControl: {
-        tools: [
-          {
-            command: "app.state",
-            topic: "app",
-            summary: "Read Cake application state.",
-            parameters: { type: "object", properties: {} },
-          },
-        ],
+        tools: listAppControlTools(),
         invoke: async () => ({ ok: true }),
       },
       onEvent: () => undefined,
@@ -2065,6 +2059,7 @@ describe("S1 Pi runtime", () => {
     runtimes.push(runtime);
 
     const context = runtime.getReviewParentContext?.();
+    expect((await runtime.snapshot()).diagnostics).toEqual([]);
     expect(context?.activeTools).toEqual(["read", "bash", "edit", "write", "cake"]);
     expect(context?.systemPrompt).not.toContain("PROJECT CONTEXT MUST NOT LOAD");
     expect(context?.systemPrompt).not.toContain("GLOBAL SYSTEM OVERRIDE MUST NOT LOAD");

@@ -1228,16 +1228,18 @@ export async function createCakeRuntimeCapabilities(input: {
           options.currentSessionControl?.mergeSession !== undefined) &&
         (!["session.discard", "sessions.discard"].includes(operation.command) ||
           options.currentSessionControl?.discardSession !== undefined) &&
-        (![
-          "app.state",
-          "app.split",
-          "settings.sections",
-          "settings.get",
-          "settings.update",
-          "project.settings.get",
-          "project.settings.update",
-          "notifications.send",
-        ].includes(operation.command) ||
+        (!(
+          [
+            "app.state",
+            "app.split",
+            "settings.sections",
+            "settings.get",
+            "settings.update",
+            "project.settings.get",
+            "project.settings.update",
+            "notifications.send",
+          ].includes(operation.command) || operation.command.startsWith("session-labels.")
+        ) ||
           options.currentSessionControl?.invokeAppControl !== undefined) &&
         (operation.command !== "session.create" ||
           options.currentSessionControl?.createSession !== undefined) &&
