@@ -5,7 +5,7 @@ import { _electron as electron, expect, test, type ElectronApplication } from "@
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
-test("presents artifacts, sorts a table, resolves a form, and isolates HTML", async () => {
+test("opens the artifact workspace, keeps requests inline, and isolates HTML", async () => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-s4-smoke-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
@@ -52,6 +52,7 @@ test("presents artifacts, sorts a table, resolves a form, and isolates HTML", as
   try {
     application = await launch();
     const page = await application.firstWindow();
+    await page.setViewportSize({ width: 1_600, height: 1_000 });
     await expect(page.getByLabel("Message")).toBeVisible({ timeout: 20_000 });
 
     await page.getByLabel("Message").fill("/cake-artifacts");
@@ -59,10 +60,12 @@ test("presents artifacts, sorts a table, resolves a form, and isolates HTML", as
 
     const artifactControl = page.getByRole("button", { name: /\d+ artifacts/ });
     await expect(artifactControl).toHaveAccessibleName("4 artifacts");
-    await artifactControl.click();
-    await artifactControl.click();
+    await expect(page.locator('[data-slot="artifact-workspace-layout"]')).toHaveAttribute(
+      "data-presentation",
+      "side-by-side",
+    );
+    await page.getByRole("button", { name: "All artifacts" }).click();
     await page.getByRole("button", { name: "S4 table" }).click();
-
     const table = page.locator('[data-artifact-id="cake-s4-table"]');
     await expect(table).toBeVisible();
     await expect(
@@ -87,21 +90,7 @@ test("presents artifacts, sorts a table, resolves a form, and isolates HTML", as
     await repairPrompt.getByRole("button", { name: "Submit" }).click();
     await expect(repairPrompt).not.toBeAttached();
 
-    await artifactControl.click();
-    const form = page.locator('[data-artifact-id="cake-s4-form"]');
-    await expect(page.getByRole("status", { name: "Churning in progress" })).toHaveCount(0);
-    const otherAnswer = form.getByLabel("Answer other option");
-    await expect(form.getByRole("radio", { name: "Standard answer" })).toBeChecked();
-    await form.getByRole("radio", { name: "Other" }).click();
-    await expect(otherAnswer).toBeFocused();
-    await otherAnswer.pressSequentially("structured answer");
-    await expect(otherAnswer).toHaveValue("structured answer");
-    await expect(form.getByRole("button", { name: "Submit" })).toBeEnabled();
-    await form.getByRole("button", { name: "Submit" }).click({ noWaitAfter: true });
-    await expect(form).toContainText("Submitted");
-    await expect(form.getByRole("button", { name: "Submit" })).toHaveCount(0);
-
-    await artifactControl.click();
+    await page.getByRole("button", { name: "All artifacts" }).click();
     await page.getByRole("button", { name: "S4 diagram" }).click();
     await expect(page.locator('[data-artifact-id="cake-s4-diagram"] iframe')).toBeVisible();
     await page.getByRole("button", { name: "All artifacts" }).click();
@@ -110,6 +99,23 @@ test("presents artifacts, sorts a table, resolves a form, and isolates HTML", as
     await expect(html).toHaveAttribute("sandbox", "");
     await expect(html).toHaveAttribute("srcdoc", /default-src 'none'/);
     await expect(page.locator("body")).not.toContainText("compromised");
+
+    await artifactControl.click();
+    const form = page.locator('[data-artifact-id="cake-s4-form"]');
+    await expect(form).toBeVisible();
+    await expect(form.getByRole("radio", { name: "Standard answer" })).toBeChecked();
+    await form.getByRole("button", { name: "Skip" }).click({ noWaitAfter: true });
+    await expect
+      .poll(() => page.evaluate(() => document.body.innerText), { timeout: 10_000 })
+      .toContain("Artifact request cancelled");
+
+    await page.setViewportSize({ width: 700, height: 900 });
+    await artifactControl.click();
+    await expect(page.locator('[data-slot="artifact-workspace-layout"]')).toHaveAttribute(
+      "data-presentation",
+      "replacement",
+    );
+    await expect(page.getByRole("navigation", { name: "Session artifacts" })).toBeVisible();
     await expect
       .poll(async () => {
         const document = JSON.parse(
