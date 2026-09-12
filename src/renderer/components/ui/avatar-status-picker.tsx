@@ -49,11 +49,6 @@ export function AvatarStatusPicker({
             "touch-none select-none motion-safe:cursor-grab data-[avatar-held=true]:cursor-grabbing data-[avatar-held=true]:bg-transparent",
           className,
         )}
-        tooltip={
-          animated
-            ? `Session status: ${label}. Click to change; hold to pick up.`
-            : `Session status: ${label}`
-        }
         ariaLabel={`Change session status. Current status: ${label}`}
         disabled={disabled}
       >

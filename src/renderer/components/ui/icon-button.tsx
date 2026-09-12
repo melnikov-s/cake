@@ -2,17 +2,14 @@ import { forwardRef, type ButtonHTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
 import { TooltipBubble, useTooltip } from "./tooltip";
 
-export interface IconButtonProps extends Omit<
+/** Supply an accessible name explicitly when omitting the tooltip. */
+export type IconButtonProps = Omit<
   ButtonHTMLAttributes<HTMLButtonElement>,
   "title" | "aria-label"
-> {
-  /** Required tooltip text, shown on hover. Every icon button must explain itself. */
-  tooltip: string;
-  /** Accessible name; defaults to the tooltip when omitted. */
-  ariaLabel?: string;
-}
+> &
+  ({ tooltip: string; ariaLabel?: string } | { tooltip?: undefined; ariaLabel: string });
 
-/** Square transparent button for a single icon; the tooltip is required and shows quickly. */
+/** Square transparent button for a single icon; tooltips show quickly by default. */
 export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconButton(
   {
     tooltip,
@@ -42,7 +39,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
       aria-label={ariaLabel ?? tooltip}
       {...props}
       onMouseEnter={(event) => {
-        show(event.currentTarget);
+        if (tooltip) show(event.currentTarget);
         onMouseEnter?.(event);
       }}
       onMouseLeave={(event) => {
@@ -55,7 +52,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
       }}
       onFocus={(event) => {
         // Only keyboard focus reveals the tooltip; pointer focus is handled by hover.
-        if (event.currentTarget.matches(":focus-visible")) show(event.currentTarget);
+        if (tooltip && event.currentTarget.matches(":focus-visible")) show(event.currentTarget);
         onFocus?.(event);
       }}
       onBlur={(event) => {
@@ -64,7 +61,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
       }}
     >
       {children}
-      {anchor && <TooltipBubble label={tooltip} anchor={anchor} />}
+      {tooltip && anchor && <TooltipBubble label={tooltip} anchor={anchor} />}
     </button>
   );
 });
