@@ -24,7 +24,8 @@
     "test": "vitest run",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:electron": "electron-vite build --logLevel warn && playwright test",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "visual:capture": "node --experimental-strip-types --no-warnings=ExperimentalWarning scripts/visual-capture/cli.ts"
   },
   "dependencies": {
     "@dicebear/core": "10.7.0",

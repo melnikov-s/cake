@@ -201,6 +201,10 @@ Before adding state, identify its authority, cohesive owner, lifetime, persisten
 - Recommend the smallest understandable fix that solves the observed problem. Cake
   is a coding agent, not safety-critical infrastructure.
 
+## Visual capture workflow
+
+Use the repository-owned visual harness when a Cake UI change benefits from a screenshot or hover-state review; do not create a temporary browser or Playwright script. Run `pnpm visual:capture --list` to discover named scenarios and `pnpm visual:capture --help` for deterministic theme, viewport, state, region/window, and output options. Captures go to the Git-ignored `.visual-captures/` directory by default. Link generated PNGs in chat, or present/import them through `artifacts.present` when that separate generic capability is available. See `docs/development/visual-capture.md` for the output contract and scenario-authoring rules.
+
 ## Verification
 
 Format changed supported files with Oxfmt before final verification. Use
