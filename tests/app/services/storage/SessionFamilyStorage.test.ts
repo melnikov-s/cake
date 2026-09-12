@@ -171,6 +171,36 @@ describe("SessionFamilyStorage", () => {
     }).pipe(Effect.provide(testLayer())),
   );
 
+  it.effect("selects only consumed requests while allowing delayed explicit correlation", () =>
+    Effect.gen(function* () {
+      const storage = yield* SessionFamilyStorage;
+      yield* storage.recordTurn(turn({ turnId: "executing", requestMessageId: "active" }));
+      yield* storage.recordTurn(
+        turn({
+          senderSessionId: "sibling",
+          turnId: "queued",
+          requestMessageId: "queued-request",
+        }),
+      );
+
+      assert.equal(
+        (yield* storage.pendingResponseRequest("child", ["executing"]))?.turnId,
+        "executing",
+      );
+      assert.equal(
+        yield* storage.pendingResponseRequest("child", ["executing"], "thread", "queued-request"),
+        undefined,
+      );
+
+      yield* storage.settleTurn("executing", "complete");
+      assert.equal(
+        (yield* storage.pendingResponseRequest("child", [], "thread", "active"))?.turnId,
+        "executing",
+      );
+      assert.equal(yield* storage.pendingResponseRequest("child", []), undefined);
+    }).pipe(Effect.provide(testLayer())),
+  );
+
   it.effect("serializes concurrent first-child creation into one family", () =>
     Effect.gen(function* () {
       const storage = yield* SessionFamilyStorage;

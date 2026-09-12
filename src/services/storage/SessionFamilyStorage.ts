@@ -156,6 +156,7 @@ export class SessionFamilyStorage extends Context.Service<
     ) => Effect.Effect<void, SessionFamilyStorageError>;
     readonly pendingResponseRequest: (
       sessionId: string,
+      executingTurnIds: ReadonlyArray<string>,
       threadId?: string,
       requestMessageId?: string,
     ) => Effect.Effect<FamilyTurn | undefined, SessionFamilyStorageError>;
@@ -501,23 +502,31 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
             ),
           })),
       );
-      const pendingResponseRequest = Effect.fn("SessionFamilyStorage.pendingResponseRequest")(
-        (sessionId: string, threadId?: string, requestMessageId?: string) =>
-          state().pipe(
-            Effect.map((document) =>
-              [...document.turns]
-                .reverse()
-                .find(
-                  (turn) =>
-                    turn.sessionId === sessionId &&
-                    turn.expectsResponse &&
-                    !turn.reported &&
-                    (threadId === undefined || turn.threadId === threadId) &&
-                    (requestMessageId === undefined || turn.requestMessageId === requestMessageId),
-                ),
-            ),
+      const pendingResponseRequest = Effect.fn("SessionFamilyStorage.pendingResponseRequest")((
+        sessionId: string,
+        executingTurnIds: ReadonlyArray<string>,
+        threadId?: string,
+        requestMessageId?: string,
+      ) => {
+        const executing = new Set(executingTurnIds);
+        const explicitlyCorrelated = threadId !== undefined || requestMessageId !== undefined;
+        return state().pipe(
+          Effect.map((document) =>
+            [...document.turns]
+              .reverse()
+              .find(
+                (turn) =>
+                  turn.sessionId === sessionId &&
+                  turn.expectsResponse &&
+                  !turn.reported &&
+                  (executing.has(turn.turnId) ||
+                    (explicitlyCorrelated && turn.outcome !== undefined)) &&
+                  (threadId === undefined || turn.threadId === threadId) &&
+                  (requestMessageId === undefined || turn.requestMessageId === requestMessageId),
+              ),
           ),
-      );
+        );
+      });
       const prepareResponse = Effect.fn("SessionFamilyStorage.prepareResponse")(function* (
         sessionId: string,
         targetSessionId: string,

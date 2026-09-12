@@ -192,13 +192,11 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
           Effect.provideService(SessionFamilyStorage, families),
           Effect.provideService(SessionArchiveStorage, archive),
         ),
-    onTurnSettled: isChild
-      ? (event) =>
-          families.settleTurn(event.turnId, event.outcome).pipe(
-            Effect.tapError((error) => Effect.logError("Retrying durable child settlement", error)),
-            Effect.retry(Schedule.spaced("1 second")),
-          )
-      : undefined,
+    onTurnSettled: (event) =>
+      families.settleTurn(event.turnId, event.outcome).pipe(
+        Effect.tapError((error) => Effect.logError("Retrying durable family settlement", error)),
+        Effect.retry(Schedule.spaced("1 second")),
+      ),
     runtime: {
       ...runtimeIntegrations,
       agentControl: agentControl(getRuntimeOptions, location.workingDirectory),
@@ -376,6 +374,11 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
                   command === "sessions.reply"
                     ? yield* families.pendingResponseRequest(
                         sessionId,
+                        yield* sessions.executingTurnIds({
+                          sessionId,
+                          workingDirectory: location.workingDirectory,
+                          sessionDirectory: location.sessionDirectory,
+                        }),
                         input.threadId,
                         input.replyToMessageId,
                       )
