@@ -55,8 +55,8 @@ Every durable concept has one authority.
 | Cross-session coordination threads and delivery correlation                   | Cake                                                                      | Bind participants, limits, closure, and acknowledgements without copying transcript text  |
 | Resolved-session status                                                       | Cake-managed active/archive transcript location                           | Keep resolved transcripts read-only and restore them before Pi opens them                 |
 | Reviews and inline discussions                                                | Cake workflow services, with Pi sidecar-session references where relevant | Persist anchors and workflow metadata without copying Pi transcripts                      |
-| Rich artifacts                                                                | Cake artifact repository plus Pi transcript pointers/fallbacks            | Persist and render bounded, versioned artifact data                                       |
-| Blocking structured requests                                                  | `cake.request/v1` plus the active Pi tool call                            | Render trusted forms or sandboxed custom request widgets and return one validated value   |
+| Substantial, reusable artifacts                                               | Cake artifact repository plus Pi transcript pointers/fallbacks            | Persist bounded, immutable revisions in a session-scoped accessory panel                  |
+| Blocking structured requests                                                  | `cake.request/v1` plus the active Pi tool call                            | Render one inline interaction and return one validated value                              |
 
 Do not introduce a second transcript database, reconstruct Pi state into a
 competing domain model, or mutate Pi JSONL with ad hoc file operations. A session
@@ -472,7 +472,11 @@ The window Store hierarchy mirrors the product surfaces:
   Directory remains routing/storage context for the Pi runtime, not part of
   session identity. Cake Chat never enters this registry.
 - Each `ProjectSessionStore` owns that session's activity, session-local Agent/IDE presentation preference and IDE
-  chat-drawer geometry, managed-worktree status and action presentation, artifacts, and message comments. Project Sessions and Cake Chat
+  chat-drawer geometry, managed-worktree status and action presentation, artifact accessory-panel workflow, and message comments. Full
+  artifacts are explicit substantial or reusable deliverables, not a presentation selected from syntax: ordinary Markdown, including
+  Mermaid and small tables, stays inline. The session header opens the panel, and creating an artifact opens and selects it automatically.
+  Session-tree branch changes and tool compaction neither move nor duplicate artifacts. Blocking requests remain inline interactions and
+  never enter the panel, even when shared infrastructure stores or renders them. Project Sessions and Cake Chat
   Sessions each compose one `ConversationSessionStore`, the window-local active-conversation aggregate whose lifetime matches its owning
   primary session. It owns the stable `ChatStore`, `ConversationComposerStore`, and `ChatConfigurationStore` children plus their common
   delivery, configuration, transcript-interaction, draft, and operation wiring. Pi remains transcript and runtime authority; persisted
@@ -613,8 +617,10 @@ flowchart TD
 Model-presented content does not become executable application code with Cake
 privileges.
 
-- Artifacts cross a versioned, bounded protocol. Markdown and structured kinds
-  are validated; raw HTML runs in an isolated frame with restrictive policy.
+- Artifacts cross a versioned, bounded protocol. Their explicit deliverable status,
+  not their Markdown or structured format, places them in the owning session's
+  accessory panel. Validated ordinary Markdown remains inline; raw artifact HTML
+  runs in an isolated frame with restrictive policy.
 - Delegated inline widgets begin as compact `cake widgets.present` presentation briefs.
   Generation and repair run in separate tool-less Pi Sessions; generated source
   stays in Cake's artifact repository rather than the project-session context.

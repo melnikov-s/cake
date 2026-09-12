@@ -17,6 +17,7 @@ selected Working Directory and projects only Cake-owned values into Effect RPC.
 | Composer and renderer workflow                                                    | Focused renderer Stores         | Window lifetime; explicitly snapshotted drafts may persist |
 | Projects, trust, presets, staged chats, explicit drafts, theme/view settings      | Cake                            | Focused typed storage documents                            |
 | Attachments before accepted submission                                            | Renderer Store                  | Cleared after acceptance; bounded by RPC Schemas           |
+| Artifact payloads, revisions, and session index                                   | Cake artifact repository        | Durable, session-scoped; Pi retains contextual pointers    |
 
 ## Observation
 
@@ -60,8 +61,10 @@ inserted into Cake's DOM.
 The window-owned Model observer owns Project Session observations and
 applies mapped snapshots to stable Session Models supplied only by `RootStore`.
 `ProjectSessionStore` owns composer, chat
-configuration, artifacts, discussion presentation, and renderer operation state
-around that Model. Its `ChatStore` supplies the authoritative shared `Chat`
+configuration, the session-scoped artifact accessory-panel workflow, discussion
+presentation, and renderer operation state around that Model. Full artifacts are
+substantial, reusable deliverables opened from the session header; ordinary rich
+Markdown and blocking requests remain inline. Its `ChatStore` supplies the authoritative shared `Chat`
 component. `RootStore` routes application intents and coordinates selection
 without copying this state.
 

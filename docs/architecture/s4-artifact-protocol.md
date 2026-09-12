@@ -3,16 +3,49 @@
 Cake's durable rich-output contract is `cake.artifact/v1`. The blocking input
 contract is `cake.request/v1`. Their shared Effect Schemas validate Pi tool
 input, main-process persistence, Effect RPC, renderer Models, interaction
-responses, and Cake Session pointers.
+responses, and Cake Session pointers. Sharing protocol or storage machinery does
+not make the two concepts the same product surface.
 
 Unknown protocol versions, unknown kinds, and malformed payloads are hard
 failures. Cake is greenfield and does not reinterpret unsupported protocols as
 Markdown or carry compatibility behavior for superseded contracts.
 
+## Product boundary and presentation
+
+An artifact is an explicitly created, substantial, reusable deliverable: content
+worth opening independently, revisiting later in the session, or exporting. The
+payload's format does not decide whether it is an artifact. In particular,
+ordinary Markdown conversation content stays inline, including Mermaid diagrams,
+small tables, code fences, and other rich blocks. The agent should create an
+artifact only when the deliverable, rather than its syntax, benefits from a durable
+independent surface.
+
+Full artifacts live in the owning Cake Session's accessory panel. The panel opens
+from that session's header, not from a permanent application-wide workspace and
+not by replacing the transcript. Creating a new artifact automatically opens the
+panel and selects that artifact; later updates may refresh the selected artifact
+without stealing focus. Transcript pointers and readable fallbacks preserve the
+artifact's production context, but the full artifact is not rendered as a second
+copy in the message timeline.
+
+The panel is session-scoped rather than branch-scoped. Selecting another Pi
+session-tree branch, restoring an earlier branch, or running tool compaction does
+not move, clone, or re-create artifacts. These operations may change which
+transcript pointers are visible, but the owning session's artifact collection and
+stable artifact identities remain unchanged.
+
+Blocking requests are different. They stay inline at the active tool-call position
+because the conversation cannot continue until the user submits or cancels them.
+They do not enter the accessory panel or become reusable deliverables, even if the
+current implementation persists and renders them through shared artifact
+infrastructure.
+
 ## Authority and durability
 
 - Cake owns artifact payloads and metadata. Pi remains the transcript and
-  session-tree authority.
+  session-tree authority. Artifact revisions are immutable values; advancing an
+  artifact writes a new revision and never mutates the bytes or digest of an old
+  one.
 - Electron main stores payloads under `$CAKE_HOME/state/artifacts` (defaulting
   to `~/.cake/state/artifacts`) as
   SHA-256-addressed JSON blobs. Atomic per-session metadata files point to the
@@ -33,6 +66,46 @@ Markdown or carry compatibility behavior for superseded contracts.
   survive both renderer reload and application restart without guessing from
   transcript content.
 
+## Branches, forks, and revision inheritance
+
+A Pi session-tree branch and a Cake Session fork have different artifact behavior.
+Changing branches within one Pi Session never changes artifact ownership: the
+session continues to expose its one artifact collection. Tool compaction likewise
+keeps that collection in place and records no duplicate artifact merely because it
+replays transcript text into a new root branch.
+
+A fork creates a new Cake Session, so it receives a point-in-time inherited
+artifact index. For each artifact lineage, Cake inherits the latest exact revision
+established by a transcript pointer at or before the selected fork point; revisions
+produced after that point are not inherited. Each inherited entry references the
+exact source session ID, artifact ID, revision, and digest. It is immutable in the
+fork and does not follow later source-session revisions.
+
+Inheritance is reference-based, not a payload copy and not a transfer of ownership.
+The fork may present the inherited artifact in its own session panel, labeled as
+inherited, while the source keeps its original. Revising inherited content in the
+fork is copy-on-write: Cake creates a fork-owned artifact lineage from the inherited
+revision, leaving both the inherited revision and source lineage unchanged. A
+source revision created later and a fork-owned revision therefore never overwrite
+or silently merge with one another.
+
+## Deletion and garbage collection
+
+Resolving, restoring, changing branches, compacting tools, or merely unloading a
+renderer projection never deletes artifact data. Permanently deleting a Cake
+Session removes that session's owned and inherited index references. It must not
+remove an immutable revision still referenced by another session, including a fork
+that inherited it.
+
+Repository garbage collection may remove a metadata revision and its
+content-addressed blob only after no surviving session index, inherited reference,
+or durable Pi transcript pointer can reach it. Shared blobs remain while any
+reachable revision uses their digest. Collection is conservative and
+restart-safe: uncertain reachability retains data, and interrupted collection
+must not leave a live pointer without its payload. Once the last owning or
+inheriting session and its transcript are permanently deleted, unreachable
+metadata and blobs are eligible for collection rather than retained forever.
+
 The maximum serialized tool input and response size is 1 MiB. Larger payloads
 are rejected before display. This is the S4 answer to Q4: the durable location
 is the Cake-home artifact repository, and the v1 inline protocol cap is
@@ -46,7 +119,8 @@ schema-validated response or cancellation. Its `view` is either a Cake-rendered
 form definition or a sandboxed HTML/React widget. The form view is preferred for
 ordinary fields; custom code is for genuinely visual interactions.
 
-Only internal request artifacts may use request mode. In a form select, the
+Only internal request records may use request mode. These are blocking requests,
+not entries in the session artifact panel. In a form select, the
 first listed option is the agent's recommended option and Cake selects it by
 default; the user may choose another listed option or enter freeform text. A
 pending request has a unique request ID and exactly one terminal settlement.

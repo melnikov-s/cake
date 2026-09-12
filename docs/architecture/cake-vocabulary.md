@@ -123,6 +123,26 @@ response expectation says whether stopping without a correlated reply requires a
 sender notice; informational messages and generated notices create no response
 obligation.
 
+### Artifact
+
+A substantial, reusable deliverable that the user benefits from opening, revisiting,
+or exporting outside the conversation flow. Artifact status is an explicit product
+choice, not something inferred from a content kind or syntax. A long-form document,
+interactive visualization, or exportable data set may be an Artifact; ordinary
+Markdown remains conversation content even when it contains Mermaid, a small table,
+or another richly rendered block.
+
+An Artifact belongs to one Cake Session and appears in that session's accessory
+panel. Cake owns its bounded payload, immutable revisions, and repository metadata;
+Pi owns the transcript pointers that record where its revisions were produced.
+
+### Blocking request
+
+A transient, inline interaction through which an active tool call waits for one
+validated user response or cancellation. A blocking request is not an Artifact,
+even when its implementation reuses artifact schemas, persistence, rendering, or
+sandbox infrastructure.
+
 ### Session handle
 
 A scoped capability for one live session runtime. A handle is not identity or

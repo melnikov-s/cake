@@ -199,5 +199,17 @@ never stores provider secrets or utility-completion transcripts.
 
 ## Artifact and review storage
 
-Artifacts use bounded, versioned metadata and content-addressed payloads.
+Artifacts use bounded, versioned metadata and content-addressed payloads. Every
+revision is immutable. A Cake Session index owns its artifacts and may reference
+exact revisions inherited from another session at a fork point; inheritance
+shares the stored payload rather than copying it and never follows later source
+revisions. Branch selection, tool compaction, resolution, restoration, and
+renderer unloading do not alter those indexes.
+
+Permanent session deletion removes only that session's references. Artifact
+garbage collection is reachability-based across owning indexes, fork-inherited
+references, and durable Pi transcript pointers. A metadata revision or shared
+blob is eligible only when none remains; uncertain or interrupted collection
+retains data rather than risking a live dangling pointer.
+
 Reviews store Cake-owned anchors and workflow metadata.
