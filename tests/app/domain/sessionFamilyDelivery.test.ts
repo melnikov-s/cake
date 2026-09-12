@@ -36,8 +36,11 @@ const reservation = {
 };
 const outcome = {
   sessionId: childId,
-  parentSessionId: "session-1",
+  senderSessionId: "session-1",
   turnId,
+  requestMessageId: childId,
+  threadId: turnId,
+  expectsResponse: true,
   reported: false,
   outcome: "complete" as const,
 };
@@ -71,7 +74,7 @@ describe("Session Family outcome delivery", () => {
       const storage = yield* SessionFamilyStorage;
       yield* storage.addChild(reservation);
       yield* storage.recordTurn(outcome);
-      yield* storage.prepareReply(childId, [turnId], replyId);
+      yield* storage.prepareResponse(childId, "session-1", childId, replyId);
       const pending = (yield* storage.state()).turns[0];
       assert.ok(pending);
       yield* Effect.scoped(deliver(pending));
@@ -104,6 +107,8 @@ describe("Session Family outcome delivery", () => {
                         messageId: replyId,
                         threadId: replyId,
                         sequence: 1,
+                        expectsResponse: false,
+                        replyToMessageId: childId,
                         sender: {
                           sessionId: childId,
                           title: "Child",
@@ -183,6 +188,10 @@ describe("Session Family outcome delivery", () => {
             unavailable = false;
             yield* Effect.scoped(deliver(outcome));
             yield* Deferred.await(received);
+            const notice = parseCrossSessionMessage(transcript[0] ?? "");
+            assert.equal(notice?.metadata.expectsResponse, false);
+            assert.equal(notice?.metadata.generatedNotice, true);
+            assert.match(notice?.text ?? "", /stopped without replying/);
             // The receipt remains pending until the parent transcript proves delivery.
             assert.equal((yield* storage.state()).turns.length, 1);
           }).pipe(Effect.provide(harness.layer));
@@ -235,6 +244,49 @@ describe("Session Family outcome delivery", () => {
     }),
   );
 
+  it.effect("reports informational failures without creating a response obligation", () =>
+    Effect.gen(function* () {
+      const received = yield* Deferred.make<string>();
+      const failedInformational = {
+        ...outcome,
+        turnId: "69127286-fb4e-4831-a47e-b4d423ab4af0",
+        requestMessageId: "d4d316e8-e2e9-4d8d-9e5d-d3f1314b680f",
+        expectsResponse: false,
+        outcome: "failed" as const,
+      };
+      yield* Effect.gen(function* () {
+        const storage = yield* SessionFamilyStorage;
+        yield* storage.addChild(reservation);
+        yield* storage.recordTurn(failedInformational);
+        yield* Effect.scoped(deliver(failedInformational));
+        const notice = parseCrossSessionMessage(yield* Deferred.await(received));
+        assert.equal(notice?.metadata.expectsResponse, false);
+        assert.equal(notice?.metadata.generatedNotice, true);
+        assert.match(notice?.text ?? "", /stopped with an error/);
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            familyStorageHarness().layer,
+            environment,
+            Layer.mock(SessionArchiveStorage, { locate: () => Effect.succeed("active" as const) }),
+            makePiSessionsLayer({
+              catalog: () => Stream.empty,
+              catalogEntry: () => Effect.succeed(undefined),
+              inspect: () => Effect.succeed(undefined),
+              changelog: () => Effect.succeed(""),
+              createRuntime: (runtimeOptions) =>
+                Effect.succeed({
+                  ...fakeRuntime(runtimeOptions, () => undefined),
+                  prompt: (text: string) =>
+                    Effect.runPromise(Deferred.succeed(received, text)).then(() => undefined),
+                }),
+            }),
+          ),
+        ),
+      );
+    }),
+  );
+
   it.effect("recovers a reservation without a transcript and reports the failed launch", () =>
     Effect.gen(function* () {
       const storage = yield* SessionFamilyStorage;
@@ -253,6 +305,26 @@ describe("Session Family outcome delivery", () => {
           Layer.mock(SessionArchiveStorage, {
             locate: (id) => Effect.succeed(id === childId ? undefined : ("active" as const)),
           }),
+        ),
+      ),
+    ),
+  );
+
+  it.effect("suppresses outcome delivery while stop-all lifecycle work is admitted", () =>
+    Effect.gen(function* () {
+      const storage = yield* SessionFamilyStorage;
+      yield* storage.addChild(reservation);
+      yield* storage.recordTurn(outcome);
+      yield* storage.beginTransition("session-1", true);
+      yield* Effect.scoped(deliver(outcome));
+      assert.equal((yield* storage.state()).turns.length, 1);
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          familyStorageHarness().layer,
+          environment,
+          Layer.mock(SessionArchiveStorage, { locate: () => Effect.succeed("active" as const) }),
+          Layer.mock(PiSessions, {}),
         ),
       ),
     ),

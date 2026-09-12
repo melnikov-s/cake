@@ -258,7 +258,7 @@ const transitionFamilyMember = Effect.fn("ProjectSessions.transitionFamilyMember
               return yield* error(operation, "Resolve descendant sessions before their parent");
           }
           const state = yield* storage.state();
-          if (state.turns.some((turn) => turn.parentSessionId === sessionId && !turn.reported))
+          if (state.turns.some((turn) => turn.senderSessionId === sessionId && !turn.reported))
             return yield* error(operation, "The session has an undelivered child outcome");
           yield* archiveMember(sessionId, location, operation);
           yield* managedWorktrees

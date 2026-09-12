@@ -33,11 +33,17 @@ import type { Terminal } from "../../services/terminal/Terminal";
 import { toJsonValue } from "../../utils/to-json-value";
 
 const FamilyMessageInput = Schema.Struct({
-  sessionId: Schema.String,
-  text: Schema.String,
+  sessionId: Schema.optionalKey(
+    Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+  ),
+  text: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(100_000)),
   delivery: Schema.optionalKey(Schema.Literals(["prompt", "queue", "steer"])),
-  threadId: Schema.optionalKey(Schema.String),
-  maxMessages: Schema.optionalKey(Schema.Int),
+  threadId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
+  maxMessages: Schema.optionalKey(
+    Schema.Int.check(Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(1_000)),
+  ),
+  expectsResponse: Schema.optionalKey(Schema.Boolean),
+  replyToMessageId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
 });
 
 class ProjectSessionRuntimeCompositionError extends Schema.TaggedError<ProjectSessionRuntimeCompositionError>()(
@@ -170,7 +176,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
   const runtimeOptions: PiSessionAcquireOptions = {
     profile: { _tag: "ProjectSession" },
     onRelease: runtimeHost.releaseSession(sessionId),
-    admitTurn: (turnId, accept) =>
+    admitTurn: (input, accept) =>
       sessionFamilies
         .admitTurn(
           sessionId,
@@ -179,7 +185,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
             activeRoot: configuration.sessionDirectory,
             resolvedRoot: configuration.resolvedSessionDirectory,
           },
-          turnId,
+          input,
           accept,
         )
         .pipe(
@@ -355,7 +361,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
             signal,
           );
         },
-        routeFamilyMessage: (untrustedInput, signal) =>
+        routeFamilyMessage: (command, untrustedInput, signal) =>
           run(
             Effect.scoped(
               Effect.gen(function* () {
@@ -366,7 +372,19 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
                   .familyForMember(sessionId)
                   .pipe(Effect.mapError((cause) => compositionError("familyMessage", cause)));
                 if (!family) return undefined;
-                const destinationMember = familyMember(family, input.sessionId);
+                const pending =
+                  command === "sessions.reply"
+                    ? yield* families.pendingResponseRequest(
+                        sessionId,
+                        input.threadId,
+                        input.replyToMessageId,
+                      )
+                    : undefined;
+                if (command === "sessions.reply" && !pending) return undefined;
+                const targetSessionId = pending?.senderSessionId ?? input.sessionId;
+                if (!targetSessionId)
+                  return yield* compositionError("familyMessage", "A target session is required");
+                const destinationMember = familyMember(family, targetSessionId);
                 if (!destinationMember) return undefined;
                 const destinationLocation = (yield* projectSessionLocations.locations({
                   includeInactive: true,
@@ -381,7 +399,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
                     `Working Directory unavailable: ${destinationMember.workingDirectory}`,
                   );
                 const namespace = yield* archive
-                  .locate(input.sessionId, {
+                  .locate(targetSessionId, {
                     cwd: destinationMember.workingDirectory,
                     activeRoot: configuration.sessionDirectory,
                     resolvedRoot: configuration.resolvedSessionDirectory,
@@ -395,14 +413,15 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
                 if (!namespace)
                   return yield* compositionError(
                     "familyMessage",
-                    `Family member ${input.sessionId} could not be found`,
+                    `Family member ${targetSessionId} could not be found`,
                   );
-                const destinationOptions = yield* acquireOptions({
-                  location: destinationLocation,
-                  sessionId: input.sessionId,
-                  newSession: false,
-                });
-                const destination = yield* sessions.acquire(destinationOptions);
+                const destination = yield* sessions.acquire(
+                  yield* acquireOptions({
+                    location: destinationLocation,
+                    sessionId: targetSessionId,
+                    newSession: false,
+                  }),
+                );
                 const destinationSnapshot = yield* destination.snapshot();
                 const senderSummary = yield* sessions
                   .catalogEntry(
@@ -414,12 +433,16 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
                   )
                   .pipe(Effect.catch(() => Effect.succeed(undefined)));
                 const messageId = crypto.randomUUID();
-                const threadId = input.threadId ?? crypto.randomUUID();
+                const threadId = pending?.threadId ?? input.threadId ?? crypto.randomUUID();
+                const replyToMessageId = pending?.requestMessageId ?? input.replyToMessageId;
+                const expectsResponse = input.expectsResponse ?? command === "sessions.send";
                 const messageMetadata = {
                   version: 1 as const,
                   messageId,
                   threadId,
                   sequence: 1,
+                  expectsResponse,
+                  ...(replyToMessageId ? { replyToMessageId } : null),
                   sender: {
                     sessionId,
                     title: senderSummary?.title ?? `Project Session ${sessionId}`,
@@ -434,18 +457,19 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
                     ? messageMetadata
                     : { ...messageMetadata, maxMessages: input.maxMessages },
                 );
-                const repliesToParent =
-                  member?.parentSessionId !== undefined &&
-                  input.sessionId === member.parentSessionId;
-                const sourceTurnIds = repliesToParent
-                  ? yield* sessions.executingTurnIds({
-                      workingDirectory: location.workingDirectory,
-                      sessionDirectory: location.sessionDirectory,
-                      sessionId,
-                    })
-                  : [];
-                if (repliesToParent)
-                  yield* families.prepareReply(sessionId, sourceTurnIds, messageId);
+                if (
+                  replyToMessageId &&
+                  !(yield* families.prepareResponse(
+                    sessionId,
+                    targetSessionId,
+                    replyToMessageId,
+                    messageId,
+                  ))
+                )
+                  return yield* compositionError(
+                    "familyMessage",
+                    `Request ${replyToMessageId} is not awaiting a response from this session`,
+                  );
                 // Ordinary family delivery starts an idle recipient or queues behind active
                 // work. An explicit steer deliberately interrupts and redirects the target.
                 const delivery =
@@ -456,22 +480,24 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
                     : delivery === "queue"
                       ? yield* destination.followUp(encoded, [], false)
                       : yield* destination.prompt(encoded, [], false);
-                if (repliesToParent) yield* families.reportTurns(sessionId, sourceTurnIds);
+                if (replyToMessageId) yield* families.confirmResponse(messageId);
                 yield* catalogs.publish({
                   _tag: "ProjectSessionChanged",
-                  sessionId: input.sessionId,
+                  sessionId: targetSessionId,
                   projectPath: location.projectPath,
                   workingDirectory: destinationLocation.workingDirectory,
                   resolved: false,
                 });
                 return toJsonValue({
                   ok: true,
-                  command: "sessions.send",
-                  targetTitle: `Project Session ${input.sessionId}`,
+                  command,
+                  targetTitle: `Project Session ${targetSessionId}`,
                   messageId,
                   threadId,
                   turnId,
                   delivery,
+                  expectsResponse,
+                  ...(replyToMessageId ? { replyToMessageId } : null),
                   status: delivery === "queue" ? "queued" : "accepted",
                 });
               }),

@@ -97,7 +97,11 @@ export interface PiSessionAcquireOptions {
   /** Finalizes Cake-owned integrations when the final shared runtime lease is released. */
   readonly onRelease?: Effect.Effect<void, unknown>;
   readonly admitTurn?: (
-    turnId: string,
+    input: {
+      readonly turnId: string;
+      readonly text: string;
+      readonly delivery: "prompt" | "steer" | "follow-up";
+    },
     accept: Effect.Effect<void>,
   ) => Effect.Effect<void, unknown>;
   readonly onTurnSettled?: (event: {
@@ -541,7 +545,9 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
             });
             yield* run.pipe(Effect.forkIn(layerScope));
           });
-          yield* (options.admitTurn ? options.admitTurn(turnId, accept) : accept).pipe(
+          yield* (
+            options.admitTurn ? options.admitTurn({ turnId, text, delivery }, accept) : accept
+          ).pipe(
             Effect.mapError(
               (cause) => new PiSessionError({ operation: delivery, message: String(cause) }),
             ),

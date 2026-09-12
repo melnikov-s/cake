@@ -79,11 +79,23 @@ rendered as transcript history. Cancelling a pending steer demotes it to queued
 follow-up input instead of discarding the message. Routing is main-process policy
 and must not depend on renderer visibility.
 
-For each non-root turn, Cake durably correlates whether a message to that
-session's immediate parent was accepted. A normally settled, failed, or aborted
-turn with no such acceptance produces one factual notice to the immediate
-parent. Stop-all suppresses this reactivation path. Delivery intent survives
-restart and is idempotent by child and turn ID.
+Each accepted family message carries an explicit `expectsResponse` value and
+stable request/message correlation. Initial child assignments and ordinary
+explicit sends default to `true`; replies default to `false`. Callers set
+`expectsResponse: false` for substantive results and informational notices. A
+reply clears only the request identified by its reply correlation; an unrelated
+message in the same family or thread does not satisfy the obligation.
+
+Cake durably records response obligations at Pi input acceptance and settles
+them only after the consumed turn stops. Successful work with no response
+expectation clears silently. If a response-expected turn stops without an
+accepted correlated reply, Cake sends exactly one factual notice to the original
+sender, whether that sender is the immediate parent or another family member.
+Failed or aborted work remains factually visible even when no response was
+expected, but generated notices carry no response expectation and are never
+recorded as new notification work, so notification chains terminate. Stop-all
+suppresses this reactivation path. Delivery intent survives restart and is
+idempotent by request, recipient turn, and notice-delivery turn IDs.
 
 Pi input acceptance and execution settlement are separate boundaries. Queued
 input retains its turn lease until Pi consumes the input and the run settles;
@@ -91,16 +103,17 @@ queue insertion alone never triggers a stopped-child notice. Explicit abort uses
 the same outcome callback once, even if the original prompt subsequently
 returns. Only consumed input IDs count when correlating a child's reply.
 
-Family storage version 3 persists recursive parentage and per-child Working
-Directory bindings in addition to pending turns, accepted parent-reply
-correlation, notice attempts, and lifecycle journals. Version 1 and 2 documents
+Family storage version 4 persists recursive parentage, per-child Working
+Directory bindings, sender/recipient request and reply correlation, response
+expectations, notice attempts, and lifecycle journals. Version 1 and 2 documents
 migrate their flat children into direct children of the root with the family's
-shared Working Directory. The delivery worker retries already-due notices; it
-does not monitor assignments or decide what the parent should do. A notice is
-acknowledged only when its correlated message is projected from the immediate
-parent transcript. Live turn IDs and queued input prevent duplicate delivery
-before that acknowledgement. Startup reports interrupted turns and removes
-reservations that never materialized a Pi transcript.
+shared Working Directory; version 3 recursive documents migrate legacy turns as
+response-expected work. The delivery worker retries already-due notices; it does
+not monitor assignments or decide what the sender should do. A notice is
+acknowledged only when its correlated message is projected from the sender's
+transcript. Live turn IDs and queued input prevent duplicate delivery before
+that acknowledgement. Startup reports interrupted turns and removes reservations
+that never materialized a Pi transcript.
 
 ## Lifecycle
 

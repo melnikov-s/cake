@@ -190,6 +190,7 @@ describe("Chat", () => {
               messageId: "f6debbbd-ced1-4a12-b0f7-fb60c292c623",
               threadId: "8358c2b7-bd3c-42ee-9fec-fcb726b66c18",
               sequence: 1,
+              expectsResponse: false,
               sender: {
                 sessionId: "child-session",
                 title: "Storage implementation",

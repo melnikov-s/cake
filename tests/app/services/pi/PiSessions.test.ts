@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
-import { Context, Deferred, Effect, Exit, Fiber, Layer, Ref, Scope, Stream } from "effect";
+import { Context, Deferred, Effect, Exit, Fiber, Layer, Option, Ref, Scope, Stream } from "effect";
 import { describe } from "vitest";
 import {
   makePiSessionsLayer,
@@ -69,6 +69,52 @@ describe("PiSessions", () => {
       yield* handle.abort();
       yield* Deferred.await(returned);
       assert.deepEqual(outcomes, ["aborted"]);
+    }),
+  );
+
+  it.effect("passes queued input metadata at acceptance and settles only after execution", () =>
+    Effect.gen(function* () {
+      const started = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      const settled = yield* Deferred.make<void>();
+      const admissions: Array<{ turnId: string; text: string; delivery: string }> = [];
+      const layer = makePiSessionsLayer({
+        catalog: () => Stream.empty,
+        catalogEntry: () => Effect.succeed(undefined),
+        inspect: () => Effect.succeed(undefined),
+        changelog: () => Effect.succeed(""),
+        createRuntime: (runtimeOptions) =>
+          Effect.succeed({
+            ...fakeRuntime(runtimeOptions, () => undefined),
+            prompt: () =>
+              Effect.runPromise(
+                Effect.gen(function* () {
+                  yield* Deferred.succeed(started, undefined);
+                  yield* Deferred.await(release);
+                }),
+              ),
+          }),
+      });
+      const context = yield* Layer.build(layer);
+      const sessions = Context.get(context, PiSessions);
+      const handle = yield* sessions.acquire({
+        ...options(),
+        admitTurn: (input, accept) =>
+          Effect.sync(() => admissions.push(input)).pipe(Effect.andThen(accept)),
+        onTurnSettled: () => Deferred.succeed(settled, undefined),
+      });
+      yield* handle.followUp("queued coordination");
+      assert.deepEqual(admissions, [
+        {
+          turnId: admissions[0]?.turnId,
+          text: "queued coordination",
+          delivery: "follow-up",
+        },
+      ]);
+      yield* Deferred.await(started);
+      assert.equal(Option.isNone(yield* Deferred.poll(settled)), true);
+      yield* Deferred.succeed(release, undefined);
+      yield* Deferred.await(settled);
     }),
   );
 

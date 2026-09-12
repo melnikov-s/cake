@@ -12,6 +12,7 @@ const metadata: CrossSessionMessageMetadata = {
   messageId: "f6debbbd-ced1-4a12-b0f7-fb60c292c623",
   threadId: "8358c2b7-bd3c-42ee-9fec-fcb726b66c18",
   sequence: 2,
+  expectsResponse: true,
   maxMessages: 15,
   sender: {
     kind: "project-session",
@@ -66,6 +67,14 @@ describe("cross-session coordination metadata", () => {
       deliveryState: "queued",
       crossSession: metadata,
     });
+  });
+
+  it("decodes legacy coordination messages as informational", () => {
+    const legacy = `<cake-session-message>${JSON.stringify({
+      ...metadata,
+      expectsResponse: undefined,
+    })}</cake-session-message>\n\nLegacy result`;
+    expect(parseCrossSessionMessage(legacy)?.metadata.expectsResponse).toBe(false);
   });
 
   it("does not reinterpret malformed ordinary Pi transcript content", () => {

@@ -118,7 +118,10 @@ One user request and the resulting agent activity until it settles.
 A durable transcript entry in a Pi Session. Streaming parts update a Message;
 they are not separate Messages. A cross-session message remains an ordinary Pi
 user Message carrying validated Cake coordination metadata; its Cake message ID
-correlates delivery state but is not a second transcript identity.
+correlates delivery state but is not a second transcript identity. Its explicit
+response expectation says whether stopping without a correlated reply requires a
+sender notice; informational messages and generated notices create no response
+obligation.
 
 ### Session handle
 

@@ -1,6 +1,6 @@
 import { acquireOptions as acquireProjectSessionOptions } from "../project-sessions/projectSessionRuntime";
 import * as projectSessionLocations from "../project-sessions/projectSessionLocations";
-import { DateTime, Effect, Schedule } from "effect";
+import { DateTime, Effect, Exit, Schedule } from "effect";
 import type { ChatConfiguration } from "../../ipc/session-contract";
 import { PiModels } from "../../services/pi/PiModels";
 import { PiSessions, type PiSessionAcquireOptions } from "../../services/pi/PiSessions";
@@ -50,7 +50,7 @@ const assertAdmission = Effect.fn("SessionFamilies.assertAdmission")(function* (
 export const admitTurn = Effect.fn("SessionFamilies.admitTurn")(function* (
   sessionId: string,
   location: SessionArchiveLocation,
-  turnId: string,
+  input: { readonly turnId: string; readonly text: string },
   accept: Effect.Effect<void>,
 ) {
   const storage = yield* SessionFamilyStorage;
@@ -59,15 +59,29 @@ export const admitTurn = Effect.fn("SessionFamilies.admitTurn")(function* (
     Effect.gen(function* () {
       yield* assertAdmission(sessionId, location);
       const family = yield* storage.familyForMember(sessionId);
-      const member = family && familyMember(family, sessionId);
-      if (member?.parentSessionId)
+      const request = parseCrossSessionMessage(input.text);
+      const senderSessionId = request?.metadata.sender.sessionId;
+      if (
+        family &&
+        request &&
+        !request.metadata.generatedNotice &&
+        senderSessionId !== undefined &&
+        familyMember(family, senderSessionId) !== undefined
+      )
         yield* storage.recordTurn({
           sessionId,
-          parentSessionId: member.parentSessionId,
-          turnId,
+          senderSessionId,
+          turnId: input.turnId,
+          requestMessageId: request.metadata.messageId,
+          threadId: request.metadata.threadId,
+          expectsResponse: request.metadata.expectsResponse,
           reported: false,
         });
-      yield* accept;
+      yield* accept.pipe(
+        Effect.onExit((exit) =>
+          Exit.isFailure(exit) ? storage.completeNotice(input.turnId) : Effect.void,
+        ),
+      );
     }),
   );
 });
@@ -240,7 +254,21 @@ export const createChild = Effect.fn("SessionFamilies.createChild")(function* <
         ? { status: "failed", message: prepared.error }
         : { status: "already-started" },
     };
-  const launched = yield* Effect.result(prepared.handle.prompt(input.initialPrompt, [], false));
+  const initialMessage = encodeCrossSessionMessage(input.initialPrompt, {
+    version: 1,
+    messageId: prepared.child.sessionId,
+    threadId: prepared.family.familyId,
+    sequence: 1,
+    expectsResponse: true,
+    sender: {
+      sessionId: parentSessionId,
+      title: `Parent session ${parentSessionId}`,
+      kind: "project-session",
+      projectName: location.projectName,
+      workingDirectory: location.workingDirectory,
+    },
+  });
+  const launched = yield* Effect.result(prepared.handle.prompt(initialMessage, [], false));
   if (launched._tag === "Failure") {
     yield* storage.withMemberLock(
       parentSessionId,
@@ -287,8 +315,11 @@ export const initialize = Effect.fn("SessionFamilies.initialize")(function* (
       // remain a phantom member that prevents the family from being archived.
       yield* storage.recordTurn({
         sessionId: child.sessionId,
-        parentSessionId: child.parentSessionId,
+        senderSessionId: child.parentSessionId,
         turnId: child.sessionId,
+        requestMessageId: child.sessionId,
+        threadId: family.familyId,
+        expectsResponse: true,
         reported: false,
         outcome: "failed",
       });
@@ -309,43 +340,45 @@ export const initialize = Effect.fn("SessionFamilies.initialize")(function* (
 
 export const deliver = Effect.fn("SessionFamilies.deliverNotice")(function* (turn: FamilyTurn) {
   const storage = yield* SessionFamilyStorage;
-  const family = yield* storage.familyForMember(turn.parentSessionId);
+  const family =
+    (yield* storage.familyForMember(turn.sessionId)) ??
+    (yield* storage.familyForMember(turn.senderSessionId));
   if (!family || !turn.outcome || turn.reported) return;
   const state = yield* storage.state();
   if (state.transitions.some((item) => item.parentSessionId === family.parentSessionId)) return;
-  const parentMember = familyMember(family, turn.parentSessionId);
+  const senderMember = familyMember(family, turn.senderSessionId);
   const childMember = familyMember(family, turn.sessionId);
-  if (!parentMember || !childMember) return;
+  if (!senderMember || !childMember) return;
   const locations = yield* projectSessionLocations.locations({ includeInactive: true });
-  const parentLocation = locations.find(
+  const senderLocation = locations.find(
     (item) =>
       item.projectPath === family.projectPath &&
-      item.workingDirectory === parentMember.workingDirectory,
+      item.workingDirectory === senderMember.workingDirectory,
   );
   const childLocation = locations.find(
     (item) =>
       item.projectPath === family.projectPath &&
       item.workingDirectory === childMember.workingDirectory,
   );
-  if (!parentLocation || !childLocation)
+  if (!senderLocation || !childLocation)
     return yield* new SessionFamilyStorageError({
       operation: "deliverNotice",
       message: `Session Family Working Directory unavailable: ${
-        parentLocation ? childMember.workingDirectory : parentMember.workingDirectory
+        senderLocation ? childMember.workingDirectory : senderMember.workingDirectory
       }`,
     });
   const archive = yield* SessionArchiveStorage;
   if (
-    (yield* archive.locate(turn.parentSessionId, {
-      cwd: parentMember.workingDirectory,
-      activeRoot: parentLocation.sessionDirectory,
-      resolvedRoot: parentLocation.resolvedSessionDirectory,
+    (yield* archive.locate(turn.senderSessionId, {
+      cwd: senderMember.workingDirectory,
+      activeRoot: senderLocation.sessionDirectory,
+      resolvedRoot: senderLocation.resolvedSessionDirectory,
     })) !== "active"
   )
     return;
   const sessions = yield* PiSessions;
   yield* storage.withMemberLock(
-    family.parentSessionId,
+    turn.senderSessionId,
     Effect.gen(function* () {
       const status = yield* sessions.currentStatus({
         sessionId: turn.sessionId,
@@ -364,14 +397,14 @@ export const deliver = Effect.fn("SessionFamilies.deliverNotice")(function* (tur
         yield* storage.removeUnmaterializedChild(turn.sessionId);
     }),
   );
-  const parent = yield* sessions.acquire(
+  const sender = yield* sessions.acquire(
     yield* acquireProjectSessionOptions({
-      location: parentLocation,
-      sessionId: turn.parentSessionId,
+      location: senderLocation,
+      sessionId: turn.senderSessionId,
       newSession: false,
     }),
   );
-  const snapshot = yield* parent.snapshot();
+  const snapshot = yield* sender.snapshot();
   if (
     snapshot.parts.some(
       (part) =>
@@ -400,23 +433,28 @@ export const deliver = Effect.fn("SessionFamilies.deliverNotice")(function* (tur
       turn.sessionId,
     )
     .pipe(Effect.catch(() => Effect.succeed(undefined)));
+  const missingResponse = turn.expectsResponse && turn.outcome === "complete";
   const text = encodeCrossSessionMessage(
-    `Child session ${turn.sessionId} ${outcome} without sending a response to its parent.`,
+    missingResponse
+      ? `Session ${turn.sessionId} stopped without replying to request ${turn.requestMessageId}.`
+      : `Session ${turn.sessionId} ${outcome} while processing message ${turn.requestMessageId}.`,
     {
       version: 1,
       messageId: turn.turnId,
-      threadId: turn.turnId,
+      threadId: turn.threadId,
       sequence: 1,
+      expectsResponse: false,
+      generatedNotice: true,
       sender: {
         sessionId: turn.sessionId,
-        title: childSummary?.title ?? `Child session ${turn.sessionId}`,
+        title: childSummary?.title ?? `Session ${turn.sessionId}`,
         kind: "project-session",
         projectName: childLocation.projectName,
         workingDirectory: childLocation.workingDirectory,
       },
     },
   );
-  const queue = yield* parent.listQueuedMessages();
+  const queue = yield* sender.listQueuedMessages();
   const queuedMessages = [...queue.steering, ...queue.followUp];
   if (
     queuedMessages.some((content) => {
@@ -431,17 +469,17 @@ export const deliver = Effect.fn("SessionFamilies.deliverNotice")(function* (tur
   if (
     turn.deliveryTurnId &&
     (yield* sessions.currentTurnIds({
-      sessionId: turn.parentSessionId,
-      workingDirectory: parentMember.workingDirectory,
-      sessionDirectory: parentLocation.sessionDirectory,
+      sessionId: turn.senderSessionId,
+      workingDirectory: senderMember.workingDirectory,
+      sessionDirectory: senderLocation.sessionDirectory,
     })).includes(turn.deliveryTurnId)
   )
     return;
-  // Match ordinary user delivery: start an idle parent, or queue behind its
+  // Match ordinary user delivery: start an idle sender, or queue behind its
   // active turn without steering or interrupting it.
   const deliveryTurnId = snapshot.streaming
-    ? yield* parent.followUp(text, [], false)
-    : yield* parent.prompt(text, [], false);
+    ? yield* sender.followUp(text, [], false)
+    : yield* sender.prompt(text, [], false);
   yield* storage.markNoticeAttempt(turn.turnId, deliveryTurnId);
 });
 

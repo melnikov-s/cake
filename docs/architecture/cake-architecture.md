@@ -212,10 +212,14 @@ child tool activity, usage, cost, and the final answer through the parent tool c
 rather than exposing a second transcript.
 
 Full Project Session families use a different coordination contract. Messages
-between parent and child sessions, including deterministic completion or abort
-notices, are ordinary Pi user messages. By default they start a normal turn when
-the recipient is idle or enter Pi's follow-up queue behind active work. An
-explicit steer interrupts and redirects an active family member. Pending family
+between family sessions, including deterministic missing-response, failure, or
+abort notices, are ordinary Pi user messages. Each message carries an explicit
+response expectation: initial assignments and ordinary sends default to expecting
+a response, while replies, result reports, informational messages, and generated
+notices do not. Only a correlated reply satisfies a request. Generated notices
+never create another response obligation. By default messages start a normal
+turn when the recipient is idle or enter Pi's follow-up queue behind active work.
+An explicit steer interrupts and redirects an active family member. Pending family
 input is projected beside the composer with source-session attribution rather
 than as transcript history.
 Creating a child accepts its initial turn in the background and does not keep

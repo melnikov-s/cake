@@ -848,6 +848,7 @@ describe("AppControlBridge", () => {
       targetTitle: "Review",
       messageNumber: 1,
       maxMessages: 3,
+      expectsResponse: true,
     });
     const threadId = (first as { threadId: string }).threadId;
     expect(sendSessionMessage).toHaveBeenNthCalledWith(
@@ -858,6 +859,7 @@ describe("AppControlBridge", () => {
       expect.objectContaining({
         threadId,
         sequence: 1,
+        expectsResponse: true,
         sender: {
           kind: "project-session",
           sessionId: "session-a",
@@ -879,13 +881,24 @@ describe("AppControlBridge", () => {
           workingDirectory: "/projects/beta",
         },
       ),
-    ).resolves.toMatchObject({ target: { sessionId: "session-a" }, messageNumber: 2, threadId });
+    ).resolves.toMatchObject({
+      target: { sessionId: "session-a" },
+      messageNumber: 2,
+      threadId,
+      expectsResponse: false,
+      replyToMessageId: (first as { messageId: string }).messageId,
+    });
     expect(sendSessionMessage).toHaveBeenNthCalledWith(
       2,
       "session-a",
       "Second",
       "prompt",
-      expect.objectContaining({ threadId, sequence: 2 }),
+      expect.objectContaining({
+        threadId,
+        sequence: 2,
+        expectsResponse: false,
+        replyToMessageId: (first as { messageId: string }).messageId,
+      }),
     );
     expect(showAgentAction).toHaveBeenCalledWith(
       expect.objectContaining({ message: expect.stringContaining("Accepted message 2/3") }),
@@ -959,6 +972,7 @@ describe("AppControlBridge", () => {
           messageId: sentMessageId,
           threadId: sentThreadId,
           sequence: 1,
+          expectsResponse: true,
           maxMessages: 1,
           sender: { kind: "project-session", sessionId: "session-a", title: "A" },
         },

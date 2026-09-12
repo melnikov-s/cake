@@ -3,6 +3,7 @@ import { it } from "@effect/vitest";
 import { Deferred, Effect, Layer, Stream } from "effect";
 import { describe } from "vitest";
 import { createChild } from "../../../src/domain/session-families/sessionFamilies";
+import { parseCrossSessionMessage } from "../../../src/domain/conversations/cross-session-coordination";
 import { PiModels } from "../../../src/services/pi/PiModels";
 import { makePiSessionsLayer } from "../../../src/services/pi/PiSessions";
 import {
@@ -192,6 +193,7 @@ describe("Session Family creation", () => {
       const started = yield* Deferred.make<void>();
       let launches = 0;
       let disposed = false;
+      let initialMessage: string | undefined;
       const pi = makePiSessionsLayer({
         catalog: () => Stream.empty,
         catalogEntry: () => Effect.succeed(undefined),
@@ -203,7 +205,8 @@ describe("Session Family creation", () => {
               disposed = true;
             }),
             sessionId: runtimeOptions.sessionId ?? "missing",
-            prompt: async () => {
+            prompt: async (text) => {
+              initialMessage = text;
               launches += 1;
               Deferred.doneUnsafe(started, Effect.void);
             },
@@ -227,6 +230,23 @@ describe("Session Family creation", () => {
         assert.equal(second.familyChildOrder, 0);
         assert.equal(second.launch.status, "already-started");
         assert.equal(launches, 1);
+        assert.deepEqual(parseCrossSessionMessage(initialMessage ?? ""), {
+          text: input.initialPrompt,
+          metadata: {
+            version: 1,
+            messageId: first.childSessionId,
+            threadId: first.familyId,
+            sequence: 1,
+            expectsResponse: true,
+            sender: {
+              sessionId: "parent",
+              title: "Parent session parent",
+              kind: "project-session",
+              projectName: "Project",
+              workingDirectory: "/worktree",
+            },
+          },
+        });
       }).pipe(
         Effect.provide(
           Layer.mergeAll(

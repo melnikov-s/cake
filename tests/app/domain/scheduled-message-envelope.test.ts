@@ -94,6 +94,7 @@ describe("scheduled message envelope", () => {
       messageId: "f6debbbd-ced1-4a12-b0f7-fb60c292c623",
       threadId: "8358c2b7-bd3c-42ee-9fec-fcb726b66c18",
       sequence: 1,
+      expectsResponse: false,
       sender: { kind: "project-session", sessionId: "source-session", title: "Review" },
     });
     const scheduled = encodeScheduledMessage("Check the build", origin);

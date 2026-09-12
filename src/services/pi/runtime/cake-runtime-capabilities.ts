@@ -404,6 +404,8 @@ export async function createCakeRuntimeCapabilities(input: {
     threadId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
     messageNumber: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThan(0))),
     maxMessages: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThan(0))),
+    expectsResponse: Schema.Boolean,
+    replyToMessageId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
     status: Schema.Literals(["accepted", "queued", "delivered", "processing", "answered"]),
   });
   const reportAgentAction = async (
@@ -721,6 +723,9 @@ export async function createCakeRuntimeCapabilities(input: {
         summary: "Send a message to an explicitly targeted Project Session in any Cake project.",
         guidance: [
           "Set delivery to steer to interrupt and redirect a running target. Omit delivery for normal behavior: start an idle target or queue behind an active target.",
+          "expectsResponse defaults to true. Use true only for an assignment, actionable coordination, blocker, or question whose missing result must be reported; set false for substantive results and informational notices.",
+          "Set replyToMessageId when this message answers a specific request. A different or unrelated message never clears that request's response obligation.",
+          "Send one substantive completion report. Never send acknowledgment-only messages or duplicate lifecycle reports; receiving a report or notification does not require a response.",
         ],
         inputSchema: Schema.Struct({
           sessionId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
@@ -730,10 +735,28 @@ export async function createCakeRuntimeCapabilities(input: {
           maxMessages: Schema.optionalKey(
             Schema.Int.check(Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(1_000)),
           ),
+          expectsResponse: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(true))),
+          replyToMessageId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
         }),
-        examples: [{ input: { sessionId: "target-session-id", text: "Review the API changes." } }],
+        examples: [
+          {
+            input: {
+              sessionId: "target-session-id",
+              text: "Review the API changes and report the result.",
+              expectsResponse: true,
+            },
+          },
+          {
+            input: {
+              sessionId: "target-session-id",
+              text: "The review is complete.",
+              expectsResponse: false,
+              replyToMessageId: "00000000-0000-4000-8000-000000000000",
+            },
+          },
+        ],
         result:
-          "A visible correlated receipt with target label, thread and message IDs, count, delivery state, and accepted delivery mode.",
+          "A visible correlated receipt with target label, thread and message IDs, response expectation, count, delivery state, and accepted delivery mode.",
         execute: invokeAppControl("sessions.send"),
       },
       {
@@ -772,13 +795,23 @@ export async function createCakeRuntimeCapabilities(input: {
         topic: "sessions",
         summary:
           "Reply to the originating session in the current open exchange without carrying its session ID.",
+        guidance: [
+          "Replies default to expectsResponse=false because substantive results and informational responses do not request acknowledgment.",
+          "Provide replyToMessageId when more than one request may be pending. Cake otherwise selects the latest matching request in the thread.",
+          "Do not reply merely to acknowledge a result, notice, confirmation, or lifecycle event.",
+        ],
         inputSchema: Schema.Struct({
           text: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(100_000))),
           delivery: Schema.optionalKey(Schema.Literals(["prompt", "queue", "steer"])),
           threadId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
+          expectsResponse: Schema.Boolean.pipe(
+            Schema.withDecodingDefaultKey(Effect.succeed(false)),
+          ),
+          replyToMessageId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
         }),
-        examples: [{ input: { text: "I agree; here is one caveat." } }],
-        result: "A correlated delivery receipt for the safely bound reply target.",
+        examples: [{ input: { text: "Completed the review; focused tests pass." } }],
+        result:
+          "A correlated delivery receipt with the safely bound reply target and response expectation.",
         execute: invokeAppControl("sessions.reply"),
       },
       {

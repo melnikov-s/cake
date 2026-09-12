@@ -3,9 +3,23 @@ import { it } from "@effect/vitest";
 import { describe } from "vitest";
 import { Effect } from "effect";
 import { familyStorageHarness } from "../../helpers/familyStorageHarness";
-import { SessionFamilyStorage } from "../../../../src/services/storage/SessionFamilyStorage";
+import {
+  SessionFamilyStorage,
+  type FamilyTurn,
+} from "../../../../src/services/storage/SessionFamilyStorage";
 
 const testLayer = () => familyStorageHarness().layer;
+
+const turn = (overrides: Partial<FamilyTurn> = {}): FamilyTurn => ({
+  sessionId: "child",
+  senderSessionId: "parent",
+  turnId: "turn",
+  requestMessageId: "request-message",
+  threadId: "thread",
+  expectsResponse: true,
+  reported: false,
+  ...overrides,
+});
 
 const child = (requestId: string, childSessionId: string) => ({
   familyId: crypto.randomUUID(),
@@ -28,17 +42,13 @@ describe("SessionFamilyStorage", () => {
       const storage = yield* SessionFamilyStorage;
       assert.deepEqual(yield* storage.state(), { families: [], transitions: [], turns: [] });
       yield* storage.addChild(child("request", "child"));
-      yield* storage.recordTurn({
-        sessionId: "child",
-        parentSessionId: "parent",
-        turnId: "turn",
-        reported: false,
-      });
-      yield* storage.reportTurns("child", ["turn"]);
+      yield* storage.recordTurn(turn());
+      yield* storage.prepareResponse("child", "parent", "request-message", "response");
+      yield* storage.confirmResponse("response");
       yield* storage.settleTurn("turn", "complete");
       assert.deepEqual((yield* storage.state()).turns, []);
       assert.equal((yield* storage.list()).length, 1);
-      assert.equal(JSON.parse(files.get("state/session-families.json") ?? "{}").version, 3);
+      assert.equal(JSON.parse(files.get("state/session-families.json") ?? "{}").version, 4);
     }).pipe(Effect.provide(familyStorageHarness(files).layer));
   });
 
@@ -84,6 +94,82 @@ describe("SessionFamilyStorage", () => {
       });
     }).pipe(Effect.provide(familyStorageHarness(files).layer));
   });
+
+  it.effect("migrates version 3 turn correlation as response-expected work", () => {
+    const files = new Map([
+      [
+        "state/session-families.json",
+        JSON.stringify({
+          version: 3,
+          data: {
+            families: [],
+            transitions: [],
+            turns: [
+              {
+                sessionId: "child",
+                parentSessionId: "parent",
+                turnId: "legacy-turn",
+                reported: false,
+              },
+            ],
+          },
+        }),
+      ],
+    ]);
+    return Effect.gen(function* () {
+      const storage = yield* SessionFamilyStorage;
+      const [migrated] = (yield* storage.state()).turns;
+      assert.deepEqual(migrated, {
+        sessionId: "child",
+        senderSessionId: "parent",
+        turnId: "legacy-turn",
+        requestMessageId: "legacy-turn",
+        threadId: "legacy-turn",
+        expectsResponse: true,
+        reported: false,
+      });
+    }).pipe(Effect.provide(familyStorageHarness(files).layer));
+  });
+
+  it.effect("settles informational success silently but retains factual failures", () =>
+    Effect.gen(function* () {
+      const storage = yield* SessionFamilyStorage;
+      yield* storage.recordTurn(turn({ expectsResponse: false }));
+      yield* storage.settleTurn("turn", "complete");
+      assert.deepEqual((yield* storage.state()).turns, []);
+
+      yield* storage.recordTurn(turn({ turnId: "failed", expectsResponse: false }));
+      yield* storage.settleTurn("failed", "failed");
+      yield* storage.recordTurn(turn({ turnId: "aborted", expectsResponse: false }));
+      yield* storage.settleTurn("aborted", "aborted");
+      assert.deepEqual(
+        (yield* storage.state()).turns.map((pending) => pending.outcome),
+        ["failed", "aborted"],
+      );
+    }).pipe(Effect.provide(testLayer())),
+  );
+
+  it.effect("only a response correlated to the request and sender satisfies it", () =>
+    Effect.gen(function* () {
+      const storage = yield* SessionFamilyStorage;
+      yield* storage.recordTurn(turn());
+      assert.equal(
+        yield* storage.prepareResponse("child", "sibling", "request-message", "unrelated"),
+        false,
+      );
+      assert.equal(
+        yield* storage.prepareResponse("child", "parent", "other-request", "unrelated"),
+        false,
+      );
+      assert.equal(
+        yield* storage.prepareResponse("child", "parent", "request-message", "response"),
+        true,
+      );
+      yield* storage.confirmResponse("response");
+      yield* storage.settleTurn("turn", "complete");
+      assert.deepEqual((yield* storage.state()).turns, []);
+    }).pipe(Effect.provide(testLayer())),
+  );
 
   it.effect("serializes concurrent first-child creation into one family", () =>
     Effect.gen(function* () {
@@ -132,12 +218,14 @@ describe("SessionFamilyStorage", () => {
         parentManagedWorktreePath: "/project/.cake-worktrees/feature",
       });
       yield* storage.beginTransition("parent", true);
-      yield* storage.recordTurn({
-        sessionId: "grandchild",
-        parentSessionId: "child-1",
-        turnId: "turn-1",
-        reported: false,
-      });
+      yield* storage.recordTurn(
+        turn({
+          sessionId: "grandchild",
+          senderSessionId: "child-1",
+          turnId: "turn-1",
+          requestMessageId: "request-1",
+        }),
+      );
       yield* storage.removeProject("/project");
       assert.deepEqual(yield* storage.state(), { families: [], transitions: [], turns: [] });
     }).pipe(Effect.provide(testLayer())),

@@ -100,11 +100,15 @@ const appControlArgumentSchemas = {
     maxMessages: Schema.optionalKey(
       Schema.Int.check(Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(1_000)),
     ),
+    expectsResponse: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(true))),
+    replyToMessageId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
   }),
   "sessions.reply": Schema.Struct({
     text: trimmed(1, 100_000),
     delivery: Schema.optionalKey(Schema.Literals(["prompt", "queue", "steer"])),
     threadId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
+    expectsResponse: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
+    replyToMessageId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
   }),
   "sessions.thread": Schema.Struct({
     threadId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
@@ -456,6 +460,8 @@ export type AppControlResult =
       messageNumber?: number;
       maxMessages?: number;
       delivery: "prompt" | "queue" | "steer";
+      expectsResponse: boolean;
+      replyToMessageId?: string;
       status: CrossSessionDeliveryStatus;
     }
   | { ok: true; command: "sessions.thread"; thread: CoordinationThreadView }
@@ -887,11 +893,31 @@ export class AppControlBridge {
         return { ok: false, command, error: "That session thread is closed." };
       const targetSessionId = thread.participants.find((id) => id !== source.sessionId);
       if (!targetSessionId) return { ok: false, command, error: "The thread has no reply target." };
+      const inboundMessages = [...thread.messages]
+        .reverse()
+        .filter(
+          (message) =>
+            message.senderSessionId === targetSessionId &&
+            message.targetSessionId === source.sessionId,
+        );
+      const replyToMessageId =
+        invocation.arguments.replyToMessageId ?? inboundMessages[0]?.messageId;
+      if (
+        invocation.arguments.replyToMessageId &&
+        !inboundMessages.some(
+          (message) => message.messageId === invocation.arguments.replyToMessageId,
+        )
+      )
+        return { ok: false, command, error: "The reply target is not an inbound thread message." };
+      if (!replyToMessageId)
+        return { ok: false, command, error: "There is no matching message to reply to." };
       return this.sendCrossSessionMessage(
         invocation.name,
         targetSessionId,
         invocation.arguments.text,
         invocation.arguments.delivery,
+        invocation.arguments.expectsResponse,
+        replyToMessageId,
         source,
         thread,
       );
@@ -973,6 +999,7 @@ export class AppControlBridge {
           targetTitle: known.title,
           messageId: turnId,
           delivery,
+          expectsResponse: invocation.arguments.expectsResponse,
           status: delivery === "queue" ? "queued" : "accepted",
         };
       }
@@ -1009,6 +1036,8 @@ export class AppControlBridge {
         sessionId,
         invocation.arguments.text,
         invocation.arguments.delivery,
+        invocation.arguments.expectsResponse,
+        invocation.arguments.replyToMessageId,
         source,
         thread,
       );
@@ -1090,6 +1119,8 @@ export class AppControlBridge {
     targetSessionId: string,
     text: string,
     requestedDelivery: "prompt" | "queue" | "steer" | undefined,
+    expectsResponse: boolean,
+    replyToMessageId: string | undefined,
     source: AgentControlSource,
     thread: CoordinationThread,
   ): Promise<AppControlResult> {
@@ -1114,6 +1145,8 @@ export class AppControlBridge {
       messageId,
       threadId: thread.threadId,
       sequence,
+      expectsResponse,
+      ...(replyToMessageId ? { replyToMessageId } : null),
       sender: {
         sessionId: source.sessionId,
         title: source.title,
@@ -1157,6 +1190,8 @@ export class AppControlBridge {
       messageNumber: sequence,
       maxMessages: thread.maxMessages,
       delivery,
+      expectsResponse,
+      ...(replyToMessageId ? { replyToMessageId } : null),
       status: message.status,
     };
   }

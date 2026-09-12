@@ -12,7 +12,7 @@ import {
 } from "effect";
 import { atomicWriteFile, type AtomicFileStage } from "./internal/atomicFile";
 
-const DOCUMENT_VERSION = 3;
+const DOCUMENT_VERSION = 4;
 const BoundedId = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
 const BoundedPath = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4_096));
 
@@ -98,10 +98,24 @@ export const familyDepth = (family: SessionFamily, sessionId: string) => {
 };
 
 const FamilyTransition = Schema.Struct({ parentSessionId: BoundedId, resolved: Schema.Boolean });
-const FamilyTurn = Schema.Struct({
+const LegacyFamilyTurn = Schema.Struct({
   sessionId: BoundedId,
   parentSessionId: BoundedId,
   turnId: BoundedId,
+  reported: Schema.Boolean,
+  deliveryTurnId: Schema.optionalKey(BoundedId),
+  replyMessageIds: Schema.optionalKey(Schema.Array(BoundedId)),
+  outcome: Schema.optionalKey(Schema.Literals(["complete", "failed", "aborted"])),
+});
+const FamilyTurn = Schema.Struct({
+  /** The session executing the request. */
+  sessionId: BoundedId,
+  /** The session that should receive a response or factual failure notice. */
+  senderSessionId: BoundedId,
+  turnId: BoundedId,
+  requestMessageId: BoundedId,
+  threadId: BoundedId,
+  expectsResponse: Schema.Boolean,
   reported: Schema.Boolean,
   deliveryTurnId: Schema.optionalKey(BoundedId),
   replyMessageIds: Schema.optionalKey(Schema.Array(BoundedId)),
@@ -140,14 +154,19 @@ export class SessionFamilyStorage extends Context.Service<
       turnId: string,
       outcome: "complete" | "failed" | "aborted",
     ) => Effect.Effect<void, SessionFamilyStorageError>;
-    readonly prepareReply: (
+    readonly pendingResponseRequest: (
       sessionId: string,
-      turnIds: ReadonlyArray<string>,
-      messageId: string,
-    ) => Effect.Effect<void, SessionFamilyStorageError>;
-    readonly reportTurns: (
+      threadId?: string,
+      requestMessageId?: string,
+    ) => Effect.Effect<FamilyTurn | undefined, SessionFamilyStorageError>;
+    readonly prepareResponse: (
       sessionId: string,
-      turnIds: ReadonlyArray<string>,
+      targetSessionId: string,
+      requestMessageId: string,
+      responseMessageId: string,
+    ) => Effect.Effect<boolean, SessionFamilyStorageError>;
+    readonly confirmResponse: (
+      responseMessageId: string,
     ) => Effect.Effect<void, SessionFamilyStorageError>;
     readonly markNoticeAttempt: (
       turnId: string,
@@ -235,44 +254,61 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
         const envelope = yield* Schema.decodeUnknownEffect(StoredEnvelope)(parsed).pipe(
           Effect.mapError((cause) => storageError("load", cause)),
         );
-        if (![1, 2, DOCUMENT_VERSION].includes(envelope.version))
+        if (![1, 2, 3, DOCUMENT_VERSION].includes(envelope.version))
           return yield* storageError(
             "load",
             `Unsupported session family document version ${envelope.version}`,
           );
-        const data =
-          envelope.version === DOCUMENT_VERSION
-            ? envelope.data
-            : yield* Schema.decodeUnknownEffect(
-                Schema.Struct({
-                  families: Schema.Array(LegacySessionFamily),
-                  transitions:
-                    envelope.version === 1
-                      ? Schema.optionalKey(Schema.Array(FamilyTransition))
-                      : Schema.Array(FamilyTransition),
-                  turns:
-                    envelope.version === 1
-                      ? Schema.optionalKey(Schema.Array(FamilyTurn))
-                      : Schema.Array(FamilyTurn),
-                }),
-              )(envelope.data).pipe(
-                Effect.map((legacy) => ({
-                  families: legacy.families.map((family) => ({
-                    ...family,
-                    children: family.children.map((child) => ({
-                      ...child,
-                      parentSessionId: family.parentSessionId,
-                      workingDirectory: family.workingDirectory,
-                      ...(family.managedWorktreePath === undefined
-                        ? null
-                        : { managedWorktreePath: family.managedWorktreePath }),
-                    })),
-                  })),
-                  transitions: legacy.transitions ?? [],
-                  turns: legacy.turns ?? [],
-                })),
-                Effect.mapError((cause) => storageError("migrate", cause)),
-              );
+        const migrateTurn = (turn: typeof LegacyFamilyTurn.Type): FamilyTurn => {
+          const { parentSessionId, ...rest } = turn;
+          return {
+            ...rest,
+            senderSessionId: parentSessionId,
+            requestMessageId: turn.turnId,
+            threadId: turn.turnId,
+            expectsResponse: true,
+          };
+        };
+        let data = envelope.data;
+        if (envelope.version === 1 || envelope.version === 2) {
+          const legacy = yield* Schema.decodeUnknownEffect(
+            Schema.Struct({
+              families: Schema.Array(LegacySessionFamily),
+              transitions:
+                envelope.version === 1
+                  ? Schema.optionalKey(Schema.Array(FamilyTransition))
+                  : Schema.Array(FamilyTransition),
+              turns:
+                envelope.version === 1
+                  ? Schema.optionalKey(Schema.Array(LegacyFamilyTurn))
+                  : Schema.Array(LegacyFamilyTurn),
+            }),
+          )(envelope.data).pipe(Effect.mapError((cause) => storageError("migrate", cause)));
+          data = {
+            families: legacy.families.map((family) => ({
+              ...family,
+              children: family.children.map((child) => ({
+                ...child,
+                parentSessionId: family.parentSessionId,
+                workingDirectory: family.workingDirectory,
+                ...(family.managedWorktreePath === undefined
+                  ? null
+                  : { managedWorktreePath: family.managedWorktreePath }),
+              })),
+            })),
+            transitions: legacy.transitions ?? [],
+            turns: (legacy.turns ?? []).map(migrateTurn),
+          };
+        } else if (envelope.version === 3) {
+          const legacy = yield* Schema.decodeUnknownEffect(
+            Schema.Struct({
+              families: Schema.Array(SessionFamily),
+              transitions: Schema.Array(FamilyTransition),
+              turns: Schema.Array(LegacyFamilyTurn),
+            }),
+          )(envelope.data).pipe(Effect.mapError((cause) => storageError("migrate", cause)));
+          data = { ...legacy, turns: legacy.turns.map(migrateTurn) };
+        }
         const document = yield* Schema.decodeUnknownEffect(SessionFamilyDocument)(data).pipe(
           Effect.mapError((cause) => storageError("load", cause)),
         );
@@ -457,29 +493,68 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
           update((document) => ({
             ...document,
             turns: document.turns.flatMap((turn) =>
-              turn.turnId !== turnId ? [turn] : turn.reported ? [] : [{ ...turn, outcome }],
+              turn.turnId !== turnId
+                ? [turn]
+                : turn.reported || (outcome === "complete" && !turn.expectsResponse)
+                  ? []
+                  : [{ ...turn, outcome }],
             ),
           })),
       );
-      const prepareReply = Effect.fn("SessionFamilyStorage.prepareReply")(
-        (sessionId: string, turnIds: ReadonlyArray<string>, messageId: string) =>
-          update((document) => ({
-            ...document,
-            turns: document.turns.map((turn) =>
-              turn.sessionId === sessionId && turnIds.includes(turn.turnId)
-                ? { ...turn, replyMessageIds: [...(turn.replyMessageIds ?? []), messageId] }
-                : turn,
+      const pendingResponseRequest = Effect.fn("SessionFamilyStorage.pendingResponseRequest")(
+        (sessionId: string, threadId?: string, requestMessageId?: string) =>
+          state().pipe(
+            Effect.map((document) =>
+              [...document.turns]
+                .reverse()
+                .find(
+                  (turn) =>
+                    turn.sessionId === sessionId &&
+                    turn.expectsResponse &&
+                    !turn.reported &&
+                    (threadId === undefined || turn.threadId === threadId) &&
+                    (requestMessageId === undefined || turn.requestMessageId === requestMessageId),
+                ),
             ),
-          })),
+          ),
       );
-      const reportTurns = Effect.fn("SessionFamilyStorage.reportTurns")(
-        (sessionId: string, turnIds: ReadonlyArray<string>) =>
+      const prepareResponse = Effect.fn("SessionFamilyStorage.prepareResponse")(function* (
+        sessionId: string,
+        targetSessionId: string,
+        requestMessageId: string,
+        responseMessageId: string,
+      ) {
+        let matched = false;
+        yield* update((document) => ({
+          ...document,
+          turns: document.turns.map((turn) => {
+            if (
+              turn.sessionId !== sessionId ||
+              turn.senderSessionId !== targetSessionId ||
+              turn.requestMessageId !== requestMessageId ||
+              !turn.expectsResponse ||
+              turn.reported
+            )
+              return turn;
+            matched = true;
+            return {
+              ...turn,
+              replyMessageIds: [...(turn.replyMessageIds ?? []), responseMessageId],
+            };
+          }),
+        }));
+        return matched;
+      });
+      const confirmResponse = Effect.fn("SessionFamilyStorage.confirmResponse")(
+        (responseMessageId: string) =>
           update((document) => ({
             ...document,
-            turns: document.turns.map((turn) =>
-              turn.sessionId === sessionId && turnIds.includes(turn.turnId)
-                ? { ...turn, reported: true }
-                : turn,
+            turns: document.turns.flatMap((turn) =>
+              turn.replyMessageIds?.includes(responseMessageId)
+                ? turn.outcome
+                  ? []
+                  : [{ ...turn, reported: true }]
+                : [turn],
             ),
           })),
       );
@@ -520,7 +595,10 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
             transitions: document.transitions.filter(
               (transition) => !removedParents.has(transition.parentSessionId),
             ),
-            turns: document.turns.filter((turn) => !removedMembers.has(turn.sessionId)),
+            turns: document.turns.filter(
+              (turn) =>
+                !removedMembers.has(turn.sessionId) && !removedMembers.has(turn.senderSessionId),
+            ),
           };
         }),
       );
@@ -534,8 +612,9 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
         finishTransition,
         recordTurn,
         settleTurn,
-        reportTurns,
-        prepareReply,
+        pendingResponseRequest,
+        prepareResponse,
+        confirmResponse,
         markNoticeAttempt,
         completeNotice,
         removeUnmaterializedChild,

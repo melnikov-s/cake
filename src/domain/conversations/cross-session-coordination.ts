@@ -1,4 +1,4 @@
-import { Option, Schema } from "effect";
+import { Effect, Option, Schema } from "effect";
 
 const boundedId = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
 const boundedLabel = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(1_024));
@@ -10,6 +10,9 @@ export const CrossSessionMessageMetadata = Schema.Struct({
   messageId: Schema.String.check(Schema.isUUID(4)),
   threadId: Schema.String.check(Schema.isUUID(4)),
   sequence: Schema.Int.check(Schema.isGreaterThan(0)),
+  expectsResponse: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
+  replyToMessageId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
+  generatedNotice: Schema.optionalKey(Schema.Boolean),
   sender: Schema.Struct({
     sessionId: boundedId,
     title: boundedLabel,

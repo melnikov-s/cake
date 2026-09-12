@@ -162,7 +162,11 @@ export interface CakeRuntimeOptions {
       placement: "none" | "right" | "down";
       destinationWorkingDirectory?: string;
     }): Promise<JsonValue>;
-    routeFamilyMessage?(input: JsonObject, signal: AbortSignal): Promise<JsonValue | undefined>;
+    routeFamilyMessage?(
+      command: "sessions.send" | "sessions.reply",
+      input: JsonObject,
+      signal: AbortSignal,
+    ): Promise<JsonValue | undefined>;
     mergeSession?(targetSessionId: string | undefined, signal: AbortSignal): Promise<JsonValue>;
     discardSession?(
       targetSessionId: string | undefined,
@@ -617,8 +621,8 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     },
     async invokeAppControl(command, input, signal) {
       const familyResult =
-        command === "sessions.send"
-          ? await options.currentSessionControl?.routeFamilyMessage?.(input, signal)
+        command === "sessions.send" || command === "sessions.reply"
+          ? await options.currentSessionControl?.routeFamilyMessage?.(command, input, signal)
           : undefined;
       let result = familyResult;
       if (result === undefined) {
