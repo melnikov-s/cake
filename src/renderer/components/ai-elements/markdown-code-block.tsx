@@ -2,7 +2,6 @@ import {
   CodeBlock,
   CodeBlockContainer,
   CodeBlockCopyButton,
-  CodeBlockHeader,
   type CustomRendererProps,
 } from "streamdown";
 
@@ -27,25 +26,33 @@ export function MarkdownCodeBlock({ code, language, meta }: CustomRendererProps)
   const visibleCode =
     changing && code.startsWith(markerLine) ? code.slice(markerLine.length) : code;
 
+  const copyButton = (source: string) => (
+    <CodeBlockCopyButton
+      code={source}
+      className="absolute top-2 right-2 z-10 rounded-md bg-background/80 p-1.5 opacity-0 backdrop-blur transition-opacity hover:text-foreground focus:opacity-100 group-hover/code:opacity-100 group-focus-within/code:opacity-100"
+    />
+  );
+
   if (!changing)
     return (
-      <CodeBlock code={code} language={language} lineNumbers={lineNumbers} startLine={startLine}>
-        <CodeBlockCopyButton />
-      </CodeBlock>
+      <div className="group/code relative my-4 [&_[data-streamdown=code-block]]:my-0 [&_[data-streamdown=code-block]]:gap-0 [&_[data-streamdown=code-block]]:rounded-none [&_[data-streamdown=code-block]]:border-0 [&_[data-streamdown=code-block]]:bg-transparent [&_[data-streamdown=code-block]]:p-0 [&_[data-streamdown=code-block-header]]:hidden">
+        <CodeBlock
+          code={code}
+          language={language}
+          lineNumbers={lineNumbers}
+          startLine={startLine}
+        />
+        {copyButton(code)}
+      </div>
     );
 
   const source = trimTrailingNewlines(visibleCode);
   return (
-    <CodeBlockContainer isIncomplete language={language}>
-      <CodeBlockHeader language={language} />
-      <div className="pointer-events-none sticky top-2 z-10 -mt-10 flex h-8 items-center justify-end">
-        <div
-          className="pointer-events-auto flex shrink-0 items-center gap-2 rounded-md border border-sidebar bg-sidebar/80 px-1.5 py-1 supports-[backdrop-filter]:bg-sidebar/70 supports-[backdrop-filter]:backdrop-blur"
-          data-streamdown="code-block-actions"
-        >
-          <CodeBlockCopyButton code={visibleCode} />
-        </div>
-      </div>
+    <CodeBlockContainer
+      className="group/code relative my-4 gap-0 rounded-none border-0 bg-transparent p-0"
+      isIncomplete
+      language={language}
+    >
       <div
         className="overflow-x-auto rounded-md border border-border bg-background p-4 text-sm"
         data-language={language}
@@ -68,6 +75,7 @@ export function MarkdownCodeBlock({ code, language, meta }: CustomRendererProps)
           </code>
         </pre>
       </div>
+      {copyButton(visibleCode)}
     </CodeBlockContainer>
   );
 }

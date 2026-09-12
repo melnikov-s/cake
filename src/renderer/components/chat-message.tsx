@@ -458,7 +458,7 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
       onOpenSourceLocation={behavior.openSourceLocation}
     >
       <FullscreenButton
-        className="absolute -top-1.5 right-0 grid size-7 place-items-center rounded-md bg-transparent p-0 text-muted-foreground opacity-0 hover:bg-muted hover:text-foreground group-hover/msg:opacity-100 group-focus-within/msg:opacity-100 transition-opacity"
+        className="absolute top-1.5 right-1.5 grid size-7 place-items-center rounded-md bg-transparent p-0 text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover/msg:opacity-100 group-focus-within/msg:opacity-100"
         label="View response fullscreen"
         onClick={openFullscreen}
       />
