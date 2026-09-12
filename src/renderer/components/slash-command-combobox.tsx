@@ -55,6 +55,30 @@ function findCommandQuery(text: string, cursor: number): CommandQuery | undefine
   return { end: cursor, prefix: match[1]!.toLocaleLowerCase() };
 }
 
+function scoreCommandName(name: string, query: string): number | undefined {
+  if (!query) return 0;
+
+  const candidate = name.toLocaleLowerCase();
+  if (candidate === query) return 0;
+  if (candidate.startsWith(query)) return 100 + candidate.length - query.length;
+
+  const substringIndex = candidate.indexOf(query);
+  if (substringIndex >= 0) return 1_000 + substringIndex * 100 + candidate.length - query.length;
+
+  let queryIndex = 0;
+  let previousMatch = -1;
+  let score = 10_000;
+  for (let candidateIndex = 0; candidateIndex < candidate.length; candidateIndex += 1) {
+    if (candidate[candidateIndex] !== query[queryIndex]) continue;
+    score += previousMatch < 0 ? candidateIndex * 100 : (candidateIndex - previousMatch - 1) * 10;
+    previousMatch = candidateIndex;
+    queryIndex += 1;
+    if (queryIndex === query.length) return score + candidate.length - query.length;
+  }
+
+  return undefined;
+}
+
 export function findFileMention(text: string, cursor: number): FileMention | undefined {
   const beforeCursor = text.slice(0, cursor);
   const lineStart = Math.max(beforeCursor.lastIndexOf("\n"), beforeCursor.lastIndexOf("\r")) + 1;
@@ -121,15 +145,18 @@ export function SlashCommandCombobox({
   });
   const draft = inputValue.trimStart();
   const commandQuery = useMemo(() => findCommandQuery(inputValue, cursor), [cursor, inputValue]);
-  const filteredCommands = useMemo(
-    () =>
-      commandQuery
-        ? commands.filter((command) =>
-            command.name.toLocaleLowerCase().startsWith(commandQuery.prefix),
-          )
-        : [],
-    [commands, commandQuery],
-  );
+  const filteredCommands = useMemo(() => {
+    if (!commandQuery) return [];
+    return commands
+      .map((command, index) => ({
+        command,
+        index,
+        score: scoreCommandName(command.name, commandQuery.prefix),
+      }))
+      .filter((result): result is typeof result & { score: number } => result.score !== undefined)
+      .sort((left, right) => left.score - right.score || left.index - right.index)
+      .map(({ command }) => command);
+  }, [commands, commandQuery]);
   const commandOpen =
     Boolean(commandQuery) && filteredCommands.length > 0 && dismissedValue !== inputValue;
   const fileMention = useMemo(() => findFileMention(inputValue, cursor), [cursor, inputValue]);

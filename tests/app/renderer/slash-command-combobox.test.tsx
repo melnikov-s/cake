@@ -83,6 +83,47 @@ describe("SlashCommandCombobox", () => {
     expect(onSubmit).toHaveBeenCalledWith("/models");
   });
 
+  it.each([
+    ["matches text anywhere in a command name", "/desktop", "skill:desktop-fixture"],
+    ["fuzzy matches characters in order", "/tlcp", "toolcompact"],
+  ])("%s", (_description, value, expectedCommand) => {
+    act(() =>
+      root.render(
+        <SlashCommandCombobox
+          aria-label="Message"
+          commands={[command("help"), command(expectedCommand), command("settings")]}
+          value={value}
+          onValueChange={vi.fn()}
+          onSubmit={vi.fn()}
+        />,
+      ),
+    );
+
+    expect(container.querySelectorAll('[role="option"]')).toHaveLength(1);
+    expect(container.querySelector('[role="option"]')?.textContent).toContain(expectedCommand);
+  });
+
+  it("ranks stronger command matches ahead of fuzzy matches", () => {
+    act(() =>
+      root.render(
+        <SlashCommandCombobox
+          aria-label="Message"
+          commands={[command("xmodel"), command("model-switcher"), command("my-old-example-link")]}
+          value="/model"
+          onValueChange={vi.fn()}
+          onSubmit={vi.fn()}
+        />,
+      ),
+    );
+
+    const options = [...container.querySelectorAll('[role="option"]')];
+    expect(options.map((option) => option.textContent)).toEqual([
+      expect.stringContaining("model-switcher"),
+      expect.stringContaining("xmodel"),
+      expect.stringContaining("my-old-example-link"),
+    ]);
+  });
+
   it("offers commands at the caret while preserving text entered after it", () => {
     function ControlledCombobox() {
       const [value, setValue] = useState("summarize this");
