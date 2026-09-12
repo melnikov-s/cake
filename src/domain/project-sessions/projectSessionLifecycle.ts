@@ -134,6 +134,7 @@ const transitionFamily = Effect.fn("ProjectSessions.transitionFamily")(function*
   family: SessionFamily,
   resolved: boolean,
   operation: string,
+  publish = true,
 ) {
   const storage = yield* SessionFamilyStorage;
   yield* storage
@@ -198,17 +199,18 @@ const transitionFamily = Effect.fn("ProjectSessions.transitionFamily")(function*
             yield* trustProject(restored.workingDirectory).pipe(asError(operation));
           }
         }
-        yield* (yield* SessionCatalogChanges)
-          .publish({
-            _tag: "ProjectSessionsTransitioned",
-            sessions: members.map(({ sessionId, location }) => ({
-              sessionId,
-              workingDirectory: location.workingDirectory,
-            })),
-            projectPath: current.projectPath,
-            resolved,
-          })
-          .pipe(asError(operation));
+        if (publish)
+          yield* (yield* SessionCatalogChanges)
+            .publish({
+              _tag: "ProjectSessionsTransitioned",
+              sessions: members.map(({ sessionId, location }) => ({
+                sessionId,
+                workingDirectory: location.workingDirectory,
+              })),
+              projectPath: current.projectPath,
+              resolved,
+            })
+            .pipe(asError(operation));
         yield* storage.finishTransition(current.parentSessionId);
       }),
     )
@@ -220,6 +222,7 @@ const transitionFamilyMember = Effect.fn("ProjectSessions.transitionFamilyMember
   sessionId: string,
   resolved: boolean,
   operation: string,
+  publish = true,
 ) {
   const storage = yield* SessionFamilyStorage;
   yield* storage
@@ -260,7 +263,7 @@ const transitionFamilyMember = Effect.fn("ProjectSessions.transitionFamilyMember
           const state = yield* storage.state();
           if (state.turns.some((turn) => turn.senderSessionId === sessionId && !turn.reported))
             return yield* error(operation, "The session has an undelivered child outcome");
-          yield* archiveMember(sessionId, location, operation);
+          yield* archiveMember(sessionId, location, operation, publish);
           yield* managedWorktrees
             .cleanupResolved(location.workingDirectory, location.sessionDirectory)
             .pipe(asError(operation));
@@ -281,7 +284,7 @@ const transitionFamilyMember = Effect.fn("ProjectSessions.transitionFamilyMember
         )
           return yield* error(operation, "Restore the immediate parent before this session");
         yield* managedWorktrees.restoreResolved(location.workingDirectory).pipe(asError(operation));
-        const restored = yield* restoreMember(sessionId, location, operation);
+        const restored = yield* restoreMember(sessionId, location, operation, publish);
         yield* trustProject(restored.workingDirectory).pipe(asError(operation));
       }),
     )
@@ -292,6 +295,7 @@ const transitionStandalone = Effect.fn("ProjectSessions.transitionStandalone")(f
   target: ProjectSessionTarget,
   resolved: boolean,
   operation: string,
+  publish = true,
 ) {
   const storage = yield* SessionFamilyStorage;
   yield* storage
@@ -319,7 +323,7 @@ const transitionStandalone = Effect.fn("ProjectSessions.transitionStandalone")(f
               location.sessionDirectory,
               operation,
             );
-          yield* archiveMember(target.sessionId, location, operation);
+          yield* archiveMember(target.sessionId, location, operation, publish);
           yield* managedWorktrees
             .cleanupResolved(location.workingDirectory, location.sessionDirectory)
             .pipe(asError(operation));
@@ -329,7 +333,7 @@ const transitionStandalone = Effect.fn("ProjectSessions.transitionStandalone")(f
           yield* managedWorktrees
             .restoreResolved(location.workingDirectory)
             .pipe(asError(operation));
-          const restored = yield* restoreMember(target.sessionId, location, operation);
+          const restored = yield* restoreMember(target.sessionId, location, operation, publish);
           yield* trustProject(restored.workingDirectory).pipe(asError(operation));
         }
       }),
@@ -341,12 +345,13 @@ const transition = Effect.fn("ProjectSessions.transitionLifecycle")(function* (
   target: ProjectSessionTarget,
   resolved: boolean,
   operation: string,
+  publish = true,
 ) {
   const storage = yield* SessionFamilyStorage;
   const family = yield* storage.familyForMember(target.sessionId).pipe(asError(operation));
-  if (!family) return yield* transitionStandalone(target, resolved, operation);
+  if (!family) return yield* transitionStandalone(target, resolved, operation, publish);
   if (family.parentSessionId !== target.sessionId)
-    return yield* transitionFamilyMember(family, target.sessionId, resolved, operation);
+    return yield* transitionFamilyMember(family, target.sessionId, resolved, operation, publish);
   const location = yield* familyMemberLocation(family, target.sessionId, operation);
   const archive = yield* SessionArchiveStorage;
   const namespace = yield* archive
@@ -361,7 +366,7 @@ const transition = Effect.fn("ProjectSessions.transitionLifecycle")(function* (
     );
   // Even when the root already reached the requested namespace, another
   // member may still need the persisted family journal replayed.
-  yield* transitionFamily(family, resolved, operation);
+  yield* transitionFamily(family, resolved, operation, publish);
 });
 
 export const resolve = Effect.fn("ProjectSessions.resolve")((target: ProjectSessionTarget) =>
@@ -395,14 +400,14 @@ export const resolveWorkingDirectory = Effect.fn("ProjectSessions.resolveWorking
           ? `Cake could not find Working Directory ${workingDirectory}`
           : `Working Directory collision detected: ${workingDirectory}`,
       );
-    const activeSessions = yield* (yield* PiSessions)
-      .catalog({ workingDirectory, sessionDirectory: location.sessionDirectory })
+    const activeSessionIds = yield* (yield* PiSessions)
+      .sessionIds({ workingDirectory, sessionDirectory: location.sessionDirectory })
       .pipe(
         Stream.runCollect,
         Effect.map((items) => Array.from(items)),
         asError("resolveWorkingDirectory"),
       );
-    const activeIds = new Set(activeSessions.map((session) => session.id));
+    const activeIds = new Set(activeSessionIds);
     const families = yield* (yield* SessionFamilyStorage)
       .list()
       .pipe(asError("resolveWorkingDirectory"));
@@ -411,9 +416,10 @@ export const resolveWorkingDirectory = Effect.fn("ProjectSessions.resolveWorking
     );
     const targets: Array<{ sessionId: string; sessionIds: string[] }> = [];
     const selected = new Set<string>();
-    for (const session of activeSessions) {
-      const family = familyByMember.get(session.id);
-      const sessionId = session.id;
+    for (const activeSessionId of activeSessionIds) {
+      const family = familyByMember.get(activeSessionId);
+      const sessionId =
+        family && activeIds.has(family.parentSessionId) ? family.parentSessionId : activeSessionId;
       if (selected.has(sessionId)) continue;
       const sessionIds =
         family?.parentSessionId === sessionId
@@ -425,13 +431,25 @@ export const resolveWorkingDirectory = Effect.fn("ProjectSessions.resolveWorking
     const resolvedSessionIds: string[] = [];
     const failures: WorkingDirectoryResolutionFailure[] = [];
     for (const target of targets) {
-      const outcome = yield* resolve({ sessionId: target.sessionId, workingDirectory }).pipe(
-        Effect.result,
-      );
+      const outcome = yield* transition(
+        { sessionId: target.sessionId, workingDirectory },
+        true,
+        "resolveWorkingDirectory",
+        false,
+      ).pipe(Effect.result);
       if (outcome._tag === "Failure")
         failures.push({ sessionIds: target.sessionIds, message: outcome.failure.message });
       else resolvedSessionIds.push(...target.sessionIds);
     }
+    if (resolvedSessionIds.length > 0)
+      yield* (yield* SessionCatalogChanges)
+        .publish({
+          _tag: "ProjectSessionsTransitioned",
+          sessions: resolvedSessionIds.map((sessionId) => ({ sessionId, workingDirectory })),
+          projectPath: location.projectPath,
+          resolved: true,
+        })
+        .pipe(asError("resolveWorkingDirectory"));
     return { projectPath: location.projectPath, workingDirectory, resolvedSessionIds, failures };
   },
 );

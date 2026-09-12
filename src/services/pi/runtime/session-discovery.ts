@@ -17,6 +17,7 @@ import { sessionTitleFromFile } from "./session-title";
 import {
   findSessionFileMetadataById,
   findSessionFileById,
+  streamSessionFileIds,
   streamSessionFiles,
   workingDirectorySessionPath,
 } from "../../storage/session-files";
@@ -100,6 +101,19 @@ export async function suggestProjectFiles(options: {
 
 export interface StreamWorkspaceSessionsOptions {
   direct?: boolean;
+}
+
+/** Streams active session IDs from filenames without reading transcript titles or file metadata. */
+export function streamWorkspaceSessionIds(
+  cwd: string,
+  sessionDir: string,
+  options: StreamWorkspaceSessionsOptions = {},
+): Stream.Stream<string, unknown> {
+  return streamSessionFileIds({
+    workingDirectory: cwd,
+    root: sessionDir,
+    direct: options.direct,
+  });
 }
 
 /** Streams cheap file metadata for active sessions without opening transcript bodies. */

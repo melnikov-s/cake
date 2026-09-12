@@ -86,6 +86,7 @@ describe("Session Family outcome delivery", () => {
           environment,
           Layer.mock(SessionArchiveStorage, { locate: () => Effect.succeed("active" as const) }),
           makePiSessionsLayer({
+            sessionIds: () => Stream.empty,
             catalog: () => Stream.empty,
             catalogEntry: () => Effect.succeed(undefined),
             inspect: () => Effect.succeed(undefined),
@@ -137,6 +138,7 @@ describe("Session Family outcome delivery", () => {
       return Effect.gen(function* () {
         const received = yield* Deferred.make<void>();
         const pi = makePiSessionsLayer({
+          sessionIds: () => Stream.empty,
           catalog: () => Stream.empty,
           catalogEntry: () => Effect.succeed(undefined),
           inspect: () => Effect.succeed(undefined),
@@ -224,6 +226,7 @@ describe("Session Family outcome delivery", () => {
             environment,
             Layer.mock(SessionArchiveStorage, { locate: () => Effect.succeed("active" as const) }),
             makePiSessionsLayer({
+              sessionIds: () => Stream.empty,
               catalog: () => Stream.empty,
               catalogEntry: () => Effect.succeed(undefined),
               inspect: () => Effect.succeed(undefined),
@@ -270,6 +273,7 @@ describe("Session Family outcome delivery", () => {
             environment,
             Layer.mock(SessionArchiveStorage, { locate: () => Effect.succeed("active" as const) }),
             makePiSessionsLayer({
+              sessionIds: () => Stream.empty,
               catalog: () => Stream.empty,
               catalogEntry: () => Effect.succeed(undefined),
               inspect: () => Effect.succeed(undefined),

@@ -322,6 +322,8 @@ service. Cake exposes only the Pi capabilities it actually uses.
 
 ```ts
 interface PiSessions {
+  readonly sessionIds: (query: PiSessionQuery) => Stream.Stream<string, PiSessionError>;
+
   readonly catalog: (query: PiSessionQuery) => Stream.Stream<PiSessionSummary, PiSessionError>;
 
   readonly inspect: (target: PiSessionTarget) => Effect.Effect<PiSessionSnapshot, PiSessionError>;
@@ -332,9 +334,11 @@ interface PiSessions {
 }
 ```
 
-The catalog stream discovers sessions from filename and filesystem metadata, then opens each Pi
-JSONL transcript to derive its bounded title from the latest session-name entry or first user
-message. Pi is the sole durable title authority. Runtime title changes publish scoped catalog
+The IDs-only stream discovers session identities from filenames without statting or parsing
+transcripts; lifecycle workflows use it when they do not need display metadata. The catalog stream
+discovers sessions from filename and filesystem metadata, then opens each Pi JSONL transcript to
+derive its bounded title from the latest session-name entry or first user message. Pi is the sole
+durable title authority. Runtime title changes publish scoped catalog
 changes so active renderer projections update immediately. Cake's archive index stores routing and
 lifecycle metadata only; active and resolved catalogs derive titles from the transcript in either
 namespace.

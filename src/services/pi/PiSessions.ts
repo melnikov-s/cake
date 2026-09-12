@@ -34,6 +34,7 @@ import {
   loadPiChangelog,
   loadWorkspaceSessionSummary,
   loadWorkspaceSessionPreview,
+  streamWorkspaceSessionIds,
   streamWorkspaceSessions,
 } from "./runtime/session-discovery";
 import type { ReviewParentContext } from "./runtime/sidecar-runtime";
@@ -188,6 +189,7 @@ export interface PiSessionRuntimeStatus {
 }
 
 export interface PiSessionsAdapter {
+  readonly sessionIds: (query: PiSessionQuery) => Stream.Stream<string, unknown>;
   readonly catalog: (query: PiSessionQuery) => Stream.Stream<SessionSummary, unknown>;
   readonly catalogEntry: (
     query: PiSessionQuery,
@@ -201,6 +203,7 @@ export interface PiSessionsAdapter {
 export class PiSessions extends Context.Service<
   PiSessions,
   {
+    readonly sessionIds: (query: PiSessionQuery) => Stream.Stream<string, PiSessionError>;
     readonly catalog: (query: PiSessionQuery) => Stream.Stream<SessionSummary, PiSessionError>;
     readonly catalogEntry: (
       query: PiSessionQuery,
@@ -397,6 +400,18 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
               ),
           ),
       });
+
+      const sessionIds = (query: PiSessionQuery) =>
+        Stream.unwrap(
+          Schema.decodeUnknownEffect(PiSessionQuery)(query).pipe(
+            sessionError("sessionIds"),
+            Effect.map((decoded) =>
+              adapter
+                .sessionIds(decoded)
+                .pipe(Stream.mapError(messageOf), Stream.mapError(sessionErrorValue("sessionIds"))),
+            ),
+          ),
+        );
 
       const catalog = (query: PiSessionQuery) =>
         Stream.unwrap(
@@ -817,6 +832,7 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
       });
 
       return PiSessions.of({
+        sessionIds,
         catalog,
         catalogEntry,
         inspect,
@@ -835,6 +851,10 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
 
 export const makePiSessionsLive = (): Layer.Layer<PiSessions> =>
   makePiSessionsLayer({
+    sessionIds: (query) =>
+      streamWorkspaceSessionIds(query.workingDirectory, query.sessionDirectory, {
+        direct: query.direct,
+      }),
     catalog: (query) =>
       streamWorkspaceSessions(query.workingDirectory, query.sessionDirectory, {
         direct: query.direct,

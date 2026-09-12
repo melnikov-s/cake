@@ -28,26 +28,46 @@ export function sessionDirectoryPath(input: {
     : workingDirectorySessionPath(input.workingDirectory, input.root);
 }
 
-const metadataFromFilename = (
-  directory: string,
-  name: string,
-  modifiedAt: Date,
-): SessionFileMetadata | undefined => {
+const identityFromFilename = (name: string) => {
   const match = SESSION_FILE_PATTERN.exec(name);
   if (!match) return undefined;
   const [, encodedCreatedAt, id] = match;
   if (!encodedCreatedAt || !id) return undefined;
   const createdAt = encodedCreatedAt.replace(/T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z$/, "T$1:$2:$3.$4Z");
-  if (Number.isNaN(Date.parse(createdAt))) return undefined;
-  return {
-    id,
-    path: join(directory, name),
-    createdAt,
-    modifiedAt: modifiedAt.toISOString(),
-  };
+  return Number.isNaN(Date.parse(createdAt)) ? undefined : { id, createdAt };
+};
+
+const metadataFromFilename = (
+  directory: string,
+  name: string,
+  modifiedAt: Date,
+): SessionFileMetadata | undefined => {
+  const identity = identityFromFilename(name);
+  return identity
+    ? {
+        ...identity,
+        path: join(directory, name),
+        modifiedAt: modifiedAt.toISOString(),
+      }
+    : undefined;
 };
 
 const METADATA_STAT_CONCURRENCY = 32;
+
+async function* readDirectorySessionIds(directory: string): AsyncGenerator<string, void, void> {
+  let entries;
+  try {
+    entries = await opendir(directory);
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return;
+    throw error;
+  }
+  for await (const entry of entries) {
+    if (!entry.isFile()) continue;
+    const identity = identityFromFilename(entry.name);
+    if (identity) yield identity.id;
+  }
+}
 
 async function* readDirectoryMetadata(
   directory: string,
@@ -74,6 +94,18 @@ async function* readDirectoryMetadata(
     batch = [];
   }
   for (const metadata of await metadataBatch(batch)) if (metadata) yield metadata;
+}
+
+/** Emits IDs parsed from session filenames without statting or opening transcript files. */
+export function streamSessionFileIds(input: {
+  readonly workingDirectory: string;
+  readonly root: string;
+  readonly direct?: boolean;
+}): Stream.Stream<string, unknown> {
+  return Stream.fromAsyncIterable(
+    readDirectorySessionIds(sessionDirectoryPath(input)),
+    (cause) => cause,
+  );
 }
 
 /** Emits filesystem metadata only. Transcript contents are never opened. */

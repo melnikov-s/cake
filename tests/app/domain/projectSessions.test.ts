@@ -139,7 +139,9 @@ const makeLayer = (
     archiveErrorSessionId?: string;
     onRestore?(sessionId: string): void;
     onCatalog?(workingDirectory: string): void;
+    onSessionIds?(): void;
     onCatalogChange?(change: SessionCatalogChange): void;
+    sessionIds?(workingDirectory: string): Stream.Stream<string, unknown>;
     catalog?(workingDirectory: string): Stream.Stream<SessionSummary, unknown>;
     resolvedCatalog?(
       workingDirectory: string,
@@ -239,6 +241,15 @@ const makeLayer = (
     }),
   );
   const adapter: PiSessionsAdapter = {
+    sessionIds: (query) => {
+      hooks.onSessionIds?.();
+      if (hooks.sessionIds) return hooks.sessionIds(query.workingDirectory);
+      if (hooks.catalog)
+        return hooks.catalog(query.workingDirectory).pipe(Stream.map((item) => item.id));
+      return hooks.sessionExists === false || resolvedSessionIds.has("session-1")
+        ? Stream.empty
+        : Stream.make("session-1");
+    },
     catalog: (query) => {
       hooks.onCatalog?.(query.workingDirectory);
       if (hooks.catalog) return hooks.catalog(query.workingDirectory);
@@ -1264,23 +1275,31 @@ describe("Project Sessions domain", () => {
   });
 
   it.effect(
-    "resolves only the sessions authoritatively discovered in one Working Directory",
+    "resolves multiple standalone sessions from IDs and publishes one coherent transition",
     () => {
       const archived: string[] = [];
-      const session = (id: string): SessionSummary => ({
-        id,
-        title: id,
-        created: "2026-01-01T00:00:00.000Z",
-        modified: "2026-01-02T00:00:00.000Z",
-        messageCount: 1,
-        resolved: false,
-      });
+      const changes: SessionCatalogChange[] = [];
+      let idScans = 0;
+      let catalogScans = 0;
       return Effect.gen(function* () {
         const result = yield* projectSessionLifecycle.resolveWorkingDirectory("/worktree");
         assert.equal(result.projectPath, "/project");
         assert.deepEqual(result.resolvedSessionIds, ["worktree-1", "worktree-2"]);
         assert.deepEqual(result.failures, []);
         assert.deepEqual(archived, ["worktree-1", "worktree-2"]);
+        assert.equal(idScans, 1);
+        assert.equal(catalogScans, 0);
+        assert.deepEqual(changes, [
+          {
+            _tag: "ProjectSessionsTransitioned",
+            sessions: [
+              { sessionId: "worktree-1", workingDirectory: "/worktree" },
+              { sessionId: "worktree-2", workingDirectory: "/worktree" },
+            ],
+            projectPath: "/project",
+            resolved: true,
+          },
+        ]);
       }).pipe(
         Effect.provide(
           makeLayer(defaultApplicationState(), {
@@ -1300,10 +1319,13 @@ describe("Project Sessions domain", () => {
                 resolvedSessionDirectory: "/resolved-sessions",
               },
             ],
-            catalog: (workingDirectory) =>
+            sessionIds: (workingDirectory) =>
               workingDirectory === "/worktree"
-                ? Stream.fromIterable([session("worktree-1"), session("worktree-2")])
-                : Stream.make(session("other-1")),
+                ? Stream.fromIterable(["worktree-1", "worktree-2"])
+                : Stream.make("other-1"),
+            onSessionIds: () => idScans++,
+            onCatalog: () => catalogScans++,
+            onCatalogChange: (change) => changes.push(change),
             onArchive: (sessionId) => archived.push(sessionId),
           }),
         ),
@@ -1327,14 +1349,6 @@ describe("Project Sessions domain", () => {
         },
       ],
     };
-    const session = (id: string): SessionSummary => ({
-      id,
-      title: id,
-      created: "2026-01-01T00:00:00.000Z",
-      modified: "2026-01-02T00:00:00.000Z",
-      messageCount: 1,
-      resolved: false,
-    });
     return Effect.gen(function* () {
       const result = yield* projectSessionLifecycle.resolveWorkingDirectory("/project");
       assert.deepEqual(result.resolvedSessionIds, ["parent", "child"]);
@@ -1344,7 +1358,7 @@ describe("Project Sessions domain", () => {
       Effect.provide(
         makeLayer(defaultApplicationState(), {
           family,
-          catalog: () => Stream.fromIterable([session("parent"), session("child")]),
+          sessionIds: () => Stream.fromIterable(["child", "parent"]),
           onArchive: (sessionId) => events.push(`archive:${sessionId}`),
           onFamilyTransition: (stage, resolved) =>
             events.push(stage === "begin" ? `begin:${String(resolved)}` : stage),
@@ -1542,16 +1556,9 @@ describe("Project Sessions domain", () => {
     );
   });
 
-  it.effect("reports partial Working Directory resolution failures and continues", () => {
+  it.effect("reports partial Working Directory resolution failures and batches successes", () => {
     const archived: string[] = [];
-    const session = (id: string): SessionSummary => ({
-      id,
-      title: id,
-      created: "2026-01-01T00:00:00.000Z",
-      modified: "2026-01-02T00:00:00.000Z",
-      messageCount: 1,
-      resolved: false,
-    });
+    const changes: SessionCatalogChange[] = [];
     return Effect.gen(function* () {
       const result = yield* projectSessionLifecycle.resolveWorkingDirectory("/project");
       assert.deepEqual(result.resolvedSessionIds, ["session-1"]);
@@ -1559,12 +1566,21 @@ describe("Project Sessions domain", () => {
         { sessionIds: ["session-2"], message: "Cannot archive session-2" },
       ]);
       assert.deepEqual(archived, ["session-1"]);
+      assert.deepEqual(changes, [
+        {
+          _tag: "ProjectSessionsTransitioned",
+          sessions: [{ sessionId: "session-1", workingDirectory: "/project" }],
+          projectPath: "/project",
+          resolved: true,
+        },
+      ]);
     }).pipe(
       Effect.provide(
         makeLayer(defaultApplicationState(), {
-          catalog: () => Stream.fromIterable([session("session-1"), session("session-2")]),
+          sessionIds: () => Stream.fromIterable(["session-1", "session-2"]),
           archiveErrorSessionId: "session-2",
           onArchive: (sessionId) => archived.push(sessionId),
+          onCatalogChange: (change) => changes.push(change),
         }),
       ),
     );

@@ -65,6 +65,7 @@ const environment = (disposed: Deferred.Deferred<void>) =>
       proposeSquashMessage: () => Effect.void,
     }),
     makePiSessionsLayer({
+      sessionIds: () => Stream.empty,
       catalog: () => Stream.empty,
       catalogEntry: () => Effect.succeed(undefined),
       inspect: () => Effect.succeed(undefined),

@@ -111,6 +111,7 @@ const makeLayer = () => {
     };
   };
   const adapter: PiSessionsAdapter = {
+    sessionIds: () => Stream.empty,
     catalog: () => Stream.empty,
     catalogEntry: () => Effect.succeed(undefined),
     inspect: () => Effect.succeed(undefined),

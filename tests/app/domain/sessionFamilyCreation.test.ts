@@ -68,6 +68,7 @@ describe("Session Family creation", () => {
             archiveLayer,
             SessionCatalogChanges.layer,
             makePiSessionsLayer({
+              sessionIds: () => Stream.empty,
               catalog: () => Stream.empty,
               catalogEntry: () => Effect.succeed(undefined),
               inspect: () => Effect.succeed(undefined),
@@ -98,6 +99,7 @@ describe("Session Family creation", () => {
           archiveLayer,
           SessionCatalogChanges.layer,
           makePiSessionsLayer({
+            sessionIds: () => Stream.empty,
             catalog: () => Stream.empty,
             catalogEntry: () => Effect.succeed(undefined),
             inspect: () => Effect.succeed(undefined),
@@ -173,6 +175,7 @@ describe("Session Family creation", () => {
           archiveLayer,
           SessionCatalogChanges.layer,
           makePiSessionsLayer({
+            sessionIds: () => Stream.empty,
             catalog: () => Stream.empty,
             catalogEntry: () => Effect.succeed(undefined),
             inspect: () => Effect.succeed(undefined),
@@ -195,6 +198,7 @@ describe("Session Family creation", () => {
       let disposed = false;
       let initialMessage: string | undefined;
       const pi = makePiSessionsLayer({
+        sessionIds: () => Stream.empty,
         catalog: () => Stream.empty,
         catalogEntry: () => Effect.succeed(undefined),
         inspect: () => Effect.succeed(undefined),
