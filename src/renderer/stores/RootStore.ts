@@ -1,5 +1,6 @@
 import { Store, child, createStore, untracked } from "r-state-tree";
 import type { CakeHotkeyActionId } from "../../domain/application/cake-settings-data";
+import { defaultProjectSettings } from "../../domain/application/application-data";
 import type { ProjectSessionControlInvocation } from "../../domain/project-sessions/project-session-data";
 import type { JsonValue } from "../../ipc/json-contract";
 import type { ChatConfiguration } from "../../ipc/session-contract";
@@ -222,13 +223,19 @@ export class RootStore extends Store<{
   private projectControlSource(sessionId: string): AgentControlSource {
     const summary = this.sessionCatalogStore.find(sessionId);
     const loaded = this.sessionRegistry.findSession(sessionId);
+    const workingDirectory = summary?.workingDirectory ?? loaded?.workspacePath;
+    const projectPath =
+      summary?.projectPath ??
+      (workingDirectory
+        ? (this.sessionCatalogStore.projectOfManagedWorktree(workingDirectory) ?? workingDirectory)
+        : undefined);
     return {
       kind: "project-session",
       sessionId,
       title: summary?.title ?? "Agent session",
       projectName: summary?.projectName ?? "Unknown project",
-      workingDirectory:
-        summary?.workingDirectory ?? loaded?.workspacePath ?? "Unknown working directory",
+      workingDirectory: workingDirectory ?? "Unknown working directory",
+      ...(projectPath ? { projectPath } : null),
     };
   }
 
@@ -1166,6 +1173,19 @@ export class RootStore extends Store<{
           await this.props.flushWindowState();
           return view;
         },
+      },
+      projectSettings: {
+        get: (projectPath) => this.projectCatalogStore.find(projectPath)?.settings,
+        update: (projectPath, changes) =>
+          this.applicationControlStore.runOperation(async () => {
+            const current =
+              this.projectCatalogStore.find(projectPath)?.settings ?? defaultProjectSettings();
+            const settings = { ...current, ...changes };
+            await this.client.workspaces.setProjectSettings(projectPath, settings, {
+              signal: this.signal,
+            });
+            return settings;
+          }),
       },
       sessionLabels: {
         mutate: ({ projectPath }, mutation) =>

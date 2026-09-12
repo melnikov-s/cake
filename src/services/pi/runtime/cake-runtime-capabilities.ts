@@ -16,6 +16,10 @@ import {
   CakeSettingsGetInput,
   CakeSettingsUpdateInput,
 } from "../../../domain/application/cake-settings-schema";
+import {
+  CurrentProjectSettingsGetInput,
+  CurrentProjectSettingsUpdateInput,
+} from "../../../domain/application/project-settings-schema";
 import { WorkflowStatusColor } from "../../../domain/application/application-data";
 import { jsonObjectSchema, type JsonObject, type JsonValue } from "../../../ipc/json-contract";
 import { SESSION_TITLE_MAX_LENGTH } from "../../../ipc/session-contract";
@@ -489,6 +493,41 @@ export async function createCakeRuntimeCapabilities(input: {
         result:
           "The section's committed effective settings after window-state persistence completes.",
         execute: invokeAppControl("settings.update"),
+      },
+      {
+        command: "project.settings.get",
+        topic: "project",
+        summary: "Read every setting for the calling Project Session's Cake Project.",
+        guidance: [
+          "This singular project.* operation always targets the calling Project and never accepts a project path.",
+        ],
+        inputSchema: CurrentProjectSettingsGetInput,
+        examples: [{}],
+        result: "The calling Project's path and effective settings.",
+        execute: invokeAppControl("project.settings.get"),
+      },
+      {
+        command: "project.settings.update",
+        topic: "project",
+        summary:
+          "Patch any setting for the calling Project Session's Cake Project and return all committed settings.",
+        guidance: [
+          "Call project.settings.get before updating the Project. Unspecified settings remain unchanged.",
+          "This singular project.* operation always targets the calling Project and never accepts a project path.",
+        ],
+        inputSchema: CurrentProjectSettingsUpdateInput,
+        examples: [
+          {
+            input: {
+              changes: {
+                worktreeSetupInstructions:
+                  "Remove the node_modules symlink before running pnpm install.",
+              },
+            },
+          },
+        ],
+        result: "The calling Project's path and committed settings.",
+        execute: invokeAppControl("project.settings.update"),
       },
       {
         command: "session.info",
@@ -1177,6 +1216,8 @@ export async function createCakeRuntimeCapabilities(input: {
           "settings.sections",
           "settings.get",
           "settings.update",
+          "project.settings.get",
+          "project.settings.update",
           "notifications.send",
         ].includes(operation.command) ||
           options.currentSessionControl?.invokeAppControl !== undefined) &&

@@ -31,9 +31,17 @@ import {
 } from "../../domain/application/cake-settings-schema";
 import {
   WorkflowStatusColor,
+  type ProjectSettings,
   type WorkflowStatus,
   type WorkflowStatusMutation,
 } from "../../domain/application/application-data";
+import {
+  CurrentProjectSettingsGetInput,
+  CurrentProjectSettingsUpdateInput,
+  ProjectSettingsGetInput,
+  ProjectSettingsUpdateInput,
+  type ProjectSettingsChanges,
+} from "../../domain/application/project-settings-schema";
 
 const bounded = (minimum: number, maximum: number) =>
   Schema.String.check(Schema.isMinLength(minimum), Schema.isMaxLength(maximum));
@@ -60,6 +68,10 @@ const appControlArgumentSchemas = {
   "settings.sections": emptyArgumentsSchema,
   "settings.get": CakeSettingsGetInput,
   "settings.update": CakeSettingsUpdateInput,
+  "project.settings.get": CurrentProjectSettingsGetInput,
+  "project.settings.update": CurrentProjectSettingsUpdateInput,
+  "projects.settings.get": ProjectSettingsGetInput,
+  "projects.settings.update": ProjectSettingsUpdateInput,
   "sessions.list": emptyArgumentsSchema,
   "sessions.info": sessionIdTargetSchema,
   "sessions.open": sessionNavigationTargetSchema,
@@ -197,6 +209,10 @@ const appControlInvocationSchema = Schema.Union([
   invocation("settings.sections"),
   invocation("settings.get"),
   invocation("settings.update"),
+  invocation("project.settings.get"),
+  invocation("project.settings.update"),
+  invocation("projects.settings.get"),
+  invocation("projects.settings.update"),
   invocation("sessions.list"),
   invocation("sessions.info"),
   invocation("sessions.open"),
@@ -269,6 +285,7 @@ export interface AgentControlSource {
   title: string;
   projectName?: string;
   workingDirectory?: string;
+  projectPath?: string;
 }
 
 interface AgentActionReceipt {
@@ -323,6 +340,10 @@ export interface AppControlHost {
   settings: {
     get(section: CakeSettingsSectionId): CakeSettingsSectionView;
     update(input: CakeSettingsUpdate): Promise<CakeSettingsSectionView>;
+  };
+  projectSettings: {
+    get(projectPath: string): ProjectSettings | undefined;
+    update(projectPath: string, changes: ProjectSettingsChanges): Promise<ProjectSettings>;
   };
   sessionLabels: {
     mutate(scope: { projectPath?: string }, mutation: WorkflowStatusMutation): Promise<void>;
@@ -450,6 +471,17 @@ export type AppControlResult =
       scope: "window";
       section: CakeSettingsSectionId;
       settings: CakeSettingsSectionView["settings"];
+    }
+  | {
+      ok: true;
+      command:
+        | "project.settings.get"
+        | "project.settings.update"
+        | "projects.settings.get"
+        | "projects.settings.update";
+      scope: "project";
+      projectPath: string;
+      settings: ProjectSettings;
     }
   | {
       ok: true;
@@ -620,6 +652,31 @@ const modelControlOperations = [
       {
         input: { section: "appearance", changes: { theme: "dark" } },
         description: "Use Cake's dark appearance in this window.",
+      },
+    ],
+  },
+  operation(
+    "projects.settings.get",
+    "projects",
+    "Read every setting for one explicitly targeted Cake Project.",
+    appControlArgumentSchemas["projects.settings.get"],
+  ),
+  {
+    ...operation(
+      "projects.settings.update",
+      "projects",
+      "Patch any setting for one explicitly targeted Cake Project and return all committed settings.",
+      appControlArgumentSchemas["projects.settings.update"],
+    ),
+    guidance: [
+      "Call projects.settings.get before updating the Project. Unspecified settings remain unchanged.",
+    ],
+    examples: [
+      {
+        input: {
+          projectPath: "/path/to/project",
+          changes: { worktreeSetupCommands: "ln -s /path/to/project/node_modules node_modules" },
+        },
       },
     ],
   },
@@ -903,6 +960,28 @@ export class AppControlBridge {
       const view = await this.host.settings.update(invocation.arguments);
       return toStrictJson({ ok: true, command: invocation.name, scope: "window", ...view });
     }
+    if (
+      invocation.name === "project.settings.get" ||
+      invocation.name === "project.settings.update"
+    ) {
+      const projectPath = source?.kind === "project-session" ? source.projectPath : undefined;
+      if (!projectPath)
+        return { ok: false, command, error: "Cake could not find the calling Project." };
+      return this.projectSettingsResult(
+        invocation.name,
+        projectPath,
+        invocation.name === "project.settings.update" ? invocation.arguments.changes : undefined,
+      );
+    }
+    if (
+      invocation.name === "projects.settings.get" ||
+      invocation.name === "projects.settings.update"
+    )
+      return this.projectSettingsResult(
+        invocation.name,
+        invocation.arguments.projectPath,
+        invocation.name === "projects.settings.update" ? invocation.arguments.changes : undefined,
+      );
     if (invocation.name === "session-labels.list")
       return { ok: true, command: invocation.name, labels: this.sessionLabels() };
     if (invocation.name === "session-labels.add") {
@@ -1453,6 +1532,14 @@ export class AppControlBridge {
         message: `Updated Cake ${result.section} settings`,
         coalesceKey: `settings:${result.section}`,
       };
+    if (
+      result.command === "project.settings.update" ||
+      result.command === "projects.settings.update"
+    )
+      return {
+        message: "Updated Cake Project settings",
+        coalesceKey: `project-settings:${result.projectPath}`,
+      };
     if (result.command === "app.split")
       return {
         message: `Split this chat ${result.direction === "right" ? "to the right" : "down"}`,
@@ -1551,6 +1638,24 @@ export class AppControlBridge {
       );
     }
     return undefined;
+  }
+
+  private async projectSettingsResult(
+    command:
+      | "project.settings.get"
+      | "project.settings.update"
+      | "projects.settings.get"
+      | "projects.settings.update",
+    projectPath: string,
+    changes?: ProjectSettingsChanges,
+  ): Promise<AppControlResult> {
+    if (!this.host.state.projects().some((project) => project.path === projectPath))
+      return { ok: false, command, error: "Cake could not find that Project." };
+    const settings = changes
+      ? await this.host.projectSettings.update(projectPath, changes)
+      : this.host.projectSettings.get(projectPath);
+    if (!settings) return { ok: false, command, error: "Cake could not find that Project." };
+    return { ok: true, command, scope: "project", projectPath, settings };
   }
 
   private sessionLabels(): AppControlSessionLabel[] {

@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { CakeChatTarget } from "../../../src/domain/cake-chats/cake-chat-data";
 import {
   AppControlBridge,
+  type AgentControlSource,
   type AppControlHost,
   listAppControlTools,
 } from "../../../src/renderer/app-control/AppControlBridge";
@@ -16,6 +17,7 @@ type AppControlHostOverrides = Partial<
 > & {
   sessionCoordination?: AppControlHost["sessionCoordination"];
   settings?: AppControlHost["settings"];
+  projectSettings?: AppControlHost["projectSettings"];
   sessionLabels?: AppControlHost["sessionLabels"];
   worktrees?: AppControlHost["worktrees"];
 };
@@ -59,6 +61,21 @@ function createHost(overrides: AppControlHostOverrides = {}): AppControlHost {
           },
         }),
       } satisfies AppControlHost["settings"]),
+    projectSettings:
+      overrides.projectSettings ??
+      ({
+        get: () => ({
+          worktreeCreateCommand: "git worktree add -b {branchName} {worktreePath} {baseCommit}",
+          worktreeSetupCommands: "",
+          worktreeSetupInstructions: "",
+        }),
+        update: async (_projectPath, changes) => ({
+          worktreeCreateCommand: "git worktree add -b {branchName} {worktreePath} {baseCommit}",
+          worktreeSetupCommands: "",
+          worktreeSetupInstructions: "",
+          ...changes,
+        }),
+      } satisfies AppControlHost["projectSettings"]),
     sessionLabels:
       overrides.sessionLabels ??
       ({
@@ -118,6 +135,9 @@ describe("AppControlBridge", () => {
     expect(target.tools.some((tool) => tool.command === "settings.sections")).toBe(true);
     expect(target.tools.some((tool) => tool.command === "settings.get")).toBe(true);
     expect(target.tools.some((tool) => tool.command === "settings.update")).toBe(true);
+    expect(target.tools.some((tool) => tool.command === "projects.settings.get")).toBe(true);
+    expect(target.tools.some((tool) => tool.command === "projects.settings.update")).toBe(true);
+    expect(target.tools.some((tool) => tool.command === "project.settings.get")).toBe(false);
     expect(target.tools.some((tool) => tool.command === "sessions.rename")).toBe(true);
     expect(target.tools.some((tool) => tool.command === "sessions.set-label")).toBe(true);
     expect(target.tools.some((tool) => tool.command === "session-labels.add")).toBe(true);
@@ -338,6 +358,112 @@ describe("AppControlBridge", () => {
       bridge.invoke({
         name: "settings.update",
         arguments: { section: "editor", changes: { sidebarAutoHideWidth: 900 } },
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("reads and patches explicit or calling Project settings", async () => {
+    const settings = {
+      worktreeCreateCommand: "git worktree add {worktreePath}",
+      worktreeSetupCommands: "pnpm install",
+      worktreeSetupInstructions: "Install dependencies when needed.",
+    };
+    const get = vi.fn(() => settings);
+    const update = vi.fn(async (_projectPath: string, changes: Partial<typeof settings>) => ({
+      ...settings,
+      ...changes,
+    }));
+    const bridge = new AppControlBridge(
+      createHost({
+        projects: () => [
+          {
+            path: "/repo",
+            name: "Repo",
+            addedAt: "2026-09-10T00:00:00.000Z",
+            lastOpenedAt: "2026-09-10T00:00:00.000Z",
+          },
+        ],
+        projectSettings: { get, update },
+      }),
+    );
+
+    await expect(
+      bridge.invoke({ name: "projects.settings.get", arguments: { projectPath: "/repo" } }),
+    ).resolves.toMatchObject({
+      ok: true,
+      command: "projects.settings.get",
+      scope: "project",
+      projectPath: "/repo",
+      settings: { worktreeSetupCommands: "pnpm install" },
+    });
+    const source: AgentControlSource = {
+      kind: "project-session",
+      sessionId: "session-1",
+      title: "Project chat",
+      projectPath: "/repo",
+    };
+    await expect(
+      bridge.invoke({ name: "project.settings.get", arguments: {} }, source),
+    ).resolves.toMatchObject({
+      ok: true,
+      command: "project.settings.get",
+      projectPath: "/repo",
+      settings: { worktreeSetupCommands: "pnpm install" },
+    });
+    await expect(
+      bridge.invoke(
+        {
+          name: "project.settings.update",
+          arguments: { changes: { worktreeSetupCommands: "ln -s ../node_modules node_modules" } },
+        },
+        source,
+      ),
+    ).resolves.toMatchObject({
+      ok: true,
+      command: "project.settings.update",
+      projectPath: "/repo",
+      settings: { worktreeSetupCommands: "ln -s ../node_modules node_modules" },
+    });
+    await expect(
+      bridge.invoke({
+        name: "projects.settings.update",
+        arguments: {
+          projectPath: "/repo",
+          changes: { worktreeSetupInstructions: "Remove the symlink before pnpm install." },
+        },
+      }),
+    ).resolves.toMatchObject({
+      ok: true,
+      command: "projects.settings.update",
+      projectPath: "/repo",
+      settings: { worktreeSetupInstructions: "Remove the symlink before pnpm install." },
+    });
+    expect(get).toHaveBeenCalledTimes(2);
+    expect(get).toHaveBeenCalledWith("/repo");
+    expect(update).toHaveBeenNthCalledWith(1, "/repo", {
+      worktreeSetupCommands: "ln -s ../node_modules node_modules",
+    });
+    expect(update).toHaveBeenNthCalledWith(2, "/repo", {
+      worktreeSetupInstructions: "Remove the symlink before pnpm install.",
+    });
+
+    await expect(
+      bridge.invoke(
+        { name: "project.settings.get", arguments: {} },
+        {
+          kind: "cake-chat",
+          sessionId: "cake-chat-1",
+          title: "Cake Chat",
+        },
+      ),
+    ).resolves.toMatchObject({ ok: false, command: "project.settings.get" });
+    await expect(
+      bridge.invoke({ name: "projects.settings.get", arguments: { projectPath: "/missing" } }),
+    ).resolves.toMatchObject({ ok: false, command: "projects.settings.get" });
+    await expect(
+      bridge.invoke({
+        name: "projects.settings.update",
+        arguments: { projectPath: "/repo", changes: {} },
       }),
     ).rejects.toThrow();
   });

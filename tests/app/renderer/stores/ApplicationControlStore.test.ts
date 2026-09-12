@@ -58,6 +58,12 @@ function createHost(
         },
       }),
     },
+    projectSettings: {
+      get: () => undefined,
+      update: async () => {
+        throw new Error("not used");
+      },
+    },
     sessionLabels: {
       mutate: async () => undefined,
       setSessionLabel: async () => true,
