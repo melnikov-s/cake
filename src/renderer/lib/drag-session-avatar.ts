@@ -1,4 +1,9 @@
-import { avatarPhysicsSettled, restingAvatarPhysics, stepAvatarPhysics } from "./avatar-physics";
+import {
+  avatarPhysicsSettled,
+  releaseAvatarPhysics,
+  restingAvatarPhysics,
+  stepAvatarPhysics,
+} from "./avatar-physics";
 
 /** Disposable, avatar-local pointer/animation state; no workflow state or persistence. */
 export function dragSessionAvatar(host: HTMLElement, onGrab: () => void) {
@@ -102,6 +107,7 @@ export function dragSessionAvatar(host: HTMLElement, onGrab: () => void) {
     pointer = undefined;
     if (held) {
       held = undefined;
+      releaseAvatarPhysics(state);
       host.dataset.physics = "falling";
       start();
     }
