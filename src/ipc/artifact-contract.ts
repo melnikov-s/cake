@@ -202,6 +202,12 @@ export const artifactPointerSchema = Schema.Struct({
   kind: artifactKindSchema,
   digest: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/)),
   fallback: Schema.Struct({ markdown: textSchema }),
+  origin: Schema.optionalKey(
+    Schema.Struct({
+      assistantEntryId: idSchema,
+      toolCallId: idSchema,
+    }),
+  ),
 });
 
 export type CakeArtifactV1 = typeof cakeArtifactV1Schema.Type;

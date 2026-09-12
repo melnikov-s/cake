@@ -1,6 +1,8 @@
+import { Schema } from "effect";
 import { describe, expect, it } from "vitest";
 import {
   MAX_ARTIFACT_INPUT_BYTES,
+  artifactPointerSchema,
   parseArtifactInput,
   validateArtifactResponse,
 } from "../../../src/ipc/artifact-contract";
@@ -43,6 +45,24 @@ describe("cake.artifact/v1 contract", () => {
     expect(() => parseArtifactInput(markdown("x".repeat(MAX_ARTIFACT_INPUT_BYTES)))).toThrow(
       "exceeds",
     );
+  });
+
+  it("records optional assistant-message provenance on durable pointers", () => {
+    const pointer = Schema.decodeUnknownSync(artifactPointerSchema)({
+      protocol: "cake.artifact/v1",
+      artifactId: "artifact-1",
+      sessionId: "session-1",
+      revision: 1,
+      kind: "markdown",
+      digest: "a".repeat(64),
+      fallback: { markdown: "Hello" },
+      origin: { assistantEntryId: "assistant-1", toolCallId: "tool-1" },
+    });
+
+    expect(pointer.origin).toEqual({
+      assistantEntryId: "assistant-1",
+      toolCallId: "tool-1",
+    });
   });
 
   it("validates structured responses against the declared JSON schema", () => {

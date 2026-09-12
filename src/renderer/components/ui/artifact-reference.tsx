@@ -12,6 +12,10 @@ export function ArtifactReference({ className, children, ...props }: ButtonProps
       {...props}
     >
       <ArtifactIcon />
+      <span className="shrink-0 text-muted-foreground">Artifact created</span>
+      <span aria-hidden="true" className="text-muted-foreground/70">
+        ·
+      </span>
       <span className="truncate">{children}</span>
     </Button>
   );

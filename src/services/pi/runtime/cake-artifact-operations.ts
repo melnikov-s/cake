@@ -31,7 +31,10 @@ interface PiOperationHost {
 }
 
 interface PiToolRuntimeContext {
-  sessionManager: { getSessionId(): string };
+  sessionManager: {
+    getSessionId(): string;
+    getLeafId(): string | null;
+  };
   model?: { provider: string; id: string };
 }
 
@@ -67,7 +70,10 @@ export function createCakeArtifactOperations(
       throw new Error("Artifact sessionId does not match the active Pi session");
     return options.persistArtifact(artifact);
   };
-  const appendPointer = (record: ArtifactRecord) => {
+  const appendPointer = (
+    record: ArtifactRecord,
+    origin: { assistantEntryId: string; toolCallId: string },
+  ) => {
     pi.appendEntry(
       "cake.artifact/v1",
       Schema.decodeUnknownSync(artifactPointerSchema)({
@@ -78,8 +84,16 @@ export function createCakeArtifactOperations(
         kind: record.artifact.kind,
         digest: record.digest,
         fallback: record.artifact.fallback,
+        origin,
       }),
     );
+  };
+  const pointerOrigin = (context: CakeOperationExecutionContext) => {
+    const runtime = runtimeContext(context);
+    const assistantEntryId = runtime.sessionManager.getLeafId();
+    if (!assistantEntryId)
+      throw new Error("Artifact creation requires an originating assistant message");
+    return { assistantEntryId, toolCallId: context.toolCallId };
   };
 
   const operations: CakeOperationDefinition[] = [
@@ -140,7 +154,7 @@ export function createCakeArtifactOperations(
           },
           sessionId,
         );
-        appendPointer(record);
+        appendPointer(record, pointerOrigin(context));
         const value = await options.requestArtifact(record, context.signal);
         if (value === undefined && context.signal.aborted)
           throw context.signal.reason instanceof Error
@@ -227,7 +241,7 @@ export function createCakeArtifactOperations(
           },
           sessionId,
         );
-        appendPointer(record);
+        appendPointer(record, pointerOrigin(context));
         return { artifactId: record.artifact.id };
       },
     });

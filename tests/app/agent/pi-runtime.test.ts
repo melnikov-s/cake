@@ -1551,6 +1551,56 @@ describe("Pi 0.85.1 foundation contract", () => {
     ).not.toThrow();
   });
 
+  it("links an artifact pointer to its originating assistant tool call", () => {
+    const entries = [
+      {
+        type: "message",
+        id: "assistant-tool-call",
+        parentId: null,
+        timestamp: new Date(0).toISOString(),
+        message: {
+          role: "assistant",
+          content: [
+            {
+              type: "toolCall",
+              id: "widget-call",
+              name: "cake",
+              arguments: { command: "widgets.present", input: { widget: { id: "widget-1" } } },
+            },
+          ],
+        },
+      },
+      {
+        type: "custom",
+        id: "widget-pointer",
+        parentId: "assistant-tool-call",
+        timestamp: new Date(0).toISOString(),
+        customType: "cake.artifact/v1",
+        data: {
+          protocol: "cake.artifact/v1",
+          artifactId: "widget-1",
+          sessionId: "session-1",
+          revision: 1,
+          kind: "widget",
+          digest: "a".repeat(64),
+          fallback: { markdown: "Widget." },
+          origin: { assistantEntryId: "assistant-tool-call", toolCallId: "widget-call" },
+        },
+      },
+    ];
+
+    expect(projectSessionEntries(entries as never)).toEqual([
+      expect.objectContaining({
+        id: "tool-widget-call",
+        kind: "tool",
+        artifactId: "widget-1",
+      }),
+    ]);
+    expect(projectSessionEntries(entries.slice(0, 1) as never)).toEqual([
+      expect.objectContaining({ kind: "tool", artifactId: undefined }),
+    ]);
+  });
+
   it("projects an unlinked artifact pointer as its own branch-local transcript part", () => {
     const pointer = {
       type: "custom",

@@ -621,6 +621,7 @@ export function projectSessionEntries(
 ) {
   const projected: UiPart[] = [];
   const indexes = new Map<string, number>();
+  const artifactOrigins = new Map<string, string>();
   const syntheticArtifactPartIds = new Set<string>();
   const append = (part: UiPart) => {
     const existingIndex = indexes.get(part.id);
@@ -744,6 +745,19 @@ export function projectSessionEntries(
     if (entry.type !== "custom") continue;
     if (entry.customType === "cake.artifact/v1") {
       const pointer = Schema.decodeUnknownOption(artifactPointerSchema)(entry.data);
+      if (Option.isSome(pointer) && pointer.value.origin) {
+        const origin = pointer.value.origin;
+        const originatingAssistant = entries.find(
+          (candidate) =>
+            candidate.id === origin.assistantEntryId &&
+            candidate.type === "message" &&
+            candidate.message.role === "assistant" &&
+            candidate.message.content.some(
+              (content) => content.type === "toolCall" && content.id === origin.toolCallId,
+            ),
+        );
+        if (originatingAssistant) artifactOrigins.set(origin.toolCallId, pointer.value.artifactId);
+      }
       if (
         Option.isSome(pointer) &&
         pointer.value.kind === "request" &&
@@ -769,6 +783,11 @@ export function projectSessionEntries(
       const run = Schema.decodeUnknownOption(reviewRunEntrySchema)(entry.data);
       if (Option.isSome(run)) append(reviewRunPart(run.value));
     }
+  }
+  for (const [toolCallId, artifactId] of artifactOrigins) {
+    const index = indexes.get(boundedProjectionKey(`tool-${toolCallId}`));
+    const part = index === undefined ? undefined : projected[index];
+    if (index !== undefined && part?.kind === "tool") projected[index] = { ...part, artifactId };
   }
   // Durable entries are settled history. A tool call still marked "running"
   // after the full walk has no recorded result, which means the run was

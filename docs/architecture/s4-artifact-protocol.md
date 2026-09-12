@@ -24,9 +24,11 @@ Full artifacts live in the owning Cake Session's accessory panel. The panel open
 from that session's header, not from a permanent application-wide workspace and
 not by replacing the transcript. Creating a new artifact automatically opens the
 panel and selects that artifact; later updates may refresh the selected artifact
-without stealing focus. Transcript pointers and readable fallbacks preserve the
-artifact's production context, but the full artifact is not rendered as a second
-copy in the message timeline.
+without stealing focus. The originating assistant message renders a compact
+`Artifact created · <title>` reference that opens the artifact rather than a second
+copy of its contents. The durable pointer records the originating assistant entry
+and tool call, so the reference appears only while that assistant message is on the
+active Pi branch. Readable fallbacks preserve production context for Pi.
 
 The panel is session-scoped rather than branch-scoped. Selecting another Pi
 session-tree branch, restoring an earlier branch, or running tool compaction does
@@ -52,7 +54,8 @@ infrastructure.
   blobs. Artifact IDs are stable within a session and revisions must begin at
   one and advance exactly one step.
 - Pi receives a `cake.artifact/v1` custom entry containing the artifact ID,
-  session ID, revision, kind, digest, and Markdown fallback. It never receives
+  session ID, revision, kind, digest, Markdown fallback, and—when created by an
+  agent tool—the originating assistant-entry and tool-call IDs. It never receives
   a second Cake-owned transcript.
 - Renderer `Artifact` instances are disposable projections of validated
   repository records. Session snapshots hydrate current records; a focused
