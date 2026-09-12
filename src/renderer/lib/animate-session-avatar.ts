@@ -57,9 +57,13 @@ export function interactWithSessionAvatar(
   const glance = (right: boolean) => {
     if (reduced.matches || document.hidden) return;
     const from = getComputedStyle(look).transform;
-    // SVG transforms use the 100-unit viewBox, not screen pixels. Six units
-    // gives a visible ~1.4px glance in a 24px sidebar avatar.
-    const to = right ? "translateX(6px)" : "translateX(0px)";
+    // SVG transforms use the 100-unit viewBox, not screen pixels. Sample a new
+    // direction within a 60-degree cone on every hover, while keeping the same
+    // six-unit travel distance used for the visible rightward glance.
+    const angle = right ? (Math.random() - 0.5) * (Math.PI / 3) : 0;
+    const to = right
+      ? `translate(${Math.cos(angle) * 6}px, ${Math.sin(angle) * 6}px)`
+      : "translate(0px, 0px)";
     // The resting transform survives completion; interrupted transitions start
     // at the currently displayed position instead of snapping.
     look.style.transform = to;
