@@ -47,14 +47,19 @@ test("edits and persists project-specific worktree settings", async () => {
     const page = await application.firstWindow();
     await page.getByRole("button", { name: "Open settings for project" }).click();
     const createCommand = page.getByLabel("Worktree creation command");
-    const setupCommands = page.getByLabel("Setup commands");
+    const setupCommands = page.getByRole("textbox", { name: /^Setup commands/ });
+    const setupInstructions = page.getByRole("textbox", { name: /^Setup instructions/ });
     await expect(createCommand).toHaveValue(
       "git worktree add -b {branchName} {worktreePath} {baseCommit}",
     );
     await createCommand.fill("my-worktree {worktreeName} {worktreePath}");
     await setupCommands.fill("pnpm install");
+    await setupInstructions.fill("Run pnpm install only when dependencies are needed.");
     await expect(createCommand).toHaveValue("my-worktree {worktreeName} {worktreePath}");
     await expect(setupCommands).toHaveValue("pnpm install");
+    await expect(setupInstructions).toHaveValue(
+      "Run pnpm install only when dependencies are needed.",
+    );
     await page.getByRole("button", { name: "Save settings" }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0);
 
@@ -66,6 +71,7 @@ test("edits and persists project-specific worktree settings", async () => {
       .toEqual({
         worktreeCreateCommand: "my-worktree {worktreeName} {worktreePath}",
         worktreeSetupCommands: "pnpm install",
+        worktreeSetupInstructions: "Run pnpm install only when dependencies are needed.",
       });
   } finally {
     await application.close();

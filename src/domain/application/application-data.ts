@@ -1,4 +1,4 @@
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 import { ThinkingLevel } from "../../services/pi/model-data";
 import { WORKFLOW_STATUS_COLORS } from "../../utils/workflow-status-palette";
 
@@ -35,6 +35,9 @@ const DEFAULT_WORKTREE_CREATE_COMMAND =
 export const ProjectSettings = Schema.Struct({
   worktreeCreateCommand: boundedString(16_384),
   worktreeSetupCommands: boundedString(65_536),
+  worktreeSetupInstructions: boundedString(16_384).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed("")),
+  ),
 });
 
 export interface ProjectSettings extends Schema.Schema.Type<typeof ProjectSettings> {}
@@ -177,6 +180,7 @@ export type ProjectWorkflowSessionDestination = typeof ProjectWorkflowSessionDes
 export const defaultProjectSettings = (): ProjectSettings => ({
   worktreeCreateCommand: DEFAULT_WORKTREE_CREATE_COMMAND,
   worktreeSetupCommands: "",
+  worktreeSetupInstructions: "",
 });
 
 export const ProjectRecord = Schema.Struct({

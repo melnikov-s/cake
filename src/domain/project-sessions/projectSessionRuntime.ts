@@ -126,6 +126,15 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
           workingDirectory: member.workingDirectory,
         })
       : renderPromptTemplate(parentSessionFamilyPromptTemplate);
+  const setupInstructions = location.managedWorktree
+    ? application
+        .snapshot()
+        .projects.find((project) => project.path === location.projectPath)
+        ?.settings?.worktreeSetupInstructions.trim()
+    : undefined;
+  const projectPrompt = setupInstructions
+    ? `## Project worktree setup instructions\n\n${setupInstructions}`
+    : undefined;
   const worktreeOperationTarget = Effect.fn("ProjectSessions.worktreeOperationTarget")(function* (
     targetSessionId?: string,
   ) {
@@ -203,7 +212,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
       cwd: location.workingDirectory,
       trusted: application.snapshot().trustedProjectPaths.includes(location.workingDirectory),
       agentDir: configuration.agentDirectory,
-      additionalSystemPrompt: relationshipPrompt,
+      additionalSystemPrompt: [relationshipPrompt, projectPrompt].filter(Boolean).join("\n\n"),
       sessionDir: configuration.sessionDirectory,
       resolvedSessionDir: configuration.resolvedSessionDirectory,
       newSession,

@@ -97,6 +97,25 @@ export const ProjectSettingsDialog = observer(function ProjectSettingsDialog({
               </span>
             </label>
 
+            <label className="grid gap-2">
+              <span className="text-xs font-semibold text-foreground">Setup instructions</span>
+              <Textarea
+                rows={5}
+                maxLength={16_384}
+                placeholder="Dependencies are not installed in fresh worktrees. Run pnpm install only if you need them."
+                value={store.worktreeSetupInstructions}
+                onChange={(event) => store.setWorktreeSetupInstructions(event.target.value)}
+                aria-describedby="worktree-setup-instructions-help"
+              />
+              <span
+                id="worktree-setup-instructions-help"
+                className="text-[11px] leading-relaxed text-muted-foreground"
+              >
+                Added to the agent prompt for sessions running in a Cake-managed worktree. Use this
+                for conditional guidance; put commands that must always run in Setup commands.
+              </span>
+            </label>
+
             <div className="rounded-lg border border-border bg-muted/45 p-3">
               <h3 className="text-xs font-semibold text-foreground">Available variables</h3>
               <dl className="mt-2 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-[11px] text-muted-foreground">

@@ -62,6 +62,7 @@ test("forks sessions across working directories", async () => {
           settings: {
             worktreeCreateCommand: "",
             worktreeSetupCommands: `node -e "const fs=require('fs');const p=Buffer.from('${encodedSetupRelease}','base64').toString();const i=setInterval(()=>{if(fs.existsSync(p))clearInterval(i)},25)"`,
+            worktreeSetupInstructions: "",
           },
         },
       ],

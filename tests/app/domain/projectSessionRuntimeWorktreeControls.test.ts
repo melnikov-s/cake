@@ -105,6 +105,12 @@ describe("Project Session runtime worktree controls", () => {
               name: "Project",
               addedAt: "2026-01-01T00:00:00.000Z",
               lastOpenedAt: "2026-01-01T00:00:00.000Z",
+              settings: {
+                worktreeCreateCommand:
+                  "git worktree add -b {branchName} {worktreePath} {baseCommit}",
+                worktreeSetupCommands: "",
+                worktreeSetupInstructions: "Run pnpm install only when dependencies are needed.",
+              },
             },
           ],
           trustedProjectPaths: ["/project", isolatedChildPath],
@@ -122,6 +128,7 @@ describe("Project Session runtime worktree controls", () => {
         sessionId: rootId,
         newSession: false,
       });
+      assert.doesNotMatch(rootOptions.runtime.additionalSystemPrompt ?? "", /pnpm install/);
       const storage = yield* SessionFamilyStorage;
 
       yield* addFamilyMember(storage, sharedChildId, rootId, "/project", "/project");
@@ -162,6 +169,10 @@ describe("Project Session runtime worktree controls", () => {
         sessionId: isolatedChildId,
         newSession: false,
       });
+      assert.match(
+        childOptions.runtime.additionalSystemPrompt ?? "",
+        /## Project worktree setup instructions\n\nRun pnpm install only when dependencies are needed\./,
+      );
       const childMerge = childOptions.runtime.currentSessionControl?.mergeSession;
       assert.ok(childMerge);
       yield* Effect.promise(() => childMerge(undefined, signal));

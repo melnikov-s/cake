@@ -164,6 +164,38 @@ describe("ApplicationStorage", () => {
     ),
   );
 
+  it.effect("defaults setup instructions in existing project settings", () =>
+    withStorage(
+      {
+        [documentPath]: JSON.stringify({
+          version: 2,
+          data: {
+            ...current,
+            projects: [
+              {
+                path: "/work/cake",
+                name: "Cake",
+                addedAt: "2026-01-01T00:00:00.000Z",
+                lastOpenedAt: "2026-01-01T00:00:00.000Z",
+                settings: {
+                  worktreeCreateCommand:
+                    "git worktree add -b {branchName} {worktreePath} {baseCommit}",
+                  worktreeSetupCommands: "pnpm install",
+                },
+              },
+            ],
+          },
+        }),
+      },
+      (storage) =>
+        Effect.gen(function* () {
+          const loaded = yield* storage.load();
+          assert.strictEqual(loaded.source, "current");
+          assert.equal(loaded.state.projects[0]?.settings?.worktreeSetupInstructions, "");
+        }),
+    ),
+  );
+
   it.effect("migrates recognized legacy and version-zero documents", () =>
     Effect.gen(function* () {
       for (const input of [legacy, { version: 0, data: legacy }]) {

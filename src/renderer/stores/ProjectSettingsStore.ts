@@ -19,6 +19,7 @@ export class ProjectSettingsStore extends Store<{
   projectPath: string | undefined;
   worktreeCreateCommand = "";
   worktreeSetupCommands = "";
+  worktreeSetupInstructions = "";
   saving = false;
   addingStatus = false;
   private readonly pendingStatusIds = observable(new Set<string>());
@@ -52,6 +53,7 @@ export class ProjectSettingsStore extends Store<{
     this.projectPath = projectPath;
     this.worktreeCreateCommand = settings.worktreeCreateCommand;
     this.worktreeSetupCommands = settings.worktreeSetupCommands;
+    this.worktreeSetupInstructions = settings.worktreeSetupInstructions;
     this.error = undefined;
   }
 
@@ -67,10 +69,15 @@ export class ProjectSettingsStore extends Store<{
     this.worktreeSetupCommands = commands;
   }
 
+  setWorktreeSetupInstructions(instructions: string) {
+    this.worktreeSetupInstructions = instructions;
+  }
+
   resetDefaults() {
     const settings = defaultProjectSettings();
     this.worktreeCreateCommand = settings.worktreeCreateCommand;
     this.worktreeSetupCommands = settings.worktreeSetupCommands;
+    this.worktreeSetupInstructions = settings.worktreeSetupInstructions;
     this.error = undefined;
   }
 
@@ -150,6 +157,7 @@ export class ProjectSettingsStore extends Store<{
     const settings: ProjectSettings = {
       worktreeCreateCommand: this.worktreeCreateCommand.trim(),
       worktreeSetupCommands: this.worktreeSetupCommands.trim(),
+      worktreeSetupInstructions: this.worktreeSetupInstructions.trim(),
     };
     this.saving = true;
     this.error = undefined;

@@ -83,10 +83,12 @@ describe("Application domain", () => {
         const configured = yield* setProjectSettings("/work/cake", {
           worktreeCreateCommand: "custom-worktree {worktreeName} {worktreePath}",
           worktreeSetupCommands: "pnpm install",
+          worktreeSetupInstructions: "Install dependencies only when needed.",
         });
         assert.deepEqual(configured.projects[0]?.settings, {
           worktreeCreateCommand: "custom-worktree {worktreeName} {worktreePath}",
           worktreeSetupCommands: "pnpm install",
+          worktreeSetupInstructions: "Install dependencies only when needed.",
         });
         const removed = yield* removeProject("/work/cake");
         assert.deepEqual(removed.projects, []);
