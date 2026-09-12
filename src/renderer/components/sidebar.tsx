@@ -2,6 +2,7 @@ import { observer } from "r-state-tree/react";
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
 import { DisclosureTrigger } from "./ui/disclosure-trigger";
+import { NavigationHighlight } from "./ui/navigation-highlight";
 import { IconButton } from "./ui/icon-button";
 import { BackIcon, FolderPlusIcon, ForwardIcon, SettingsIcon, SidebarIcon } from "./ui/icons";
 import { SidebarCakeChatGroup } from "./sidebar-cake-chat-group";
@@ -87,112 +88,114 @@ export const Sidebar = observer(function Sidebar({
       </div>
       <div className="flex min-w-0 flex-wrap gap-1.5 px-3 pb-2 empty:hidden"></div>
       <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-3 pb-4 pt-2">
-        {!focusMode && (
-          <>
-            <SidebarCakeChatGroup
-              store={store}
-              cakeChat={cakeChat}
-              shell={shell}
-              resolved={false}
-              onOpenCakeChat={onOpenCakeChat}
-              onCreateCakeChat={onCreateCakeChat}
-            />
-            <div
-              data-slot="projects-heading"
-              className="mt-0.5 flex items-center justify-between px-1.5 py-2 text-[13px] font-medium text-muted-foreground"
-            >
-              <span>Projects</span>
-              <div>
-                <IconButton tooltip="Add project" onClick={onChooseProject}>
-                  <FolderPlusIcon />
-                </IconButton>
+        <NavigationHighlight>
+          {!focusMode && (
+            <>
+              <SidebarCakeChatGroup
+                store={store}
+                cakeChat={cakeChat}
+                shell={shell}
+                resolved={false}
+                onOpenCakeChat={onOpenCakeChat}
+                onCreateCakeChat={onCreateCakeChat}
+              />
+              <div
+                data-slot="projects-heading"
+                className="mt-0.5 flex items-center justify-between px-1.5 py-2 text-[13px] font-medium text-muted-foreground"
+              >
+                <span>Projects</span>
+                <div>
+                  <IconButton tooltip="Add project" onClick={onChooseProject}>
+                    <FolderPlusIcon />
+                  </IconButton>
+                </div>
               </div>
-            </div>
-          </>
-        )}
-        {projectPaths.length === 0 ? (
-          <p className="mx-2 my-1.5 text-[13px] leading-relaxed text-muted-foreground">
-            Add a folder to start a project.
-          </p>
-        ) : (
-          projectPaths.map((path) => (
-            <SidebarProjectGroup
-              key={path}
-              store={store}
-              projects={projects}
-              chat={chat}
-              shell={shell}
-              appearance={appearance}
-              path={path}
-              resolved={false}
-              focusMode={focusMode}
-              onToggleFocus={(path) =>
-                focusMode ? store.leaveProjectFocus() : store.focusProject(path)
-              }
-              onCreateSession={onCreateSession}
-              onOpenSession={onOpenSession}
-              onRemoveProject={onRemoveProject}
-              onOpenSettings={(path) => projectSettings.open(path)}
-            />
-          ))
-        )}
-        <section
-          data-slot="resolved-lane"
-          className="mt-4 border-t border-border/72 pt-2"
-          aria-label="Resolved sessions"
-        >
-          <div
-            className={cn(
-              "flex items-center justify-between px-1.5 pt-2.5 text-[13px] font-medium text-muted-foreground",
-              focusMode && "text-sm",
-            )}
-            id="resolved-lane-heading"
-          >
-            <DisclosureTrigger
-              className={cn(
-                "h-[27px] px-1.5 text-[13px] font-medium text-muted-foreground hover:text-foreground",
-                focusMode && "h-9 text-sm",
-              )}
-              open={store.resolvedLaneExpanded}
-              aria-controls="resolved-lane-content"
-              aria-label={`${store.resolvedLaneExpanded ? "Collapse" : "Expand"} Resolved`}
-              onClick={() => store.toggleResolvedLane()}
-              title="Resolved"
-            />
-          </div>
-          {store.resolvedLaneExpanded && (
-            <div id="resolved-lane-content" className="mt-1">
-              {!focusMode && (
-                <SidebarCakeChatGroup
-                  store={store}
-                  cakeChat={cakeChat}
-                  shell={shell}
-                  resolved
-                  onOpenCakeChat={onOpenCakeChat}
-                  onCreateCakeChat={onCreateCakeChat}
-                />
-              )}
-              {projectPaths.map((path) => (
-                <SidebarProjectGroup
-                  key={`resolved:${path}`}
-                  store={store}
-                  projects={projects}
-                  chat={chat}
-                  shell={shell}
-                  appearance={appearance}
-                  path={path}
-                  resolved
-                  focusMode={focusMode}
-                  flattenSessions={focusMode}
-                  onCreateSession={onCreateSession}
-                  onOpenSession={onOpenSession}
-                  onRemoveProject={onRemoveProject}
-                  onOpenSettings={(path) => projectSettings.open(path)}
-                />
-              ))}
-            </div>
+            </>
           )}
-        </section>
+          {projectPaths.length === 0 ? (
+            <p className="mx-2 my-1.5 text-[13px] leading-relaxed text-muted-foreground">
+              Add a folder to start a project.
+            </p>
+          ) : (
+            projectPaths.map((path) => (
+              <SidebarProjectGroup
+                key={path}
+                store={store}
+                projects={projects}
+                chat={chat}
+                shell={shell}
+                appearance={appearance}
+                path={path}
+                resolved={false}
+                focusMode={focusMode}
+                onToggleFocus={(path) =>
+                  focusMode ? store.leaveProjectFocus() : store.focusProject(path)
+                }
+                onCreateSession={onCreateSession}
+                onOpenSession={onOpenSession}
+                onRemoveProject={onRemoveProject}
+                onOpenSettings={(path) => projectSettings.open(path)}
+              />
+            ))
+          )}
+          <section
+            data-slot="resolved-lane"
+            className="mt-4 border-t border-border/72 pt-2"
+            aria-label="Resolved sessions"
+          >
+            <div
+              className={cn(
+                "flex items-center justify-between px-1.5 pt-2.5 text-[13px] font-medium text-muted-foreground",
+                focusMode && "text-sm",
+              )}
+              id="resolved-lane-heading"
+            >
+              <DisclosureTrigger
+                className={cn(
+                  "h-[27px] px-1.5 text-[13px] font-medium text-muted-foreground hover:text-foreground",
+                  focusMode && "h-9 text-sm",
+                )}
+                open={store.resolvedLaneExpanded}
+                aria-controls="resolved-lane-content"
+                aria-label={`${store.resolvedLaneExpanded ? "Collapse" : "Expand"} Resolved`}
+                onClick={() => store.toggleResolvedLane()}
+                title="Resolved"
+              />
+            </div>
+            {store.resolvedLaneExpanded && (
+              <div id="resolved-lane-content" className="mt-1">
+                {!focusMode && (
+                  <SidebarCakeChatGroup
+                    store={store}
+                    cakeChat={cakeChat}
+                    shell={shell}
+                    resolved
+                    onOpenCakeChat={onOpenCakeChat}
+                    onCreateCakeChat={onCreateCakeChat}
+                  />
+                )}
+                {projectPaths.map((path) => (
+                  <SidebarProjectGroup
+                    key={`resolved:${path}`}
+                    store={store}
+                    projects={projects}
+                    chat={chat}
+                    shell={shell}
+                    appearance={appearance}
+                    path={path}
+                    resolved
+                    focusMode={focusMode}
+                    flattenSessions={focusMode}
+                    onCreateSession={onCreateSession}
+                    onOpenSession={onOpenSession}
+                    onRemoveProject={onRemoveProject}
+                    onOpenSettings={(path) => projectSettings.open(path)}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
+        </NavigationHighlight>
       </div>
       {!focusMode && (
         <div className="min-h-[52px] border-t border-border/65 px-3 py-2 text-muted-foreground">

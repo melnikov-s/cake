@@ -110,6 +110,8 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
       ref={rowRef}
       data-animated-list-key={session.sessionId}
       data-session-id={session.sessionId}
+      data-navigation-item=""
+      data-navigation-active={selected}
       data-family-role={isFamilyChild ? "child" : isFamilyParent ? "parent" : "root"}
       className={cn(
         "session-item group relative grid min-h-11 w-full items-center rounded-md py-1 text-[13px] select-none transition-colors duration-200 ease-out motion-reduce:transition-none",
@@ -124,8 +126,8 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
               : "grid-cols-[1.5rem_minmax(0,1fr)]"
           : "grid-cols-[1.25rem_minmax(0,1fr)]",
         selected
-          ? "active bg-sidebar-active text-primary font-semibold"
-          : "text-muted-foreground hover:bg-sidebar-hover hover:text-foreground",
+          ? "active text-primary font-semibold"
+          : "text-muted-foreground hover:text-foreground",
         canResolve && "can-resolve",
         selected && canResolve && "has-session-action",
       )}

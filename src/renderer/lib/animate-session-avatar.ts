@@ -307,11 +307,18 @@ export function animateSessionAvatar(host: HTMLElement): () => void {
     animations.delete(hop);
     hop.style.removeProperty("transform");
   };
-  const physics = dragSessionAvatar(host, () => {
+  const clearReaction = () => {
     cancelPress();
-    animations.get(hop)?.cancel();
-    animations.delete(hop);
+    for (const target of [hop, ...eyes]) {
+      animations.get(target)?.cancel();
+      animations.delete(target);
+    }
     hop.style.removeProperty("transform");
+  };
+  const physics = dragSessionAvatar(host, {
+    onGrab: clearReaction,
+    onImpact: (speed) => blink(Math.min(1, speed / 700)),
+    onReset: clearReaction,
   });
   const activate = () => {
     if (reduced.matches || document.hidden || physics.active()) return;
@@ -322,13 +329,38 @@ export function animateSessionAvatar(host: HTMLElement): () => void {
     const angle = randomBetween(-20, 20) * (Math.PI / 180);
     const x = Math.sin(angle) * height;
     const y = -Math.cos(angle) * height;
-    const duration = randomBetween(260, 390);
-    const apex = `translate(50px, 50px) translate(${x}px, ${y}px) rotate(${randomBetween(-4, 4)}deg) scale(0.98, 1.03) translate(-50px, -50px)`;
+    const duration = randomBetween(520, 620);
+    const tilt = randomBetween(-5, 5);
+    const pose = (motion: string) => `translate(50px, 50px) ${motion} translate(-50px, -50px)`;
     hop.style.removeProperty("transform");
     play(
       hop,
-      [{ transform: from }, { transform: apex }, { transform: restingTransform }],
+      [
+        { transform: from, offset: 0, easing: "ease-out" },
+        {
+          transform: pose(`translate(${x}px, ${y}px) rotate(${tilt}deg) scale(0.96, 1.06)`),
+          offset: 0.3,
+          easing: "ease-in",
+        },
+        {
+          transform: pose(`translateY(3px) rotate(${-tilt * 0.6}deg) scale(1.12, 0.86)`),
+          offset: 0.53,
+          easing: "ease-out",
+        },
+        {
+          transform: pose(`translateY(-3px) rotate(${tilt * 0.45}deg) scale(0.97, 1.04)`),
+          offset: 0.72,
+          easing: "ease-in-out",
+        },
+        {
+          transform: pose(`translateY(1px) rotate(${-tilt * 0.2}deg) scale(1.025, 0.975)`),
+          offset: 0.87,
+          easing: "ease-out",
+        },
+        { transform: restingTransform, offset: 1 },
+      ],
       duration,
+      "linear",
     );
     for (const eye of eyes) {
       const box = eye.getBBox();
@@ -337,33 +369,38 @@ export function animateSessionAvatar(host: HTMLElement): () => void {
         eye,
         [
           { scale: 1, offset: 0 },
-          { scale: 0.05, offset: 0.25 },
+          { scale: 1, offset: 0.4 },
+          { scale: 0.05, offset: 0.51 },
           { scale: 0.05, offset: 0.6 },
+          { scale: 1, offset: 0.77 },
           { scale: 1, offset: 1 },
         ].map(({ scale, offset }) => ({
           transform: `translateY(${centerY}px) scaleY(${scale}) translateY(${-centerY}px)`,
           offset,
         })),
-        duration * 0.875,
+        duration,
+        "linear",
       );
     }
   };
-  const blink = () => {
+  const blink = (strength = 0.3) => {
     for (const eye of eyes) {
       const box = eye.getBBox();
       const y = box.y + box.height / 2;
       play(
         eye,
         [
-          { transform: `translateY(${y}px) scaleY(1) translateY(${-y}px)` },
-          { transform: `translateY(${y}px) scaleY(0.08) translateY(${-y}px)`, offset: 0.45 },
-          { transform: `translateY(${y}px) scaleY(1) translateY(${-y}px)` },
+          { transform: getComputedStyle(eye).transform, offset: 0 },
+          { transform: `translateY(${y}px) scaleY(0.05) translateY(${-y}px)`, offset: 0.18 },
+          { transform: `translateY(${y}px) scaleY(0.05) translateY(${-y}px)`, offset: 0.4 },
+          { transform: `translateY(${y}px) scaleY(1) translateY(${-y}px)`, offset: 1 },
         ],
-        180,
+        140 + strength * 100,
       );
     }
   };
   const glance = () => {
+    if (pressed || physics.active() || animations.has(hop)) return;
     const angle = Math.random() * Math.PI * 2;
     const target = {
       x: Math.cos(angle) * travelX,
@@ -391,7 +428,7 @@ export function animateSessionAvatar(host: HTMLElement): () => void {
     );
   };
   const wobble = () => {
-    if (pressed || physics.active()) return;
+    if (pressed || physics.active() || animations.has(hop)) return;
     const angle = randomBetween(1, 2);
     bodyMotion(
       [
@@ -458,7 +495,13 @@ export function animateSessionAvatar(host: HTMLElement): () => void {
   const refresh = () => {
     stop();
     if (reduced.matches || document.hidden) return;
-    scheduleBetween(blink, 5_000, 8_000);
+    scheduleBetween(
+      () => {
+        if (!pressed && !physics.active() && !eyes.some((eye) => animations.has(eye))) blink();
+      },
+      5_000,
+      8_000,
+    );
     scheduleBetween(glance, 11_000, 15_000);
     scheduleBetween(wobble, 6_000, 10_000);
   };

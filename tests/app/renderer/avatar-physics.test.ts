@@ -90,6 +90,51 @@ describe("avatar physics", () => {
     },
   );
 
+  it.each([1 / 30, 1 / 60, 1 / 144])(
+    "reports diminishing landing impulses, including a straight drop (dt=%s)",
+    (dt) => {
+      const state = { ...restingAvatarPhysics(), y: -200 };
+      const impacts: number[] = [];
+      let wiggled = false;
+      let stretched = false;
+      for (let i = 0; i < 600 && !avatarPhysicsSettled(state); i++) {
+        const impact = stepAvatarPhysics(state, dt);
+        if (impact > 0) impacts.push(impact);
+        wiggled ||= Math.abs(state.angle) > 1;
+        stretched ||= state.squash < -0.005;
+      }
+      expect(impacts[0]).toBeCloseTo(Math.sqrt(2 * 1800 * 200), 6);
+      expect(impacts[1]).toBeCloseTo(impacts[0]! * 0.38, 6);
+      expect(impacts[2]).toBeCloseTo(impacts[1]! * 0.38, 6);
+      expect(wiggled).toBe(true);
+      expect(stretched).toBe(true);
+      expect(avatarPhysicsSettled(state)).toBe(true);
+      expect(stepAvatarPhysics(state, dt)).toBe(0);
+    },
+  );
+
+  it.each([-160, 160])("overshoots home and rebounds to rest from x=%s", (x) => {
+    const state = { ...restingAvatarPhysics(), x };
+    let overshoot = 0;
+    let rebounded = false;
+    for (let i = 0; i < 600 && !avatarPhysicsSettled(state); i++) {
+      expect(stepAvatarPhysics(state, 1 / 60)).toBe(0);
+      const pastHome = -state.x * Math.sign(x);
+      overshoot = Math.max(overshoot, pastHome);
+      if (pastHome > 1 && state.vx * Math.sign(x) > 0) rebounded = true;
+    }
+    expect(overshoot).toBeGreaterThan(8);
+    expect(overshoot).toBeLessThan(30);
+    expect(rebounded).toBe(true);
+    expect(avatarPhysicsSettled(state)).toBe(true);
+  });
+
+  it("does not signal a landing while held, even against the floor", () => {
+    const state = { ...restingAvatarPhysics(), y: -1, vy: 500 };
+    expect(stepAvatarPhysics(state, 1 / 60, { x: 20, y: 0 })).toBe(0);
+    expect(state.squash).toBe(0);
+  });
+
   it("does not generate repeated impacts or squash at rest", () => {
     const state = restingAvatarPhysics();
     for (let i = 0; i < 120; i++) stepAvatarPhysics(state, 1 / 60);

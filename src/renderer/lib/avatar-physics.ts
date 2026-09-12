@@ -6,6 +6,7 @@ export interface AvatarPhysics {
   angle: number;
   spin: number;
   squash: number;
+  squashVelocity: number;
 }
 
 export const restingAvatarPhysics = (): AvatarPhysics => ({
@@ -16,6 +17,7 @@ export const restingAvatarPhysics = (): AvatarPhysics => ({
   angle: 0,
   spin: 0,
   squash: 0,
+  squashVelocity: 0,
 });
 
 const GRAVITY = 1800; // Screen pixels / second².
@@ -29,12 +31,15 @@ export function releaseAvatarPhysics(state: AvatarPhysics): void {
   state.vy *= transfer;
 }
 
-/** Spring while held, ballistic flight, then a damped return along the perch. */
+/** Spring while held, ballistic flight, then a springy return along the perch.
+ * Returns the strongest contact speed this frame, so the face can feel a landing.
+ */
 export function stepAvatarPhysics(
   state: AvatarPhysics,
   elapsed: number,
   held?: { x: number; y: number },
-): void {
+): number {
+  let strongestImpact = 0;
   let remaining = Math.min(Math.max(elapsed, 0), 0.05);
   while (remaining > 0) {
     const dt = Math.min(remaining, 1 / 120);
@@ -50,7 +55,8 @@ export function stepAvatarPhysics(
       }
     } else if (state.y === 0 && state.vy === 0) {
       // Returning home is a grounded UI affordance, not a force during flight.
-      state.vx += (-state.x * 65 - state.vx * 20) * dt;
+      // Underdamped: pass home slightly, then rebound rather than sliding to a stop.
+      state.vx += (-state.x * 65 - state.vx * 9) * dt;
       state.x += state.vx * dt;
     } else {
       const nextY = state.y + state.vy * dt + 0.5 * GRAVITY * dt * dt;
@@ -69,19 +75,29 @@ export function stepAvatarPhysics(
           state.y = state.vy * afterContact + 0.5 * GRAVITY * afterContact ** 2;
           state.vy += GRAVITY * afterContact;
         }
-        state.squash = Math.min(0.14, impact / 4500);
-        state.spin += state.vx * 0.04;
+        strongestImpact = Math.max(strongestImpact, impact);
+        state.squash = Math.min(0.18, impact / 3500);
+        state.squashVelocity = 0;
+        // Even a straight drop gets a little off-balance landing wiggle.
+        state.spin += Math.sign(state.vx || state.angle || 1) * Math.min(85, impact * 0.16);
       } else {
         state.x += state.vx * dt;
         state.y = nextY;
         state.vy += GRAVITY * dt;
       }
     }
-    const lean = held ? Math.max(-18, Math.min(18, state.vx * 0.065)) : 0;
+    const lean = held
+      ? Math.max(-18, Math.min(18, state.vx * 0.065))
+      : state.y === 0 && state.vy === 0
+        ? Math.max(-10, Math.min(10, state.vx * 0.025))
+        : 0;
     state.spin += ((lean - state.angle) * 110 - state.spin * 12) * dt;
     state.angle += state.spin * dt;
-    state.squash *= Math.exp(-12 * dt);
+    // Squash recovers through a small stretch, not a one-way scale tween.
+    state.squashVelocity += (-state.squash * 220 - state.squashVelocity * 14) * dt;
+    state.squash += state.squashVelocity * dt;
   }
+  return strongestImpact;
 }
 
 export function avatarPhysicsSettled(state: AvatarPhysics): boolean {
@@ -92,6 +108,7 @@ export function avatarPhysicsSettled(state: AvatarPhysics): boolean {
     Math.abs(state.vy) < 0.5 &&
     Math.abs(state.angle) < 0.1 &&
     Math.abs(state.spin) < 0.5 &&
-    state.squash < 0.005
+    Math.abs(state.squash) < 0.005 &&
+    Math.abs(state.squashVelocity) < 0.05
   );
 }

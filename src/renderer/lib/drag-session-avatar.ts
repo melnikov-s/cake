@@ -6,7 +6,10 @@ import {
 } from "./avatar-physics";
 
 /** Disposable, avatar-local pointer/animation state; no workflow state or persistence. */
-export function dragSessionAvatar(host: HTMLElement, onGrab: () => void) {
+export function dragSessionAvatar(
+  host: HTMLElement,
+  feedback: { onGrab: () => void; onImpact: (speed: number) => void; onReset: () => void },
+) {
   const trigger = host.closest("button");
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
   let state = restingAvatarPhysics();
@@ -26,9 +29,10 @@ export function dragSessionAvatar(host: HTMLElement, onGrab: () => void) {
   };
   const tick = (now: number) => {
     frame = 0;
-    stepAvatarPhysics(state, (now - lastTime) / 1000, held);
+    const impact = stepAvatarPhysics(state, (now - lastTime) / 1000, held);
     lastTime = now;
     render();
+    if (impact > 65) feedback.onImpact(impact);
     if (held || !avatarPhysicsSettled(state)) frame = requestAnimationFrame(tick);
     else {
       state = restingAvatarPhysics();
@@ -56,7 +60,7 @@ export function dragSessionAvatar(host: HTMLElement, onGrab: () => void) {
   };
   const grab = () => {
     if (!pointer || held || !trigger) return;
-    onGrab();
+    feedback.onGrab();
     suppressClick = true;
     trigger.setPointerCapture(pointer.id);
     host.dataset.physics = "held";
@@ -134,6 +138,7 @@ export function dragSessionAvatar(host: HTMLElement, onGrab: () => void) {
     host.style.removeProperty("rotate");
     host.style.removeProperty("scale");
     delete host.dataset.physics;
+    feedback.onReset();
   };
   const key = (event: KeyboardEvent) => {
     if (event.key === "Escape") reset();

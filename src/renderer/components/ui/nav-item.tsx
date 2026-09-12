@@ -9,7 +9,7 @@ export interface NavItemProps extends Omit<HTMLAttributes<HTMLDivElement>, "onCl
   trailing?: ReactNode;
   active?: boolean;
   disabled?: boolean;
-  /** Subtle title movement on hover and press; disabled for reduced motion. */
+  /** Springy title movement on hover/selection and press; respects reduced motion. */
   motionFeedback?: boolean;
   onClick?: MouseEventHandler<HTMLButtonElement>;
 }
@@ -63,7 +63,8 @@ export const NavItem = forwardRef<HTMLDivElement, NavItemProps>(function NavItem
                 "truncate",
                 motionFeedback &&
                   !disabled &&
-                  "origin-left motion-safe:transition-transform motion-safe:duration-200 motion-safe:ease-out motion-safe:group-hover/nav-item:translate-x-0.5 motion-safe:group-active/nav-action:translate-y-px motion-safe:group-active/nav-action:scale-[0.985] motion-safe:group-active/nav-action:duration-75",
+                  "origin-left motion-safe:transition-transform motion-safe:duration-300 motion-safe:ease-[cubic-bezier(0.22,1.12,0.36,1)] motion-safe:group-hover/nav-item:translate-x-0.5 motion-safe:group-active/nav-action:translate-y-px motion-safe:group-active/nav-action:scale-[0.985] motion-safe:group-active/nav-action:duration-75",
+                motionFeedback && active && !disabled && "motion-safe:translate-x-0.5",
               )}
             >
               {label}

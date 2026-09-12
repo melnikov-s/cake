@@ -899,7 +899,7 @@ describe("Sidebar projects", () => {
     expect(container.querySelector('[aria-label="Open settings"]')).toBeNull();
 
     const activeProject = container.querySelector<HTMLElement>(
-      '[data-slot="sidebar"] > div:nth-child(3) > [data-slot="project-group"]',
+      '[data-slot="navigation-highlight"] > [data-slot="project-group"]',
     );
     expect(activeProject?.querySelector("button")?.getAttribute("aria-label")).toBe(
       "Exit focus mode for cake",
