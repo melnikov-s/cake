@@ -40,9 +40,14 @@ export function interactWithSessionAvatar(
   if (!look || !hop) return () => {};
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
   const animations = new Map<Element, Animation>();
-  const play = (element: Element, frames: Keyframe[], duration: number) => {
+  const glanceEasings = [
+    "cubic-bezier(0.22, 1, 0.36, 1)",
+    "cubic-bezier(0.25, 0.8, 0.25, 1)",
+    "cubic-bezier(0.33, 0, 0.2, 1)",
+  ];
+  const play = (element: Element, frames: Keyframe[], duration: number, easing = "ease-in-out") => {
     animations.get(element)?.cancel();
-    const animation = element.animate(frames, { duration, easing: "ease-in-out" });
+    const animation = element.animate(frames, { duration, easing });
     animations.set(element, animation);
     animation.onfinish = () => {
       animations.delete(element);
@@ -52,11 +57,17 @@ export function interactWithSessionAvatar(
   const glance = (right: boolean) => {
     if (reduced.matches || document.hidden) return;
     const from = getComputedStyle(look).transform;
-    const to = right ? "translateX(1.5px)" : "translateX(0px)";
+    // SVG transforms use the 100-unit viewBox, not screen pixels. Six units
+    // gives a visible ~1.4px glance in a 24px sidebar avatar.
+    const to = right ? "translateX(6px)" : "translateX(0px)";
     // The resting transform survives completion; interrupted transitions start
     // at the currently displayed position instead of snapping.
     look.style.transform = to;
-    play(look, [{ transform: from }, { transform: to }], 160);
+    // Sample only on interaction, with a quicker return so sweeping past rows
+    // doesn't leave a trail of slow reactions. No background randomization.
+    const duration = right ? 180 + Math.random() * 100 : 140 + Math.random() * 80;
+    const easing = glanceEasings[Math.floor(Math.random() * glanceEasings.length)]!;
+    play(look, [{ transform: from }, { transform: to }], duration, easing);
   };
   const enter = (event: PointerEvent) => {
     if (event.pointerType !== "touch") glance(true);
@@ -78,20 +89,26 @@ export function interactWithSessionAvatar(
       hop,
       [
         { transform: "translateY(0)" },
-        { transform: "translateY(-3px)" },
+        { transform: "translateY(-7px)" },
         { transform: "translateY(0)" },
       ],
-      280,
+      320,
     );
     for (const eye of hop.querySelectorAll<SVGGElement>(".dbga-eye")) {
       const box = eye.getBBox();
       const y = box.y + box.height / 2;
       play(
         eye,
-        [1, 0.08, 1].map((scale) => ({
+        [
+          { scale: 1, offset: 0 },
+          { scale: 0.05, offset: 0.25 },
+          { scale: 0.05, offset: 0.6 },
+          { scale: 1, offset: 1 },
+        ].map(({ scale, offset }) => ({
           transform: `translateY(${y}px) scaleY(${scale}) translateY(${-y}px)`,
+          offset,
         })),
-        180,
+        280,
       );
     }
   };
