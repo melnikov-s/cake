@@ -112,7 +112,7 @@ export const WorktreePill = observer(function WorktreePill({
           className={cn(
             "flex h-7.5 w-auto shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs font-normal shadow-none @max-[460px]/worktree:w-7.5 @max-[460px]/worktree:gap-0 @max-[460px]/worktree:px-0",
             choice.kind === "current" &&
-              "bg-muted text-foreground aria-pressed:bg-muted aria-pressed:text-foreground",
+              "bg-muted text-foreground aria-pressed:bg-muted aria-pressed:text-foreground aria-pressed:hover:bg-muted aria-pressed:hover:text-foreground",
           )}
           onClick={() => choose({ kind: "current" })}
         >
@@ -126,7 +126,7 @@ export const WorktreePill = observer(function WorktreePill({
           className={cn(
             "flex h-7.5 w-auto shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs font-normal shadow-none @max-[460px]/worktree:w-7.5 @max-[460px]/worktree:gap-0 @max-[460px]/worktree:px-0",
             choice.kind === "new" &&
-              "bg-muted text-foreground aria-pressed:bg-muted aria-pressed:text-foreground",
+              "bg-muted text-foreground aria-pressed:bg-muted aria-pressed:text-foreground aria-pressed:hover:bg-muted aria-pressed:hover:text-foreground",
           )}
           onClick={() => choose({ kind: "new" })}
         >
