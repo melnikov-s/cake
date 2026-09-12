@@ -151,6 +151,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
               tooltip={familyCollapsed ? "Expand child sessions" : "Collapse child sessions"}
               ariaLabel={`${familyCollapsed ? "Expand" : "Collapse"} children of ${session.title}`}
               aria-expanded={!familyCollapsed}
+              data-cake-hint="off"
               onClick={() => onToggleFamily?.(session.sessionId)}
             >
               <ChevronIcon />

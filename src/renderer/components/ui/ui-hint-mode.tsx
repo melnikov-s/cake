@@ -17,13 +17,7 @@ const targetSelector = [
 ].join(",");
 
 const hintAlphabet = "asdfghjklqwertyuiopzxcvbnm";
-const highlightedTargetClasses = [
-  "!opacity-100",
-  "!visible",
-  "outline-2",
-  "outline-ring",
-  "outline-offset-1",
-] as const;
+const highlightedTargetClasses = ["outline-2", "outline-ring", "outline-offset-1"] as const;
 
 interface HintTarget {
   readonly element: HTMLElement;
@@ -35,7 +29,13 @@ interface HintTarget {
 function isVisibleTarget(element: HTMLElement) {
   if (!element.isConnected || element.closest("[aria-hidden='true'], [inert]")) return false;
   const style = window.getComputedStyle(element);
-  if (style.display === "none" || style.visibility === "hidden") return false;
+  if (
+    style.display === "none" ||
+    style.visibility === "hidden" ||
+    style.opacity === "0" ||
+    style.pointerEvents === "none"
+  )
+    return false;
   const rect = element.getBoundingClientRect();
   return (
     rect.width > 0 &&
@@ -76,6 +76,7 @@ function collectTargets(): HintTarget[] {
   const scope = dialogs.at(-1) ?? document.body;
   const elements = [...scope.querySelectorAll<HTMLElement>(targetSelector)]
     .filter((element) => !element.closest('[data-slot="ui-hint-overlay"]'))
+    .filter((element) => !element.closest("[data-cake-hint='off']"))
     .filter(isVisibleTarget)
     .filter((element) => {
       const parentTarget = element.parentElement?.closest<HTMLElement>(targetSelector);
@@ -123,7 +124,8 @@ export const UiHintMode = observer(function UiHintMode({ store }: { store: UiHin
 
   useLayoutEffect(() => {
     if (!store.active) return;
-    const restorations = targets.map(({ element, label }) => {
+    const matchingTargets = targets.filter(({ label }) => label.startsWith(store.prefix));
+    const restorations = matchingTargets.map(({ element, label }) => {
       const addedClasses = highlightedTargetClasses.filter((className) =>
         element.classList.contains(className) ? false : (element.classList.add(className), true),
       );
@@ -140,7 +142,7 @@ export const UiHintMode = observer(function UiHintMode({ store }: { store: UiHin
       };
     });
     return () => restorations.forEach((restore) => restore());
-  }, [store.active, targets]);
+  }, [store.active, store.prefix, targets]);
 
   useEffect(() => {
     if (!store.active) return;
@@ -209,13 +211,21 @@ export const UiHintMode = observer(function UiHintMode({ store }: { store: UiHin
           data-slot="ui-hint"
           data-hint-label={label}
           aria-label={`${name}: ${label.toUpperCase()}`}
-          className="absolute grid min-w-4 -translate-x-1/3 -translate-y-1/3 place-items-center rounded border border-background bg-accent px-1 py-0.5 font-mono text-[10px] font-bold leading-none tracking-tight text-accent-foreground shadow-md"
+          className="absolute inline-flex min-w-4 -translate-x-1/3 -translate-y-1/3 items-center justify-center rounded border border-background bg-accent px-1 py-0.5 font-mono text-[10px] font-bold leading-none tracking-tight text-accent-foreground shadow-md"
           style={{
             left: Math.max(8, Math.min(window.innerWidth - 8, rect.left)),
             top: Math.max(8, Math.min(window.innerHeight - 8, rect.top)),
           }}
         >
-          {label.toUpperCase()}
+          {store.prefix.length > 0 && (
+            <span
+              data-slot="ui-hint-prefix"
+              className="mr-0.5 rounded-sm bg-background/80 px-0.5 text-accent"
+            >
+              {label.slice(0, store.prefix.length).toUpperCase()}
+            </span>
+          )}
+          {label.slice(store.prefix.length).toUpperCase()}
           <span className="sr-only"> for {targetName(element)}</span>
         </kbd>
       ))}

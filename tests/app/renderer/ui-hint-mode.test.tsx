@@ -70,6 +70,57 @@ describe("UiHintMode", () => {
     expect(document.activeElement).toBe(input);
   });
 
+  it("omits hidden and explicitly excluded controls", () => {
+    using store = mount(createStore(UiHintModeStore));
+    act(() =>
+      root.render(
+        <>
+          <button type="button">Included</button>
+          <button type="button" style={{ opacity: 0 }}>
+            Visually hidden
+          </button>
+          <div data-cake-hint="off">
+            <button type="button">Low-value action</button>
+          </div>
+          <UiHintMode store={store} />
+        </>,
+      ),
+    );
+
+    act(() => store.open());
+    expect(document.querySelectorAll('[data-slot="ui-hint"]')).toHaveLength(1);
+  });
+
+  it("narrows targets and highlights the entered prefix", () => {
+    using store = mount(createStore(UiHintModeStore));
+    act(() =>
+      root.render(
+        <>
+          {Array.from({ length: 28 }, (_, index) => (
+            <button key={index} type="button">
+              Target {index}
+            </button>
+          ))}
+          <UiHintMode store={store} />
+        </>,
+      ),
+    );
+
+    act(() => store.open());
+    expect(document.querySelectorAll('[data-slot="ui-hint"]')).toHaveLength(28);
+    act(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "s" })));
+
+    const hints = [...document.querySelectorAll<HTMLElement>('[data-slot="ui-hint"]')];
+    expect(hints).toHaveLength(2);
+    expect(hints.every((hint) => hint.dataset.hintLabel?.startsWith("s"))).toBe(true);
+    expect(
+      hints.every(
+        (hint) => hint.querySelector('[data-slot="ui-hint-prefix"]')?.textContent === "S",
+      ),
+    ).toBe(true);
+    expect(document.querySelectorAll('[data-cake-hint-target="true"]')).toHaveLength(2);
+  });
+
   it("cancels hint mode with Escape", () => {
     using store = mount(createStore(UiHintModeStore));
     act(() =>

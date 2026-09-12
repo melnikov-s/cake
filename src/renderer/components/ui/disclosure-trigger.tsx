@@ -37,6 +37,7 @@ export const DisclosureTrigger = forwardRef<HTMLButtonElement, DisclosureTrigger
         type={type}
         disabled={disabled}
         aria-expanded={open}
+        data-cake-hint="off"
         title={title}
         className={cn(
           "flex w-full min-w-0 items-center justify-between gap-2 text-left text-xs font-medium text-foreground transition-colors select-none",

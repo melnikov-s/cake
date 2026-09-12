@@ -14,6 +14,7 @@ export function CopyFilePathButton({ path, className }: { path: string; classNam
       )}
       tooltip={copied ? "Copied" : "Copy file path"}
       ariaLabel={copied ? `Copied ${path}` : `Copy ${path}`}
+      data-cake-hint="off"
       onClick={() => {
         void navigator.clipboard.writeText(path).then(() => setCopied(true));
       }}
