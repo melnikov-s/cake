@@ -12,8 +12,6 @@ import {
   type MenuItemConstructorOptions,
   type WebContents,
 } from "electron";
-import type { WorkflowStatusColor } from "../../domain/application/application-data";
-import { workflowStatusPalette } from "../../utils/workflow-status-palette";
 import type { CakeEvent } from "../../ipc/cake-rpc-contract";
 import { shouldAllowNavigation } from "./navigation-policy";
 import {
@@ -54,13 +52,6 @@ const iconMenuEntry = ({ icon: iconPath, ...entry }: IconMenuEntry) => {
   icon.setTemplateImage(true);
   return { ...entry, icon } satisfies MenuItemConstructorOptions;
 };
-
-const workflowStatusMenuIcon = (color: WorkflowStatusColor) =>
-  nativeImage.createFromDataURL(
-    `data:image/svg+xml;charset=utf-8,${encodeURIComponent(
-      `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="10" rx="3" fill="${workflowStatusPalette[color]}"/></svg>`,
-    )}`,
-  );
 
 export const makeElectronLive = (options: ElectronLiveOptions) => {
   const windows = new Map<number, BrowserWindow>();
@@ -500,54 +491,26 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
           try: () =>
             new Promise<SuccessSessionMenu>((resolve) => {
               let completed = false;
-              const finish = (action?: SuccessSessionMenu["action"], statusId?: string) => {
+              const finish = (action?: SuccessSessionMenu["action"]) => {
                 if (completed) return;
                 completed = true;
-                resolve({ action, ...(statusId ? { statusId } : undefined) });
+                resolve({ action });
               };
               const copyId = {
                 label: "Copy Session ID",
                 click: () => clipboard.writeText(request.sessionId),
               };
-              const statusItems: MenuItemConstructorOptions[] = request.workflow
-                ? [
-                    ...(request.workflow.currentStatus === "active"
-                      ? []
-                      : [{ label: "Active", click: () => finish("set-status", "active") }]),
-                    ...request.workflow.statuses
-                      .filter((status) => status.id !== request.workflow?.currentStatus)
-                      .map((status): MenuItemConstructorOptions => ({
-                        label: status.name,
-                        icon: workflowStatusMenuIcon(status.color),
-                        click: () => finish("set-status", status.id),
-                      })),
-                    ...(request.draft || request.resolved
-                      ? []
-                      : [
-                          {
-                            label: "Resolved",
-                            click: () => finish("set-status", "resolved"),
-                          },
-                        ]),
-                  ]
-                : [];
-              const statusMenu: MenuItemConstructorOptions | undefined = statusItems.length
-                ? { label: "Set Status", submenu: statusItems }
-                : undefined;
               const activeItems: MenuItemConstructorOptions[] = [
                 { label: "Rename", click: () => finish("rename") },
                 ...(request.unread === false
                   ? [{ label: "Mark as Unread", click: () => finish("mark-unread") }]
                   : []),
-                ...(statusMenu ? [statusMenu] : []),
                 copyId,
               ];
               const menu = Menu.buildFromTemplate(
                 request.resolved
                   ? [
-                      ...(statusMenu
-                        ? [statusMenu]
-                        : [{ label: "Unresolve", click: () => finish("unresolve") }]),
+                      { label: "Unresolve", click: () => finish("unresolve") },
                       copyId,
                       ...(request.familyChild
                         ? []
@@ -556,7 +519,7 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
                             { label: "Delete", click: () => finish("delete") },
                           ]),
                     ]
-                  : request.draft || statusMenu
+                  : request.draft
                     ? activeItems
                     : [...activeItems, { label: "Resolve", click: () => finish("resolve") }],
               );
@@ -773,8 +736,7 @@ type SuccessTranscriptMenu = {
 };
 type SuccessComposerMenu = { readonly action?: "reword" | "reword-with-prompt" };
 type SuccessSessionMenu = {
-  readonly action?: "rename" | "mark-unread" | "resolve" | "unresolve" | "set-status" | "delete";
-  readonly statusId?: string;
+  readonly action?: "rename" | "mark-unread" | "resolve" | "unresolve" | "delete";
 };
 type SuccessProjectMenu = {
   readonly action?: "settings" | "remove-project" | "delete-resolved-worktrees";

@@ -57,19 +57,19 @@ describe("Avatar", () => {
     expect(decodeURIComponent(source!)).toContain('<rect width="100" height="100" rx="0" ry="0"/>');
   });
 
-  it("colors the Session emoji itself from its workflow status without a ring", () => {
+  it("colors the Session avatar from its merged labels without a ring", () => {
     const markup = renderToStaticMarkup(
-      <Avatar kind="session" seed="session" statusColor="violet" />,
+      <Avatar kind="session" seed="session" labelColors={["violet"]} />,
     );
 
-    expect(markup).toContain('data-workflow-status-color="#9a78d7"');
-    expect(markup).toContain("data-workflow-status-color_type");
+    expect(markup).toContain('data-session-label-color="#9a78d7"');
+    expect(markup).toContain("data-session-label-color_type");
     expect(markup).toContain('fill="currentColor"');
     expect(markup).not.toContain("border");
     expect(markup).not.toContain("bg-current");
   });
 
-  it("uses a neutral color when a Session has no workflow status", () => {
+  it("uses a neutral color when a Session has no labels", () => {
     const markup = renderToStaticMarkup(<Avatar kind="session" seed="session" />);
 
     expect(markup).toContain("text-muted-foreground");

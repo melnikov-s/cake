@@ -123,6 +123,11 @@ export interface CakeRuntimeOptions {
     firstUserMessage: string;
     signal?: AbortSignal;
   }): Promise<string>;
+  autoLabelSession?(input: {
+    utilityModel: UtilityModel;
+    firstUserMessage: string;
+    signal?: AbortSignal;
+  }): Promise<void>;
   sessionTitleChanged?(sessionId: string, title: string): Promise<void>;
   currentSessionControl?: {
     resolved(): boolean;
@@ -521,7 +526,9 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
           emitSnapshotInBackground();
         });
       if (!options.auxiliary)
-        void continuations.nameSessionFromFirstMessage(textFromContent(event.message.content));
+        void continuations.initializeSessionFromFirstMessage(
+          textFromContent(event.message.content),
+        );
     }
     if (event.type === "agent_settled") {
       turnController.settleTurn();

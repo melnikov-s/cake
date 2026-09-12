@@ -20,7 +20,7 @@ export class PendingConversationStore extends Store<PendingConversationStoreProp
   @snapshot name: string | undefined;
   @snapshot configuration: ChatConfiguration | undefined;
   @snapshot draftPrompt: PendingConversationPrompt | undefined;
-  @snapshot workflowStatusId: string | undefined;
+  @snapshot labelIds: readonly string[] = [];
   @snapshot fallbackTitle: string | undefined;
   @snapshot createdAt = new Date().toISOString();
   @snapshot modifiedAt = this.createdAt;
@@ -56,8 +56,8 @@ export class PendingConversationStore extends Store<PendingConversationStoreProp
     this.touch();
   }
 
-  setWorkflowStatus(statusId?: string) {
-    this.workflowStatusId = statusId;
+  setLabels(labelIds: readonly string[]) {
+    this.labelIds = [...new Set(labelIds)];
     this.touch();
   }
 

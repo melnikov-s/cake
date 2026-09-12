@@ -876,7 +876,6 @@ export class RootStore extends Store<{
   get projectSettingsStore(): ProjectSettingsStore {
     return createStore(ProjectSettingsStore, {
       projects: this.projectCatalogStore,
-      globalStatuses: () => this.settingsStore.globalStatuses.statuses,
     });
   }
 
@@ -914,7 +913,7 @@ export class RootStore extends Store<{
       catalog: this.sessionCatalogStore,
       sessions: this.sessionRegistry,
       worktreeOperations: this.props.projection.worktreeOperations,
-      globalStatuses: () => this.settingsStore.globalStatuses.statuses,
+      globalLabels: () => this.settingsStore.globalLabels.labels,
       cakeChat: () => this.cakeChatCollectionStore,
       selectedConversation: () => {
         const selection = this.appShellStore.selection;
@@ -926,10 +925,10 @@ export class RootStore extends Store<{
       setSessionResolved: async (sessionId, resolved) => {
         await this.resolveProjectSession(sessionId, resolved);
       },
-      setSessionWorkflowStatus: async (sessionId, statusId) => {
-        await this.projectWorkbenchStore.sessionManagementStore.setSessionStatus(
+      setSessionLabels: async (sessionId, labelIds) => {
+        await this.projectWorkbenchStore.sessionManagementStore.setSessionLabels(
           sessionId,
-          statusId === "active" ? undefined : statusId,
+          labelIds,
         );
       },
       setCakeChatSessionResolved: (sessionId, resolved) =>
@@ -998,7 +997,7 @@ export class RootStore extends Store<{
       sessionRegistry: this.sessionRegistry,
       operations: this.sessionOperationCoordinator,
       projects: this.projectCatalogStore,
-      globalStatuses: () => this.settingsStore.globalStatuses.statuses,
+      globalLabels: () => this.settingsStore.globalLabels.labels,
       defaultConfiguration: () => this.settingsStore.modelPresets.defaultConfiguration,
       reviews: () => this.reviewsStore,
       extensionUi: () => this.extensionUiStore,
@@ -1164,7 +1163,7 @@ export class RootStore extends Store<{
         sessionActivity: (sessionId) => this.sidebarStore.sessionActivity(sessionId),
         managedWorktree: (workingDirectory) =>
           this.sessionCatalogStore.managedWorktree(workingDirectory),
-        globalSessionLabels: () => this.settingsStore.globalStatuses.statuses,
+        globalSessionLabels: () => this.settingsStore.globalLabels.labels,
       },
       settings: {
         get: (section) => this.settingsStore.settingsSection(section),
@@ -1198,8 +1197,8 @@ export class RootStore extends Store<{
             else
               await this.client.projectWorkflow.mutateGlobal({ mutation }, { signal: this.signal });
           }),
-        setSessionLabel: (sessionId, labelId) =>
-          this.projectWorkbenchStore.sessionManagementStore.setSessionStatus(sessionId, labelId),
+        setSessionLabels: (sessionId, labelIds) =>
+          this.projectWorkbenchStore.sessionManagementStore.setSessionLabels(sessionId, labelIds),
       },
       worktrees: {
         merge: async ({ sessionId, workingDirectory }) => {

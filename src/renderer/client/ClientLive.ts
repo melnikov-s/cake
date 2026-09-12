@@ -180,10 +180,10 @@ export function makeClient(runtime: Pick<Runtime, "execute">): Client {
           withClient((client) => client.projectWorkflow.mutate(input)),
           options,
         ),
-      moveSession: (input, options) =>
+      setSessionLabels: (input, options) =>
         run(
-          "projectWorkflow.moveSession",
-          withClient((client) => client.projectWorkflow.moveSession(input)),
+          "projectWorkflow.setSessionLabels",
+          withClient((client) => client.projectWorkflow.setSessionLabels(input)),
           options,
         ),
       describeSession: (input, options) =>

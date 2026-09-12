@@ -5,18 +5,18 @@ import type { SessionCatalogStore } from "./SessionCatalogStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
 import type { ProjectCatalogStore } from "./ProjectCatalogStore";
-import type { WorkflowStatus } from "../../domain/application/application-data";
+import type { SessionLabel } from "../../domain/application/application-data";
 
 export interface SessionManagementStoreProps {
   operations: SessionOperationCoordinatorStore;
   catalog: SessionCatalogStore;
   projects: ProjectCatalogStore;
-  globalStatuses(): ReadonlyArray<WorkflowStatus>;
+  globalLabels(): ReadonlyArray<SessionLabel>;
   registry: SessionRegistryStore;
   reportError(error: unknown): void;
 }
 
-/** Owns Project Session rename, status, archive/restore, deletion, and unread commands. */
+/** Owns Project Session rename, labels, archive/restore, deletion, and unread commands. */
 export class SessionManagementStore extends Store<SessionManagementStoreProps> {
   private readonly transitioningSessionIds = observable(new Set<string>());
 
@@ -75,11 +75,11 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
     }
   }
 
-  isStatusPending(sessionId: string) {
+  areLabelsPending(sessionId: string) {
     return this.transitioningSessionIds.has(sessionId);
   }
 
-  async setSessionStatus(sessionId: string, statusId?: string) {
+  async setSessionLabels(sessionId: string, labelIds: readonly string[]) {
     const session = this.props.catalog.find(sessionId);
     const pendingSession = this.props.registry.findSession(sessionId);
     const projectPath =
@@ -92,30 +92,23 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
     if (this.transitioningSessionIds.has(sessionId)) return false;
     const project = this.props.projects.find(projectPath);
     if (!project) return false;
-    if (
-      statusId &&
-      ![...this.props.globalStatuses(), ...project.workflow.columns].some(
-        (status) => status.id === statusId,
-      )
-    ) {
-      this.props.reportError(new Error("That custom status no longer exists"));
+    const availableIds = new Set(
+      [...this.props.globalLabels(), ...project.workflow.labels].map((label) => label.id),
+    );
+    if (labelIds.some((labelId) => !availableIds.has(labelId))) {
+      this.props.reportError(new Error("A selected label no longer exists"));
       return false;
     }
 
     this.transitioningSessionIds.add(sessionId);
     try {
       if (this.props.registry.pendingSessions.isTemporary(sessionId)) {
-        await this.props.registry.pendingSessions.setWorkflowStatus(sessionId, statusId);
+        await this.props.registry.pendingSessions.setLabels(sessionId, labelIds);
         return !this.signal.aborted;
       }
       if (!session) return false;
-      await this.client.projectWorkflow.moveSession(
-        {
-          projectPath,
-          sessionId,
-          workingDirectory: session.workingDirectory,
-          destination: statusId ? { _tag: "Custom", statusId } : { _tag: "Active" },
-        },
+      await this.client.projectWorkflow.setSessionLabels(
+        { projectPath, sessionId, workingDirectory: session.workingDirectory, labelIds },
         { signal: this.signal },
       );
       return !this.signal.aborted;

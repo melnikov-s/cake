@@ -4,12 +4,12 @@ import {
   type ApplicationState,
   defaultProjectWorkflow,
   type ProjectSettings,
-  type WorkflowStatus,
+  type SessionLabel,
   type ProjectWorkflow,
-  type WorkflowStatusMutation,
+  type SessionLabelMutation,
   type ProjectWorkflowSessionDetails,
   type UtilityModel,
-  validateWorkflowStatusName,
+  validateSessionLabelName,
 } from "./application-data";
 import { ApplicationState as ApplicationStateOwner } from "../../services/storage/ApplicationState";
 
@@ -112,29 +112,26 @@ export const setProjectSettings = Effect.fn("Application.setProjectSettings")(fu
 
 const mutateWorkflowValue = Effect.fn("Application.mutateWorkflowValue")(function* (
   workflow: ProjectWorkflow,
-  otherStatuses: ReadonlyArray<WorkflowStatus>,
+  otherLabels: ReadonlyArray<SessionLabel>,
   mutation:
-    | WorkflowStatusMutation
+    | SessionLabelMutation
     | {
-        readonly _tag: "SetSessionStatus";
+        readonly _tag: "SetSessionLabels";
         readonly sessionId: string;
-        readonly statusId?: string;
+        readonly labelIds: ReadonlyArray<string>;
       }
     | { readonly _tag: "SetSessionDetails"; readonly details: ProjectWorkflowSessionDetails },
 ) {
-  if (mutation._tag === "AddColumn") {
-    if (workflow.columns.length >= 20)
+  if (mutation._tag === "AddLabel") {
+    if (workflow.labels.length >= 100)
       return yield* new ApplicationPolicyError({
-        message: "A status list can contain at most 20 statuses",
+        message: "A label list can contain at most 100 labels",
       });
-    const validation = validateWorkflowStatusName(
-      { columns: [...otherStatuses, ...workflow.columns] },
-      mutation.column.name,
-    );
+    const validation = validateSessionLabelName(mutation.label.name);
     if (!validation.ok) return yield* new ApplicationPolicyError({ message: validation.message });
     return {
       ...workflow,
-      columns: [...workflow.columns, { ...mutation.column, name: validation.name }],
+      labels: [...workflow.labels, { ...mutation.label, name: validation.name }],
     };
   }
   if (mutation._tag === "SetSessionDetails")
@@ -147,63 +144,53 @@ const mutateWorkflowValue = Effect.fn("Application.mutateWorkflowValue")(functio
         mutation.details,
       ],
     };
-  if (mutation._tag === "SetSessionStatus") {
+  if (mutation._tag === "SetSessionLabels") {
+    const labelIds = unique(mutation.labelIds);
+    const availableIds = new Set([...otherLabels, ...workflow.labels].map((label) => label.id));
+    if (labelIds.some((labelId) => !availableIds.has(labelId)))
+      return yield* new ApplicationPolicyError({ message: "A selected label no longer exists" });
     const assignments = workflow.assignments.filter(
       (assignment) => assignment.sessionId !== mutation.sessionId,
     );
-    if (mutation.statusId !== undefined) {
-      if (
-        ![...otherStatuses, ...workflow.columns].some((column) => column.id === mutation.statusId)
-      )
-        return yield* new ApplicationPolicyError({
-          message: "That custom status no longer exists",
-        });
-      assignments.push({ sessionId: mutation.sessionId, statusId: mutation.statusId });
-    }
+    if (labelIds.length > 0) assignments.push({ sessionId: mutation.sessionId, labelIds });
     return { ...workflow, assignments };
   }
-  const columnIndex = workflow.columns.findIndex((column) => column.id === mutation.columnId);
-  if (columnIndex < 0)
-    return yield* new ApplicationPolicyError({ message: "That custom status no longer exists" });
-  if (mutation._tag === "UpdateColumn") {
-    const name =
-      mutation.name === undefined
-        ? undefined
-        : validateWorkflowStatusName(
-            { columns: [...otherStatuses, ...workflow.columns] },
-            mutation.name,
-            mutation.columnId,
-          );
+  const labelIndex = workflow.labels.findIndex((label) => label.id === mutation.labelId);
+  if (labelIndex < 0)
+    return yield* new ApplicationPolicyError({ message: "That label no longer exists" });
+  if (mutation._tag === "UpdateLabel") {
+    const name = mutation.name === undefined ? undefined : validateSessionLabelName(mutation.name);
     if (name && !name.ok) return yield* new ApplicationPolicyError({ message: name.message });
     return {
       ...workflow,
-      columns: workflow.columns.map((column, index) =>
-        index === columnIndex
+      labels: workflow.labels.map((label, index) =>
+        index === labelIndex
           ? {
-              ...column,
+              ...label,
               ...(name === undefined ? undefined : { name: name.name }),
               ...(mutation.color === undefined ? undefined : { color: mutation.color }),
             }
-          : column,
+          : label,
       ),
     };
   }
-  if (mutation._tag === "MoveColumn") {
-    const columns = [...workflow.columns];
-    const column = columns[columnIndex];
-    if (!column)
-      return yield* new ApplicationPolicyError({ message: "That custom status no longer exists" });
-    columns.splice(columnIndex, 1);
-    columns.splice(Math.min(mutation.index, columns.length), 0, column);
-    return { ...workflow, columns };
+  if (mutation._tag === "MoveLabel") {
+    const labels = [...workflow.labels];
+    const label = labels[labelIndex];
+    if (!label)
+      return yield* new ApplicationPolicyError({ message: "That label no longer exists" });
+    labels.splice(labelIndex, 1);
+    labels.splice(Math.min(mutation.index, labels.length), 0, label);
+    return { ...workflow, labels };
   }
-  if (mutation._tag === "DeleteColumn")
+  if (mutation._tag === "DeleteLabel")
     return {
       ...workflow,
-      columns: workflow.columns.filter((column) => column.id !== mutation.columnId),
-      assignments: workflow.assignments.filter(
-        (assignment) => assignment.statusId !== mutation.columnId,
-      ),
+      labels: workflow.labels.filter((label) => label.id !== mutation.labelId),
+      assignments: workflow.assignments.flatMap((assignment) => {
+        const labelIds = assignment.labelIds.filter((labelId) => labelId !== mutation.labelId);
+        return labelIds.length > 0 ? [{ ...assignment, labelIds }] : [];
+      }),
     };
   return workflow;
 });
@@ -211,11 +198,11 @@ const mutateWorkflowValue = Effect.fn("Application.mutateWorkflowValue")(functio
 const mutateProjectWorkflowValue = Effect.fn("Application.mutateProjectWorkflowValue")(function* (
   path: string,
   mutation:
-    | WorkflowStatusMutation
+    | SessionLabelMutation
     | {
-        readonly _tag: "SetSessionStatus";
+        readonly _tag: "SetSessionLabels";
         readonly sessionId: string;
-        readonly statusId?: string;
+        readonly labelIds: ReadonlyArray<string>;
       }
     | { readonly _tag: "SetSessionDetails"; readonly details: ProjectWorkflowSessionDetails },
 ) {
@@ -227,7 +214,7 @@ const mutateProjectWorkflowValue = Effect.fn("Application.mutateProjectWorkflowV
     return Effect.gen(function* () {
       const workflow = yield* mutateWorkflowValue(
         project.workflow ?? defaultProjectWorkflow(),
-        current.globalWorkflowStatuses,
+        current.globalSessionLabels,
         mutation,
       );
       return yield* validate({
@@ -244,39 +231,42 @@ const mutateProjectWorkflowValue = Effect.fn("Application.mutateProjectWorkflowV
 });
 
 export const mutateProjectWorkflow = Effect.fn("Application.mutateProjectWorkflow")(
-  (path: string, mutation: WorkflowStatusMutation) => mutateProjectWorkflowValue(path, mutation),
+  (path: string, mutation: SessionLabelMutation) => mutateProjectWorkflowValue(path, mutation),
 );
 
-export const mutateGlobalWorkflowStatuses = Effect.fn("Application.mutateGlobalWorkflowStatuses")(
-  function* (mutation: WorkflowStatusMutation) {
+export const mutateGlobalSessionLabels = Effect.fn("Application.mutateGlobalSessionLabels")(
+  function* (mutation: SessionLabelMutation) {
     const owner = yield* ApplicationStateOwner;
     return yield* owner.transact((current) => {
       const workflow: ProjectWorkflow = {
-        columns: current.globalWorkflowStatuses,
+        labels: current.globalSessionLabels,
         assignments: [],
         sessionDetails: [],
       };
       return Effect.gen(function* () {
-        const allProjectStatuses = current.projects.flatMap(
-          (project) => project.workflow?.columns ?? [],
+        const allProjectLabels = current.projects.flatMap(
+          (project) => project.workflow?.labels ?? [],
         );
-        const statuses = yield* mutateWorkflowValue(workflow, allProjectStatuses, mutation).pipe(
-          Effect.map((updated) => updated.columns),
+        const labels = yield* mutateWorkflowValue(workflow, allProjectLabels, mutation).pipe(
+          Effect.map((updated) => updated.labels),
         );
         return yield* validate({
           ...current,
-          globalWorkflowStatuses: statuses,
+          globalSessionLabels: labels,
           projects:
-            mutation._tag === "DeleteColumn"
+            mutation._tag === "DeleteLabel"
               ? current.projects.map((project) =>
                   project.workflow
                     ? {
                         ...project,
                         workflow: {
                           ...project.workflow,
-                          assignments: project.workflow.assignments.filter(
-                            (assignment) => assignment.statusId !== mutation.columnId,
-                          ),
+                          assignments: project.workflow.assignments.flatMap((assignment) => {
+                            const labelIds = assignment.labelIds.filter(
+                              (labelId) => labelId !== mutation.labelId,
+                            );
+                            return labelIds.length > 0 ? [{ ...assignment, labelIds }] : [];
+                          }),
                         },
                       }
                     : project,
@@ -288,15 +278,42 @@ export const mutateGlobalWorkflowStatuses = Effect.fn("Application.mutateGlobalW
   },
 );
 
-export const setProjectWorkflowSessionStatus = Effect.fn(
-  "Application.setProjectWorkflowSessionStatus",
-)((path: string, sessionId: string, statusId?: string) =>
-  mutateProjectWorkflowValue(path, {
-    _tag: "SetSessionStatus",
-    sessionId,
-    ...(statusId === undefined ? undefined : { statusId }),
-  }),
+export const setProjectSessionLabels = Effect.fn("Application.setProjectSessionLabels")(
+  (path: string, sessionId: string, labelIds: ReadonlyArray<string>) =>
+    mutateProjectWorkflowValue(path, { _tag: "SetSessionLabels", sessionId, labelIds }),
 );
+
+export const setProjectSessionLabelsIfUnlabelled = Effect.fn(
+  "Application.setProjectSessionLabelsIfUnlabelled",
+)(function* (path: string, sessionId: string, labelIds: ReadonlyArray<string>) {
+  const owner = yield* ApplicationStateOwner;
+  const state = yield* owner.transact((current) => {
+    const project = current.projects.find((candidate) => candidate.path === path);
+    if (!project)
+      return Effect.fail(new ApplicationPolicyError({ message: "That Project is not registered" }));
+    const workflow = project.workflow ?? defaultProjectWorkflow();
+    const currentAssignment = workflow.assignments.find(
+      (assignment) => assignment.sessionId === sessionId,
+    );
+    if (currentAssignment?.labelIds.length) return Effect.succeed(current);
+    return Effect.gen(function* () {
+      const updated = yield* mutateWorkflowValue(workflow, current.globalSessionLabels, {
+        _tag: "SetSessionLabels",
+        sessionId,
+        labelIds,
+      });
+      return yield* validate({
+        ...current,
+        projects: current.projects.map((candidate) =>
+          candidate.path === path ? { ...candidate, workflow: updated } : candidate,
+        ),
+      });
+    });
+  });
+  return (
+    state.projects.find((project) => project.path === path)?.workflow ?? defaultProjectWorkflow()
+  );
+});
 
 export const setProjectWorkflowSessionDetails = Effect.fn(
   "Application.setProjectWorkflowSessionDetails",

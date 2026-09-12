@@ -609,23 +609,16 @@ const makeLayer = (
 };
 
 describe("Project Sessions domain", () => {
-  it.effect("moves active sessions through authoritative custom workflow policy", () =>
+  it.effect("assigns ordered labels to active sessions", () =>
     Effect.gen(function* () {
-      const workflow = yield* projectSessionLifecycle.moveWorkflowSession({
+      const labelId = "b925b5dd-9661-4f1a-9f40-406be3c96c27";
+      const workflow = yield* projectSessionLifecycle.setWorkflowSessionLabels({
         projectPath: "/project",
         sessionId: "session-1",
         workingDirectory: "/project",
-        destination: {
-          _tag: "Custom",
-          statusId: "b925b5dd-9661-4f1a-9f40-406be3c96c27",
-        },
+        labelIds: [labelId],
       });
-      assert.deepEqual(workflow.assignments, [
-        {
-          sessionId: "session-1",
-          statusId: "b925b5dd-9661-4f1a-9f40-406be3c96c27",
-        },
-      ]);
+      assert.deepEqual(workflow.assignments, [{ sessionId: "session-1", labelIds: [labelId] }]);
     }).pipe(
       Effect.provide(
         makeLayer({
@@ -637,7 +630,7 @@ describe("Project Sessions domain", () => {
               addedAt: "2026-01-01T00:00:00.000Z",
               lastOpenedAt: "2026-01-01T00:00:00.000Z",
               workflow: {
-                columns: [
+                labels: [
                   {
                     id: "b925b5dd-9661-4f1a-9f40-406be3c96c27",
                     name: "Review",
@@ -654,74 +647,40 @@ describe("Project Sessions domain", () => {
     ),
   );
 
-  it.effect("restores a resolved session before assigning its custom status", () => {
-    let restores = 0;
-    return Effect.gen(function* () {
-      const workflow = yield* projectSessionLifecycle.moveWorkflowSession({
-        projectPath: "/project",
-        sessionId: "session-1",
-        workingDirectory: "/project",
-        destination: {
-          _tag: "Custom",
-          statusId: "b925b5dd-9661-4f1a-9f40-406be3c96c27",
-        },
-      });
-      assert.equal(restores, 1);
-      assert.equal(workflow.assignments[0]?.statusId, "b925b5dd-9661-4f1a-9f40-406be3c96c27");
-    }).pipe(
-      Effect.provide(
-        makeLayer(
-          {
-            ...defaultApplicationState(),
-            projects: [
-              {
-                path: "/project",
-                name: "Project",
-                addedAt: "2026-01-01T00:00:00.000Z",
-                lastOpenedAt: "2026-01-01T00:00:00.000Z",
-                workflow: {
-                  columns: [
-                    {
-                      id: "b925b5dd-9661-4f1a-9f40-406be3c96c27",
-                      name: "Review",
-                      color: "violet",
-                    },
-                  ],
-                  assignments: [],
-                  sessionDetails: [],
-                },
-              },
-            ],
-          },
-          { resolvedOnDisk: true, onRestore: () => restores++ },
-        ),
-      ),
-    );
-  });
-
-  it.effect("rejects Draft resolution and missing custom statuses through the domain", () =>
+  it.effect("rejects label changes for resolved sessions", () =>
     Effect.gen(function* () {
-      const missingStatus = yield* Effect.flip(
-        projectSessionLifecycle.moveWorkflowSession({
+      const failure = yield* Effect.flip(
+        projectSessionLifecycle.setWorkflowSessionLabels({
           projectPath: "/project",
           sessionId: "session-1",
           workingDirectory: "/project",
-          destination: {
-            _tag: "Custom",
-            statusId: "b925b5dd-9661-4f1a-9f40-406be3c96c27",
-          },
+          labelIds: [],
         }),
       );
-      assert.equal(missingStatus.message, "That custom status no longer exists");
-      const draftResolution = yield* Effect.flip(
-        projectSessionLifecycle.moveWorkflowSession({
+      assert.equal(failure.message, "Only active sessions can have their labels changed");
+    }).pipe(Effect.provide(makeLayer(undefined, { resolvedOnDisk: true }))),
+  );
+
+  it.effect("rejects unknown labels and Draft label changes through the domain", () =>
+    Effect.gen(function* () {
+      const missingLabel = yield* Effect.flip(
+        projectSessionLifecycle.setWorkflowSessionLabels({
           projectPath: "/project",
           sessionId: "session-1",
           workingDirectory: "/project",
-          destination: { _tag: "Resolved" },
+          labelIds: ["b925b5dd-9661-4f1a-9f40-406be3c96c27"],
         }),
       );
-      assert.equal(draftResolution.message, "Activate a Draft before resolving it");
+      assert.equal(missingLabel.message, "A selected label no longer exists");
+      const draftLabels = yield* Effect.flip(
+        projectSessionLifecycle.setWorkflowSessionLabels({
+          projectPath: "/project",
+          sessionId: "session-1",
+          workingDirectory: "/project",
+          labelIds: [],
+        }),
+      );
+      assert.equal(draftLabels.message, "Only active sessions can have their labels changed");
       const directResolution = yield* Effect.flip(
         projectSessionLifecycle.resolve({ sessionId: "session-1", workingDirectory: "/project" }),
       );
@@ -1984,7 +1943,7 @@ describe("Project Sessions domain", () => {
         sessionId: "session-1",
         workingDirectory: "/project",
         text: "First message",
-        workflowStatusId: "00000000-0000-4000-8000-000000000001",
+        labelIds: ["00000000-0000-4000-8000-000000000001"],
         attachments: [],
         renderUserMessageAsMarkdown: false,
       });
@@ -1995,7 +1954,7 @@ describe("Project Sessions domain", () => {
       assert.deepEqual(project?.workflow?.assignments, [
         {
           sessionId: "session-1",
-          statusId: "00000000-0000-4000-8000-000000000001",
+          labelIds: ["00000000-0000-4000-8000-000000000001"],
         },
       ]);
       const observed = Array.from(yield* Fiber.join(fiber));

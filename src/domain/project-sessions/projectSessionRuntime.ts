@@ -2,11 +2,18 @@ import * as sessionFamilies from "../session-families/sessionFamilies";
 import * as projectSessionLocations from "./projectSessionLocations";
 import * as managedWorktrees from "../worktrees/managedWorktrees";
 import { Effect, Schema, Schedule } from "effect";
-import { setSessionFastMode } from "../application/application";
+import {
+  setProjectSessionLabelsIfUnlabelled,
+  setSessionFastMode,
+} from "../application/application";
 import { encodeCrossSessionMessage } from "../conversations/cross-session-coordination";
 import type { ProjectSessionLocation } from "./project-session-data";
 import { makeSubagentControl } from "../subagents/subagentControl";
-import { generateSessionTitle, utilityModelSelection } from "../utility-work/utilityWork";
+import {
+  generateSessionTitle,
+  selectInitialSessionLabels,
+  utilityModelSelection,
+} from "../utility-work/utilityWork";
 import { Electron } from "../../services/electron/Electron";
 import type { PiModels } from "../../services/pi/PiModels";
 import { PiSessions, type PiSessionAcquireOptions } from "../../services/pi/PiSessions";
@@ -226,6 +233,32 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
           }),
           { signal },
         ),
+      autoLabelSession: async ({ utilityModel, firstUserMessage, signal }) => {
+        const state = application.snapshot();
+        const project = state.projects.find((candidate) => candidate.path === location.projectPath);
+        const workflow = project?.workflow;
+        if (
+          !project ||
+          workflow?.assignments.some(
+            (assignment) => assignment.sessionId === sessionId && assignment.labelIds.length > 0,
+          )
+        )
+          return;
+        const labels = [...state.globalSessionLabels, ...(workflow?.labels ?? [])];
+        const labelIds = await run(
+          selectInitialSessionLabels({
+            selection: utilityModelSelection(utilityModel),
+            firstUserMessage,
+            labels,
+          }),
+          { signal },
+        );
+        if (labelIds.length > 0)
+          await run(
+            setProjectSessionLabelsIfUnlabelled(location.projectPath, sessionId, labelIds),
+            { signal },
+          );
+      },
       modelPresets,
       fastMode: {
         get: () => application.snapshot().fastModeSessionIds.includes(sessionId),

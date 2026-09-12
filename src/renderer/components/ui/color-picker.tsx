@@ -1,14 +1,14 @@
 import {
-  WORKFLOW_STATUS_COLORS,
-  type WorkflowStatusColor,
+  SESSION_LABEL_COLORS,
+  type SessionLabelColor,
 } from "../../../domain/application/application-data";
 import { cn } from "../../lib/utils";
 import { Button } from "./button";
-import { StatusSwatch } from "./status-swatch";
+import { LabelSwatch } from "./label-swatch";
 
 export interface ColorPickerProps {
-  value: WorkflowStatusColor;
-  onChange(value: WorkflowStatusColor): void;
+  value: SessionLabelColor;
+  onChange(value: SessionLabelColor): void;
   disabled?: boolean;
   label?: string;
 }
@@ -21,7 +21,7 @@ export function ColorPicker({
 }: ColorPickerProps) {
   return (
     <div className="grid grid-cols-8 gap-1.5" role="radiogroup" aria-label={label}>
-      {WORKFLOW_STATUS_COLORS.map((color) => (
+      {SESSION_LABEL_COLORS.map((color) => (
         <Button
           key={color}
           type="button"
@@ -34,7 +34,7 @@ export function ColorPicker({
           disabled={disabled}
           onClick={() => onChange(color)}
         >
-          <StatusSwatch color={color} className="size-3.5" />
+          <LabelSwatch color={color} className="size-3.5" />
         </Button>
       ))}
     </div>

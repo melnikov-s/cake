@@ -77,14 +77,14 @@ test("restores, edits, resolves, and activates a project draft session", async (
     await expect(page.getByRole("button", { name: "Activate draft" })).toBeVisible();
     const draftStatus = page.locator('[data-slot="composer-leading-accessory"]');
     const draftStatusPicker = draftStatus.getByRole("button", {
-      name: "Change session status. Current status: Unlabelled",
+      name: "Change session labels. Current labels: Unlabelled",
     });
     await expect(draftStatusPicker).toBeVisible();
     await draftStatusPicker.click();
-    await page.getByRole("radio", { name: "Feature" }).click();
+    await page.getByRole("checkbox", { name: "Feature" }).click();
     await expect(
       draftStatus.getByRole("button", {
-        name: "Change session status. Current status: Feature",
+        name: "Change session labels. Current labels: Feature",
       }),
     ).toBeVisible();
     const draftToolbar = page.locator('[data-slot="composer-toolbar"]');
@@ -137,13 +137,13 @@ test("restores, edits, resolves, and activates a project draft session", async (
     await expect(
       page.locator('[data-slot="message-content"]', { hasText: "Edited plan" }),
     ).toBeVisible();
-    // The session avatar and status picker persist beside the composer after activation.
+    // The session avatar and label picker persist beside the composer after activation.
     await expect(draftStatus).toHaveCSS("opacity", "1");
     await expect(draftStatus).not.toHaveAttribute("inert");
     await expect(draftStatus).toHaveAttribute("aria-hidden", "false");
     await expect(
       draftStatus.getByRole("button", {
-        name: "Change session status. Current status: Feature",
+        name: "Change session labels. Current labels: Feature",
       }),
     ).toBeEnabled();
     await expect
@@ -151,12 +151,12 @@ test("restores, edits, resolves, and activates a project draft session", async (
         const stored = JSON.parse(await readFile(applicationDocument, "utf8"));
         const state = stored.data ?? stored;
         const workflow = state.projects[0].workflow;
-        const feature = state.globalWorkflowStatuses.find(
+        const feature = state.globalSessionLabels.find(
           (status: { name: string }) => status.name === "Feature",
         );
         return workflow.assignments.some(
-          (assignment: { sessionId: string; statusId: string }) =>
-            assignment.sessionId === sessionId && assignment.statusId === feature?.id,
+          (assignment: { sessionId: string; labelIds: string[] }) =>
+            assignment.sessionId === sessionId && assignment.labelIds[0] === feature?.id,
         );
       })
       .toBe(true);

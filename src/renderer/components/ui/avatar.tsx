@@ -7,9 +7,9 @@ import {
   interactWithSessionAvatar,
   materializeSessionAvatar,
 } from "../../lib/animate-session-avatar";
-import type { WorkflowStatusColor } from "../../../domain/application/application-data";
+import type { SessionLabelColor } from "../../../domain/application/application-data";
 import { cn } from "../../lib/utils";
-import { workflowStatusPalette } from "../../../utils/workflow-status-palette";
+import { mergedSessionLabelColor } from "../../../utils/session-label-color";
 
 const styles = {
   project: new Style(sliceDefinition),
@@ -21,7 +21,7 @@ const sessionBodyPlaceholder = "#abcdef";
 export interface AvatarProps extends HTMLAttributes<HTMLSpanElement> {
   kind: "project" | "session";
   seed: string;
-  statusColor?: WorkflowStatusColor;
+  labelColors?: readonly SessionLabelColor[];
   animated?: boolean;
   /** Opt-in row feedback instead of idle animation; activationTarget is a NavItem. */
   interaction?: {
@@ -34,7 +34,7 @@ export interface AvatarProps extends HTMLAttributes<HTMLSpanElement> {
 export function Avatar({
   kind,
   seed,
-  statusColor,
+  labelColors,
   animated = false,
   interaction,
   className,
@@ -97,12 +97,12 @@ export function Avatar({
       className={cn(
         "inline-grid size-5 shrink-0 place-items-center [&_svg]:size-full",
         kind === "session" &&
-          (statusColor
-            ? "text-[attr(data-workflow-status-color_type(<color>))]"
+          (labelColors?.length
+            ? "text-[attr(data-session-label-color_type(<color>))]"
             : "text-muted-foreground"),
         className,
       )}
-      data-workflow-status-color={statusColor ? workflowStatusPalette[statusColor] : undefined}
+      data-session-label-color={mergedSessionLabelColor(labelColors ?? [])}
       {...props}
     >
       {"uri" in avatar ? (

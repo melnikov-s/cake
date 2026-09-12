@@ -202,11 +202,11 @@ export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsSto
     await this.props.persistNow();
   }
 
-  async setWorkflowStatus(sessionId: string, statusId?: string) {
+  async setLabels(sessionId: string, labelIds: readonly string[]) {
     const conversation = this.conversation(sessionId);
     if (!conversation || !this.isTemporary(sessionId))
       throw new Error("Cake could not find that pending session");
-    conversation.setWorkflowStatus(statusId);
+    conversation.setLabels(labelIds);
     await this.props.persistNow();
   }
 

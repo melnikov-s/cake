@@ -188,7 +188,7 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
               paneNumber={chat.paneNumber?.(session.sessionId)}
               resolved={resolved}
               activity={store.sessionActivityForDisplay(session)}
-              workflowStatus={store.sessionWorkflowStatus(session.sessionId)}
+              labels={store.sessionLabels(session.sessionId)}
               avatarSeed={store.sessionAvatarSeed(session.sessionId)}
               avatarsEnabled={appearance.sessionAvatarsEnabled}
               focusMode={focusMode}
@@ -201,8 +201,8 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
               onResolve={(sessionId, nextResolved) =>
                 void store.setSessionResolved(sessionId, nextResolved)
               }
-              onSetStatus={(sessionId, statusId) =>
-                void store.setSessionWorkflowStatus(sessionId, statusId)
+              onSetLabels={(sessionId, labelIds) =>
+                void store.setSessionLabels(sessionId, labelIds)
               }
               onDelete={(sessionId) => void store.deleteSession(sessionId)}
               onMarkUnread={(sessionId, unread) => void store.setSessionUnread(sessionId, unread)}

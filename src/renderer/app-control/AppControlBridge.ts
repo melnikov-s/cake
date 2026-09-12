@@ -30,10 +30,10 @@ import {
   CakeSettingsUpdateInput,
 } from "../../domain/application/cake-settings-schema";
 import {
-  WorkflowStatusColor,
+  SessionLabelColor,
   type ProjectSettings,
-  type WorkflowStatus,
-  type WorkflowStatusMutation,
+  type SessionLabel,
+  type SessionLabelMutation,
 } from "../../domain/application/application-data";
 import {
   CurrentProjectSettingsGetInput,
@@ -153,23 +153,30 @@ const appControlArgumentSchemas = {
     ...sessionIdTargetSchema.fields,
     title: trimmed(1, SESSION_TITLE_MAX_LENGTH),
   }),
-  "sessions.set-label": Schema.Struct({
+  "sessions.set-labels": Schema.Struct({
     ...sessionIdTargetSchema.fields,
-    labelId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
+    labelIds: Schema.Array(Schema.String.check(Schema.isUUID(4))).check(
+      Schema.isMaxLength(100),
+      Schema.isUnique(),
+    ),
   }),
   "session-labels.list": emptyArgumentsSchema,
   "session-labels.add": Schema.Struct({
     name: trimmed(1, 40),
-    color: WorkflowStatusColor,
+    color: SessionLabelColor,
     projectPath: Schema.optionalKey(bounded(1, 4_096)),
   }),
   "session-labels.update": Schema.Struct({
     labelId: Schema.String.check(Schema.isUUID(4)),
     name: Schema.optionalKey(trimmed(1, 40)),
-    color: Schema.optionalKey(WorkflowStatusColor),
+    color: Schema.optionalKey(SessionLabelColor),
   }),
   "session-labels.remove": Schema.Struct({
     labelId: Schema.String.check(Schema.isUUID(4)),
+  }),
+  "session-labels.reorder": Schema.Struct({
+    labelId: Schema.String.check(Schema.isUUID(4)),
+    index: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0), Schema.isLessThanOrEqualTo(99)),
   }),
   "sessions.resolve": sessionResolutionSchema,
   "worktrees.merge": Schema.Struct({
@@ -230,11 +237,12 @@ const appControlInvocationSchema = Schema.Union([
   invocation("sessions.dequeue"),
   invocation("sessions.abort"),
   invocation("sessions.rename"),
-  invocation("sessions.set-label"),
+  invocation("sessions.set-labels"),
   invocation("session-labels.list"),
   invocation("session-labels.add"),
   invocation("session-labels.update"),
   invocation("session-labels.remove"),
+  invocation("session-labels.reorder"),
   invocation("sessions.resolve"),
   invocation("worktrees.merge"),
   invocation("worktrees.discard"),
@@ -335,7 +343,7 @@ export interface AppControlHost {
     cakeChatSessions(): readonly CakeChatSummary[];
     sessionActivity(sessionId: string): SessionActivity | undefined;
     managedWorktree(workingDirectory: string): WorktreeRecord | undefined;
-    globalSessionLabels(): readonly WorkflowStatus[];
+    globalSessionLabels(): readonly SessionLabel[];
   };
   settings: {
     get(section: CakeSettingsSectionId): CakeSettingsSectionView;
@@ -346,8 +354,8 @@ export interface AppControlHost {
     update(projectPath: string, changes: ProjectSettingsChanges): Promise<ProjectSettings>;
   };
   sessionLabels: {
-    mutate(scope: { projectPath?: string }, mutation: WorkflowStatusMutation): Promise<void>;
-    setSessionLabel(sessionId: string, labelId?: string): Promise<boolean>;
+    mutate(scope: { projectPath?: string }, mutation: SessionLabelMutation): Promise<void>;
+    setSessionLabels(sessionId: string, labelIds: readonly string[]): Promise<boolean>;
   };
   worktrees?: {
     merge(input: { sessionId: string; workingDirectory: string }): Promise<string>;
@@ -430,10 +438,10 @@ export interface AppControlSession {
   familyChildOrder?: number;
   familyDepth?: number;
   activity?: SessionActivity;
-  label?: AppControlSessionLabel;
+  labels?: readonly AppControlSessionLabel[];
 }
 
-export interface AppControlSessionLabel extends WorkflowStatus {
+export interface AppControlSessionLabel extends SessionLabel {
   scope: "global" | "project";
   projectPath?: string;
 }
@@ -557,9 +565,9 @@ export type AppControlResult =
   | { ok: true; command: "sessions.rename"; target: SessionTarget; title: string }
   | {
       ok: true;
-      command: "sessions.set-label";
+      command: "sessions.set-labels";
       target: SessionTarget;
-      label?: AppControlSessionLabel;
+      labels: AppControlSessionLabel[];
     }
   | { ok: true; command: "session-labels.list"; labels: AppControlSessionLabel[] }
   | {
@@ -567,7 +575,11 @@ export type AppControlResult =
       command: "session-labels.add" | "session-labels.update";
       label: AppControlSessionLabel;
     }
-  | { ok: true; command: "session-labels.remove"; label: AppControlSessionLabel }
+  | {
+      ok: true;
+      command: "session-labels.remove" | "session-labels.reorder";
+      label: AppControlSessionLabel;
+    }
   | {
       ok: true;
       command: "worktrees.merge";
@@ -816,20 +828,23 @@ const modelControlOperations = [
   ),
   {
     ...operation(
-      "sessions.set-label",
+      "sessions.set-labels",
       "sessions",
-      "Assign a session label to one Project Session, or clear its label.",
-      appControlArgumentSchemas["sessions.set-label"],
+      "Replace the ordered labels on one Project Session. The first label is primary.",
+      appControlArgumentSchemas["sessions.set-labels"],
     ),
     guidance: [
       "Call session-labels.list to discover label IDs available to the target session.",
-      "Omit labelId to clear the session's current label.",
+      "Pass an empty labelIds array to clear all labels.",
     ],
     examples: [
       {
-        input: { sessionId: "target-session-id", labelId: "00000000-0000-4000-8000-000000000001" },
+        input: {
+          sessionId: "target-session-id",
+          labelIds: ["00000000-0000-4000-8000-000000000001"],
+        },
       },
-      { input: { sessionId: "target-session-id" }, description: "Clear the session label." },
+      { input: { sessionId: "target-session-id", labelIds: [] }, description: "Clear all labels." },
     ],
   },
   operation(
@@ -865,6 +880,12 @@ const modelControlOperations = [
     "session-labels",
     "Remove a session label and clear it from every session that uses it.",
     appControlArgumentSchemas["session-labels.remove"],
+  ),
+  operation(
+    "session-labels.reorder",
+    "session-labels",
+    "Move a global or project-specific label to a new zero-based position.",
+    appControlArgumentSchemas["session-labels.reorder"],
   ),
   operation(
     "notifications.send",
@@ -991,14 +1012,14 @@ export class AppControlBridge {
         !this.host.state.projects().some((project) => project.path === projectPath)
       )
         return { ok: false, command, error: "Cake could not find that project." };
-      const label: WorkflowStatus = {
+      const label: SessionLabel = {
         id: crypto.randomUUID(),
         name: invocation.arguments.name,
         color: invocation.arguments.color,
       };
       await this.host.sessionLabels.mutate(projectPath ? { projectPath } : {}, {
-        _tag: "AddColumn",
-        column: label,
+        _tag: "AddLabel",
+        label,
       });
       return {
         ok: true,
@@ -1010,14 +1031,22 @@ export class AppControlBridge {
     }
     if (
       invocation.name === "session-labels.update" ||
-      invocation.name === "session-labels.remove"
+      invocation.name === "session-labels.remove" ||
+      invocation.name === "session-labels.reorder"
     ) {
       const label = this.sessionLabels().find((item) => item.id === invocation.arguments.labelId);
       if (!label) return { ok: false, command, error: "Cake could not find that session label." };
       if (invocation.name === "session-labels.remove") {
         await this.host.sessionLabels.mutate(
           label.scope === "project" ? { projectPath: label.projectPath } : {},
-          { _tag: "DeleteColumn", columnId: label.id },
+          { _tag: "DeleteLabel", labelId: label.id },
+        );
+        return { ok: true, command: invocation.name, label };
+      }
+      if (invocation.name === "session-labels.reorder") {
+        await this.host.sessionLabels.mutate(
+          label.scope === "project" ? { projectPath: label.projectPath } : {},
+          { _tag: "MoveLabel", labelId: label.id, index: invocation.arguments.index },
         );
         return { ok: true, command: invocation.name, label };
       }
@@ -1026,8 +1055,8 @@ export class AppControlBridge {
       await this.host.sessionLabels.mutate(
         label.scope === "project" ? { projectPath: label.projectPath } : {},
         {
-          _tag: "UpdateColumn",
-          columnId: label.id,
+          _tag: "UpdateLabel",
+          labelId: label.id,
           ...(invocation.arguments.name ? { name: invocation.arguments.name } : null),
           ...(invocation.arguments.color ? { color: invocation.arguments.color } : null),
         },
@@ -1286,19 +1315,23 @@ export class AppControlBridge {
         thread,
       );
     }
-    if (invocation.name === "sessions.set-label") {
-      const label = invocation.arguments.labelId
-        ? this.sessionLabels().find((item) => item.id === invocation.arguments.labelId)
-        : undefined;
-      if (invocation.arguments.labelId && !label)
-        return { ok: false, command, error: "Cake could not find that session label." };
-      if (label?.scope === "project" && label.projectPath !== known.projectPath)
-        return { ok: false, command, error: "That label belongs to a different Project." };
-      if (!(await this.host.sessionLabels.setSessionLabel(sessionId, label?.id)))
-        return { ok: false, command, error: "Cake could not update that session label." };
-      return label
-        ? { ok: true, command: invocation.name, target, label }
-        : { ok: true, command: invocation.name, target };
+    if (invocation.name === "sessions.set-labels") {
+      const available = this.sessionLabels();
+      const labels = invocation.arguments.labelIds.flatMap((labelId) => {
+        const label = available.find((item) => item.id === labelId);
+        return label ? [label] : [];
+      });
+      if (labels.length !== invocation.arguments.labelIds.length)
+        return { ok: false, command, error: "Cake could not find a selected session label." };
+      if (
+        labels.some((label) => label.scope === "project" && label.projectPath !== known.projectPath)
+      )
+        return { ok: false, command, error: "A selected label belongs to a different Project." };
+      if (
+        !(await this.host.sessionLabels.setSessionLabels(sessionId, invocation.arguments.labelIds))
+      )
+        return { ok: false, command, error: "Cake could not update those session labels." };
+      return { ok: true, command: invocation.name, target, labels };
     }
     if (invocation.name === "sessions.compact") {
       await this.host.sessions.compact(sessionId, invocation.arguments.instructions);
@@ -1601,11 +1634,12 @@ export class AppControlBridge {
         ...projectTarget(result.target.sessionId),
         coalesceKey: `rename:${result.target.sessionId}`,
       };
-    if (result.command === "sessions.set-label")
+    if (result.command === "sessions.set-labels")
       return {
-        message: result.label
-          ? `Labelled “${projectTitle(result.target.sessionId)}” as ${result.label.name}`
-          : `Cleared the label from “${projectTitle(result.target.sessionId)}”`,
+        message:
+          result.labels.length > 0
+            ? `Labelled “${projectTitle(result.target.sessionId)}” as ${result.labels.map((label) => label.name).join(", ")}`
+            : `Cleared the labels from “${projectTitle(result.target.sessionId)}”`,
         ...projectTarget(result.target.sessionId),
         coalesceKey: `label:${result.target.sessionId}`,
       };
@@ -1623,6 +1657,11 @@ export class AppControlBridge {
       return {
         message: `Removed session label “${result.label.name}”`,
         coalesceKey: `label:remove:${result.label.id}`,
+      };
+    if (result.command === "session-labels.reorder")
+      return {
+        message: `Reordered session label “${result.label.name}”`,
+        coalesceKey: `label:reorder:${result.label.id}`,
       };
     if (result.command === "sessions.resolve") {
       const target = result.targets.length === 1 ? result.targets[0] : undefined;
@@ -1665,7 +1704,7 @@ export class AppControlBridge {
         scope: "global" as const,
       })),
       ...this.host.state.projects().flatMap((project) =>
-        (project.workflow?.columns ?? []).map((label) => ({
+        (project.workflow?.labels ?? []).map((label) => ({
           ...label,
           scope: "project" as const,
           projectPath: project.path,
@@ -1745,17 +1784,20 @@ export class AppControlBridge {
         }
       : resultWithWorktree;
     const project = this.host.state.projects().find((item) => item.path === session.projectPath);
-    const labelId = project?.workflow?.assignments.find(
-      (assignment) => assignment.sessionId === session.sessionId,
-    )?.statusId;
-    const label = labelId
-      ? this.sessionLabels().find(
-          (item) =>
-            item.id === labelId && (item.scope === "global" || item.projectPath === project?.path),
-        )
-      : undefined;
-    const resultWithLabel = label ? { ...resultWithFamily, label } : resultWithFamily;
-    return activity ? { ...resultWithLabel, activity } : resultWithLabel;
+    const labelIds =
+      project?.workflow?.assignments.find(
+        (assignment) => assignment.sessionId === session.sessionId,
+      )?.labelIds ?? [];
+    const available = this.sessionLabels();
+    const labels = labelIds.flatMap((labelId) => {
+      const label = available.find(
+        (item) =>
+          item.id === labelId && (item.scope === "global" || item.projectPath === project?.path),
+      );
+      return label ? [label] : [];
+    });
+    const resultWithLabels = labels.length > 0 ? { ...resultWithFamily, labels } : resultWithFamily;
+    return activity ? { ...resultWithLabels, activity } : resultWithLabels;
   }
 }
 

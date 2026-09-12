@@ -20,7 +20,7 @@ import {
   CurrentProjectSettingsGetInput,
   CurrentProjectSettingsUpdateInput,
 } from "../../../domain/application/project-settings-schema";
-import { WorkflowStatusColor } from "../../../domain/application/application-data";
+import { SessionLabelColor } from "../../../domain/application/application-data";
 import { jsonObjectSchema, type JsonObject, type JsonValue } from "../../../ipc/json-contract";
 import { SESSION_TITLE_MAX_LENGTH } from "../../../ipc/session-contract";
 import { artifactRecordSchema, type CakeArtifactV1 } from "../../../ipc/artifact-contract";
@@ -831,28 +831,34 @@ export async function createCakeRuntimeCapabilities(input: {
         execute: invokeAppControl("sessions.rename"),
       },
       {
-        command: "sessions.set-label",
+        command: "sessions.set-labels",
         topic: "sessions",
-        summary: "Assign a session label to one Project Session, or clear its label.",
+        summary: "Replace the ordered labels on one Project Session. The first label is primary.",
         guidance: [
           "Call session-labels.list to discover label IDs available to the target session.",
-          "Omit labelId to clear the session's current label.",
+          "Pass an empty labelIds array to clear all labels.",
         ],
         inputSchema: Schema.Struct({
           sessionId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
-          labelId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
+          labelIds: Schema.Array(Schema.String.check(Schema.isUUID(4))).check(
+            Schema.isMaxLength(100),
+            Schema.isUnique(),
+          ),
         }),
         examples: [
           {
             input: {
               sessionId: "target-session-id",
-              labelId: "00000000-0000-4000-8000-000000000001",
+              labelIds: ["00000000-0000-4000-8000-000000000001"],
             },
           },
-          { input: { sessionId: "target-session-id" }, description: "Clear the session label." },
+          {
+            input: { sessionId: "target-session-id", labelIds: [] },
+            description: "Clear all labels.",
+          },
         ],
-        result: "The target session and its committed label, or confirmation that it was cleared.",
-        execute: invokeAppControl("sessions.set-label"),
+        result: "The target session and its committed ordered labels.",
+        execute: invokeAppControl("sessions.set-labels"),
       },
       {
         command: "session-labels.list",
@@ -871,7 +877,7 @@ export async function createCakeRuntimeCapabilities(input: {
         guidance: ["Omit projectPath to create a global label available in every Project."],
         inputSchema: Schema.Struct({
           name: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(40))),
-          color: WorkflowStatusColor,
+          color: SessionLabelColor,
           projectPath: Schema.optionalKey(
             Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4_096)),
           ),
@@ -898,7 +904,7 @@ export async function createCakeRuntimeCapabilities(input: {
           name: Schema.optionalKey(
             Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(40))),
           ),
-          color: Schema.optionalKey(WorkflowStatusColor),
+          color: Schema.optionalKey(SessionLabelColor),
         }),
         examples: [
           {
@@ -920,6 +926,18 @@ export async function createCakeRuntimeCapabilities(input: {
         examples: [{ input: { labelId: "00000000-0000-4000-8000-000000000001" } }],
         result: "The removed session label and its former scope.",
         execute: invokeAppControl("session-labels.remove"),
+      },
+      {
+        command: "session-labels.reorder",
+        topic: "session-labels",
+        summary: "Move a global or project-specific label to a new zero-based position.",
+        inputSchema: Schema.Struct({
+          labelId: Schema.String.check(Schema.isUUID(4)),
+          index: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0), Schema.isLessThanOrEqualTo(99)),
+        }),
+        examples: [{ input: { labelId: "00000000-0000-4000-8000-000000000001", index: 0 } }],
+        result: "The reordered session label and its scope.",
+        execute: invokeAppControl("session-labels.reorder"),
       },
       {
         command: "sessions.reply",

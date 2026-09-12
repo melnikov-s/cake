@@ -11,7 +11,7 @@ import {
   repairedInlineWidgetSchema,
 } from "./inline-widget-contract";
 import { jsonValueSchema } from "./json-contract";
-import { ProjectSettings, WorkflowStatusColor } from "../domain/application/application-data";
+import { ProjectSettings } from "../domain/application/application-data";
 import { ProjectSessionControlRequest } from "../domain/project-sessions/project-session-data";
 import {
   applicationStateSchema,
@@ -300,18 +300,6 @@ export const cakeRpcPayloadSchemas = {
     draft: Schema.Boolean,
     unread: Schema.optional(Schema.Boolean),
     familyChild: Schema.optional(Schema.Boolean),
-    workflow: Schema.optionalKey(
-      Schema.Struct({
-        currentStatus: bounded(1, 256),
-        statuses: Schema.Array(
-          Schema.Struct({
-            id: bounded(1, 256),
-            name: bounded(1, 40),
-            color: WorkflowStatusColor,
-          }),
-        ).check(Schema.isMaxLength(40)),
-      }),
-    ),
   }),
   "show-project-context-menu": Schema.Struct({
     path: bounded(1, 4_096),
@@ -536,9 +524,8 @@ const cakeRpcResultSchemas = {
   }),
   "session-context-menu-closed": Schema.Struct({
     action: Schema.optional(
-      Schema.Literals(["rename", "mark-unread", "resolve", "unresolve", "set-status", "delete"]),
+      Schema.Literals(["rename", "mark-unread", "resolve", "unresolve", "delete"]),
     ),
-    statusId: Schema.optionalKey(bounded(1, 256)),
   }),
   "project-context-menu-closed": Schema.Struct({
     action: Schema.optional(

@@ -2,31 +2,37 @@ import { createStore } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
 import { defaultApplicationState } from "../../../../src/domain/application/application-data";
 import type { Client } from "../../../../src/renderer/client/Client";
-import { GlobalStatusSettingsStore } from "../../../../src/renderer/stores/GlobalStatusSettingsStore";
+import { GlobalLabelSettingsStore } from "../../../../src/renderer/stores/GlobalLabelSettingsStore";
 import { mountWithClient } from "../mount-with-client";
 
-describe("GlobalStatusSettingsStore", () => {
-  it("projects global statuses and sends global mutations", async () => {
+describe("GlobalLabelSettingsStore", () => {
+  it("projects global labels and sends global mutations", async () => {
     const mutateGlobal = vi.fn(async () => []);
-    const { root, subject } = mountWithClient(createStore(GlobalStatusSettingsStore), {
+    const { root, subject } = mountWithClient(createStore(GlobalLabelSettingsStore), {
       projectWorkflow: { mutateGlobal },
     } as unknown as Client);
     const state = defaultApplicationState();
 
     subject.applyApplicationState(1, state);
-    expect(subject.statuses.map((status) => status.name)).toEqual([
+    expect(subject.labels.map((status) => status.name)).toEqual([
       "Feature",
       "Bug",
-      "Research",
-      "Chore",
+      "Maintenance",
+      "Architecture",
+      "UI",
+      "Data",
+      "Infrastructure",
+      "Documentation",
+      "Testing",
+      "Tooling",
     ]);
 
-    await expect(subject.addStatus("In review", "cyan")).resolves.toBe(true);
+    await expect(subject.addLabel("In review", "cyan")).resolves.toBe(true);
     expect(mutateGlobal).toHaveBeenCalledWith(
       {
         mutation: {
-          _tag: "AddColumn",
-          column: {
+          _tag: "AddLabel",
+          label: {
             id: expect.any(String),
             name: "In review",
             color: "cyan",

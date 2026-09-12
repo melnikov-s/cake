@@ -71,13 +71,7 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
           "electron.show-session-context-menu",
           (client) => client.electron["show-session-context-menu"]({ ...input }),
           options,
-        ).then((response) => {
-          if (!response.action) return undefined;
-          if (response.action !== "set-status") return { action: response.action };
-          return response.statusId
-            ? { action: response.action, statusId: response.statusId }
-            : undefined;
-        }),
+        ).then((response) => (response.action ? { action: response.action } : undefined)),
       showProjectContextMenu: (input, options) =>
         execute(
           "electron.show-project-context-menu",

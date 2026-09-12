@@ -2,10 +2,9 @@ import { Store, observable } from "r-state-tree";
 import {
   defaultProjectSettings,
   type ProjectSettings,
-  type WorkflowStatusColor,
-  type WorkflowStatus,
-  type WorkflowStatusMutation,
-  validateWorkflowStatusName,
+  type SessionLabelColor,
+  type SessionLabelMutation,
+  validateSessionLabelName,
 } from "../../domain/application/application-data";
 import { ClientContext } from "./context/ClientContext";
 import { describeError } from "../lib/error-details";
@@ -14,15 +13,14 @@ import type { ProjectCatalogStore } from "./ProjectCatalogStore";
 /** Owns the project-settings dialog draft and its serialized save workflow. */
 export class ProjectSettingsStore extends Store<{
   projects: ProjectCatalogStore;
-  globalStatuses(): ReadonlyArray<WorkflowStatus>;
 }> {
   projectPath: string | undefined;
   worktreeCreateCommand = "";
   worktreeSetupCommands = "";
   worktreeSetupInstructions = "";
   saving = false;
-  addingStatus = false;
-  private readonly pendingStatusIds = observable(new Set<string>());
+  addingLabel = false;
+  private readonly pendingLabelIds = observable(new Set<string>());
   error: string | undefined;
 
   get client() {
@@ -37,14 +35,14 @@ export class ProjectSettingsStore extends Store<{
     return Boolean(this.projectPath && this.worktreeCreateCommand.trim() && !this.saving);
   }
 
-  get statuses() {
+  get labels() {
     return this.projectPath
-      ? (this.props.projects.find(this.projectPath)?.workflow.columns ?? [])
+      ? (this.props.projects.find(this.projectPath)?.workflow.labels ?? [])
       : [];
   }
 
-  statusPending(statusId: string) {
-    return this.pendingStatusIds.has(statusId);
+  labelPending(labelId: string) {
+    return this.pendingLabelIds.has(labelId);
   }
 
   open(projectPath: string) {
@@ -81,62 +79,56 @@ export class ProjectSettingsStore extends Store<{
     this.error = undefined;
   }
 
-  async addStatus(name: string, color: WorkflowStatusColor) {
-    const validation = validateWorkflowStatusName(
-      { columns: [...this.props.globalStatuses(), ...this.statuses] },
-      name,
-    );
-    if (!validation.ok || !this.projectPath || this.addingStatus) {
+  async addLabel(name: string, color: SessionLabelColor) {
+    const validation = validateSessionLabelName(name);
+    if (!validation.ok || !this.projectPath || this.addingLabel) {
       if (!validation.ok) this.error = validation.message;
       return false;
     }
-    this.addingStatus = true;
+    this.addingLabel = true;
     try {
-      return await this.mutateStatus({
-        _tag: "AddColumn",
-        column: { id: crypto.randomUUID(), name: validation.name, color },
+      return await this.mutateLabel({
+        _tag: "AddLabel",
+        label: { id: crypto.randomUUID(), name: validation.name, color },
       });
     } finally {
-      this.addingStatus = false;
+      this.addingLabel = false;
     }
   }
 
-  async updateStatus(statusId: string, input: { name?: string; color?: WorkflowStatusColor }) {
-    const validation =
-      input.name === undefined
-        ? undefined
-        : validateWorkflowStatusName(
-            { columns: [...this.props.globalStatuses(), ...this.statuses] },
-            input.name,
-            statusId,
-          );
+  async updateLabel(labelId: string, input: { name?: string; color?: SessionLabelColor }) {
+    const validation = input.name === undefined ? undefined : validateSessionLabelName(input.name);
     if (validation && !validation.ok) {
       this.error = validation.message;
       return false;
     }
-    return this.mutatePendingStatus(statusId, {
-      _tag: "UpdateColumn",
-      columnId: statusId,
+    return this.mutatePendingLabel(labelId, {
+      _tag: "UpdateLabel",
+      labelId: labelId,
       ...(validation ? { name: validation.name } : undefined),
       ...(input.color ? { color: input.color } : undefined),
     });
   }
 
-  deleteStatus(statusId: string) {
-    return this.mutatePendingStatus(statusId, { _tag: "DeleteColumn", columnId: statusId });
+  moveLabel(labelId: string, index: number) {
+    return this.mutatePendingLabel(labelId, { _tag: "MoveLabel", labelId, index });
   }
 
-  private async mutatePendingStatus(statusId: string, mutation: WorkflowStatusMutation) {
-    if (this.pendingStatusIds.has(statusId)) return false;
-    this.pendingStatusIds.add(statusId);
+  deleteLabel(labelId: string) {
+    return this.mutatePendingLabel(labelId, { _tag: "DeleteLabel", labelId });
+  }
+
+  private async mutatePendingLabel(labelId: string, mutation: SessionLabelMutation) {
+    if (this.pendingLabelIds.has(labelId)) return false;
+    this.pendingLabelIds.add(labelId);
     try {
-      return await this.mutateStatus(mutation);
+      return await this.mutateLabel(mutation);
     } finally {
-      this.pendingStatusIds.delete(statusId);
+      this.pendingLabelIds.delete(labelId);
     }
   }
 
-  private async mutateStatus(mutation: WorkflowStatusMutation) {
+  private async mutateLabel(mutation: SessionLabelMutation) {
     if (!this.projectPath || this.signal.aborted) return false;
     this.error = undefined;
     try {

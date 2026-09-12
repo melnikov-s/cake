@@ -41,7 +41,7 @@ function mountWorkbench(
         nameForPath: (path: string) => path.split("/").at(-1) ?? path,
         recordOpened: vi.fn(),
       } as unknown as ProjectCatalogStore,
-      globalStatuses: () => [],
+      globalLabels: () => [],
       reviews: () =>
         ({
           codeThreadsForSession: () => [],

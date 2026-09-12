@@ -9,6 +9,7 @@ import {
   normalizeSessionTitle,
   normalizeWorktreeName,
   rewordSelection,
+  selectInitialSessionLabels,
 } from "../../../src/domain/utility-work/utilityWork";
 import {
   makePiModelsLayer,
@@ -71,6 +72,36 @@ describe("utility work", () => {
       assert.match(received.context, /Add a user-configured utility model/);
       assert.equal(received.maximumOutputCharacters, 80);
       assert.equal(received.timeoutMs, 15_000);
+    }),
+  );
+
+  it.effect("selects at most three existing labels from only the user request", () =>
+    Effect.gen(function* () {
+      let received: BoundedCompletionInput | undefined;
+      const labels = [
+        { id: "00000000-0000-4000-8000-000000000001", name: "Feature", color: "blue" as const },
+        { id: "00000000-0000-4000-8000-000000000002", name: "UI", color: "pink" as const },
+        { id: "00000000-0000-4000-8000-000000000003", name: "Testing", color: "green" as const },
+        { id: "00000000-0000-4000-8000-000000000004", name: "Tooling", color: "indigo" as const },
+      ];
+      const selected = yield* run(
+        selectInitialSessionLabels({
+          selection,
+          firstUserMessage: "Build a new multi-select label picker.",
+          labels,
+        }),
+        (input) =>
+          Effect.sync(() => {
+            received = input;
+            return JSON.stringify([labels[1]!.id, labels[0]!.id, labels[2]!.id, labels[3]!.id]);
+          }),
+      );
+
+      assert.deepEqual(selected, [labels[1]!.id, labels[0]!.id, labels[2]!.id]);
+      assert.ok(received);
+      assert.match(received.context, /multi-select label picker/);
+      assert.doesNotMatch(received.context, /color/);
+      assert.match(received.instructions, /Do not create labels/);
     }),
   );
 

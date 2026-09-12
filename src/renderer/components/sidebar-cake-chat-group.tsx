@@ -95,6 +95,7 @@ export const SidebarCakeChatGroup = observer(function SidebarCakeChatGroup({
                 selected={selected}
                 resolved={resolved}
                 activity={running ? "running" : undefined}
+                labels={[]}
                 avatarSeed={session.sessionId}
                 avatarsEnabled={false}
                 onOpen={onOpenCakeChat}

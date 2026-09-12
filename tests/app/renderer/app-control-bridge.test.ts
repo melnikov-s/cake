@@ -80,7 +80,7 @@ function createHost(overrides: AppControlHostOverrides = {}): AppControlHost {
       overrides.sessionLabels ??
       ({
         mutate: async () => undefined,
-        setSessionLabel: async () => true,
+        setSessionLabels: async () => true,
       } satisfies AppControlHost["sessionLabels"]),
     ...(overrides.worktrees ? { worktrees: overrides.worktrees } : null),
     sessions: {
@@ -139,7 +139,7 @@ describe("AppControlBridge", () => {
     expect(target.tools.some((tool) => tool.command === "projects.settings.update")).toBe(true);
     expect(target.tools.some((tool) => tool.command === "project.settings.get")).toBe(false);
     expect(target.tools.some((tool) => tool.command === "sessions.rename")).toBe(true);
-    expect(target.tools.some((tool) => tool.command === "sessions.set-label")).toBe(true);
+    expect(target.tools.some((tool) => tool.command === "sessions.set-labels")).toBe(true);
     expect(target.tools.some((tool) => tool.command === "session-labels.add")).toBe(true);
     expect(target.tools.some((tool) => tool.command === "session-labels.update")).toBe(true);
     expect(target.tools.some((tool) => tool.command === "session-labels.remove")).toBe(true);
@@ -901,7 +901,7 @@ describe("AppControlBridge", () => {
     const bridge = new AppControlBridge(
       createHost({
         globalSessionLabels: () => [{ id: labelId, name: "Feature", color: "blue" }],
-        sessionLabels: { mutate, setSessionLabel: async () => true },
+        sessionLabels: { mutate, setSessionLabels: async () => true },
       }),
     );
 
@@ -940,22 +940,22 @@ describe("AppControlBridge", () => {
     expect(mutate).toHaveBeenCalledWith(
       {},
       expect.objectContaining({
-        _tag: "AddColumn",
-        column: expect.objectContaining({ name: "In review" }),
+        _tag: "AddLabel",
+        label: expect.objectContaining({ name: "In review" }),
       }),
     );
     expect(mutate).toHaveBeenCalledWith(
       {},
-      { _tag: "UpdateColumn", columnId: labelId, name: "Product", color: "violet" },
+      { _tag: "UpdateLabel", labelId: labelId, name: "Product", color: "violet" },
     );
-    expect(mutate).toHaveBeenCalledWith({}, { _tag: "DeleteColumn", columnId: labelId });
+    expect(mutate).toHaveBeenCalledWith({}, { _tag: "DeleteLabel", labelId: labelId });
   });
 
   it("assigns and clears session labels while rejecting labels from another Project", async () => {
     const globalLabelId = "00000000-0000-4000-8000-000000000001";
     const projectLabelId = "00000000-0000-4000-8000-000000000002";
     const otherLabelId = "00000000-0000-4000-8000-000000000003";
-    const setSessionLabel = vi.fn(async () => true);
+    const setSessionLabels = vi.fn(async () => true);
     const bridge = new AppControlBridge(
       createHost({
         globalSessionLabels: () => [{ id: globalLabelId, name: "Feature", color: "blue" }],
@@ -966,7 +966,7 @@ describe("AppControlBridge", () => {
             addedAt: "2026-03-01T12:00:00.000Z",
             lastOpenedAt: "2026-03-01T12:00:00.000Z",
             workflow: {
-              columns: [{ id: projectLabelId, name: "In review", color: "cyan" }],
+              labels: [{ id: projectLabelId, name: "In review", color: "cyan" }],
               assignments: [],
               sessionDetails: [],
             },
@@ -977,7 +977,7 @@ describe("AppControlBridge", () => {
             addedAt: "2026-03-01T12:00:00.000Z",
             lastOpenedAt: "2026-03-01T12:00:00.000Z",
             workflow: {
-              columns: [{ id: otherLabelId, name: "Other only", color: "rose" }],
+              labels: [{ id: otherLabelId, name: "Other only", color: "rose" }],
               assignments: [],
               sessionDetails: [],
             },
@@ -996,27 +996,36 @@ describe("AppControlBridge", () => {
             draft: false,
           },
         ],
-        sessionLabels: { mutate: async () => undefined, setSessionLabel },
+        sessionLabels: { mutate: async () => undefined, setSessionLabels },
       }),
     );
 
     await expect(
       bridge.invoke({
-        name: "sessions.set-label",
-        arguments: { sessionId: "session-1", labelId: projectLabelId },
+        name: "sessions.set-labels",
+        arguments: { sessionId: "session-1", labelIds: [projectLabelId, globalLabelId] },
       }),
-    ).resolves.toMatchObject({ ok: true, label: { name: "In review" } });
-    await expect(
-      bridge.invoke({ name: "sessions.set-label", arguments: { sessionId: "session-1" } }),
-    ).resolves.toMatchObject({ ok: true, command: "sessions.set-label" });
+    ).resolves.toMatchObject({
+      ok: true,
+      labels: [{ name: "In review" }, { name: "Feature" }],
+    });
     await expect(
       bridge.invoke({
-        name: "sessions.set-label",
-        arguments: { sessionId: "session-1", labelId: otherLabelId },
+        name: "sessions.set-labels",
+        arguments: { sessionId: "session-1", labelIds: [] },
       }),
-    ).resolves.toMatchObject({ ok: false, command: "sessions.set-label" });
-    expect(setSessionLabel).toHaveBeenNthCalledWith(1, "session-1", projectLabelId);
-    expect(setSessionLabel).toHaveBeenNthCalledWith(2, "session-1", undefined);
+    ).resolves.toMatchObject({ ok: true, command: "sessions.set-labels" });
+    await expect(
+      bridge.invoke({
+        name: "sessions.set-labels",
+        arguments: { sessionId: "session-1", labelIds: [otherLabelId] },
+      }),
+    ).resolves.toMatchObject({ ok: false, command: "sessions.set-labels" });
+    expect(setSessionLabels).toHaveBeenNthCalledWith(1, "session-1", [
+      projectLabelId,
+      globalLabelId,
+    ]);
+    expect(setSessionLabels).toHaveBeenNthCalledWith(2, "session-1", []);
   });
 
   it("keeps duplicate-title targets disambiguated by project and working directory", async () => {

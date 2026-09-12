@@ -27,14 +27,14 @@ import { SessionContinuationStore } from "./SessionContinuationStore";
 import { WorktreeCreationStore, type WorktreeDraftChoice } from "./WorktreeCreationStore";
 import { ProjectOpenStore, type ProjectOpenResult } from "./ProjectOpenStore";
 import type { WorkingDirectoryRetirementWorkflow } from "./WorkingDirectoryRetirementStore";
-import type { WorkflowStatus } from "../../domain/application/application-data";
+import type { SessionLabel } from "../../domain/application/application-data";
 
 export interface ProjectWorkbenchStoreProps {
   retirement: WorkingDirectoryRetirementWorkflow;
   sessionRegistry: SessionRegistryStore;
   operations: SessionOperationCoordinatorStore;
   projects: ProjectCatalogStore;
-  globalStatuses(): ReadonlyArray<WorkflowStatus>;
+  globalLabels(): ReadonlyArray<SessionLabel>;
   defaultConfiguration?(): ChatConfiguration | undefined;
   reviews(): ReviewsStore;
   extensionUi(): ExtensionUiStore;
@@ -143,7 +143,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       operations: this.props.operations,
       catalog: this.props.catalog,
       projects: this.props.projects,
-      globalStatuses: this.props.globalStatuses,
+      globalLabels: this.props.globalLabels,
       registry: this.sessionRegistry,
       reportError: (error) => this.setError(error),
     });

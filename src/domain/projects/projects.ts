@@ -21,9 +21,8 @@ import { resolveRewordingWorkspace } from "../../services/projects/rewording-wor
 import type { ProjectCatalogUpdate } from "../application/catalog-data";
 import type {
   ProjectRecord,
-  WorkflowStatusMutation,
+  SessionLabelMutation,
   ProjectWorkflowSessionDetails,
-  ProjectWorkflowSessionDestination,
 } from "../application/application-data";
 import { defaultProjectWorkflow } from "../application/application-data";
 import { inspect as inspectProjectSession } from "../project-sessions/projectSessionMetadata";
@@ -33,7 +32,7 @@ import {
   observeState,
   removeProject,
   renameProject,
-  mutateGlobalWorkflowStatuses,
+  mutateGlobalSessionLabels,
   mutateProjectWorkflow,
   setProjectWorkflowSessionDetails,
   setProjectSettings as setApplicationProjectSettings,
@@ -295,18 +294,18 @@ export const setProjectSettings = Effect.fn("Projects.setProjectSettings")(funct
 });
 
 export const mutateGlobalWorkflow = Effect.fn("Projects.mutateGlobalWorkflow")(function* (request: {
-  readonly mutation: WorkflowStatusMutation;
+  readonly mutation: SessionLabelMutation;
 }) {
   const state = yield* mapProjectError(
-    "mutateGlobalWorkflowStatuses",
-    mutateGlobalWorkflowStatuses(request.mutation),
+    "mutateGlobalSessionLabels",
+    mutateGlobalSessionLabels(request.mutation),
   );
-  return state.globalWorkflowStatuses;
+  return state.globalSessionLabels;
 });
 
 export const mutateWorkflow = Effect.fn("Projects.mutateWorkflow")(function* (request: {
   readonly projectPath: string;
-  readonly mutation: WorkflowStatusMutation;
+  readonly mutation: SessionLabelMutation;
 }) {
   yield* requireAllowed(request.projectPath);
   return yield* mapProjectError(
@@ -315,18 +314,20 @@ export const mutateWorkflow = Effect.fn("Projects.mutateWorkflow")(function* (re
   );
 });
 
-export const moveWorkflowSession = Effect.fn("Projects.moveWorkflowSession")(function* (request: {
-  readonly projectPath: string;
-  readonly sessionId: string;
-  readonly workingDirectory: string;
-  readonly destination: ProjectWorkflowSessionDestination;
-}) {
-  yield* requireAllowed(request.projectPath);
-  return yield* mapProjectError(
-    "moveProjectWorkflowSession",
-    projectSessionLifecycle.moveWorkflowSession(request),
-  );
-});
+export const setWorkflowSessionLabels = Effect.fn("Projects.setWorkflowSessionLabels")(
+  function* (request: {
+    readonly projectPath: string;
+    readonly sessionId: string;
+    readonly workingDirectory: string;
+    readonly labelIds: ReadonlyArray<string>;
+  }) {
+    yield* requireAllowed(request.projectPath);
+    return yield* mapProjectError(
+      "setWorkflowSessionLabels",
+      projectSessionLifecycle.setWorkflowSessionLabels(request),
+    );
+  },
+);
 
 export const describeWorkflowSession = Effect.fn("Projects.describeWorkflowSession")(
   function* (request: {

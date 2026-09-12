@@ -91,7 +91,7 @@ test("promotes a staged chat immediately and leaves New Chat free for the next s
     // Quick click and keyboard activation still open the status picker; a hold
     // captures the pointer instead and must not open a menu on release.
     const status = page.getByRole("button", {
-      name: "Change session status. Current status: Unlabelled",
+      name: "Change session labels. Current labels: Unlabelled",
     });
     await status.click();
     await expect(status).toHaveAttribute("aria-expanded", "true");

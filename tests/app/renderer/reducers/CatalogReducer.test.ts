@@ -43,7 +43,7 @@ describe("CatalogReducer", () => {
           addedAt: "2026-01-01T00:00:00.000Z",
           lastOpenedAt: "2026-01-01T00:00:00.000Z",
           workflow: {
-            columns: [
+            labels: [
               {
                 id: "b925b5dd-9661-4f1a-9f40-406be3c96c27",
                 name: "Blocked",
@@ -57,7 +57,7 @@ describe("CatalogReducer", () => {
       ],
     });
 
-    expect(catalog.projects[0]?.workflow.columns[0]?.name).toBe("Blocked");
+    expect(catalog.projects[0]?.workflow.labels[0]?.name).toBe("Blocked");
     catalog[Symbol.dispose]();
   });
 

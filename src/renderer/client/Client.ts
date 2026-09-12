@@ -1,8 +1,5 @@
 import type { Effect } from "effect";
-import type {
-  ProjectSettings,
-  WorkflowStatusColor,
-} from "../../domain/application/application-data";
+import type { ProjectSettings } from "../../domain/application/application-data";
 import type {
   ResolvedManagedWorktreeCleanupPlan,
   ResolvedManagedWorktreeCleanupResult,
@@ -57,9 +54,9 @@ export interface EmbeddedEditorStateSnapshot {
 
 type TerminalTarget = { readonly workingDirectory: string };
 
-type SessionContextMenuAction =
-  | { action: "rename" | "mark-unread" | "resolve" | "unresolve" | "delete" }
-  | { action: "set-status"; statusId: string };
+type SessionContextMenuAction = {
+  action: "rename" | "mark-unread" | "resolve" | "unresolve" | "delete";
+};
 
 interface ElectronCommands {
   chooseProject(options?: ClientCommandOptions): Promise<string | undefined>;
@@ -91,14 +88,6 @@ interface ElectronCommands {
       draft: boolean;
       unread?: boolean;
       familyChild?: boolean;
-      workflow?: {
-        currentStatus: string;
-        statuses: ReadonlyArray<{
-          id: string;
-          name: string;
-          color: WorkflowStatusColor;
-        }>;
-      };
     },
     options?: ClientCommandOptions,
   ): Promise<SessionContextMenuAction | undefined>;

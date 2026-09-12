@@ -11,18 +11,18 @@ import type { CakeChatCatalogQuery } from "../../domain/cake-chats/cake-chat-dat
 import type { EmbeddedEditorSettingsStore } from "./EmbeddedEditorSettingsStore";
 import { isActiveSessionActivity, type SessionActivity } from "../lib/session-activity";
 import type { WorktreeOperationCatalog } from "../models/WorktreeOperationCatalog";
-import type { WorkflowStatus } from "../../domain/application/application-data";
+import type { SessionLabel } from "../../domain/application/application-data";
 
 export interface SidebarStoreProps {
   projects: ProjectCatalogStore;
   catalog: SessionCatalogStore;
   sessions: SessionRegistryStore;
   worktreeOperations?: WorktreeOperationCatalog;
-  globalStatuses(): ReadonlyArray<WorkflowStatus>;
+  globalLabels(): ReadonlyArray<SessionLabel>;
   cakeChat(): CakeChatCollectionStore;
   selectedConversation?(): { kind: "project-session" | "cake-chat"; sessionId: string } | undefined;
   setSessionResolved(sessionId: string, resolved: boolean): Promise<void>;
-  setSessionWorkflowStatus(sessionId: string, statusId?: string): Promise<void>;
+  setSessionLabels(sessionId: string, labelIds: readonly string[]): Promise<void>;
   setCakeChatSessionResolved(sessionId: string, resolved: boolean): Promise<void>;
   deleteSession(sessionId: string): Promise<void>;
   deleteCakeChatSession(sessionId: string): Promise<void>;
@@ -181,18 +181,6 @@ export class SidebarStore extends Store<SidebarStoreProps> {
     familyChild?: boolean,
   ) {
     const session = this.props.catalog.find(sessionId);
-    const workflow = session ? this.props.projects.find(session.projectPath)?.workflow : undefined;
-    const statuses = session ? this.workflowStatuses(session.projectPath) : [];
-    const assignedStatusId = workflow?.assignments.find(
-      (assignment) => assignment.sessionId === sessionId,
-    )?.statusId;
-    const currentStatus = session?.draft
-      ? "draft"
-      : resolved
-        ? "resolved"
-        : statuses.some((status) => status.id === assignedStatusId)
-          ? (assignedStatusId ?? "active")
-          : "active";
     return this.electron.showSessionContextMenu({
       sessionId,
       x,
@@ -201,19 +189,11 @@ export class SidebarStore extends Store<SidebarStoreProps> {
       draft: session?.draft === true,
       unread,
       familyChild,
-      ...(statuses.length
-        ? {
-            workflow: {
-              currentStatus,
-              statuses: statuses.map(({ id, name, color }) => ({ id, name, color })),
-            },
-          }
-        : undefined),
     });
   }
 
-  setSessionWorkflowStatus(sessionId: string, statusId?: string) {
-    return this.props.setSessionWorkflowStatus(sessionId, statusId);
+  setSessionLabels(sessionId: string, labelIds: readonly string[]) {
+    return this.props.setSessionLabels(sessionId, labelIds);
   }
 
   showProjectContextMenu(path: string, x: number, y: number) {
@@ -287,15 +267,12 @@ export class SidebarStore extends Store<SidebarStoreProps> {
     this.sessionLimits[key] = this.sessionLimit(groupKey, resolved) + 10;
   }
 
-  private workflowStatuses(projectPath: string) {
-    const local = this.props.projects.find(projectPath)?.workflow.columns ?? [];
-    return [
-      ...this.props.globalStatuses().map((status) => ({ ...status, scope: "global" as const })),
-      ...local.map((status) => ({ ...status, scope: "project" as const })),
-    ];
+  private projectLabels(projectPath: string) {
+    const local = this.props.projects.find(projectPath)?.workflow.labels ?? [];
+    return [...this.props.globalLabels(), ...local];
   }
 
-  sessionWorkflowStatuses(sessionId: string) {
+  availableSessionLabels(sessionId: string) {
     const session = this.props.catalog.find(sessionId);
     const pendingSession = this.props.sessions.findSession(sessionId);
     const projectPath =
@@ -304,30 +281,33 @@ export class SidebarStore extends Store<SidebarStoreProps> {
         ? (this.props.catalog.projectOfManagedWorktree(pendingSession.workspacePath) ??
           pendingSession.workspacePath)
         : undefined);
-    return projectPath ? this.workflowStatuses(projectPath) : [];
+    return projectPath ? this.projectLabels(projectPath) : [];
   }
 
-  sessionWorkflowStatusId(sessionId: string) {
-    const pendingStatusId =
-      this.props.sessions.pendingSessions.conversation(sessionId)?.workflowStatusId;
+  sessionLabelIds(sessionId: string): readonly string[] {
+    const availableIds = new Set(this.availableSessionLabels(sessionId).map((label) => label.id));
     if (this.props.sessions.pendingSessions.isTemporary(sessionId))
-      return this.sessionWorkflowStatuses(sessionId).some((status) => status.id === pendingStatusId)
-        ? pendingStatusId
-        : undefined;
+      return (this.props.sessions.pendingSessions.conversation(sessionId)?.labelIds ?? []).filter(
+        (labelId) => availableIds.has(labelId),
+      );
     const session = this.props.catalog.find(sessionId);
-    if (!session || session.resolved) return undefined;
-    const workflow = this.props.projects.find(session.projectPath)?.workflow;
-    const statusId = workflow?.assignments.find(
-      (assignment) => assignment.sessionId === sessionId,
-    )?.statusId;
-    return this.workflowStatuses(session.projectPath).some((column) => column.id === statusId)
-      ? statusId
-      : undefined;
+    if (!session || session.resolved) return [];
+    const assignment = this.props.projects
+      .find(session.projectPath)
+      ?.workflow.assignments.find((candidate) => candidate.sessionId === sessionId);
+    return (assignment?.labelIds ?? []).filter((labelId) => availableIds.has(labelId));
   }
 
-  sessionWorkflowStatus(sessionId: string) {
-    const statusId = this.sessionWorkflowStatusId(sessionId);
-    return this.sessionWorkflowStatuses(sessionId).find((column) => column.id === statusId);
+  sessionLabels(sessionId: string) {
+    const byId = new Map(this.availableSessionLabels(sessionId).map((label) => [label.id, label]));
+    return this.sessionLabelIds(sessionId).flatMap((labelId) => {
+      const label = byId.get(labelId);
+      return label ? [label] : [];
+    });
+  }
+
+  primarySessionLabel(sessionId: string) {
+    return this.sessionLabels(sessionId)[0];
   }
 
   sessionAvatarSeed(sessionId: string) {

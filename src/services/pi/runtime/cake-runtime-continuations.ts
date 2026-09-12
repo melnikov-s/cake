@@ -18,7 +18,7 @@ interface PendingSessionFork {
 
 export interface CakeRuntimeContinuations {
   activeSessionTitle(): string;
-  nameSessionFromFirstMessage(currentUserMessage: string): Promise<void>;
+  initializeSessionFromFirstMessage(currentUserMessage: string): Promise<void>;
   rename(name: string, reportAction?: boolean): Promise<string>;
   fork(
     entryId: string,
@@ -98,8 +98,8 @@ export function createCakeRuntimeContinuations(input: {
 
   return {
     activeSessionTitle,
-    async nameSessionFromFirstMessage(currentUserMessage) {
-      if (isDisposed() || sessionNamingInFlight || session.sessionManager.getSessionName()) return;
+    async initializeSessionFromFirstMessage(currentUserMessage) {
+      if (isDisposed() || sessionNamingInFlight) return;
       const firstUserMessage = session.sessionManager
         .getBranch()
         .flatMap((entry) => (entry.type === "message" ? [entry.message] : []))
@@ -109,22 +109,26 @@ export function createCakeRuntimeContinuations(input: {
       const userText = firstUserMessage || currentUserMessage.trim();
       if (!userText) return;
       const utilityModel: UtilityModel | undefined = options.utilityModel?.();
-      const generateTitle = options.generateSessionTitle;
-      if (!utilityModel || !generateTitle) return;
-
+      if (!utilityModel) return;
+      const signal = AbortSignal.any([sessionNamingController.signal, AbortSignal.timeout(15_000)]);
       sessionNamingInFlight = true;
       try {
-        const title = await generateTitle({
+        const titleWork =
+          options.generateSessionTitle && !session.sessionManager.getSessionName()
+            ? options
+                .generateSessionTitle({ utilityModel, firstUserMessage: userText, signal })
+                .then(async (title) => {
+                  if (isDisposed() || !title || session.sessionManager.getSessionName()) return;
+                  session.setSessionName(title.trim().slice(0, SESSION_TITLE_MAX_LENGTH));
+                  await emitSnapshot();
+                })
+            : Promise.resolve();
+        const labelWork = options.autoLabelSession?.({
           utilityModel,
           firstUserMessage: userText,
-          signal: AbortSignal.any([sessionNamingController.signal, AbortSignal.timeout(15_000)]),
+          signal,
         });
-        if (isDisposed() || !title || session.sessionManager.getSessionName()) return;
-        const normalizedTitle = title.trim().slice(0, SESSION_TITLE_MAX_LENGTH);
-        session.setSessionName(normalizedTitle);
-        await emitSnapshot();
-      } catch {
-        // Utility work is opportunistic. The first-message title remains the fallback.
+        await Promise.allSettled([titleWork, labelWork]);
       } finally {
         sessionNamingInFlight = false;
       }

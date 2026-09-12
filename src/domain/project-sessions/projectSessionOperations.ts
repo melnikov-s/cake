@@ -5,11 +5,7 @@ import {
   type ChatConfiguration,
   type PiSettingUpdate,
 } from "../../ipc/session-contract";
-import {
-  getState,
-  setProjectWorkflowSessionStatus,
-  trustProject,
-} from "../application/application";
+import { getState, setProjectSessionLabels, trustProject } from "../application/application";
 import {
   TurnId,
   abort as abortConversation,
@@ -92,12 +88,10 @@ export const start = Effect.fn("ProjectSessions.start")(function* (
       message: "The Working Directory is not associated with that Project",
     });
   const handle = yield* acquireTarget(location, input.sessionId, true);
-  if (input.workflowStatusId)
-    yield* setProjectWorkflowSessionStatus(
-      location.projectPath,
-      input.sessionId,
-      input.workflowStatusId,
-    ).pipe(asError("start"));
+  if (input.labelIds?.length)
+    yield* setProjectSessionLabels(location.projectPath, input.sessionId, input.labelIds).pipe(
+      asError("start"),
+    );
   if (input.configuration)
     yield* handle.applyConfiguration(input.configuration).pipe(asError("start"));
   if (input.name?.trim()) yield* handle.rename(input.name.trim()).pipe(asError("start"));

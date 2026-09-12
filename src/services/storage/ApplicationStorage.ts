@@ -2,15 +2,16 @@ import { Context, Effect, FileSystem, Layer, Path, Schema, Semaphore } from "eff
 import {
   ApplicationState,
   ModelPreset,
-  ProjectRecord,
+  ProjectSettings,
+  ProjectWorkflowSessionDetails,
+  SessionLabelColor,
   UtilityModel,
   defaultApplicationState,
-  defaultGlobalWorkflowStatuses,
   type ApplicationState as ApplicationStateValue,
 } from "../../domain/application/application-data";
 import { atomicWriteFile, type AtomicFileStage } from "./internal/atomicFile";
 
-const APPLICATION_DOCUMENT_VERSION = 2;
+const APPLICATION_DOCUMENT_VERSION = 3;
 export const APPLICATION_DOCUMENT_NAME = "application.json";
 
 class ApplicationReadError extends Schema.TaggedError<ApplicationReadError>()(
@@ -79,9 +80,30 @@ const StoredEnvelope = Schema.Struct({
   data: Schema.Unknown,
 });
 
+const LegacySessionLabel = Schema.Struct({
+  id: Schema.String.check(Schema.isUUID(4)),
+  name: Schema.String,
+  color: SessionLabelColor,
+});
+const LegacyProjectWorkflow = Schema.Struct({
+  columns: Schema.Array(LegacySessionLabel),
+  assignments: Schema.Array(
+    Schema.Struct({ sessionId: Schema.String, statusId: Schema.String.check(Schema.isUUID(4)) }),
+  ),
+  sessionDetails: Schema.Array(ProjectWorkflowSessionDetails),
+});
+const LegacyProjectRecord = Schema.Struct({
+  path: Schema.String,
+  name: Schema.String,
+  addedAt: Schema.String,
+  lastOpenedAt: Schema.String,
+  settings: Schema.optionalKey(ProjectSettings),
+  workflow: Schema.optionalKey(LegacyProjectWorkflow),
+});
+
 const LegacyApplicationState = Schema.Struct({
   schemaVersion: Schema.Literal(1),
-  projects: Schema.optionalKey(Schema.Array(ProjectRecord)),
+  projects: Schema.optionalKey(Schema.Array(LegacyProjectRecord)),
   resolvedSessionIds: Schema.optionalKey(Schema.Array(Schema.String)),
   unreadSessionIds: Schema.optionalKey(Schema.Array(Schema.String)),
   trustedProjectPaths: Schema.optionalKey(Schema.Array(Schema.String)),
@@ -95,7 +117,7 @@ const LegacyApplicationState = Schema.Struct({
 type LegacyApplicationState = typeof LegacyApplicationState.Type;
 
 const ApplicationStateV1 = Schema.Struct({
-  projects: Schema.Array(ProjectRecord),
+  projects: Schema.Array(LegacyProjectRecord),
   unreadSessionIds: Schema.Array(Schema.String),
   trustedProjectPaths: Schema.Array(Schema.String),
   fastModeSessionIds: Schema.Array(Schema.String),
@@ -105,6 +127,19 @@ const ApplicationStateV1 = Schema.Struct({
   defaultModelPresetId: Schema.optionalKey(Schema.String),
 });
 type ApplicationStateV1 = typeof ApplicationStateV1.Type;
+
+const ApplicationStateV2 = Schema.Struct({
+  projects: Schema.Array(LegacyProjectRecord),
+  globalWorkflowStatuses: Schema.Array(LegacySessionLabel),
+  unreadSessionIds: Schema.Array(Schema.String),
+  trustedProjectPaths: Schema.Array(Schema.String),
+  fastModeSessionIds: Schema.Array(Schema.String),
+  utilityModel: Schema.optionalKey(UtilityModel),
+  vscodeServerPath: Schema.optionalKey(Schema.String),
+  modelPresets: Schema.Array(ModelPreset),
+  defaultModelPresetId: Schema.optionalKey(Schema.String),
+});
+type ApplicationStateV2 = typeof ApplicationStateV2.Type;
 
 const messageOf = (cause: unknown): string =>
   cause instanceof Error ? cause.message : String(cause);
@@ -145,7 +180,12 @@ const migrateVersionZero = Effect.fn("ApplicationStorage.migrateVersionZero")((
 const migrateVersionOne = Effect.fn("ApplicationStorage.migrateVersionOne")((
   state: ApplicationStateV1,
 ) => {
-  const globalWorkflowStatuses = [...defaultGlobalWorkflowStatuses()];
+  const globalWorkflowStatuses = [
+    { id: "00000000-0000-4000-8000-000000000001", name: "Feature", color: "blue" as const },
+    { id: "00000000-0000-4000-8000-000000000002", name: "Bug", color: "rose" as const },
+    { id: "00000000-0000-4000-8000-000000000003", name: "Research", color: "violet" as const },
+    { id: "00000000-0000-4000-8000-000000000004", name: "Chore", color: "amber" as const },
+  ];
   const globalByName = new Map(
     globalWorkflowStatuses.map((status) => [status.name.toLocaleLowerCase(), status]),
   );
@@ -177,6 +217,29 @@ const migrateVersionOne = Effect.fn("ApplicationStorage.migrateVersionOne")((
     };
   });
   return Effect.succeed({ ...state, projects, globalWorkflowStatuses });
+});
+
+const migrateVersionTwo = Effect.fn("ApplicationStorage.migrateVersionTwo")((
+  state: ApplicationStateV2,
+) => {
+  const globalSessionLabels = state.globalWorkflowStatuses;
+  const projects = state.projects.map((project) =>
+    project.workflow
+      ? {
+          ...project,
+          workflow: {
+            labels: project.workflow.columns,
+            assignments: project.workflow.assignments.map((assignment) => ({
+              sessionId: assignment.sessionId,
+              labelIds: [assignment.statusId],
+            })),
+            sessionDetails: project.workflow.sessionDetails,
+          },
+        }
+      : project,
+  );
+  const { globalWorkflowStatuses: _, ...rest } = state;
+  return Effect.succeed({ ...rest, projects, globalSessionLabels });
 });
 
 const writeError = (stage: AtomicFileStage, cause: unknown) =>
@@ -277,6 +340,17 @@ export const makeApplicationStorageLive = (userDataDirectory: string) =>
               ),
             );
             data = yield* migrateVersionOne(previous);
+          } else if (version === 2) {
+            const previous = yield* Schema.decodeUnknownEffect(ApplicationStateV2)(data).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ApplicationMigrationError({
+                    fromVersion: 2,
+                    message: cause.message,
+                  }),
+              ),
+            );
+            data = yield* migrateVersionTwo(previous);
           } else
             return yield* new ApplicationMigrationError({
               fromVersion: version,

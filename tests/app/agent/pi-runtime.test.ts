@@ -354,6 +354,7 @@ describe("Pi 0.85.1 foundation contract", () => {
     const sessionTitleChanged = vi.fn<(sessionId: string, title: string) => Promise<void>>(
       async () => undefined,
     );
+    const autoLabelSession = vi.fn(async () => undefined);
     const sessionDir = join(directory, "sessions");
     try {
       const runtime = await createCakeRuntime({
@@ -367,6 +368,7 @@ describe("Pi 0.85.1 foundation contract", () => {
           thinkingLevel: "off",
         }),
         generateSessionTitle: generateTitle as never,
+        autoLabelSession,
         sessionTitleChanged,
         requestUi: async () => undefined,
         onEvent: (event) => events.push(event),
@@ -399,6 +401,10 @@ describe("Pi 0.85.1 foundation contract", () => {
       );
       await vi.waitFor(() => expect(generateTitle).toHaveBeenCalledOnce(), { timeout: 1_000 });
       expect(generateTitle).toHaveBeenCalledWith(
+        expect.objectContaining({ firstUserMessage: "Investigate session naming" }),
+      );
+      await vi.waitFor(() => expect(autoLabelSession).toHaveBeenCalledOnce(), { timeout: 1_000 });
+      expect(autoLabelSession).toHaveBeenCalledWith(
         expect.objectContaining({ firstUserMessage: "Investigate session naming" }),
       );
       releaseResponse();

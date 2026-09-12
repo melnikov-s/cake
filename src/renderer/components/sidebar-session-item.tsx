@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { observer } from "r-state-tree/react";
 import { SESSION_TITLE_MAX_LENGTH } from "../../ipc/session-contract";
-import type { WorkflowStatusColor } from "../../domain/application/application-data";
+import type { SessionLabel } from "../../domain/application/application-data";
 import type { WorktreeRecord } from "../../domain/worktrees/managed-worktree-data";
 import { cn } from "../lib/utils";
 import { Badge } from "./ui/badge";
@@ -13,9 +13,9 @@ import type { SidebarStore } from "../stores/SidebarStore";
 import { WorktreeStatusIcon } from "./worktree-status-icon";
 import type { SessionActivity } from "../lib/session-activity";
 import { StatusDot } from "./ui/status-dot";
-import { StatusSwatch } from "./ui/status-swatch";
+import { LabelSwatch } from "./ui/label-swatch";
 import { Avatar } from "./ui/avatar";
-import { AvatarStatusPicker } from "./ui/avatar-status-picker";
+import { AvatarLabelPicker } from "./ui/avatar-label-picker";
 import { DepthRails } from "./ui/depth-rails";
 
 export interface SidebarSessionItemProps {
@@ -36,7 +36,7 @@ export interface SidebarSessionItemProps {
   paneNumber?: number;
   resolved: boolean;
   activity?: SessionActivity;
-  workflowStatus?: { name: string; color: WorkflowStatusColor };
+  labels: readonly SessionLabel[];
   avatarSeed: string;
   avatarsEnabled: boolean;
   focusMode?: boolean;
@@ -45,7 +45,7 @@ export interface SidebarSessionItemProps {
   familyCollapsed?: boolean;
   onRename(sessionId: string, name: string): void;
   onResolve(sessionId: string, resolved: boolean): void;
-  onSetStatus?(sessionId: string, statusId?: string): void;
+  onSetLabels?(sessionId: string, labelIds: readonly string[]): void;
   onDelete(sessionId: string): void;
   /** Omitted on surfaces without unread support; enables the context-menu toggle. */
   onMarkUnread?(sessionId: string, unread: boolean): void;
@@ -60,7 +60,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
   paneNumber,
   resolved,
   activity,
-  workflowStatus,
+  labels,
   avatarSeed,
   avatarsEnabled,
   focusMode = false,
@@ -69,7 +69,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
   familyCollapsed,
   onRename,
   onResolve,
-  onSetStatus,
+  onSetLabels,
   onDelete,
   onMarkUnread,
 }: SidebarSessionItemProps) {
@@ -82,9 +82,9 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
   const isFamilyChild =
     Boolean(session.familyParentSessionId) && session.familyParentSessionId !== session.sessionId;
   const canResolve = !activity;
-  const statusId = store.sessionWorkflowStatusId(session.sessionId);
-  const statuses = store.sessionWorkflowStatuses(session.sessionId);
-  const canSetStatus = !session.draft && !resolved && Boolean(onSetStatus);
+  const labelIds = store.sessionLabelIds(session.sessionId);
+  const availableLabels = store.availableSessionLabels(session.sessionId);
+  const canSetLabels = !session.draft && !resolved && Boolean(onSetLabels);
   const activityLabel =
     activity === "waiting"
       ? "Waiting for your answer"
@@ -158,36 +158,38 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
             </IconButton>
           )}
           {avatarsEnabled ? (
-            canSetStatus ? (
-              <AvatarStatusPicker
+            canSetLabels ? (
+              <AvatarLabelPicker
                 interaction={avatarInteraction}
                 seed={avatarSeed}
-                statuses={statuses}
-                value={statusId}
+                labels={availableLabels}
+                value={labelIds}
                 className="size-6"
-                onChange={(nextStatusId) => onSetStatus?.(session.sessionId, nextStatusId)}
+                onChange={(nextLabelIds) => onSetLabels?.(session.sessionId, nextLabelIds)}
               />
             ) : (
               <Avatar
                 interaction={avatarInteraction}
                 kind="session"
                 seed={avatarSeed}
-                statusColor={workflowStatus?.color}
-                title={workflowStatus?.name ?? "No workflow status"}
+                labelColors={labels.map((label) => label.color)}
+                title={labels.map((label) => label.name).join(", ") || "No labels"}
                 role="img"
                 aria-label={
-                  workflowStatus ? `Status: ${workflowStatus.name}` : "No workflow status"
+                  labels.length
+                    ? `Labels: ${labels.map((label) => label.name).join(", ")}`
+                    : "No labels"
                 }
               />
             )
           ) : (
-            workflowStatus && (
-              <StatusSwatch
-                color={workflowStatus.color}
+            labels[0] && (
+              <LabelSwatch
+                color={labels[0].color}
                 className={isFamilyParent ? "absolute -left-2" : undefined}
-                title={workflowStatus.name}
+                title={labels.map((label) => label.name).join(", ")}
                 role="img"
-                aria-label={`Status: ${workflowStatus.name}`}
+                aria-label={`Labels: ${labels.map((label) => label.name).join(", ")}`}
               />
             )
           )}
@@ -243,13 +245,6 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
                 else if (action?.action === "mark-unread") onMarkUnread?.(session.sessionId, true);
                 else if (action?.action === "resolve") onResolve(session.sessionId, true);
                 else if (action?.action === "unresolve") onResolve(session.sessionId, false);
-                else if (action?.action === "set-status" && action.statusId === "resolved")
-                  onResolve(session.sessionId, true);
-                else if (action?.action === "set-status")
-                  onSetStatus?.(
-                    session.sessionId,
-                    action.statusId === "active" ? undefined : action.statusId,
-                  );
                 else if (action?.action === "delete" && !isFamilyChild) onDelete(session.sessionId);
               });
             });

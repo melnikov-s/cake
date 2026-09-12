@@ -34,7 +34,7 @@ function sidebarProps(store: ProjectWorkbenchStore) {
           (session: { resolved?: boolean }) => session.resolved === true,
         ).length > fixture.sessionLimit("cake-chat", true),
       setSessionResolved: fixture.setSessionResolved ?? vi.fn(),
-      setSessionWorkflowStatus: fixture.setSessionWorkflowStatus ?? vi.fn(),
+      setSessionLabels: fixture.setSessionLabels ?? vi.fn(),
       setCakeChatSessionResolved: fixture.setCakeChatSessionResolved ?? vi.fn(),
       deleteSession: fixture.deleteSession ?? vi.fn(),
       deleteCakeChatSession: fixture.deleteCakeChatSession ?? vi.fn(),
@@ -53,15 +53,21 @@ function sidebarProps(store: ProjectWorkbenchStore) {
       isResolvedGroupExpanded: fixture.isResolvedGroupExpanded ?? (() => false),
       toggleResolvedGroupExpanded: fixture.toggleResolvedGroupExpanded ?? vi.fn(),
       sessionActivity: fixture.sessionActivity,
-      sessionWorkflowStatus: fixture.sessionWorkflowStatus ?? (() => undefined),
-      sessionWorkflowStatusId:
-        fixture.sessionWorkflowStatusId ??
-        ((sessionId: string) =>
-          fixture.sessionWorkflowStatus?.(sessionId) ? "fixture-status" : undefined),
-      sessionWorkflowStatuses:
-        fixture.sessionWorkflowStatuses ??
+      primarySessionLabel: fixture.primarySessionLabel ?? (() => undefined),
+      sessionLabels:
+        fixture.sessionLabels ??
         ((sessionId: string) => {
-          const status = fixture.sessionWorkflowStatus?.(sessionId);
+          const label = fixture.primarySessionLabel?.(sessionId);
+          return label ? [{ id: "fixture-status", ...label }] : [];
+        }),
+      sessionLabelIds:
+        fixture.sessionLabelIds ??
+        ((sessionId: string) =>
+          fixture.primarySessionLabel?.(sessionId) ? ["fixture-status"] : []),
+      availableSessionLabels:
+        fixture.availableSessionLabels ??
+        ((sessionId: string) => {
+          const status = fixture.primarySessionLabel?.(sessionId);
           return status ? [{ id: "fixture-status", ...status }] : [];
         }),
       sessionAvatarSeed: fixture.sessionAvatarSeed ?? ((sessionId: string) => sessionId),
@@ -385,7 +391,7 @@ describe("Sidebar projects", () => {
       sessionLimit: () => 8,
       sessionActivity: (sessionId: string) => (sessionId === "child" ? "unread" : undefined),
       sessionActivityTime: vi.fn(() => "20 min ago"),
-      sessionWorkflowStatus: (sessionId: string) =>
+      primarySessionLabel: (sessionId: string) =>
         sessionId === "child" ? { name: "In review", color: "amber" } : undefined,
       nameFromPath: () => "cake",
       showMoreSessions: vi.fn(),
@@ -411,7 +417,7 @@ describe("Sidebar projects", () => {
     );
     expect(child.querySelector('[aria-label="Ready, unread"]')).not.toBeNull();
     expect(
-      child.querySelector('[aria-label="Change session status. Current status: In review"]'),
+      child.querySelector('[aria-label="Change session labels. Current labels: In review"]'),
     ).not.toBeNull();
   });
 
@@ -1357,58 +1363,9 @@ describe("Sidebar projects", () => {
     expect(container.querySelector('[role="menu"]')).toBeNull();
   });
 
-  it("sets a project session workflow status from the native session menu", async () => {
-    const showSessionContextMenu = vi.fn(async () => ({
-      action: "set-status" as const,
-      statusId: "status-review",
-    }));
-    const setSessionWorkflowStatus = vi.fn();
-    const store = {
-      recentProjectPaths: ["/work/cake"],
-      projects: [{ path: "/work/cake", name: "Cake" }],
-      projectSessions: () => [
-        { sessionId: "session-1", title: "Follow up", modifiedAt: new Date(0).toISOString() },
-      ],
-      sessionLimit: () => 8,
-      sessionActivity: vi.fn(),
-      sessionActivityTime: vi.fn(() => "Today"),
-      sessionWorkflowStatus: () => ({ name: "In review", color: "violet" }),
-      nameFromPath: () => "cake",
-      showMoreSessions: vi.fn(),
-      showSessionContextMenu,
-      setSessionWorkflowStatus,
-    } as unknown as ProjectWorkbenchStore;
-
-    act(() =>
-      root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onToggle={vi.fn()} />),
-    );
-    expect(
-      container
-        .querySelector('[data-session-id="session-1"] [data-slot="session-leading"]')
-        ?.contains(
-          container.querySelector(
-            '[data-session-id="session-1"] [aria-label="Change session status. Current status: In review"]',
-          ),
-        ),
-    ).toBe(true);
-    await act(async () => {
-      container.querySelector<HTMLButtonElement>(".session-row")!.dispatchEvent(
-        new MouseEvent("contextmenu", {
-          bubbles: true,
-          cancelable: true,
-          clientX: 12,
-          clientY: 34,
-        }),
-      );
-      await Promise.resolve();
-    });
-
-    expect(setSessionWorkflowStatus).toHaveBeenCalledWith("session-1", "status-review");
-  });
-
-  it("sets a project session status from its color-coded avatar picker", async () => {
-    const setSessionWorkflowStatus = vi.fn();
-    const statuses = [
+  it("sets multiple project session labels from its color-coded avatar picker", async () => {
+    const setSessionLabels = vi.fn();
+    const labels = [
       { id: "status-feature", name: "Feature", color: "blue" },
       { id: "status-bug", name: "Bug", color: "rose" },
     ];
@@ -1421,12 +1378,13 @@ describe("Sidebar projects", () => {
       sessionLimit: () => 8,
       sessionActivity: vi.fn(),
       sessionActivityTime: vi.fn(() => "Today"),
-      sessionWorkflowStatus: () => statuses[0],
-      sessionWorkflowStatusId: () => "status-feature",
-      sessionWorkflowStatuses: () => statuses,
+      primarySessionLabel: () => labels[0],
+      sessionLabels: () => [labels[0]],
+      sessionLabelIds: () => ["status-feature"],
+      availableSessionLabels: () => labels,
       nameFromPath: () => "cake",
       showMoreSessions: vi.fn(),
-      setSessionWorkflowStatus,
+      setSessionLabels,
     } as unknown as ProjectWorkbenchStore;
 
     act(() =>
@@ -1435,19 +1393,20 @@ describe("Sidebar projects", () => {
     act(() => {
       container
         .querySelector<HTMLButtonElement>(
-          '[aria-label="Change session status. Current status: Feature"]',
+          '[aria-label="Change session labels. Current labels: Feature"]',
         )!
         .click();
     });
-    const bugOption = Array.from(document.body.querySelectorAll<HTMLButtonElement>("button")).find(
-      (button) => button.textContent?.trim() === "Bug",
-    );
-    expect(bugOption).toBeDefined();
+    const bugOption = Array.from(
+      document.body.querySelectorAll<HTMLButtonElement>('[role="checkbox"]'),
+    ).find((button) => button.textContent?.includes("Bug"));
+    expect(bugOption).not.toBeNull();
     await act(async () => {
       bugOption!.click();
       await Promise.resolve();
     });
-    expect(setSessionWorkflowStatus).toHaveBeenCalledWith("session-1", "status-bug");
+    expect(setSessionLabels).toHaveBeenCalledWith("session-1", ["status-feature", "status-bug"]);
+    expect(document.body.querySelector('[role="dialog"]')).not.toBeNull();
   });
 
   it("restores workflow squares when Session avatars are disabled", () => {
@@ -1460,7 +1419,7 @@ describe("Sidebar projects", () => {
       sessionLimit: () => 8,
       sessionActivity: vi.fn(),
       sessionActivityTime: vi.fn(() => "Today"),
-      sessionWorkflowStatus: () => ({ name: "In review", color: "violet" }),
+      primarySessionLabel: () => ({ name: "In review", color: "violet" }),
       nameFromPath: () => "cake",
       showMoreSessions: vi.fn(),
     } as unknown as ProjectWorkbenchStore;
@@ -1478,7 +1437,7 @@ describe("Sidebar projects", () => {
 
     const session = container.querySelector('[data-session-id="session-1"]');
     expect(session?.querySelector('[data-slot="avatar"]')).toBeNull();
-    expect(session?.querySelector('[aria-label="Status: In review"]')).not.toBeNull();
+    expect(session?.querySelector('[aria-label="Labels: In review"]')).not.toBeNull();
   });
 
   it("marks a project session unread from the native session menu", async () => {

@@ -63,7 +63,7 @@ describe("observeApplicationState", () => {
               revision: 7,
               state: {
                 projects: [],
-                globalWorkflowStatuses: [externalStatus],
+                globalSessionLabels: [externalStatus],
                 unreadSessionIds: [],
                 trustedProjectPaths: [],
                 fastModeSessionIds: [],
@@ -84,7 +84,7 @@ describe("observeApplicationState", () => {
       .poll(() => harness.settings.modelPresets.presets[0]?.name)
       .toBe("Changed elsewhere");
     expect(harness.settings.modelPresets.defaultPresetId).toBe(externalPreset.id);
-    expect(harness.settings.globalStatuses.statuses).toEqual([externalStatus]);
+    expect(harness.settings.globalLabels.labels).toEqual([externalStatus]);
 
     cancel();
     harness[Symbol.dispose]();

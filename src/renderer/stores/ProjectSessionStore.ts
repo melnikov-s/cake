@@ -438,9 +438,8 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       }
       const newSession = this.props.newSessionRequest();
       if (newSession) {
-        const pendingStatusId = this.props.pendingSessions.conversation(
-          input.sessionId,
-        )?.workflowStatusId;
+        const pendingLabelIds =
+          this.props.pendingSessions.conversation(input.sessionId)?.labelIds ?? [];
         const startInput: ProjectSessionStartInput = {
           sessionId: input.sessionId,
           workingDirectory: newSession.path,
@@ -451,7 +450,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
         if (newSession.configuration !== undefined)
           Object.assign(startInput, { configuration: newSession.configuration });
         if (newSession.name !== undefined) Object.assign(startInput, { name: newSession.name });
-        if (pendingStatusId) Object.assign(startInput, { workflowStatusId: pendingStatusId });
+        if (pendingLabelIds.length > 0) Object.assign(startInput, { labelIds: pendingLabelIds });
         await this.client.projectSessions.start(startInput, { signal: this.signal });
         this.props.pendingSessions.materialize(input.sessionId, newSession.path);
       } else {

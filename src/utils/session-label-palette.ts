@@ -1,4 +1,4 @@
-export const workflowStatusPalette = {
+export const sessionLabelPalette = {
   slate: "#64748b",
   gray: "#888b92",
   brown: "#986b4b",
@@ -33,14 +33,14 @@ export const workflowStatusPalette = {
   lavender: "#ad91d2",
 } as const;
 
-export type WorkflowStatusColor = keyof typeof workflowStatusPalette;
+export type SessionLabelColor = keyof typeof sessionLabelPalette;
 
-const workflowStatusColors = Object.keys(workflowStatusPalette).filter(
-  (value): value is WorkflowStatusColor => Object.hasOwn(workflowStatusPalette, value),
+const sessionLabelColors = Object.keys(sessionLabelPalette).filter(
+  (value): value is SessionLabelColor => Object.hasOwn(sessionLabelPalette, value),
 );
-const firstWorkflowStatusColor = workflowStatusColors[0];
-if (firstWorkflowStatusColor === undefined) throw new Error("The workflow status palette is empty");
-export const WORKFLOW_STATUS_COLORS: [WorkflowStatusColor, ...WorkflowStatusColor[]] = [
-  firstWorkflowStatusColor,
-  ...workflowStatusColors.slice(1),
+const firstSessionLabelColor = sessionLabelColors[0];
+if (firstSessionLabelColor === undefined) throw new Error("The session label palette is empty");
+export const SESSION_LABEL_COLORS: [SessionLabelColor, ...SessionLabelColor[]] = [
+  firstSessionLabelColor,
+  ...sessionLabelColors.slice(1),
 ];

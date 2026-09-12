@@ -29,7 +29,7 @@ describe("SessionManagementStore", () => {
         operations,
         catalog,
         projects: { find: () => undefined } as unknown as ProjectCatalogStore,
-        globalStatuses: () => [],
+        globalLabels: () => [],
         registry,
         reportError: vi.fn(),
       }),
@@ -70,7 +70,7 @@ describe("SessionManagementStore", () => {
         operations,
         catalog,
         projects: { find: () => undefined } as unknown as ProjectCatalogStore,
-        globalStatuses: () => [],
+        globalLabels: () => [],
         registry,
         reportError: vi.fn(),
       }),
@@ -112,7 +112,7 @@ describe("SessionManagementStore", () => {
         operations,
         catalog,
         projects: { find: () => undefined } as unknown as ProjectCatalogStore,
-        globalStatuses: () => [],
+        globalLabels: () => [],
         registry,
         reportError,
       }),
@@ -132,7 +132,7 @@ describe("SessionManagementStore", () => {
     operations[Symbol.dispose]();
   });
 
-  it("keeps a selected status with a draft until the Session becomes active", async () => {
+  it("keeps selected labels with a draft until the Session becomes active", async () => {
     const statusId = "b925b5dd-9661-4f1a-9f40-406be3c96c27";
     const session = {
       sessionId: "session-1",
@@ -141,8 +141,8 @@ describe("SessionManagementStore", () => {
       draft: true,
       resolved: false,
     };
-    const moveSession = vi.fn(async () => undefined);
-    const setWorkflowStatus = vi.fn(async () => undefined);
+    const setPersistedLabels = vi.fn(async () => undefined);
+    const setLabels = vi.fn(async () => undefined);
     let temporary = true;
     const operations = mount(createStore(SessionOperationCoordinatorStore));
     const registry = {
@@ -150,7 +150,7 @@ describe("SessionManagementStore", () => {
       pendingSessions: {
         conversation: () => undefined,
         isTemporary: () => temporary,
-        setWorkflowStatus,
+        setLabels,
       },
     } as unknown as SessionRegistryStore;
     const { root, subject } = mountWithClient(
@@ -160,28 +160,28 @@ describe("SessionManagementStore", () => {
         projects: {
           find: () => ({
             workflow: {
-              columns: [{ id: statusId, name: "Feature", color: "blue" }],
+              labels: [{ id: statusId, name: "Feature", color: "blue" }],
               assignments: [],
               sessionDetails: [],
             },
           }),
         } as unknown as ProjectCatalogStore,
-        globalStatuses: () => [],
+        globalLabels: () => [],
         registry,
         reportError: vi.fn(),
       }),
-      { projectWorkflow: { moveSession } } as unknown as Client,
+      { projectWorkflow: { setSessionLabels: setPersistedLabels } } as unknown as Client,
     );
 
-    expect(await subject.setSessionStatus("session-1", statusId)).toBe(true);
-    expect(setWorkflowStatus).toHaveBeenCalledWith("session-1", statusId);
-    expect(moveSession).not.toHaveBeenCalled();
+    expect(await subject.setSessionLabels("session-1", [statusId])).toBe(true);
+    expect(setLabels).toHaveBeenCalledWith("session-1", [statusId]);
+    expect(setPersistedLabels).not.toHaveBeenCalled();
 
     temporary = false;
     session.draft = false;
-    expect(await subject.setSessionStatus("session-1")).toBe(true);
-    expect(moveSession).toHaveBeenLastCalledWith(
-      expect.objectContaining({ destination: { _tag: "Active" } }),
+    expect(await subject.setSessionLabels("session-1", [])).toBe(true);
+    expect(setPersistedLabels).toHaveBeenLastCalledWith(
+      expect.objectContaining({ labelIds: [] }),
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
 

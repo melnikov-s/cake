@@ -34,7 +34,7 @@ it("rejects invalid model-preset invariants at the application projection wire b
         defaultModelPresetId: "00000000-0000-4000-8000-000000000002",
       },
     }),
-  ).toThrow(/unique Project, Model Preset, and workflow status identities with valid references/);
+  ).toThrow(/unique Project, Model Preset, and session-label identities with valid references/);
 });
 
 describe("parsePiBuiltinCommand", () => {

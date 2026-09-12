@@ -57,7 +57,7 @@ export const SettingsAppearanceSection = observer(function SettingsAppearanceSec
         <SettingsToggle
           id="setting-session-avatars"
           label="Session avatars"
-          description="Show deterministic Gaze avatars colored by workflow status."
+          description="Show deterministic Gaze avatars colored by session labels."
           checked={appearance.sessionAvatarsEnabled}
           onChange={(enabled) => appearance.setSessionAvatarsEnabled(enabled)}
         />

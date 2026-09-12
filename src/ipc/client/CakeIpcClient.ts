@@ -28,10 +28,9 @@ import type {
   RendererApplicationProjection,
   RendererApplicationState,
   ProjectWorkflow,
-  WorkflowStatus,
-  WorkflowStatusMutation,
+  SessionLabel,
+  SessionLabelMutation,
   ProjectWorkflowSessionDetails,
-  ProjectWorkflowSessionDestination,
 } from "../../domain/application/application-data";
 import type { AgentAvailabilitySnapshot } from "../../domain/application/agent-availability-data";
 import type { PiSettingUpdate } from "../session-contract";
@@ -168,17 +167,17 @@ export interface CakeIpcClientService {
   };
   readonly projectWorkflow: {
     readonly mutateGlobal: (input: {
-      readonly mutation: WorkflowStatusMutation;
-    }) => Effect.Effect<ReadonlyArray<WorkflowStatus>, ProjectError | TransportError>;
+      readonly mutation: SessionLabelMutation;
+    }) => Effect.Effect<ReadonlyArray<SessionLabel>, ProjectError | TransportError>;
     readonly mutate: (input: {
       readonly projectPath: string;
-      readonly mutation: WorkflowStatusMutation;
+      readonly mutation: SessionLabelMutation;
     }) => Effect.Effect<ProjectWorkflow, ProjectError | TransportError>;
-    readonly moveSession: (input: {
+    readonly setSessionLabels: (input: {
       readonly projectPath: string;
       readonly sessionId: string;
       readonly workingDirectory: string;
-      readonly destination: ProjectWorkflowSessionDestination;
+      readonly labelIds: ReadonlyArray<string>;
     }) => Effect.Effect<ProjectWorkflow, ProjectError | TransportError>;
     readonly describeSession: (input: {
       readonly projectPath: string;
@@ -669,8 +668,8 @@ export const CakeIpcClientLive = Layer.effect(
         mutate: Effect.fn("CakeIpcClient.projectWorkflow.mutate")((input) =>
           client("projectWorkflow.mutate", input),
         ),
-        moveSession: Effect.fn("CakeIpcClient.projectWorkflow.moveSession")((input) =>
-          client("projectWorkflow.moveSession", input),
+        setSessionLabels: Effect.fn("CakeIpcClient.projectWorkflow.setSessionLabels")((input) =>
+          client("projectWorkflow.setSessionLabels", input),
         ),
         describeSession: Effect.fn("CakeIpcClient.projectWorkflow.describeSession")((input) =>
           client("projectWorkflow.describeSession", input),

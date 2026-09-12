@@ -7,14 +7,11 @@ import * as subagents from "../subagents/subagents";
 import {
   forgetProjectSessions,
   getState,
-  setProjectWorkflowSessionStatus,
+  setProjectSessionLabels,
   setSessionUnread,
   trustProject,
 } from "../application/application";
-import {
-  defaultProjectWorkflow,
-  type ProjectWorkflowSessionDestination,
-} from "../application/application-data";
+import { defaultProjectWorkflow } from "../application/application-data";
 import type { WorktreeRecord } from "../worktrees/managed-worktree-data";
 import {
   ProjectSessionError,
@@ -540,52 +537,42 @@ export const deleteProjectSessions = Effect.fn("ProjectSessions.deleteProjectSes
   yield* families.removeProject(projectPath).pipe(asError(operation));
 });
 
-/** Authoritative lifecycle/custom-column transition for one Project Session card. */
-export const moveWorkflowSession = Effect.fn("ProjectSessions.moveWorkflowSession")(
+/** Validates and assigns the ordered labels for one active Project Session. */
+export const setWorkflowSessionLabels = Effect.fn("ProjectSessions.setWorkflowSessionLabels")(
   function* (input: {
     readonly projectPath: string;
     readonly sessionId: string;
     readonly workingDirectory: string;
-    readonly destination: ProjectWorkflowSessionDestination;
+    readonly labelIds: ReadonlyArray<string>;
   }) {
-    const state = yield* getState().pipe(asError("moveWorkflowSession"));
+    const state = yield* getState().pipe(asError("setWorkflowSessionLabels"));
     const project = state.projects.find((candidate) => candidate.path === input.projectPath);
-    if (!project) return yield* error("moveWorkflowSession", "That Project is not registered");
+    if (!project) return yield* error("setWorkflowSessionLabels", "That Project is not registered");
     const workflow = project.workflow ?? defaultProjectWorkflow();
-    const destinationStatusId =
-      input.destination._tag === "Custom" ? input.destination.statusId : undefined;
-    if (
-      destinationStatusId !== undefined &&
-      ![...state.globalWorkflowStatuses, ...workflow.columns].some(
-        (column) => column.id === destinationStatusId,
-      )
-    )
-      return yield* error("moveWorkflowSession", "That custom status no longer exists");
+    const availableIds = new Set(
+      [...state.globalSessionLabels, ...workflow.labels].map((label) => label.id),
+    );
+    if (input.labelIds.some((labelId) => !availableIds.has(labelId)))
+      return yield* error("setWorkflowSessionLabels", "A selected label no longer exists");
     const target = { sessionId: input.sessionId, workingDirectory: input.workingDirectory };
     const location = yield* findLocation(target, { includeInactive: true }).pipe(
-      asError("moveWorkflowSession"),
+      asError("setWorkflowSessionLabels"),
     );
     if (location.projectPath !== input.projectPath)
-      return yield* error("moveWorkflowSession", "That session does not belong to this Project");
+      return yield* error(
+        "setWorkflowSessionLabels",
+        "That session does not belong to this Project",
+      );
     const namespace = yield* (yield* SessionArchiveStorage)
       .locate(input.sessionId, archiveLocation(location))
-      .pipe(asError("moveWorkflowSession"));
-    if (!namespace)
+      .pipe(asError("setWorkflowSessionLabels"));
+    if (namespace !== "active")
       return yield* error(
-        "moveWorkflowSession",
-        input.destination._tag === "Resolved"
-          ? "Activate a Draft before resolving it"
-          : "Activate the Draft before assigning its workflow status",
+        "setWorkflowSessionLabels",
+        "Only active sessions can have their labels changed",
       );
-    if (input.destination._tag === "Resolved") {
-      if (namespace === "active") yield* resolve(target);
-      return workflow;
-    }
-    if (namespace === "resolved") yield* restore(target);
-    return yield* setProjectWorkflowSessionStatus(
-      input.projectPath,
-      input.sessionId,
-      destinationStatusId,
-    ).pipe(asError("moveWorkflowSession"));
+    return yield* setProjectSessionLabels(input.projectPath, input.sessionId, input.labelIds).pipe(
+      asError("setWorkflowSessionLabels"),
+    );
   },
 );

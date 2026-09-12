@@ -66,7 +66,7 @@ function createHost(
     },
     sessionLabels: {
       mutate: async () => undefined,
-      setSessionLabel: async () => true,
+      setSessionLabels: async () => true,
     },
     sessions: {
       open: async () => false,

@@ -4,12 +4,13 @@ import { Effect, Layer } from "effect";
 import { describe } from "vitest";
 import {
   forgetProjectSessions,
-  mutateGlobalWorkflowStatuses,
+  mutateGlobalSessionLabels,
   mutateProjectWorkflow,
   removeProject,
   renameProject,
   setProjectSettings,
-  setProjectWorkflowSessionStatus,
+  setProjectSessionLabels,
+  setProjectSessionLabelsIfUnlabelled,
   setSessionFastMode,
   setSessionUnread,
   setUtilityModel,
@@ -21,7 +22,7 @@ import {
 } from "../../../src/domain/application/application";
 import {
   defaultApplicationState,
-  WORKFLOW_STATUS_COLORS,
+  SESSION_LABEL_COLORS,
 } from "../../../src/domain/application/application-data";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import {
@@ -57,8 +58,8 @@ const run = <A, E>(effect: Effect.Effect<A, E, ApplicationState>) => {
 
 describe("Application domain", () => {
   it("offers 32 curated workflow colors", () => {
-    assert.equal(WORKFLOW_STATUS_COLORS.length, 32);
-    assert.equal(new Set(WORKFLOW_STATUS_COLORS).size, 32);
+    assert.equal(SESSION_LABEL_COLORS.length, 32);
+    assert.equal(new Set(SESSION_LABEL_COLORS).size, 32);
   });
 
   it.effect("creates, touches, renames, and removes Projects with trust revocation", () =>
@@ -129,77 +130,97 @@ describe("Application domain", () => {
     run(
       Effect.gen(function* () {
         yield* upsertProject("/work/cake", "Cake");
-        const columnId = "b925b5dd-9661-4f1a-9f40-406be3c96c27";
+        const labelId = "b925b5dd-9661-4f1a-9f40-406be3c96c27";
         yield* mutateProjectWorkflow("/work/cake", {
-          _tag: "AddColumn",
-          column: { id: columnId, name: "In progress", color: "sky" },
+          _tag: "AddLabel",
+          label: { id: labelId, name: "In progress", color: "sky" },
         });
         const secondColumnId = "bcf5bcc1-9126-4192-a0a8-eadb851c5075";
         yield* mutateProjectWorkflow("/work/cake", {
-          _tag: "AddColumn",
-          column: { id: secondColumnId, name: "Review", color: "violet" },
+          _tag: "AddLabel",
+          label: { id: secondColumnId, name: "Review", color: "violet" },
         });
         const updated = yield* mutateProjectWorkflow("/work/cake", {
-          _tag: "UpdateColumn",
-          columnId,
+          _tag: "UpdateLabel",
+          labelId,
           name: "In progress now",
           color: "mint",
         });
         assert.deepEqual(
-          updated.columns.find((column) => column.id === columnId),
+          updated.labels.find((column) => column.id === labelId),
           {
-            id: columnId,
+            id: labelId,
             name: "In progress now",
             color: "mint",
           },
         );
         const reordered = yield* mutateProjectWorkflow("/work/cake", {
-          _tag: "MoveColumn",
-          columnId,
+          _tag: "MoveLabel",
+          labelId,
           index: 5,
         });
         assert.deepEqual(
-          reordered.columns.slice(-2).map((column) => column.id),
-          [secondColumnId, columnId],
+          reordered.labels.slice(-2).map((column) => column.id),
+          [secondColumnId, labelId],
         );
-        const assigned = yield* setProjectWorkflowSessionStatus(
-          "/work/cake",
-          "session-1",
-          columnId,
-        );
-        assert.deepEqual(assigned.assignments, [{ sessionId: "session-1", statusId: columnId }]);
+        const assigned = yield* setProjectSessionLabels("/work/cake", "session-1", [
+          labelId,
+          secondColumnId,
+        ]);
+        assert.deepEqual(assigned.assignments, [
+          { sessionId: "session-1", labelIds: [labelId, secondColumnId] },
+        ]);
         const deleted = yield* mutateProjectWorkflow("/work/cake", {
-          _tag: "DeleteColumn",
-          columnId,
+          _tag: "DeleteLabel",
+          labelId,
         });
-        assert.deepEqual(deleted.columns.at(-1)?.id, secondColumnId);
-        assert.deepEqual(deleted.assignments, []);
+        assert.deepEqual(deleted.labels.at(-1)?.id, secondColumnId);
+        assert.deepEqual(deleted.assignments, [
+          { sessionId: "session-1", labelIds: [secondColumnId] },
+        ]);
       }),
     ),
   );
 
-  it.effect("shares global statuses across Projects and clears their assignments on deletion", () =>
+  it.effect("does not replace labels assigned while automatic selection was in flight", () =>
+    run(
+      Effect.gen(function* () {
+        yield* upsertProject("/work/cake", "Cake");
+        const featureId = "00000000-0000-4000-8000-000000000001";
+        const bugId = "00000000-0000-4000-8000-000000000002";
+        yield* setProjectSessionLabels("/work/cake", "session-1", [featureId]);
+        const unchanged = yield* setProjectSessionLabelsIfUnlabelled("/work/cake", "session-1", [
+          bugId,
+        ]);
+        assert.deepEqual(unchanged.assignments, [
+          { sessionId: "session-1", labelIds: [featureId] },
+        ]);
+      }),
+    ),
+  );
+
+  it.effect("shares global labels across Projects and clears their assignments on deletion", () =>
     run(
       Effect.gen(function* () {
         yield* upsertProject("/work/cake", "Cake");
         yield* upsertProject("/work/pi", "Pi");
         const statusId = "b925b5dd-9661-4f1a-9f40-406be3c96c27";
-        const added = yield* mutateGlobalWorkflowStatuses({
-          _tag: "AddColumn",
-          column: { id: statusId, name: "In review", color: "cyan" },
+        const added = yield* mutateGlobalSessionLabels({
+          _tag: "AddLabel",
+          label: { id: statusId, name: "In review", color: "cyan" },
         });
         assert.equal(
-          added.globalWorkflowStatuses.find((status) => status.id === statusId)?.name,
+          added.globalSessionLabels.find((status) => status.id === statusId)?.name,
           "In review",
         );
-        yield* setProjectWorkflowSessionStatus("/work/cake", "session-1", statusId);
-        yield* setProjectWorkflowSessionStatus("/work/pi", "session-2", statusId);
-        const removed = yield* mutateGlobalWorkflowStatuses({
-          _tag: "DeleteColumn",
-          columnId: statusId,
+        yield* setProjectSessionLabels("/work/cake", "session-1", [statusId]);
+        yield* setProjectSessionLabels("/work/pi", "session-2", [statusId]);
+        const removed = yield* mutateGlobalSessionLabels({
+          _tag: "DeleteLabel",
+          labelId: statusId,
         });
         assert.equal(
-          removed.globalWorkflowStatuses.some((status) => status.id === statusId),
+          removed.globalSessionLabels.some((status) => status.id === statusId),
           false,
         );
         assert.deepEqual(removed.projects[0]?.workflow?.assignments, []);
@@ -208,85 +229,72 @@ describe("Application domain", () => {
     ),
   );
 
-  it.effect("rejects project statuses that duplicate a global status", () =>
+  it.effect("allows project labels to duplicate a global label name", () =>
     run(
       Effect.gen(function* () {
         yield* upsertProject("/work/cake", "Cake");
-        const duplicate = yield* Effect.flip(
-          mutateProjectWorkflow("/work/cake", {
-            _tag: "AddColumn",
-            column: {
-              id: "b925b5dd-9661-4f1a-9f40-406be3c96c27",
-              name: "feature",
-              color: "coral",
-            },
-          }),
-        );
-        assert.equal(duplicate._tag, "ApplicationPolicyError");
+        const updated = yield* mutateProjectWorkflow("/work/cake", {
+          _tag: "AddLabel",
+          label: {
+            id: "b925b5dd-9661-4f1a-9f40-406be3c96c27",
+            name: "Feature",
+            color: "coral",
+          },
+        });
+        assert.equal(updated.labels[0]?.name, "Feature");
       }),
     ),
   );
 
-  it.effect("rejects duplicate and reserved custom workflow names", () =>
+  it.effect("normalizes label names while allowing duplicates and former status names", () =>
     run(
       Effect.gen(function* () {
         yield* upsertProject("/work/cake", "Cake");
         yield* mutateProjectWorkflow("/work/cake", {
-          _tag: "AddColumn",
-          column: {
+          _tag: "AddLabel",
+          label: {
             id: "b925b5dd-9661-4f1a-9f40-406be3c96c27",
-            name: "  Blocked  ",
+            name: "  Waiting  ",
             color: "rose",
           },
         });
-        const normalized = (yield* mutateProjectWorkflow("/work/cake", {
-          _tag: "UpdateColumn",
-          columnId: "b925b5dd-9661-4f1a-9f40-406be3c96c27",
-          name: "  Waiting  ",
-        })).columns.find((column) => column.id === "b925b5dd-9661-4f1a-9f40-406be3c96c27");
-        assert.equal(normalized?.name, "Waiting");
-        const duplicate = yield* Effect.flip(
-          mutateProjectWorkflow("/work/cake", {
-            _tag: "AddColumn",
-            column: {
-              id: "bcf5bcc1-9126-4192-a0a8-eadb851c5075",
-              name: "waiting",
-              color: "amber",
-            },
-          }),
+        const duplicate = yield* mutateProjectWorkflow("/work/cake", {
+          _tag: "AddLabel",
+          label: {
+            id: "bcf5bcc1-9126-4192-a0a8-eadb851c5075",
+            name: "Waiting",
+            color: "amber",
+          },
+        });
+        assert.deepEqual(
+          duplicate.labels.map((label) => label.name),
+          ["Waiting", "Waiting"],
         );
-        assert.equal(duplicate._tag, "ApplicationPolicyError");
-        const reserved = yield* Effect.flip(
-          mutateProjectWorkflow("/work/cake", {
-            _tag: "AddColumn",
-            column: {
-              id: "4535dbea-37f9-4a71-a124-7eaab6a57d88",
-              name: "Active",
-              color: "mint",
-            },
-          }),
-        );
-        assert.equal(reserved._tag, "ApplicationPolicyError");
-        assert.equal(
-          reserved.message,
-          "Status names must be unique and cannot use a system status name",
-        );
+        const reserved = yield* mutateProjectWorkflow("/work/cake", {
+          _tag: "AddLabel",
+          label: {
+            id: "4535dbea-37f9-4a71-a124-7eaab6a57d88",
+            name: "Active",
+            color: "mint",
+          },
+        });
+        assert.equal(reserved.labels.at(-1)?.name, "Active");
         const empty = yield* Effect.flip(
           mutateProjectWorkflow("/work/cake", {
-            _tag: "UpdateColumn",
-            columnId: "b925b5dd-9661-4f1a-9f40-406be3c96c27",
+            _tag: "UpdateLabel",
+            labelId: "b925b5dd-9661-4f1a-9f40-406be3c96c27",
             name: "   ",
           }),
         );
-        assert.equal(empty.message, "Status names cannot be empty");
+        assert.equal(empty.message, "Label names cannot be empty");
         const tooLong = yield* Effect.flip(
           mutateProjectWorkflow("/work/cake", {
-            _tag: "UpdateColumn",
-            columnId: "b925b5dd-9661-4f1a-9f40-406be3c96c27",
+            _tag: "UpdateLabel",
+            labelId: "b925b5dd-9661-4f1a-9f40-406be3c96c27",
             name: "x".repeat(41),
           }),
         );
-        assert.equal(tooLong.message, "Status names cannot exceed 40 characters");
+        assert.equal(tooLong.message, "Label names cannot exceed 40 characters");
       }),
     ),
   );
