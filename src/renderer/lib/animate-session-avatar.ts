@@ -1,3 +1,5 @@
+import { dragSessionAvatar } from "./drag-session-avatar";
+
 const svgNamespace = "http://www.w3.org/2000/svg";
 const randomBetween = (minimum: number, maximum: number) =>
   minimum + Math.random() * (maximum - minimum);
@@ -305,8 +307,14 @@ export function animateSessionAvatar(host: HTMLElement): () => void {
     animations.delete(hop);
     hop.style.removeProperty("transform");
   };
+  const physics = dragSessionAvatar(host, () => {
+    cancelPress();
+    animations.get(hop)?.cancel();
+    animations.delete(hop);
+    hop.style.removeProperty("transform");
+  });
   const activate = () => {
-    if (reduced.matches || document.hidden) return;
+    if (reduced.matches || document.hidden || physics.active()) return;
     window.clearTimeout(releaseTimer);
     pressed = false;
     const from = getComputedStyle(hop).transform;
@@ -382,46 +390,18 @@ export function animateSessionAvatar(host: HTMLElement): () => void {
       duration,
     );
   };
-  const hopMotion = () => {
-    if (pressed) return;
-    const height = randomBetween(5, 9);
-    const angle = randomBetween(-20, 20) * (Math.PI / 180);
-    const x = Math.sin(angle) * height;
-    const y = -Math.cos(angle) * height;
-    bodyMotion(
-      [
-        "translateY(0)",
-        `translate(${x}px, ${y}px) rotate(${randomBetween(-4, 4)}deg) scale(0.98, 1.03)`,
-        "translateY(0)",
-      ],
-      randomBetween(260, 390),
-    );
-  };
   const wobble = () => {
-    if (pressed) return;
-    const angle = randomBetween(2.5, 5);
+    if (pressed || physics.active()) return;
+    const angle = randomBetween(1, 2);
     bodyMotion(
       [
         "rotate(0deg)",
-        `rotate(${-angle}deg)`,
-        `rotate(${randomBetween(angle * 0.6, angle)}deg)`,
+        `rotate(${-angle}deg) scale(1.012, 0.985)`,
+        `rotate(${angle * 0.6}deg) scale(0.995, 1.008)`,
+        `rotate(${-angle * 0.2}deg)`,
         "rotate(0deg)",
       ],
-      randomBetween(520, 820),
-    );
-  };
-  const squashAndStretch = () => {
-    if (pressed) return;
-    const squashY = randomBetween(0.88, 0.96);
-    const squashX = randomBetween(1.015, 1.055);
-    bodyMotion(
-      [
-        "scale(1)",
-        `translateY(${randomBetween(1, 3)}px) rotate(${randomBetween(-3.5, 3.5)}deg) scale(${squashX}, ${squashY})`,
-        `scale(${randomBetween(0.975, 0.995)}, ${randomBetween(1.015, 1.04)})`,
-        "scale(1)",
-      ],
-      randomBetween(420, 760),
+      randomBetween(900, 1200),
     );
   };
   const scheduleBetween = (action: () => void, minimum: number, maximum: number) => {
@@ -480,9 +460,7 @@ export function animateSessionAvatar(host: HTMLElement): () => void {
     if (reduced.matches || document.hidden) return;
     scheduleBetween(blink, 5_000, 8_000);
     scheduleBetween(glance, 11_000, 15_000);
-    scheduleBetween(hopMotion, 20_000, 30_000);
-    scheduleBetween(wobble, 20_000, 30_000);
-    scheduleBetween(squashAndStretch, 20_000, 30_000);
+    scheduleBetween(wobble, 6_000, 10_000);
   };
   trigger?.addEventListener("pointerdown", press);
   trigger?.addEventListener("keydown", press);
@@ -499,6 +477,7 @@ export function animateSessionAvatar(host: HTMLElement): () => void {
   refresh();
   return () => {
     stop();
+    physics.dispose();
     trigger?.removeEventListener("pointerdown", press);
     trigger?.removeEventListener("keydown", press);
     trigger?.removeEventListener("click", activate);

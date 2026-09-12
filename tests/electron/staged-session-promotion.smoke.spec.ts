@@ -88,6 +88,61 @@ test("promotes a staged chat immediately and leaves New Chat free for the next s
     ).toBe(0);
     await page.emulateMedia({ reducedMotion: "no-preference" });
 
+    // Quick click and keyboard activation still open the status picker; a hold
+    // captures the pointer instead and must not open a menu on release.
+    const status = page.getByRole("button", {
+      name: "Change session status. Current status: Unlabelled",
+    });
+    await status.click();
+    await expect(status).toHaveAttribute("aria-expanded", "true");
+    await page.keyboard.press("Escape");
+    await expect(status).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(status).toHaveAttribute("aria-expanded", "true");
+    await page.keyboard.press("Escape");
+
+    const perch = (await avatar.boundingBox())!;
+    const start = { x: perch.x + perch.width / 2, y: perch.y + perch.height / 2 };
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await expect(avatar).toHaveAttribute("data-physics", "held");
+    await page.mouse.move(start.x + 140, start.y - 120, { steps: 12 });
+    await expect.poll(async () => (await avatar.boundingBox())!.y).toBeLessThan(perch.y - 90);
+    await expect.poll(async () => (await avatar.boundingBox())!.x).toBeGreaterThan(perch.x + 100);
+    await page.mouse.up();
+    await expect(avatar).toHaveAttribute("data-physics", "falling");
+    await expect(status).toHaveAttribute("aria-expanded", "false");
+    await expect(avatar).not.toHaveAttribute("data-physics", /.+/, { timeout: 5000 });
+    await expect
+      .poll(async () => Math.abs((await avatar.boundingBox())!.x - perch.x))
+      .toBeLessThan(1);
+    await expect
+      .poll(async () => Math.abs((await avatar.boundingBox())!.y - perch.y))
+      .toBeLessThan(1);
+
+    // Motion reduction during a grab releases capture and restores the perch.
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await expect(avatar).toHaveAttribute("data-physics", "held");
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await expect(avatar).not.toHaveAttribute("data-physics", /.+/);
+    await page.mouse.up();
+    await expect(status).toHaveAttribute("aria-expanded", "false");
+    await status.click();
+    await expect(status).toHaveAttribute("aria-expanded", "true");
+    await page.keyboard.press("Escape");
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+
+    // Moving immediately also grabs, without requiring the hold timeout.
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(start.x + 60, start.y - 60);
+    await expect(avatar).toHaveAttribute("data-physics", "held");
+    await page.keyboard.press("Escape");
+    await expect(avatar).not.toHaveAttribute("data-physics", /.+/);
+    await page.mouse.up();
+    await expect(status).toHaveAttribute("aria-expanded", "false");
+
     await composer.click();
     await expect(composer).toBeFocused();
     await page.keyboard.type("First promoted session");

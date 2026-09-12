@@ -43,8 +43,17 @@ export function AvatarStatusPicker({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverIconTrigger
-        className={cn("size-7 rounded-full p-0 hover:bg-muted", className)}
-        tooltip={`Session status: ${label}`}
+        className={cn(
+          "size-7 rounded-full p-0 hover:bg-muted",
+          animated &&
+            "touch-none select-none motion-safe:cursor-grab data-[avatar-held=true]:cursor-grabbing data-[avatar-held=true]:bg-transparent",
+          className,
+        )}
+        tooltip={
+          animated
+            ? `Session status: ${label}. Click to change; hold to pick up.`
+            : `Session status: ${label}`
+        }
         ariaLabel={`Change session status. Current status: ${label}`}
         disabled={disabled}
       >
