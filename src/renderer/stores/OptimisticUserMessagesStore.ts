@@ -5,6 +5,7 @@ interface PendingUserMessage {
   id: string;
   canonicalPartCount: number;
   expectedOccurrence: number;
+  replacingEntryId?: string;
   text: string;
   attachments: Attachment[];
   parts: UiPart[];
@@ -22,10 +23,7 @@ export class OptimisticUserMessagesStore extends Store<OptimisticUserMessagesSto
     super(props);
     this.effect(() => {
       const reconciledIds = this.pending
-        .filter(
-          (message) =>
-            this.occurrenceCount(message.text, message.parts) >= message.expectedOccurrence,
-        )
+        .filter((message) => this.isReconciled(message))
         .map((message) => message.id);
       for (const id of reconciledIds) this.remove(id);
     });
@@ -38,7 +36,7 @@ export class OptimisticUserMessagesStore extends Store<OptimisticUserMessagesSto
     const parts = [...canonical];
     let offset = 0;
     for (const message of this.pending) {
-      if (this.occurrenceCount(message.text, message.parts) >= message.expectedOccurrence) continue;
+      if (this.isReconciled(message)) continue;
       parts.splice(
         Math.min(message.canonicalPartCount + offset, parts.length),
         0,
@@ -55,6 +53,7 @@ export class OptimisticUserMessagesStore extends Store<OptimisticUserMessagesSto
     attachments: Attachment[],
     deliveryState: "sending" | "steering" | "queued",
     renderUserMessageAsMarkdown: boolean,
+    replacingEntryId?: string,
   ) {
     const attachmentParts = attachments.flatMap((attachment, index): UiPart[] => {
       if (attachment.kind === "image")
@@ -105,13 +104,29 @@ export class OptimisticUserMessagesStore extends Store<OptimisticUserMessagesSto
         : []),
       ...attachmentParts,
     ];
+    const canonical = this.props.canonicalParts();
+    const replacedPartIndex = replacingEntryId
+      ? canonical.findIndex(
+          (part) =>
+            ((part.kind === "text" && part.role === "user") || part.kind === "skill") &&
+            part.entryId === replacingEntryId,
+        )
+      : -1;
     const earlierPendingCount = this.pending.filter(
       (message) => message.text === text && this.sameNonTextIdentity(message.parts, parts),
     ).length;
     this.pending.push({
       id,
-      canonicalPartCount: this.props.canonicalParts().length,
-      expectedOccurrence: this.occurrenceCount(text, parts) + earlierPendingCount + 1,
+      canonicalPartCount: canonical.length,
+      expectedOccurrence:
+        this.occurrenceCount(
+          text,
+          parts,
+          replacedPartIndex < 0 ? canonical : canonical.slice(0, replacedPartIndex),
+        ) +
+        earlierPendingCount +
+        1,
+      replacingEntryId,
       text,
       attachments: attachments.map((attachment) => ({ ...attachment })),
       parts,
@@ -144,8 +159,27 @@ export class OptimisticUserMessagesStore extends Store<OptimisticUserMessagesSto
     this.pending.splice(0);
   }
 
-  private occurrenceCount(text: string, parts: UiPart[]) {
+  private isReconciled(message: PendingUserMessage) {
     const canonical = this.props.canonicalParts();
+    if (
+      message.replacingEntryId &&
+      canonical.some(
+        (part) =>
+          ((part.kind === "text" && part.role === "user") || part.kind === "skill") &&
+          part.entryId === message.replacingEntryId,
+      )
+    )
+      return false;
+    return (
+      this.occurrenceCount(message.text, message.parts, canonical) >= message.expectedOccurrence
+    );
+  }
+
+  private occurrenceCount(
+    text: string,
+    parts: UiPart[],
+    canonical: readonly UiPart[] = this.props.canonicalParts(),
+  ) {
     if (text)
       return canonical.filter(
         (part) =>

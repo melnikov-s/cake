@@ -106,7 +106,7 @@ export class ConversationDeliveryStore extends Store<ConversationDeliveryStorePr
     const sessionId = this.props.sessionId();
     if (!sessionId) return false;
     const operationId = this.props.operations.start(this.props.operationOwner);
-    this.addPending(operationId, text, attachments, "prompt", renderUserMessageAsMarkdown);
+    this.addPending(operationId, text, attachments, "prompt", renderUserMessageAsMarkdown, entryId);
     try {
       await this.props.editMessage({
         sessionId,
@@ -115,6 +115,7 @@ export class ConversationDeliveryStore extends Store<ConversationDeliveryStorePr
         attachments,
         renderUserMessageAsMarkdown,
       });
+      this.optimisticUserMessages.remove(operationId);
       this.finish(operationId);
       return true;
     } catch (error) {
@@ -229,6 +230,7 @@ export class ConversationDeliveryStore extends Store<ConversationDeliveryStorePr
     attachments: Attachment[],
     delivery: "prompt" | "steer",
     renderUserMessageAsMarkdown: boolean,
+    replacingEntryId?: string,
   ) {
     this.optimisticUserMessages.add(
       operationId,
@@ -236,6 +238,7 @@ export class ConversationDeliveryStore extends Store<ConversationDeliveryStorePr
       attachments,
       delivery === "steer" ? "steering" : "sending",
       renderUserMessageAsMarkdown,
+      replacingEntryId,
     );
   }
 
