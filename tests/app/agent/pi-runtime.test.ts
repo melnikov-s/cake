@@ -1197,6 +1197,50 @@ describe("Pi 0.85.1 foundation contract", () => {
     ]);
   });
 
+  it("projects one cache estimate anchor for a completed assistant response", () => {
+    const parts = projectSessionEntries([
+      {
+        type: "message",
+        id: "assistant-cache",
+        parentId: null,
+        timestamp: new Date(1_000).toISOString(),
+        message: {
+          role: "assistant",
+          content: [
+            { type: "thinking", thinking: "Considering" },
+            { type: "text", text: "Done" },
+          ],
+          provider: "anthropic",
+          model: "claude-sonnet",
+          stopReason: "stop",
+          timestamp: 1_000,
+          usage: {
+            input: 2_000,
+            output: 20,
+            cacheRead: 1_500,
+            cacheWrite: 500,
+            totalTokens: 4_020,
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+          },
+        },
+      },
+    ] as never);
+
+    expect(parts.filter((part) => "response" in part && part.response !== undefined)).toEqual([
+      expect.objectContaining({
+        kind: "reasoning",
+        response: expect.objectContaining({
+          provider: "anthropic",
+          modelId: "claude-sonnet",
+          requestedAt: 1_000,
+          inputTokens: 2_000,
+          cacheReadTokens: 1_500,
+          cacheWriteTokens: 500,
+        }),
+      }),
+    ]);
+  });
+
   it("projects Cake's persisted Markdown presentation metadata onto its user message", () => {
     const parts = projectSessionEntries([
       {

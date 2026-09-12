@@ -393,9 +393,43 @@ describe("Chat", () => {
       vi.runAllTimers();
     });
 
+    expect(gauge.dataset.contextState).toBe("normal");
     expect(document.body.querySelector<HTMLElement>('[role="tooltip"]')?.textContent).toBe(
-      "20k / 270k tokens",
+      "20k / 270k tokens · Cache unknown",
     );
+  });
+
+  it.each([
+    [39, "normal"],
+    [40, "moderate"],
+    [70, "high"],
+    [90, "critical"],
+  ])("marks %i%% context usage as %s", (percent, expectedState) => {
+    store = mount(
+      createStore(ChatStore, {
+        id: () => "usage-threshold-chat",
+        parts: () => [],
+        streaming: () => false,
+        submitting: () => false,
+        configuration: () => undefined,
+        commands: () => [],
+        placeholder: () => "Message Cake",
+        inputLabel: () => "Message",
+        canSubmit: () => false,
+        submit: async () => false,
+        usage: () => ({
+          tokens: { input: percent, output: 0, cacheRead: 0, cacheWrite: 0, total: percent },
+          cost: 0,
+          context: { tokens: percent, contextWindow: 100, percent },
+        }),
+      }),
+    );
+
+    act(() => root.render(<Chat store={store!} />));
+
+    expect(
+      container.querySelector<HTMLElement>('[aria-label*="context used"]')?.dataset.contextState,
+    ).toBe(expectedState);
   });
 
   it("keeps stop available while idle foreground work has a running subagent", async () => {

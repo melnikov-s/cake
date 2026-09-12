@@ -14,6 +14,7 @@ import {
   ScheduledMessageInteractionStore,
   type ScheduledMessageCapabilities,
 } from "./ScheduledMessageInteractionStore";
+import { PromptCacheStore } from "./PromptCacheStore";
 import {
   TranscriptInteractionStore,
   type TranscriptScrollPosition,
@@ -77,6 +78,7 @@ export interface ChatStoreProps {
   suggestFiles?(prefix: string): Promise<ReadonlyArray<FileSuggestion>>;
   focusRequestRevision?(): number;
   usage?(): SessionSnapshot["usage"];
+  promptCacheModel?(): { provider: string; modelId: string } | undefined;
   queuedPrompts?(): readonly QueuedPrompt[];
   steerQueuedPrompt?(id: string): void;
   editQueuedPrompt?(id: string): boolean | undefined;
@@ -121,6 +123,14 @@ export class ChatStore extends Store<ChatStoreProps> {
   get scheduledMessageInteraction(): ScheduledMessageInteractionStore {
     return createStore(ScheduledMessageInteractionStore, {
       capabilities: this.props.scheduledMessages,
+    });
+  }
+
+  @child
+  get promptCache(): PromptCacheStore {
+    return createStore(PromptCacheStore, {
+      parts: this.props.parts,
+      model: () => this.props.promptCacheModel?.(),
     });
   }
 

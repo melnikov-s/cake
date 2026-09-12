@@ -200,6 +200,15 @@ export const attachmentSchema = Schema.Union([
 ]);
 
 const partBase = { id: stringRange(1, 256) };
+const promptCacheResponseSchema = Schema.Struct({
+  provider: stringMax(256),
+  modelId: stringMax(512),
+  retention: Schema.Literals(["short", "long"]),
+  requestedAt: Schema.Number.check(Schema.isGreaterThanOrEqualTo(0)),
+  inputTokens: nonNegativeInt,
+  cacheReadTokens: nonNegativeInt,
+  cacheWriteTokens: nonNegativeInt,
+});
 const toolOutputContentSchema = Schema.Union([
   Schema.Struct({ type: Schema.Literal("text"), text: boundedText }),
   Schema.Struct({
@@ -224,6 +233,7 @@ export const uiPartSchema = Schema.Union([
     draft: Schema.optional(Schema.Boolean),
     crossSession: Schema.optional(CrossSessionMessageMetadata),
     scheduled: Schema.optional(ScheduledMessageOrigin),
+    response: Schema.optional(promptCacheResponseSchema),
   }),
   Schema.Struct({
     ...partBase,
@@ -237,6 +247,7 @@ export const uiPartSchema = Schema.Union([
     kind: Schema.Literal("reasoning"),
     text: boundedText,
     status: Schema.Literals(["streaming", "complete"]),
+    response: Schema.optional(promptCacheResponseSchema),
   }),
   Schema.Struct({
     ...partBase,
@@ -259,6 +270,7 @@ export const uiPartSchema = Schema.Union([
     diff: Schema.optional(boundedText),
     inputStreaming: Schema.optional(Schema.Boolean),
     state: Schema.Literals(["approval", "running", "success", "error", "denied", "interrupted"]),
+    response: Schema.optional(promptCacheResponseSchema),
   }),
   Schema.Struct({
     ...partBase,

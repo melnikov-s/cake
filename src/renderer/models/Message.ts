@@ -11,6 +11,7 @@ type DeliveryState = Extract<UiPart, { kind: "text" }>["deliveryState"];
 type TextRenderAs = Extract<UiPart, { kind: "text" }>["renderAs"];
 type CrossSessionMetadata = Extract<UiPart, { kind: "text" }>["crossSession"];
 type ScheduledOrigin = Extract<UiPart, { kind: "text" }>["scheduled"];
+type PromptCacheResponse = Extract<UiPart, { kind: "text" }>["response"];
 
 export class Message extends Model {
   @id id = "";
@@ -27,6 +28,7 @@ export class Message extends Model {
   renderAs: TextRenderAs | undefined;
   crossSession: CrossSessionMetadata | undefined;
   scheduled: ScheduledOrigin | undefined;
+  response: PromptCacheResponse | undefined;
   name: string | undefined;
   command: string | undefined;
   excludeFromContext: boolean | undefined;
@@ -67,6 +69,7 @@ export class Message extends Model {
         this.renderAs = part.renderAs;
         this.crossSession = part.crossSession;
         this.scheduled = part.scheduled;
+        this.response = part.response;
         return true;
       case "skill":
         this.name = part.name;
@@ -75,6 +78,7 @@ export class Message extends Model {
       case "reasoning":
         this.text = part.text;
         this.status = part.status;
+        this.response = part.response;
         return true;
       case "command":
         this.command = part.command;
@@ -93,6 +97,7 @@ export class Message extends Model {
         this.diff = part.diff;
         this.inputStreaming = part.inputStreaming;
         this.state = part.state;
+        this.response = part.response;
         return true;
       case "source":
         this.title = part.title;
@@ -143,6 +148,7 @@ export class Message extends Model {
           renderAs: this.renderAs,
           crossSession: this.crossSession,
           scheduled: this.scheduled,
+          response: this.response,
         };
       case "skill":
         return { id: this.partKey, kind: this.kind, name: this.name!, content: this.content! };
@@ -153,6 +159,7 @@ export class Message extends Model {
           kind: this.kind,
           text: this.text!,
           status: this.status as Extract<UiPart, { kind: "reasoning" }>["status"],
+          response: this.response,
         };
       case "command":
         return {
@@ -178,6 +185,7 @@ export class Message extends Model {
           diff: this.diff,
           inputStreaming: this.inputStreaming,
           state: this.state!,
+          response: this.response,
         };
       case "source":
         return { id: this.partKey, kind: this.kind, title: this.title!, url: this.url! };

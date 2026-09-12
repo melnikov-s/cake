@@ -34,6 +34,7 @@ function formatCompactTokenCount(tokens: number | null | undefined) {
 // usage events re-render the gauge even while Chat itself is otherwise idle.
 const Usage = observer(function Usage({ store }: { store: ChatStore }) {
   const usage = store.usage;
+  const cache = store.promptCache.prediction;
   const { anchor, hide, show } = useTooltip();
   if (!usage) return null;
   const context = usage.context;
@@ -49,11 +50,32 @@ const Usage = observer(function Usage({ store }: { store: ChatStore }) {
   const contextTokenSummary = context
     ? `${formatCompactTokenCount(context.tokens)} / ${formatCompactTokenCount(context.contextWindow)} tokens`
     : "Context usage unavailable";
+  const contextState =
+    percent === undefined
+      ? "unknown"
+      : percent >= 90
+        ? "critical"
+        : percent >= 70
+          ? "high"
+          : percent >= 40
+            ? "moderate"
+            : "normal";
+  const cacheSummary = cache ? `${cache.label}. ${cache.detail}` : "Cache status unavailable";
+  const tooltipLabel = `${contextTokenSummary} · ${cache?.label ?? "Cache unknown"}`;
   return (
     <div
-      className="flex shrink-0 items-center gap-1.5 rounded-full border border-border/60 bg-muted/40 px-2 py-1 font-mono text-[11px] text-muted-foreground tabular-nums select-none hover:bg-muted/70 hover:text-foreground transition-colors cursor-default"
-      aria-label={`${contextLabel}; ${contextTokenSummary}`}
-      title={`${contextTitle} · ${usage.tokens.total.toLocaleString()} billed tokens`}
+      className={cn(
+        "flex shrink-0 items-center gap-1.5 rounded-full border bg-muted/40 px-2 py-1 font-mono text-[11px] text-muted-foreground tabular-nums select-none hover:bg-muted/70 hover:text-foreground transition-colors cursor-default",
+        cache?.state === "likely-warm"
+          ? "border-success/50"
+          : cache?.state === "uncertain"
+            ? "border-warning/50"
+            : "border-border/60",
+      )}
+      aria-label={`${contextLabel}; ${contextTokenSummary}; ${cacheSummary}`}
+      title={`${contextTitle} · ${usage.tokens.total.toLocaleString()} billed tokens · ${cacheSummary}`}
+      data-context-state={contextState}
+      data-cache-state={cache?.state ?? "unknown"}
       tabIndex={0}
       onMouseEnter={(event) => show(event.currentTarget)}
       onMouseOver={(event) => show(event.currentTarget)}
@@ -73,7 +95,16 @@ const Usage = observer(function Usage({ store }: { store: ChatStore }) {
           pathLength="100"
         />
         <circle
-          className="fill-none stroke-foreground/80 [stroke-width:2] [stroke-linecap:round] -rotate-90 origin-center"
+          className={cn(
+            "fill-none [stroke-width:2] [stroke-linecap:round] -rotate-90 origin-center",
+            contextState === "critical"
+              ? "stroke-destructive"
+              : contextState === "high"
+                ? "stroke-warning"
+                : contextState === "moderate"
+                  ? "stroke-attention"
+                  : "stroke-foreground/80",
+          )}
           cx="8"
           cy="8"
           r="6"
@@ -90,7 +121,7 @@ const Usage = observer(function Usage({ store }: { store: ChatStore }) {
           {`${formatCompactTokenCount(context.tokens)}/${formatCompactTokenCount(context.contextWindow)}`}
         </span>
       )}
-      {anchor && <TooltipBubble label={contextTokenSummary} anchor={anchor} placement="above" />}
+      {anchor && <TooltipBubble label={tooltipLabel} anchor={anchor} placement="above" />}
     </div>
   );
 });

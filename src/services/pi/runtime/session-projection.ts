@@ -323,6 +323,43 @@ function partsFromMessage(
   }
 
   if (role === "assistant" && Array.isArray(content)) {
+    const usage = Reflect.get(message, "usage");
+    const requestedAt = Reflect.get(message, "timestamp");
+    const provider = Reflect.get(message, "provider");
+    const modelId = Reflect.get(message, "model");
+    const retention: "short" | "long" =
+      process.env.PI_CACHE_RETENTION === "long" ? "long" : "short";
+    const tokenCount = (key: string) => {
+      const value =
+        typeof usage === "object" && usage !== null ? Reflect.get(usage, key) : undefined;
+      return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : 0;
+    };
+    let response =
+      !streaming &&
+      Reflect.get(message, "stopReason") !== "error" &&
+      Reflect.get(message, "stopReason") !== "aborted" &&
+      typeof requestedAt === "number" &&
+      Number.isFinite(requestedAt) &&
+      requestedAt >= 0 &&
+      typeof provider === "string" &&
+      provider.length > 0 &&
+      typeof modelId === "string" &&
+      modelId.length > 0
+        ? {
+            provider: provider.slice(0, 256),
+            modelId: modelId.slice(0, 512),
+            retention,
+            requestedAt,
+            inputTokens: tokenCount("input"),
+            cacheReadTokens: tokenCount("cacheRead"),
+            cacheWriteTokens: tokenCount("cacheWrite"),
+          }
+        : undefined;
+    const takeResponse = () => {
+      const current = response;
+      response = undefined;
+      return current;
+    };
     const parts = content.flatMap((item, index): UiPart[] => {
       if (typeof item !== "object" || item === null) return [];
       const type = Reflect.get(item, "type");
@@ -344,6 +381,7 @@ function partsFromMessage(
               : Reflect.get(message, "errorMessage")
                 ? "error"
                 : "complete",
+            response: takeResponse(),
           },
           ...sources.map((url, sourceIndex): UiPart => ({
             id: `${baseId}-source-${index}-${sourceIndex}`,
@@ -360,6 +398,7 @@ function partsFromMessage(
             kind: "reasoning",
             text: String(Reflect.get(item, "thinking") ?? ""),
             status: streaming ? "streaming" : "complete",
+            response: takeResponse(),
           },
         ];
       }
@@ -377,6 +416,7 @@ function partsFromMessage(
             filePath: toolFilePath(name, args),
             inputStreaming: index === streamingToolContentIndex,
             state: "running",
+            response: takeResponse(),
           },
         ];
       }

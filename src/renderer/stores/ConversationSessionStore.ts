@@ -249,6 +249,10 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
       suggestFiles: capabilities.suggestFiles,
       focusRequestRevision: () => this.composerStore.draftStore.focusRequestRevision,
       usage: () => this.model.usage,
+      promptCacheModel: () =>
+        this.model.model
+          ? { provider: this.model.model.provider, modelId: this.model.model.modelId }
+          : undefined,
       queuedPrompts: () => [
         ...this.composerStore.promptQueueStore.prompts.map((entry) => ({
           ...entry,
