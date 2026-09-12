@@ -1,6 +1,7 @@
-import { Store, child, createStore } from "r-state-tree";
+import { Store, child, createStore, effect as reactiveEffect } from "r-state-tree";
 import type { Session } from "../models/Session";
 import type { ModelPreset, SessionSnapshot } from "../../ipc/session-contract";
+import type { ComposerDeliveryInput } from "./ConversationComposerStore";
 import type { StoreEvent } from "../events/StoreEvent";
 import {
   ConversationComposerStore,
@@ -13,7 +14,6 @@ import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordin
 import { SideChatStore } from "./SideChatStore";
 import type { ExistingWorktreeCandidate, WorktreeDraftChoice } from "./WorktreeCreationStore";
 import type { ScheduledMessageCapabilities } from "./ScheduledMessageInteractionStore";
-import type { UserMessagePresentationCapabilities } from "./TranscriptInteractionStore";
 import { ClientContext } from "./context/ClientContext";
 
 type ComposerCapabilities = Omit<
@@ -25,62 +25,65 @@ type ComposerCapabilities = Omit<
   | "selectModel"
   | "operations"
   | "operationOwner"
+  | "deliver"
+  | "editMessage"
+  | "compact"
+  | "clearQueue"
+  | "cancelSteering"
 >;
 
 type ConfigurationCapabilities = Omit<
   ChatConfigurationStoreProps,
-  "session" | "operations" | "operationOwner" | "presets" | "openPresetSettings"
+  | "session"
+  | "operations"
+  | "operationOwner"
+  | "presets"
+  | "openPresetSettings"
+  | "setConfiguration"
+  | "setModel"
+  | "setThinkingLevel"
+  | "setFastMode"
 >;
 
 interface ConversationChatCapabilities {
   commands(): SessionSnapshot["commands"];
   placeholder(): string;
   inputLabel(): string;
-  userMessagePresentation: UserMessagePresentationCapabilities;
-  stoppable?(): boolean;
-  abort?(): Promise<void>;
   addAttachments?(): Promise<void>;
   suggestFiles?(prefix: string): ReturnType<NonNullable<ChatStoreProps["suggestFiles"]>>;
   sessionCreationChoice?(): WorktreeDraftChoice;
   draftActivationCandidates?(): ExistingWorktreeCandidate[];
   isDraftSession?(): boolean;
-  steeringPrompts?(): readonly QueuedPrompt[];
-  /** Drops a prompt Pi is already holding in its queue, identified by its projected part id. */
-  removeRuntimeQueuedPrompt?(partId: string): Promise<void>;
-  /** Promotes a prompt Pi is already holding as a follow-up to steer the active turn. */
-  steerRuntimeQueuedPrompt?(partId: string): Promise<void>;
   scheduledMessages?: ScheduledMessageCapabilities;
   rewordWorkingDirectory?(): string | undefined;
   fallbackError?(): { message?: string; details?: string };
-  configurationErrorFirst?: boolean;
-  errorTitle?: string;
 }
 
 export interface ConversationSessionStoreProps {
   sessionId: string;
   model: Session;
   operations: SessionOperationCoordinatorStore;
-  composerOperationOwner: string;
-  configurationOperationOwner: string;
   canSubmit(): boolean;
+  /** Creates the kind-specific runtime profile for a not-yet-materialized session. */
+  startSession?(input: ComposerDeliveryInput): Promise<boolean>;
+  /** Restores and assembles an existing runtime before a shared conversation command. */
+  ensureSessionActive(): boolean | Promise<boolean>;
   composer: ComposerCapabilities;
   configuration: ConfigurationCapabilities;
   chat: ConversationChatCapabilities;
   modelPresets(): readonly ModelPreset[];
   openModelPresetSettings(): void;
   settings?(): AppearanceSettingsStore | undefined;
-  resetOperationOwnersOnDispose?: boolean;
 }
 
 /** Owns the common active-conversation children and wiring for one primary Cake session. */
 export class ConversationSessionStore extends Store<ConversationSessionStoreProps> {
   constructor(props: ConversationSessionStore["props"]) {
     super(props);
-    if (props.resetOperationOwnersOnDispose)
-      this.effect(() => () => {
-        props.operations.reset(props.composerOperationOwner);
-        props.operations.reset(props.configurationOperationOwner);
-      });
+    this.effect(() => () => {
+      props.operations.reset(this.composerOperationOwner);
+      props.operations.reset(this.configurationOperationOwner);
+    });
   }
 
   get client() {
@@ -99,6 +102,14 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
     return this.model.streaming;
   }
 
+  private get composerOperationOwner() {
+    return `session-chat-composer:${this.sessionId}`;
+  }
+
+  private get configurationOperationOwner() {
+    return `session-chat-configuration:${this.sessionId}`;
+  }
+
   get canSubmit() {
     return this.props.canSubmit() && this.composerStore.draftStore.hasContent;
   }
@@ -108,6 +119,31 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
     return createStore(ConversationComposerStore, {
       ...this.props.composer,
       sessionId: () => this.sessionId,
+      queueWhileStreaming: () => true,
+      deliver: (input) => this.deliver(input),
+      editMessage: (input) =>
+        this.withActiveSession(async () => {
+          await this.client.sessionChats.editMessage(input, { signal: this.signal });
+        }),
+      compact: (sessionId, instructions) =>
+        this.withActiveSession(async () => {
+          await this.client.sessionChats.compact(
+            { sessionId, instructions },
+            { signal: this.signal },
+          );
+        }),
+      clearQueue: async () => {
+        await this.client.sessionChats.clearQueue(
+          { sessionId: this.sessionId },
+          { signal: this.signal },
+        );
+      },
+      cancelSteering: async () => {
+        await this.client.sessionChats.cancelSteering(
+          { sessionId: this.sessionId },
+          { signal: this.signal },
+        );
+      },
       canonicalParts: () => this.model.uiParts,
       canSubmit: () => this.canSubmit,
       isStreaming: () => this.streaming,
@@ -116,7 +152,7 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
         return !this.signal.aborted && !this.configurationStore.error;
       },
       operations: this.props.operations,
-      operationOwner: this.props.composerOperationOwner,
+      operationOwner: this.composerOperationOwner,
     });
   }
 
@@ -125,8 +161,36 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
     return createStore(ChatConfigurationStore, {
       ...this.props.configuration,
       session: () => this.model,
+      setConfiguration: (configuration) =>
+        this.configureActiveSession(() =>
+          this.client.sessionChats.applyConfiguration(
+            { sessionId: this.sessionId, configuration },
+            { signal: this.signal },
+          ),
+        ),
+      setModel: (provider, modelId) =>
+        this.configureActiveSession(() =>
+          this.client.sessionChats.setModel(
+            { sessionId: this.sessionId, provider, modelId },
+            { signal: this.signal },
+          ),
+        ),
+      setThinkingLevel: (level) =>
+        this.configureActiveSession(() =>
+          this.client.sessionChats.setThinkingLevel(
+            { sessionId: this.sessionId, level },
+            { signal: this.signal },
+          ),
+        ),
+      setFastMode: (enabled) =>
+        this.configureActiveSession(() =>
+          this.client.sessionChats.setFastMode(
+            { sessionId: this.sessionId, enabled },
+            { signal: this.signal },
+          ),
+        ),
       operations: this.props.operations,
-      operationOwner: this.props.configurationOperationOwner,
+      operationOwner: this.configurationOperationOwner,
       presets: this.props.modelPresets,
       openPresetSettings: this.props.openModelPresetSettings,
     });
@@ -151,7 +215,7 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
       submitting: () =>
         this.composerStore.deliveryStore.activeOperations.length > 0 ||
         this.model.activeTurnIds.length > 0,
-      stoppable: capabilities.stoppable,
+      stoppable: () => this.model.backgroundWorkActive,
       configuration: () => this.configurationStore,
       commands: capabilities.commands,
       placeholder: capabilities.placeholder,
@@ -159,14 +223,20 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
       canSubmit: () => this.canSubmit,
       submit: (_draft, options) =>
         this.composerStore.submit(undefined, options?.renderUserMessageAsMarkdown ?? false),
-      userMessagePresentation: capabilities.userMessagePresentation,
+      userMessagePresentation: {
+        setMarkdown: (entryId, renderAsMarkdown) =>
+          this.client.sessionChats.setUserMessageMarkdown(
+            { sessionId: this.sessionId, entryId, renderAsMarkdown },
+            { signal: this.signal },
+          ),
+      },
       activateDraft: (choice) => this.composerStore.activateDraftSession(choice),
       sessionCreationChoice: capabilities.sessionCreationChoice,
       draftActivationCandidates: capabilities.draftActivationCandidates,
       editLastUserMessage: (entryId) => this.composerStore.beginEditMessage(entryId),
       isDraftSession: capabilities.isDraftSession,
       editingMessage: () => this.composerStore.editingMessage,
-      abort: capabilities.abort,
+      abort: () => this.abort(),
       attachments: () => this.composerStore.draftStore.visibleAttachments,
       addAttachments: capabilities.addAttachments,
       addPastedImages: (files) => this.composerStore.draftStore.addPastedImages(files),
@@ -179,35 +249,25 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
       suggestFiles: capabilities.suggestFiles,
       focusRequestRevision: () => this.composerStore.draftStore.focusRequestRevision,
       usage: () => this.model.usage,
-      queuedPrompts: this.props.composer.queueWhileStreaming
-        ? () => [
-            ...this.composerStore.promptQueueStore.prompts.map((entry) => ({
-              ...entry,
-              state: "queued" as const,
-            })),
-            ...(capabilities.steeringPrompts?.() ?? []),
-          ]
-        : undefined,
-      steerQueuedPrompt: this.props.composer.queueWhileStreaming
-        ? (id) => {
-            if (this.composerStore.promptQueueStore.has(id))
-              this.composerStore.promptQueueStore.steer(id);
-            else this.editRuntimeQueuedPrompt(id, capabilities.steerRuntimeQueuedPrompt);
-          }
-        : undefined,
-      editQueuedPrompt: this.props.composer.queueWhileStreaming
-        ? (id) => this.composerStore.promptQueueStore.edit(id)
-        : undefined,
-      removeQueuedPrompt: this.props.composer.queueWhileStreaming
-        ? (id) => {
-            if (this.composerStore.promptQueueStore.has(id))
-              this.composerStore.promptQueueStore.remove(id);
-            else this.editRuntimeQueuedPrompt(id, capabilities.removeRuntimeQueuedPrompt);
-          }
-        : undefined,
-      cancelSteering: this.props.composer.queueWhileStreaming
-        ? () => this.composerStore.promptQueueStore.cancelSteering()
-        : undefined,
+      queuedPrompts: () => [
+        ...this.composerStore.promptQueueStore.prompts.map((entry) => ({
+          ...entry,
+          state: "queued" as const,
+        })),
+        ...this.runtimeQueuedPrompts,
+      ],
+      steerQueuedPrompt: (id) => {
+        if (this.composerStore.promptQueueStore.has(id))
+          this.composerStore.promptQueueStore.steer(id);
+        else this.editRuntimeQueuedPrompt(id, "steer");
+      },
+      editQueuedPrompt: (id) => this.composerStore.promptQueueStore.edit(id),
+      removeQueuedPrompt: (id) => {
+        if (this.composerStore.promptQueueStore.has(id))
+          this.composerStore.promptQueueStore.remove(id);
+        else this.editRuntimeQueuedPrompt(id, "remove");
+      },
+      cancelSteering: () => this.composerStore.promptQueueStore.cancelSteering(),
       scheduledMessages: capabilities.scheduledMessages,
       composerReword: {
         showContextMenu: (selection, x, y) =>
@@ -240,30 +300,122 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
 
   get error() {
     const fallback = this.props.chat.fallbackError?.();
-    const message = this.props.chat.configurationErrorFirst
-      ? (this.configurationStore.error ?? this.composerStore.error ?? fallback?.message)
-      : (this.composerStore.error ?? this.configurationStore.error ?? fallback?.message);
-    const details = this.props.chat.configurationErrorFirst
-      ? (this.configurationStore.errorDetails ??
-        this.composerStore.errorDetails ??
-        fallback?.details)
-      : (this.composerStore.errorDetails ??
-        this.configurationStore.errorDetails ??
-        fallback?.details);
-    return { message, details, title: this.props.chat.errorTitle };
+    const message = this.composerStore.error ?? this.configurationStore.error ?? fallback?.message;
+    const details =
+      this.composerStore.errorDetails ?? this.configurationStore.errorDetails ?? fallback?.details;
+    return { message, details };
   }
 
   receive(event: StoreEvent) {
     this.composerStore.receive(event);
   }
 
-  private editRuntimeQueuedPrompt(
-    partId: string,
-    edit: ((partId: string) => Promise<void>) | undefined,
-  ) {
-    if (!edit) return;
-    void edit(partId).catch((error: unknown) => {
-      if (!this.signal.aborted) this.composerStore.reportError(error, "Queued prompt");
+  private get runtimeQueuedPrompts(): QueuedPrompt[] {
+    return this.model.parts.flatMap((part) =>
+      part.kind === "text" &&
+      part.role === "user" &&
+      (part.deliveryState === "queued" || part.deliveryState === "steering")
+        ? [
+            {
+              id: part.partKey,
+              text: part.text ?? "",
+              attachments: [],
+              renderUserMessageAsMarkdown: part.renderAs === "markdown",
+              state: part.deliveryState,
+              source: part.crossSession,
+              scheduled: part.scheduled,
+              editable: false,
+            },
+          ]
+        : [],
+    );
+  }
+
+  private async deliver(input: ComposerDeliveryInput) {
+    if (this.props.configuration.deferredNewSession?.() && this.props.startSession)
+      return this.props.startSession(input);
+    const active = await this.activeSession();
+    if (!active) return false;
+    const command =
+      input.delivery === "steer" ? this.client.sessionChats.steer : this.client.sessionChats.prompt;
+    await command(
+      {
+        sessionId: input.sessionId,
+        text: input.text,
+        attachments: input.attachments,
+        renderUserMessageAsMarkdown: input.renderUserMessageAsMarkdown,
+      },
+      { signal: this.signal },
+    );
+    return true;
+  }
+
+  private async configureActiveSession(command: () => Promise<void>) {
+    if (await this.activeSession()) await command();
+  }
+
+  private async withActiveSession(command: () => Promise<void>) {
+    if (!(await this.activeSession())) throw new Error("That conversation is unavailable");
+    await command();
+  }
+
+  /** Restores the session when needed and waits for its assembled live projection. */
+  async prepareForCommand() {
+    const revision = this.model.observedSnapshotRevision;
+    if (!(await this.activeSession())) return false;
+    if (this.model.observedSnapshotRevision > 0) return true;
+    return this.waitForActiveProjection(revision);
+  }
+
+  private async activeSession() {
+    const observedSnapshotRevision = this.model.observedSnapshotRevision;
+    const active = this.props.ensureSessionActive();
+    if (active === true || active === false) return active;
+    const restored = await active;
+    return restored ? this.waitForActiveProjection(observedSnapshotRevision) : false;
+  }
+
+  /** Keeps pending interaction state visible until restored live observation is attached. */
+  private waitForActiveProjection(afterRevision: number): Promise<boolean> {
+    if (!this.model.resolved && this.model.observedSnapshotRevision > afterRevision)
+      return Promise.resolve(true);
+    if (this.signal.aborted) return Promise.resolve(false);
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (ready: boolean) => {
+        if (settled) return;
+        settled = true;
+        this.signal.removeEventListener("abort", abort);
+        dispose();
+        resolve(ready);
+      };
+      const abort = () => finish(false);
+      this.signal.addEventListener("abort", abort, { once: true });
+      const dispose = reactiveEffect(() => {
+        if (!this.model.resolved && this.model.observedSnapshotRevision > afterRevision)
+          queueMicrotask(() => finish(true));
+      });
     });
+  }
+
+  private async abort() {
+    if (!this.streaming && !this.model.backgroundWorkActive) return;
+    try {
+      await this.client.sessionChats.abort({ sessionId: this.sessionId }, { signal: this.signal });
+    } catch (error) {
+      if (!this.signal.aborted) this.composerStore.reportError(error);
+    }
+  }
+
+  private editRuntimeQueuedPrompt(partId: string, operation: "remove" | "steer") {
+    const command =
+      operation === "remove"
+        ? this.client.sessionChats.removeQueuedMessage
+        : this.client.sessionChats.steerQueuedMessage;
+    void command({ sessionId: this.sessionId, partId }, { signal: this.signal }).catch(
+      (error: unknown) => {
+        if (!this.signal.aborted) this.composerStore.reportError(error, "Queued prompt");
+      },
+    );
   }
 }

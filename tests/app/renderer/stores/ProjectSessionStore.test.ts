@@ -49,7 +49,6 @@ describe("ProjectSessionStore", () => {
         openCommandPane: async () => undefined,
         projectName: () => "project",
         familyId: () => undefined,
-        abort: async () => undefined,
         renameSession: async () => undefined,
         toolCompactSession: async () => false,
         modelPresets: () => [],
@@ -65,7 +64,7 @@ describe("ProjectSessionStore", () => {
         retirement: { prepare: async () => true },
         onResolveWorktree: () => undefined,
       }),
-      { projectSessions: { prompt, setModel } } as unknown as Client,
+      { sessionChats: { prompt, setModel } } as unknown as Client,
     );
 
     const submission = session.conversationSessionStore.chatStore.submit("Continue");
@@ -143,7 +142,6 @@ describe("ProjectSessionStore", () => {
         openCommandPane: async () => undefined,
         projectName: () => "project",
         familyId: () => undefined,
-        abort: async () => undefined,
         renameSession: async () => undefined,
         toolCompactSession: async () => false,
         modelPresets: () => [],

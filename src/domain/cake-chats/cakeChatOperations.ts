@@ -1,7 +1,6 @@
 import { Effect, Stream, type Schema } from "effect";
-import * as subagents from "../subagents/subagents";
-import { SESSION_TITLE_MAX_LENGTH, type PiSettingUpdate } from "../../ipc/session-contract";
-import { PiSessions, type PiSessionHandle } from "../../services/pi/PiSessions";
+import { SESSION_TITLE_MAX_LENGTH } from "../../ipc/session-contract";
+import { PiSessions } from "../../services/pi/PiSessions";
 import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
 import { SessionCatalogChanges } from "../../services/session-catalogs/SessionCatalogChanges";
 import * as cakeChatLifecycle from "./cakeChatLifecycle";
@@ -9,28 +8,19 @@ import type { CakeChatLocation } from "./cakeChatLocations";
 import * as cakeChatRuntime from "./cakeChatRuntime";
 import type { CakeChatRuntimeConfiguration } from "./cakeChatRuntime";
 import {
-  abort as abortConversation,
   acquire as acquireConversation,
-  applyConfiguration as applyConversationConfiguration,
-  authenticate as authenticateConversation,
-  compact as compactConversation,
   deliverWhenAvailable,
-  editMessage as editConversationMessage,
   observe as observeConversation,
   projectAttachments,
   projectPreviewSnapshot,
   projectSnapshot,
-  setFastMode as setConversationFastMode,
-  setModel as setConversationModel,
-  setPiSetting as setConversationPiSetting,
-  setThinkingLevel as setConversationThinkingLevel,
   TurnId,
   use as useConversation,
 } from "../conversations/conversations";
 import {
   CakeChatError,
   type CakeChatEvent,
-  type CakeChatPromptInput,
+  type CakeChatStartInput,
   type CakeChatSnapshot,
   type CakeChatTarget,
   type CakeChatUpdate,
@@ -182,160 +172,29 @@ export const acquireForUse = Effect.fn("CakeChats.acquireForUse")(function* (
   return yield* acquireTarget(target, false, configuration);
 });
 
-export const prompt = Effect.fn("CakeChats.prompt")(function* (
-  input: CakeChatPromptInput,
+export const start = Effect.fn("CakeChats.start")(function* (
+  input: CakeChatStartInput,
   configuration: CakeChatRuntimeConfiguration,
 ) {
   const target: CakeChatTarget = {
     sessionId: input.sessionId,
     tools: input.tools,
   };
-  const handle = input.newSession
-    ? yield* acquireTarget(target, true, configuration)
-    : yield* acquireForUse(target, configuration);
-  if (input.newSession?.configuration)
-    yield* handle.applyConfiguration(input.newSession.configuration).pipe(asError("prompt"));
-  if (input.newSession?.name?.trim())
-    yield* handle.rename(input.newSession.name.trim()).pipe(asError("prompt"));
+  const handle = yield* acquireTarget(target, true, configuration);
+  if (input.newSession.configuration)
+    yield* handle.applyConfiguration(input.newSession.configuration).pipe(asError("start"));
+  if (input.newSession.name?.trim())
+    yield* handle.rename(input.newSession.name.trim()).pipe(asError("start"));
   const turnId = TurnId.make(
     yield* deliverWhenAvailable(
       Effect.succeed(handle),
       input.text,
       projectAttachments(input.attachments),
       input.renderUserMessageAsMarkdown,
-    ).pipe(asError("prompt")),
+    ).pipe(asError("start")),
   );
-  if (!input.newSession) yield* publishCatalogChange(input.sessionId, false);
-  return turnId;
-});
-
-export const abort = Effect.fn("CakeChats.abort")(function* (
-  target: CakeChatTarget,
-  configuration: CakeChatRuntimeConfiguration,
-) {
-  yield* subagents.abortParentChildren(target.sessionId).pipe(asError("abort"));
-  yield* abortConversation(acquireForUse(target, configuration)).pipe(asError("abort"));
-});
-
-export const compact = Effect.fn("CakeChats.compact")(function* (
-  target: CakeChatTarget,
-  instructions: string | undefined,
-  configuration: CakeChatRuntimeConfiguration,
-) {
-  yield* compactConversation(acquireForUse(target, configuration), instructions).pipe(
-    asError("compact"),
-  );
-  yield* publishCatalogChange(target.sessionId, false);
-});
-
-export const editMessage = Effect.fn("CakeChats.editMessage")(function* (
-  input: CakeChatPromptInput & { readonly entryId: string },
-  configuration: CakeChatRuntimeConfiguration,
-) {
-  yield* editConversationMessage(
-    acquireForUse({ sessionId: input.sessionId, tools: input.tools }, configuration),
-    input.entryId,
-    input.text,
-    projectAttachments(input.attachments),
-    input.renderUserMessageAsMarkdown,
-  ).pipe(asError("editMessage"));
   yield* publishCatalogChange(input.sessionId, false);
-});
-
-export const setUserMessageMarkdown = Effect.fn("CakeChats.setUserMessageMarkdown")(function* (
-  target: CakeChatTarget,
-  entryId: string,
-  renderAsMarkdown: boolean,
-  configuration: CakeChatRuntimeConfiguration,
-) {
-  yield* useConversation(acquireForUse(target, configuration), (handle) =>
-    handle.setUserMessageMarkdown(entryId, renderAsMarkdown),
-  ).pipe(asError("setUserMessageMarkdown"));
-});
-
-export const applyConfiguration = Effect.fn("CakeChats.applyConfiguration")(function* (
-  target: CakeChatTarget,
-  sessionConfiguration: Parameters<PiSessionHandle["applyConfiguration"]>[0],
-  runtimeConfiguration: CakeChatRuntimeConfiguration,
-) {
-  yield* applyConversationConfiguration(
-    acquireForUse(target, runtimeConfiguration),
-    sessionConfiguration,
-  ).pipe(asError("applyConfiguration"));
-});
-
-export const setModel = Effect.fn("CakeChats.setModel")(function* (
-  target: CakeChatTarget,
-  provider: string,
-  modelId: string,
-  configuration: CakeChatRuntimeConfiguration,
-) {
-  yield* setConversationModel(acquireForUse(target, configuration), provider, modelId).pipe(
-    asError("setModel"),
-  );
-});
-
-export const setThinkingLevel = Effect.fn("CakeChats.setThinkingLevel")(function* (
-  target: CakeChatTarget,
-  level: Parameters<PiSessionHandle["setThinkingLevel"]>[0],
-  configuration: CakeChatRuntimeConfiguration,
-) {
-  yield* setConversationThinkingLevel(acquireForUse(target, configuration), level).pipe(
-    asError("setThinkingLevel"),
-  );
-});
-
-export const setFastMode = Effect.fn("CakeChats.setFastMode")(function* (
-  target: CakeChatTarget,
-  enabled: boolean,
-  configuration: CakeChatRuntimeConfiguration,
-) {
-  yield* setConversationFastMode(acquireForUse(target, configuration), enabled).pipe(
-    asError("setFastMode"),
-  );
-});
-
-export const setPiSetting = Effect.fn("CakeChats.setPiSetting")(function* (
-  target: CakeChatTarget,
-  update: PiSettingUpdate,
-  configuration: CakeChatRuntimeConfiguration,
-) {
-  yield* setConversationPiSetting(acquireForUse(target, configuration), update).pipe(
-    asError("setPiSetting"),
-  );
-});
-
-export const reload = Effect.fn("CakeChats.reload")(function* (
-  target: CakeChatTarget,
-  configuration: CakeChatRuntimeConfiguration,
-) {
-  yield* useConversation(acquireForUse(target, configuration), (handle) => handle.reload()).pipe(
-    asError("reload"),
-  );
-});
-
-export const login = Effect.fn("CakeChats.login")(function* (
-  target: CakeChatTarget,
-  provider: string,
-  authType: "api_key" | "oauth",
-  configuration: CakeChatRuntimeConfiguration,
-) {
-  yield* authenticateConversation(acquireForUse(target, configuration), {
-    _tag: "Login",
-    provider,
-    authType,
-  }).pipe(asError("login"));
-});
-
-export const logout = Effect.fn("CakeChats.logout")(function* (
-  target: CakeChatTarget,
-  provider: string,
-  configuration: CakeChatRuntimeConfiguration,
-) {
-  yield* authenticateConversation(acquireForUse(target, configuration), {
-    _tag: "Logout",
-    provider,
-  }).pipe(asError("logout"));
+  return turnId;
 });
 
 export const rename = Effect.fn("CakeChats.rename")(function* (

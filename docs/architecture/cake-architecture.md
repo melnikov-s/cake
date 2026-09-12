@@ -479,17 +479,20 @@ The window Store hierarchy mirrors the product surfaces:
   never enter the panel, even when shared infrastructure stores or renders them. Project Sessions and Cake Chat
   Sessions each compose one `ConversationSessionStore`, the window-local active-conversation aggregate whose lifetime matches its owning
   primary session. It owns the stable `ChatStore`, `ConversationComposerStore`, and `ChatConfigurationStore` children plus their common
-  delivery, configuration, transcript-interaction, draft, and operation wiring. Pi remains transcript and runtime authority; persisted
-  renderer draft state remains in the aggregate's focused child Stores; and operation concurrency remains with the delivery,
-  configuration, and shared operation-coordinator owners. Kind-specific parents supply cohesive Project or Cake Chat capabilities rather
-  than forwarding each child API. Secondary chats continue to compose `ChatStore` directly.
+  delivery, queuing, configuration, transcript-interaction, draft, and operation wiring. Every materialized primary chat uses the single
+  `sessionChats` domain/RPC/client operation path, addressed only by its globally unique Pi Session ID. Project Session and Cake Chat
+  identity is relevant when the owning collection assembles or restores the runtime profile—not while ordinary conversation commands
+  execute. Pi remains transcript and runtime authority; persisted renderer draft state remains in the aggregate's focused child Stores;
+  and operation concurrency remains with the delivery, configuration, and shared operation-coordinator owners. Kind-specific parents
+  supply only cohesive creation, restoration, catalog, Project, or Cake-control context rather than forwarding conversation APIs.
+  Secondary chats continue to compose `ChatStore` directly.
   `ConversationComposerStore` coordinates focused children: `ComposerDraftStore` owns the persisted coherent unsent draft and focus requests,
   `PromptQueueStore` owns transient editable follow-ups and settled-turn draining, `ConversationDeliveryStore` owns optimistic
   projection and operation-correlated delivery recovery, and `PendingSessionDraftStore` owns only the transient saved-draft editing,
   projection, and activation UI workflow over the owning `PendingConversationStore` data.
-  Managed Worktree landing sequencing,
-  recovery, queue policy, and Project Session prompts are authoritative main-process domain behavior; the renderer only starts, retries, dismisses,
-  and projects those operations. Managed Worktree records are main-persisted authority and
+  Managed Worktree landing sequencing and recovery remain authoritative main-process domain behavior; the renderer only starts, retries,
+  dismisses, and projects those operations. Primary-chat queue editing and Pi delivery use the shared session-chat operation boundary;
+  renderer-local editable follow-ups use the one `PromptQueueStore` drain policy for both runtime profiles. Managed Worktree records are main-persisted authority and
   stream current-first into `WorktreeCatalog`; `WorktreeStore` owns only window-local command,
   confirmation, error, and retirement presentation. Merge-and-resolve persists its accepted
   completion intent in the Managed Worktree record until main resolves the Working Directory;

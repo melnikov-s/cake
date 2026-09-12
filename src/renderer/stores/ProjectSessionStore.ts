@@ -1,11 +1,4 @@
-import {
-  Store,
-  child,
-  computed,
-  createStore,
-  effect as reactiveEffect,
-  snapshot,
-} from "r-state-tree";
+import { Store, child, computed, createStore, snapshot } from "r-state-tree";
 import type { StoreEvent } from "../events/StoreEvent";
 import type { Session } from "../models/Session";
 import type { ChatConfiguration, ModelPreset } from "../../ipc/session-contract";
@@ -13,12 +6,8 @@ import type { ProjectPendingSessionsStore } from "./ProjectPendingSessionsStore"
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { ReviewsStore } from "./ReviewsStore";
 import type { ComposerDeliveryInput } from "./ConversationComposerStore";
-import type {
-  ProjectSessionPromptInput,
-  ProjectSessionStartInput,
-} from "../../domain/project-sessions/project-session-data";
+import type { ProjectSessionStartInput } from "../../domain/project-sessions/project-session-data";
 import { parseScheduledMessage } from "../../utils/scheduled-message-time";
-import type { QueuedPrompt as ChatQueuedPrompt } from "./ChatStore";
 import { ConversationSessionStore } from "./ConversationSessionStore";
 import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import { ArtifactInteractionStore } from "./ArtifactInteractionStore";
@@ -47,7 +36,6 @@ export interface ProjectSessionStoreProps extends SessionTarget {
   openCommandPane(pane: "changelog" | "tree" | "resources"): Promise<void>;
   projectName(): string;
   familyId(): string | undefined;
-  abort(): Promise<void>;
   renameSession(name: string): Promise<void>;
   toolCompactSession(entryId: string, prompt?: string): Promise<boolean>;
   modelPresets(): readonly ModelPreset[];
@@ -139,36 +127,11 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
     return this.model.uiParts;
   }
 
-  @computed
-  get runtimeQueuedPrompts(): ChatQueuedPrompt[] {
-    return this.model.parts.flatMap((part) =>
-      part.kind === "text" &&
-      part.role === "user" &&
-      (part.deliveryState === "queued" || part.deliveryState === "steering")
-        ? [
-            {
-              id: part.partKey,
-              text: part.text ?? "",
-              attachments: [],
-              renderUserMessageAsMarkdown: part.renderAs === "markdown",
-              state: part.deliveryState,
-              source: part.crossSession,
-              scheduled: part.scheduled,
-              editable: false,
-            },
-          ]
-        : [],
-    );
-  }
-
   get isStreaming() {
     return this.model.streaming;
   }
   private get composerOwner() {
-    return `message-composer:${this.sessionId}`;
-  }
-  private get configurationOwner() {
-    return `chat-configuration:${this.sessionId}`;
+    return `session-chat-composer:${this.sessionId}`;
   }
 
   /** Routes an event only to the session subsystem that authoritatively owns it. */
@@ -289,33 +252,15 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       sessionId: this.sessionId,
       model: this.model,
       operations: this.props.operations,
-      composerOperationOwner: this.composerOwner,
-      configurationOperationOwner: this.configurationOwner,
       canSubmit: this.props.canSubmit,
+      startSession: (input) => this.startSession(input),
+      ensureSessionActive: this.props.ensureSessionActive,
       composer: {
         projectPath: () => this.workspacePath,
-        queueWhileStreaming: () => true,
         openCommandPane: (pane) => this.props.openCommandPane(pane),
         createSideChat: (prompt) => this.createSideChat(prompt),
         renameSession: (name) => this.props.renameSession(name),
         toolCompactSession: (entryId, prompt) => this.props.toolCompactSession(entryId, prompt),
-        deliver: (input) => this.deliverComposerMessage(input),
-        editMessage: (input) =>
-          this.client.projectSessions.editMessage(input, { signal: this.signal }),
-        compact: (sessionId, instructions) =>
-          this.client.projectSessions.compact({ sessionId, instructions }, { signal: this.signal }),
-        clearQueue: async () => {
-          await this.client.projectSessions.clearQueue(
-            { sessionId: this.sessionId },
-            { signal: this.signal },
-          );
-        },
-        cancelSteering: async () => {
-          await this.client.projectSessions.cancelSteering(
-            { sessionId: this.sessionId },
-            { signal: this.signal },
-          );
-        },
         scheduleMessage: (sessionId, args) => this.scheduleMessage(sessionId, args),
         draftSessionPrompt: (sessionId) =>
           this.props.pendingSessions.conversation(sessionId)?.draftPrompt,
@@ -342,37 +287,8 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
         effectiveConfiguration: () => this.props.newSessionRequest()?.configuration,
         setPendingConfiguration: (configuration) =>
           this.props.pendingSessions.conversation(this.sessionId)?.setConfiguration(configuration),
-        setConfiguration: (configuration) =>
-          this.configureActiveSession(() =>
-            this.client.projectSessions.applyConfiguration(
-              { sessionId: this.sessionId, configuration },
-              { signal: this.signal },
-            ),
-          ),
-        setModel: (provider, modelId) =>
-          this.configureActiveSession(() =>
-            this.client.projectSessions.setModel(
-              { sessionId: this.sessionId, provider, modelId },
-              { signal: this.signal },
-            ),
-          ),
-        setThinkingLevel: (level) =>
-          this.configureActiveSession(() =>
-            this.client.projectSessions.setThinkingLevel(
-              { sessionId: this.sessionId, level },
-              { signal: this.signal },
-            ),
-          ),
-        setFastMode: (enabled) =>
-          this.configureActiveSession(() =>
-            this.client.projectSessions.setFastMode(
-              { sessionId: this.sessionId, enabled },
-              { signal: this.signal },
-            ),
-          ),
       },
       chat: {
-        stoppable: () => this.model.backgroundWorkActive,
         commands: () =>
           this.props.pendingSessions.isTemporary(this.sessionId)
             ? this.stagedCommandStore.commands
@@ -382,35 +298,14 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
             ? "Add the next instruction…"
             : `Ask Cake to work in ${this.props.projectName()}…`,
         inputLabel: () => "Message",
-        userMessagePresentation: {
-          setMarkdown: (entryId, renderAsMarkdown) =>
-            this.client.projectSessions.setUserMessageMarkdown(
-              { sessionId: this.sessionId, entryId, renderAsMarkdown },
-              { signal: this.signal },
-            ),
-        },
         sessionCreationChoice: this.props.sessionCreationChoice,
         draftActivationCandidates: this.props.draftActivationCandidates,
         isDraftSession: () => this.props.pendingSessions.isDraft(this.sessionId),
-        abort: () => this.props.abort(),
         addAttachments: () =>
           this.conversationSessionStore.composerStore.draftStore.addAttachments(),
         suggestFiles: (prefix) =>
           this.conversationSessionStore.composerStore.draftStore.suggestFiles(prefix),
         rewordWorkingDirectory: () => this.workspacePath,
-        steeringPrompts: () => this.runtimeQueuedPrompts,
-        removeRuntimeQueuedPrompt: async (partId) => {
-          await this.client.projectSessions.removeQueuedMessage(
-            { sessionId: this.sessionId, partId },
-            { signal: this.signal },
-          );
-        },
-        steerRuntimeQueuedPrompt: async (partId) => {
-          await this.client.projectSessions.steerQueuedMessage(
-            { sessionId: this.sessionId, partId },
-            { signal: this.signal },
-          );
-        },
         scheduledMessages: {
           messages: () => this.model.scheduledMessages,
           cancel: (id) => this.client.scheduledMessages.cancel(id, { signal: this.signal }),
@@ -426,90 +321,34 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
     });
   }
 
-  private async deliverComposerMessage(input: ComposerDeliveryInput) {
-    const pendingNewSession = this.props.newSessionRequest();
-    if (pendingNewSession)
-      this.props.pendingSessions.projectSubmission(input.sessionId, input.text);
+  private async startSession(input: ComposerDeliveryInput) {
+    const pending = this.props.newSessionRequest();
+    if (!pending) return false;
+    this.props.pendingSessions.projectSubmission(input.sessionId, input.text);
     try {
-      if (pendingNewSession && !(await this.props.prepareNewSession(input.text))) return false;
-      if (!pendingNewSession) {
-        const active = this.ensureActiveProjection();
-        if (active !== true && !(await active)) return false;
-      }
+      if (!(await this.props.prepareNewSession(input.text))) return false;
       const newSession = this.props.newSessionRequest();
-      if (newSession) {
-        const pendingLabelIds =
-          this.props.pendingSessions.conversation(input.sessionId)?.labelIds ?? [];
-        const startInput: ProjectSessionStartInput = {
-          sessionId: input.sessionId,
-          workingDirectory: newSession.path,
-          text: input.text,
-          renderUserMessageAsMarkdown: input.renderUserMessageAsMarkdown,
-          attachments: input.attachments,
-        };
-        if (newSession.configuration !== undefined)
-          Object.assign(startInput, { configuration: newSession.configuration });
-        if (newSession.name !== undefined) Object.assign(startInput, { name: newSession.name });
-        if (pendingLabelIds.length > 0) Object.assign(startInput, { labelIds: pendingLabelIds });
-        await this.client.projectSessions.start(startInput, { signal: this.signal });
-        this.props.pendingSessions.materialize(input.sessionId, newSession.path);
-      } else {
-        const command =
-          input.delivery === "steer"
-            ? this.client.projectSessions.steer
-            : this.client.projectSessions.prompt;
-        const promptInput: ProjectSessionPromptInput = {
-          sessionId: input.sessionId,
-          text: input.text,
-          renderUserMessageAsMarkdown: input.renderUserMessageAsMarkdown,
-          attachments: input.attachments,
-        };
-        await command(promptInput, { signal: this.signal });
-      }
+      if (!newSession) return false;
+      const pendingLabelIds =
+        this.props.pendingSessions.conversation(input.sessionId)?.labelIds ?? [];
+      const startInput: ProjectSessionStartInput = {
+        sessionId: input.sessionId,
+        workingDirectory: newSession.path,
+        text: input.text,
+        renderUserMessageAsMarkdown: input.renderUserMessageAsMarkdown,
+        attachments: input.attachments,
+      };
+      if (newSession.configuration !== undefined)
+        Object.assign(startInput, { configuration: newSession.configuration });
+      if (newSession.name !== undefined) Object.assign(startInput, { name: newSession.name });
+      if (pendingLabelIds.length > 0) Object.assign(startInput, { labelIds: pendingLabelIds });
+      await this.client.projectSessions.start(startInput, { signal: this.signal });
+      this.props.pendingSessions.materialize(input.sessionId, newSession.path);
       return true;
     } catch (error) {
       this.props.pendingSessions.cancelSubmission(input.sessionId);
       throw error;
     }
-  }
-
-  private async configureActiveSession(command: () => Promise<void>) {
-    const active = this.ensureActiveProjection();
-    if (active !== true && !(await active)) return;
-    await command();
-  }
-
-  private ensureActiveProjection(): boolean | Promise<boolean> {
-    const observedSnapshotRevision = this.model.observedSnapshotRevision;
-    const active = this.props.ensureSessionActive();
-    if (active === true) return true;
-    if (active === false) return false;
-    return active.then((restored) =>
-      restored ? this.waitForActiveProjection(observedSnapshotRevision) : false,
-    );
-  }
-
-  /** Keeps pending interaction state visible until live observation is attached. */
-  private waitForActiveProjection(afterRevision: number): Promise<boolean> {
-    if (!this.model.resolved && this.model.observedSnapshotRevision > afterRevision)
-      return Promise.resolve(true);
-    if (this.signal.aborted) return Promise.resolve(false);
-    return new Promise((resolve) => {
-      let settled = false;
-      const finish = (ready: boolean) => {
-        if (settled) return;
-        settled = true;
-        this.signal.removeEventListener("abort", abort);
-        dispose();
-        resolve(ready);
-      };
-      const abort = () => finish(false);
-      this.signal.addEventListener("abort", abort, { once: true });
-      const dispose = reactiveEffect(() => {
-        if (!this.model.resolved && this.model.observedSnapshotRevision > afterRevision)
-          queueMicrotask(() => finish(true));
-      });
-    });
   }
 
   private async scheduleMessage(sessionId: string, args: string) {

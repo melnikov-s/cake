@@ -7,55 +7,68 @@ import { ConversationSessionStore } from "../../../../src/renderer/stores/Conver
 import { SessionOperationCoordinatorStore } from "../../../../src/renderer/stores/SessionOperationCoordinatorStore";
 import { mountWithClient } from "../mount-with-client";
 
-function fixture(chatOverrides: Partial<ConversationSessionStore["props"]["chat"]> = {}) {
+function fixture(
+  chatOverrides: Partial<ConversationSessionStore["props"]["chat"]> = {},
+  profile: "project" | "cake-chat" = "project",
+) {
   const models = RootProjection.create();
-  const model = models.projectSession("session-1", "/project");
+  const model =
+    profile === "project"
+      ? models.projectSession("session-1", "/project")
+      : models.cakeChat("session-1");
   const operations = mount(createStore(SessionOperationCoordinatorStore));
-  const deliver = vi.fn(async () => true);
-  const editMessage = vi.fn(async () => undefined);
-  const setModel = vi.fn(async () => undefined);
-  const abort = vi.fn(async () => undefined);
+  const deliver = vi.fn(async (_input: unknown, _options?: unknown) => true);
+  const editMessage = vi.fn(async (_input: unknown, _options?: unknown) => undefined);
+  const setModel = vi.fn(async (_provider: string, _modelId: string) => undefined);
+  const abort = vi.fn(async (_input?: unknown, _options?: unknown) => undefined);
   const rewordComposerSelection = vi.fn(async () => "Reworded");
+  const client = {
+    sessionChats: {
+      prompt: deliver,
+      steer: deliver,
+      editMessage,
+      compact: async () => undefined,
+      clearQueue: async () => ({ steering: [], followUp: [] }),
+      cancelSteering: async () => ({ steering: [], followUp: [] }),
+      removeQueuedMessage: vi.fn(async () => ({ steering: [], followUp: [] })),
+      steerQueuedMessage: vi.fn(async () => ({ steering: [], followUp: [] })),
+      setModel: async ({ provider, modelId }: { provider: string; modelId: string }) =>
+        setModel(provider, modelId),
+      setThinkingLevel: async () => undefined,
+      setFastMode: async () => undefined,
+      applyConfiguration: async () => undefined,
+      setUserMessageMarkdown: async () => undefined,
+      abort,
+    },
+    electron: { showComposerContextMenu: async () => "reword" },
+    workspaces: { rewordComposerSelection },
+  } as unknown as Client;
   const mounted = mountWithClient(
     createStore(ConversationSessionStore, {
       sessionId: "session-1",
       model,
       operations,
-      composerOperationOwner: "composer:session-1",
-      configurationOperationOwner: "configuration:session-1",
       canSubmit: () => true,
+      ensureSessionActive: () => true,
       composer: {
-        queueWhileStreaming: () => true,
         renameSession: async () => undefined,
         toolCompactSession: async () => false,
-        deliver,
-        editMessage,
-        compact: async () => undefined,
       },
-      configuration: {
-        setConfiguration: async () => undefined,
-        setModel,
-        setThinkingLevel: async () => undefined,
-        setFastMode: async () => undefined,
-      },
+      configuration: {},
       chat: {
         commands: () => model.commands,
         placeholder: () => "Ask Cake…",
         inputLabel: () => "Message",
-        userMessagePresentation: { setMarkdown: async () => undefined },
-        abort,
         ...chatOverrides,
       },
       modelPresets: () => [],
       openModelPresetSettings: () => undefined,
     }),
-    {
-      electron: { showComposerContextMenu: async () => "reword" },
-      workspaces: { rewordComposerSelection },
-    } as unknown as Client,
+    client,
   );
   return {
     ...mounted,
+    client,
     model,
     models,
     operations,
@@ -88,87 +101,158 @@ describe("ConversationSessionStore", () => {
     dispose();
   });
 
-  it("routes delivery, queue, configuration, abort, edit, and reword capabilities", async () => {
-    const fixtureValue = fixture();
-    const { subject, model, deliver, editMessage, setModel, abort, rewordComposerSelection } =
-      fixtureValue;
-    const chat = subject.chatStore;
+  it.each(["project", "cake-chat"] as const)(
+    "routes shared delivery, queue, configuration, abort, edit, and reword capabilities for %s",
+    async (profile) => {
+      const fixtureValue = fixture({}, profile);
+      const { subject, model, deliver, editMessage, setModel, abort, rewordComposerSelection } =
+        fixtureValue;
+      const chat = subject.chatStore;
 
-    await chat.submit("Initial prompt");
-    expect(deliver).toHaveBeenCalledWith(
-      expect.objectContaining({ text: "Initial prompt", delivery: "prompt" }),
-    );
-    expect(subject.composerStore.deliveryStore.optimisticUserMessages.pending).toHaveLength(1);
+      await chat.submit("Initial prompt");
+      expect(deliver).toHaveBeenCalledWith(
+        expect.objectContaining({ text: "Initial prompt" }),
+        expect.any(Object),
+      );
+      expect(subject.composerStore.deliveryStore.optimisticUserMessages.pending).toHaveLength(1);
 
-    await subject.configurationStore.selectModel("openai/gpt-5");
-    expect(setModel).toHaveBeenCalledWith("openai", "gpt-5");
+      await subject.configurationStore.selectModel("openai/gpt-5");
+      expect(setModel).toHaveBeenCalledWith("openai", "gpt-5");
 
-    model.streaming = true;
-    await chat.submit("Queued follow-up");
-    const queued = subject.composerStore.promptQueueStore.prompts[0]!;
-    expect(queued.text).toBe("Queued follow-up");
-    expect(deliver).toHaveBeenCalledTimes(1);
-    chat.steerQueuedPrompt(queued.id);
-    await vi.waitFor(() =>
+      model.streaming = true;
+      await chat.submit("Queued follow-up");
+      const queued = subject.composerStore.promptQueueStore.prompts[0]!;
+      expect(queued.text).toBe("Queued follow-up");
+      expect(deliver).toHaveBeenCalledTimes(1);
+      chat.steerQueuedPrompt(queued.id);
+      await vi.waitFor(() =>
+        expect(deliver).toHaveBeenLastCalledWith(
+          expect.objectContaining({ text: "Queued follow-up" }),
+          expect.any(Object),
+        ),
+      );
+
+      await chat.abort();
+      expect(abort).toHaveBeenCalledOnce();
+
+      model.streaming = false;
+      model.parts.push(
+        Message.create({
+          id: "user-1",
+          partKey: "user-1",
+          piId: "entry-1",
+          kind: "text",
+          role: "user",
+          text: "Original",
+          status: "complete",
+        }),
+      );
+      chat.editLastUserMessage("entry-1");
+      chat.setDraft("Edited");
+      await chat.submit();
+      expect(editMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ text: "Edited" }),
+        expect.any(Object),
+      );
+
+      await expect(chat.rewordComposerSelection("Rough wording")).resolves.toBe("Reworded");
+      expect(rewordComposerSelection).toHaveBeenCalledWith(
+        { selection: "Rough wording", prompt: undefined },
+        expect.any(Object),
+      );
+
+      fixtureValue.dispose();
+    },
+  );
+
+  it.each(["project", "cake-chat"] as const)(
+    "drains the same ordered local queue from authoritative streaming transitions for %s",
+    async (profile) => {
+      const fixtureValue = fixture({}, profile);
+      const { subject, model, deliver } = fixtureValue;
+
+      model.streaming = true;
+      await subject.chatStore.submit("First queued prompt");
+      await subject.chatStore.submit("Second queued prompt");
+      expect(subject.composerStore.promptQueueStore.prompts.map((entry) => entry.text)).toEqual([
+        "First queued prompt",
+        "Second queued prompt",
+      ]);
+      expect(deliver).not.toHaveBeenCalled();
+
+      model.streaming = false;
+      await vi.waitFor(() => expect(deliver).toHaveBeenCalledTimes(1));
       expect(deliver).toHaveBeenLastCalledWith(
-        expect.objectContaining({ text: "Queued follow-up", delivery: "steer" }),
-      ),
-    );
+        expect.objectContaining({ text: "First queued prompt" }),
+        expect.any(Object),
+      );
+      expect(subject.composerStore.promptQueueStore.prompts.map((entry) => entry.text)).toEqual([
+        "Second queued prompt",
+      ]);
 
-    await chat.abort();
-    expect(abort).toHaveBeenCalledOnce();
+      model.streaming = true;
+      model.streaming = false;
+      await vi.waitFor(() => expect(deliver).toHaveBeenCalledTimes(2));
+      expect(deliver).toHaveBeenLastCalledWith(
+        expect.objectContaining({ text: "Second queued prompt" }),
+        expect.any(Object),
+      );
+      expect(subject.composerStore.promptQueueStore.prompts).toHaveLength(0);
 
-    model.streaming = false;
-    model.parts.push(
-      Message.create({
-        id: "user-1",
-        partKey: "user-1",
-        piId: "entry-1",
-        kind: "text",
-        role: "user",
-        text: "Original",
-        status: "complete",
-      }),
-    );
-    chat.editLastUserMessage("entry-1");
-    chat.setDraft("Edited");
-    await chat.submit();
-    expect(editMessage).toHaveBeenCalledWith(expect.objectContaining({ text: "Edited" }));
+      fixtureValue.dispose();
+    },
+  );
 
-    await expect(chat.rewordComposerSelection("Rough wording")).resolves.toBe("Reworded");
-    expect(rewordComposerSelection).toHaveBeenCalledWith(
-      { selection: "Rough wording", prompt: undefined },
-      expect.any(Object),
-    );
+  it.each(["project", "cake-chat"] as const)(
+    "restores a failed drained prompt to the shared queue for %s",
+    async (profile) => {
+      const fixtureValue = fixture({}, profile);
+      const { subject, model } = fixtureValue;
+      const failed = vi.fn(async () => {
+        throw new Error("Runtime unavailable");
+      });
+      Object.assign(fixtureValue.client.sessionChats, { prompt: failed });
 
-    fixtureValue.dispose();
-  });
+      model.streaming = true;
+      await subject.chatStore.submit("Retry this prompt");
+      model.streaming = false;
+
+      await vi.waitFor(() => expect(failed).toHaveBeenCalledOnce());
+      await vi.waitFor(() =>
+        expect(subject.composerStore.promptQueueStore.prompts.map((entry) => entry.text)).toEqual([
+          "Retry this prompt",
+        ]),
+      );
+      expect(subject.error.message).toBe("Runtime unavailable");
+
+      fixtureValue.dispose();
+    },
+  );
 
   it("routes queue edits to the local queue or Pi's held queue by prompt identity", async () => {
     const removeRuntimeQueuedPrompt = vi.fn(async () => undefined);
     const steerRuntimeQueuedPrompt = vi.fn(async () => undefined);
-    const fixtureValue = fixture({
-      steeringPrompts: () => [
-        {
-          id: "queued-follow-up-abc-1",
-          text: "Check the build",
-          attachments: [],
-          renderUserMessageAsMarkdown: false,
-          state: "queued",
-          editable: false,
-          scheduled: {
-            version: 1,
-            id: "8de1a807-dc99-49ee-8d35-7a3ed20bef06",
-            createdAt: "2026-09-04T11:59:00.000Z",
-            sendAt: "2026-09-04T12:02:00.000Z",
-          },
-        },
-      ],
-      removeRuntimeQueuedPrompt,
-      steerRuntimeQueuedPrompt,
-    });
+    const fixtureValue = fixture();
     const { subject, model, deliver } = fixtureValue;
     const chat = subject.chatStore;
+    model.parts.push(
+      Message.create({
+        id: "queued-follow-up-abc-1",
+        partKey: "queued-follow-up-abc-1",
+        piId: "queued-follow-up-abc-1",
+        kind: "text",
+        role: "user",
+        text: "Check the build",
+        status: "complete",
+        deliveryState: "queued",
+      }),
+    );
+    const sessionChats = fixtureValue.client.sessionChats as unknown as {
+      removeQueuedMessage: typeof removeRuntimeQueuedPrompt;
+      steerQueuedMessage: typeof steerRuntimeQueuedPrompt;
+    };
+    sessionChats.removeQueuedMessage = removeRuntimeQueuedPrompt;
+    sessionChats.steerQueuedMessage = steerRuntimeQueuedPrompt;
 
     model.streaming = true;
     await chat.submit("Local follow-up");
@@ -179,11 +263,17 @@ describe("ConversationSessionStore", () => {
     ]);
 
     chat.removeQueuedPrompt("queued-follow-up-abc-1");
-    expect(removeRuntimeQueuedPrompt).toHaveBeenCalledWith("queued-follow-up-abc-1");
+    expect(removeRuntimeQueuedPrompt).toHaveBeenCalledWith(
+      { sessionId: "session-1", partId: "queued-follow-up-abc-1" },
+      expect.any(Object),
+    );
     expect(subject.composerStore.promptQueueStore.prompts).toHaveLength(1);
 
     chat.steerQueuedPrompt("queued-follow-up-abc-1");
-    expect(steerRuntimeQueuedPrompt).toHaveBeenCalledWith("queued-follow-up-abc-1");
+    expect(steerRuntimeQueuedPrompt).toHaveBeenCalledWith(
+      { sessionId: "session-1", partId: "queued-follow-up-abc-1" },
+      expect.any(Object),
+    );
     expect(deliver).not.toHaveBeenCalled();
 
     chat.removeQueuedPrompt(local.id);
@@ -194,18 +284,21 @@ describe("ConversationSessionStore", () => {
   });
 
   it("surfaces a failed runtime queue edit as a composer error", async () => {
-    const fixtureValue = fixture({
-      steeringPrompts: () => [
-        {
-          id: "queued-follow-up-abc-1",
-          text: "Check the build",
-          attachments: [],
-          renderUserMessageAsMarkdown: false,
-          state: "queued",
-          editable: false,
-        },
-      ],
-      removeRuntimeQueuedPrompt: async () => {
+    const fixtureValue = fixture();
+    fixtureValue.model.parts.push(
+      Message.create({
+        id: "queued-follow-up-abc-1",
+        partKey: "queued-follow-up-abc-1",
+        piId: "queued-follow-up-abc-1",
+        kind: "text",
+        role: "user",
+        text: "Check the build",
+        status: "complete",
+        deliveryState: "queued",
+      }),
+    );
+    Object.assign(fixtureValue.client.sessionChats, {
+      removeQueuedMessage: async () => {
         throw new Error("Session was aborted");
       },
     });

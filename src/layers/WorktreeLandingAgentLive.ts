@@ -55,7 +55,7 @@ export const WorktreeLandingAgentLive = Layer.effect(
       promptAndWait: Effect.fn("WorktreeLandingAgent.promptAndWait")(function* (input) {
         yield* Effect.gen(function* () {
           const turnId = yield* projectSessionOperations
-            .prompt({
+            .sendAutomatically({
               sessionId: input.sessionId,
               text: input.text,
               attachments: [],

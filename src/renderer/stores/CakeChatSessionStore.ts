@@ -1,8 +1,9 @@
-import { Store, child, createStore, effect as reactiveEffect } from "r-state-tree";
+import { Store, child, createStore } from "r-state-tree";
 import type { Session } from "../models/Session";
 import type { ModelPreset } from "../../ipc/session-contract";
 import { ClientContext } from "./context/ClientContext";
 import { ConversationSessionStore } from "./ConversationSessionStore";
+import type { ComposerDeliveryInput } from "./ConversationComposerStore";
 import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import type { CakeChatManagementStore } from "./CakeChatManagementStore";
 import type { CakeChatPendingSessionsStore } from "./CakeChatPendingSessionsStore";
@@ -23,13 +24,6 @@ export interface CakeChatSessionStoreProps {
 
 /** Owns the configuration and shared conversation input workflow for one Cake Chat session. */
 export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
-  constructor(props: CakeChatSessionStore["props"]) {
-    super(props);
-    this.effect(() => () => {
-      this.props.operations.reset(`cake-chat-abort:${this.sessionId}`);
-    });
-  }
-
   get model() {
     return this.props.model;
   }
@@ -42,55 +36,19 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
   get streaming() {
     return this.model.streaming;
   }
-  get promptOwner() {
-    return `cake-chat-prompt:${this.sessionId}`;
-  }
-  get configurationOwner() {
-    return `cake-chat-configuration:${this.sessionId}`;
-  }
-
   @child
   get conversationSessionStore(): ConversationSessionStore {
     return createStore(ConversationSessionStore, {
       sessionId: this.sessionId,
       model: this.model,
       operations: this.props.operations,
-      composerOperationOwner: this.promptOwner,
-      configurationOperationOwner: this.configurationOwner,
       canSubmit: () => true,
+      startSession: (input) => this.startSession(input),
+      ensureSessionActive: () => this.props.management.ensureSessionActive(this.sessionId),
       composer: {
         renameSession: (name) => this.props.management.renameSession(this.sessionId, name),
         toolCompactSession: (entryId, prompt) =>
           this.props.management.toolCompact(this.sessionId, entryId, prompt),
-        deliver: async (input) => {
-          const active = this.ensureActiveProjection();
-          if (active !== true && !(await active)) return false;
-          const target = this.props.target();
-          const newSession = this.props.pendingSessions.newSessionRequest(this.sessionId);
-          const prompt = {
-            sessionId: input.sessionId,
-            tools: target.tools,
-            text: input.text,
-            renderUserMessageAsMarkdown: input.renderUserMessageAsMarkdown,
-            attachments: input.attachments,
-          };
-          if (newSession !== undefined) Object.assign(prompt, { newSession });
-          await this.client.cakeChats.prompt(prompt, { signal: this.signal });
-          this.props.pendingSessions.markMaterialized(this.sessionId);
-        },
-        editMessage: (input) =>
-          this.client.cakeChats.editMessage(
-            { ...this.props.target(), ...input },
-            { signal: this.signal },
-          ),
-        compact: async (_sessionId, instructions) => {
-          if (this.props.pendingSessions.isPending(this.sessionId))
-            throw new Error("Compaction requires an existing conversation");
-          await this.client.cakeChats.compact(
-            { ...this.props.target(), instructions },
-            { signal: this.signal },
-          );
-        },
         draftSessionPrompt: (sessionId) =>
           this.props.pendingSessions.conversation(sessionId)?.draftPrompt,
         isDeferredSession: (sessionId) => this.props.pendingSessions.isPending(sessionId),
@@ -115,109 +73,35 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
         effectiveConfiguration: () => this.props.pendingSessions.configuration(this.sessionId),
         setPendingConfiguration: (configuration) =>
           this.props.pendingSessions.conversation(this.sessionId)?.setConfiguration(configuration),
-        setConfiguration: (configuration) =>
-          this.configureActiveSession(() =>
-            this.client.cakeChats.applyConfiguration(
-              { ...this.props.target(), configuration },
-              { signal: this.signal },
-            ),
-          ),
-        setModel: (provider, modelId) =>
-          this.configureActiveSession(() =>
-            this.client.cakeChats.setModel(
-              { ...this.props.target(), provider, modelId },
-              { signal: this.signal },
-            ),
-          ),
-        setThinkingLevel: (level) =>
-          this.configureActiveSession(() =>
-            this.client.cakeChats.setThinkingLevel(
-              { ...this.props.target(), level },
-              { signal: this.signal },
-            ),
-          ),
-        setFastMode: (enabled) =>
-          this.configureActiveSession(() =>
-            this.client.cakeChats.setFastMode(
-              { ...this.props.target(), enabled },
-              { signal: this.signal },
-            ),
-          ),
       },
       chat: {
         commands: () => this.model.commands.filter((command) => command.name !== "sidechat"),
         placeholder: () => "Ask Cake to find or control a task…",
         inputLabel: () => "Message Cake Chat",
-        userMessagePresentation: {
-          setMarkdown: (entryId, renderAsMarkdown) =>
-            this.client.cakeChats.setUserMessageMarkdown(
-              { ...this.props.target(), entryId, renderAsMarkdown },
-              { signal: this.signal },
-            ),
-        },
         isDraftSession: () =>
           this.props.pendingSessions.conversation(this.sessionId)?.isDraft ?? false,
-        abort: () => this.abort(),
-        configurationErrorFirst: true,
-        errorTitle: "Cake Chat failed",
       },
       modelPresets: this.props.modelPresets,
       openModelPresetSettings: this.props.openModelPresetSettings,
       settings: this.props.settings,
-      resetOperationOwnersOnDispose: true,
     });
   }
 
-  private async configureActiveSession(command: () => Promise<void>) {
-    const active = this.ensureActiveProjection();
-    if (active !== true && !(await active)) return;
-    await command();
-  }
-
-  private ensureActiveProjection(): boolean | Promise<boolean> {
-    const observedSnapshotRevision = this.model.observedSnapshotRevision;
-    const active = this.props.management.ensureSessionActive(this.sessionId);
-    if (active === true) return true;
-    return active.then((restored) =>
-      restored ? this.waitForActiveProjection(observedSnapshotRevision) : false,
+  private async startSession(input: ComposerDeliveryInput) {
+    const newSession = this.props.pendingSessions.newSessionRequest(this.sessionId);
+    if (!newSession) return false;
+    await this.client.cakeChats.start(
+      {
+        sessionId: input.sessionId,
+        tools: this.props.target().tools,
+        text: input.text,
+        renderUserMessageAsMarkdown: input.renderUserMessageAsMarkdown,
+        attachments: input.attachments,
+        newSession,
+      },
+      { signal: this.signal },
     );
-  }
-
-  /** Keeps pending interaction state visible until live observation is attached. */
-  private waitForActiveProjection(afterRevision: number): Promise<boolean> {
-    if (!this.model.resolved && this.model.observedSnapshotRevision > afterRevision)
-      return Promise.resolve(true);
-    if (this.signal.aborted) return Promise.resolve(false);
-    return new Promise((resolve) => {
-      let settled = false;
-      const finish = (ready: boolean) => {
-        if (settled) return;
-        settled = true;
-        this.signal.removeEventListener("abort", abort);
-        dispose();
-        resolve(ready);
-      };
-      const abort = () => finish(false);
-      this.signal.addEventListener("abort", abort, { once: true });
-      const dispose = reactiveEffect(() => {
-        if (!this.model.resolved && this.model.observedSnapshotRevision > afterRevision)
-          queueMicrotask(() => finish(true));
-      });
-    });
-  }
-
-  async abort() {
-    if (!this.streaming) return;
-    const operationId = this.props.operations.start(`cake-chat-abort:${this.sessionId}`);
-    try {
-      await this.client.cakeChats.abort(this.props.target(), {
-        signal: this.signal,
-      });
-      this.props.operations.finish(operationId);
-    } catch (error) {
-      if (this.signal.aborted) return;
-      this.props.operations.finish(operationId);
-      this.conversationSessionStore.composerStore.reportError(error);
-    }
+    this.props.pendingSessions.markMaterialized(this.sessionId);
+    return true;
   }
 }

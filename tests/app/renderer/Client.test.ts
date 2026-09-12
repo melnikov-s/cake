@@ -20,6 +20,7 @@ describe("Client", () => {
       "scheduledMessages",
       "projectWorkflow",
       "projectSessions",
+      "sessionChats",
       "cakeChats",
       "discussionSessions",
       "subagents",

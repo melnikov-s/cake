@@ -142,6 +142,13 @@ export class RootStore extends Store<{
     else this.sessionRegistry.observationRetention.retain(sessionId);
   }
 
+  private async prepareProjectSessionChat(sessionId: string) {
+    this.retainProjectSessionObservation(sessionId);
+    const session = this.sessionRegistry.findSession(sessionId);
+    if (!session || !(await session.conversationSessionStore.prepareForCommand()))
+      throw new Error("Cake could not open that session");
+  }
+
   async openSession(sessionId: string, messageId?: string) {
     this.requireProjectSessionWorkingDirectory(sessionId);
     this.projectWorkbenchStore.dismissSecondarySurfaces();
@@ -255,6 +262,13 @@ export class RootStore extends Store<{
       },
       { signal: this.signal },
     );
+    // A fork creates its transcript but does not assemble a Pi runtime. Open it
+    // before any shared Session Chat command, even when no pane will be shown.
+    this.sessionRegistry.load(result.sessionId, destinationWorkingDirectory);
+    await this.client.projectSessions.open(
+      { sessionId: result.sessionId, workingDirectory: destinationWorkingDirectory },
+      { signal: this.signal },
+    );
     if (input.title !== undefined)
       await this.client.projectSessions.rename(
         {
@@ -265,10 +279,9 @@ export class RootStore extends Store<{
         { signal: this.signal },
       );
     if (input.prompt !== undefined)
-      await this.client.projectSessions.prompt(
+      await this.client.sessionChats.prompt(
         {
           sessionId: result.sessionId,
-          workingDirectory: destinationWorkingDirectory,
           text: input.prompt,
           attachments: [],
           renderUserMessageAsMarkdown: false,
@@ -283,11 +296,6 @@ export class RootStore extends Store<{
         sourceResolved: input.resolveSource,
       };
 
-    this.sessionRegistry.load(result.sessionId, destinationWorkingDirectory);
-    await this.client.projectSessions.open(
-      { sessionId: result.sessionId, workingDirectory: destinationWorkingDirectory },
-      { signal: this.signal },
-    );
     const paneId = this.sessionLayoutStore.showChildSession(
       sourceSessionId,
       result.sessionId,
@@ -754,7 +762,6 @@ export class RootStore extends Store<{
       openCommandPane: (pane) => this.projectWorkbenchStore.commandPaneStore.open(pane),
       persistNow: () => this.props.flushWindowState(),
       projectName: (workspacePath) => this.projectCatalogStore.nameForPath(workspacePath),
-      abort: (sessionId) => this.projectWorkbenchStore.abortSession(sessionId),
       renameSession: (sessionId, name) =>
         this.projectWorkbenchStore.sessionManagementStore.renameSession(sessionId, name),
       toolCompactSession: (entryId, prompt) =>
@@ -1233,14 +1240,14 @@ export class RootStore extends Store<{
         create: (input) => this.createPromptedSession(input),
         createDraft: (input) => this.createDraftSession(input),
         sendMessage: (sessionId, text, delivery, crossSession) =>
-          this.applicationControlStore.runOperation(() => {
-            this.retainProjectSessionObservation(sessionId);
+          this.applicationControlStore.runOperation(async () => {
+            await this.prepareProjectSessionChat(sessionId);
             const command =
               delivery === "steer"
-                ? this.client.projectSessions.steer
+                ? this.client.sessionChats.steer
                 : delivery === "follow-up"
-                  ? this.client.projectSessions.followUp
-                  : this.client.projectSessions.prompt;
+                  ? this.client.sessionChats.followUp
+                  : this.client.sessionChats.prompt;
             return command(
               {
                 sessionId,
@@ -1253,12 +1260,13 @@ export class RootStore extends Store<{
             );
           }),
         compact: (sessionId, instructions) =>
-          this.applicationControlStore.runOperation(() =>
-            this.client.projectSessions.compact(
+          this.applicationControlStore.runOperation(async () => {
+            await this.prepareProjectSessionChat(sessionId);
+            return this.client.sessionChats.compact(
               { sessionId, instructions },
               { signal: this.signal },
-            ),
-          ),
+            );
+          }),
         scheduleMessage: (input) =>
           this.applicationControlStore.runOperation(() =>
             this.client.scheduledMessages.schedule(input, { signal: this.signal }),
@@ -1269,16 +1277,23 @@ export class RootStore extends Store<{
           this.applicationControlStore.runOperation(() =>
             this.client.scheduledMessages.cancel(id, { signal: this.signal }),
           ),
-        listPendingMessages: (sessionId) =>
-          this.client.projectSessions.listQueuedMessages({ sessionId }, { signal: this.signal }),
+        listPendingMessages: async (sessionId) => {
+          await this.prepareProjectSessionChat(sessionId);
+          return this.client.sessionChats.listQueuedMessages(
+            { sessionId },
+            { signal: this.signal },
+          );
+        },
         dequeuePendingMessages: (sessionId) =>
-          this.applicationControlStore.runOperation(() =>
-            this.client.projectSessions.clearQueue({ sessionId }, { signal: this.signal }),
-          ),
+          this.applicationControlStore.runOperation(async () => {
+            await this.prepareProjectSessionChat(sessionId);
+            return this.client.sessionChats.clearQueue({ sessionId }, { signal: this.signal });
+          }),
         abort: (sessionId) =>
-          this.applicationControlStore.runOperation(() =>
-            this.client.projectSessions.abort({ sessionId }, { signal: this.signal }),
-          ),
+          this.applicationControlStore.runOperation(async () => {
+            await this.prepareProjectSessionChat(sessionId);
+            return this.client.sessionChats.abort({ sessionId }, { signal: this.signal });
+          }),
         rename: (sessionId, title) =>
           this.cakeChatCollectionStore.summaries.some((session) => session.sessionId === sessionId)
             ? this.cakeChatCollectionStore.management

@@ -6,8 +6,9 @@ import {
   CakeSessionIdentity,
   ConversationEvent,
   ConversationSnapshot,
+  SessionChatConfiguration,
+  SessionChatPromptInput,
 } from "../conversations/conversation-data";
-import { CrossSessionMessageMetadata } from "../conversations/cross-session-coordination";
 
 const boundedId = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
 const boundedPath = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4_096));
@@ -157,59 +158,9 @@ export const ProjectSessionTarget = Schema.Struct({
 });
 export interface ProjectSessionTarget extends Schema.Schema.Type<typeof ProjectSessionTarget> {}
 
-const ChatConfiguration = Schema.Struct({
-  provider: Schema.String,
-  modelId: Schema.String,
-  thinkingLevel: ThinkingLevel,
-  fastMode: Schema.Boolean,
-});
-
-const Attachment = Schema.Union([
-  Schema.Struct({ kind: Schema.Literal("file"), name: Schema.String, path: Schema.String }),
-  Schema.Struct({
-    kind: Schema.Literal("image"),
-    name: Schema.String,
-    mimeType: Schema.String,
-    data: Schema.String,
-  }),
-  Schema.Struct({
-    kind: Schema.Literal("source"),
-    name: Schema.String,
-    location: Schema.Struct({
-      path: Schema.String,
-      range: Schema.Struct({
-        start: Schema.Struct({ line: Schema.Int }),
-        end: Schema.Struct({ line: Schema.Int }),
-      }),
-    }),
-    selectedText: Schema.optionalKey(Schema.String),
-    comment: Schema.optionalKey(Schema.String),
-  }),
-  Schema.Struct({
-    kind: Schema.Literal("annotation"),
-    annotations: Schema.Array(
-      Schema.Struct({
-        id: Schema.String,
-        messageId: Schema.String,
-        entryId: Schema.optionalKey(Schema.String),
-        selectedText: Schema.String,
-        startOffset: Schema.Int,
-        endOffset: Schema.Int,
-        contextBefore: Schema.String,
-        contextAfter: Schema.String,
-        comment: Schema.optionalKey(Schema.String),
-      }),
-    ),
-  }),
-]);
-
 export const ProjectSessionPromptInput = Schema.Struct({
-  sessionId: boundedId,
+  ...SessionChatPromptInput.fields,
   workingDirectory: Schema.optionalKey(boundedPath),
-  text: boundedText,
-  attachments: Schema.Array(Attachment).check(Schema.isMaxLength(20)),
-  renderUserMessageAsMarkdown: Schema.Boolean,
-  crossSession: Schema.optionalKey(CrossSessionMessageMetadata),
 });
 export interface ProjectSessionPromptInput extends Schema.Schema.Type<
   typeof ProjectSessionPromptInput
@@ -219,7 +170,7 @@ export const ProjectSessionStartInput = Schema.Struct({
   sessionId: boundedId,
   projectPath: Schema.optionalKey(boundedPath),
   workingDirectory: boundedPath,
-  configuration: Schema.optionalKey(ChatConfiguration),
+  configuration: Schema.optionalKey(SessionChatConfiguration),
   name: Schema.optionalKey(Schema.String),
   labelIds: Schema.optionalKey(
     Schema.Array(Schema.String.check(Schema.isUUID(4))).check(
@@ -227,9 +178,9 @@ export const ProjectSessionStartInput = Schema.Struct({
       Schema.isUnique(),
     ),
   ),
-  text: boundedText,
-  attachments: Schema.Array(Attachment).check(Schema.isMaxLength(20)),
-  renderUserMessageAsMarkdown: Schema.Boolean,
+  text: SessionChatPromptInput.fields.text,
+  attachments: SessionChatPromptInput.fields.attachments,
+  renderUserMessageAsMarkdown: SessionChatPromptInput.fields.renderUserMessageAsMarkdown,
 });
 export interface ProjectSessionStartInput extends Schema.Schema.Type<
   typeof ProjectSessionStartInput

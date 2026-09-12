@@ -1,19 +1,17 @@
 import { Schema } from "effect";
 import { Rpc, RpcGroup } from "effect/unstable/rpc";
-import { CakeChatConfiguration } from "../../domain/cake-chats/cake-chat-data";
 import { SessionCatalogUpdate } from "../../domain/application/catalog-data";
-import { QueuedConversationMessages, TurnId } from "../../domain/conversations/conversation-data";
+import { TurnId } from "../../domain/conversations/conversation-data";
 import {
   ProjectSessionError,
   ProjectSessionCatalogQuery,
   ProjectSessionPreview,
-  ProjectSessionPromptInput,
   ProjectSessionStartInput,
   ProjectSessionTarget,
   ProjectSessionUpdate,
   WorkingDirectoryResolutionResult,
 } from "../../domain/project-sessions/project-session-data";
-import { SESSION_TITLE_MAX_LENGTH, piSettingUpdateSchema } from "../session-contract";
+import { SESSION_TITLE_MAX_LENGTH } from "../session-contract";
 
 export const ProjectSessionRpc = RpcGroup.make(
   Rpc.make("projectSessions.observeCatalog", {
@@ -42,88 +40,6 @@ export const ProjectSessionRpc = RpcGroup.make(
     error: ProjectSessionError,
     stream: true,
   }),
-  Rpc.make("projectSessions.prompt", {
-    payload: ProjectSessionPromptInput,
-    success: TurnId,
-    error: ProjectSessionError,
-  }),
-  Rpc.make("projectSessions.steer", {
-    payload: ProjectSessionPromptInput,
-    success: TurnId,
-    error: ProjectSessionError,
-  }),
-  Rpc.make("projectSessions.followUp", {
-    payload: ProjectSessionPromptInput,
-    success: TurnId,
-    error: ProjectSessionError,
-  }),
-  Rpc.make("projectSessions.abort", {
-    payload: ProjectSessionTarget,
-    error: ProjectSessionError,
-  }),
-  Rpc.make("projectSessions.listQueuedMessages", {
-    payload: ProjectSessionTarget,
-    success: QueuedConversationMessages,
-    error: ProjectSessionError,
-  }),
-  Rpc.make("projectSessions.clearQueue", {
-    payload: ProjectSessionTarget,
-    success: QueuedConversationMessages,
-    error: ProjectSessionError,
-  }),
-  Rpc.make("projectSessions.cancelSteering", {
-    payload: ProjectSessionTarget,
-    success: QueuedConversationMessages,
-    error: ProjectSessionError,
-  }),
-  Rpc.make("projectSessions.removeQueuedMessage", {
-    payload: { ...ProjectSessionTarget.fields, partId: Schema.String },
-    success: QueuedConversationMessages,
-    error: ProjectSessionError,
-  }),
-  Rpc.make("projectSessions.steerQueuedMessage", {
-    payload: { ...ProjectSessionTarget.fields, partId: Schema.String },
-    success: QueuedConversationMessages,
-    error: ProjectSessionError,
-  }),
-  Rpc.make("projectSessions.compact", {
-    payload: { ...ProjectSessionTarget.fields, instructions: Schema.optional(Schema.String) },
-    error: ProjectSessionError,
-  }),
-  Rpc.make("projectSessions.editMessage", {
-    payload: {
-      ...ProjectSessionTarget.fields,
-      entryId: Schema.String,
-      text: ProjectSessionPromptInput.fields.text,
-      attachments: ProjectSessionPromptInput.fields.attachments,
-      renderUserMessageAsMarkdown: ProjectSessionPromptInput.fields.renderUserMessageAsMarkdown,
-    },
-    error: ProjectSessionError,
-  }),
-  Rpc.make("projectSessions.setUserMessageMarkdown", {
-    payload: {
-      ...ProjectSessionTarget.fields,
-      entryId: Schema.String,
-      renderAsMarkdown: Schema.Boolean,
-    },
-    error: ProjectSessionError,
-  }),
-  Rpc.make("projectSessions.applyConfiguration", {
-    payload: { ...ProjectSessionTarget.fields, configuration: CakeChatConfiguration },
-    error: ProjectSessionError,
-  }),
-  Rpc.make("projectSessions.setModel", {
-    payload: { ...ProjectSessionTarget.fields, provider: Schema.String, modelId: Schema.String },
-    error: ProjectSessionError,
-  }),
-  Rpc.make("projectSessions.setThinkingLevel", {
-    payload: { ...ProjectSessionTarget.fields, level: CakeChatConfiguration.fields.thinkingLevel },
-    error: ProjectSessionError,
-  }),
-  Rpc.make("projectSessions.setFastMode", {
-    payload: { ...ProjectSessionTarget.fields, enabled: Schema.Boolean },
-    error: ProjectSessionError,
-  }),
   Rpc.make("projectSessions.getChangelog", {
     payload: ProjectSessionTarget,
     success: Schema.String,
@@ -136,26 +52,6 @@ export const ProjectSessionRpc = RpcGroup.make(
       summarize: Schema.Boolean,
       customInstructions: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(16_384))),
     },
-    error: ProjectSessionError,
-  }),
-  Rpc.make("projectSessions.setPiSetting", {
-    payload: { ...ProjectSessionTarget.fields, update: piSettingUpdateSchema },
-    error: ProjectSessionError,
-  }),
-  Rpc.make("projectSessions.reload", {
-    payload: ProjectSessionTarget,
-    error: ProjectSessionError,
-  }),
-  Rpc.make("projectSessions.login", {
-    payload: {
-      ...ProjectSessionTarget.fields,
-      provider: Schema.String,
-      authType: Schema.Literals(["api_key", "oauth"]),
-    },
-    error: ProjectSessionError,
-  }),
-  Rpc.make("projectSessions.logout", {
-    payload: { ...ProjectSessionTarget.fields, provider: Schema.String },
     error: ProjectSessionError,
   }),
   Rpc.make("projectSessions.toolCompact", {

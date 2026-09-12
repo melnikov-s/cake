@@ -111,9 +111,12 @@ export interface PiSessionAcquireOptions {
     readonly turnId: string;
     readonly outcome: "complete" | "failed" | "aborted";
   }) => Effect.Effect<void, unknown>;
+  /** Publishes kind-specific catalog metadata after shared conversation mutations. */
+  readonly onSessionChanged?: Effect.Effect<void, unknown>;
 }
 
 export interface PiSessionHandle {
+  readonly profile: PiSessionAcquireOptions["profile"]["_tag"];
   readonly updates: Stream.Stream<PiSessionUpdate, PiSessionError>;
   readonly snapshot: () => Effect.Effect<SessionSnapshot, PiSessionError>;
   readonly prompt: (
@@ -188,6 +191,7 @@ export interface PiSessionHandle {
     result: Schema.Schema.Type<typeof Schema.Json>,
   ) => Effect.Effect<void, PiSessionError>;
   readonly reload: () => Effect.Effect<void, PiSessionError>;
+  readonly publishSessionChanged: () => Effect.Effect<void, PiSessionError>;
 }
 
 export interface PiSessionRuntimeStatus {
@@ -223,6 +227,10 @@ export class PiSessions extends Context.Service<
     ) => Effect.Effect<PiSessionHandle, PiSessionError, Scope.Scope>;
     readonly acquireCurrent: (
       target: Pick<PiSessionTarget, "workingDirectory" | "sessionId" | "sessionDirectory">,
+    ) => Effect.Effect<PiSessionHandle, PiSessionError, Scope.Scope>;
+    /** Acquires an assembled primary-session runtime by its globally unique Pi Session ID. */
+    readonly acquireSession: (
+      sessionId: string,
     ) => Effect.Effect<PiSessionHandle, PiSessionError, Scope.Scope>;
     /** Reads an already-acquired runtime without constructing or retaining one. */
     readonly currentStatus: (
@@ -582,6 +590,7 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
         });
 
         return {
+          profile: shared.profile,
           updates,
           snapshot: () => call("snapshot", (runtime) => runtime.snapshot()),
           prompt: (text, attachments = [], markdown = false) =>
@@ -732,6 +741,10 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
               : Effect.fail(
                   new PiSessionError({ operation: "reload", message: "Reload is unavailable" }),
                 ),
+          publishSessionChanged: () =>
+            (key.options.onSessionChanged ?? Effect.void).pipe(
+              sessionError("publishSessionChanged"),
+            ),
         } satisfies PiSessionHandle;
       });
 
@@ -817,6 +830,24 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
         return yield* acquire(options);
       });
 
+      const acquireSession = Effect.fn("PiSessions.acquireSession")(function* (sessionId: string) {
+        const matches = [...acquiredOptions.values()].filter(
+          (options) => options.runtime.sessionId === sessionId,
+        );
+        const options = matches[0];
+        if (!options)
+          return yield* new PiSessionError({
+            operation: "acquireSession",
+            message: `Pi Session ${sessionId} has not been assembled`,
+          });
+        if (matches.some((candidate) => runtimeTarget(candidate) !== runtimeTarget(options)))
+          return yield* new PiSessionError({
+            operation: "acquireSession",
+            message: `Pi Session ID collision detected: ${sessionId}`,
+          });
+        return yield* acquire(options);
+      });
+
       const currentStatus = Effect.fn("PiSessions.currentStatus")(function* (
         target: Pick<PiSessionTarget, "workingDirectory" | "sessionId" | "sessionDirectory">,
       ) {
@@ -846,6 +877,7 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
         inspect,
         acquire,
         acquireCurrent,
+        acquireSession,
         currentStatus,
         currentTurnIds,
         executingTurnIds,

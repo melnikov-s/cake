@@ -249,6 +249,40 @@ describe("PiSessions", () => {
     }),
   );
 
+  it.effect("does not replay session creation after the assembled runtime is released", () =>
+    Effect.gen(function* () {
+      const acquisitions = yield* Ref.make(0);
+      const finalizations = yield* Ref.make(0);
+      const requestedCreationModes: Array<boolean | undefined> = [];
+      const base = adapter(acquisitions, finalizations);
+      const context = yield* Layer.build(
+        makePiSessionsLayer({
+          ...base,
+          createRuntime: (runtimeOptions) => {
+            requestedCreationModes.push(runtimeOptions.newSession);
+            return base.createRuntime(runtimeOptions);
+          },
+        }),
+      );
+      const sessions = Context.get(context, PiSessions);
+      const owner = yield* Scope.make();
+      yield* sessions
+        .acquire(options({ newSession: true }))
+        .pipe(Effect.provideService(Scope.Scope, owner));
+      yield* Scope.close(owner, Exit.void);
+
+      const commandScope = yield* Scope.make();
+      const result = yield* sessions
+        .acquireSession("session-1")
+        .pipe(Effect.provideService(Scope.Scope, commandScope), Effect.exit);
+      assert.equal(Exit.isFailure(result), true);
+      if (Exit.isFailure(result)) assert.match(String(result.cause), /has not been assembled/);
+      assert.deepEqual(requestedCreationModes, [true]);
+      assert.equal(yield* Ref.get(acquisitions), 1);
+      yield* Scope.close(commandScope, Exit.void);
+    }),
+  );
+
   it.effect("reads current runtime status without acquiring or snapshotting a session", () =>
     Effect.gen(function* () {
       const acquisitions = yield* Ref.make(0);

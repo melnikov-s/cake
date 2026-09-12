@@ -330,6 +330,7 @@ export interface Client {
     readonly refresh: (options?: ClientCommandOptions) => Promise<void>;
   };
   readonly modelPresets: CommandGroup<CakeIpcClientService["modelPresets"]>;
+  readonly sessionChats: CommandGroup<CakeIpcClientService["sessionChats"]>;
   readonly projectSessions: CommandGroup<CakeIpcClientService["projectSessions"]>;
   readonly projectWorkflow: CommandGroup<CakeIpcClientService["projectWorkflow"]>;
   readonly scheduledMessages: CommandGroup<CakeIpcClientService["scheduledMessages"]>;

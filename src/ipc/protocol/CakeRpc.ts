@@ -11,6 +11,7 @@ import { ProjectSessionRpc } from "./ProjectSessionRpc";
 import { ProjectWorkflowRpc } from "./ProjectWorkflowRpc";
 import { RendererConnectionMiddleware } from "./RendererConnectionMiddleware";
 import { ScheduledMessageRpc } from "./ScheduledMessageRpc";
+import { SessionChatRpc } from "./SessionChatRpc";
 import { SubagentRpc } from "./SubagentRpc";
 import { TerminalRpc } from "./TerminalRpc";
 import { VsCodeRpc } from "./VsCodeRpc";
@@ -30,6 +31,7 @@ export const CakeRpc = ApplicationRpc.merge(
   ProjectSessionRpc,
   ProjectWorkflowRpc,
   ScheduledMessageRpc,
+  SessionChatRpc,
   SubagentRpc,
   TerminalRpc,
   VsCodeRpc,

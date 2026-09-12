@@ -195,11 +195,13 @@ describe("RootStore session navigation", () => {
       resolvedHasMoreByProject: {},
     });
     const fork = vi.fn(async () => ({ sessionId: "forked" }));
+    const open = vi.fn(async () => undefined);
     const rename = vi.fn(async () => undefined);
     const prompt = vi.fn(async () => "turn-1");
     const respondControl = vi.fn(async () => undefined);
     const client = {
-      projectSessions: { fork, prompt, rename, respondControl },
+      projectSessions: { fork, open, rename, respondControl },
+      sessionChats: { prompt },
     } as unknown as Client;
     const root = mountRootStore(client, { state: {}, children: {} }, async () => undefined, models);
 
@@ -227,6 +229,13 @@ describe("RootStore session navigation", () => {
         },
         expect.objectContaining({ signal: expect.any(AbortSignal) }),
       );
+      expect(open).toHaveBeenCalledWith(
+        { sessionId: "forked", workingDirectory: projectPath },
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
+      expect(open.mock.invocationCallOrder[0]).toBeLessThan(
+        prompt.mock.invocationCallOrder[0] ?? 0,
+      );
       expect(rename).toHaveBeenCalledWith(
         { sessionId: "forked", workingDirectory: projectPath, name: "Forked work" },
         expect.objectContaining({ signal: expect.any(AbortSignal) }),
@@ -234,7 +243,6 @@ describe("RootStore session navigation", () => {
       expect(prompt).toHaveBeenCalledWith(
         {
           sessionId: "forked",
-          workingDirectory: projectPath,
           text: "Continue in the fork.",
           attachments: [],
           renderUserMessageAsMarkdown: false,

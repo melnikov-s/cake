@@ -41,33 +41,12 @@ export const makeCakeChatHandlers = (configuration: CakeChatRuntimeConfiguration
           ),
         ),
       ),
-    "cakeChats.prompt": (input) =>
+    "cakeChats.start": (input) =>
       withConnection((connectionId) =>
         bindRenderer(connectionId, input.sessionId).pipe(
-          Effect.andThen(cakeChatOperations.prompt(input, configuration)),
+          Effect.andThen(cakeChatOperations.start(input, configuration)),
         ),
       ),
-    "cakeChats.abort": (target) => cakeChatOperations.abort(target, configuration),
-    "cakeChats.compact": ({ instructions, ...target }) =>
-      cakeChatOperations.compact(target, instructions, configuration),
-    "cakeChats.editMessage": (input) => cakeChatOperations.editMessage(input, configuration),
-    "cakeChats.setUserMessageMarkdown": ({ entryId, renderAsMarkdown, ...target }) =>
-      cakeChatOperations.setUserMessageMarkdown(target, entryId, renderAsMarkdown, configuration),
-    "cakeChats.applyConfiguration": ({ configuration: sessionConfiguration, ...target }) =>
-      cakeChatOperations.applyConfiguration(target, sessionConfiguration, configuration),
-    "cakeChats.setModel": ({ provider, modelId, ...target }) =>
-      cakeChatOperations.setModel(target, provider, modelId, configuration),
-    "cakeChats.setThinkingLevel": ({ level, ...target }) =>
-      cakeChatOperations.setThinkingLevel(target, level, configuration),
-    "cakeChats.setFastMode": ({ enabled, ...target }) =>
-      cakeChatOperations.setFastMode(target, enabled, configuration),
-    "cakeChats.setPiSetting": ({ update, ...target }) =>
-      cakeChatOperations.setPiSetting(target, update, configuration),
-    "cakeChats.reload": (target) => cakeChatOperations.reload(target, configuration),
-    "cakeChats.login": ({ provider, authType, ...target }) =>
-      cakeChatOperations.login(target, provider, authType, configuration),
-    "cakeChats.logout": ({ provider, ...target }) =>
-      cakeChatOperations.logout(target, provider, configuration),
     "cakeChats.rename": ({ name, ...target }) =>
       cakeChatOperations.rename(target, name, configuration),
     "cakeChats.toolCompact": ({ entryId, prompt, ...target }) => {

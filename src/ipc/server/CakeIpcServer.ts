@@ -16,6 +16,7 @@ import { modelHandlers } from "./ModelHandlers";
 import { projectSessionHandlers } from "./ProjectSessionHandlers";
 import { projectWorkflowHandlers } from "./ProjectWorkflowHandlers";
 import { scheduledMessageHandlers } from "./ScheduledMessageHandlers";
+import { sessionChatHandlers } from "./SessionChatHandlers";
 import { subagentHandlers } from "./SubagentHandlers";
 import { terminalHandlers } from "./TerminalHandlers";
 import { vscodeHandlers } from "./VsCodeHandlers";
@@ -38,6 +39,7 @@ export const makeCakeIpcServerLive = (
     ...projectSessionHandlers,
     ...projectWorkflowHandlers,
     ...scheduledMessageHandlers,
+    ...sessionChatHandlers,
     ...subagentHandlers,
     ...terminalHandlers,
     ...vscodeHandlers,

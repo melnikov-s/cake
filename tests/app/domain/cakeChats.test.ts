@@ -6,6 +6,7 @@ import * as cakeChatMetadata from "../../../src/domain/cake-chats/cakeChatMetada
 import * as cakeChatOperations from "../../../src/domain/cake-chats/cakeChatOperations";
 import * as cakeChatContinuations from "../../../src/domain/cake-chats/cakeChatContinuations";
 import * as cakeChatLifecycle from "../../../src/domain/cake-chats/cakeChatLifecycle";
+import * as sessionChats from "../../../src/domain/conversations/sessionChats";
 import {
   defaultApplicationState,
   type ApplicationState as ApplicationStateValue,
@@ -101,11 +102,26 @@ const makeLayer = (
     sessionFile: snapshot.sessionFile,
     streaming: false,
     snapshot: async () => snapshot,
-    listQueuedMessages: async () => ({ steering: [], followUp: [] }),
-    clearQueue: async () => ({ steering: [], followUp: [] }),
-    cancelSteering: async () => ({ steering: [], followUp: [] }),
-    removeQueuedMessage: async () => ({ steering: [], followUp: [] }),
-    steerQueuedMessage: async () => ({ steering: [], followUp: [] }),
+    listQueuedMessages: async () => {
+      operations.push("list-queue");
+      return { steering: [], followUp: [] };
+    },
+    clearQueue: async () => {
+      operations.push("clear-queue");
+      return { steering: [], followUp: [] };
+    },
+    cancelSteering: async () => {
+      operations.push("cancel-steering");
+      return { steering: [], followUp: [] };
+    },
+    removeQueuedMessage: async () => {
+      operations.push("remove-queued");
+      return { steering: [], followUp: [] };
+    },
+    steerQueuedMessage: async () => {
+      operations.push("steer-queued");
+      return { steering: [], followUp: [] };
+    },
     prompt: async () => {
       options.onEvent({ type: "streaming", sessionId: snapshot.sessionId, streaming: false });
     },
@@ -241,7 +257,7 @@ describe("Cake Chats domain", () => {
       );
       yield* updates.pipe(Stream.take(1), Stream.runDrain);
       assert.equal(fixture.created(), 0);
-      const turnId = yield* cakeChatOperations.prompt(
+      const turnId = yield* cakeChatOperations.start(
         {
           sessionId: "cake-chat-1",
           tools: [],
@@ -254,6 +270,7 @@ describe("Cake Chats domain", () => {
       );
       assert.match(turnId, /^[0-9a-f-]{36}$/);
       assert.equal(fixture.created(), 1);
+      assert.deepEqual(fixture.runtimeOptions()[0]?.tools, ["cake"]);
     }).pipe(Effect.provide(fixture.layer));
   });
 
@@ -306,15 +323,18 @@ describe("Cake Chats domain", () => {
   it.effect("restores a resolved Cake Chat when a message is submitted", () => {
     const fixture = makeLayer(defaultApplicationState(), { resolvedOnDisk: true });
     return Effect.gen(function* () {
-      yield* cakeChatOperations.prompt(
+      yield* cakeChatOperations.acquireForUse(
+        { sessionId: "cake-chat-1", tools: [] },
+        configuration,
+      );
+      yield* sessionChats.deliver(
         {
           sessionId: "cake-chat-1",
-          tools: [],
           text: "Continue",
           attachments: [],
           renderUserMessageAsMarkdown: false,
         },
-        configuration,
+        "prompt",
       );
       assert.equal(fixture.restored(), 1);
       assert.equal(fixture.created(), 1);
@@ -325,44 +345,33 @@ describe("Cake Chats domain", () => {
     const fixture = makeLayer();
     const target = { sessionId: "cake-chat-1", tools: [] };
     return Effect.gen(function* () {
-      yield* cakeChatOperations.compact(target, "Keep the architecture notes", configuration);
-      yield* cakeChatOperations.editMessage(
-        {
-          sessionId: target.sessionId,
-          tools: target.tools,
-          entryId: "user-message",
-          text: "Updated",
-          attachments: [],
-          renderUserMessageAsMarkdown: false,
-        },
-        configuration,
-      );
-      yield* cakeChatOperations.applyConfiguration(
-        target,
-        {
-          provider: "fixture-provider",
-          modelId: "fixture-model",
-          thinkingLevel: "medium",
-          fastMode: false,
-        },
-        configuration,
-      );
-      yield* cakeChatOperations.setModel(
-        target,
-        "fixture-provider",
-        "fixture-model",
-        configuration,
-      );
-      yield* cakeChatOperations.setThinkingLevel(target, "high", configuration);
-      yield* cakeChatOperations.setFastMode(target, true, configuration);
-      yield* cakeChatOperations.setPiSetting(
-        target,
-        { key: "retryEnabled", value: false },
-        configuration,
-      );
-      yield* cakeChatOperations.login(target, "fixture-provider", "api_key", configuration);
-      yield* cakeChatOperations.logout(target, "fixture-provider", configuration);
-      yield* cakeChatOperations.abort(target, configuration);
+      yield* cakeChatOperations.open(target, configuration);
+      yield* sessionChats.compact(target, "Keep the architecture notes");
+      yield* sessionChats.editMessage({
+        sessionId: target.sessionId,
+        entryId: "user-message",
+        text: "Updated",
+        attachments: [],
+        renderUserMessageAsMarkdown: false,
+      });
+      yield* sessionChats.applyConfiguration(target, {
+        provider: "fixture-provider",
+        modelId: "fixture-model",
+        thinkingLevel: "medium",
+        fastMode: false,
+      });
+      yield* sessionChats.setModel(target, "fixture-provider", "fixture-model");
+      yield* sessionChats.setThinkingLevel(target, "high");
+      yield* sessionChats.setFastMode(target, true);
+      yield* sessionChats.setPiSetting(target, { key: "retryEnabled", value: false });
+      yield* sessionChats.login(target, "fixture-provider", "api_key");
+      yield* sessionChats.logout(target, "fixture-provider");
+      yield* sessionChats.listQueuedMessages(target);
+      yield* sessionChats.clearQueue(target);
+      yield* sessionChats.cancelSteering(target);
+      yield* sessionChats.removeQueuedMessage(target, "queued-part");
+      yield* sessionChats.steerQueuedMessage(target, "queued-part");
+      yield* sessionChats.abort(target);
 
       assert.equal(fixture.created(), 1);
       assert.deepEqual(fixture.operations(), [
@@ -375,6 +384,11 @@ describe("Cake Chats domain", () => {
         "setting",
         "login",
         "logout",
+        "list-queue",
+        "clear-queue",
+        "cancel-steering",
+        "remove-queued",
+        "steer-queued",
         "abort",
       ]);
     }).pipe(Effect.provide(fixture.layer));
@@ -394,36 +408,6 @@ describe("Cake Chats domain", () => {
       yield* cakeChatOperations.open({ sessionId: "cake-chat-1", tools }, configuration);
       yield* cakeChatOperations.open({ sessionId: "cake-chat-2", tools: [] }, configuration);
       assert.deepEqual(fixture.toolCounts(), [1, 0]);
-    }).pipe(Effect.provide(fixture.layer));
-  });
-
-  it.effect("keeps curated tools when a Cake Chat runtime is reacquired", () => {
-    const fixture = makeLayer();
-    const tools = [
-      {
-        command: "open-project",
-        topic: "projects",
-        summary: "Open one project",
-        parameters: {},
-      },
-    ];
-    return Effect.gen(function* () {
-      yield* Effect.scoped(
-        cakeChatOperations.open({ sessionId: "cake-chat-1", tools }, configuration),
-      );
-      yield* Effect.scoped(
-        cakeChatOperations.prompt(
-          {
-            sessionId: "cake-chat-1",
-            tools,
-            text: "Continue",
-            attachments: [],
-            renderUserMessageAsMarkdown: false,
-          },
-          configuration,
-        ),
-      );
-      assert.deepEqual(fixture.toolCounts(), [1, 1]);
     }).pipe(Effect.provide(fixture.layer));
   });
 

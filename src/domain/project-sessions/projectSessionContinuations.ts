@@ -14,7 +14,8 @@ import {
   nextCopyTitle,
   publishCatalogChange,
 } from "./projectSessionMetadata";
-import { acquireTarget, prompt } from "./projectSessionOperations";
+import { acquireTarget } from "./projectSessionOperations";
+import * as sessionChats from "../conversations/sessionChats";
 import { resolve, restore } from "./projectSessionLifecycle";
 
 const withContinuationSource = Effect.fn("ProjectSessions.withContinuationSource")(function* <
@@ -191,13 +192,17 @@ export const toolCompact = Effect.fn("ProjectSessions.toolCompact")(function* (i
   const result = yield* handle.toolCompact(input.entryId).pipe(asError("toolCompact"));
   const continuationPrompt = input.prompt?.trim();
   if (continuationPrompt)
-    yield* prompt({
-      sessionId: result.sessionId,
-      workingDirectory: source.workingDirectory,
-      text: continuationPrompt,
-      attachments: [],
-      renderUserMessageAsMarkdown: false,
-    });
+    yield* sessionChats
+      .deliver(
+        {
+          sessionId: result.sessionId,
+          text: continuationPrompt,
+          attachments: [],
+          renderUserMessageAsMarkdown: false,
+        },
+        "prompt",
+      )
+      .pipe(asError("toolCompact"));
   else yield* publishCatalogChange(result.sessionId, source, false);
   return { sessionId: result.sessionId };
 });

@@ -24,7 +24,6 @@ export interface SessionRegistryStoreProps {
   openCommandPane(pane: "changelog" | "tree" | "resources"): Promise<void>;
   persistNow(): Promise<void>;
   projectName(workingDirectory: string): string;
-  abort(sessionId: string): Promise<void>;
   renameSession(sessionId: string, name: string): Promise<void>;
   toolCompactSession(entryId: string, prompt?: string): Promise<boolean>;
   modelPresets?(): readonly ModelPreset[];
@@ -93,7 +92,6 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
         familyId: () =>
           this.props.catalog?.find(target.sessionId)?.familyId ??
           this.pendingSessions.familyId(target.sessionId),
-        abort: () => this.props.abort(target.sessionId),
         renameSession: (name) => this.props.renameSession(target.sessionId, name),
         toolCompactSession: this.props.toolCompactSession,
         modelPresets: () => this.props.modelPresets?.() ?? [],

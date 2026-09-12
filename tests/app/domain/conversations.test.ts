@@ -1,13 +1,15 @@
 import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
-import { Effect, Stream } from "effect";
+import { Effect, Layer, Stream } from "effect";
 import { describe, expect } from "vitest";
 import {
   deliver,
   deliverWhenAvailable,
   projectQueuedMessages,
 } from "../../../src/domain/conversations/conversations";
-import type { PiSessionHandle } from "../../../src/services/pi/PiSessions";
+import * as sessionChats from "../../../src/domain/conversations/sessionChats";
+import { PiSessions, type PiSessionHandle } from "../../../src/services/pi/PiSessions";
+import { RendererRequestCoordinator } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
 import type { SessionSnapshot } from "../../../src/ipc/session-contract";
 
 const snapshot = (streaming: boolean): SessionSnapshot => ({
@@ -27,6 +29,7 @@ const snapshot = (streaming: boolean): SessionSnapshot => ({
 });
 
 const makeHandle = (deliveries: string[], isStreaming: () => boolean): PiSessionHandle => ({
+  profile: "ProjectSession",
   updates: Stream.empty,
   snapshot: () => Effect.succeed(snapshot(isStreaming())),
   prompt: () => Effect.sync(() => deliveries.push("prompt")).pipe(Effect.as("prompt-turn")),
@@ -56,6 +59,7 @@ const makeHandle = (deliveries: string[], isStreaming: () => boolean): PiSession
   reviewParentContext: () => Effect.die("Unexpected parent-context request"),
   notifySubagentCompletion: () => Effect.void,
   reload: () => Effect.void,
+  publishSessionChanged: () => Effect.void,
 });
 
 describe("conversation domain", () => {
@@ -101,4 +105,54 @@ describe("conversation domain", () => {
       assert.deepEqual(deliveries, ["follow-up"]);
     }),
   );
+
+  it.effect("binds each shared delivery to the renderer that most recently submitted it", () => {
+    const bindings: Array<{ target: unknown; connectionId: number }> = [];
+    const handle = makeHandle([], () => false);
+    return Effect.gen(function* () {
+      yield* sessionChats.bindRenderer("session-1", 11);
+      yield* sessionChats.bindRenderer("session-1", 22);
+
+      assert.deepEqual(bindings, [
+        { target: { _tag: "ProjectSession", sessionId: "session-1" }, connectionId: 11 },
+        { target: { _tag: "ProjectSession", sessionId: "session-1" }, connectionId: 22 },
+      ]);
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          Layer.mock(PiSessions, { acquireSession: () => Effect.succeed(handle) }),
+          Layer.mock(RendererRequestCoordinator, {
+            bind: (target, connectionId) =>
+              Effect.sync(() => bindings.push({ target, connectionId })),
+          }),
+        ),
+      ),
+    );
+  });
+
+  it.effect("binds Cake Chat delivery with its assembled runtime profile", () => {
+    const bindings: Array<{ target: unknown; connectionId: number }> = [];
+    const handle = { ...makeHandle([], () => false), profile: "CakeChatSession" as const };
+    return sessionChats.bindRenderer("cake-chat-1", 31).pipe(
+      Effect.tap(() =>
+        Effect.sync(() =>
+          assert.deepEqual(bindings, [
+            {
+              target: { _tag: "CakeChatSession", sessionId: "cake-chat-1" },
+              connectionId: 31,
+            },
+          ]),
+        ),
+      ),
+      Effect.provide(
+        Layer.mergeAll(
+          Layer.mock(PiSessions, { acquireSession: () => Effect.succeed(handle) }),
+          Layer.mock(RendererRequestCoordinator, {
+            bind: (target, connectionId) =>
+              Effect.sync(() => bindings.push({ target, connectionId })),
+          }),
+        ),
+      ),
+    );
+  });
 });

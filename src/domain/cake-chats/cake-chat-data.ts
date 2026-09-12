@@ -1,14 +1,14 @@
 import { Schema } from "effect";
 import { SESSION_TITLE_MAX_LENGTH } from "../../ipc/session-contract";
-import { ThinkingLevel } from "../../services/pi/model-data";
 import {
   CakeSessionIdentity,
   ConversationEvent,
   ConversationSnapshot,
+  SessionChatConfiguration,
+  SessionChatPromptInput,
 } from "../conversations/conversation-data";
 
 const boundedId = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
-const boundedText = Schema.String.check(Schema.isMaxLength(262_144));
 
 export const CakeControlTool = Schema.Struct({
   command: Schema.String,
@@ -89,67 +89,15 @@ export const CakeChatTarget = Schema.Struct({
 });
 export interface CakeChatTarget extends Schema.Schema.Type<typeof CakeChatTarget> {}
 
-export const CakeChatConfiguration = Schema.Struct({
-  provider: Schema.String,
-  modelId: Schema.String,
-  thinkingLevel: ThinkingLevel,
-  fastMode: Schema.Boolean,
-});
-export interface CakeChatConfiguration extends Schema.Schema.Type<typeof CakeChatConfiguration> {}
-
-const Attachment = Schema.Union([
-  Schema.Struct({ kind: Schema.Literal("file"), name: Schema.String, path: Schema.String }),
-  Schema.Struct({
-    kind: Schema.Literal("image"),
-    name: Schema.String,
-    mimeType: Schema.String,
-    data: Schema.String,
-  }),
-  Schema.Struct({
-    kind: Schema.Literal("source"),
-    name: Schema.String,
-    location: Schema.Struct({
-      path: Schema.String,
-      range: Schema.Struct({
-        start: Schema.Struct({ line: Schema.Int }),
-        end: Schema.Struct({ line: Schema.Int }),
-      }),
-    }),
-    selectedText: Schema.optionalKey(Schema.String),
-    comment: Schema.optionalKey(Schema.String),
-  }),
-  Schema.Struct({
-    kind: Schema.Literal("annotation"),
-    annotations: Schema.Array(
-      Schema.Struct({
-        id: Schema.String,
-        messageId: Schema.String,
-        entryId: Schema.optionalKey(Schema.String),
-        selectedText: Schema.String,
-        startOffset: Schema.Int,
-        endOffset: Schema.Int,
-        contextBefore: Schema.String,
-        contextAfter: Schema.String,
-        comment: Schema.optionalKey(Schema.String),
-      }),
-    ),
-  }),
-]);
-
-export const CakeChatPromptInput = Schema.Struct({
-  sessionId: boundedId,
+export const CakeChatStartInput = Schema.Struct({
+  ...SessionChatPromptInput.fields,
   tools: Schema.Array(CakeControlTool),
-  text: boundedText,
-  attachments: Schema.Array(Attachment).check(Schema.isMaxLength(20)),
-  renderUserMessageAsMarkdown: Schema.Boolean,
-  newSession: Schema.optionalKey(
-    Schema.Struct({
-      configuration: Schema.optionalKey(CakeChatConfiguration),
-      name: Schema.optionalKey(Schema.String),
-    }),
-  ),
+  newSession: Schema.Struct({
+    configuration: Schema.optionalKey(SessionChatConfiguration),
+    name: Schema.optionalKey(Schema.String),
+  }),
 });
-export interface CakeChatPromptInput extends Schema.Schema.Type<typeof CakeChatPromptInput> {}
+export interface CakeChatStartInput extends Schema.Schema.Type<typeof CakeChatStartInput> {}
 
 export class CakeChatError extends Schema.TaggedError<CakeChatError>()("CakeChatError", {
   operation: Schema.String,

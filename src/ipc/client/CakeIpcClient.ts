@@ -38,7 +38,6 @@ import type {
   ProjectSessionError,
   ProjectSessionCatalogQuery,
   ProjectSessionPreview,
-  ProjectSessionPromptInput,
   ProjectSessionStartInput,
   ProjectSessionTarget,
   ProjectSessionUpdate,
@@ -47,14 +46,17 @@ import type {
 import type {
   ConversationSnapshot,
   QueuedConversationMessages,
+  SessionChatConfiguration,
+  SessionChatError,
+  SessionChatPromptInput,
+  SessionChatTarget,
   TurnId,
 } from "../../domain/conversations/conversation-data";
 import type {
-  CakeChatConfiguration,
   CakeChatCatalogQuery,
   CakeChatError,
   CakeChatPreview,
-  CakeChatPromptInput,
+  CakeChatStartInput,
   CakeChatTarget,
   CakeChatUpdate,
 } from "../../domain/cake-chats/cake-chat-data";
@@ -211,6 +213,71 @@ export interface CakeIpcClientService {
     ) => Effect.Effect<ModelPresetProjection, ModelPresetMutationError>;
     readonly resolve: (id: string) => Effect.Effect<ModelSelection, ModelPresetResolutionError>;
   };
+  readonly sessionChats: {
+    readonly prompt: (
+      input: SessionChatPromptInput,
+    ) => Effect.Effect<TurnId, SessionChatError | TransportError>;
+    readonly steer: (
+      input: SessionChatPromptInput,
+    ) => Effect.Effect<TurnId, SessionChatError | TransportError>;
+    readonly followUp: (
+      input: SessionChatPromptInput,
+    ) => Effect.Effect<TurnId, SessionChatError | TransportError>;
+    readonly abort: (
+      target: SessionChatTarget,
+    ) => Effect.Effect<void, SessionChatError | TransportError>;
+    readonly listQueuedMessages: (
+      target: SessionChatTarget,
+    ) => Effect.Effect<QueuedConversationMessages, SessionChatError | TransportError>;
+    readonly clearQueue: (
+      target: SessionChatTarget,
+    ) => Effect.Effect<QueuedConversationMessages, SessionChatError | TransportError>;
+    readonly cancelSteering: (
+      target: SessionChatTarget,
+    ) => Effect.Effect<QueuedConversationMessages, SessionChatError | TransportError>;
+    readonly removeQueuedMessage: (
+      input: SessionChatTarget & { readonly partId: string },
+    ) => Effect.Effect<QueuedConversationMessages, SessionChatError | TransportError>;
+    readonly steerQueuedMessage: (
+      input: SessionChatTarget & { readonly partId: string },
+    ) => Effect.Effect<QueuedConversationMessages, SessionChatError | TransportError>;
+    readonly compact: (
+      input: SessionChatTarget & { readonly instructions?: string },
+    ) => Effect.Effect<void, SessionChatError | TransportError>;
+    readonly editMessage: (
+      input: SessionChatPromptInput & { readonly entryId: string },
+    ) => Effect.Effect<void, SessionChatError | TransportError>;
+    readonly setUserMessageMarkdown: (
+      input: SessionChatTarget & { readonly entryId: string; readonly renderAsMarkdown: boolean },
+    ) => Effect.Effect<void, SessionChatError | TransportError>;
+    readonly applyConfiguration: (
+      input: SessionChatTarget & { readonly configuration: SessionChatConfiguration },
+    ) => Effect.Effect<void, SessionChatError | TransportError>;
+    readonly setModel: (
+      input: SessionChatTarget & { readonly provider: string; readonly modelId: string },
+    ) => Effect.Effect<void, SessionChatError | TransportError>;
+    readonly setThinkingLevel: (
+      input: SessionChatTarget & { readonly level: SessionChatConfiguration["thinkingLevel"] },
+    ) => Effect.Effect<void, SessionChatError | TransportError>;
+    readonly setFastMode: (
+      input: SessionChatTarget & { readonly enabled: boolean },
+    ) => Effect.Effect<void, SessionChatError | TransportError>;
+    readonly setPiSetting: (
+      input: SessionChatTarget & { readonly update: PiSettingUpdate },
+    ) => Effect.Effect<void, SessionChatError | TransportError>;
+    readonly reload: (
+      target: SessionChatTarget,
+    ) => Effect.Effect<void, SessionChatError | TransportError>;
+    readonly login: (
+      input: SessionChatTarget & {
+        readonly provider: string;
+        readonly authType: "api_key" | "oauth";
+      },
+    ) => Effect.Effect<void, SessionChatError | TransportError>;
+    readonly logout: (
+      input: SessionChatTarget & { readonly provider: string },
+    ) => Effect.Effect<void, SessionChatError | TransportError>;
+  };
   readonly cakeChats: {
     readonly observeCatalog: (
       input: CakeChatCatalogQuery,
@@ -224,46 +291,9 @@ export interface CakeIpcClientService {
     readonly observe: (
       target: CakeChatTarget,
     ) => Stream.Stream<CakeChatUpdate, CakeChatError | TransportError>;
-    readonly prompt: (
-      input: CakeChatPromptInput,
+    readonly start: (
+      input: CakeChatStartInput,
     ) => Effect.Effect<TurnId, CakeChatError | TransportError>;
-    readonly abort: (target: CakeChatTarget) => Effect.Effect<void, CakeChatError | TransportError>;
-    readonly compact: (
-      input: CakeChatTarget & { readonly instructions?: string },
-    ) => Effect.Effect<void, CakeChatError | TransportError>;
-    readonly editMessage: (
-      input: CakeChatPromptInput & { readonly entryId: string },
-    ) => Effect.Effect<void, CakeChatError | TransportError>;
-    readonly setUserMessageMarkdown: (
-      input: CakeChatTarget & { readonly entryId: string; readonly renderAsMarkdown: boolean },
-    ) => Effect.Effect<void, CakeChatError | TransportError>;
-    readonly applyConfiguration: (
-      input: CakeChatTarget & { readonly configuration: CakeChatConfiguration },
-    ) => Effect.Effect<void, CakeChatError | TransportError>;
-    readonly setModel: (
-      input: CakeChatTarget & { readonly provider: string; readonly modelId: string },
-    ) => Effect.Effect<void, CakeChatError | TransportError>;
-    readonly setThinkingLevel: (
-      input: CakeChatTarget & { readonly level: CakeChatConfiguration["thinkingLevel"] },
-    ) => Effect.Effect<void, CakeChatError | TransportError>;
-    readonly setFastMode: (
-      input: CakeChatTarget & { readonly enabled: boolean },
-    ) => Effect.Effect<void, CakeChatError | TransportError>;
-    readonly setPiSetting: (
-      input: CakeChatTarget & { readonly update: PiSettingUpdate },
-    ) => Effect.Effect<void, CakeChatError | TransportError>;
-    readonly reload: (
-      target: CakeChatTarget,
-    ) => Effect.Effect<void, CakeChatError | TransportError>;
-    readonly login: (
-      input: CakeChatTarget & {
-        readonly provider: string;
-        readonly authType: "api_key" | "oauth";
-      },
-    ) => Effect.Effect<void, CakeChatError | TransportError>;
-    readonly logout: (
-      input: CakeChatTarget & { readonly provider: string },
-    ) => Effect.Effect<void, CakeChatError | TransportError>;
     readonly rename: (
       input: CakeChatTarget & { readonly name: string },
     ) => Effect.Effect<void, CakeChatError | TransportError>;
@@ -346,62 +376,6 @@ export interface CakeIpcClientService {
     readonly observe: (
       target: ProjectSessionTarget,
     ) => Stream.Stream<ProjectSessionUpdate, ProjectSessionError | TransportError>;
-    readonly prompt: (
-      input: ProjectSessionPromptInput,
-    ) => Effect.Effect<TurnId, ProjectSessionError | TransportError>;
-    readonly steer: (
-      input: ProjectSessionPromptInput,
-    ) => Effect.Effect<TurnId, ProjectSessionError | TransportError>;
-    readonly followUp: (
-      input: ProjectSessionPromptInput,
-    ) => Effect.Effect<TurnId, ProjectSessionError | TransportError>;
-    readonly abort: (
-      target: ProjectSessionTarget,
-    ) => Effect.Effect<void, ProjectSessionError | TransportError>;
-    readonly listQueuedMessages: (
-      target: ProjectSessionTarget,
-    ) => Effect.Effect<QueuedConversationMessages, ProjectSessionError | TransportError>;
-    readonly clearQueue: (
-      target: ProjectSessionTarget,
-    ) => Effect.Effect<QueuedConversationMessages, ProjectSessionError | TransportError>;
-    readonly cancelSteering: (
-      target: ProjectSessionTarget,
-    ) => Effect.Effect<QueuedConversationMessages, ProjectSessionError | TransportError>;
-    readonly removeQueuedMessage: (
-      input: ProjectSessionTarget & { readonly partId: string },
-    ) => Effect.Effect<QueuedConversationMessages, ProjectSessionError | TransportError>;
-    readonly steerQueuedMessage: (
-      input: ProjectSessionTarget & { readonly partId: string },
-    ) => Effect.Effect<QueuedConversationMessages, ProjectSessionError | TransportError>;
-    readonly compact: (
-      input: ProjectSessionTarget & { readonly instructions?: string },
-    ) => Effect.Effect<void, ProjectSessionError | TransportError>;
-    readonly editMessage: (
-      input: ProjectSessionTarget &
-        Pick<ProjectSessionPromptInput, "text" | "attachments" | "renderUserMessageAsMarkdown"> & {
-          readonly entryId: string;
-        },
-    ) => Effect.Effect<void, ProjectSessionError | TransportError>;
-    readonly setUserMessageMarkdown: (
-      input: ProjectSessionTarget & {
-        readonly entryId: string;
-        readonly renderAsMarkdown: boolean;
-      },
-    ) => Effect.Effect<void, ProjectSessionError | TransportError>;
-    readonly applyConfiguration: (
-      input: ProjectSessionTarget & { readonly configuration: CakeChatConfiguration },
-    ) => Effect.Effect<void, ProjectSessionError | TransportError>;
-    readonly setModel: (
-      input: ProjectSessionTarget & { readonly provider: string; readonly modelId: string },
-    ) => Effect.Effect<void, ProjectSessionError | TransportError>;
-    readonly setThinkingLevel: (
-      input: ProjectSessionTarget & {
-        readonly level: CakeChatConfiguration["thinkingLevel"];
-      },
-    ) => Effect.Effect<void, ProjectSessionError | TransportError>;
-    readonly setFastMode: (
-      input: ProjectSessionTarget & { readonly enabled: boolean },
-    ) => Effect.Effect<void, ProjectSessionError | TransportError>;
     readonly getChangelog: (
       target: ProjectSessionTarget,
     ) => Effect.Effect<string, ProjectSessionError | TransportError>;
@@ -411,21 +385,6 @@ export interface CakeIpcClientService {
         readonly summarize: boolean;
         readonly customInstructions?: string;
       },
-    ) => Effect.Effect<void, ProjectSessionError | TransportError>;
-    readonly setPiSetting: (
-      input: ProjectSessionTarget & { readonly update: PiSettingUpdate },
-    ) => Effect.Effect<void, ProjectSessionError | TransportError>;
-    readonly reload: (
-      target: ProjectSessionTarget,
-    ) => Effect.Effect<void, ProjectSessionError | TransportError>;
-    readonly login: (
-      input: ProjectSessionTarget & {
-        readonly provider: string;
-        readonly authType: "api_key" | "oauth";
-      },
-    ) => Effect.Effect<void, ProjectSessionError | TransportError>;
-    readonly logout: (
-      input: ProjectSessionTarget & { readonly provider: string },
     ) => Effect.Effect<void, ProjectSessionError | TransportError>;
     readonly toolCompact: (
       input: ProjectSessionTarget & {
@@ -704,6 +663,68 @@ export const CakeIpcClientLive = Layer.effect(
           client("modelPresets.resolve", { id }),
         ),
       },
+      sessionChats: {
+        prompt: Effect.fn("CakeIpcClient.sessionChats.prompt")((input) =>
+          client("sessionChats.prompt", input),
+        ),
+        steer: Effect.fn("CakeIpcClient.sessionChats.steer")((input) =>
+          client("sessionChats.steer", input),
+        ),
+        followUp: Effect.fn("CakeIpcClient.sessionChats.followUp")((input) =>
+          client("sessionChats.followUp", input),
+        ),
+        abort: Effect.fn("CakeIpcClient.sessionChats.abort")((target) =>
+          client("sessionChats.abort", target),
+        ),
+        listQueuedMessages: Effect.fn("CakeIpcClient.sessionChats.listQueuedMessages")((target) =>
+          client("sessionChats.listQueuedMessages", target),
+        ),
+        clearQueue: Effect.fn("CakeIpcClient.sessionChats.clearQueue")((target) =>
+          client("sessionChats.clearQueue", target),
+        ),
+        cancelSteering: Effect.fn("CakeIpcClient.sessionChats.cancelSteering")((target) =>
+          client("sessionChats.cancelSteering", target),
+        ),
+        removeQueuedMessage: Effect.fn("CakeIpcClient.sessionChats.removeQueuedMessage")((input) =>
+          client("sessionChats.removeQueuedMessage", input),
+        ),
+        steerQueuedMessage: Effect.fn("CakeIpcClient.sessionChats.steerQueuedMessage")((input) =>
+          client("sessionChats.steerQueuedMessage", input),
+        ),
+        compact: Effect.fn("CakeIpcClient.sessionChats.compact")((input) =>
+          client("sessionChats.compact", input),
+        ),
+        editMessage: Effect.fn("CakeIpcClient.sessionChats.editMessage")((input) =>
+          client("sessionChats.editMessage", input),
+        ),
+        setUserMessageMarkdown: Effect.fn("CakeIpcClient.sessionChats.setUserMessageMarkdown")(
+          (input) => client("sessionChats.setUserMessageMarkdown", input),
+        ),
+        applyConfiguration: Effect.fn("CakeIpcClient.sessionChats.applyConfiguration")((input) =>
+          client("sessionChats.applyConfiguration", input),
+        ),
+        setModel: Effect.fn("CakeIpcClient.sessionChats.setModel")((input) =>
+          client("sessionChats.setModel", input),
+        ),
+        setThinkingLevel: Effect.fn("CakeIpcClient.sessionChats.setThinkingLevel")((input) =>
+          client("sessionChats.setThinkingLevel", input),
+        ),
+        setFastMode: Effect.fn("CakeIpcClient.sessionChats.setFastMode")((input) =>
+          client("sessionChats.setFastMode", input),
+        ),
+        setPiSetting: Effect.fn("CakeIpcClient.sessionChats.setPiSetting")((input) =>
+          client("sessionChats.setPiSetting", input),
+        ),
+        reload: Effect.fn("CakeIpcClient.sessionChats.reload")((target) =>
+          client("sessionChats.reload", target),
+        ),
+        login: Effect.fn("CakeIpcClient.sessionChats.login")((input) =>
+          client("sessionChats.login", input),
+        ),
+        logout: Effect.fn("CakeIpcClient.sessionChats.logout")((input) =>
+          client("sessionChats.logout", input),
+        ),
+      },
       cakeChats: {
         observeCatalog: (input) => client("cakeChats.observeCatalog", input),
         inspect: Effect.fn("CakeIpcClient.cakeChats.inspect")((sessionId) =>
@@ -713,44 +734,8 @@ export const CakeIpcClientLive = Layer.effect(
           client("cakeChats.open", target),
         ),
         observe: (target) => client("cakeChats.observe", target),
-        prompt: Effect.fn("CakeIpcClient.cakeChats.prompt")((input) =>
-          client("cakeChats.prompt", input),
-        ),
-        abort: Effect.fn("CakeIpcClient.cakeChats.abort")((target) =>
-          client("cakeChats.abort", target),
-        ),
-        compact: Effect.fn("CakeIpcClient.cakeChats.compact")((input) =>
-          client("cakeChats.compact", input),
-        ),
-        editMessage: Effect.fn("CakeIpcClient.cakeChats.editMessage")((input) =>
-          client("cakeChats.editMessage", input),
-        ),
-        setUserMessageMarkdown: Effect.fn("CakeIpcClient.cakeChats.setUserMessageMarkdown")(
-          (input) => client("cakeChats.setUserMessageMarkdown", input),
-        ),
-        applyConfiguration: Effect.fn("CakeIpcClient.cakeChats.applyConfiguration")((input) =>
-          client("cakeChats.applyConfiguration", input),
-        ),
-        setModel: Effect.fn("CakeIpcClient.cakeChats.setModel")((input) =>
-          client("cakeChats.setModel", input),
-        ),
-        setThinkingLevel: Effect.fn("CakeIpcClient.cakeChats.setThinkingLevel")((input) =>
-          client("cakeChats.setThinkingLevel", input),
-        ),
-        setFastMode: Effect.fn("CakeIpcClient.cakeChats.setFastMode")((input) =>
-          client("cakeChats.setFastMode", input),
-        ),
-        setPiSetting: Effect.fn("CakeIpcClient.cakeChats.setPiSetting")((input) =>
-          client("cakeChats.setPiSetting", input),
-        ),
-        reload: Effect.fn("CakeIpcClient.cakeChats.reload")((target) =>
-          client("cakeChats.reload", target),
-        ),
-        login: Effect.fn("CakeIpcClient.cakeChats.login")((input) =>
-          client("cakeChats.login", input),
-        ),
-        logout: Effect.fn("CakeIpcClient.cakeChats.logout")((input) =>
-          client("cakeChats.logout", input),
+        start: Effect.fn("CakeIpcClient.cakeChats.start")((input) =>
+          client("cakeChats.start", input),
         ),
         rename: Effect.fn("CakeIpcClient.cakeChats.rename")((input) =>
           client("cakeChats.rename", input),
@@ -815,71 +800,11 @@ export const CakeIpcClientLive = Layer.effect(
           client("projectSessions.open", target),
         ),
         observe: (target) => client("projectSessions.observe", target),
-        prompt: Effect.fn("CakeIpcClient.projectSessions.prompt")((input) =>
-          client("projectSessions.prompt", input),
-        ),
-        steer: Effect.fn("CakeIpcClient.projectSessions.steer")((input) =>
-          client("projectSessions.steer", input),
-        ),
-        followUp: Effect.fn("CakeIpcClient.projectSessions.followUp")((input) =>
-          client("projectSessions.followUp", input),
-        ),
-        abort: Effect.fn("CakeIpcClient.projectSessions.abort")((target) =>
-          client("projectSessions.abort", target),
-        ),
-        listQueuedMessages: Effect.fn("CakeIpcClient.projectSessions.listQueuedMessages")(
-          (target) => client("projectSessions.listQueuedMessages", target),
-        ),
-        clearQueue: Effect.fn("CakeIpcClient.projectSessions.clearQueue")((target) =>
-          client("projectSessions.clearQueue", target),
-        ),
-        cancelSteering: Effect.fn("CakeIpcClient.projectSessions.cancelSteering")((target) =>
-          client("projectSessions.cancelSteering", target),
-        ),
-        removeQueuedMessage: Effect.fn("CakeIpcClient.projectSessions.removeQueuedMessage")(
-          (input) => client("projectSessions.removeQueuedMessage", input),
-        ),
-        steerQueuedMessage: Effect.fn("CakeIpcClient.projectSessions.steerQueuedMessage")((input) =>
-          client("projectSessions.steerQueuedMessage", input),
-        ),
-        compact: Effect.fn("CakeIpcClient.projectSessions.compact")((input) =>
-          client("projectSessions.compact", input),
-        ),
-        editMessage: Effect.fn("CakeIpcClient.projectSessions.editMessage")((input) =>
-          client("projectSessions.editMessage", input),
-        ),
-        setUserMessageMarkdown: Effect.fn("CakeIpcClient.projectSessions.setUserMessageMarkdown")(
-          (input) => client("projectSessions.setUserMessageMarkdown", input),
-        ),
-        applyConfiguration: Effect.fn("CakeIpcClient.projectSessions.applyConfiguration")((input) =>
-          client("projectSessions.applyConfiguration", input),
-        ),
-        setModel: Effect.fn("CakeIpcClient.projectSessions.setModel")((input) =>
-          client("projectSessions.setModel", input),
-        ),
-        setThinkingLevel: Effect.fn("CakeIpcClient.projectSessions.setThinkingLevel")((input) =>
-          client("projectSessions.setThinkingLevel", input),
-        ),
-        setFastMode: Effect.fn("CakeIpcClient.projectSessions.setFastMode")((input) =>
-          client("projectSessions.setFastMode", input),
-        ),
         getChangelog: Effect.fn("CakeIpcClient.projectSessions.getChangelog")((target) =>
           client("projectSessions.getChangelog", target),
         ),
         navigate: Effect.fn("CakeIpcClient.projectSessions.navigate")((input) =>
           client("projectSessions.navigate", input),
-        ),
-        setPiSetting: Effect.fn("CakeIpcClient.projectSessions.setPiSetting")((input) =>
-          client("projectSessions.setPiSetting", input),
-        ),
-        reload: Effect.fn("CakeIpcClient.projectSessions.reload")((target) =>
-          client("projectSessions.reload", target),
-        ),
-        login: Effect.fn("CakeIpcClient.projectSessions.login")((input) =>
-          client("projectSessions.login", input),
-        ),
-        logout: Effect.fn("CakeIpcClient.projectSessions.logout")((input) =>
-          client("projectSessions.logout", input),
         ),
         toolCompact: Effect.fn("CakeIpcClient.projectSessions.toolCompact")((input) =>
           client("projectSessions.toolCompact", input),

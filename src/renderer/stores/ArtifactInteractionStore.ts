@@ -99,8 +99,8 @@ export class ArtifactInteractionStore extends Store<ArtifactInteractionStoreProp
     const operationId = this.props.operations.start(this.props.operationOwner);
     try {
       const command = this.props.isStreaming()
-        ? this.client.projectSessions.steer
-        : this.client.projectSessions.prompt;
+        ? this.client.sessionChats.steer
+        : this.client.sessionChats.prompt;
       await command(
         {
           sessionId: context.sessionId,

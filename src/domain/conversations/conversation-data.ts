@@ -1,7 +1,37 @@
 import { Schema } from "effect";
+import { attachmentSchema } from "../../ipc/session-contract";
+import { ThinkingLevel } from "../../services/pi/model-data";
+import { CrossSessionMessageMetadata } from "./cross-session-coordination";
 
 const boundedId = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
 const boundedText = Schema.String.check(Schema.isMaxLength(262_144));
+
+export const SessionChatTarget = Schema.Struct({ sessionId: boundedId });
+export interface SessionChatTarget extends Schema.Schema.Type<typeof SessionChatTarget> {}
+
+export const SessionChatConfiguration = Schema.Struct({
+  provider: Schema.String,
+  modelId: Schema.String,
+  thinkingLevel: ThinkingLevel,
+  fastMode: Schema.Boolean,
+});
+export interface SessionChatConfiguration extends Schema.Schema.Type<
+  typeof SessionChatConfiguration
+> {}
+
+export class SessionChatError extends Schema.TaggedError<SessionChatError>()("SessionChatError", {
+  operation: Schema.String,
+  message: Schema.String,
+}) {}
+
+export const SessionChatPromptInput = Schema.Struct({
+  sessionId: boundedId,
+  text: boundedText,
+  attachments: Schema.Array(attachmentSchema).check(Schema.isMaxLength(20)),
+  renderUserMessageAsMarkdown: Schema.Boolean,
+  crossSession: Schema.optionalKey(CrossSessionMessageMetadata),
+});
+export interface SessionChatPromptInput extends Schema.Schema.Type<typeof SessionChatPromptInput> {}
 
 /** Cake projection of the transient messages waiting in a conversation runtime. */
 export const QueuedConversationMessages = Schema.Struct({

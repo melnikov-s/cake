@@ -62,8 +62,8 @@ class HarnessStore extends Store<{
         if (this.props.existing) {
           const command =
             input.delivery === "steer"
-              ? this.props.client.projectSessions.steer
-              : this.props.client.projectSessions.prompt;
+              ? this.props.client.sessionChats.steer
+              : this.props.client.sessionChats.prompt;
           await command(input);
           return;
         }
@@ -74,10 +74,10 @@ class HarnessStore extends Store<{
       editMessage: async () => undefined,
       compact: async () => undefined,
       clearQueue: async () => {
-        await this.props.client.projectSessions.clearQueue({ sessionId: "session-1" });
+        await this.props.client.sessionChats.clearQueue({ sessionId: "session-1" });
       },
       cancelSteering: async () => {
-        await this.props.client.projectSessions.cancelSteering({ sessionId: "session-1" });
+        await this.props.client.sessionChats.cancelSteering({ sessionId: "session-1" });
       },
       operations: this.operations,
       operationOwner: "composer:session-1",
@@ -113,7 +113,7 @@ class DraftHarnessStore extends Store<{ client: Client }> {
       renameSession: async () => undefined,
       toolCompactSession: async () => false,
       deliver: async (input) => {
-        await this.props.client.projectSessions.prompt({
+        await this.props.client.sessionChats.prompt({
           sessionId: input.sessionId,
           text: input.text,
           attachments: input.attachments,
@@ -217,7 +217,7 @@ describe("ConversationComposerStore", () => {
           rejectPrompt = reject;
         }),
     );
-    const client = { projectSessions: { prompt } } as unknown as Client;
+    const client = { sessionChats: { prompt } } as unknown as Client;
     const model = Session.create({ sessionId: "session-1", workingDirectory: "/project" });
     const root = mount(createStore(HarnessStore, { client, model, existing: true }));
     root.composer.draftStore.setText("First message");
@@ -253,7 +253,7 @@ describe("ConversationComposerStore", () => {
   it("keeps streaming project input in the local editable queue when configured", async () => {
     const model = Session.create({ sessionId: "session-1", workingDirectory: "/project" });
     const followUp = vi.fn(async () => "turn-2");
-    const client = { projectSessions: { followUp } } as unknown as Client;
+    const client = { sessionChats: { followUp } } as unknown as Client;
     const root = mount(
       createStore(HarnessStore, { client, model, existing: true, streaming: true }),
     );
@@ -275,7 +275,7 @@ describe("ConversationComposerStore", () => {
     const model = Session.create({ sessionId: "session-1", workingDirectory: "/project" });
     const steer = vi.fn(async () => "turn-2");
     const clearQueue = vi.fn(async () => ({ steering: ["First message"], followUp: [] }));
-    const client = { projectSessions: { steer, clearQueue } } as unknown as Client;
+    const client = { sessionChats: { steer, clearQueue } } as unknown as Client;
     const root = mount(
       createStore(HarnessStore, { client, model, existing: true, streaming: true }),
     );
@@ -335,7 +335,7 @@ describe("ConversationComposerStore", () => {
 
   it("delivers annotations from its draft Store and clears them after submission", async () => {
     const prompt = vi.fn(async () => "turn-1");
-    const client = { projectSessions: { prompt } } as unknown as Client;
+    const client = { sessionChats: { prompt } } as unknown as Client;
     const model = Session.create({ sessionId: "session-1", workingDirectory: "/project" });
     const root = mount(createStore(HarnessStore, { client, model, existing: true }));
     root.composer.draftStore.setText("First message");
@@ -375,7 +375,7 @@ describe("ConversationComposerStore", () => {
 
   it("renders and activates detected Markdown in a saved draft", async () => {
     const prompt = vi.fn(async () => "turn-1");
-    const client = { projectSessions: { prompt } } as unknown as Client;
+    const client = { sessionChats: { prompt } } as unknown as Client;
     const root = mount(createStore(DraftHarnessStore, { client }));
 
     expect(root.composer.parts).toEqual([

@@ -1311,7 +1311,16 @@ export async function createCakeRuntimeCapabilities(input: {
                 ),
                 createCakeArtifactExtension({ persistArtifact, requestArtifact }),
               ],
-              appendSystemPromptOverride: (base) => [...base, cakeChatSystemPrompt],
+              systemPromptOverride: () => undefined,
+              appendSystemPromptOverride: () => [cakeChatSystemPrompt],
+              additionalSkillPaths: [],
+              additionalPromptTemplatePaths: [],
+              additionalExtensionPaths: [],
+              noExtensions: true,
+              noSkills: true,
+              noPromptTemplates: true,
+              noThemes: true,
+              noContextFiles: true,
             }
           : {
               cwd: options.cwd,

@@ -36,29 +36,16 @@ export class ProviderSettingsStore extends Store<ProviderSettingsStoreProps> {
 
   async setPiSetting(update: PiSettingUpdate) {
     await this.run((target) =>
-      target.kind === "project-session"
-        ? this.client.projectSessions.setPiSetting(
-            { sessionId: target.sessionId, update },
-            { signal: this.signal },
-          )
-        : this.client.cakeChats.setPiSetting(
-            { sessionId: target.sessionId, tools: target.tools, update },
-            { signal: this.signal },
-          ),
+      this.client.sessionChats.setPiSetting(
+        { sessionId: target.sessionId, update },
+        { signal: this.signal },
+      ),
     );
   }
 
   async reloadPi() {
     await this.run((target) =>
-      target.kind === "project-session"
-        ? this.client.projectSessions.reload(
-            { sessionId: target.sessionId },
-            { signal: this.signal },
-          )
-        : this.client.cakeChats.reload(
-            { sessionId: target.sessionId, tools: target.tools },
-            { signal: this.signal },
-          ),
+      this.client.sessionChats.reload({ sessionId: target.sessionId }, { signal: this.signal }),
     );
   }
 
@@ -83,16 +70,10 @@ export class ProviderSettingsStore extends Store<ProviderSettingsStoreProps> {
     this.providerOperations[operationId] = { provider, kind: "login" };
     try {
       const target = this.requireSession();
-      if (target.kind === "project-session")
-        await this.client.projectSessions.login(
-          { sessionId: target.sessionId, provider, authType },
-          { signal: this.signal },
-        );
-      else
-        await this.client.cakeChats.login(
-          { sessionId: target.sessionId, tools: target.tools, provider, authType },
-          { signal: this.signal },
-        );
+      await this.client.sessionChats.login(
+        { sessionId: target.sessionId, provider, authType },
+        { signal: this.signal },
+      );
     } catch (error) {
       if (!this.signal.aborted) this.reportError(error);
     } finally {
@@ -107,16 +88,10 @@ export class ProviderSettingsStore extends Store<ProviderSettingsStoreProps> {
     this.providerOperations[operationId] = { provider, kind: "logout" };
     try {
       const target = this.requireSession();
-      if (target.kind === "project-session")
-        await this.client.projectSessions.logout(
-          { sessionId: target.sessionId, provider },
-          { signal: this.signal },
-        );
-      else
-        await this.client.cakeChats.logout(
-          { sessionId: target.sessionId, tools: target.tools, provider },
-          { signal: this.signal },
-        );
+      await this.client.sessionChats.logout(
+        { sessionId: target.sessionId, provider },
+        { signal: this.signal },
+      );
     } catch (error) {
       if (!this.signal.aborted) this.reportError(error);
     } finally {

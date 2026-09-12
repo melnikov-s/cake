@@ -12,7 +12,6 @@ import { SessionRegistryStore } from "../../../../src/renderer/stores/SessionReg
 function registryFixture(
   snapshot?: StoreSnapshot,
   isActive: (sessionId: string) => boolean = () => false,
-  abort: (sessionId: string) => Promise<void> = async () => undefined,
 ) {
   const catalogModel = SessionCatalog.create({ sessions: [] });
   const registryRef: { current?: SessionRegistryStore } = {};
@@ -40,7 +39,6 @@ function registryFixture(
       openCommandPane: async () => undefined,
       persistNow: async () => undefined,
       projectName: (workingDirectory) => workingDirectory,
-      abort,
       renameSession: async () => undefined,
       toolCompactSession: async () => false,
       onWorktreeLanded: () => undefined,
@@ -151,20 +149,6 @@ describe("SessionRegistryStore materialization", () => {
     });
 
     restored.dispose();
-  });
-
-  it("routes stop to the session that owns the chat control", async () => {
-    const abort = vi.fn(async () => undefined);
-    const fixture = registryFixture(undefined, () => true, abort);
-    const parent = fixture.registry.pendingSessions.prepare("/project", "parent");
-    const child = fixture.registry.pendingSessions.prepare("/project", "child");
-    parent.model.streaming = true;
-    child.model.streaming = true;
-
-    await child.conversationSessionStore.chatStore.abort();
-
-    expect(abort).toHaveBeenCalledExactlyOnceWith("child");
-    fixture.dispose();
   });
 
   it("retains independent staged chats for multiple panes", () => {

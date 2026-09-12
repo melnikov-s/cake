@@ -85,13 +85,11 @@ describe("WorktreeStore", () => {
 
   it("starts one semantic landing operation without owning Git or Pi prompt policy", async () => {
     const startLanding = vi.fn(async () => operation("waiting"));
-    const projectSessions = { prompt: vi.fn() };
     const { root, subject: store } = mountWithClient(createStore(WorktreeStore, props()), {
       managedWorktrees: {
         landing: vi.fn(async () => ({ status: worktreeStatus("/worktree") })),
         startLanding,
       },
-      projectSessions,
     } as unknown as Client);
     try {
       await vi.waitFor(() => expect(store.status).toBeDefined());
@@ -105,7 +103,6 @@ describe("WorktreeStore", () => {
           commitBeforeLanding: true,
         }),
       );
-      expect(projectSessions.prompt).not.toHaveBeenCalled();
       expect(store.phase).toBe("landing");
     } finally {
       root[Symbol.dispose]();

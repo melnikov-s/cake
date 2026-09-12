@@ -212,102 +212,6 @@ export function makeClient(runtime: Pick<Runtime, "execute">): Client {
           withClient((client) => client.projectSessions.open(target)),
           options,
         ),
-      prompt: (input, options) =>
-        run(
-          "projectSessions.prompt",
-          withClient((client) => client.projectSessions.prompt(input)),
-          options,
-        ),
-      steer: (input, options) =>
-        run(
-          "projectSessions.steer",
-          withClient((client) => client.projectSessions.steer(input)),
-          options,
-        ),
-      followUp: (input, options) =>
-        run(
-          "projectSessions.followUp",
-          withClient((client) => client.projectSessions.followUp(input)),
-          options,
-        ),
-      abort: (target, options) =>
-        run(
-          "projectSessions.abort",
-          withClient((client) => client.projectSessions.abort(target)),
-          options,
-        ),
-      listQueuedMessages: (target, options) =>
-        run(
-          "projectSessions.listQueuedMessages",
-          withClient((client) => client.projectSessions.listQueuedMessages(target)),
-          options,
-        ),
-      clearQueue: (target, options) =>
-        run(
-          "projectSessions.clearQueue",
-          withClient((client) => client.projectSessions.clearQueue(target)),
-          options,
-        ),
-      cancelSteering: (target, options) =>
-        run(
-          "projectSessions.cancelSteering",
-          withClient((client) => client.projectSessions.cancelSteering(target)),
-          options,
-        ),
-      removeQueuedMessage: (input, options) =>
-        run(
-          "projectSessions.removeQueuedMessage",
-          withClient((client) => client.projectSessions.removeQueuedMessage(input)),
-          options,
-        ),
-      steerQueuedMessage: (input, options) =>
-        run(
-          "projectSessions.steerQueuedMessage",
-          withClient((client) => client.projectSessions.steerQueuedMessage(input)),
-          options,
-        ),
-      compact: (input, options) =>
-        run(
-          "projectSessions.compact",
-          withClient((client) => client.projectSessions.compact(input)),
-          options,
-        ),
-      editMessage: (input, options) =>
-        run(
-          "projectSessions.editMessage",
-          withClient((client) => client.projectSessions.editMessage(input)),
-          options,
-        ),
-      setUserMessageMarkdown: (input, options) =>
-        run(
-          "projectSessions.setUserMessageMarkdown",
-          withClient((client) => client.projectSessions.setUserMessageMarkdown(input)),
-          options,
-        ),
-      applyConfiguration: (input, options) =>
-        run(
-          "projectSessions.applyConfiguration",
-          withClient((client) => client.projectSessions.applyConfiguration(input)),
-          options,
-        ),
-      setModel: (input, options) =>
-        run(
-          "projectSessions.setModel",
-          withClient((client) => client.projectSessions.setModel(input)),
-          options,
-        ),
-      setThinkingLevel: (input, options) =>
-        run(
-          "projectSessions.setThinkingLevel",
-          withClient((client) => client.projectSessions.setThinkingLevel(input)),
-          options,
-        ),
-      setFastMode: (input, options) =>
-        run(
-          "projectSessions.setFastMode",
-          withClient((client) => client.projectSessions.setFastMode(input)),
-          options,
-        ),
       getChangelog: (target, options) =>
         run(
           "projectSessions.getChangelog",
@@ -318,30 +222,6 @@ export function makeClient(runtime: Pick<Runtime, "execute">): Client {
         run(
           "projectSessions.navigate",
           withClient((client) => client.projectSessions.navigate(input)),
-          options,
-        ),
-      setPiSetting: (input, options) =>
-        run(
-          "projectSessions.setPiSetting",
-          withClient((client) => client.projectSessions.setPiSetting(input)),
-          options,
-        ),
-      reload: (target, options) =>
-        run(
-          "projectSessions.reload",
-          withClient((client) => client.projectSessions.reload(target)),
-          options,
-        ),
-      login: (input, options) =>
-        run(
-          "projectSessions.login",
-          withClient((client) => client.projectSessions.login(input)),
-          options,
-        ),
-      logout: (input, options) =>
-        run(
-          "projectSessions.logout",
-          withClient((client) => client.projectSessions.logout(input)),
           options,
         ),
       toolCompact: (input, options) =>
@@ -389,6 +269,128 @@ export function makeClient(runtime: Pick<Runtime, "execute">): Client {
           options,
         ),
     },
+    sessionChats: {
+      prompt: (input, options) =>
+        run(
+          "sessionChats.prompt",
+          withClient((client) => client.sessionChats.prompt(input)),
+          options,
+        ),
+      steer: (input, options) =>
+        run(
+          "sessionChats.steer",
+          withClient((client) => client.sessionChats.steer(input)),
+          options,
+        ),
+      followUp: (input, options) =>
+        run(
+          "sessionChats.followUp",
+          withClient((client) => client.sessionChats.followUp(input)),
+          options,
+        ),
+      abort: (target, options) =>
+        run(
+          "sessionChats.abort",
+          withClient((client) => client.sessionChats.abort(target)),
+          options,
+        ),
+      listQueuedMessages: (target, options) =>
+        run(
+          "sessionChats.listQueuedMessages",
+          withClient((client) => client.sessionChats.listQueuedMessages(target)),
+          options,
+        ),
+      clearQueue: (target, options) =>
+        run(
+          "sessionChats.clearQueue",
+          withClient((client) => client.sessionChats.clearQueue(target)),
+          options,
+        ),
+      cancelSteering: (target, options) =>
+        run(
+          "sessionChats.cancelSteering",
+          withClient((client) => client.sessionChats.cancelSteering(target)),
+          options,
+        ),
+      removeQueuedMessage: (input, options) =>
+        run(
+          "sessionChats.removeQueuedMessage",
+          withClient((client) => client.sessionChats.removeQueuedMessage(input)),
+          options,
+        ),
+      steerQueuedMessage: (input, options) =>
+        run(
+          "sessionChats.steerQueuedMessage",
+          withClient((client) => client.sessionChats.steerQueuedMessage(input)),
+          options,
+        ),
+      compact: (input, options) =>
+        run(
+          "sessionChats.compact",
+          withClient((client) => client.sessionChats.compact(input)),
+          options,
+        ),
+      editMessage: (input, options) =>
+        run(
+          "sessionChats.editMessage",
+          withClient((client) => client.sessionChats.editMessage(input)),
+          options,
+        ),
+      setUserMessageMarkdown: (input, options) =>
+        run(
+          "sessionChats.setUserMessageMarkdown",
+          withClient((client) => client.sessionChats.setUserMessageMarkdown(input)),
+          options,
+        ),
+      applyConfiguration: (input, options) =>
+        run(
+          "sessionChats.applyConfiguration",
+          withClient((client) => client.sessionChats.applyConfiguration(input)),
+          options,
+        ),
+      setModel: (input, options) =>
+        run(
+          "sessionChats.setModel",
+          withClient((client) => client.sessionChats.setModel(input)),
+          options,
+        ),
+      setThinkingLevel: (input, options) =>
+        run(
+          "sessionChats.setThinkingLevel",
+          withClient((client) => client.sessionChats.setThinkingLevel(input)),
+          options,
+        ),
+      setFastMode: (input, options) =>
+        run(
+          "sessionChats.setFastMode",
+          withClient((client) => client.sessionChats.setFastMode(input)),
+          options,
+        ),
+      setPiSetting: (input, options) =>
+        run(
+          "sessionChats.setPiSetting",
+          withClient((client) => client.sessionChats.setPiSetting(input)),
+          options,
+        ),
+      reload: (target, options) =>
+        run(
+          "sessionChats.reload",
+          withClient((client) => client.sessionChats.reload(target)),
+          options,
+        ),
+      login: (input, options) =>
+        run(
+          "sessionChats.login",
+          withClient((client) => client.sessionChats.login(input)),
+          options,
+        ),
+      logout: (input, options) =>
+        run(
+          "sessionChats.logout",
+          withClient((client) => client.sessionChats.logout(input)),
+          options,
+        ),
+    },
     cakeChats: {
       inspect: (sessionId, options) =>
         run(
@@ -402,82 +404,10 @@ export function makeClient(runtime: Pick<Runtime, "execute">): Client {
           withClient((client) => client.cakeChats.open(target)),
           options,
         ),
-      prompt: (input, options) =>
+      start: (input, options) =>
         run(
-          "cakeChats.prompt",
-          withClient((client) => client.cakeChats.prompt(input)),
-          options,
-        ),
-      abort: (target, options) =>
-        run(
-          "cakeChats.abort",
-          withClient((client) => client.cakeChats.abort(target)),
-          options,
-        ),
-      compact: (input, options) =>
-        run(
-          "cakeChats.compact",
-          withClient((client) => client.cakeChats.compact(input)),
-          options,
-        ),
-      editMessage: (input, options) =>
-        run(
-          "cakeChats.editMessage",
-          withClient((client) => client.cakeChats.editMessage(input)),
-          options,
-        ),
-      setUserMessageMarkdown: (input, options) =>
-        run(
-          "cakeChats.setUserMessageMarkdown",
-          withClient((client) => client.cakeChats.setUserMessageMarkdown(input)),
-          options,
-        ),
-      applyConfiguration: (input, options) =>
-        run(
-          "cakeChats.applyConfiguration",
-          withClient((client) => client.cakeChats.applyConfiguration(input)),
-          options,
-        ),
-      setModel: (input, options) =>
-        run(
-          "cakeChats.setModel",
-          withClient((client) => client.cakeChats.setModel(input)),
-          options,
-        ),
-      setThinkingLevel: (input, options) =>
-        run(
-          "cakeChats.setThinkingLevel",
-          withClient((client) => client.cakeChats.setThinkingLevel(input)),
-          options,
-        ),
-      setFastMode: (input, options) =>
-        run(
-          "cakeChats.setFastMode",
-          withClient((client) => client.cakeChats.setFastMode(input)),
-          options,
-        ),
-      setPiSetting: (input, options) =>
-        run(
-          "cakeChats.setPiSetting",
-          withClient((client) => client.cakeChats.setPiSetting(input)),
-          options,
-        ),
-      reload: (target, options) =>
-        run(
-          "cakeChats.reload",
-          withClient((client) => client.cakeChats.reload(target)),
-          options,
-        ),
-      login: (input, options) =>
-        run(
-          "cakeChats.login",
-          withClient((client) => client.cakeChats.login(input)),
-          options,
-        ),
-      logout: (input, options) =>
-        run(
-          "cakeChats.logout",
-          withClient((client) => client.cakeChats.logout(input)),
+          "cakeChats.start",
+          withClient((client) => client.cakeChats.start(input)),
           options,
         ),
       rename: (input, options) =>

@@ -192,6 +192,13 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
   const runtimeOptions: PiSessionAcquireOptions = {
     profile: { _tag: "ProjectSession" },
     onRelease: runtimeHost.releaseSession(sessionId),
+    onSessionChanged: catalogs.publish({
+      _tag: "ProjectSessionChanged",
+      sessionId,
+      projectPath: location.projectPath,
+      workingDirectory: location.workingDirectory,
+      resolved: false,
+    }),
     admitTurn: (input, accept) =>
       sessionFamilies
         .admitTurn(

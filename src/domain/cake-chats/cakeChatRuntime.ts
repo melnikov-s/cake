@@ -56,6 +56,11 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
   const getRuntimeOptions = () => runtimeOptions;
   const runtimeOptions: PiSessionAcquireOptions = {
     profile: { _tag: "CakeChatSession" },
+    onSessionChanged: catalogs.publish({
+      _tag: "CakeChatSessionChanged",
+      sessionId: target.sessionId,
+      resolved: false,
+    }),
     onRelease: rendererRequests.releaseSession({
       _tag: "CakeChatSession",
       sessionId: target.sessionId,
@@ -68,6 +73,9 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
       resolvedSessionDir: configuration.location.resolvedSessionDirectory,
       newSession,
       sessionId: target.sessionId,
+      // Global Cake Chat exposes its curated extension tools, not Pi's project
+      // filesystem/shell toolset.
+      tools: ["cake"],
       slashCommands: ["compact", "model", "toolcompact"],
       requestUi: async () => undefined,
       modelPresets,

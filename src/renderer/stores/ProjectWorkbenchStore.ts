@@ -768,18 +768,6 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     }
   }
 
-  async abortSession(sessionId: string) {
-    const operationId = this.startOperation();
-    try {
-      await this.client.projectSessions.abort({ sessionId }, { signal: this.signal });
-      this.finishOperation(operationId);
-    } catch (error) {
-      if (this.signal.aborted) return;
-      this.setError(error);
-      this.finishOperation(operationId);
-    }
-  }
-
   isActiveSession(sessionId: string) {
     return this.activeSessionId === sessionId;
   }

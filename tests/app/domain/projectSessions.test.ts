@@ -7,6 +7,7 @@ import * as projectSessionMetadata from "../../../src/domain/project-sessions/pr
 import * as projectSessionOperations from "../../../src/domain/project-sessions/projectSessionOperations";
 import * as projectSessionContinuations from "../../../src/domain/project-sessions/projectSessionContinuations";
 import * as projectSessionLifecycle from "../../../src/domain/project-sessions/projectSessionLifecycle";
+import * as sessionChats from "../../../src/domain/conversations/sessionChats";
 import type { SessionCatalogUpdate } from "../../../src/domain/application/catalog-data";
 import type { ArtifactPointer } from "../../../src/ipc/artifact-contract";
 import { getState } from "../../../src/domain/application/application";
@@ -87,11 +88,26 @@ const fakeRuntime = (
   sessionFile: snapshot.sessionFile,
   streaming: false,
   snapshot: async () => snapshot,
-  listQueuedMessages: async () => ({ steering: [], followUp: [] }),
-  clearQueue: async () => ({ steering: [], followUp: [] }),
-  cancelSteering: async () => ({ steering: [], followUp: [] }),
-  removeQueuedMessage: async () => ({ steering: [], followUp: [] }),
-  steerQueuedMessage: async () => ({ steering: [], followUp: [] }),
+  listQueuedMessages: async () => {
+    onOperation?.("list-queue");
+    return { steering: [], followUp: [] };
+  },
+  clearQueue: async () => {
+    onOperation?.("clear-queue");
+    return { steering: [], followUp: [] };
+  },
+  cancelSteering: async () => {
+    onOperation?.("cancel-steering");
+    return { steering: [], followUp: [] };
+  },
+  removeQueuedMessage: async () => {
+    onOperation?.("remove-queued");
+    return { steering: [], followUp: [] };
+  },
+  steerQueuedMessage: async () => {
+    onOperation?.("steer-queued");
+    return { steering: [], followUp: [] };
+  },
   prompt: async (_text, delivery) => {
     onOperation?.(delivery);
     await prompt();
@@ -1765,12 +1781,26 @@ describe("Project Sessions domain", () => {
       const stream = yield* projectSessionOperations.observe({ sessionId: "session-1" });
       const initial = yield* stream.pipe(Stream.take(1), Stream.runCollect);
       assert.equal(initial[0]?._tag, "Snapshot");
-      const turnId = yield* projectSessionOperations.prompt({
-        sessionId: "session-1",
-        text: "Implement it",
-        attachments: [],
-        renderUserMessageAsMarkdown: false,
-      });
+      yield* projectSessionOperations.acquireTarget(
+        {
+          projectPath: "/project",
+          projectName: "Project",
+          workingDirectory: "/project",
+          sessionDirectory: "/sessions",
+          resolvedSessionDirectory: "/resolved-sessions",
+        },
+        "session-1",
+        false,
+      );
+      const turnId = yield* sessionChats.deliver(
+        {
+          sessionId: "session-1",
+          text: "Implement it",
+          attachments: [],
+          renderUserMessageAsMarkdown: false,
+        },
+        "prompt",
+      );
       assert.match(turnId, /^[0-9a-f-]{36}$/);
     }).pipe(Effect.provide(makeLayer())),
   );
@@ -1851,7 +1881,7 @@ describe("Project Sessions domain", () => {
         assert.equal(runtimeConstructions, 0);
 
         const turn = yield* projectSessionOperations
-          .prompt({
+          .sendAutomatically({
             sessionId: "session-1",
             workingDirectory: "/worktree",
             text: "Continue after setup",
@@ -1876,27 +1906,43 @@ describe("Project Sessions domain", () => {
       let runtimeConstructions = 0;
       const target = { sessionId: "session-1" };
       return Effect.gen(function* () {
-        yield* projectSessionOperations.compact(target, "Keep the architecture notes");
-        yield* projectSessionOperations.editMessage({
+        yield* projectSessionOperations.acquireTarget(
+          {
+            projectPath: "/project",
+            projectName: "Project",
+            workingDirectory: "/project",
+            sessionDirectory: "/sessions",
+            resolvedSessionDirectory: "/resolved-sessions",
+          },
+          target.sessionId,
+          false,
+        );
+        yield* sessionChats.compact(target, "Keep the architecture notes");
+        yield* sessionChats.editMessage({
           ...target,
           entryId: "user-message",
           text: "Updated",
           attachments: [],
           renderUserMessageAsMarkdown: false,
         });
-        yield* projectSessionOperations.applyConfiguration(target, {
+        yield* sessionChats.applyConfiguration(target, {
           provider: "fixture-provider",
           modelId: "fixture-model",
           thinkingLevel: "medium",
           fastMode: false,
         });
-        yield* projectSessionOperations.setModel(target, "fixture-provider", "fixture-model");
-        yield* projectSessionOperations.setThinkingLevel(target, "high");
-        yield* projectSessionOperations.setFastMode(target, true);
-        yield* projectSessionOperations.setPiSetting(target, { key: "retryEnabled", value: false });
-        yield* projectSessionOperations.login(target, "fixture-provider", "api_key");
-        yield* projectSessionOperations.logout(target, "fixture-provider");
-        yield* projectSessionOperations.abort(target);
+        yield* sessionChats.setModel(target, "fixture-provider", "fixture-model");
+        yield* sessionChats.setThinkingLevel(target, "high");
+        yield* sessionChats.setFastMode(target, true);
+        yield* sessionChats.setPiSetting(target, { key: "retryEnabled", value: false });
+        yield* sessionChats.login(target, "fixture-provider", "api_key");
+        yield* sessionChats.logout(target, "fixture-provider");
+        yield* sessionChats.listQueuedMessages(target);
+        yield* sessionChats.clearQueue(target);
+        yield* sessionChats.cancelSteering(target);
+        yield* sessionChats.removeQueuedMessage(target, "queued-part");
+        yield* sessionChats.steerQueuedMessage(target, "queued-part");
+        yield* sessionChats.abort(target);
 
         assert.equal(runtimeConstructions, 1);
         assert.deepEqual(operations, [
@@ -1909,6 +1955,11 @@ describe("Project Sessions domain", () => {
           "setting",
           "login",
           "logout",
+          "list-queue",
+          "clear-queue",
+          "cancel-steering",
+          "remove-queued",
+          "steer-queued",
           "abort",
         ]);
       }).pipe(
@@ -2134,12 +2185,27 @@ describe("Project Sessions domain", () => {
     let runtimeConstructions = 0;
     let restores = 0;
     return Effect.gen(function* () {
-      yield* projectSessionOperations.prompt({
-        sessionId: "session-1",
-        text: "Continue",
-        attachments: [],
-        renderUserMessageAsMarkdown: false,
-      });
+      yield* projectSessionLifecycle.restore({ sessionId: "session-1" });
+      yield* projectSessionOperations.acquireTarget(
+        {
+          projectPath: "/project",
+          projectName: "Project",
+          workingDirectory: "/project",
+          sessionDirectory: "/sessions",
+          resolvedSessionDirectory: "/resolved-sessions",
+        },
+        "session-1",
+        false,
+      );
+      yield* sessionChats.deliver(
+        {
+          sessionId: "session-1",
+          text: "Continue",
+          attachments: [],
+          renderUserMessageAsMarkdown: false,
+        },
+        "prompt",
+      );
       assert.equal(restores, 1);
       assert.equal(runtimeConstructions, 1);
     }).pipe(

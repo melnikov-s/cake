@@ -2032,13 +2032,22 @@ describe("S1 Pi runtime", () => {
     expect(context?.activeTools).toEqual(["read", "bash", "edit", "write"]);
   });
 
-  it("enables Cake application tools alongside the full coding toolset in global chat", async () => {
+  it("isolates global Cake Chat to its curated Cake gateway", async () => {
     const directory = await createTemporaryDirectory();
+    const agentDirectory = join(directory, "agent");
+    await mkdir(join(agentDirectory, "skills", "private-skill"), { recursive: true });
+    await writeFile(join(directory, "AGENTS.md"), "PROJECT CONTEXT MUST NOT LOAD");
+    await writeFile(join(agentDirectory, "SYSTEM.md"), "GLOBAL SYSTEM OVERRIDE MUST NOT LOAD");
+    await writeFile(
+      join(agentDirectory, "skills", "private-skill", "SKILL.md"),
+      "---\nname: private-skill\ndescription: MUST NOT LOAD\n---\n",
+    );
     const runtime = await createCakeRuntime({
       cwd: directory,
-      agentDir: join(directory, "agent"),
+      agentDir: agentDirectory,
       sessionDir: join(directory, "global-chat-sessions"),
       trusted: false,
+      tools: ["cake"],
       requestUi: async () => undefined,
       globalControl: {
         tools: [
@@ -2056,10 +2065,10 @@ describe("S1 Pi runtime", () => {
     runtimes.push(runtime);
 
     const context = runtime.getReviewParentContext?.();
-    expect(context?.activeTools).toContain("cake");
-    expect(context?.activeTools).toContain("bash");
-    expect(context?.activeTools).toContain("read");
-    expect(context?.activeTools).toContain("edit");
+    expect(context?.activeTools).toEqual(["cake"]);
+    expect(context?.systemPrompt).not.toContain("PROJECT CONTEXT MUST NOT LOAD");
+    expect(context?.systemPrompt).not.toContain("GLOBAL SYSTEM OVERRIDE MUST NOT LOAD");
+    expect(context?.systemPrompt).not.toContain("private-skill");
   });
 
   it("opens the OpenAI Codex browser login URL", async () => {

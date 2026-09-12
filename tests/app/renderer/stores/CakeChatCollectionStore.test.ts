@@ -40,7 +40,7 @@ describe("CakeChatCollectionStore", () => {
         sessionModel: (sessionId) => models.cakeChat(sessionId),
         tools: () => [],
       }),
-      { cakeChats: { restore, prompt, setModel } } as unknown as Client,
+      { cakeChats: { restore }, sessionChats: { prompt, setModel } } as unknown as Client,
     );
     const session = store.registry.load("resolved-chat");
     session.model.resolved = true;
@@ -122,7 +122,9 @@ describe("CakeChatCollectionStore", () => {
         sessionModel: (sessionId) => models.cakeChat(sessionId),
         tools: () => [],
       }),
-      { cakeChats: { [operation]: fail } } as unknown as Client,
+      (operation === "rename"
+        ? { cakeChats: { rename: fail } }
+        : { sessionChats: { [operation]: fail } }) as unknown as Client,
     );
     const session = store.activeSession!;
     store.pendingSessions.markMaterialized(session.sessionId);
@@ -160,7 +162,7 @@ describe("CakeChatCollectionStore", () => {
         sessionModel: (sessionId) => models.cakeChat(sessionId),
         tools: () => [],
       }),
-      { cakeChats: { prompt } } as unknown as Client,
+      { cakeChats: { start: prompt } } as unknown as Client,
     );
     const session = store.activeSession!;
     store.pendingSessions.conversation(session.sessionId)!.createDraft("Saved message", []);
@@ -190,7 +192,7 @@ describe("CakeChatCollectionStore", () => {
         sessionModel: (sessionId) => models.cakeChat(sessionId),
         tools: () => [],
       }),
-      { cakeChats: { prompt } } as unknown as Client,
+      { cakeChats: { start: prompt } } as unknown as Client,
     );
     const session = store.activeSession!;
 
@@ -343,7 +345,7 @@ describe("CakeChatCollectionStore", () => {
         sessionModel: (sessionId) => models.cakeChat(sessionId),
         tools: () => [],
       }),
-      { cakeChats: { prompt } } as unknown as Client,
+      { cakeChats: { start: prompt } } as unknown as Client,
     );
     const session = store.activeSession!;
 
@@ -424,7 +426,8 @@ describe("CakeChatCollectionStore", () => {
   });
 
   it("omits unset optional fields from Cake Chat prompts", async () => {
-    const prompt = vi.fn(async () => "turn-1");
+    const start = vi.fn(async () => "turn-1");
+    const prompt = vi.fn(async () => "turn-2");
     const catalog = CakeChatCatalog.create({ loaded: false, sessions: [] });
     const models = RootProjection.create();
     const { root, subject: store } = mountWithClient(
@@ -433,7 +436,7 @@ describe("CakeChatCollectionStore", () => {
         sessionModel: (sessionId) => models.cakeChat(sessionId),
         tools: () => [],
       }),
-      { cakeChats: { prompt } } as unknown as Client,
+      { cakeChats: { start }, sessionChats: { prompt } } as unknown as Client,
     );
 
     const initialization = store.initialize();
@@ -444,8 +447,7 @@ describe("CakeChatCollectionStore", () => {
 
     await session!.conversationSessionStore.chatStore.submit("Hello Cake");
 
-    expect(prompt).toHaveBeenNthCalledWith(
-      1,
+    expect(start).toHaveBeenCalledWith(
       {
         sessionId: session!.sessionId,
         tools: [],
@@ -487,11 +489,9 @@ describe("CakeChatCollectionStore", () => {
 
     await session!.conversationSessionStore.chatStore.submit("Follow up");
 
-    expect(prompt).toHaveBeenNthCalledWith(
-      2,
+    expect(prompt).toHaveBeenCalledWith(
       {
         sessionId: session!.sessionId,
-        tools: [],
         text: "Follow up",
         renderUserMessageAsMarkdown: false,
         attachments: [],
