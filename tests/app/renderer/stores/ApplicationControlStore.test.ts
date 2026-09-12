@@ -34,6 +34,7 @@ function createHost(
       cakeChatSessions: overrides.cakeChatSessions ?? (() => []),
       sessionActivity: () => undefined,
       managedWorktree: () => undefined,
+      globalSessionLabels: () => [],
     },
     settings: {
       get: () => ({
@@ -56,6 +57,10 @@ function createHost(
           workLogsExpansion: "collapsed",
         },
       }),
+    },
+    sessionLabels: {
+      mutate: async () => undefined,
+      setSessionLabel: async () => true,
     },
     sessions: {
       open: async () => false,

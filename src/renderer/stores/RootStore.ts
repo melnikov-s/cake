@@ -1157,6 +1157,7 @@ export class RootStore extends Store<{
         sessionActivity: (sessionId) => this.sidebarStore.sessionActivity(sessionId),
         managedWorktree: (workingDirectory) =>
           this.sessionCatalogStore.managedWorktree(workingDirectory),
+        globalSessionLabels: () => this.settingsStore.globalStatuses.statuses,
       },
       settings: {
         get: (section) => this.settingsStore.settingsSection(section),
@@ -1165,6 +1166,20 @@ export class RootStore extends Store<{
           await this.props.flushWindowState();
           return view;
         },
+      },
+      sessionLabels: {
+        mutate: ({ projectPath }, mutation) =>
+          this.applicationControlStore.runOperation(async () => {
+            if (projectPath)
+              await this.client.projectWorkflow.mutate(
+                { projectPath, mutation },
+                { signal: this.signal },
+              );
+            else
+              await this.client.projectWorkflow.mutateGlobal({ mutation }, { signal: this.signal });
+          }),
+        setSessionLabel: (sessionId, labelId) =>
+          this.projectWorkbenchStore.sessionManagementStore.setSessionStatus(sessionId, labelId),
       },
       worktrees: {
         merge: async ({ sessionId, workingDirectory }) => {

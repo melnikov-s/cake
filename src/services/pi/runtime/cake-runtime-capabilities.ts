@@ -16,6 +16,7 @@ import {
   CakeSettingsGetInput,
   CakeSettingsUpdateInput,
 } from "../../../domain/application/cake-settings-schema";
+import { WorkflowStatusColor } from "../../../domain/application/application-data";
 import { jsonObjectSchema, type JsonObject, type JsonValue } from "../../../ipc/json-contract";
 import { SESSION_TITLE_MAX_LENGTH } from "../../../ipc/session-contract";
 import { artifactRecordSchema, type CakeArtifactV1 } from "../../../ipc/artifact-contract";
@@ -789,6 +790,97 @@ export async function createCakeRuntimeCapabilities(input: {
         examples: [{ input: { sessionId: "target-session-id", title: "Storage implementation" } }],
         result: "The target session identity and its committed title.",
         execute: invokeAppControl("sessions.rename"),
+      },
+      {
+        command: "sessions.set-label",
+        topic: "sessions",
+        summary: "Assign a session label to one Project Session, or clear its label.",
+        guidance: [
+          "Call session-labels.list to discover label IDs available to the target session.",
+          "Omit labelId to clear the session's current label.",
+        ],
+        inputSchema: Schema.Struct({
+          sessionId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+          labelId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
+        }),
+        examples: [
+          {
+            input: {
+              sessionId: "target-session-id",
+              labelId: "00000000-0000-4000-8000-000000000001",
+            },
+          },
+          { input: { sessionId: "target-session-id" }, description: "Clear the session label." },
+        ],
+        result: "The target session and its committed label, or confirmation that it was cleared.",
+        execute: invokeAppControl("sessions.set-label"),
+      },
+      {
+        command: "session-labels.list",
+        topic: "session-labels",
+        summary: "List global and project-specific labels available to Project Sessions.",
+        inputSchema: empty,
+        examples: [{}],
+        result: "All session labels with their IDs, names, colors, and scopes.",
+        execute: (_input, context) =>
+          api().invokeAppControl("session-labels.list", {}, context.signal),
+      },
+      {
+        command: "session-labels.add",
+        topic: "session-labels",
+        summary: "Add a global or project-specific session label.",
+        guidance: ["Omit projectPath to create a global label available in every Project."],
+        inputSchema: Schema.Struct({
+          name: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(40))),
+          color: WorkflowStatusColor,
+          projectPath: Schema.optionalKey(
+            Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4_096)),
+          ),
+        }),
+        examples: [
+          { input: { name: "In review", color: "cyan" } },
+          {
+            input: {
+              name: "Ready to deploy",
+              color: "green",
+              projectPath: "/path/to/project",
+            },
+          },
+        ],
+        result: "The added session label and its scope.",
+        execute: invokeAppControl("session-labels.add"),
+      },
+      {
+        command: "session-labels.update",
+        topic: "session-labels",
+        summary: "Rename or recolor an existing session label.",
+        inputSchema: Schema.Struct({
+          labelId: Schema.String.check(Schema.isUUID(4)),
+          name: Schema.optionalKey(
+            Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(40))),
+          ),
+          color: Schema.optionalKey(WorkflowStatusColor),
+        }),
+        examples: [
+          {
+            input: {
+              labelId: "00000000-0000-4000-8000-000000000001",
+              name: "In review",
+              color: "cyan",
+            },
+          },
+        ],
+        result: "The updated session label and its scope.",
+        execute: invokeAppControl("session-labels.update"),
+      },
+      {
+        command: "session-labels.remove",
+        topic: "session-labels",
+        summary: "Remove a session label and clear it from every session that uses it.",
+        inputSchema: Schema.Struct({ labelId: Schema.String.check(Schema.isUUID(4)) }),
+        examples: [{ input: { labelId: "00000000-0000-4000-8000-000000000001" } }],
+        result: "The removed session label and its former scope.",
+        execute: invokeAppControl("session-labels.remove"),
       },
       {
         command: "sessions.reply",
