@@ -216,6 +216,12 @@ export const PaperclipIcon = () => (
     <path d="m20.5 11.5-8.9 8.9a6 6 0 0 1-8.5-8.5l9.6-9.6a4 4 0 0 1 5.7 5.7l-9.6 9.6a2 2 0 1 1-2.8-2.8l8.9-8.9" />
   </Icon>
 );
+export const ArtifactIcon = () => (
+  <Icon size={15}>
+    <path d="M7 3.5h7l4 4V20H7z" />
+    <path d="M14 3.5V8h4M10 12h5M10 15h5" />
+  </Icon>
+);
 export const SendIcon = () => (
   <Icon>
     <path d="m5 12 7-7 7 7M12 19V5" />

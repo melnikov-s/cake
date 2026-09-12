@@ -15,7 +15,12 @@ export const observeArtifactEvents = (
     (event) => {
       try {
         if (event.type === "artifact-updated") {
-          const session = projection.findProjectSession(event.record.artifact.sessionId);
+          const sessionId = event.record.artifact.sessionId;
+          const sessionStore = root.sessionRegistry?.findSession(sessionId);
+          // Notify presentation before applying the projection so a lazily-created
+          // Store can compare the event with the revisions already hydrated.
+          sessionStore?.artifactWorkspaceStore.receive(event.record);
+          const session = projection.findProjectSession(sessionId);
           if (session) applyArtifactUpdate(session, event.record);
           return;
         }

@@ -25,7 +25,9 @@ export const IdeWorkspace = observer(function IdeWorkspace({
   projectChat,
   sideChat,
   headerActions,
+  conversationAccessory,
   projectComposerHeader,
+  projectComposerContent,
   projectComposerLeadingAccessory,
   projectSidebar,
   projectSidebarVisible,
@@ -41,7 +43,9 @@ export const IdeWorkspace = observer(function IdeWorkspace({
   sideChat: SideChatStore;
   /** Session-scoped controls shown in the chat sidebar header, such as the side chats menu. */
   headerActions?: ReactNode;
+  conversationAccessory?(children: ReactNode): ReactNode;
   projectComposerHeader?: ReactNode;
+  projectComposerContent?: ReactNode;
   projectComposerLeadingAccessory?: ComponentProps<typeof Chat>["composerLeadingAccessory"];
   projectSidebar: ReactNode;
   projectSidebarVisible: boolean;
@@ -171,25 +175,33 @@ export const IdeWorkspace = observer(function IdeWorkspace({
                   </div>
                 </header>
                 <div className="min-h-0 flex-1">
-                  <SideChatLayout
-                    store={sideChat}
-                    renderChat={(sideChatStore) => (
-                      <Chat
-                        store={sideChatStore}
-                        embedded
-                        compact
-                        transcriptBehavior={sideChatTranscriptBehavior}
-                      />
-                    )}
-                  >
-                    <Chat
-                      className="h-full"
-                      store={chat}
-                      transcriptBehavior={transcriptBehavior}
-                      composerHeader={contextualChat ? undefined : projectComposerHeader}
-                      composerLeadingAccessory={projectComposerLeadingAccessory}
-                    />
-                  </SideChatLayout>
+                  {(() => {
+                    const conversation = (
+                      <SideChatLayout
+                        store={sideChat}
+                        renderChat={(sideChatStore) => (
+                          <Chat
+                            store={sideChatStore}
+                            embedded
+                            compact
+                            transcriptBehavior={sideChatTranscriptBehavior}
+                          />
+                        )}
+                      >
+                        <Chat
+                          className="h-full"
+                          store={chat}
+                          transcriptBehavior={transcriptBehavior}
+                          composerHeader={contextualChat ? undefined : projectComposerHeader}
+                          composerContent={contextualChat ? undefined : projectComposerContent}
+                          composerLeadingAccessory={projectComposerLeadingAccessory}
+                        />
+                      </SideChatLayout>
+                    );
+                    return conversationAccessory
+                      ? conversationAccessory(conversation)
+                      : conversation;
+                  })()}
                 </div>
               </aside>
             </>

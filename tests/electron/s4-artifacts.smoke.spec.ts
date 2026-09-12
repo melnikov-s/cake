@@ -57,6 +57,12 @@ test("presents artifacts, sorts a table, resolves a form, and isolates HTML", as
     await page.getByLabel("Message").fill("/cake-artifacts");
     await page.getByRole("button", { name: "Send" }).click();
 
+    const artifactControl = page.getByRole("button", { name: /\d+ artifacts/ });
+    await expect(artifactControl).toHaveAccessibleName("4 artifacts");
+    await artifactControl.click();
+    await artifactControl.click();
+    await page.getByRole("button", { name: "S4 table" }).click();
+
     const table = page.locator('[data-artifact-id="cake-s4-table"]');
     await expect(table).toBeVisible();
     await expect(
@@ -67,6 +73,8 @@ test("presents artifacts, sorts a table, resolves a form, and isolates HTML", as
       table.locator('[data-slot="artifact-table"] tbody td').allTextContents(),
     ).resolves.toEqual(["", "Beta", "1", "", "Alpha", "2"]);
 
+    await page.getByRole("button", { name: "All artifacts" }).click();
+    await page.getByRole("button", { name: "S4 widget" }).click();
     const widget = page.locator('[data-artifact-id="cake-s4-widget"]');
     await expect(widget.locator("iframe")).toBeVisible();
     await widget.getByRole("button", { name: "Repair" }).click();
@@ -79,6 +87,7 @@ test("presents artifacts, sorts a table, resolves a form, and isolates HTML", as
     await repairPrompt.getByRole("button", { name: "Submit" }).click();
     await expect(repairPrompt).not.toBeAttached();
 
+    await artifactControl.click();
     const form = page.locator('[data-artifact-id="cake-s4-form"]');
     await expect(page.getByRole("status", { name: "Churning in progress" })).toHaveCount(0);
     const otherAnswer = form.getByLabel("Answer other option");
@@ -88,14 +97,19 @@ test("presents artifacts, sorts a table, resolves a form, and isolates HTML", as
     await otherAnswer.pressSequentially("structured answer");
     await expect(otherAnswer).toHaveValue("structured answer");
     await expect(form.getByRole("button", { name: "Submit" })).toBeEnabled();
-    await form.getByRole("button", { name: "Submit" }).click();
-    await expect(form).not.toBeAttached();
+    await form.getByRole("button", { name: "Submit" }).click({ noWaitAfter: true });
+    await expect(form).toContainText("Submitted");
+    await expect(form.getByRole("button", { name: "Submit" })).toHaveCount(0);
 
+    await artifactControl.click();
+    await page.getByRole("button", { name: "S4 diagram" }).click();
+    await expect(page.locator('[data-artifact-id="cake-s4-diagram"] iframe')).toBeVisible();
+    await page.getByRole("button", { name: "All artifacts" }).click();
+    await page.getByRole("button", { name: "Sandboxed HTML" }).click();
     const html = page.locator('[data-artifact-id="cake-s4-html"] iframe');
     await expect(html).toHaveAttribute("sandbox", "");
     await expect(html).toHaveAttribute("srcdoc", /default-src 'none'/);
     await expect(page.locator("body")).not.toContainText("compromised");
-    await expect(page.locator('[data-artifact-id="cake-s4-diagram"] iframe')).toBeVisible();
     await expect
       .poll(async () => {
         const document = JSON.parse(

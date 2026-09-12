@@ -8,7 +8,7 @@ vi.mock("mermaid", () => ({
   default: { initialize: vi.fn(), render: vi.fn(async () => ({ svg: "<svg role='img'></svg>" })) },
 }));
 import { ArtifactHost } from "../../../src/renderer/components/artifact-host";
-import { ArtifactsPanel } from "../../../src/renderer/components/artifacts-panel";
+import { BlockingArtifactRequest } from "../../../src/renderer/components/blocking-artifact-request";
 import type { ArtifactRecord } from "../../../src/ipc/artifact-contract";
 import type { Client } from "../../../src/renderer/client/Client";
 import { InlineWidgetStore } from "../../../src/renderer/stores/InlineWidgetStore";
@@ -141,17 +141,13 @@ describe("ArtifactHost", () => {
     expect(document.body.textContent).not.toContain("owned");
   });
 
-  it("does not float a request from another branch to the transcript footer", () => {
+  it("renders an unlinked blocking request once and yields when its transcript pointer arrives", () => {
     const request = {
       protocol: "cake.request/v1" as const,
-      id: "branch-request",
-      title: "Branch request",
-      responseSchema: { type: "object" as const },
-      view: {
-        type: "form" as const,
-        fields: [{ id: "answer", label: "Answer", type: "text" as const }],
-      },
-      fallback: { markdown: "Answer." },
+      id: "moving-request",
+      title: "Moving request",
+      view: { type: "confirmation" as const, message: "Continue?" },
+      fallback: { markdown: "Continue?" },
     };
     const artifact = record({
       protocol: "cake.artifact/v1",
@@ -161,18 +157,33 @@ describe("ArtifactHost", () => {
       kind: "request",
       payload: { request },
       fallback: request.fallback,
-      interaction: { mode: "request", responseSchema: request.responseSchema },
+      interaction: { mode: "request" },
     });
+    const canonicalParts: Array<{ kind: "tool"; artifactId: string }> = [];
     const session = {
-      canonicalParts: [],
-      model: { artifacts: [{ value: artifact }] },
-      artifactInteractionStore: { request: undefined },
+      canonicalParts,
+      artifactInteractionStore: {
+        request: { record: artifact },
+        submittedAnswer: () => undefined,
+        answer: vi.fn(),
+        respond: vi.fn(),
+      },
     } as unknown as ProjectSessionStore;
 
     act(() =>
-      root.render(<ArtifactsPanel session={session} inlineWidgets={{} as InlineWidgetStore} />),
+      root.render(
+        <BlockingArtifactRequest session={session} inlineWidgets={{} as InlineWidgetStore} />,
+      ),
     );
-    expect(container.querySelector('[data-artifact-id="branch-request"]')).toBeNull();
+    expect(container.querySelectorAll('[data-artifact-id="moving-request"]')).toHaveLength(1);
+
+    canonicalParts.push({ kind: "tool", artifactId: "moving-request" });
+    act(() =>
+      root.render(
+        <BlockingArtifactRequest session={session} inlineWidgets={{} as InlineWidgetStore} />,
+      ),
+    );
+    expect(container.querySelector('[data-artifact-id="moving-request"]')).toBeNull();
   });
 
   it("renders select fields as radios and shows the submitted answers once", () => {

@@ -13,6 +13,7 @@ import { Callout } from "@/components/ui/callout";
 import { DialogBackdrop } from "@/components/ui/dialog";
 import { IconButton } from "@/components/ui/icon-button";
 import {
+  ArtifactIcon,
   BackIcon,
   ChangesIcon,
   ChatIcon,
@@ -38,7 +39,8 @@ import { ErrorNotice } from "@/components/error-notice";
 import { SessionContinuationDialog } from "@/components/session-continuation-dialog";
 import { TreeNavigationDialog } from "@/components/tree-navigation-dialog";
 import { ConversationSplitLayout } from "@/components/conversation-split-layout";
-import { ArtifactsPanel } from "@/components/artifacts-panel";
+import { ArtifactWorkspaceLayout } from "@/components/artifact-workspace-layout";
+import { BlockingArtifactRequest } from "@/components/blocking-artifact-request";
 import { UiDialog } from "@/components/ui-dialog";
 import { CommandPane } from "@/components/command-pane";
 import { QuakeTerminal } from "@/components/quake-terminal";
@@ -261,6 +263,8 @@ export const App = observer(function App() {
       artifacts: {
         records: paneSession.model.artifacts.map((artifact) => artifact.value),
         interaction: paneSession.artifactInteractionStore,
+        openArtifact: (artifactId: string) =>
+          paneSession.artifactWorkspaceStore.openArtifact(artifactId),
       },
     };
   };
@@ -368,6 +372,25 @@ export const App = observer(function App() {
       onConfigured={() => session.conversationSessionStore.composerStore.draftStore.requestFocus()}
     />
   ) : undefined;
+  const artifactControl = (paneSession: NonNullable<typeof session>, onOpen?: () => void) => {
+    const workspace = paneSession.artifactWorkspaceStore;
+    return (
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-8 gap-1.5 px-2 text-muted-foreground"
+        aria-label={`${workspace.records.length} artifacts`}
+        aria-pressed={workspace.open}
+        onClick={() => {
+          onOpen?.();
+          workspace.toggle();
+        }}
+      >
+        <ArtifactIcon />
+        <span className="font-mono text-[11px] tabular-nums">{workspace.records.length}</span>
+      </Button>
+    );
+  };
   const renderProjectPaneHeader = (
     pane: SessionPaneNode,
     paneSession: NonNullable<typeof session>,
@@ -401,6 +424,7 @@ export const App = observer(function App() {
           <TreeIcon />
         </IconButton>
         <SideChatsMenu store={paneSession} onOpen={focusPane} />
+        {artifactControl(paneSession, focusPane)}
         <div className="mx-0.5 h-4 w-px shrink-0 bg-border/60" aria-hidden="true" />
         <WorkLogControls store={paneSession.conversationSessionStore.chatStore} />
         <div className="mx-0.5 h-4 w-px shrink-0 bg-border/60" aria-hidden="true" />
@@ -497,16 +521,14 @@ export const App = observer(function App() {
       ) : (
         <LoadingState label="Opening session" />
       ),
-      footer: (
-        <ArtifactsPanel
+      error: errorMessage ? { message: errorMessage, details: errorDetails } : undefined,
+      composerContent: (
+        <BlockingArtifactRequest
           session={paneSession}
           inlineWidgets={root.inlineWidgetStore}
-          onOpenSourceLocation={(location) =>
-            projectTranscriptBehaviorFor(paneSession).openSourceLocation(location)
-          }
+          onOpenSourceLocation={projectTranscriptBehaviorFor(paneSession).openSourceLocation}
         />
       ),
-      error: errorMessage ? { message: errorMessage, details: errorDetails } : undefined,
       composerLeadingAccessory: projectComposerLeadingAccessory(paneSession),
       composerHeader: (
         <WorktreePill
@@ -554,8 +576,29 @@ export const App = observer(function App() {
             onProjectSidebarWidthChange={setSidebarWidth}
             projectChat={session.conversationSessionStore.chatStore}
             sideChat={session.conversationSessionStore.sideChatStore}
-            headerActions={<SideChatsMenu store={session} />}
+            headerActions={
+              <>
+                <SideChatsMenu store={session} />
+                {artifactControl(session)}
+              </>
+            }
+            conversationAccessory={(children) => (
+              <ArtifactWorkspaceLayout
+                session={session}
+                inlineWidgets={root.inlineWidgetStore}
+                onOpenSourceLocation={projectTranscriptBehavior.openSourceLocation}
+              >
+                {children}
+              </ArtifactWorkspaceLayout>
+            )}
             projectComposerHeader={projectComposerHeader}
+            projectComposerContent={
+              <BlockingArtifactRequest
+                session={session}
+                inlineWidgets={root.inlineWidgetStore}
+                onOpenSourceLocation={projectTranscriptBehavior.openSourceLocation}
+              />
+            }
             projectComposerLeadingAccessory={projectComposerLeadingAccessory(session)}
             sessionTitle={store.sessionTitle}
             terminalDock={
@@ -796,6 +839,15 @@ export const App = observer(function App() {
                 : undefined
             }
             renderHeader={renderProjectPaneHeader}
+            wrapPane={(paneSession, _pane, children) => (
+              <ArtifactWorkspaceLayout
+                session={paneSession}
+                inlineWidgets={root.inlineWidgetStore}
+                onOpenSourceLocation={projectTranscriptBehaviorFor(paneSession).openSourceLocation}
+              >
+                {children}
+              </ArtifactWorkspaceLayout>
+            )}
             onFocus={(paneId) => root.focusSessionPane(paneId)}
             onSplit={(axis) => root.splitFocusedSession(axis)}
             onClose={(paneId) => root.closeSessionPane(paneId)}

@@ -283,7 +283,11 @@ export interface ChatTranscriptBehavior {
   openSourceLocation?(location: SourceLocation): void;
   waitingForUser?: boolean;
   inlineWidgets?: InlineWidgetStore;
-  artifacts?: { records: ArtifactRecord[]; interaction: ArtifactInteractionStore };
+  artifacts?: {
+    records: ArtifactRecord[];
+    interaction: ArtifactInteractionStore;
+    openArtifact?(artifactId: string): void;
+  };
   messageComments?: MessageCommentsStore;
   subagents?: SubagentActivityStore;
   showSelectionContextMenu?(input: {

@@ -30,6 +30,7 @@ interface ConversationSplitLayoutProps<T extends PrimarySessionStore> {
   loadingLabel: string;
   headerClassName?(pane: SessionPaneNode): string | undefined;
   renderHeader(pane: SessionPaneNode, session: T): ReactNode;
+  wrapPane?(session: T, pane: SessionPaneNode, children: ReactNode): ReactNode;
   onFocus(paneId: string): void;
   onSplit(axis: SessionSplitAxis): void;
   onClose(paneId: string): void;
@@ -43,6 +44,7 @@ export function ConversationSplitLayout<T extends PrimarySessionStore>({
   loadingLabel,
   headerClassName,
   renderHeader,
+  wrapPane,
   onFocus,
   onSplit,
   onClose,
@@ -72,26 +74,29 @@ export function ConversationSplitLayout<T extends PrimarySessionStore>({
                 workspacePath: props.transcriptBehavior.workspacePath,
               }
             : undefined;
+        const conversation = (
+          <SideChatLayout
+            store={session.conversationSessionStore.sideChatStore}
+            renderChat={(sideChatStore) => (
+              <Chat
+                store={sideChatStore}
+                embedded
+                compact
+                composerFocusEnabled={store.focusedPaneId === pane.paneId}
+                transcriptBehavior={nestedTranscriptBehavior}
+              />
+            )}
+          >
+            <Chat
+              store={session.conversationSessionStore.chatStore}
+              composerFocusEnabled={store.focusedPaneId === pane.paneId}
+              {...props}
+            />
+          </SideChatLayout>
+        );
         return (
           <StoreProvider key={pane.paneId} store={session}>
-            <SideChatLayout
-              store={session.conversationSessionStore.sideChatStore}
-              renderChat={(sideChatStore) => (
-                <Chat
-                  store={sideChatStore}
-                  embedded
-                  compact
-                  composerFocusEnabled={store.focusedPaneId === pane.paneId}
-                  transcriptBehavior={nestedTranscriptBehavior}
-                />
-              )}
-            >
-              <Chat
-                store={session.conversationSessionStore.chatStore}
-                composerFocusEnabled={store.focusedPaneId === pane.paneId}
-                {...props}
-              />
-            </SideChatLayout>
+            {wrapPane ? wrapPane(session, pane, conversation) : conversation}
           </StoreProvider>
         );
       }}

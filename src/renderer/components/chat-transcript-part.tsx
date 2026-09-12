@@ -8,6 +8,7 @@ import { AnnotationSummary } from "@/components/annotation-summary";
 import { IconButton } from "@/components/ui/icon-button";
 import { EditIcon, MarkdownIcon, TreeIcon } from "@/components/ui/icons";
 import { ArtifactHost } from "@/components/artifact-host";
+import { ArtifactReference } from "@/components/ui/artifact-reference";
 import { CompactionMessage } from "@/components/compaction-message";
 import { ImagePreview } from "@/components/image-preview";
 import type { UiPart } from "../../ipc/session-contract";
@@ -166,6 +167,12 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
       ? behavior.artifacts?.records.find((candidate) => candidate.artifact.id === part.artifactId)
       : undefined;
     if (record && behavior.artifacts) {
+      if (record.artifact.kind !== "request")
+        return (
+          <ArtifactReference onClick={() => behavior.artifacts?.openArtifact?.(record.artifact.id)}>
+            {record.artifact.title ?? record.artifact.id}
+          </ArtifactReference>
+        );
       const request =
         behavior.artifacts.interaction.request?.record.artifact.id === record.artifact.id
           ? behavior.artifacts.interaction.request

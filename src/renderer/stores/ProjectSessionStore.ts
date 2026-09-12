@@ -22,6 +22,7 @@ import type { QueuedPrompt as ChatQueuedPrompt } from "./ChatStore";
 import { ConversationSessionStore } from "./ConversationSessionStore";
 import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import { ArtifactInteractionStore } from "./ArtifactInteractionStore";
+import { ArtifactWorkspaceStore } from "./ArtifactWorkspaceStore";
 import { MessageCommentsStore } from "./MessageCommentsStore";
 import { SubagentActivityStore } from "./SubagentActivityStore";
 import { WorktreeStore, type WorktreeStoreProps } from "./WorktreeStore";
@@ -524,6 +525,14 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       { signal: this.signal },
     );
     return !this.signal.aborted;
+  }
+
+  @child
+  get artifactWorkspaceStore(): ArtifactWorkspaceStore {
+    return createStore(ArtifactWorkspaceStore, {
+      model: this.model,
+      isActive: this.props.isActive,
+    });
   }
 
   @child
