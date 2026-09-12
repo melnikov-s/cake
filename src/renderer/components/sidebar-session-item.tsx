@@ -16,6 +16,7 @@ import { StatusDot } from "./ui/status-dot";
 import { StatusSwatch } from "./ui/status-swatch";
 import { Avatar } from "./ui/avatar";
 import { AvatarStatusPicker } from "./ui/avatar-status-picker";
+import { DepthRails } from "./ui/depth-rails";
 
 export interface SidebarSessionItemProps {
   store: SidebarStore;
@@ -28,6 +29,7 @@ export interface SidebarSessionItemProps {
     worktreeName?: string;
     familyParentSessionId?: string;
     familyChildSessionIds?: readonly string[];
+    familyDepth?: number;
   };
   managedWorktree?: Pick<WorktreeRecord, "branch" | "baseBranch" | "parentWorktreePath" | "state">;
   selected: boolean;
@@ -76,7 +78,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
   const isFamilyParent = Boolean(session.familyChildSessionIds?.length);
   const isFamilyChild =
     Boolean(session.familyParentSessionId) && session.familyParentSessionId !== session.sessionId;
-  const canResolve = !activity && !isFamilyChild;
+  const canResolve = !activity;
   const statusId = store.sessionWorkflowStatusId(session.sessionId);
   const statuses = store.sessionWorkflowStatuses(session.sessionId);
   const canSetStatus = !session.draft && !resolved && Boolean(onSetStatus);
@@ -109,7 +111,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
         "session-item group relative grid min-h-11 w-full items-center rounded-md py-1 text-[13px] select-none transition-colors",
         focusMode && "min-h-14 text-sm [&_[data-slot=avatar]]:size-7 [&_svg]:size-5",
         avatarsEnabled
-          ? isFamilyParent
+          ? isFamilyParent || session.familyDepth !== undefined
             ? focusMode
               ? "grid-cols-[3rem_minmax(0,1fr)]"
               : "grid-cols-[2.5rem_minmax(0,1fr)]"
@@ -117,7 +119,6 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
               ? "grid-cols-[2rem_minmax(0,1fr)]"
               : "grid-cols-[1.5rem_minmax(0,1fr)]"
           : "grid-cols-[1.25rem_minmax(0,1fr)]",
-        isFamilyChild && "ml-5 w-[calc(100%-1.25rem)]",
         selected
           ? "active bg-sidebar-active text-primary font-semibold"
           : "text-muted-foreground hover:bg-sidebar-hover hover:text-foreground",
@@ -130,6 +131,10 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
           data-slot="session-leading"
           className="relative flex h-full items-center justify-center"
         >
+          <DepthRails
+            depth={session.familyDepth ?? 0}
+            className="pointer-events-none absolute inset-y-0 left-0 w-2 flex-none"
+          />
           {isFamilyParent && (
             <IconButton
               className={cn(
@@ -224,15 +229,9 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
               void menu.then((action) => {
                 if (action?.action === "rename") setRenamingValue(session.title);
                 else if (action?.action === "mark-unread") onMarkUnread?.(session.sessionId, true);
-                else if (action?.action === "resolve" && !isFamilyChild)
-                  onResolve(session.sessionId, true);
-                else if (action?.action === "unresolve" && !isFamilyChild)
-                  onResolve(session.sessionId, false);
-                else if (
-                  action?.action === "set-status" &&
-                  action.statusId === "resolved" &&
-                  !isFamilyChild
-                )
+                else if (action?.action === "resolve") onResolve(session.sessionId, true);
+                else if (action?.action === "unresolve") onResolve(session.sessionId, false);
+                else if (action?.action === "set-status" && action.statusId === "resolved")
                   onResolve(session.sessionId, true);
                 else if (action?.action === "set-status")
                   onSetStatus?.(
@@ -269,7 +268,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
                 selected ? "text-primary/80" : "text-muted-foreground/80",
               )}
             >
-              {branch && !isFamilyChild && (
+              {branch && (
                 <>
                   {managedWorktree && (
                     <WorktreeStatusIcon state={managedWorktree.state} className="shrink-0" />

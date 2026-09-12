@@ -21,6 +21,9 @@ import {
 } from "../../services/storage/SessionArchiveStorage";
 import {
   SessionFamilyStorage,
+  familyChildren,
+  familyDepth,
+  familyMember,
   type SessionFamily,
 } from "../../services/storage/SessionFamilyStorage";
 import {
@@ -81,17 +84,20 @@ const summary = (
 
 function applyFamilySummary(projected: ProjectSessionSummary, family?: SessionFamily) {
   if (!family) return;
+  const member = familyMember(family, projected.sessionId);
+  const depth = familyDepth(family, projected.sessionId);
+  if (!member || depth === undefined) return;
   Object.assign(projected, {
     familyId: family.familyId,
-    familyParentSessionId: family.parentSessionId,
+    familyParentSessionId: member.parentSessionId ?? member.sessionId,
+    familyChildSessionIds: familyChildren(family, member.sessionId).map((child) => child.sessionId),
+    familyDepth: depth,
   });
-  if (projected.sessionId === family.parentSessionId)
-    Object.assign(projected, {
-      familyChildSessionIds: family.children.map((child) => child.sessionId),
-    });
-  else {
-    const order = family.children.findIndex((child) => child.sessionId === projected.sessionId);
-    if (order >= 0) Object.assign(projected, { familyChildOrder: order });
+  if (member.parentSessionId) {
+    const order = familyChildren(family, member.parentSessionId).findIndex(
+      (sibling) => sibling.sessionId === member.sessionId,
+    );
+    Object.assign(projected, { familyChildOrder: order });
   }
 }
 
@@ -364,13 +370,16 @@ const catalogEventForChange = Effect.fn("ProjectSessions.catalogEventForChange")
   if (change._tag === "ProjectSessionsTransitioned") {
     if (change.projectPath !== query.projectPath) return undefined;
     if (change.resolved !== query.resolved)
-      return { _tag: "RemovedBatch", sessionIds: change.sessionIds } as const;
-    const events = yield* Effect.forEach(change.sessionIds, (sessionId) =>
+      return {
+        _tag: "RemovedBatch",
+        sessionIds: change.sessions.map(({ sessionId }) => sessionId),
+      } as const;
+    const events = yield* Effect.forEach(change.sessions, ({ sessionId, workingDirectory }) =>
       catalogEventForSessionChange(query, {
         _tag: "ProjectSessionChanged",
         sessionId,
         projectPath: change.projectPath,
-        workingDirectory: change.workingDirectory,
+        workingDirectory,
         resolved: change.resolved,
       }),
     );

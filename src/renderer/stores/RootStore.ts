@@ -303,20 +303,20 @@ export class RootStore extends Store<{
     parentSessionId: string,
     input: Extract<ProjectSessionControlInvocation, { _tag: "ProjectChildSession" }>,
   ): Promise<JsonValue> {
-    const workingDirectory = this.requireProjectSessionWorkingDirectory(parentSessionId);
     this.sessionRegistry.loadUnlistedFamilySession(
       input.childSessionId,
-      workingDirectory,
+      input.workingDirectory,
       input.title,
       {
         familyId: input.familyId,
         parentSessionId,
         childOrder: input.familyChildOrder,
+        depth: input.familyDepth,
       },
     );
     try {
       await this.client.projectSessions.open(
-        { sessionId: input.childSessionId, workingDirectory },
+        { sessionId: input.childSessionId, workingDirectory: input.workingDirectory },
         { signal: this.signal },
       );
     } catch (error) {
@@ -1164,6 +1164,34 @@ export class RootStore extends Store<{
           const view = this.settingsStore.updateSettings(input);
           await this.props.flushWindowState();
           return view;
+        },
+      },
+      worktrees: {
+        merge: async ({ sessionId, workingDirectory }) => {
+          const operationId = crypto.randomUUID();
+          await this.client.managedWorktrees.startLanding(
+            {
+              operationId,
+              workspacePath: workingDirectory,
+              sessionId,
+              strategy: "preserve",
+              allowDirtyTarget: false,
+              commitBeforeLanding: true,
+              resolveAfterLanding: false,
+            },
+            { signal: this.signal },
+          );
+          return operationId;
+        },
+        discard: async ({ workingDirectory, keepBranch }) => {
+          await this.client.managedWorktrees.discard(
+            {
+              operationId: crypto.randomUUID(),
+              workspacePath: workingDirectory,
+              keepBranch,
+            },
+            { signal: this.signal },
+          );
         },
       },
       sessions: {

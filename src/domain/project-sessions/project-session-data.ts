@@ -41,6 +41,7 @@ export const ProjectSessionSummary = Schema.Struct({
   familyParentSessionId: Schema.optionalKey(boundedId),
   familyChildSessionIds: Schema.optionalKey(Schema.Array(boundedId)),
   familyChildOrder: Schema.optionalKey(Schema.Int),
+  familyDepth: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
 });
 export interface ProjectSessionSummary extends Schema.Schema.Type<typeof ProjectSessionSummary> {}
 
@@ -131,6 +132,8 @@ export const ProjectSessionControlInvocation = Schema.TaggedUnion({
     title: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(500)),
     familyId: boundedId,
     familyChildOrder: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+    familyDepth: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)),
+    workingDirectory: boundedPath,
     placement: Schema.Literals(["none", "right", "down"]),
   },
 });

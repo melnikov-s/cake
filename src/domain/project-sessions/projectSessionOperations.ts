@@ -180,7 +180,7 @@ export const observe = Effect.fn("ProjectSessions.observe")(function* (
           : item._tag === "ProjectSessionStatusChanged" && item.sessionId === target.sessionId
             ? item.resolved
             : item._tag === "ProjectSessionsTransitioned" &&
-                item.sessionIds.includes(target.sessionId)
+                item.sessions.some(({ sessionId }) => sessionId === target.sessionId)
               ? item.resolved
               : undefined,
       ),

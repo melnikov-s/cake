@@ -170,6 +170,8 @@ describe("ApplicationControlStore", () => {
         title: "Child",
         familyId: "family",
         familyChildOrder: 0,
+        familyDepth: 1,
+        workingDirectory: "/project",
         placement: "right" as const,
       },
     });

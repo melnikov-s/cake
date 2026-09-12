@@ -332,6 +332,7 @@ interface RuntimeOperationApi {
       initialPrompt: string;
       model?: CakeModelSelection;
       placement: "none" | "right" | "down";
+      worktreeName?: string;
     },
     requestId: string,
     signal: AbortSignal,
@@ -345,6 +346,12 @@ interface RuntimeOperationApi {
     destinationWorkingDirectory?: string;
   }): Promise<JsonValue>;
   invokeAppControl(command: string, input: JsonObject, signal: AbortSignal): Promise<JsonValue>;
+  mergeSession(targetSessionId: string | undefined, signal: AbortSignal): Promise<JsonValue>;
+  discardSession(
+    targetSessionId: string | undefined,
+    keepBranch: boolean,
+    signal: AbortSignal,
+  ): Promise<JsonValue>;
   resolveModelSelection(selection: CakeModelSelection | undefined): ExplicitCakeModelSelection;
   setModel(model: CakeModelSelection): Promise<JsonValue>;
   setResolved(resolved: boolean): Promise<JsonValue>;
@@ -520,7 +527,7 @@ export async function createCakeRuntimeCapabilities(input: {
           "Set worktreeName to create and register a new Cake-managed worktree before the Pi-backed session starts. Do not run git worktree add or try to rebind an already-started session.",
           "When worktreeName is omitted, the independent session starts in the Project root, preserving the existing behavior.",
           "When model is omitted, the new session inherits the calling session's current model, thinking level, and Fast mode setting.",
-          "Use sessions.create-child only for a Session Family child that shares the caller's exact Working Directory.",
+          "Use sessions.create-child for recursive Session Family delegation, whether the child shares the caller's checkout or branches into a child Managed Worktree.",
         ],
         inputSchema: projectSessionCreateInputSchema,
         examples: [
@@ -559,11 +566,10 @@ export async function createCakeRuntimeCapabilities(input: {
         guidance: [
           "Use this operation—not cake subagents—when the user asks for a child session, full child Project Session, related session, or Session Family member.",
           "Call it with input containing the required title and initialPrompt fields; the assignment field is initialPrompt, not prompt.",
-          "The calling session becomes the family parent when it creates its first child.",
-          "Children inherit the exact Project and Working Directory, share mutable files, and start in the background.",
+          "The calling session becomes the child's immediate parent. Children may recursively create their own children.",
+          "Omit worktreeName to share the caller's exact Working Directory. Supply worktreeName to create a Cake-managed worktree branched from the caller's current checkout.",
           "This operation returns after the initial child turn is accepted; do not wait or poll for the child, and finish the parent turn normally.",
           "Pane placement defaults to none. Set placement to right or down only when the child should be opened beside the parent.",
-          "A child cannot create another child; it must ask its parent for further delegation.",
           "When model is omitted, the child inherits the calling session's current model, thinking level, and Fast mode setting.",
         ],
         inputSchema: Schema.Struct({
@@ -574,6 +580,9 @@ export async function createCakeRuntimeCapabilities(input: {
           model: Schema.optionalKey(CakeModelSelection),
           placement: Schema.Literals(["none", "right", "down"]).pipe(
             Schema.withDecodingDefaultKey(Effect.succeed("none" as const)),
+          ),
+          worktreeName: Schema.optionalKey(
+            Schema.String.check(Schema.isPattern(/^[a-z0-9][a-z0-9-]{0,62}$/)),
           ),
         }),
         examples: [
@@ -589,8 +598,8 @@ export async function createCakeRuntimeCapabilities(input: {
         ],
         result: "The stable child session identity and initial-turn launch outcome.",
         limitations: [
-          "V1 families have one level and fixed Working Directory bindings.",
-          "This operation does not create or select a different worktree.",
+          "A child worktree always branches from the caller's current checkout; it cannot select an unrelated base.",
+          "Uncommitted changes remain in the caller's checkout and do not carry into a new child worktree.",
         ],
         execute: (input, context) =>
           // SAFETY: CakeOperationRegistry parsed input with this operation's schema.
@@ -600,6 +609,7 @@ export async function createCakeRuntimeCapabilities(input: {
               initialPrompt: string;
               model?: CakeModelSelection;
               placement: "none" | "right" | "down";
+              worktreeName?: string;
             },
             context.toolCallId,
             context.signal,
@@ -853,6 +863,76 @@ export async function createCakeRuntimeCapabilities(input: {
         execute: invokeAppControl("sessions.cancel-scheduled"),
       },
       {
+        command: "session.merge",
+        topic: "sessions",
+        summary: "Queue Cake's normal merge workflow for the calling session's Managed Worktree.",
+        guidance: [
+          "This is the same preserve-commits workflow as the Merge action in Cake. It commits intended uncommitted work through the session agent when necessary and uses Cake's repository landing queue.",
+          "The merge targets the checkout from which this session's worktree was created. It does not resolve the session.",
+        ],
+        inputSchema: empty,
+        examples: [{}],
+        result: "The accepted Managed Worktree landing operation.",
+        execute: (_input, context) => api().mergeSession(undefined, context.signal),
+      },
+      {
+        command: "sessions.merge",
+        topic: "sessions",
+        summary: "Queue Cake's normal merge workflow for one immediate child session.",
+        inputSchema: Schema.Struct({
+          sessionId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+        }),
+        examples: [{ input: { sessionId: "child-session-id" } }],
+        result: "The accepted Managed Worktree landing operation.",
+        limitations: ["The target must be an immediate child with its own Managed Worktree."],
+        execute: (input, context) => {
+          // SAFETY: CakeOperationRegistry parsed input with this operation's schema.
+          return api().mergeSession((input as { sessionId: string }).sessionId, context.signal);
+        },
+      },
+      {
+        command: "session.discard",
+        topic: "sessions",
+        summary: "Discard the calling session's isolated Managed Worktree without resolving it.",
+        inputSchema: Schema.Struct({
+          keepBranch: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
+        }),
+        examples: [{ input: { keepBranch: false } }],
+        result: "A completed Managed Worktree discard receipt.",
+        limitations: [
+          "This permanently removes unmerged checkout changes when keepBranch is false.",
+        ],
+        execute: (input, context) => {
+          // SAFETY: CakeOperationRegistry parsed input with this operation's schema.
+          return api().discardSession(
+            undefined,
+            (input as { keepBranch: boolean }).keepBranch,
+            context.signal,
+          );
+        },
+      },
+      {
+        command: "sessions.discard",
+        topic: "sessions",
+        summary:
+          "Discard one immediate child session's isolated Managed Worktree without resolving it.",
+        inputSchema: Schema.Struct({
+          sessionId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+          keepBranch: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
+        }),
+        examples: [{ input: { sessionId: "child-session-id", keepBranch: false } }],
+        result: "A completed Managed Worktree discard receipt.",
+        limitations: [
+          "The target must be an immediate child with its own Managed Worktree.",
+          "This permanently removes unmerged checkout changes when keepBranch is false.",
+        ],
+        execute: (input, context) => {
+          // SAFETY: CakeOperationRegistry parsed input with this operation's schema.
+          const parsed = input as { sessionId: string; keepBranch: boolean };
+          return api().discardSession(parsed.sessionId, parsed.keepBranch, context.signal);
+        },
+      },
+      {
         command: "session.resolve",
         topic: "sessions",
         summary: "Idempotently resolve or restore the calling session.",
@@ -962,6 +1042,10 @@ export async function createCakeRuntimeCapabilities(input: {
         (operation.command !== "session.resolve" ||
           (options.currentSessionControl !== undefined &&
             options.currentSessionControl.canResolve?.() !== false)) &&
+        (!["session.merge", "sessions.merge"].includes(operation.command) ||
+          options.currentSessionControl?.mergeSession !== undefined) &&
+        (!["session.discard", "sessions.discard"].includes(operation.command) ||
+          options.currentSessionControl?.discardSession !== undefined) &&
         (![
           "app.state",
           "app.split",

@@ -252,6 +252,7 @@ describe("SessionRegistryStore materialization", () => {
       familyId: "family",
       parentSessionId: "parent",
       childOrder: 1,
+      depth: 1,
     });
     child.model.commands = piBuiltinSlashCommands;
 

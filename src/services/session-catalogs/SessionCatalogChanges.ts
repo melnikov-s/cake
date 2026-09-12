@@ -10,9 +10,11 @@ export type SessionCatalogChange =
   | { readonly _tag: "ProjectSessionRemoved"; readonly sessionId: string }
   | {
       readonly _tag: "ProjectSessionsTransitioned";
-      readonly sessionIds: ReadonlyArray<string>;
+      readonly sessions: ReadonlyArray<{
+        readonly sessionId: string;
+        readonly workingDirectory: string;
+      }>;
       readonly projectPath: string;
-      readonly workingDirectory: string;
       readonly resolved: boolean;
     }
   | {

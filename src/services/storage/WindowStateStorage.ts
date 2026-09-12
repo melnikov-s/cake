@@ -595,15 +595,21 @@ const migrateVersion8WindowState = (snapshot: Schema.Schema.Type<typeof Schema.J
         if (!metadata) return [];
         const familyId = decodeString(metadata.familyId);
         const familyParentSessionId = decodeString(metadata.familyParentSessionId);
+        const familyChildSessionIds = decodeStringArray(metadata.familyChildSessionIds);
         const familyChildOrder = decodeNumber(metadata.familyChildOrder);
+        const familyDepth = decodeNumber(metadata.familyDepth);
         const familyMetadata = compactJsonRecord({
           familyId,
           familyParentSessionId,
+          ...(familyChildSessionIds.length > 0 ? { familyChildSessionIds } : null),
           familyChildOrder,
+          familyDepth,
         });
         return familyId !== undefined ||
           familyParentSessionId !== undefined ||
-          familyChildOrder !== undefined
+          familyChildSessionIds.length > 0 ||
+          familyChildOrder !== undefined ||
+          familyDepth !== undefined
           ? [[sessionId, familyMetadata]]
           : [];
       }),

@@ -150,6 +150,7 @@ export interface CakeRuntimeOptions {
         initialPrompt: string;
         model: ChatConfiguration;
         placement: "none" | "right" | "down";
+        worktreeName?: string;
       },
       signal: AbortSignal,
     ): Promise<JsonValue>;
@@ -162,6 +163,12 @@ export interface CakeRuntimeOptions {
       destinationWorkingDirectory?: string;
     }): Promise<JsonValue>;
     routeFamilyMessage?(input: JsonObject, signal: AbortSignal): Promise<JsonValue | undefined>;
+    mergeSession?(targetSessionId: string | undefined, signal: AbortSignal): Promise<JsonValue>;
+    discardSession?(
+      targetSessionId: string | undefined,
+      keepBranch: boolean,
+      signal: AbortSignal,
+    ): Promise<JsonValue>;
     invokeAppControl?(command: string, input: JsonObject, signal: AbortSignal): Promise<JsonValue>;
   };
   vscodeControl?: VscodeControl;
@@ -590,12 +597,23 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
           initialPrompt: input.initialPrompt,
           placement: input.placement,
           model: configuration.resolveModelSelection(input.model),
+          ...(input.worktreeName === undefined ? null : { worktreeName: input.worktreeName }),
         },
         signal,
       );
     },
     async forkSession(input) {
       return continuations.scheduleFork(input);
+    },
+    async mergeSession(targetSessionId, signal) {
+      const merge = options.currentSessionControl?.mergeSession;
+      if (!merge) throw new Error("Managed Worktree merge is unavailable in this runtime");
+      return merge(targetSessionId, signal);
+    },
+    async discardSession(targetSessionId, keepBranch, signal) {
+      const discard = options.currentSessionControl?.discardSession;
+      if (!discard) throw new Error("Managed Worktree discard is unavailable in this runtime");
+      return discard(targetSessionId, keepBranch, signal);
     },
     async invokeAppControl(command, input, signal) {
       const familyResult =

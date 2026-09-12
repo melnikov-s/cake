@@ -112,6 +112,8 @@ test("opens family children beside their parent and reuses the child pane", asyn
         title: "Background child",
         familyId: "family-1",
         familyChildOrder: 0,
+        familyDepth: 1,
+        workingDirectory: project,
         placement: "none",
       },
     });
@@ -128,6 +130,8 @@ test("opens family children beside their parent and reuses the child pane", asyn
         title: "First child",
         familyId: "family-1",
         familyChildOrder: 0,
+        familyDepth: 1,
+        workingDirectory: project,
         placement: "right",
       },
     });
@@ -181,6 +185,8 @@ test("opens family children beside their parent and reuses the child pane", asyn
         title: "Second child",
         familyId: "family-1",
         familyChildOrder: 1,
+        familyDepth: 1,
+        workingDirectory: project,
         placement: "right",
       },
     });

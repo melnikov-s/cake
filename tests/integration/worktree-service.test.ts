@@ -79,6 +79,23 @@ describe("WorktreeService", { timeout: 20_000 }, () => {
     expect(existsSync(join(record.worktreePath, "README.md"))).toBe(true);
   });
 
+  it("branches from the default branch when the current checkout has a different tip", async () => {
+    const repo = await repository();
+    const defaultTip = (await git(repo, "rev-parse", "main")).stdout.trim();
+    await git(repo, "update-ref", "refs/remotes/origin/main", defaultTip);
+    await git(repo, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main");
+    await git(repo, "checkout", "-b", "unrelated-feature");
+    await writeFile(join(repo, "unrelated.txt"), "unrelated\n");
+    await commitAll(repo, "unrelated feature");
+
+    const record = await service().create(repo, undefined, "default-based");
+
+    expect(record.baseBranch).toBe("main");
+    expect(record.baseCommit).toBe(defaultTip);
+    expect((await git(record.worktreePath, "rev-parse", "HEAD")).stdout.trim()).toBe(defaultTip);
+    expect(existsSync(join(record.worktreePath, "unrelated.txt"))).toBe(false);
+  });
+
   it("runs project-specific creation and setup commands before returning", async () => {
     const repo = await repository();
     const record = await service().create(repo, undefined, "configured", {
@@ -116,6 +133,23 @@ describe("WorktreeService", { timeout: 20_000 }, () => {
     expect(second.worktreePath).toMatch(/\/focused-fix-[a-f0-9]{6}$/);
     expect(existsSync(first.worktreePath)).toBe(true);
     expect(existsSync(second.worktreePath)).toBe(true);
+  });
+
+  it("branches from the project checkout's current branch when it is the explicit base", async () => {
+    const repo = await repository();
+    await git(repo, "checkout", "-b", "feature-base");
+    await writeFile(join(repo, "feature.txt"), "feature\n");
+    await git(repo, "add", "-A");
+    await git(repo, "commit", "-m", "feature base");
+    const expectedBase = (await git(repo, "rev-parse", "HEAD")).stdout.trim();
+    const worktrees = service();
+
+    const child = await worktrees.create(repo, repo, "root-child");
+
+    expect(child.baseBranch).toBe("feature-base");
+    expect(child.baseCommit).toBe(expectedBase);
+    expect(child.parentWorktreePath).toBeUndefined();
+    await worktrees.discard(child.worktreePath, false);
   });
 
   it("branches a child worktree from a landed worktree", async () => {
@@ -758,9 +792,11 @@ describe("WorktreeService", { timeout: 20_000 }, () => {
     const first = await worktrees.create(repo);
     await writeFile(join(first.worktreePath, "feature.ts"), "export {};\n");
     await commitAll(first.worktreePath, "feature");
+    const parentTip = (await git(first.worktreePath, "rev-parse", "HEAD")).stdout.trim();
 
     const forked = await worktrees.createBranchOff(first.worktreePath);
     expect(forked.projectPath).toBe(first.projectPath);
+    expect(forked.baseCommit).toBe(parentTip);
     expect(forked.baseBranch).toBe(first.branch);
     expect(forked.parentWorktreePath).toBe(first.worktreePath);
     expect(forked.branch).not.toBe(first.branch);

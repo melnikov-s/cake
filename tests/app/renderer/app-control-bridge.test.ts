@@ -16,6 +16,7 @@ type AppControlHostOverrides = Partial<
 > & {
   sessionCoordination?: AppControlHost["sessionCoordination"];
   settings?: AppControlHost["settings"];
+  worktrees?: AppControlHost["worktrees"];
 };
 
 function createHost(overrides: AppControlHostOverrides = {}): AppControlHost {
@@ -56,6 +57,7 @@ function createHost(overrides: AppControlHostOverrides = {}): AppControlHost {
           },
         }),
       } satisfies AppControlHost["settings"]),
+    ...(overrides.worktrees ? { worktrees: overrides.worktrees } : null),
     sessions: {
       open: overrides.open ?? (async () => false),
       create:
@@ -120,6 +122,43 @@ describe("AppControlBridge", () => {
     expect(parameters).toContain('"modelId"');
     expect(parameters).toContain('"thinkingLevel"');
     expect(parameters).toContain('"fastMode"');
+  });
+
+  it("invokes internal Managed Worktree merge and discard controls without advertising them globally", async () => {
+    const merge = vi.fn(async () => "operation-1");
+    const discard = vi.fn(async () => undefined);
+    const bridge = new AppControlBridge(createHost({ worktrees: { merge, discard } }));
+
+    await expect(
+      bridge.invoke({
+        name: "worktrees.merge",
+        arguments: { sessionId: "child", workingDirectory: "/child-worktree" },
+      }),
+    ).resolves.toMatchObject({
+      ok: true,
+      command: "worktrees.merge",
+      operationId: "operation-1",
+    });
+    await expect(
+      bridge.invoke({
+        name: "worktrees.discard",
+        arguments: {
+          sessionId: "child",
+          workingDirectory: "/child-worktree",
+          keepBranch: false,
+        },
+      }),
+    ).resolves.toMatchObject({ ok: true, command: "worktrees.discard" });
+    expect(merge).toHaveBeenCalledWith({
+      sessionId: "child",
+      workingDirectory: "/child-worktree",
+    });
+    expect(discard).toHaveBeenCalledWith({
+      sessionId: "child",
+      workingDirectory: "/child-worktree",
+      keepBranch: false,
+    });
+    expect(listAppControlTools().map(({ command }) => command)).not.toContain("worktrees.merge");
   });
 
   it("describes the live pane layout relative to the calling project session", async () => {

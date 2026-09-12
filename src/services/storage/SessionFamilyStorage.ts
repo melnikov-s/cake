@@ -12,13 +12,22 @@ import {
 } from "effect";
 import { atomicWriteFile, type AtomicFileStage } from "./internal/atomicFile";
 
-const DOCUMENT_VERSION = 2;
+const DOCUMENT_VERSION = 3;
 const BoundedId = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
 const BoundedPath = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4_096));
 
-const SessionFamilyChild = Schema.Struct({
+const LegacySessionFamilyChild = Schema.Struct({
   sessionId: BoundedId,
   requestId: BoundedId,
+  createdAt: Schema.String,
+});
+
+const SessionFamilyChild = Schema.Struct({
+  sessionId: BoundedId,
+  parentSessionId: BoundedId,
+  requestId: BoundedId,
+  workingDirectory: BoundedPath,
+  managedWorktreePath: Schema.optionalKey(BoundedPath),
   createdAt: Schema.String,
 });
 interface SessionFamilyChild extends Schema.Schema.Type<typeof SessionFamilyChild> {}
@@ -33,6 +42,60 @@ export const SessionFamily = Schema.Struct({
   children: Schema.Array(SessionFamilyChild),
 });
 export interface SessionFamily extends Schema.Schema.Type<typeof SessionFamily> {}
+
+const LegacySessionFamily = Schema.Struct({
+  familyId: BoundedId,
+  parentSessionId: BoundedId,
+  projectPath: BoundedPath,
+  workingDirectory: BoundedPath,
+  managedWorktreePath: Schema.optionalKey(BoundedPath),
+  createdAt: Schema.String,
+  children: Schema.Array(LegacySessionFamilyChild),
+});
+
+export interface SessionFamilyMember {
+  readonly sessionId: string;
+  readonly parentSessionId?: string;
+  readonly workingDirectory: string;
+  readonly managedWorktreePath?: string;
+}
+
+export const familyMember = (
+  family: SessionFamily,
+  sessionId: string,
+): SessionFamilyMember | undefined => {
+  if (family.parentSessionId === sessionId) {
+    const root: SessionFamilyMember = {
+      sessionId,
+      workingDirectory: family.workingDirectory,
+    };
+    if (family.managedWorktreePath !== undefined)
+      Object.assign(root, { managedWorktreePath: family.managedWorktreePath });
+    return root;
+  }
+  return family.children.find((child) => child.sessionId === sessionId);
+};
+
+export const familyChildren = (family: SessionFamily, parentSessionId: string) =>
+  family.children.filter((child) => child.parentSessionId === parentSessionId);
+
+export const familyMemberIds = (family: SessionFamily) => [
+  family.parentSessionId,
+  ...family.children.map((child) => child.sessionId),
+];
+
+export const familyDepth = (family: SessionFamily, sessionId: string) => {
+  let depth = 0;
+  let member = familyMember(family, sessionId);
+  const visited = new Set<string>();
+  while (member?.parentSessionId !== undefined) {
+    if (visited.has(member.sessionId)) return undefined;
+    visited.add(member.sessionId);
+    depth += 1;
+    member = familyMember(family, member.parentSessionId);
+  }
+  return member ? depth : undefined;
+};
 
 const FamilyTransition = Schema.Struct({ parentSessionId: BoundedId, resolved: Schema.Boolean });
 const FamilyTurn = Schema.Struct({
@@ -102,11 +165,13 @@ export class SessionFamilyStorage extends Context.Service<
     readonly addChild: (input: {
       readonly familyId: string;
       readonly parentSessionId: string;
+      readonly parentWorkingDirectory: string;
+      readonly parentManagedWorktreePath?: string;
       readonly childSessionId: string;
+      readonly childWorkingDirectory: string;
+      readonly childManagedWorktreePath?: string;
       readonly requestId: string;
       readonly projectPath: string;
-      readonly workingDirectory: string;
-      readonly managedWorktreePath?: string;
       readonly createdAt: string;
     }) => Effect.Effect<SessionFamily, SessionFamilyStorageError>;
   }
@@ -127,11 +192,17 @@ const validateDocument = (document: SessionFamilyDocument): SessionFamilyDocumen
     if (memberIds.has(family.parentSessionId))
       throw new Error(`Session ${family.parentSessionId} belongs to more than one family`);
     memberIds.add(family.parentSessionId);
+    const precedingMembers = new Set([family.parentSessionId]);
     for (const child of family.children) {
+      if (!precedingMembers.has(child.parentSessionId))
+        throw new Error(
+          `Parent ${child.parentSessionId} must precede child ${child.sessionId} in its family`,
+        );
       if (memberIds.has(child.sessionId))
         throw new Error(`Session ${child.sessionId} belongs to more than one family`);
       if (requestIds.has(child.requestId))
         throw new Error(`Duplicate child creation request ${child.requestId}`);
+      precedingMembers.add(child.sessionId);
       memberIds.add(child.sessionId);
       requestIds.add(child.requestId);
     }
@@ -164,21 +235,44 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
         const envelope = yield* Schema.decodeUnknownEffect(StoredEnvelope)(parsed).pipe(
           Effect.mapError((cause) => storageError("load", cause)),
         );
-        if (envelope.version !== 1 && envelope.version !== DOCUMENT_VERSION)
+        if (![1, 2, DOCUMENT_VERSION].includes(envelope.version))
           return yield* storageError(
             "load",
             `Unsupported session family document version ${envelope.version}`,
           );
         const data =
-          envelope.version === 1
-            ? {
-                ...(yield* Schema.decodeUnknownEffect(
-                  Schema.Struct({ families: Schema.Array(SessionFamily) }),
-                )(envelope.data).pipe(Effect.mapError((cause) => storageError("migrate", cause)))),
-                transitions: [],
-                turns: [],
-              }
-            : envelope.data;
+          envelope.version === DOCUMENT_VERSION
+            ? envelope.data
+            : yield* Schema.decodeUnknownEffect(
+                Schema.Struct({
+                  families: Schema.Array(LegacySessionFamily),
+                  transitions:
+                    envelope.version === 1
+                      ? Schema.optionalKey(Schema.Array(FamilyTransition))
+                      : Schema.Array(FamilyTransition),
+                  turns:
+                    envelope.version === 1
+                      ? Schema.optionalKey(Schema.Array(FamilyTurn))
+                      : Schema.Array(FamilyTurn),
+                }),
+              )(envelope.data).pipe(
+                Effect.map((legacy) => ({
+                  families: legacy.families.map((family) => ({
+                    ...family,
+                    children: family.children.map((child) => ({
+                      ...child,
+                      parentSessionId: family.parentSessionId,
+                      workingDirectory: family.workingDirectory,
+                      ...(family.managedWorktreePath === undefined
+                        ? null
+                        : { managedWorktreePath: family.managedWorktreePath }),
+                    })),
+                  })),
+                  transitions: legacy.transitions ?? [],
+                  turns: legacy.turns ?? [],
+                })),
+                Effect.mapError((cause) => storageError("migrate", cause)),
+              );
         const document = yield* Schema.decodeUnknownEffect(SessionFamilyDocument)(data).pipe(
           Effect.mapError((cause) => storageError("load", cause)),
         );
@@ -235,15 +329,8 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
             );
             if (retried) return retried;
             const childOwner = document.families.find(
-              (family) =>
-                family.parentSessionId === input.parentSessionId ||
-                family.children.some((child) => child.sessionId === input.parentSessionId),
+              (family) => familyMember(family, input.parentSessionId) !== undefined,
             );
-            if (childOwner && childOwner.parentSessionId !== input.parentSessionId)
-              return yield* storageError(
-                "addChild",
-                "A child Project Session cannot create children",
-              );
             const conflictingMember = document.families.some(
               (family) =>
                 family.parentSessionId === input.childSessionId ||
@@ -254,21 +341,30 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
                 "addChild",
                 `Session ${input.childSessionId} already belongs to a family`,
               );
+            if (childOwner && childOwner.projectPath !== input.projectPath)
+              return yield* storageError(
+                "addChild",
+                "Session Family Project binding cannot change",
+              );
+            const parent = childOwner && familyMember(childOwner, input.parentSessionId);
             if (
-              childOwner &&
-              (childOwner.projectPath !== input.projectPath ||
-                childOwner.workingDirectory !== input.workingDirectory ||
-                childOwner.managedWorktreePath !== input.managedWorktreePath)
+              parent &&
+              (parent.workingDirectory !== input.parentWorkingDirectory ||
+                parent.managedWorktreePath !== input.parentManagedWorktreePath)
             )
               return yield* storageError(
                 "addChild",
-                "Family Working Directory binding cannot change",
+                "Session Family parent Working Directory binding cannot change",
               );
             const child: SessionFamilyChild = {
               sessionId: input.childSessionId,
+              parentSessionId: input.parentSessionId,
               requestId: input.requestId,
+              workingDirectory: input.childWorkingDirectory,
               createdAt: input.createdAt,
             };
+            if (input.childManagedWorktreePath !== undefined)
+              Object.assign(child, { managedWorktreePath: input.childManagedWorktreePath });
             let family: SessionFamily;
             if (childOwner) family = { ...childOwner, children: [...childOwner.children, child] };
             else {
@@ -276,12 +372,12 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
                 familyId: input.familyId,
                 parentSessionId: input.parentSessionId,
                 projectPath: input.projectPath,
-                workingDirectory: input.workingDirectory,
+                workingDirectory: input.parentWorkingDirectory,
                 createdAt: input.createdAt,
                 children: [child],
               };
-              if (input.managedWorktreePath !== undefined)
-                Object.assign(family, { managedWorktreePath: input.managedWorktreePath });
+              if (input.parentManagedWorktreePath !== undefined)
+                Object.assign(family, { managedWorktreePath: input.parentManagedWorktreePath });
             }
             const families = childOwner
               ? document.families.map((candidate) =>
@@ -414,17 +510,17 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
       );
       const removeProject = Effect.fn("SessionFamilyStorage.removeProject")((projectPath: string) =>
         update((document) => {
-          const removedParents = new Set(
-            document.families
-              .filter((family) => family.projectPath === projectPath)
-              .map((family) => family.parentSessionId),
+          const removedFamilies = document.families.filter(
+            (family) => family.projectPath === projectPath,
           );
+          const removedParents = new Set(removedFamilies.map((family) => family.parentSessionId));
+          const removedMembers = new Set(removedFamilies.flatMap(familyMemberIds));
           return {
             families: document.families.filter((family) => family.projectPath !== projectPath),
             transitions: document.transitions.filter(
               (transition) => !removedParents.has(transition.parentSessionId),
             ),
-            turns: document.turns.filter((turn) => !removedParents.has(turn.parentSessionId)),
+            turns: document.turns.filter((turn) => !removedMembers.has(turn.sessionId)),
           };
         }),
       );

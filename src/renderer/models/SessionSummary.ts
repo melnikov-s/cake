@@ -16,6 +16,7 @@ export class SessionSummary extends Model {
   familyParentSessionId: string | undefined;
   familyChildSessionIds: readonly string[] | undefined;
   familyChildOrder: number | undefined;
+  familyDepth: number | undefined;
   pending = false;
   draft = false;
 }

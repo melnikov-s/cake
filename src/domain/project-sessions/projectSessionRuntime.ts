@@ -1,4 +1,6 @@
 import * as sessionFamilies from "../session-families/sessionFamilies";
+import * as projectSessionLocations from "./projectSessionLocations";
+import * as managedWorktrees from "../worktrees/managedWorktrees";
 import { Effect, Schema, Schedule } from "effect";
 import { setSessionFastMode } from "../application/application";
 import { encodeCrossSessionMessage } from "../conversations/cross-session-coordination";
@@ -18,7 +20,11 @@ import * as projectSessionLifecycle from "./projectSessionLifecycle";
 import { SessionCatalogChanges } from "../../services/session-catalogs/SessionCatalogChanges";
 import { ApplicationState } from "../../services/storage/ApplicationState";
 import { SessionArchiveStorage } from "../../services/storage/SessionArchiveStorage";
-import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
+import {
+  SessionFamilyStorage,
+  familyChildren,
+  familyMember,
+} from "../../services/storage/SessionFamilyStorage";
 import type { SubagentCoordinator } from "../../services/subagents/SubagentCoordinator";
 import type { SubagentEnvironment } from "../../services/subagents/SubagentEnvironment";
 import { VsCodeServer } from "../../services/vscode/VsCodeServer";
@@ -104,14 +110,62 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
   const family = yield* families
     .familyForMember(sessionId)
     .pipe(Effect.mapError((cause) => compositionError("acquireOptions", cause)));
-  const isChild = family?.parentSessionId !== undefined && family.parentSessionId !== sessionId;
-  const relationshipPrompt = isChild
-    ? renderPromptTemplate(childSessionFamilyPromptTemplate, {
-        familyId: family.familyId,
-        parentSessionId: family.parentSessionId,
-        workingDirectory: family.workingDirectory,
-      })
-    : renderPromptTemplate(parentSessionFamilyPromptTemplate);
+  const member = family && familyMember(family, sessionId);
+  const isChild = member?.parentSessionId !== undefined;
+  const relationshipPrompt =
+    family && member?.parentSessionId
+      ? renderPromptTemplate(childSessionFamilyPromptTemplate, {
+          familyId: family.familyId,
+          parentSessionId: member.parentSessionId,
+          workingDirectory: member.workingDirectory,
+        })
+      : renderPromptTemplate(parentSessionFamilyPromptTemplate);
+  const worktreeOperationTarget = Effect.fn("ProjectSessions.worktreeOperationTarget")(function* (
+    targetSessionId?: string,
+  ) {
+    const currentFamily = yield* families
+      .familyForMember(sessionId)
+      .pipe(Effect.mapError((cause) => compositionError("worktreeOperation", cause)));
+    const targetId = targetSessionId ?? sessionId;
+    let targetMember = currentFamily && familyMember(currentFamily, sessionId);
+    if (targetSessionId !== undefined) {
+      if (!currentFamily)
+        return yield* compositionError(
+          "worktreeOperation",
+          "Only a Session Family parent can target a child session",
+        );
+      targetMember = currentFamily.children.find(
+        (child) => child.sessionId === targetSessionId && child.parentSessionId === sessionId,
+      );
+      if (!targetMember)
+        return yield* compositionError(
+          "worktreeOperation",
+          "The target must be an immediate child of the calling session",
+        );
+    }
+    const workingDirectory = targetMember?.workingDirectory ?? location.workingDirectory;
+    if (targetMember?.parentSessionId && currentFamily) {
+      const parent = familyMember(currentFamily, targetMember.parentSessionId);
+      if (parent?.workingDirectory === workingDirectory)
+        return yield* compositionError(
+          "worktreeOperation",
+          "That session shares its parent's Working Directory and has no child worktree to merge or discard",
+        );
+    }
+    const targetLocation = (yield* projectSessionLocations.locations({
+      includeInactive: true,
+    })).find(
+      (candidate) =>
+        candidate.projectPath === location.projectPath &&
+        candidate.workingDirectory === workingDirectory,
+    );
+    if (!targetLocation?.managedWorktree)
+      return yield* compositionError(
+        "worktreeOperation",
+        "That session does not have an isolated Cake-managed worktree",
+      );
+    return { sessionId: targetId, location: targetLocation };
+  });
   const getRuntimeOptions = () => runtimeOptions;
   const runtimeOptions: PiSessionAcquireOptions = {
     profile: { _tag: "ProjectSession" },
@@ -167,25 +221,19 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
       currentSessionControl: {
         // An acquired Project Session is necessarily in the active namespace.
         resolved: () => false,
-        canResolve: () => !isChild,
+        canResolve: () => true,
         familyInfo: family
           ? () => {
               const info = {
                 familyId: family.familyId,
-                parentSessionId: family.parentSessionId,
-                role: isChild ? "child" : "parent",
+                parentSessionId: member?.parentSessionId ?? family.parentSessionId,
+                role: isChild ? "child" : "root",
+                childSessionIds: familyChildren(family, sessionId).map((child) => child.sessionId),
               };
-              return toJsonValue(
-                isChild
-                  ? info
-                  : {
-                      ...info,
-                      childSessionIds: family.children.map((child) => child.sessionId),
-                    },
-              );
+              return toJsonValue(info);
             }
           : undefined,
-        deferResolution: family === undefined,
+        deferResolution: family === undefined || isChild,
         setResolved: (resolved) =>
           run(
             (resolved ? projectSessionLifecycle.resolve : projectSessionLifecycle.restore)({
@@ -200,40 +248,77 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
           ),
         createDraftSession: (input, signal) =>
           runtimeIntegrations.requestApplicationControl({ _tag: "CreateDraft", ...input }, signal),
-        createChildSession: isChild
-          ? undefined
-          : async (input, signal) => {
-              const result = await run(
-                Effect.scoped(
-                  sessionFamilies.createChild(sessionId, location, input, (childId) =>
-                    acquireOptions({
-                      location,
-                      sessionId: childId,
-                      newSession: true,
+        createChildSession: async (input, signal) => {
+          const result = await run(
+            Effect.scoped(
+              sessionFamilies.createChild(
+                sessionId,
+                location,
+                input,
+                (childId, childLocation) =>
+                  acquireOptions({
+                    location: childLocation,
+                    sessionId: childId,
+                    newSession: true,
+                  }),
+                (worktreeName) =>
+                  managedWorktrees
+                    .create({
+                      projectPath: location.projectPath,
+                      baseWorktreePath: location.workingDirectory,
+                      worktreeName,
+                    })
+                    .pipe(
+                      Effect.map((record) => ({
+                        ...location,
+                        workingDirectory: record.worktreePath,
+                        managedWorktree: record,
+                      })),
+                    ),
+                (workingDirectory) =>
+                  projectSessionLocations.locations({ includeInactive: true }).pipe(
+                    Effect.flatMap((locations) => {
+                      const childLocation = locations.find(
+                        (candidate) =>
+                          candidate.projectPath === location.projectPath &&
+                          candidate.workingDirectory === workingDirectory,
+                      );
+                      return childLocation
+                        ? Effect.succeed(childLocation)
+                        : Effect.fail(
+                            compositionError(
+                              "createChild",
+                              `Child Working Directory unavailable: ${workingDirectory}`,
+                            ),
+                          );
                     }),
                   ),
-                ),
-                { signal },
-              );
-              if (result.launch.status === "failed") return toJsonValue(result);
-              const presentation = await runtimeIntegrations
-                .requestApplicationControl(
-                  {
-                    _tag: "ProjectChildSession",
-                    childSessionId: result.childSessionId,
-                    title: input.title,
-                    familyId: result.familyId,
-                    familyChildOrder: result.familyChildOrder,
-                    placement: input.placement,
-                  },
-                  signal,
-                )
-                .catch((error) => ({
-                  ok: false,
-                  error: error instanceof Error ? error.message : String(error),
-                }));
-              return toJsonValue({ ...result, presentation });
-            },
+                (workingDirectory) => managedWorktrees.discard(workingDirectory, false),
+              ),
+            ),
+            { signal },
+          );
+          if (result.launch.status === "failed") return toJsonValue(result);
+          const presentation = await runtimeIntegrations
+            .requestApplicationControl(
+              {
+                _tag: "ProjectChildSession",
+                childSessionId: result.childSessionId,
+                title: input.title,
+                familyId: result.familyId,
+                familyChildOrder: result.familyChildOrder,
+                familyDepth: result.familyDepth,
+                workingDirectory: result.workingDirectory,
+                placement: input.placement,
+              },
+              signal,
+            )
+            .catch((error) => ({
+              ok: false,
+              error: error instanceof Error ? error.message : String(error),
+            }));
+          return toJsonValue({ ...result, presentation });
+        },
         forkSession: family
           ? undefined
           : (input) =>
@@ -241,6 +326,35 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
                 { _tag: "ForkSession", ...input },
                 new AbortController().signal,
               ),
+        mergeSession: async (targetSessionId, signal) => {
+          const target = await run(worktreeOperationTarget(targetSessionId), { signal });
+          return runtimeIntegrations.requestApplicationControl(
+            {
+              _tag: "InvokeAppControl",
+              command: "worktrees.merge",
+              input: {
+                sessionId: target.sessionId,
+                workingDirectory: target.location.workingDirectory,
+              },
+            },
+            signal,
+          );
+        },
+        discardSession: async (targetSessionId, keepBranch, signal) => {
+          const target = await run(worktreeOperationTarget(targetSessionId), { signal });
+          return runtimeIntegrations.requestApplicationControl(
+            {
+              _tag: "InvokeAppControl",
+              command: "worktrees.discard",
+              input: {
+                sessionId: target.sessionId,
+                workingDirectory: target.location.workingDirectory,
+                keepBranch,
+              },
+            },
+            signal,
+          );
+        },
         routeFamilyMessage: (untrustedInput, signal) =>
           run(
             Effect.scoped(
@@ -252,14 +366,23 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
                   .familyForMember(sessionId)
                   .pipe(Effect.mapError((cause) => compositionError("familyMessage", cause)));
                 if (!family) return undefined;
-                const memberIds = new Set([
-                  family.parentSessionId,
-                  ...family.children.map((child) => child.sessionId),
-                ]);
-                if (!memberIds.has(input.sessionId)) return undefined;
+                const destinationMember = familyMember(family, input.sessionId);
+                if (!destinationMember) return undefined;
+                const destinationLocation = (yield* projectSessionLocations.locations({
+                  includeInactive: true,
+                })).find(
+                  (candidate) =>
+                    candidate.projectPath === family.projectPath &&
+                    candidate.workingDirectory === destinationMember.workingDirectory,
+                );
+                if (!destinationLocation)
+                  return yield* compositionError(
+                    "familyMessage",
+                    `Working Directory unavailable: ${destinationMember.workingDirectory}`,
+                  );
                 const namespace = yield* archive
                   .locate(input.sessionId, {
-                    cwd: family.workingDirectory,
+                    cwd: destinationMember.workingDirectory,
                     activeRoot: configuration.sessionDirectory,
                     resolvedRoot: configuration.resolvedSessionDirectory,
                   })
@@ -275,7 +398,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
                     `Family member ${input.sessionId} could not be found`,
                   );
                 const destinationOptions = yield* acquireOptions({
-                  location,
+                  location: destinationLocation,
                   sessionId: input.sessionId,
                   newSession: false,
                 });
@@ -312,8 +435,8 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
                     : { ...messageMetadata, maxMessages: input.maxMessages },
                 );
                 const repliesToParent =
-                  family.parentSessionId !== sessionId &&
-                  input.sessionId === family.parentSessionId;
+                  member?.parentSessionId !== undefined &&
+                  input.sessionId === member.parentSessionId;
                 const sourceTurnIds = repliesToParent
                   ? yield* sessions.executingTurnIds({
                       workingDirectory: location.workingDirectory,
@@ -338,7 +461,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
                   _tag: "ProjectSessionChanged",
                   sessionId: input.sessionId,
                   projectPath: location.projectPath,
-                  workingDirectory: location.workingDirectory,
+                  workingDirectory: destinationLocation.workingDirectory,
                   resolved: false,
                 });
                 return toJsonValue({

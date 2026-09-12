@@ -95,11 +95,12 @@ identity to the renderer.
 
 ### Session Family
 
-A durable Cake-owned, one-level relationship among ordinary Project Sessions. A
-Session Family has exactly one parent Project Session and zero or more direct
-child Project Sessions in stable creation order. Every member remains an
-independent Pi Session with its own transcript, runtime, context, and model
-configuration. Family identity and membership are not Pi transcript ancestry.
+A durable Cake-owned, recursively nested relationship among ordinary Project
+Sessions. A Session Family has one root; every non-root member has exactly one
+immediate parent, and each parent's direct children retain stable creation order.
+Every member remains an independent Pi Session with its own transcript, runtime,
+context, model configuration, and fixed Working Directory. Family identity and
+membership are not Pi transcript ancestry.
 
 ### Coordination Thread
 

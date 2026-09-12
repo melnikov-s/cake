@@ -177,7 +177,10 @@ const makeLayer = (
       readonly createdAt: string;
       readonly children: ReadonlyArray<{
         readonly sessionId: string;
+        readonly parentSessionId?: string;
         readonly requestId: string;
+        readonly workingDirectory?: string;
+        readonly managedWorktreePath?: string;
         readonly createdAt: string;
       }>;
     };
@@ -201,6 +204,16 @@ const makeLayer = (
             },
           ],
         };
+  const family = hooks.family
+    ? {
+        ...hooks.family,
+        children: hooks.family.children.map((child) => ({
+          ...child,
+          parentSessionId: child.parentSessionId ?? hooks.family?.parentSessionId ?? "",
+          workingDirectory: child.workingDirectory ?? hooks.family?.workingDirectory ?? "",
+        })),
+      }
+    : undefined;
   const application = Layer.effect(
     ApplicationState,
     Effect.gen(function* () {
@@ -280,13 +293,13 @@ const makeLayer = (
     application,
     catalogChanges,
     Layer.succeed(SessionFamilyStorage, {
-      list: () => Effect.succeed(hooks.family ? [hooks.family] : []),
+      list: () => Effect.succeed(family ? [family] : []),
       familyForMember: (sessionId) =>
         Effect.succeed(
-          hooks.family &&
-            (hooks.family.parentSessionId === sessionId ||
-              hooks.family.children.some((child) => child.sessionId === sessionId))
-            ? hooks.family
+          family &&
+            (family.parentSessionId === sessionId ||
+              family.children.some((child) => child.sessionId === sessionId))
+            ? family
             : undefined,
         ),
       addChild: () => Effect.die("Unexpected family child creation"),
@@ -675,7 +688,8 @@ describe("Project Sessions domain", () => {
     }).pipe(Effect.provide(makeLayer(undefined, { sessionExists: false }))),
   );
 
-  it.effect("rejects independent Session Family child lifecycle transitions", () => {
+  it.effect("resolves and restores an individual Session Family child", () => {
+    const transitions: string[] = [];
     const family = {
       familyId: "family-1",
       parentSessionId: "parent-1",
@@ -691,39 +705,24 @@ describe("Project Sessions domain", () => {
       ],
     };
     return Effect.gen(function* () {
-      const resolveError = yield* Effect.flip(
-        projectSessionLifecycle.moveWorkflowSession({
-          projectPath: "/project",
-          sessionId: "session-1",
-          workingDirectory: "/project",
-          destination: { _tag: "Resolved" },
+      yield* projectSessionLifecycle.resolve({
+        sessionId: "session-1",
+        workingDirectory: "/project",
+      });
+      yield* projectSessionLifecycle.restore({
+        sessionId: "session-1",
+        workingDirectory: "/project",
+      });
+      assert.deepEqual(transitions, ["resolve:session-1", "restore:session-1"]);
+    }).pipe(
+      Effect.provide(
+        makeLayer(undefined, {
+          family,
+          onArchive: (sessionId) => transitions.push(`resolve:${sessionId}`),
+          onRestore: (sessionId) => transitions.push(`restore:${sessionId}`),
         }),
-      );
-      assert.equal(
-        resolveError.message,
-        "Resolve or restore this Session Family from its parent card",
-      );
-      const restoreError = yield* Effect.flip(
-        projectSessionLifecycle.moveWorkflowSession({
-          projectPath: "/project",
-          sessionId: "session-1",
-          workingDirectory: "/project",
-          destination: { _tag: "Active" },
-        }),
-      );
-      assert.equal(
-        restoreError.message,
-        "Resolve or restore this Session Family from its parent card",
-      );
-      const directResolve = yield* Effect.flip(
-        projectSessionLifecycle.resolve({ sessionId: "session-1", workingDirectory: "/project" }),
-      );
-      assert.equal(directResolve.message, "Only the Session Family parent can resolve the family");
-      const directRestore = yield* Effect.flip(
-        projectSessionLifecycle.restore({ sessionId: "session-1", workingDirectory: "/project" }),
-      );
-      assert.equal(directRestore.message, "Only the Session Family parent can restore the family");
-    }).pipe(Effect.provide(makeLayer(undefined, { family, resolvedOnDisk: true })));
+      ),
+    );
   });
 
   it.effect("loads resolved metadata without consulting Pi or project environments", () => {
@@ -1476,9 +1475,11 @@ describe("Project Sessions domain", () => {
           assert.deepEqual(changes, [
             {
               _tag: "ProjectSessionsTransitioned",
-              sessionIds: ["parent", "child"],
+              sessions: [
+                { sessionId: "parent", workingDirectory: "/project" },
+                { sessionId: "child", workingDirectory: "/project" },
+              ],
               projectPath: "/project",
-              workingDirectory: "/project",
               resolved: false,
             },
           ]);

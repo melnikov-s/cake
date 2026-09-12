@@ -27,10 +27,11 @@ const turnId = "eb8dcb83-691b-4fbe-9a65-1ce8461e6c7d";
 const reservation = {
   familyId: "family",
   parentSessionId: "session-1",
+  parentWorkingDirectory: "/project",
   childSessionId: childId,
+  childWorkingDirectory: "/project",
   requestId: "request",
   projectPath: "/project",
-  workingDirectory: "/project",
   createdAt: "2026-09-05",
 };
 const outcome = {

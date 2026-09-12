@@ -143,7 +143,12 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     sessionId: string,
     workingDirectory: string,
     title: string,
-    family: { familyId: string; parentSessionId: string; childOrder: number },
+    family: {
+      familyId: string;
+      parentSessionId: string;
+      childOrder: number;
+      depth: number;
+    },
   ) {
     return batch(() => {
       const session = this.load(sessionId, workingDirectory);

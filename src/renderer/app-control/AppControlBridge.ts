@@ -133,6 +133,15 @@ const appControlArgumentSchemas = {
     title: trimmed(1, SESSION_TITLE_MAX_LENGTH),
   }),
   "sessions.resolve": sessionResolutionSchema,
+  "worktrees.merge": Schema.Struct({
+    sessionId: bounded(1, 256),
+    workingDirectory: bounded(1, 4_096),
+  }),
+  "worktrees.discard": Schema.Struct({
+    sessionId: bounded(1, 256),
+    workingDirectory: bounded(1, 4_096),
+    keepBranch: Schema.Boolean,
+  }),
   "notifications.send": Schema.Struct({
     title: trimmed(1, 256),
     body: trimmed(1, 2_000),
@@ -179,6 +188,8 @@ const appControlInvocationSchema = Schema.Union([
   invocation("sessions.abort"),
   invocation("sessions.rename"),
   invocation("sessions.resolve"),
+  invocation("worktrees.merge"),
+  invocation("worktrees.discard"),
   invocation("notifications.send"),
   invocation("agent.action"),
 ]);
@@ -197,7 +208,11 @@ type SessionSummaryView = Pick<
   Partial<
     Pick<
       SessionSummary,
-      "familyId" | "familyParentSessionId" | "familyChildSessionIds" | "familyChildOrder"
+      | "familyId"
+      | "familyParentSessionId"
+      | "familyChildSessionIds"
+      | "familyChildOrder"
+      | "familyDepth"
     >
   >;
 
@@ -275,6 +290,14 @@ export interface AppControlHost {
     get(section: CakeSettingsSectionId): CakeSettingsSectionView;
     update(input: CakeSettingsUpdate): Promise<CakeSettingsSectionView>;
   };
+  worktrees?: {
+    merge(input: { sessionId: string; workingDirectory: string }): Promise<string>;
+    discard(input: {
+      sessionId: string;
+      workingDirectory: string;
+      keepBranch: boolean;
+    }): Promise<void>;
+  };
   sessions: {
     open(sessionId: string, messageId?: string): Promise<boolean | void>;
     create(input: {
@@ -346,6 +369,7 @@ export interface AppControlSession {
   familyParentSessionId?: string;
   familyChildSessionIds?: readonly string[];
   familyChildOrder?: number;
+  familyDepth?: number;
   activity?: SessionActivity;
 }
 
@@ -453,6 +477,20 @@ export type AppControlResult =
     }
   | { ok: true; command: "sessions.abort"; target: SessionTarget; status: "stopping" }
   | { ok: true; command: "sessions.rename"; target: SessionTarget; title: string }
+  | {
+      ok: true;
+      command: "worktrees.merge";
+      sessionId: string;
+      workingDirectory: string;
+      operationId: string;
+    }
+  | {
+      ok: true;
+      command: "worktrees.discard";
+      sessionId: string;
+      workingDirectory: string;
+      keepBranch: boolean;
+    }
   | {
       ok: true;
       command: "sessions.resolve";
@@ -762,6 +800,25 @@ export class AppControlBridge {
         sessions: state.recentSessions,
         attentionSessions: state.attentionSessions,
       });
+    }
+    if (invocation.name === "worktrees.merge") {
+      if (!this.host.worktrees) throw new Error("Managed Worktree controls are unavailable");
+      const operationId = await this.host.worktrees.merge(invocation.arguments);
+      return {
+        ok: true,
+        command: invocation.name,
+        ...invocation.arguments,
+        operationId,
+      };
+    }
+    if (invocation.name === "worktrees.discard") {
+      if (!this.host.worktrees) throw new Error("Managed Worktree controls are unavailable");
+      await this.host.worktrees.discard(invocation.arguments);
+      return {
+        ok: true,
+        command: invocation.name,
+        ...invocation.arguments,
+      };
     }
     if (invocation.name === "sessions.resolve") return this.resolveSessions(invocation.arguments);
     if (invocation.name === "app.state")
@@ -1326,6 +1383,7 @@ export class AppControlBridge {
           familyParentSessionId: session.familyParentSessionId,
           familyChildSessionIds: session.familyChildSessionIds,
           familyChildOrder: session.familyChildOrder,
+          familyDepth: session.familyDepth,
         }
       : resultWithWorktree;
     return activity ? { ...resultWithFamily, activity } : resultWithFamily;

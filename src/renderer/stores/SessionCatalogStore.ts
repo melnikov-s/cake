@@ -21,6 +21,7 @@ export interface PendingSessionSummary {
   familyParentSessionId?: string;
   familyChildSessionIds?: readonly string[];
   familyChildOrder?: number;
+  familyDepth?: number;
   pending: true;
   draft: boolean;
 }

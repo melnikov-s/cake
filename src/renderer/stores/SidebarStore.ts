@@ -353,9 +353,14 @@ export class SidebarStore extends Store<SidebarStoreProps> {
   }) {
     const own = this.sessionActivity(session.sessionId);
     if (!session.familyChildSessionIds || !this.isFamilyCollapsed(session.sessionId)) return own;
+    const descendants = (sessionIds: readonly string[]): string[] =>
+      sessionIds.flatMap((id) => {
+        const child = this.props.catalog.find(id);
+        return [id, ...descendants(child?.familyChildSessionIds ?? [])];
+      });
     const activities = [
       own,
-      ...session.familyChildSessionIds.map((id) => this.sessionActivity(id)),
+      ...descendants(session.familyChildSessionIds).map((id) => this.sessionActivity(id)),
     ];
     if (activities.includes("waiting")) return "waiting";
     if (activities.includes("running")) return "running";
@@ -446,13 +451,15 @@ export class SidebarStore extends Store<SidebarStoreProps> {
     byId: ReturnType<SidebarStore["sortedProjectSessionRoots"]>["byId"],
     roots: ReturnType<SidebarStore["sortedProjectSessionRoots"]>["roots"],
   ) {
-    return roots.flatMap((root) => {
-      if (!root.familyChildSessionIds || this.isFamilyCollapsed(root.sessionId)) return [root];
-      const children = root.familyChildSessionIds
+    const flatten = (session: (typeof roots)[number]): Array<(typeof roots)[number]> => {
+      if (!session.familyChildSessionIds?.length || this.isFamilyCollapsed(session.sessionId))
+        return [session];
+      const children = session.familyChildSessionIds
         .flatMap((id) => (byId.get(id) ? [byId.get(id)!] : []))
         .sort((left, right) => (left.familyChildOrder ?? 0) - (right.familyChildOrder ?? 0));
-      return [root, ...children];
-    });
+      return [session, ...children.flatMap(flatten)];
+    };
+    return roots.flatMap(flatten);
   }
 
   private sortedProjectSessionRoots(
@@ -470,18 +477,13 @@ export class SidebarStore extends Store<SidebarStoreProps> {
         session.familyParentSessionId === session.sessionId ||
         !byId.has(session.familyParentSessionId),
     );
-    const latestActivity = (session: (typeof sessions)[number]) => {
-      const members = session.familyChildSessionIds
-        ? [
-            session,
-            ...session.familyChildSessionIds.flatMap((id) => (byId.get(id) ? [byId.get(id)!] : [])),
-          ]
-        : [session];
-      return members.reduce(
-        (latest, member) => (member.modifiedAt > latest ? member.modifiedAt : latest),
-        session.modifiedAt,
-      );
-    };
+    const latestActivity = (session: (typeof sessions)[number]): string =>
+      (session.familyChildSessionIds ?? []).reduce((latest, id) => {
+        const child = byId.get(id);
+        if (!child) return latest;
+        const childLatest = latestActivity(child);
+        return childLatest > latest ? childLatest : latest;
+      }, session.modifiedAt);
     roots.sort((left, right) =>
       compareSessionSummariesForSidebar(
         { modifiedAt: latestActivity(left), draft: left.draft },
@@ -578,11 +580,20 @@ export class SidebarStore extends Store<SidebarStoreProps> {
     const summary = this.props.catalog.find(selected.sessionId);
     if (!summary) return;
     const { byId, roots } = this.sortedProjectSessionRoots(summary.projectPath, summary.resolved);
-    const parentId = summary.familyParentSessionId;
-    const rootId =
-      parentId && parentId !== summary.sessionId && byId.has(parentId)
-        ? parentId
-        : summary.sessionId;
+    let rootId = summary.sessionId;
+    let current = summary;
+    const visited = new Set<string>();
+    while (
+      current.familyParentSessionId &&
+      current.familyParentSessionId !== current.sessionId &&
+      !visited.has(current.sessionId)
+    ) {
+      const parent = byId.get(current.familyParentSessionId);
+      if (!parent) break;
+      visited.add(current.sessionId);
+      rootId = parent.sessionId;
+      current = parent;
+    }
     const index = roots.findIndex((session) => session.sessionId === rootId);
     if (index >= 0)
       this.pinnedSession = {

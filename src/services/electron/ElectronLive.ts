@@ -521,7 +521,7 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
                         icon: workflowStatusMenuIcon(status.color),
                         click: () => finish("set-status", status.id),
                       })),
-                    ...(request.draft || request.familyChild || request.resolved
+                    ...(request.draft || request.resolved
                       ? []
                       : [
                           {
@@ -543,22 +543,22 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
                 copyId,
               ];
               const menu = Menu.buildFromTemplate(
-                request.familyChild
-                  ? request.resolved
-                    ? [copyId]
-                    : activeItems
-                  : request.resolved
-                    ? [
-                        ...(statusMenu
-                          ? [statusMenu]
-                          : [{ label: "Unresolve", click: () => finish("unresolve") }]),
-                        copyId,
-                        { type: "separator" },
-                        { label: "Delete", click: () => finish("delete") },
-                      ]
-                    : request.draft || statusMenu
-                      ? activeItems
-                      : [...activeItems, { label: "Resolve", click: () => finish("resolve") }],
+                request.resolved
+                  ? [
+                      ...(statusMenu
+                        ? [statusMenu]
+                        : [{ label: "Unresolve", click: () => finish("unresolve") }]),
+                      copyId,
+                      ...(request.familyChild
+                        ? []
+                        : [
+                            { type: "separator" as const },
+                            { label: "Delete", click: () => finish("delete") },
+                          ]),
+                    ]
+                  : request.draft || statusMenu
+                    ? activeItems
+                    : [...activeItems, { label: "Resolve", click: () => finish("resolve") }],
               );
               openSessionContextMenus.add(menu);
               menu.popup({

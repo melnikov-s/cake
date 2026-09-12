@@ -446,6 +446,84 @@ describe("SidebarStore catalog demand", () => {
     store[Symbol.dispose]();
   });
 
+  it("flattens recursive families in parent-first order and collapses each subtree", () => {
+    const summaries = [
+      {
+        sessionId: "root",
+        modifiedAt: "2026-01-01T00:00:00.000Z",
+        resolved: false,
+        draft: false,
+        projectPath: "/cake",
+        familyParentSessionId: "root",
+        familyChildSessionIds: ["planner", "sibling"],
+      },
+      {
+        sessionId: "planner",
+        modifiedAt: "2026-01-02T00:00:00.000Z",
+        resolved: false,
+        draft: false,
+        projectPath: "/cake",
+        familyParentSessionId: "root",
+        familyChildSessionIds: ["worker"],
+        familyChildOrder: 0,
+      },
+      {
+        sessionId: "worker",
+        modifiedAt: "2026-01-03T00:00:00.000Z",
+        resolved: false,
+        draft: false,
+        projectPath: "/cake",
+        familyParentSessionId: "planner",
+        familyChildSessionIds: [],
+        familyChildOrder: 0,
+      },
+      {
+        sessionId: "sibling",
+        modifiedAt: "2026-01-01T00:00:00.000Z",
+        resolved: false,
+        draft: false,
+        projectPath: "/cake",
+        familyParentSessionId: "root",
+        familyChildSessionIds: [],
+        familyChildOrder: 1,
+      },
+    ];
+    const catalog = {
+      projectSessions: () => summaries,
+      find: (sessionId: string) => summaries.find((session) => session.sessionId === sessionId),
+    } as unknown as SessionCatalogStore;
+    const store = mount(
+      createStore(SidebarStore, {
+        projects: { orderedProjectPaths: [] } as unknown as ProjectCatalogStore,
+        catalog,
+        sessions: {} as SessionRegistryStore,
+        globalStatuses: () => [],
+        cakeChat: () => ({ summaries: [] }) as unknown as CakeChatCollectionStore,
+        setSessionResolved: async () => undefined,
+        setSessionWorkflowStatus: async () => undefined,
+        setCakeChatSessionResolved: async () => undefined,
+        deleteSession: async () => undefined,
+        deleteCakeChatSession: async () => undefined,
+        setSessionUnread: async () => undefined,
+        embeddedEditorSettings: embeddedEditorSettings(),
+      }),
+    );
+
+    expect(store.projectSessions("/cake").map(({ sessionId }) => sessionId)).toEqual([
+      "root",
+      "planner",
+      "worker",
+      "sibling",
+    ]);
+    store.toggleFamilyCollapsed("planner");
+    expect(store.projectSessions("/cake").map(({ sessionId }) => sessionId)).toEqual([
+      "root",
+      "planner",
+      "sibling",
+    ]);
+    store[Symbol.dispose]();
+  });
+
   it("does not count expanded family children toward the project session limit", () => {
     const summaries = Array.from({ length: 10 }, (_, index) => {
       const parentId = `parent-${index}`;

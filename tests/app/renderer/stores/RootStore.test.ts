@@ -59,6 +59,8 @@ describe("RootStore session navigation", () => {
           title: "Background child",
           familyId: "family",
           familyChildOrder: 0,
+          familyDepth: 1,
+          workingDirectory: projectPath,
           placement: "none",
         },
       });
@@ -81,6 +83,8 @@ describe("RootStore session navigation", () => {
           title: "First child",
           familyId: "family",
           familyChildOrder: 0,
+          familyDepth: 1,
+          workingDirectory: projectPath,
           placement: "right",
         },
       });
@@ -105,6 +109,8 @@ describe("RootStore session navigation", () => {
           title: "Second child",
           familyId: "family",
           familyChildOrder: 1,
+          familyDepth: 1,
+          workingDirectory: projectPath,
           placement: "right",
         },
       });
@@ -113,6 +119,69 @@ describe("RootStore session navigation", () => {
       expect(root.sessionLayoutStore.panes).toHaveLength(2);
       expect(open).toHaveBeenCalledTimes(3);
       expect(respondControl).toHaveBeenCalledTimes(3);
+    } finally {
+      root[Symbol.dispose]();
+      models[Symbol.dispose]();
+    }
+  });
+
+  it("routes agent worktree merge and discard controls through the managed queue client", async () => {
+    const models = RootProjection.create();
+    applySnapshot(models.sessionCatalog, {
+      sessions: [sessionSummary("child", worktreePath)],
+      resolvedHasMoreByProject: {},
+    });
+    const startLanding = vi.fn(async (input: { operationId: string }) => ({
+      operationId: input.operationId,
+      workspacePath: worktreePath,
+      sessionId: "child",
+      kind: "landing" as const,
+      phase: "waiting" as const,
+      allowDirtyTarget: false,
+    }));
+    const discard = vi.fn(async () => undefined);
+    const respondControl = vi.fn(async () => undefined);
+    const client = {
+      managedWorktrees: { startLanding, discard },
+      projectSessions: { respondControl },
+    } as unknown as Client;
+    const root = mountRootStore(client, { state: {}, children: {} }, async () => undefined, models);
+
+    try {
+      await root.applicationControlStore.handleProjectSessionRequest({
+        sessionId: "child",
+        controlRequestId: "00000000-0000-4000-8000-000000000010",
+        invocation: {
+          _tag: "InvokeAppControl",
+          command: "worktrees.merge",
+          input: { sessionId: "child", workingDirectory: worktreePath },
+        },
+      });
+      await root.applicationControlStore.handleProjectSessionRequest({
+        sessionId: "child",
+        controlRequestId: "00000000-0000-4000-8000-000000000011",
+        invocation: {
+          _tag: "InvokeAppControl",
+          command: "worktrees.discard",
+          input: { sessionId: "child", workingDirectory: worktreePath, keepBranch: true },
+        },
+      });
+
+      expect(startLanding).toHaveBeenCalledWith(
+        expect.objectContaining({
+          workspacePath: worktreePath,
+          sessionId: "child",
+          strategy: "preserve",
+          commitBeforeLanding: true,
+          resolveAfterLanding: false,
+        }),
+        expect.anything(),
+      );
+      expect(discard).toHaveBeenCalledWith(
+        expect.objectContaining({ workspacePath: worktreePath, keepBranch: true }),
+        expect.anything(),
+      );
+      expect(respondControl).toHaveBeenCalledTimes(2);
     } finally {
       root[Symbol.dispose]();
       models[Symbol.dispose]();

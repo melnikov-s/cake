@@ -361,7 +361,7 @@ describe("Sidebar projects", () => {
     ).toBeNull();
   });
 
-  it("indents family children and places their activity time below the title", () => {
+  it("shows family depth rails with aligned titles and activity time below", () => {
     const modified = new Date("2026-08-16T12:00:00.000Z").toISOString();
     const store = {
       recentProjectPaths: ["/work/cake"],
@@ -379,6 +379,7 @@ describe("Sidebar projects", () => {
           modifiedAt: modified,
           worktreeName: "family-worktree",
           familyParentSessionId: "parent",
+          familyDepth: 1,
         },
       ],
       sessionLimit: () => 8,
@@ -400,11 +401,12 @@ describe("Sidebar projects", () => {
     expect(child.dataset.familyRole).toBe("child");
     expect(parent.querySelector(".session-row")?.classList).toContain("col-start-2");
     expect(child.querySelector(".session-row")?.classList).toContain("col-start-2");
-    expect(child.classList).toContain("ml-5");
+    expect(child.classList).not.toContain("ml-5");
+    expect(child.querySelector('[data-slot="depth-rails"]')?.getAttribute("data-depth")).toBe("1");
     expect(
       child.querySelector('[data-slot="session-description"] .session-time')?.textContent,
     ).toBe("20 min ago");
-    expect(child.querySelector('[data-slot="session-description"]')?.textContent).not.toContain(
+    expect(child.querySelector('[data-slot="session-description"]')?.textContent).toContain(
       "family-worktree",
     );
     expect(child.querySelector('[aria-label="Ready, unread"]')).not.toBeNull();

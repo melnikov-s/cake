@@ -10,11 +10,12 @@ const testLayer = () => familyStorageHarness().layer;
 const child = (requestId: string, childSessionId: string) => ({
   familyId: crypto.randomUUID(),
   parentSessionId: "parent",
+  parentWorkingDirectory: "/worktree",
   childSessionId,
+  childWorkingDirectory: "/project/.cake-worktrees/feature",
+  childManagedWorktreePath: "/project/.cake-worktrees/feature",
   requestId,
   projectPath: "/project",
-  workingDirectory: "/project/.cake-worktrees/feature",
-  managedWorktreePath: "/project/.cake-worktrees/feature",
   createdAt: "2026-01-01T00:00:00.000Z",
 });
 
@@ -37,7 +38,50 @@ describe("SessionFamilyStorage", () => {
       yield* storage.settleTurn("turn", "complete");
       assert.deepEqual((yield* storage.state()).turns, []);
       assert.equal((yield* storage.list()).length, 1);
-      assert.equal(JSON.parse(files.get("state/session-families.json") ?? "{}").version, 2);
+      assert.equal(JSON.parse(files.get("state/session-families.json") ?? "{}").version, 3);
+    }).pipe(Effect.provide(familyStorageHarness(files).layer));
+  });
+
+  it.effect("migrates flat version 2 children into direct children of the root", () => {
+    const files = new Map([
+      [
+        "state/session-families.json",
+        JSON.stringify({
+          version: 2,
+          data: {
+            families: [
+              {
+                familyId: "family",
+                parentSessionId: "parent",
+                projectPath: "/project",
+                workingDirectory: "/worktree",
+                managedWorktreePath: "/worktree",
+                createdAt: "2026-01-01T00:00:00.000Z",
+                children: [
+                  {
+                    sessionId: "child",
+                    requestId: "request",
+                    createdAt: "2026-01-01T00:00:01.000Z",
+                  },
+                ],
+              },
+            ],
+            transitions: [],
+            turns: [],
+          },
+        }),
+      ],
+    ]);
+    return Effect.gen(function* () {
+      const family = (yield* (yield* SessionFamilyStorage).list())[0];
+      assert.deepEqual(family?.children[0], {
+        sessionId: "child",
+        parentSessionId: "parent",
+        requestId: "request",
+        workingDirectory: "/worktree",
+        managedWorktreePath: "/worktree",
+        createdAt: "2026-01-01T00:00:01.000Z",
+      });
     }).pipe(Effect.provide(familyStorageHarness(files).layer));
   });
 
@@ -68,6 +112,12 @@ describe("SessionFamilyStorage", () => {
       const retried = yield* storage.addChild(child("request-1", "different-child"));
       assert.equal(retried.familyId, original.familyId);
       assert.deepEqual(retried.children, original.children);
+      assert.equal(original.parentSessionId, "parent");
+      assert.equal(original.workingDirectory, "/worktree");
+      assert.equal(original.managedWorktreePath, undefined);
+      assert.equal(original.children[0]?.sessionId, "child-1");
+      assert.equal(original.children[0]?.workingDirectory, "/project/.cake-worktrees/feature");
+      assert.equal(original.children[0]?.managedWorktreePath, "/project/.cake-worktrees/feature");
     }).pipe(Effect.provide(testLayer())),
   );
 
@@ -75,10 +125,16 @@ describe("SessionFamilyStorage", () => {
     Effect.gen(function* () {
       const storage = yield* SessionFamilyStorage;
       yield* storage.addChild(child("request-1", "child-1"));
+      yield* storage.addChild({
+        ...child("request-2", "grandchild"),
+        parentSessionId: "child-1",
+        parentWorkingDirectory: "/project/.cake-worktrees/feature",
+        parentManagedWorktreePath: "/project/.cake-worktrees/feature",
+      });
       yield* storage.beginTransition("parent", true);
       yield* storage.recordTurn({
-        sessionId: "child-1",
-        parentSessionId: "parent",
+        sessionId: "grandchild",
+        parentSessionId: "child-1",
         turnId: "turn-1",
         reported: false,
       });
@@ -87,18 +143,44 @@ describe("SessionFamilyStorage", () => {
     }).pipe(Effect.provide(testLayer())),
   );
 
-  it.effect("rejects grandchildren and Working Directory changes", () =>
+  it.effect("stores recursive children with per-session Working Directory bindings", () =>
     Effect.gen(function* () {
       const storage = yield* SessionFamilyStorage;
       yield* storage.addChild(child("request-1", "child-1"));
-      const grandchildError = yield* Effect.flip(
-        storage.addChild({ ...child("request-2", "grandchild"), parentSessionId: "child-1" }),
+      const parentBindingError = yield* Effect.flip(
+        storage.addChild({
+          ...child("wrong-parent-binding", "other-grandchild"),
+          parentSessionId: "child-1",
+          parentWorkingDirectory: "/wrong-worktree",
+        }),
       );
-      assert.match(grandchildError.message, /cannot create children/);
-      const movedError = yield* Effect.flip(
-        storage.addChild({ ...child("request-3", "child-2"), workingDirectory: "/elsewhere" }),
-      );
-      assert.match(movedError.message, /cannot change/);
+      assert.match(parentBindingError.message, /parent Working Directory binding cannot change/);
+      const family = yield* storage.addChild({
+        ...child("request-2", "grandchild"),
+        parentSessionId: "child-1",
+        parentWorkingDirectory: "/project/.cake-worktrees/feature",
+        parentManagedWorktreePath: "/project/.cake-worktrees/feature",
+        childWorkingDirectory: "/project/.cake-worktrees/grandchild",
+        childManagedWorktreePath: "/project/.cake-worktrees/grandchild",
+      });
+      assert.deepEqual(family.children, [
+        {
+          sessionId: "child-1",
+          parentSessionId: "parent",
+          requestId: "request-1",
+          workingDirectory: "/project/.cake-worktrees/feature",
+          managedWorktreePath: "/project/.cake-worktrees/feature",
+          createdAt: "2026-01-01T00:00:00.000Z",
+        },
+        {
+          sessionId: "grandchild",
+          parentSessionId: "child-1",
+          requestId: "request-2",
+          workingDirectory: "/project/.cake-worktrees/grandchild",
+          managedWorktreePath: "/project/.cake-worktrees/grandchild",
+          createdAt: "2026-01-01T00:00:00.000Z",
+        },
+      ]);
     }).pipe(Effect.provide(testLayer())),
   );
 });

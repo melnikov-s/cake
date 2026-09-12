@@ -13,6 +13,9 @@ import {
 import {
   SessionFamilyStorage,
   SessionFamilyStorageError,
+  familyChildren,
+  familyDepth,
+  familyMember,
   type FamilyTurn,
 } from "../../services/storage/SessionFamilyStorage";
 import { SessionCatalogChanges } from "../../services/session-catalogs/SessionCatalogChanges";
@@ -56,10 +59,11 @@ export const admitTurn = Effect.fn("SessionFamilies.admitTurn")(function* (
     Effect.gen(function* () {
       yield* assertAdmission(sessionId, location);
       const family = yield* storage.familyForMember(sessionId);
-      if (family && family.parentSessionId !== sessionId)
+      const member = family && familyMember(family, sessionId);
+      if (member?.parentSessionId)
         yield* storage.recordTurn({
           sessionId,
-          parentSessionId: family.parentSessionId,
+          parentSessionId: member.parentSessionId,
           turnId,
           reported: false,
         });
@@ -68,11 +72,32 @@ export const admitTurn = Effect.fn("SessionFamilies.admitTurn")(function* (
   );
 });
 
-export const createChild = Effect.fn("SessionFamilies.createChild")(function* <E, R>(
+export const createChild = Effect.fn("SessionFamilies.createChild")(function* <
+  E,
+  R,
+  E2 = never,
+  R2 = never,
+  E3 = never,
+  R3 = never,
+  E4 = never,
+  R4 = never,
+>(
   parentSessionId: string,
   location: ProjectSessionLocation,
-  input: { requestId: string; title: string; initialPrompt: string; model: ChatConfiguration },
-  runtimeOptions: (sessionId: string) => Effect.Effect<PiSessionAcquireOptions, E, R>,
+  input: {
+    requestId: string;
+    title: string;
+    initialPrompt: string;
+    model: ChatConfiguration;
+    worktreeName?: string;
+  },
+  runtimeOptions: (
+    sessionId: string,
+    childLocation: ProjectSessionLocation,
+  ) => Effect.Effect<PiSessionAcquireOptions, E, R>,
+  createIsolatedLocation?: (worktreeName: string) => Effect.Effect<ProjectSessionLocation, E2, R2>,
+  resolveLocation?: (workingDirectory: string) => Effect.Effect<ProjectSessionLocation, E3, R3>,
+  discardIsolatedLocation?: (workingDirectory: string) => Effect.Effect<void, E4, R4>,
 ) {
   const storage = yield* SessionFamilyStorage;
   const sessions = yield* PiSessions;
@@ -80,80 +105,133 @@ export const createChild = Effect.fn("SessionFamilies.createChild")(function* <E
   const archive = yield* SessionArchiveStorage;
   const catalogs = yield* SessionCatalogChanges;
   const configuration = yield* models.resolve(input.model);
-  const archiveLocation = {
-    cwd: location.workingDirectory,
+  const archiveLocation = (workingDirectory: string) => ({
+    cwd: workingDirectory,
     activeRoot: location.sessionDirectory,
     resolvedRoot: location.resolvedSessionDirectory,
-  };
-  const publish = (sessionId: string) =>
+  });
+  const publish = (sessionId: string, workingDirectory: string) =>
     catalogs.publish({
       _tag: "ProjectSessionChanged",
       sessionId,
       projectPath: location.projectPath,
-      workingDirectory: location.workingDirectory,
+      workingDirectory,
       resolved: false,
     });
+  const childLocationFor = Effect.fn("SessionFamilies.childLocationFor")(function* (
+    workingDirectory: string,
+  ) {
+    if (workingDirectory === location.workingDirectory) return location;
+    if (resolveLocation) return yield* resolveLocation(workingDirectory);
+    return yield* new SessionFamilyStorageError({
+      operation: "createChild",
+      message: `Child Working Directory unavailable: ${workingDirectory}`,
+    });
+  });
   const prepared = yield* storage.withMemberLock(
     parentSessionId,
     Effect.gen(function* () {
-      yield* assertAdmission(parentSessionId, archiveLocation);
+      yield* assertAdmission(parentSessionId, archiveLocation(location.workingDirectory));
       const existing = yield* storage.familyForMember(parentSessionId);
-      if (existing && existing.parentSessionId !== parentSessionId)
-        return yield* new SessionFamilyStorageError({
-          operation: "createChild",
-          message: "Children must ask their parent to create a session",
-        });
+      const retriedChild = existing?.children.find((item) => item.requestId === input.requestId);
+      let childLocation = retriedChild
+        ? yield* childLocationFor(retriedChild.workingDirectory)
+        : location;
+      if (!retriedChild && input.worktreeName) {
+        if (!createIsolatedLocation)
+          return yield* new SessionFamilyStorageError({
+            operation: "createChild",
+            message: "Isolated child worktree creation is unavailable",
+          });
+        childLocation = yield* createIsolatedLocation(input.worktreeName);
+      }
       const reservation = {
         familyId: existing?.familyId ?? crypto.randomUUID(),
         parentSessionId,
+        parentWorkingDirectory: location.workingDirectory,
         childSessionId: crypto.randomUUID(),
+        childWorkingDirectory: childLocation.workingDirectory,
         requestId: input.requestId,
         projectPath: location.projectPath,
-        workingDirectory: location.workingDirectory,
         createdAt: DateTime.formatIso(yield* DateTime.now),
       };
       if (location.managedWorktree)
-        Object.assign(reservation, { managedWorktreePath: location.managedWorktree.worktreePath });
-      const family = yield* storage.addChild(reservation);
+        Object.assign(reservation, {
+          parentManagedWorktreePath: location.managedWorktree.worktreePath,
+        });
+      if (childLocation.managedWorktree)
+        Object.assign(reservation, {
+          childManagedWorktreePath: childLocation.managedWorktree.worktreePath,
+        });
+      const family = yield* storage
+        .addChild(reservation)
+        .pipe(
+          Effect.tapError(() =>
+            childLocation.workingDirectory !== location.workingDirectory && discardIsolatedLocation
+              ? discardIsolatedLocation(childLocation.workingDirectory)
+              : Effect.void,
+          ),
+        );
       const child = family.children.find((item) => item.requestId === input.requestId);
       if (!child)
         return yield* new SessionFamilyStorageError({
           operation: "createChild",
           message: "Child reservation missing",
         });
-      yield* publish(parentSessionId);
+      yield* publish(parentSessionId, location.workingDirectory);
       const target = {
         sessionId: child.sessionId,
-        workingDirectory: location.workingDirectory,
-        sessionDirectory: location.sessionDirectory,
+        workingDirectory: childLocation.workingDirectory,
+        sessionDirectory: childLocation.sessionDirectory,
       };
       const status = yield* sessions.currentStatus(target);
-      if (status || (yield* archive.locate(child.sessionId, archiveLocation)))
-        return { family, child, handle: undefined };
+      if (
+        status ||
+        (yield* archive.locate(child.sessionId, archiveLocation(childLocation.workingDirectory)))
+      )
+        return { family, child, childLocation, handle: undefined };
       const acquired = yield* Effect.result(
         Effect.gen(function* () {
-          const handle = yield* sessions.acquire(yield* runtimeOptions(child.sessionId));
+          const handle = yield* sessions.acquire(
+            yield* runtimeOptions(child.sessionId, childLocation),
+          );
           yield* handle.applyConfiguration(configuration);
           yield* handle.rename(input.title);
           return handle;
         }),
       );
       if (acquired._tag === "Failure") {
-        if (!(yield* archive.locate(child.sessionId, archiveLocation)))
+        if (
+          !(yield* archive.locate(child.sessionId, archiveLocation(childLocation.workingDirectory)))
+        ) {
           yield* storage.removeUnmaterializedChild(child.sessionId);
-        yield* publish(parentSessionId);
-        return { family, child, handle: undefined, error: String(acquired.failure) };
+          if (
+            childLocation.workingDirectory !== location.workingDirectory &&
+            discardIsolatedLocation
+          )
+            yield* discardIsolatedLocation(childLocation.workingDirectory);
+        }
+        yield* publish(parentSessionId, location.workingDirectory);
+        return {
+          family,
+          child,
+          childLocation,
+          handle: undefined,
+          error: String(acquired.failure),
+        };
       }
-      return { family, child, handle: acquired.success };
+      return { family, child, childLocation, handle: acquired.success };
     }),
   );
   const identity = {
     familyId: prepared.family.familyId,
     parentSessionId,
     childSessionId: prepared.child.sessionId,
-    familyChildOrder: prepared.family.children.findIndex(
+    workingDirectory: prepared.childLocation.workingDirectory,
+    familyChildOrder: familyChildren(prepared.family, parentSessionId).findIndex(
       (child) => child.sessionId === prepared.child.sessionId,
     ),
+    familyDepth: familyDepth(prepared.family, prepared.child.sessionId) ?? 0,
   };
   if (!prepared.handle)
     return {
@@ -167,14 +245,25 @@ export const createChild = Effect.fn("SessionFamilies.createChild")(function* <E
     yield* storage.withMemberLock(
       parentSessionId,
       Effect.gen(function* () {
-        if (!(yield* archive.locate(prepared.child.sessionId, archiveLocation)))
+        if (
+          !(yield* archive.locate(
+            prepared.child.sessionId,
+            archiveLocation(prepared.childLocation.workingDirectory),
+          ))
+        ) {
           yield* storage.removeUnmaterializedChild(prepared.child.sessionId);
-        yield* publish(parentSessionId);
+          if (
+            prepared.childLocation.workingDirectory !== location.workingDirectory &&
+            discardIsolatedLocation
+          )
+            yield* discardIsolatedLocation(prepared.childLocation.workingDirectory);
+        }
+        yield* publish(parentSessionId, location.workingDirectory);
       }),
     );
     return { ...identity, launch: { status: "failed", message: String(launched.failure) } };
   }
-  yield* publish(prepared.child.sessionId);
+  yield* publish(prepared.child.sessionId, prepared.childLocation.workingDirectory);
   return { ...identity, launch: { status: "accepted", turnId: launched.success } };
 });
 
@@ -188,7 +277,7 @@ export const initialize = Effect.fn("SessionFamilies.initialize")(function* (
     for (const child of family.children) {
       if (
         yield* archive.locate(child.sessionId, {
-          cwd: family.workingDirectory,
+          cwd: child.workingDirectory,
           activeRoot,
           resolvedRoot,
         })
@@ -198,7 +287,7 @@ export const initialize = Effect.fn("SessionFamilies.initialize")(function* (
       // remain a phantom member that prevents the family from being archived.
       yield* storage.recordTurn({
         sessionId: child.sessionId,
-        parentSessionId: family.parentSessionId,
+        parentSessionId: child.parentSessionId,
         turnId: child.sessionId,
         reported: false,
         outcome: "failed",
@@ -224,20 +313,33 @@ export const deliver = Effect.fn("SessionFamilies.deliverNotice")(function* (tur
   if (!family || !turn.outcome || turn.reported) return;
   const state = yield* storage.state();
   if (state.transitions.some((item) => item.parentSessionId === family.parentSessionId)) return;
-  const location = (yield* projectSessionLocations.locations()).find(
-    (item) => item.workingDirectory === family.workingDirectory,
+  const parentMember = familyMember(family, turn.parentSessionId);
+  const childMember = familyMember(family, turn.sessionId);
+  if (!parentMember || !childMember) return;
+  const locations = yield* projectSessionLocations.locations({ includeInactive: true });
+  const parentLocation = locations.find(
+    (item) =>
+      item.projectPath === family.projectPath &&
+      item.workingDirectory === parentMember.workingDirectory,
   );
-  if (!location)
+  const childLocation = locations.find(
+    (item) =>
+      item.projectPath === family.projectPath &&
+      item.workingDirectory === childMember.workingDirectory,
+  );
+  if (!parentLocation || !childLocation)
     return yield* new SessionFamilyStorageError({
       operation: "deliverNotice",
-      message: `Working Directory unavailable: ${family.workingDirectory}`,
+      message: `Session Family Working Directory unavailable: ${
+        parentLocation ? childMember.workingDirectory : parentMember.workingDirectory
+      }`,
     });
   const archive = yield* SessionArchiveStorage;
   if (
-    (yield* archive.locate(family.parentSessionId, {
-      cwd: family.workingDirectory,
-      activeRoot: location.sessionDirectory,
-      resolvedRoot: location.resolvedSessionDirectory,
+    (yield* archive.locate(turn.parentSessionId, {
+      cwd: parentMember.workingDirectory,
+      activeRoot: parentLocation.sessionDirectory,
+      resolvedRoot: parentLocation.resolvedSessionDirectory,
     })) !== "active"
   )
     return;
@@ -247,16 +349,16 @@ export const deliver = Effect.fn("SessionFamilies.deliverNotice")(function* (tur
     Effect.gen(function* () {
       const status = yield* sessions.currentStatus({
         sessionId: turn.sessionId,
-        workingDirectory: family.workingDirectory,
-        sessionDirectory: location.sessionDirectory,
+        workingDirectory: childMember.workingDirectory,
+        sessionDirectory: childLocation.sessionDirectory,
       });
       if (
         !status?.streaming &&
         !status?.pending &&
         !(yield* archive.locate(turn.sessionId, {
-          cwd: family.workingDirectory,
-          activeRoot: location.sessionDirectory,
-          resolvedRoot: location.resolvedSessionDirectory,
+          cwd: childMember.workingDirectory,
+          activeRoot: childLocation.sessionDirectory,
+          resolvedRoot: childLocation.resolvedSessionDirectory,
         }))
       )
         yield* storage.removeUnmaterializedChild(turn.sessionId);
@@ -264,8 +366,8 @@ export const deliver = Effect.fn("SessionFamilies.deliverNotice")(function* (tur
   );
   const parent = yield* sessions.acquire(
     yield* acquireProjectSessionOptions({
-      location,
-      sessionId: family.parentSessionId,
+      location: parentLocation,
+      sessionId: turn.parentSessionId,
       newSession: false,
     }),
   );
@@ -292,8 +394,8 @@ export const deliver = Effect.fn("SessionFamilies.deliverNotice")(function* (tur
   const childSummary = yield* sessions
     .catalogEntry(
       {
-        workingDirectory: family.workingDirectory,
-        sessionDirectory: location.sessionDirectory,
+        workingDirectory: childMember.workingDirectory,
+        sessionDirectory: childLocation.sessionDirectory,
       },
       turn.sessionId,
     )
@@ -309,8 +411,8 @@ export const deliver = Effect.fn("SessionFamilies.deliverNotice")(function* (tur
         sessionId: turn.sessionId,
         title: childSummary?.title ?? `Child session ${turn.sessionId}`,
         kind: "project-session",
-        projectName: location.projectName,
-        workingDirectory: location.workingDirectory,
+        projectName: childLocation.projectName,
+        workingDirectory: childLocation.workingDirectory,
       },
     },
   );
@@ -329,9 +431,9 @@ export const deliver = Effect.fn("SessionFamilies.deliverNotice")(function* (tur
   if (
     turn.deliveryTurnId &&
     (yield* sessions.currentTurnIds({
-      sessionId: family.parentSessionId,
-      workingDirectory: family.workingDirectory,
-      sessionDirectory: location.sessionDirectory,
+      sessionId: turn.parentSessionId,
+      workingDirectory: parentMember.workingDirectory,
+      sessionDirectory: parentLocation.sessionDirectory,
     })).includes(turn.deliveryTurnId)
   )
     return;

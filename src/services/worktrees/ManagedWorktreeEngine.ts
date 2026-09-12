@@ -132,23 +132,35 @@ export class ManagedWorktreeEngine implements WorktreeLandingCoordinator {
     settings: ProjectSettings | undefined,
     runSetup: boolean,
   ): Promise<WorktreeRecord> {
-    const parent = baseWorktreePath
+    const normalizedBase = baseWorktreePath && resolveNormalized(baseWorktreePath);
+    const parent = normalizedBase
       ? this.allRecords.find(
           (entry) =>
             ["active", "landed"].includes(entry.state ?? "active") &&
-            resolveNormalized(entry.worktreePath) === resolveNormalized(baseWorktreePath),
+            resolveNormalized(entry.worktreePath) === normalizedBase,
         )
       : undefined;
-    if (baseWorktreePath && (!parent || parent.projectPath !== registeredProjectPath))
+    const projectCheckoutBase =
+      normalizedBase === registeredProjectPath || normalizedBase === resolveNormalized(root);
+    if (
+      normalizedBase &&
+      ((!parent && !projectCheckoutBase) ||
+        (parent && parent.projectPath !== registeredProjectPath))
+    )
       throw new Error("Cake could not find that base worktree");
-    if (parent && !existsSync(parent.worktreePath))
-      throw new Error("The base worktree no longer exists");
-    if (parent && (await this.dirtyFileCount(parent.worktreePath)) > 0)
-      throw new Error("Commit the base worktree before creating a child worktree.");
+    const sourcePath = parent?.worktreePath ?? (projectCheckoutBase ? normalizedBase : root);
+    if (!existsSync(sourcePath)) throw new Error("The base worktree no longer exists");
 
-    const baseBranch = parent?.branch ?? (await this.defaultBranch(root));
-    const startPoint = parent?.branch ?? baseBranch;
-    const baseCommit = (await this.git(root, "rev-parse", startPoint)).trim();
+    const baseBranch = parent
+      ? parent.branch
+      : projectCheckoutBase
+        ? (await this.git(sourcePath, "rev-parse", "--abbrev-ref", "HEAD")).trim()
+        : await this.defaultBranch(root);
+    if (baseBranch === "HEAD")
+      throw new Error("Check out a branch before creating a child worktree.");
+    const baseCommit = (
+      await this.git(sourcePath, "rev-parse", normalizedBase ? "HEAD" : baseBranch)
+    ).trim();
     const slug = slugify(basename(root));
     const requestedName = worktreeName ?? slug;
     if (!/^[a-z0-9][a-z0-9-]{0,62}$/.test(requestedName)) throw new Error("Invalid worktree name");

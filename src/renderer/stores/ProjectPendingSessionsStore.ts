@@ -18,7 +18,9 @@ export interface ProjectPendingSessionsStoreProps {
 interface ProjectPendingSummaryMetadata {
   familyId?: string;
   familyParentSessionId?: string;
+  familyChildSessionIds?: string[];
   familyChildOrder?: number;
+  familyDepth?: number;
 }
 
 /** Owns window-persisted staged, saved-draft, and starting Project Session workflows. */
@@ -77,6 +79,9 @@ export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsSto
           ...(metadata?.familyParentSessionId !== undefined
             ? { familyParentSessionId: metadata.familyParentSessionId }
             : null),
+          ...(metadata?.familyChildSessionIds !== undefined
+            ? { familyChildSessionIds: metadata.familyChildSessionIds }
+            : null),
           ...(metadata?.familyChildOrder !== undefined
             ? { familyChildOrder: metadata.familyChildOrder }
             : null),
@@ -114,7 +119,7 @@ export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsSto
   trackUnlistedFamilySession(
     sessionId: string,
     title: string,
-    family: { familyId: string; parentSessionId: string; childOrder: number },
+    family: { familyId: string; parentSessionId: string; childOrder: number; depth: number },
   ) {
     const conversation = this.ensureConversation(sessionId);
     conversation.setName(title);
@@ -123,6 +128,15 @@ export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsSto
       familyId: family.familyId,
       familyParentSessionId: family.parentSessionId,
       familyChildOrder: family.childOrder,
+      familyDepth: family.depth,
+    };
+    const parentMetadata = this.summaryMetadataBySession[family.parentSessionId];
+    this.summaryMetadataBySession[family.parentSessionId] = {
+      ...parentMetadata,
+      familyId: family.familyId,
+      familyChildSessionIds: [
+        ...new Set([...(parentMetadata?.familyChildSessionIds ?? []), sessionId]),
+      ],
     };
     addUnique(this.unlistedNewSessionIds, sessionId);
   }
