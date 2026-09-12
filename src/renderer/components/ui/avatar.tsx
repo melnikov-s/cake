@@ -1,8 +1,12 @@
 import { Avatar as DiceBearAvatar, Style } from "@dicebear/core";
 import gazeDefinition from "@dicebear/styles/gaze.json";
 import sliceDefinition from "@dicebear/styles/slice.json";
-import { useEffect, useId, useMemo, useRef, type HTMLAttributes } from "react";
-import { animateSessionAvatar, materializeSessionAvatar } from "../../lib/animate-session-avatar";
+import { useEffect, useId, useMemo, useRef, type HTMLAttributes, type RefObject } from "react";
+import {
+  animateSessionAvatar,
+  interactWithSessionAvatar,
+  materializeSessionAvatar,
+} from "../../lib/animate-session-avatar";
 import type { WorkflowStatusColor } from "../../../domain/application/application-data";
 import { cn } from "../../lib/utils";
 import { workflowStatusPalette } from "../../../utils/workflow-status-palette";
@@ -19,6 +23,11 @@ export interface AvatarProps extends HTMLAttributes<HTMLSpanElement> {
   seed: string;
   statusColor?: WorkflowStatusColor;
   animated?: boolean;
+  /** Opt-in row feedback instead of idle animation; activationTarget is a NavItem. */
+  interaction?: {
+    target: RefObject<HTMLElement | null>;
+    activationTarget: RefObject<HTMLElement | null>;
+  };
 }
 
 /** Deterministic DiceBear avatar with Cake-owned sizing, status color, and accessibility. */
@@ -27,11 +36,15 @@ export function Avatar({
   seed,
   statusColor,
   animated = false,
+  interaction,
   className,
   ...props
 }: AvatarProps) {
   const host = useRef<HTMLSpanElement>(null);
   const instanceId = useId().replace(/[^a-zA-Z0-9_-]/g, "");
+  const materialized = animated || Boolean(interaction);
+  const interactionTarget = interaction?.target;
+  const activationTarget = interaction?.activationTarget;
   const avatar = useMemo(() => {
     if (kind === "project") {
       return {
@@ -53,20 +66,34 @@ export function Avatar({
     for (const match of Array.from(svg.matchAll(/id="([^"]+)"/g))) {
       svg = svg.replaceAll(match[1]!, `${match[1]}-${instanceId}`);
     }
-    return { __html: animated ? materializeSessionAvatar(svg) : svg };
-  }, [kind, seed, instanceId, animated]);
+    return { __html: materialized ? materializeSessionAvatar(svg) : svg };
+  }, [kind, seed, instanceId, materialized]);
 
   useEffect(() => {
-    if (animated && kind === "session" && host.current) {
-      return animateSessionAvatar(host.current);
+    if (kind !== "session" || !host.current) return;
+    if (interactionTarget?.current && activationTarget?.current) {
+      return interactWithSessionAvatar(
+        host.current,
+        interactionTarget.current,
+        activationTarget.current,
+      );
     }
-  }, [animated, kind, avatar]);
+    if (animated) return animateSessionAvatar(host.current);
+  }, [animated, kind, avatar, interactionTarget, activationTarget]);
 
   return (
     <span
       ref={host}
       data-slot="avatar"
-      data-animated={animated && kind === "session" ? "true" : undefined}
+      data-animated={
+        kind === "session"
+          ? interaction
+            ? "interaction"
+            : animated
+              ? "true"
+              : undefined
+          : undefined
+      }
       className={cn(
         "inline-grid size-5 shrink-0 place-items-center [&_svg]:size-full",
         kind === "session" &&

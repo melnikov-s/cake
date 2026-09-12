@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { observer } from "r-state-tree/react";
 import { SESSION_TITLE_MAX_LENGTH } from "../../ipc/session-contract";
 import type { WorkflowStatusColor } from "../../domain/application/application-data";
@@ -74,6 +74,9 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
   onMarkUnread,
 }: SidebarSessionItemProps) {
   const [renamingValue, setRenamingValue] = useState<string | null>(null);
+  const rowRef = useRef<HTMLDivElement>(null);
+  const navigationRef = useRef<HTMLDivElement>(null);
+  const avatarInteraction = { target: rowRef, activationTarget: navigationRef };
   const unread = activity === "unread";
   const isFamilyParent = Boolean(session.familyChildSessionIds?.length);
   const isFamilyChild =
@@ -104,11 +107,12 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
   };
   return (
     <div
+      ref={rowRef}
       data-animated-list-key={session.sessionId}
       data-session-id={session.sessionId}
       data-family-role={isFamilyChild ? "child" : isFamilyParent ? "parent" : "root"}
       className={cn(
-        "session-item group relative grid min-h-11 w-full items-center rounded-md py-1 text-[13px] select-none transition-colors",
+        "session-item group relative grid min-h-11 w-full items-center rounded-md py-1 text-[13px] select-none transition-colors duration-200 ease-out motion-reduce:transition-none",
         focusMode && "min-h-14 text-sm [&_[data-slot=avatar]]:size-7 [&_svg]:size-5",
         avatarsEnabled
           ? isFamilyParent || session.familyDepth !== undefined
@@ -152,6 +156,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
           {avatarsEnabled ? (
             canSetStatus ? (
               <AvatarStatusPicker
+                interaction={avatarInteraction}
                 seed={avatarSeed}
                 statuses={statuses}
                 value={statusId}
@@ -160,6 +165,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
               />
             ) : (
               <Avatar
+                interaction={avatarInteraction}
                 kind="session"
                 seed={avatarSeed}
                 statusColor={workflowStatus?.color}
@@ -200,6 +206,8 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
         />
       ) : (
         <NavItem
+          ref={navigationRef}
+          motionFeedback
           className={cn(
             "session-row col-start-2 bg-transparent hover:bg-transparent",
             focusMode && "py-2 text-sm",

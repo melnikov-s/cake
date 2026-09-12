@@ -29,6 +29,94 @@ export function materializeSessionAvatar(markup: string): string {
   return new XMLSerializer().serializeToString(svg);
 }
 
+/** Row-local feedback: no idle timers, pointer tracking, or React frame updates. */
+export function interactWithSessionAvatar(
+  host: HTMLElement,
+  target: HTMLElement,
+  activationTarget: HTMLElement,
+): () => void {
+  const look = host.querySelector<SVGGElement>(".dbga-hop .dbga-look");
+  const hop = host.querySelector<SVGGElement>("svg > g .dbga-hop");
+  if (!look || !hop) return () => {};
+  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const animations = new Map<Element, Animation>();
+  const play = (element: Element, frames: Keyframe[], duration: number) => {
+    animations.get(element)?.cancel();
+    const animation = element.animate(frames, { duration, easing: "ease-in-out" });
+    animations.set(element, animation);
+    animation.onfinish = () => {
+      animations.delete(element);
+      animation.cancel();
+    };
+  };
+  const glance = (right: boolean) => {
+    if (reduced.matches || document.hidden) return;
+    const from = getComputedStyle(look).transform;
+    const to = right ? "translateX(1.5px)" : "translateX(0px)";
+    // The resting transform survives completion; interrupted transitions start
+    // at the currently displayed position instead of snapping.
+    look.style.transform = to;
+    play(look, [{ transform: from }, { transform: to }], 160);
+  };
+  const enter = (event: PointerEvent) => {
+    if (event.pointerType !== "touch") glance(true);
+  };
+  const leave = () => {
+    for (const [element, animation] of animations) {
+      if (element === look) continue;
+      animation.cancel();
+      animations.delete(element);
+    }
+    glance(false);
+  };
+  const activate = (event: MouseEvent) => {
+    // NavItem's main button is a direct child. Status, disclosure, and trailing
+    // actions must not impersonate selecting the item. Keyboard clicks work too.
+    const button = event.target instanceof Element ? event.target.closest("button") : null;
+    if (button?.parentElement !== activationTarget || reduced.matches || document.hidden) return;
+    play(
+      hop,
+      [
+        { transform: "translateY(0)" },
+        { transform: "translateY(-3px)" },
+        { transform: "translateY(0)" },
+      ],
+      280,
+    );
+    for (const eye of hop.querySelectorAll<SVGGElement>(".dbga-eye")) {
+      const box = eye.getBBox();
+      const y = box.y + box.height / 2;
+      play(
+        eye,
+        [1, 0.08, 1].map((scale) => ({
+          transform: `translateY(${y}px) scaleY(${scale}) translateY(${-y}px)`,
+        })),
+        180,
+      );
+    }
+  };
+  const reset = () => {
+    for (const animation of animations.values()) animation.cancel();
+    animations.clear();
+    look.style.removeProperty("transform");
+  };
+  target.addEventListener("pointerenter", enter);
+  target.addEventListener("pointerleave", leave);
+  activationTarget.addEventListener("click", activate);
+  window.addEventListener("blur", reset);
+  document.addEventListener("visibilitychange", reset);
+  reduced.addEventListener("change", reset);
+  return () => {
+    reset();
+    target.removeEventListener("pointerenter", enter);
+    target.removeEventListener("pointerleave", leave);
+    activationTarget.removeEventListener("click", activate);
+    window.removeEventListener("blur", reset);
+    document.removeEventListener("visibilitychange", reset);
+    reduced.removeEventListener("change", reset);
+  };
+}
+
 /** Local, disposable DOM animation only; no workflow or persisted state. */
 export function animateSessionAvatar(host: HTMLElement): () => void {
   const svg = host.querySelector("svg");
@@ -127,8 +215,7 @@ export function animateSessionAvatar(host: HTMLElement): () => void {
     bodyMotion(["scale(1)", "scale(1.025, 0.96)", "scale(0.985, 1.02)", "scale(1)"]);
   const scheduleBetween = (action: () => void, minimum: number, maximum: number) => {
     const scheduleNext = () => {
-      let timer: ReturnType<typeof setTimeout>;
-      timer = setTimeout(
+      const timer = setTimeout(
         () => {
           timers.delete(timer);
           action();

@@ -1,7 +1,7 @@
 import { Fragment, useState } from "react";
 import type { WorkflowStatusColor } from "../../../domain/application/application-data";
 import { cn } from "../../lib/utils";
-import { Avatar } from "./avatar";
+import { Avatar, type AvatarProps } from "./avatar";
 import { Button } from "./button";
 import { Popover, PopoverContent, PopoverIconTrigger } from "./popover";
 
@@ -16,6 +16,7 @@ export interface AvatarStatusPickerProps {
   value?: string;
   disabled?: boolean;
   animated?: boolean;
+  interaction?: AvatarProps["interaction"];
   className?: string;
   onChange(statusId?: string): void;
 }
@@ -27,6 +28,7 @@ export function AvatarStatusPicker({
   value,
   disabled = false,
   animated = false,
+  interaction,
   className,
   onChange,
 }: AvatarStatusPickerProps) {
@@ -51,6 +53,7 @@ export function AvatarStatusPicker({
           seed={seed}
           statusColor={current?.color}
           animated={animated}
+          interaction={interaction}
           className="size-6"
         />
       </PopoverIconTrigger>

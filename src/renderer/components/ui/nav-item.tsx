@@ -9,6 +9,8 @@ export interface NavItemProps extends Omit<HTMLAttributes<HTMLDivElement>, "onCl
   trailing?: ReactNode;
   active?: boolean;
   disabled?: boolean;
+  /** Subtle title movement on hover and press; disabled for reduced motion. */
+  motionFeedback?: boolean;
   onClick?: MouseEventHandler<HTMLButtonElement>;
 }
 
@@ -22,6 +24,7 @@ export const NavItem = forwardRef<HTMLDivElement, NavItemProps>(function NavItem
     trailing,
     active = false,
     disabled = false,
+    motionFeedback = false,
     onClick,
     onContextMenu,
     onMouseEnter,
@@ -34,7 +37,7 @@ export const NavItem = forwardRef<HTMLDivElement, NavItemProps>(function NavItem
     <div
       ref={ref}
       className={cn(
-        "group flex w-full min-w-0 items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors select-none [app-region:no-drag]",
+        "group group/nav-item flex w-full min-w-0 items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors select-none [app-region:no-drag]",
         active
           ? "bg-sidebar-active text-primary font-semibold"
           : "text-muted-foreground hover:bg-sidebar-hover hover:text-foreground",
@@ -49,13 +52,22 @@ export const NavItem = forwardRef<HTMLDivElement, NavItemProps>(function NavItem
         type="button"
         disabled={disabled}
         aria-current={active ? "page" : undefined}
-        className="flex min-w-0 flex-1 items-center gap-2 text-left bg-transparent border-0 p-0 text-inherit cursor-pointer disabled:cursor-default outline-none"
+        className="group/nav-action flex min-w-0 flex-1 items-center gap-2 text-left bg-transparent border-0 p-0 text-inherit cursor-pointer disabled:cursor-default outline-none"
         onClick={onClick}
       >
         {icon && <span className="shrink-0 text-inherit">{icon}</span>}
         <div className="flex min-w-0 flex-1 flex-col justify-center">
           <div className="flex items-center gap-1.5">
-            <span className="truncate">{label}</span>
+            <span
+              className={cn(
+                "truncate",
+                motionFeedback &&
+                  !disabled &&
+                  "origin-left motion-safe:transition-transform motion-safe:duration-200 motion-safe:ease-out motion-safe:group-hover/nav-item:translate-x-0.5 motion-safe:group-active/nav-action:translate-y-px motion-safe:group-active/nav-action:scale-[0.985] motion-safe:group-active/nav-action:duration-75",
+              )}
+            >
+              {label}
+            </span>
             {badge}
           </div>
           {description && (

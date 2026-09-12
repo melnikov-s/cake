@@ -330,6 +330,11 @@ The window Store hierarchy mirrors the product surfaces:
   remains after the Session activates. Only this composer avatar follows the pointer and plays
   occasional blinks, hops, wobbles, and stretches. These disposable DOM effects belong to the
   shared Avatar primitive, pause in hidden documents, and respect reduced motion.
+  Sidebar Session avatars opt into row-local interaction feedback instead: hover glances right,
+  leaving returns to center, and selecting the row gives a brief blink and bob. They have no
+  idle timers or pointer tracking, and animate transforms without React frame updates. This
+  ephemeral presentation state is owned by Avatar for its mounted DOM lifetime, is never
+  persisted, and cancels/replaces overlapping animations on the same shape.
   Assistant-message gutter avatars remain
   non-interactive identity markers. Sidebar context menus retain equivalent transitions.
   Draft is never a return destination after activation. `SessionCatalogStore` owns the currently demanded, activity-sorted
