@@ -125,12 +125,39 @@ describe("ConversationSessionStore", () => {
       expect(queued.text).toBe("Queued follow-up");
       expect(deliver).toHaveBeenCalledTimes(1);
       chat.steerQueuedPrompt(queued.id);
+      expect(chat.queuedPrompts).toEqual([
+        expect.objectContaining({
+          id: expect.any(String),
+          text: "Queued follow-up",
+          state: "steering",
+        }),
+      ]);
       await vi.waitFor(() =>
         expect(deliver).toHaveBeenLastCalledWith(
           expect.objectContaining({ text: "Queued follow-up" }),
           expect.any(Object),
         ),
       );
+      expect(chat.queuedPrompts).toEqual([
+        expect.objectContaining({ text: "Queued follow-up", state: "steering" }),
+      ]);
+
+      model.parts.push(
+        Message.create({
+          id: "queued-steering-1",
+          partKey: "queued-steering-1",
+          piId: "queued-steering-1",
+          kind: "text",
+          role: "user",
+          text: "Queued follow-up",
+          status: "complete",
+          deliveryState: "steering",
+        }),
+      );
+      expect(chat.queuedPrompts).toEqual([
+        expect.objectContaining({ id: "queued-steering-1", state: "steering" }),
+      ]);
+      model.parts.splice(0);
 
       await chat.abort();
       expect(abort).toHaveBeenCalledOnce();

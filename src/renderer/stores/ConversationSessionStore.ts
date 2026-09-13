@@ -258,6 +258,7 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
           ...entry,
           state: "queued" as const,
         })),
+        ...this.composerStore.deliveryStore.optimisticUserMessages.queuedMessages,
         ...this.runtimeQueuedPrompts,
       ],
       steerQueuedPrompt: (id) => {

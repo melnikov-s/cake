@@ -11,6 +11,14 @@ interface PendingUserMessage {
   parts: UiPart[];
 }
 
+export interface OptimisticQueuedUserMessage {
+  id: string;
+  text: string;
+  attachments: Attachment[];
+  renderUserMessageAsMarkdown: boolean;
+  state: "queued" | "steering";
+}
+
 export interface OptimisticUserMessagesStoreProps {
   canonicalParts(): UiPart[];
 }
@@ -45,6 +53,31 @@ export class OptimisticUserMessagesStore extends Store<OptimisticUserMessagesSto
       offset += message.parts.length;
     }
     return parts;
+  }
+
+  /** Queue-card projection used until the runtime publishes its authoritative queue part. */
+  @computed
+  get queuedMessages(): OptimisticQueuedUserMessage[] {
+    return this.pending.flatMap((message) => {
+      if (this.isReconciled(message)) return [];
+      const textPart = message.parts.find(
+        (part): part is Extract<UiPart, { kind: "text" }> => part.kind === "text",
+      );
+      if (
+        !textPart ||
+        (textPart.deliveryState !== "queued" && textPart.deliveryState !== "steering")
+      )
+        return [];
+      return [
+        {
+          id: message.id,
+          text: message.text,
+          attachments: message.attachments.map((attachment) => ({ ...attachment })),
+          renderUserMessageAsMarkdown: textPart.renderAs === "markdown",
+          state: textPart.deliveryState,
+        },
+      ];
+    });
   }
 
   add(
