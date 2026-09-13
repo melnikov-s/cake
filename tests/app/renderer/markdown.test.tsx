@@ -52,10 +52,17 @@ describe("Markdown", () => {
     ]);
   });
 
-  it("wraps fenced code instead of horizontally scrolling", () => {
-    act(() => root.render(<Markdown>```md\nA very long line\n```</Markdown>));
+  it("uses the borderless hover-action presentation for every fenced code block", () => {
+    act(() => root.render(<Markdown>```text\nA very long line\n```</Markdown>));
 
     const className = vi.mocked(Streamdown).mock.calls.at(-1)![0].className;
+    expect(className).toContain("[&_[data-streamdown=code-block]]:border-0");
+    expect(className).toContain("[&_[data-streamdown=code-block-header]]:hidden");
+    expect(className).toContain("[&_[data-streamdown=code-block-actions]]:!absolute");
+    expect(className).toContain("[&_[data-streamdown=code-block-actions]]:opacity-0");
+    expect(className).toContain(
+      "[&_[data-streamdown=code-block]:hover_[data-streamdown=code-block-actions]]:opacity-100",
+    );
     expect(className).toContain("[&_[data-streamdown=code-block-body]]:overflow-x-hidden");
     expect(className).toContain("[&_[data-streamdown=code-block-body]_pre]:whitespace-pre-wrap");
     expect(className).toContain(
