@@ -12,6 +12,7 @@ const artifactKindSchema = Schema.Literals([
   "diff",
   "html",
   "widget",
+  "file",
   "request",
 ]);
 const idSchema = Schema.String.check(
@@ -172,6 +173,47 @@ const widgetArtifactSchema = Schema.Struct({
     generationSessionId: idSchema,
   }),
 });
+const fileNameSchema = Schema.String.check(
+  Schema.isMinLength(1),
+  Schema.isMaxLength(255),
+  Schema.isPattern(/^(?!\.{1,2}$)[^/\\]+$/),
+  Schema.makeFilter((name) =>
+    Array.from(name).some((character) => {
+      const codePoint = character.codePointAt(0) ?? 0;
+      return codePoint <= 31 || codePoint === 127;
+    })
+      ? "File name must not contain control characters"
+      : undefined,
+  ),
+);
+const mimeTypeSchema = Schema.String.check(
+  Schema.isMaxLength(128),
+  Schema.isPattern(/^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/),
+);
+const base64Schema = Schema.String.check(
+  Schema.isMaxLength(MAX_ARTIFACT_INPUT_BYTES),
+  Schema.isPattern(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/),
+);
+const filePayloadSchema = Schema.Struct({
+  name: fileNameSchema,
+  mimeType: mimeTypeSchema,
+  data: base64Schema,
+  byteSize: Schema.Int.check(
+    Schema.isGreaterThanOrEqualTo(0),
+    Schema.isLessThanOrEqualTo(MAX_ARTIFACT_INPUT_BYTES),
+  ),
+}).check(
+  Schema.makeFilter((payload) =>
+    isCanonicalBase64(payload.data) && decodedBase64ByteLength(payload.data) === payload.byteSize
+      ? undefined
+      : "File data must be canonical base64 matching byteSize",
+  ),
+);
+const fileArtifactSchema = Schema.Struct({
+  ...artifactBase,
+  kind: Schema.Literal("file"),
+  payload: filePayloadSchema,
+});
 const requestArtifactSchema = Schema.Struct({
   ...artifactBase,
   kind: Schema.Literal("request"),
@@ -187,6 +229,7 @@ const cakeArtifactV1Schema = Schema.Union([
   diffArtifactSchema,
   htmlArtifactSchema,
   widgetArtifactSchema,
+  fileArtifactSchema,
   requestArtifactSchema,
 ]);
 
@@ -291,6 +334,29 @@ function validateJsonValue(schema: JsonSchema, value: JsonValue | undefined, pat
           `${path}.${key}`,
         );
   }
+}
+
+function decodedBase64ByteLength(value: string) {
+  if (value.length === 0) return 0;
+  const padding = value.endsWith("==") ? 2 : value.endsWith("=") ? 1 : 0;
+  return (value.length / 4) * 3 - padding;
+}
+
+function isCanonicalBase64(value: string) {
+  if (value.length === 0) return true;
+  if (value.endsWith("==")) {
+    const sextet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/".indexOf(
+      value[value.length - 3] ?? "",
+    );
+    return sextet >= 0 && (sextet & 0b1111) === 0;
+  }
+  if (value.endsWith("=")) {
+    const sextet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/".indexOf(
+      value[value.length - 2] ?? "",
+    );
+    return sextet >= 0 && (sextet & 0b11) === 0;
+  }
+  return true;
 }
 
 function isSafeMediaSource(src: string, mediaType: "image" | "audio" | "video" | "document") {

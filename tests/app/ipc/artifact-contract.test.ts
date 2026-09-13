@@ -47,6 +47,59 @@ describe("cake.artifact/v1 contract", () => {
     );
   });
 
+  it("validates immutable file payloads and their pointer kind", () => {
+    const file = {
+      ...markdown(),
+      kind: "file" as const,
+      payload: {
+        name: "report.pdf",
+        mimeType: "application/pdf",
+        data: Buffer.from("PDF").toString("base64"),
+        byteSize: 3,
+      },
+      fallback: { markdown: "File: `report.pdf` (application/pdf, 3 bytes)." },
+    };
+
+    expect(parseArtifactInput(file)).toMatchObject({ kind: "file", payload: { byteSize: 3 } });
+    expect(() =>
+      parseArtifactInput({ ...file, payload: { ...file.payload, name: "../report.pdf" } }),
+    ).toThrow();
+    expect(() =>
+      parseArtifactInput({ ...file, payload: { ...file.payload, mimeType: "not a mime" } }),
+    ).toThrow();
+    expect(() =>
+      parseArtifactInput({ ...file, payload: { ...file.payload, data: "%%%" } }),
+    ).toThrow();
+    expect(() =>
+      parseArtifactInput({ ...file, payload: { ...file.payload, byteSize: 4 } }),
+    ).toThrow("matching byteSize");
+    expect(() =>
+      parseArtifactInput({ ...file, payload: { ...file.payload, data: "TR==" } }),
+    ).toThrow("canonical base64");
+    expect(() =>
+      parseArtifactInput({
+        ...file,
+        payload: {
+          ...file.payload,
+          data: Buffer.alloc(786_300).toString("base64"),
+          byteSize: 786_300,
+        },
+      }),
+    ).toThrow("exceeds");
+
+    expect(
+      Schema.decodeUnknownSync(artifactPointerSchema)({
+        protocol: "cake.artifact/v1",
+        artifactId: "file-1",
+        sessionId: "session-1",
+        revision: 1,
+        kind: "file",
+        digest: "a".repeat(64),
+        fallback: file.fallback,
+      }).kind,
+    ).toBe("file");
+  });
+
   it("records optional assistant-message provenance on durable pointers", () => {
     const pointer = Schema.decodeUnknownSync(artifactPointerSchema)({
       protocol: "cake.artifact/v1",

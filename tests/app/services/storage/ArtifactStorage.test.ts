@@ -171,6 +171,38 @@ describe("ArtifactStorage", () => {
     expect(await Effect.runPromise(storage.listSession("/project", "session-1"))).toEqual([]);
   });
 
+  it("persists and hydrates immutable file metadata", async () => {
+    const root = await mkdtemp(join(tmpdir(), "cake-artifacts-"));
+    directories.push(root);
+    const storage = makeArtifactStorageTestAdapter(root).service;
+    const data = Buffer.from([0, 1, 2, 255]).toString("base64");
+
+    await Effect.runPromise(
+      storage.upsert("/project", {
+        protocol: "cake.artifact/v1",
+        id: "file-1",
+        sessionId: "session-1",
+        revision: 1,
+        kind: "file",
+        title: "Binary snapshot",
+        payload: {
+          name: "snapshot.bin",
+          mimeType: "application/octet-stream",
+          data,
+          byteSize: 4,
+        },
+        fallback: { markdown: "File: `snapshot.bin` (application/octet-stream, 4 bytes)." },
+        interaction: { mode: "present" },
+      }),
+    );
+
+    const [record] = await Effect.runPromise(storage.listSession("/project", "session-1"));
+    expect(record?.artifact).toMatchObject({
+      kind: "file",
+      payload: { name: "snapshot.bin", mimeType: "application/octet-stream", data, byteSize: 4 },
+    });
+  });
+
   it("freezes fork associations at the revisions reachable from the fork entry", async () => {
     const root = await mkdtemp(join(tmpdir(), "cake-artifacts-"));
     directories.push(root);

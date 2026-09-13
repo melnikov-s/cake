@@ -68,6 +68,7 @@ const storedArtifactMetadataSchema: Schema.Codec<StoredArtifactMetadata> = Schem
     "diff",
     "html",
     "widget",
+    "file",
     "request",
   ]),
   digest: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/)),

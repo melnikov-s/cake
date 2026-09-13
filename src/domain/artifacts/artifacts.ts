@@ -2,6 +2,10 @@ import { Effect } from "effect";
 import type { cakeRpcPayloadSchemas } from "../../ipc/cake-rpc-contract";
 import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
 import { ProjectAccess } from "../../services/projects/ProjectAccess";
+import {
+  importWorkspaceFile,
+  type ImportWorkspaceFileInput,
+} from "../../services/artifacts/importWorkspaceFile";
 import { ArtifactStorage } from "../../services/storage/ArtifactStorage";
 import { ArtifactError } from "./artifact-data";
 
@@ -66,6 +70,16 @@ export const respondUi = Effect.fn("Artifacts.respondUi")(function* (
   const coordinator = yield* RendererRequestCoordinator;
   yield* coordinator.respondUi(connectionId, request.sessionId, request).pipe(asError("respondUi"));
   return { uiRequestId: request.uiRequestId };
+});
+
+export type ImportFileArtifactInput = Omit<ImportWorkspaceFileInput, "workingDirectory">;
+
+/** Authorized domain entry point for a future Cake file-artifact operation. */
+export const importFile = Effect.fn("Artifacts.importFile")(function* (
+  input: ImportFileArtifactInput,
+) {
+  const workingDirectory = yield* authorizedWorkingDirectory(input.sessionId);
+  return yield* importWorkspaceFile({ ...input, workingDirectory }).pipe(asError("importFile"));
 });
 
 export const exportArtifacts = Effect.fn("Artifacts.export")(function* (request: ExportArtifacts) {
