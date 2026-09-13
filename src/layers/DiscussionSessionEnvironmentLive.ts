@@ -1,4 +1,4 @@
-import { Effect, Layer } from "effect";
+import { Effect, FileSystem, Layer, Path } from "effect";
 import { projectReviewThread, type ReviewThreadRecord } from "../ipc/review-contract";
 import { ReviewStorage } from "../services/storage/ReviewStorage";
 import { ApplicationState } from "../services/storage/ApplicationState";
@@ -50,6 +50,8 @@ export const makeDiscussionSessionEnvironmentLive = (
     Effect.gen(function* () {
       const storage = yield* ReviewStorage;
       const application = yield* ApplicationState;
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
       return makeDiscussionSessionEnvironmentLayer({
         list: Effect.fn("DiscussionSessionEnvironment.list")(
           function* (workingDirectory, parentSessionId) {
@@ -136,17 +138,13 @@ export const makeDiscussionSessionEnvironmentLive = (
               record.parentSessionId,
               record.id,
             );
-            const path = yield* Effect.tryPromise({
-              try: () =>
-                writeDiscussionParentContext({
-                  cwd: record.workingDirectory,
-                  parentSessionRoot: options.parentSessionDirectory,
-                  parent,
-                  target,
-                }),
-              catch: (cause) => environmentError("prepareParentContext", cause),
-            });
-            return reviewSidecarSystemPrompt(stored, path);
+            const contextPath = yield* writeDiscussionParentContext(fileSystem, path, {
+              cwd: record.workingDirectory,
+              parentSessionRoot: options.parentSessionDirectory,
+              parent,
+              target,
+            }).pipe(Effect.mapError((cause) => environmentError("prepareParentContext", cause)));
+            return reviewSidecarSystemPrompt(stored, contextPath);
           },
         ),
         refreshParentIndex: Effect.fn("DiscussionSessionEnvironment.refreshParentIndex")(

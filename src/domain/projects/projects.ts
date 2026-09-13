@@ -8,9 +8,11 @@ import { PiSessions } from "../../services/pi/PiSessions";
 import { PiAgentResources } from "../../services/pi/PiAgentResources";
 import { AgentAvailability } from "../../services/pi/AgentAvailability";
 import { ProjectSessionRuntimeHost } from "../../services/pi/ProjectSessionRuntimeHost";
-import { rewordSelectionWithProjectContext } from "../../services/pi/runtime/rewording-agent";
-import { runSessionAssistant } from "../../services/pi/runtime/session-assistant";
-import { inspectWorkspace } from "../../services/pi/runtime/session-discovery";
+import {
+  inspectWorkspace as inspectPiWorkspace,
+  rewordProjectSelection,
+  runProjectSessionAssistant,
+} from "../../services/pi/PiWorkflows";
 import { ProjectAccess } from "../../services/projects/ProjectAccess";
 import { ProjectConfiguration } from "../../services/projects/ProjectConfiguration";
 import { RewordingRequests } from "../../services/projects/RewordingRequests";
@@ -152,20 +154,16 @@ export const rewordComposerSelection = Effect.fn("Projects.rewordComposerSelecti
       AbortSignal.timeout(workingDirectory ? 60_000 : 30_000),
     ]);
     const text = workingDirectory
-      ? yield* Effect.tryPromise({
-          try: () =>
-            rewordSelectionWithProjectContext({
-              workspacePath: workingDirectory,
-              agentDir: configuration.agentDirectory,
-              utilityModel,
-              selection: request.selection,
-              guidance: request.prompt,
-              systemGuidance: dictationRewordingGuidance,
-              characterLimit: REWORD_CHARACTER_LIMIT,
-              signal,
-            }),
-          catch: (cause) => projectError("rewordComposerSelection", cause),
-        })
+      ? yield* rewordProjectSelection({
+          workspacePath: workingDirectory,
+          agentDir: configuration.agentDirectory,
+          utilityModel,
+          selection: request.selection,
+          guidance: request.prompt,
+          systemGuidance: dictationRewordingGuidance,
+          characterLimit: REWORD_CHARACTER_LIMIT,
+          signal,
+        }).pipe(Effect.mapError((cause) => projectError("rewordComposerSelection", cause)))
       : yield* mapProjectError(
           "rewordComposerSelection",
           rewordSelection({
@@ -211,27 +209,19 @@ export const chatWithSessionAssistant = Effect.fn("Projects.chatWithSessionAssis
       fallbackContext: request.context,
     })
     .pipe(Effect.mapError((cause) => projectError("chatWithSessionAssistant", cause)));
-  const result = yield* Effect.tryPromise({
-    try: (signal) =>
-      runSessionAssistant({
-        workspacePath,
-        agentDirectory: prepared.location.agentDirectory,
-        sessionDirectory: prepared.location.sessionDirectory,
-        sessionFile: prepared.record.sidecarSessionFile,
-        parentSessionId: request.sessionId,
-        utilityModel,
-        prompt: request.prompt,
-        parentContextPrompt: prepared.systemPrompt,
-        tools: request.tools,
-        signal,
-        invoke: (invocation, controlSignal) =>
-          Effect.runPromise(
-            rendererRequests.requestProjectControl(request.sessionId, invocation, controlSignal),
-            { signal: controlSignal },
-          ),
-      }),
-    catch: (cause) => projectError("chatWithSessionAssistant", cause),
-  });
+  const result = yield* runProjectSessionAssistant({
+    workspacePath,
+    agentDirectory: prepared.location.agentDirectory,
+    sessionDirectory: prepared.location.sessionDirectory,
+    sessionFile: prepared.record.sidecarSessionFile,
+    parentSessionId: request.sessionId,
+    utilityModel,
+    prompt: request.prompt,
+    parentContextPrompt: prepared.systemPrompt,
+    tools: request.tools,
+    invoke: (invocation, controlSignal) =>
+      rendererRequests.requestProjectControl(request.sessionId, invocation, controlSignal),
+  }).pipe(Effect.mapError((cause) => projectError("chatWithSessionAssistant", cause)));
   yield* discussionSessions
     .completeSessionAssistant(prepared.record, {
       sessionId: result.sessionId,
@@ -606,10 +596,9 @@ export const inspect = Effect.fn("Projects.inspect")(function* (
   const electron = yield* Electron;
   const sender = yield* requireConnection(connectionId, "inspectWorkspace");
   yield* requireAllowed(request.path);
-  const inspection = yield* Effect.try({
-    try: () => inspectWorkspace(request.path),
-    catch: (cause) => projectError("inspectWorkspace", cause),
-  });
+  const inspection = yield* inspectPiWorkspace(request.path).pipe(
+    Effect.mapError((cause) => projectError("inspectWorkspace", cause)),
+  );
   const trustRequired =
     inspection.trustRequired && !application.snapshot().trustedProjectPaths.includes(request.path);
   yield* mapProjectError("inspectWorkspace", access.clearOwner(sender.id));

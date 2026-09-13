@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { findSessionFile, forkWorkspaceSession } from "../../services/pi/runtime/session-discovery";
+import { forkSessionToWorkingDirectory, locateSessionFile } from "../../services/pi/PiWorkflows";
 import { ProjectAccess } from "../../services/projects/ProjectAccess";
 import { ProjectSessionConfiguration } from "../../services/project-sessions/ProjectSessionConfiguration";
 import { ApplicationState } from "../../services/storage/ApplicationState";
@@ -100,28 +100,20 @@ export const forkToWorkingDirectory = Effect.fn("ProjectSessions.forkToWorkingDi
   }) {
     const access = yield* ProjectAccess;
     const configuration = yield* ProjectSessionConfiguration;
-    const sourceFile = yield* Effect.tryPromise({
-      try: () =>
-        findSessionFile(
-          input.source.workingDirectory,
-          input.sessionId,
-          input.source.sessionDirectory,
-        ),
-      catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
-    });
+    const sourceFile = yield* locateSessionFile(
+      input.source.workingDirectory,
+      input.sessionId,
+      input.source.sessionDirectory,
+    );
     if (!sourceFile)
       return yield* Effect.fail(new Error("Cake could not find the Project Session to fork"));
-    const forked = yield* Effect.try({
-      try: () =>
-        forkWorkspaceSession(
-          sourceFile,
-          input.source.workingDirectory,
-          input.entryId,
-          input.destination.workingDirectory,
-          configuration.sessionDirectory,
-          input.title,
-        ),
-      catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
+    const forked = yield* forkSessionToWorkingDirectory({
+      sourceFile,
+      sourceWorkingDirectory: input.source.workingDirectory,
+      entryId: input.entryId,
+      destinationWorkingDirectory: input.destination.workingDirectory,
+      sessionDirectory: configuration.sessionDirectory,
+      title: input.title,
     });
     yield* access.rememberSessionLocation(input.destination.workingDirectory, forked.sessionId);
     return forked;

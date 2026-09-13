@@ -88,15 +88,15 @@ export const makeProjectSessionRuntimeHostLive = (
           sessionDir: options.sessionDirectory,
           widgetSessionDir: options.widgetSessionDirectory,
           emit: electron.broadcast,
+          execute: (effect, signal) => runAdapter(effect, signal ? { signal } : undefined),
           requestUi: (request) => runAdapter(rendererRequests.requestUi(sessionId, request)),
           requestArtifact: (record, signal) =>
             runAdapter(rendererRequests.requestArtifact(sessionId, record, signal)),
           requestApplicationControl: (invocation, signal) =>
             runAdapter(rendererRequests.requestProjectControl(sessionId, invocation, signal)),
-          runReviewedWidget: (input, dependencies) =>
-            runAdapter(generateReviewedWidget(input, dependencies)),
+          runReviewedWidget: generateReviewedWidget,
           captureWidget: (targetSessionId, widget, signal) =>
-            runAdapter(widgetCapture.capture(targetSessionId, widget, signal)),
+            runAdapter(widgetCapture.capture(targetSessionId, widget, signal), { signal }),
           requireVisionModel: async (model) => {
             if (!model)
               throw new Error(
@@ -117,15 +117,10 @@ export const makeProjectSessionRuntimeHostLive = (
           },
           importWorkspaceFile: (input) => runAdapter(importWorkspaceFile(input)),
           artifactRepository: {
-            // Pi's artifact hooks are Promise callbacks. Keep the only execution
-            // adapter at this host boundary and provide only ArtifactStorage.
-            upsert: (directory, artifact) => runAdapter(artifacts.upsert(directory, artifact)),
-            get: (directory, targetSessionId, artifactId) =>
-              runAdapter(artifacts.get(directory, targetSessionId, artifactId)),
-            listSession: (directory, targetSessionId) =>
-              runAdapter(artifacts.listSession(directory, targetSessionId)),
-            linkSession: (record, targetSessionId) =>
-              runAdapter(artifacts.linkSession(record, targetSessionId)),
+            upsert: artifacts.upsert,
+            get: artifacts.get,
+            listSession: artifacts.listSession,
+            linkSession: artifacts.linkSession,
           },
           reviewRepository: {
             reviewContextPath: reviews.reviewContextPath,

@@ -18,9 +18,10 @@ import { Electron } from "../../services/electron/Electron";
 import type { PiModels } from "../../services/pi/PiModels";
 import { PiSessions, type PiSessionAcquireOptions } from "../../services/pi/PiSessions";
 import { ProjectSessionRuntimeHost } from "../../services/pi/ProjectSessionRuntimeHost";
-import childSessionFamilyPromptTemplate from "../../services/pi/runtime/prompts/child-session-family.md?raw";
-import parentSessionFamilyPromptTemplate from "../../services/pi/runtime/prompts/parent-session-family.md?raw";
-import { renderPromptTemplate } from "../../services/pi/runtime/prompt-template";
+import { makePiCallbackExecutor } from "../../services/pi/PiCallbackAdapter";
+import childSessionFamilyPromptTemplate from "./prompts/child-session-family.md?raw";
+import parentSessionFamilyPromptTemplate from "./prompts/parent-session-family.md?raw";
+import { renderProjectSessionPrompt } from "./projectSessionPromptTemplate";
 import { ProjectAccess } from "../../services/projects/ProjectAccess";
 import { ProjectSessionConfiguration } from "../../services/project-sessions/ProjectSessionConfiguration";
 import * as projectSessionLifecycle from "./projectSessionLifecycle";
@@ -103,7 +104,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
     | Terminal
     | VsCodeServer
   >();
-  const run = Effect.runPromiseWith(context);
+  const run = makePiCallbackExecutor(context);
   const agentControl = makeSubagentControl({
     runEffect: (effect, signal) => run(effect, { signal }),
   });
@@ -155,12 +156,12 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
   }
   const relationshipPrompt =
     family && member?.parentSessionId
-      ? renderPromptTemplate(childSessionFamilyPromptTemplate, {
+      ? renderProjectSessionPrompt(childSessionFamilyPromptTemplate, {
           familyId: family.familyId,
           parentSessionId: member.parentSessionId,
           workingDirectory: member.workingDirectory,
         })
-      : renderPromptTemplate(parentSessionFamilyPromptTemplate);
+      : renderProjectSessionPrompt(parentSessionFamilyPromptTemplate);
   const setupInstructions = location.managedWorktree
     ? application
         .snapshot()

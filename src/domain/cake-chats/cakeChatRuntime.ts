@@ -14,6 +14,7 @@ import type { SubagentEnvironment } from "../../services/subagents/SubagentEnvir
 import { ApplicationState } from "../../services/storage/ApplicationState";
 import type { SessionArchiveStorage } from "../../services/storage/SessionArchiveStorage";
 import type { PiSessionAcquireOptions } from "../../services/pi/PiSessions";
+import { makePiCallbackExecutor } from "../../services/pi/PiCallbackAdapter";
 
 export interface CakeChatRuntimeConfiguration {
   readonly location: CakeChatLocation;
@@ -42,7 +43,7 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
     | SubagentCoordinator
     | SubagentEnvironment
   >();
-  const run = Effect.runPromiseWith(context);
+  const run = makePiCallbackExecutor(context);
   const agentControl = makeSubagentControl({
     runEffect: (effect, signal) => run(effect, { signal }),
   });

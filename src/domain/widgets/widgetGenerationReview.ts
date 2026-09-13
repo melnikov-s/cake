@@ -1,7 +1,21 @@
 import { Effect, Schema } from "effect";
-import type { InlineWidgetGenerationRequest } from "../../services/pi/runtime/sidecar-runtime";
 import { extractRepairedWidget } from "../../services/widgets/inline-widget-service";
 import { RenderedWidgetCaptureError } from "../../services/widgets/RenderedWidgetCapture";
+
+export interface InlineWidgetGenerationRequest {
+  readonly sessionId: string;
+  readonly brief: string;
+  readonly data?: unknown;
+  readonly fallback: string;
+  readonly model?: { readonly provider: string; readonly id: string };
+  readonly signal?: AbortSignal;
+}
+
+export interface InlineWidgetGenerationResult {
+  readonly language: "react";
+  readonly source: string;
+  readonly generationSessionId: string;
+}
 
 export class WidgetGenerationReviewError extends Schema.TaggedError<WidgetGenerationReviewError>()(
   "WidgetGenerationReviewError",
@@ -13,18 +27,36 @@ export class WidgetGenerationReviewError extends Schema.TaggedError<WidgetGenera
 ) {}
 
 export interface WidgetGenerationReviewDependencies {
-  requireVisionModel(model: { provider: string; id: string } | undefined): Promise<void>;
-  generate(): Promise<{ sessionId: string; response: string }>;
-  compile(source: string): Promise<{
-    widget: { readonly token: string; readonly url: string };
-    release(): void;
-  }>;
-  repair(source: string, diagnostic: string): Promise<{ response: string }>;
-  capture(widget: { readonly token: string; readonly url: string }): Promise<{
-    pngBase64: string;
-    diagnostics: ReadonlyArray<string>;
-  }>;
-  review(source: string, diagnostic: string, pngBase64: string): Promise<{ response: string }>;
+  readonly requireVisionModel: (
+    model: { readonly provider: string; readonly id: string } | undefined,
+  ) => Effect.Effect<void, unknown>;
+  readonly generate: () => Effect.Effect<
+    { readonly sessionId: string; readonly response: string },
+    unknown
+  >;
+  readonly compile: (source: string) => Effect.Effect<
+    {
+      readonly widget: { readonly token: string; readonly url: string };
+      readonly release: Effect.Effect<void>;
+    },
+    unknown
+  >;
+  readonly repair: (
+    source: string,
+    diagnostic: string,
+  ) => Effect.Effect<{ readonly response: string }, unknown>;
+  readonly capture: (widget: { readonly token: string; readonly url: string }) => Effect.Effect<
+    {
+      readonly pngBase64: string;
+      readonly diagnostics: ReadonlyArray<string>;
+    },
+    unknown
+  >;
+  readonly review: (
+    source: string,
+    diagnostic: string,
+    pngBase64: string,
+  ) => Effect.Effect<{ readonly response: string }, unknown>;
 }
 
 const messageOf = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause));
@@ -33,11 +65,10 @@ const fail = (
   kind: WidgetGenerationReviewError["kind"],
   cause: unknown,
 ) => new WidgetGenerationReviewError({ operation, kind, message: messageOf(cause) });
-const promise = <A>(
+const mapFailure = (
   operation: WidgetGenerationReviewError["operation"],
   kind: WidgetGenerationReviewError["kind"],
-  evaluate: () => Promise<A>,
-) => Effect.tryPromise({ try: evaluate, catch: (cause) => fail(operation, kind, cause) });
+) => Effect.mapError((cause: unknown) => fail(operation, kind, cause));
 const extract = (response: string, operation: WidgetGenerationReviewError["operation"]) =>
   Effect.try({
     try: () => extractRepairedWidget(response, "react"),
@@ -49,14 +80,14 @@ export const generateReviewedWidget = Effect.fn("WidgetGenerationReview.generate
   input: InlineWidgetGenerationRequest,
   dependencies: WidgetGenerationReviewDependencies,
 ) {
-  yield* promise("preflight", "model", () => dependencies.requireVisionModel(input.model));
+  yield* dependencies.requireVisionModel(input.model).pipe(mapFailure("preflight", "model"));
   if (!input.model)
     return yield* fail(
       "preflight",
       "model",
       "Rendered widget review requires a configured vision-capable model",
     );
-  const generated = yield* promise("generate", "infrastructure", dependencies.generate);
+  const generated = yield* dependencies.generate().pipe(mapFailure("generate", "infrastructure"));
   let source = yield* extract(generated.response, "generate");
   let replacements = 0;
   let diagnostic = "Compilation succeeded.";
@@ -64,9 +95,9 @@ export const generateReviewedWidget = Effect.fn("WidgetGenerationReview.generate
   while (true) {
     if (input.signal?.aborted)
       return yield* fail("review", "cancelled", "Widget generation was cancelled");
-    const compiled = yield* promise("compile", "candidate", () =>
-      dependencies.compile(source),
-    ).pipe(Effect.result);
+    const compiled = yield* dependencies
+      .compile(source)
+      .pipe(mapFailure("compile", "candidate"), Effect.result);
     if (compiled._tag === "Failure") {
       diagnostic = `Compilation failed: ${compiled.failure.message}`.slice(0, 8_000);
       if (replacements >= 2)
@@ -75,9 +106,9 @@ export const generateReviewedWidget = Effect.fn("WidgetGenerationReview.generate
           "candidate",
           `Widget review exhausted its two replacements. ${diagnostic}`,
         );
-      const repaired = yield* promise("repair", "infrastructure", () =>
-        dependencies.repair(source, diagnostic),
-      );
+      const repaired = yield* dependencies
+        .repair(source, diagnostic)
+        .pipe(mapFailure("repair", "infrastructure"));
       source = yield* extract(repaired.response, "repair");
       replacements += 1;
       continue;
@@ -85,27 +116,29 @@ export const generateReviewedWidget = Effect.fn("WidgetGenerationReview.generate
 
     const candidate = compiled.success;
     const outcome = yield* Effect.gen(function* () {
-      const capture = yield* Effect.tryPromise({
-        try: () => dependencies.capture(candidate.widget),
-        catch: (cause) =>
-          cause instanceof RenderedWidgetCaptureError
-            ? fail("capture", cause.kind === "widget" ? "candidate" : cause.kind, cause.message)
-            : fail("capture", "infrastructure", cause),
-      });
+      const capture = yield* dependencies
+        .capture(candidate.widget)
+        .pipe(
+          Effect.mapError((cause) =>
+            cause instanceof RenderedWidgetCaptureError
+              ? fail("capture", cause.kind === "widget" ? "candidate" : cause.kind, cause.message)
+              : fail("capture", "infrastructure", cause),
+          ),
+        );
       diagnostic = [diagnostic, ...capture.diagnostics].join("\n").slice(0, 8_000);
-      return yield* promise("review", "infrastructure", () =>
-        dependencies.review(source, diagnostic, capture.pngBase64),
-      );
-    }).pipe(Effect.ensuring(Effect.sync(candidate.release)), Effect.result);
+      return yield* dependencies
+        .review(source, diagnostic, capture.pngBase64)
+        .pipe(mapFailure("review", "infrastructure"));
+    }).pipe(Effect.ensuring(candidate.release), Effect.result);
 
     if (outcome._tag === "Failure") {
       if (input.signal?.aborted || outcome.failure.kind === "cancelled")
         return yield* fail("review", "cancelled", "Widget generation was cancelled");
       if (outcome.failure.kind !== "candidate") return yield* outcome.failure;
       if (replacements >= 2) return yield* outcome.failure;
-      const repaired = yield* promise("repair", "infrastructure", () =>
-        dependencies.repair(source, `Rendered preview failed: ${outcome.failure.message}`),
-      );
+      const repaired = yield* dependencies
+        .repair(source, `Rendered preview failed: ${outcome.failure.message}`)
+        .pipe(mapFailure("repair", "infrastructure"));
       source = yield* extract(repaired.response, "repair");
       replacements += 1;
       continue;

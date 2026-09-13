@@ -6,9 +6,9 @@ import tseslint from "typescript-eslint";
 const effectExecutionBoundaries = [
   "src/main/main.ts", // Process entry point, runtime disposal, and Electron smoke hooks.
   "src/renderer/runtime.ts", // The one window-owned renderer runtime.
-  "src/domain/cake-chats/cakeChatRuntime.ts", // Final Cake Chat capability callbacks supplied to Pi.
-  "src/domain/project-sessions/projectSessionRuntime.ts", // Final Project Session capability callbacks supplied to Pi.
-  "src/services/pi/ProjectSessionRuntimeHostLive.ts", // Artifact repository Promise callbacks supplied to Pi.
+  "src/services/pi/PiCallbackAdapter.ts", // Final Cake Session capability callbacks supplied to Pi.
+  "src/services/pi/PiWorkflows.ts", // Final callbacks required by focused external Pi workflows.
+  "src/services/pi/ProjectSessionRuntimeHostLive.ts", // Final artifact and renderer callbacks supplied to Pi.
 ];
 const executionApi = "/^run(Fork|Callback|Promise|Sync)(Exit)?(With)?$/";
 

@@ -1,16 +1,14 @@
 import { SessionManager, type SessionEntry } from "@earendil-works/pi-coding-agent";
-import { chmod, mkdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
+import { Effect, type FileSystem, type Path } from "effect";
 import {
   type ReviewSessionProjection,
   type ReviewThreadRecord,
 } from "../../../ipc/review-contract";
 import { runIsolatedSession } from "./isolated-session-runner";
 import { assertSessionPath } from "./session-path";
-import { AtomicFileWriter } from "../../storage/internal/AtomicFileWriter";
+import { atomicWriteFile } from "../../storage/internal/atomicFile";
 import { projectSessionEntries } from "./session-projection";
-
-const atomicFileWriter = new AtomicFileWriter();
 
 export const inlineWidgetLayoutRequirements =
   "The layout must remain collision-free from 320 CSS pixels through wide desktop sizes and when labels or values grow. Outside a diagram canvas, structural content must use normal-flow flex or grid layout that wraps or reflows; do not use absolute or fixed positioning for structural text, controls, icons, or navigation. Diagram nodes, ports and edges may use library-managed geometry inside an explicitly sized canvas. Reserve explicit space for decorative marks, set min-width: 0 on shrinkable flex/grid children, wrap control groups when needed, and allow long text to wrap. No text or interactive control may overlap, cover, or be covered by another element, and the page must not require horizontal scrolling.";
@@ -175,30 +173,46 @@ export async function runInlineWidgetGeneration(options: {
 const MAX_DISCUSSION_PARENT_CONTEXT_LENGTH = 524_288;
 
 /** Writes one bounded, regenerated parent projection to a Cake-owned derived-context path. */
-export async function writeDiscussionParentContext(options: {
-  cwd: string;
-  parentSessionRoot: string;
-  parent?: ReviewParentContext;
-  target: string;
-}) {
-  if (!options.parent?.sessionFile)
-    throw new Error("The parent session is unavailable for this discussion");
-  assertSessionPath(options.parent.sessionFile, options.parentSessionRoot, "Parent session file");
-  const parent = SessionManager.open(
-    options.parent.sessionFile,
-    options.parentSessionRoot,
-    options.cwd,
-  );
-  const entries = parent.getBranch(options.parent.leafId);
-  await mkdir(dirname(options.target), { recursive: true, mode: 0o700 });
-  await chmod(options.target, 0o600).catch(() => undefined);
-  await atomicFileWriter.write(
-    options.target,
-    renderParentTranscript(parent.getSessionId(), entries),
-  );
-  await chmod(options.target, 0o400);
-  return options.target;
-}
+export const writeDiscussionParentContext = Effect.fn("PiSidecar.writeDiscussionParentContext")(
+  function* (
+    fileSystem: FileSystem.FileSystem,
+    path: Path.Path,
+    options: {
+      readonly cwd: string;
+      readonly parentSessionRoot: string;
+      readonly parent?: ReviewParentContext;
+      readonly target: string;
+    },
+  ) {
+    const parentContext = options.parent;
+    if (!parentContext?.sessionFile)
+      return yield* Effect.fail(new Error("The parent session is unavailable for this discussion"));
+    const projection = yield* Effect.try({
+      try: () => {
+        assertSessionPath(
+          parentContext.sessionFile,
+          options.parentSessionRoot,
+          "Parent session file",
+        );
+        const parent = SessionManager.open(
+          parentContext.sessionFile,
+          options.parentSessionRoot,
+          options.cwd,
+        );
+        return renderParentTranscript(
+          parent.getSessionId(),
+          parent.getBranch(parentContext.leafId),
+        );
+      },
+      catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
+    });
+    yield* atomicWriteFile(fileSystem, path, options.target, projection, (_stage, cause) =>
+      cause instanceof Error ? cause : new Error(String(cause)),
+    );
+    yield* fileSystem.chmod(options.target, 0o400);
+    return options.target;
+  },
+);
 
 function renderParentTranscript(sessionId: string, entries: SessionEntry[]) {
   const sections = entries.flatMap((entry): string[] => {

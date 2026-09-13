@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import { Effect } from "effect";
 import type { SourceLocation } from "../../ipc/source-location";
 import type { UtilityModel } from "../../ipc/session-contract";
 import type { CakeModelPresetCatalog } from "../../domain/model-presets/cake-model-selection";
@@ -18,27 +19,35 @@ import {
   runInlineWidgetGeneration,
   runInlineWidgetRepair,
   runInlineWidgetVisualReview,
-  type InlineWidgetGenerationRequest,
-  type InlineWidgetGenerationResult,
   type InlineWidgetRevisionRequest,
 } from "./runtime/sidecar-runtime";
+import type {
+  InlineWidgetGenerationRequest,
+  InlineWidgetGenerationResult,
+  WidgetGenerationReviewDependencies,
+} from "../../domain/widgets/widgetGenerationReview";
 import type { CakeRuntimeOptions } from "./runtime/cake-runtime";
 import type { RuntimeUiRequest } from "./runtime/runtime-ui-request";
-import type { WidgetGenerationReviewDependencies } from "../../domain/widgets/widgetGenerationReview";
 import type { ImportWorkspaceFileInput } from "../artifacts/importWorkspaceFile";
 
 interface ArtifactRepositoryPort {
-  readonly upsert: (workingDirectory: string, artifact: CakeArtifactV1) => Promise<ArtifactRecord>;
+  readonly upsert: (
+    workingDirectory: string,
+    artifact: CakeArtifactV1,
+  ) => Effect.Effect<ArtifactRecord, unknown, never>;
   readonly get: (
     workingDirectory: string,
     sessionId: string,
     artifactId: string,
-  ) => Promise<ArtifactRecord | undefined>;
+  ) => Effect.Effect<ArtifactRecord | undefined, unknown, never>;
   readonly listSession: (
     workingDirectory: string,
     sessionId: string,
-  ) => Promise<ReadonlyArray<ArtifactRecord>>;
-  readonly linkSession: (record: ArtifactRecord, sessionId: string) => Promise<void>;
+  ) => Effect.Effect<ReadonlyArray<ArtifactRecord>, unknown, never>;
+  readonly linkSession: (
+    record: ArtifactRecord,
+    sessionId: string,
+  ) => Effect.Effect<void, unknown, never>;
 }
 interface ReviewRepositoryPort {
   readonly reviewContextPath?: (workingDirectory: string, sessionId: string) => string;
@@ -91,7 +100,12 @@ export interface ProjectSessionIntegrationHostOptions {
   readonly runReviewedWidget: (
     input: InlineWidgetGenerationRequest,
     dependencies: WidgetGenerationReviewDependencies,
-  ) => Promise<InlineWidgetGenerationResult>;
+  ) => Effect.Effect<InlineWidgetGenerationResult, unknown, never>;
+  /** Final Pi callback adapter. This is the only place this host executes Effects. */
+  readonly execute: <A>(
+    effect: Effect.Effect<A, unknown, never>,
+    signal?: AbortSignal,
+  ) => Promise<A>;
   readonly captureWidget?: (
     sessionId: string,
     widget: { readonly token: string; readonly url: string },
@@ -139,6 +153,7 @@ export class ProjectSessionIntegrationHost {
   private readonly runWidgetVisualReview: typeof runInlineWidgetVisualReview;
   private readonly compileWidget: typeof compileInlineWidget;
   private readonly runReviewedWidget: ProjectSessionIntegrationHostOptions["runReviewedWidget"];
+  private readonly execute: ProjectSessionIntegrationHostOptions["execute"];
   private readonly captureWidget: NonNullable<
     ProjectSessionIntegrationHostOptions["captureWidget"]
   >;
@@ -166,6 +181,7 @@ export class ProjectSessionIntegrationHost {
     this.runWidgetVisualReview = options.runWidgetVisualReview ?? runInlineWidgetVisualReview;
     this.compileWidget = options.compileWidget ?? compileInlineWidget;
     this.runReviewedWidget = options.runReviewedWidget;
+    this.execute = options.execute;
     this.captureWidget =
       options.captureWidget ??
       (async () => {
@@ -185,23 +201,20 @@ export class ProjectSessionIntegrationHost {
         throw new Error("Workspace file artifact import is unavailable");
       });
     this.artifactRepository = options.artifactRepository ?? {
-      async upsert(workingDirectory, artifact) {
-        const now = new Date().toISOString();
-        return {
-          artifact: parseArtifactInput(artifact),
-          workspacePath: workingDirectory,
-          digest: "0".repeat(64),
-          createdAt: now,
-          updatedAt: now,
-        };
-      },
-      async get() {
-        return undefined;
-      },
-      async listSession() {
-        return [];
-      },
-      async linkSession() {},
+      upsert: (workingDirectory, artifact) =>
+        Effect.sync(() => {
+          const now = new Date().toISOString();
+          return {
+            artifact: parseArtifactInput(artifact),
+            workspacePath: workingDirectory,
+            digest: "0".repeat(64),
+            createdAt: now,
+            updatedAt: now,
+          };
+        }),
+      get: () => Effect.succeed(undefined),
+      listSession: () => Effect.succeed([]),
+      linkSession: () => Effect.void,
     };
     this.reviewRepository = options.reviewRepository ?? {};
   }
@@ -218,14 +231,14 @@ export class ProjectSessionIntegrationHost {
         this.requestApplicationControlFromRenderer(invocation, signal),
       emitExtensionUiIntent: (intent) =>
         this.emit({ type: "extension-ui-intent", sessionId, intent }),
-      persistArtifact: (artifact) => this.persistArtifact(artifact, sessionId),
+      persistArtifact: (artifact) => this.execute(this.persistArtifact(artifact, sessionId)),
       requestArtifact: (record, signal) => this.requestArtifactFromRenderer(record, signal),
-      generateInlineWidget: (input) => this.generateInlineWidget(input),
-      reviseInlineWidget: (input) => this.reviseInlineWidget(input),
+      generateInlineWidget: (input) => this.execute(this.generateInlineWidget(input), input.signal),
+      reviseInlineWidget: (input) => this.execute(this.reviseInlineWidget(input), input.signal),
       getArtifact: (artifactId) =>
-        this.artifactRepository.get(this.workspacePath, sessionId, artifactId),
+        this.execute(this.artifactRepository.get(this.workspacePath, sessionId, artifactId)),
       listSessionArtifacts: () =>
-        this.artifactRepository.listSession(this.workspacePath, sessionId),
+        this.execute(this.artifactRepository.listSession(this.workspacePath, sessionId)),
       importArtifactFile: (input) =>
         this.importWorkspaceFile({
           ...input,
@@ -235,21 +248,25 @@ export class ProjectSessionIntegrationHost {
       reviewContextPath: reviewContextPath
         ? (activeSessionId) => reviewContextPath(this.workspacePath, activeSessionId)
         : undefined,
-      listArtifacts: async (pointers) => {
-        const direct = await Promise.all(
-          pointers.map((pointer) =>
-            this.artifactRepository.get(this.workspacePath, pointer.sessionId, pointer.artifactId),
-          ),
+      listArtifacts: (pointers) => {
+        const repository = this.artifactRepository;
+        const workingDirectory = this.workspacePath;
+        return this.execute(
+          Effect.gen(function* () {
+            const direct = yield* Effect.forEach(pointers, (pointer) =>
+              repository.get(workingDirectory, pointer.sessionId, pointer.artifactId),
+            );
+            const indexed = yield* repository.listSession(workingDirectory, sessionId);
+            const records = new Map<string, ArtifactRecord>();
+            for (const record of [...direct, ...indexed]) {
+              if (!record) continue;
+              const current = records.get(record.artifact.id);
+              if (!current || record.artifact.revision > current.artifact.revision)
+                records.set(record.artifact.id, record);
+            }
+            return [...records.values()];
+          }),
         );
-        const indexed = await this.artifactRepository.listSession(this.workspacePath, sessionId);
-        const records = new Map<string, ArtifactRecord>();
-        for (const record of [...direct, ...indexed]) {
-          if (!record) continue;
-          const current = records.get(record.artifact.id);
-          if (!current || record.artifact.revision > current.artifact.revision)
-            records.set(record.artifact.id, record);
-        }
-        return [...records.values()];
       },
     };
   }
@@ -258,26 +275,26 @@ export class ProjectSessionIntegrationHost {
     if (!this.disposed) this.emitEvent(event);
   }
 
-  private async persistArtifact(artifact: CakeArtifactV1, activeSessionId: string) {
-    const persistedArtifact =
-      artifact.kind === "request"
-        ? {
-            ...artifact,
-            revision:
-              ((
-                await this.artifactRepository.get(
-                  this.workspacePath,
-                  artifact.sessionId,
-                  artifact.id,
-                )
-              )?.artifact.revision ?? 0) + 1,
-          }
-        : artifact;
-    const record = await this.artifactRepository.upsert(this.workspacePath, persistedArtifact);
-    if (activeSessionId !== artifact.sessionId)
-      await this.artifactRepository.linkSession(record, activeSessionId);
-    this.emit({ type: "artifact-updated", record });
-    return record;
+  private persistArtifact(artifact: CakeArtifactV1, activeSessionId: string) {
+    const repository = this.artifactRepository;
+    const workingDirectory = this.workspacePath;
+    const emit = (event: CakeEvent) => this.emit(event);
+    return Effect.gen(function* () {
+      const persistedArtifact =
+        artifact.kind === "request"
+          ? {
+              ...artifact,
+              revision:
+                ((yield* repository.get(workingDirectory, artifact.sessionId, artifact.id))
+                  ?.artifact.revision ?? 0) + 1,
+            }
+          : artifact;
+      const record = yield* repository.upsert(workingDirectory, persistedArtifact);
+      if (activeSessionId !== artifact.sessionId)
+        yield* repository.linkSession(record, activeSessionId);
+      emit({ type: "artifact-updated", record });
+      return record;
+    });
   }
 
   private generateInlineWidget(input: InlineWidgetGenerationRequest) {
@@ -330,45 +347,57 @@ export class ProjectSessionIntegrationHost {
     context: string,
     generate: () => ReturnType<typeof runInlineWidgetGeneration>,
   ) {
+    const fromPromise = <A>(evaluate: (signal: AbortSignal) => Promise<A>) =>
+      Effect.tryPromise({ try: evaluate, catch: (cause) => cause });
     return this.runReviewedWidget(input, {
-      requireVisionModel: this.requireVisionModel,
-      generate,
-      compile: async (source) => {
-        const compiled = await this.compileWidget("react", source, "display");
-        const widget = publishInlineWidget(compiled);
-        return { widget, release: () => revokeInlineWidget(widget.token) };
-      },
+      requireVisionModel: (model) => fromPromise(() => this.requireVisionModel(model)),
+      generate: () => fromPromise(() => generate()),
+      compile: (source) =>
+        fromPromise(() => this.compileWidget("react", source, "display")).pipe(
+          Effect.map((compiled) => {
+            const widget = publishInlineWidget(compiled);
+            return {
+              widget,
+              release: Effect.sync(() => revokeInlineWidget(widget.token)),
+            };
+          }),
+        ),
       repair: (source, diagnostic) =>
-        this.runWidgetRepair({
-          cwd: this.workspacePath,
-          agentDir: this.agentDir,
-          sessionDir: this.widgetSessionDir,
-          language: "react",
-          capability: "display",
-          source,
-          context,
-          diagnostic,
-          model: input.model,
-          signal: input.signal,
-        }),
+        fromPromise(() =>
+          this.runWidgetRepair({
+            cwd: this.workspacePath,
+            agentDir: this.agentDir,
+            sessionDir: this.widgetSessionDir,
+            language: "react",
+            capability: "display",
+            source,
+            context,
+            diagnostic,
+            model: input.model,
+            signal: input.signal,
+          }),
+        ),
       capture: (widget) =>
-        this.captureWidget(input.sessionId, widget, input.signal ?? new AbortController().signal),
+        fromPromise((signal) => this.captureWidget(input.sessionId, widget, signal)),
       review: (source, diagnostic, pngBase64) => {
-        if (!input.model)
-          return Promise.reject(
+        const model = input.model;
+        if (!model)
+          return Effect.fail(
             new Error("Rendered widget review requires a configured vision-capable model"),
           );
-        return this.runWidgetVisualReview({
-          cwd: this.workspacePath,
-          agentDir: this.agentDir,
-          sessionDir: this.widgetSessionDir,
-          source,
-          context,
-          diagnostic,
-          pngBase64,
-          model: input.model,
-          signal: input.signal,
-        });
+        return fromPromise(() =>
+          this.runWidgetVisualReview({
+            cwd: this.workspacePath,
+            agentDir: this.agentDir,
+            sessionDir: this.widgetSessionDir,
+            source,
+            context,
+            diagnostic,
+            pngBase64,
+            model,
+            signal: input.signal,
+          }),
+        );
       },
     });
   }

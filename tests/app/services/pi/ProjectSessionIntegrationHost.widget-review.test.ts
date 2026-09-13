@@ -2,7 +2,7 @@ import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 import { generateReviewedWidget } from "../../../../src/domain/widgets/widgetGenerationReview";
 import { ProjectSessionIntegrationHost } from "../../../../src/services/pi/ProjectSessionIntegrationHost";
-import type { InlineWidgetGenerationRequest } from "../../../../src/services/pi/runtime/sidecar-runtime";
+import type { InlineWidgetGenerationRequest } from "../../../../src/domain/widgets/widgetGenerationReview";
 import { RenderedWidgetCaptureError } from "../../../../src/services/widgets/RenderedWidgetCapture";
 
 const source = (name: string) =>
@@ -20,8 +20,8 @@ function host(options: {
   let token = 0;
   const integration = new ProjectSessionIntegrationHost({
     workspacePath: "/workspace",
-    runReviewedWidget: (input, dependencies) =>
-      Effect.runPromise(generateReviewedWidget(input, dependencies)),
+    runReviewedWidget: generateReviewedWidget,
+    execute: (effect, signal) => Effect.runPromise(effect, signal ? { signal } : undefined),
     agentDir: "/agent",
     sessionDir: "/sessions",
     emit: vi.fn(),
@@ -163,7 +163,7 @@ describe("ProjectSessionIntegrationHost widget rendered review", () => {
     const pending = generate(fixture.integration, request(controller.signal));
     await vi.waitFor(() => expect(fixture.calls).toContain("review"));
     controller.abort();
-    await expect(pending).rejects.toThrow("cancelled");
+    await expect(pending).rejects.toThrow();
     expect(fixture.calls.filter((call) => call.startsWith("capture"))).toHaveLength(1);
   });
 

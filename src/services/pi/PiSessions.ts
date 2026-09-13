@@ -858,7 +858,9 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
             candidate.runtime.sessionId === target.sessionId,
         );
         if (!shared) return undefined;
-        const queued = yield* Effect.promise(() => shared.runtime.listQueuedMessages());
+        const queued = yield* runtimeOperation("currentStatus", () =>
+          shared.runtime.listQueuedMessages(),
+        ).pipe(Effect.orDie);
         return {
           streaming:
             shared.runtime.streaming ||
