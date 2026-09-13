@@ -182,14 +182,30 @@ fallback. The primary agent does not author React or HTML. The brief remains in
 the Pi transcript, while the generated implementation does not enter the
 project session's model context.
 
-Cake starts a separate hidden, persisted Pi session with tools, extensions,
-skills, context files, and project trust disabled. That agent returns one React
-component from the untrusted brief. Electron main compile-checks it before
-persistence. A failed build is passed once through the same isolated repair
-pipeline with the compiler diagnostic, then checked again. Cake persists the
-validated source as a `widget` artifact and appends only the ordinary artifact
-pointer and fallback to Pi. The tool result contains the artifact ID, allowing
-the renderer to place the widget at the tool-call position.
+Cake checks that the active configured model is available, authenticated and
+supports image input, then starts a hidden, persisted Pi session with tools,
+extensions, skills, context files and project trust disabled. That agent returns
+one React component from the untrusted brief. Electron main compile-checks it,
+mounts a transient review preview in the bound renderer and captures only the
+sandbox iframe with `webContents.capturePage`. Preview/capture lifetimes are
+serialized per renderer so one candidate cannot capture another's pixels.
+
+The frame reports readiness after its bounded font/layout-settle policy; resize
+reporting continues for later interaction. A restricted specialist receives the
+PNG, source, brief and bounded diagnostics. It returns `ACCEPT_CURRENT` or complete
+replacement source. At most two replacements are permitted across compilation,
+runtime and visual repairs combined. Every successfully rendered candidate,
+including the final replacement, receives screenshot review. Cancellation and
+renderer/provider failures stop the operation rather than consuming source-repair
+attempts. Previews and transient compiled tokens are released on settlement.
+
+Only accepted source reaches existing widget artifact persistence and the Pi
+pointer/fallback path. Review turns use separate persisted restricted Pi sessions
+with the same resolved model and full context; they do not share one transcript.
+PNG image blocks are retained in those private Pi transcripts, not in the widget
+artifact or the primary conversation. The screenshot covers a bounded preview,
+not every interaction or possible delayed update; review is visual feedback,
+not a guarantee of correctness or aesthetic quality.
 
 React source is bundled as TSX and must default-export one component. Approved
 imports are React, Cake's bundled D3 modules (`d3` or approved `d3-*`),
@@ -205,8 +221,11 @@ artifact type. The specialist can compose an actual React Flow diagram with
 ordinary React explanations, filters, source details, and accessible controls,
 or choose another visual form entirely. Diagram geometry belongs inside an
 explicitly sized canvas; surrounding content remains responsive normal-flow
-layout. Generation and repair share these instructions. Compilation does not
-prove visual quality: automatic rendered screenshot review is not implemented yet.
+layout. Generation, repair and visual review share these instructions. The
+ordinary `widgets.present` path performs automatic rendered screenshot review;
+viewing an existing widget does not trigger capture. Explicit Source/Repair and
+blocking request widgets remain separate interactions and do not automatically
+run this generation-only review policy.
 
 The widget runs in an `allow-scripts` iframe without same-origin privilege.
 CSP blocks fetch/XHR/WebSocket (including D3's network helpers), while generic
