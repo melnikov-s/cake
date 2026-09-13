@@ -196,7 +196,7 @@ export const makeSessionArchiveStorageLive = (archiveMetadataRoot: string) =>
         );
       });
 
-      const moveUnlocked = Effect.fn("SessionArchiveStorage.moveUnlocked")(
+      const prepareMoveUnlocked = Effect.fn("SessionArchiveStorage.prepareMoveUnlocked")(
         function* (sessionId: string, location: SessionArchiveLocation, resolved: boolean) {
           const activeDirectory = sessionDirectoryPath(directoryInput(location, false));
           const resolvedDirectory = sessionDirectoryPath(directoryInput(location, true));
@@ -204,22 +204,34 @@ export const makeSessionArchiveStorageLive = (archiveMetadataRoot: string) =>
           const source = yield* findAt(sessionId, location, !resolved);
           if (!source) {
             const alreadyMoved = yield* findAt(sessionId, location, resolved);
-            if (alreadyMoved) return false;
+            if (alreadyMoved) return Effect.succeed(false);
             return yield* Effect.fail(new Error(`Cake could not find session ${sessionId}`));
           }
           yield* fileSystem.makeDirectory(destinationDirectory, { recursive: true, mode: 0o700 });
           const destination = path.join(destinationDirectory, path.basename(source));
           if (yield* fileSystem.exists(destination)) {
-            if (!(yield* fileSystem.exists(source))) return false;
+            if (!(yield* fileSystem.exists(source))) return Effect.succeed(false);
             return yield* Effect.fail(
               new Error(`Session archive destination already exists for ${sessionId}`),
             );
           }
-          const renamed = yield* fileSystem.rename(source, destination).pipe(Effect.result);
-          if (renamed._tag === "Success") return true;
-          if (renamed.failure.reason._tag !== "NotFound") return yield* renamed.failure;
-          if (yield* fileSystem.exists(destination)) return false;
-          return yield* renamed.failure;
+          return fileSystem.rename(source, destination).pipe(
+            Effect.result,
+            Effect.flatMap((renamed) => {
+              if (renamed._tag === "Success") return Effect.succeed(true);
+              if (renamed.failure.reason._tag !== "NotFound") return renamed.failure;
+              return fileSystem
+                .exists(destination)
+                .pipe(
+                  Effect.flatMap((destinationExists) =>
+                    destinationExists ? Effect.succeed(false) : renamed.failure,
+                  ),
+                );
+            }),
+            Effect.mapError((cause) =>
+              archiveError(resolved ? "resolve" : "restore", sessionId, cause),
+            ),
+          );
         },
         (effect, sessionId, _location, resolved) =>
           effect.pipe(
@@ -227,6 +239,11 @@ export const makeSessionArchiveStorageLive = (archiveMetadataRoot: string) =>
               archiveError(resolved ? "resolve" : "restore", sessionId, cause),
             ),
           ),
+      );
+
+      const moveUnlocked = Effect.fn("SessionArchiveStorage.moveUnlocked")(
+        (sessionId: string, location: SessionArchiveLocation, resolved: boolean) =>
+          prepareMoveUnlocked(sessionId, location, resolved).pipe(Effect.flatten),
       );
 
       const deleteAtUnlocked = Effect.fn("SessionArchiveStorage.deleteAtUnlocked")(
@@ -341,7 +358,8 @@ export const makeSessionArchiveStorageLive = (archiveMetadataRoot: string) =>
                     sessionId,
                     new Error(`Cake could not find session ${sessionId}`),
                   );
-                const moved = yield* restore(moveUnlocked(sessionId, location, true));
+                const commitMove = yield* restore(prepareMoveUnlocked(sessionId, location, true));
+                const moved = yield* commitMove;
                 const entryBase = {
                   version: 1 as const,
                   sessionId,
@@ -390,7 +408,8 @@ export const makeSessionArchiveStorageLive = (archiveMetadataRoot: string) =>
                   activeRoot: entry.activeRoot,
                   resolvedRoot: entry.resolvedRoot,
                 };
-                const moved = yield* restore(moveUnlocked(sessionId, location, false));
+                const commitMove = yield* restore(prepareMoveUnlocked(sessionId, location, false));
+                const moved = yield* commitMove;
                 yield* restore(removeProjectEntryUnlocked("restoreProject", entry)).pipe(
                   Effect.onExit((exit) =>
                     Exit.isSuccess(exit)

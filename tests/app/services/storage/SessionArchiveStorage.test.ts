@@ -217,6 +217,118 @@ describe("SessionArchiveStorage", () => {
     ),
   );
 
+  it.effect("rolls resolve back when interrupted immediately after moving the transcript", () =>
+    withPlatform(
+      Effect.gen(function* () {
+        const metadataRoot = yield* makeMetadataRoot();
+        const location = yield* makeFixture();
+        const fileSystem = yield* FileSystem.FileSystem;
+        const transcriptMoved = yield* Deferred.make<void>();
+        const releaseMove = yield* Deferred.make<void>();
+        let pauseNextRename = true;
+        const controlledFileSystem = FileSystem.makeNoop({
+          ...fileSystem,
+          rename: (source, destination) => {
+            const pause = pauseNextRename;
+            pauseNextRename = false;
+            return fileSystem
+              .rename(source, destination)
+              .pipe(
+                Effect.andThen(
+                  pause
+                    ? Deferred.succeed(transcriptMoved, undefined).pipe(
+                        Effect.andThen(Deferred.await(releaseMove)),
+                      )
+                    : Effect.void,
+                ),
+              );
+          },
+        });
+        const controlledPlatform = Layer.mergeAll(
+          Layer.succeed(FileSystem.FileSystem)(controlledFileSystem),
+          NodePath.layer,
+        );
+        yield* Effect.gen(function* () {
+          const storage = yield* SessionArchiveStorage;
+          const resolving = yield* storage
+            .resolveProject("session-1", location, {
+              projectPath: "/projects/cake",
+              projectName: "Cake",
+            })
+            .pipe(Effect.forkChild);
+          yield* Deferred.await(transcriptMoved);
+          const interruption = yield* Fiber.interrupt(resolving).pipe(Effect.forkChild);
+          yield* Deferred.succeed(releaseMove, undefined);
+          yield* Fiber.join(interruption);
+
+          expect(yield* storage.locate("session-1", location)).toBe("active");
+          expect(yield* storage.resolvedProjectEntry("session-1")).toBeUndefined();
+        }).pipe(
+          Effect.provide(
+            makeSessionArchiveStorageLive(metadataRoot).pipe(Layer.provide(controlledPlatform)),
+          ),
+        );
+      }),
+    ),
+  );
+
+  it.effect("rolls restore back when interrupted immediately after moving the transcript", () =>
+    withPlatform(
+      Effect.gen(function* () {
+        const metadataRoot = yield* makeMetadataRoot();
+        const location = yield* makeFixture();
+        const fileSystem = yield* FileSystem.FileSystem;
+        const transcriptMoved = yield* Deferred.make<void>();
+        const releaseMove = yield* Deferred.make<void>();
+        let pauseNextRename = false;
+        const controlledFileSystem = FileSystem.makeNoop({
+          ...fileSystem,
+          rename: (source, destination) => {
+            const pause = pauseNextRename;
+            pauseNextRename = false;
+            return fileSystem
+              .rename(source, destination)
+              .pipe(
+                Effect.andThen(
+                  pause
+                    ? Deferred.succeed(transcriptMoved, undefined).pipe(
+                        Effect.andThen(Deferred.await(releaseMove)),
+                      )
+                    : Effect.void,
+                ),
+              );
+          },
+        });
+        const controlledPlatform = Layer.mergeAll(
+          Layer.succeed(FileSystem.FileSystem)(controlledFileSystem),
+          NodePath.layer,
+        );
+        yield* Effect.gen(function* () {
+          const storage = yield* SessionArchiveStorage;
+          yield* storage.resolveProject("session-1", location, {
+            projectPath: "/projects/cake",
+            projectName: "Cake",
+          });
+          pauseNextRename = true;
+          const restoring = yield* storage.restoreProject("session-1").pipe(Effect.forkChild);
+          yield* Deferred.await(transcriptMoved);
+          const interruption = yield* Fiber.interrupt(restoring).pipe(Effect.forkChild);
+          yield* Deferred.succeed(releaseMove, undefined);
+          yield* Fiber.join(interruption);
+
+          expect(yield* storage.locate("session-1", location)).toBe("resolved");
+          expect(yield* storage.resolvedProjectEntry("session-1")).toEqual(
+            expect.objectContaining({ sessionId: "session-1" }),
+          );
+        }).pipe(
+          Effect.provide(
+            makeSessionArchiveStorageLive(metadataRoot).pipe(Layer.provide(controlledPlatform)),
+          ),
+        );
+      }),
+    ),
+  );
+
   it.effect("restores archive metadata and transcript when restore metadata removal fails", () =>
     withPlatform(
       Effect.gen(function* () {
