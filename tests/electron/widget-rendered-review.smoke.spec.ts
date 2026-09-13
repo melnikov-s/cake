@@ -12,7 +12,8 @@ type CaptureResult = {
   persistedAfterCapture: boolean;
 };
 
-test("production widget review captures settled sandbox pixels before persistence", async ({}, testInfo) => {
+test("production widget review captures settled sandbox pixels before persistence", async () => {
+  const testInfo = test.info();
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-widget-review-smoke-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");

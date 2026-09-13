@@ -1,5 +1,4 @@
 import { resolve } from "node:path";
-import { Effect } from "effect";
 import type { SourceLocation } from "../../ipc/source-location";
 import type { UtilityModel } from "../../ipc/session-contract";
 import type { CakeModelPresetCatalog } from "../../domain/model-presets/cake-model-selection";
@@ -24,10 +23,7 @@ import {
 } from "./runtime/sidecar-runtime";
 import type { CakeRuntimeOptions } from "./runtime/cake-runtime";
 import type { RuntimeUiRequest } from "./runtime/runtime-ui-request";
-import {
-  generateReviewedWidget,
-  type WidgetGenerationReviewDependencies,
-} from "../../domain/widgets/widgetGenerationReview";
+import type { WidgetGenerationReviewDependencies } from "../../domain/widgets/widgetGenerationReview";
 
 interface ArtifactRepositoryPort {
   readonly upsert: (workingDirectory: string, artifact: CakeArtifactV1) => Promise<ArtifactRecord>;
@@ -86,7 +82,7 @@ export interface ProjectSessionIntegrationHostOptions {
   readonly runWidgetRepair?: typeof runInlineWidgetRepair;
   readonly runWidgetVisualReview?: typeof runInlineWidgetVisualReview;
   readonly compileWidget?: typeof compileInlineWidget;
-  readonly runReviewedWidget?: (
+  readonly runReviewedWidget: (
     input: InlineWidgetGenerationRequest,
     dependencies: WidgetGenerationReviewDependencies,
   ) => Promise<InlineWidgetGenerationResult>;
@@ -135,9 +131,7 @@ export class ProjectSessionIntegrationHost {
   private readonly runWidgetRepair: typeof runInlineWidgetRepair;
   private readonly runWidgetVisualReview: typeof runInlineWidgetVisualReview;
   private readonly compileWidget: typeof compileInlineWidget;
-  private readonly runReviewedWidget: NonNullable<
-    ProjectSessionIntegrationHostOptions["runReviewedWidget"]
-  >;
+  private readonly runReviewedWidget: ProjectSessionIntegrationHostOptions["runReviewedWidget"];
   private readonly captureWidget: NonNullable<
     ProjectSessionIntegrationHostOptions["captureWidget"]
   >;
@@ -161,9 +155,7 @@ export class ProjectSessionIntegrationHost {
     this.runWidgetRepair = options.runWidgetRepair ?? runInlineWidgetRepair;
     this.runWidgetVisualReview = options.runWidgetVisualReview ?? runInlineWidgetVisualReview;
     this.compileWidget = options.compileWidget ?? compileInlineWidget;
-    this.runReviewedWidget =
-      options.runReviewedWidget ??
-      ((input, dependencies) => Effect.runPromise(generateReviewedWidget(input, dependencies)));
+    this.runReviewedWidget = options.runReviewedWidget;
     this.captureWidget =
       options.captureWidget ??
       (async () => {

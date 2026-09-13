@@ -1,4 +1,6 @@
+import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
+import { generateReviewedWidget } from "../../../../src/domain/widgets/widgetGenerationReview";
 import { ProjectSessionIntegrationHost } from "../../../../src/services/pi/ProjectSessionIntegrationHost";
 import type { InlineWidgetGenerationRequest } from "../../../../src/services/pi/runtime/sidecar-runtime";
 import { RenderedWidgetCaptureError } from "../../../../src/services/widgets/RenderedWidgetCapture";
@@ -18,6 +20,8 @@ function host(options: {
   let token = 0;
   const integration = new ProjectSessionIntegrationHost({
     workspacePath: "/workspace",
+    runReviewedWidget: (input, dependencies) =>
+      Effect.runPromise(generateReviewedWidget(input, dependencies)),
     agentDir: "/agent",
     sessionDir: "/sessions",
     emit: vi.fn(),

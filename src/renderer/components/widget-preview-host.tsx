@@ -2,7 +2,7 @@ import { Option, Schema } from "effect";
 import { useEffect, useRef } from "react";
 import { observer } from "r-state-tree/react";
 import { inlineWidgetMessageSchema } from "../../utils/inline-widget-message";
-import { WidgetPreviewStore } from "../stores/WidgetPreviewStore";
+import type { WidgetPreviewStore } from "../stores/WidgetPreviewStore";
 import { FullscreenSurface } from "./fullscreen-surface";
 import { InlineWidgetFrame } from "./inline-widget-frame";
 

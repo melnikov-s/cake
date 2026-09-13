@@ -134,7 +134,7 @@ test("opens the artifact workspace, keeps requests inline, and isolates HTML", a
         };
         const selection = document.data?.children?.appShellStore?.state?.selection;
         return Boolean(
-          document.version === 9 && selection?.kind === "project-session" && selection.sessionId,
+          document.version === 10 && selection?.kind === "project-session" && selection.sessionId,
         );
       })
       .toBe(true);
