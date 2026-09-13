@@ -56,5 +56,8 @@ Prototype with Astra to establish the quality ceiling. Compare Sol only after th
 ## Status
 
 - Planning: agreed with user.
-- First-stage children: launching.
+- First-stage children: launched in isolated Cake-managed worktrees:
+  - [Visual prototype — Astra](cake://session/17889033-ae4f-4f23-998e-6fca90e8868a).
+  - [Runtime design — Sol](cake://session/26b42ee1-1068-4952-9493-724c8fb2bd27).
+  - [Evaluation fixtures — Luna](cake://session/a11c43f6-88c2-4e23-9ef8-ecd1fe38165b).
 - Production pipeline: not implemented; gated on rendered prototype review.
