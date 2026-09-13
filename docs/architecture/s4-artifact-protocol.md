@@ -26,7 +26,10 @@ not by replacing the transcript. Creating a new artifact automatically opens the
 panel and selects that artifact; later updates may refresh the selected artifact
 without stealing focus. The originating assistant message renders a compact
 `Artifact created · <title>` reference that opens the artifact rather than a second
-copy of its contents. The durable pointer records the originating assistant entry
+copy of its contents. The selected-artifact surface uses one quiet navigation row
+for the collection, previous/next traversal, fullscreen, and close actions; the
+artifact content is not wrapped in repeated titles, status headers, or source
+controls. The durable pointer records the originating assistant entry
 and tool call, so the reference appears only while that assistant message is on the
 active Pi branch. Readable fallbacks preserve production context for Pi.
 
@@ -122,13 +125,26 @@ is the Cake-home artifact repository, and the v1 inline protocol cap is
 
 ## Tools and interaction lifecycle
 
-The built-in `cake` gateway exposes one `widgets.present` path for substantial,
+The built-in `cake` gateway exposes session-scoped `artifacts.list`,
+`artifacts.read`, `artifacts.create`, and `artifacts.update` operations. Agents
+create substantial Markdown documents directly without supplying duplicate
+fallback text; Markdown is both the payload and readable fallback. They can also
+import bounded workspace-relative files as immutable snapshots with a safe
+filename, MIME type, byte size, and encoded content. Cake derives session IDs and
+revision numbers. Create begins a new lineage at revision one, while update keeps
+the stable artifact ID and publishes exactly the next immutable revision. List
+and read do not append transcript pointers. Widget reads return the presentation
+brief and fallback rather than generated implementation source.
+
+The `widgets.present` path remains the creation operation for substantial,
 persistent visual explanations, including architecture and dependency views. Its
 input is a semantic brief with audience, verified facts and relationships,
 source references, bounded data, and a readable Markdown fallback. A restricted
 specialist chooses the visual form and may combine prose and controls with React
 Flow and optional ELK inside the generated widget. Small diagrams remain inline
-Mermaid when they are clearest in the conversation.
+Mermaid when they are clearest in the conversation. User-requested widget edits
+use `artifacts.update`; Cake privately applies the requested delta to stored source
+and publishes only after compilation, rendering, and review succeed.
 
 The gateway also exposes `interview.open`, which accepts one
 `cake.request/v1`, persists it at the tool-call position, and waits for one
@@ -152,9 +168,9 @@ Electron acceptance test.
 
 ## Trusted built-ins and untrusted HTML
 
-The trusted renderer includes Markdown, sortable/filterable/selectable/exportable
-tables, Mermaid diagrams, schema-defined forms, media, diffs, HTML frames, and
-sandboxed generated widgets. Every surface retains its Markdown fallback, and
+The trusted renderer includes Markdown, immutable file snapshots,
+sortable/filterable/selectable/exportable tables, Mermaid diagrams,
+schema-defined forms, media, diffs, HTML frames, and sandboxed generated widgets. Every surface retains its Markdown fallback, and
 session export concatenates those fallbacks into a readable Markdown document.
 Historical persisted architecture records are decoded only at the storage-read
 boundary and projected as their mandatory Markdown fallback; their immutable
@@ -184,10 +200,12 @@ project session's model context.
 Cake checks that the active configured model is available, authenticated and
 supports image input, then starts a hidden, persisted Pi session with tools,
 extensions, skills, context files and project trust disabled. That agent returns
-one React component from the untrusted brief. Electron main compile-checks it,
-mounts a transient review preview in the bound renderer and captures only the
-sandbox iframe with `webContents.capturePage`. Preview/capture lifetimes are
-serialized per renderer so one candidate cannot capture another's pixels.
+one React component from the untrusted brief. Electron main compile-checks it and
+loads the compiled sandbox document in a main-owned hidden capture surface with
+deterministic artifact-panel dimensions. The surface waits for the same bounded
+ready/runtime protocol used by normal widget display, captures only widget pixels,
+and is never composited into a user's Cake window. Capture lifetimes are serialized
+so one candidate cannot capture another's pixels.
 
 The frame reports readiness after its bounded font/layout-settle policy; resize
 reporting continues for later interaction. A restricted specialist receives the
@@ -222,9 +240,9 @@ or choose another visual form entirely. Diagram geometry belongs inside an
 explicitly sized canvas; surrounding content remains responsive normal-flow
 layout. Generation, repair and visual review share these instructions. The
 ordinary `widgets.present` path performs automatic rendered screenshot review;
-viewing an existing widget does not trigger capture. Explicit Source/Repair and
-blocking request widgets remain separate interactions and do not automatically
-run this generation-only review policy.
+viewing an existing widget does not trigger capture. Blocking request widgets
+remain separate interactions and do not automatically run this generation-only
+review policy.
 
 The widget runs in an `allow-scripts` iframe without same-origin privilege.
 CSP blocks fetch/XHR/WebSocket (including D3's network helpers), while generic
@@ -234,11 +252,15 @@ sandbox exposes no Cake, Node, Electron, filesystem or parent-DOM access.
 Runtime errors and frame height cross a token-tagged `postMessage` channel;
 no general bridge is exposed.
 
-Each widget shows Source and Repair controls. Repair starts another isolated Pi
-session with the stored source, stored brief, and diagnostic as untrusted data.
-Cake compiles the returned source through the same boundary before rendering
-it. A later user-requested revision can use this same private source-plus-delta
-pipeline without loading the implementation into the primary context.
+Normal artifact presentation does not expose generated Source or a renderer-local
+Repair control. User-requested repair is a durable `artifacts.update`: another
+isolated Pi session receives stored source, stored brief, requested delta, and
+bounded diagnostics as untrusted data. Cake compiles and visually reviews the
+returned source through the same boundary before publishing the next revision.
+The generated implementation never enters the primary project-session context.
+Readable fallback remains required for transcript context, export, history, and
+render-failure recovery, but is not duplicated as routine viewer chrome. If a
+specialized renderer fails, the viewer displays that fallback directly.
 
 Custom request widgets use that same compiler and sandbox with one additional
 capability. HTML receives `cakeRequest.submit(value)` and
