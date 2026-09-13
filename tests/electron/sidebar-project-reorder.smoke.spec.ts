@@ -74,9 +74,8 @@ test("reorders projects by dragging in the desktop sidebar", async () => {
     await page.mouse.move(source!.x + 5, source!.y + source!.height / 2);
     await page.mouse.down();
     await page.mouse.move(target!.x + 5, target!.y + 1, { steps: 8 });
-    await page.mouse.up();
-
     await expect(labels).toHaveText(["beta", "alpha"]);
+    await page.mouse.up();
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

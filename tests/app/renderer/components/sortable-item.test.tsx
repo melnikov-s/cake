@@ -29,7 +29,7 @@ describe("SortableItem", () => {
     container.remove();
   });
 
-  it("accepts a drag while its payload is protected until drop", () => {
+  it("reorders during a drag while its payload is protected", () => {
     const onMove = vi.fn();
     act(() => {
       root.render(
@@ -70,9 +70,10 @@ describe("SortableItem", () => {
     expect(source).toBe("first");
     expect(dragOver.defaultPrevented).toBe(true);
     expect(dataTransfer.dropEffect).toBe("move");
+    expect(onMove).toHaveBeenCalledWith("first", "second", "after");
 
     payloadProtected = false;
     act(() => second!.dispatchEvent(dragEvent("drop", dataTransfer)));
-    expect(onMove).toHaveBeenCalledWith("first", "second", "after");
+    expect(onMove).toHaveBeenCalledTimes(1);
   });
 });
