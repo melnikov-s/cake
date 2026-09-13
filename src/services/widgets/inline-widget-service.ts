@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { build, type Message, type Plugin } from "esbuild";
 
@@ -12,6 +13,14 @@ export interface CompiledInlineWidgetDocument {
 const require = createRequire(import.meta.url);
 const d3Require = createRequire(require.resolve("d3"));
 const maximumSourceBytes = 1_048_576;
+const reactFlowStyles = readFileSync(require.resolve("@xyflow/react/dist/style.css"), "utf8");
+const reactModulePaths = new Map([
+  ["react", require.resolve("react")],
+  ["react/jsx-runtime", require.resolve("react/jsx-runtime")],
+  ["react/jsx-dev-runtime", require.resolve("react/jsx-dev-runtime")],
+  ["react-dom", require.resolve("react-dom")],
+  ["react-dom/client", require.resolve("react-dom/client")],
+]);
 
 /**
  * Inline widgets are generated code, so keep their dependency surface explicit.
@@ -53,6 +62,8 @@ const inlineWidgetSharedModules = new Set([
   "d3-timer",
   "d3-transition",
   "d3-zoom",
+  "@xyflow/react",
+  "elkjs/lib/elk.bundled.js",
 ]);
 
 function resolveInlineWidgetModule(specifier: string) {
@@ -60,6 +71,9 @@ function resolveInlineWidgetModule(specifier: string) {
     ? d3Require.resolve(specifier)
     : require.resolve(specifier);
 }
+
+const approvedImportsDescription =
+  "React, approved D3 modules, @xyflow/react, or elkjs/lib/elk.bundled.js";
 
 function diagnostics(messages: Message[]) {
   return messages.map((message) => {
@@ -88,34 +102,63 @@ function runtimeBridge(token: string, capability: InlineWidgetCapability) {
 </script>`;
 }
 
-function documentShell(token: string, body: string, capability: InlineWidgetCapability) {
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>html{color-scheme:light dark;font:14px/1.5 system-ui,sans-serif;background:transparent}body{min-width:0;margin:0;padding:16px;overflow:auto;color:CanvasText;background:Canvas}*,*::before,*::after{box-sizing:border-box}body>*{max-width:100%}#cake-widget-root{min-width:0;max-width:100%}:where(h1,h2,h3,h4,h5,h6,p,span,a,button,label,legend,th,td){overflow-wrap:anywhere}img,svg,video,canvas{max-width:100%;height:auto}button,input,select,textarea{max-width:100%;font:inherit}</style>${runtimeBridge(token, capability)}</head><body>${body}</body></html>`;
+function documentShell(
+  token: string,
+  body: string,
+  capability: InlineWidgetCapability,
+  libraryStyles = "",
+) {
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>html{color-scheme:light dark;font:14px/1.5 system-ui,sans-serif;background:transparent}body{min-width:0;margin:0;padding:16px;overflow:auto;color:CanvasText;background:Canvas}*,*::before,*::after{box-sizing:border-box}body>*{max-width:100%}#cake-widget-root{min-width:0;max-width:100%}:where(h1,h2,h3,h4,h5,h6,p,span,a,button,label,legend,th,td){overflow-wrap:anywhere}img,svg,video,canvas{max-width:100%;height:auto}button,input,select,textarea{max-width:100%;font:inherit}</style>${libraryStyles}${runtimeBridge(token, capability)}</head><body>${body}</body></html>`;
 }
 
-function widgetModulePlugin(source: string): Plugin {
+interface WidgetModulePlugin {
+  readonly plugin: Plugin;
+  readonly usesReactFlow: () => boolean;
+}
+
+function widgetModulePlugin(source: string): WidgetModulePlugin {
+  let usesReactFlow = false;
   return {
-    name: "cake-inline-widget",
-    setup(builder) {
-      builder.onResolve({ filter: /^cake:inline-widget$/ }, () => ({
-        path: "widget.tsx",
-        namespace: "cake-widget",
-      }));
-      builder.onLoad({ filter: /.*/, namespace: "cake-widget" }, () => ({
-        contents: source,
-        loader: "tsx",
-        resolveDir: process.cwd(),
-      }));
-      builder.onResolve({ filter: /.*/, namespace: "cake-widget" }, (args) => {
-        if (inlineWidgetSharedModules.has(args.path))
+    usesReactFlow: () => usesReactFlow,
+    plugin: {
+      name: "cake-inline-widget",
+      setup(builder) {
+        builder.onResolve({ filter: /^cake:inline-widget$/ }, () => ({
+          path: "widget.tsx",
+          namespace: "cake-widget",
+        }));
+        builder.onLoad({ filter: /.*/, namespace: "cake-widget" }, () => ({
+          contents: source,
+          loader: "tsx",
+          resolveDir: process.cwd(),
+        }));
+        builder.onResolve({ filter: /.*/, namespace: "cake-widget" }, (args) => {
+          if (!inlineWidgetSharedModules.has(args.path)) {
+            return {
+              errors: [
+                {
+                  text: `Inline React widgets may import ${approvedImportsDescription} only; received ${JSON.stringify(args.path)}`,
+                },
+              ],
+            };
+          }
+          if (args.path === "@xyflow/react") usesReactFlow = true;
+          if (args.path === "@xyflow/react" || args.path === "elkjs/lib/elk.bundled.js") {
+            return builder.resolve(args.path, {
+              kind: args.kind,
+              resolveDir: process.cwd(),
+              pluginData: { cakeApprovedLibrary: true },
+            });
+          }
           return { path: resolveInlineWidgetModule(args.path) };
-        return {
-          errors: [
-            {
-              text: `Inline React widgets may import React or approved D3 modules only; received ${JSON.stringify(args.path)}`,
-            },
-          ],
-        };
-      });
+        });
+        // Force React Flow's peer imports onto the same React instance as the
+        // widget entrypoint. Everything remains bundled into the sandbox document.
+        builder.onResolve({ filter: /^(?:react|react-dom)(?:\/.*)?$/ }, (args) => {
+          const path = reactModulePaths.get(args.path);
+          return path ? { path } : undefined;
+        });
+      },
     },
   };
 }
@@ -140,6 +183,7 @@ const host = document.getElementById("cake-widget-root");
 if (typeof Widget !== "function") throw new Error("A cake-react widget must default-export one React component");
 createRoot(host).render(React.createElement(Widget, ${capability === "request" ? "globalThis.cakeRequest" : "undefined"}));
 `;
+  const widgetModules = widgetModulePlugin(source);
   const result = await build({
     stdin: {
       contents: entry,
@@ -153,7 +197,7 @@ createRoot(host).render(React.createElement(Widget, ${capability === "request" ?
     platform: "browser",
     target: "es2022",
     jsx: "automatic",
-    plugins: [widgetModulePlugin(source)],
+    plugins: [widgetModules.plugin],
     logLevel: "silent",
   }).catch((error: unknown) => {
     const messages = isBuildFailure(error)
@@ -169,6 +213,9 @@ createRoot(host).render(React.createElement(Widget, ${capability === "request" ?
       token,
       `<div id="cake-widget-root"></div><script>${javascript.replaceAll("</script", "<\\/script")}</script>`,
       capability,
+      widgetModules.usesReactFlow()
+        ? `<style data-cake-widget-library="@xyflow/react">${reactFlowStyles.replaceAll("</style", "<\\/style")}</style>`
+        : "",
     ),
   };
 }
