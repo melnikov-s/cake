@@ -54,6 +54,7 @@ test("opens the artifact workspace, keeps requests inline, and isolates HTML", a
     const page = await application.firstWindow();
     await page.setViewportSize({ width: 1_600, height: 1_000 });
     await expect(page.getByLabel("Message")).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole("button", { name: "0 artifacts" })).not.toBeAttached();
 
     await page.getByLabel("Message").fill("/cake-artifacts");
     await page.getByRole("button", { name: "Send" }).click();

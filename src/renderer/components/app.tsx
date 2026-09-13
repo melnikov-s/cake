@@ -375,6 +375,7 @@ export const App = observer(function App() {
   ) : undefined;
   const artifactControl = (paneSession: NonNullable<typeof session>, onOpen?: () => void) => {
     const workspace = paneSession.artifactWorkspaceStore;
+    if (workspace.records.length === 0) return null;
     return (
       <Button
         variant="ghost"
