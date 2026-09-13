@@ -2,6 +2,7 @@ import { Schema } from "effect";
 import { jsonValueSchema, type JsonValue } from "../../../ipc/json-contract";
 import {
   MAX_ARTIFACT_INPUT_BYTES,
+  architectureGraphSchema,
   artifactPointerSchema,
   parseArtifactInput,
   validateArtifactResponse,
@@ -37,6 +38,22 @@ interface PiToolRuntimeContext {
   };
   model?: { provider: string; id: string };
 }
+
+const architecturePresentationSchema = Schema.Struct({
+  id: Schema.String.check(
+    Schema.isMinLength(1),
+    Schema.isMaxLength(256),
+    Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/),
+  ),
+  title: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(512)),
+  graph: architectureGraphSchema,
+  fallback: Schema.Struct({
+    markdown: Schema.String.check(
+      Schema.isMinLength(1),
+      Schema.isMaxLength(MAX_ARTIFACT_INPUT_BYTES),
+    ),
+  }),
+});
 
 const widgetSchema = Schema.Struct({
   id: Schema.String.check(
@@ -97,6 +114,90 @@ export function createCakeArtifactOperations(
   };
 
   const operations: CakeOperationDefinition[] = [
+    {
+      command: "artifacts.presentArchitecture",
+      topic: "artifacts",
+      summary:
+        "Present a read-only architecture graph as a persistent artifact with automatic layout, pan, zoom, grouping, fullscreen, details, and source links.",
+      guidance: [
+        "Use this for substantial architectural, dependency, process-boundary, or system-overview diagrams that benefit from exploration. Use inline Mermaid for small diagrams and widgets.present only for bespoke visualizations this graph schema cannot express.",
+        "Model system concepts and relationships, not visual coordinates. Keep labels short, use groups for meaningful boundaries, add descriptions for selection details, and provide a readable Markdown fallback.",
+        "Prefer one clear abstraction level and roughly 5–30 nodes. Split a graph rather than producing an unreadable comprehensive map.",
+      ],
+      inputSchema: Schema.Struct({ architecture: architecturePresentationSchema }),
+      examples: [
+        {
+          input: {
+            architecture: {
+              id: "runtime-architecture",
+              title: "Runtime architecture",
+              graph: {
+                direction: "LR",
+                groups: [{ id: "electron", label: "Electron" }],
+                nodes: [
+                  {
+                    id: "renderer",
+                    label: "Renderer",
+                    category: "interface",
+                    group: "electron",
+                    description: "Sandboxed React presentation and window-scoped state.",
+                    source: { path: "src/renderer/main.ts" },
+                  },
+                  {
+                    id: "main",
+                    label: "Main process",
+                    category: "process",
+                    group: "electron",
+                  },
+                ],
+                edges: [
+                  {
+                    id: "renderer-main",
+                    source: "renderer",
+                    target: "main",
+                    label: "Effect RPC",
+                    kind: "control",
+                  },
+                ],
+              },
+              fallback: {
+                markdown: "Renderer communicates with Electron main through Effect RPC.",
+              },
+            },
+          },
+        },
+      ],
+      result: "The persisted architecture artifact ID.",
+      limitations: [
+        "Architecture artifacts are read-only and support at most 250 nodes and 500 edges.",
+        "Source paths are workspace-relative. Cake computes layout; pixel coordinates are not accepted.",
+      ],
+      async execute(input, context) {
+        // SAFETY: CakeOperationRegistry parsed this value with the definition's input schema.
+        const architecture = (
+          input as {
+            architecture: typeof architecturePresentationSchema.Type;
+          }
+        ).architecture;
+        const sessionId = runtimeContext(context).sessionManager.getSessionId();
+        const record = await persist(
+          {
+            protocol: "cake.artifact/v1",
+            id: architecture.id,
+            sessionId,
+            revision: 1,
+            kind: "architecture",
+            title: architecture.title,
+            payload: architecture.graph,
+            fallback: architecture.fallback,
+            interaction: { mode: "present" },
+          },
+          sessionId,
+        );
+        appendPointer(record, pointerOrigin(context));
+        return { artifactId: record.artifact.id };
+      },
+    },
     {
       command: "interview.open",
       topic: "interview",

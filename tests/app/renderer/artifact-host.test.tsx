@@ -7,6 +7,37 @@ import { createStore } from "r-state-tree";
 vi.mock("mermaid", () => ({
   default: { initialize: vi.fn(), render: vi.fn(async () => ({ svg: "<svg role='img'></svg>" })) },
 }));
+vi.mock("elkjs/lib/elk.bundled.js", () => ({
+  default: class {
+    async layout(graph: { children: Array<{ id: string }> }) {
+      return {
+        children: graph.children.map((node, index) => ({ ...node, x: index * 260, y: 40 })),
+      };
+    }
+  },
+}));
+vi.mock("@xyflow/react", () => ({
+  MarkerType: { ArrowClosed: "arrowclosed" },
+  Position: { Bottom: "bottom", Left: "left", Right: "right", Top: "top" },
+  Background: () => null,
+  Controls: () => null,
+  MiniMap: () => null,
+  ReactFlow: ({
+    nodes,
+    onNodeClick,
+  }: {
+    nodes: Array<{ id: string; type?: string; data: { label: string } }>;
+    onNodeClick(_: unknown, node: { id: string; type?: string }): void;
+  }) => (
+    <div data-testid="architecture-flow">
+      {nodes.map((node) => (
+        <button key={node.id} type="button" onClick={() => onNodeClick({}, node)}>
+          {node.data.label}
+        </button>
+      ))}
+    </div>
+  ),
+}));
 import { ArtifactHost } from "../../../src/renderer/components/artifact-host";
 import { BlockingArtifactRequest } from "../../../src/renderer/components/blocking-artifact-request";
 import type { ArtifactRecord } from "../../../src/ipc/artifact-contract";
@@ -79,6 +110,57 @@ describe("ArtifactHost", () => {
       input.dispatchEvent(new Event("input", { bubbles: true }));
     });
     expect(container.querySelectorAll("tbody tr")).toHaveLength(1);
+  });
+
+  it("renders an automatically laid-out architecture artifact with source navigation", async () => {
+    const openSource = vi.fn();
+    const artifact = record({
+      protocol: "cake.artifact/v1",
+      id: "architecture",
+      sessionId: "session",
+      revision: 1,
+      kind: "architecture",
+      title: "Runtime architecture",
+      payload: {
+        direction: "LR",
+        groups: [{ id: "electron", label: "Electron" }],
+        nodes: [
+          {
+            id: "renderer",
+            label: "Renderer",
+            category: "interface",
+            group: "electron",
+            description: "Sandboxed UI",
+            source: { path: "src/renderer/main.ts" },
+          },
+          { id: "main", label: "Main", category: "process", group: "electron" },
+        ],
+        edges: [{ id: "rpc", source: "renderer", target: "main", label: "RPC" }],
+      },
+      fallback: { markdown: "Renderer communicates with main." },
+      interaction: { mode: "present" },
+    });
+
+    await act(async () => {
+      root.render(<ArtifactHost record={artifact} onOpenSourceLocation={openSource} />);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(container.querySelector('[data-testid="architecture-flow"]')).not.toBeNull();
+    act(() => {
+      const rendererNode = Array.from(container.querySelectorAll("button")).find(
+        (button) => button.textContent === "Renderer",
+      )!;
+      rendererNode.click();
+    });
+    expect(container.textContent).toContain("Sandboxed UI");
+    act(() => {
+      const sourceButton = Array.from(container.querySelectorAll("button")).find(
+        (button) => button.textContent === "Open source",
+      )!;
+      sourceButton.click();
+    });
+    expect(openSource).toHaveBeenCalledWith({ path: "src/renderer/main.ts" });
+    expect(container.textContent).toContain("Renderer communicates with main.");
   });
 
   it("submits a structured form once through its host callback and isolates raw HTML", () => {

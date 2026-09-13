@@ -1,5 +1,6 @@
 import { Predicate, Schema } from "effect";
 import { jsonValueSchema, type JsonValue } from "./json-contract";
+import { sourceLocationSchema } from "./source-location";
 
 const ARTIFACT_PROTOCOL = "cake.artifact/v1" as const;
 export const MAX_ARTIFACT_INPUT_BYTES = 1_048_576;
@@ -7,6 +8,7 @@ const artifactKindSchema = Schema.Literals([
   "markdown",
   "table",
   "diagram",
+  "architecture",
   "form",
   "media",
   "diff",
@@ -114,6 +116,52 @@ const diagramArtifactSchema = Schema.Struct({
   kind: Schema.Literal("diagram"),
   payload: Schema.Struct({ source: textSchema }),
 });
+
+const architectureNodeCategorySchema = Schema.Literals([
+  "interface",
+  "service",
+  "process",
+  "database",
+  "external",
+  "module",
+]);
+
+export const architectureGraphSchema = Schema.Struct({
+  direction: Schema.optional(Schema.Literals(["LR", "TB", "RL", "BT"])),
+  groups: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        id: idSchema,
+        label: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+      }),
+    ).check(Schema.isMaxLength(50)),
+  ),
+  nodes: Schema.Array(
+    Schema.Struct({
+      id: idSchema,
+      label: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+      description: Schema.optional(Schema.String.check(Schema.isMaxLength(4_096))),
+      category: Schema.optional(architectureNodeCategorySchema),
+      group: Schema.optional(idSchema),
+      source: Schema.optional(sourceLocationSchema),
+    }),
+  ).check(Schema.isMinLength(1), Schema.isMaxLength(250)),
+  edges: Schema.Array(
+    Schema.Struct({
+      id: idSchema,
+      source: idSchema,
+      target: idSchema,
+      label: Schema.optional(Schema.String.check(Schema.isMaxLength(256))),
+      kind: Schema.optional(Schema.Literals(["data", "control", "dependency", "event"])),
+    }),
+  ).check(Schema.isMaxLength(500)),
+});
+
+const architectureArtifactSchema = Schema.Struct({
+  ...artifactBase,
+  kind: Schema.Literal("architecture"),
+  payload: architectureGraphSchema,
+});
 const formArtifactSchema = Schema.Struct({
   ...artifactBase,
   kind: Schema.Literal("form"),
@@ -178,6 +226,7 @@ const cakeArtifactV1Schema = Schema.Union([
   markdownArtifactSchema,
   tableArtifactSchema,
   diagramArtifactSchema,
+  architectureArtifactSchema,
   formArtifactSchema,
   mediaArtifactSchema,
   diffArtifactSchema,
@@ -221,6 +270,7 @@ export function parseArtifactInput(input: unknown): CakeArtifactV1 {
   const artifact = Schema.decodeUnknownSync(cakeArtifactV1Schema)(input);
   if (artifact.interaction?.mode === "request" && artifact.kind !== "request")
     throw new Error("Only request artifacts can block for a response in cake.artifact/v1");
+  if (artifact.kind === "architecture") validateArchitectureGraph(artifact.payload);
   if (
     artifact.kind === "media" &&
     !isSafeMediaSource(artifact.payload.src, artifact.payload.mediaType)
@@ -285,6 +335,32 @@ function validateJsonValue(schema: JsonSchema, value: JsonValue | undefined, pat
           Schema.decodeUnknownSync(jsonValueSchema)(value[key]),
           `${path}.${key}`,
         );
+  }
+}
+
+function validateArchitectureGraph(graph: typeof architectureGraphSchema.Type) {
+  const groupIds = new Set<string>();
+  for (const group of graph.groups ?? []) {
+    if (groupIds.has(group.id)) throw new Error(`Duplicate architecture group ID: ${group.id}`);
+    groupIds.add(group.id);
+  }
+  const nodeIds = new Set<string>();
+  for (const node of graph.nodes) {
+    if (nodeIds.has(node.id)) throw new Error(`Duplicate architecture node ID: ${node.id}`);
+    if (groupIds.has(node.id))
+      throw new Error(`Architecture node and group IDs must be distinct: ${node.id}`);
+    if (node.group && !groupIds.has(node.group))
+      throw new Error(`Architecture node ${node.id} references unknown group ${node.group}`);
+    nodeIds.add(node.id);
+  }
+  const edgeIds = new Set<string>();
+  for (const edge of graph.edges) {
+    if (edgeIds.has(edge.id)) throw new Error(`Duplicate architecture edge ID: ${edge.id}`);
+    if (!nodeIds.has(edge.source))
+      throw new Error(`Architecture edge ${edge.id} references unknown source ${edge.source}`);
+    if (!nodeIds.has(edge.target))
+      throw new Error(`Architecture edge ${edge.id} references unknown target ${edge.target}`);
+    edgeIds.add(edge.id);
   }
 }
 

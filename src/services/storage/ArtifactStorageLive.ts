@@ -35,6 +35,7 @@ const storedArtifactMetadataSchema: Schema.Codec<StoredArtifactMetadata> = Schem
     "markdown",
     "table",
     "diagram",
+    "architecture",
     "form",
     "media",
     "diff",

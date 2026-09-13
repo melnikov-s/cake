@@ -26,6 +26,36 @@ const baseArtifact = {
 };
 
 describe("ArtifactStorage", () => {
+  it("reloads architecture artifacts from their content-addressed records", async () => {
+    const root = await mkdtemp(join(tmpdir(), "cake-artifacts-"));
+    directories.push(root);
+    const storage = makeArtifactStorageTestAdapter(root).service;
+    await Effect.runPromise(
+      storage.upsert("/project", {
+        protocol: "cake.artifact/v1",
+        id: "architecture-1",
+        sessionId: "session-1",
+        revision: 1,
+        kind: "architecture",
+        title: "Runtime architecture",
+        payload: {
+          nodes: [
+            { id: "renderer", label: "Renderer" },
+            { id: "main", label: "Main" },
+          ],
+          edges: [{ id: "rpc", source: "renderer", target: "main", label: "RPC" }],
+        },
+        fallback: { markdown: "Renderer communicates with main." },
+        interaction: { mode: "present" },
+      }),
+    );
+
+    const reloaded = makeArtifactStorageTestAdapter(root).service;
+    expect(
+      (await Effect.runPromise(reloaded.listSession("/project", "session-1")))[0]?.artifact,
+    ).toMatchObject({ id: "architecture-1", kind: "architecture" });
+  });
+
   it("persists content-addressed payloads, enforces revisions, hydrates, and exports fallbacks", async () => {
     const root = await mkdtemp(join(tmpdir(), "cake-artifacts-"));
     directories.push(root);
