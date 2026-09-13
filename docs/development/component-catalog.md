@@ -9,6 +9,7 @@ Authoritative primitives live in `src/renderer/components/ui/`.
 | `AnimatedList`        | Position transitions when keyed list items reorder; composes with `NavigationHighlight`.                                                                            |
 | `SortableItem`        | Native drag-and-drop wrapper for persistently ordered navigation items.                                                                                             |
 | `Avatar`              | Deterministic project/session artwork and opt-in disposable avatar interactions.                                                                                    |
+| `ThinkingBubble`      | Compact, reduced-motion-safe conversational processing indicator.                                                                                                   |
 
 ## Popover motion
 
@@ -17,7 +18,10 @@ It expands from the anchor with a soft overshoot and collapses on dismissal.
 The closing shell is inert and hidden from assistive technology; reduced motion
 skips both animations. Interrupted motion resumes from the displayed transform,
 and positioning measures untransformed dimensions so bouncing cannot shift layout.
-Other popovers retain their existing immediate behavior.
+Other popovers retain their existing immediate behavior. Popovers next to native
+surfaces can opt into `boundary="nearest-ancestor"`; positioning then flips and
+clamps within the closest ancestor marked with `data-popover-boundary` instead
+of allowing the native surface to cover part of the portal.
 
 ## Moving navigation backgrounds
 

@@ -5,6 +5,7 @@ import type { SessionLabel } from "../../domain/application/application-data";
 import { Chat } from "./chat";
 import { Avatar } from "./ui/avatar";
 import { Popover, PopoverContent, PopoverIconTrigger } from "./ui/popover";
+import { ThinkingBubble } from "./ui/thinking-bubble";
 import type { SessionAssistantStore } from "../stores/SessionAssistantStore";
 
 type AssistantSurface = "quick" | "chat";
@@ -74,32 +75,20 @@ export const SessionAssistant = observer(function SessionAssistant({
         <PopoverContent
           side={quickResponse ? "left" : "top"}
           align="center"
+          boundary="nearest-ancestor"
           offset={quickResponse ? 12 : 8}
           aria-label="Quick session assistant"
           className={cn(
             "overflow-hidden rounded-xl p-0",
-            quickResponse
-              ? "w-fit max-w-[min(22rem,calc(100vw-24px))] overflow-visible rounded-2xl border-0 bg-transparent shadow-none [&_[aria-label=Conversation]]:p-0"
+            processing || quickResponse
+              ? "w-fit overflow-visible border-0 bg-transparent shadow-none"
               : "w-[min(22rem,calc(100vw-24px))]",
+            quickResponse &&
+              "max-w-[min(22rem,calc(100vw-24px))] rounded-2xl [&_[aria-label=Conversation]]:p-0",
           )}
         >
           {processing ? (
-            <div
-              role="status"
-              aria-label="Session assistant is thinking"
-              className="flex min-h-24 items-center justify-center gap-3 px-5 py-4 text-xs font-medium text-muted-foreground"
-            >
-              <span className="motion-safe:animate-bounce">
-                <Avatar
-                  kind="session"
-                  seed={seed}
-                  labelColors={labelColors}
-                  animated
-                  className="size-12"
-                />
-              </span>
-              <span className="motion-safe:animate-pulse">Thinking…</span>
-            </div>
+            <ThinkingBubble />
           ) : (
             <Chat
               store={store.quickChatStore}
@@ -121,6 +110,7 @@ export const SessionAssistant = observer(function SessionAssistant({
         <PopoverContent
           side="left"
           align="end"
+          boundary="nearest-ancestor"
           offset={12}
           aria-label="Session assistant chat"
           className="h-[min(24rem,70vh)] w-[min(19rem,calc(100vw-1rem))] overflow-hidden rounded-md p-0"

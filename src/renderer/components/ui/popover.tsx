@@ -114,6 +114,8 @@ export function PopoverIconTrigger({
 export interface PopoverContentProps extends HTMLAttributes<HTMLDivElement> {
   align?: PopoverAlign;
   anchorRef?: RefObject<HTMLButtonElement | null>;
+  /** Constrain the surface to the nearest ancestor marked as a popover boundary. */
+  boundary?: "viewport" | "nearest-ancestor";
   offset?: number;
   side?: PopoverSide;
   motion?: "none" | "bouncy";
@@ -122,6 +124,7 @@ export interface PopoverContentProps extends HTMLAttributes<HTMLDivElement> {
 export function PopoverContent({
   align = "center",
   anchorRef,
+  boundary = "viewport",
   children,
   className,
   offset = 8,
@@ -147,10 +150,19 @@ export function PopoverContent({
     const anchor = effectiveAnchorRef.current;
     const content = contentRef.current;
     if (!anchor || !content) return;
+    const boundaryElement =
+      boundary === "nearest-ancestor"
+        ? anchor.closest<HTMLElement>("[data-popover-boundary]")
+        : null;
     const next = calculatePopoverPosition(
       anchor.getBoundingClientRect(),
       { width: content.offsetWidth, height: content.offsetHeight },
-      { width: window.innerWidth, height: window.innerHeight },
+      boundaryElement?.getBoundingClientRect() ?? {
+        left: 0,
+        top: 0,
+        right: window.innerWidth,
+        bottom: window.innerHeight,
+      },
       side,
       align,
       offset,
@@ -168,7 +180,7 @@ export function PopoverContent({
       ),
       ready: true,
     });
-  }, [align, effectiveAnchorRef, offset, side]);
+  }, [align, boundary, effectiveAnchorRef, offset, side]);
 
   useLayoutEffect(() => {
     if (!open) return;
@@ -308,36 +320,35 @@ export function PopoverContent({
 export function calculatePopoverPosition(
   trigger: Pick<DOMRect, "top" | "right" | "bottom" | "left" | "width" | "height">,
   content: Pick<DOMRect, "width" | "height">,
-  viewport: { width: number; height: number },
+  boundary: {
+    left?: number;
+    top?: number;
+    right?: number;
+    bottom?: number;
+    width?: number;
+    height?: number;
+  },
   requestedSide: PopoverSide,
   align: PopoverAlign,
   offset: number,
 ) {
   const margin = 8;
+  const boundaryLeft = boundary.left ?? 0;
+  const boundaryTop = boundary.top ?? 0;
+  const boundaryRight = boundary.right ?? boundaryLeft + (boundary.width ?? 0);
+  const boundaryBottom = boundary.bottom ?? boundaryTop + (boundary.height ?? 0);
+  const roomAbove = trigger.top - boundaryTop;
+  const roomBelow = boundaryBottom - trigger.bottom;
+  const roomLeft = trigger.left - boundaryLeft;
+  const roomRight = boundaryRight - trigger.right;
   let side = requestedSide;
-  if (
-    side === "bottom" &&
-    content.height > viewport.height - trigger.bottom - offset &&
-    trigger.top > viewport.height - trigger.bottom
-  )
+  if (side === "bottom" && content.height > roomBelow - offset && roomAbove > roomBelow)
     side = "top";
-  else if (
-    side === "top" &&
-    content.height > trigger.top - offset &&
-    viewport.height - trigger.bottom > trigger.top
-  )
+  else if (side === "top" && content.height > roomAbove - offset && roomBelow > roomAbove)
     side = "bottom";
-  else if (
-    side === "right" &&
-    content.width > viewport.width - trigger.right - offset &&
-    trigger.left > viewport.width - trigger.right
-  )
+  else if (side === "right" && content.width > roomRight - offset && roomLeft > roomRight)
     side = "left";
-  else if (
-    side === "left" &&
-    content.width > trigger.left - offset &&
-    viewport.width - trigger.right > trigger.left
-  )
+  else if (side === "left" && content.width > roomLeft - offset && roomRight > roomLeft)
     side = "right";
 
   let left =
@@ -353,12 +364,12 @@ export function calculatePopoverPosition(
         ? trigger.top - content.height - offset
         : alignedCoordinate(trigger.top, trigger.height, content.height, align);
   left = Math.min(
-    Math.max(margin, left),
-    Math.max(margin, viewport.width - content.width - margin),
+    Math.max(boundaryLeft + margin, left),
+    Math.max(boundaryLeft + margin, boundaryRight - content.width - margin),
   );
   top = Math.min(
-    Math.max(margin, top),
-    Math.max(margin, viewport.height - content.height - margin),
+    Math.max(boundaryTop + margin, top),
+    Math.max(boundaryTop + margin, boundaryBottom - content.height - margin),
   );
   return { left, top };
 }

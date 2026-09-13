@@ -496,6 +496,20 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
       endLine: 0,
     });
     await expect(page.getByText("src/modelMeta.ts:1", { exact: true })).toBeVisible();
+    const assistantTrigger = page.getByRole("button", { name: "Ask session assistant" });
+    await assistantTrigger.click();
+    const quickAssistant = page.getByRole("dialog", { name: "Quick session assistant" });
+    await expect(quickAssistant.getByLabel("Ask session assistant")).toBeFocused();
+    const [drawerBounds, assistantBounds] = await Promise.all([
+      page.locator("aside").boundingBox(),
+      quickAssistant.boundingBox(),
+    ]);
+    expect(assistantBounds!.x).toBeGreaterThanOrEqual(drawerBounds!.x + 8);
+    expect(assistantBounds!.x + assistantBounds!.width).toBeLessThanOrEqual(
+      drawerBounds!.x + drawerBounds!.width - 8,
+    );
+    await page.keyboard.press("Escape");
+    await expect(quickAssistant).toHaveCount(0);
     expect(await clickVsCodeTitleAction("Back to Agent")).toBe(true);
     await link.click();
     await expect(page.getByRole("region", { name: "VS Code workspace" })).toBeVisible();

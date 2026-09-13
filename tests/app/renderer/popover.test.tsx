@@ -62,4 +62,17 @@ describe("Cake Popover", () => {
 
     expect(position).toEqual({ left: 70, top: 62 });
   });
+
+  it("keeps a surface inside an offset ancestor boundary", () => {
+    const position = calculatePopoverPosition(
+      { top: 140, right: 460, bottom: 180, left: 420, width: 40, height: 40 },
+      { width: 240, height: 80 },
+      { left: 400, top: 32, right: 800, bottom: 600 },
+      "left",
+      "center",
+      12,
+    );
+
+    expect(position).toEqual({ left: 472, top: 120 });
+  });
 });

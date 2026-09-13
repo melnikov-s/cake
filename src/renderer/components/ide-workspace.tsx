@@ -148,7 +148,10 @@ export const IdeWorkspace = observer(function IdeWorkspace({
                 onResizeStart={() => setResizing(true)}
                 onResizeEnd={() => setResizing(false)}
               />
-              <aside className="flex w-[var(--ide-chat-sidebar-width)] min-w-0 flex-col border-l border-border bg-background shadow-[-12px_0_32px_color-mix(in_oklab,var(--foreground)_8%,transparent)]">
+              <aside
+                data-popover-boundary
+                className="flex w-[var(--ide-chat-sidebar-width)] min-w-0 flex-col border-l border-border bg-background shadow-[-12px_0_32px_color-mix(in_oklab,var(--foreground)_8%,transparent)]"
+              >
                 <header
                   className={cn(
                     "flex select-none items-center justify-between gap-3 border-b border-border px-3 [-webkit-app-region:drag]",
