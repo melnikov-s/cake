@@ -77,6 +77,14 @@ describe("Cake operation registry", () => {
     expect(first.text).toContain("Keep decisions");
   });
 
+  it("renders an eager complete protocol from the registered operations", () => {
+    const help = registry().completeHelp();
+    expect(help.indexOf("context —")).toBeLessThan(help.indexOf("sessions —"));
+    expect(help).toContain("context.compact");
+    expect(help).toContain("session.info");
+    expect(help).toContain('"instructions"');
+  });
+
   it("returns deterministic nearest matches without executing", async () => {
     const execute = vi.fn(async () => ({ status: "ok" }));
     const result = await registry(execute).invoke({ command: "context.comact" }, context());

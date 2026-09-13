@@ -12,6 +12,7 @@ import {
   AppControlBridge,
   type AgentControlSource,
   type AppControlHost,
+  listSessionAssistantControlTools,
 } from "../app-control/AppControlBridge";
 import type { Client } from "../client/Client";
 import { AppControlOperationStore } from "./AppControlOperationStore";
@@ -69,6 +70,10 @@ export class ApplicationControlStore extends Store<{
 
   tools(): ReadonlyArray<CakeControlTool> {
     return this.bridge.listTools();
+  }
+
+  sessionAssistantTools(): ReadonlyArray<CakeControlTool> {
+    return listSessionAssistantControlTools();
   }
 
   invoke(invocation: JsonValue, source?: AgentControlSource): Promise<JsonValue> {

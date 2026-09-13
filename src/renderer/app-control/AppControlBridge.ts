@@ -6,11 +6,12 @@ import {
   type ChatConfiguration,
   type ProjectRecord,
 } from "../../ipc/session-contract";
-import type { CakeChatSummary } from "../../domain/cake-chats/cake-chat-data";
+import { CakeControlTool, type CakeChatSummary } from "../../domain/cake-chats/cake-chat-data";
 import type { SessionSummary } from "../models/SessionSummary";
 import type { WorktreeRecord } from "../../domain/worktrees/managed-worktree-data";
 import type { ProjectSessionPreview } from "../../domain/project-sessions/project-session-data";
 import type { ScheduledMessage } from "../../domain/scheduled-messages/scheduled-message-data";
+import type { SourceLocation, SourcePosition } from "../../ipc/source-location";
 import type {
   CoordinationMessage,
   CoordinationThread,
@@ -189,6 +190,32 @@ const appControlArgumentSchemas = {
     workingDirectory: bounded(1, 4_096),
     keepBranch: Schema.Boolean,
   }),
+  "vscode.enter": Schema.Struct({}),
+  "vscode.open": Schema.Struct({
+    path: trimmed(1, 8_192),
+    line: Schema.optionalKey(
+      Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 10_000_001 })),
+    ),
+    column: Schema.optionalKey(
+      Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 10_000_001 })),
+    ),
+    endLine: Schema.optionalKey(
+      Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 10_000_001 })),
+    ),
+    endColumn: Schema.optionalKey(
+      Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 10_000_001 })),
+    ),
+  }).check(
+    Schema.makeFilter((input) => {
+      if (input.line === undefined && input.column !== undefined) return "column requires line";
+      if (input.line === undefined && input.endLine !== undefined) return "endLine requires line";
+      if (input.line === undefined && input.endColumn !== undefined)
+        return "endColumn requires line";
+      if (input.endLine !== undefined && input.line !== undefined && input.endLine < input.line)
+        return "endLine cannot precede line";
+      return undefined;
+    }),
+  ),
   "notifications.send": Schema.Struct({
     title: trimmed(1, 256),
     body: trimmed(1, 2_000),
@@ -203,6 +230,21 @@ const appControlArgumentSchemas = {
 } as const;
 
 type AppControlCommand = keyof typeof appControlArgumentSchemas;
+
+type VscodeOpenInput = (typeof appControlArgumentSchemas)["vscode.open"]["Type"];
+
+function sourceLocation(input: VscodeOpenInput): SourceLocation {
+  if (input.line === undefined) return { path: input.path };
+  const start: SourcePosition =
+    input.column === undefined
+      ? { line: input.line - 1 }
+      : { line: input.line - 1, column: input.column - 1 };
+  const end: SourcePosition =
+    input.endColumn === undefined
+      ? { line: (input.endLine ?? input.line) - 1 }
+      : { line: (input.endLine ?? input.line) - 1, column: input.endColumn - 1 };
+  return { path: input.path, range: { start, end } };
+}
 
 function invocation<Command extends AppControlCommand>(command: Command) {
   return Schema.Struct({
@@ -247,6 +289,8 @@ const appControlInvocationSchema = Schema.Union([
   invocation("sessions.resolve"),
   invocation("worktrees.merge"),
   invocation("worktrees.discard"),
+  invocation("vscode.enter"),
+  invocation("vscode.open"),
   invocation("notifications.send"),
   invocation("agent.action"),
 ]);
@@ -357,6 +401,10 @@ export interface AppControlHost {
   sessionLabels: {
     mutate(scope: { projectPath?: string }, mutation: SessionLabelMutation): Promise<void>;
     setSessionLabels(sessionId: string, labelIds: readonly string[]): Promise<boolean>;
+  };
+  vscode: {
+    enter(source: AgentControlSource): Promise<void>;
+    open(source: AgentControlSource, location: SourceLocation): Promise<void>;
   };
   worktrees?: {
     merge(input: { sessionId: string; workingDirectory: string }): Promise<string>;
@@ -605,6 +653,8 @@ export type AppControlResult =
       resolved: boolean;
       sessionCount: number;
     }
+  | { ok: true; command: "vscode.enter"; entered: true }
+  | { ok: true; command: "vscode.open"; opened: SourceLocation }
   | { ok: true; command: "notifications.send"; status: "queued" }
   | {
       ok: true;
@@ -627,6 +677,37 @@ const createDraftSessionOperationSchema = Schema.Struct({
   ...appControlArgumentSchemas["sessions.create-draft"].fields,
   model: Schema.optionalKey(CakeModelSelection),
 });
+
+const sessionAssistantControlOperations = [
+  {
+    ...operation(
+      "vscode.enter",
+      "vscode",
+      "Enter embedded VS Code mode for the parent Project Session.",
+      appControlArgumentSchemas["vscode.enter"],
+    ),
+    guidance: [
+      "These operations target the parent Project Session and its Working Directory.",
+      "Call vscode.enter before vscode.open when the user asks to open a file in embedded VS Code.",
+    ],
+    result: "Confirmation that Cake entered embedded VS Code mode for the parent Project Session.",
+  },
+  {
+    ...operation(
+      "vscode.open",
+      "vscode",
+      "Open a Working Directory file in embedded VS Code and highlight an optional source range.",
+      appControlArgumentSchemas["vscode.open"],
+    ),
+    guidance: [
+      "These operations target the parent Project Session and its Working Directory.",
+      "Paths are relative to the parent Project Session's Working Directory. Lines and columns are one-based.",
+      "Call vscode.enter before vscode.open when the user asks to open a file in embedded VS Code.",
+    ],
+    examples: [{ input: { path: "src/main.ts", line: 1 } }],
+    result: "The workspace-relative location opened in embedded VS Code.",
+  },
+] as const;
 
 const modelControlOperations = [
   operation(
@@ -929,11 +1010,32 @@ function operation(
   return definition;
 }
 
+function decodedControlTools(
+  definitions: readonly {
+    command: string;
+    topic: string;
+    summary: string;
+    parameters: unknown;
+    guidance?: readonly string[];
+    examples?: readonly { input?: unknown; description?: string }[];
+    result?: string;
+    limitations?: readonly string[];
+  }[],
+) {
+  return definitions.map((definition) =>
+    Schema.decodeUnknownSync(CakeControlTool)({
+      ...definition,
+      parameters: Schema.decodeUnknownSync(jsonObjectSchema)(definition.parameters),
+    }),
+  );
+}
+
 export function listAppControlTools() {
-  return modelControlOperations.map((definition) => ({
-    ...definition,
-    parameters: Schema.decodeUnknownSync(jsonObjectSchema)(definition.parameters),
-  }));
+  return decodedControlTools(modelControlOperations);
+}
+
+export function listSessionAssistantControlTools() {
+  return decodedControlTools([...modelControlOperations, ...sessionAssistantControlOperations]);
 }
 
 export class AppControlBridge {
@@ -1127,6 +1229,21 @@ export class AppControlBridge {
         direction: invocation.arguments.direction,
         ...split,
       };
+    }
+    if (invocation.name === "vscode.enter" || invocation.name === "vscode.open") {
+      if (source?.kind !== "project-session" || !source.workingDirectory)
+        return {
+          ok: false,
+          command,
+          error: "Embedded VS Code requires a parent Project Session Working Directory.",
+        };
+      if (invocation.name === "vscode.enter") {
+        await this.host.vscode.enter(source);
+        return { ok: true, command: invocation.name, entered: true };
+      }
+      const location = sourceLocation(invocation.arguments);
+      await this.host.vscode.open(source, location);
+      return { ok: true, command: invocation.name, opened: location };
     }
     if (invocation.name === "notifications.send") {
       await this.host.presentation.showNotification({

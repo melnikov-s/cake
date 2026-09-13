@@ -773,7 +773,7 @@ export class RootStore extends Store<{
       toolCompactSession: (entryId, prompt) =>
         this.projectWorkbenchStore.sessionContinuationStore.toolCompactAt(entryId, prompt),
       modelPresets: () => this.settingsStore.modelPresets.presets,
-      assistantTools: () => this.applicationControlStore.tools(),
+      assistantTools: () => this.applicationControlStore.sessionAssistantTools(),
       openModelPresetSettings: () => this.showModelPresetSettings(),
       newSessionRequest: (sessionId) => this.projectWorkbenchStore.newSessionRequest(sessionId),
       prepareNewSession: (sessionId, firstUserMessage) =>
@@ -1199,6 +1199,16 @@ export class RootStore extends Store<{
             });
             return settings;
           }),
+      },
+      vscode: {
+        enter: async (source) => {
+          await this.openSession(source.sessionId);
+          await this.projectWorkbenchStore.embeddedEditorStore.show();
+        },
+        open: async (source, location) => {
+          await this.openSession(source.sessionId);
+          await this.projectWorkbenchStore.embeddedEditorStore.show(location);
+        },
       },
       sessionLabels: {
         mutate: ({ projectPath }, mutation) =>

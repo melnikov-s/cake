@@ -173,13 +173,18 @@ remain advisory metadata until the owning feature validates and commits them.
 The composer-avatar session assistant is the interactive exception to plain
 completion: it is a durable Discussion Session on the configured utility model.
 It receives the same regenerated parent projection as other side chats, never
-parent tool calls, and exposes read-only file access plus the validated Cake
-application-control gateway—no shell or file mutation tools. Its Pi transcript
-owns its conversation history across turns and application restarts.
-`SessionAssistantStore` owns only the window-local draft, quick response bubble,
-cancellation, and single-turn-at-a-time presentation policy. A primary avatar
-click presents a focused one-shot composer and replaces it with only the
-assistant's compact response bubble, which closes automatically; a secondary
+parent tool calls, and exposes read-only file access plus a parent-scoped,
+validated Cake application-control gateway—including embedded VS Code entry and
+source navigation—but no shell or direct file mutation tools. Because Cake
+operation is this assistant's primary role, its system prompt eagerly embeds the
+complete protocol generated from its actual operation registry instead of making
+the utility model discover topics first. Its Pi transcript owns its conversation
+history across turns and application restarts. `SessionAssistantStore` owns only
+the window-local draft, quick processing and response presentation, cancellation,
+and single-turn-at-a-time policy. A primary avatar click presents a focused
+one-shot composer, replaces it immediately with an animated processing state,
+and then shows only the assistant's compact response bubble, which closes
+automatically; a secondary
 click presents the full persisted chat. Both presentations compose the shared
 `Chat` and `ChatStore`. Pi remains the authority for both the parent and assistant
 transcripts; assistant messages are never copied into the parent transcript.

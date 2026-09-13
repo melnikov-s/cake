@@ -7,6 +7,7 @@ import {
   type AgentControlSource,
   type AppControlHost,
   listAppControlTools,
+  listSessionAssistantControlTools,
 } from "../../../src/renderer/app-control/AppControlBridge";
 import { Message } from "../../../src/renderer/models/Message";
 import { Session } from "../../../src/renderer/models/Session";
@@ -19,6 +20,7 @@ type AppControlHostOverrides = Partial<
   settings?: AppControlHost["settings"];
   projectSettings?: AppControlHost["projectSettings"];
   sessionLabels?: AppControlHost["sessionLabels"];
+  vscode?: AppControlHost["vscode"];
   worktrees?: AppControlHost["worktrees"];
 };
 
@@ -82,6 +84,12 @@ function createHost(overrides: AppControlHostOverrides = {}): AppControlHost {
         mutate: async () => undefined,
         setSessionLabels: async () => true,
       } satisfies AppControlHost["sessionLabels"]),
+    vscode:
+      overrides.vscode ??
+      ({
+        enter: async () => undefined,
+        open: async () => undefined,
+      } satisfies AppControlHost["vscode"]),
     ...(overrides.worktrees ? { worktrees: overrides.worktrees } : null),
     sessions: {
       inspect:
@@ -159,6 +167,49 @@ describe("AppControlBridge", () => {
     expect(parameters).toContain('"modelId"');
     expect(parameters).toContain('"thinkingLevel"');
     expect(parameters).toContain('"fastMode"');
+  });
+
+  it("gives the session assistant parent-scoped embedded VS Code controls", async () => {
+    const enter = vi.fn(async () => undefined);
+    const open = vi.fn(async () => undefined);
+    const bridge = new AppControlBridge(createHost({ vscode: { enter, open } }));
+    const source: AgentControlSource = {
+      kind: "project-session",
+      sessionId: "parent-session",
+      title: "Parent",
+      projectName: "Project",
+      projectPath: "/project",
+      workingDirectory: "/project/worktree",
+    };
+
+    expect(listAppControlTools().map(({ command }) => command)).not.toContain("vscode.enter");
+    expect(listSessionAssistantControlTools().map(({ command }) => command)).toEqual(
+      expect.arrayContaining(["vscode.enter", "vscode.open"]),
+    );
+    await expect(
+      bridge.invoke({ name: "vscode.enter", arguments: {} }, source),
+    ).resolves.toMatchObject({ ok: true, command: "vscode.enter", entered: true });
+    await expect(
+      bridge.invoke(
+        {
+          name: "vscode.open",
+          arguments: { path: "src/main.ts", line: 4, column: 2, endLine: 5 },
+        },
+        source,
+      ),
+    ).resolves.toMatchObject({
+      ok: true,
+      command: "vscode.open",
+      opened: {
+        path: "src/main.ts",
+        range: { start: { line: 3, column: 1 }, end: { line: 4 } },
+      },
+    });
+    expect(enter).toHaveBeenCalledWith(source);
+    expect(open).toHaveBeenCalledWith(source, {
+      path: "src/main.ts",
+      range: { start: { line: 3, column: 1 }, end: { line: 4 } },
+    });
   });
 
   it("invokes internal Managed Worktree merge and discard controls without advertising them globally", async () => {

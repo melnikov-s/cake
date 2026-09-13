@@ -218,6 +218,7 @@ export const chatWithSessionAssistant = Effect.fn("Projects.chatWithSessionAssis
         agentDirectory: prepared.location.agentDirectory,
         sessionDirectory: prepared.location.sessionDirectory,
         sessionFile: prepared.record.sidecarSessionFile,
+        parentSessionId: request.sessionId,
         utilityModel,
         prompt: request.prompt,
         parentContextPrompt: prepared.systemPrompt,

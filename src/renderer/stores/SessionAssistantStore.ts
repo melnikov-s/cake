@@ -28,6 +28,10 @@ export class SessionAssistantStore extends Store<SessionAssistantStoreProps> {
     return ClientContext.consume(this)!;
   }
 
+  get processing() {
+    return Boolean(this.activeRequest);
+  }
+
   get parts(): UiPart[] {
     const authoritative = this.props.thread()?.uiParts ?? [];
     const authoritativeMessages = authoritative.filter((part) => part.kind === "text").length;
@@ -50,7 +54,7 @@ export class SessionAssistantStore extends Store<SessionAssistantStoreProps> {
       canSubmit: (draft) => Boolean(draft.trim()) && !this.activeRequest,
       submit: (draft) => this.submit(draft),
       abort: () => this.abort(),
-      composerVisible: () => true,
+      composerVisible: () => !this.processing,
       focusRequestRevision: () => this.focusRequestRevision,
     });
   }
@@ -69,7 +73,7 @@ export class SessionAssistantStore extends Store<SessionAssistantStoreProps> {
       canSubmit: (draft) => Boolean(draft.trim()) && !this.activeRequest,
       submit: (draft) => this.submitQuick(draft),
       abort: () => this.abort(),
-      composerVisible: () => this.quickParts.length === 0,
+      composerVisible: () => !this.processing && this.quickParts.length === 0,
       focusRequestRevision: () => this.focusRequestRevision,
     });
   }

@@ -34,11 +34,20 @@ test("rewords composer text and opens the focused session assistant", async () =
   ]);
 
   const prompts: string[] = [];
+  let holdNextAssistantRequest = true;
+  let releaseAssistantRequest: (() => void) | undefined;
   const server = createServer(async (request, response) => {
     let body = "";
     for await (const chunk of request) body += chunk;
     prompts.push(body);
-    const rewritten = body.includes("compact session assistant")
+    const assistantRequest = body.includes("primary job is to carry out quick Cake actions");
+    if (assistantRequest && holdNextAssistantRequest) {
+      holdNextAssistantRequest = false;
+      await new Promise<void>((resolveRequest) => {
+        releaseAssistantRequest = resolveRequest;
+      });
+    }
+    const rewritten = assistantRequest
       ? "Assistant ready"
       : body.includes("Make this terse")
         ? "Terse request"
@@ -162,6 +171,11 @@ test("rewords composer text and opens the focused session assistant", async () =
     const assistantSend = quickAssistant.getByRole("button", { name: "Send" });
     await expect(assistantSend).toBeEnabled();
     await assistantSend.click();
+    await expect(quickAssistant.getByLabel("Session assistant is thinking")).toBeVisible();
+    await expect(quickInput).toHaveCount(0);
+    await expect(quickAssistant.getByRole("button", { name: "Send" })).toHaveCount(0);
+    await expect.poll(() => Boolean(releaseAssistantRequest)).toBe(true);
+    releaseAssistantRequest?.();
     await expect(quickAssistant.getByText("Assistant ready")).toBeVisible();
     await expect(quickAssistant.getByText("Open the file from our conversation")).toHaveCount(0);
     await expect(
@@ -170,6 +184,10 @@ test("rewords composer text and opens the focused session assistant", async () =
     const responseBox = (await quickAssistant.boundingBox())!;
     expect(responseBox.x + responseBox.width).toBeLessThan(triggerBox.x);
     expect(prompts).toHaveLength(2);
+    expect(prompts[1]).toContain("primary job is to carry out quick Cake actions");
+    expect(prompts[1]).toContain("vscode.enter");
+    expect(prompts[1]).toContain("vscode.open");
+    expect(prompts[1]).toContain("The attached Project Session is your parent and its ID is");
 
     await expect(quickAssistant).toHaveCount(0, { timeout: 6_000 });
     await assistantTrigger.click({ button: "right" });

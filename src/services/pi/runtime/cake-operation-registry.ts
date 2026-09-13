@@ -140,6 +140,16 @@ export class CakeOperationRegistry {
     return topicIndex(this.availableTopics());
   }
 
+  completeHelp() {
+    return [...this.availableTopics()]
+      .sort()
+      .flatMap((topic) => {
+        const help = this.topicHelp(topic);
+        return help ? [help] : [];
+      })
+      .join("\n\n");
+  }
+
   topicHelp(topic: string) {
     const operations = this.definitions().filter((definition) => definition.topic === topic);
     if (operations.length === 0) return undefined;

@@ -68,6 +68,10 @@ function createHost(
       mutate: async () => undefined,
       setSessionLabels: async () => true,
     },
+    vscode: {
+      enter: async () => undefined,
+      open: async () => undefined,
+    },
     sessions: {
       inspect: async () => {
         throw new Error("not used");
