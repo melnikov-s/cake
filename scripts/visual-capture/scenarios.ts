@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import type { Locator, Page } from "@playwright/test";
 import type { VisualCaptureTheme } from "./arguments.ts";
+import type { CakeArtifactV1 } from "../../src/ipc/artifact-contract.ts";
 
 interface ScenarioFixturePaths {
   readonly cakeHome: string;
@@ -14,7 +15,11 @@ interface VisualCaptureScenario {
   readonly name: string;
   readonly description: string;
   readonly states: readonly string[];
-  seed(paths: ScenarioFixturePaths, theme: VisualCaptureTheme): Promise<void>;
+  seed(
+    paths: ScenarioFixturePaths,
+    theme: VisualCaptureTheme,
+    artifact?: CakeArtifactV1,
+  ): Promise<void>;
   prepare(page: Page, state: string): Promise<void>;
   region(page: Page): Locator;
 }
@@ -286,8 +291,8 @@ const architectureArtifactScenario: VisualCaptureScenario = {
   name: "architecture-artifact",
   description: "Interactive XYFlow architecture artifact in the artifact workspace",
   states: ["default", "selected", "fullscreen"],
-  async seed(paths, theme) {
-    const sessionId = architectureArtifact.sessionId;
+  async seed(paths, theme, artifact: CakeArtifactV1 = architectureArtifact) {
+    const sessionId = artifact.sessionId;
     const timestamp = new Date(0).toISOString();
     const sessionDirectory = workspaceSessionDirectory(
       paths.project,
@@ -341,9 +346,7 @@ const architectureArtifactScenario: VisualCaptureScenario = {
           timestamp,
           message: {
             role: "user",
-            content: [
-              { type: "text", text: "Give me a rich overview of Cake's runtime architecture." },
-            ],
+            content: [{ type: "text", text: "Explain how Cake's desktop architecture works." }],
             timestamp: 0,
           },
         },
@@ -357,7 +360,7 @@ const architectureArtifactScenario: VisualCaptureScenario = {
             content: [
               {
                 type: "text",
-                text: "I've created an interactive architecture artifact. Open it to explore subsystem boundaries, data flow, and source locations.",
+                text: "Open the source-backed explanation to explore Cake’s process boundaries and who owns the conversation.",
               },
             ],
             api: "anthropic-messages",
@@ -379,7 +382,7 @@ const architectureArtifactScenario: VisualCaptureScenario = {
         .map((entry) => JSON.stringify(entry))
         .join("\n")}\n`,
     );
-    await seedArtifact(paths, architectureArtifact, timestamp);
+    await seedArtifact(paths, artifact, timestamp);
   },
   async prepare(page, state) {
     const artifactButton = page.getByRole("button", { name: "1 artifacts" });
@@ -407,9 +410,62 @@ const architectureArtifactScenario: VisualCaptureScenario = {
   },
 };
 
+const requestExplanationScenario: VisualCaptureScenario = {
+  name: "cake-request-explanation",
+  description: "Bespoke sandboxed React explanation of Cake's prompt and authority boundaries",
+  states: ["default", "selected", "fullscreen"],
+  async seed(paths, theme) {
+    const source = await readFile(
+      resolve(import.meta.dirname, "../../tests/fixtures/explanations/cake-request.react.txt"),
+      "utf8",
+    );
+    await architectureArtifactScenario.seed(paths, theme, {
+      protocol: "cake.artifact/v1",
+      id: "cake-request-explanation",
+      sessionId: "visual-cake-request-explanation",
+      revision: 1,
+      kind: "widget",
+      title: "A prompt through Cake",
+      payload: {
+        language: "react",
+        source,
+        brief:
+          "Explain the current Electron process and authority boundaries. Manually authored visual prototype; not a generated call trace.",
+        generationSessionId: "manual-visual-prototype",
+      },
+      fallback: {
+        markdown:
+          "Cake's sandboxed renderer sends intent over the narrow preload RPC transport. Main owns privileged operations and embeds Pi. Pi owns the agent loop and transcript; renderer Models project validated updates.",
+      },
+      interaction: { mode: "present" },
+    });
+  },
+  async prepare(page, state) {
+    await page.getByRole("button", { name: "1 artifacts" }).click();
+    await page.getByRole("button", { name: "A prompt through Cake" }).click();
+    let frame = page.frameLocator('iframe[title="A prompt through Cake"]');
+    await frame.getByRole("heading", { name: "The conversation crosses." }).waitFor();
+    if (state === "fullscreen") {
+      await page.getByRole("button", { name: "View A prompt through Cake fullscreen" }).click();
+      frame = page.frameLocator('iframe[title="A prompt through Cake fullscreen"]');
+      await frame.getByRole("heading", { name: "The conversation crosses." }).waitFor();
+    }
+    if (state !== "default") {
+      await frame.getByRole("button", { name: "04 Run" }).click();
+      await frame.getByRole("heading", { name: "Pi runs the agent." }).waitFor();
+      await frame.getByRole("button", { name: "Inspect evidence" }).click();
+    }
+    await page.mouse.move(1, 1);
+  },
+  region(page) {
+    return page.getByRole("dialog").or(page.locator('[data-artifact-kind="widget"]')).last();
+  },
+};
+
 export const visualCaptureScenarios = [
   assistantMarkdownCode,
   architectureArtifactScenario,
+  requestExplanationScenario,
 ] as const;
 
 export function findVisualCaptureScenario(name: string) {
@@ -533,7 +589,7 @@ async function seedSessionAssistant(
 
 async function seedArtifact(
   paths: ScenarioFixturePaths,
-  artifact: typeof architectureArtifact,
+  artifact: CakeArtifactV1,
   timestamp: string,
 ) {
   const serialized = `${JSON.stringify(artifact, null, 2)}\n`;

@@ -64,6 +64,8 @@ export async function captureVisual(
       },
     });
     const page = await application.firstWindow();
+    // Sandboxed documents follow media preferences, not the host's theme class.
+    await page.emulateMedia({ colorScheme: options.theme });
     await application.evaluate(
       ({ BrowserWindow }, dimensions) => {
         const window = BrowserWindow.getAllWindows()[0];

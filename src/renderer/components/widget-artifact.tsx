@@ -157,6 +157,7 @@ export const WidgetArtifact = observer(function WidgetArtifact({
         >
           <iframe
             ref={fullscreenIframe}
+            className="h-full w-full border-none"
             title={`${artifact.title ?? artifact.id} fullscreen`}
             sandbox="allow-scripts"
             referrerPolicy="no-referrer"

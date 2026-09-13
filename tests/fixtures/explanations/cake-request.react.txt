@@ -1,0 +1,128 @@
+import React, { useState } from "react";
+
+const stops = [
+  { name: "Compose", zone: "renderer", title: "Intent, not privilege.", text: "The chat asks a typed Promise-based Client to send a prompt. Ordinary Stores do not construct RPC envelopes or import Pi.", evidence: "src/renderer/client/ClientLive.ts", lines: "273–279", fact: "sessionChats.prompt delegates to the generated RPC client." },
+  { name: "Cross", zone: "bridge", title: "A narrow crossing.", text: "Preload exposes a frozen send / subscribe transport. Shared schemas parse values at receiving boundaries; preload is not a second business layer.", evidence: "src/preload/preload.ts", lines: "5–19", fact: "Only cake.rpc is exposed; ipcRenderer remains private." },
+  { name: "Dispatch", zone: "main", title: "Cake chooses the operation.", text: "Main binds the caller’s renderer connection and delivers the prompt through Cake’s conversation domain. Filesystem and native authority stay here.", evidence: "src/ipc/server/SessionChatHandlers.ts", lines: "6–20", fact: "sessionChats.prompt routes through bindRenderer and deliver." },
+  { name: "Run", zone: "pi", title: "Pi runs the agent.", text: "The Pi Session Runtime owns the agent loop, tools and transcript. It is embedded in main—not a separate server, and not a sandboxed extension host.", evidence: "src/services/pi/PiSessions.ts", lines: "596–598", fact: "The Pi service handle delegates prompt to its adapter." },
+  { name: "Project", zone: "renderer", title: "A view, not another transcript.", text: "Validated snapshots and ordered events return to window-owned observers. Reactive Models project the result; Pi remains the transcript authority.", evidence: "docs/architecture/cake-architecture.md", lines: "135–150", fact: "Observers apply validated updates; raw Pi shapes stop at the Pi service boundary." },
+];
+
+export default function Explanation() {
+  const [step, setStep] = useState(0);
+  const [sources, setSources] = useState(false);
+  const current = stops[step];
+  const active = (zone) => current.zone === zone ? " active" : "";
+  return <main className="explanation">
+    <style>{`
+      :root { color-scheme: light dark; --paper: light-dark(#faf9f6,#171b1c); --ink: light-dark(#202e30,#e7eeeb); --muted: light-dark(#687575,#a5b2ae); --line: light-dark(#d9dfd9,#374341); --soft: light-dark(#f0f2ec,#222c29); --accent: light-dark(#17634e,#a7e5c2); --wash: light-dark(#e2eee3,#293f33); --warm: light-dark(#8b5f2a,#e5bf86); }
+      body { padding: 0; background: var(--paper); color: var(--ink); }
+      .explanation { max-width: 1000px; margin: auto; padding: 26px 24px 20px; font: 13px/1.5 system-ui,sans-serif; }
+      .eyebrow { font: 10px/1.4 ui-monospace,monospace; letter-spacing: .15em; text-transform: uppercase; color: var(--muted); }
+      .masthead { display:flex; justify-content:space-between; align-items:center; gap:12px; }
+      .edition { color:var(--accent); font:11px ui-monospace,monospace; white-space:nowrap; }
+      h1 { margin: 12px 0 8px; font: 500 clamp(28px,4vw,42px)/1.08 Georgia,serif; letter-spacing:-.04em; }
+      .dek { color: var(--muted); margin: 0 0 20px; max-width: 55ch; }
+      .journey { display:grid; grid-template-columns:repeat(5,1fr); gap:4px; margin-bottom:20px; }
+      button { cursor:pointer; color:inherit; }
+      .stop { border:0; border-top:2px solid var(--line); background:transparent; padding:9px 2px 0; text-align:left; font-size:11px; }
+      .stop span { display:block; font:10px ui-monospace,monospace; color:var(--muted); margin-bottom:3px; }
+      .stop[aria-pressed=true] { border-color:var(--accent); color:var(--accent); font-weight:650; }
+      button:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
+      button:hover { color:var(--accent); }
+      .layout { display:grid; gap:20px; }
+      .map { position:relative; }
+      .zone { border:1px solid var(--line); border-radius:10px; padding:15px 16px; transition:background .15s,border-color .15s; }
+      .zone.active,.pi.active { border-color:var(--accent); background:var(--wash); }
+      .zone-head { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+      .zone h2 { margin:0; font-size:16px; font-weight:600; letter-spacing:-.025em; }
+      .tag { color:var(--muted); font:9px ui-monospace,monospace; letter-spacing:.05em; text-transform:uppercase; }
+      .role { margin:7px 0 0; font-size:12px; color:var(--muted); }
+      .boundary { display:flex; align-items:center; gap:10px; margin:10px 0; padding:8px 12px; border:1px dashed var(--line); border-radius:5px; }
+      .boundary.active { border-color:var(--accent); background:var(--wash); }
+      .boundary strong { font-size:12px; font-weight:600; }
+      .boundary small { color:var(--muted); font-size:10px; }
+      .direction { margin-left:auto; color:var(--accent); font:10px ui-monospace,monospace; white-space:nowrap; }
+      .pi { margin-top:12px; padding:12px; border:1px solid var(--line); border-radius:6px; background:var(--soft); }
+      .pi strong { font-size:14px; font-weight:600; }
+      .pi small { color:var(--muted); margin-left:8px; font:9px ui-monospace,monospace; text-transform:uppercase; }
+      .pi p { margin:4px 0 0; font-size:12px; color:var(--muted); }
+      .map-caption { margin:10px 0 0; font-size:10px; color:var(--muted); }
+      .detail { border-top:1px solid var(--line); padding-top:16px; }
+      .detail h2 { margin:7px 0 8px; font:500 25px/1.15 Georgia,serif; letter-spacing:-.03em; }
+      .detail p { margin:0; color:var(--muted); font-size:12px; }
+      .actions { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-top:14px; }
+      .source-toggle { border:0; padding:5px 0; background:transparent; color:var(--muted); font-size:11px; text-decoration:underline; text-underline-offset:3px; }
+      .next { padding:7px 12px; border:1px solid var(--accent); border-radius:5px; background:var(--accent); color:var(--paper); font-size:11px; font-weight:600; }
+      .next:hover { background:var(--wash); }
+      .evidence { margin-top:12px; padding:12px; background:var(--soft); border-radius:5px; }
+      .evidence code { display:block; margin:6px 0; color:var(--accent); font:10px/1.6 ui-monospace,monospace; overflow-wrap:anywhere; }
+      .evidence p { font-size:11px; }
+      footer { margin-top:20px; padding-top:10px; border-top:1px solid var(--line); display:flex; gap:10px; justify-content:space-between; color:var(--muted); font-size:9px; }
+      @media(min-width:700px) { .explanation { padding:44px 40px 28px; } .layout { grid-template-columns:1.1fr 1fr; gap:32px; align-items:start; } .detail { border-top:0; padding-top:4px; } .detail h2 { font-size:32px; } .detail p { font-size:14px; } .journey { margin:28px 0; } .zone { padding:20px; } .pi { padding:16px; } .map-caption { max-width:45ch; } }
+      @media(max-width:699px) {
+        .explanation { padding:14px 16px 10px; }
+        .eyebrow { font-size:9px; letter-spacing:.08em; }
+        .edition { font-size:9px; }
+        h1 { font-size:26px; margin:10px 0 7px; }
+        .dek { display:none; }
+        h1 { margin-bottom:14px; }
+        .map-caption { display:none; }
+        .journey { margin-bottom:14px; }
+        .layout { gap:12px; }
+        .zone { padding:10px 12px; }
+        .zone h2 { font-size:14px; }
+        .tag { font-size:8px; }
+        .role { margin-top:3px; font-size:10px; }
+        .boundary { margin:7px 0; padding:6px 10px; }
+        .boundary strong { font-size:11px; }
+        .boundary small,.direction { font-size:9px; }
+        .pi { margin-top:8px; padding:8px 10px; }
+        .pi strong { font-size:12px; }
+        .pi small { font-size:8px; }
+        .pi p { font-size:10px; }
+        .map-caption { margin-top:7px; font-size:9px; }
+        .detail { padding-top:10px; }
+        .detail h2 { font-size:22px; margin:5px 0 6px; }
+        .detail p { font-size:11px; }
+        .actions { margin-top:9px; }
+        footer { margin-top:10px; padding-top:6px; font-size:8px; }
+        footer span:first-child { display:none; }
+      }
+      @media(prefers-reduced-motion:reduce) { * { transition:none!important; } }
+    `}</style>
+    <header>
+      <div className="masthead"><span className="eyebrow">Cake / field guide 01</span><span className="edition">One prompt, two processes</span></div>
+      <h1>The conversation crosses.<br/>The authority stays put.</h1>
+      <p className="dek">Follow a prompt from the desktop to Pi—and see why the interface is not the agent engine.</p>
+    </header>
+    <nav className="journey" aria-label="Prompt journey">
+      {stops.map((stop,index) => <button key={stop.name} className="stop" aria-pressed={step === index} onClick={() => setStep(index)}><span>0{index+1}</span>{stop.name}</button>)}
+    </nav>
+    <div className="layout">
+      <section className="map" aria-label="Process boundaries">
+        <div className={"zone" + active("renderer")}>
+          <div className="zone-head"><h2>Renderer</h2><span className="tag">Sandboxed window</span></div>
+          <p className="role">React · Stores & Models · typed Client</p>
+        </div>
+        <div className={"boundary" + active("bridge")}>
+          <div><strong>Preload / RPC</strong><br/><small>Transport only · validated values</small></div>
+          <span className="direction">{step === 4 ? "UP / updates" : "DOWN / intent"}</span>
+        </div>
+        <div className={"zone" + active("main")}>
+          <div className="zone-head"><h2>Electron main</h2><span className="tag">Privileged process</span></div>
+          <p className="role">Cake domain · native services · persistence</p>
+          <div className={"pi" + active("pi")}><strong>Pi Session Runtime</strong><small>Embedded</small><p>Agent loop · tools · transcript authority</p></div>
+        </div>
+        <p className="map-caption">Nesting denotes process ownership, not a network hop.<br/>Pi extensions share main-process authority.</p>
+      </section>
+      <section className="detail" aria-label="Selected step" aria-live="polite">
+        <span className="eyebrow">0{step+1} / {current.name}</span>
+        <h2>{current.title}</h2><p>{current.text}</p>
+        <div className="actions"><button className="source-toggle" aria-expanded={sources} onClick={() => setSources(!sources)}>{sources ? "Hide evidence" : "Inspect evidence"}</button><button className="next" onClick={() => setStep((step+1)%stops.length)}>{step === 4 ? "Start again" : "Next: " + stops[step+1].name}</button></div>
+        {sources && <aside className="evidence"><span className="eyebrow">Source / repository checkout</span><code>{current.evidence}:{current.lines}</code><p>{current.fact}</p></aside>}
+      </section>
+    </div>
+    <footer><span>Source-backed · desktop architecture</span><span>Interpretation: simplified journey, not a call trace</span></footer>
+  </main>;
+}
