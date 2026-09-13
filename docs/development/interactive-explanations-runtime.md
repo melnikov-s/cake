@@ -29,11 +29,14 @@ The following pieces are independently useful and should be reused rather than c
   uses esbuild, requires a default-exported React component, and rejects imports except React and
   the explicit D3 allowlist. `src/services/widgets/inline-widget-protocol.ts` serves an in-memory
   compiled document at a per-compilation `cake-widget:` capability URL with `default-src 'none'`,
-  no forms/navigation/base URL, no network-capable connect source, and only inline script/style.
-  `src/renderer/components/widget-artifact.tsx` embeds it with `sandbox="allow-scripts"` (no
-  `allow-same-origin`) and accepts only token-correlated `ready`, `height`, and `error` messages
-  from that exact frame. Fullscreen uses the same compiled URL and sandbox. This is the right
-  execution surface.
+  no forms/navigation/base URL, no `connect-src` override (so fetch/XHR/WebSocket inherit
+  `default-src 'none'`), and only inline script/style. The current CSP is **not complete network
+  isolation**: it explicitly permits `img-src data: https:` and `media-src data: https:`, so
+  generated markup can still request passive remote images or media even though the frame sends no
+  referrer. `src/renderer/components/widget-artifact.tsx` embeds it with
+  `sandbox="allow-scripts"` (no `allow-same-origin`) and accepts only token-correlated `ready`,
+  `height`, and `error` messages from that exact frame. Fullscreen uses the same compiled URL and
+  sandbox. This is the right execution surface, with the remote-media caveat addressed below.
 - **Restricted Pi execution.** `src/services/pi/runtime/isolated-session-runner.ts` creates a Pi
   agent session with project trust disabled and supports no-tools operation, a selected Pi model,
   thinking level, `AbortSignal`-driven `session.abort()`, persisted or ephemeral history, and live
@@ -144,9 +147,13 @@ runtime implementation is bundled by main. It may export presentation-only primi
 (e.g. frame, section, callout, selectable region, source badge, responsive SVG helpers). D3
 submodules can remain approved; a graph/layout library is optional only when a prototype proves it
 necessary. No kit API may expose Cake IPC, files, network, credentials, parent DOM, navigation, or
-arbitrary component imports. Source references remain inert validated data inside the frame in the
-first version; opening a workspace source would require a separately designed token-correlated host
-intent.
+arbitrary component imports. For explanation candidates, add a tighter compiler/publication
+capability whose CSP removes the current widget sandbox's HTTPS image/media allowances
+(`img-src data:; media-src data:` unless a demonstrated prototype needs something narrower), so the
+specialist cannot cause passive remote requests. Do not silently describe the generic reused policy
+as already providing that restriction. Source references remain inert validated data inside the
+frame in the first version; opening a workspace source would require a separately designed
+token-correlated host intent.
 
 ## Runtime workflow
 
@@ -315,7 +322,8 @@ revision, publication, or cancellation policy.
 - Generated source is untrusted at every attempt. It never imports renderer components directly and
   never executes in main or Cake's renderer origin. Compilation is not sanitization; the opaque
   origin, iframe sandbox, CSP, import allowlist, token checking, and bounded messages remain
-  mandatory.
+  mandatory. The generic current CSP still permits HTTPS image/media loads; the proposed
+  explanation-only capability must remove those allowances before claiming network isolation.
 - The renderer and preload are untrusted cross-process inputs. Bounds, diagnostic payloads, tokens,
   session IDs, and operation IDs are Schema-decoded and correlated again in main.
 - Runtime `error` messages are hints from untrusted frame code and must be bounded/escaped before
