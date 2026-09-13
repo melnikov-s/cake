@@ -488,8 +488,11 @@ The window Store hierarchy mirrors the product surfaces:
 - Each `ProjectSessionStore` owns that session's activity, session-local Agent/IDE presentation preference and IDE
   chat-drawer geometry, managed-worktree status and action presentation, artifact accessory-panel workflow, and message comments. Full
   artifacts are explicit substantial or reusable deliverables, not a presentation selected from syntax: ordinary Markdown, including
-  Mermaid and small tables, stays inline. Rich architectural overviews use validated semantic graph data rendered by Cake's trusted
-  React Flow and ELK surface rather than model-generated React code. The session header opens the panel, and creating an artifact opens and selects it automatically.
+  Mermaid and small tables, stays inline. Rich architectural overviews use the unified delegated React widget path: a restricted specialist
+  can compose React Flow, optional ELK layout, explanations, and controls inside the widget sandbox. Generated candidates are compile-checked
+  and reviewed from actual widget-only Electron screenshots before publication, with at most two replacements. Original historical graph blobs
+  and Pi pointers remain immutable; storage projects their readable Markdown fallbacks instead of maintaining a second graph renderer.
+  The session header opens the panel, and creating an artifact opens and selects it automatically.
   Session-tree branch changes and tool compaction neither move nor duplicate artifacts. Blocking requests remain inline interactions and
   never enter the panel, even when shared infrastructure stores or renders them. Project Sessions and Cake Chat
   Sessions each compose one `ConversationSessionStore`, the window-local active-conversation aggregate whose lifetime matches its owning
