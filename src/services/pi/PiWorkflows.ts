@@ -1,6 +1,5 @@
 import { Effect } from "effect";
 import type { JsonValue } from "../../ipc/json-contract";
-import type { ProjectSessionControlInvocation } from "../../domain/project-sessions/project-session-data";
 import {
   findSessionFile,
   forkWorkspaceSession,
@@ -10,6 +9,7 @@ import { runSessionAssistant } from "./runtime/session-assistant";
 import { rewordSelectionWithProjectContext } from "./runtime/rewording-agent";
 
 type SessionAssistantOptions = Parameters<typeof runSessionAssistant>[0];
+type SessionAssistantInvocation = Parameters<SessionAssistantOptions["invoke"]>[0];
 type RewordSelectionOptions = Parameters<typeof rewordSelectionWithProjectContext>[0];
 
 const asError = (cause: unknown) => (cause instanceof Error ? cause : new Error(String(cause)));
@@ -34,7 +34,7 @@ export const runProjectSessionAssistant = Effect.fn("PiWorkflows.runProjectSessi
   function* (
     options: Omit<SessionAssistantOptions, "invoke"> & {
       readonly invoke: (
-        invocation: ProjectSessionControlInvocation,
+        invocation: SessionAssistantInvocation,
         signal: AbortSignal,
       ) => Effect.Effect<JsonValue, unknown, never>;
     },

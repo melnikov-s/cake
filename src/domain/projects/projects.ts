@@ -220,7 +220,11 @@ export const chatWithSessionAssistant = Effect.fn("Projects.chatWithSessionAssis
     parentContextPrompt: prepared.systemPrompt,
     tools: request.tools,
     invoke: (invocation, controlSignal) =>
-      rendererRequests.requestProjectControl(request.sessionId, invocation, controlSignal),
+      rendererRequests.requestProjectControl(
+        request.sessionId,
+        { _tag: "InvokeAppControl", ...invocation },
+        controlSignal,
+      ),
   }).pipe(Effect.mapError((cause) => projectError("chatWithSessionAssistant", cause)));
   yield* discussionSessions
     .completeSessionAssistant(prepared.record, {

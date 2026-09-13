@@ -1,8 +1,6 @@
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { Schema } from "effect";
-import type { CakeControlTool } from "../../../domain/cake-chats/cake-chat-data";
-import type { ProjectSessionControlInvocation } from "../../../domain/project-sessions/project-session-data";
-import type { JsonValue } from "../../../ipc/json-contract";
+import type { JsonObject, JsonValue } from "../../../ipc/json-contract";
 import { jsonObjectSchema } from "../../../ipc/json-contract";
 import type { UtilityModel } from "../../../ipc/session-contract";
 import { createCakeToolDefinition, type GlobalControlTool } from "./cake-runtime-capabilities";
@@ -11,6 +9,11 @@ import { runIsolatedSession } from "./isolated-session-runner";
 import { renderPromptTemplate } from "./prompt-template";
 import sessionAssistantPromptTemplate from "./prompts/session-assistant.md?raw";
 import { assertSessionPath } from "./session-path";
+
+export interface SessionAssistantControlInvocation {
+  readonly command: string;
+  readonly input: JsonObject;
+}
 
 interface SessionAssistantOptions {
   readonly workspacePath: string;
@@ -21,9 +24,9 @@ interface SessionAssistantOptions {
   readonly utilityModel: UtilityModel;
   readonly prompt: string;
   readonly parentContextPrompt: string;
-  readonly tools: readonly CakeControlTool[];
+  readonly tools: readonly GlobalControlTool[];
   readonly signal?: AbortSignal;
-  invoke(invocation: ProjectSessionControlInvocation, signal: AbortSignal): Promise<JsonValue>;
+  invoke(invocation: SessionAssistantControlInvocation, signal: AbortSignal): Promise<JsonValue>;
 }
 
 const ASSISTANT_OUTPUT_CHARACTERS = 100_000;
@@ -45,14 +48,7 @@ function controlOperations(
     limitations: tool.limitations,
     async execute(input, context) {
       const decoded = Schema.decodeUnknownSync(jsonObjectSchema)(input);
-      return invoke(
-        {
-          _tag: "InvokeAppControl",
-          command: tool.command,
-          input: decoded,
-        },
-        context.signal,
-      );
+      return invoke({ command: tool.command, input: decoded }, context.signal);
     },
   }));
 }
