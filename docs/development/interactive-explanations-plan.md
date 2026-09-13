@@ -60,4 +60,7 @@ Prototype with Astra to establish the quality ceiling. Compare Sol only after th
   - [Visual prototype — Astra](cake://session/17889033-ae4f-4f23-998e-6fca90e8868a).
   - [Runtime design — Sol](cake://session/26b42ee1-1068-4952-9493-724c8fb2bd27).
   - [Evaluation fixtures — Luna](cake://session/a11c43f6-88c2-4e23-9ef8-ecd1fe38165b).
-- Production pipeline: not implemented; gated on rendered prototype review.
+- First-stage prototype, runtime design, and benchmarks: reviewed and landed in the parent worktree.
+- User approved Astra's guided visual explanation and explicitly requires that genuine diagrams remain an available form, not just walkthroughs.
+- Next milestone: a second Astra prototype with connected nodes, readable edges, meaningful boundaries, and useful path/neighborhood interaction. Choose React/SVG/D3 or another justified approved tool; do not force the specialist into one visual form or repair the old graph renderer. Prove diagram composition on the real sandboxed Electron surface before extracting the shared kit.
+- Production pipeline: not implemented; next integration decisions follow the second composition and minimal-kit review.
