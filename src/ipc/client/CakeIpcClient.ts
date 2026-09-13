@@ -526,10 +526,7 @@ export interface CakeIpcClientService {
     "respond-artifact" | "respond-ui" | "export-artifacts",
     ArtifactError
   >;
-  readonly widgets: RpcOperations<
-    "compile-inline-widget" | "repair-inline-widget",
-    InlineWidgetError
-  >;
+  readonly widgets: RpcOperations<"compile-inline-widget", InlineWidgetError>;
   readonly events: {
     readonly application: () => Stream.Stream<
       FocusedCakeEvent<
@@ -1026,9 +1023,6 @@ export const CakeIpcClientLive = Layer.effect(
       widgets: {
         "compile-inline-widget": Effect.fn("CakeIpcClient.widgets.compile-inline-widget")(
           (payload) => client("widgets.compile-inline-widget", payload),
-        ),
-        "repair-inline-widget": Effect.fn("CakeIpcClient.widgets.repair-inline-widget")((payload) =>
-          client("widgets.repair-inline-widget", payload),
         ),
       },
       foundation: {

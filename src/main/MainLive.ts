@@ -150,7 +150,7 @@ export const makeMainLive = (options: MainLiveOptions) => {
     WorktreeLandingCoordinatorLive,
     RendererRequestCoordinatorLive,
     RenderedWidgetCaptureLive,
-    makeInlineWidgetsLive({ paths, publish: publishInlineWidget }),
+    makeInlineWidgetsLive({ publish: publishInlineWidget }),
     makeSubagentEnvironmentLive({
       homeDirectory,
       agentDirectory: paths.piAgent,

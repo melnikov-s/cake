@@ -366,9 +366,9 @@ const widgetPipelineScenario: VisualCaptureScenario = {
     await frame.getByRole("heading", { name: "One gate. Two outcomes." }).waitFor();
     if (state === "fullscreen") {
       await page.getByRole("button", { name: "View Widget publication paths fullscreen" }).click();
-      frame = page.frameLocator('iframe[title="Widget publication paths fullscreen"]');
+      frame = page.getByRole("dialog").frameLocator('iframe[title="Widget publication paths"]');
     }
-    if (state !== "default") {
+    if (state === "selected") {
       await frame.getByRole("button", { name: "Repair loop", exact: true }).click();
       await frame.getByRole("heading", { name: "One repair", exact: true }).waitFor();
       await frame.getByRole("button", { name: "Source evidence" }).click();

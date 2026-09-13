@@ -219,10 +219,6 @@ function invokeSmokeCommand(
       return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["compile-inline-widget"])(
         payload,
       ).pipe(Effect.flatMap(client.widgets["compile-inline-widget"]));
-    case "repair-inline-widget":
-      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["repair-inline-widget"])(
-        payload,
-      ).pipe(Effect.flatMap(client.widgets["repair-inline-widget"]));
     default:
       return Effect.die(new Error(`The RPC test harness cannot invoke ${type}`));
   }

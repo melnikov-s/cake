@@ -8,7 +8,6 @@ import {
   inlineWidgetCapabilitySchema,
   inlineWidgetLanguageSchema,
   inlineWidgetSourceSchema,
-  repairedInlineWidgetSchema,
 } from "./inline-widget-contract";
 import { jsonValueSchema } from "./json-contract";
 import { ProjectSettings } from "../domain/application/application-data";
@@ -405,15 +404,6 @@ export const cakeRpcPayloadSchemas = {
     capability: inlineWidgetCapabilitySchema,
     source: inlineWidgetSourceSchema,
   }),
-  "repair-inline-widget": Schema.Struct({
-    sessionId: bounded(1, 256),
-    language: inlineWidgetLanguageSchema,
-    capability: inlineWidgetCapabilitySchema,
-    source: inlineWidgetSourceSchema,
-    context: stringMax(262_144),
-    diagnostic: Schema.optional(stringMax(32_768)),
-    model: Schema.optional(Schema.Struct({ provider: bounded(1, 256), id: bounded(1, 512) })),
-  }),
   "set-utility-model": Schema.Struct({
     model: Schema.optional(utilityModelSchema),
   }),
@@ -579,9 +569,6 @@ const cakeRpcResultSchemas = {
   "inline-widget-compiled": Schema.Struct({
     widget: compiledInlineWidgetSchema,
   }),
-  "inline-widget-repaired": Schema.Struct({
-    widget: repairedInlineWidgetSchema,
-  }),
   "application-state-updated": Schema.Struct({
     state: applicationStateSchema,
   }),
@@ -666,7 +653,6 @@ export const cakeRpcSuccessSchemas = {
   "respond-ui": cakeRpcResultSchemas["ui-response-accepted"],
   "export-artifacts": cakeRpcResultSchemas["artifacts-exported"],
   "compile-inline-widget": cakeRpcResultSchemas["inline-widget-compiled"],
-  "repair-inline-widget": cakeRpcResultSchemas["inline-widget-repaired"],
 } as const;
 
 export type CakeRpcOperation = keyof typeof cakeRpcPayloadSchemas;

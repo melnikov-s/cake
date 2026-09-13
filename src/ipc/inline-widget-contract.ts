@@ -26,12 +26,6 @@ export const compiledInlineWidgetSchema = Schema.Struct({
       : "Inline widget URL must match its capability token",
   ),
 );
-export const repairedInlineWidgetSchema = Schema.Struct({
-  source: inlineWidgetSourceSchema,
-  repairSessionId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
-});
-
 export type InlineWidgetLanguage = typeof inlineWidgetLanguageSchema.Type;
 export type InlineWidgetCapability = typeof inlineWidgetCapabilitySchema.Type;
 export type CompiledInlineWidget = typeof compiledInlineWidgetSchema.Type;
-export type RepairedInlineWidget = typeof repairedInlineWidgetSchema.Type;

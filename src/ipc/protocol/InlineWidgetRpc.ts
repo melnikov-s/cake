@@ -8,9 +8,4 @@ export const InlineWidgetRpc = RpcGroup.make(
     success: cakeRpcSuccessSchemas["compile-inline-widget"],
     error: InlineWidgetError,
   }),
-  Rpc.make("widgets.repair-inline-widget", {
-    payload: cakeRpcPayloadSchemas["repair-inline-widget"],
-    success: cakeRpcSuccessSchemas["repair-inline-widget"],
-    error: InlineWidgetError,
-  }),
 );

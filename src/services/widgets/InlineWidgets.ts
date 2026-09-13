@@ -3,8 +3,6 @@ import type { cakeRpcPayloadSchemas, cakeRpcSuccessSchemas } from "../../ipc/cak
 
 type CompilePayload = (typeof cakeRpcPayloadSchemas)["compile-inline-widget"]["Type"];
 type CompileSuccess = (typeof cakeRpcSuccessSchemas)["compile-inline-widget"]["Type"];
-type RepairPayload = (typeof cakeRpcPayloadSchemas)["repair-inline-widget"]["Type"];
-type RepairSuccess = (typeof cakeRpcSuccessSchemas)["repair-inline-widget"]["Type"];
 
 export class InlineWidgetError extends Schema.TaggedError<InlineWidgetError>()(
   "InlineWidgetError",
@@ -16,7 +14,6 @@ export class InlineWidgetError extends Schema.TaggedError<InlineWidgetError>()(
 
 export interface InlineWidgetsService {
   readonly compile: (request: CompilePayload) => Effect.Effect<CompileSuccess, InlineWidgetError>;
-  readonly repair: (request: RepairPayload) => Effect.Effect<RepairSuccess, InlineWidgetError>;
 }
 
 export class InlineWidgets extends Context.Service<InlineWidgets, InlineWidgetsService>()(
