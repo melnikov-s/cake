@@ -1,6 +1,9 @@
 import {
+  Cache,
   Deferred,
+  Duration,
   Effect,
+  Exit,
   FileSystem,
   Layer,
   Path,
@@ -74,6 +77,7 @@ export const ManagedWorktreesLive: Layer.Layer<
     const scope = yield* Effect.scope;
     const initialRecords = yield* storage.load().pipe(Effect.orDie);
     const recordsRef = yield* Ref.make<ReadonlyArray<WorktreeRecord>>(initialRecords);
+    const recordsLock = yield* Semaphore.make(1);
     const repositoryLocks = yield* Ref.make(new Map<string, Semaphore.Semaphore>());
     const landingQueues = yield* Ref.make(new Map<string, LandingQueue>());
     const squashProposals = yield* Ref.make(new Map<string, SquashProposal>());
@@ -100,18 +104,35 @@ export const ManagedWorktreesLive: Layer.Layer<
           Effect.option,
         ),
     );
-    const persist = Effect.fn("ManagedWorktrees.persist")(function* () {
-      yield* storage.save(yield* Ref.get(recordsRef));
+    const mutateRecords = Effect.fn("ManagedWorktrees.mutateRecords")(function* (
+      change: (records: ReadonlyArray<WorktreeRecord>) => ReadonlyArray<WorktreeRecord>,
+    ) {
+      yield* recordsLock.withPermits(1)(
+        Effect.uninterruptibleMask((restore) =>
+          Effect.gen(function* () {
+            const current = yield* Ref.get(recordsRef);
+            const next = change(current);
+            if (next === current) return;
+            yield* restore(storage.save(next)).pipe(
+              Effect.onInterrupt(() => storage.save(current).pipe(Effect.ignore)),
+            );
+            yield* Ref.set(recordsRef, next);
+          }),
+        ),
+      );
     });
     const updateRecord = Effect.fn("ManagedWorktrees.updateRecord")(function* (
       record: WorktreeRecord,
       change: (record: WorktreeRecord) => WorktreeRecord,
     ) {
-      yield* Ref.update(recordsRef, (records) => {
-        const index = records.indexOf(record);
-        return index < 0 ? records : records.with(index, change(record));
+      yield* mutateRecords((records) => {
+        const index = records.findIndex(
+          (current) =>
+            resolveNormalized(current.worktreePath) === resolveNormalized(record.worktreePath),
+        );
+        const current = records[index];
+        return index < 0 || !current ? records : records.with(index, change(current));
       });
-      yield* persist();
     });
     const closeRecord = Effect.fn("ManagedWorktrees.closeRecord")(function* (
       record: WorktreeRecord,
@@ -149,6 +170,30 @@ export const ManagedWorktreesLive: Layer.Layer<
         Effect.map((value) => value.trim()),
         Effect.catch(() => internalError("Worktrees require a Git repository")),
       );
+    });
+    const repositoryIdentityCache = yield* Cache.makeWith(
+      Effect.fn("ManagedWorktrees.resolveRepositoryIdentity")(function* (workingDirectory: string) {
+        const commonDirectory = (yield* git(
+          workingDirectory,
+          "rev-parse",
+          "--path-format=absolute",
+          "--git-common-dir",
+        )).trim();
+        return yield* fileSystem.realPath(commonDirectory);
+      }),
+      {
+        capacity: 1_024,
+        timeToLive: (exit) => (Exit.isSuccess(exit) ? Duration.infinity : Duration.zero),
+      },
+    );
+    const repositoryIdentity = Effect.fn("ManagedWorktrees.repositoryIdentity")(
+      (workingDirectory: string) => Cache.get(repositoryIdentityCache, workingDirectory),
+    );
+    const withRepositoryLock = Effect.fn("ManagedWorktrees.withRepositoryLock")(function* <A, E, R>(
+      workingDirectory: string,
+      effect: Effect.Effect<A, E, R>,
+    ) {
+      return yield* repositoryLock(yield* repositoryIdentity(workingDirectory), effect);
     });
     const revParseExists = Effect.fn("ManagedWorktrees.revParseExists")(function* (
       cwd: string,
@@ -326,14 +371,6 @@ export const ManagedWorktreesLive: Layer.Layer<
         } else yield* git(root, "worktree", "add", "-b", branch, worktreePath, baseCommit);
         if (setup) yield* runSetup(worktreePath, settings, variables);
       });
-      yield* createCheckout.pipe(
-        Effect.tapCause(() =>
-          git(root, "worktree", "remove", "--force", worktreePath).pipe(
-            Effect.ignore,
-            Effect.andThen(git(root, "branch", "-D", branch).pipe(Effect.ignore)),
-          ),
-        ),
-      );
       const base = {
         projectPath,
         worktreePath,
@@ -346,9 +383,28 @@ export const ManagedWorktreesLive: Layer.Layer<
       const record: WorktreeRecord = parent
         ? { ...base, parentWorktreePath: parent.worktreePath }
         : base;
-      yield* Ref.update(recordsRef, (current) => [...current, record]);
-      yield* persist();
-      return record;
+      return yield* createCheckout.pipe(
+        Effect.andThen(mutateRecords((current) => [...current, record])),
+        Effect.as(record),
+        Effect.onExit((exit) =>
+          Exit.isFailure(exit)
+            ? git(root, "worktree", "remove", "--force", worktreePath).pipe(
+                Effect.ignore,
+                Effect.andThen(git(root, "branch", "-D", branch).pipe(Effect.ignore)),
+                Effect.andThen(
+                  mutateRecords((current) => {
+                    const next = current.filter(
+                      (item) =>
+                        resolveNormalized(item.worktreePath) !==
+                        resolveNormalized(record.worktreePath),
+                    );
+                    return next.length === current.length ? current : next;
+                  }).pipe(Effect.ignore),
+                ),
+              )
+            : Effect.void,
+        ),
+      );
     });
     const createWithPolicy = Effect.fn("ManagedWorktrees.createWithPolicy")(function* (
       projectPath: string,
@@ -359,7 +415,7 @@ export const ManagedWorktreesLive: Layer.Layer<
     ) {
       const registered = path.resolve(projectPath);
       const root = yield* fileSystem.realPath(yield* repositoryRoot(projectPath));
-      return yield* repositoryLock(
+      return yield* withRepositoryLock(
         root,
         createRecord(root, registered, baseWorktreePath, worktreeName, settings, setup),
       );
@@ -368,7 +424,9 @@ export const ManagedWorktreesLive: Layer.Layer<
     const landingState = Effect.fn("ManagedWorktrees.landingState")(function* (
       record: WorktreeRecord,
     ) {
-      const queue = (yield* Ref.get(landingQueues)).get(record.projectPath);
+      const queue = (yield* Ref.get(landingQueues)).get(
+        yield* repositoryIdentity(record.projectPath),
+      );
       if (!queue) return undefined;
       const normalized = resolveNormalized(record.worktreePath);
       if (queue.active?.worktreePath === normalized)
@@ -383,14 +441,15 @@ export const ManagedWorktreesLive: Layer.Layer<
       record: WorktreeRecord,
       operationId: string,
     ) {
+      const repository = yield* repositoryIdentity(record.projectPath);
       const promoted = yield* Ref.modify(landingQueues, (queues) => {
-        const queue = queues.get(record.projectPath);
+        const queue = queues.get(repository);
         if (!queue || queue.active?.operationId !== operationId)
           return [undefined, queues] as const;
         const [nextActive, ...pending] = queue.pending;
         const next = new Map(queues);
-        if (nextActive) next.set(record.projectPath, { active: nextActive, pending });
-        else next.delete(record.projectPath);
+        if (nextActive) next.set(repository, { active: nextActive, pending });
+        else next.delete(repository);
         return [nextActive?.ready, next] as const;
       });
       if (promoted) yield* Deferred.succeed(promoted, undefined);
@@ -405,17 +464,18 @@ export const ManagedWorktreesLive: Layer.Layer<
         worktreePath: resolveNormalized(record.worktreePath),
         ready,
       };
+      const repository = yield* repositoryIdentity(record.projectPath);
       const wait = yield* Ref.modify(landingQueues, (queues) => {
-        const current = queues.get(record.projectPath);
+        const current = queues.get(repository);
         if (current?.active?.operationId === operationId) return [false, queues] as const;
         const next = new Map(queues);
-        if (!current) next.set(record.projectPath, { active: entry, pending: [] });
-        else next.set(record.projectPath, { ...current, pending: [...current.pending, entry] });
+        if (!current) next.set(repository, { active: entry, pending: [] });
+        else next.set(repository, { ...current, pending: [...current.pending, entry] });
         return [current !== undefined, next] as const;
       });
       if (wait)
         yield* Deferred.await(ready).pipe(
-          Effect.onInterrupt(() => releaseLanding(record, operationId)),
+          Effect.onInterrupt(() => cancelLandingInternal(record, operationId, false)),
         );
     });
     const cancelLandingInternal = Effect.fn("ManagedWorktrees.cancelLandingInternal")(function* (
@@ -423,11 +483,12 @@ export const ManagedWorktreesLive: Layer.Layer<
       operationId: string,
       onlyIfQueued: boolean,
     ) {
+      const repository = yield* repositoryIdentity(record.projectPath);
       const result = yield* Ref.modify<
         Map<string, LandingQueue>,
         "missing" | "active" | { readonly _tag: "pending"; readonly entry: LandingEntry }
       >(landingQueues, (queues) => {
-        const queue = queues.get(record.projectPath);
+        const queue = queues.get(repository);
         if (!queue) return ["missing" as const, queues] as const;
         if (queue.active?.operationId === operationId) return ["active" as const, queues] as const;
         const index = queue.pending.findIndex((entry) => entry.operationId === operationId);
@@ -435,7 +496,7 @@ export const ManagedWorktreesLive: Layer.Layer<
         const entry = queue.pending[index];
         if (!entry) return ["missing" as const, queues] as const;
         const next = new Map(queues);
-        next.set(record.projectPath, {
+        next.set(repository, {
           ...queue,
           pending: queue.pending.filter((_, itemIndex) => itemIndex !== index),
         });
@@ -748,62 +809,67 @@ export const ManagedWorktreesLive: Layer.Layer<
             ),
           ),
         ),
-      create: (projectPath, baseWorktreePath, worktreeName, settings) =>
-        mapError(
-          "ManagedWorktrees.create",
-          createWithPolicy(projectPath, baseWorktreePath, worktreeName, settings, true).pipe(
-            Effect.tap((record) => publish(record.worktreePath)),
+      create: Effect.fn("ManagedWorktrees.create")(
+        (projectPath, baseWorktreePath, worktreeName, settings) =>
+          mapError(
+            "ManagedWorktrees.create",
+            createWithPolicy(projectPath, baseWorktreePath, worktreeName, settings, true).pipe(
+              Effect.tap((record) => publish(record.worktreePath)),
+            ),
           ),
-        ),
-      createWithBackgroundSetup: (projectPath, baseWorktreePath, worktreeName, settings) =>
-        mapError(
-          "ManagedWorktrees.createWithBackgroundSetup",
-          Effect.gen(function* () {
-            const record = yield* createWithPolicy(
-              projectPath,
-              baseWorktreePath,
-              worktreeName,
-              settings,
-              false,
-            );
-            const completion = yield* Deferred.make<void, ManagedWorktreeError>();
-            yield* Ref.update(deferredSetups, (setups) =>
-              new Map(setups).set(record.worktreePath, completion),
-            );
-            yield* runSetup(record.worktreePath, settings, {
-              projectPath: record.projectPath,
-              worktreePath: record.worktreePath,
-              worktreeName: record.branch.replace(/^agent\//, ""),
-              branchName: record.branch,
-              baseBranch: record.baseBranch,
-              baseCommit:
-                record.baseCommit ?? (yield* git(record.worktreePath, "rev-parse", "HEAD")).trim(),
-            }).pipe(
-              (effect) => mapError("ManagedWorktrees.setup", effect),
-              Effect.matchEffect({
-                onSuccess: () =>
-                  Deferred.succeed(completion, undefined).pipe(
-                    Effect.andThen(
-                      Ref.update(deferredSetups, (setups) => {
-                        const next = new Map(setups);
-                        next.delete(record.worktreePath);
-                        return next;
-                      }),
+      ),
+      createWithBackgroundSetup: Effect.fn("ManagedWorktrees.createWithBackgroundSetup")(
+        (projectPath, baseWorktreePath, worktreeName, settings) =>
+          mapError(
+            "ManagedWorktrees.createWithBackgroundSetup",
+            Effect.gen(function* () {
+              const record = yield* createWithPolicy(
+                projectPath,
+                baseWorktreePath,
+                worktreeName,
+                settings,
+                false,
+              );
+              const completion = yield* Deferred.make<void, ManagedWorktreeError>();
+              yield* Ref.update(deferredSetups, (setups) =>
+                new Map(setups).set(record.worktreePath, completion),
+              );
+              yield* runSetup(record.worktreePath, settings, {
+                projectPath: record.projectPath,
+                worktreePath: record.worktreePath,
+                worktreeName: record.branch.replace(/^agent\//, ""),
+                branchName: record.branch,
+                baseBranch: record.baseBranch,
+                baseCommit:
+                  record.baseCommit ??
+                  (yield* git(record.worktreePath, "rev-parse", "HEAD")).trim(),
+              }).pipe(
+                (effect) => mapError("ManagedWorktrees.setup", effect),
+                Effect.matchEffect({
+                  onSuccess: () =>
+                    Deferred.succeed(completion, undefined).pipe(
+                      Effect.andThen(
+                        Ref.update(deferredSetups, (setups) => {
+                          const next = new Map(setups);
+                          next.delete(record.worktreePath);
+                          return next;
+                        }),
+                      ),
+                      Effect.asVoid,
                     ),
-                    Effect.asVoid,
-                  ),
-                onFailure: (error) =>
-                  Deferred.fail(completion, error).pipe(
-                    Effect.andThen(Effect.logError("Managed Worktree setup failed", error)),
-                    Effect.asVoid,
-                  ),
-              }),
-              Effect.forkIn(scope),
-            );
-            yield* publish(record.worktreePath);
-            return record;
-          }),
-        ),
+                  onFailure: (error) =>
+                    Deferred.fail(completion, error).pipe(
+                      Effect.andThen(Effect.logError("Managed Worktree setup failed", error)),
+                      Effect.asVoid,
+                    ),
+                }),
+                Effect.forkIn(scope),
+              );
+              yield* publish(record.worktreePath);
+              return record;
+            }),
+          ),
+      ),
       awaitSetup: (worktreePath) =>
         Effect.gen(function* () {
           const completion = (yield* Ref.get(deferredSetups)).get(worktreePath);
@@ -816,7 +882,7 @@ export const ManagedWorktreesLive: Layer.Layer<
           "ManagedWorktrees.status",
           statusInternal(worktreePath).pipe(Effect.tap(() => publish(worktreePath))),
         ),
-      prepareLanding: (worktreePath, operationId) =>
+      prepareLanding: Effect.fn("ManagedWorktrees.prepareLanding")((worktreePath, operationId) =>
         mapError(
           "ManagedWorktrees.prepareLanding",
           Effect.gen(function* () {
@@ -829,6 +895,7 @@ export const ManagedWorktreesLive: Layer.Layer<
             yield* acquireLanding(record, operationId);
           }),
         ),
+      ),
       setResolveAfterLanding: (worktreePath, enabled) =>
         mapError(
           "ManagedWorktrees.setResolveAfterLanding",
@@ -857,7 +924,7 @@ export const ManagedWorktreesLive: Layer.Layer<
             );
             if (!record) return yield* internalError("Cake could not find that worktree");
             yield* acquireLanding(record, operationId);
-            const outcome = yield* repositoryLock(
+            const outcome = yield* withRepositoryLock(
               record.projectPath,
               landRecord(record, request),
             ).pipe(Effect.tapCause(() => releaseLanding(record, operationId)));
@@ -866,18 +933,23 @@ export const ManagedWorktreesLive: Layer.Layer<
             return outcome;
           }),
         ),
-      cancelLanding: (worktreePath, operationId, onlyIfQueued = false) =>
-        mapError(
-          "ManagedWorktrees.cancelLanding",
-          Effect.gen(function* () {
-            const record = (yield* Ref.get(recordsRef)).find(
-              (entry) => resolveNormalized(entry.worktreePath) === resolveNormalized(worktreePath),
-            );
-            if (record) yield* cancelLandingInternal(record, operationId, onlyIfQueued);
-            else if (onlyIfQueued)
-              return yield* internalError("This merge has already started and cannot be canceled.");
-          }),
-        ),
+      cancelLanding: Effect.fn("ManagedWorktrees.cancelLanding")(
+        (worktreePath, operationId, onlyIfQueued = false) =>
+          mapError(
+            "ManagedWorktrees.cancelLanding",
+            Effect.gen(function* () {
+              const record = (yield* Ref.get(recordsRef)).find(
+                (entry) =>
+                  resolveNormalized(entry.worktreePath) === resolveNormalized(worktreePath),
+              );
+              if (record) yield* cancelLandingInternal(record, operationId, onlyIfQueued);
+              else if (onlyIfQueued)
+                return yield* internalError(
+                  "This merge has already started and cannot be canceled.",
+                );
+            }),
+          ),
+      ),
       rebase: (worktreePath) =>
         mapError(
           "ManagedWorktrees.rebase",
@@ -888,7 +960,7 @@ export const ManagedWorktreesLive: Layer.Layer<
                 resolveNormalized(entry.worktreePath) === resolveNormalized(worktreePath),
             );
             if (!record) return yield* internalError("Cake could not find that worktree");
-            return yield* repositoryLock(
+            return yield* withRepositoryLock(
               record.projectPath,
               Effect.gen(function* () {
                 if (!(yield* exists(record.worktreePath))) {
@@ -932,7 +1004,7 @@ export const ManagedWorktreesLive: Layer.Layer<
                 resolveNormalized(entry.worktreePath) === resolveNormalized(worktreePath),
             );
             if (!record) return yield* internalError("Cake could not find that worktree");
-            yield* repositoryLock(
+            yield* withRepositoryLock(
               record.projectPath,
               cleanup(record, { keepBranch, state: "discarded" }),
             );
@@ -952,7 +1024,7 @@ export const ManagedWorktreesLive: Layer.Layer<
               !["landed", "discarded", "resolved"].includes(pending.state ?? "active")
             )
               return;
-            yield* repositoryLock(
+            yield* withRepositoryLock(
               pending.projectPath,
               Effect.gen(function* () {
                 const record = (yield* Ref.get(recordsRef)).find(
@@ -978,7 +1050,7 @@ export const ManagedWorktreesLive: Layer.Layer<
           if (!pending) return undefined;
           if (pending.parentWorktreePath && !(yield* exists(pending.parentWorktreePath)))
             yield* restore(pending.parentWorktreePath);
-          return yield* repositoryLock(
+          return yield* withRepositoryLock(
             pending.projectPath,
             Effect.gen(function* () {
               const record = (yield* Ref.get(recordsRef)).find(
