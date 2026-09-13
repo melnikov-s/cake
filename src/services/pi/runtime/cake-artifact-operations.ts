@@ -328,6 +328,7 @@ export function createCakeArtifactOperations(
         const update = input as typeof artifactUpdateSchema.Type;
         const current = await requireArtifact(update.id);
         const runtime = runtimeContext(context);
+        const sessionId = runtime.sessionManager.getSessionId();
         const revision = current.artifact.revision + 1;
         let artifact: CakeArtifactV1;
         if ("markdown" in update) {
@@ -361,7 +362,7 @@ export function createCakeArtifactOperations(
           if (!options.reviseInlineWidget)
             throw new Error("Durable widget revision is unavailable");
           const generated = await options.reviseInlineWidget({
-            sessionId: current.artifact.sessionId,
+            sessionId,
             source: current.artifact.payload.source,
             brief: current.artifact.payload.brief,
             fallback: current.artifact.fallback.markdown,
@@ -381,7 +382,10 @@ export function createCakeArtifactOperations(
           };
           if (update.title) artifact = { ...artifact, title: update.title };
         }
-        const record = await persist(artifact, runtime.sessionManager.getSessionId());
+        // Forks inherit the source revision's immutable blob. The first edit creates a
+        // fork-owned lineage so later events and revisions remain scoped to this session.
+        artifact = { ...artifact, sessionId };
+        const record = await persist(artifact, sessionId);
         appendPointer(record, pointerOrigin(context));
         return { artifactId: record.artifact.id, kind: record.artifact.kind, revision };
       },

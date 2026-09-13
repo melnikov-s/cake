@@ -248,6 +248,44 @@ describe("Cake durable artifact operations", () => {
     expect(appendEntry).toHaveBeenCalledOnce();
   });
 
+  it("creates a fork-owned revision when updating an inherited artifact", async () => {
+    const inherited = record({ ...markdownArtifact, sessionId: "source-session" });
+    const appendEntry = vi.fn();
+    const persistArtifact = vi.fn(async (artifact: CakeArtifactV1) => record(artifact));
+    const registry = new CakeOperationRegistry(
+      createCakeArtifactOperations(
+        { appendEntry },
+        {
+          persistArtifact,
+          requestArtifact: vi.fn(),
+          getArtifact: vi.fn(async () => inherited),
+          listArtifacts: vi.fn(async () => [inherited]),
+        },
+      ),
+    );
+
+    await registry.invoke(
+      {
+        command: "artifacts.update",
+        input: { id: "design-plan", markdown: "# Fork revision" },
+      },
+      invokeContext("tool-2"),
+    );
+
+    expect(persistArtifact).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "design-plan",
+        sessionId: "session-1",
+        revision: 2,
+        payload: { markdown: "# Fork revision" },
+      }),
+    );
+    expect(appendEntry).toHaveBeenCalledWith(
+      "cake.artifact/v1",
+      expect.objectContaining({ artifactId: "design-plan", sessionId: "session-1", revision: 2 }),
+    );
+  });
+
   it("revises a widget in isolation and persists only the accepted source", async () => {
     const current = record({
       protocol: "cake.artifact/v1",

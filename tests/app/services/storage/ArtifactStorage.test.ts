@@ -240,10 +240,19 @@ describe("ArtifactStorage", () => {
     expect(inherited).toHaveLength(1);
     expect(inherited[0]?.artifact).toMatchObject({ id: "table-1", revision: 1, title: "At fork" });
 
+    await Effect.runPromise(
+      storage.upsert("/project", {
+        ...inherited[0]!.artifact,
+        sessionId: "fork-1",
+        revision: 2,
+        title: "Revised in fork",
+      }),
+    );
+
     await Effect.runPromise(storage.deleteSession("/project", "session-1"));
     expect(
-      (await Effect.runPromise(storage.get("/project", "fork-1", "table-1")))?.artifact.revision,
-    ).toBe(1);
+      (await Effect.runPromise(storage.get("/project", "fork-1", "table-1")))?.artifact,
+    ).toMatchObject({ sessionId: "fork-1", revision: 2, title: "Revised in fork" });
     await Effect.runPromise(storage.deleteSession("/project", "fork-1"));
     expect(await Effect.runPromise(storage.listSession("/project", "fork-1"))).toEqual([]);
   });
