@@ -545,12 +545,6 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
           (client) => client.widgets["compile-inline-widget"]({ language, source, capability }),
           options,
         ).then((response) => response.widget),
-      repair: (input, options) =>
-        execute(
-          "widgets.repair-inline-widget",
-          (client) => client.widgets["repair-inline-widget"]({ ...input }),
-          options,
-        ).then((response) => response.widget),
     },
   };
 }

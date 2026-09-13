@@ -20,7 +20,3 @@ export const inlineWidgetMessageSchema = Schema.Union([
   Schema.Struct({ ...inlineWidgetMessageBase, type: Schema.Literal("submit"), value: Schema.Json }),
   Schema.Struct({ ...inlineWidgetMessageBase, type: Schema.Literal("cancel") }),
 ]);
-
-export function inlineWidgetRepairContext(context: string, instructions: string) {
-  return `${context}\n\nUser's requested repair:\n${instructions}`;
-}

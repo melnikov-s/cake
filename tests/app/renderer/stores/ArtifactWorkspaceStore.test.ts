@@ -29,7 +29,7 @@ function markdown(id: string, revision = 1): ArtifactRecord {
 }
 
 describe("ArtifactWorkspaceStore", () => {
-  it("auto-opens a new active-session deliverable once and follows its projection", () => {
+  it("auto-opens only a new active-session lineage and follows revisions without reopening", () => {
     const projection = RootProjection.create();
     const model = projection.projectSession("session", "/project");
     const store = mount(createStore(ArtifactWorkspaceStore, { model, isActive: () => true }));
@@ -50,9 +50,38 @@ describe("ArtifactWorkspaceStore", () => {
     const revision = markdown("report", 2);
     store.receive(revision);
     applyArtifactUpdate(model, revision);
-    expect(store.open).toBe(true);
+    expect(store.open).toBe(false);
     expect(store.records).toHaveLength(1);
     expect(store.selectedRecord?.artifact.revision).toBe(2);
+
+    const next = markdown("appendix");
+    store.receive(next);
+    applyArtifactUpdate(model, next);
+    expect(store.open).toBe(true);
+    expect(store.selectedRecord?.artifact.id).toBe("appendix");
+
+    store[Symbol.dispose]();
+    projection[Symbol.dispose]();
+  });
+
+  it("navigates between deliverables in their visible order", () => {
+    const projection = RootProjection.create();
+    const model = projection.projectSession("session", "/project");
+    const older = markdown("older", 1);
+    const newer = markdown("newer", 2);
+    applyArtifactUpdate(model, older);
+    applyArtifactUpdate(model, newer);
+    const store = mount(createStore(ArtifactWorkspaceStore, { model, isActive: () => true }));
+
+    store.openArtifact("newer");
+    expect(store.hasPrevious).toBe(false);
+    expect(store.hasNext).toBe(true);
+    store.showNext();
+    expect(store.selectedRecord?.artifact.id).toBe("older");
+    expect(store.hasPrevious).toBe(true);
+    expect(store.hasNext).toBe(false);
+    store.showPrevious();
+    expect(store.selectedRecord?.artifact.id).toBe("newer");
 
     store[Symbol.dispose]();
     projection[Symbol.dispose]();

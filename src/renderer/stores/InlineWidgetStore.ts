@@ -10,20 +10,12 @@ export interface InlineWidgetState {
   language: InlineWidgetLanguage;
   capability: InlineWidgetCapability;
   source: string;
-  status: "building" | "ready" | "error" | "repairing";
+  status: "building" | "ready" | "error";
   compiled?: CompiledInlineWidget;
   diagnostic?: string;
-  repairSessionId?: string;
 }
 
-export interface InlineWidgetRepairInput {
-  id: string;
-  sessionId: string;
-  context: string;
-  model?: { provider: string; id: string };
-}
-
-/** Owns compilation and dedicated-agent repair policy for inline transcript widgets. */
+/** Owns compilation state for sandboxed inline transcript widgets. */
 export class InlineWidgetStore extends Store {
   get inlineWidgets() {
     return ClientContext.consume(this)!.inlineWidgets;
@@ -61,38 +53,9 @@ export class InlineWidgetStore extends Store {
 
   reportRuntimeError(id: string, diagnostic: string) {
     const state = this.states[id];
-    if (!state || state.status === "repairing") return;
+    if (!state) return;
     state.status = "error";
     state.diagnostic = diagnostic;
-  }
-
-  async repair(input: InlineWidgetRepairInput) {
-    const state = this.states[input.id];
-    if (!state || state.status === "repairing") return;
-    state.status = "repairing";
-    const revision = (this.revisions.get(input.id) ?? 0) + 1;
-    this.revisions.set(input.id, revision);
-    try {
-      const repaired = await this.inlineWidgets.repair({
-        sessionId: input.sessionId,
-        language: state.language,
-        capability: state.capability,
-        source: state.source,
-        context: input.context,
-        diagnostic: state.diagnostic,
-        model: input.model,
-      });
-      if (this.signal.aborted || this.revisions.get(input.id) !== revision) return;
-      state.source = repaired.source;
-      state.repairSessionId = repaired.repairSessionId;
-      state.diagnostic = undefined;
-      state.status = "building";
-      await this.compile(input.id, state, repaired.source, revision);
-    } catch (error) {
-      if (this.signal.aborted || this.revisions.get(input.id) !== revision) return;
-      state.status = "error";
-      state.diagnostic = error instanceof Error ? error.message : String(error);
-    }
   }
 
   private async compile(

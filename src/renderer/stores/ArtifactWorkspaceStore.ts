@@ -33,6 +33,21 @@ export class ArtifactWorkspaceStore extends Store<ArtifactWorkspaceStoreProps> {
     return this.records.find((record) => record.artifact.id === this.selectedArtifactId);
   }
 
+  @computed
+  get selectedIndex(): number {
+    return this.records.findIndex((record) => record.artifact.id === this.selectedArtifactId);
+  }
+
+  @computed
+  get hasPrevious(): boolean {
+    return this.selectedIndex > 0;
+  }
+
+  @computed
+  get hasNext(): boolean {
+    return this.selectedIndex >= 0 && this.selectedIndex < this.records.length - 1;
+  }
+
   toggle() {
     if (this.open) return this.close();
     this.selectedArtifactId = undefined;
@@ -53,6 +68,16 @@ export class ArtifactWorkspaceStore extends Store<ArtifactWorkspaceStoreProps> {
     this.open = true;
   }
 
+  showPrevious() {
+    if (!this.hasPrevious) return;
+    this.selectedArtifactId = this.records[this.selectedIndex - 1]?.artifact.id;
+  }
+
+  showNext() {
+    if (!this.hasNext) return;
+    this.selectedArtifactId = this.records[this.selectedIndex + 1]?.artifact.id;
+  }
+
   setWidth(width: number) {
     this.width = Math.max(320, width);
   }
@@ -64,7 +89,7 @@ export class ArtifactWorkspaceStore extends Store<ArtifactWorkspaceStoreProps> {
     const revision = this.revisions.get(artifact.id);
     if (revision !== undefined && revision >= artifact.revision) return;
     this.revisions.set(artifact.id, artifact.revision);
-    if (!this.props.isActive()) return;
+    if (revision !== undefined || !this.props.isActive()) return;
     this.selectedArtifactId = artifact.id;
     this.open = true;
   }

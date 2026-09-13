@@ -15,7 +15,6 @@ import type {
   CompiledInlineWidget,
   InlineWidgetCapability,
   InlineWidgetLanguage,
-  RepairedInlineWidget,
 } from "../../ipc/inline-widget-contract";
 import type { JsonValue } from "../../ipc/json-contract";
 import type { SourceLocation } from "../../ipc/source-location";
@@ -344,18 +343,6 @@ interface InlineWidgetCommands {
     capability: InlineWidgetCapability,
     options?: ClientCommandOptions,
   ): Promise<CompiledInlineWidget>;
-  repair(
-    input: {
-      sessionId: string;
-      language: InlineWidgetLanguage;
-      capability: InlineWidgetCapability;
-      source: string;
-      context: string;
-      diagnostic?: string;
-      model?: { provider: string; id: string };
-    },
-    options?: ClientCommandOptions,
-  ): Promise<RepairedInlineWidget>;
 }
 
 /** Permanent renderer-facing Promise API grouped by semantic Cake capability. */

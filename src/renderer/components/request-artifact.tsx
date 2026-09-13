@@ -1,10 +1,10 @@
 import { Option, Schema } from "effect";
+import { Markdown } from "@/components/ai-elements/markdown";
 import type { CakeArtifactV1 } from "../../ipc/artifact-contract";
 import type { JsonValue } from "../../ipc/json-contract";
 import { cakeRequestV1Schema } from "../../ipc/request-contract";
-import { Callout } from "@/components/ui/callout";
-import { ArtifactForm } from "./artifact-form";
 import type { InlineWidgetStore } from "../stores/InlineWidgetStore";
+import { ArtifactForm } from "./artifact-form";
 import { RequestWidget } from "./request-widget";
 
 export function RequestArtifact({
@@ -14,8 +14,7 @@ export function RequestArtifact({
   onSubmit,
   onSkip,
   inlineWidgets,
-  fullscreen,
-  onCloseFullscreen,
+  fill = false,
 }: {
   artifact: Extract<CakeArtifactV1, { kind: "request" }>;
   requested: boolean;
@@ -23,17 +22,10 @@ export function RequestArtifact({
   onSubmit?: (value: JsonValue) => void;
   onSkip?: () => void;
   inlineWidgets?: InlineWidgetStore;
-  fullscreen: boolean;
-  onCloseFullscreen(): void;
+  fill?: boolean;
 }) {
   const parsed = Schema.decodeUnknownOption(cakeRequestV1Schema)(artifact.payload.request);
-  if (Option.isNone(parsed))
-    return (
-      <Callout variant="error">
-        <strong>Request could not render</strong>
-        <span className="text-xs">The request payload is invalid.</span>
-      </Callout>
-    );
+  if (Option.isNone(parsed)) return <Markdown>{artifact.fallback.markdown}</Markdown>;
   const request = parsed.value;
   if (request.view.type === "form")
     return (
@@ -45,25 +37,17 @@ export function RequestArtifact({
         onSkip={onSkip}
       />
     );
-  if (!inlineWidgets)
-    return (
-      <Callout variant="error">
-        <strong>Request widget unavailable</strong>
-        <span className="text-xs">Cake could not access its widget compiler.</span>
-      </Callout>
-    );
+  if (!inlineWidgets) return <Markdown>{request.fallback.markdown}</Markdown>;
   return (
     <RequestWidget
       artifact={artifact}
       view={request.view}
-      title={request.title}
       requested={requested}
       fallback={request.fallback.markdown}
       onSubmit={onSubmit}
       onSkip={onSkip}
       store={inlineWidgets}
-      fullscreen={fullscreen}
-      onCloseFullscreen={onCloseFullscreen}
+      fill={fill}
     />
   );
 }

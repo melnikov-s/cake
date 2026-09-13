@@ -81,15 +81,14 @@ test("opens the artifact workspace, keeps requests inline, and isolates HTML", a
     await page.getByRole("button", { name: "S4 widget" }).click();
     const widget = page.locator('[data-artifact-id="cake-s4-widget"]');
     await expect(widget.locator("iframe")).toBeVisible();
-    await widget.getByRole("button", { name: "Repair" }).click();
-    const repairPrompt = widget.locator('[data-slot="inline-widget-repair-form"]');
-    await expect(repairPrompt).toBeVisible();
-    await expect(repairPrompt.getByLabel("What should be repaired?")).toBeFocused();
-    await repairPrompt
-      .getByLabel("What should be repaired?")
-      .fill("Make the widget easier to scan on a narrow window.");
-    await repairPrompt.getByRole("button", { name: "Submit" }).click();
-    await expect(repairPrompt).not.toBeAttached();
+    await expect(widget.getByRole("button", { name: "Repair" })).not.toBeAttached();
+    await expect(page.getByRole("button", { name: "Previous artifact" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Next artifact" })).toBeVisible();
+    await widget.getByRole("button", { name: "View S4 widget fullscreen" }).click();
+    const fullscreen = page.getByRole("dialog", { name: "S4 widget" });
+    await expect(fullscreen.locator("iframe")).toBeVisible();
+    await fullscreen.getByRole("button", { name: "Exit fullscreen S4 widget" }).click();
+    await expect(fullscreen).not.toBeAttached();
 
     await page.getByRole("button", { name: "All artifacts" }).click();
     await page.getByRole("button", { name: "S4 diagram" }).click();

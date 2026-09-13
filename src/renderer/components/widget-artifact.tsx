@@ -1,37 +1,25 @@
 import { Option, Schema } from "effect";
 import { useEffect, useRef, useState } from "react";
+import { Markdown } from "@/components/ai-elements/markdown";
 import { observer } from "r-state-tree/react";
-import { fencedCode, Markdown } from "@/components/ai-elements/markdown";
-import { FullscreenSurface } from "@/components/fullscreen-surface";
-import { Button } from "@/components/ui/button";
-import { Callout } from "@/components/ui/callout";
 import type { CakeArtifactV1 } from "../../ipc/artifact-contract";
-import {
-  inlineWidgetMessageSchema,
-  inlineWidgetRepairContext,
-} from "../../utils/inline-widget-message";
+import { inlineWidgetMessageSchema } from "../../utils/inline-widget-message";
 import type { InlineWidgetStore } from "../stores/InlineWidgetStore";
-import { InlineWidgetRepairPrompt } from "./inline-widget-repair-prompt";
 import { InlineWidgetFrame } from "./inline-widget-frame";
 
 export const WidgetArtifact = observer(function WidgetArtifact({
   artifact,
   inlineWidgets,
-  fullscreen,
-  onCloseFullscreen,
+  fill = false,
 }: {
   artifact: Extract<CakeArtifactV1, { kind: "widget" }>;
   inlineWidgets?: InlineWidgetStore;
-  fullscreen: boolean;
-  onCloseFullscreen(): void;
+  fill?: boolean;
 }) {
   const id = `${artifact.sessionId}:widget:${artifact.id}:${artifact.revision}`;
   const state = inlineWidgets?.state(id);
   const iframe = useRef<HTMLIFrameElement>(null);
-  const fullscreenIframe = useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = useState(220);
-  const [sourceOpen, setSourceOpen] = useState(false);
-  const [repairPromptOpen, setRepairPromptOpen] = useState(false);
   useEffect(() => {
     if (inlineWidgets)
       inlineWidgets.prepare(id, artifact.payload.language, artifact.payload.source);
@@ -41,8 +29,7 @@ export const WidgetArtifact = observer(function WidgetArtifact({
     const receive = (event: MessageEvent) => {
       const parsed = Schema.decodeUnknownOption(inlineWidgetMessageSchema)(event.data);
       if (
-        (event.source !== iframe.current?.contentWindow &&
-          event.source !== fullscreenIframe.current?.contentWindow) ||
+        event.source !== iframe.current?.contentWindow ||
         !state?.compiled ||
         Option.isNone(parsed) ||
         parsed.value.token !== state.compiled.token
@@ -56,111 +43,17 @@ export const WidgetArtifact = observer(function WidgetArtifact({
     window.addEventListener("message", receive);
     return () => window.removeEventListener("message", receive);
   }, [id, inlineWidgets, state?.compiled]);
-  if (!inlineWidgets)
-    return (
-      <Callout variant="error">
-        <strong>Widget unavailable</strong>
-        <span className="text-xs">Cake could not access its widget compiler.</span>
-      </Callout>
-    );
-  const status = state?.status ?? "building";
-  const submitRepair = (instructions: string) => {
-    setRepairPromptOpen(false);
-    void inlineWidgets.repair({
-      id,
-      sessionId: artifact.sessionId,
-      context: inlineWidgetRepairContext(artifact.payload.brief, instructions),
-    });
-  };
+
+  if (!inlineWidgets || state?.status === "error")
+    return <Markdown>{artifact.fallback.markdown}</Markdown>;
+  if (!state?.compiled) return <div className="min-h-30" aria-busy="true" />;
   return (
-    <section
-      className="flex flex-col overflow-hidden rounded-lg border border-border bg-card"
-      aria-label={`Delegated ${artifact.payload.language} widget`}
-    >
-      <div className="flex items-center gap-2 border-b border-border bg-muted px-3 py-1.5 font-mono text-[11px]">
-        <span className="size-1.5 rounded-full bg-accent" aria-hidden="true" />
-        <span className="text-foreground">
-          Delegated {artifact.payload.language === "react" ? "React" : "HTML"} widget
-        </span>
-        <span className="text-muted-foreground">
-          {status === "repairing"
-            ? "Repairing…"
-            : status === "building"
-              ? "Building…"
-              : status === "error"
-                ? "Needs attention"
-                : state?.repairSessionId
-                  ? "Repaired"
-                  : "Ready"}
-        </span>
-        <span className="ml-auto flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            type="button"
-            className="h-auto p-0 text-[11px] text-accent hover:underline hover:bg-transparent"
-            onClick={() => setSourceOpen((open) => !open)}
-          >
-            {sourceOpen ? "Hide source" : "Source"}
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            type="button"
-            className="h-auto p-0 text-[11px] text-accent hover:underline hover:bg-transparent"
-            disabled={status === "repairing" || status === "building"}
-            onClick={() => setRepairPromptOpen((open) => !open)}
-          >
-            {repairPromptOpen ? "Close" : "Repair"}
-          </Button>
-        </span>
-      </div>
-      {repairPromptOpen && (
-        <InlineWidgetRepairPrompt
-          onCancel={() => setRepairPromptOpen(false)}
-          onSubmit={submitRepair}
-        />
-      )}
-      {status === "error" && (
-        <div
-          className="border-b border-border bg-destructive/10 p-2.5 text-xs text-destructive"
-          role="alert"
-        >
-          <strong>Widget could not render</strong>
-          <pre className="mt-1 font-mono">{state?.diagnostic}</pre>
-        </div>
-      )}
-      {state?.compiled && (
-        <InlineWidgetFrame
-          ref={iframe}
-          title={artifact.title ?? artifact.id}
-          src={state.compiled.url}
-          style={{ height }}
-        />
-      )}
-      {sourceOpen && (
-        <Markdown className="max-h-80 overflow-auto border-t border-border p-2">
-          {fencedCode(
-            state?.source ?? artifact.payload.source,
-            artifact.payload.language === "react" ? "tsx" : "html",
-          )}
-        </Markdown>
-      )}
-      {fullscreen && state?.compiled && (
-        <FullscreenSurface
-          mode="canvas"
-          eyebrow={`${artifact.payload.language === "react" ? "React" : "HTML"} widget`}
-          title={artifact.title ?? "Widget"}
-          onClose={onCloseFullscreen}
-        >
-          <InlineWidgetFrame
-            ref={fullscreenIframe}
-            className="h-full"
-            title={`${artifact.title ?? artifact.id} fullscreen`}
-            src={state.compiled.url}
-          />
-        </FullscreenSurface>
-      )}
-    </section>
+    <InlineWidgetFrame
+      ref={iframe}
+      className={fill ? "h-full" : undefined}
+      title={artifact.title ?? artifact.id}
+      src={state.compiled.url}
+      style={fill ? undefined : { height }}
+    />
   );
 });

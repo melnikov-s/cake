@@ -3,7 +3,8 @@ import { observer } from "r-state-tree/react";
 import { ArtifactHost } from "@/components/artifact-host";
 import { AccessoryPanelLayout } from "@/components/ui/accessory-panel-layout";
 import { Button } from "@/components/ui/button";
-import { ArtifactIcon, BackIcon } from "@/components/ui/icons";
+import { ArtifactIcon, BackIcon, ForwardIcon } from "@/components/ui/icons";
+import { IconButton } from "@/components/ui/icon-button";
 import { NavItem } from "@/components/ui/nav-item";
 import { SidePanel } from "@/components/ui/side-panel";
 import type { SourceLocation } from "../../ipc/source-location";
@@ -39,7 +40,7 @@ export const ArtifactWorkspaceLayout = observer(function ArtifactWorkspaceLayout
         >
           {selected ? (
             <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)]">
-              <div className="border-b border-border/65 px-3 py-2">
+              <div className="flex items-center gap-1 border-b border-border/65 px-3 py-2">
                 <Button
                   variant="ghost"
                   size="sm"
@@ -48,6 +49,22 @@ export const ArtifactWorkspaceLayout = observer(function ArtifactWorkspaceLayout
                 >
                   <BackIcon /> All artifacts
                 </Button>
+                <span className="ml-auto flex items-center gap-1">
+                  <IconButton
+                    tooltip="Previous artifact"
+                    disabled={!workspace.hasPrevious}
+                    onClick={() => workspace.showPrevious()}
+                  >
+                    <BackIcon />
+                  </IconButton>
+                  <IconButton
+                    tooltip="Next artifact"
+                    disabled={!workspace.hasNext}
+                    onClick={() => workspace.showNext()}
+                  >
+                    <ForwardIcon />
+                  </IconButton>
+                </span>
               </div>
               <div className="min-h-0 overflow-auto p-4">
                 <ArtifactHost

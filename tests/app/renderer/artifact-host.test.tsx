@@ -358,11 +358,7 @@ describe("ArtifactHost", () => {
     const frame = container.querySelector("iframe")!;
     expect(frame.getAttribute("sandbox")).toBe("allow-scripts");
     expect(frame.getAttribute("src")).toBe(`cake-widget://document/${token}`);
-    const sourceBtn = Array.from(container.querySelectorAll("button")).find(
-      (b) => b.textContent === "Source",
-    )!;
-    act(() => sourceBtn.click());
-    expect(container.textContent).toContain("cakeRequest.submit");
+    expect(container.textContent).not.toContain("cakeRequest.submit");
     act(() =>
       window.dispatchEvent(
         new MessageEvent("message", {
@@ -400,7 +396,6 @@ describe("ArtifactHost", () => {
     const source = "export default () => <strong>Generated</strong>";
     const client = {
       compile: vi.fn(async () => ({ token, url: `cake-widget://document/${token}` })),
-      repair: vi.fn(async () => ({ source, repairSessionId: "repair-session" })),
     } as unknown as Client["inlineWidgets"];
     ({ root: widgetRoot, subject: widgets } = mountWithClient(createStore(InlineWidgetStore), {
       inlineWidgets: client,
@@ -432,21 +427,17 @@ describe("ArtifactHost", () => {
     });
 
     expect(client.compile).toHaveBeenCalledWith("react", source, "display");
-    expect(container.querySelector("iframe")?.getAttribute("sandbox")).toBe("allow-scripts");
+    const frame = container.querySelector<HTMLIFrameElement>("iframe")!;
+    expect(frame.getAttribute("sandbox")).toBe("allow-scripts");
     expect(container.textContent).not.toContain("export default");
     const fullscreenButton = container.querySelector<HTMLButtonElement>(
       '[aria-label="View Comparison fullscreen"]',
     )!;
-    expect(fullscreenButton.closest("header")).not.toBeNull();
+    expect(fullscreenButton.closest("header")).toBeNull();
     expect(fullscreenButton.querySelector("svg")).not.toBeNull();
-    expect(
-      container.querySelector('.inline-widget-rail [aria-label="View Comparison fullscreen"]'),
-    ).toBeNull();
-    const sourceBtn = Array.from(container.querySelectorAll("button")).find(
-      (b) => b.textContent === "Source",
-    )!;
-    act(() => sourceBtn.click());
-    expect(container.textContent).toContain("export default");
+    expect(container.textContent).not.toContain("Source");
+    expect(container.textContent).not.toContain("Repair");
+    expect(container.textContent).not.toContain("Readable fallback");
     act(() => fullscreenButton.click());
     const fullscreen = document.body.querySelector<HTMLElement>('[role="dialog"]');
     const fullscreenFrame = fullscreen?.querySelector<HTMLIFrameElement>("iframe");
@@ -458,30 +449,47 @@ describe("ArtifactHost", () => {
     );
     expect(document.body.querySelector('[role="dialog"]')).toBeNull();
 
-    const repairBtn = Array.from(container.querySelectorAll("button")).find(
-      (b) => b.textContent === "Repair",
-    )!;
-    act(() => repairBtn.click());
-    expect(container.querySelector("form textarea")).not.toBeNull();
-    const repairInput = container.querySelector("form textarea") as HTMLTextAreaElement;
-    act(() => setTextValue(repairInput, "Make the result easier to scan on a narrow window."));
-    await act(async () => {
-      (container.querySelector("form button[type='submit']") as HTMLButtonElement).click();
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
-    expect(client.repair).toHaveBeenCalledWith(
-      expect.objectContaining({
-        context: expect.stringContaining("Make the result easier to scan on a narrow window."),
-      }),
+    act(() =>
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          source: frame.contentWindow,
+          data: { source: "cake-inline-widget", token, type: "error", value: "boom" },
+        }),
+      ),
     );
+    expect(container.textContent).toContain("Comparison fallback.");
+    expect(container.textContent).not.toContain("boom");
+  });
+
+  it("offers fullscreen for non-widget artifacts", () => {
+    const artifact = record({
+      protocol: "cake.artifact/v1",
+      id: "notes",
+      sessionId: "session",
+      revision: 1,
+      kind: "markdown",
+      title: "Release notes",
+      payload: { markdown: "# Shipped" },
+      fallback: { markdown: "Shipped" },
+      interaction: { mode: "present" },
+    });
+
+    act(() =>
+      root.render(
+        <FullscreenSurfaceFixture>
+          <ArtifactHost record={artifact} />
+        </FullscreenSurfaceFixture>,
+      ),
+    );
+    act(() =>
+      container
+        .querySelector<HTMLButtonElement>('[aria-label="View Release notes fullscreen"]')!
+        .click(),
+    );
+    expect(document.body.querySelector('[role="dialog"]')?.textContent).toContain("Shipped");
   });
 });
 
 function setInputValue(input: HTMLInputElement, value: string) {
   Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
-}
-
-function setTextValue(input: HTMLTextAreaElement, value: string) {
-  Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(input, value);
-  input.dispatchEvent(new Event("input", { bubbles: true }));
 }
