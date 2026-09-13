@@ -722,9 +722,12 @@ describe("Sidebar projects", () => {
     });
 
     expect(showProjectContextMenu).toHaveBeenCalledWith("/work/cake", 12, 34);
-    expect(container.textContent).toContain("Adding the folder again restores them");
+    const dialog = document.body.querySelector<HTMLElement>('[role="alertdialog"]');
+    expect(dialog?.parentElement).toBe(document.body);
+    expect(dialog?.classList.contains("inset-0")).toBe(true);
+    expect(dialog?.textContent).toContain("Adding the folder again restores them");
     await act(async () => {
-      Array.from(container.querySelectorAll<HTMLButtonElement>("button"))
+      Array.from(dialog!.querySelectorAll<HTMLButtonElement>("button"))
         .find((button) => button.textContent === "Remove and delete sessions")!
         .click();
       await Promise.resolve();
@@ -759,22 +762,23 @@ describe("Sidebar projects", () => {
       await Promise.resolve();
     });
 
-    const deleteButton = Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find(
+    const dialog = document.body.querySelector<HTMLElement>('[role="alertdialog"]')!;
+    const deleteButton = Array.from(dialog.querySelectorAll<HTMLButtonElement>("button")).find(
       (button) => button.textContent === "Delete worktrees",
     )!;
     act(() => deleteButton.click());
 
     expect(deleteResolvedWorktrees).toHaveBeenCalledWith("/work/cake");
-    expect(container.querySelector('[role="alertdialog"]')).not.toBeNull();
-    expect(container.textContent).toContain("Deleting worktrees");
+    expect(document.body.querySelector('[role="alertdialog"]')).not.toBeNull();
+    expect(dialog.textContent).toContain("Deleting worktrees");
     expect(
-      Array.from(
-        container.querySelectorAll<HTMLButtonElement>('[role="alertdialog"] button'),
-      ).every((button) => button.disabled),
+      Array.from(dialog.querySelectorAll<HTMLButtonElement>("button")).every(
+        (button) => button.disabled,
+      ),
     ).toBe(true);
 
     await act(async () => finishDeletion(true));
-    expect(container.querySelector('[role="alertdialog"]')).toBeNull();
+    expect(document.body.querySelector('[role="alertdialog"]')).toBeNull();
   });
 
   it("lists Cake Chat sessions and creates another without clearing history", () => {

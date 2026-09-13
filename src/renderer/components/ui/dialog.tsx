@@ -1,4 +1,5 @@
 import { forwardRef, type HTMLAttributes } from "react";
+import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 
 export interface DialogBackdropProps extends HTMLAttributes<HTMLDivElement> {
@@ -7,7 +8,9 @@ export interface DialogBackdropProps extends HTMLAttributes<HTMLDivElement> {
 
 export const DialogBackdrop = forwardRef<HTMLDivElement, DialogBackdropProps>(
   function DialogBackdrop({ className, onClose, children, ...props }, ref) {
-    return (
+    if (!("document" in globalThis)) return null;
+
+    return createPortal(
       <div
         ref={ref}
         role="dialog"
@@ -22,7 +25,8 @@ export const DialogBackdrop = forwardRef<HTMLDivElement, DialogBackdropProps>(
         {...props}
       >
         {children}
-      </div>
+      </div>,
+      document.body,
     );
   },
 );
