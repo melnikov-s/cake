@@ -10,8 +10,14 @@ renders that component in its existing opaque-origin widget sandbox, gives the s
 actual rendered feedback, allows at most two replacement revisions, and publishes only a successful
 candidate as an immutable `widget` artifact revision.
 
-This note proposes contracts and ownership only. It does not make the current `widgets.present`
-implementation production-complete.
+This note records the original runtime proposal. The implemented `widgets.present` path now performs
+mandatory capture of every renderable candidate in the bound Cake Electron renderer, with at most two
+replacement revisions shared by compile, runtime, and visual fixes. The initial generation and each
+visual-review/repair turn currently use separate persisted restricted Pi sessions with the same
+resolved model and full bounded source/context, rather than reopening one specialist transcript.
+Attached PNGs therefore persist in those private widget-session JSONL transcripts under Cake's
+existing session retention policy. The artifact is persisted only after a screenshot-reviewed
+candidate is accepted.
 
 ## What already exists at the current boundary
 

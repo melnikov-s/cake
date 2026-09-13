@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { ProjectSessionIntegrationHost } from "../../../../src/services/pi/ProjectSessionIntegrationHost";
 import type { InlineWidgetGenerationRequest } from "../../../../src/services/pi/runtime/sidecar-runtime";
+import { RenderedWidgetCaptureError } from "../../../../src/services/widgets/RenderedWidgetCapture";
 
 const source = (name: string) =>
   `\`\`\`cake-react\nexport default function ${name}(){ return <div>${name}</div> }\n\`\`\``;
@@ -11,6 +12,7 @@ function host(options: {
   compileFailures?: Set<string>;
   signal?: AbortSignal;
   visualReview?: (signal: AbortSignal | undefined) => Promise<string>;
+  captureError?: RenderedWidgetCaptureError;
 }) {
   const calls: string[] = [];
   let token = 0;
@@ -41,6 +43,7 @@ function host(options: {
     },
     captureWidget: async (_sessionId, widget) => {
       calls.push(`capture:${widget.token.slice(-1)}`);
+      if (options.captureError) throw options.captureError;
       return { pngBase64: "cG5n", diagnostics: ["widget=560x480"] };
     },
     runWidgetRepair: async ({ diagnostic }) => {
@@ -103,6 +106,19 @@ describe("ProjectSessionIntegrationHost widget rendered review", () => {
     await expect(generate(fixture.integration, request())).rejects.toThrow("third replacement");
     expect(fixture.calls.filter((call) => call.startsWith("capture"))).toHaveLength(2);
     expect(fixture.calls).toContain("repair:Compilation failed");
+  });
+
+  it("does not spend a candidate repair on renderer infrastructure failure", async () => {
+    const fixture = host({
+      reviews: [],
+      captureError: new RenderedWidgetCaptureError({
+        kind: "infrastructure",
+        message: "renderer disconnected",
+      }),
+    });
+    await expect(generate(fixture.integration, request())).rejects.toThrow("renderer disconnected");
+    expect(fixture.calls.some((call) => call.startsWith("repair"))).toBe(false);
+    expect(fixture.calls).not.toContain("review");
   });
 
   it("aborts active specialist review and never returns publishable source", async () => {

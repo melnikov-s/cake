@@ -96,10 +96,31 @@ function runtimeBridge(token: string, capability: InlineWidgetCapability) {
   addEventListener("unhandledrejection", (event) => send("error", event.reason?.stack || String(event.reason || "Unhandled widget rejection")));
   ${capability === "request" ? `globalThis.cakeRequest = Object.freeze({ submit: (value) => send("submit", value), cancel: () => send("cancel", true) });` : ""}
   addEventListener("DOMContentLoaded", () => {
-    const reportSize = () => send("height", Math.max(document.documentElement.scrollHeight, document.body?.scrollHeight || 0));
-    new ResizeObserver(reportSize).observe(document.documentElement);
+    const startedAt = performance.now();
+    let changedAt = startedAt;
+    const reportSize = () => {
+      changedAt = performance.now();
+      send("height", Math.max(document.documentElement.scrollHeight, document.body?.scrollHeight || 0));
+    };
+    const resize = new ResizeObserver(reportSize);
+    const mutations = new MutationObserver(() => { changedAt = performance.now(); });
+    resize.observe(document.documentElement);
+    mutations.observe(document.documentElement, { childList: true, subtree: true, attributes: true, characterData: true });
     reportSize();
-    send("ready", true);
+    Promise.resolve(document.fonts?.ready).catch(() => undefined).finally(() => {
+      const settle = () => {
+        const now = performance.now();
+        if ((now - startedAt >= 600 && now - changedAt >= 200) || now - startedAt >= 2500) {
+          reportSize();
+          resize.disconnect();
+          mutations.disconnect();
+          requestAnimationFrame(() => requestAnimationFrame(() => send("ready", true)));
+          return;
+        }
+        requestAnimationFrame(settle);
+      };
+      requestAnimationFrame(settle);
+    });
   });
 })();
 </script>`;

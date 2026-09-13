@@ -6,6 +6,7 @@ import { RendererRequestCoordinator } from "../renderer-requests/RendererRequest
 import { ProjectSessionIntegrationHost } from "./ProjectSessionIntegrationHost";
 import { PiModels } from "./PiModels";
 import { RenderedWidgetCapture } from "../widgets/RenderedWidgetCapture";
+import { generateReviewedWidget } from "../../domain/widgets/widgetGenerationReview";
 import {
   ProjectSessionRuntimeHost,
   ProjectSessionRuntimeHostError,
@@ -91,6 +92,8 @@ export const makeProjectSessionRuntimeHostLive = (
             runAdapter(rendererRequests.requestArtifact(sessionId, record, signal)),
           requestApplicationControl: (invocation, signal) =>
             runAdapter(rendererRequests.requestProjectControl(sessionId, invocation, signal)),
+          runReviewedWidget: (input, dependencies) =>
+            runAdapter(generateReviewedWidget(input, dependencies)),
           captureWidget: (targetSessionId, widget, signal) =>
             runAdapter(widgetCapture.capture(targetSessionId, widget, signal)),
           requireVisionModel: async (model) => {

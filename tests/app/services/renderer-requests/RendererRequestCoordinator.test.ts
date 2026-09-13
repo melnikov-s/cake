@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
-import { Context, Effect, Exit, Fiber, Layer, Queue, Stream } from "effect";
+import { Context, Deferred, Effect, Exit, Fiber, Layer, Option, Queue, Stream } from "effect";
 import { describe, expect, vi } from "vitest";
 import type { CakeEvent } from "../../../../src/ipc/cake-rpc-contract";
 import {
@@ -171,10 +171,11 @@ describe("RendererRequestCoordinator", () => {
       yield* coordinator.bind({ _tag: "ProjectSession", sessionId: "project-1" }, 31);
       const token = "00000000-0000-4000-8000-000000000001";
       const pending = yield* coordinator
-        .requestWidgetPreview(
+        .withWidgetPreview(
           "project-1",
           { token, url: `cake-widget://document/${token}` },
           new AbortController().signal,
+          Effect.succeed,
         )
         .pipe(Effect.forkChild);
       const event = yield* Queue.take(events);
@@ -206,6 +207,92 @@ describe("RendererRequestCoordinator", () => {
         diagnostics: ["widget=560x480"],
       });
     }),
+  );
+
+  it.effect(
+    "holds the renderer lease through late native capture settlement after cancellation",
+    () =>
+      Effect.gen(function* () {
+        const { coordinator, events } = yield* makeFixture;
+        yield* coordinator.registerProjectSession("project-a", "/projects/cake");
+        yield* coordinator.registerProjectSession("project-b", "/projects/cake");
+        yield* coordinator.bind({ _tag: "ProjectSession", sessionId: "project-a" }, 51);
+        yield* coordinator.bind({ _tag: "ProjectSession", sessionId: "project-b" }, 51);
+        const nativeCapture = yield* Deferred.make<void>();
+        const captureStarted = yield* Deferred.make<void>();
+        const controller = new AbortController();
+        const tokenA = "00000000-0000-4000-8000-000000000011";
+        const tokenB = "00000000-0000-4000-8000-000000000012";
+        const first = yield* coordinator
+          .withWidgetPreview(
+            "project-a",
+            { token: tokenA, url: `cake-widget://document/${tokenA}` },
+            controller.signal,
+            () =>
+              Deferred.succeed(captureStarted, undefined).pipe(
+                Effect.andThen(Effect.uninterruptible(Deferred.await(nativeCapture))),
+                Effect.andThen(
+                  Effect.suspend(() =>
+                    controller.signal.aborted
+                      ? Effect.fail("cancelled after native settlement")
+                      : Effect.succeed("a"),
+                  ),
+                ),
+              ),
+          )
+          .pipe(Effect.forkChild);
+        const requestA = yield* Queue.take(events);
+        assert.equal(requestA.type, "widget-preview-requested");
+        yield* coordinator.respondWidgetPreview(51, "project-a", {
+          requestId: requestA.requestId,
+          previewRequestId: requestA.previewRequestId,
+          sessionId: "project-a",
+          token: tokenA,
+          cancelled: false,
+          rect: { x: 1, y: 1, width: 100, height: 100 },
+          diagnostics: ["candidate=a"],
+        });
+        yield* Deferred.await(captureStarted);
+        const waitingController = new AbortController();
+        const waiting = yield* coordinator
+          .withWidgetPreview(
+            "project-b",
+            { token: tokenB, url: `cake-widget://document/${tokenB}` },
+            waitingController.signal,
+            () => Effect.succeed("must not run"),
+          )
+          .pipe(Effect.forkChild);
+        waitingController.abort();
+        expect(Exit.isFailure(yield* Fiber.await(waiting))).toBe(true);
+        expect(Option.isNone(yield* Queue.poll(events))).toBe(true);
+
+        controller.abort();
+        const second = yield* coordinator
+          .withWidgetPreview(
+            "project-b",
+            { token: tokenB, url: `cake-widget://document/${tokenB}` },
+            new AbortController().signal,
+            () => Effect.succeed("b"),
+          )
+          .pipe(Effect.forkChild);
+        expect(Option.isNone(yield* Queue.poll(events))).toBe(true);
+        yield* Deferred.succeed(nativeCapture, undefined);
+        expect(Exit.isFailure(yield* Fiber.await(first))).toBe(true);
+        const dismissedA = yield* Queue.take(events);
+        expect(dismissedA).toEqual({ type: "widget-preview-dismissed", token: tokenA });
+        const requestB = yield* Queue.take(events);
+        assert.equal(requestB.type, "widget-preview-requested");
+        yield* coordinator.respondWidgetPreview(51, "project-b", {
+          requestId: requestB.requestId,
+          previewRequestId: requestB.previewRequestId,
+          sessionId: "project-b",
+          token: tokenB,
+          cancelled: false,
+          rect: { x: 1, y: 1, width: 100, height: 100 },
+          diagnostics: ["candidate=b"],
+        });
+        expect(yield* Fiber.join(second)).toBe("b");
+      }),
   );
 
   it.effect("cleans pending requests and bindings on connection and session release", () =>

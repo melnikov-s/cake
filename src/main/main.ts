@@ -1,9 +1,16 @@
 import { Cause, Effect, Exit, ManagedRuntime, Schema } from "effect";
-import { app, nativeTheme } from "electron";
+import { app, BrowserWindow, nativeTheme } from "electron";
 import { cakeEventSchema, type CakeEvent } from "../ipc/cake-rpc-contract";
 import { AgentAvailability } from "../services/pi/AgentAvailability";
 import { Electron } from "../services/electron/Electron";
-import { registerInlineWidgetScheme } from "../services/widgets/inline-widget-protocol";
+import {
+  registerInlineWidgetScheme,
+  revokeInlineWidget,
+} from "../services/widgets/inline-widget-protocol";
+import { InlineWidgets } from "../services/widgets/InlineWidgets";
+import { RenderedWidgetCapture } from "../services/widgets/RenderedWidgetCapture";
+import { RendererRequestCoordinator } from "../services/renderer-requests/RendererRequestCoordinator";
+import { ArtifactStorage } from "../services/storage/ArtifactStorage";
 import { resolveCakePaths } from "../config/CakePaths";
 import { MainApplication } from "./MainApplication";
 import { makeMainLive } from "./MainLive";
@@ -20,9 +27,10 @@ registerInlineWidgetScheme();
 if (process.env.CAKE_ELECTRON_USER_DATA)
   app.setPath("userData", process.env.CAKE_ELECTRON_USER_DATA);
 
+const paths = resolveCakePaths();
 const MainLive = makeMainLive({
   application: app,
-  paths: resolveCakePaths(),
+  paths,
   userData: app.getPath("userData"),
   cakeIconPath,
   annotationMenuIconPath,
@@ -90,6 +98,68 @@ if (process.env.CAKE_ELECTRON_SMOKE === "1") {
           ),
         )
         .catch((defect) => reportSmokeFailure("emit renderer event", defect));
+    },
+    async cakeSmokeCaptureInlineWidget(input: {
+      sessionId: string;
+      workingDirectory: string;
+      artifactId: string;
+      source: string;
+    }) {
+      return mainRuntime.runPromise(
+        Effect.gen(function* () {
+          const widgets = yield* InlineWidgets;
+          const captures = yield* RenderedWidgetCapture;
+          const coordinator = yield* RendererRequestCoordinator;
+          const artifacts = yield* ArtifactStorage;
+          const window = BrowserWindow.getAllWindows().find(
+            (candidate) =>
+              !candidate.isDestroyed() &&
+              !candidate.webContents.getURL().includes("rpc-test-harness"),
+          );
+          if (!window) throw new Error("Cake renderer window is unavailable");
+          yield* coordinator.registerProjectSession(input.sessionId, input.workingDirectory);
+          yield* coordinator.bind(
+            { _tag: "ProjectSession", sessionId: input.sessionId },
+            window.webContents.id,
+          );
+          const before = yield* artifacts.get(
+            input.workingDirectory,
+            input.sessionId,
+            input.artifactId,
+          );
+          const compiled = yield* widgets.compile({
+            language: "react",
+            capability: "display",
+            source: input.source,
+          });
+          const capture = yield* captures
+            .capture(input.sessionId, compiled.widget, new AbortController().signal)
+            .pipe(Effect.ensuring(Effect.sync(() => revokeInlineWidget(compiled.widget.token))));
+          const record = yield* artifacts.upsert(input.workingDirectory, {
+            protocol: "cake.artifact/v1",
+            id: input.artifactId,
+            sessionId: input.sessionId,
+            revision: 1,
+            kind: "widget",
+            title: "Captured widget fixture",
+            payload: {
+              language: "react",
+              source: input.source,
+              brief: "Electron rendered-review fixture",
+              generationSessionId: "smoke-review",
+            },
+            fallback: { markdown: "Captured widget fixture." },
+            interaction: { mode: "present" },
+          });
+          return {
+            pngBase64: capture.pngBase64,
+            diagnostics: capture.diagnostics,
+            persistedBeforeCapture: before !== undefined,
+            persistedAfterCapture:
+              record.artifact.kind === "widget" && record.artifact.payload.source === input.source,
+          };
+        }),
+      );
     },
     cakeSmokeResetPi() {
       void mainRuntime

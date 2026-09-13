@@ -50,7 +50,14 @@ export class WidgetPreviewStore extends Store {
     const preview = this.preview;
     if (!preview || preview.widget.token !== expectedToken) return;
     this.preview = undefined;
-    void this.respond(preview, true, [diagnostic], undefined);
+    void this.respond(preview, false, [diagnostic], undefined);
+  }
+
+  cancel() {
+    const preview = this.preview;
+    if (!preview) return;
+    this.preview = undefined;
+    void this.respond(preview, true, ["The user cancelled rendered widget review."], undefined);
   }
 
   private respond(

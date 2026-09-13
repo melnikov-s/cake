@@ -49,7 +49,8 @@ export const respondWidgetPreview = Effect.fn("Artifacts.respondWidgetPreview")(
   connectionId: number,
   request: WidgetPreviewResponse,
 ) {
-  yield* authorizedWorkingDirectory(request.sessionId);
+  // Main already chose and correlated the bound session, renderer connection, operation, and token.
+  // This response carries no project data and cannot initiate capture by itself.
   const coordinator = yield* RendererRequestCoordinator;
   yield* coordinator
     .respondWidgetPreview(connectionId, request.sessionId, request)

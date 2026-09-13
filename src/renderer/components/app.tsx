@@ -908,7 +908,7 @@ export const App = observer(function App() {
           />
         </DialogBackdrop>
       )}
-      <WidgetPreviewHost />
+      <WidgetPreviewHost store={root.widgetPreviewStore} />
       <ToastHost store={root.toastStore}>
         {extensionUi.notifications.map((notification) => (
           <button

@@ -1,17 +1,23 @@
 import { Option, Schema } from "effect";
 import { useEffect, useRef } from "react";
-import { observer, useStore } from "r-state-tree/react";
+import { observer } from "r-state-tree/react";
 import { inlineWidgetMessageSchema } from "../../utils/inline-widget-message";
 import { WidgetPreviewStore } from "../stores/WidgetPreviewStore";
+import { FullscreenSurface } from "./fullscreen-surface";
+import { InlineWidgetFrame } from "./inline-widget-frame";
 
 /** Trusted transient host for main-requested visual review of a compiled sandbox widget. */
-export const WidgetPreviewHost = observer(function WidgetPreviewHost() {
-  const store = useStore(WidgetPreviewStore);
+export const WidgetPreviewHost = observer(function WidgetPreviewHost({
+  store,
+}: {
+  store: WidgetPreviewStore;
+}) {
   const preview = store.preview;
   const iframe = useRef<HTMLIFrameElement>(null);
   const reportedHeight = useRef<number | undefined>(undefined);
 
   useEffect(() => {
+    reportedHeight.current = undefined;
     if (!preview) return;
     const receive = (event: MessageEvent) => {
       const parsed = Schema.decodeUnknownOption(inlineWidgetMessageSchema)(event.data);
@@ -30,31 +36,25 @@ export const WidgetPreviewHost = observer(function WidgetPreviewHost() {
         return;
       }
       if (parsed.value.type !== "ready") return;
-      void (async () => {
-        await document.fonts.ready;
-        await new Promise<void>((resolve) =>
-          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
-        );
-        const frame = iframe.current;
-        if (!frame || store.preview?.widget.token !== preview.widget.token) return;
-        const bounds = frame.getBoundingClientRect();
-        store.ready(
-          preview.widget.token,
-          {
-            x: Math.floor(bounds.x),
-            y: Math.floor(bounds.y),
-            width: Math.ceil(bounds.width),
-            height: Math.ceil(bounds.height),
-          },
-          [
-            `viewport=${window.innerWidth}x${window.innerHeight}`,
-            `widget=${Math.ceil(bounds.width)}x${Math.ceil(bounds.height)}`,
-            `contentHeight=${Math.ceil(reportedHeight.current ?? bounds.height)}`,
-            `verticalOverflow=${(reportedHeight.current ?? bounds.height) > bounds.height}`,
-            `deviceScaleFactor=${window.devicePixelRatio}`,
-          ],
-        );
-      })();
+      const frame = iframe.current;
+      if (!frame || store.preview?.widget.token !== preview.widget.token) return;
+      const bounds = frame.getBoundingClientRect();
+      store.ready(
+        preview.widget.token,
+        {
+          x: Math.floor(bounds.x),
+          y: Math.floor(bounds.y),
+          width: Math.ceil(bounds.width),
+          height: Math.ceil(bounds.height),
+        },
+        [
+          `viewport=${window.innerWidth}x${window.innerHeight}`,
+          `widget=${Math.ceil(bounds.width)}x${Math.ceil(bounds.height)}`,
+          `contentHeight=${Math.ceil(reportedHeight.current ?? bounds.height)}`,
+          `verticalOverflow=${(reportedHeight.current ?? bounds.height) > bounds.height}`,
+          `deviceScaleFactor=${window.devicePixelRatio}`,
+        ],
+      );
     };
     window.addEventListener("message", receive);
     return () => window.removeEventListener("message", receive);
@@ -62,15 +62,23 @@ export const WidgetPreviewHost = observer(function WidgetPreviewHost() {
 
   if (!preview) return null;
   return (
-    <div className="fixed bottom-3 right-3 z-50 h-[min(480px,calc(100vh-24px))] w-[min(560px,calc(100vw-24px))] overflow-hidden rounded-lg bg-background shadow-xl ring-1 ring-border">
-      <iframe
-        ref={iframe}
-        title="Widget visual review preview"
-        sandbox="allow-scripts"
-        referrerPolicy="no-referrer"
-        src={preview.widget.url}
-        className="h-full w-full border-none"
-      />
-    </div>
+    <FullscreenSurface
+      mode="dialog"
+      eyebrow="Widget specialist"
+      title="Reviewing rendered widget"
+      onClose={() => store.cancel()}
+    >
+      <div className="flex w-full flex-col gap-3 rounded-xl border border-border bg-card p-3 shadow-2xl">
+        <p className="text-xs text-muted-foreground">
+          Cake is rendering the candidate at artifact-panel width before publication.
+        </p>
+        <InlineWidgetFrame
+          ref={iframe}
+          title="Widget visual review preview"
+          src={preview.widget.url}
+          className="h-[min(480px,calc(100vh-12rem))]"
+        />
+      </div>
+    </FullscreenSurface>
   );
 });

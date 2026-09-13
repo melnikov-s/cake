@@ -12,6 +12,7 @@ import {
 } from "../../utils/inline-widget-message";
 import type { InlineWidgetStore } from "../stores/InlineWidgetStore";
 import { InlineWidgetRepairPrompt } from "./inline-widget-repair-prompt";
+import { InlineWidgetFrame } from "./inline-widget-frame";
 
 export const WidgetArtifact = observer(function WidgetArtifact({
   artifact,
@@ -130,13 +131,10 @@ export const WidgetArtifact = observer(function WidgetArtifact({
         </div>
       )}
       {state?.compiled && (
-        <iframe
+        <InlineWidgetFrame
           ref={iframe}
           title={artifact.title ?? artifact.id}
-          sandbox="allow-scripts"
-          referrerPolicy="no-referrer"
           src={state.compiled.url}
-          className="w-full border-none"
           style={{ height }}
         />
       )}
@@ -155,12 +153,10 @@ export const WidgetArtifact = observer(function WidgetArtifact({
           title={artifact.title ?? "Widget"}
           onClose={onCloseFullscreen}
         >
-          <iframe
+          <InlineWidgetFrame
             ref={fullscreenIframe}
-            className="h-full w-full border-none"
+            className="h-full"
             title={`${artifact.title ?? artifact.id} fullscreen`}
-            sandbox="allow-scripts"
-            referrerPolicy="no-referrer"
             src={state.compiled.url}
           />
         </FullscreenSurface>

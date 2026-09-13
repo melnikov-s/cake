@@ -303,7 +303,8 @@ export function createCakeArtifactOperations(
           },
         },
       ],
-      result: "The persisted widget artifact ID after generation and compilation complete.",
+      result:
+        "The persisted widget artifact ID after generation, rendered screenshot review, and acceptance complete.",
       limitations: [
         "Generated widgets have no filesystem, Node, Electron, parent-DOM or Cake API access. CSP blocks fetch/XHR/WebSocket; generic widgets permit passive HTTPS/data images and media. Supply local data and request self-contained output.",
         "Every successfully rendered candidate is reviewed from an actual Cake Electron screenshot. Review screenshots are retained in private Pi widget-session transcripts under Cake's existing session retention policy.",
