@@ -1,5 +1,6 @@
 import { Store, batch, child, createStore, observable, snapshot, updateStore } from "r-state-tree";
 import type { ChatConfiguration, ModelPreset } from "../../ipc/session-contract";
+import type { CakeControlTool } from "../../domain/cake-chats/cake-chat-data";
 import type { Session } from "../models/Session";
 import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import { ProjectPendingSessionsStore } from "./ProjectPendingSessionsStore";
@@ -27,6 +28,7 @@ export interface SessionRegistryStoreProps {
   renameSession(sessionId: string, name: string): Promise<void>;
   toolCompactSession(entryId: string, prompt?: string): Promise<boolean>;
   modelPresets?(): readonly ModelPreset[];
+  assistantTools?(): readonly CakeControlTool[];
   openModelPresetSettings?(): void;
   newSessionRequest?(
     sessionId: string,
@@ -95,6 +97,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
         renameSession: (name) => this.props.renameSession(target.sessionId, name),
         toolCompactSession: this.props.toolCompactSession,
         modelPresets: () => this.props.modelPresets?.() ?? [],
+        assistantTools: () => this.props.assistantTools?.() ?? [],
         openModelPresetSettings: () => this.props.openModelPresetSettings?.(),
         newSessionRequest: () => this.props.newSessionRequest?.(target.sessionId),
         prepareNewSession: (firstUserMessage) =>

@@ -22,6 +22,8 @@ export const workspaceHandlers = WorkspaceRpc.of({
     ),
   "workspaces.reword-composer-selection": (request) =>
     withConnection((connectionId) => projects.rewordComposerSelection(connectionId, request)),
+  "workspaces.chat-with-session-assistant": (request) =>
+    withConnection((connectionId) => projects.chatWithSessionAssistant(connectionId, request)),
   "workspaces.generate-session-title": (request) =>
     withConnection((connectionId) => projects.generateSessionTitle(connectionId, request)),
   "workspaces.set-utility-model": (request) =>

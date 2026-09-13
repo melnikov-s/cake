@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
@@ -75,18 +75,16 @@ test("restores, edits, resolves, and activates a project draft session", async (
     await expect(page.getByRole("button", { name: "New worktree" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Draft", exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Activate draft" })).toBeVisible();
-    const draftStatus = page.locator('[data-slot="composer-leading-accessory"]');
-    const draftStatusPicker = draftStatus.getByRole("button", {
-      name: "Change session labels. Current labels: Unlabelled",
+    const draftAssistant = page.locator('[data-slot="composer-leading-accessory"]');
+    const draftAssistantTrigger = draftAssistant.getByRole("button", {
+      name: "Ask session assistant",
     });
-    await expect(draftStatusPicker).toBeVisible();
-    await draftStatusPicker.click();
-    await page.getByRole("checkbox", { name: "Feature" }).click();
-    await expect(
-      draftStatus.getByRole("button", {
-        name: "Change session labels. Current labels: Feature",
-      }),
-    ).toBeVisible();
+    await expect(draftAssistantTrigger).toBeVisible();
+    await draftAssistantTrigger.click();
+    const assistantDialog = page.getByRole("dialog", { name: "Quick session assistant" });
+    await expect(assistantDialog.getByLabel("Ask session assistant")).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(draftAssistantTrigger).toBeFocused();
     const draftToolbar = page.locator('[data-slot="composer-toolbar"]');
     await expect(draftToolbar).toHaveCSS("border-top-width", "0px");
 
@@ -137,29 +135,13 @@ test("restores, edits, resolves, and activates a project draft session", async (
     await expect(
       page.locator('[data-slot="message-content"]', { hasText: "Edited plan" }),
     ).toBeVisible();
-    // The session avatar and label picker persist beside the composer after activation.
-    await expect(draftStatus).toHaveCSS("opacity", "1");
-    await expect(draftStatus).not.toHaveAttribute("inert");
-    await expect(draftStatus).toHaveAttribute("aria-hidden", "false");
+    // The session assistant remains available beside the composer after activation.
+    await expect(draftAssistant).toHaveCSS("opacity", "1");
+    await expect(draftAssistant).not.toHaveAttribute("inert");
+    await expect(draftAssistant).toHaveAttribute("aria-hidden", "false");
     await expect(
-      draftStatus.getByRole("button", {
-        name: "Change session labels. Current labels: Feature",
-      }),
+      draftAssistant.getByRole("button", { name: "Ask session assistant" }),
     ).toBeEnabled();
-    await expect
-      .poll(async () => {
-        const stored = JSON.parse(await readFile(applicationDocument, "utf8"));
-        const state = stored.data ?? stored;
-        const workflow = state.projects[0].workflow;
-        const feature = state.globalSessionLabels.find(
-          (status: { name: string }) => status.name === "Feature",
-        );
-        return workflow.assignments.some(
-          (assignment: { sessionId: string; labelIds: string[] }) =>
-            assignment.sessionId === sessionId && assignment.labelIds[0] === feature?.id,
-        );
-      })
-      .toBe(true);
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

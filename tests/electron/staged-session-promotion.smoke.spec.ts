@@ -88,17 +88,17 @@ test("promotes a staged chat immediately and leaves New Chat free for the next s
     ).toBe(0);
     await page.emulateMedia({ reducedMotion: "no-preference" });
 
-    // Quick click and keyboard activation still open the status picker; a hold
-    // captures the pointer instead and must not open a menu on release.
-    const status = page.getByRole("button", {
-      name: "Change session labels. Current labels: Unlabelled",
+    // Quick click and keyboard activation open the assistant; a hold captures
+    // the pointer instead and must not open the assistant on release.
+    const assistantTrigger = page.getByRole("button", {
+      name: "Ask session assistant",
     });
-    await status.click();
-    await expect(status).toHaveAttribute("aria-expanded", "true");
+    await assistantTrigger.click();
+    await expect(assistantTrigger).toHaveAttribute("aria-expanded", "true");
     await page.keyboard.press("Escape");
-    await expect(status).toBeFocused();
+    await expect(assistantTrigger).toBeFocused();
     await page.keyboard.press("Enter");
-    await expect(status).toHaveAttribute("aria-expanded", "true");
+    await expect(assistantTrigger).toHaveAttribute("aria-expanded", "true");
     await page.keyboard.press("Escape");
 
     const perch = (await avatar.boundingBox())!;
@@ -111,7 +111,7 @@ test("promotes a staged chat immediately and leaves New Chat free for the next s
     await expect.poll(async () => (await avatar.boundingBox())!.x).toBeGreaterThan(perch.x + 100);
     await page.mouse.up();
     await expect(avatar).toHaveAttribute("data-physics", "falling");
-    await expect(status).toHaveAttribute("aria-expanded", "false");
+    await expect(assistantTrigger).toHaveAttribute("aria-expanded", "false");
     await expect(avatar).not.toHaveAttribute("data-physics", /.+/, { timeout: 5000 });
     await expect
       .poll(async () => Math.abs((await avatar.boundingBox())!.x - perch.x))
@@ -127,9 +127,9 @@ test("promotes a staged chat immediately and leaves New Chat free for the next s
     await page.emulateMedia({ reducedMotion: "reduce" });
     await expect(avatar).not.toHaveAttribute("data-physics", /.+/);
     await page.mouse.up();
-    await expect(status).toHaveAttribute("aria-expanded", "false");
-    await status.click();
-    await expect(status).toHaveAttribute("aria-expanded", "true");
+    await expect(assistantTrigger).toHaveAttribute("aria-expanded", "false");
+    await assistantTrigger.click();
+    await expect(assistantTrigger).toHaveAttribute("aria-expanded", "true");
     await page.keyboard.press("Escape");
     await page.emulateMedia({ reducedMotion: "no-preference" });
 
@@ -141,7 +141,7 @@ test("promotes a staged chat immediately and leaves New Chat free for the next s
     await page.keyboard.press("Escape");
     await expect(avatar).not.toHaveAttribute("data-physics", /.+/);
     await page.mouse.up();
-    await expect(status).toHaveAttribute("aria-expanded", "false");
+    await expect(assistantTrigger).toHaveAttribute("aria-expanded", "false");
 
     await composer.click();
     await expect(composer).toBeFocused();

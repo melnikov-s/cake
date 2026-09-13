@@ -167,7 +167,19 @@ Utility work uses Pi's `ModelRuntime` as an auxiliary completion rather than
 creating a second provider abstraction, agent runtime, or durable transcript.
 Each feature supplies explicit bounded input, output, timeout, cancellation,
 and validation policy. Utility results remain advisory metadata until the owning
-feature validates and commits them.
+feature validates and commits them. The composer-avatar session assistant is the
+interactive exception to plain completion: each turn runs in a transient,
+non-persisted Pi sidecar on the configured utility model. It receives a bounded
+projection of visible user and assistant text from the Project Session plus its
+own short window-local history, never parent tool calls, and exposes only the
+validated Cake application-control gateway—no filesystem or shell tools. Its
+`SessionAssistantStore` owns transient messages, drafts, cancellation, and
+single-turn-at-a-time policy for the lifetime of the loaded Project Session
+Store. A primary avatar click presents a focused one-shot composer and replaces
+it with only the assistant's compact response bubble, which closes automatically;
+a secondary click presents the full transient chat. Both presentations compose
+the shared `Chat` and `ChatStore`. Pi remains the parent transcript authority and
+none of this assistant history is copied into it.
 
 Cake applies one such adapter policy to empty, pre-output rate-limit responses
 and protocol-valid successful responses with no content. It retries the exact
@@ -329,9 +341,9 @@ The window Store hierarchy mirrors the product surfaces:
   operations authoritatively normalize status names and enforce lifecycle, custom-status, and
   Session Family transition policy. `GlobalStatusSettingsStore` owns global-status configuration,
   `ProjectSettingsStore` owns Project-specific status configuration, and
-  `SessionManagementStore` serializes status and lifecycle transitions. A pending Session's avatar sits beside the composer
-  and opens the same color-coded status picker used by active Session avatars in the sidebar; it
-  remains after the Session activates. Only this composer avatar follows the pointer and plays
+  `SessionManagementStore` serializes status and lifecycle transitions. A pending Session's avatar sits beside the composer and opens the compact transient session
+  assistant to its left, keeping the main conversation visible; it remains after the Session
+  activates. Session labels remain available through the sidebar avatar picker. Only this composer avatar follows the pointer and plays
   occasional blinks, hops, wobbles, and stretches. These disposable DOM effects belong to the
   shared Avatar primitive, pause in hidden documents, and respect reduced motion.
   Sidebar Session avatars opt into row-local interaction feedback instead: hover glances right,
@@ -465,10 +477,9 @@ The window Store hierarchy mirrors the product surfaces:
   carries draft and resolved presentation metadata until activation. Saving the
   staged chat as a draft also frees New Chat to create one new staged composer. A
   saved draft has no message input; its composer surface contains only checkout and
-  model selection plus the activation action. Its composer avatar remains available for choosing
-  a custom status without activating the draft. Activation clears the draft state, applies that
-  pending status after Pi accepts the ordinary first-prompt path, and keeps the avatar
-  beside the composer; Pi remains the transcript authority once the session starts. The Working
+  model selection plus the activation action. Its composer avatar remains available for the transient session assistant without activating the
+  draft. Activation clears the draft state and keeps the assistant avatar beside the composer;
+  Pi remains the transcript authority once the session starts. The Working
   Directory remains routing/storage context for the Pi runtime, not part of
   session identity. Cake Chat never enters this registry.
 - Each `ProjectSessionStore` owns that session's activity, session-local Agent/IDE presentation preference and IDE

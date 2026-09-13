@@ -767,6 +767,7 @@ export class RootStore extends Store<{
       toolCompactSession: (entryId, prompt) =>
         this.projectWorkbenchStore.sessionContinuationStore.toolCompactAt(entryId, prompt),
       modelPresets: () => this.settingsStore.modelPresets.presets,
+      assistantTools: () => this.applicationControlStore.tools(),
       openModelPresetSettings: () => this.showModelPresetSettings(),
       newSessionRequest: (sessionId) => this.projectWorkbenchStore.newSessionRequest(sessionId),
       prepareNewSession: (sessionId, firstUserMessage) =>

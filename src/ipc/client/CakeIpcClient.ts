@@ -457,6 +457,7 @@ export interface CakeIpcClientService {
   >;
   readonly workspaces: RpcOperations<
     | "reword-composer-selection"
+    | "chat-with-session-assistant"
     | "generate-session-title"
     | "set-utility-model"
     | "load-staged-slash-commands"
@@ -886,6 +887,9 @@ export const CakeIpcClientLive = Layer.effect(
         "reword-composer-selection": Effect.fn(
           "CakeIpcClient.workspaces.reword-composer-selection",
         )((payload) => client("workspaces.reword-composer-selection", payload)),
+        "chat-with-session-assistant": Effect.fn(
+          "CakeIpcClient.workspaces.chat-with-session-assistant",
+        )((payload) => client("workspaces.chat-with-session-assistant", payload)),
         "generate-session-title": Effect.fn("CakeIpcClient.workspaces.generate-session-title")(
           (payload) => client("workspaces.generate-session-title", payload),
         ),

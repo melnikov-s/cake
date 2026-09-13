@@ -25,7 +25,7 @@ import {
   VsCodeIcon,
 } from "@/components/ui/icons";
 import { LoadingState } from "@/components/ui/loading-state";
-import { AvatarLabelPicker } from "@/components/ui/avatar-label-picker";
+import { SessionAssistant } from "@/components/session-assistant";
 import { ResizeHandle } from "@/components/ui/resize-handle";
 import { UiHintMode } from "@/components/ui/ui-hint-mode";
 import { IdeWorkspace } from "@/components/ide-workspace";
@@ -469,16 +469,12 @@ export const App = observer(function App() {
       ? {
           visible: true,
           content: (
-            <AvatarLabelPicker
+            <SessionAssistant
+              store={paneSession.sessionAssistantStore}
               animated
               seed={sidebar.sessionAvatarSeed(paneSession.sessionId)}
               labels={sidebar.availableSessionLabels(paneSession.sessionId)}
               value={sidebar.sessionLabelIds(paneSession.sessionId)}
-              disabled={store.sessionManagementStore.areLabelsPending(paneSession.sessionId)}
-              className="size-10 [&_[data-slot=avatar]]:size-9"
-              onChange={(labelIds) => {
-                void store.sessionManagementStore.setSessionLabels(paneSession.sessionId, labelIds);
-              }}
             />
           ),
         }

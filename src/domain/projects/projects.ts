@@ -8,10 +8,12 @@ import { PiAgentResources } from "../../services/pi/PiAgentResources";
 import { AgentAvailability } from "../../services/pi/AgentAvailability";
 import { ProjectSessionRuntimeHost } from "../../services/pi/ProjectSessionRuntimeHost";
 import { rewordSelectionWithProjectContext } from "../../services/pi/runtime/rewording-agent";
+import { runSessionAssistant } from "../../services/pi/runtime/session-assistant";
 import { inspectWorkspace } from "../../services/pi/runtime/session-discovery";
 import { ProjectAccess } from "../../services/projects/ProjectAccess";
 import { ProjectConfiguration } from "../../services/projects/ProjectConfiguration";
 import { RewordingRequests } from "../../services/projects/RewordingRequests";
+import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
 import { Terminal } from "../../services/terminal/Terminal";
 import { SessionCatalogChanges } from "../../services/session-catalogs/SessionCatalogChanges";
 import { ApplicationState } from "../../services/storage/ApplicationState";
@@ -105,13 +107,10 @@ export const initializeRegisteredProjectAccess = Effect.fn(
   yield* Effect.forEach(workingDirectories, (path) => access.allow(path), { discard: true });
 });
 
-const resolveRewordingWorkingDirectory = Effect.fn("Projects.resolveRewordingWorkingDirectory")(
-  function* (requested: string | undefined, active: string | undefined) {
+const resolveAllowedWorkingDirectory = Effect.fn("Projects.resolveAllowedWorkingDirectory")(
+  function* (operation: string, requested: string | undefined, active: string | undefined) {
     const access = yield* ProjectAccess;
-    const allowed = yield* mapProjectError(
-      "rewordComposerSelection",
-      access.allowedWorkingDirectories(),
-    );
+    const allowed = yield* mapProjectError(operation, access.allowedWorkingDirectories());
     return yield* Effect.tryPromise({
       try: () =>
         resolveRewordingWorkspace({
@@ -119,7 +118,7 @@ const resolveRewordingWorkingDirectory = Effect.fn("Projects.resolveRewordingWor
           activeWorkspace: active,
           allowedWorkspacePaths: new Set(allowed),
         }),
-      catch: (cause) => projectError("rewordComposerSelection", cause),
+      catch: (cause) => projectError(operation, cause),
     });
   },
 );
@@ -142,7 +141,8 @@ export const rewordComposerSelection = Effect.fn("Projects.rewordComposerSelecti
 
   const controller = yield* requests.acquire(sender.id);
   const operation = Effect.gen(function* () {
-    const workingDirectory = yield* resolveRewordingWorkingDirectory(
+    const workingDirectory = yield* resolveAllowedWorkingDirectory(
+      "rewordComposerSelection",
       request.workspacePath,
       electron.workspaceForConnection(sender.id),
     );
@@ -176,6 +176,54 @@ export const rewordComposerSelection = Effect.fn("Projects.rewordComposerSelecti
     return { text };
   });
   return yield* operation.pipe(Effect.ensuring(requests.release(sender.id, controller)));
+});
+
+export const chatWithSessionAssistant = Effect.fn("Projects.chatWithSessionAssistant")(function* (
+  connectionId: number,
+  request: Payload<"chat-with-session-assistant">,
+) {
+  const application = yield* ApplicationState;
+  const configuration = yield* ProjectConfiguration;
+  const rendererRequests = yield* RendererRequestCoordinator;
+  const electron = yield* Electron;
+  const sender = yield* requireConnection(connectionId, "chatWithSessionAssistant");
+  const utilityModel = application.snapshot().utilityModel;
+  if (!utilityModel)
+    return yield* new ProjectError({
+      operation: "chatWithSessionAssistant",
+      message: "Configure a utility model in Settings before using the session assistant",
+    });
+  const workspacePath = yield* resolveAllowedWorkingDirectory(
+    "chatWithSessionAssistant",
+    request.workspacePath,
+    electron.workspaceForConnection(sender.id),
+  );
+  if (!workspacePath)
+    return yield* new ProjectError({
+      operation: "chatWithSessionAssistant",
+      message: "The session assistant requires an open Project workspace",
+    });
+  const text = yield* Effect.tryPromise({
+    try: (signal) =>
+      runSessionAssistant({
+        workspacePath,
+        agentDirectory: configuration.agentDirectory,
+        sessionId: request.sessionId,
+        utilityModel,
+        prompt: request.prompt,
+        context: request.context,
+        history: request.history,
+        tools: request.tools,
+        signal,
+        invoke: (invocation, controlSignal) =>
+          Effect.runPromise(
+            rendererRequests.requestProjectControl(request.sessionId, invocation, controlSignal),
+            { signal: controlSignal },
+          ),
+      }),
+    catch: (cause) => projectError("chatWithSessionAssistant", cause),
+  });
+  return { text };
 });
 
 export const generateSessionTitle = Effect.fn("Projects.generateSessionTitle")(function* (

@@ -123,6 +123,12 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
             }),
           options,
         ).then((response) => response.text),
+      chatWithSessionAssistant: (input, options) =>
+        execute(
+          "workspaces.chat-with-session-assistant",
+          (client) => client.workspaces["chat-with-session-assistant"](input),
+          options,
+        ).then((response) => response.text),
       generateSessionTitle: (firstUserMessage, options) =>
         execute(
           "workspaces.generate-session-title",

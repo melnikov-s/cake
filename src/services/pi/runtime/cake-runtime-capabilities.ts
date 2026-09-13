@@ -3,6 +3,7 @@ import {
   type AgentSession,
   type InlineExtension,
   type SettingsManager,
+  type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import type { TSchema } from "@earendil-works/pi-ai";
 import { existsSync } from "node:fs";
@@ -266,36 +267,43 @@ export function createAgentControlOperations(
   ];
 }
 
+export function createCakeToolDefinition(
+  definitions: readonly CakeOperationDefinition[],
+): ToolDefinition {
+  const registry = new CakeOperationRegistry(definitions);
+  return {
+    name: "cake",
+    label: "Cake",
+    description: cakeToolDescription,
+    promptSnippet: "Use Cake-native application controls.",
+    // SAFETY: Pi accepts the draft-07 JSON Schema produced by Effect Schema.
+    parameters: Schema.toStandardJSONSchemaV1(cakeToolEnvelopeSchema)["~standard"].jsonSchema.input(
+      { target: "draft-07" },
+    ) as TSchema,
+    async execute(toolCallId, params, signal, onUpdate, runtime) {
+      const update = (value: JsonValue) =>
+        onUpdate?.({
+          content: [{ type: "text", text: formatUnknown(value, 24_000) }],
+          details: value,
+        });
+      const result = await registry.invoke(params, {
+        signal: signal ?? new AbortController().signal,
+        toolCallId,
+        onUpdate: update,
+        runtime,
+      });
+      return { content: [{ type: "text", text: result.text }], details: result.details };
+    },
+  };
+}
+
 function createCakeGatewayExtension(
   definitions: (pi: {
     appendEntry(type: string, data: JsonValue): void;
   }) => CakeOperationDefinition[],
 ): InlineExtension {
   return (pi) => {
-    const registry = new CakeOperationRegistry(definitions(pi));
-    pi.registerTool({
-      name: "cake",
-      label: "Cake",
-      description: cakeToolDescription,
-      // SAFETY: Pi accepts the draft-07 JSON Schema produced by Effect Schema.
-      parameters: Schema.toStandardJSONSchemaV1(cakeToolEnvelopeSchema)[
-        "~standard"
-      ].jsonSchema.input({ target: "draft-07" }) as TSchema,
-      async execute(toolCallId, params, signal, onUpdate, runtime) {
-        const update = (value: JsonValue) =>
-          onUpdate?.({
-            content: [{ type: "text", text: formatUnknown(value, 24_000) }],
-            details: value,
-          });
-        const result = await registry.invoke(params, {
-          signal: signal ?? new AbortController().signal,
-          toolCallId,
-          onUpdate: update,
-          runtime,
-        });
-        return { content: [{ type: "text", text: result.text }], details: result.details };
-      },
-    });
+    pi.registerTool(createCakeToolDefinition(definitions(pi)));
   };
 }
 

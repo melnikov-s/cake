@@ -12,6 +12,7 @@ import {
 } from "./inline-widget-contract";
 import { jsonValueSchema } from "./json-contract";
 import { ProjectSettings } from "../domain/application/application-data";
+import { CakeControlTool } from "../domain/cake-chats/cake-chat-data";
 import { ProjectSessionControlRequest } from "../domain/project-sessions/project-session-data";
 import {
   applicationStateSchema,
@@ -289,6 +290,18 @@ export const cakeRpcPayloadSchemas = {
     prompt: Schema.optional(stringMax(4_096)),
     workspacePath: Schema.optional(bounded(1, 4_096)),
   }),
+  "chat-with-session-assistant": Schema.Struct({
+    sessionId: bounded(1, 256),
+    workspacePath: bounded(1, 4_096),
+    prompt: bounded(1, 32_000),
+    context: Schema.Array(
+      Schema.Struct({ role: Schema.Literals(["user", "assistant"]), text: stringMax(262_144) }),
+    ).check(Schema.isMaxLength(2_000)),
+    history: Schema.Array(
+      Schema.Struct({ role: Schema.Literals(["user", "assistant"]), text: stringMax(32_000) }),
+    ).check(Schema.isMaxLength(200)),
+    tools: Schema.Array(CakeControlTool).check(Schema.isMaxLength(500)),
+  }),
   "generate-session-title": Schema.Struct({
     firstUserMessage: bounded(1, 262_144),
   }),
@@ -520,6 +533,9 @@ const cakeRpcResultSchemas = {
   "composer-selection-reworded": Schema.Struct({
     text: bounded(1, 32_000),
   }),
+  "session-assistant-answered": Schema.Struct({
+    text: bounded(1, 100_000),
+  }),
   "session-title-generated": Schema.Struct({
     title: Schema.optional(bounded(1, 80)),
   }),
@@ -614,6 +630,7 @@ export const cakeRpcSuccessSchemas = {
   "suggest-files": cakeRpcResultSchemas["file-suggestions"],
   "read-workspace-file": cakeRpcResultSchemas["workspace-file"],
   "reword-composer-selection": cakeRpcResultSchemas["composer-selection-reworded"],
+  "chat-with-session-assistant": cakeRpcResultSchemas["session-assistant-answered"],
   "generate-session-title": cakeRpcResultSchemas["session-title-generated"],
   "set-utility-model": cakeRpcResultSchemas["application-state-updated"],
   "load-staged-slash-commands": cakeRpcResultSchemas["slash-commands-loaded"],

@@ -2,6 +2,7 @@ import { Store, child, computed, createStore, snapshot } from "r-state-tree";
 import type { StoreEvent } from "../events/StoreEvent";
 import type { Session } from "../models/Session";
 import type { ChatConfiguration, ModelPreset } from "../../ipc/session-contract";
+import type { CakeControlTool } from "../../domain/cake-chats/cake-chat-data";
 import type { ProjectPendingSessionsStore } from "./ProjectPendingSessionsStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { ReviewsStore } from "./ReviewsStore";
@@ -16,6 +17,7 @@ import { MessageCommentsStore } from "./MessageCommentsStore";
 import { SubagentActivityStore } from "./SubagentActivityStore";
 import { WorktreeStore, type WorktreeStoreProps } from "./WorktreeStore";
 import { StagedSessionCommandStore } from "./StagedSessionCommandStore";
+import { SessionAssistantStore } from "./SessionAssistantStore";
 import { ClientContext } from "./context/ClientContext";
 import type { ExistingWorktreeCandidate, WorktreeDraftChoice } from "./WorktreeCreationStore";
 import type { SessionActivity } from "../lib/session-activity";
@@ -39,6 +41,7 @@ export interface ProjectSessionStoreProps extends SessionTarget {
   renameSession(name: string): Promise<void>;
   toolCompactSession(entryId: string, prompt?: string): Promise<boolean>;
   modelPresets(): readonly ModelPreset[];
+  assistantTools?(): readonly CakeControlTool[];
   openModelPresetSettings(): void;
   newSessionRequest():
     | { path: string; configuration?: ChatConfiguration; name?: string }
@@ -125,6 +128,21 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   }
   get canonicalParts() {
     return this.model.uiParts;
+  }
+
+  @child
+  get sessionAssistantStore(): SessionAssistantStore {
+    return createStore(SessionAssistantStore, {
+      sessionId: this.sessionId,
+      workspacePath: this.workspacePath,
+      context: () =>
+        this.canonicalParts.flatMap((part) => {
+          if (part.kind === "text" && !part.draft) return [{ role: part.role, text: part.text }];
+          if (part.kind === "skill") return [{ role: "user" as const, text: part.content }];
+          return [];
+        }),
+      tools: () => this.props.assistantTools?.() ?? [],
+    });
   }
 
   get isStreaming() {

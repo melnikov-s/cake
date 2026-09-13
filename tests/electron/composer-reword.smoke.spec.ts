@@ -20,7 +20,7 @@ function completion(text: string) {
   return `${chunk({ role: "assistant", content: text }, null)}${chunk({}, "stop")}data: [DONE]\n\n`;
 }
 
-test("rewords a composer selection and records one undo step", async () => {
+test("rewords composer text and opens the focused session assistant", async () => {
   test.setTimeout(60_000);
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-composer-reword-smoke-"));
   const userData = join(temporaryRoot, "user-data");
@@ -38,7 +38,11 @@ test("rewords a composer selection and records one undo step", async () => {
     let body = "";
     for await (const chunk of request) body += chunk;
     prompts.push(body);
-    const rewritten = body.includes("Make this terse") ? "Terse request" : "Clear request";
+    const rewritten = body.includes("compact session assistant")
+      ? "Assistant ready"
+      : body.includes("Make this terse")
+        ? "Terse request"
+        : "Clear request";
     response.writeHead(200, { "content-type": "text/event-stream" });
     response.end(completion(rewritten));
   });
@@ -46,6 +50,7 @@ test("rewords a composer selection and records one undo step", async () => {
     server.once("error", reject);
     server.listen(0, "127.0.0.1", resolve);
   });
+  // SAFETY: the server is listening on a TCP host and ephemeral port above.
   const address = server.address() as AddressInfo;
 
   await writeFile(
@@ -140,7 +145,25 @@ test("rewords a composer selection and records one undo step", async () => {
     await composer.pressSequentially("!");
     await expect(composer).toHaveValue("Before rough ramble after!");
     await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
-    expect(prompts).toHaveLength(1);
+
+    const assistantTrigger = page.getByRole("button", { name: "Ask session assistant" });
+    await assistantTrigger.click();
+    const quickAssistant = page.getByRole("dialog", { name: "Quick session assistant" });
+    const quickInput = quickAssistant.getByLabel("Ask session assistant");
+    await expect(quickInput).toBeFocused();
+    await quickInput.pressSequentially("Open the file from our conversation");
+    await expect(quickInput).toHaveValue("Open the file from our conversation");
+    const assistantSend = quickAssistant.getByRole("button", { name: "Send" });
+    await expect(assistantSend).toBeEnabled();
+    await assistantSend.click();
+    await expect(quickAssistant.getByText("Assistant ready")).toBeVisible();
+    await expect(quickAssistant.getByText("Open the file from our conversation")).toHaveCount(0);
+    expect(prompts).toHaveLength(2);
+
+    await expect(quickAssistant).toHaveCount(0, { timeout: 6_000 });
+    await assistantTrigger.click({ button: "right" });
+    const fullAssistant = page.getByRole("dialog", { name: "Session assistant chat" });
+    await expect(fullAssistant.getByLabel("Message session assistant")).toBeFocused();
   } finally {
     await application.close();
     server.close();

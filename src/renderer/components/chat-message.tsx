@@ -517,6 +517,7 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
       )}
       {part.status !== "streaming" && (
         <div
+          data-slot="message-actions"
           className="mt-1.5 flex min-h-7 items-center gap-1 opacity-0 group-hover/msg:opacity-100 group-focus-within/msg:opacity-100 transition-opacity"
           aria-label="Message actions"
         >

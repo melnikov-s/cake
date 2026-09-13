@@ -1,5 +1,6 @@
 import type { Effect } from "effect";
 import type { ProjectSettings } from "../../domain/application/application-data";
+import type { CakeControlTool } from "../../domain/cake-chats/cake-chat-data";
 import type {
   ResolvedManagedWorktreeCleanupPlan,
   ResolvedManagedWorktreeCleanupResult,
@@ -128,6 +129,17 @@ interface FilesystemCommands {
 interface WorkspaceCommands {
   rewordComposerSelection(
     input: { selection: string; prompt?: string; workingDirectory?: string },
+    options?: ClientCommandOptions,
+  ): Promise<string>;
+  chatWithSessionAssistant(
+    input: {
+      sessionId: string;
+      workspacePath: string;
+      prompt: string;
+      context: ReadonlyArray<{ role: "user" | "assistant"; text: string }>;
+      history: ReadonlyArray<{ role: "user" | "assistant"; text: string }>;
+      tools: ReadonlyArray<CakeControlTool>;
+    },
     options?: ClientCommandOptions,
   ): Promise<string>;
   generateSessionTitle(
