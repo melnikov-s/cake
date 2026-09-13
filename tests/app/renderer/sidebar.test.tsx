@@ -83,7 +83,15 @@ function sidebarProps(store: ProjectWorkbenchStore) {
       navigationMode: fixture.navigationMode ?? "projects",
       showProjects: fixture.showProjects ?? vi.fn(),
       showActivity: fixture.showActivity ?? vi.fn(),
-      activeProjectSessions: fixture.activeProjectSessions ?? [],
+      activeProjectSessionFamilies:
+        fixture.activeProjectSessionFamilies ??
+        (fixture.activeProjectSessions ?? []).map(
+          (session: { sessionId: string; modifiedAt: string }) => ({
+            rootSessionId: session.sessionId,
+            latestModifiedAt: session.modifiedAt,
+            sessions: [session],
+          }),
+        ),
       activeCakeChatSessions: (fixture.cakeChatSummaries ?? []).filter(
         (session: { resolved?: boolean }) => !session.resolved,
       ),
@@ -905,6 +913,35 @@ describe("Sidebar projects", () => {
 
     const emptyProject = container.querySelector<HTMLElement>('[data-slot="project-group"]');
     expect(emptyProject).not.toBeNull();
+  });
+
+  it("offers project focus from Projects but not Activity", () => {
+    const focusProject = vi.fn();
+    const fixture = {
+      recentProjectPaths: ["/work/cake"],
+      projects: [{ path: "/work/cake", name: "Cake" }],
+      focusProject,
+      projectSessions: () => [],
+      sessionLimit: () => 8,
+      sessionActivity: vi.fn(),
+      nameFromPath: () => "cake",
+      showMoreSessions: vi.fn(),
+      navigationMode: "projects" as "projects" | "activity",
+    };
+    const store = fixture as unknown as ProjectWorkbenchStore;
+
+    act(() =>
+      root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onToggle={vi.fn()} />),
+    );
+
+    act(() => container.querySelector<HTMLButtonElement>('[aria-label="Focus on cake"]')!.click());
+    expect(focusProject).toHaveBeenCalledWith("/work/cake");
+
+    fixture.navigationMode = "activity";
+    act(() =>
+      root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onToggle={vi.fn()} />),
+    );
+    expect(container.querySelector('[aria-label="Focus on cake"]')).toBeNull();
   });
 
   it("focuses navigation on one project across active and resolved sessions", () => {
@@ -1795,6 +1832,80 @@ describe("Sidebar projects", () => {
     );
     expect(container.textContent).not.toContain("Archived work");
     expect(container.querySelector('[data-slot="resolved-lane"]')).toBeNull();
+  });
+
+  it("keeps activity families together and positions them by their latest descendant", () => {
+    const parentModifiedAt = new Date(2026, 2, 9, 10).toISOString();
+    const childModifiedAt = new Date(2026, 2, 10, 11).toISOString();
+    const standaloneModifiedAt = new Date(2026, 2, 10, 10).toISOString();
+    const parent = {
+      sessionId: "parent",
+      title: "Older parent",
+      projectPath: "/work/cake",
+      workingDirectory: "/work/cake",
+      modifiedAt: parentModifiedAt,
+      familyChildSessionIds: ["child"],
+    };
+    const child = {
+      sessionId: "child",
+      title: "Recently active child",
+      projectPath: "/work/cake",
+      workingDirectory: "/work/cake-child",
+      modifiedAt: childModifiedAt,
+      familyParentSessionId: "parent",
+      familyDepth: 1,
+    };
+    const standalone = {
+      sessionId: "standalone",
+      title: "Standalone session",
+      projectPath: "/work/cake",
+      workingDirectory: "/work/cake",
+      modifiedAt: standaloneModifiedAt,
+    };
+    const store = {
+      recentProjectPaths: ["/work/cake"],
+      projects: [{ path: "/work/cake", name: "Cake" }],
+      projectSessions: vi.fn(() => []),
+      activeProjectSessionFamilies: [
+        {
+          rootSessionId: "parent",
+          latestModifiedAt: childModifiedAt,
+          sessions: [parent, child],
+        },
+        {
+          rootSessionId: "standalone",
+          latestModifiedAt: standaloneModifiedAt,
+          sessions: [standalone],
+        },
+      ],
+      navigationMode: "activity",
+      now: new Date(2026, 2, 10, 12).getTime(),
+      sessionLimit: () => 10,
+      sessionActivity: vi.fn(),
+      sessionActivityTime: () => "recently",
+      nameFromPath: () => "cake",
+      showMoreSessions: vi.fn(),
+    } as unknown as ProjectWorkbenchStore;
+
+    act(() =>
+      root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onToggle={vi.fn()} />),
+    );
+
+    const family = container.querySelector('[data-animated-list-key="project-family:parent"]')!;
+    expect(
+      [...family.querySelectorAll<HTMLElement>("[data-session-id]")].map(
+        (session) => session.dataset.sessionId,
+      ),
+    ).toEqual(["parent", "child"]);
+    expect(container.querySelector('[data-slot="activity-feed"]')?.textContent).not.toContain(
+      "Yesterday",
+    );
+    expect(
+      [...container.querySelectorAll<HTMLElement>("[data-session-id]")].map(
+        (session) => session.dataset.sessionId,
+      ),
+    ).toEqual(["parent", "child", "standalone"]);
+    expect(family.parentElement?.className).toContain("pl-2");
   });
 
   it("opens a new-session picker for Cake Chat and registered Projects", async () => {

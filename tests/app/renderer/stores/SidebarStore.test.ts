@@ -520,6 +520,88 @@ describe("SidebarStore catalog demand", () => {
     store[Symbol.dispose]();
   });
 
+  it("groups active session families by their latest descendant activity", () => {
+    const summaries = [
+      {
+        sessionId: "root",
+        modifiedAt: "2026-01-01T00:00:00.000Z",
+        resolved: false,
+        projectPath: "/cake",
+        familyChildSessionIds: ["child", "sibling"],
+      },
+      {
+        sessionId: "child",
+        modifiedAt: "2026-01-04T00:00:00.000Z",
+        resolved: false,
+        projectPath: "/cake",
+        familyParentSessionId: "root",
+        familyChildOrder: 0,
+      },
+      {
+        sessionId: "sibling",
+        modifiedAt: "2026-01-02T00:00:00.000Z",
+        resolved: false,
+        projectPath: "/cake",
+        familyParentSessionId: "root",
+        familyChildOrder: 1,
+      },
+      {
+        sessionId: "standalone",
+        modifiedAt: "2026-01-03T00:00:00.000Z",
+        resolved: false,
+        projectPath: "/cake",
+      },
+    ];
+    const catalog = {
+      sessions: summaries,
+      find: (sessionId: string) => summaries.find((session) => session.sessionId === sessionId),
+    } as unknown as SessionCatalogStore;
+    const store = mount(
+      createStore(SidebarStore, {
+        projects: { orderedProjectPaths: [] } as unknown as ProjectCatalogStore,
+        catalog,
+        sessions: {} as SessionRegistryStore,
+        globalLabels: () => [],
+        cakeChat: () => ({ summaries: [] }) as unknown as CakeChatCollectionStore,
+        setSessionResolved: async () => undefined,
+        setSessionLabels: async () => undefined,
+        setCakeChatSessionResolved: async () => undefined,
+        deleteSession: async () => undefined,
+        deleteCakeChatSession: async () => undefined,
+        setSessionUnread: async () => undefined,
+        embeddedEditorSettings: embeddedEditorSettings(),
+      }),
+    );
+
+    expect(
+      store.activeProjectSessionFamilies.map(({ rootSessionId, latestModifiedAt, sessions }) => ({
+        rootSessionId,
+        latestModifiedAt,
+        sessionIds: sessions.map((session) => session.sessionId),
+      })),
+    ).toEqual([
+      {
+        rootSessionId: "root",
+        latestModifiedAt: "2026-01-04T00:00:00.000Z",
+        sessionIds: ["root", "child", "sibling"],
+      },
+      {
+        rootSessionId: "standalone",
+        latestModifiedAt: "2026-01-03T00:00:00.000Z",
+        sessionIds: ["standalone"],
+      },
+    ]);
+
+    store.toggleFamilyCollapsed("root");
+    expect(
+      store.activeProjectSessionFamilies[0]?.sessions.map((session) => session.sessionId),
+    ).toEqual(["root"]);
+    expect(store.activeProjectSessionFamilies[0]?.latestModifiedAt).toBe(
+      "2026-01-04T00:00:00.000Z",
+    );
+    store[Symbol.dispose]();
+  });
+
   it("does not count expanded family children toward the project session limit", () => {
     const summaries = Array.from({ length: 10 }, (_, index) => {
       const parentId = `parent-${index}`;

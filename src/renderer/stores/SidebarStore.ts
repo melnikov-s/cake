@@ -228,10 +228,37 @@ export class SidebarStore extends Store<SidebarStoreProps> {
     this.navigationMode = "activity";
   }
 
-  get activeProjectSessions() {
-    return this.props.catalog.sessions
-      .filter((session) => !session.resolved)
-      .sort((left, right) => right.modifiedAt.localeCompare(left.modifiedAt));
+  get activeProjectSessionFamilies() {
+    const sessions = this.props.catalog.sessions.filter((session) => !session.resolved);
+    const byId = new Map(sessions.map((session) => [session.sessionId, session]));
+    const roots = sessions.filter(
+      (session) =>
+        !session.familyParentSessionId ||
+        session.familyParentSessionId === session.sessionId ||
+        !byId.has(session.familyParentSessionId),
+    );
+    const latestActivity = (session: (typeof sessions)[number]): string =>
+      (session.familyChildSessionIds ?? []).reduce((latest, id) => {
+        const child = byId.get(id);
+        if (!child) return latest;
+        const childLatest = latestActivity(child);
+        return childLatest > latest ? childLatest : latest;
+      }, session.modifiedAt);
+    const flatten = (session: (typeof sessions)[number]): Array<(typeof sessions)[number]> => {
+      if (!session.familyChildSessionIds?.length || this.isFamilyCollapsed(session.sessionId))
+        return [session];
+      const children = session.familyChildSessionIds
+        .flatMap((id) => (byId.get(id) ? [byId.get(id)!] : []))
+        .sort((left, right) => (left.familyChildOrder ?? 0) - (right.familyChildOrder ?? 0));
+      return [session, ...children.flatMap(flatten)];
+    };
+    return roots
+      .map((root) => ({
+        rootSessionId: root.sessionId,
+        latestModifiedAt: latestActivity(root),
+        sessions: flatten(root),
+      }))
+      .sort((left, right) => right.latestModifiedAt.localeCompare(left.latestModifiedAt));
   }
 
   get activeCakeChatSessions() {

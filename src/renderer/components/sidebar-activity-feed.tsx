@@ -45,12 +45,20 @@ export const SidebarActivityFeed = observer(function SidebarActivityFeed({
   onOpenCakeChat(sessionId?: string): void;
 }) {
   const entries = [
-    ...store.activeProjectSessions.map((session) => ({ kind: "project" as const, session })),
-    ...store.activeCakeChatSessions.map((session) => ({ kind: "cake-chat" as const, session })),
-  ].sort((left, right) => right.session.modifiedAt.localeCompare(left.session.modifiedAt));
+    ...store.activeProjectSessionFamilies.map((family) => ({
+      kind: "project" as const,
+      modifiedAt: family.latestModifiedAt,
+      family,
+    })),
+    ...store.activeCakeChatSessions.map((session) => ({
+      kind: "cake-chat" as const,
+      modifiedAt: session.modifiedAt,
+      session,
+    })),
+  ].sort((left, right) => right.modifiedAt.localeCompare(left.modifiedAt));
   const groups = new Map<string, typeof entries>();
   for (const entry of entries) {
-    const key = dayKey(entry.session.modifiedAt);
+    const key = dayKey(entry.modifiedAt);
     const group = groups.get(key) ?? [];
     group.push(entry);
     groups.set(key, group);
@@ -62,16 +70,17 @@ export const SidebarActivityFeed = observer(function SidebarActivityFeed({
   return (
     <div data-slot="activity-feed" className="space-y-4">
       {[...groups.values()].map((group) => (
-        <section key={dayKey(group[0]!.session.modifiedAt)}>
+        <section key={dayKey(group[0]!.modifiedAt)}>
           <h2 className="px-2 pb-1.5 text-[13px] font-medium text-muted-foreground">
-            {dayLabel(group[0]!.session.modifiedAt, store.now)}
+            {dayLabel(group[0]!.modifiedAt, store.now)}
           </h2>
-          <AnimatedList className="flex flex-col space-y-0.5">
-            {group.map(({ kind, session }) => {
-              const selected =
-                shell.selection.kind === (kind === "project" ? "project-session" : "cake-chat") &&
-                shell.selection.sessionId === session.sessionId;
-              if (kind === "cake-chat") {
+          <AnimatedList className="flex flex-col space-y-0.5 pl-2">
+            {group.map((entry) => {
+              if (entry.kind === "cake-chat") {
+                const { session } = entry;
+                const selected =
+                  shell.selection.kind === "cake-chat" &&
+                  shell.selection.sessionId === session.sessionId;
                 const running = cakeChat.registry.find(session.sessionId)?.streaming === true;
                 return (
                   <SidebarSessionItem
@@ -96,43 +105,56 @@ export const SidebarActivityFeed = observer(function SidebarActivityFeed({
                   />
                 );
               }
-              const projectName = projects.nameForPath(session.projectPath);
               return (
-                <SidebarSessionItem
-                  key={`project:${session.sessionId}`}
-                  store={store}
-                  session={session}
-                  managedWorktree={store.managedWorktree(session.workingDirectory)}
-                  selected={selected}
-                  paneNumber={chat.paneNumber?.(session.sessionId)}
-                  resolved={false}
-                  activity={store.sessionActivityForDisplay(session)}
-                  labels={store.sessionLabels(session.sessionId)}
-                  avatarSeed={store.sessionAvatarSeed(session.sessionId)}
-                  avatarsEnabled={appearance.sessionAvatarsEnabled}
-                  source={{
-                    kind: "project",
-                    name: projectName,
-                    avatarSeed: projectName,
-                    showAvatar: appearance.projectAvatarsEnabled,
-                  }}
-                  onOpen={onOpenSession}
-                  onToggleFamily={(sessionId) => store.toggleFamilyCollapsed(sessionId)}
-                  familyCollapsed={store.isFamilyCollapsed(session.sessionId)}
-                  onRename={(sessionId, name) =>
-                    void chat.sessionManagementStore.renameSession(sessionId, name)
-                  }
-                  onResolve={(sessionId, resolved) =>
-                    void store.setSessionResolved(sessionId, resolved)
-                  }
-                  onSetLabels={(sessionId, labelIds) =>
-                    void store.setSessionLabels(sessionId, labelIds)
-                  }
-                  onDelete={(sessionId) => void store.deleteSession(sessionId)}
-                  onMarkUnread={(sessionId, unread) =>
-                    void store.setSessionUnread(sessionId, unread)
-                  }
-                />
+                <div
+                  key={`project-family:${entry.family.rootSessionId}`}
+                  data-animated-list-key={`project-family:${entry.family.rootSessionId}`}
+                  className="flex flex-col space-y-0.5"
+                >
+                  {entry.family.sessions.map((session) => {
+                    const selected =
+                      shell.selection.kind === "project-session" &&
+                      shell.selection.sessionId === session.sessionId;
+                    const projectName = projects.nameForPath(session.projectPath);
+                    return (
+                      <SidebarSessionItem
+                        key={`project:${session.sessionId}`}
+                        store={store}
+                        session={session}
+                        managedWorktree={store.managedWorktree(session.workingDirectory)}
+                        selected={selected}
+                        paneNumber={chat.paneNumber?.(session.sessionId)}
+                        resolved={false}
+                        activity={store.sessionActivityForDisplay(session)}
+                        labels={store.sessionLabels(session.sessionId)}
+                        avatarSeed={store.sessionAvatarSeed(session.sessionId)}
+                        avatarsEnabled={appearance.sessionAvatarsEnabled}
+                        source={{
+                          kind: "project",
+                          name: projectName,
+                          avatarSeed: projectName,
+                          showAvatar: appearance.projectAvatarsEnabled,
+                        }}
+                        onOpen={onOpenSession}
+                        onToggleFamily={(sessionId) => store.toggleFamilyCollapsed(sessionId)}
+                        familyCollapsed={store.isFamilyCollapsed(session.sessionId)}
+                        onRename={(sessionId, name) =>
+                          void chat.sessionManagementStore.renameSession(sessionId, name)
+                        }
+                        onResolve={(sessionId, resolved) =>
+                          void store.setSessionResolved(sessionId, resolved)
+                        }
+                        onSetLabels={(sessionId, labelIds) =>
+                          void store.setSessionLabels(sessionId, labelIds)
+                        }
+                        onDelete={(sessionId) => void store.deleteSession(sessionId)}
+                        onMarkUnread={(sessionId, unread) =>
+                          void store.setSessionUnread(sessionId, unread)
+                        }
+                      />
+                    );
+                  })}
+                </div>
               );
             })}
           </AnimatedList>

@@ -2,7 +2,15 @@ import { useState } from "react";
 import { observer } from "r-state-tree/react";
 import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
-import { BackIcon, CheckIcon, ChevronIcon, PlusIcon, SettingsIcon, SortIcon } from "./ui/icons";
+import {
+  BackIcon,
+  CheckIcon,
+  ChevronIcon,
+  ExpandIcon,
+  PlusIcon,
+  SettingsIcon,
+  SortIcon,
+} from "./ui/icons";
 import { IconButton } from "./ui/icon-button";
 import { SidebarSessionItem } from "./sidebar-session-item";
 import type { AppShellStore } from "../stores/AppShellStore";
@@ -146,45 +154,55 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
           {!resolved && (
             <>
               {!focusMode && (
-                <Popover open={sortMenuOpen} onOpenChange={setSortMenuOpen}>
-                  <PopoverIconTrigger
-                    className="size-6 flex items-center justify-center rounded text-muted-foreground hover:bg-sidebar-hover hover:text-foreground opacity-0 transition-opacity group-hover/proj:opacity-100 focus-visible:opacity-100 aria-expanded:opacity-100"
-                    tooltip={`Sort sessions by ${store.projectSessionSort(path)}`}
-                    ariaLabel={`Sort sessions in ${projects.nameFromPath(path)}`}
-                    aria-haspopup="menu"
+                <>
+                  <IconButton
+                    className="size-6 flex items-center justify-center rounded text-muted-foreground hover:bg-sidebar-hover hover:text-foreground opacity-0 transition-opacity group-hover/proj:opacity-100 focus-visible:opacity-100"
+                    tooltip="Focus on project"
+                    ariaLabel={`Focus on ${projects.nameFromPath(path)}`}
+                    onClick={() => onToggleFocus?.(path)}
                   >
-                    <SortIcon />
-                  </PopoverIconTrigger>
-                  <PopoverContent
-                    side="bottom"
-                    align="end"
-                    role="menu"
-                    aria-label={`Sort sessions in ${projects.nameFromPath(path)}`}
-                    className="w-40 rounded-lg p-1"
-                  >
-                    {(["date", "label"] as const).map((sort) => {
-                      const selected = store.projectSessionSort(path) === sort;
-                      return (
-                        <Button
-                          key={sort}
-                          variant="ghost"
-                          role="menuitemradio"
-                          aria-checked={selected}
-                          className="h-8 w-full justify-start gap-2 rounded-md px-2 text-xs font-normal"
-                          onClick={() => {
-                            store.setProjectSessionSort(path, sort);
-                            setSortMenuOpen(false);
-                          }}
-                        >
-                          <span className="flex w-4 justify-center">
-                            {selected && <CheckIcon />}
-                          </span>
-                          By {sort === "date" ? "date" : "label"}
-                        </Button>
-                      );
-                    })}
-                  </PopoverContent>
-                </Popover>
+                    <ExpandIcon />
+                  </IconButton>
+                  <Popover open={sortMenuOpen} onOpenChange={setSortMenuOpen}>
+                    <PopoverIconTrigger
+                      className="size-6 flex items-center justify-center rounded text-muted-foreground hover:bg-sidebar-hover hover:text-foreground opacity-0 transition-opacity group-hover/proj:opacity-100 focus-visible:opacity-100 aria-expanded:opacity-100"
+                      tooltip={`Sort sessions by ${store.projectSessionSort(path)}`}
+                      ariaLabel={`Sort sessions in ${projects.nameFromPath(path)}`}
+                      aria-haspopup="menu"
+                    >
+                      <SortIcon />
+                    </PopoverIconTrigger>
+                    <PopoverContent
+                      side="bottom"
+                      align="end"
+                      role="menu"
+                      aria-label={`Sort sessions in ${projects.nameFromPath(path)}`}
+                      className="w-40 rounded-lg p-1"
+                    >
+                      {(["date", "label"] as const).map((sort) => {
+                        const selected = store.projectSessionSort(path) === sort;
+                        return (
+                          <Button
+                            key={sort}
+                            variant="ghost"
+                            role="menuitemradio"
+                            aria-checked={selected}
+                            className="h-8 w-full justify-start gap-2 rounded-md px-2 text-xs font-normal"
+                            onClick={() => {
+                              store.setProjectSessionSort(path, sort);
+                              setSortMenuOpen(false);
+                            }}
+                          >
+                            <span className="flex w-4 justify-center">
+                              {selected && <CheckIcon />}
+                            </span>
+                            By {sort === "date" ? "date" : "label"}
+                          </Button>
+                        );
+                      })}
+                    </PopoverContent>
+                  </Popover>
+                </>
               )}
               <IconButton
                 className="size-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-sidebar-hover opacity-0 group-hover/proj:opacity-100 focus-visible:opacity-100 transition-opacity"
