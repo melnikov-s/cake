@@ -718,15 +718,7 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
         "application-hotkey-input",
       ),
     artifacts: (connectionId) =>
-      focused(
-        connectionId,
-        "artifacts",
-        "artifact-updated",
-        "artifact-requested",
-        "widget-preview-requested",
-        "widget-preview-dismissed",
-        "ui-request",
-      ),
+      focused(connectionId, "artifacts", "artifact-updated", "artifact-requested", "ui-request"),
     terminals: (connectionId) => focused(connectionId, "terminals", "terminal-toggle-requested"),
     vscode: (connectionId) =>
       focused(

@@ -33,14 +33,6 @@ export type StoreEvent =
       artifactRequestId: string;
       record: ArtifactRecord;
     }
-  | { type: "widget-preview-dismissed"; token: string }
-  | {
-      type: "widget-preview-requested";
-      operationId: string;
-      previewRequestId: string;
-      sessionId: string;
-      widget: { token: string; url: string };
-    }
   | {
       type: "ui-requested";
       operationId: string;
@@ -91,15 +83,6 @@ export function toStoreEvent(event: CakeEvent): StoreEvent | undefined {
       operationId: event.requestId,
       artifactRequestId: event.artifactRequestId,
       record: event.record,
-    };
-  if (event.type === "widget-preview-dismissed") return event;
-  if (event.type === "widget-preview-requested")
-    return {
-      type: event.type,
-      operationId: event.requestId,
-      previewRequestId: event.previewRequestId,
-      sessionId: event.sessionId,
-      widget: event.widget,
     };
   if (event.type === "changelog-snapshot")
     return {

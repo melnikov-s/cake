@@ -201,20 +201,22 @@ Cake checks that the active configured model is available, authenticated and
 supports image input, then starts a hidden, persisted Pi session with tools,
 extensions, skills, context files and project trust disabled. That agent returns
 one React component from the untrusted brief. Electron main compile-checks it and
-loads the compiled sandbox document in a main-owned hidden capture surface with
-deterministic artifact-panel dimensions. The surface waits for the same bounded
-ready/runtime protocol used by normal widget display, captures only widget pixels,
-and is never composited into a user's Cake window. Capture lifetimes are serialized
-so one candidate cannot capture another's pixels.
+loads the compiled sandbox document in a fixed-size, main-owned hidden offscreen
+`BrowserWindow` with deterministic artifact-panel dimensions. The host waits for
+the same bounded ready/runtime protocol used by normal widget display, then captures
+only its opaque-origin sandbox iframe with `webContents.capturePage`. Capture
+lifetimes are serialized process-wide so one candidate cannot capture another's
+pixels. The host is never associated with a renderer session, composited into a
+user's Cake window, or otherwise shown in the application.
 
-The frame reports readiness after its bounded font/layout-settle policy; resize
-reporting continues for later interaction. A restricted specialist receives the
+The frame reports readiness after its bounded font/layout-settle policy. A restricted
+specialist receives the
 PNG, source, brief and bounded diagnostics. It returns `ACCEPT_CURRENT` or complete
 replacement source. At most two replacements are permitted across compilation,
 runtime and visual repairs combined. Every successfully rendered candidate,
 including the final replacement, receives screenshot review. Cancellation and
-renderer/provider failures stop the operation rather than consuming source-repair
-attempts. Previews and transient compiled tokens are released on settlement.
+capture/provider infrastructure failures stop the operation rather than consuming source-repair
+attempts. Hidden windows and transient compiled tokens are released on settlement.
 
 Only accepted source reaches existing widget artifact persistence and the Pi
 pointer/fallback path. Review turns use separate persisted restricted Pi sessions

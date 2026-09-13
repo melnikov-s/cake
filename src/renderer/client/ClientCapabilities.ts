@@ -503,21 +503,6 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
             }),
           options,
         ).then(() => undefined),
-      respondToWidgetPreview: (input, options) =>
-        execute(
-          "artifacts.respond-widget-preview",
-          (client) =>
-            client.artifacts["respond-widget-preview"]({
-              requestId: input.operationId,
-              previewRequestId: input.previewRequestId,
-              sessionId: input.sessionId,
-              token: input.token,
-              cancelled: input.cancelled,
-              rect: input.rect,
-              diagnostics: [...input.diagnostics],
-            }),
-          options,
-        ).then(() => undefined),
       respondToUi: (input, options) =>
         execute(
           "artifacts.respond-ui",

@@ -149,9 +149,7 @@ export const makeMainLive = (options: MainLiveOptions) => {
     SubagentCoordinatorLive,
     WorktreeLandingCoordinatorLive,
     RendererRequestCoordinatorLive,
-    RenderedWidgetCaptureLive.pipe(
-      Layer.provide(Layer.merge(NativeServicesLive, RendererRequestCoordinatorLive)),
-    ),
+    RenderedWidgetCaptureLive,
     makeInlineWidgetsLive({ paths, publish: publishInlineWidget }),
     makeSubagentEnvironmentLive({
       homeDirectory,

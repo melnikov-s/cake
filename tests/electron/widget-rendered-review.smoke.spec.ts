@@ -69,6 +69,7 @@ test("production widget review captures settled sandbox pixels before persistenc
       workingDirectory: string;
       artifactId: string;
       source: string;
+      cancelAfterMs?: number;
     }) =>
       application.evaluate((_electron, value) => {
         const operation = (
@@ -79,6 +80,13 @@ test("production widget review captures settled sandbox pixels before persistenc
         if (!operation) throw new Error("Widget capture smoke hook is unavailable");
         return operation(value);
       }, input);
+    const captureWindowCount = () =>
+      application.evaluate(
+        ({ BrowserWindow }) =>
+          BrowserWindow.getAllWindows().filter(
+            (window) => window.getTitle() === "Cake Widget Review Capture",
+          ).length,
+      );
     const source = `import React, { useEffect, useState } from "react";
 export default function DelayedReviewFixture() {
   const [settled, setSettled] = useState(false);
@@ -94,12 +102,30 @@ export default function DelayedReviewFixture() {
       artifactId: "delayed-review",
       source,
     });
-    await expect(page.getByRole("dialog", { name: "Reviewing rendered widget" })).toBeVisible();
+    await expect
+      .poll(() =>
+        application.evaluate(({ BrowserWindow }) => {
+          const captureWindow = BrowserWindow.getAllWindows().find(
+            (window) => window.getTitle() === "Cake Widget Review Capture",
+          );
+          return captureWindow
+            ? {
+                visible: captureWindow.isVisible(),
+                focusable: captureWindow.isFocusable(),
+                offscreen: captureWindow.webContents.getURL().startsWith("data:"),
+              }
+            : undefined;
+        }),
+      )
+      .toEqual({ visible: false, focusable: false, offscreen: true });
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(page.getByText("Widget specialist")).toHaveCount(0);
     const result = await capturePromise;
+    await expect.poll(captureWindowCount).toBe(0);
     expect(result.persistedBeforeCapture).toBe(false);
     expect(result.persistedAfterCapture).toBe(true);
     expect(result.diagnostics).toContain("verticalOverflow=false");
-    await expect(page.getByRole("dialog", { name: "Reviewing rendered widget" })).toHaveCount(0);
+    await expect(page.getByRole("dialog")).toHaveCount(0);
 
     const capturedPng = Buffer.from(result.pngBase64, "base64");
     await mkdir(join(repositoryRoot, ".visual-captures"), { recursive: true });
@@ -130,7 +156,8 @@ export default function DelayedReviewFixture() {
     expect(colors.cyan).toBeGreaterThan(20_000);
     expect(colors.red).toBeGreaterThan(5_000);
     expect(colors.magenta).toBe(0);
-    expect(result.diagnostics.some((item) => /^widget=5\d\dx/.test(item))).toBe(true);
+    expect(result.diagnostics).toContain("widget=560x480");
+    expect(result.diagnostics).toContain("host=hidden-offscreen");
     expect(colors.size.width).toBeGreaterThan(800);
     expect(colors.size.width).toBeLessThan(1_200);
 
@@ -143,18 +170,20 @@ export default function DelayedReviewFixture() {
           'export default function RuntimeFailure(){ throw new Error("RENDER REVIEW FAILURE"); }',
       }),
     ).rejects.toThrow("RENDER REVIEW FAILURE");
+    await expect.poll(captureWindowCount).toBe(0);
 
-    const cancelled = capture({
-      sessionId: "widget-review-session",
-      workingDirectory: project,
-      artifactId: "cancelled-review",
-      source:
-        "export default function SlowCandidate(){ return <main style={{minHeight:430}}>CANCEL ME</main>; }",
-    });
-    const cancelledExpectation = expect(cancelled).rejects.toThrow(/cancelled/i);
-    await expect(page.getByRole("dialog", { name: "Reviewing rendered widget" })).toBeVisible();
-    await page.getByRole("button", { name: "Exit fullscreen Reviewing rendered widget" }).click();
-    await cancelledExpectation;
+    await expect(
+      capture({
+        sessionId: "widget-review-session",
+        workingDirectory: project,
+        artifactId: "cancelled-review",
+        source:
+          "export default function SlowCandidate(){ return <main style={{minHeight:430}}>CANCEL ME</main>; }",
+        cancelAfterMs: 100,
+      }),
+    ).rejects.toThrow(/cancelled/i);
+    await expect.poll(captureWindowCount).toBe(0);
+    await expect(page.getByRole("dialog")).toHaveCount(0);
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

@@ -500,7 +500,8 @@ The window Store hierarchy mirrors the product surfaces:
   artifacts are explicit substantial or reusable deliverables, not a presentation selected from syntax: ordinary Markdown, including
   Mermaid and small tables, stays inline. Rich architectural overviews use the unified delegated React widget path: a restricted specialist
   can compose React Flow, optional ELK layout, explanations, and controls inside the widget sandbox. Generated candidates are compile-checked
-  and reviewed from actual widget-only Electron screenshots before publication, with at most two replacements. Original historical graph blobs
+  and reviewed from actual widget-only screenshots captured in a serialized, main-owned hidden offscreen Electron host before publication,
+  with at most two replacements. Original historical graph blobs
   and Pi pointers remain immutable; storage projects their readable Markdown fallbacks instead of maintaining a second graph renderer.
   The session header opens the panel, and creating an artifact opens and selects it automatically.
   Session-tree branch changes and tool compaction neither move nor duplicate artifacts. Blocking requests remain inline interactions and

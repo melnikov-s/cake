@@ -1,5 +1,5 @@
 import { Cause, Effect, Exit, ManagedRuntime, Schema } from "effect";
-import { app, BrowserWindow, nativeTheme } from "electron";
+import { app, nativeTheme } from "electron";
 import { cakeEventSchema, type CakeEvent } from "../ipc/cake-rpc-contract";
 import { AgentAvailability } from "../services/pi/AgentAvailability";
 import { Electron } from "../services/electron/Electron";
@@ -9,7 +9,6 @@ import {
 } from "../services/widgets/inline-widget-protocol";
 import { InlineWidgets } from "../services/widgets/InlineWidgets";
 import { RenderedWidgetCapture } from "../services/widgets/RenderedWidgetCapture";
-import { RendererRequestCoordinator } from "../services/renderer-requests/RendererRequestCoordinator";
 import { ArtifactStorage } from "../services/storage/ArtifactStorage";
 import { resolveCakePaths } from "../config/CakePaths";
 import { MainApplication } from "./MainApplication";
@@ -104,24 +103,13 @@ if (process.env.CAKE_ELECTRON_SMOKE === "1") {
       workingDirectory: string;
       artifactId: string;
       source: string;
+      cancelAfterMs?: number;
     }) {
       return mainRuntime.runPromise(
         Effect.gen(function* () {
           const widgets = yield* InlineWidgets;
           const captures = yield* RenderedWidgetCapture;
-          const coordinator = yield* RendererRequestCoordinator;
           const artifacts = yield* ArtifactStorage;
-          const window = BrowserWindow.getAllWindows().find(
-            (candidate) =>
-              !candidate.isDestroyed() &&
-              !candidate.webContents.getURL().includes("rpc-test-harness"),
-          );
-          if (!window) throw new Error("Cake renderer window is unavailable");
-          yield* coordinator.registerProjectSession(input.sessionId, input.workingDirectory);
-          yield* coordinator.bind(
-            { _tag: "ProjectSession", sessionId: input.sessionId },
-            window.webContents.id,
-          );
           const before = yield* artifacts.get(
             input.workingDirectory,
             input.sessionId,
@@ -132,9 +120,21 @@ if (process.env.CAKE_ELECTRON_SMOKE === "1") {
             capability: "display",
             source: input.source,
           });
+          const controller = new AbortController();
+          const cancelTimer =
+            input.cancelAfterMs === undefined
+              ? undefined
+              : setTimeout(() => controller.abort(), input.cancelAfterMs);
           const capture = yield* captures
-            .capture(input.sessionId, compiled.widget, new AbortController().signal)
-            .pipe(Effect.ensuring(Effect.sync(() => revokeInlineWidget(compiled.widget.token))));
+            .capture(input.sessionId, compiled.widget, controller.signal)
+            .pipe(
+              Effect.ensuring(
+                Effect.sync(() => {
+                  if (cancelTimer) clearTimeout(cancelTimer);
+                  revokeInlineWidget(compiled.widget.token);
+                }),
+              ),
+            );
           const record = yield* artifacts.upsert(input.workingDirectory, {
             protocol: "cake.artifact/v1",
             id: input.artifactId,

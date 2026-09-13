@@ -185,13 +185,11 @@ A main-process `interactiveExplanations` domain module should own this policy:
    `InlineWidgets`. Compiler failures become bounded diagnostics. The same specialist may revise
    after a compiler failure. A compile pass does not trigger a separate model call that merely
    restates the diagnostic result, but it still proceeds to the mandatory rendered screenshot review.
-4. **Render and inspect.** Ask the renderer connection bound to the target Project Session to mount
-   the candidate in a transient explanation preview using the same `WidgetArtifact` iframe path,
-   normal artifact-panel width, theme, and shared fullscreen surface when fullscreen review is
-   requested. Wait for token-correlated `ready`, stabilized height/fonts, and a short bounded layout
-   settle condition. Collect runtime error messages and deterministic diagnostics (viewport,
-   scroll width/height, clipped/overflow flags, target bounds). Then capture the actual Electron
-   pixels as described below.
+4. **Render and inspect.** Main mounts the candidate in a fixed 560×480 hidden offscreen Electron
+   host containing the same opaque-origin, `allow-scripts` sandbox iframe used for publication. Wait
+   for token-correlated `ready` after stabilized height/fonts and bounded layout settling, collect
+   runtime errors and deterministic viewport/overflow/device-scale diagnostics, then capture the
+   actual Electron pixels as described below. No Project Session renderer participates.
 5. **Review every rendered candidate; revise at most twice.** After the initial candidate—and after
    every revision that reaches a renderable state—send the same specialist the bounded diagnostics
    and PNG as Pi image content. Passing compile, runtime, and layout checks never bypasses this first
@@ -219,11 +217,11 @@ A main-process `interactiveExplanations` domain module should own this policy:
    immediate retry for the pointer/event; if it still fails, report a completed-with-warning outcome
    and rely on normal artifact storage hydration to expose the committed revision. Do not claim the
    old revision survived and do not add a cross-authority transaction or rollback. If `upsert`
-   fails, no commit occurred and the operation fails normally. Discard the transient preview and
-   capture bytes after settlement.
+   fails, no commit occurred and the operation fails normally. Destroy the hidden capture host and
+   discard capture bytes after settlement.
 
 7. **Fail or cancel truthfully.** Before the publication boundary, exhausted attempts, model
-   failure, renderer loss, timeout, or cancellation unmounts the preview and settles with a typed
+   failure, capture-host loss, timeout, or cancellation destroys the hidden host and settles with a typed
    failure/cancellation. No rejected pre-commit candidate calls `upsert`, appends a pointer, or emits
    `artifact-updated`; a prior successful revision stays selected/renderable. After a successful
    `upsert`, use the committed outcome above rather than reporting failure or cancellation.
@@ -246,42 +244,15 @@ iframe, and does not require macOS Screen Recording/display-media permission bec
 capturing another application or the desktop. The Live implementation should nevertheless surface
 Electron capture failures as typed errors rather than assuming availability.
 
-Targeting requires a narrow reverse renderer request, analogous to
-`RendererRequestCoordinator` rather than a general screenshot RPC:
+The Service owns a fixed-size, frameless `BrowserWindow` configured with `show: false`, offscreen
+rendering, sandboxing, context isolation, no Node integration, no focus or
+taskbar presence, and denied permissions/popups. Its data-URL host may frame only `cake-widget:` and
+creates an iframe with `sandbox="allow-scripts"` and no referrer. Main accepts only token-correlated
+widget bridge messages from that frame, bounds diagnostics and runtime errors, and captures the
+entire deterministic content viewport after two animation frames. The window is never registered as
+a renderer connection or associated with a Project Session.
 
-```ts
-interface PrepareExplanationPreviewRequest {
-  readonly operationId: string;
-  readonly sessionId: string;
-  readonly compiled: CompiledInlineWidget; // capability URL/token created by main
-  readonly mode: "panel" | "fullscreen";
-}
-
-interface PreparedExplanationPreview {
-  readonly operationId: string;
-  readonly token: string;
-  readonly rect: {
-    readonly x: number;
-    readonly y: number;
-    readonly width: number;
-    readonly height: number;
-  };
-  readonly viewport: {
-    readonly width: number;
-    readonly height: number;
-    readonly deviceScaleFactor: number;
-  };
-  readonly diagnostics: ReadonlyArray<RenderDiagnostic>;
-}
-```
-
-Main chooses the renderer only from the coordinator's existing Project Session binding and accepts
-one response only from that connection, session, operation, and current compilation token. The
-renderer chooses the target through a dedicated preview-host ref/data identity owned by trusted
-Cake code—not a selector supplied by the model—and reports `getBoundingClientRect()` after the
-frame's token-correlated ready/height events. Main validates finite integral bounds, positive
-bounded dimensions, intersection with the selected `BrowserWindow` content bounds, and a maximum
-pixel/PNG size before calling `capturePage`. Main attaches the PNG to the private specialist prompt
+Main attaches the PNG to the private specialist prompt
 as base64 `image/png`; it is not exposed through preload, written to the Project, or persisted in
 the artifact repository. It is **not memory-only** when the specialist Pi Session is persisted:
 Pi 0.85.1 builds the user message with the supplied image blocks and
@@ -290,21 +261,14 @@ Pi 0.85.1 builds the user message with the supplied image blocks and
 The specialist-session retention/deletion policy therefore also governs screenshot retention. A
 debug export can be a later explicit user action, not default behavior.
 
-The request and capture run in the operation Scope. Abort interrupts the pending renderer request
-and specialist turn; the renderer unmounts on its request cancellation, session replacement,
-connection close, token replacement, or operation settlement. Electron's `capturePage` Promise has
-no native abort parameter, so cancellation must stop awaiting it, discard any late `NativeImage`,
-and prevent revision/model/publication continuation; its short per-renderer serialization slot is
-released when the native call actually settles. Closing the only bound renderer is a failure (or
-cancellation if user-initiated), not permission to capture another window. Late ready, diagnostic,
-bounds, or capture results are ignored. Capture should serialize per renderer connection so two
-workflows cannot replace each other's preview target; specialist/model work outside that short
-render/capture section may remain independently bounded.
+The render and capture run in the operation Scope and serialize process-wide through one Service-owned
+semaphore. Abort destroys a host that is still preparing. Electron's `capturePage` Promise has no
+native abort parameter, so once capture begins the native call, serialization permit, and window stay
+alive until it settles; cancellation then discards the late `NativeImage` and prevents review or
+publication. Scope finalization always destroys the window, and candidate finalization always revokes
+the transient compiled token.
 
-Normal-panel capture is required for the first version because normal readability is an acceptance
-criterion. Fullscreen capture can use a second preparation/capture in the same attempt when the
-brief or evaluation policy requires it. This reuses Cake's actual `FullscreenSurface` registration,
-which also suppresses overlapping native VS Code views. Runtime capture is evidence fed to the
+Runtime capture is evidence fed to the
 specialist; the repository visual harness remains the deterministic developer/CI tool for named
 fixtures and reviewed screenshots. Neither replaces targeted Electron interaction tests.
 
@@ -316,16 +280,13 @@ fixtures and reviewed screenshots. Neither replaces targeted Electron interactio
 | Specialist model policy                    | Cake configured Model Presets; `interactiveExplanations` snapshots resolved selection, Pi validates capability | Resolution at operation start                                                             | Existing Cake application configuration                                     | No fallback or live rebinding during a run                                     |
 | Specialist transcript                      | Pi Session / restricted Pi runtime                                                                             | Initial generation plus up to three feedback turns; at most two return replacement source | Private Pi session directory; retention/cleanup policy like widget sidecars | One serialized turn; operation abort calls Pi abort and releases Scope         |
 | Candidate source and compiled capability   | Main operation coordinator plus `InlineWidgets`/scheme registry                                                | One attempt                                                                               | None                                                                        | Replaced only by next attempt; old token invalidated/removed                   |
-| Preview readiness, bounds, and diagnostics | Focused renderer preview Store for presentation; main operation validates correlated response                  | One mounted attempt                                                                       | None                                                                        | Latest token wins; Store passes `AbortSignal`, rejects late results            |
-| PNG feedback                               | Electron main until prompt handoff; then Pi owns the private specialist message                                | Operation plus retained private Pi Session                                                | Base64 image persists in private Pi JSONL; never artifact/Project storage   | Capture serialized per renderer; late native results discarded after cancel    |
+| Capture readiness, bounds, and diagnostics | Main-owned hidden offscreen capture host                                                                       | One mounted attempt                                                                       | None                                                                        | Process-wide serialization; abort/finalization destroys host                   |
+| PNG feedback                               | Electron main until prompt handoff; then Pi owns the private specialist message                                | Operation plus retained private Pi Session                                                | Base64 image persists in private Pi JSONL; never artifact/Project storage   | Capture serialized process-wide; late native results discarded after cancel    |
 | Operation phase/progress                   | Main process operation coordinator; renderer gets current-first projection                                     | Accepted operation/process lifetime                                                       | None in v1                                                                  | Reject same artifact while active; bounded global parallelism; explicit cancel |
 | Published artifact revision                | `ArtifactStorage`                                                                                              | Session/artifact lineage                                                                  | Content-addressed immutable blob plus atomic metadata; Pi pointer           | Existing per-artifact serialization and exact `+1` revision rule               |
 | Artifact panel selection/open state        | Existing session `ArtifactWorkspaceStore`                                                                      | Loaded Project Session Store                                                              | Existing renderer policy (currently not snapshot-decorated)                 | Existing event ordering; not workflow authority                                |
 
-Effect belongs in Services, the free `interactiveExplanations` domain operation, coordinator, RPC,
-and renderer runtime/client adapters. The focused renderer Store sees typed Promise methods and
-plain snapshots only. React keeps only iframe refs and DOM measurements; it does not own retry,
-revision, publication, or cancellation policy.
+Effect belongs in Services, the free `interactiveExplanations` domain operation, and main runtime composition. No renderer Store, RPC, event, component, or app mount exists for pre-publication capture.
 
 ## Failure and trust boundaries
 
@@ -360,15 +321,15 @@ graph renderer.
    the mandatory final screenshot acceptance turn—at most three feedback turns total—with real
    abort. Prove model resolution, no fallback, limits, and cancellation with deterministic Service
    Layers.
-2. **Preview and capture vertical slice (Astra/UI + Electron owner).** Add the focused preview Store
-   and shared artifact-surface composition, token-correlated readiness/diagnostics, reverse request,
-   and main `RenderedSurfaceCapture` using `webContents.capturePage`. Verify with a real isolated
-   Electron test that the captured PNG contains the sandboxed widget at normal and fullscreen sizes,
-   runtime errors propagate, connection loss cancels, and no display-media permission/API is used.
+2. **Hidden capture vertical slice (Electron owner).** Add token-correlated readiness/diagnostics
+   and main `RenderedWidgetCapture` using a hidden offscreen `BrowserWindow` and
+   `webContents.capturePage`. Verify with a real isolated Electron test that the captured PNG contains
+   the sandboxed widget, runtime errors and cancellation propagate, resources serialize and clean up,
+   and no visible renderer surface or display-media API is used.
 3. **Orchestration and atomic publication (Sol-sized).** Implement the main domain coordinator,
    attempt budget, per-artifact rejection/global bound, current-first progress Stream, cleanup, and
    publication through existing storage/pointer/event paths. Test initial success, compile then
-   visual revision, exhausted attempts, cancellation at each wait, stale renderer responses, and
+   visual revision, exhausted attempts, cancellation at each wait, capture failures, and
    preservation of the prior successful revision using deterministic fakes.
 4. **Kit and prototype extraction (Astra-sized, gated).** From two successful structurally different
    examples, publish only demonstrated kit primitives under one compiler allowlist entry. Add
@@ -389,10 +350,9 @@ graph renderer.
 - **Vision support:** rendered self-critique requires the resolved Astra model to advertise image
   input. If the configured model lacks it, v1 should fail preflight rather than silently omit the
   screenshot or switch models.
-- **Preview visibility:** decide whether generation preview is intentionally visible in the artifact
-  panel or mounted in a non-disruptive Cake-owned review surface. It must still be rendered and
-  capturable in the actual BrowserWindow; `display:none`, jsdom, a hidden synthetic HTML shell, or a
-  localhost page does not satisfy the requirement.
+- **Capture visibility:** generation review is intentionally invisible. It renders in a main-owned,
+  hidden offscreen Electron window with the production `cake-widget:` document inside an opaque-origin
+  sandbox iframe; it is not `display:none`, jsdom, or a localhost browser substitute.
 - **Acceptance trigger:** deterministic compile/runtime/layout checks are clear, but there is no
   trustworthy automatic visual-quality score. The first production cut should treat specialist
   critique plus those checks as advisory and keep explicit user regeneration/repair available; do

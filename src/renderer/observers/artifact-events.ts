@@ -27,7 +27,6 @@ export const observeArtifactEvents = (
         const storeEvent = toStoreEvent(event);
         if (!storeEvent) return;
         root.extensionUiStore.receive(storeEvent);
-        root.widgetPreviewStore.receive(storeEvent);
         if (storeEvent.type === "artifact-requested")
           root.sessionRegistry
             .findSession(storeEvent.record.artifact.sessionId)
