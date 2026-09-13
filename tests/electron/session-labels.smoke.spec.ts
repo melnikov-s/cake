@@ -129,13 +129,46 @@ test("customizes labels and assigns multiple labels from the sidebar avatar", as
       name: "Change session labels. Current labels: Unlabelled",
     });
     await expect(picker).toBeVisible();
+    await page.emulateMedia({ reducedMotion: "no-preference" });
     await picker.click();
+    const popup = page
+      .locator('[role="dialog"]')
+      .filter({ has: page.getByRole("group", { name: "Session labels" }) });
+    // Seek the real Electron animation to its overshoot rather than sleeping.
+    const peakScale = await popup.evaluate((element) => {
+      const animation = element.getAnimations()[0]!;
+      animation.pause();
+      animation.currentTime = 252;
+      const scale = new DOMMatrix(getComputedStyle(element).transform).a;
+      animation.finish();
+      return scale;
+    });
+    expect(peakScale).toBeGreaterThan(1);
     await page.getByRole("checkbox", { name: "In review" }).click();
     await page.getByRole("checkbox", { name: "Project QA" }).click();
     const selectedPicker = sessionItem.getByRole("button", {
       name: "Change session labels. Current labels: In review, Project QA",
     });
     await expect(selectedPicker).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(selectedPicker).toBeFocused();
+    // Closing disables the content immediately, then removes the visual shell.
+    await expect(page.getByRole("group", { name: "Session labels" })).toHaveCount(0);
+    await expect(page.locator('[role="dialog"][data-state="closed"]')).toHaveCount(0);
+    await selectedPicker.click();
+    await page.keyboard.press("Escape");
+    await selectedPicker.click();
+    await expect(page.getByRole("checkbox", { name: "In review" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    await page.keyboard.press("Escape");
+    await expect(page.locator('[role="dialog"][data-state="closed"]')).toHaveCount(0);
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await selectedPicker.click();
+    expect(await popup.evaluate((element) => element.getAnimations().length)).toBe(0);
+    await page.keyboard.press("Escape");
+    await expect(page.locator('[role="dialog"][data-state="closed"]')).toHaveCount(0);
     await expect(selectedPicker.locator('[data-slot="avatar"]')).toHaveAttribute(
       "data-session-label-color",
       /^oklch\(/,

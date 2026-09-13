@@ -116,6 +116,7 @@ export interface PopoverContentProps extends HTMLAttributes<HTMLDivElement> {
   anchorRef?: RefObject<HTMLButtonElement | null>;
   offset?: number;
   side?: PopoverSide;
+  motion?: "none" | "bouncy";
 }
 
 export function PopoverContent({
@@ -125,32 +126,95 @@ export function PopoverContent({
   className,
   offset = 8,
   side = "bottom",
+  motion = "none",
   style,
   ...props
 }: PopoverContentProps) {
   const { contentId, open, setOpen, triggerRef } = usePopoverContext("PopoverContent");
   const effectiveAnchorRef = anchorRef ?? triggerRef;
   const contentRef = useRef<HTMLDivElement>(null);
-  const [position, setPosition] = useState({ left: 0, top: 0, ready: false });
+  // DOM presence only: dismissal remains immediate while the visual shell collapses.
+  const [exiting, setExiting] = useState(false);
+  const interruptedFrame = useRef<Keyframe | null>(null);
+  const [position, setPosition] = useState({
+    left: 0,
+    top: 0,
+    originX: 0,
+    originY: 0,
+    ready: false,
+  });
   const updatePosition = useCallback(() => {
     const anchor = effectiveAnchorRef.current;
     const content = contentRef.current;
     if (!anchor || !content) return;
     const next = calculatePopoverPosition(
       anchor.getBoundingClientRect(),
-      content.getBoundingClientRect(),
+      { width: content.offsetWidth, height: content.offsetHeight },
       { width: window.innerWidth, height: window.innerHeight },
       side,
       align,
       offset,
     );
-    setPosition({ ...next, ready: true });
+    const anchorRect = anchor.getBoundingClientRect();
+    setPosition({
+      ...next,
+      originX: Math.max(
+        0,
+        Math.min(content.offsetWidth, anchorRect.left + anchorRect.width / 2 - next.left),
+      ),
+      originY: Math.max(
+        0,
+        Math.min(content.offsetHeight, anchorRect.top + anchorRect.height / 2 - next.top),
+      ),
+      ready: true,
+    });
   }, [align, effectiveAnchorRef, offset, side]);
 
   useLayoutEffect(() => {
     if (!open) return;
     updatePosition();
   }, [open, updatePosition, children]);
+
+  useLayoutEffect(() => {
+    const content = contentRef.current;
+    if (motion !== "bouncy" || !content) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setExiting(false);
+      return;
+    }
+    if (open) setExiting(true);
+    const from = interruptedFrame.current ?? {
+      opacity: open ? 0 : 1,
+      transform: open ? "scale(0.78, 0.86)" : "scale(1)",
+    };
+    interruptedFrame.current = null;
+    const animation = content.animate(
+      open
+        ? [
+            { ...from, easing: "cubic-bezier(0.22, 0.8, 0.3, 1)" },
+            { opacity: 1, transform: "scale(1.035, 1.02)", offset: 0.6, easing: "ease-in-out" },
+            { opacity: 1, transform: "scale(0.993, 0.996)", offset: 0.82, easing: "ease-in-out" },
+            { opacity: 1, transform: "scale(1)" },
+          ]
+        : [from, { opacity: 0, transform: "scale(0.78, 0.86)" }],
+      {
+        duration: open ? 420 : 180,
+        easing: open ? "linear" : "cubic-bezier(0.4, 0, 1, 1)",
+        fill: "both",
+      },
+    );
+    animation.onfinish = () => {
+      if (!open) setExiting(false);
+    };
+    return () => {
+      if (animation.playState === "running") {
+        const computed = getComputedStyle(content);
+        interruptedFrame.current = { opacity: computed.opacity, transform: computed.transform };
+      }
+      animation.onfinish = null;
+      animation.cancel();
+    };
+  }, [motion, open]);
 
   const prevOpenRef = useRef(false);
   useEffect(() => {
@@ -211,21 +275,27 @@ export function PopoverContent({
     };
   }, [effectiveAnchorRef, open]);
 
-  if (!open || !("document" in globalThis)) return null;
+  if ((!open && !exiting) || !("document" in globalThis)) return null;
   return createPortal(
     <div
       {...props}
       id={contentId}
       ref={contentRef}
       role={props.role ?? "dialog"}
+      inert={!open}
+      aria-hidden={!open || undefined}
+      data-state={open ? "open" : "closed"}
       className={cn(
         "fixed z-50 max-h-[calc(100vh-16px)] max-w-[calc(100vw-16px)] overflow-auto rounded-xl border border-border bg-card p-3 text-foreground shadow-2xl",
+        !open && "pointer-events-none",
         className,
       )}
       style={{
         ...style,
         left: position.left,
         top: position.top,
+        transformOrigin:
+          motion === "bouncy" ? `${position.originX}px ${position.originY}px` : undefined,
         visibility: position.ready ? "visible" : "hidden",
       }}
     >

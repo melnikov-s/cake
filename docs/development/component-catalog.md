@@ -10,6 +10,15 @@ Authoritative primitives live in `src/renderer/components/ui/`.
 | `SortableItem`        | Native drag-and-drop wrapper for persistently ordered navigation items.                                                                                             |
 | `Avatar`              | Deterministic project/session artwork and opt-in disposable avatar interactions.                                                                                    |
 
+## Popover motion
+
+`PopoverContent` supports opt-in `motion="bouncy"`, used by `AvatarLabelPicker`.
+It expands from the anchor with a soft overshoot and collapses on dismissal.
+The closing shell is inert and hidden from assistive technology; reduced motion
+skips both animations. Interrupted motion resumes from the displayed transform,
+and positioning measures untransformed dimensions so bouncing cannot shift layout.
+Other popovers retain their existing immediate behavior.
+
 ## Moving navigation backgrounds
 
 Wrap the scrolling **content** in `NavigationHighlight`. Mark each row with

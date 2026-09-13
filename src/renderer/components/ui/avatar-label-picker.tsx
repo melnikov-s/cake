@@ -67,6 +67,7 @@ export function AvatarLabelPicker({
         />
       </PopoverIconTrigger>
       <PopoverContent
+        motion="bouncy"
         align="start"
         side="right"
         className="max-h-[min(32rem,80vh)] w-64 overflow-y-auto p-2"
