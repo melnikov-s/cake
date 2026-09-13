@@ -142,7 +142,11 @@ describe("ArtifactHost", () => {
     });
 
     await act(async () => {
-      root.render(<ArtifactHost record={artifact} onOpenSourceLocation={openSource} />);
+      root.render(
+        <FullscreenSurfaceFixture>
+          <ArtifactHost record={artifact} onOpenSourceLocation={openSource} />
+        </FullscreenSurfaceFixture>,
+      );
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
     expect(container.querySelector('[data-testid="architecture-flow"]')).not.toBeNull();
@@ -161,6 +165,29 @@ describe("ArtifactHost", () => {
     });
     expect(openSource).toHaveBeenCalledWith({ path: "src/renderer/main.ts" });
     expect(container.textContent).toContain("Renderer communicates with main.");
+
+    await act(async () => {
+      (
+        container.querySelector(
+          '[aria-label="View Runtime architecture fullscreen"]',
+        ) as HTMLButtonElement
+      ).click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    act(() => {
+      const rendererNodes = Array.from(document.body.querySelectorAll("button")).filter(
+        (button) => button.textContent === "Renderer",
+      );
+      rendererNodes.at(-1)!.click();
+    });
+    act(() => {
+      const sourceButtons = Array.from(document.body.querySelectorAll("button")).filter(
+        (button) => button.textContent === "Open source",
+      );
+      sourceButtons.at(-1)!.click();
+    });
+    expect(openSource).toHaveBeenCalledTimes(2);
+    expect(document.body.querySelector('[role="dialog"]')).toBeNull();
   });
 
   it("submits a structured form once through its host callback and isolates raw HTML", () => {
