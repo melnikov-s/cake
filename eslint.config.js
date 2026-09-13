@@ -9,7 +9,6 @@ const effectExecutionBoundaries = [
   "src/domain/cake-chats/cakeChatRuntime.ts", // Final Cake Chat capability callbacks supplied to Pi.
   "src/domain/project-sessions/projectSessionRuntime.ts", // Final Project Session capability callbacks supplied to Pi.
   "src/services/pi/ProjectSessionRuntimeHostLive.ts", // Artifact repository Promise callbacks supplied to Pi.
-  "src/services/worktrees/ManagedWorktreeEngineAdapter.ts", // Existing imperative worktree engine port.
 ];
 const executionApi = "/^run(Fork|Callback|Promise|Sync)(Exit)?(With)?$/";
 

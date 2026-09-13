@@ -16,12 +16,7 @@ export interface WorktreeStorageService {
   ) => Effect.Effect<void, WorktreeStorageError>;
 }
 
+/** Cake-owned persistence boundary for Managed Worktree metadata. */
 export class WorktreeStorage extends Context.Service<WorktreeStorage, WorktreeStorageService>()(
   "cake/services/storage/WorktreeStorage",
 ) {}
-
-/** Promise adapter used only by the existing Managed Worktree engine. */
-export interface WorktreeStorageRepository {
-  readonly load: () => Promise<ReadonlyArray<WorktreeRecord>>;
-  readonly save: (records: ReadonlyArray<WorktreeRecord>) => Promise<void>;
-}

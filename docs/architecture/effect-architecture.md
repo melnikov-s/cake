@@ -214,9 +214,9 @@ ESLint restricts Effect execution APIs to the explicit boundary files listed in
 `eslint.config.js`. The main process entry point executes `MainApplication` and
 owns runtime disposal. Composition adapters execute only the Promise callbacks
 that Pi requires, using the narrow dependency Context captured when the adapter
-is built and forwarding Pi's `AbortSignal`. The existing imperative Managed
-Worktree engine has one explicitly listed adapter while that engine remains a
-Promise contract. Domain functions, RPC handlers, Electron lifecycle processing,
+is built and forwarding Pi's `AbortSignal`. Managed Worktree creation, repository
+serialization, landing queues, rollback, and persistence are native Effects owned
+by the process-scoped capability and domain workflows. Domain functions, RPC handlers, Electron lifecycle processing,
 and VS Code state propagation compose Effects instead of executing them. Runtime construction is restricted to
 `main.ts` and `runtime.ts`. Tests may execute Effects in test
 infrastructure; the ReviewStorage test constructor therefore lives under

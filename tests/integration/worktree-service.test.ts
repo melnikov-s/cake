@@ -5,14 +5,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
-import { makeTestWorktreeStorageRepository } from "../helpers/worktree-storage-repository";
-import { ManagedWorktreeEngine } from "../../src/services/worktrees/ManagedWorktreeEngine";
+import { makeTestWorktreeService, type TestWorktreeService } from "../helpers/worktree-service";
 
 const execFileAsync = promisify(execFile);
 const directories: string[] = [];
 const storages: string[] = [];
+const services: TestWorktreeService[] = [];
 
 afterEach(async () => {
+  await Promise.all(services.splice(0).map((service) => service.dispose()));
   await Promise.all(
     directories.splice(0).map((path) => rm(path, { recursive: true, force: true })),
   );
@@ -39,18 +40,9 @@ function service(
   storage = join(tmpdir(), `cake-worktree-store-${Math.random().toString(16).slice(2)}.json`),
 ) {
   storages.push(storage);
-  return new ManagedWorktreeEngine(
-    makeTestWorktreeStorageRepository(storage),
-    async (workingDirectory, arguments_) =>
-      (await execFileAsync("git", [...arguments_], { cwd: workingDirectory, maxBuffer: 4_000_000 }))
-        .stdout,
-    async (workingDirectory, script) => {
-      await execFileAsync("/bin/sh", ["-lc", `set -e\n${script}`], {
-        cwd: workingDirectory,
-        maxBuffer: 4_000_000,
-      });
-    },
-  );
+  const worktrees = makeTestWorktreeService(storage);
+  services.push(worktrees);
+  return worktrees;
 }
 
 async function commitAll(cwd: string, message: string) {

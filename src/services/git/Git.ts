@@ -16,7 +16,7 @@ export interface GitService {
 /** Process-scoped authority for invoking Git and reporting Git facts. */
 export class Git extends Context.Service<Git, GitService>()("cake/services/git/Git") {}
 
-/** Promise adapter used only by the existing Managed Worktree engine. */
+/** Injectable Promise boundary used only by the Git Live adapter and its integration tests. */
 export type GitRunner = (
   workingDirectory: string,
   arguments_: ReadonlyArray<string>,

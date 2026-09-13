@@ -4,13 +4,14 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
-import { ManagedWorktreeEngine } from "../../src/services/worktrees/ManagedWorktreeEngine";
-import { makeTestWorktreeStorageRepository } from "../helpers/worktree-storage-repository";
+import { makeTestWorktreeService, type TestWorktreeService } from "../helpers/worktree-service";
 
 const execFileAsync = promisify(execFile);
 const cleanupPaths = new Set<string>();
+const services: TestWorktreeService[] = [];
 
 afterEach(async () => {
+  await Promise.all(services.splice(0).map((service) => service.dispose()));
   for (const path of cleanupPaths) await rm(path, { recursive: true, force: true });
   cleanupPaths.clear();
 });
@@ -38,11 +39,9 @@ function service() {
     `cake-dirty-worktree-store-${Math.random().toString(16).slice(2)}.json`,
   );
   cleanupPaths.add(storage);
-  return new ManagedWorktreeEngine(
-    makeTestWorktreeStorageRepository(storage),
-    async (cwd, args) =>
-      (await execFileAsync("git", [...args], { cwd, maxBuffer: 4_000_000 })).stdout,
-  );
+  const worktrees = makeTestWorktreeService(storage);
+  services.push(worktrees);
+  return worktrees;
 }
 
 async function makeDirty(cwd: string) {
