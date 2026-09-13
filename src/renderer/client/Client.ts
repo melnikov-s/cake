@@ -136,8 +136,8 @@ interface WorkspaceCommands {
       sessionId: string;
       workspacePath: string;
       prompt: string;
+      staged: boolean;
       context: ReadonlyArray<{ role: "user" | "assistant"; text: string }>;
-      history: ReadonlyArray<{ role: "user" | "assistant"; text: string }>;
       tools: ReadonlyArray<CakeControlTool>;
     },
     options?: ClientCommandOptions,

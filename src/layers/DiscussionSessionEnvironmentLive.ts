@@ -75,6 +75,14 @@ export const makeDiscussionSessionEnvironmentLive = (
             );
           },
         ),
+        ensure: Effect.fn("DiscussionSessionEnvironment.ensure")(
+          function* (workingDirectory, parentSessionId, anchor) {
+            return yield* storage.ensureDiscussion(workingDirectory, parentSessionId, anchor).pipe(
+              Effect.map(projectRecord),
+              Effect.mapError((cause) => environmentError("ensure", cause)),
+            );
+          },
+        ),
         linkSidecar: Effect.fn("DiscussionSessionEnvironment.linkSidecar")((record, sidecar) =>
           storage
             .linkDiscussionSidecar(

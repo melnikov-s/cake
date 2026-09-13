@@ -21,10 +21,22 @@ import {
   type DiscussionSessionTarget,
   type DiscussionSessionUpdate,
   type DiscussionThread,
+  sessionAssistantThreadPath,
 } from "./discussion-session-data";
 import { ReviewStorage } from "../../services/storage/ReviewStorage";
 
 export * from "./discussion-session-data";
+
+const sessionAssistantAnchor = (parentSessionId: string) => ({
+  path: sessionAssistantThreadPath(parentSessionId),
+  view: "session" as const,
+  start: { diffLine: 0 },
+  end: { diffLine: 0 },
+  selectedText: "",
+  contextBefore: "",
+  contextAfter: "",
+  diff: "",
+});
 
 const asError = (operation: string) =>
   Effect.mapError(
@@ -119,6 +131,66 @@ const acquireRecord = Effect.fn("DiscussionSessions.acquireRecord")(function* (
   return { record: linked, handle };
 });
 
+export const prepareSessionAssistant = Effect.fn("DiscussionSessions.prepareSessionAssistant")(
+  function* (input: {
+    readonly workingDirectory: string;
+    readonly parentSessionId: string;
+    readonly staged: boolean;
+    readonly fallbackContext: ReadonlyArray<{
+      readonly role: "user" | "assistant";
+      readonly text: string;
+    }>;
+  }) {
+    const environment = yield* DiscussionSessionEnvironment;
+    const record = yield* environment
+      .ensure(
+        input.workingDirectory,
+        input.parentSessionId,
+        sessionAssistantAnchor(input.parentSessionId),
+      )
+      .pipe(asError("prepareSessionAssistant"));
+    const systemPrompt = yield* Effect.gen(function* () {
+      const parent = yield* parentHandle({
+        parentSessionId: record.parentSessionId,
+        workingDirectory: record.workingDirectory,
+        threadId: record.id,
+      });
+      const context = yield* parent.reviewParentContext().pipe(asError("parentContext"));
+      return yield* environment
+        .prepareParentContext(record, context)
+        .pipe(asError("parentContext"));
+    }).pipe(
+      Effect.catchTag("DiscussionSessionError", (error) => {
+        if (error.operation !== "parentContext" || !input.staged) return Effect.fail(error);
+        const transcript = input.fallbackContext
+          .filter((message) => message.text.trim())
+          .map((message) => `## ${message.role}\n\n${message.text.trim()}`)
+          .join("\n\n---\n\n")
+          .slice(-80_000);
+        return Effect.succeed(
+          `The parent Project Session is still a staged chat, so its current user and assistant messages are supplied here as read-only context. Tool calls are intentionally omitted.\n\n${transcript}`,
+        );
+      }),
+    );
+    const location = yield* environment.location(record).pipe(asError("prepareSessionAssistant"));
+    return { record, location, systemPrompt };
+  },
+);
+
+export const completeSessionAssistant = Effect.fn("DiscussionSessions.completeSessionAssistant")(
+  function* (
+    record: DiscussionSessionRecord,
+    sidecar: { readonly sessionId: string; readonly sessionFile: string },
+  ) {
+    const environment = yield* DiscussionSessionEnvironment;
+    const linked = record.sidecarSessionId
+      ? record
+      : yield* environment.linkSidecar(record, sidecar).pipe(asError("completeSessionAssistant"));
+    yield* environment.refreshParentIndex(linked).pipe(asError("completeSessionAssistant"));
+    return linked;
+  },
+);
+
 const prepare = Effect.fn("DiscussionSessions.prepare")(function* (
   record: DiscussionSessionRecord,
 ) {
@@ -155,6 +227,7 @@ export const list = Effect.fn("DiscussionSessions.list")(function* (input: {
             workingDirectory: record.workingDirectory,
             sessionId: record.sidecarSessionId,
             sessionDirectory: location.sessionDirectory,
+            direct: true,
           })
           .pipe(
             asError("list"),

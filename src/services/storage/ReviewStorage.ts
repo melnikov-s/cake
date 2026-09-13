@@ -41,6 +41,12 @@ export interface ReviewStorageService {
     sessionId: string,
     anchor: ReviewAnchor,
   ) => Effect.Effect<ReviewThreadRecord, ReviewStorageError>;
+  /** Atomically returns the existing thread for an anchor path or creates it. */
+  readonly ensureDiscussion: (
+    workingDirectory: string,
+    sessionId: string,
+    anchor: ReviewAnchor,
+  ) => Effect.Effect<ReviewThreadRecord, ReviewStorageError>;
   readonly linkDiscussionSidecar: (
     workingDirectory: string,
     sessionId: string,

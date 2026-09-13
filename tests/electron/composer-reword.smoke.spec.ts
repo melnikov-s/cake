@@ -151,6 +151,12 @@ test("rewords composer text and opens the focused session assistant", async () =
     const quickAssistant = page.getByRole("dialog", { name: "Quick session assistant" });
     const quickInput = quickAssistant.getByLabel("Ask session assistant");
     await expect(quickInput).toBeFocused();
+    const triggerBox = (await assistantTrigger.boundingBox())!;
+    const quickInputBox = (await quickAssistant.boundingBox())!;
+    expect(
+      Math.abs(quickInputBox.x + quickInputBox.width / 2 - (triggerBox.x + triggerBox.width / 2)),
+    ).toBeLessThan(2);
+    expect(quickInputBox.y + quickInputBox.height).toBeLessThan(triggerBox.y);
     await quickInput.pressSequentially("Open the file from our conversation");
     await expect(quickInput).toHaveValue("Open the file from our conversation");
     const assistantSend = quickAssistant.getByRole("button", { name: "Send" });
@@ -158,12 +164,24 @@ test("rewords composer text and opens the focused session assistant", async () =
     await assistantSend.click();
     await expect(quickAssistant.getByText("Assistant ready")).toBeVisible();
     await expect(quickAssistant.getByText("Open the file from our conversation")).toHaveCount(0);
+    await expect(
+      quickAssistant.getByRole("button", { name: "View response fullscreen" }),
+    ).toHaveCount(0);
+    const responseBox = (await quickAssistant.boundingBox())!;
+    expect(responseBox.x + responseBox.width).toBeLessThan(triggerBox.x);
     expect(prompts).toHaveLength(2);
 
     await expect(quickAssistant).toHaveCount(0, { timeout: 6_000 });
     await assistantTrigger.click({ button: "right" });
     const fullAssistant = page.getByRole("dialog", { name: "Session assistant chat" });
-    await expect(fullAssistant.getByLabel("Message session assistant")).toBeFocused();
+    const fullInput = fullAssistant.getByLabel("Message session assistant");
+    await expect(fullInput).toBeFocused();
+    await expect(fullAssistant.getByText("Open the file from our conversation")).toBeVisible();
+    await expect(fullAssistant.getByText("Assistant ready")).toBeVisible();
+    await fullInput.fill("What did I just ask?");
+    await fullAssistant.getByRole("button", { name: "Send" }).click();
+    await expect.poll(() => prompts.length).toBe(3);
+    expect(prompts.at(-1)).toContain("Open the file from our conversation");
   } finally {
     await application.close();
     server.close();

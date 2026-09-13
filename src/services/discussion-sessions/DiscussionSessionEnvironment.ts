@@ -17,7 +17,7 @@ export interface DiscussionSessionRecord {
   readonly resolvedAt?: string;
 }
 
-interface DiscussionSessionLocation {
+export interface DiscussionSessionLocation {
   readonly agentDirectory: string;
   readonly sessionDirectory: string;
   readonly parentSessionDirectory: string;
@@ -40,6 +40,11 @@ export interface DiscussionSessionEnvironmentService {
     threadId: string,
   ) => Effect.Effect<DiscussionSessionRecord, DiscussionSessionEnvironmentError>;
   readonly create: (
+    workingDirectory: string,
+    parentSessionId: string,
+    anchor: DiscussionAnchor,
+  ) => Effect.Effect<DiscussionSessionRecord, DiscussionSessionEnvironmentError>;
+  readonly ensure: (
     workingDirectory: string,
     parentSessionId: string,
     anchor: DiscussionAnchor,

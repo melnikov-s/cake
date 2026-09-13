@@ -17,6 +17,7 @@ import { ReviewStorage, ReviewStorageError } from "./ReviewStorage";
 type ReviewSessionLoader = (record: ReviewThreadRecord) => Promise<ReviewSessionProjection>;
 class ReviewRepository {
   private readonly updates = new KeyedSerialExecutor<string>();
+  private readonly creations = new KeyedSerialExecutor<string>();
   private readonly contextUpdates = new KeyedSerialExecutor<string>();
   private readonly writer = new AtomicFileWriter();
 
@@ -101,6 +102,20 @@ class ReviewRepository {
     await this.write(record);
     await this.refreshReviewContext(workspacePath, sessionId);
     return record;
+  }
+
+  async ensureDiscussion(
+    workspacePath: string,
+    sessionId: string,
+    anchor: ReviewAnchor,
+  ): Promise<ReviewThreadRecord> {
+    const key = `${workspacePath}\u0000${sessionId}\u0000${anchor.view ?? "file"}\u0000${anchor.path}`;
+    return this.creations.run(key, async () => {
+      const existing = (await this.listRecords(workspacePath, sessionId)).find(
+        (record) => record.anchor.view === anchor.view && record.anchor.path === anchor.path,
+      );
+      return existing ?? this.createDiscussion(workspacePath, sessionId, anchor);
+    });
   }
 
   async linkDiscussionSidecar(
@@ -325,6 +340,14 @@ const makeReviewStorage = (
             ),
           ),
       ),
+      ensureDiscussion: Effect.fn("ReviewStorage.ensureDiscussion")(
+        (workingDirectory, sessionId, anchor) =>
+          changed(
+            attempt("ensureDiscussion", () =>
+              repository.ensureDiscussion(workingDirectory, sessionId, anchor),
+            ),
+          ),
+      ),
       linkDiscussionSidecar: Effect.fn("ReviewStorage.linkDiscussionSidecar")(
         (workingDirectory, sessionId, threadId, sidecar) =>
           changed(
@@ -343,8 +366,10 @@ const makeReviewStorage = (
       ),
       refreshDiscussionContext: Effect.fn("ReviewStorage.refreshDiscussionContext")(
         (workingDirectory, sessionId) =>
-          attempt("refreshDiscussionContext", () =>
-            repository.refreshDiscussionContext(workingDirectory, sessionId),
+          changed(
+            attempt("refreshDiscussionContext", () =>
+              repository.refreshDiscussionContext(workingDirectory, sessionId),
+            ),
           ),
       ),
     });

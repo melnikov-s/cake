@@ -41,6 +41,27 @@ describe("ReviewStorage Discussion metadata", () => {
     expect([...revisions]).toEqual([0, 1]);
   });
 
+  it("atomically reuses a dedicated discussion anchor", async () => {
+    const root = await mkdtemp(join(tmpdir(), "cake-discussion-ensure-"));
+    directories.push(root);
+    const storage = makeReviewStorageTestAdapter(root, join(root, "pi-sessions")).service;
+    const assistantAnchor = {
+      ...codeAnchor,
+      path: "session:parent/assistant",
+      view: "session" as const,
+    };
+
+    const [first, second] = await Promise.all([
+      Effect.runPromise(storage.ensureDiscussion("/project", "parent", assistantAnchor)),
+      Effect.runPromise(storage.ensureDiscussion("/project", "parent", assistantAnchor)),
+    ]);
+
+    expect(second.id).toBe(first.id);
+    expect(
+      await Effect.runPromise(storage.listDiscussionRecords("/project", "parent")),
+    ).toHaveLength(1);
+  });
+
   it.each(["diff", "full"] as const)(
     "migrates persisted %s review anchors to file anchors",
     async (view) => {

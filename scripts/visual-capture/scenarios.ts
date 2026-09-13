@@ -38,7 +38,7 @@ const assistantMarkdown = [
 const assistantMarkdownCode: VisualCaptureScenario = {
   name: "assistant-markdown-code",
   description: "Assistant Markdown with a highlighted TypeScript code block",
-  states: ["default", "hover"],
+  states: ["default", "hover", "quick-assistant", "assistant-chat"],
   async seed(paths, theme) {
     const sessionId = "visual-assistant-markdown-code";
     const timestamp = new Date(0).toISOString();
@@ -125,6 +125,7 @@ const assistantMarkdownCode: VisualCaptureScenario = {
         .map((entry) => JSON.stringify(entry))
         .join("\n")}\n`,
     );
+    await seedSessionAssistant(paths, sessionId, timestamp);
   },
   async prepare(page, state) {
     const code = page.locator('[data-streamdown="code-block-body"] code');
@@ -146,15 +147,30 @@ const assistantMarkdownCode: VisualCaptureScenario = {
         );
         return button !== null && Number.parseFloat(getComputedStyle(button).opacity) === 1;
       });
-    } else {
-      await page.mouse.move(1, 1);
+      return;
     }
+    const assistant = page.getByRole("button", { name: "Ask session assistant" });
+    if (state === "quick-assistant") {
+      await assistant.click();
+      const input = page.getByRole("dialog", { name: "Quick session assistant" });
+      await input.getByLabel("Ask session assistant").fill("Open the file we discussed in VS Code");
+      return;
+    }
+    if (state === "assistant-chat") {
+      await assistant.click({ button: "right" });
+      const chat = page.getByRole("dialog", { name: "Session assistant chat" });
+      await chat.getByText("I found the file and opened it in VS Code.").waitFor();
+      return;
+    }
+    await page.mouse.move(1, 1);
   },
   region(page) {
-    return page
+    const dialog = page.getByRole("dialog");
+    const message = page
       .locator('[data-slot="message"]')
       .filter({ has: page.locator('[data-streamdown="code-block-body"]') })
       .locator('[data-slot="message-content"]');
+    return dialog.or(message).last();
   },
 };
 
@@ -405,6 +421,114 @@ function workspaceSessionDirectory(workingDirectory: string, root: string) {
   const normalized = resolve(workingDirectory);
   const safePath = `--${normalized.replace(/^[/\\]/, "").replace(/[/\\:]/g, "-")}--`;
   return join(resolve(root), safePath);
+}
+
+async function seedSessionAssistant(
+  paths: ScenarioFixturePaths,
+  parentSessionId: string,
+  timestamp: string,
+) {
+  const threadId = "visual-session-assistant-thread";
+  const assistantSessionId = "visual-session-assistant";
+  const assistantDirectory = join(
+    paths.cakeHome,
+    "pi",
+    "review-sessions",
+    sha256(paths.project),
+    sha256(parentSessionId),
+    sha256(threadId),
+  );
+  const assistantSessionFile = join(
+    assistantDirectory,
+    `1970-01-01T00-00-00-000Z_${assistantSessionId}.jsonl`,
+  );
+  const recordDirectory = join(
+    paths.cakeHome,
+    "state",
+    "reviews",
+    sha256(paths.project),
+    sha256(parentSessionId),
+  );
+  await Promise.all([
+    mkdir(assistantDirectory, { recursive: true }),
+    mkdir(recordDirectory, { recursive: true }),
+  ]);
+  await writeFile(
+    assistantSessionFile,
+    `${[
+      {
+        type: "session",
+        version: 3,
+        id: assistantSessionId,
+        timestamp,
+        cwd: paths.project,
+      },
+      {
+        type: "message",
+        id: "assistant-user-1",
+        parentId: null,
+        timestamp,
+        message: {
+          role: "user",
+          content: [{ type: "text", text: "Open the file we discussed in VS Code" }],
+          timestamp: 0,
+        },
+      },
+      {
+        type: "message",
+        id: "assistant-reply-1",
+        parentId: "assistant-user-1",
+        timestamp,
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "I found the file and opened it in VS Code." }],
+          api: "anthropic-messages",
+          provider: "anthropic",
+          model: "visual-fixture",
+          usage: {
+            input: 0,
+            output: 0,
+            cacheRead: 0,
+            cacheWrite: 0,
+            totalTokens: 0,
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+          },
+          stopReason: "stop",
+          timestamp: 1,
+        },
+      },
+    ]
+      .map((entry) => JSON.stringify(entry))
+      .join("\n")}\n`,
+  );
+  await writeFile(
+    join(recordDirectory, `${sha256(threadId)}.json`),
+    `${JSON.stringify(
+      {
+        id: threadId,
+        workspacePath: paths.project,
+        sessionId: parentSessionId,
+        agentSessionId: assistantSessionId,
+        agentSessionFile: assistantSessionFile,
+        anchor: {
+          path: `session:${parentSessionId}/assistant`,
+          view: "session",
+          start: { diffLine: 0 },
+          end: { diffLine: 0 },
+          selectedText: "",
+          contextBefore: "",
+          contextAfter: "",
+          diff: "",
+        },
+        pendingComments: [],
+        status: "open",
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      },
+      null,
+      2,
+    )}\n`,
+  );
 }
 
 async function seedArtifact(

@@ -1,4 +1,5 @@
 import { Store, child, computed, createStore, snapshot } from "r-state-tree";
+import { isSessionAssistantThread } from "../../domain/discussion-sessions/discussion-session-data";
 import type { StoreEvent } from "../events/StoreEvent";
 import type { Session } from "../models/Session";
 import type { ChatConfiguration, ModelPreset } from "../../ipc/session-contract";
@@ -122,7 +123,8 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       .filter(
         (thread) =>
           thread.status === "open" &&
-          (thread.anchor.view === "message" || thread.anchor.view === "session"),
+          (thread.anchor.view === "message" || thread.anchor.view === "session") &&
+          !isSessionAssistantThread(thread),
       )
       .toSorted((left, right) => right.updatedAt.localeCompare(left.updatedAt));
   }
@@ -135,6 +137,8 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
     return createStore(SessionAssistantStore, {
       sessionId: this.sessionId,
       workspacePath: this.workspacePath,
+      staged: () => this.props.pendingSessions.isTemporary(this.sessionId),
+      thread: () => this.model.reviewThreads.find(isSessionAssistantThread),
       context: () =>
         this.canonicalParts.flatMap((part) => {
           if (part.kind === "text" && !part.draft) return [{ role: part.role, text: part.text }];

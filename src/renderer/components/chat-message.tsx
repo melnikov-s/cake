@@ -290,6 +290,8 @@ export interface ChatTranscriptBehavior {
   };
   messageComments?: MessageCommentsStore;
   subagents?: SubagentActivityStore;
+  /** Hides the response fullscreen affordance for compact, transient chats. */
+  showAssistantFullscreen?: boolean;
   showSelectionContextMenu?(input: {
     canChat: boolean;
     canAnnotate: boolean;
@@ -457,11 +459,13 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
       onMouseLeave={() => (hoveredRef.current = false)}
       onOpenSourceLocation={behavior.openSourceLocation}
     >
-      <FullscreenButton
-        className="absolute top-1.5 right-1.5 grid size-7 place-items-center rounded-md bg-transparent p-0 text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover/msg:opacity-100 group-focus-within/msg:opacity-100"
-        label="View response fullscreen"
-        onClick={openFullscreen}
-      />
+      {behavior.showAssistantFullscreen !== false && (
+        <FullscreenButton
+          className="absolute top-1.5 right-1.5 grid size-7 place-items-center rounded-md bg-transparent p-0 text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover/msg:opacity-100 group-focus-within/msg:opacity-100"
+          label="View response fullscreen"
+          onClick={openFullscreen}
+        />
+      )}
       {commentThreads.map(
         (thread, index) =>
           markerPositions[thread.id] && (

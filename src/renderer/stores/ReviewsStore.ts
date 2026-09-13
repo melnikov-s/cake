@@ -1,5 +1,8 @@
 import { Store, child, createStore, observable } from "r-state-tree";
-import type { DiscussionAnchor } from "../../domain/discussion-sessions/discussion-session-data";
+import {
+  isSessionAssistantThread,
+  type DiscussionAnchor,
+} from "../../domain/discussion-sessions/discussion-session-data";
 import type { Annotation, ChatConfiguration, ModelPreset } from "../../ipc/session-contract";
 import { ClientContext } from "./context/ClientContext";
 import { ActiveProjectSessionContext } from "./context/ActiveProjectSessionContext";
@@ -77,7 +80,9 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
   }
   private get threadEntries() {
     return this.props.sessionRegistry.sessions.flatMap((session) =>
-      session.model.reviewThreads.map((thread) => ({ session, thread })),
+      session.model.reviewThreads
+        .filter((thread) => !isSessionAssistantThread(thread))
+        .map((thread) => ({ session, thread })),
     );
   }
   private threadConfigurationStore(threadId: string) {
@@ -250,49 +255,51 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
   @child
   get chatStores(): ChatStore[] {
     return this.props.sessionRegistry.sessions.flatMap((session) =>
-      session.model.reviewThreads.map((thread) =>
-        createStore(ChatStore, {
-          key: thread.id,
-          id: () => thread.id,
-          parts: () => [
-            ...(thread.anchor.selectedText
-              ? [
-                  {
-                    id: `anchor:${thread.id}`,
-                    kind: "text" as const,
-                    role: "user" as const,
-                    text: thread.anchor.selectedText,
-                    status: "complete" as const,
-                  },
-                ]
-              : []),
-            ...thread.uiParts,
-          ],
-          streaming: () => thread.streaming,
-          submitting: () => false,
-          configuration: () => this.threadConfigurationStore(thread.id),
-          commands: () => [],
-          placeholder: () => "Ask a follow-up…",
-          inputLabel: () =>
-            thread.anchor.view === "message"
-              ? "Reply to selection side chat"
-              : thread.anchor.view === "session"
-                ? "Reply to side chat"
-                : "Reply to code chat",
-          canSubmit: (draft) =>
-            Boolean(draft.trim() || this.annotationsFor(thread.id).length) &&
-            thread.status === "open" &&
-            !thread.streaming,
-          submit: (draft) => this.replyThread(thread.id, draft, this.annotationsFor(thread.id)),
-          annotations: () => this.annotationsFor(thread.id),
-          addAnnotation: (annotation) => this.ensureAnnotationDraft(thread.id).add(annotation),
-          updateAnnotation: (id, update) => this.annotationDraft(thread.id)?.update(id, update),
-          removeAnnotation: (id) => this.annotationDraft(thread.id)?.remove(id),
-          composerVisible: () => thread.status === "open" && !thread.streaming,
-          error: () => ({ message: this.error, details: this.errorDetails }),
-          usage: () => thread.usage,
-        }),
-      ),
+      session.model.reviewThreads
+        .filter((thread) => !isSessionAssistantThread(thread))
+        .map((thread) =>
+          createStore(ChatStore, {
+            key: thread.id,
+            id: () => thread.id,
+            parts: () => [
+              ...(thread.anchor.selectedText
+                ? [
+                    {
+                      id: `anchor:${thread.id}`,
+                      kind: "text" as const,
+                      role: "user" as const,
+                      text: thread.anchor.selectedText,
+                      status: "complete" as const,
+                    },
+                  ]
+                : []),
+              ...thread.uiParts,
+            ],
+            streaming: () => thread.streaming,
+            submitting: () => false,
+            configuration: () => this.threadConfigurationStore(thread.id),
+            commands: () => [],
+            placeholder: () => "Ask a follow-up…",
+            inputLabel: () =>
+              thread.anchor.view === "message"
+                ? "Reply to selection side chat"
+                : thread.anchor.view === "session"
+                  ? "Reply to side chat"
+                  : "Reply to code chat",
+            canSubmit: (draft) =>
+              Boolean(draft.trim() || this.annotationsFor(thread.id).length) &&
+              thread.status === "open" &&
+              !thread.streaming,
+            submit: (draft) => this.replyThread(thread.id, draft, this.annotationsFor(thread.id)),
+            annotations: () => this.annotationsFor(thread.id),
+            addAnnotation: (annotation) => this.ensureAnnotationDraft(thread.id).add(annotation),
+            updateAnnotation: (id, update) => this.annotationDraft(thread.id)?.update(id, update),
+            removeAnnotation: (id) => this.annotationDraft(thread.id)?.remove(id),
+            composerVisible: () => thread.status === "open" && !thread.streaming,
+            error: () => ({ message: this.error, details: this.errorDetails }),
+            usage: () => thread.usage,
+          }),
+        ),
     );
   }
 

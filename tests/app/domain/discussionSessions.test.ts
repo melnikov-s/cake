@@ -126,6 +126,7 @@ const makeLayer = () => {
     list: () => Effect.succeed([record]),
     get: () => Effect.succeed(record),
     create: () => Effect.succeed(record),
+    ensure: () => Effect.succeed(record),
     linkSidecar: (current, sidecar) =>
       Effect.sync(() => {
         record = {

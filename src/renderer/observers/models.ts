@@ -15,6 +15,7 @@ import type {
   DiscussionSessionTarget,
   DiscussionSessionUpdate,
 } from "../../domain/discussion-sessions/discussion-session-data";
+import { isSessionAssistantThread } from "../../domain/discussion-sessions/discussion-session-data";
 import type {
   ProjectSessionCatalogQuery,
   ProjectSessionTarget,
@@ -257,7 +258,7 @@ export const createModelObserver = (
       );
 
       for (const thread of model.reviewThreads) {
-        if (!thread.sidecarSessionId) continue;
+        if (!thread.sidecarSessionId || isSessionAssistantThread(thread)) continue;
         const target: DiscussionSessionTarget = {
           parentSessionId: thread.parentSessionId,
           workingDirectory: thread.workingDirectory,

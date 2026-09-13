@@ -294,12 +294,10 @@ export const cakeRpcPayloadSchemas = {
     sessionId: bounded(1, 256),
     workspacePath: bounded(1, 4_096),
     prompt: bounded(1, 32_000),
+    staged: Schema.Boolean,
     context: Schema.Array(
       Schema.Struct({ role: Schema.Literals(["user", "assistant"]), text: stringMax(262_144) }),
     ).check(Schema.isMaxLength(2_000)),
-    history: Schema.Array(
-      Schema.Struct({ role: Schema.Literals(["user", "assistant"]), text: stringMax(32_000) }),
-    ).check(Schema.isMaxLength(200)),
     tools: Schema.Array(CakeControlTool).check(Schema.isMaxLength(500)),
   }),
   "generate-session-title": Schema.Struct({

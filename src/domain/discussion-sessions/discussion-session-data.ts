@@ -33,6 +33,16 @@ export const DiscussionAnchor = Schema.Struct({
 });
 export interface DiscussionAnchor extends Schema.Schema.Type<typeof DiscussionAnchor> {}
 
+export const sessionAssistantThreadPath = (parentSessionId: string) =>
+  `session:${parentSessionId}/assistant`;
+
+export const isSessionAssistantThread = (thread: {
+  readonly parentSessionId: string;
+  readonly anchor: { readonly view?: string; readonly path: string };
+}) =>
+  thread.anchor.view === "session" &&
+  thread.anchor.path === sessionAssistantThreadPath(thread.parentSessionId);
+
 export const DiscussionThread = Schema.Struct({
   id: boundedId,
   workingDirectory: Schema.String,

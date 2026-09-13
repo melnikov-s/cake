@@ -9,7 +9,7 @@ import type { SessionAssistantStore } from "../stores/SessionAssistantStore";
 
 type AssistantSurface = "quick" | "chat";
 
-/** Composer avatar trigger for a one-shot prompt and the full transient session assistant. */
+/** Composer avatar trigger for quick and full views of its durable assistant side chat. */
 export const SessionAssistant = observer(function SessionAssistant({
   store,
   seed,
@@ -30,6 +30,7 @@ export const SessionAssistant = observer(function SessionAssistant({
     return label ? [label.color] : [];
   });
   const quickResponseRevision = store.quickResponseRevision;
+  const quickResponse = store.quickParts.length > 0;
 
   useEffect(() => {
     if (open) store.requestFocus();
@@ -70,14 +71,15 @@ export const SessionAssistant = observer(function SessionAssistant({
       </PopoverIconTrigger>
       {surface === "quick" ? (
         <PopoverContent
-          side="left"
-          align="end"
-          offset={10}
+          side={quickResponse ? "left" : "top"}
+          align="center"
+          offset={quickResponse ? 12 : 8}
           aria-label="Quick session assistant"
           className={cn(
-            "w-[min(22rem,calc(100vw-1rem))] overflow-hidden rounded-xl p-0",
-            store.quickParts.length > 0 &&
-              "overflow-visible border-0 bg-transparent shadow-none [&_[aria-label=Conversation]]:p-0",
+            "overflow-hidden rounded-xl p-0",
+            quickResponse
+              ? "w-fit max-w-[min(22rem,calc(100vw-24px))] overflow-visible rounded-2xl border-0 bg-transparent shadow-none [&_[aria-label=Conversation]]:p-0"
+              : "w-[min(22rem,calc(100vw-24px))]",
           )}
         >
           <Chat
@@ -86,9 +88,12 @@ export const SessionAssistant = observer(function SessionAssistant({
             embedded
             composerFocusEnabled
             className={cn(
-              "h-auto max-h-[min(18rem,60vh)] [&_.transcript]:max-h-[min(18rem,60vh)] [&_[data-slot=composer-toolbar]]:shrink-0 [&_[data-slot=composer-toolbar]]:border-0 [&_[data-slot=composer-toolbar]]:p-0 [&_[data-slot=composer-toolbar]>div:first-child]:hidden [&_[data-slot=message]]:w-full [&_[data-slot=message-content]]:rounded-md [&_[data-slot=message-content]]:px-3 [&_[data-slot=message-content]]:py-2.5 [&_[data-slot=message-content]]:text-xs [&_[data-slot=message-content]]:leading-5 [&_[data-slot=message-content]]:shadow-none [&_[data-slot=message-actions]]:hidden [&_form]:flex [&_form]:items-center [&_form]:gap-1.5 [&_form]:border-0 [&_form]:bg-transparent [&_form]:p-1.5 [&_form]:shadow-none [&_textarea]:max-h-40 [&_textarea]:min-h-8 [&_textarea]:px-2.5 [&_textarea]:py-1.5 [&_textarea]:text-xs",
-              store.quickParts.length === 0 && "[&_.transcript]:hidden",
+              "h-auto max-h-[min(18rem,60vh)] [&_.transcript]:max-h-[min(18rem,60vh)] [&_[data-slot=composer-toolbar]]:shrink-0 [&_[data-slot=composer-toolbar]]:border-0 [&_[data-slot=composer-toolbar]]:p-0 [&_[data-slot=composer-toolbar]>div:first-child]:hidden [&_[data-slot=message]]:w-fit [&_[data-slot=message-content]]:max-w-[min(22rem,calc(100vw-24px))] [&_[data-slot=message-content]]:px-3 [&_[data-slot=message-content]]:py-2.5 [&_[data-slot=message-content]]:text-xs [&_[data-slot=message-content]]:leading-5 [&_[data-slot=message-content]]:shadow-none [&_[data-slot=message-actions]]:hidden [&_form]:flex [&_form]:items-center [&_form]:gap-1.5 [&_form]:border-0 [&_form]:bg-transparent [&_form]:p-1.5 [&_form]:shadow-none [&_textarea]:max-h-40 [&_textarea]:min-h-8 [&_textarea]:px-2.5 [&_textarea]:py-1.5 [&_textarea]:text-xs",
+              !quickResponse && "[&_.transcript]:hidden",
+              quickResponse &&
+                "[&_[data-slot=message-content]]:rounded-2xl [&_[data-slot=message-content]]:rounded-br-md [&_[data-slot=message-content]]:border-border/70 [&_[data-slot=message-content]]:bg-card/95 [&_[data-slot=message-content]]:shadow-lg",
             )}
+            transcriptBehavior={{ showAssistantFullscreen: false }}
             error={store.error ? { message: store.error, title: "Assistant failed" } : undefined}
           />
         </PopoverContent>
@@ -104,7 +109,7 @@ export const SessionAssistant = observer(function SessionAssistant({
             <div className="border-b border-border px-3 py-2">
               <p className="text-xs font-semibold">Session assistant</p>
               <p className="mt-0.5 text-[11px] text-muted-foreground">
-                Uses your utility model and visible conversation context.
+                Uses your utility model and continues this session’s assistant chat.
               </p>
             </div>
             <Chat

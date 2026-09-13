@@ -96,18 +96,21 @@ silently abort unrelated destination work; an already consumed or otherwise
 uncancellable late arrival remains visibly attributed to the closed exchange
 and never causes autonomous continuation.
 
-All side chats—session-level discussions, code reviews, and assistant-message
-discussions—run as independent lightweight Pi Sessions using the same runtime
-pipeline. Their parent scope and optional anchors belong to Cake; their replies
+All side chats—session-level discussions, the composer-avatar session assistant,
+code reviews, and assistant-message discussions—run as independent lightweight
+Pi Sessions. Their parent scope and optional anchors belong to Cake; their replies
 remain authoritative in the referenced Pi sidecar session. Before each reply,
 Cake regenerates a read-only Markdown projection of the parent session's current
-active branch. The sidecar receives only its scope or anchor, nearby context, its
-own short history, and read-only file tools.
-Both assistant-message and code-anchored chats are read-only; the code anchor
-changes the source material, not the sidecar's authority. Neither kind forks or
-records work in the parent transcript. A single derived Markdown
-thread index is also available to the parent agent through its ordinary project
-tools.
+active branch. Ordinary discussions receive only their scope or anchor, nearby
+context, their own transcript, and read-only file tools. Each Project Session has
+at most one avatar assistant Discussion Session. Its quick bubble and full chat
+are two presentations of that same durable transcript; it uses the configured
+utility model and adds only the validated Cake application-control gateway.
+Assistant, assistant-message, and code-anchored chats cannot modify project
+files. The code anchor changes the source material, not the sidecar's authority.
+Neither kind forks or records work in the parent transcript. A single derived
+Markdown thread index is also available to the parent agent through its ordinary
+project tools.
 
 ## Process boundaries
 
@@ -164,22 +167,22 @@ the active conversation model. With no configured utility model, optional
 utility work does not run.
 
 Utility work uses Pi's `ModelRuntime` as an auxiliary completion rather than
-creating a second provider abstraction, agent runtime, or durable transcript.
-Each feature supplies explicit bounded input, output, timeout, cancellation,
-and validation policy. Utility results remain advisory metadata until the owning
-feature validates and commits them. The composer-avatar session assistant is the
-interactive exception to plain completion: each turn runs in a transient,
-non-persisted Pi sidecar on the configured utility model. It receives a bounded
-projection of visible user and assistant text from the Project Session plus its
-own short window-local history, never parent tool calls, and exposes only the
-validated Cake application-control gateway—no filesystem or shell tools. Its
-`SessionAssistantStore` owns transient messages, drafts, cancellation, and
-single-turn-at-a-time policy for the lifetime of the loaded Project Session
-Store. A primary avatar click presents a focused one-shot composer and replaces
-it with only the assistant's compact response bubble, which closes automatically;
-a secondary click presents the full transient chat. Both presentations compose
-the shared `Chat` and `ChatStore`. Pi remains the parent transcript authority and
-none of this assistant history is copied into it.
+creating a second provider abstraction. Each feature supplies explicit bounded
+input, output, timeout, cancellation, and validation policy. Utility results
+remain advisory metadata until the owning feature validates and commits them.
+The composer-avatar session assistant is the interactive exception to plain
+completion: it is a durable Discussion Session on the configured utility model.
+It receives the same regenerated parent projection as other side chats, never
+parent tool calls, and exposes read-only file access plus the validated Cake
+application-control gateway—no shell or file mutation tools. Its Pi transcript
+owns its conversation history across turns and application restarts.
+`SessionAssistantStore` owns only the window-local draft, quick response bubble,
+cancellation, and single-turn-at-a-time presentation policy. A primary avatar
+click presents a focused one-shot composer and replaces it with only the
+assistant's compact response bubble, which closes automatically; a secondary
+click presents the full persisted chat. Both presentations compose the shared
+`Chat` and `ChatStore`. Pi remains the authority for both the parent and assistant
+transcripts; assistant messages are never copied into the parent transcript.
 
 Cake applies one such adapter policy to empty, pre-output rate-limit responses
 and protocol-valid successful responses with no content. It retries the exact

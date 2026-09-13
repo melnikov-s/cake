@@ -1,4 +1,5 @@
 import * as projectSessionLocations from "../project-sessions/projectSessionLocations";
+import * as discussionSessions from "../discussion-sessions/discussionSessions";
 import type { WebContents } from "electron";
 import { Effect, Stream } from "effect";
 import type { cakeRpcPayloadSchemas } from "../../ipc/cake-rpc-contract";
@@ -183,7 +184,6 @@ export const chatWithSessionAssistant = Effect.fn("Projects.chatWithSessionAssis
   request: Payload<"chat-with-session-assistant">,
 ) {
   const application = yield* ApplicationState;
-  const configuration = yield* ProjectConfiguration;
   const rendererRequests = yield* RendererRequestCoordinator;
   const electron = yield* Electron;
   const sender = yield* requireConnection(connectionId, "chatWithSessionAssistant");
@@ -203,16 +203,24 @@ export const chatWithSessionAssistant = Effect.fn("Projects.chatWithSessionAssis
       operation: "chatWithSessionAssistant",
       message: "The session assistant requires an open Project workspace",
     });
-  const text = yield* Effect.tryPromise({
+  const prepared = yield* discussionSessions
+    .prepareSessionAssistant({
+      workingDirectory: workspacePath,
+      parentSessionId: request.sessionId,
+      staged: request.staged,
+      fallbackContext: request.context,
+    })
+    .pipe(Effect.mapError((cause) => projectError("chatWithSessionAssistant", cause)));
+  const result = yield* Effect.tryPromise({
     try: (signal) =>
       runSessionAssistant({
         workspacePath,
-        agentDirectory: configuration.agentDirectory,
-        sessionId: request.sessionId,
+        agentDirectory: prepared.location.agentDirectory,
+        sessionDirectory: prepared.location.sessionDirectory,
+        sessionFile: prepared.record.sidecarSessionFile,
         utilityModel,
         prompt: request.prompt,
-        context: request.context,
-        history: request.history,
+        parentContextPrompt: prepared.systemPrompt,
         tools: request.tools,
         signal,
         invoke: (invocation, controlSignal) =>
@@ -223,7 +231,13 @@ export const chatWithSessionAssistant = Effect.fn("Projects.chatWithSessionAssis
       }),
     catch: (cause) => projectError("chatWithSessionAssistant", cause),
   });
-  return { text };
+  yield* discussionSessions
+    .completeSessionAssistant(prepared.record, {
+      sessionId: result.sessionId,
+      sessionFile: result.sessionFile,
+    })
+    .pipe(Effect.mapError((cause) => projectError("chatWithSessionAssistant", cause)));
+  return { text: result.response };
 });
 
 export const generateSessionTitle = Effect.fn("Projects.generateSessionTitle")(function* (
