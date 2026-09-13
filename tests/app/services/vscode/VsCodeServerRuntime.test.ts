@@ -6,9 +6,9 @@ import { join } from "node:path";
 import { parse as parseJsonc } from "jsonc-parser";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  VsCodeServerManager,
+  VsCodeServerRuntime,
   type CompanionManifest,
-} from "../../../../src/services/vscode/VsCodeServerManager";
+} from "../../../../src/services/vscode/VsCodeServerRuntime";
 
 const companionManifest: CompanionManifest = {
   name: "cake-companion",
@@ -24,24 +24,25 @@ const companionManifest: CompanionManifest = {
   contributes: { commands: [] },
 };
 
-type ManagerProps = ConstructorParameters<typeof VsCodeServerManager>[0];
+type RuntimeProps = ConstructorParameters<typeof VsCodeServerRuntime>[0];
 
-interface ManagerOverrides {
+interface RuntimeOverrides {
   root: string;
   companionMain?: string;
-  companionThemes?: ManagerProps["companionThemes"];
-  preferredTheme?: ManagerProps["preferredTheme"];
-  broadcast?: ManagerProps["broadcast"];
+  companionThemes?: RuntimeProps["companionThemes"];
+  preferredTheme?: RuntimeProps["preferredTheme"];
+  broadcast?: RuntimeProps["broadcast"];
 }
 
-function createManager({
+function createRuntime({
   root,
   companionMain = "/unused/companion.js",
   companionThemes = [],
   preferredTheme = async () => "dark" as const,
   broadcast = () => undefined,
-}: ManagerOverrides) {
-  return new VsCodeServerManager({
+}: RuntimeOverrides) {
+  let runtime: VsCodeServerRuntime;
+  runtime = new VsCodeServerRuntime({
     root,
     companionManifest,
     companionMain,
@@ -50,20 +51,31 @@ function createManager({
     preferredTheme,
     broadcast,
     stateChanged: () => undefined,
+    scheduleIdleEviction: () => undefined,
+    cancelIdleEviction: () => undefined,
+    invalidateServer: () => undefined,
+    evictServer: async () => undefined,
+    pollUntil: async (_key, check, _interval, _timeout, failure) => {
+      const value = check();
+      if (value !== undefined) return value;
+      throw new Error(failure);
+    },
+    acquireServer: (workspacePath, binary) => runtime.startServer(workspacePath, binary),
   });
+  return runtime;
 }
 
-describe("VsCodeServerManager startup", () => {
+describe("VsCodeServerRuntime startup", () => {
   let root: string | undefined;
-  let manager: VsCodeServerManager | undefined;
+  let runtime: VsCodeServerRuntime | undefined;
 
   afterEach(async () => {
-    manager?.disposeAll();
+    runtime?.disposeAll();
     if (root) await rm(root, { recursive: true, force: true });
   });
 
   it("retains bounds reported before the native view exists", () => {
-    manager = createManager({ root: "/unused" });
+    runtime = createRuntime({ root: "/unused" });
     const view = {
       setVisible: vi.fn(),
       setBounds: vi.fn(),
@@ -73,7 +85,7 @@ describe("VsCodeServerManager startup", () => {
       },
     };
 
-    manager.updateBounds(17, {
+    runtime.updateBounds(17, {
       visible: true,
       x: 10.4,
       y: 62.2,
@@ -81,21 +93,21 @@ describe("VsCodeServerManager startup", () => {
       height: 700.6,
       projectSidebarWidth: 292,
     });
-    manager["applyRequestedBounds"](17, view as never);
+    runtime["applyRequestedBounds"](17, view as never);
 
     expect(view.setVisible).toHaveBeenCalledWith(true);
     expect(view.setBounds).toHaveBeenCalledWith({ x: 10, y: 62, width: 902, height: 701 });
   });
 
   it("suppresses the native view while a fullscreen Cake surface is open", () => {
-    manager = createManager({ root: "/unused" });
+    runtime = createRuntime({ root: "/unused" });
     const view = {
       setVisible: vi.fn(),
       setBounds: vi.fn(),
       webContents: { executeJavaScript: vi.fn(async () => undefined) },
     };
-    manager["views"].set(17, { workspacePath: "/real/project", view: view as never });
-    manager.updateBounds(17, {
+    runtime["views"].set(17, { workspacePath: "/real/project", view: view as never });
+    runtime.updateBounds(17, {
       visible: true,
       x: 320,
       y: 0,
@@ -104,10 +116,10 @@ describe("VsCodeServerManager startup", () => {
       projectSidebarWidth: 320,
     });
 
-    manager.setFullscreenSurfaceOpen(17, true);
+    runtime.setFullscreenSurfaceOpen(17, true);
     expect(view.setVisible).toHaveBeenLastCalledWith(false);
 
-    manager.updateBounds(17, {
+    runtime.updateBounds(17, {
       visible: true,
       x: 300,
       y: 0,
@@ -117,22 +129,22 @@ describe("VsCodeServerManager startup", () => {
     });
     expect(view.setVisible).toHaveBeenLastCalledWith(false);
 
-    manager.setFullscreenSurfaceOpen(17, false);
+    runtime.setFullscreenSurfaceOpen(17, false);
     expect(view.setVisible).toHaveBeenLastCalledWith(true);
     expect(view.setBounds).toHaveBeenLastCalledWith({ x: 300, y: 0, width: 920, height: 700 });
   });
 
   it("routes a native close back to the agent while the editor view is visible", () => {
     const broadcast = vi.fn();
-    manager = createManager({ root: "/unused", broadcast });
+    runtime = createRuntime({ root: "/unused", broadcast });
     const view = {
       setVisible: vi.fn(),
       setBounds: vi.fn(),
       webContents: { executeJavaScript: vi.fn(async () => undefined) },
     };
-    manager["views"].set(17, { workspacePath: "/real/project", view: view as never });
-    manager["presentedWorkspacePaths"].set("/real/project", "/linked/project");
-    manager.updateBounds(17, {
+    runtime["views"].set(17, { workspacePath: "/real/project", view: view as never });
+    runtime["presentedWorkspacePaths"].set("/real/project", "/linked/project");
+    runtime.updateBounds(17, {
       visible: true,
       x: 0,
       y: 0,
@@ -141,17 +153,17 @@ describe("VsCodeServerManager startup", () => {
       projectSidebarWidth: 292,
     });
 
-    expect(manager.backToAgentForWindow(17)).toBe(true);
+    expect(runtime.backToAgentForWindow(17)).toBe(true);
     expect(view.setVisible).toHaveBeenLastCalledWith(false);
     expect(broadcast).toHaveBeenCalledWith({
       type: "embedded-editor-back-to-agent",
       workspacePath: "/linked/project",
     });
-    expect(manager.backToAgentForWindow(17)).toBe(false);
+    expect(runtime.backToAgentForWindow(17)).toBe(false);
   });
 
-  it("observes the listening message before pausing output and clears startup bookkeeping", async () => {
-    root = await mkdtemp(join(tmpdir(), "cake-vscode-manager-"));
+  it("observes the listening message before pausing output", async () => {
+    root = await mkdtemp(join(tmpdir(), "cake-vscode-runtime-"));
     const companionMain = join(root, "companion.js");
     const binary = join(root, "fake-code-server");
     await writeFile(companionMain, "module.exports = {};\n");
@@ -161,17 +173,16 @@ describe("VsCodeServerManager startup", () => {
     );
     await chmod(binary, 0o755);
 
-    manager = createManager({ root, companionMain });
-    await expect(manager["serverFor"](root, binary)).resolves.toBeDefined();
-    expect(manager["starting"].size).toBe(0);
-    expect(manager.status).toBe("ready");
+    runtime = createRuntime({ root, companionMain });
+    await expect(runtime["serverFor"](root, binary)).resolves.toBeDefined();
+    expect(runtime.status).toBe("ready");
   });
 
   it("relays VS Code title-bar and active-context events to the renderer", () => {
     const broadcast = vi.fn();
-    manager = createManager({ root: "/unused", broadcast });
+    runtime = createRuntime({ root: "/unused", broadcast });
 
-    manager["handleBridgeMessage"](
+    runtime["handleBridgeMessage"](
       Buffer.from(JSON.stringify({ type: "toggle-chat-sidebar", workspace: "/project" })),
     );
     expect(broadcast).toHaveBeenCalledWith({
@@ -179,7 +190,7 @@ describe("VsCodeServerManager startup", () => {
       workspacePath: "/project",
     });
 
-    manager["handleBridgeMessage"](
+    runtime["handleBridgeMessage"](
       Buffer.from(JSON.stringify({ type: "toggle-project-sidebar", workspace: "/project" })),
     );
     expect(broadcast).toHaveBeenCalledWith({
@@ -187,7 +198,7 @@ describe("VsCodeServerManager startup", () => {
       workspacePath: "/project",
     });
 
-    manager["handleBridgeMessage"](
+    runtime["handleBridgeMessage"](
       Buffer.from(JSON.stringify({ type: "back-to-agent", workspace: "/project" })),
     );
     expect(broadcast).toHaveBeenCalledWith({
@@ -195,7 +206,7 @@ describe("VsCodeServerManager startup", () => {
       workspacePath: "/project",
     });
 
-    manager["handleBridgeMessage"](
+    runtime["handleBridgeMessage"](
       Buffer.from(
         JSON.stringify({
           type: "open-annotation",
@@ -212,8 +223,8 @@ describe("VsCodeServerManager startup", () => {
       threadId: "thread-a",
     });
 
-    manager["presentedWorkspacePaths"].set("/real/project", "/linked/project");
-    manager["handleBridgeMessage"](
+    runtime["presentedWorkspacePaths"].set("/real/project", "/linked/project");
+    runtime["handleBridgeMessage"](
       Buffer.from(JSON.stringify({ type: "selection-cleared", workspace: "/real/project" })),
     );
     expect(broadcast).toHaveBeenCalledWith({
@@ -221,7 +232,7 @@ describe("VsCodeServerManager startup", () => {
       workspacePath: "/linked/project",
     });
 
-    manager["handleBridgeMessage"](
+    runtime["handleBridgeMessage"](
       Buffer.from(
         JSON.stringify({
           type: "selection",
@@ -243,8 +254,8 @@ describe("VsCodeServerManager startup", () => {
 
   it("relays explicit selection actions with their source and note to the renderer", () => {
     const broadcast = vi.fn();
-    manager = createManager({ root: "/unused", broadcast });
-    manager["presentedWorkspacePaths"].set("/real/project", "/linked/project");
+    runtime = createRuntime({ root: "/unused", broadcast });
+    runtime["presentedWorkspacePaths"].set("/real/project", "/linked/project");
     const selection = {
       workspace: "/real/project",
       path: "src/main.ts",
@@ -257,7 +268,7 @@ describe("VsCodeServerManager startup", () => {
       contextAfter: "}",
     };
 
-    manager["handleBridgeMessage"](
+    runtime["handleBridgeMessage"](
       Buffer.from(JSON.stringify({ type: "add-annotation", ...selection, comment: "Why?" })),
     );
     expect(broadcast).toHaveBeenLastCalledWith({
@@ -274,14 +285,14 @@ describe("VsCodeServerManager startup", () => {
       comment: "Why?",
     });
 
-    manager["handleBridgeMessage"](
+    runtime["handleBridgeMessage"](
       Buffer.from(JSON.stringify({ type: "add-annotation", ...selection })),
     );
     expect(broadcast).toHaveBeenLastCalledWith(
       expect.not.objectContaining({ comment: expect.anything() }),
     );
 
-    manager["handleBridgeMessage"](
+    runtime["handleBridgeMessage"](
       Buffer.from(JSON.stringify({ type: "ask-in-side-chat", ...selection })),
     );
     expect(broadcast).toHaveBeenLastCalledWith({
@@ -299,18 +310,18 @@ describe("VsCodeServerManager startup", () => {
 
     // An empty selection is never an explicit action; the schema rejects it.
     broadcast.mockClear();
-    manager["handleBridgeMessage"](
+    runtime["handleBridgeMessage"](
       Buffer.from(JSON.stringify({ type: "ask-in-side-chat", ...selection, selectedText: "" })),
     );
     expect(broadcast).not.toHaveBeenCalled();
   });
 
   it("applies Cake's theme on every start while preserving other user settings", async () => {
-    root = await mkdtemp(join(tmpdir(), "cake-vscode-manager-"));
-    manager = createManager({ root });
+    root = await mkdtemp(join(tmpdir(), "cake-vscode-runtime-"));
+    runtime = createRuntime({ root });
     const settingsPath = join(root, "profile", "User", "settings.json");
 
-    await manager["ensureEditorPreferences"](join(root, "profile"));
+    await runtime["ensureEditorPreferences"](join(root, "profile"));
     expect(JSON.parse(await readFile(settingsPath, "utf8"))).toEqual({
       "security.workspace.trust.enabled": false,
       "workbench.colorTheme": "Cake Dark",
@@ -333,7 +344,7 @@ describe("VsCodeServerManager startup", () => {
 }
 `,
     );
-    await manager["ensureEditorPreferences"](join(root, "profile"));
+    await runtime["ensureEditorPreferences"](join(root, "profile"));
     const updatedRaw = await readFile(settingsPath, "utf8");
     expect(updatedRaw).toContain("Keep this comment; Cake still canonicalizes the keys around it.");
     expect(parseJsonc(updatedRaw)).toEqual({
@@ -347,9 +358,9 @@ describe("VsCodeServerManager startup", () => {
       "extensions.ignoreRecommendations": true,
     });
 
-    const lightManager = createManager({ root, preferredTheme: async () => "light" });
-    manager = lightManager;
-    await lightManager["ensureEditorPreferences"](join(root, "profile-light"));
+    const lightRuntime = createRuntime({ root, preferredTheme: async () => "light" });
+    runtime = lightRuntime;
+    await lightRuntime["ensureEditorPreferences"](join(root, "profile-light"));
     expect(
       JSON.parse(await readFile(join(root, "profile-light", "User", "settings.json"), "utf8"))[
         "workbench.colorTheme"
@@ -358,10 +369,10 @@ describe("VsCodeServerManager startup", () => {
   });
 
   it("writes the companion's contributed theme files into the extension directory", async () => {
-    root = await mkdtemp(join(tmpdir(), "cake-vscode-manager-"));
+    root = await mkdtemp(join(tmpdir(), "cake-vscode-runtime-"));
     const companionMain = join(root, "companion.js");
     await writeFile(companionMain, "module.exports = {};\n");
-    manager = createManager({
+    runtime = createRuntime({
       root,
       companionMain,
       companionThemes: [
@@ -370,7 +381,7 @@ describe("VsCodeServerManager startup", () => {
       ],
     });
 
-    const extensionsRoot = await manager["syncCompanionExtension"]();
+    const extensionsRoot = await runtime["syncCompanionExtension"]();
 
     await expect(
       readFile(join(extensionsRoot, "cake-companion", "extension.js"), "utf8"),
@@ -391,10 +402,10 @@ describe("VsCodeServerManager startup", () => {
   });
 
   it("preserves user extensions while canonicalizing the Cake companion registry entry", async () => {
-    root = await mkdtemp(join(tmpdir(), "cake-vscode-manager-"));
+    root = await mkdtemp(join(tmpdir(), "cake-vscode-runtime-"));
     const companionMain = join(root, "companion.js");
     await writeFile(companionMain, "module.exports = {};\n");
-    manager = createManager({ root, companionMain });
+    runtime = createRuntime({ root, companionMain });
     const extensionsRoot = join(root, "extensions");
     await mkdir(join(extensionsRoot, "github.copilot"), { recursive: true });
     await mkdir(join(extensionsRoot, "esbenp.prettier-vscode"), { recursive: true });
@@ -423,7 +434,7 @@ describe("VsCodeServerManager startup", () => {
       ]),
     );
 
-    await manager["syncCompanionExtension"]();
+    await runtime["syncCompanionExtension"]();
 
     await expect(stat(join(extensionsRoot, "github.copilot"))).resolves.toBeDefined();
     await expect(stat(join(extensionsRoot, "esbenp.prettier-vscode"))).resolves.toBeDefined();
@@ -436,7 +447,7 @@ describe("VsCodeServerManager startup", () => {
   });
 
   it("pushes the current theme to running companions and skips unchanged preferences", async () => {
-    root = await mkdtemp(join(tmpdir(), "cake-vscode-manager-"));
+    root = await mkdtemp(join(tmpdir(), "cake-vscode-runtime-"));
     const received: unknown[] = [];
     const server = createServer((request, response) => {
       const chunks: Buffer[] = [];
@@ -451,24 +462,25 @@ describe("VsCodeServerManager startup", () => {
 
     try {
       let preference: "light" | "dark" = "dark";
-      manager = createManager({ root, preferredTheme: async () => preference });
-      manager["servers"].set("/project", {
+      runtime = createRuntime({ root, preferredTheme: async () => preference });
+      runtime["servers"].set("/project", {
         workspacePath: "/project",
         child: { kill: () => undefined, removeAllListeners: () => undefined } as never,
         port: 1,
         token: "token",
         flavor: "codeserver",
+        binary: "/fake/code-server",
         lastUsedAt: 0,
         viewers: 1,
       });
-      manager["companionPorts"].set("/project", companionPort);
+      runtime["companionPorts"].set("/project", companionPort);
 
-      await manager.updateTheme();
-      await manager.updateTheme();
+      await runtime.updateTheme();
+      await runtime.updateTheme();
       expect(received).toEqual([{ type: "set-theme", theme: "dark" }]);
 
       preference = "light";
-      await manager.updateTheme();
+      await runtime.updateTheme();
       expect(received).toEqual([
         { type: "set-theme", theme: "dark" },
         { type: "set-theme", theme: "light" },

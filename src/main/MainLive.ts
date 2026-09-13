@@ -37,7 +37,7 @@ import { makeWindowStateStorageLive } from "../services/storage/WindowStateStora
 import { makeWorktreeStorageLive } from "../services/storage/WorktreeStorageLive";
 import { SubagentCoordinatorLive } from "../services/subagents/SubagentCoordinator";
 import { makeTerminalLive } from "../services/terminal/TerminalLive";
-import type { CompanionManifest } from "../services/vscode/VsCodeServerManager";
+import type { CompanionManifest } from "../services/vscode/VsCodeServerRuntime";
 import { makeVsCodeServerLive } from "../services/vscode/VsCodeServerLive";
 import { makeInlineWidgetsLive } from "../services/widgets/InlineWidgetsLive";
 import { publishInlineWidget } from "../services/widgets/inline-widget-protocol";

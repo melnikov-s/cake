@@ -1,12 +1,24 @@
 import { realpath } from "node:fs/promises";
 import { relative, sep } from "node:path";
 import { BrowserWindow } from "electron";
-import { Effect, Layer, Queue, Stream, SubscriptionRef } from "effect";
+import {
+  Deferred,
+  Effect,
+  FiberMap,
+  Layer,
+  Option,
+  Queue,
+  Ref,
+  Schedule,
+  ScopedCache,
+  Stream,
+  SubscriptionRef,
+} from "effect";
 import { ApplicationState } from "../storage/ApplicationState";
 import { ProjectAccess } from "../projects/ProjectAccess";
 import { CAKE_TITLE_BAR_HEIGHT, Electron, VSCODE_TITLE_BAR_HEIGHT } from "../electron/Electron";
-import type { CompanionManifest } from "./VsCodeServerManager";
-import { VsCodeServerManager } from "./VsCodeServerManager";
+import type { CompanionManifest } from "./VsCodeServerRuntime";
+import { VSCODE_SERVER_IDLE_TTL, VsCodeServerRuntime } from "./VsCodeServerRuntime";
 import { resolveSourceTarget } from "./source-path-policy";
 import { VsCodeServer, VsCodeServerError } from "./VsCodeServer";
 
@@ -36,21 +48,42 @@ export const makeVsCodeServerLive = (
       const projectAccess = yield* ProjectAccess;
       const initialCustomPath = applicationState.snapshot().vscodeServerPath;
       const editorState = yield* SubscriptionRef.make<
-        ReturnType<VsCodeServerManager["snapshotState"]>
+        ReturnType<VsCodeServerRuntime["snapshotState"]>
       >({
         status: "missing" as const,
         ...(initialCustomPath ? { customPath: initialCustomPath } : null),
       });
-      // VsCodeServerManager reports state synchronously from imperative manager
+      // VsCodeServerRuntime reports state synchronously from native callbacks
       // methods. Queue every transition losslessly and let this Layer's Scope
       // own the ordered Effect consumer.
       const stateChanges =
-        yield* Queue.unbounded<ReturnType<VsCodeServerManager["snapshotState"]>>();
+        yield* Queue.unbounded<ReturnType<VsCodeServerRuntime["snapshotState"]>>();
       yield* Stream.fromQueue(stateChanges).pipe(
         Stream.runForEach((state) => SubscriptionRef.set(editorState, state)),
         Effect.forkScoped,
       );
-      const manager = new VsCodeServerManager({
+      const runEviction = yield* FiberMap.makeRuntime<never, string>();
+      const runPoll = yield* FiberMap.makeRuntimePromise<never, string>();
+      const runAcquisition = yield* FiberMap.makeRuntimePromise<never, string>();
+      const runtimeReady = yield* Deferred.make<VsCodeServerRuntime>();
+      const servers = yield* ScopedCache.make({
+        // Runtime policy keeps three viewer-less servers; this outer bound avoids
+        // evicting a server still leased by one of Cake's native views.
+        capacity: 64,
+        lookup: Effect.fn("VsCodeServer.acquireServer")(function* (key: string) {
+          const runtime = yield* Deferred.await(runtimeReady);
+          const separator = key.indexOf("\0");
+          if (separator < 0) return yield* Effect.die("Invalid VS Code server cache key");
+          return yield* Effect.acquireRelease(
+            Effect.tryPromise(() =>
+              runtime.startServer(key.slice(0, separator), key.slice(separator + 1)),
+            ),
+            (instance) => Effect.sync(() => runtime.releaseServer(instance)),
+          );
+        }),
+      });
+      let callbackSequence = 0;
+      const runtime = new VsCodeServerRuntime({
         root: options.root,
         companionManifest: options.companionManifest,
         companionMain: options.companionMain,
@@ -61,15 +94,52 @@ export const makeVsCodeServerLive = (
         stateChanged: (state) => {
           Queue.offerUnsafe(stateChanges, state);
         },
+        scheduleIdleEviction: (key) => {
+          runEviction(
+            key,
+            Effect.sleep(VSCODE_SERVER_IDLE_TTL).pipe(
+              Effect.andThen(ScopedCache.invalidate(servers, key)),
+            ),
+          );
+        },
+        cancelIdleEviction: (key) => {
+          runEviction(key, Effect.void);
+        },
+        invalidateServer: (key) => {
+          runEviction(key, ScopedCache.invalidate(servers, key));
+        },
+        pollUntil: (key, check, interval, timeout, failure) =>
+          runPoll(
+            `${key}:${callbackSequence++}`,
+            Effect.suspend(() => {
+              const value = check();
+              return value === undefined ? Effect.fail(undefined) : Effect.succeed(value);
+            }).pipe(
+              Effect.retry(Schedule.spaced(interval).pipe(Schedule.upTo({ duration: timeout }))),
+              Effect.mapError(() => new Error(failure)),
+            ),
+          ),
+        evictServer: (key) =>
+          runAcquisition(`evict:${callbackSequence++}`, ScopedCache.invalidate(servers, key)),
+        acquireServer: (workspacePath, binary, signal) =>
+          runAcquisition(
+            `server:${callbackSequence++}`,
+            ScopedCache.get(servers, `${workspacePath}\0${binary}`),
+            signal ? { signal } : undefined,
+          ),
       });
+      yield* Deferred.succeed(runtimeReady, runtime);
+      const installInFlight = yield* Ref.make<
+        Option.Option<Deferred.Deferred<void, VsCodeServerError>>
+      >(Option.none());
       yield* electron.fullscreenSurfaceChanges().pipe(
         Stream.runForEach(({ connectionId, open }) =>
-          Effect.sync(() => manager.setFullscreenSurfaceOpen(connectionId, open)),
+          Effect.sync(() => runtime.setFullscreenSurfaceOpen(connectionId, open)),
         ),
         Effect.forkScoped,
       );
 
-      const tryManager = <A>(operation: string, execute: (signal: AbortSignal) => Promise<A>) =>
+      const tryNative = <A>(operation: string, execute: (signal: AbortSignal) => Promise<A>) =>
         Effect.tryPromise({
           try: execute,
           catch: (cause) => vscodeError(operation, cause),
@@ -85,45 +155,79 @@ export const makeVsCodeServerLive = (
       });
 
       const updateTheme = Effect.fn("VsCodeServer.updateTheme")(() =>
-        tryManager("updateTheme", () => manager.updateTheme()),
+        tryNative("updateTheme", () => runtime.updateTheme()),
+      );
+      const themeUpdates = yield* Queue.unbounded<void>();
+      yield* Stream.fromQueue(themeUpdates).pipe(
+        Stream.runForEach(() =>
+          updateTheme().pipe(
+            Effect.tapError((error) => Effect.logError("VsCodeServer.themeUpdateFailed", error)),
+            Effect.ignore,
+          ),
+        ),
+        Effect.forkScoped,
       );
       const unsubscribeTheme = options.onThemeUpdated(() => {
-        void manager.updateTheme().catch((error) => {
-          console.error("[cake.vscode] Theme update failed", error);
-        });
+        Queue.offerUnsafe(themeUpdates, undefined);
       });
       yield* Effect.addFinalizer(() =>
         Effect.sync(() => {
           unsubscribeTheme();
-          manager.disposeAll();
+          runtime.disposeAll();
         }),
       );
 
       return VsCodeServer.of({
         state: Effect.fn("VsCodeServer.state")(() =>
-          Effect.sync(() => ({ ...manager.snapshotState() })),
+          Effect.sync(() => ({ ...runtime.snapshotState() })),
         ),
         stateChanges: () => SubscriptionRef.changes(editorState),
         refreshStatus: Effect.fn("VsCodeServer.refreshStatus")(() =>
-          tryManager("refreshStatus", () => manager.refreshStatus()),
+          tryNative("refreshStatus", () => runtime.refreshStatus()),
         ),
-        install: Effect.fn("VsCodeServer.install")((request) =>
-          tryManager("install", async () => {
-            await manager.install();
-            return { requestId: request.requestId };
-          }),
-        ),
+        install: Effect.fn("VsCodeServer.install")(function* (request) {
+          const candidate = yield* Deferred.make<void, VsCodeServerError>();
+          const [deferred, ownsInstall] = yield* Ref.modify(
+            installInFlight,
+            (
+              current,
+            ): readonly [
+              readonly [Deferred.Deferred<void, VsCodeServerError>, boolean],
+              Option.Option<Deferred.Deferred<void, VsCodeServerError>>,
+            ] =>
+              Option.match(current, {
+                onNone: () => [[candidate, true], Option.some(candidate)],
+                onSome: (active) => [[active, false], current],
+              }),
+          );
+          if (ownsInstall) {
+            const install = tryNative("install", () => runtime.ensureInstalled()).pipe(
+              Effect.tap(() => Effect.sync(() => runtime.setStatus("ready"))),
+              Effect.tapError((error) =>
+                Effect.sync(() => runtime.setStatus("failed", error.message)),
+              ),
+              Effect.asVoid,
+            );
+            yield* Effect.exit(install).pipe(
+              Effect.tap((exit) => Deferred.done(deferred, exit)),
+              Effect.ensuring(Ref.set(installInFlight, Option.none())),
+            );
+          }
+          yield* Deferred.await(deferred);
+          return { requestId: request.requestId };
+        }),
         open: Effect.fn("VsCodeServer.open")(function* (connectionId, request) {
           yield* requireAllowed(request.workspacePath);
           const sender = yield* Effect.try({
             try: () => electron.requireRendererConnection(connectionId),
             catch: (cause) => vscodeError("open", cause),
           });
-          yield* tryManager("open", () =>
-            manager.open(
+          yield* tryNative("open", (signal) =>
+            runtime.open(
               sender.id,
               () => BrowserWindow.fromWebContents(sender),
               request.workspacePath,
+              signal,
             ),
           );
           return { requestId: request.requestId };
@@ -138,7 +242,7 @@ export const makeVsCodeServerLive = (
                   window,
                   request.visible ? VSCODE_TITLE_BAR_HEIGHT : CAKE_TITLE_BAR_HEIGHT,
                 );
-              manager.updateBounds(sender.id, request);
+              runtime.updateBounds(sender.id, request);
               return { requestId: request.requestId };
             },
             catch: (cause) => vscodeError("updateBounds", cause),
@@ -146,11 +250,11 @@ export const makeVsCodeServerLive = (
         ),
         reveal: Effect.fn("VsCodeServer.reveal")(function* (request) {
           yield* requireAllowed(request.workspacePath);
-          const { workspace, target } = yield* tryManager("reveal", () =>
+          const { workspace, target } = yield* tryNative("reveal", () =>
             resolveSourceTarget(request.workspacePath, request.location.path),
           );
-          yield* tryManager("reveal", () =>
-            manager.reveal(workspace, {
+          yield* tryNative("reveal", () =>
+            runtime.reveal(workspace, {
               ...request.location,
               path: relative(workspace, target),
             }),
@@ -159,14 +263,14 @@ export const makeVsCodeServerLive = (
         }),
         openSourceControl: Effect.fn("VsCodeServer.openSourceControl")(function* (request) {
           yield* requireAllowed(request.workspacePath);
-          yield* tryManager("openSourceControl", () =>
-            manager.openSourceControl(request.workspacePath),
+          yield* tryNative("openSourceControl", () =>
+            runtime.openSourceControl(request.workspacePath),
           );
           return { requestId: request.requestId };
         }),
         updateAnnotations: Effect.fn("VsCodeServer.updateAnnotations")(function* (request) {
           yield* requireAllowed(request.workspacePath);
-          const normalized = yield* tryManager("updateAnnotations", async () => {
+          const normalized = yield* tryNative("updateAnnotations", async () => {
             const workspace = await realpath(request.workspacePath);
             const annotations = await Promise.allSettled(
               request.snapshot.annotations.map(async (annotation) => {
@@ -187,8 +291,8 @@ export const makeVsCodeServerLive = (
               ),
             };
           });
-          yield* tryManager("updateAnnotations", () =>
-            manager.updateAnnotations(normalized.workspace, {
+          yield* tryNative("updateAnnotations", () =>
+            runtime.updateAnnotations(normalized.workspace, {
               sessionId: request.snapshot.sessionId,
               annotations: normalized.annotations,
             }),
@@ -198,20 +302,20 @@ export const makeVsCodeServerLive = (
         enterProjectEditor: Effect.fn("VsCodeServer.enterProjectEditor")(
           function* (workingDirectory) {
             yield* requireAllowed(workingDirectory);
-            yield* tryManager("enterProjectEditor", async (signal) => {
+            yield* tryNative("enterProjectEditor", async (signal) => {
               signal.throwIfAborted();
               const candidates = electron.windowsForWorkspace(workingDirectory);
               const selected =
                 candidates.find(([, window]) => window.isFocused()) ?? candidates.at(0);
               if (!selected) throw new Error("No Cake window has this project open");
               const [ownerId, window] = selected;
-              await manager.open(ownerId, () => window, workingDirectory);
+              await runtime.open(ownerId, () => window, workingDirectory, signal);
               signal.throwIfAborted();
               electron.sendTo(window.webContents, {
                 type: "embedded-editor-entered",
                 workspacePath: workingDirectory,
               });
-              await manager.waitUntilVisible(workingDirectory);
+              await runtime.waitUntilVisible(workingDirectory);
               signal.throwIfAborted();
             });
           },
@@ -219,9 +323,9 @@ export const makeVsCodeServerLive = (
         openProjectLocation: Effect.fn("VsCodeServer.openProjectLocation")(
           function* (workingDirectory, location) {
             yield* requireAllowed(workingDirectory);
-            return yield* tryManager("openProjectLocation", async (signal) => {
+            return yield* tryNative("openProjectLocation", async (signal) => {
               signal.throwIfAborted();
-              if (!(await manager.isVisible(workingDirectory)))
+              if (!(await runtime.isVisible(workingDirectory)))
                 return { status: "mode-required" as const };
               const { workspace, target } = await resolveSourceTarget(
                 workingDirectory,
@@ -232,7 +336,7 @@ export const makeVsCodeServerLive = (
                 path: relative(workspace, target).split(sep).join("/"),
               };
               signal.throwIfAborted();
-              await manager.reveal(workspace, normalized);
+              await runtime.reveal(workspace, normalized);
               return { status: "completed" as const, value: normalized };
             });
           },
@@ -240,20 +344,20 @@ export const makeVsCodeServerLive = (
         runProjectScript: Effect.fn("VsCodeServer.runProjectScript")(
           function* (workingDirectory, source, input) {
             yield* requireAllowed(workingDirectory);
-            return yield* tryManager("runProjectScript", async (signal) => {
+            return yield* tryNative("runProjectScript", async (signal) => {
               signal.throwIfAborted();
-              if (!(await manager.isVisible(workingDirectory)))
+              if (!(await runtime.isVisible(workingDirectory)))
                 return { status: "mode-required" as const };
-              const value = await manager.runScript(workingDirectory, source, input);
+              const value = await runtime.runScript(workingDirectory, source, input);
               signal.throwIfAborted();
               return { status: "completed" as const, value };
             });
           },
         ),
         closeForWindow: Effect.fn("VsCodeServer.closeForWindow")((ownerId) =>
-          Effect.sync(() => manager.closeForWindow(ownerId)),
+          Effect.sync(() => runtime.closeForWindow(ownerId)),
         ),
-        backToAgentForWindow: (ownerId) => manager.backToAgentForWindow(ownerId),
+        backToAgentForWindow: (ownerId) => runtime.backToAgentForWindow(ownerId),
         updateTheme,
       });
     }),

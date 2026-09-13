@@ -23,7 +23,7 @@ import {
 } from "./vscode-server-binary";
 
 /** Idle servers are stopped after this long without an attached viewer or activity. */
-const IDLE_EVICT_MS = 3 * 60_000;
+export const VSCODE_SERVER_IDLE_TTL = "3 minutes";
 /** Hard cap on concurrently running servers; beyond this the least recently used one dies. */
 const MAX_RUNNING_SERVERS = 3;
 const START_TIMEOUT = 45_000;
@@ -295,7 +295,7 @@ interface BroadcastTarget {
   stateChanged(state: EmbeddedEditorState & { customPath?: string }): void;
 }
 
-export interface VsCodeServerManagerProps extends BroadcastTarget {
+export interface VsCodeServerRuntimeProps extends BroadcastTarget {
   /** Directory that holds downloads, extracted servers, extensions, and per-workspace state. */
   root: string;
   /** Parsed companion manifest, serialized as the extension's package.json. */
@@ -306,21 +306,38 @@ export interface VsCodeServerManagerProps extends BroadcastTarget {
   companionThemes: Array<{ path: string; content: string }>;
   customPath(): string | undefined;
   preferredTheme(): Promise<"light" | "dark">;
+  /** Forks/replaces one idle eviction in the owning Effect Scope. */
+  scheduleIdleEviction(key: string): void;
+  cancelIdleEviction(key: string): void;
+  invalidateServer(key: string): void;
+  evictServer(key: string): Promise<void>;
+  pollUntil<A>(
+    key: string,
+    check: () => A | undefined,
+    interval: number,
+    timeout: number,
+    failure: string,
+  ): Promise<A>;
+  acquireServer(
+    workspacePath: string,
+    binary: string,
+    signal?: AbortSignal,
+  ): Promise<ServerInstance>;
 }
 
 /**
  * One openvscode-server process serving one workspace folder. The process is
  * shared by every Cake surface that opens that folder.
  */
-interface ServerInstance {
+export interface ServerInstance {
   workspacePath: string;
   child: ChildProcess;
   port: number;
   token: string;
   flavor: ServerFlavor;
+  binary: string;
   lastUsedAt: number;
   viewers: number;
-  evictTimer?: ReturnType<typeof setTimeout>;
 }
 
 /** The native view one Cake window shows for its current workspace. */
@@ -364,12 +381,11 @@ export interface CompanionManifest {
  * the single application window, and relaying bridge traffic between the
  * companion extension and renderer stores.
  */
-export class VsCodeServerManager {
+export class VsCodeServerRuntime {
   status: EmbeddedEditorStatus = "missing";
   message: string | undefined;
-  private props: VsCodeServerManagerProps;
+  private props: VsCodeServerRuntimeProps;
   private servers = new Map<string, ServerInstance>();
-  private starting = new Map<string, Promise<ServerInstance>>();
   private views = new Map<number, ViewEntry>();
   /** Latest renderer-owned rect, retained when it arrives before the native view exists. */
   private requestedBounds = new Map<number, ViewBounds>();
@@ -381,11 +397,10 @@ export class VsCodeServerManager {
   private bridge: HttpServer | undefined;
   private bridgePort: number | undefined;
   private readonly bridgeToken = randomBytes(32).toString("hex");
-  private installPromise: Promise<void> | undefined;
   /** Theme last pushed to running companions; duplicated pushes are skipped. */
   private pushedTheme: "light" | "dark" | undefined;
 
-  constructor(props: VsCodeServerManagerProps) {
+  constructor(props: VsCodeServerRuntimeProps) {
     this.props = props;
   }
 
@@ -399,7 +414,7 @@ export class VsCodeServerManager {
     return state;
   }
 
-  private setStatus(status: EmbeddedEditorStatus, message?: string) {
+  setStatus(status: EmbeddedEditorStatus, message?: string) {
     this.status = status;
     this.message = message;
     this.props.stateChanged(this.snapshotState());
@@ -416,7 +431,7 @@ export class VsCodeServerManager {
   }
 
   /** Downloads and extracts openvscode-server unless a usable binary already exists. */
-  private async ensureInstalled(): Promise<string> {
+  async ensureInstalled(): Promise<string> {
     try {
       return await resolveServerBinary(this.props.root, this.props.customPath());
     } catch {
@@ -424,20 +439,6 @@ export class VsCodeServerManager {
     }
     await this.download();
     return resolveServerBinary(this.props.root, this.props.customPath());
-  }
-
-  /** Runs one install attempt at a time; concurrent callers share the outcome. */
-  install(): Promise<void> {
-    this.installPromise ??= this.ensureInstalled()
-      .then(() => this.setStatus("ready"))
-      .catch((error: unknown) => {
-        this.setStatus("failed", error instanceof Error ? error.message : String(error));
-        throw error;
-      })
-      .finally(() => {
-        this.installPromise = undefined;
-      });
-    return this.installPromise;
   }
 
   private async download(): Promise<void> {
@@ -471,7 +472,12 @@ export class VsCodeServerManager {
    * running server for that folder when one exists, replacing whatever this
    * window was previously showing.
    */
-  async open(webContentsId: number, getWindow: () => BrowserWindow | null, workspacePath: string) {
+  async open(
+    webContentsId: number,
+    getWindow: () => BrowserWindow | null,
+    workspacePath: string,
+    signal?: AbortSignal,
+  ) {
     let binary: string;
     try {
       binary = await this.ensureInstalled();
@@ -482,7 +488,7 @@ export class VsCodeServerManager {
     }
     const resolved = await realpath(workspacePath);
     this.presentedWorkspacePaths.set(resolved, workspacePath);
-    const instance = await this.serverFor(resolved, binary);
+    const instance = await this.serverFor(resolved, binary, signal);
 
     const window = getWindow();
     if (!window || window.isDestroyed())
@@ -602,12 +608,13 @@ export class VsCodeServerManager {
   /** Waits for the renderer to acknowledge agent-directed entry into VS Code mode. */
   async waitUntilVisible(workspacePath: string) {
     const resolved = await realpath(workspacePath);
-    const deadline = Date.now() + COMPANION_START_TIMEOUT;
-    while (Date.now() < deadline) {
-      if (this.isResolvedWorkspaceVisible(resolved)) return;
-      await new Promise((resolvePromise) => setTimeout(resolvePromise, 25));
-    }
-    throw new Error("Cake did not finish entering VS Code mode");
+    await this.props.pollUntil(
+      `visible:${resolved}`,
+      () => (this.isResolvedWorkspaceVisible(resolved) ? true : undefined),
+      25,
+      COMPANION_START_TIMEOUT,
+      "Cake did not finish entering VS Code mode",
+    );
   }
 
   private isResolvedWorkspaceVisible(workspacePath: string) {
@@ -677,15 +684,22 @@ export class VsCodeServerManager {
     await Promise.all(pushes);
   }
 
-  private async waitForCompanionPort(workspacePath: string) {
-    const deadline = Date.now() + COMPANION_START_TIMEOUT;
-    while (Date.now() < deadline) {
-      const port = this.companionPorts.get(workspacePath);
-      if (port) return port;
-      if (!this.servers.has(workspacePath)) break;
-      await new Promise((resolvePromise) => setTimeout(resolvePromise, 50));
-    }
-    throw new Error("The VS Code companion extension did not finish starting");
+  private waitForCompanionPort(workspacePath: string) {
+    return this.props
+      .pollUntil(
+        `companion:${workspacePath}`,
+        () => {
+          const port = this.companionPorts.get(workspacePath);
+          return port ?? (this.servers.has(workspacePath) ? undefined : 0);
+        },
+        50,
+        COMPANION_START_TIMEOUT,
+        "The VS Code companion extension did not finish starting",
+      )
+      .then((port) => {
+        if (port === 0) throw new Error("The embedded editor is no longer running");
+        return port;
+      });
   }
 
   /** Converts a native window-close request into Back to Agent while the editor is visible. */
@@ -720,9 +734,6 @@ export class VsCodeServerManager {
     this.views.clear();
     this.requestedBounds.clear();
     this.fullscreenWindows.clear();
-    for (const [, instance] of this.servers) this.disposeServer(instance);
-    this.servers.clear();
-    this.starting.clear();
     this.companionPorts.clear();
     this.presentedWorkspacePaths.clear();
     this.bridge?.close();
@@ -730,20 +741,18 @@ export class VsCodeServerManager {
     this.bridgePort = undefined;
   }
 
-  /** Returns the running server for a folder or starts one, deduplicating concurrent starts. */
-  private serverFor(resolvedWorkspace: string, binary: string): Promise<ServerInstance> {
+  /** Returns the running server for a folder or shares one Effect-owned in-flight start. */
+  private serverFor(
+    resolvedWorkspace: string,
+    binary: string,
+    signal?: AbortSignal,
+  ): Promise<ServerInstance> {
     const existing = this.servers.get(resolvedWorkspace);
     if (existing) return Promise.resolve(existing);
-    const pending = this.starting.get(resolvedWorkspace);
-    if (pending) return pending;
-    const started = this.startServer(resolvedWorkspace, binary).finally(() => {
-      this.starting.delete(resolvedWorkspace);
-    });
-    this.starting.set(resolvedWorkspace, started);
-    return started;
+    return this.props.acquireServer(resolvedWorkspace, binary, signal);
   }
 
-  private async startServer(workspacePath: string, binary: string): Promise<ServerInstance> {
+  async startServer(workspacePath: string, binary: string): Promise<ServerInstance> {
     this.setStatus("starting", "Starting VS Code");
     await this.enforceRunningCap();
     await this.startBridge();
@@ -810,6 +819,7 @@ export class VsCodeServerManager {
       port,
       token,
       flavor,
+      binary,
       lastUsedAt: Date.now(),
       viewers: 0,
     };
@@ -817,6 +827,8 @@ export class VsCodeServerManager {
     const exitHandler = (code: number | null) => {
       if (this.servers.get(workspacePath) !== instance) return;
       this.forgetServer(instance);
+      this.servers.delete(workspacePath);
+      this.props.invalidateServer(this.serverCacheKey(instance));
       this.setStatus("failed", `VS Code exited unexpectedly (code ${code ?? "unknown"})`);
     };
     child.once("exit", exitHandler);
@@ -846,8 +858,7 @@ export class VsCodeServerManager {
         .filter((candidate) => candidate.viewers === 0)
         .sort((left, right) => left.lastUsedAt - right.lastUsedAt)[0];
       if (!victim) return;
-      this.disposeServer(victim);
-      this.servers.delete(victim.workspacePath);
+      await this.props.evictServer(this.serverCacheKey(victim));
     }
   }
 
@@ -859,20 +870,15 @@ export class VsCodeServerManager {
   }
 
   private scheduleEviction(instance: ServerInstance) {
-    if (instance.evictTimer) clearTimeout(instance.evictTimer);
-    instance.evictTimer = setTimeout(() => {
-      instance.evictTimer = undefined;
-      if (instance.viewers > 0) return;
-      this.disposeServer(instance);
-      this.servers.delete(instance.workspacePath);
-    }, IDLE_EVICT_MS);
+    this.props.scheduleIdleEviction(this.serverCacheKey(instance));
   }
 
   private cancelEviction(instance: ServerInstance) {
-    if (instance.evictTimer) {
-      clearTimeout(instance.evictTimer);
-      instance.evictTimer = undefined;
-    }
+    this.props.cancelIdleEviction(this.serverCacheKey(instance));
+  }
+
+  private serverCacheKey(instance: ServerInstance) {
+    return `${instance.workspacePath}\0${instance.binary}`;
   }
 
   private forgetServer(instance: ServerInstance) {
@@ -891,10 +897,11 @@ export class VsCodeServerManager {
     }
   }
 
-  private disposeServer(instance: ServerInstance) {
-    this.cancelEviction(instance);
-    this.companionPorts.delete(instance.workspacePath);
-    this.presentedWorkspacePaths.delete(instance.workspacePath);
+  releaseServer(instance: ServerInstance) {
+    if (this.servers.get(instance.workspacePath) === instance) {
+      this.forgetServer(instance);
+      this.servers.delete(instance.workspacePath);
+    }
     instance.child.removeAllListeners("exit");
     instance.child.kill();
   }
