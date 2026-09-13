@@ -9,6 +9,10 @@ export const artifactHandlers = ArtifactRpc.of({
     Effect.flatMap(RendererConnection, ({ connectionId }) =>
       artifacts.respond(connectionId, request),
     ),
+  "artifacts.respond-widget-preview": (request) =>
+    Effect.flatMap(RendererConnection, ({ connectionId }) =>
+      artifacts.respondWidgetPreview(connectionId, request),
+    ),
   "artifacts.respond-ui": (request) =>
     Effect.flatMap(RendererConnection, ({ connectionId }) =>
       artifacts.respondUi(connectionId, request),

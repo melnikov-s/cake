@@ -76,6 +76,17 @@ const cakeEventSchemas = {
     artifactRequestId: uuid,
     record: artifactRecordSchema,
   }),
+  "widget-preview-requested": Schema.Struct({
+    type: Schema.Literal("widget-preview-requested"),
+    requestId: uuid,
+    previewRequestId: uuid,
+    sessionId: stringMax(256),
+    widget: compiledInlineWidgetSchema,
+  }),
+  "widget-preview-dismissed": Schema.Struct({
+    type: Schema.Literal("widget-preview-dismissed"),
+    token: uuid,
+  }),
   "ui-request": Schema.Struct({
     type: Schema.Literal("ui-request"),
     requestId: uuid,
@@ -198,6 +209,8 @@ export const artifactEventSchema = Schema.Union([
   cakeEventSchemas["renderer-events-ready"],
   cakeEventSchemas["artifact-updated"],
   cakeEventSchemas["artifact-requested"],
+  cakeEventSchemas["widget-preview-requested"],
+  cakeEventSchemas["widget-preview-dismissed"],
   cakeEventSchemas["ui-request"],
 ]);
 
@@ -233,6 +246,8 @@ export const cakeEventSchema = Schema.Union([
   cakeEventSchemas["changelog-snapshot"],
   cakeEventSchemas["artifact-updated"],
   cakeEventSchemas["artifact-requested"],
+  cakeEventSchemas["widget-preview-requested"],
+  cakeEventSchemas["widget-preview-dismissed"],
   cakeEventSchemas["ui-request"],
   cakeEventSchemas["complete"],
   cakeEventSchemas["fatal"],
@@ -504,6 +519,22 @@ export const cakeRpcPayloadSchemas = {
     value: Schema.optional(jsonValueSchema),
     cancelled: Schema.Boolean,
   }),
+  "respond-widget-preview": Schema.Struct({
+    ...requestBase,
+    previewRequestId: uuid,
+    sessionId: stringMax(256),
+    token: uuid,
+    cancelled: Schema.Boolean,
+    rect: Schema.optional(
+      Schema.Struct({
+        x: coordinate,
+        y: coordinate,
+        width: nonNegativeInt,
+        height: nonNegativeInt,
+      }),
+    ),
+    diagnostics: Schema.Array(ipcProjectionString(1_024)).check(Schema.isMaxLength(16)),
+  }),
   "export-artifacts": Schema.Struct({
     sessionId: stringMax(256),
   }),
@@ -609,6 +640,9 @@ const cakeRpcResultSchemas = {
   "artifact-response-accepted": Schema.Struct({
     artifactRequestId: uuid,
   }),
+  "widget-preview-response-accepted": Schema.Struct({
+    previewRequestId: uuid,
+  }),
   "artifacts-exported": Schema.Struct({
     markdown: stringMax(20_000_000),
   }),
@@ -663,6 +697,7 @@ export const cakeRpcSuccessSchemas = {
   "open-embedded-editor-source-control": cakeRpcResultSchemas.accepted,
   "update-embedded-editor-annotations": cakeRpcResultSchemas.accepted,
   "respond-artifact": cakeRpcResultSchemas["artifact-response-accepted"],
+  "respond-widget-preview": cakeRpcResultSchemas["widget-preview-response-accepted"],
   "respond-ui": cakeRpcResultSchemas["ui-response-accepted"],
   "export-artifacts": cakeRpcResultSchemas["artifacts-exported"],
   "compile-inline-widget": cakeRpcResultSchemas["inline-widget-compiled"],

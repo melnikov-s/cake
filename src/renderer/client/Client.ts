@@ -312,6 +312,18 @@ interface ArtifactCommands {
     },
     options?: ClientCommandOptions,
   ): Promise<void>;
+  respondToWidgetPreview(
+    input: {
+      operationId: string;
+      previewRequestId: string;
+      sessionId: string;
+      token: string;
+      cancelled: boolean;
+      rect?: { x: number; y: number; width: number; height: number };
+      diagnostics: ReadonlyArray<string>;
+    },
+    options?: ClientCommandOptions,
+  ): Promise<void>;
   respondToUi(
     input: {
       operationId: string;

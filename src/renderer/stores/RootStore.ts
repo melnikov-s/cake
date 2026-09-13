@@ -35,6 +35,7 @@ import { resolveDraftUpdate } from "../../utils/resolve-draft-update";
 import type { RootProjection } from "../models/RootProjection";
 import { formatHotkey } from "../lib/hotkeys";
 import { UiHintModeStore } from "./UiHintModeStore";
+import { WidgetPreviewStore } from "./WidgetPreviewStore";
 
 export class RootStore extends Store<{
   client: Client;
@@ -88,6 +89,11 @@ export class RootStore extends Store<{
   @child
   get inlineWidgetStore(): InlineWidgetStore {
     return createStore(InlineWidgetStore);
+  }
+
+  @child
+  get widgetPreviewStore(): WidgetPreviewStore {
+    return createStore(WidgetPreviewStore);
   }
 
   @child

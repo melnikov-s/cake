@@ -8,6 +8,11 @@ const inlineWidgetMessageBase = {
 export const inlineWidgetMessageSchema = Schema.Union([
   Schema.Struct({
     ...inlineWidgetMessageBase,
+    type: Schema.Literal("ready"),
+    value: Schema.Boolean,
+  }),
+  Schema.Struct({
+    ...inlineWidgetMessageBase,
     type: Schema.Literal("height"),
     value: Schema.Number,
   }),

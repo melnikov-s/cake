@@ -19,6 +19,7 @@ interface RendererUiRequest {
 }
 
 type ArtifactResponse = (typeof cakeRpcPayloadSchemas)["respond-artifact"]["Type"];
+type WidgetPreviewResponse = (typeof cakeRpcPayloadSchemas)["respond-widget-preview"]["Type"];
 type UiResponse = (typeof cakeRpcPayloadSchemas)["respond-ui"]["Type"];
 
 type SessionTarget =
@@ -38,6 +39,14 @@ type PendingRequest =
       readonly sessionId: string;
       readonly connectionId: number;
       readonly operationId: string;
+      readonly completion: Deferred.Deferred<JsonValue | undefined>;
+    }
+  | {
+      readonly _tag: "WidgetPreview";
+      readonly sessionId: string;
+      readonly connectionId: number;
+      readonly operationId: string;
+      readonly token: string;
       readonly completion: Deferred.Deferred<JsonValue | undefined>;
     }
   | {
@@ -77,6 +86,23 @@ export interface RendererRequestCoordinatorService {
     record: ArtifactRecord,
     signal: AbortSignal,
   ) => Effect.Effect<JsonValue | undefined, RendererRequestCoordinatorError>;
+  readonly requestWidgetPreview: (
+    sessionId: string,
+    widget: { readonly token: string; readonly url: string },
+    signal: AbortSignal,
+  ) => Effect.Effect<
+    {
+      readonly connectionId: number;
+      readonly rect: {
+        readonly x: number;
+        readonly y: number;
+        readonly width: number;
+        readonly height: number;
+      };
+      readonly diagnostics: ReadonlyArray<string>;
+    },
+    RendererRequestCoordinatorError
+  >;
   readonly requestProjectControl: (
     sessionId: string,
     invocation: ProjectSessionControlInvocation,
@@ -99,6 +125,11 @@ export interface RendererRequestCoordinatorService {
     connectionId: number,
     sessionId: string,
     response: ArtifactResponse,
+  ) => Effect.Effect<void, RendererRequestCoordinatorError>;
+  readonly respondWidgetPreview: (
+    connectionId: number,
+    sessionId: string,
+    response: WidgetPreviewResponse,
   ) => Effect.Effect<void, RendererRequestCoordinatorError>;
   readonly respondProjectControl: (
     connectionId: number,
@@ -127,7 +158,8 @@ const coordinatorError = (operation: string, message: string) =>
   new RendererRequestCoordinatorError({ operation, message });
 
 const cancellationValue = (pending: PendingRequest, stopped: boolean): JsonValue | undefined => {
-  if (pending._tag === "Ui" || pending._tag === "Artifact") return undefined;
+  if (pending._tag === "Ui" || pending._tag === "Artifact" || pending._tag === "WidgetPreview")
+    return undefined;
   if (pending._tag === "ProjectControl")
     return {
       ok: false,
@@ -337,6 +369,68 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
       return yield* awaitPending(artifactRequestId, entry, signal);
     });
 
+    const requestWidgetPreview = Effect.fn("RendererRequestCoordinator.requestWidgetPreview")(
+      function* (
+        sessionId: string,
+        widget: { readonly token: string; readonly url: string },
+        signal: AbortSignal,
+      ) {
+        if (signal.aborted)
+          return yield* coordinatorError("requestWidgetPreview", "Widget review was cancelled");
+        const connectionId = yield* Effect.try({
+          try: () => requireBinding({ _tag: "ProjectSession", sessionId }),
+          catch: (cause) =>
+            cause instanceof RendererRequestCoordinatorError
+              ? cause
+              : coordinatorError("requestWidgetPreview", String(cause)),
+        });
+        const operationId = crypto.randomUUID();
+        const previewRequestId = crypto.randomUUID();
+        const completion = yield* Deferred.make<JsonValue | undefined>();
+        const entry: PendingRequest = {
+          _tag: "WidgetPreview",
+          sessionId,
+          connectionId,
+          operationId,
+          token: widget.token,
+          completion,
+        };
+        pending.set(previewRequestId, entry);
+        yield* publishProjectEvent(connectionId, {
+          type: "widget-preview-requested",
+          requestId: operationId,
+          previewRequestId,
+          sessionId,
+          widget,
+        }).pipe(Effect.tapError(() => Effect.sync(() => pending.delete(previewRequestId))));
+        const value = yield* awaitPending(previewRequestId, entry, signal, 15_000);
+        if (value === undefined) {
+          yield* publishProjectEvent(connectionId, {
+            type: "widget-preview-dismissed",
+            token: widget.token,
+          }).pipe(Effect.catch(() => Effect.void));
+          return yield* coordinatorError(
+            "requestWidgetPreview",
+            signal.aborted ? "Widget review was cancelled" : "Widget preview did not become ready",
+          );
+        }
+        const decoded = yield* Schema.decodeUnknownEffect(
+          Schema.Struct({
+            rect: Schema.Struct({
+              x: Schema.Int,
+              y: Schema.Int,
+              width: Schema.Int,
+              height: Schema.Int,
+            }),
+            diagnostics: Schema.Array(Schema.String),
+          }),
+        )(value).pipe(
+          Effect.mapError((cause) => coordinatorError("requestWidgetPreview", cause.message)),
+        );
+        return { connectionId, ...decoded };
+      },
+    );
+
     const requestProjectControl = Effect.fn("RendererRequestCoordinator.requestProjectControl")(
       function* (
         sessionId: string,
@@ -470,6 +564,40 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
         complete(response.artifactRequestId, response.cancelled ? undefined : response.value);
     });
 
+    const respondWidgetPreview = Effect.fn("RendererRequestCoordinator.respondWidgetPreview")(
+      function* (connectionId: number, sessionId: string, response: WidgetPreviewResponse) {
+        const request = yield* Effect.try({
+          try: () =>
+            validateResponse(
+              "respondWidgetPreview",
+              response.previewRequestId,
+              "WidgetPreview",
+              connectionId,
+              sessionId,
+            ),
+          catch: (cause) =>
+            cause instanceof RendererRequestCoordinatorError
+              ? cause
+              : coordinatorError("respondWidgetPreview", String(cause)),
+        });
+        if (
+          request?._tag === "WidgetPreview" &&
+          (request.operationId !== response.requestId || request.token !== response.token)
+        )
+          return yield* coordinatorError(
+            "respondWidgetPreview",
+            "The preview response correlation does not match",
+          );
+        if (request)
+          complete(
+            response.previewRequestId,
+            response.cancelled || !response.rect
+              ? undefined
+              : { rect: response.rect, diagnostics: response.diagnostics },
+          );
+      },
+    );
+
     const respondProjectControl = Effect.fn("RendererRequestCoordinator.respondProjectControl")(
       function* (
         connectionId: number,
@@ -577,6 +705,7 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
       bind,
       requestUi,
       requestArtifact,
+      requestWidgetPreview,
       requestProjectControl,
       requestCakeChatControl,
       cakeChatControlRequests: (connectionId) =>
@@ -593,6 +722,7 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
         ),
       respondUi,
       respondArtifact,
+      respondWidgetPreview,
       respondProjectControl,
       respondCakeChatControl,
       releaseSession,

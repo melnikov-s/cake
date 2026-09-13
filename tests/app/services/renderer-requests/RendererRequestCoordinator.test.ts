@@ -164,6 +164,50 @@ describe("RendererRequestCoordinator", () => {
     }),
   );
 
+  it.effect("correlates widget preview responses by renderer, operation, and token", () =>
+    Effect.gen(function* () {
+      const { coordinator, events } = yield* makeFixture;
+      yield* coordinator.registerProjectSession("project-1", "/projects/cake");
+      yield* coordinator.bind({ _tag: "ProjectSession", sessionId: "project-1" }, 31);
+      const token = "00000000-0000-4000-8000-000000000001";
+      const pending = yield* coordinator
+        .requestWidgetPreview(
+          "project-1",
+          { token, url: `cake-widget://document/${token}` },
+          new AbortController().signal,
+        )
+        .pipe(Effect.forkChild);
+      const event = yield* Queue.take(events);
+      assert.equal(event.type, "widget-preview-requested");
+      const stale = yield* coordinator
+        .respondWidgetPreview(31, "project-1", {
+          requestId: event.requestId,
+          previewRequestId: event.previewRequestId,
+          sessionId: "project-1",
+          token: "00000000-0000-4000-8000-000000000002",
+          cancelled: false,
+          rect: { x: 10, y: 20, width: 560, height: 480 },
+          diagnostics: [],
+        })
+        .pipe(Effect.exit);
+      expect(Exit.isFailure(stale)).toBe(true);
+      yield* coordinator.respondWidgetPreview(31, "project-1", {
+        requestId: event.requestId,
+        previewRequestId: event.previewRequestId,
+        sessionId: "project-1",
+        token,
+        cancelled: false,
+        rect: { x: 10, y: 20, width: 560, height: 480 },
+        diagnostics: ["widget=560x480"],
+      });
+      expect(yield* Fiber.join(pending)).toEqual({
+        connectionId: 31,
+        rect: { x: 10, y: 20, width: 560, height: 480 },
+        diagnostics: ["widget=560x480"],
+      });
+    }),
+  );
+
   it.effect("cleans pending requests and bindings on connection and session release", () =>
     Effect.gen(function* () {
       const { coordinator, events } = yield* makeFixture;

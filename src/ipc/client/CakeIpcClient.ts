@@ -523,7 +523,7 @@ export interface CakeIpcClientService {
     >;
   };
   readonly artifacts: RpcOperations<
-    "respond-artifact" | "respond-ui" | "export-artifacts",
+    "respond-artifact" | "respond-widget-preview" | "respond-ui" | "export-artifacts",
     ArtifactError
   >;
   readonly widgets: RpcOperations<
@@ -546,7 +546,12 @@ export interface CakeIpcClientService {
     >;
     readonly artifacts: () => Stream.Stream<
       FocusedCakeEvent<
-        "artifact-updated" | "artifact-requested" | "ui-request" | "renderer-events-ready"
+        | "artifact-updated"
+        | "artifact-requested"
+        | "widget-preview-requested"
+        | "widget-preview-dismissed"
+        | "ui-request"
+        | "renderer-events-ready"
       >,
       TransportError
     >;
@@ -1015,6 +1020,9 @@ export const CakeIpcClientLive = Layer.effect(
       artifacts: {
         "respond-artifact": Effect.fn("CakeIpcClient.artifacts.respond-artifact")((payload) =>
           client("artifacts.respond-artifact", payload),
+        ),
+        "respond-widget-preview": Effect.fn("CakeIpcClient.artifacts.respond-widget-preview")(
+          (payload) => client("artifacts.respond-widget-preview", payload),
         ),
         "respond-ui": Effect.fn("CakeIpcClient.artifacts.respond-ui")((payload) =>
           client("artifacts.respond-ui", payload),

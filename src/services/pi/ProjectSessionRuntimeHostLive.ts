@@ -4,6 +4,8 @@ import { ArtifactStorage } from "../storage/ArtifactStorage";
 import { ReviewStorage } from "../storage/ReviewStorage";
 import { RendererRequestCoordinator } from "../renderer-requests/RendererRequestCoordinator";
 import { ProjectSessionIntegrationHost } from "./ProjectSessionIntegrationHost";
+import { PiModels } from "./PiModels";
+import { RenderedWidgetCapture } from "../widgets/RenderedWidgetCapture";
 import {
   ProjectSessionRuntimeHost,
   ProjectSessionRuntimeHostError,
@@ -32,7 +34,12 @@ export const makeProjectSessionRuntimeHostLive = (
 ): Layer.Layer<
   ProjectSessionRuntimeHost,
   never,
-  ArtifactStorage | Electron | RendererRequestCoordinator | ReviewStorage
+  | ArtifactStorage
+  | Electron
+  | PiModels
+  | RenderedWidgetCapture
+  | RendererRequestCoordinator
+  | ReviewStorage
 > =>
   Layer.effect(
     ProjectSessionRuntimeHost,
@@ -41,7 +48,11 @@ export const makeProjectSessionRuntimeHostLive = (
       const electron = yield* Electron;
       const reviews = yield* ReviewStorage;
       const rendererRequests = yield* RendererRequestCoordinator;
-      const adapterContext = yield* Effect.context<ArtifactStorage | RendererRequestCoordinator>();
+      const models = yield* PiModels;
+      const widgetCapture = yield* RenderedWidgetCapture;
+      const adapterContext = yield* Effect.context<
+        ArtifactStorage | PiModels | RenderedWidgetCapture | RendererRequestCoordinator
+      >();
       const runAdapter = Effect.runPromiseWith(adapterContext);
       const sessions = new Map<string, SessionIntegration>();
 
@@ -80,6 +91,26 @@ export const makeProjectSessionRuntimeHostLive = (
             runAdapter(rendererRequests.requestArtifact(sessionId, record, signal)),
           requestApplicationControl: (invocation, signal) =>
             runAdapter(rendererRequests.requestProjectControl(sessionId, invocation, signal)),
+          captureWidget: (targetSessionId, widget, signal) =>
+            runAdapter(widgetCapture.capture(targetSessionId, widget, signal)),
+          requireVisionModel: async (model) => {
+            if (!model)
+              throw new Error(
+                "widgets.present requires the active session to use a configured vision-capable model",
+              );
+            const catalog = await runAdapter(models.list());
+            const selected = catalog.find(
+              (candidate) => candidate.provider === model.provider && candidate.id === model.id,
+            );
+            if (!selected || !selected.authenticated || !selected.available)
+              throw new Error(
+                `widgets.present could not resolve the configured model ${model.provider}/${model.id}`,
+              );
+            if (!selected.input.includes("image"))
+              throw new Error(
+                `widgets.present requires image input, but ${model.provider}/${model.id} is text-only`,
+              );
+          },
           artifactRepository: {
             // Pi's artifact hooks are Promise callbacks. Keep the only execution
             // adapter at this host boundary and provide only ArtifactStorage.

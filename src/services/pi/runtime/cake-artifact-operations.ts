@@ -306,7 +306,7 @@ export function createCakeArtifactOperations(
       result: "The persisted widget artifact ID after generation and compilation complete.",
       limitations: [
         "Generated widgets have no filesystem, Node, Electron, parent-DOM or Cake API access. CSP blocks fetch/XHR/WebSocket; generic widgets permit passive HTTPS/data images and media. Supply local data and request self-contained output.",
-        "Generation is compile-checked; automatic screenshot review is not yet provided.",
+        "Every successfully rendered candidate is reviewed from an actual Cake Electron screenshot. Review screenshots are retained in private Pi widget-session transcripts under Cake's existing session retention policy.",
       ],
       async execute(input, context) {
         // SAFETY: CakeOperationRegistry parsed this value with the definition's input schema.
@@ -315,7 +315,9 @@ export function createCakeArtifactOperations(
         if (new TextEncoder().encode(serialized).byteLength > 262_144)
           throw new Error("Widget brief exceeds the 262144-byte limit");
         const runtime = runtimeContext(context);
+        const sessionId = runtime.sessionManager.getSessionId();
         const generated = await options.generateInlineWidget!({
+          sessionId,
           brief: widget.brief,
           data: widget.data,
           fallback: widget.fallback.markdown,
@@ -324,7 +326,7 @@ export function createCakeArtifactOperations(
             : undefined,
           signal: context.signal,
         });
-        const sessionId = runtime.sessionManager.getSessionId();
+        if (context.signal.aborted) throw new Error("Widget generation was cancelled");
         const record = await persist(
           {
             protocol: "cake.artifact/v1",

@@ -13,9 +13,11 @@ import {
 } from "../../ipc/artifact-contract";
 import type { CakeEvent } from "../../ipc/cake-rpc-contract";
 import { compileInlineWidget, extractRepairedWidget } from "../widgets/inline-widget-service";
+import { publishInlineWidget, revokeInlineWidget } from "../widgets/inline-widget-protocol";
 import {
   runInlineWidgetGeneration,
   runInlineWidgetRepair,
+  runInlineWidgetVisualReview,
   type InlineWidgetGenerationRequest,
 } from "./runtime/sidecar-runtime";
 import type { CakeRuntimeOptions } from "./runtime/cake-runtime";
@@ -76,7 +78,16 @@ export interface ProjectSessionIntegrationHostOptions {
   ) => Promise<JsonValue>;
   readonly runWidgetGeneration?: typeof runInlineWidgetGeneration;
   readonly runWidgetRepair?: typeof runInlineWidgetRepair;
+  readonly runWidgetVisualReview?: typeof runInlineWidgetVisualReview;
   readonly compileWidget?: typeof compileInlineWidget;
+  readonly captureWidget?: (
+    sessionId: string,
+    widget: { readonly token: string; readonly url: string },
+    signal: AbortSignal,
+  ) => Promise<{ readonly pngBase64: string; readonly diagnostics: ReadonlyArray<string> }>;
+  readonly requireVisionModel?: (
+    model: { provider: string; id: string } | undefined,
+  ) => Promise<void>;
   readonly artifactRepository?: ArtifactRepositoryPort;
   readonly reviewRepository?: ReviewRepositoryPort;
   readonly openExternal?: (url: string) => Promise<void>;
@@ -112,7 +123,14 @@ export class ProjectSessionIntegrationHost {
   private readonly requestApplicationControlFromRenderer: ProjectSessionIntegrationHostOptions["requestApplicationControl"];
   private readonly runWidgetGeneration: typeof runInlineWidgetGeneration;
   private readonly runWidgetRepair: typeof runInlineWidgetRepair;
+  private readonly runWidgetVisualReview: typeof runInlineWidgetVisualReview;
   private readonly compileWidget: typeof compileInlineWidget;
+  private readonly captureWidget: NonNullable<
+    ProjectSessionIntegrationHostOptions["captureWidget"]
+  >;
+  private readonly requireVisionModel: NonNullable<
+    ProjectSessionIntegrationHostOptions["requireVisionModel"]
+  >;
   private readonly artifactRepository: ArtifactRepositoryPort;
   private readonly reviewRepository: ReviewRepositoryPort;
   private disposed = false;
@@ -128,7 +146,21 @@ export class ProjectSessionIntegrationHost {
     this.requestApplicationControlFromRenderer = options.requestApplicationControl;
     this.runWidgetGeneration = options.runWidgetGeneration ?? runInlineWidgetGeneration;
     this.runWidgetRepair = options.runWidgetRepair ?? runInlineWidgetRepair;
+    this.runWidgetVisualReview = options.runWidgetVisualReview ?? runInlineWidgetVisualReview;
     this.compileWidget = options.compileWidget ?? compileInlineWidget;
+    this.captureWidget =
+      options.captureWidget ??
+      (async () => {
+        throw new Error(
+          "Rendered widget review is unavailable because no Cake renderer capture service is configured",
+        );
+      });
+    this.requireVisionModel =
+      options.requireVisionModel ??
+      (async (model) => {
+        if (!model)
+          throw new Error("Rendered widget review requires a configured vision-capable model");
+      });
     this.artifactRepository = options.artifactRepository ?? {
       async upsert(workingDirectory, artifact) {
         const now = new Date().toISOString();
@@ -215,6 +247,9 @@ export class ProjectSessionIntegrationHost {
   }
 
   private async generateInlineWidget(input: InlineWidgetGenerationRequest) {
+    await this.requireVisionModel(input.model);
+    if (!input.model)
+      throw new Error("Rendered widget review requires a configured vision-capable model");
     const generated = await this.runWidgetGeneration({
       cwd: this.workspacePath,
       agentDir: this.agentDir,
@@ -222,27 +257,95 @@ export class ProjectSessionIntegrationHost {
       ...input,
     });
     const language = "react" as const;
-    const generatedSource = extractRepairedWidget(generated.response, language);
-    try {
-      await this.compileWidget(language, generatedSource, "display");
-      return { language, source: generatedSource, generationSessionId: generated.sessionId };
-    } catch (error) {
-      const diagnostic = error instanceof Error ? error.message : String(error);
-      const repaired = await this.runWidgetRepair({
-        cwd: this.workspacePath,
-        agentDir: this.agentDir,
-        sessionDir: this.widgetSessionDir,
-        language,
-        capability: "display",
-        source: generatedSource,
-        context: JSON.stringify({ brief: input.brief, data: input.data, fallback: input.fallback }),
-        diagnostic,
-        model: input.model,
-        signal: input.signal,
-      });
-      const source = extractRepairedWidget(repaired.response, language);
-      await this.compileWidget(language, source, "display");
-      return { language, source, generationSessionId: generated.sessionId };
+    const context = JSON.stringify({
+      brief: input.brief,
+      data: input.data,
+      fallback: input.fallback,
+    });
+    let source = extractRepairedWidget(generated.response, language);
+    let replacements = 0;
+    let diagnostic = "Compilation succeeded.";
+
+    while (true) {
+      if (input.signal?.aborted) throw new Error("Widget generation was cancelled");
+      let compiled: Awaited<ReturnType<typeof compileInlineWidget>>;
+      try {
+        compiled = await this.compileWidget(language, source, "display");
+      } catch (error) {
+        diagnostic =
+          `Compilation failed: ${error instanceof Error ? error.message : String(error)}`.slice(
+            0,
+            8_000,
+          );
+        if (replacements >= 2)
+          throw new Error(`Widget review exhausted its two replacements. ${diagnostic}`);
+        const repaired = await this.runWidgetRepair({
+          cwd: this.workspacePath,
+          agentDir: this.agentDir,
+          sessionDir: this.widgetSessionDir,
+          language,
+          capability: "display",
+          source,
+          context,
+          diagnostic,
+          model: input.model,
+          signal: input.signal,
+        });
+        source = extractRepairedWidget(repaired.response, language);
+        replacements += 1;
+        continue;
+      }
+
+      const published = publishInlineWidget(compiled);
+      try {
+        const capture = await this.captureWidget(
+          input.sessionId,
+          published,
+          input.signal ?? new AbortController().signal,
+        );
+        diagnostic = [diagnostic, ...capture.diagnostics].join("\n").slice(0, 8_000);
+        const reviewed = await this.runWidgetVisualReview({
+          cwd: this.workspacePath,
+          agentDir: this.agentDir,
+          sessionDir: this.widgetSessionDir,
+          source,
+          context,
+          diagnostic,
+          pngBase64: capture.pngBase64,
+          model: input.model,
+          signal: input.signal,
+        });
+        if (reviewed.response.trim() === "ACCEPT_CURRENT")
+          return { language, source, generationSessionId: generated.sessionId };
+        if (replacements >= 2)
+          throw new Error(
+            "Widget visual review requested a third replacement; the two-replacement limit is exhausted",
+          );
+        source = extractRepairedWidget(reviewed.response, language);
+        replacements += 1;
+        diagnostic = "Visual reviewer supplied a replacement.";
+      } catch (error) {
+        if (input.signal?.aborted) throw new Error("Widget generation was cancelled");
+        const message = error instanceof Error ? error.message : String(error);
+        if (message.includes("two-replacement limit")) throw error;
+        if (replacements >= 2) throw error;
+        const repaired = await this.runWidgetRepair({
+          cwd: this.workspacePath,
+          agentDir: this.agentDir,
+          sessionDir: this.widgetSessionDir,
+          language,
+          capability: "display",
+          source,
+          context,
+          diagnostic: `Rendered preview failed: ${message}`.slice(0, 8_000),
+          model: input.model,
+          signal: input.signal,
+        });
+        source = extractRepairedWidget(repaired.response, language);
+        replacements += 1;
+      } finally {
+        revokeInlineWidget(published.token);
+      }
     }
   }
 }

@@ -1,0 +1,133 @@
+import { describe, expect, it, vi } from "vitest";
+import { ProjectSessionIntegrationHost } from "../../../../src/services/pi/ProjectSessionIntegrationHost";
+import type { InlineWidgetGenerationRequest } from "../../../../src/services/pi/runtime/sidecar-runtime";
+
+const source = (name: string) =>
+  `\`\`\`cake-react\nexport default function ${name}(){ return <div>${name}</div> }\n\`\`\``;
+
+function host(options: {
+  generation?: string;
+  reviews: string[];
+  compileFailures?: Set<string>;
+  signal?: AbortSignal;
+  visualReview?: (signal: AbortSignal | undefined) => Promise<string>;
+}) {
+  const calls: string[] = [];
+  let token = 0;
+  const integration = new ProjectSessionIntegrationHost({
+    workspacePath: "/workspace",
+    agentDir: "/agent",
+    sessionDir: "/sessions",
+    emit: vi.fn(),
+    requestUi: vi.fn(),
+    requestArtifact: vi.fn(),
+    requestApplicationControl: vi.fn(),
+    requireVisionModel: async (model) => {
+      calls.push(`vision:${model?.id}`);
+    },
+    runWidgetGeneration: async () => {
+      calls.push("generate");
+      return { sessionId: "generation-session", response: options.generation ?? source("Initial") };
+    },
+    compileWidget: async (_language, candidate) => {
+      const name = candidate.match(/function (\w+)/)?.[1] ?? "unknown";
+      calls.push(`compile:${name}`);
+      if (options.compileFailures?.has(name)) throw new Error(`bad ${name}`);
+      token += 1;
+      return {
+        token: `00000000-0000-4000-8000-${String(token).padStart(12, "0")}`,
+        document: `<html>${name}</html>`,
+      };
+    },
+    captureWidget: async (_sessionId, widget) => {
+      calls.push(`capture:${widget.token.slice(-1)}`);
+      return { pngBase64: "cG5n", diagnostics: ["widget=560x480"] };
+    },
+    runWidgetRepair: async ({ diagnostic }) => {
+      calls.push(`repair:${diagnostic?.split(":")[0]}`);
+      return { sessionId: "repair", response: source("Repaired") };
+    },
+    runWidgetVisualReview: async ({ signal }) => {
+      calls.push("review");
+      return {
+        sessionId: "review",
+        response: options.visualReview
+          ? await options.visualReview(signal)
+          : (options.reviews.shift() ?? "ACCEPT_CURRENT"),
+      };
+    },
+  });
+  return { integration, calls };
+}
+
+const request = (signal?: AbortSignal): InlineWidgetGenerationRequest => ({
+  sessionId: "project-session",
+  brief: "Show the flow",
+  fallback: "Readable fallback",
+  model: { provider: "fixture", id: "vision" },
+  signal,
+});
+
+const generate = (
+  integration: ProjectSessionIntegrationHost,
+  input: ReturnType<typeof request>,
+) => {
+  const operation = integration.runtimeIntegrations("project-session").generateInlineWidget;
+  if (!operation) throw new Error("Missing widget generation integration");
+  return operation(input);
+};
+
+describe("ProjectSessionIntegrationHost widget rendered review", () => {
+  it("captures and reviews every rendered candidate before accepting a replacement", async () => {
+    const fixture = host({ reviews: [source("Second"), "ACCEPT_CURRENT"] });
+    const result = await generate(fixture.integration, request());
+    expect(result.source).toContain("function Second");
+    expect(fixture.calls).toEqual([
+      "vision:vision",
+      "generate",
+      "compile:Initial",
+      "capture:1",
+      "review",
+      "compile:Second",
+      "capture:2",
+      "review",
+    ]);
+  });
+
+  it("shares the two-replacement budget across compiler repair and visual review", async () => {
+    const fixture = host({
+      generation: source("Broken"),
+      compileFailures: new Set(["Broken"]),
+      reviews: [source("Third"), source("Forbidden")],
+    });
+    await expect(generate(fixture.integration, request())).rejects.toThrow("third replacement");
+    expect(fixture.calls.filter((call) => call.startsWith("capture"))).toHaveLength(2);
+    expect(fixture.calls).toContain("repair:Compilation failed");
+  });
+
+  it("aborts active specialist review and never returns publishable source", async () => {
+    const controller = new AbortController();
+    const fixture = host({
+      reviews: [],
+      visualReview: (signal) =>
+        new Promise((_, reject) => {
+          signal?.addEventListener("abort", () => reject(new Error("specialist aborted")), {
+            once: true,
+          });
+        }),
+    });
+    const pending = generate(fixture.integration, request(controller.signal));
+    await vi.waitFor(() => expect(fixture.calls).toContain("review"));
+    controller.abort();
+    await expect(pending).rejects.toThrow("cancelled");
+    expect(fixture.calls.filter((call) => call.startsWith("capture"))).toHaveLength(1);
+  });
+
+  it("fails preflight before generation when vision review is unavailable", async () => {
+    const fixture = host({ reviews: [] });
+    await expect(generate(fixture.integration, { ...request(), model: undefined })).rejects.toThrow(
+      "vision-capable model",
+    );
+    expect(fixture.calls).toEqual(["vision:undefined"]);
+  });
+});

@@ -33,6 +33,11 @@ export interface IsolatedSessionOptions {
   projectTrusted: boolean;
   systemPrompt: string;
   prompt: string;
+  images?: ReadonlyArray<{
+    readonly type: "image";
+    readonly data: string;
+    readonly mimeType: string;
+  }>;
   signal?: AbortSignal;
   model?: { provider: string; id: string };
   thinkingLevel?: ThinkingLevel;
@@ -266,7 +271,10 @@ export async function runIsolatedSession(
         }
       });
       try {
-        await session.prompt(options.prompt, { source: "interactive" });
+        await session.prompt(options.prompt, {
+          source: "interactive",
+          images: options.images ? [...options.images] : undefined,
+        });
       } catch (error) {
         if (!options.capturePromptError) throw error;
         failure ||= error instanceof Error ? error.message : String(error);

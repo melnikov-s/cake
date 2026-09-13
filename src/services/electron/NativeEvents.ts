@@ -25,7 +25,12 @@ export interface NativeEventsService {
     connectionId: number,
   ) => Stream.Stream<
     FocusedCakeEvent<
-      "artifact-updated" | "artifact-requested" | "ui-request" | "renderer-events-ready"
+      | "artifact-updated"
+      | "artifact-requested"
+      | "widget-preview-requested"
+      | "widget-preview-dismissed"
+      | "ui-request"
+      | "renderer-events-ready"
     >
   >;
   readonly terminals: (

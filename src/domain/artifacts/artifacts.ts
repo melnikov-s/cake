@@ -6,6 +6,7 @@ import { ArtifactStorage } from "../../services/storage/ArtifactStorage";
 import { ArtifactError } from "./artifact-data";
 
 type ArtifactResponse = (typeof cakeRpcPayloadSchemas)["respond-artifact"]["Type"];
+type WidgetPreviewResponse = (typeof cakeRpcPayloadSchemas)["respond-widget-preview"]["Type"];
 type UiResponse = (typeof cakeRpcPayloadSchemas)["respond-ui"]["Type"];
 type ExportArtifacts = (typeof cakeRpcPayloadSchemas)["export-artifacts"]["Type"];
 
@@ -42,6 +43,18 @@ export const respond = Effect.fn("Artifacts.respond")(function* (
     .respondArtifact(connectionId, request.sessionId, request)
     .pipe(asError("respond"));
   return { artifactRequestId: request.artifactRequestId };
+});
+
+export const respondWidgetPreview = Effect.fn("Artifacts.respondWidgetPreview")(function* (
+  connectionId: number,
+  request: WidgetPreviewResponse,
+) {
+  yield* authorizedWorkingDirectory(request.sessionId);
+  const coordinator = yield* RendererRequestCoordinator;
+  yield* coordinator
+    .respondWidgetPreview(connectionId, request.sessionId, request)
+    .pipe(asError("respondWidgetPreview"));
+  return { previewRequestId: request.previewRequestId };
 });
 
 export const respondUi = Effect.fn("Artifacts.respondUi")(function* (

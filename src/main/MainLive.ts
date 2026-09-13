@@ -41,6 +41,7 @@ import type { CompanionManifest } from "../services/vscode/VsCodeServerManager";
 import { makeVsCodeServerLive } from "../services/vscode/VsCodeServerLive";
 import { makeInlineWidgetsLive } from "../services/widgets/InlineWidgetsLive";
 import { publishInlineWidget } from "../services/widgets/inline-widget-protocol";
+import { RenderedWidgetCaptureLive } from "../services/widgets/RenderedWidgetCapture";
 import { ManagedWorktreesLive } from "../services/worktrees/ManagedWorktreesLive";
 import { WorktreeLandingCoordinatorLive } from "../services/worktrees/WorktreeLandingCoordinator";
 import { loadReviewSessionProjection } from "../services/pi/runtime/sidecar-runtime";
@@ -148,6 +149,9 @@ export const makeMainLive = (options: MainLiveOptions) => {
     SubagentCoordinatorLive,
     WorktreeLandingCoordinatorLive,
     RendererRequestCoordinatorLive,
+    RenderedWidgetCaptureLive.pipe(
+      Layer.provide(Layer.merge(NativeServicesLive, RendererRequestCoordinatorLive)),
+    ),
     makeInlineWidgetsLive({ paths, publish: publishInlineWidget }),
     makeSubagentEnvironmentLive({
       homeDirectory,

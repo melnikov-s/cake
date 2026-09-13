@@ -8,7 +8,7 @@ import {
 
 type ArtifactOperation = keyof Pick<
   typeof cakeRpcPayloadSchemas,
-  "respond-artifact" | "respond-ui" | "export-artifacts"
+  "respond-artifact" | "respond-widget-preview" | "respond-ui" | "export-artifacts"
 >;
 
 const artifactRpc = <Type extends ArtifactOperation>(type: Type) =>
@@ -20,6 +20,7 @@ const artifactRpc = <Type extends ArtifactOperation>(type: Type) =>
 
 export const ArtifactRpc = RpcGroup.make(
   artifactRpc("respond-artifact"),
+  artifactRpc("respond-widget-preview"),
   artifactRpc("respond-ui"),
   artifactRpc("export-artifacts"),
   Rpc.make("artifacts.observeEvents", { success: artifactEventSchema, stream: true }),

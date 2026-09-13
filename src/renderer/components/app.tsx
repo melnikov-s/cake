@@ -40,6 +40,7 @@ import { SessionContinuationDialog } from "@/components/session-continuation-dia
 import { TreeNavigationDialog } from "@/components/tree-navigation-dialog";
 import { ConversationSplitLayout } from "@/components/conversation-split-layout";
 import { ArtifactWorkspaceLayout } from "@/components/artifact-workspace-layout";
+import { WidgetPreviewHost } from "@/components/widget-preview-host";
 import { BlockingArtifactRequest } from "@/components/blocking-artifact-request";
 import { UiDialog } from "@/components/ui-dialog";
 import { CommandPane } from "@/components/command-pane";
@@ -907,6 +908,7 @@ export const App = observer(function App() {
           />
         </DialogBackdrop>
       )}
+      <WidgetPreviewHost />
       <ToastHost store={root.toastStore}>
         {extensionUi.notifications.map((notification) => (
           <button

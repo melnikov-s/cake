@@ -41,3 +41,8 @@ export function publishInlineWidget(compiled: CompiledInlineWidgetDocument) {
   documents.set(compiled.token, compiled.document);
   return { token: compiled.token, url: `${inlineWidgetScheme}://document/${compiled.token}` };
 }
+
+/** Releases one transient compiled capability without disturbing mounted published widgets. */
+export function revokeInlineWidget(token: string) {
+  documents.delete(token);
+}
