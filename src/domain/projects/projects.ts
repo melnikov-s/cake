@@ -18,7 +18,7 @@ import { RendererRequestCoordinator } from "../../services/renderer-requests/Ren
 import { Terminal } from "../../services/terminal/Terminal";
 import { SessionCatalogChanges } from "../../services/session-catalogs/SessionCatalogChanges";
 import { ApplicationState } from "../../services/storage/ApplicationState";
-import { SessionArchiveStorage } from "../../services/storage/SessionArchiveStorage";
+import { resolutionNamespace } from "../project-sessions/projectSessionResolution";
 import { ManagedWorktrees } from "../../services/worktrees/ManagedWorktrees";
 import { resolveRewordingWorkspace } from "../../services/projects/rewording-workspace";
 import type { ProjectCatalogUpdate } from "../application/catalog-data";
@@ -532,17 +532,16 @@ export const setSessionUnread = Effect.fn("Projects.setSessionUnread")(function*
   );
   const location = (yield* mapProjectError(
     "setSessionUnread",
-    projectSessionLocations.locations(),
+    projectSessionLocations.locations({ includeInactive: true }),
   )).find((candidate) => candidate.workingDirectory === workingDirectory);
   if (!location)
     return yield* new ProjectError({
       operation: "setSessionUnread",
       message: "Cake could not find that Project Session's Working Directory",
     });
-  const archive = yield* SessionArchiveStorage;
   const namespace = yield* mapProjectError(
     "setSessionUnread",
-    archive.locate(request.sessionId, {
+    resolutionNamespace(request.sessionId, {
       cwd: location.workingDirectory,
       activeRoot: location.sessionDirectory,
       resolvedRoot: location.resolvedSessionDirectory,

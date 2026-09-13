@@ -16,6 +16,11 @@ import {
 } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
+import {
+  SessionFamilyStorage,
+  familyMember,
+  type SessionFamily,
+} from "../../../src/services/storage/SessionFamilyStorage";
 import { Terminal } from "../../../src/services/terminal/Terminal";
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import type { WorktreeRecord } from "../../../src/domain/worktrees/managed-worktree-data";
@@ -35,6 +40,9 @@ const record = (
 
 const makeLayer = (options: {
   records: readonly WorktreeRecord[];
+  family?: SessionFamily;
+  familyRootResolved?: boolean;
+  unrelatedActiveSession?: boolean;
   resolvedWorkingDirectories: readonly string[];
   activeWorkingDirectories?: readonly string[];
   activateAfterCatalogChecks?: Readonly<Record<string, number>>;
@@ -88,7 +96,23 @@ const makeLayer = (options: {
       sessionDirectory: "/sessions",
       resolvedSessionDirectory: "/resolved-sessions",
     }),
+    Layer.mock(SessionFamilyStorage, {
+      list: () => Effect.succeed(options.family ? [options.family] : []),
+      familyForMember: (id) =>
+        Effect.succeed(
+          options.family && familyMember(options.family, id) ? options.family : undefined,
+        ),
+    }),
     Layer.mock(SessionArchiveStorage, {
+      locate: (id, location) => {
+        if (options.family && id === options.family.parentSessionId) {
+          assert.equal(location.cwd, options.family.workingDirectory);
+          return Effect.succeed(
+            options.familyRootResolved ? ("resolved" as const) : ("active" as const),
+          );
+        }
+        return Effect.succeed("resolved" as const);
+      },
       projectMigrationComplete: () => Effect.succeed(true),
       resolvedProjects: (projectPath) =>
         Stream.fromIterable(
@@ -114,7 +138,12 @@ const makeLayer = (options: {
         return options.activeWorkingDirectories?.includes(workingDirectory) ||
           (activeAfter !== undefined && checks > activeAfter)
           ? Stream.make({
-              id: `active-${workingDirectory}`,
+              id:
+                (!options.unrelatedActiveSession &&
+                  options.family?.children.find(
+                    (child) => child.workingDirectory === workingDirectory,
+                  )?.sessionId) ||
+                `active-${workingDirectory}`,
               title: "Active",
               created: "2026-01-01T00:00:00.000Z",
               modified: "2026-01-02T00:00:00.000Z",
@@ -155,6 +184,54 @@ const makeLayer = (options: {
 };
 
 describe("Managed Worktrees domain cleanup", () => {
+  for (const rootResolved of [false, true]) {
+    for (const unrelatedActiveSession of [false, true]) {
+      it.effect(
+        `uses inherited resolution for child checkout cleanup (root: ${rootResolved}, unrelated active: ${unrelatedActiveSession})`,
+        () => {
+          const cleaned: string[] = [];
+          const family: SessionFamily = {
+            familyId: "family",
+            parentSessionId: "parent",
+            projectPath: "/project",
+            workingDirectory: "/project",
+            createdAt: "2026-01-01",
+            children: [
+              {
+                sessionId: "child",
+                parentSessionId: "parent",
+                requestId: "request",
+                workingDirectory: "/child-tree",
+                createdAt: "2026-01-01",
+              },
+            ],
+          };
+          const expected = rootResolved && !unrelatedActiveSession ? ["/child-tree"] : [];
+          return Effect.gen(function* () {
+            const preview = yield* managedWorktrees.inspectResolvedForProject("/project");
+            assert.deepEqual(preview.workingDirectories, expected);
+            yield* managedWorktrees.cleanupResolved("/child-tree", "/sessions");
+            assert.deepEqual(cleaned, expected);
+          }).pipe(
+            Effect.provide(
+              makeLayer({
+                family,
+                familyRootResolved: rootResolved,
+                unrelatedActiveSession,
+                records: [record("/project", "/child-tree")],
+                resolvedWorkingDirectories: [],
+                activeWorkingDirectories: ["/child-tree"],
+                cleaned,
+                discarded: [],
+                changes: [],
+              }),
+            ),
+          );
+        },
+      );
+    }
+  }
+
   it.effect("revokes a worktree's trust after discarding it", () => {
     const discarded: string[] = [];
     const trustedProjectPaths = ["/project", "/worktree"];

@@ -7,6 +7,9 @@ import * as projectSessionMetadata from "../../../src/domain/project-sessions/pr
 import * as projectSessionOperations from "../../../src/domain/project-sessions/projectSessionOperations";
 import * as projectSessionContinuations from "../../../src/domain/project-sessions/projectSessionContinuations";
 import * as projectSessionLifecycle from "../../../src/domain/project-sessions/projectSessionLifecycle";
+import * as projectSessionLocations from "../../../src/domain/project-sessions/projectSessionLocations";
+import { SessionCatalog } from "../../../src/renderer/models/SessionCatalog";
+import { applySessionCatalogGroupUpdate } from "../../../src/renderer/reducers/CatalogReducer";
 import * as sessionChats from "../../../src/domain/conversations/sessionChats";
 import type { SessionCatalogUpdate } from "../../../src/domain/application/catalog-data";
 import type { ArtifactPointer } from "../../../src/ipc/artifact-contract";
@@ -15,12 +18,19 @@ import {
   defaultApplicationState,
   type ApplicationState as ApplicationStateValue,
 } from "../../../src/domain/application/application-data";
-import { makePiSessionsLayer, type PiSessionsAdapter } from "../../../src/services/pi/PiSessions";
+import {
+  makePiSessionsLayer,
+  PiSessions,
+  type PiSessionsAdapter,
+} from "../../../src/services/pi/PiSessions";
 import type {
   CakeRuntime,
   CakeRuntimeOptions,
 } from "../../../src/services/pi/runtime/cake-runtime";
-import type { ProjectSessionLocation } from "../../../src/domain/project-sessions/project-session-data";
+import type {
+  ProjectSessionLocation,
+  ProjectSessionUpdate,
+} from "../../../src/domain/project-sessions/project-session-data";
 import { Electron } from "../../../src/services/electron/Electron";
 import { PiModels } from "../../../src/services/pi/PiModels";
 import { ProjectSessionRuntimeHost } from "../../../src/services/pi/ProjectSessionRuntimeHost";
@@ -40,7 +50,7 @@ import { SubagentCoordinatorLive } from "../../../src/services/subagents/Subagen
 import { Terminal } from "../../../src/services/terminal/Terminal";
 import {
   ManagedWorktrees,
-  type ManagedWorktreeError,
+  ManagedWorktreeError,
 } from "../../../src/services/worktrees/ManagedWorktrees";
 import {
   SessionCatalogChanges,
@@ -84,10 +94,15 @@ const fakeRuntime = (
   forkArtifactPointers: ReadonlyArray<ArtifactPointer> = [],
   onDispose?: () => void,
 ): CakeRuntime => ({
-  sessionId: snapshot.sessionId,
-  sessionFile: snapshot.sessionFile,
+  sessionId: options.sessionId ?? snapshot.sessionId,
+  sessionFile: `/sessions/${options.sessionId ?? snapshot.sessionId}.jsonl`,
   streaming: false,
-  snapshot: async () => snapshot,
+  snapshot: async () => ({
+    ...snapshot,
+    workspacePath: options.cwd,
+    sessionId: options.sessionId ?? snapshot.sessionId,
+    sessionFile: `/sessions/${options.sessionId ?? snapshot.sessionId}.jsonl`,
+  }),
   listQueuedMessages: async () => {
     onOperation?.("list-queue");
     return { steering: [], followUp: [] };
@@ -201,12 +216,11 @@ const makeLayer = (
     worktreeRecords?: ReadonlyArray<WorktreeRecord>;
     deferredWorktreeSetup?: Effect.Effect<void, ManagedWorktreeError>;
     onCleanupResolved?(): void;
+    cleanupFailure?: boolean;
     onRestoreResolved?(): void;
     onCloseWorkingDirectory?(): void;
-    onFamilyTransition?(stage: "begin" | "finish", resolved?: boolean): void;
     onRemoveFamilyProject?(projectPath: string): void;
     initialResolvedSessionIds?: ReadonlyArray<string>;
-    familyTransitionResolved?: boolean;
     family?: {
       readonly familyId: string;
       readonly parentSessionId: string;
@@ -282,7 +296,10 @@ const makeLayer = (
     },
     catalog: (query) => {
       hooks.onCatalog?.(query.workingDirectory);
-      if (hooks.catalog) return hooks.catalog(query.workingDirectory);
+      if (hooks.catalog)
+        return hooks
+          .catalog(query.workingDirectory)
+          .pipe(Stream.filter((item) => !resolvedSessionIds.has(item.id)));
       return hooks.sessionExists === false || resolvedSessionIds.has("session-1")
         ? Stream.empty
         : Stream.make({
@@ -294,24 +311,24 @@ const makeLayer = (
             resolved: false,
           });
     },
-    catalogEntry: () =>
-      hooks.sessionExists === false || resolvedSessionIds.has("session-1")
+    catalogEntry: (_query, sessionId) =>
+      hooks.sessionExists === false || resolvedSessionIds.has(sessionId)
         ? Effect.succeed(undefined)
         : Effect.succeed({
-            id: "session-1",
+            id: sessionId,
             title: hooks.catalogTitle?.() ?? "Active branch",
             created: "2026-01-01T00:00:00.000Z",
             modified: hooks.catalogModifiedAt?.() ?? "2026-01-02T00:00:00.000Z",
             messageCount: 2,
             resolved: false,
           }),
-    inspect: () =>
+    inspect: (target) =>
       Effect.sync(() => {
         hooks.onInspect?.();
         return {
-          workspacePath: snapshot.workspacePath,
-          sessionId: snapshot.sessionId,
-          sessionFile: snapshot.sessionFile,
+          workspacePath: target.workingDirectory,
+          sessionId: target.sessionId,
+          sessionFile: `/sessions/${target.sessionId}.jsonl`,
           parts: snapshot.parts,
         };
       }),
@@ -358,21 +375,9 @@ const makeLayer = (
       state: () =>
         Effect.succeed({
           families: [],
-          transitions:
-            hooks.family && hooks.familyTransitionResolved !== undefined
-              ? [
-                  {
-                    parentSessionId: hooks.family.parentSessionId,
-                    resolved: hooks.familyTransitionResolved,
-                  },
-                ]
-              : [],
           turns: [],
         }),
       withMemberLock: (_id, effect) => effect,
-      beginTransition: (_parentSessionId, resolved) =>
-        Effect.sync(() => hooks.onFamilyTransition?.("begin", resolved)),
-      finishTransition: () => Effect.sync(() => hooks.onFamilyTransition?.("finish")),
       recordTurn: () => Effect.void,
       settleTurn: () => Effect.void,
       pendingResponseRequest: () => Effect.succeed(undefined),
@@ -515,8 +520,7 @@ const makeLayer = (
               }),
         restoreProject: (sessionId) =>
           Effect.sync(() => {
-            resolvedSessionIds.delete(sessionId);
-            hooks.onRestore?.(sessionId);
+            if (resolvedSessionIds.delete(sessionId)) hooks.onRestore?.(sessionId);
             return undefined;
           }),
         deleteResolvedProject: () => Effect.void,
@@ -563,7 +567,7 @@ const makeLayer = (
             ? Effect.succeed(undefined)
             : Effect.succeed({
                 version: 1 as const,
-                sessionId: "session-1",
+                sessionId,
                 projectPath: hooks.locations?.[0]?.projectPath ?? "/project",
                 projectName: hooks.locations?.[0]?.projectName ?? "Project",
                 workingDirectory: hooks.locations?.[0]?.workingDirectory ?? "/project",
@@ -596,9 +600,16 @@ const makeLayer = (
       awaitSetup: () => hooks.deferredWorktreeSetup ?? Effect.void,
       hasDeferredSetup: () => Effect.succeed(hooks.deferredWorktreeSetup !== undefined),
       cleanupResolved: () =>
-        Effect.sync(() => {
-          hooks.onCleanupResolved?.();
-        }),
+        hooks.cleanupFailure
+          ? Effect.fail(
+              new ManagedWorktreeError({
+                operation: "cleanupResolved",
+                message: "Checkout cleanup failed",
+              }),
+            )
+          : Effect.sync(() => {
+              hooks.onCleanupResolved?.();
+            }),
       restoreResolved: () =>
         Effect.sync(() => {
           hooks.onRestoreResolved?.();
@@ -624,7 +635,260 @@ const makeLayer = (
   );
 };
 
+const nestedFamily = {
+  familyId: "nested-family",
+  parentSessionId: "parent",
+  projectPath: "/project",
+  workingDirectory: "/project",
+  createdAt: "2026-01-01T00:00:00.000Z",
+  children: [
+    {
+      sessionId: "child",
+      parentSessionId: "parent",
+      requestId: "child-request",
+      workingDirectory: "/child-tree",
+      createdAt: "2026-01-01T00:00:01.000Z",
+    },
+    {
+      sessionId: "grandchild",
+      parentSessionId: "child",
+      requestId: "grandchild-request",
+      workingDirectory: "/grandchild-tree",
+      createdAt: "2026-01-01T00:00:02.000Z",
+    },
+  ],
+};
+const nestedFamilyIds = ["parent", "child", "grandchild"];
+const sessionSummary = (id: string): SessionSummary => ({
+  id,
+  title: id,
+  created: "2026-01-01T00:00:00.000Z",
+  modified: "2026-01-02T00:00:00.000Z",
+  messageCount: 1,
+  resolved: false,
+});
+
 describe("Project Sessions domain", () => {
+  it.effect(
+    "projects root-only resolve and restore through both catalog lanes for the whole nested family",
+    () => {
+      const archived: string[] = [];
+      const restored: string[] = [];
+      return Effect.gen(function* () {
+        const model = SessionCatalog.create({});
+        const received = yield* Queue.unbounded<SessionCatalogUpdate>();
+        for (const resolved of [false, true]) {
+          const query = { projectPath: "/project", resolved };
+          const updates = yield* projectSessionMetadata.observeCatalog(query);
+          yield* updates.pipe(
+            Stream.runForEach((update) =>
+              Effect.sync(() => applySessionCatalogGroupUpdate(model, query, update)).pipe(
+                Effect.andThen(Queue.offer(received, update)),
+              ),
+            ),
+            Effect.forkScoped,
+          );
+        }
+        yield* Queue.take(received);
+        yield* Queue.take(received);
+        const assertFamily = (resolved: boolean) => {
+          for (const id of nestedFamilyIds) assert.equal(model.find(id)?.resolved, resolved, id);
+          assert.equal(model.find("unrelated")?.resolved, false);
+        };
+        assertFamily(false);
+        assert.equal(model.find("grandchild")?.familyParentSessionId, "child");
+        const childUpdates = yield* Queue.unbounded<ProjectSessionUpdate>();
+        const childStream = yield* projectSessionOperations.observe({ sessionId: "grandchild" });
+        yield* childStream.pipe(
+          Stream.runForEach((update) => Queue.offer(childUpdates, update)),
+          Effect.forkScoped,
+        );
+        const childInitial = yield* Queue.take(childUpdates);
+        assert.equal(childInitial._tag, "Snapshot");
+        if (childInitial._tag === "Snapshot") assert.equal(childInitial.snapshot.resolved, false);
+
+        yield* projectSessionLifecycle.resolve({ sessionId: "parent" });
+        yield* Queue.take(received);
+        yield* Queue.take(received);
+        assertFamily(true);
+        const childResolved = yield* Queue.take(childUpdates);
+        assert.equal(childResolved._tag, "LifecycleChanged");
+        if (childResolved._tag === "LifecycleChanged") assert.equal(childResolved.resolved, true);
+        assert.deepEqual(archived, ["parent"]);
+        for (const id of nestedFamilyIds)
+          assert.equal((yield* projectSessionMetadata.inspect({ sessionId: id })).resolved, true);
+
+        // A late child runtime notification must not reintroduce an active child.
+        yield* (yield* SessionCatalogChanges).publish({
+          _tag: "ProjectSessionChanged",
+          sessionId: "grandchild",
+          projectPath: "/project",
+          workingDirectory: "/grandchild-tree",
+          resolved: false,
+        });
+        yield* Queue.take(received);
+        yield* Queue.take(received);
+        assertFamily(true);
+
+        // Notifications invalidate projections; their payload is not another
+        // resolution authority, even if it describes an older root transition.
+        yield* (yield* SessionCatalogChanges).publish({
+          _tag: "ProjectSessionsTransitioned",
+          sessions: [{ sessionId: "parent", workingDirectory: "/project" }],
+          projectPath: "/project",
+          resolved: false,
+        });
+        yield* Queue.take(received);
+        yield* Queue.take(received);
+        assertFamily(true);
+
+        yield* projectSessionLifecycle.restore({ sessionId: "grandchild" });
+        yield* Queue.take(received);
+        yield* Queue.take(received);
+        assertFamily(false);
+        const childRestored = yield* Queue.take(childUpdates);
+        assert.equal(childRestored._tag, "Snapshot");
+        if (childRestored._tag === "Snapshot") assert.equal(childRestored.snapshot.resolved, false);
+        assert.deepEqual(restored, ["parent"]);
+        for (const id of nestedFamilyIds)
+          assert.equal((yield* projectSessionMetadata.inspect({ sessionId: id })).resolved, false);
+      }).pipe(
+        Effect.provide(
+          makeLayer(undefined, {
+            family: nestedFamily,
+            catalog: (cwd) =>
+              Stream.fromIterable(
+                cwd === "/project"
+                  ? [
+                      sessionSummary("parent"),
+                      { ...sessionSummary("unrelated"), parentSessionId: "parent" },
+                    ]
+                  : [],
+              ),
+            onArchive: (id) => archived.push(id),
+            onRestore: (id) => restored.push(id),
+          }),
+        ),
+      );
+    },
+  );
+
+  it.effect("checks descendant activity before changing the root authority", () =>
+    Effect.gen(function* () {
+      const sessions = yield* PiSessions;
+      for (const status of [
+        { streaming: true, pending: false, persisted: true },
+        { streaming: false, pending: true, persisted: true },
+      ]) {
+        const failure = yield* projectSessionLifecycle.resolve({ sessionId: "child" }).pipe(
+          Effect.provideService(PiSessions, {
+            ...sessions,
+            currentStatus: (target) =>
+              Effect.succeed(target.sessionId === "grandchild" ? status : undefined),
+          }),
+          Effect.flip,
+        );
+        assert.match(failure.message, /turn is active or input is pending/);
+        for (const id of nestedFamilyIds)
+          assert.equal((yield* projectSessionMetadata.inspect({ sessionId: id })).resolved, false);
+      }
+    }).pipe(Effect.provide(makeLayer(undefined, { family: nestedFamily }))),
+  );
+
+  it.effect(
+    "keeps the entire family resolved and publishes its authority even when checkout cleanup fails",
+    () => {
+      const changes: SessionCatalogChange[] = [];
+      return Effect.gen(function* () {
+        const failure = yield* projectSessionLifecycle
+          .resolve({ sessionId: "parent" })
+          .pipe(Effect.flip);
+        assert.match(failure.message, /Checkout cleanup failed/);
+        assert.deepEqual(changes, [
+          {
+            _tag: "ProjectSessionsTransitioned",
+            sessions: [{ sessionId: "parent", workingDirectory: "/project" }],
+            projectPath: "/project",
+            resolved: true,
+          },
+        ]);
+        const model = SessionCatalog.create({});
+        for (const resolved of [false, true]) {
+          const query = { projectPath: "/project", resolved };
+          const stream = yield* projectSessionMetadata.observeCatalog(query);
+          const [initial] = yield* stream.pipe(Stream.take(1), Stream.runCollect);
+          assert.ok(initial);
+          applySessionCatalogGroupUpdate(model, query, initial);
+        }
+        for (const id of nestedFamilyIds) assert.equal(model.find(id)?.resolved, true, id);
+      }).pipe(
+        Effect.provide(
+          makeLayer(undefined, {
+            family: nestedFamily,
+            cleanupFailure: true,
+            onCatalogChange: (change) => changes.push(change),
+            worktreeRecords: [
+              {
+                projectPath: "/project",
+                worktreePath: "/grandchild-tree",
+                branch: "agent/grandchild",
+                baseBranch: "main",
+                state: "landed",
+                createdAt: "2026-01-01",
+              },
+            ],
+            catalog: (cwd) =>
+              cwd === "/grandchild-tree"
+                ? Stream.make(sessionSummary("grandchild"))
+                : Stream.make(sessionSummary("parent")),
+          }),
+        ),
+      );
+    },
+  );
+
+  for (const rootResolved of [false, true]) {
+    it.effect(
+      `derives every descendant from the root when stored namespaces disagree (root resolved: ${rootResolved})`,
+      () =>
+        Effect.gen(function* () {
+          const model = SessionCatalog.create({});
+          for (const resolved of [false, true]) {
+            const query = { projectPath: "/project", resolved };
+            const updates = yield* projectSessionMetadata.observeCatalog(query);
+            const [initial] = yield* updates.pipe(Stream.take(1), Stream.runCollect);
+            assert.ok(initial);
+            applySessionCatalogGroupUpdate(model, query, initial);
+          }
+          for (const id of nestedFamilyIds) {
+            assert.equal(model.find(id)?.resolved, rootResolved, id);
+            assert.equal(
+              (yield* projectSessionMetadata.inspect({ sessionId: id })).resolved,
+              rootResolved,
+            );
+          }
+          // Opening a physically active descendant of an archived root stays read-only.
+          if (rootResolved) {
+            const updates = yield* projectSessionOperations.observe({ sessionId: "grandchild" });
+            const [initial] = yield* updates.pipe(Stream.take(1), Stream.runCollect);
+            assert.equal(initial?._tag, "Snapshot");
+            if (initial?._tag === "Snapshot") assert.equal(initial.snapshot.resolved, true);
+          }
+        }).pipe(
+          Effect.provide(
+            makeLayer(undefined, {
+              family: nestedFamily,
+              initialResolvedSessionIds: rootResolved ? ["parent"] : ["child", "grandchild"],
+              catalog: () => Stream.make(sessionSummary("parent")),
+              resolvedProjectEntries: (rootResolved ? ["parent"] : ["child", "grandchild"]).map(
+                (sessionId) => ({ sessionId, modifiedAt: "2026-01-02T00:00:00.000Z" }),
+              ),
+            }),
+          ),
+        ),
+    );
+  }
+
   it.effect("assigns ordered labels to active sessions", () =>
     Effect.gen(function* () {
       const labelId = "b925b5dd-9661-4f1a-9f40-406be3c96c27";
@@ -704,7 +968,7 @@ describe("Project Sessions domain", () => {
     }).pipe(Effect.provide(makeLayer(undefined, { sessionExists: false }))),
   );
 
-  it.effect("resolves and restores an individual Session Family child", () => {
+  it.effect("routes child lifecycle requests to the root authority", () => {
     const transitions: string[] = [];
     const family = {
       familyId: "family-1",
@@ -729,7 +993,7 @@ describe("Project Sessions domain", () => {
         sessionId: "session-1",
         workingDirectory: "/project",
       });
-      assert.deepEqual(transitions, ["resolve:session-1", "restore:session-1"]);
+      assert.deepEqual(transitions, ["resolve:parent-1", "restore:parent-1"]);
     }).pipe(
       Effect.provide(
         makeLayer(undefined, {
@@ -1226,6 +1490,19 @@ describe("Project Sessions domain", () => {
       let runtimeConstructions = 0;
       let restores = 0;
       let archives = 0;
+      const copy = vi
+        .spyOn(projectSessionLocations, "forkToWorkingDirectory")
+        .mockImplementation((input) =>
+          Effect.sync(() => {
+            assert.equal(input.source.sessionDirectory, "/resolved-sessions");
+            assert.equal(input.destination.sessionDirectory, "/sessions");
+            return {
+              sessionId: "forked",
+              sessionFile: "/sessions/forked.jsonl",
+              artifactPointers: [],
+            };
+          }),
+        );
       return Effect.gen(function* () {
         const target = { sessionId: "session-1", workingDirectory: "/project" };
         const result = yield* projectSessionContinuations.fork({
@@ -1236,10 +1513,12 @@ describe("Project Sessions domain", () => {
 
         assert.equal(result.sessionId, "forked");
         assert.equal(source.resolved, true);
-        assert.equal(runtimeConstructions, 1);
-        assert.equal(restores, 1);
-        assert.equal(archives, 1);
+        assert.equal(runtimeConstructions, 0);
+        assert.equal(restores, 0);
+        assert.equal(archives, 0);
+        assert.equal(copy.mock.calls.length, 1);
       }).pipe(
+        Effect.ensuring(Effect.sync(() => copy.mockRestore())),
         Effect.provide(
           makeLayer(defaultApplicationState(), {
             resolvedOnDisk: true,
@@ -1367,7 +1646,7 @@ describe("Project Sessions domain", () => {
     },
   );
 
-  it.effect("resolves every Session Family member inside one journaled archive sequence", () => {
+  it.effect("resolves a family by archiving only its root", () => {
     const events: string[] = [];
     const family = {
       familyId: "family-1",
@@ -1387,15 +1666,13 @@ describe("Project Sessions domain", () => {
       const result = yield* projectSessionLifecycle.resolveWorkingDirectory("/project");
       assert.deepEqual(result.resolvedSessionIds, ["parent", "child"]);
       assert.deepEqual(result.failures, []);
-      assert.deepEqual(events, ["begin:true", "archive:parent", "archive:child", "finish"]);
+      assert.deepEqual(events, ["archive:parent"]);
     }).pipe(
       Effect.provide(
         makeLayer(defaultApplicationState(), {
           family,
           sessionIds: () => Stream.fromIterable(["child", "parent"]),
           onArchive: (sessionId) => events.push(`archive:${sessionId}`),
-          onFamilyTransition: (stage, resolved) =>
-            events.push(stage === "begin" ? `begin:${String(resolved)}` : stage),
         }),
       ),
     );
@@ -1459,7 +1736,7 @@ describe("Project Sessions domain", () => {
     );
   });
 
-  it.effect("restores every Session Family member inside one journaled restore sequence", () => {
+  it.effect("restores legacy child storage before making the root active", () => {
     const events: string[] = [];
     const family = {
       familyId: "family-1",
@@ -1478,7 +1755,7 @@ describe("Project Sessions domain", () => {
     return projectSessionLifecycle.restore({ sessionId: "parent" }).pipe(
       Effect.tap(() =>
         Effect.sync(() => {
-          assert.deepEqual(events, ["begin:false", "restore:parent", "restore:child", "finish"]);
+          assert.deepEqual(events, ["restore:child", "restore:parent"]);
         }),
       ),
       Effect.provide(
@@ -1486,14 +1763,12 @@ describe("Project Sessions domain", () => {
           family,
           initialResolvedSessionIds: ["parent", "child"],
           onRestore: (sessionId) => events.push(`restore:${sessionId}`),
-          onFamilyTransition: (stage, resolved) =>
-            events.push(stage === "begin" ? `begin:${String(resolved)}` : stage),
         }),
       ),
     );
   });
 
-  it.effect("replays a partial family journal even when the parent already moved", () => {
+  it.effect("resolving an already archived root never synchronizes child namespaces", () => {
     const archived: string[] = [];
     const family = {
       familyId: "family-1",
@@ -1509,10 +1784,10 @@ describe("Project Sessions domain", () => {
         },
       ],
     };
-    return projectSessionLifecycle.recoverFamilyTransition("parent", true).pipe(
+    return projectSessionLifecycle.resolve({ sessionId: "parent" }).pipe(
       Effect.tap(() =>
         Effect.gen(function* () {
-          assert.deepEqual(archived, ["child"]);
+          assert.deepEqual(archived, []);
           assert.deepEqual((yield* getState()).unreadSessionIds, []);
         }),
       ),
@@ -1521,7 +1796,6 @@ describe("Project Sessions domain", () => {
           { ...defaultApplicationState(), unreadSessionIds: ["parent"] },
           {
             family,
-            familyTransitionResolved: true,
             initialResolvedSessionIds: ["parent"],
             onArchive: (sessionId) => archived.push(sessionId),
           },
@@ -1530,7 +1804,7 @@ describe("Project Sessions domain", () => {
     );
   });
 
-  it.effect("replays post-restore catalog updates for members already moved", () => {
+  it.effect("publishes only the root authority when restoring a family", () => {
     const changes: SessionCatalogChange[] = [];
     const family = {
       familyId: "family-1",
@@ -1546,16 +1820,13 @@ describe("Project Sessions domain", () => {
         },
       ],
     };
-    return projectSessionLifecycle.recoverFamilyTransition("parent", false).pipe(
+    return projectSessionLifecycle.restore({ sessionId: "parent" }).pipe(
       Effect.tap(() =>
         Effect.sync(() => {
           assert.deepEqual(changes, [
             {
               _tag: "ProjectSessionsTransitioned",
-              sessions: [
-                { sessionId: "parent", workingDirectory: "/project" },
-                { sessionId: "child", workingDirectory: "/project" },
-              ],
+              sessions: [{ sessionId: "parent", workingDirectory: "/project" }],
               projectPath: "/project",
               resolved: false,
             },
@@ -1565,7 +1836,6 @@ describe("Project Sessions domain", () => {
       Effect.provide(
         makeLayer(defaultApplicationState(), {
           family,
-          familyTransitionResolved: false,
           initialResolvedSessionIds: ["child"],
           onCatalogChange: (change) => changes.push(change),
         }),

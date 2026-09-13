@@ -13,6 +13,7 @@ import {
 import { PiSessions } from "../../services/pi/PiSessions";
 import type { ProjectSessionLocation } from "./project-session-data";
 import * as projectSessionLocations from "./projectSessionLocations";
+import { resolutionNamespace } from "./projectSessionResolution";
 import { acquireOptions } from "./projectSessionRuntime";
 import {
   ProjectSessionError,
@@ -22,7 +23,6 @@ import {
   type ProjectSessionTarget,
   type ProjectSessionUpdate,
 } from "./project-session-data";
-import { SessionArchiveStorage } from "../../services/storage/SessionArchiveStorage";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import { SessionCatalogChanges } from "../../services/session-catalogs/SessionCatalogChanges";
 import { ManagedWorktrees } from "../../services/worktrees/ManagedWorktrees";
@@ -91,11 +91,10 @@ const restoreIfResolved = Effect.fn("ProjectSessions.restoreIfResolved")(functio
   target: ProjectSessionTarget,
 ) {
   const location = yield* findLocation(target);
-  const archive = yield* SessionArchiveStorage;
   if (
-    (yield* archive
-      .locate(target.sessionId, archiveLocation(location))
-      .pipe(asError("restore"))) !== "resolved"
+    (yield* resolutionNamespace(target.sessionId, archiveLocation(location)).pipe(
+      asError("restore"),
+    )) !== "resolved"
   )
     return;
   const family = yield* Effect.flatMap(SessionFamilyStorage, (storage) =>
@@ -118,32 +117,33 @@ const isSessionResolved = Effect.fn("ProjectSessions.isSessionResolved")(functio
   target: ProjectSessionTarget,
 ) {
   const location = yield* findLocation(target);
+  const namespace = yield* resolutionNamespace(target.sessionId, archiveLocation(location)).pipe(
+    asError("observe"),
+  );
+  if (namespace) return namespace === "resolved";
   const sessions = yield* PiSessions;
   const activeRuntime = yield* sessions.currentStatus({
     workingDirectory: location.workingDirectory,
     sessionDirectory: location.sessionDirectory,
     sessionId: target.sessionId,
   });
-  // A newly started Pi runtime can accept its first turn before its JSONL file
-  // is discoverable. The live runtime is authoritative that this is an active
-  // session; consulting storage first would permanently reject observation.
+  // A new runtime can accept its first turn before its JSONL is discoverable.
+  // It accounts for that missing-file case, but never overrides root resolution.
   if (activeRuntime) return false;
-  const archive = yield* SessionArchiveStorage;
-  const namespace = yield* archive
-    .locate(target.sessionId, archiveLocation(location))
-    .pipe(asError("observe"));
-  if (!namespace)
-    return yield* new ProjectSessionError({
-      operation: "observe",
-      message: "That session is no longer available",
-    });
-  return namespace === "resolved";
+  return yield* new ProjectSessionError({
+    operation: "observe",
+    message: "That session is no longer available",
+  });
 });
 
 export const observe = Effect.fn("ProjectSessions.observe")(function* (
   target: ProjectSessionTarget,
 ) {
   const catalogs = yield* SessionCatalogChanges;
+  const family = yield* (yield* SessionFamilyStorage)
+    .familyForMember(target.sessionId)
+    .pipe(asError("observe"));
+  const authoritySessionId = family?.parentSessionId ?? target.sessionId;
   const resolvedStates = catalogs
     .initialThenChanges(
       Stream.fromEffect(isSessionResolved(target)).pipe(
@@ -151,15 +151,15 @@ export const observe = Effect.fn("ProjectSessions.observe")(function* (
       ),
     )
     .pipe(
-      Stream.map((item) =>
+      Stream.mapEffect((item) =>
         item._tag === "InitialResolved"
-          ? item.resolved
-          : item._tag === "ProjectSessionStatusChanged" && item.sessionId === target.sessionId
-            ? item.resolved
-            : item._tag === "ProjectSessionsTransitioned" &&
-                item.sessions.some(({ sessionId }) => sessionId === target.sessionId)
-              ? item.resolved
-              : undefined,
+          ? Effect.succeed(item.resolved)
+          : (item._tag === "ProjectSessionStatusChanged" &&
+                item.sessionId === authoritySessionId) ||
+              (item._tag === "ProjectSessionsTransitioned" &&
+                item.sessions.some(({ sessionId }) => sessionId === authoritySessionId))
+            ? isSessionResolved(target)
+            : Effect.succeed(undefined),
       ),
       Stream.filter((resolved): resolved is boolean => resolved !== undefined),
     );
@@ -367,10 +367,9 @@ export const rename = Effect.fn("ProjectSessions.rename")(function* (
   if (!normalized)
     return yield* new ProjectSessionError({ operation: "rename", message: "Name is required" });
   const location = yield* findLocation(target);
-  const archive = yield* SessionArchiveStorage;
-  const namespace = yield* archive
-    .locate(target.sessionId, archiveLocation(location))
-    .pipe(asError("rename"));
+  const namespace = yield* resolutionNamespace(target.sessionId, archiveLocation(location)).pipe(
+    asError("rename"),
+  );
   const handle = yield* acquireTarget(location, target.sessionId, false);
   yield* handle.rename(normalized).pipe(asError("rename"));
   yield* publishCatalogChange(target.sessionId, location, namespace === "resolved").pipe(

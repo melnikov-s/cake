@@ -100,7 +100,9 @@ Sessions. A Session Family has one root; every non-root member has exactly one
 immediate parent, and each parent's direct children retain stable creation order.
 Every member remains an independent Pi Session with its own transcript, runtime,
 context, model configuration, and fixed Working Directory. Family identity and
-membership are not Pi transcript ancestry.
+membership are not Pi transcript ancestry. Only the root owns resolution;
+every child inherits its immediate parent's resolution recursively. Transcript
+placement and renderer projections do not give children independent lifecycle state.
 
 ### Coordination Thread
 

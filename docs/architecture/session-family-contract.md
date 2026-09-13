@@ -103,9 +103,11 @@ queue insertion alone never triggers a stopped-child notice. Explicit abort uses
 the same outcome callback once, even if the original prompt subsequently
 returns. Only consumed input IDs count when correlating a child's reply.
 
-Family storage version 4 persists recursive parentage, per-child Working
+Family storage version 5 persists recursive parentage, per-child Working
 Directory bindings, sender/recipient request and reply correlation, response
-expectations, notice attempts, and lifecycle journals. Version 1 and 2 documents
+expectations, and notice attempts. It has no per-child resolution state or
+lifecycle synchronization journals. Version 4 journals are discarded on decode;
+the root's actual transcript namespace determines the entire family's state. Version 1 and 2 documents
 migrate their flat children into direct children of the root with the family's
 shared Working Directory; version 3 recursive documents migrate legacy turns as
 response-expected work. The delivery worker retries already-due notices; it does
@@ -117,36 +119,41 @@ that never materialized a Pi transcript.
 
 ## Lifecycle
 
-A non-root member may resolve independently after its turn is inactive, all of
-its descendants are already resolved, and it has no undelivered child outcome.
-It may be restored only while its immediate parent is active. This preserves
-bottom-up resolution and parent-first restoration. Resolving the family root is
-an aggregate operation over every member; it requires all members to be inactive
-and no family turn to have accepted delivery pending consumption. Main rechecks
-these conditions while lifecycle admission is serialized; it never aborts work
-or queues a later aggregate resolve.
+Only the family root owns resolution. Every child inherits its immediate parent's
+resolution recursively, so every descendant derives the root's state. A child's
+own transcript namespace never determines whether it is resolved. Resolve and
+restore requests addressed to any member target the root authority. Resolution
+requires all members to be inactive and no family turn to have accepted delivery
+pending consumption. Main rechecks these conditions under the family admission
+lock; it never aborts work or queues a later resolve.
 
-Aggregate root archive and restore are idempotent multi-transcript operations
-tracked by a recoverable journal. Each member is archived from its own Working
-Directory. Landed descendant worktrees retire child-first after their final
-active session is archived; restore recreates parent worktrees before child
-worktrees and then restores transcripts. Transcript namespace remains the
-resolved-state authority; the journal records only incomplete aggregate work.
-An unrelated active Project Session sharing a Working Directory prevents its
-retirement.
+Resolving archives only the root transcript and publishes the authority change
+before attempting checkout cleanup. Child transcripts stay in place. Catalogs,
+conversation observations, message admission, and cleanup eligibility derive
+resolution from the root, including when older stored namespaces disagree.
+There is no member-by-member lifecycle transition or synchronization journal.
+Landed descendant worktrees retire child-first after their final effectively
+active session is resolved. A cleanup failure cannot leave children unresolved.
+Restoring recreates parent worktrees before child worktrees, normalizes any
+archived child transcripts from older installations, and restores the root last.
+Older archived children are also normalized when acquiring their runtime; this
+storage operation never changes their inherited lifecycle state. An unrelated
+active Project Session sharing a Working Directory prevents its retirement.
 
 Individual member delete and relocation remain prohibited. Ordinary forks are
 standalone and never inherit membership. `sessionFamilies` owns creation, turn
 admission, and immediate-parent outcome delivery. `projectSessionLifecycle`
-owns standalone, individual-member, and aggregate-root archive/restore policy.
-Per-family admission locks cover initial creation and aggregate lifecycle work.
-Startup replays incomplete journals before the RPC server is exposed; an
-incomplete journal blocks new work until recovery succeeds.
+owns standalone and family-root archive/restore policy. Per-family admission
+locks cover creation, turn acceptance, and root lifecycle work. Startup requires
+no child-resolution replay.
 
 ## Projection
 
 Catalog summaries project family ID, immediate-parent ID, direct-child IDs,
-stable sibling order, and depth. The sidebar derives contiguous depth-first
+stable sibling order, depth, and resolution derived from the root. These
+window-lifetime projections are not independent lifecycle authorities. A root
+change refreshes the entire family, including descendants in retired worktrees
+and transcripts still physically in active storage. The sidebar derives contiguous depth-first
 clusters, latest-descendant ordering, whole-family pagination, subtree collapse,
 and aggregate attention. It keeps session titles aligned and renders nesting as
 compact vertical depth rails instead of increasing indentation. Collapse state

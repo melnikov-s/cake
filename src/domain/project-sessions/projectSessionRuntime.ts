@@ -27,6 +27,7 @@ import * as projectSessionLifecycle from "./projectSessionLifecycle";
 import { SessionCatalogChanges } from "../../services/session-catalogs/SessionCatalogChanges";
 import { ApplicationState } from "../../services/storage/ApplicationState";
 import { SessionArchiveStorage } from "../../services/storage/SessionArchiveStorage";
+import { resolutionNamespace } from "./projectSessionResolution";
 import {
   SessionFamilyStorage,
   familyChildren,
@@ -125,6 +126,33 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
     .pipe(Effect.mapError((cause) => compositionError("acquireOptions", cause)));
   const member = family && familyMember(family, sessionId);
   const isChild = member?.parentSessionId !== undefined;
+  // Child transcripts from the former per-member lifecycle may still be archived.
+  // Moving one into Pi's runtime namespace does not change inherited resolution.
+  if (
+    isChild &&
+    !newSession &&
+    (yield* archive
+      .locate(sessionId, {
+        cwd: location.workingDirectory,
+        activeRoot: location.sessionDirectory,
+        resolvedRoot: location.resolvedSessionDirectory,
+      })
+      .pipe(Effect.mapError((cause) => compositionError("acquireOptions", cause)))) === "resolved"
+  ) {
+    if (
+      (yield* resolutionNamespace(sessionId, {
+        cwd: location.workingDirectory,
+        activeRoot: location.sessionDirectory,
+        resolvedRoot: location.resolvedSessionDirectory,
+      }).pipe(Effect.mapError((cause) => compositionError("acquireOptions", cause)))) === "active"
+    )
+      yield* managedWorktrees
+        .restoreResolved(location.workingDirectory)
+        .pipe(Effect.mapError((cause) => compositionError("acquireOptions", cause)));
+    yield* archive
+      .restoreProject(sessionId)
+      .pipe(Effect.mapError((cause) => compositionError("acquireOptions", cause)));
+  }
   const relationshipPrompt =
     family && member?.parentSessionId
       ? renderPromptTemplate(childSessionFamilyPromptTemplate, {
@@ -272,7 +300,8 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
         set: (enabled) => run(setSessionFastMode(sessionId, enabled)).then(() => undefined),
       },
       currentSessionControl: {
-        // An acquired Project Session is necessarily in the active namespace.
+        // Used only when deferring standalone resolution during an active turn.
+        // Family lifecycle always goes through the root authority below.
         resolved: () => false,
         canResolve: () => true,
         familyInfo: family
@@ -286,7 +315,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
               return toJsonValue(info);
             }
           : undefined,
-        deferResolution: family === undefined || isChild,
+        deferResolution: family === undefined,
         setResolved: (resolved) =>
           run(
             (resolved ? projectSessionLifecycle.resolve : projectSessionLifecycle.restore)({
@@ -450,13 +479,11 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
                     "familyMessage",
                     `Working Directory unavailable: ${destinationMember.workingDirectory}`,
                   );
-                const namespace = yield* archive
-                  .locate(targetSessionId, {
-                    cwd: destinationMember.workingDirectory,
-                    activeRoot: configuration.sessionDirectory,
-                    resolvedRoot: configuration.resolvedSessionDirectory,
-                  })
-                  .pipe(Effect.mapError((cause) => compositionError("familyMessage", cause)));
+                const namespace = yield* resolutionNamespace(targetSessionId, {
+                  cwd: destinationMember.workingDirectory,
+                  activeRoot: configuration.sessionDirectory,
+                  resolvedRoot: configuration.resolvedSessionDirectory,
+                }).pipe(Effect.mapError((cause) => compositionError("familyMessage", cause)));
                 if (namespace === "resolved")
                   return yield* compositionError(
                     "familyMessage",

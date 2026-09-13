@@ -1140,10 +1140,12 @@ export async function createCakeRuntimeCapabilities(input: {
       {
         command: "session.resolve",
         topic: "sessions",
-        summary: "Idempotently resolve or restore the calling session.",
+        summary:
+          "Resolve or restore the calling session, or its entire Session Family through the root.",
         guidance: [
-          "Singular session.* operations always target the calling session and never accept a sessionId.",
-          "Resolving during an active response is scheduled for the moment that response settles.",
+          "Singular session.* operations use the calling session identity and never accept a sessionId.",
+          "Family members inherit resolution from the root. A family lifecycle request requires every member to be inactive and is never deferred.",
+          "For standalone sessions, resolving during an active response is scheduled for the moment that response settles.",
         ],
         inputSchema: Schema.Struct({ resolved: Schema.Boolean }),
         examples: [{ input: { resolved: true } }],

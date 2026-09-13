@@ -1,6 +1,7 @@
 import { Effect, Stream } from "effect";
 import type { ArtifactPointer } from "../../ipc/artifact-contract";
 import * as projectSessionLocations from "./projectSessionLocations";
+import { resolutionNamespace } from "./projectSessionResolution";
 import type { ProjectSessionLocation } from "./project-session-data";
 import { ProjectSessionError, type ProjectSessionTarget } from "./project-session-data";
 import { SessionArchiveStorage } from "../../services/storage/SessionArchiveStorage";
@@ -25,31 +26,23 @@ const withContinuationSource = Effect.fn("ProjectSessions.withContinuationSource
 >(
   target: ProjectSessionTarget,
   operation: "fork",
-  use: (location: ProjectSessionLocation) => Effect.Effect<A, E, R>,
+  use: (location: ProjectSessionLocation, archived: boolean) => Effect.Effect<A, E, R>,
 ) {
   const source = yield* findLocation(target);
   const archive = yield* SessionArchiveStorage;
   const namespace = yield* archive
     .locate(target.sessionId, archiveLocation(source))
     .pipe(asError(operation));
-  if (namespace !== "resolved")
-    return { result: yield* use(source), source, sourceWasResolved: false };
-
-  // Resolved transcripts are read-only. Move the source back only for the
-  // duration of the copy operation, then archive it again without publishing
-  // an intermediate active state. The new transcript stays in the active
-  // namespace while the source remains resolved from the user's perspective.
-  const restored = yield* projectSessionLocations
-    .restore(target.sessionId, source)
-    .pipe(asError(operation));
-  const result = yield* use(restored).pipe(
-    Effect.ensuring(
-      projectSessionLocations
-        .archive(target.sessionId, restored)
-        .pipe(asError(operation), Effect.orDie),
-    ),
+  const effective = yield* resolutionNamespace(target.sessionId, archiveLocation(source)).pipe(
+    asError(operation),
   );
-  return { result, source: restored, sourceWasResolved: true };
+  // Read archived sources in place. Temporarily moving a family root would
+  // temporarily change the lifecycle authority for all of its descendants.
+  return {
+    result: yield* use(source, namespace === "resolved"),
+    source,
+    sourceWasResolved: effective === "resolved",
+  };
 });
 
 export const fork = Effect.fn("ProjectSessions.fork")(function* (input: {
@@ -66,7 +59,7 @@ export const fork = Effect.fn("ProjectSessions.fork")(function* (input: {
       operation: "fork",
       message: "Forks from Session Family members must leave the source family active",
     });
-  const continuation = yield* withContinuationSource(input.target, "fork", (source) =>
+  const continuation = yield* withContinuationSource(input.target, "fork", (source, archived) =>
     Effect.gen(function* () {
       let destination = source;
       if (
@@ -121,7 +114,7 @@ export const fork = Effect.fn("ProjectSessions.fork")(function* (input: {
         .catalogEntry(
           {
             workingDirectory: source.workingDirectory,
-            sessionDirectory: source.sessionDirectory,
+            sessionDirectory: archived ? source.resolvedSessionDirectory : source.sessionDirectory,
           },
           input.target.sessionId,
         )
@@ -133,7 +126,7 @@ export const fork = Effect.fn("ProjectSessions.fork")(function* (input: {
 
       let sessionId: string;
       let artifactPointers: ReadonlyArray<ArtifactPointer>;
-      if (destination === source) {
+      if (destination === source && !archived) {
         const handle = yield* acquireTarget(source, input.target.sessionId, false);
         const result = yield* handle.fork(input.entryId, forkTitle).pipe(asError("fork"));
         sessionId = result.sessionId;
@@ -144,7 +137,9 @@ export const fork = Effect.fn("ProjectSessions.fork")(function* (input: {
             sessionId: input.target.sessionId,
             entryId: input.entryId,
             title: forkTitle,
-            source,
+            source: archived
+              ? { ...source, sessionDirectory: source.resolvedSessionDirectory }
+              : source,
             destination,
           })
           .pipe(asError("fork"));
@@ -179,10 +174,10 @@ export const toolCompact = Effect.fn("ProjectSessions.toolCompact")(function* (i
   readonly prompt?: string;
 }) {
   let source = yield* findLocation(input.target);
-  const archive = yield* SessionArchiveStorage;
-  const namespace = yield* archive
-    .locate(input.target.sessionId, archiveLocation(source))
-    .pipe(asError("toolCompact"));
+  const namespace = yield* resolutionNamespace(
+    input.target.sessionId,
+    archiveLocation(source),
+  ).pipe(asError("toolCompact"));
   if (namespace === "resolved") {
     yield* restore(input.target);
     source = yield* findLocation(input.target);

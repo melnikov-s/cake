@@ -12,7 +12,7 @@ import {
 } from "effect";
 import { atomicWriteFile, type AtomicFileStage } from "./internal/atomicFile";
 
-const DOCUMENT_VERSION = 4;
+const DOCUMENT_VERSION = 5;
 const BoundedId = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
 const BoundedPath = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4_096));
 
@@ -97,7 +97,10 @@ export const familyDepth = (family: SessionFamily, sessionId: string) => {
   return member ? depth : undefined;
 };
 
-const FamilyTransition = Schema.Struct({ parentSessionId: BoundedId, resolved: Schema.Boolean });
+const LegacyFamilyTransition = Schema.Struct({
+  parentSessionId: BoundedId,
+  resolved: Schema.Boolean,
+});
 const LegacyFamilyTurn = Schema.Struct({
   sessionId: BoundedId,
   parentSessionId: BoundedId,
@@ -124,7 +127,6 @@ const FamilyTurn = Schema.Struct({
 export interface FamilyTurn extends Schema.Schema.Type<typeof FamilyTurn> {}
 export const SessionFamilyDocument = Schema.Struct({
   families: Schema.Array(SessionFamily),
-  transitions: Schema.Array(FamilyTransition),
   turns: Schema.Array(FamilyTurn),
 });
 export interface SessionFamilyDocument extends Schema.Schema.Type<typeof SessionFamilyDocument> {}
@@ -142,13 +144,6 @@ export class SessionFamilyStorage extends Context.Service<
       sessionId: string,
       effect: Effect.Effect<A, E, R>,
     ) => Effect.Effect<A, E | SessionFamilyStorageError, R>;
-    readonly beginTransition: (
-      parentSessionId: string,
-      resolved: boolean,
-    ) => Effect.Effect<void, SessionFamilyStorageError>;
-    readonly finishTransition: (
-      parentSessionId: string,
-    ) => Effect.Effect<void, SessionFamilyStorageError>;
     readonly recordTurn: (turn: FamilyTurn) => Effect.Effect<void, SessionFamilyStorageError>;
     readonly settleTurn: (
       turnId: string,
@@ -244,7 +239,7 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
             .exists(documentPath)
             .pipe(Effect.mapError((e) => storageError("load", e))))
         )
-          return { families: [], transitions: [], turns: [] } satisfies SessionFamilyDocument;
+          return { families: [], turns: [] } satisfies SessionFamilyDocument;
         const text = yield* fileSystem
           .readFileString(documentPath)
           .pipe(Effect.mapError((e) => storageError("load", e)));
@@ -255,7 +250,7 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
         const envelope = yield* Schema.decodeUnknownEffect(StoredEnvelope)(parsed).pipe(
           Effect.mapError((cause) => storageError("load", cause)),
         );
-        if (![1, 2, 3, DOCUMENT_VERSION].includes(envelope.version))
+        if (![1, 2, 3, 4, DOCUMENT_VERSION].includes(envelope.version))
           return yield* storageError(
             "load",
             `Unsupported session family document version ${envelope.version}`,
@@ -277,8 +272,8 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
               families: Schema.Array(LegacySessionFamily),
               transitions:
                 envelope.version === 1
-                  ? Schema.optionalKey(Schema.Array(FamilyTransition))
-                  : Schema.Array(FamilyTransition),
+                  ? Schema.optionalKey(Schema.Array(LegacyFamilyTransition))
+                  : Schema.Array(LegacyFamilyTransition),
               turns:
                 envelope.version === 1
                   ? Schema.optionalKey(Schema.Array(LegacyFamilyTurn))
@@ -304,12 +299,14 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
           const legacy = yield* Schema.decodeUnknownEffect(
             Schema.Struct({
               families: Schema.Array(SessionFamily),
-              transitions: Schema.Array(FamilyTransition),
+              transitions: Schema.Array(LegacyFamilyTransition),
               turns: Schema.Array(LegacyFamilyTurn),
             }),
           )(envelope.data).pipe(Effect.mapError((cause) => storageError("migrate", cause)));
           data = { ...legacy, turns: legacy.turns.map(migrateTurn) };
         }
+        // v5 drops member-synchronization journals. The root's actual namespace
+        // is authoritative even when an older transition stopped halfway through.
         const document = yield* Schema.decodeUnknownEffect(SessionFamilyDocument)(data).pipe(
           Effect.mapError((cause) => storageError("load", cause)),
         );
@@ -462,25 +459,6 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
             }),
           ),
       );
-      const beginTransition = Effect.fn("SessionFamilyStorage.beginTransition")(
-        (parentSessionId: string, resolved: boolean) =>
-          update((document) => ({
-            ...document,
-            transitions: [
-              ...document.transitions.filter((item) => item.parentSessionId !== parentSessionId),
-              { parentSessionId, resolved },
-            ],
-          })),
-      );
-      const finishTransition = Effect.fn("SessionFamilyStorage.finishTransition")(
-        (parentSessionId: string) =>
-          update((document) => ({
-            ...document,
-            transitions: document.transitions.filter(
-              (item) => item.parentSessionId !== parentSessionId,
-            ),
-          })),
-      );
       const recordTurn = Effect.fn("SessionFamilyStorage.recordTurn")((turn: FamilyTurn) =>
         update((document) => ({
           ...document,
@@ -597,13 +575,9 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
           const removedFamilies = document.families.filter(
             (family) => family.projectPath === projectPath,
           );
-          const removedParents = new Set(removedFamilies.map((family) => family.parentSessionId));
           const removedMembers = new Set(removedFamilies.flatMap(familyMemberIds));
           return {
             families: document.families.filter((family) => family.projectPath !== projectPath),
-            transitions: document.transitions.filter(
-              (transition) => !removedParents.has(transition.parentSessionId),
-            ),
             turns: document.turns.filter(
               (turn) =>
                 !removedMembers.has(turn.sessionId) && !removedMembers.has(turn.senderSessionId),
@@ -617,8 +591,6 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
         addChild,
         state,
         withMemberLock,
-        beginTransition,
-        finishTransition,
         recordTurn,
         settleTurn,
         pendingResponseRequest,

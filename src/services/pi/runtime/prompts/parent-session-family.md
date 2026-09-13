@@ -8,4 +8,4 @@ The initial assignment expects one substantive result. Creating a child only lau
 
 Discover and message family members through ordinary Cake session operations. Ordinary messages start an idle recipient or queue behind active work. To deliberately redirect a running child, call `sessions.send` with `delivery: "steer"` and `expectsResponse: true`. To stop a child's active turn, call `sessions.abort`; stopping does not resolve or delete it.
 
-Use Cake's session merge and discard operations for isolated child worktrees so repository landing remains serialized. Merge and resolution are separate actions. Resolve nested sessions bottom-up; resolving the family root applies to the remaining family and requires every member to be inactive.
+Use Cake's session merge and discard operations for isolated child worktrees so repository landing remains serialized. Merge and resolution are separate actions. Only the family root owns resolution; all descendants inherit it. Resolving or restoring any family member targets the root and the whole family. Resolution requires every member to be inactive; do not try to resolve children independently.

@@ -5,7 +5,7 @@ import type { ChatConfiguration } from "../../ipc/session-contract";
 import { PiModels } from "../../services/pi/PiModels";
 import { PiSessions, type PiSessionAcquireOptions } from "../../services/pi/PiSessions";
 import type { ProjectSessionLocation } from "../project-sessions/project-session-data";
-import * as projectSessionLifecycle from "../project-sessions/projectSessionLifecycle";
+import { resolutionNamespace } from "../project-sessions/projectSessionResolution";
 import {
   SessionArchiveStorage,
   type SessionArchiveLocation,
@@ -35,13 +35,7 @@ const assertAdmission = Effect.fn("SessionFamilies.assertAdmission")(function* (
   const storage = yield* SessionFamilyStorage;
   const family = yield* storage.familyForMember(sessionId);
   if (!family) return;
-  const state = yield* storage.state();
-  if (state.transitions.some((item) => item.parentSessionId === family.parentSessionId))
-    return yield* failure(
-      "The Session Family has an incomplete lifecycle operation; retry after recovery",
-    );
-  const archive = yield* SessionArchiveStorage;
-  if ((yield* archive.locate(sessionId, location)) === "resolved")
+  if ((yield* resolutionNamespace(sessionId, location)) === "resolved")
     return yield* failure(
       `Restore the family explicitly from parent ${family.parentSessionId} before starting work`,
     );
@@ -331,11 +325,6 @@ export const initialize = Effect.fn("SessionFamilies.initialize")(function* (
     // reported as interrupted, never silently treated as complete.
     if (!turn.outcome) yield* storage.settleTurn(turn.turnId, "aborted");
   }
-  for (const journal of (yield* storage.state()).transitions)
-    yield* projectSessionLifecycle.recoverFamilyTransition(
-      journal.parentSessionId,
-      journal.resolved,
-    );
 });
 
 export const deliver = Effect.fn("SessionFamilies.deliverNotice")(function* (turn: FamilyTurn) {
@@ -344,8 +333,6 @@ export const deliver = Effect.fn("SessionFamilies.deliverNotice")(function* (tur
     (yield* storage.familyForMember(turn.sessionId)) ??
     (yield* storage.familyForMember(turn.senderSessionId));
   if (!family || !turn.outcome || turn.reported) return;
-  const state = yield* storage.state();
-  if (state.transitions.some((item) => item.parentSessionId === family.parentSessionId)) return;
   const senderMember = familyMember(family, turn.senderSessionId);
   const childMember = familyMember(family, turn.sessionId);
   if (!senderMember || !childMember) return;
@@ -369,7 +356,7 @@ export const deliver = Effect.fn("SessionFamilies.deliverNotice")(function* (tur
     });
   const archive = yield* SessionArchiveStorage;
   if (
-    (yield* archive.locate(turn.senderSessionId, {
+    (yield* resolutionNamespace(turn.senderSessionId, {
       cwd: senderMember.workingDirectory,
       activeRoot: senderLocation.sessionDirectory,
       resolvedRoot: senderLocation.resolvedSessionDirectory,

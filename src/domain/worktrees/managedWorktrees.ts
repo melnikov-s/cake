@@ -1,5 +1,12 @@
 import { Effect, Option, Stream } from "effect";
 import * as projectSessionLocations from "../project-sessions/projectSessionLocations";
+import { resolutionNamespace } from "../project-sessions/projectSessionResolution";
+import { ProjectSessionConfiguration } from "../../services/project-sessions/ProjectSessionConfiguration";
+import {
+  SessionFamilyStorage,
+  familyMemberIds,
+  familyMember,
+} from "../../services/storage/SessionFamilyStorage";
 import { defaultProjectSettings } from "../application/application-data";
 import { getState, revokeProjectTrust, trustProject } from "../application/application";
 import { generateWorktreeName, utilityModelSelection } from "../utility-work/utilityWork";
@@ -8,7 +15,6 @@ import { ProjectAccess } from "../../services/projects/ProjectAccess";
 import { SessionCatalogChanges } from "../../services/session-catalogs/SessionCatalogChanges";
 import {
   SessionArchiveStorage,
-  type ProjectSessionArchiveMetadata,
   type ProjectSessionArchiveMigrationSource,
 } from "../../services/storage/SessionArchiveStorage";
 import { Terminal } from "../../services/terminal/Terminal";
@@ -156,6 +162,13 @@ const resolvedEntriesForProject = Effect.fn("ManagedWorktrees.resolvedEntriesFor
     return {
       locations,
       entries: yield* entries.pipe(
+        Stream.filterEffect((entry) =>
+          resolutionNamespace(entry.sessionId, {
+            cwd: entry.workingDirectory,
+            activeRoot: entry.activeRoot,
+            resolvedRoot: entry.resolvedRoot,
+          }).pipe(Effect.map((namespace) => namespace === "resolved")),
+        ),
         Stream.runCollect,
         Effect.map((items) => Array.from(items)),
         Effect.mapError((cause) =>
@@ -169,7 +182,39 @@ const resolvedEntriesForProject = Effect.fn("ManagedWorktrees.resolvedEntriesFor
 const activeSessionInWorkingDirectory = Effect.fn(
   "ManagedWorktrees.activeSessionInWorkingDirectory",
 )(function* (workingDirectory: string, sessionDirectory: string) {
+  const families = yield* (yield* SessionFamilyStorage)
+    .list()
+    .pipe(
+      Effect.mapError((cause) =>
+        policyError("ManagedWorktrees.activeSessionInWorkingDirectory", cause),
+      ),
+    );
+  const configuration = yield* ProjectSessionConfiguration;
+  // Membership, not physical transcript placement, determines family activity.
+  // This also protects children archived independently by older installations.
+  for (const family of families) {
+    if (
+      !familyMemberIds(family).some(
+        (id) => familyMember(family, id)?.workingDirectory === workingDirectory,
+      )
+    )
+      continue;
+    if (
+      (yield* resolutionNamespace(family.parentSessionId, {
+        cwd: family.workingDirectory,
+        activeRoot: sessionDirectory,
+        resolvedRoot: configuration.resolvedSessionDirectory,
+      }).pipe(
+        Effect.mapError((cause) =>
+          policyError("ManagedWorktrees.activeSessionInWorkingDirectory", cause),
+        ),
+      )) !== "resolved"
+    )
+      return true;
+  }
+  const familyIds = new Set(families.flatMap(familyMemberIds));
   return yield* (yield* PiSessions).catalog({ workingDirectory, sessionDirectory }).pipe(
+    Stream.filter((session) => !familyIds.has(session.id)),
     Stream.runHead,
     Effect.map(Option.isSome),
     Effect.mapError((cause) =>
@@ -182,7 +227,37 @@ const discoverResolvedForProject = Effect.fn("ManagedWorktrees.discoverResolvedF
   function* (projectPath: string) {
     const worktrees = yield* ManagedWorktrees;
     const { entries, locations } = yield* resolvedEntriesForProject(projectPath);
-    const resolvedWorkingDirectories = new Set(entries.map((entry) => entry.workingDirectory));
+    const configuration = yield* ProjectSessionConfiguration;
+    const families = yield* (yield* SessionFamilyStorage)
+      .list()
+      .pipe(
+        Effect.mapError((cause) =>
+          policyError("ManagedWorktrees.discoverResolvedForProject", cause),
+        ),
+      );
+    const resolvedFamilies = yield* Effect.filter(
+      families.filter((family) => family.projectPath === projectPath),
+      (family) =>
+        resolutionNamespace(family.parentSessionId, {
+          cwd: family.workingDirectory,
+          activeRoot: configuration.sessionDirectory,
+          resolvedRoot: configuration.resolvedSessionDirectory,
+        }).pipe(
+          Effect.map((namespace) => namespace === "resolved"),
+          Effect.mapError((cause) =>
+            policyError("ManagedWorktrees.discoverResolvedForProject", cause),
+          ),
+        ),
+    );
+    const familyMembers = resolvedFamilies.flatMap((family) =>
+      familyMemberIds(family).flatMap((id) => {
+        const member = familyMember(family, id);
+        return member ? [member] : [];
+      }),
+    );
+    const resolvedWorkingDirectories = new Set(
+      [...entries, ...familyMembers].map((entry) => entry.workingDirectory),
+    );
     const candidates = (yield* worktrees.records()).filter(
       (record) =>
         record.projectPath === projectPath &&
@@ -211,6 +286,7 @@ const discoverResolvedForProject = Effect.fn("ManagedWorktrees.discoverResolvedF
     );
     return {
       entries,
+      familyMembers,
       locations,
       workingDirectories: eligible.filter(
         (workingDirectory): workingDirectory is string => workingDirectory !== undefined,
@@ -287,10 +363,12 @@ export const discardResolvedForProject = Effect.fn("ManagedWorktrees.discardReso
         continue;
       }
       discardedWorkingDirectories.push(workingDirectory);
-      const entries = discovered.entries.filter(
-        (entry: ProjectSessionArchiveMetadata) => entry.workingDirectory === workingDirectory,
+      const entries = new Map(
+        [...discovered.entries, ...discovered.familyMembers]
+          .filter((entry) => entry.workingDirectory === workingDirectory)
+          .map((entry) => [entry.sessionId, entry]),
       );
-      for (const entry of entries)
+      for (const entry of entries.values())
         yield* catalogs.publish({
           _tag: "ProjectSessionChanged",
           sessionId: entry.sessionId,
@@ -314,13 +392,7 @@ export const cleanupResolved = Effect.fn("ManagedWorktrees.cleanupResolved")(fun
   );
   if (!record) return;
 
-  const activeSession = yield* (yield* PiSessions)
-    .catalog({ workingDirectory, sessionDirectory })
-    .pipe(
-      Stream.runHead,
-      Effect.mapError((cause) => policyError("ManagedWorktrees.cleanupResolved", cause)),
-    );
-  if (Option.isSome(activeSession)) return;
+  if (yield* activeSessionInWorkingDirectory(workingDirectory, sessionDirectory)) return;
 
   yield* (yield* Terminal)
     .closeWorkingDirectory(workingDirectory)

@@ -42,21 +42,21 @@ support the work rather than turning Cake into a general-purpose IDE. Embedded V
 
 Every durable concept has one authority.
 
-| Concern                                                                       | Authority                                                                 | Cake's role                                                                               |
-| ----------------------------------------------------------------------------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| Project Session transcripts, tool history, branching, compaction              | Pi Session files and `SessionManager`                                     | Render validated snapshots and events in the GUI                                          |
-| Models, providers, authentication, Pi settings and resources                  | Pi                                                                        | Offer Cake controls through the Pi adapter                                                |
-| Utility-model selection                                                       | Cake application preferences, referencing a Pi provider/model             | Run only explicitly configured, bounded background completions through Pi's model runtime |
-| Application-level Cake Chat transcripts                                       | Their dedicated Pi Sessions                                               | Present them as Cake-wide meta-sessions and route curated controls                        |
-| Projects, global and per-Project workflow statuses, and worktree settings     | Cake                                                                      | Persist application metadata without copying or redefining Pi Session lifecycle           |
-| Window selection and view state                                               | Cake                                                                      | Persist renderer presentation independently from Project workflow facts                   |
-| Scheduled Project Session messages                                            | Cake                                                                      | Persist delivery intent until it becomes an ordinary Pi user message                      |
-| Session Family tree, per-member Working Directory bindings, and sibling order | Cake                                                                      | Group recursively delegated Project Sessions without copying their transcripts            |
-| Cross-session coordination threads and delivery correlation                   | Cake                                                                      | Bind participants, limits, closure, and acknowledgements without copying transcript text  |
-| Resolved-session status                                                       | Cake-managed active/archive transcript location                           | Keep resolved transcripts read-only and restore them before Pi opens them                 |
-| Reviews and inline discussions                                                | Cake workflow services, with Pi sidecar-session references where relevant | Persist anchors and workflow metadata without copying Pi transcripts                      |
-| Substantial, reusable artifacts                                               | Cake artifact repository plus Pi transcript pointers/fallbacks            | Persist bounded, immutable revisions in a session-scoped accessory panel                  |
-| Blocking structured requests                                                  | `cake.request/v1` plus the active Pi tool call                            | Render one inline interaction and return one validated value                              |
+| Concern                                                                       | Authority                                                                              | Cake's role                                                                               |
+| ----------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Project Session transcripts, tool history, branching, compaction              | Pi Session files and `SessionManager`                                                  | Render validated snapshots and events in the GUI                                          |
+| Models, providers, authentication, Pi settings and resources                  | Pi                                                                                     | Offer Cake controls through the Pi adapter                                                |
+| Utility-model selection                                                       | Cake application preferences, referencing a Pi provider/model                          | Run only explicitly configured, bounded background completions through Pi's model runtime |
+| Application-level Cake Chat transcripts                                       | Their dedicated Pi Sessions                                                            | Present them as Cake-wide meta-sessions and route curated controls                        |
+| Projects, global and per-Project workflow statuses, and worktree settings     | Cake                                                                                   | Persist application metadata without copying or redefining Pi Session lifecycle           |
+| Window selection and view state                                               | Cake                                                                                   | Persist renderer presentation independently from Project workflow facts                   |
+| Scheduled Project Session messages                                            | Cake                                                                                   | Persist delivery intent until it becomes an ordinary Pi user message                      |
+| Session Family tree, per-member Working Directory bindings, and sibling order | Cake                                                                                   | Group recursively delegated Project Sessions without copying their transcripts            |
+| Cross-session coordination threads and delivery correlation                   | Cake                                                                                   | Bind participants, limits, closure, and acknowledgements without copying transcript text  |
+| Resolved-session status                                                       | Cake-managed active/archive transcript location of a standalone session or family root | Children inherit resolution; keep resolved conversations read-only                        |
+| Reviews and inline discussions                                                | Cake workflow services, with Pi sidecar-session references where relevant              | Persist anchors and workflow metadata without copying Pi transcripts                      |
+| Substantial, reusable artifacts                                               | Cake artifact repository plus Pi transcript pointers/fallbacks                         | Persist bounded, immutable revisions in a session-scoped accessory panel                  |
+| Blocking structured requests                                                  | `cake.request/v1` plus the active Pi tool call                                         | Render one inline interaction and return one validated value                              |
 
 Do not introduce a second transcript database, reconstruct Pi state into a
 competing domain model, or mutate Pi JSONL with ad hoc file operations. A session
@@ -242,8 +242,9 @@ the parent's turn waiting for that child. Every member may recursively create
 children. A child either shares its immediate parent's Working Directory or uses
 a Cake-managed worktree branched from that parent's current checkout; it never
 selects an unrelated repository base. Each family member remains independently
-selectable, messageable, stoppable, and—subject to bottom-up descendant
-constraints—resolvable by its own session identity. A parent may abort a child's
+selectable, messageable, and stoppable. Only the family root owns resolution;
+children recursively inherit their parent's state, and a lifecycle request on any
+member targets the root. A parent may abort a child's
 active turn without resolving or deleting the child. Project agents may invoke
 the same queued Managed Worktree merge and discard actions as the UI for their
 own isolated checkout or an immediate child's; Git landing and session
@@ -383,18 +384,22 @@ The window Store hierarchy mirrors the product surfaces:
   Titles are derived from Pi's authoritative session-name entries, falling back to the first user
   message. Catalog discovery reads each transcript while building its bounded summary projection;
   subsequent runtime name changes publish scoped catalog events. Session IDs are the canonical
-  identity; duplicate IDs are rejected. Resolved status derives solely from the active or archived
-  filesystem namespace, never from a persisted ID list. A Project Session's resolved navigation
+  identity; duplicate IDs are rejected. Resolved status derives from the active or archived
+  filesystem namespace of the standalone session or family root, never from a persisted ID
+  list. Children have no independent resolution state: their transcript placement is only a
+  storage detail. Family catalogs include all descendants from durable membership, even when
+  their checkouts are retired or their transcripts remain in active storage. Root changes
+  refresh every descendant's derived projection; no lifecycle synchronization journal is used. A Project Session's resolved navigation
   record stores only Cake-owned routing metadata: its Project, original Working Directory, and
   historical worktree name. Resolved browsing combines those records with titles derived from Pi
   transcripts without Git or Managed Worktree discovery. Existing archives are indexed once when
   their registered Project catalog first initializes; that migration reads routing metadata and
-  derives titles from the archived transcripts. Resolving moves the Pi
-  transcript between namespaces. After the final active Project Session in a landed
+  derives titles from the archived transcripts. Resolving moves only the standalone or root Pi
+  transcript between namespaces; child transcripts remain in place. After the final effectively active Project Session in a landed
   Managed Worktree is resolved, Cake closes that Working Directory's terminals and
   removes the checkout and merged branch while retaining its Managed Worktree record.
-  Restoring the first archived session recreates that checkout before restoring its
-  transcript. Resolving one of several active sessions never retires their shared
+  Restoring recreates the required checkouts before restoring the authority's
+  transcript. Family cleanup failures do not change descendants' inherited resolution. Resolving one of several active sessions never retires their shared
   Working Directory. The title remains stable because it travels with Pi's transcript across both
   namespaces.
 - Window-owned persistence infrastructure loads one versioned Store snapshot before

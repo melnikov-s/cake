@@ -105,7 +105,7 @@ export const forkToWorkingDirectory = Effect.fn("ProjectSessions.forkToWorkingDi
         findSessionFile(
           input.source.workingDirectory,
           input.sessionId,
-          configuration.sessionDirectory,
+          input.source.sessionDirectory,
         ),
       catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
     });

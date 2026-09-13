@@ -314,26 +314,6 @@ describe("Session Family outcome delivery", () => {
     ),
   );
 
-  it.effect("suppresses outcome delivery while stop-all lifecycle work is admitted", () =>
-    Effect.gen(function* () {
-      const storage = yield* SessionFamilyStorage;
-      yield* storage.addChild(reservation);
-      yield* storage.recordTurn(outcome);
-      yield* storage.beginTransition("session-1", true);
-      yield* Effect.scoped(deliver(outcome));
-      assert.equal((yield* storage.state()).turns.length, 1);
-    }).pipe(
-      Effect.provide(
-        Layer.mergeAll(
-          familyStorageHarness().layer,
-          environment,
-          Layer.mock(SessionArchiveStorage, { locate: () => Effect.succeed("active" as const) }),
-          Layer.mock(PiSessions, {}),
-        ),
-      ),
-    ),
-  );
-
   it.effect("does not restore or message a resolved parent", () =>
     Effect.gen(function* () {
       const storage = yield* SessionFamilyStorage;

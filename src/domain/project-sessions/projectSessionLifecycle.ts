@@ -2,6 +2,7 @@ import { Effect, Stream } from "effect";
 import * as artifacts from "../artifacts/artifacts";
 import * as managedWorktrees from "../worktrees/managedWorktrees";
 import * as projectSessionLocations from "./projectSessionLocations";
+import { resolutionNamespace } from "./projectSessionResolution";
 import * as reviews from "../reviews/reviews";
 import * as subagents from "../subagents/subagents";
 import {
@@ -56,19 +57,6 @@ const familyMemberLocation = Effect.fn("ProjectSessions.familyMemberLocation")(f
   ).pipe(asError(operation));
 });
 
-const descendantIds = (family: SessionFamily, sessionId: string) => {
-  const descendants: string[] = [];
-  const pending = [sessionId];
-  while (pending.length > 0) {
-    const parentSessionId = pending.shift();
-    if (!parentSessionId) continue;
-    const children = family.children.filter((child) => child.parentSessionId === parentSessionId);
-    descendants.push(...children.map((child) => child.sessionId));
-    pending.push(...children.map((child) => child.sessionId));
-  }
-  return descendants;
-};
-
 const assertResolvable = Effect.fn("ProjectSessions.assertResolvable")(function* (
   sessionId: string,
   workingDirectory: string,
@@ -87,7 +75,7 @@ const assertResolvable = Effect.fn("ProjectSessions.assertResolvable")(function*
     return yield* error(operation, "Cake cannot resolve an empty Project Session");
 });
 
-const archiveMember = Effect.fn("ProjectSessions.archiveMember")(function* (
+const archiveAuthority = Effect.fn("ProjectSessions.archiveAuthority")(function* (
   sessionId: string,
   location: ProjectSessionLocation,
   operation: string,
@@ -105,7 +93,7 @@ const archiveMember = Effect.fn("ProjectSessions.archiveMember")(function* (
   if (publish) yield* publishCatalogStatus(sessionId, location, true).pipe(asError(operation));
 });
 
-const restoreMember = Effect.fn("ProjectSessions.restoreMember")(function* (
+const restoreAuthority = Effect.fn("ProjectSessions.restoreAuthority")(function* (
   sessionId: string,
   location: ProjectSessionLocation,
   operation: string,
@@ -131,7 +119,6 @@ const transitionFamily = Effect.fn("ProjectSessions.transitionFamily")(function*
   family: SessionFamily,
   resolved: boolean,
   operation: string,
-  publish = true,
 ) {
   const storage = yield* SessionFamilyStorage;
   yield* storage
@@ -141,14 +128,7 @@ const transitionFamily = Effect.fn("ProjectSessions.transitionFamily")(function*
         const current = yield* storage.familyForMember(family.parentSessionId);
         if (!current) return yield* error(operation, "The Session Family no longer exists");
         const state = yield* storage.state();
-        const journal = state.transitions.find(
-          (item) => item.parentSessionId === current.parentSessionId,
-        );
-        if (journal && journal.resolved !== resolved)
-          return yield* error(
-            operation,
-            "Complete the pending family lifecycle operation before reversing it",
-          );
+
         const members = yield* Effect.forEach(familyMembers(current), (sessionId) =>
           familyMemberLocation(current, sessionId, operation).pipe(
             Effect.map((location) => ({ sessionId, location })),
@@ -166,10 +146,31 @@ const transitionFamily = Effect.fn("ProjectSessions.transitionFamily")(function*
           if (state.turns.some((turn) => memberIds.has(turn.sessionId) && !turn.reported))
             return yield* error(operation, "The Session Family has an undelivered child outcome");
         }
-        if (!journal) yield* storage.beginTransition(current.parentSessionId, resolved);
+        const rootLocation = yield* familyMemberLocation(
+          current,
+          current.parentSessionId,
+          operation,
+        );
+        const publishResolution = (yield* SessionCatalogChanges)
+          .publish({
+            _tag: "ProjectSessionsTransitioned",
+            sessions: [
+              { sessionId: current.parentSessionId, workingDirectory: current.workingDirectory },
+            ],
+            projectPath: current.projectPath,
+            resolved,
+          })
+          .pipe(asError(operation));
         if (resolved) {
-          for (const { sessionId, location } of members)
-            yield* archiveMember(sessionId, location, operation, false);
+          for (const { sessionId } of members) {
+            if (sessionId === current.parentSessionId) continue;
+            yield* subagents.releaseParent(sessionId).pipe(asError(operation));
+            yield* setSessionUnread(sessionId, false).pipe(asError(operation));
+          }
+          // One durable authority change resolves the whole tree. Children stay
+          // in place; no member-by-member lifecycle synchronization is needed.
+          yield* archiveAuthority(current.parentSessionId, rootLocation, operation, false);
+          yield* publishResolution;
           for (const location of [...members]
             .reverse()
             .filter(
@@ -183,106 +184,24 @@ const transitionFamily = Effect.fn("ProjectSessions.transitionFamily")(function*
               .cleanupResolved(location.workingDirectory, location.sessionDirectory)
               .pipe(asError(operation));
         } else {
-          const restoredLocations = new Map<string, ProjectSessionLocation>();
+          const restoredDirectories = new Set<string>();
           for (const { sessionId, location } of members) {
-            if (!restoredLocations.has(location.workingDirectory)) {
+            if (!restoredDirectories.has(location.workingDirectory)) {
               yield* managedWorktrees
                 .restoreResolved(location.workingDirectory)
                 .pipe(asError(operation));
-              restoredLocations.set(location.workingDirectory, location);
+              restoredDirectories.add(location.workingDirectory);
             }
-            const restored = yield* restoreMember(sessionId, location, operation, false);
-            restoredLocations.set(location.workingDirectory, restored);
-            yield* trustProject(restored.workingDirectory).pipe(asError(operation));
+            // Older installations may have archived child transcripts. Normalize
+            // their storage without assigning them any lifecycle state.
+            if (sessionId !== current.parentSessionId)
+              yield* projectSessionLocations.restore(sessionId, location).pipe(asError(operation));
+            yield* trustProject(location.workingDirectory).pipe(asError(operation));
           }
+          // Keep the family resolved until every required checkout is ready.
+          yield* restoreAuthority(current.parentSessionId, rootLocation, operation, false);
+          yield* publishResolution;
         }
-        if (publish)
-          yield* (yield* SessionCatalogChanges)
-            .publish({
-              _tag: "ProjectSessionsTransitioned",
-              sessions: members.map(({ sessionId, location }) => ({
-                sessionId,
-                workingDirectory: location.workingDirectory,
-              })),
-              projectPath: current.projectPath,
-              resolved,
-            })
-            .pipe(asError(operation));
-        yield* storage.finishTransition(current.parentSessionId);
-      }),
-    )
-    .pipe(asError(operation));
-});
-
-const transitionFamilyMember = Effect.fn("ProjectSessions.transitionFamilyMember")(function* (
-  family: SessionFamily,
-  sessionId: string,
-  resolved: boolean,
-  operation: string,
-  publish = true,
-) {
-  const storage = yield* SessionFamilyStorage;
-  yield* storage
-    .withMemberLock(
-      family.parentSessionId,
-      Effect.gen(function* () {
-        const current = yield* storage.familyForMember(sessionId);
-        const member = current && familyMember(current, sessionId);
-        if (!current || !member?.parentSessionId)
-          return yield* error(operation, "The Session Family member no longer exists");
-        const location = yield* familyMemberLocation(current, sessionId, operation);
-        const archive = yield* SessionArchiveStorage;
-        const namespace = yield* archive
-          .locate(sessionId, archiveLocation(location))
-          .pipe(asError(operation));
-        if (resolved) {
-          if (!namespace) return yield* error(operation, "Activate a Draft before resolving it");
-          if (namespace === "resolved") return;
-          yield* assertResolvable(
-            sessionId,
-            location.workingDirectory,
-            location.sessionDirectory,
-            operation,
-          );
-          for (const descendantId of descendantIds(current, sessionId)) {
-            const descendantLocation = yield* familyMemberLocation(
-              current,
-              descendantId,
-              operation,
-            );
-            if (
-              (yield* archive
-                .locate(descendantId, archiveLocation(descendantLocation))
-                .pipe(asError(operation))) !== "resolved"
-            )
-              return yield* error(operation, "Resolve descendant sessions before their parent");
-          }
-          const state = yield* storage.state();
-          if (state.turns.some((turn) => turn.senderSessionId === sessionId && !turn.reported))
-            return yield* error(operation, "The session has an undelivered child outcome");
-          yield* archiveMember(sessionId, location, operation, publish);
-          yield* managedWorktrees
-            .cleanupResolved(location.workingDirectory, location.sessionDirectory)
-            .pipe(asError(operation));
-          return;
-        }
-        if (!namespace)
-          return yield* error(operation, "Only a resolved Project Session can be restored");
-        if (namespace === "active") return;
-        const parentLocation = yield* familyMemberLocation(
-          current,
-          member.parentSessionId,
-          operation,
-        );
-        if (
-          (yield* archive
-            .locate(member.parentSessionId, archiveLocation(parentLocation))
-            .pipe(asError(operation))) !== "active"
-        )
-          return yield* error(operation, "Restore the immediate parent before this session");
-        yield* managedWorktrees.restoreResolved(location.workingDirectory).pipe(asError(operation));
-        const restored = yield* restoreMember(sessionId, location, operation, publish);
-        yield* trustProject(restored.workingDirectory).pipe(asError(operation));
       }),
     )
     .pipe(asError(operation));
@@ -320,7 +239,7 @@ const transitionStandalone = Effect.fn("ProjectSessions.transitionStandalone")(f
               location.sessionDirectory,
               operation,
             );
-          yield* archiveMember(target.sessionId, location, operation, publish);
+          yield* archiveAuthority(target.sessionId, location, operation, publish);
           yield* managedWorktrees
             .cleanupResolved(location.workingDirectory, location.sessionDirectory)
             .pipe(asError(operation));
@@ -330,7 +249,7 @@ const transitionStandalone = Effect.fn("ProjectSessions.transitionStandalone")(f
           yield* managedWorktrees
             .restoreResolved(location.workingDirectory)
             .pipe(asError(operation));
-          const restored = yield* restoreMember(target.sessionId, location, operation, publish);
+          const restored = yield* restoreAuthority(target.sessionId, location, operation, publish);
           yield* trustProject(restored.workingDirectory).pipe(asError(operation));
         }
       }),
@@ -347,12 +266,10 @@ const transition = Effect.fn("ProjectSessions.transitionLifecycle")(function* (
   const storage = yield* SessionFamilyStorage;
   const family = yield* storage.familyForMember(target.sessionId).pipe(asError(operation));
   if (!family) return yield* transitionStandalone(target, resolved, operation, publish);
-  if (family.parentSessionId !== target.sessionId)
-    return yield* transitionFamilyMember(family, target.sessionId, resolved, operation, publish);
-  const location = yield* familyMemberLocation(family, target.sessionId, operation);
+  const location = yield* familyMemberLocation(family, family.parentSessionId, operation);
   const archive = yield* SessionArchiveStorage;
   const namespace = yield* archive
-    .locate(target.sessionId, archiveLocation(location))
+    .locate(family.parentSessionId, archiveLocation(location))
     .pipe(asError(operation));
   if (!namespace)
     return yield* error(
@@ -361,9 +278,7 @@ const transition = Effect.fn("ProjectSessions.transitionLifecycle")(function* (
         ? "Activate a Draft before resolving it"
         : "Only a resolved Project Session can be restored",
     );
-  // Even when the root already reached the requested namespace, another
-  // member may still need the persisted family journal replayed.
-  yield* transitionFamily(family, resolved, operation, publish);
+  yield* transitionFamily(family, resolved, operation);
 });
 
 export const resolve = Effect.fn("ProjectSessions.resolve")((target: ProjectSessionTarget) =>
@@ -372,13 +287,6 @@ export const resolve = Effect.fn("ProjectSessions.resolve")((target: ProjectSess
 
 export const restore = Effect.fn("ProjectSessions.restore")((target: ProjectSessionTarget) =>
   transition(target, false, "restore"),
-);
-
-/** Replays an incomplete family archive/restore journal during startup. */
-export const recoverFamilyTransition = Effect.fn("ProjectSessions.recoverFamilyTransition")(
-  function* (parentSessionId: string, resolved: boolean) {
-    yield* transition({ sessionId: parentSessionId }, resolved, resolved ? "resolve" : "restore");
-  },
 );
 
 /** Discovers and resolves every active Project Session in one Working Directory sequentially. */
@@ -404,45 +312,54 @@ export const resolveWorkingDirectory = Effect.fn("ProjectSessions.resolveWorking
         Effect.map((items) => Array.from(items)),
         asError("resolveWorkingDirectory"),
       );
-    const activeIds = new Set(activeSessionIds);
     const families = yield* (yield* SessionFamilyStorage)
       .list()
       .pipe(asError("resolveWorkingDirectory"));
     const familyByMember = new Map(
       families.flatMap((family) => familyMembers(family).map((id) => [id, family] as const)),
     );
-    const targets: Array<{ sessionId: string; sessionIds: string[] }> = [];
+    const targets: Array<{
+      sessionId: string;
+      sessionIds: string[];
+      workingDirectory: string;
+      family: boolean;
+    }> = [];
     const selected = new Set<string>();
     for (const activeSessionId of activeSessionIds) {
       const family = familyByMember.get(activeSessionId);
-      const sessionId =
-        family && activeIds.has(family.parentSessionId) ? family.parentSessionId : activeSessionId;
+      const sessionId = family?.parentSessionId ?? activeSessionId;
       if (selected.has(sessionId)) continue;
-      const sessionIds =
-        family?.parentSessionId === sessionId
-          ? familyMembers(family).filter((id) => activeIds.has(id))
-          : [sessionId];
+      const sessionIds = family ? familyMembers(family) : [sessionId];
       for (const id of sessionIds) selected.add(id);
-      targets.push({ sessionId, sessionIds });
+      targets.push({
+        sessionId,
+        sessionIds,
+        workingDirectory: family?.workingDirectory ?? workingDirectory,
+        family: family !== undefined,
+      });
     }
     const resolvedSessionIds: string[] = [];
+    const standaloneResolvedIds: string[] = [];
     const failures: WorkingDirectoryResolutionFailure[] = [];
     for (const target of targets) {
       const outcome = yield* transition(
-        { sessionId: target.sessionId, workingDirectory },
+        { sessionId: target.sessionId, workingDirectory: target.workingDirectory },
         true,
         "resolveWorkingDirectory",
         false,
       ).pipe(Effect.result);
       if (outcome._tag === "Failure")
         failures.push({ sessionIds: target.sessionIds, message: outcome.failure.message });
-      else resolvedSessionIds.push(...target.sessionIds);
+      else {
+        resolvedSessionIds.push(...target.sessionIds);
+        if (!target.family) standaloneResolvedIds.push(target.sessionId);
+      }
     }
-    if (resolvedSessionIds.length > 0)
+    if (standaloneResolvedIds.length > 0)
       yield* (yield* SessionCatalogChanges)
         .publish({
           _tag: "ProjectSessionsTransitioned",
-          sessions: resolvedSessionIds.map((sessionId) => ({ sessionId, workingDirectory })),
+          sessions: standaloneResolvedIds.map((sessionId) => ({ sessionId, workingDirectory })),
           projectPath: location.projectPath,
           resolved: true,
         })
@@ -563,9 +480,9 @@ export const setWorkflowSessionLabels = Effect.fn("ProjectSessions.setWorkflowSe
         "setWorkflowSessionLabels",
         "That session does not belong to this Project",
       );
-    const namespace = yield* (yield* SessionArchiveStorage)
-      .locate(input.sessionId, archiveLocation(location))
-      .pipe(asError("setWorkflowSessionLabels"));
+    const namespace = yield* resolutionNamespace(input.sessionId, archiveLocation(location)).pipe(
+      asError("setWorkflowSessionLabels"),
+    );
     if (namespace !== "active")
       return yield* error(
         "setWorkflowSessionLabels",

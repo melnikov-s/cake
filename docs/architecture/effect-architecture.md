@@ -339,9 +339,13 @@ transcripts; lifecycle workflows use it when they do not need display metadata. 
 discovers sessions from filename and filesystem metadata, then opens each Pi JSONL transcript to
 derive its bounded title from the latest session-name entry or first user message. Pi is the sole
 durable title authority. Runtime title changes publish scoped catalog
-changes so active renderer projections update immediately. Cake's archive index stores routing and
-lifecycle metadata only; active and resolved catalogs derive titles from the transcript in either
-namespace.
+changes so active renderer projections update immediately. Cake's archive index stores
+routing metadata only; active and resolved catalogs derive titles from the transcript in either
+namespace. Resolution belongs to standalone sessions and family roots. Child transcripts stay
+in place and inherit the root's namespace through domain policy. Family catalog and conversation
+Streams project this derived state; renderer Models are window-lifetime read projections, not
+independent child lifecycle authorities. Root transitions and turn admission share the family
+lock. There is no persisted member-resolution synchronization journal.
 
 A `PiSessionHandle` exposes an observation Stream and operations such as
 prompt, steer, follow-up, abort, execute command, set model, compact, fork, and
@@ -522,8 +526,9 @@ Directory, so renderer remount, missing terminal operation projection, or failed
 acknowledgement cannot lose it. Acknowledgement only retires terminal operation presentation.
 
 Bulk cleanup selection is also main-owned policy. The Managed Worktree domain previews and
-then authoritatively rediscovers landed Project worktrees that have archived sessions and no
-active sessions; the renderer uses the preview only for terminal-program confirmation. Cleanup
+then authoritatively rediscovers landed Project worktrees that have effectively resolved sessions
+and no active sessions, including children whose root is archived while their own transcripts
+remain in active storage; the renderer uses the preview only for terminal-program confirmation. Cleanup
 runs sequentially and returns successful paths plus per-worktree failures, so partial progress is
 visible and retryable. Resolving a whole Working Directory likewise discovers its active Pi
 Sessions in main, collapses Session Family members to the parent lifecycle operation, and returns

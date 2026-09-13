@@ -34,13 +34,57 @@ const child = (requestId: string, childSessionId: string) => ({
 });
 
 describe("SessionFamilyStorage", () => {
+  it.effect(
+    "migrates version 4 partial transitions to root-owned lifecycle without losing membership or delivery",
+    () => {
+      const family = {
+        familyId: "family",
+        parentSessionId: "parent",
+        projectPath: "/project",
+        workingDirectory: "/worktree",
+        createdAt: "2026-01-01",
+        children: [
+          {
+            sessionId: "child",
+            parentSessionId: "parent",
+            requestId: "request",
+            workingDirectory: "/child-tree",
+            createdAt: "2026-01-01",
+          },
+        ],
+      };
+      const files = new Map([
+        [
+          "state/session-families.json",
+          JSON.stringify({
+            version: 4,
+            data: {
+              families: [family],
+              transitions: [{ parentSessionId: "parent", resolved: true }],
+              turns: [turn()],
+            },
+          }),
+        ],
+      ]);
+      return Effect.gen(function* () {
+        const storage = yield* SessionFamilyStorage;
+        assert.deepEqual(yield* storage.state(), { families: [family], turns: [turn()] });
+        yield* storage.settleTurn("turn", "complete");
+        const persisted = JSON.parse(files.get("state/session-families.json") ?? "{}");
+        assert.deepEqual(persisted, {
+          version: 5,
+          data: { families: [family], turns: [turn({ outcome: "complete" })] },
+        });
+      }).pipe(Effect.provide(familyStorageHarness(files).layer));
+    },
+  );
   it.effect("migrates membership-only storage without losing existing families", () => {
     const files = new Map([
       ["state/session-families.json", JSON.stringify({ version: 1, data: { families: [] } })],
     ]);
     return Effect.gen(function* () {
       const storage = yield* SessionFamilyStorage;
-      assert.deepEqual(yield* storage.state(), { families: [], transitions: [], turns: [] });
+      assert.deepEqual(yield* storage.state(), { families: [], turns: [] });
       yield* storage.addChild(child("request", "child"));
       yield* storage.recordTurn(turn());
       yield* storage.prepareResponse("child", "parent", "request-message", "response");
@@ -48,7 +92,7 @@ describe("SessionFamilyStorage", () => {
       yield* storage.settleTurn("turn", "complete");
       assert.deepEqual((yield* storage.state()).turns, []);
       assert.equal((yield* storage.list()).length, 1);
-      assert.equal(JSON.parse(files.get("state/session-families.json") ?? "{}").version, 4);
+      assert.equal(JSON.parse(files.get("state/session-families.json") ?? "{}").version, 5);
     }).pipe(Effect.provide(familyStorageHarness(files).layer));
   });
 
@@ -237,7 +281,7 @@ describe("SessionFamilyStorage", () => {
     }).pipe(Effect.provide(testLayer())),
   );
 
-  it.effect("removes project families with their transition and turn journals", () =>
+  it.effect("removes project families with their turn journals", () =>
     Effect.gen(function* () {
       const storage = yield* SessionFamilyStorage;
       yield* storage.addChild(child("request-1", "child-1"));
@@ -247,7 +291,6 @@ describe("SessionFamilyStorage", () => {
         parentWorkingDirectory: "/project/.cake-worktrees/feature",
         parentManagedWorktreePath: "/project/.cake-worktrees/feature",
       });
-      yield* storage.beginTransition("parent", true);
       yield* storage.recordTurn(
         turn({
           sessionId: "grandchild",
@@ -257,7 +300,7 @@ describe("SessionFamilyStorage", () => {
         }),
       );
       yield* storage.removeProject("/project");
-      assert.deepEqual(yield* storage.state(), { families: [], transitions: [], turns: [] });
+      assert.deepEqual(yield* storage.state(), { families: [], turns: [] });
     }).pipe(Effect.provide(testLayer())),
   );
 

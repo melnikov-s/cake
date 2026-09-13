@@ -19,10 +19,15 @@ const reservation = {
   createdAt: "2026-09-05",
 };
 const archiveLocation = { cwd: "/worktree", activeRoot: "/active", resolvedRoot: "/resolved" };
-const layer = () =>
+const layer = (rootResolved = false) =>
   Layer.mergeAll(
     familyStorageHarness().layer,
-    Layer.mock(SessionArchiveStorage, { locate: () => Effect.succeed("active" as const) }),
+    Layer.mock(SessionArchiveStorage, {
+      locate: (id) =>
+        Effect.succeed(
+          rootResolved && id === "parent" ? ("resolved" as const) : ("active" as const),
+        ),
+    }),
   );
 const message = (senderSessionId: string, expectsResponse: boolean, generatedNotice = false) =>
   encodeCrossSessionMessage("Coordinate this", {
@@ -129,11 +134,10 @@ describe("Session Family lifecycle", () => {
     }).pipe(Effect.provide(layer())),
   );
 
-  it.effect("rejects admission while a failed transition awaits recovery", () =>
+  it.effect("rejects child admission when only the root transcript is archived", () =>
     Effect.gen(function* () {
       const storage = yield* SessionFamilyStorage;
       yield* storage.addChild(reservation);
-      yield* storage.beginTransition("parent", false);
       const error = yield* Effect.flip(
         admitTurn(
           "child",
@@ -142,7 +146,7 @@ describe("Session Family lifecycle", () => {
           Effect.die("Must not accept"),
         ),
       );
-      assert.match(error.message, /incomplete lifecycle/);
-    }).pipe(Effect.provide(layer())),
+      assert.match(error.message, /Restore the family explicitly from parent parent/);
+    }).pipe(Effect.provide(layer(true))),
   );
 });
