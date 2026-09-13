@@ -60,7 +60,7 @@ const nodes = [
     x: 55,
     y: 186,
     title: "Artifact record",
-    sub: "Cake owns payload",
+    sub: "Cake payload",
     detail:
       "The repository validates input, writes content-addressed immutable payload blobs and owns revision metadata. The integration host emits artifact-updated after upsert.",
     source:
@@ -71,7 +71,7 @@ const nodes = [
     x: 55,
     y: 267,
     title: "Artifact viewer",
-    sub: "Renderer projection",
+    sub: "Display projection",
     detail:
       "WidgetArtifact asks InlineWidgetStore to compile the stored source for display. It embeds the resulting cake-widget document and validates tokenized messages. This display compile is separate from the pre-publication gate.",
     source:
@@ -81,8 +81,8 @@ const nodes = [
     id: "widget",
     x: 55,
     y: 346,
-    title: "Interactive widget",
-    sub: "Opaque-origin iframe",
+    title: "Live widget",
+    sub: "Opaque origin",
     detail:
       "The allow-scripts iframe runs generated React without Cake, Node or parent-DOM privileges. CSP blocks arbitrary network/API access, with explicit data/HTTPS media allowances. Selection here is local presentation state only.",
     source:
@@ -153,9 +153,9 @@ export default function WidgetPipeline() {
   const [selected, setSelected] = useState("compile");
   const [path, setPath] = useState("publish");
   const [evidence, setEvidence] = useState(false);
-  const [wide, setWide] = useState(window.innerWidth >= 1100);
+  const [wide, setWide] = useState(window.innerWidth >= 700);
   useEffect(() => {
-    const resize = () => setWide(window.innerWidth >= 1100);
+    const resize = () => setWide(window.innerWidth >= 700);
     window.addEventListener("resize", resize);
     return () => window.removeEventListener("resize", resize);
   }, []);
@@ -167,7 +167,7 @@ export default function WidgetPipeline() {
   return (
     <main className="explanation">
       <style>{`
-      *{box-sizing:border-box} body{margin:0;padding:0;background:#f6f7f4;color:#1d302d;font-family:system-ui,sans-serif} .explanation{--paper:#fff;--line:#859891;--muted:#546b63;--accent:#006952;--wash:#e8f2eb; padding:14px;max-width:1220px;margin:auto} h1{font-size:23px;line-height:1.12;letter-spacing:-.8px;margin:6px 0 10px} .eyebrow{font-size:10px;letter-spacing:1.8px;font-weight:750;color:var(--accent)} .intro{font-size:13px;line-height:1.5;margin:0 0 14px;color:var(--muted)} .controls{display:flex;gap:4px;flex-wrap:wrap;margin:10px 0} button{font:inherit;color:inherit;cursor:pointer} .controls button,.evidence{background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:7px 6px;font-size:10px} button[aria-pressed=true]{background:var(--accent);color:var(--paper);border-color:var(--accent)} button:focus-visible{outline:3px solid #da8700;outline-offset:3px} .map{position:relative;height:400px;min-width:302px} .boundary{position:absolute;left:0;right:0;border:1px solid var(--line);border-radius:12px;background:var(--paper)} .main{top:0;height:246px}.main small{display:none}.renderer{top:254px;height:72px}.sandbox{top:334px;height:66px;border-style:dashed;background:var(--wash)} .boundary-label{position:absolute;left:12px;top:10px;font-size:10px;letter-spacing:1px;font-weight:700;color:var(--muted);max-width:95%} .renderer .boundary-label,.sandbox .boundary-label{top:18px;max-width:45%;line-height:1.8} .boundary small{display:block;letter-spacing:0;font-size:11px;font-weight:400} .react-flow__node{border:1px solid var(--line);border-radius:7px;background:var(--paper);color:inherit;height:48px}.react-flow__node.selected{border:2px solid var(--accent);background:var(--wash)}.graph-node{padding:6px 7px}.graph-node strong{display:block;font-size:11px;line-height:18px;white-space:nowrap}.graph-node small{display:block;font-size:10px;line-height:14px;white-space:nowrap}.react-flow__handle{width:4px;height:4px;min-width:4px;min-height:4px;border:0;background:var(--line)}.react-flow__node:focus-visible{outline:3px solid #da8700;outline-offset:3px}.react-flow__edge-text{font-family:system-ui,sans-serif} .detail{padding:15px 0 0}.detail .eyebrow{font-size:10px} h2{font-size:19px;margin:5px 0 8px}.detail p{font-size:13px;line-height:1.55;margin:0 0 12px}.evidence{font-weight:600}.source{margin-top:12px;font-family:monospace;font-size:11px;line-height:1.6;overflow-wrap:anywhere;padding:12px;background:var(--wash);border-radius:6px}.caveat{font-size:11px!important;color:var(--muted);margin-top:14px!important}.legend{font-size:11px;color:var(--muted);margin:8px 0 0} @media(min-width:1100px){.explanation{padding:36px}h1{font-size:38px}.intro{font-size:15px;max-width:720px}.composition{display:grid;grid-template-columns:minmax(590px,1.6fr) minmax(260px,1fr);gap:36px}.detail{padding-top:34px} .graph-node strong{font-size:15px}.graph-node small{font-size:11px}.edge-label{font-size:11px}.boundary-label{font-size:11px} .detail p{font-size:15px}h2{font-size:23px}} @media(prefers-color-scheme:dark){body{background:#101c1b;color:#e5ede8}.explanation{--paper:#182826;--line:#82968e;--muted:#a7bbb2;--accent:#8ce0bd;--wash:#233f35} .controls button[aria-pressed=true]{color:#10251d}.node[aria-pressed=true]{color:var(--accent)}} @media(max-width:390px){.explanation{padding:12px}.node{padding-left:6px}.node strong{font-size:11px}.edge-label{font-size:9px}}
+      *{box-sizing:border-box} body{margin:0;padding:0;background:#f6f7f4;color:#1d302d;font-family:system-ui,sans-serif} .explanation{--paper:#fff;--line:#859891;--muted:#546b63;--accent:#006952;--wash:#e8f2eb; padding:14px;max-width:1220px;margin:auto} h1{font-size:23px;line-height:1.12;letter-spacing:-.8px;margin:6px 0 10px} .eyebrow{font-size:10px;letter-spacing:1.8px;font-weight:750;color:var(--accent)} .intro{font-size:13px;line-height:1.5;margin:0 0 14px;color:var(--muted)} .controls{display:flex;gap:4px;flex-wrap:wrap;margin:10px 0} button{font:inherit;color:inherit;cursor:pointer} .controls button,.evidence{background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:7px 6px;font-size:10px} button[aria-pressed=true]{background:var(--accent);color:var(--paper);border-color:var(--accent)} button:focus-visible{outline:3px solid #da8700;outline-offset:3px} .map{position:relative;height:400px;min-width:302px} .boundary{position:absolute;left:0;right:0;border:1px solid var(--line);border-radius:12px;background:var(--paper)} .main{top:0;height:246px}.main .boundary-label small{display:none}.renderer{top:254px;height:72px}.sandbox{top:334px;height:66px;border-style:dashed;background:var(--wash)} .boundary-label{position:absolute;left:12px;top:7px;font-size:10px;letter-spacing:1px;font-weight:700;color:var(--muted);max-width:95%} .renderer .boundary-label,.sandbox .boundary-label{top:18px;max-width:45%;line-height:1.8} .boundary small{display:block;letter-spacing:0;font-size:11px;font-weight:400} .react-flow__node{border:1px solid var(--line);border-radius:7px;background:var(--paper);color:inherit;height:48px}.react-flow__node.selected{border:2px solid var(--accent);background:var(--wash)}.graph-node{padding:6px 7px}.graph-node strong{display:block;font-size:11px;line-height:18px;white-space:nowrap}.graph-node small{display:block;font-size:10px;line-height:14px;white-space:nowrap}.react-flow__handle{width:4px;height:4px;min-width:4px;min-height:4px;border:0;background:var(--line)}.react-flow__node:focus-visible{outline:3px solid #da8700;outline-offset:3px}.react-flow__edge-text{font-family:system-ui,sans-serif} .detail{padding:15px 0 0}.detail .eyebrow{font-size:10px} h2{font-size:19px;margin:5px 0 8px}.detail p{font-size:13px;line-height:1.55;margin:0 0 12px}.evidence{font-weight:600}.evidence-source{margin-top:12px;font-family:monospace;font-size:11px;line-height:1.6;overflow-wrap:anywhere;padding:12px;background:var(--wash);border-radius:6px}.caveat{font-size:11px!important;color:var(--muted);margin-top:14px!important}.legend{font-size:11px;color:var(--muted);margin:8px 0 0} @media(min-width:700px){.graph-node strong{font-size:15px}.graph-node small{font-size:11px}.controls button{font-size:12px;padding:8px 10px}} @media(min-width:1100px){.explanation{padding:36px}h1{font-size:38px}.intro{font-size:15px;max-width:720px}.composition{display:grid;grid-template-columns:minmax(590px,1.6fr) minmax(260px,1fr);gap:36px}.detail{padding-top:34px} .graph-node strong{font-size:15px}.graph-node small{font-size:11px}.edge-label{font-size:11px}.boundary-label{font-size:11px} .detail p{font-size:15px}h2{font-size:23px}} @media(prefers-color-scheme:dark){body{background:#101c1b;color:#e5ede8}.explanation{--paper:#182826;--line:#82968e;--muted:#a7bbb2;--accent:#8ce0bd;--wash:#233f35} .controls button[aria-pressed=true]{color:#10251d}.node[aria-pressed=true]{color:var(--accent)}} @media(max-width:390px){.explanation{padding:12px}.node{padding-left:6px}.node strong{font-size:11px}.edge-label{font-size:9px}}
     `}</style>
       <div className="eyebrow">CAKE / DELEGATED WIDGET PATH</div>
       <h1>One gate. Two outcomes.</h1>
@@ -205,12 +205,12 @@ export default function WidgetPipeline() {
             </div>
             <div className="boundary renderer">
               <div className="boundary-label">
-                RENDERER<small>Derived display · not storage</small>
+                RENDERER<small>Derived display</small>
               </div>
             </div>
             <div className="boundary sandbox">
               <div className="boundary-label">
-                GENERATED CODE<small>allow-scripts · no same-origin</small>
+                GENERATED CODE<small>No host privileges</small>
               </div>
             </div>
             <ReactFlow
@@ -248,8 +248,11 @@ export default function WidgetPipeline() {
               }))}
               nodeTypes={nodeTypes}
               onNodeClick={(_, n) => setSelected(n.id)}
-              onSelectionChange={({ nodes: selectedNodes }) => {
-                if (selectedNodes.length === 1) setSelected(selectedNodes[0].id);
+              onNodesChange={(changes) => {
+                const selection = changes.find(
+                  (change) => change.type === "select" && change.selected,
+                );
+                if (selection) setSelected(selection.id);
               }}
               nodesDraggable={false}
               nodesConnectable={false}
@@ -288,7 +291,7 @@ export default function WidgetPipeline() {
           >
             Source evidence
           </button>
-          {evidence && <div className="source">{node.source}</div>}
+          {evidence && <div className="evidence-source">{node.source}</div>}
           <p className="caveat">
             Source-backed interpretation of the existing widgets.present path, not a live trace or
             the proposed explanation generator. Failed-revision retention is not demonstrated here.

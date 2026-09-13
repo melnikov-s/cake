@@ -46,6 +46,29 @@ for (const theme of ["light", "dark"] as const) {
         await expect(iframe).toHaveAttribute("src", /^cake-widget:/);
         await expect(frame.locator(".react-flow__node")).toHaveCount(8);
         await expect(frame.locator(".react-flow__edge")).toHaveCount(8);
+        await expect(frame.locator('.react-flow__node[data-id="widget"]')).toBeVisible();
+        const renderedEdges = await frame.locator(".react-flow__edge").evaluateAll((edges) =>
+          edges.map((edge) => {
+            const svg = edge.closest("svg")!;
+            const path = edge.querySelector<SVGPathElement>(".react-flow__edge-path")!;
+            return {
+              viewportWidth: svg.getBoundingClientRect().width,
+              length: path.getTotalLength(),
+              stroke: getComputedStyle(path).stroke,
+              marker: path.getAttribute("marker-end"),
+              label: edge.querySelector("text")?.textContent,
+            };
+          }),
+        );
+        for (const edge of renderedEdges) {
+          // A path can exist and have length while its SVG has zero width (the media-reset bug).
+          expect(edge.viewportWidth).toBeGreaterThan(0);
+          expect(edge.length).toBeGreaterThan(10);
+          expect(edge.stroke).not.toBe("none");
+          expect(edge.marker).toMatch(/^url\(/);
+          expect(edge.label).toBeTruthy();
+        }
+        await expect(frame.locator(".react-flow__edge.highlighted")).toHaveCount(6);
         const geometry = await frame.locator("body").evaluate(() => ({
           overflow: document.body.scrollWidth > document.body.clientWidth,
           clipped: [...document.querySelectorAll(".graph-node strong, .graph-node small")].some(
@@ -82,11 +105,19 @@ for (const theme of ["light", "dark"] as const) {
         await expect(
           frame.getByText(/ProjectSessionIntegrationHost.ts · generateInlineWidget/),
         ).toBeVisible();
+        await frame.getByRole("button", { name: "Isolation", exact: true }).click();
+        await expect(frame.getByRole("heading", { name: "Live widget" })).toBeVisible();
+        await expect(frame.locator(".react-flow__edge.highlighted")).toHaveCount(4);
+        await frame.getByRole("button", { name: "Publication", exact: true }).click();
+        await expect(frame.locator(".react-flow__edge.highlighted")).toHaveCount(6);
+        await frame.locator('.react-flow__node[data-id="compile"]').click();
         await frame.getByRole("button", { name: "Neighbors", exact: true }).click();
         const widget = frame.locator('.react-flow__node[data-id="widget"]');
+        await expect(widget).toBeVisible();
         await widget.focus();
+        await expect(widget).toBeFocused();
         await widget.press("Enter");
-        await expect(frame.getByRole("heading", { name: "Interactive widget" })).toBeVisible();
+        await expect(frame.getByRole("heading", { name: "Live widget" })).toBeVisible();
         await expect(frame.locator('.react-flow__edge[data-id="embed"]')).toHaveClass(
           /highlighted/,
         );
@@ -97,6 +128,30 @@ for (const theme of ["light", "dark"] as const) {
         if (fullscreen) {
           const box = await iframe.boundingBox();
           expect(box!.width).toBeGreaterThan(1200);
+          await app.evaluate(({ BrowserWindow }) =>
+            BrowserWindow.getAllWindows()[0]!.setContentSize(760, 1000),
+          );
+          await expect(iframe).toHaveJSProperty("clientWidth", 760);
+          await expect(widget).toBeVisible();
+          const narrow = await frame.locator(".map").evaluate((map) => {
+            const bounds = map.getBoundingClientRect();
+            return {
+              overflow: document.body.scrollWidth > document.body.clientWidth,
+              contained: [...map.querySelectorAll(".react-flow__node")].every((node) => {
+                const rect = node.getBoundingClientRect();
+                return (
+                  rect.left >= bounds.left &&
+                  rect.right <= bounds.right &&
+                  rect.top >= bounds.top &&
+                  rect.bottom <= bounds.bottom
+                );
+              }),
+              labelsFit: [...map.querySelectorAll(".graph-node strong, .graph-node small")].every(
+                (label) => label.scrollWidth <= label.clientWidth,
+              ),
+            };
+          });
+          expect(narrow).toEqual({ overflow: false, contained: true, labelsFit: true });
           await page
             .getByRole("button", { name: "Exit fullscreen Widget publication paths" })
             .click();

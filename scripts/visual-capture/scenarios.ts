@@ -512,8 +512,12 @@ const widgetPipelineScenario: VisualCaptureScenario = {
     }
     if (state !== "default") {
       await frame.getByRole("button", { name: "Repair loop", exact: true }).click();
+      await frame.getByRole("heading", { name: "One repair", exact: true }).waitFor();
       await frame.getByRole("button", { name: "Source evidence" }).click();
     }
+    // Flow measures nodes asynchronously; a heading alone does not prove the diagram is ready.
+    await frame.locator('.react-flow__node[data-id="widget"]').waitFor({ state: "visible" });
+    await frame.locator('.react-flow__edge[data-id="embed"] text').waitFor({ state: "visible" });
     await page.mouse.move(1, 1);
   },
   region(page) {

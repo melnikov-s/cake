@@ -1,45 +1,61 @@
-# Widget publication paths — React Flow authoring handoff
+# Widget publication paths — integrated React Flow verification
 
-## Status: authored, blocked on integrated compiler
+## Status: rendered and exercised in Electron
 
-The redirected prototype imports real `@xyflow/react` inside an ordinary React widget artifact. It does **not** introduce another artifact type, graph DSL, renderer canvas, or generator. The first request explanation stays intact. The existing widget compiler in this checkout rejects that import; compiler/CSS integration belongs to the parallel integration assignment. No dependencies, compiler policy, CSP, or host feature components were changed here.
+The fixture imports real `@xyflow/react` inside an ordinary React widget artifact. It does **not** introduce another artifact type, graph DSL, renderer canvas, generator, or shared-kit project. The user-approved first request explanation remains intact in `tests/fixtures/explanations/cake-request.react.txt`.
 
-**Do not treat this handoff as visual or interaction acceptance.** The final React Flow composition has not rendered successfully in this checkout. Both new Electron cases time out before the widget heading appears. The current compiler's explicit allowlist permits only React/approved D3 and rejects `@xyflow/react`. Build/typecheck success does not compile fixture data through the widget compiler.
+The integrated compiler now supplies approved React Flow and ELK imports and sandbox-local Flow CSS. Actual Electron tests and inspected captures prove the eight Flow nodes, eight directed edges, arrow markers, labels, path/neighborhood selection, keyboard node activation, and source disclosure. The separate inline-widget Electron test executes `new ELK().layout(...)` in an `allow-scripts` iframe and checks returned node positions, graph dimensions, and routed edge endpoints. That is runtime proof, not merely successful bundling; ELK is intentionally not used for this small authored layout.
 
-## Visual argument and evidence
+**Automatic generation → screenshot review → visual revision remains unimplemented.** These are deterministic fixture-based integration checks and manually inspected captures, not an automated specialist quality-review workflow.
 
-The graph contrasts successful publication with one bounded repair branch, then separates main-owned publication from renderer display and opaque-origin generated code. Eight selectable entities retain actual branching: primary request, isolated specialist, compile gate, repair, artifact repository record, Pi transcript pointer, renderer viewer, sandboxed widget. Each selection discloses a specific source symbol/path in the artifact.
+## Visual argument and source evidence
 
-Verified implementation: `ProjectSessionIntegrationHost.generateInlineWidget` extracts the generation result, compile-checks, repairs once with diagnostics/context after a compile failure, then rechecks. A second failure propagates. `cake-artifact-operations.ts` persists before appending a Pi pointer. `WidgetArtifact`/`InlineWidgetStore` compile stored source separately for display. Repository payload authority and Pi pointer authority are deliberately distinct. This is a conceptual dependency map, not an execution trace; previous-success retention and an automatic explanation generator are explicitly not claimed.
+The graph contrasts successful publication with one bounded repair branch, then separates main-owned publication from renderer display and opaque-origin generated code. Eight selectable entities retain actual branching: primary request, isolated specialist, compile gate, repair, artifact repository record, Pi transcript pointer, renderer viewer, sandboxed widget. Each selection discloses a source symbol/path in the artifact.
 
-Publication, repair, isolation and direct-neighbor highlighting share the same topology. Real React Flow supplies nodes, edges, arrow markers, handles, selection and keyboard focus. Authored prose and evidence remain ordinary React. The fixture imports no CSS; the agreed compiler contract supplies React Flow's stylesheet. ELK is not needed for this deliberately small authored layout.
+`ProjectSessionIntegrationHost.generateInlineWidget` extracts the generation result, compile-checks, repairs once with diagnostics/context after a compile failure, then rechecks. A second failure propagates. `cake-artifact-operations.ts` persists before appending a Pi pointer. `WidgetArtifact`/`InlineWidgetStore` compile stored source separately for display. Repository payload authority and Pi pointer authority are deliberately distinct. This is a conceptual dependency map, not an execution trace; previous-success retention and an automatic explanation generator are not claimed.
 
-## Revision record and limitations
+Publication, repair, isolation and direct-neighbor highlighting share the same topology. Real React Flow supplies nodes, edges, arrow markers, handles, selection and keyboard focus. Authored prose and evidence remain ordinary React. The fixture imports no CSS and uses no remote libraries or privileged bridge.
 
-An initial SVG draft was captured in actual Electron; the first panel image exposed excess vertical height and cramped labels. Labels and geometry were compacted. Before approval, the user redirected the task to actual React Flow inside the existing widget system. That SVG implementation was replaced, not shipped alongside Flow. Earlier screenshots are superseded and are **not evidence for the final fixture**.
+## Reproduced defects and bounded fixes
 
-The current authored coordinates are deliberately compact and use a separate wide layout at 1100px widget width, with adjacent details. Zoom and drag are disabled rather than fitting labels to illegibility. This is not automatic layout: variable labels, more entities, narrow widths below ~330px, edge-label collisions and accessibility behavior still require integrated capture/test review. Selection/evidence/path state is local ephemeral presentation state; fullscreen creates an independent iframe as in the first example.
+- **Compiler shell media reset hid actual connectors.** Flow edge SVGs overflow an absolute container with zero width. The generic sandbox `svg{max-width:100%}` collapsed their viewport, even though paths and labels existed in the DOM. A Flow-local `max-width:none` exception is delivered alongside the approved library stylesheet. No generic widget reset, CSP, network allowance, or import policy was widened. Electron now asserts nonzero SVG viewport width as well as edge path length, stroke, labels and markers.
+- **Fixture evidence CSS collided with Flow handles.** The generic `.source` class padded and colored Flow's source handles. Rename to `.evidence-source`; retain the actual library handles.
+- **Controlled selection feedback undid path selection.** Consume actual `onNodesChange` selection changes instead of feeding `onSelectionChange` back into controlled node props. Tests cover repair, isolation, publication and neighborhood transitions, not only static classes.
+- **Compact labels overflowed.** Shortened visible labels while preserving complete explanations and source references; corrected boundary-label specificity and compact boundary copy. Larger node geometry starts at 700px widget width, with side-by-side details at 1100px. Both compact and wide modes retain all nodes and edges without zooming them into illegibility.
+- The capture scenario now waits for measured Flow nodes and an actual edge label, not merely the surrounding heading. Keyboard tests wait for node visibility and assert focus before Enter, respecting Flow's asynchronous node measurement.
 
-## Integration verification handoff
+## Verification and captures
 
-After the compiler changes are landed into a fresh integrated assignment:
+Run from the integrated checkout:
 
 ```sh
 pnpm build
-pnpm exec playwright test tests/electron/widget-pipeline-explanation.smoke.spec.ts
-pnpm exec playwright test tests/electron/cake-request-explanation.smoke.spec.ts
+pnpm exec playwright test tests/electron/widget-pipeline-explanation.smoke.spec.ts tests/electron/cake-request-explanation.smoke.spec.ts tests/electron/inline-widget.smoke.spec.ts
+pnpm test tests/app/visual-capture.test.ts
+pnpm test:integration tests/integration/inline-widget-compiler.test.ts
 pnpm visual:capture widget-pipeline-explanation --no-build --theme light --capture window
 pnpm visual:capture widget-pipeline-explanation --no-build --theme dark --capture window
 pnpm visual:capture widget-pipeline-explanation --no-build --theme light --state fullscreen
 pnpm visual:capture widget-pipeline-explanation --no-build --theme dark --state fullscreen
+pnpm visual:capture widget-pipeline-explanation --no-build --theme light --state fullscreen --width 760 --height 1000
 ```
 
-Inspect all four captures; iterate geometry rather than accepting authored coordinates on faith. Add a narrow viewport capture. The new tests exercise real Flow element counts, publication/repair/neighborhood edge changes, pointer selection, keyboard node selection and disclosure, primary-label overflow, horizontal overflow, fullscreen, iframe policy and unavailable privileged globals/parent DOM. They are authored expectations, not passed results.
+Passed: five Electron cases (Flow and first walkthrough in both themes, plus React/ELK execution), four visual-harness unit tests, six compiler integration tests, typecheck and build. Oxfmt and focused Oxlint cover changed source/tests. Repository Oxlint remains blocked by pre-existing `extension-compatibility.ts:177` and `DiscussionReducer.ts:74,83` findings.
 
-Current verification: build, typecheck and the four existing visual-capture unit tests pass. Oxfmt applied to changed TS and fixture TSX content. Oxlint/final lint remain blocked by pre-existing `extension-compatibility.ts:177` and `DiscussionReducer.ts:74,83`; no unrelated files changed.
+Inspected final real-Flow PNGs under `.visual-captures/`:
 
-## Kit implications, not another system
+- `widget-pipeline-explanation-default-light-window-1280x900.png`
+- `widget-pipeline-explanation-default-dark-window-1280x900.png`
+- `widget-pipeline-explanation-fullscreen-light-region-1280x900.png`
+- `widget-pipeline-explanation-fullscreen-dark-region-1280x900.png`
+- `widget-pipeline-explanation-fullscreen-light-region-760x1000.png`
 
-The first prototype demonstrates a guided boundary explanation. This second composition is intended to demonstrate a connected dependency graph **inside the same widget**, surrounded by prose, controls and evidence. Keep the shared surface/compiler; choose composition per explanation.
+The normal panel exercises a roughly 354px iframe with a compact, readable graph; details are reached by scrolling. Fullscreen shows the diagram beside evidence at 1280px, and stacks it at the app's 760px minimum window width. A requested 360px app-window capture cannot settle because Electron enforces that minimum; no product/harness sizing policy was changed. Tests assert node containment and primary-label fit at 760px as well as normal-panel/fullscreen overflow, actual selection and disclosure, opaque-origin restrictions, and absence of Node/Cake globals or parent DOM access.
 
-Already demonstrated by the first example: a theme/typography frame, boundary enclosure, accessible discrete controls and evidence disclosure. React Flow already provides connector ports, edge paths/markers and accessible selectable nodes; expose the library rather than cloning those in a bespoke graph kit. A production shared adapter for boundary backgrounds, path emphasis and accessible node-to-detail selection should be considered only after integrated verification. Automatic routing/layout, collision handling and variable-size label measurement are distinct diagram needs not proven by this authored fixture. Do not extract a universal schema or claim a general generator from it.
+Earlier SVG draft screenshots are superseded and are **not evidence for this fixture**. Earlier blocked React Flow tests belonged to an isolated checkout without compiler integration; those limitations are resolved by this integrated pass.
+
+## Remaining limits
+
+This deliberately laid-out eight-node example is not proof of arbitrary automatic routing, variable-size labels, dense graph collision handling, or layouts below the tested compact panel width. Flow zoom/drag are disabled intentionally. State is local ephemeral presentation state; fullscreen creates an independent iframe. There is no new generation/preview backend, atomic successful-revision policy, or automatic screenshot-review loop.
+
+Keep one widget composition surface. React Flow already provides connector ports, paths/markers and accessible selectable nodes; exposing that library is preferable to cloning it into another graph DSL. Consider higher-level helpers only after more generated compositions establish a concrete need.

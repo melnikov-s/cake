@@ -218,8 +218,10 @@ createRoot(host).render(React.createElement(Widget, ${capability === "request" ?
       token,
       `<div id="cake-widget-root"></div><script>${javascript.replaceAll("</script", "<\\/script")}</script>`,
       capability,
+      // Flow's edge SVGs overflow a zero-width absolute container. The generic media
+      // max-width reset must not collapse their viewport and hide every connector.
       widgetModules.usesReactFlow()
-        ? `<style data-cake-widget-library="@xyflow/react">${reactFlowStyles.replaceAll("</style", "<\\/style")}</style>`
+        ? `<style data-cake-widget-library="@xyflow/react">${reactFlowStyles.replaceAll("</style", "<\\/style")}\n.react-flow__edges svg{max-width:none}</style>`
         : "",
     ),
   };
