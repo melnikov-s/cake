@@ -7,7 +7,7 @@ architecture renderer and not introduce a node-edge or Mermaid intermediate lang
 a source-backed explanation brief; the specialist chooses the visual form and returns one
 self-contained React component using a deliberately small import surface. Cake compile-checks and
 renders that component in its existing opaque-origin widget sandbox, gives the same specialist
-actual rendered feedback, allows at most two revision attempts, and publishes only a successful
+actual rendered feedback, allows at most two replacement revisions, and publishes only a successful
 candidate as an immutable `widget` artifact revision.
 
 This note proposes contracts and ownership only. It does not make the current `widgets.present`
@@ -125,7 +125,7 @@ interface InteractiveExplanationSnapshot {
   readonly sessionId: string;
   readonly artifactId: string;
   readonly phase: InteractiveExplanationPhase;
-  readonly attempt: 0 | 1 | 2; // 0 is initial generation; 1–2 are revision attempts
+  readonly attempt: 0 | 1 | 2; // candidate 0 is initial; candidates 1–2 are replacements
   readonly diagnostic?: string; // bounded, user-safe summary
   readonly warning?: string; // post-commit pointer/event publication warning
   readonly published?: ArtifactRecord;
@@ -170,8 +170,11 @@ A main-process `interactiveExplanations` domain module should own this policy:
    boundary: no tools, extensions, skills, prompt templates, context files, project trust, Cake
    controls, or filesystem access. Give it only the bounded brief and kit/API instructions. Apply
    the resolved provider/model, thinking level, and Fast mode snapshot. Persist the private Pi
-   session so the two possible critique turns retain design context, but never expose its Pi
-   Session identity to the renderer or copy its transcript into the Project Session.
+   session so replacement and acceptance feedback turns retain design context, but never expose its
+   Pi Session identity to the renderer or copy its transcript into the Project Session. The maximum
+   is one initial generation turn plus three feedback turns: at most two feedback turns may produce
+   replacement source, and a final rendered candidate still needs a screenshot-review turn that can
+   accept it unchanged.
 3. **Compile.** Extract exactly one fenced/default-exported React component and compile through
    `InlineWidgets`. Compiler failures become bounded diagnostics. The same specialist may revise
    after a compiler failure. A compile pass does not trigger a separate model call that merely
@@ -191,8 +194,10 @@ A main-process `interactiveExplanations` domain module should own this policy:
    source consumes one revision, then must be recompiled, rerendered, recaptured, and reviewed again.
    A compiler/runtime failure also consumes a revision when the specialist returns replacement
    source. After two replacements, the final screenshot is still reviewed: it may be accepted
-   unchanged, but another requested replacement exhausts the budget and fails explicitly. There is
-   no numerical beauty score and deterministic checks cannot accept on the specialist's behalf.
+   unchanged, but another requested replacement exhausts the budget and fails explicitly. Thus
+   candidate attempts are numbered 0–2 whether or not each candidate compiles, while zero to three
+   successfully rendered candidates receive screenshot review. There is no numerical beauty score
+   and deterministic checks cannot accept on the specialist's behalf.
 6. **Publish.** Only an accepted candidate that compiled, reached ready without runtime error, and
    passed the required render checks is converted to a `widget` artifact. Its revision is 1 or
    exactly the stored revision plus one. Persist through `ArtifactStorage.upsert`, append the
@@ -217,9 +222,11 @@ A main-process `interactiveExplanations` domain module should own this policy:
    `artifact-updated`; a prior successful revision stays selected/renderable. After a successful
    `upsert`, use the committed outcome above rather than reporting failure or cancellation.
 
-Compiler failure can count as one of the two revisions; it must not get an additional hidden repair
-budget. This keeps the product promise simple: one initial design plus at most two specialist
-revisions, regardless of whether feedback is syntactic or visual.
+Every replacement returned after compiler, runtime, layout, or screenshot feedback consumes the
+same two-replacement budget; compiler failure does not get an additional hidden repair path. This
+keeps the product promise simple: one initial candidate plus at most two specialist replacements,
+regardless of whether each candidate reaches rendering. Every candidate that does render is
+reviewed, including candidate 2 before acceptance.
 
 ## Actual Electron rendered-feedback path
 
@@ -297,17 +304,17 @@ fixtures and reviewed screenshots. Neither replaces targeted Electron interactio
 
 ## Ownership and state classification
 
-| State/fact                                 | Authority and cohesive owner                                                                                   | Lifetime                                                                | Persistence                                                                 | Concurrency/cancellation                                                       |
-| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| Brief and source references                | Invoking Project Session operation input; validated Cake domain value                                          | Operation, then embedded in published widget payload/fallback as needed | Artifact repository only after success; readable pointer/fallback in Pi     | Immutable snapshot                                                             |
-| Specialist model policy                    | Cake configured Model Presets; `interactiveExplanations` snapshots resolved selection, Pi validates capability | Resolution at operation start                                           | Existing Cake application configuration                                     | No fallback or live rebinding during a run                                     |
-| Specialist transcript                      | Pi Session / restricted Pi runtime                                                                             | One generation operation plus up to two critique turns                  | Private Pi session directory; retention/cleanup policy like widget sidecars | One serialized turn; operation abort calls Pi abort and releases Scope         |
-| Candidate source and compiled capability   | Main operation coordinator plus `InlineWidgets`/scheme registry                                                | One attempt                                                             | None                                                                        | Replaced only by next attempt; old token invalidated/removed                   |
-| Preview readiness, bounds, and diagnostics | Focused renderer preview Store for presentation; main operation validates correlated response                  | One mounted attempt                                                     | None                                                                        | Latest token wins; Store passes `AbortSignal`, rejects late results            |
-| PNG feedback                               | Electron main until prompt handoff; then Pi owns the private specialist message                                | Operation plus retained private Pi Session                              | Base64 image persists in private Pi JSONL; never artifact/Project storage   | Capture serialized per renderer; late native results discarded after cancel    |
-| Operation phase/progress                   | Main process operation coordinator; renderer gets current-first projection                                     | Accepted operation/process lifetime                                     | None in v1                                                                  | Reject same artifact while active; bounded global parallelism; explicit cancel |
-| Published artifact revision                | `ArtifactStorage`                                                                                              | Session/artifact lineage                                                | Content-addressed immutable blob plus atomic metadata; Pi pointer           | Existing per-artifact serialization and exact `+1` revision rule               |
-| Artifact panel selection/open state        | Existing session `ArtifactWorkspaceStore`                                                                      | Loaded Project Session Store                                            | Existing renderer policy (currently not snapshot-decorated)                 | Existing event ordering; not workflow authority                                |
+| State/fact                                 | Authority and cohesive owner                                                                                   | Lifetime                                                                                  | Persistence                                                                 | Concurrency/cancellation                                                       |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Brief and source references                | Invoking Project Session operation input; validated Cake domain value                                          | Operation, then embedded in published widget payload/fallback as needed                   | Artifact repository only after success; readable pointer/fallback in Pi     | Immutable snapshot                                                             |
+| Specialist model policy                    | Cake configured Model Presets; `interactiveExplanations` snapshots resolved selection, Pi validates capability | Resolution at operation start                                                             | Existing Cake application configuration                                     | No fallback or live rebinding during a run                                     |
+| Specialist transcript                      | Pi Session / restricted Pi runtime                                                                             | Initial generation plus up to three feedback turns; at most two return replacement source | Private Pi session directory; retention/cleanup policy like widget sidecars | One serialized turn; operation abort calls Pi abort and releases Scope         |
+| Candidate source and compiled capability   | Main operation coordinator plus `InlineWidgets`/scheme registry                                                | One attempt                                                                               | None                                                                        | Replaced only by next attempt; old token invalidated/removed                   |
+| Preview readiness, bounds, and diagnostics | Focused renderer preview Store for presentation; main operation validates correlated response                  | One mounted attempt                                                                       | None                                                                        | Latest token wins; Store passes `AbortSignal`, rejects late results            |
+| PNG feedback                               | Electron main until prompt handoff; then Pi owns the private specialist message                                | Operation plus retained private Pi Session                                                | Base64 image persists in private Pi JSONL; never artifact/Project storage   | Capture serialized per renderer; late native results discarded after cancel    |
+| Operation phase/progress                   | Main process operation coordinator; renderer gets current-first projection                                     | Accepted operation/process lifetime                                                       | None in v1                                                                  | Reject same artifact while active; bounded global parallelism; explicit cancel |
+| Published artifact revision                | `ArtifactStorage`                                                                                              | Session/artifact lineage                                                                  | Content-addressed immutable blob plus atomic metadata; Pi pointer           | Existing per-artifact serialization and exact `+1` revision rule               |
+| Artifact panel selection/open state        | Existing session `ArtifactWorkspaceStore`                                                                      | Loaded Project Session Store                                                              | Existing renderer policy (currently not snapshot-decorated)                 | Existing event ordering; not workflow authority                                |
 
 Effect belongs in Services, the free `interactiveExplanations` domain operation, coordinator, RPC,
 and renderer runtime/client adapters. The focused renderer Store sees typed Promise methods and
@@ -342,9 +349,11 @@ graph renderer.
 
 1. **Contracts and Pi specialist capability (Sol-sized).** Add bounded domain/RPC data, resolve the
    configured `"Astra"` preset to a full Pi selection and require image input, and add a scoped
-   restricted specialist capability behind `src/services/pi` that supports initial source plus two
-   image critique turns and real abort. Prove model resolution, no fallback, limits, and cancellation
-   with deterministic Service Layers.
+   restricted specialist capability behind `src/services/pi` that supports one initial generation,
+   at most two replacement-producing feedback turns (compiler/runtime/layout or screenshot), and
+   the mandatory final screenshot acceptance turn—at most three feedback turns total—with real
+   abort. Prove model resolution, no fallback, limits, and cancellation with deterministic Service
+   Layers.
 2. **Preview and capture vertical slice (Astra/UI + Electron owner).** Add the focused preview Store
    and shared artifact-surface composition, token-correlated readiness/diagnostics, reverse request,
    and main `RenderedSurfaceCapture` using `webContents.capturePage`. Verify with a real isolated
