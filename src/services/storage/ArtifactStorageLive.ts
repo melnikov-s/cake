@@ -1,7 +1,15 @@
-import { Effect, Layer, Schema } from "effect";
+import {
+  DateTime,
+  Effect,
+  FileSystem,
+  Layer,
+  Option,
+  Path,
+  RcMap,
+  Schema,
+  Semaphore,
+} from "effect";
 import { createHash } from "node:crypto";
-import { mkdir, readFile, readdir, rm } from "node:fs/promises";
-import { join } from "node:path";
 import {
   artifactRecordSchema,
   parseArtifactInput,
@@ -9,22 +17,26 @@ import {
   type ArtifactRecord,
   type CakeArtifactV1,
 } from "../../ipc/artifact-contract";
-import { AtomicFileWriter } from "./internal/AtomicFileWriter";
-import { KeyedSerialExecutor } from "../../utils/KeyedSerialExecutor";
 import { ArtifactStorage, ArtifactStorageError } from "./ArtifactStorage";
+import { atomicWriteFile } from "./internal/atomicFile";
 
 type StoredArtifactKind = CakeArtifactV1["kind"] | "architecture";
 
 interface StoredArtifactMetadata {
-  protocol: "cake.artifact/v1";
-  id: string;
-  sessionId: string;
-  workspacePath: string;
-  revision: number;
-  kind: StoredArtifactKind;
-  digest: string;
-  createdAt: string;
-  updatedAt: string;
+  readonly protocol: "cake.artifact/v1";
+  readonly id: string;
+  readonly sessionId: string;
+  readonly workspacePath: string;
+  readonly revision: number;
+  readonly kind: StoredArtifactKind;
+  readonly digest: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+interface DecodedStoredArtifact {
+  readonly artifact: CakeArtifactV1;
+  readonly storedKind: StoredArtifactKind;
 }
 
 const storedIdSchema = Schema.String.check(
@@ -51,7 +63,6 @@ const historicalArchitectureArtifactSchema = Schema.Struct({
     }),
   ),
 });
-
 const storedArtifactMetadataSchema: Schema.Codec<StoredArtifactMetadata> = Schema.Struct({
   protocol: Schema.Literal("cake.artifact/v1"),
   id: storedIdSchema,
@@ -76,310 +87,341 @@ const storedArtifactMetadataSchema: Schema.Codec<StoredArtifactMetadata> = Schem
   updatedAt: Schema.String,
 });
 
-interface DecodedStoredArtifact {
-  readonly artifact: CakeArtifactV1;
-  readonly storedKind: StoredArtifactKind;
-}
-
-function decodeStoredArtifact(untrustedInput: unknown): DecodedStoredArtifact {
-  const historical = Schema.decodeUnknownOption(historicalArchitectureArtifactSchema)(
-    untrustedInput,
-  );
-  if (historical._tag === "Some") {
-    const artifact = historical.value;
-    return {
-      storedKind: "architecture",
-      artifact: parseArtifactInput({
-        protocol: artifact.protocol,
-        id: artifact.id,
-        sessionId: artifact.sessionId,
-        revision: artifact.revision,
-        kind: "markdown",
-        title: artifact.title,
-        payload: { markdown: artifact.fallback.markdown },
-        fallback: artifact.fallback,
-        interaction: { mode: "present" },
-      }),
-    };
-  }
-  const artifact = parseArtifactInput(untrustedInput);
-  return { artifact, storedKind: artifact.kind };
-}
-
-function hydrateStoredRecord(serialized: string, metadata: StoredArtifactMetadata): ArtifactRecord {
-  const digest = createHash("sha256").update(serialized).digest("hex");
-  if (digest !== metadata.digest) throw new Error(`Artifact ${metadata.id} digest does not match`);
-  const decoded = decodeStoredArtifact(JSON.parse(serialized));
-  if (
-    decoded.artifact.id !== metadata.id ||
-    decoded.artifact.sessionId !== metadata.sessionId ||
-    decoded.artifact.revision !== metadata.revision ||
-    decoded.storedKind !== metadata.kind
-  )
-    throw new Error(`Artifact ${metadata.id} metadata does not match its immutable blob`);
-  return Schema.decodeUnknownSync(artifactRecordSchema)({
-    artifact: decoded.artifact,
-    workspacePath: metadata.workspacePath,
-    digest: metadata.digest,
-    createdAt: metadata.createdAt,
-    updatedAt: metadata.updatedAt,
-  });
-}
-
-class ArtifactRepository {
-  private readonly updates = new KeyedSerialExecutor<string>();
-  private readonly writer = new AtomicFileWriter();
-  constructor(private readonly root: string) {}
-
-  async upsert(workspacePath: string, untrustedInput: unknown): Promise<ArtifactRecord> {
-    const artifact = parseArtifactInput(untrustedInput);
-    const key = this.recordPath(workspacePath, artifact.sessionId, artifact.id);
-    return this.updates.run(key, async () => {
-      const existing = await this.get(workspacePath, artifact.sessionId, artifact.id);
-      if (existing && artifact.revision !== existing.artifact.revision + 1) {
-        throw new Error(
-          `Artifact ${artifact.id} revision must advance from ${existing.artifact.revision} to ${existing.artifact.revision + 1}`,
-        );
-      }
-      if (!existing && artifact.revision !== 1)
-        throw new Error(`New artifact ${artifact.id} must start at revision 1`);
-
-      const serialized = `${JSON.stringify(artifact, null, 2)}\n`;
-      const digest = createHash("sha256").update(serialized).digest("hex");
-      const now = new Date().toISOString();
-      const record = Schema.decodeUnknownSync(artifactRecordSchema)({
-        artifact,
-        workspacePath,
-        digest,
-        createdAt: existing?.createdAt ?? now,
-        updatedAt: now,
-      });
-      await mkdir(this.blobDirectory(), { recursive: true, mode: 0o700 });
-      await mkdir(this.recordDirectory(workspacePath, artifact.sessionId), {
-        recursive: true,
-        mode: 0o700,
-      });
-      await this.writer.write(this.blobPath(digest), serialized);
-      await this.writer.write(key, `${JSON.stringify(toMetadata(record), null, 2)}\n`);
-      return record;
-    });
-  }
-
-  async deleteSession(workspacePath: string, sessionId: string) {
-    await rm(this.recordDirectory(workspacePath, sessionId), { recursive: true, force: true });
-  }
-
-  async inheritFork(
-    sourceWorkspacePath: string,
-    sourceSessionId: string,
-    destinationWorkspacePath: string,
-    destinationSessionId: string,
-    pointers: ReadonlyArray<ArtifactPointer>,
-  ): Promise<void> {
-    const sourceRecords = await this.listSession(sourceWorkspacePath, sourceSessionId);
-    const recordsById = new Map(sourceRecords.map((record) => [record.artifact.id, record]));
-    const inherited = await Promise.all(
-      pointers.map(async (pointer) => {
-        const serialized = await readFile(this.blobPath(pointer.digest), "utf8");
-        const digest = createHash("sha256").update(serialized).digest("hex");
-        const decoded = decodeStoredArtifact(JSON.parse(serialized));
-        if (
-          digest !== pointer.digest ||
-          decoded.artifact.id !== pointer.artifactId ||
-          decoded.artifact.sessionId !== pointer.sessionId ||
-          decoded.artifact.revision !== pointer.revision ||
-          decoded.storedKind !== pointer.kind
-        )
-          throw new Error(
-            `Artifact ${pointer.artifactId} revision ${pointer.revision} does not match its source pointer`,
-          );
-        const current = recordsById.get(pointer.artifactId);
-        if (!current)
-          throw new Error(
-            `Artifact ${pointer.artifactId} is not associated with source session ${sourceSessionId}`,
-          );
-        const now = new Date().toISOString();
-        const record = Schema.decodeUnknownSync(artifactRecordSchema)({
-          artifact: decoded.artifact,
-          workspacePath: destinationWorkspacePath,
-          digest,
-          createdAt: current.createdAt ?? now,
-          updatedAt: current.updatedAt ?? now,
-        });
-        return { record, storedKind: decoded.storedKind };
-      }),
-    );
-
-    await Promise.all(
-      inherited.map(({ record, storedKind }) =>
-        this.linkSession(record, destinationSessionId, storedKind),
-      ),
-    );
-  }
-
-  async get(
-    workspacePath: string,
-    sessionId: string,
-    artifactId: string,
-  ): Promise<ArtifactRecord | undefined> {
-    try {
-      const metadata = Schema.decodeUnknownSync(storedArtifactMetadataSchema)(
-        JSON.parse(await readFile(this.recordPath(workspacePath, sessionId, artifactId), "utf8")),
-      );
-      if (metadata.workspacePath !== workspacePath)
-        throw new Error(`Artifact ${metadata.id} workspace metadata does not match its index`);
-      const serialized = await readFile(this.blobPath(metadata.digest), "utf8");
-      return hydrateStoredRecord(serialized, metadata);
-    } catch (error) {
-      if (isMissing(error)) return undefined;
-      throw error;
-    }
-  }
-
-  async listSession(workspacePath: string, sessionId: string): Promise<ArtifactRecord[]> {
-    let names: string[];
-    try {
-      names = await readdir(this.recordDirectory(workspacePath, sessionId));
-    } catch (error) {
-      if (isMissing(error)) return [];
-      throw error;
-    }
-    const records = await Promise.all(
-      names
-        .filter((name) => name.endsWith(".json"))
-        .map(async (name) => {
-          const metadata = Schema.decodeUnknownSync(storedArtifactMetadataSchema)(
-            JSON.parse(
-              await readFile(join(this.recordDirectory(workspacePath, sessionId), name), "utf8"),
-            ),
-          );
-          return this.get(workspacePath, sessionId, metadata.id);
-        }),
-    );
-    return records
-      .filter((record): record is ArtifactRecord => Boolean(record))
-      .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
-  }
-
-  async linkSession(
-    record: ArtifactRecord,
-    sessionId: string,
-    storedKind: StoredArtifactKind = record.artifact.kind,
-  ): Promise<void> {
-    await mkdir(this.recordDirectory(record.workspacePath, sessionId), {
-      recursive: true,
-      mode: 0o700,
-    });
-    await this.writer.write(
-      this.recordPath(record.workspacePath, sessionId, record.artifact.id),
-      `${JSON.stringify(toMetadata(record, storedKind), null, 2)}\n`,
-    );
-  }
-
-  async exportMarkdown(workspacePath: string, sessionId: string): Promise<string> {
-    const records = await this.listSession(workspacePath, sessionId);
-    return records
-      .map(({ artifact }) => `## ${artifact.title ?? artifact.id}\n\n${artifact.fallback.markdown}`)
-      .join("\n\n---\n\n");
-  }
-
-  private blobDirectory() {
-    return join(this.root, "blobs");
-  }
-  private blobPath(digest: string) {
-    return join(this.blobDirectory(), `${digest}.json`);
-  }
-  private recordDirectory(workspacePath: string, sessionId: string) {
-    return join(this.root, "sessions", digestKey(workspacePath), digestKey(sessionId));
-  }
-  private recordPath(workspacePath: string, sessionId: string, artifactId: string) {
-    return join(this.recordDirectory(workspacePath, sessionId), `${digestKey(artifactId)}.json`);
-  }
-}
-
-function toMetadata(
-  record: ArtifactRecord,
-  kind: StoredArtifactKind = record.artifact.kind,
-): StoredArtifactMetadata {
-  return {
-    protocol: "cake.artifact/v1",
-    id: record.artifact.id,
-    sessionId: record.artifact.sessionId,
-    workspacePath: record.workspacePath,
-    revision: record.artifact.revision,
-    kind,
-    digest: record.digest,
-    createdAt: record.createdAt,
-    updatedAt: record.updatedAt,
-  };
-}
-
-function digestKey(value: string) {
-  return createHash("sha256").update(value).digest("hex");
-}
-
-function isMissing(error: unknown): error is NodeJS.ErrnoException {
-  return error instanceof Error && "code" in error && error.code === "ENOENT";
-}
-
 const storageError = (operation: string, cause: unknown) =>
   new ArtifactStorageError({
     operation,
     message: cause instanceof Error ? cause.message : String(cause),
   });
 
-const makeArtifactStorageService = (root: string) => {
-  const repository = new ArtifactRepository(root);
-  const attempt = <A>(operation: string, evaluate: () => Promise<A>) =>
-    Effect.tryPromise({
-      try: evaluate,
-      catch: (cause) => storageError(operation, cause),
-    });
-  const service = ArtifactStorage.of({
-    upsert: Effect.fn("ArtifactStorage.upsert")((workingDirectory, artifact) =>
-      attempt("upsert", () => repository.upsert(workingDirectory, artifact)),
-    ),
-    get: Effect.fn("ArtifactStorage.get")((workingDirectory, sessionId, artifactId) =>
-      attempt("get", () => repository.get(workingDirectory, sessionId, artifactId)),
-    ),
-    listSession: Effect.fn("ArtifactStorage.listSession")((workingDirectory, sessionId) =>
-      attempt("listSession", () => repository.listSession(workingDirectory, sessionId)),
-    ),
-    linkSession: Effect.fn("ArtifactStorage.linkSession")((record, sessionId) =>
-      attempt("linkSession", () => repository.linkSession(record, sessionId)),
-    ),
-    inheritFork: Effect.fn("ArtifactStorage.inheritFork")(
-      (
-        sourceWorkingDirectory,
-        sourceSessionId,
-        destinationWorkingDirectory,
-        destinationSessionId,
-        pointers,
-      ) =>
-        attempt("inheritFork", () =>
-          repository.inheritFork(
-            sourceWorkingDirectory,
-            sourceSessionId,
-            destinationWorkingDirectory,
-            destinationSessionId,
-            pointers,
-          ),
-        ),
-    ),
-    deleteSession: Effect.fn("ArtifactStorage.deleteSession")((workingDirectory, sessionId) =>
-      attempt("deleteSession", () => repository.deleteSession(workingDirectory, sessionId)),
-    ),
-    exportMarkdown: Effect.fn("ArtifactStorage.exportMarkdown")((workingDirectory, sessionId) =>
-      attempt("exportMarkdown", () => repository.exportMarkdown(workingDirectory, sessionId)),
-    ),
-  });
-  return service;
-};
+const attempt = <A>(operation: string, evaluate: () => A) =>
+  Effect.try({ try: evaluate, catch: (cause) => storageError(operation, cause) });
 
-export const makeArtifactStorageTestAdapter = (root: string) => {
-  const service = makeArtifactStorageService(root);
-  return { service, layer: Layer.succeed(ArtifactStorage, service) } as const;
-};
+const parseJson = (operation: string, text: string) =>
+  attempt<unknown>(operation, () => JSON.parse(text));
+
+const decodeArtifactInput = <Input>(input: Input) =>
+  attempt("decode", () => parseArtifactInput(input));
+
+const decodeStoredArtifact = Effect.fn("ArtifactStorage.decodeStoredArtifact")(function* <Input>(
+  input: Input,
+): Effect.fn.Return<DecodedStoredArtifact, ArtifactStorageError> {
+  const historical = yield* Schema.decodeUnknownEffect(historicalArchitectureArtifactSchema)(
+    input,
+  ).pipe(Effect.option);
+  if (Option.isSome(historical)) {
+    const value = historical.value;
+    const artifact = yield* decodeArtifactInput({
+      protocol: value.protocol,
+      id: value.id,
+      sessionId: value.sessionId,
+      revision: value.revision,
+      kind: "markdown",
+      title: value.title,
+      payload: { markdown: value.fallback.markdown },
+      fallback: value.fallback,
+      interaction: { mode: "present" },
+    });
+    return { artifact, storedKind: "architecture" };
+  }
+  const artifact = yield* decodeArtifactInput(input);
+  return { artifact, storedKind: artifact.kind };
+});
+
+const decodeMetadata = <Input>(input: Input) =>
+  Schema.decodeUnknownEffect(storedArtifactMetadataSchema)(input).pipe(
+    Effect.mapError((cause) => storageError("decode", cause)),
+  );
+
+const decodeRecord = <Input>(input: Input) =>
+  Schema.decodeUnknownEffect(artifactRecordSchema)(input).pipe(
+    Effect.mapError((cause) => storageError("decode", cause)),
+  );
+
+const digest = (value: string) => createHash("sha256").update(value).digest("hex");
+const digestKey = digest;
+
+const toMetadata = (
+  record: ArtifactRecord,
+  kind: StoredArtifactKind = record.artifact.kind,
+): StoredArtifactMetadata => ({
+  protocol: "cake.artifact/v1",
+  id: record.artifact.id,
+  sessionId: record.artifact.sessionId,
+  workspacePath: record.workspacePath,
+  revision: record.artifact.revision,
+  kind,
+  digest: record.digest,
+  createdAt: record.createdAt,
+  updatedAt: record.updatedAt,
+});
 
 export const makeArtifactStorageLive = (root: string) =>
-  Layer.sync(ArtifactStorage, () => makeArtifactStorageService(root));
+  Layer.effect(
+    ArtifactStorage,
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const locks = yield* RcMap.make({ lookup: () => Semaphore.make(1) });
+
+      const blobDirectory = path.join(root, "blobs");
+      const blobPath = (value: string) => path.join(blobDirectory, `${value}.json`);
+      const recordDirectory = (workspacePath: string, sessionId: string) =>
+        path.join(root, "sessions", digestKey(workspacePath), digestKey(sessionId));
+      const recordPath = (workspacePath: string, sessionId: string, artifactId: string) =>
+        path.join(recordDirectory(workspacePath, sessionId), `${digestKey(artifactId)}.json`);
+
+      const readText = (operation: string, file: string) =>
+        fileSystem
+          .readFileString(file)
+          .pipe(Effect.mapError((cause) => storageError(operation, cause)));
+      const writeText = (operation: string, file: string, content: string) =>
+        atomicWriteFile(fileSystem, path, file, content, (stage, cause) =>
+          storageError(`${operation}:${stage}`, cause),
+        );
+      const withKeyLock = <A, E, R>(key: string, effect: Effect.Effect<A, E, R>) =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const lock = yield* RcMap.get(locks, key);
+            return yield* lock.withPermits(1)(effect);
+          }),
+        );
+
+      const hydrateStoredRecord = Effect.fn("ArtifactStorage.hydrateStoredRecord")(function* (
+        serialized: string,
+        metadata: StoredArtifactMetadata,
+      ) {
+        const actualDigest = digest(serialized);
+        if (actualDigest !== metadata.digest)
+          return yield* storageError("get", `Artifact ${metadata.id} digest does not match`);
+        const decoded = yield* parseJson("decode", serialized).pipe(
+          Effect.flatMap(decodeStoredArtifact),
+        );
+        if (
+          decoded.artifact.id !== metadata.id ||
+          decoded.artifact.sessionId !== metadata.sessionId ||
+          decoded.artifact.revision !== metadata.revision ||
+          decoded.storedKind !== metadata.kind
+        )
+          return yield* storageError(
+            "get",
+            `Artifact ${metadata.id} metadata does not match its immutable blob`,
+          );
+        return yield* decodeRecord({
+          artifact: decoded.artifact,
+          workspacePath: metadata.workspacePath,
+          digest: metadata.digest,
+          createdAt: metadata.createdAt,
+          updatedAt: metadata.updatedAt,
+        });
+      });
+
+      const get = Effect.fn("ArtifactStorage.get")(function* (
+        workspacePath: string,
+        sessionId: string,
+        artifactId: string,
+      ) {
+        const indexPath = recordPath(workspacePath, sessionId, artifactId);
+        const exists = yield* fileSystem
+          .exists(indexPath)
+          .pipe(Effect.mapError((cause) => storageError("get", cause)));
+        if (!exists) return undefined;
+        const metadata = yield* readText("get", indexPath).pipe(
+          Effect.flatMap((text) => parseJson("decode", text)),
+          Effect.flatMap(decodeMetadata),
+        );
+        if (metadata.workspacePath !== workspacePath)
+          return yield* storageError(
+            "get",
+            `Artifact ${metadata.id} workspace metadata does not match its index`,
+          );
+        const serialized = yield* readText("get", blobPath(metadata.digest));
+        return yield* hydrateStoredRecord(serialized, metadata);
+      });
+
+      const listSession = Effect.fn("ArtifactStorage.listSession")(function* (
+        workspacePath: string,
+        sessionId: string,
+      ) {
+        const directory = recordDirectory(workspacePath, sessionId);
+        const exists = yield* fileSystem
+          .exists(directory)
+          .pipe(Effect.mapError((cause) => storageError("listSession", cause)));
+        if (!exists) return [];
+        const names = yield* fileSystem
+          .readDirectory(directory)
+          .pipe(Effect.mapError((cause) => storageError("listSession", cause)));
+        const records = yield* Effect.forEach(
+          names.filter((name) => name.endsWith(".json")),
+          (name) =>
+            readText("listSession", path.join(directory, name)).pipe(
+              Effect.flatMap((text) => parseJson("decode", text)),
+              Effect.flatMap(decodeMetadata),
+              Effect.flatMap((metadata) => get(workspacePath, sessionId, metadata.id)),
+            ),
+          { concurrency: "unbounded" },
+        );
+        return records
+          .filter((record): record is ArtifactRecord => record !== undefined)
+          .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+      });
+
+      const linkSessionUnlocked = Effect.fn("ArtifactStorage.linkSessionUnlocked")(function* (
+        record: ArtifactRecord,
+        sessionId: string,
+        storedKind: StoredArtifactKind = record.artifact.kind,
+      ) {
+        const target = recordPath(record.workspacePath, sessionId, record.artifact.id);
+        const content = yield* attempt(
+          "linkSession",
+          () => `${JSON.stringify(toMetadata(record, storedKind), null, 2)}\n`,
+        );
+        yield* writeText("linkSession", target, content);
+      });
+
+      const linkSession = Effect.fn("ArtifactStorage.linkSession")((record, sessionId) => {
+        const target = recordPath(record.workspacePath, sessionId, record.artifact.id);
+        return withKeyLock(target, linkSessionUnlocked(record, sessionId));
+      });
+
+      const upsert = Effect.fn("ArtifactStorage.upsert")(function* <Input>(
+        workspacePath: string,
+        input: Input,
+      ) {
+        const artifact = yield* decodeArtifactInput(input);
+        const key = recordPath(workspacePath, artifact.sessionId, artifact.id);
+        return yield* withKeyLock(
+          key,
+          Effect.gen(function* () {
+            const existing = yield* get(workspacePath, artifact.sessionId, artifact.id);
+            if (existing && artifact.revision !== existing.artifact.revision + 1)
+              return yield* storageError(
+                "upsert",
+                `Artifact ${artifact.id} revision must advance from ${existing.artifact.revision} to ${existing.artifact.revision + 1}`,
+              );
+            if (!existing && artifact.revision !== 1)
+              return yield* storageError(
+                "upsert",
+                `New artifact ${artifact.id} must start at revision 1`,
+              );
+
+            const serialized = yield* attempt(
+              "upsert",
+              () => `${JSON.stringify(artifact, null, 2)}\n`,
+            );
+            const artifactDigest = digest(serialized);
+            const now = DateTime.formatIso(yield* DateTime.now);
+            const record = yield* decodeRecord({
+              artifact,
+              workspacePath,
+              digest: artifactDigest,
+              createdAt: existing?.createdAt ?? now,
+              updatedAt: now,
+            });
+            yield* fileSystem
+              .makeDirectory(blobDirectory, { recursive: true, mode: 0o700 })
+              .pipe(Effect.mapError((cause) => storageError("upsert", cause)));
+            yield* writeText("upsert", blobPath(artifactDigest), serialized);
+            const metadata = yield* attempt(
+              "upsert",
+              () => `${JSON.stringify(toMetadata(record), null, 2)}\n`,
+            );
+            yield* writeText("upsert", key, metadata);
+            return record;
+          }),
+        );
+      });
+
+      const inheritFork = Effect.fn("ArtifactStorage.inheritFork")(function* (
+        sourceWorkspacePath: string,
+        sourceSessionId: string,
+        destinationWorkspacePath: string,
+        destinationSessionId: string,
+        pointers: ReadonlyArray<ArtifactPointer>,
+      ) {
+        const sourceRecords = yield* listSession(sourceWorkspacePath, sourceSessionId);
+        const recordsById = new Map(sourceRecords.map((record) => [record.artifact.id, record]));
+        const inherited = yield* Effect.forEach(
+          pointers,
+          Effect.fn("ArtifactStorage.inheritPointer")(function* (pointer) {
+            const serialized = yield* readText("inheritFork", blobPath(pointer.digest));
+            const actualDigest = digest(serialized);
+            const decoded = yield* parseJson("decode", serialized).pipe(
+              Effect.flatMap(decodeStoredArtifact),
+            );
+            if (
+              actualDigest !== pointer.digest ||
+              decoded.artifact.id !== pointer.artifactId ||
+              decoded.artifact.sessionId !== pointer.sessionId ||
+              decoded.artifact.revision !== pointer.revision ||
+              decoded.storedKind !== pointer.kind
+            )
+              return yield* storageError(
+                "inheritFork",
+                `Artifact ${pointer.artifactId} revision ${pointer.revision} does not match its source pointer`,
+              );
+            const current = recordsById.get(pointer.artifactId);
+            if (!current)
+              return yield* storageError(
+                "inheritFork",
+                `Artifact ${pointer.artifactId} is not associated with source session ${sourceSessionId}`,
+              );
+            const now = DateTime.formatIso(yield* DateTime.now);
+            const record = yield* decodeRecord({
+              artifact: decoded.artifact,
+              workspacePath: destinationWorkspacePath,
+              digest: actualDigest,
+              createdAt: current.createdAt ?? now,
+              updatedAt: current.updatedAt ?? now,
+            });
+            return { record, storedKind: decoded.storedKind };
+          }),
+          { concurrency: "unbounded" },
+        );
+        yield* Effect.forEach(
+          inherited,
+          ({ record, storedKind }) => {
+            const target = recordPath(
+              record.workspacePath,
+              destinationSessionId,
+              record.artifact.id,
+            );
+            return withKeyLock(
+              target,
+              linkSessionUnlocked(record, destinationSessionId, storedKind),
+            );
+          },
+          { concurrency: "unbounded", discard: true },
+        );
+      });
+
+      const deleteSession = Effect.fn("ArtifactStorage.deleteSession")(
+        (workspacePath: string, sessionId: string) =>
+          fileSystem
+            .remove(recordDirectory(workspacePath, sessionId), { recursive: true, force: true })
+            .pipe(Effect.mapError((cause) => storageError("deleteSession", cause))),
+      );
+
+      const exportMarkdown = Effect.fn("ArtifactStorage.exportMarkdown")(function* (
+        workspacePath: string,
+        sessionId: string,
+      ) {
+        const records = yield* listSession(workspacePath, sessionId);
+        return records
+          .map(
+            ({ artifact }) =>
+              `## ${artifact.title ?? artifact.id}\n\n${artifact.fallback.markdown}`,
+          )
+          .join("\n\n---\n\n");
+      });
+
+      return ArtifactStorage.of({
+        upsert,
+        get,
+        listSession,
+        linkSession,
+        inheritFork,
+        deleteSession,
+        exportMarkdown,
+      });
+    }),
+  );

@@ -1,15 +1,11 @@
-import { Effect, Layer } from "effect";
-import { ReviewStorage } from "../../../../src/services/storage/ReviewStorage";
+import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
+import { Layer } from "effect";
 import { makeReviewStorageLive } from "../../../../src/services/storage/ReviewStorageLive";
 
-/** Synchronous test-only construction for the in-memory Effect service shell. */
+const TestPlatformLive = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
+
 export const makeReviewStorageTestAdapter = (
   root: string,
   piSessionRoot: string,
   loadSession?: Parameters<typeof makeReviewStorageLive>[2],
-) => {
-  const service = Effect.runSync(
-    ReviewStorage.pipe(Effect.provide(makeReviewStorageLive(root, piSessionRoot, loadSession))),
-  );
-  return { service, paths: service, layer: Layer.succeed(ReviewStorage, service) } as const;
-};
+) => makeReviewStorageLive(root, piSessionRoot, loadSession).pipe(Layer.provide(TestPlatformLive));

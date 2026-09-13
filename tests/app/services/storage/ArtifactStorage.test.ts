@@ -2,15 +2,30 @@ import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect } from "effect";
+import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
+import { Effect, Layer, ManagedRuntime } from "effect";
 import { afterEach, describe, expect, it } from "vitest";
-import { makeArtifactStorageTestAdapter } from "../../../../src/services/storage/ArtifactStorageLive";
+import { ArtifactStorage } from "../../../../src/services/storage/ArtifactStorage";
+import { makeArtifactStorageLive } from "../../../../src/services/storage/ArtifactStorageLive";
 
 const directories: string[] = [];
+const disposeRuntimes: Array<() => Promise<void>> = [];
 
-afterEach(async () =>
-  Promise.all(directories.splice(0).map((path) => rm(path, { recursive: true, force: true }))),
-);
+const makeStorage = async (root: string) => {
+  const layer = makeArtifactStorageLive(root).pipe(
+    Layer.provideMerge(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer)),
+  );
+  const runtime = ManagedRuntime.make(layer);
+  disposeRuntimes.push(() => runtime.dispose());
+  return runtime.runPromise(ArtifactStorage);
+};
+
+afterEach(async () => {
+  await Promise.all(disposeRuntimes.splice(0).map((dispose) => dispose()));
+  await Promise.all(
+    directories.splice(0).map((path) => rm(path, { recursive: true, force: true })),
+  );
+});
 
 async function seedHistoricalArchitecture(root: string) {
   const artifact = {
@@ -78,7 +93,7 @@ describe("ArtifactStorage", () => {
     const root = await mkdtemp(join(tmpdir(), "cake-artifacts-"));
     directories.push(root);
     const historical = await seedHistoricalArchitecture(root);
-    const storage = makeArtifactStorageTestAdapter(root).service;
+    const storage = await makeStorage(root);
 
     const record = await Effect.runPromise(storage.get("/project", "session-1", "architecture-1"));
     expect(record).toMatchObject({
@@ -100,7 +115,7 @@ describe("ArtifactStorage", () => {
     const root = await mkdtemp(join(tmpdir(), "cake-artifacts-"));
     directories.push(root);
     const historical = await seedHistoricalArchitecture(root);
-    const storage = makeArtifactStorageTestAdapter(root).service;
+    const storage = await makeStorage(root);
 
     await Effect.runPromise(
       storage.inheritFork("/project", "session-1", "/project", "fork-1", [
@@ -144,7 +159,7 @@ describe("ArtifactStorage", () => {
   it("persists content-addressed payloads, enforces revisions, hydrates, and exports fallbacks", async () => {
     const root = await mkdtemp(join(tmpdir(), "cake-artifacts-"));
     directories.push(root);
-    const storage = makeArtifactStorageTestAdapter(root).service;
+    const storage = await makeStorage(root);
     const first = await Effect.runPromise(
       storage.upsert("/project", { ...baseArtifact, revision: 1, title: "Scores" }),
     );
@@ -160,7 +175,7 @@ describe("ArtifactStorage", () => {
       }),
     );
     expect(second.createdAt).toBe(first.createdAt);
-    const reloaded = makeArtifactStorageTestAdapter(root).service;
+    const reloaded = await makeStorage(root);
     expect(
       (await Effect.runPromise(reloaded.listSession("/project", "session-1")))[0]?.artifact,
     ).toMatchObject({ id: "table-1", revision: 2 });
@@ -174,7 +189,7 @@ describe("ArtifactStorage", () => {
   it("persists and hydrates immutable file metadata", async () => {
     const root = await mkdtemp(join(tmpdir(), "cake-artifacts-"));
     directories.push(root);
-    const storage = makeArtifactStorageTestAdapter(root).service;
+    const storage = await makeStorage(root);
     const data = Buffer.from([0, 1, 2, 255]).toString("base64");
 
     await Effect.runPromise(
@@ -206,7 +221,7 @@ describe("ArtifactStorage", () => {
   it("freezes fork associations at the revisions reachable from the fork entry", async () => {
     const root = await mkdtemp(join(tmpdir(), "cake-artifacts-"));
     directories.push(root);
-    const storage = makeArtifactStorageTestAdapter(root).service;
+    const storage = await makeStorage(root);
     const first = await Effect.runPromise(
       storage.upsert("/project", { ...baseArtifact, revision: 1, title: "At fork" }),
     );
@@ -260,7 +275,7 @@ describe("ArtifactStorage", () => {
   it("rejects fork associations that do not match the source snapshot", async () => {
     const root = await mkdtemp(join(tmpdir(), "cake-artifacts-"));
     directories.push(root);
-    const storage = makeArtifactStorageTestAdapter(root).service;
+    const storage = await makeStorage(root);
     const first = await Effect.runPromise(
       storage.upsert("/project", { ...baseArtifact, revision: 1 }),
     );
@@ -286,7 +301,7 @@ describe("ArtifactStorage", () => {
   it("serializes revision validation and writes for the same artifact", async () => {
     const root = await mkdtemp(join(tmpdir(), "cake-artifacts-"));
     directories.push(root);
-    const storage = makeArtifactStorageTestAdapter(root).service;
+    const storage = await makeStorage(root);
     await Effect.runPromise(storage.upsert("/project", { ...baseArtifact, revision: 1 }));
 
     const results = await Promise.allSettled([

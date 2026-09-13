@@ -1,15 +1,17 @@
+import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
+import { it } from "@effect/vitest";
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { Effect, Fiber, Stream } from "effect";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect } from "vitest";
+import { Effect, Fiber, FileSystem, Layer, Path, Schema, Stream } from "effect";
+import {
+  reviewThreadRecordSchema,
+  type ReviewSessionProjection,
+  type ReviewThreadRecord,
+} from "../../../../src/ipc/review-contract";
+import { ReviewStorage } from "../../../../src/services/storage/ReviewStorage";
 import { makeReviewStorageTestAdapter } from "./ReviewStorageTestAdapter";
 
-const directories: string[] = [];
-afterEach(async () =>
-  Promise.all(directories.splice(0).map((path) => rm(path, { recursive: true, force: true }))),
-);
+const TestPlatformLive = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
 
 const codeAnchor = {
   path: "src/app.ts",
@@ -22,158 +24,179 @@ const codeAnchor = {
   diff: "@@",
 };
 
+const withStorage = <A, E, R>(
+  prefix: string,
+  use: (
+    storage: ReviewStorage["Service"],
+    fileSystem: FileSystem.FileSystem,
+    path: Path.Path,
+    root: string,
+  ) => Effect.Effect<A, E, R>,
+  loadSession?: (record: ReviewThreadRecord) => Effect.Effect<ReviewSessionProjection, unknown>,
+) =>
+  Effect.gen(function* () {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const root = yield* fileSystem.makeTempDirectoryScoped({ prefix });
+    return yield* Effect.gen(function* () {
+      const storage = yield* ReviewStorage;
+      return yield* use(storage, fileSystem, path, root);
+    }).pipe(
+      Effect.provide(
+        makeReviewStorageTestAdapter(root, path.join(root, "pi-sessions"), loadSession),
+      ),
+    );
+  }).pipe(Effect.scoped, Effect.provide(TestPlatformLive));
+
 describe("ReviewStorage Discussion metadata", () => {
-  it("publishes a current-first revision stream for review mutations", async () => {
-    const root = await mkdtemp(join(tmpdir(), "cake-review-revisions-"));
-    directories.push(root);
-    const storage = makeReviewStorageTestAdapter(root, join(root, "pi-sessions")).service;
-    const revisions = await Effect.runPromise(
+  it.effect("publishes a current-first revision stream for review mutations", () =>
+    withStorage("cake-review-revisions-", (storage) =>
       Effect.gen(function* () {
         const observer = yield* storage
           .changes()
           .pipe(Stream.take(2), Stream.runCollect, Effect.forkChild);
         yield* Effect.yieldNow;
         yield* storage.createDiscussion("/project", "session", codeAnchor);
-        return yield* Fiber.join(observer);
+        const revisions = yield* Fiber.join(observer);
+        expect([...revisions]).toEqual([0, 1]);
       }),
-    );
-
-    expect([...revisions]).toEqual([0, 1]);
-  });
-
-  it("atomically reuses a dedicated discussion anchor", async () => {
-    const root = await mkdtemp(join(tmpdir(), "cake-discussion-ensure-"));
-    directories.push(root);
-    const storage = makeReviewStorageTestAdapter(root, join(root, "pi-sessions")).service;
-    const assistantAnchor = {
-      ...codeAnchor,
-      path: "session:parent/assistant",
-      view: "session" as const,
-    };
-
-    const [first, second] = await Promise.all([
-      Effect.runPromise(storage.ensureDiscussion("/project", "parent", assistantAnchor)),
-      Effect.runPromise(storage.ensureDiscussion("/project", "parent", assistantAnchor)),
-    ]);
-
-    expect(second.id).toBe(first.id);
-    expect(
-      await Effect.runPromise(storage.listDiscussionRecords("/project", "parent")),
-    ).toHaveLength(1);
-  });
-
-  it.each(["diff", "full"] as const)(
-    "migrates persisted %s review anchors to file anchors",
-    async (view) => {
-      const root = await mkdtemp(join(tmpdir(), "cake-review-migration-"));
-      directories.push(root);
-      const storage = makeReviewStorageTestAdapter(root, join(root, "pi-sessions")).service;
-      const created = await Effect.runPromise(
-        storage.createDiscussion("/project", "session", codeAnchor),
-      );
-      const recordPath = join(
-        root,
-        digestKey("/project"),
-        digestKey("session"),
-        `${digestKey(created.id)}.json`,
-      );
-      const persisted = JSON.parse(await readFile(recordPath, "utf8"));
-      persisted.anchor.view = view;
-      await writeFile(recordPath, `${JSON.stringify(persisted, null, 2)}\n`);
-
-      const [migrated] = await Effect.runPromise(
-        storage.listDiscussionRecords("/project", "session"),
-      );
-
-      expect(migrated?.anchor.view).toBe("file");
-      expect(JSON.parse(await readFile(recordPath, "utf8")).anchor.view).toBe("file");
-    },
+    ),
   );
 
-  it("persists anchors and sidecar references but projects replies from Pi", async () => {
-    const root = await mkdtemp(join(tmpdir(), "cake-discussions-"));
-    directories.push(root);
-    const projectedParts = [
-      {
-        id: "pi-user",
-        kind: "text" as const,
-        role: "user" as const,
-        text: "Use a clearer name",
-        status: "complete" as const,
-      },
-      {
-        id: "pi-assistant",
-        kind: "text" as const,
-        role: "assistant" as const,
-        text: "Renamed it.",
-        status: "complete" as const,
-      },
-    ];
-    const storage = makeReviewStorageTestAdapter(root, join(root, "pi-sessions"), async () => ({
-      parts: projectedParts,
-    })).service;
-    const created = await Effect.runPromise(
-      storage.createDiscussion("/project", "session", codeAnchor),
-    );
-    const linked = await Effect.runPromise(
-      storage.linkDiscussionSidecar("/project", "session", created.id, {
-        sessionId: "pi-discussion",
-        sessionFile: "/reviews/pi-discussion.jsonl",
+  it.effect("atomically reuses a dedicated discussion anchor", () =>
+    withStorage("cake-discussion-ensure-", (storage) =>
+      Effect.gen(function* () {
+        const assistantAnchor = {
+          ...codeAnchor,
+          path: "session:parent/assistant",
+          view: "session" as const,
+        };
+        const [first, second] = yield* Effect.all(
+          [
+            storage.ensureDiscussion("/project", "parent", assistantAnchor),
+            storage.ensureDiscussion("/project", "parent", assistantAnchor),
+          ],
+          { concurrency: "unbounded" },
+        );
+        expect(second.id).toBe(first.id);
+        expect(yield* storage.listDiscussionRecords("/project", "parent")).toHaveLength(1);
       }),
+    ),
+  );
+
+  for (const view of ["diff", "full"] as const) {
+    it.effect(`migrates persisted ${view} review anchors to file anchors`, () =>
+      withStorage("cake-review-migration-", (storage, fileSystem, path, root) =>
+        Effect.gen(function* () {
+          const created = yield* storage.createDiscussion("/project", "session", codeAnchor);
+          const recordPath = path.join(
+            root,
+            digestKey("/project"),
+            digestKey("session"),
+            `${digestKey(created.id)}.json`,
+          );
+          const persisted = yield* fileSystem.readFileString(recordPath);
+          yield* fileSystem.writeFileString(
+            recordPath,
+            persisted.replace('"view": "file"', `"view": "${view}"`),
+          );
+
+          const [migrated] = yield* storage.listDiscussionRecords("/project", "session");
+          expect(migrated?.anchor.view).toBe("file");
+          const saved = yield* Schema.decodeUnknownEffect(
+            Schema.fromJsonString(reviewThreadRecordSchema),
+          )(yield* fileSystem.readFileString(recordPath));
+          expect(saved.anchor.view).toBe("file");
+        }),
+      ),
     );
+  }
 
-    expect(linked).toMatchObject({
-      agentSessionId: "pi-discussion",
-      agentSessionFile: "/reviews/pi-discussion.jsonl",
-      pendingComments: [],
-    });
-    const [projected] = await Effect.runPromise(storage.listSession("/project", "session"));
-    expect(projected?.parts).toEqual(projectedParts);
+  it.effect("persists anchors and sidecar references but projects replies from Pi", () =>
+    withStorage(
+      "cake-discussions-",
+      (storage, fileSystem, path, root) =>
+        Effect.gen(function* () {
+          const created = yield* storage.createDiscussion("/project", "session", codeAnchor);
+          const linked = yield* storage.linkDiscussionSidecar("/project", "session", created.id, {
+            sessionId: "pi-discussion",
+            sessionFile: "/reviews/pi-discussion.jsonl",
+          });
+          expect(linked).toMatchObject({
+            agentSessionId: "pi-discussion",
+            agentSessionFile: "/reviews/pi-discussion.jsonl",
+            pendingComments: [],
+          });
+          const [projected] = yield* storage.listSession("/project", "session");
+          expect(projected?.parts).toEqual(projectedParts);
 
-    const recordPath = join(
-      root,
-      digestKey("/project"),
-      digestKey("session"),
-      `${digestKey(created.id)}.json`,
-    );
-    const persisted = JSON.parse(await readFile(recordPath, "utf8"));
-    expect(persisted).not.toHaveProperty("parts");
-    expect(persisted.pendingComments).toEqual([]);
-  });
+          const recordPath = path.join(
+            root,
+            digestKey("/project"),
+            digestKey("session"),
+            `${digestKey(created.id)}.json`,
+          );
+          const persistedText = yield* fileSystem.readFileString(recordPath);
+          const persisted = yield* Schema.decodeUnknownEffect(
+            Schema.fromJsonString(reviewThreadRecordSchema),
+          )(persistedText);
+          expect(persistedText).not.toContain('"parts"');
+          expect(persisted.pendingComments).toEqual([]);
+        }),
+      () => Effect.succeed({ parts: projectedParts }),
+    ),
+  );
 
-  it("refreshes the parent index and resolves Discussion anchors", async () => {
-    const root = await mkdtemp(join(tmpdir(), "cake-message-comments-"));
-    directories.push(root);
-    const live = makeReviewStorageTestAdapter(root, join(root, "pi-sessions"));
-    const storage = live.service;
-    const anchor = {
-      path: "session:parent/message/assistant-1",
-      view: "message" as const,
-      messageId: "assistant-1",
-      entryId: "entry-1",
-      startOffset: 6,
-      endOffset: 15,
-      start: { diffLine: 0 },
-      end: { diffLine: 0 },
-      selectedText: "important",
-      contextBefore: "Alpha ",
-      contextAfter: " detail",
-      diff: "",
-    };
-    const created = await Effect.runPromise(storage.createDiscussion("/project", "parent", anchor));
-    await Effect.runPromise(storage.resolve("/project", "parent", created.id, true));
-    await Effect.runPromise(storage.refreshDiscussionContext("/project", "parent"));
+  it.effect("refreshes the parent index and resolves Discussion anchors", () =>
+    withStorage("cake-message-comments-", (storage, fileSystem) =>
+      Effect.gen(function* () {
+        const anchor = {
+          path: "session:parent/message/assistant-1",
+          view: "message" as const,
+          messageId: "assistant-1",
+          entryId: "entry-1",
+          startOffset: 6,
+          endOffset: 15,
+          start: { diffLine: 0 },
+          end: { diffLine: 0 },
+          selectedText: "important",
+          contextBefore: "Alpha ",
+          contextAfter: " detail",
+          diff: "",
+        };
+        const created = yield* storage.createDiscussion("/project", "parent", anchor);
+        yield* storage.resolve("/project", "parent", created.id, true);
+        yield* storage.refreshDiscussionContext("/project", "parent");
 
-    const context = await readFile(live.paths.reviewContextPath("/project", "parent"), "utf8");
-    expect(context).toContain("important");
-    expect(context).toContain(`${created.id} · resolved`);
+        const context = yield* fileSystem.readFileString(
+          storage.reviewContextPath("/project", "parent"),
+        );
+        expect(context).toContain("important");
+        expect(context).toContain(`${created.id} · resolved`);
 
-    await Effect.runPromise(storage.deleteSession("/project", "parent"));
-    expect(await Effect.runPromise(storage.listDiscussionRecords("/project", "parent"))).toEqual(
-      [],
-    );
-  });
+        yield* storage.deleteSession("/project", "parent");
+        expect(yield* storage.listDiscussionRecords("/project", "parent")).toEqual([]);
+      }),
+    ),
+  );
 });
+
+const projectedParts = [
+  {
+    id: "pi-user",
+    kind: "text" as const,
+    role: "user" as const,
+    text: "Use a clearer name",
+    status: "complete" as const,
+  },
+  {
+    id: "pi-assistant",
+    kind: "text" as const,
+    role: "assistant" as const,
+    text: "Renamed it.",
+    status: "complete" as const,
+  },
+];
 
 function digestKey(value: string) {
   return createHash("sha256").update(value).digest("hex");

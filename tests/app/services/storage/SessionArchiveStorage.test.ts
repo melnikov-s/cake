@@ -1,8 +1,6 @@
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { Effect, Stream } from "effect";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
+import { Clock, Effect, FileSystem, Layer, Path, Stream } from "effect";
+import { describe, expect, it } from "@effect/vitest";
 import {
   cakeWorkspaceSessionDirectory,
   streamWorkspaceSessions,
@@ -10,219 +8,269 @@ import {
 import { SessionArchiveStorage } from "../../../../src/services/storage/SessionArchiveStorage";
 import { makeSessionArchiveStorageLive } from "../../../../src/services/storage/SessionArchiveStorageLive";
 
-let metadataRoot = "";
+const PlatformLive = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
 
 const runArchive = <A, E>(
+  metadataRoot: string,
   use: (storage: SessionArchiveStorage["Service"]) => Effect.Effect<A, E>,
 ) =>
-  Effect.runPromise(
-    Effect.flatMap(SessionArchiveStorage, use).pipe(
-      Effect.provide(makeSessionArchiveStorageLive(join(metadataRoot, "archive"))),
-    ),
+  Effect.flatMap(SessionArchiveStorage, use).pipe(
+    Effect.provide(makeSessionArchiveStorageLive(metadataRoot).pipe(Layer.provide(PlatformLive))),
   );
 
-const directories: string[] = [];
-
-beforeEach(async () => {
-  metadataRoot = await mkdtemp(join(tmpdir(), "cake-session-archive-metadata-"));
-  directories.push(metadataRoot);
-});
-
-afterEach(async () => {
-  await Promise.all(
-    directories.splice(0).map((path) => rm(path, { recursive: true, force: true })),
-  );
-});
-
-async function fixture() {
-  const cwd = await mkdtemp(join(tmpdir(), "cake-session-archive-"));
-  directories.push(cwd);
-  const activeRoot = join(cwd, "active");
-  const resolvedRoot = join(cwd, "resolved");
+const makeFixture = Effect.fn("SessionArchiveStorage.test.makeFixture")(function* () {
+  const fileSystem = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const cwd = yield* fileSystem.makeTempDirectoryScoped({ prefix: "cake-session-archive-" });
+  const activeRoot = path.join(cwd, "active");
+  const resolvedRoot = path.join(cwd, "resolved");
   const activeDirectory = cakeWorkspaceSessionDirectory(cwd, activeRoot);
-  const timestamp = new Date().toISOString();
-  await mkdir(activeDirectory, { recursive: true });
-  await writeFile(
-    join(activeDirectory, "2026-01-01T00-00-00-000Z_session-1.jsonl"),
-    [
+  const now = yield* Clock.currentTimeMillis;
+  const timestamp = new Date(now).toISOString();
+  yield* fileSystem.makeDirectory(activeDirectory, { recursive: true });
+  yield* fileSystem.writeFileString(
+    path.join(activeDirectory, "2026-01-01T00-00-00-000Z_session-1.jsonl"),
+    `${[
       { type: "session", version: 3, id: "session-1", timestamp, cwd },
       {
         type: "message",
         id: "user-1",
         parentId: null,
         timestamp,
-        message: { role: "user", content: "Archived work", timestamp: Date.now() },
+        message: { role: "user", content: "Archived work", timestamp: now },
       },
     ]
       .map((entry) => JSON.stringify(entry))
-      .join("\n") + "\n",
+      .join("\n")}\n`,
   );
   return { cwd, activeRoot, resolvedRoot };
-}
+});
+
+const makeMetadataRoot = Effect.fn("SessionArchiveStorage.test.makeMetadataRoot")(function* () {
+  const fileSystem = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const directory = yield* fileSystem.makeTempDirectoryScoped({
+    prefix: "cake-session-archive-metadata-",
+  });
+  return path.join(directory, "archive");
+});
+
+const withPlatform = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+  effect.pipe(Effect.provide(PlatformLive));
 
 describe("SessionArchiveStorage", () => {
-  it("lazily indexes legacy project archives from Pi transcripts", async () => {
-    const location = await fixture();
-    await runArchive((storage) => storage.resolve("session-1", location));
+  it.effect("lazily indexes legacy project archives from Pi transcripts", () =>
+    withPlatform(
+      Effect.gen(function* () {
+        const metadataRoot = yield* makeMetadataRoot();
+        const location = yield* makeFixture();
+        yield* runArchive(metadataRoot, (storage) => storage.resolve("session-1", location));
 
-    await expect(
-      runArchive((storage) => storage.projectMigrationComplete("/projects/cake")),
-    ).resolves.toBe(false);
-    await expect(
-      runArchive((storage) =>
-        storage
-          .migrateProject("/projects/cake", "Cake", [{ location, worktreeName: "legacy-worktree" }])
-          .pipe(Stream.runCollect),
-      ),
-    ).resolves.toEqual([
-      expect.objectContaining({
-        sessionId: "session-1",
-        worktreeName: "legacy-worktree",
+        expect(
+          yield* runArchive(metadataRoot, (storage) =>
+            storage.projectMigrationComplete("/projects/cake"),
+          ),
+        ).toBe(false);
+        expect(
+          yield* runArchive(metadataRoot, (storage) =>
+            storage
+              .migrateProject("/projects/cake", "Cake", [
+                { location, worktreeName: "legacy-worktree" },
+              ])
+              .pipe(Stream.runCollect),
+          ),
+        ).toEqual([
+          expect.objectContaining({
+            sessionId: "session-1",
+            worktreeName: "legacy-worktree",
+          }),
+        ]);
+        expect(
+          yield* runArchive(metadataRoot, (storage) =>
+            storage.projectMigrationComplete("/projects/cake"),
+          ),
+        ).toBe(true);
+        expect(
+          yield* runArchive(metadataRoot, (storage) =>
+            storage
+              .migrateProject("/projects/cake", "Cake", [{ location }])
+              .pipe(Stream.runCollect),
+          ),
+        ).toEqual([
+          expect.objectContaining({
+            sessionId: "session-1",
+            worktreeName: "legacy-worktree",
+          }),
+        ]);
       }),
-    ]);
-    await expect(
-      runArchive((storage) => storage.projectMigrationComplete("/projects/cake")),
-    ).resolves.toBe(true);
-    await expect(
-      runArchive((storage) =>
-        storage.migrateProject("/projects/cake", "Cake", [{ location }]).pipe(Stream.runCollect),
-      ),
-    ).resolves.toEqual([
-      expect.objectContaining({
-        sessionId: "session-1",
-        worktreeName: "legacy-worktree",
+    ),
+  );
+
+  it.effect("lists project archives from Pi transcripts and restores with one file move", () =>
+    withPlatform(
+      Effect.gen(function* () {
+        const metadataRoot = yield* makeMetadataRoot();
+        const location = yield* makeFixture();
+
+        yield* runArchive(metadataRoot, (storage) =>
+          storage.resolveProject("session-1", location, {
+            projectPath: "/projects/cake",
+            projectName: "Cake",
+            worktreeName: "archive-index",
+          }),
+        );
+        expect(
+          yield* runArchive(metadataRoot, (storage) =>
+            storage.resolvedProjects("/projects/cake").pipe(Stream.runCollect),
+          ),
+        ).toEqual([
+          expect.objectContaining({
+            sessionId: "session-1",
+            worktreeName: "archive-index",
+          }),
+        ]);
+
+        expect(
+          yield* runArchive(metadataRoot, (storage) => storage.restoreProject("session-1")),
+        ).toEqual(expect.objectContaining({ sessionId: "session-1" }));
+        expect(
+          yield* runArchive(metadataRoot, (storage) =>
+            storage.resolvedProjects("/projects/cake").pipe(Stream.runCollect),
+          ),
+        ).toEqual([]);
+        expect(
+          yield* streamWorkspaceSessions(location.cwd, location.activeRoot).pipe(Stream.runCollect),
+        ).toEqual([expect.objectContaining({ id: "session-1" })]);
       }),
-    ]);
-  });
+    ),
+  );
 
-  it("lists project archives from Pi transcripts and restores with one file move", async () => {
-    const location = await fixture();
+  it.effect("preserves Pi titles across resolve and restore", () =>
+    withPlatform(
+      Effect.gen(function* () {
+        const metadataRoot = yield* makeMetadataRoot();
+        const location = yield* makeFixture();
 
-    await runArchive((storage) =>
-      storage.resolveProject("session-1", location, {
-        projectPath: "/projects/cake",
-        projectName: "Cake",
-        worktreeName: "archive-index",
+        yield* runArchive(metadataRoot, (storage) => storage.resolve("session-1", location));
+        expect(
+          yield* runArchive(metadataRoot, (storage) =>
+            storage.resolvedEntry("session-1", location),
+          ),
+        ).toEqual(expect.objectContaining({ title: "Archived work" }));
+        yield* runArchive(metadataRoot, (storage) => storage.restore("session-1", location));
+
+        expect(
+          yield* streamWorkspaceSessions(location.cwd, location.activeRoot).pipe(Stream.runCollect),
+        ).toEqual([expect.objectContaining({ title: "Archived work" })]);
       }),
-    );
-    await expect(
-      runArchive((storage) => storage.resolvedProjects("/projects/cake").pipe(Stream.runCollect)),
-    ).resolves.toEqual([
-      expect.objectContaining({
-        sessionId: "session-1",
-        worktreeName: "archive-index",
+    ),
+  );
+
+  it.effect("moves a project session out of Pi's active root and restores it", () =>
+    withPlatform(
+      Effect.gen(function* () {
+        const metadataRoot = yield* makeMetadataRoot();
+        const location = yield* makeFixture();
+        expect(
+          yield* runArchive(metadataRoot, (storage) => storage.resolve("session-1", location)),
+        ).toBe(true);
+        expect(
+          yield* runArchive(metadataRoot, (storage) => storage.resolve("session-1", location)),
+        ).toBe(false);
+        expect(
+          yield* streamWorkspaceSessions(location.cwd, location.activeRoot).pipe(Stream.runCollect),
+        ).toEqual([]);
+        expect(
+          yield* runArchive(metadataRoot, (storage) =>
+            storage.resolved(location).pipe(Stream.runCollect),
+          ),
+        ).toEqual([expect.objectContaining({ id: "session-1", resolved: true })]);
+        expect(
+          yield* runArchive(metadataRoot, (storage) =>
+            storage.resolvedEntry("session-1", location),
+          ),
+        ).toEqual(expect.objectContaining({ id: "session-1", resolved: true }));
+
+        expect(
+          yield* runArchive(metadataRoot, (storage) => storage.restore("session-1", location)),
+        ).toBe(true);
+        expect(
+          yield* runArchive(metadataRoot, (storage) => storage.restore("session-1", location)),
+        ).toBe(false);
+        expect(
+          yield* streamWorkspaceSessions(location.cwd, location.activeRoot).pipe(Stream.runCollect),
+        ).toEqual([expect.objectContaining({ id: "session-1", resolved: false })]);
       }),
-    ]);
+    ),
+  );
 
-    await expect(runArchive((storage) => storage.restoreProject("session-1"))).resolves.toEqual(
-      expect.objectContaining({ sessionId: "session-1" }),
-    );
-    await expect(
-      runArchive((storage) => storage.resolvedProjects("/projects/cake").pipe(Stream.runCollect)),
-    ).resolves.toEqual([]);
-    expect(
-      await Effect.runPromise(
-        streamWorkspaceSessions(location.cwd, location.activeRoot).pipe(Stream.runCollect),
-      ),
-    ).toEqual([expect.objectContaining({ id: "session-1" })]);
-  });
+  it.effect("treats concurrent archive requests as one idempotent move", () =>
+    withPlatform(
+      Effect.gen(function* () {
+        const metadataRoot = yield* makeMetadataRoot();
+        const location = yield* makeFixture();
+        const outcomes = yield* Effect.all(
+          [
+            runArchive(metadataRoot, (storage) => storage.resolve("session-1", location)),
+            runArchive(metadataRoot, (storage) => storage.resolve("session-1", location)),
+          ],
+          { concurrency: "unbounded" },
+        );
 
-  it("preserves Pi titles across resolve and restore", async () => {
-    const location = await fixture();
+        expect([...outcomes].sort()).toEqual([false, true]);
+        expect(
+          yield* streamWorkspaceSessions(location.cwd, location.activeRoot).pipe(Stream.runCollect),
+        ).toEqual([]);
+        expect(
+          yield* runArchive(metadataRoot, (storage) =>
+            storage.resolved(location).pipe(Stream.runCollect),
+          ),
+        ).toEqual([expect.objectContaining({ id: "session-1", resolved: true })]);
+      }),
+    ),
+  );
 
-    await runArchive((storage) => storage.resolve("session-1", location));
-    await expect(
-      runArchive((storage) => storage.resolvedEntry("session-1", location)),
-    ).resolves.toEqual(expect.objectContaining({ title: "Archived work" }));
-    await runArchive((storage) => storage.restore("session-1", location));
+  it.effect("permanently deletes a transcript from either namespace", () =>
+    withPlatform(
+      Effect.gen(function* () {
+        const metadataRoot = yield* makeMetadataRoot();
+        const activeLocation = yield* makeFixture();
+        const resolvedLocation = yield* makeFixture();
+        yield* runArchive(metadataRoot, (storage) =>
+          storage.resolve("session-1", resolvedLocation),
+        );
 
-    await expect(
-      Effect.runPromise(
-        streamWorkspaceSessions(location.cwd, location.activeRoot).pipe(Stream.runCollect),
-      ),
-    ).resolves.toEqual([expect.objectContaining({ title: "Archived work" })]);
-  });
-  it("moves a project session out of Pi's active root and restores it", async () => {
-    const location = await fixture();
-    await expect(runArchive((storage) => storage.resolve("session-1", location))).resolves.toBe(
-      true,
-    );
-    await expect(runArchive((storage) => storage.resolve("session-1", location))).resolves.toBe(
-      false,
-    );
-    expect(
-      await Effect.runPromise(
-        streamWorkspaceSessions(location.cwd, location.activeRoot).pipe(Stream.runCollect),
-      ),
-    ).toEqual([]);
-    expect(
-      await runArchive((storage) => storage.resolved(location).pipe(Stream.runCollect)),
-    ).toEqual([expect.objectContaining({ id: "session-1", resolved: true })]);
-    await expect(
-      runArchive((storage) => storage.resolvedEntry("session-1", location)),
-    ).resolves.toEqual(expect.objectContaining({ id: "session-1", resolved: true }));
+        yield* runArchive(metadataRoot, (storage) => storage.delete("session-1", activeLocation));
+        yield* runArchive(metadataRoot, (storage) => storage.delete("session-1", resolvedLocation));
+        const error = yield* runArchive(metadataRoot, (storage) =>
+          storage.delete("session-1", activeLocation),
+        ).pipe(Effect.flip);
+        expect(error.message).toContain("Cake could not find session session-1");
+      }),
+    ),
+  );
 
-    await expect(runArchive((storage) => storage.restore("session-1", location))).resolves.toBe(
-      true,
-    );
-    await expect(runArchive((storage) => storage.restore("session-1", location))).resolves.toBe(
-      false,
-    );
-    expect(
-      await Effect.runPromise(
-        streamWorkspaceSessions(location.cwd, location.activeRoot).pipe(Stream.runCollect),
-      ),
-    ).toEqual([expect.objectContaining({ id: "session-1", resolved: false })]);
-  });
-
-  it("treats concurrent archive requests as one idempotent move", async () => {
-    const location = await fixture();
-    const outcomes = await Promise.all([
-      runArchive((storage) => storage.resolve("session-1", location)),
-      runArchive((storage) => storage.resolve("session-1", location)),
-    ]);
-
-    expect(outcomes.sort()).toEqual([false, true]);
-    expect(
-      await Effect.runPromise(
-        streamWorkspaceSessions(location.cwd, location.activeRoot).pipe(Stream.runCollect),
-      ),
-    ).toEqual([]);
-    expect(
-      await runArchive((storage) => storage.resolved(location).pipe(Stream.runCollect)),
-    ).toEqual([expect.objectContaining({ id: "session-1", resolved: true })]);
-  });
-
-  it("permanently deletes a transcript from either namespace", async () => {
-    const activeLocation = await fixture();
-    const resolvedLocation = await fixture();
-    await runArchive((storage) => storage.resolve("session-1", resolvedLocation));
-
-    await expect(
-      runArchive((storage) => storage.delete("session-1", activeLocation)),
-    ).resolves.toBeUndefined();
-    await expect(
-      runArchive((storage) => storage.delete("session-1", resolvedLocation)),
-    ).resolves.toBeUndefined();
-    await expect(
-      runArchive((storage) => storage.delete("session-1", activeLocation)),
-    ).rejects.toThrow("Cake could not find session session-1");
-  });
-
-  it("permanently deletes only a resolved transcript", async () => {
-    const location = await fixture();
-    await expect(
-      runArchive((storage) => storage.deleteResolved("session-1", location)),
-    ).rejects.toThrow("Cake could not find resolved session session-1");
-    await runArchive((storage) => storage.resolve("session-1", location));
-    await expect(
-      runArchive((storage) => storage.deleteResolved("session-1", location)),
-    ).resolves.toBeUndefined();
-    await expect(
-      runArchive((storage) => storage.deleteResolved("session-1", location)),
-    ).rejects.toThrow("Cake could not find resolved session session-1");
-    expect(
-      await runArchive((storage) => storage.resolved(location).pipe(Stream.runCollect)),
-    ).toEqual([]);
-  });
+  it.effect("permanently deletes only a resolved transcript", () =>
+    withPlatform(
+      Effect.gen(function* () {
+        const metadataRoot = yield* makeMetadataRoot();
+        const location = yield* makeFixture();
+        const firstError = yield* runArchive(metadataRoot, (storage) =>
+          storage.deleteResolved("session-1", location),
+        ).pipe(Effect.flip);
+        expect(firstError.message).toContain("Cake could not find resolved session session-1");
+        yield* runArchive(metadataRoot, (storage) => storage.resolve("session-1", location));
+        yield* runArchive(metadataRoot, (storage) => storage.deleteResolved("session-1", location));
+        const secondError = yield* runArchive(metadataRoot, (storage) =>
+          storage.deleteResolved("session-1", location),
+        ).pipe(Effect.flip);
+        expect(secondError.message).toContain("Cake could not find resolved session session-1");
+        expect(
+          yield* runArchive(metadataRoot, (storage) =>
+            storage.resolved(location).pipe(Stream.runCollect),
+          ),
+        ).toEqual([]);
+      }),
+    ),
+  );
 });

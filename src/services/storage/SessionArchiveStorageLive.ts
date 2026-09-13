@@ -1,7 +1,16 @@
 import { createHash } from "node:crypto";
-import { access, mkdir, opendir, readFile, rename, rm } from "node:fs/promises";
-import { basename, dirname, join } from "node:path";
-import { Effect, Layer, Schema, Stream } from "effect";
+import {
+  Effect,
+  Exit,
+  FileSystem,
+  Layer,
+  Path,
+  RcMap,
+  Schema,
+  Scope,
+  Semaphore,
+  Stream,
+} from "effect";
 import {
   findSessionFileById,
   findSessionFileMetadataById,
@@ -17,8 +26,7 @@ import {
   type SessionArchiveLocation,
 } from "./SessionArchiveStorage";
 import { sessionTitleFromFile } from "../pi/runtime/session-title";
-import { AtomicFileWriter } from "./internal/AtomicFileWriter";
-import { KeyedSerialExecutor } from "../../utils/KeyedSerialExecutor";
+import { atomicWriteFile } from "./internal/atomicFile";
 
 const archiveError = (operation: string, sessionId: string, cause: unknown) =>
   new SessionArchiveStorageError({
@@ -32,170 +40,239 @@ const ProjectSessionArchiveLocator = Schema.Struct({
   projectPath: Schema.String,
 });
 
-const digest = (value: string) => createHash("sha256").update(value).digest("hex");
+const ProjectSessionArchiveMigration = Schema.Struct({
+  version: Schema.Literal(1),
+  projectPath: Schema.String,
+});
 
-const isMissing = (error: unknown): error is NodeJS.ErrnoException =>
-  error instanceof Error && "code" in error && error.code === "ENOENT";
+const digest = (value: string) => createHash("sha256").update(value).digest("hex");
 
 export const makeSessionArchiveStorageLive = (archiveMetadataRoot: string) =>
   Layer.effect(
     SessionArchiveStorage,
-    Effect.sync(() => {
-      const writer = new AtomicFileWriter();
-      const updates = new KeyedSerialExecutor<string>();
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const updates = yield* RcMap.make({ lookup: () => Semaphore.make(1) });
+
       const projectDirectory = (projectPath: string) =>
-        join(archiveMetadataRoot, "projects", digest(projectPath));
+        path.join(archiveMetadataRoot, "projects", digest(projectPath));
       const projectEntryPath = (projectPath: string, sessionId: string) =>
-        join(projectDirectory(projectPath), `${digest(sessionId)}.json`);
+        path.join(projectDirectory(projectPath), `${digest(sessionId)}.json`);
       const projectMigrationPath = (projectPath: string) =>
-        join(archiveMetadataRoot, "migrations", `${digest(projectPath)}.project-archives-v1`);
+        path.join(archiveMetadataRoot, "migrations", `${digest(projectPath)}.project-archives-v1`);
       const locatorPath = (sessionId: string) =>
-        join(
+        path.join(
           archiveMetadataRoot,
           "sessions",
           digest(sessionId).slice(0, 2),
           `${digest(sessionId)}.json`,
         );
-      const readDocument = async <S extends Schema.ConstraintDecoder<unknown>>(
-        path: string,
-        schema: S,
-      ): Promise<S["Type"] | undefined> => {
-        try {
-          return Schema.decodeUnknownSync(schema)(JSON.parse(await readFile(path, "utf8")));
-        } catch (error) {
-          if (isMissing(error)) return undefined;
-          throw error;
-        }
-      };
-      const readProjectEntry = async (sessionId: string) => {
-        const locator = await readDocument(locatorPath(sessionId), ProjectSessionArchiveLocator);
+
+      const withUpdateLock = <A, E, R>(key: string, effect: Effect.Effect<A, E, R>) =>
+        Effect.acquireUseRelease(
+          Scope.make(),
+          (leaseScope) =>
+            RcMap.get(updates, key).pipe(
+              Effect.provideService(Scope.Scope, leaseScope),
+              Effect.flatMap((lock) => lock.withPermits(1)(effect)),
+            ),
+          (leaseScope) => Scope.close(leaseScope, Exit.void),
+        );
+
+      const readDocument = Effect.fn("SessionArchiveStorage.readDocument")(function* <
+        S extends Schema.ConstraintDecoder<unknown>,
+      >(operation: string, sessionId: string, documentPath: string, schema: S) {
+        const exists = yield* fileSystem
+          .exists(documentPath)
+          .pipe(Effect.mapError((cause) => archiveError(operation, sessionId, cause)));
+        if (!exists) return undefined;
+        const text = yield* fileSystem
+          .readFileString(documentPath)
+          .pipe(Effect.mapError((cause) => archiveError(operation, sessionId, cause)));
+        const parsed: unknown = yield* Effect.try({
+          try: () => JSON.parse(text),
+          catch: (cause) => archiveError(operation, sessionId, cause),
+        });
+        return yield* Schema.decodeUnknownEffect(schema)(parsed).pipe(
+          Effect.mapError((cause) => archiveError(operation, sessionId, cause)),
+        );
+      });
+
+      const readProjectEntry = Effect.fn("SessionArchiveStorage.readProjectEntry")(function* (
+        operation: string,
+        sessionId: string,
+      ) {
+        const locator = yield* readDocument(
+          operation,
+          sessionId,
+          locatorPath(sessionId),
+          ProjectSessionArchiveLocator,
+        );
         if (!locator) return undefined;
-        const entry = await readDocument(
+        const entry = yield* readDocument(
+          operation,
+          sessionId,
           projectEntryPath(locator.projectPath, sessionId),
           ProjectSessionArchiveMetadata,
         );
-        if (entry?.sessionId !== sessionId) throw new Error("Project archive identity mismatch");
+        if (entry?.sessionId !== sessionId)
+          return yield* archiveError(
+            operation,
+            sessionId,
+            new Error("Project archive identity mismatch"),
+          );
         return entry;
-      };
-      const writeProjectEntry = async (entry: ProjectSessionArchiveMetadata) => {
+      });
+
+      const writeProjectEntry = Effect.fn("SessionArchiveStorage.writeProjectEntry")(function* (
+        operation: string,
+        entry: ProjectSessionArchiveMetadata,
+      ) {
         const target = projectEntryPath(entry.projectPath, entry.sessionId);
         const locator = locatorPath(entry.sessionId);
-        await updates.run(locator, async () => {
-          await mkdir(dirname(target), { recursive: true, mode: 0o700 });
-          await mkdir(dirname(locator), { recursive: true, mode: 0o700 });
-          await writer.write(target, `${JSON.stringify(entry, null, 2)}\n`);
-          await writer.write(
-            locator,
-            `${JSON.stringify({ version: 1, projectPath: entry.projectPath }, null, 2)}\n`,
-          );
-        });
-      };
-      const removeProjectEntry = async (entry: ProjectSessionArchiveMetadata) => {
+        yield* withUpdateLock(
+          locator,
+          Effect.gen(function* () {
+            const encodedEntry = yield* Schema.encodeEffect(ProjectSessionArchiveMetadata)(
+              entry,
+            ).pipe(Effect.mapError((cause) => archiveError(operation, entry.sessionId, cause)));
+            const encodedLocator = yield* Schema.encodeEffect(ProjectSessionArchiveLocator)({
+              version: 1,
+              projectPath: entry.projectPath,
+            }).pipe(Effect.mapError((cause) => archiveError(operation, entry.sessionId, cause)));
+            yield* atomicWriteFile(
+              fileSystem,
+              path,
+              target,
+              `${JSON.stringify(encodedEntry, null, 2)}\n`,
+              (_stage, cause) => archiveError(operation, entry.sessionId, cause),
+            );
+            yield* atomicWriteFile(
+              fileSystem,
+              path,
+              locator,
+              `${JSON.stringify(encodedLocator, null, 2)}\n`,
+              (_stage, cause) => archiveError(operation, entry.sessionId, cause),
+            );
+          }),
+        );
+      });
+
+      const removeProjectEntry = Effect.fn("SessionArchiveStorage.removeProjectEntry")(function* (
+        operation: string,
+        entry: ProjectSessionArchiveMetadata,
+      ) {
         const locator = locatorPath(entry.sessionId);
-        await updates.run(locator, async () => {
-          await rm(projectEntryPath(entry.projectPath, entry.sessionId), { force: true });
-          await rm(locator, { force: true });
-        });
-      };
+        yield* withUpdateLock(
+          locator,
+          Effect.all([
+            fileSystem.remove(projectEntryPath(entry.projectPath, entry.sessionId), {
+              force: true,
+            }),
+            fileSystem.remove(locator, { force: true }),
+          ]).pipe(Effect.mapError((cause) => archiveError(operation, entry.sessionId, cause))),
+        );
+      });
+
       const directoryInput = (location: SessionArchiveLocation, resolved: boolean) => ({
         workingDirectory: location.cwd,
         root: resolved ? location.resolvedRoot : location.activeRoot,
         direct: location.direct,
       });
 
-      const findAt = (sessionId: string, location: SessionArchiveLocation, resolved: boolean) =>
-        findSessionFileById(sessionId, directoryInput(location, resolved));
-
-      const move = Effect.fn("SessionArchiveStorage.move")(function* (
+      const findAt = Effect.fn("SessionArchiveStorage.findSessionFile")(function* (
         sessionId: string,
         location: SessionArchiveLocation,
         resolved: boolean,
       ) {
-        return yield* Effect.tryPromise({
-          try: async () => {
-            const activeDirectory = sessionDirectoryPath(directoryInput(location, false));
-            const resolvedDirectory = sessionDirectoryPath(directoryInput(location, true));
-            const destinationDirectory = resolved ? resolvedDirectory : activeDirectory;
-            const source = await findAt(sessionId, location, !resolved);
-            if (!source) {
-              const alreadyMoved = await findAt(sessionId, location, resolved);
-              if (alreadyMoved) return false;
-              throw new Error(`Cake could not find session ${sessionId}`);
-            }
-            await mkdir(destinationDirectory, { recursive: true });
-            const destination = join(destinationDirectory, basename(source));
-            try {
-              await access(destination);
-              try {
-                await access(source);
-              } catch (error) {
-                if (error instanceof Error && "code" in error && error.code === "ENOENT")
-                  return false;
-                throw error;
-              }
-              throw new Error(`Session archive destination already exists for ${sessionId}`);
-            } catch (error) {
-              if (!(error instanceof Error && "code" in error && error.code === "ENOENT"))
-                throw error;
-            }
-            try {
-              await rename(source, destination);
-            } catch (error) {
-              if (!(error instanceof Error && "code" in error && error.code === "ENOENT"))
-                throw error;
-              try {
-                await access(destination);
-                return false;
-              } catch {
-                throw error;
-              }
-            }
-            return true;
-          },
-          catch: (cause) => archiveError(resolved ? "resolve" : "restore", sessionId, cause),
-        });
+        return yield* Effect.tryPromise(() =>
+          findSessionFileById(sessionId, directoryInput(location, resolved)),
+        );
       });
 
-      const deleteAt = Effect.fn("SessionArchiveStorage.deleteAt")(function* (
-        operation: "delete" | "deleteResolved",
+      const findMetadataAt = Effect.fn("SessionArchiveStorage.findSessionFileMetadata")(function* (
         sessionId: string,
         location: SessionArchiveLocation,
+        resolved: boolean,
       ) {
-        yield* Effect.tryPromise({
-          try: async () => {
-            if (operation === "deleteResolved") {
-              const source = await findAt(sessionId, location, true);
-              if (!source) throw new Error(`Cake could not find resolved session ${sessionId}`);
-              await rm(source);
-              return;
-            }
-            const active = await findAt(sessionId, location, false);
-            const resolved = await findAt(sessionId, location, true);
-            if (active && resolved)
-              throw new Error(`Session ${sessionId} exists in both namespaces`);
-            const source = active ?? resolved;
-            if (!source) throw new Error(`Cake could not find session ${sessionId}`);
-            await rm(source);
-          },
-          catch: (cause) => archiveError(operation, sessionId, cause),
-        });
+        return yield* Effect.tryPromise(() =>
+          findSessionFileMetadataById(sessionId, directoryInput(location, resolved)),
+        );
       });
 
-      const locate = Effect.fn("SessionArchiveStorage.locate")(function* (
-        sessionId: string,
-        location: SessionArchiveLocation,
-      ) {
-        return yield* Effect.tryPromise({
-          try: async () => {
-            const active = await findAt(sessionId, location, false);
-            const resolved = await findAt(sessionId, location, true);
-            if (active && resolved)
-              throw new Error(`Session ${sessionId} exists in both namespaces`);
-            return active ? ("active" as const) : resolved ? ("resolved" as const) : undefined;
-          },
-          catch: (cause) => archiveError("locate", sessionId, cause),
-        });
-      });
+      const move = Effect.fn("SessionArchiveStorage.move")(
+        function* (sessionId: string, location: SessionArchiveLocation, resolved: boolean) {
+          const activeDirectory = sessionDirectoryPath(directoryInput(location, false));
+          const resolvedDirectory = sessionDirectoryPath(directoryInput(location, true));
+          const destinationDirectory = resolved ? resolvedDirectory : activeDirectory;
+          const source = yield* findAt(sessionId, location, !resolved);
+          if (!source) {
+            const alreadyMoved = yield* findAt(sessionId, location, resolved);
+            if (alreadyMoved) return false;
+            return yield* Effect.fail(new Error(`Cake could not find session ${sessionId}`));
+          }
+          yield* fileSystem.makeDirectory(destinationDirectory, { recursive: true });
+          const destination = path.join(destinationDirectory, path.basename(source));
+          if (yield* fileSystem.exists(destination)) {
+            if (!(yield* fileSystem.exists(source))) return false;
+            return yield* Effect.fail(
+              new Error(`Session archive destination already exists for ${sessionId}`),
+            );
+          }
+          const renamed = yield* fileSystem.rename(source, destination).pipe(Effect.result);
+          if (renamed._tag === "Success") return true;
+          if (renamed.failure.reason._tag !== "NotFound") return yield* renamed.failure;
+          if (yield* fileSystem.exists(destination)) return false;
+          return yield* renamed.failure;
+        },
+        (effect, sessionId, _location, resolved) =>
+          effect.pipe(
+            Effect.mapError((cause) =>
+              archiveError(resolved ? "resolve" : "restore", sessionId, cause),
+            ),
+          ),
+      );
+
+      const deleteAt = Effect.fn("SessionArchiveStorage.deleteAt")(
+        function* (
+          operation: "delete" | "deleteResolved",
+          sessionId: string,
+          location: SessionArchiveLocation,
+        ) {
+          if (operation === "deleteResolved") {
+            const source = yield* findAt(sessionId, location, true);
+            if (!source)
+              return yield* Effect.fail(
+                new Error(`Cake could not find resolved session ${sessionId}`),
+              );
+            yield* fileSystem.remove(source);
+            return;
+          }
+          const active = yield* findAt(sessionId, location, false);
+          const resolved = yield* findAt(sessionId, location, true);
+          if (active && resolved)
+            return yield* Effect.fail(new Error(`Session ${sessionId} exists in both namespaces`));
+          const source = active ?? resolved;
+          if (!source)
+            return yield* Effect.fail(new Error(`Cake could not find session ${sessionId}`));
+          yield* fileSystem.remove(source);
+        },
+        (effect, operation, sessionId) =>
+          effect.pipe(Effect.mapError((cause) => archiveError(operation, sessionId, cause))),
+      );
+
+      const locate = Effect.fn("SessionArchiveStorage.locate")(
+        function* (sessionId: string, location: SessionArchiveLocation) {
+          const active = yield* findAt(sessionId, location, false);
+          const resolved = yield* findAt(sessionId, location, true);
+          if (active && resolved)
+            return yield* Effect.fail(new Error(`Session ${sessionId} exists in both namespaces`));
+          return active ? ("active" as const) : resolved ? ("resolved" as const) : undefined;
+        },
+        (effect, sessionId) =>
+          effect.pipe(Effect.mapError((cause) => archiveError("locate", sessionId, cause))),
+      );
 
       const resolved = (location: SessionArchiveLocation) =>
         streamSessionFiles(directoryInput(location, true)).pipe(
@@ -221,10 +298,9 @@ export const makeSessionArchiveStorageLive = (archiveMetadataRoot: string) =>
         sessionId: string,
         location: SessionArchiveLocation,
       ) {
-        const item = yield* Effect.tryPromise({
-          try: () => findSessionFileMetadataById(sessionId, directoryInput(location, true)),
-          catch: (cause) => archiveError("resolvedEntry", sessionId, cause),
-        });
+        const item = yield* findMetadataAt(sessionId, location, true).pipe(
+          Effect.mapError((cause) => archiveError("resolvedEntry", sessionId, cause)),
+        );
         if (!item) return undefined;
         const title = yield* Effect.try({
           try: () => sessionTitleFromFile(item.path, location.cwd),
@@ -242,10 +318,7 @@ export const makeSessionArchiveStorageLive = (archiveMetadataRoot: string) =>
 
       const resolvedProjectEntry = Effect.fn("SessionArchiveStorage.resolvedProjectEntry")(
         function* (sessionId: string) {
-          return yield* Effect.tryPromise({
-            try: () => readProjectEntry(sessionId),
-            catch: (cause) => archiveError("resolvedProjectEntry", sessionId, cause),
-          });
+          return yield* readProjectEntry("resolvedProjectEntry", sessionId);
         },
       );
 
@@ -254,12 +327,12 @@ export const makeSessionArchiveStorageLive = (archiveMetadataRoot: string) =>
         location: SessionArchiveLocation,
         context: ProjectSessionArchiveContext,
       ) {
-        const item = yield* Effect.tryPromise({
-          try: async () =>
-            (await findSessionFileMetadataById(sessionId, directoryInput(location, false))) ??
-            (await findSessionFileMetadataById(sessionId, directoryInput(location, true))),
-          catch: (cause) => archiveError("resolveProject", sessionId, cause),
-        });
+        const item = yield* findMetadataAt(sessionId, location, false).pipe(
+          Effect.flatMap((active) =>
+            active ? Effect.succeed(active) : findMetadataAt(sessionId, location, true),
+          ),
+          Effect.mapError((cause) => archiveError("resolveProject", sessionId, cause)),
+        );
         if (!item)
           return yield* archiveError(
             "resolveProject",
@@ -281,10 +354,7 @@ export const makeSessionArchiveStorageLive = (archiveMetadataRoot: string) =>
         const entry = ProjectSessionArchiveMetadata.make(
           context.worktreeName ? { ...entryBase, worktreeName: context.worktreeName } : entryBase,
         );
-        yield* Effect.tryPromise({
-          try: () => writeProjectEntry(entry),
-          catch: (cause) => archiveError("resolveProject", sessionId, cause),
-        });
+        yield* writeProjectEntry("resolveProject", entry);
         return moved;
       });
 
@@ -302,10 +372,7 @@ export const makeSessionArchiveStorageLive = (archiveMetadataRoot: string) =>
           },
           false,
         );
-        yield* Effect.tryPromise({
-          try: () => removeProjectEntry(entry),
-          catch: (cause) => archiveError("restoreProject", sessionId, cause),
-        });
+        yield* removeProjectEntry("restoreProject", entry);
         return entry;
       });
 
@@ -323,49 +390,47 @@ export const makeSessionArchiveStorageLive = (archiveMetadataRoot: string) =>
             activeRoot: entry.activeRoot,
             resolvedRoot: entry.resolvedRoot,
           });
-          yield* Effect.tryPromise({
-            try: () => removeProjectEntry(entry),
-            catch: (cause) => archiveError("deleteResolvedProject", sessionId, cause),
-          });
+          yield* removeProjectEntry("deleteResolvedProject", entry);
         },
       );
 
-      const resolvedProjects = (projectPath: string) => {
-        async function* entries() {
-          let directory;
-          try {
-            directory = await opendir(projectDirectory(projectPath));
-          } catch (error) {
-            if (isMissing(error)) return;
-            throw error;
-          }
-          for await (const item of directory) {
-            if (!item.isFile() || !item.name.endsWith(".json")) continue;
-            const entry = await readDocument(
-              join(projectDirectory(projectPath), item.name),
-              ProjectSessionArchiveMetadata,
-            );
-            if (entry?.projectPath === projectPath) yield entry;
-          }
-        }
-        return Stream.fromAsyncIterable(entries(), (cause) =>
-          archiveError("resolvedProjects", "", cause),
+      const resolvedProjects = (projectPath: string) =>
+        Stream.unwrap(
+          fileSystem.exists(projectDirectory(projectPath)).pipe(
+            Effect.mapError((cause) => archiveError("resolvedProjects", "", cause)),
+            Effect.flatMap((exists) =>
+              exists
+                ? fileSystem
+                    .readDirectory(projectDirectory(projectPath))
+                    .pipe(Effect.mapError((cause) => archiveError("resolvedProjects", "", cause)))
+                : Effect.succeed([]),
+            ),
+            Effect.map((items) =>
+              Stream.fromIterable(items.filter((item) => item.endsWith(".json"))).pipe(
+                Stream.mapEffect((item) =>
+                  readDocument(
+                    "resolvedProjects",
+                    "",
+                    path.join(projectDirectory(projectPath), item),
+                    ProjectSessionArchiveMetadata,
+                  ),
+                ),
+                Stream.filter(
+                  (entry): entry is ProjectSessionArchiveMetadata =>
+                    entry !== undefined && entry.projectPath === projectPath,
+                ),
+              ),
+            ),
+          ),
         );
-      };
 
-      const projectMigrationComplete = (projectPath: string) =>
-        Effect.tryPromise({
-          try: async () => {
-            try {
-              await access(projectMigrationPath(projectPath));
-              return true;
-            } catch (error) {
-              if (isMissing(error)) return false;
-              throw error;
-            }
-          },
-          catch: (cause) => archiveError("projectMigrationComplete", "", cause),
-        });
+      const projectMigrationComplete = Effect.fn("SessionArchiveStorage.projectMigrationComplete")(
+        function* (projectPath: string) {
+          return yield* fileSystem
+            .exists(projectMigrationPath(projectPath))
+            .pipe(Effect.mapError((cause) => archiveError("projectMigrationComplete", "", cause)));
+        },
+      );
 
       const migrateProject = (
         projectPath: string,
@@ -402,23 +467,26 @@ export const makeSessionArchiveStorageLive = (archiveMetadataRoot: string) =>
                         ? { ...entryBase, worktreeName: source.worktreeName }
                         : entryBase,
                     );
-                    return yield* Effect.tryPromise({
-                      try: () => writeProjectEntry(entry).then(() => entry),
-                      catch: (cause) => archiveError("migrateProject", item.id, cause),
-                    });
+                    yield* writeProjectEntry("migrateProject", entry);
+                    return entry;
                   }),
                 ),
               ),
             { concurrency: 8 },
           ),
         );
-        const markComplete = Effect.tryPromise({
-          try: async () => {
-            const path = projectMigrationPath(projectPath);
-            await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-            await writer.write(path, `${JSON.stringify({ version: 1, projectPath })}\n`);
-          },
-          catch: (cause) => archiveError("migrateProject", "", cause),
+        const markComplete = Effect.gen(function* () {
+          const encoded = yield* Schema.encodeEffect(ProjectSessionArchiveMigration)({
+            version: 1,
+            projectPath,
+          }).pipe(Effect.mapError((cause) => archiveError("migrateProject", "", cause)));
+          yield* atomicWriteFile(
+            fileSystem,
+            path,
+            projectMigrationPath(projectPath),
+            `${JSON.stringify(encoded)}\n`,
+            (_stage, cause) => archiveError("migrateProject", "", cause),
+          );
         });
         return Stream.unwrap(
           projectMigrationComplete(projectPath).pipe(

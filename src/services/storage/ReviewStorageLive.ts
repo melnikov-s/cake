@@ -1,290 +1,31 @@
-import { Effect, Layer, Option, Predicate, Schema, SubscriptionRef } from "effect";
-import { createHash } from "node:crypto";
-import { mkdir, readFile, readdir, rm } from "node:fs/promises";
-import { join } from "node:path";
+import {
+  DateTime,
+  Effect,
+  Exit,
+  FileSystem,
+  Layer,
+  Path,
+  Predicate,
+  RcMap,
+  Schema,
+  Scope,
+  Semaphore,
+  SubscriptionRef,
+} from "effect";
+import { createHash, randomUUID } from "node:crypto";
 import {
   projectReviewThread,
   reviewThreadRecordSchema,
   type ReviewAnchor,
   type ReviewSessionProjection,
-  type ReviewThread,
   type ReviewThreadRecord,
 } from "../../ipc/review-contract";
-import { AtomicFileWriter } from "./internal/AtomicFileWriter";
-import { KeyedSerialExecutor } from "../../utils/KeyedSerialExecutor";
 import { ReviewStorage, ReviewStorageError } from "./ReviewStorage";
+import { atomicWriteFile } from "./internal/atomicFile";
 
-type ReviewSessionLoader = (record: ReviewThreadRecord) => Promise<ReviewSessionProjection>;
-class ReviewRepository {
-  private readonly updates = new KeyedSerialExecutor<string>();
-  private readonly creations = new KeyedSerialExecutor<string>();
-  private readonly contextUpdates = new KeyedSerialExecutor<string>();
-  private readonly writer = new AtomicFileWriter();
-
-  constructor(
-    private readonly root: string,
-    private readonly piSessionRoot: string,
-    private readonly loadSession: ReviewSessionLoader = async () => ({ parts: [] }),
-  ) {}
-
-  agentSessionDirectory(workspacePath: string, sessionId: string, threadId: string) {
-    return join(
-      this.piSessionRoot,
-      digestKey(workspacePath),
-      digestKey(sessionId),
-      digestKey(threadId),
-    );
-  }
-
-  reviewContextPath(workspacePath: string, sessionId: string) {
-    return join(this.sessionDirectory(workspacePath, sessionId), "review-threads.md");
-  }
-
-  discussionParentContextPath(workspacePath: string, sessionId: string, threadId: string) {
-    return join(
-      this.sessionDirectory(workspacePath, sessionId),
-      "context",
-      `${digestKey(threadId)}.md`,
-    );
-  }
-
-  async deleteSession(workspacePath: string, sessionId: string) {
-    await Promise.all([
-      rm(this.sessionDirectory(workspacePath, sessionId), { recursive: true, force: true }),
-      rm(join(this.piSessionRoot, digestKey(workspacePath), digestKey(sessionId)), {
-        recursive: true,
-        force: true,
-      }),
-    ]);
-  }
-
-  async listSession(workspacePath: string, sessionId: string): Promise<ReviewThread[]> {
-    const records = await this.listRecords(workspacePath, sessionId);
-    return Promise.all(records.map((record) => this.project(record)));
-  }
-
-  /** Cake-owned Discussion anchors and sidecar references; replies remain in Pi. */
-  listDiscussionRecords(workspacePath: string, sessionId: string) {
-    return this.listRecords(workspacePath, sessionId);
-  }
-
-  async get(
-    workspacePath: string,
-    sessionId: string,
-    threadId: string,
-  ): Promise<ReviewThreadRecord | undefined> {
-    try {
-      return await this.readRecord(
-        JSON.parse(await readFile(this.threadPath(workspacePath, sessionId, threadId), "utf8")),
-      );
-    } catch (error) {
-      if (isMissing(error)) return undefined;
-      throw error;
-    }
-  }
-
-  async createDiscussion(
-    workspacePath: string,
-    sessionId: string,
-    anchor: ReviewAnchor,
-  ): Promise<ReviewThreadRecord> {
-    const now = new Date().toISOString();
-    const record = Schema.decodeUnknownSync(reviewThreadRecordSchema)({
-      id: crypto.randomUUID(),
-      workspacePath,
-      sessionId,
-      anchor,
-      status: "open",
-      createdAt: now,
-      updatedAt: now,
-      pendingComments: [],
-    });
-    await this.write(record);
-    await this.refreshReviewContext(workspacePath, sessionId);
-    return record;
-  }
-
-  async ensureDiscussion(
-    workspacePath: string,
-    sessionId: string,
-    anchor: ReviewAnchor,
-  ): Promise<ReviewThreadRecord> {
-    const key = `${workspacePath}\u0000${sessionId}\u0000${anchor.view ?? "file"}\u0000${anchor.path}`;
-    return this.creations.run(key, async () => {
-      const existing = (await this.listRecords(workspacePath, sessionId)).find(
-        (record) => record.anchor.view === anchor.view && record.anchor.path === anchor.path,
-      );
-      return existing ?? this.createDiscussion(workspacePath, sessionId, anchor);
-    });
-  }
-
-  async linkDiscussionSidecar(
-    workspacePath: string,
-    sessionId: string,
-    threadId: string,
-    sidecar: { sessionId: string; sessionFile: string },
-  ): Promise<ReviewThreadRecord> {
-    return this.update(workspacePath, sessionId, threadId, (thread) => ({
-      ...thread,
-      agentSessionId: sidecar.sessionId,
-      agentSessionFile: sidecar.sessionFile,
-      pendingComments: [],
-      submission: undefined,
-      updatedAt: new Date().toISOString(),
-    }));
-  }
-
-  refreshDiscussionContext(workspacePath: string, sessionId: string) {
-    return this.refreshReviewContext(workspacePath, sessionId);
-  }
-
-  async resolve(
-    workspacePath: string,
-    sessionId: string,
-    threadId: string,
-    resolved: boolean,
-  ): Promise<ReviewThread> {
-    const record = await this.update(workspacePath, sessionId, threadId, (thread) => {
-      const now = new Date().toISOString();
-      return {
-        ...thread,
-        status: resolved ? "resolved" : "open",
-        resolvedAt: resolved ? now : undefined,
-        updatedAt: now,
-      };
-    });
-    await this.refreshReviewContext(workspacePath, sessionId);
-    return this.project(record);
-  }
-
-  private async refreshReviewContext(workspacePath: string, sessionId: string) {
-    const key = `${workspacePath}\u0000${sessionId}`;
-    await this.contextUpdates.run(key, async () => {
-      const threads = await this.listSession(workspacePath, sessionId);
-      const target = this.reviewContextPath(workspacePath, sessionId);
-      const sections = threads.map((thread) =>
-        [
-          `## Thread ${thread.id} · ${thread.status}`,
-          thread.anchor.view === "message"
-            ? `Assistant message: ${thread.anchor.messageId ?? "unknown"}${thread.anchor.entryId ? ` · Pi entry ${thread.anchor.entryId}` : ""}`
-            : thread.anchor.view === "session"
-              ? "Session-level side chat"
-              : `Code: ${thread.anchor.path} · diff rows ${thread.anchor.start.diffLine}-${thread.anchor.end.diffLine}`,
-          thread.anchor.selectedText
-            ? `> ${thread.anchor.selectedText.replaceAll("\n", "\n> ")}`
-            : "",
-          ...thread.parts.flatMap((part) =>
-            part.kind === "text"
-              ? [`### ${part.role === "user" ? "User" : "Assistant"}\n\n${part.text}`]
-              : [],
-          ),
-        ].join("\n\n"),
-      );
-      await mkdir(this.sessionDirectory(workspacePath, sessionId), {
-        recursive: true,
-        mode: 0o700,
-      });
-      await this.writer.write(
-        target,
-        `# Side chats and review threads\n\nParent session: ${sessionId}\n\nThis is a derived index of session-level side chats, inline code reviews, and assistant-message discussions.\n\n${sections.join("\n\n---\n\n")}\n`,
-      );
-    });
-  }
-
-  private async project(record: ReviewThreadRecord) {
-    return projectReviewThread(
-      record,
-      record.agentSessionFile ? await this.loadSession(record) : { parts: [], usage: record.usage },
-    );
-  }
-
-  private async listRecords(
-    workspacePath: string,
-    sessionId: string,
-  ): Promise<ReviewThreadRecord[]> {
-    let names: string[];
-    try {
-      names = await readdir(this.sessionDirectory(workspacePath, sessionId));
-    } catch (error) {
-      if (isMissing(error)) return [];
-      throw error;
-    }
-    const records = await Promise.all(
-      names
-        .filter((name) => name.endsWith(".json"))
-        .map(async (name) => {
-          try {
-            return await this.readRecord(
-              JSON.parse(
-                await readFile(join(this.sessionDirectory(workspacePath, sessionId), name), "utf8"),
-              ),
-            );
-          } catch (error) {
-            if (isMissing(error)) return undefined;
-            throw error;
-          }
-        }),
-    );
-    return records
-      .filter((record): record is ReviewThreadRecord => Boolean(record))
-      .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
-  }
-
-  private async update(
-    workspacePath: string,
-    sessionId: string,
-    threadId: string,
-    mutate: (thread: ReviewThreadRecord) => ReviewThreadRecord,
-  ): Promise<ReviewThreadRecord> {
-    const key = `${workspacePath}\u0000${sessionId}\u0000${threadId}`;
-    return this.updates.run(key, async () => {
-      const existing = await this.get(workspacePath, sessionId, threadId);
-      if (!existing) throw new Error("That review thread no longer exists");
-      const record = Schema.decodeUnknownSync(reviewThreadRecordSchema)(mutate(existing));
-      await this.write(record);
-      return record;
-    });
-  }
-
-  private async readRecord(untrustedValue: unknown): Promise<ReviewThreadRecord> {
-    const current = Schema.decodeUnknownOption(reviewThreadRecordSchema)(untrustedValue);
-    if (Option.isSome(current)) return current.value;
-    if (!Predicate.isObject(untrustedValue) || !Predicate.isObject(untrustedValue.anchor))
-      throw new Error("Review thread document is malformed");
-    const view = untrustedValue.anchor.view;
-    if (view !== "diff" && view !== "full") throw new Error("Review thread document is malformed");
-    const migrated = Schema.decodeUnknownSync(reviewThreadRecordSchema)({
-      ...untrustedValue,
-      anchor: { ...untrustedValue.anchor, view: "file" },
-    });
-    await this.write(migrated);
-    return migrated;
-  }
-
-  private async write(record: ReviewThreadRecord) {
-    const directory = this.sessionDirectory(record.workspacePath, record.sessionId);
-    await mkdir(directory, { recursive: true, mode: 0o700 });
-    const target = this.threadPath(record.workspacePath, record.sessionId, record.id);
-    await this.writer.write(
-      target,
-      `${JSON.stringify(Schema.decodeUnknownSync(reviewThreadRecordSchema)(record), null, 2)}\n`,
-    );
-  }
-
-  private sessionDirectory(workspacePath: string, sessionId: string) {
-    return join(this.root, digestKey(workspacePath), digestKey(sessionId));
-  }
-  private threadPath(workspacePath: string, sessionId: string, threadId: string) {
-    return join(this.sessionDirectory(workspacePath, sessionId), `${digestKey(threadId)}.json`);
-  }
-}
-
-function digestKey(value: string) {
-  return createHash("sha256").update(value).digest("hex");
-}
-function isMissing(error: unknown): error is NodeJS.ErrnoException {
-  return error instanceof Error && "code" in error && error.code === "ENOENT";
-}
+type ReviewSessionLoader = (
+  record: ReviewThreadRecord,
+) => Effect.Effect<ReviewSessionProjection, unknown>;
 
 const storageError = (operation: string, cause: unknown) =>
   new ReviewStorageError({
@@ -292,92 +33,335 @@ const storageError = (operation: string, cause: unknown) =>
     message: cause instanceof Error ? cause.message : String(cause),
   });
 
-const makeReviewStorage = (
-  root: string,
-  piSessionRoot: string,
-  loadSession?: ReviewSessionLoader,
-) =>
-  Effect.gen(function* () {
-    const repository = new ReviewRepository(root, piSessionRoot, loadSession);
-    const revision = yield* SubscriptionRef.make(0);
-    const changed = <A, E>(effect: Effect.Effect<A, E>) =>
-      effect.pipe(Effect.tap(() => SubscriptionRef.update(revision, (value) => value + 1)));
-    const attempt = <A>(operation: string, evaluate: () => Promise<A>) =>
-      Effect.tryPromise({
-        try: evaluate,
-        catch: (cause) => storageError(operation, cause),
-      });
-    const service = ReviewStorage.of({
-      changes: () => SubscriptionRef.changes(revision),
-      agentSessionDirectory: (workingDirectory, sessionId, threadId) =>
-        repository.agentSessionDirectory(workingDirectory, sessionId, threadId),
-      reviewContextPath: (workingDirectory, sessionId) =>
-        repository.reviewContextPath(workingDirectory, sessionId),
-      discussionParentContextPath: (workingDirectory, sessionId, threadId) =>
-        repository.discussionParentContextPath(workingDirectory, sessionId, threadId),
-      deleteSession: Effect.fn("ReviewStorage.deleteSession")((workingDirectory, sessionId) =>
-        changed(
-          attempt("deleteSession", () => repository.deleteSession(workingDirectory, sessionId)),
-        ),
-      ),
-      listSession: Effect.fn("ReviewStorage.listSession")((workingDirectory, sessionId) =>
-        attempt("listSession", () => repository.listSession(workingDirectory, sessionId)),
-      ),
-      listDiscussionRecords: Effect.fn("ReviewStorage.listDiscussionRecords")(
-        (workingDirectory, sessionId) =>
-          attempt("listDiscussionRecords", () =>
-            repository.listDiscussionRecords(workingDirectory, sessionId),
-          ),
-      ),
-      get: Effect.fn("ReviewStorage.get")((workingDirectory, sessionId, threadId) =>
-        attempt("get", () => repository.get(workingDirectory, sessionId, threadId)),
-      ),
-      createDiscussion: Effect.fn("ReviewStorage.createDiscussion")(
-        (workingDirectory, sessionId, anchor) =>
-          changed(
-            attempt("createDiscussion", () =>
-              repository.createDiscussion(workingDirectory, sessionId, anchor),
-            ),
-          ),
-      ),
-      ensureDiscussion: Effect.fn("ReviewStorage.ensureDiscussion")(
-        (workingDirectory, sessionId, anchor) =>
-          changed(
-            attempt("ensureDiscussion", () =>
-              repository.ensureDiscussion(workingDirectory, sessionId, anchor),
-            ),
-          ),
-      ),
-      linkDiscussionSidecar: Effect.fn("ReviewStorage.linkDiscussionSidecar")(
-        (workingDirectory, sessionId, threadId, sidecar) =>
-          changed(
-            attempt("linkDiscussionSidecar", () =>
-              repository.linkDiscussionSidecar(workingDirectory, sessionId, threadId, sidecar),
-            ),
-          ),
-      ),
-      resolve: Effect.fn("ReviewStorage.resolve")(
-        (workingDirectory, sessionId, threadId, resolved) =>
-          changed(
-            attempt("resolve", () =>
-              repository.resolve(workingDirectory, sessionId, threadId, resolved),
-            ),
-          ),
-      ),
-      refreshDiscussionContext: Effect.fn("ReviewStorage.refreshDiscussionContext")(
-        (workingDirectory, sessionId) =>
-          changed(
-            attempt("refreshDiscussionContext", () =>
-              repository.refreshDiscussionContext(workingDirectory, sessionId),
-            ),
-          ),
-      ),
-    });
-    return service;
-  });
+const digestKey = (value: string) => createHash("sha256").update(value).digest("hex");
+const serialKey = (...parts: ReadonlyArray<string>) => parts.join("\u0000");
 
 export const makeReviewStorageLive = (
   root: string,
   piSessionRoot: string,
-  loadSession?: ReviewSessionLoader,
-) => Layer.effect(ReviewStorage, makeReviewStorage(root, piSessionRoot, loadSession));
+  loadSession: ReviewSessionLoader = () => Effect.succeed({ parts: [] }),
+) =>
+  Layer.effect(
+    ReviewStorage,
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const revision = yield* SubscriptionRef.make(0);
+      const updateLocks = yield* RcMap.make({ lookup: () => Semaphore.make(1) });
+      const creationLocks = yield* RcMap.make({ lookup: () => Semaphore.make(1) });
+      const contextLocks = yield* RcMap.make({ lookup: () => Semaphore.make(1) });
+
+      const sessionDirectory = (workspacePath: string, sessionId: string) =>
+        path.join(root, digestKey(workspacePath), digestKey(sessionId));
+      const threadPath = (workspacePath: string, sessionId: string, threadId: string) =>
+        path.join(sessionDirectory(workspacePath, sessionId), `${digestKey(threadId)}.json`);
+      const agentSessionDirectory = (workspacePath: string, sessionId: string, threadId: string) =>
+        path.join(
+          piSessionRoot,
+          digestKey(workspacePath),
+          digestKey(sessionId),
+          digestKey(threadId),
+        );
+      const reviewContextPath = (workspacePath: string, sessionId: string) =>
+        path.join(sessionDirectory(workspacePath, sessionId), "review-threads.md");
+      const discussionParentContextPath = (
+        workspacePath: string,
+        sessionId: string,
+        threadId: string,
+      ) =>
+        path.join(
+          sessionDirectory(workspacePath, sessionId),
+          "context",
+          `${digestKey(threadId)}.md`,
+        );
+
+      const withKeyLock = <A, E, R>(
+        locks: RcMap.RcMap<unknown, Semaphore.Semaphore>,
+        key: string,
+        effect: Effect.Effect<A, E, R>,
+      ): Effect.Effect<A, E, R> =>
+        Effect.acquireUseRelease(
+          Scope.make(),
+          (leaseScope) =>
+            Effect.gen(function* () {
+              const lock = yield* RcMap.get(locks, key).pipe(
+                Effect.provideService(Scope.Scope, leaseScope),
+              );
+              return yield* lock.withPermits(1)(effect);
+            }),
+          (leaseScope) => Scope.close(leaseScope, Exit.void),
+        );
+
+      const write = Effect.fn("ReviewStorage.write")(function* (record: ReviewThreadRecord) {
+        const encoded = yield* Schema.encodeEffect(reviewThreadRecordSchema)(record);
+        const content = yield* Effect.try(() => `${JSON.stringify(encoded, null, 2)}\n`);
+        const target = threadPath(record.workspacePath, record.sessionId, record.id);
+        yield* atomicWriteFile(fileSystem, path, target, content, (stage, cause) =>
+          storageError(`write:${stage}`, cause),
+        );
+      });
+
+      const readRecord = Effect.fn("ReviewStorage.readRecord")(function* (untrustedValue: unknown) {
+        return yield* Schema.decodeUnknownEffect(reviewThreadRecordSchema)(untrustedValue).pipe(
+          Effect.catch(() =>
+            Effect.gen(function* () {
+              if (!Predicate.isObject(untrustedValue) || !Predicate.isObject(untrustedValue.anchor))
+                return yield* Effect.fail(new Error("Review thread document is malformed"));
+              const view = untrustedValue.anchor.view;
+              if (view !== "diff" && view !== "full")
+                return yield* Effect.fail(new Error("Review thread document is malformed"));
+              const migrated = yield* Schema.decodeUnknownEffect(reviewThreadRecordSchema)({
+                ...untrustedValue,
+                anchor: { ...untrustedValue.anchor, view: "file" },
+              });
+              yield* write(migrated);
+              return migrated;
+            }),
+          ),
+        );
+      });
+
+      const readRecordFile = Effect.fn("ReviewStorage.readRecordFile")(function* (target: string) {
+        const text = yield* fileSystem.readFileString(target);
+        const parsed: unknown = yield* Effect.try(() => JSON.parse(text));
+        return yield* readRecord(parsed);
+      });
+
+      const listRecords = Effect.fn("ReviewStorage.listRecords")(function* (
+        workspacePath: string,
+        sessionId: string,
+      ) {
+        const directory = sessionDirectory(workspacePath, sessionId);
+        if (!(yield* fileSystem.exists(directory))) return [];
+        const names = yield* fileSystem.readDirectory(directory);
+        const records = yield* Effect.forEach(
+          names.filter((name) => name.endsWith(".json")),
+          (name) => readRecordFile(path.join(directory, name)),
+          { concurrency: "unbounded" },
+        );
+        return records.sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+      });
+
+      const getRecord = Effect.fn("ReviewStorage.getRecord")(function* (
+        workspacePath: string,
+        sessionId: string,
+        threadId: string,
+      ) {
+        const target = threadPath(workspacePath, sessionId, threadId);
+        if (!(yield* fileSystem.exists(target))) return undefined;
+        return yield* readRecordFile(target);
+      });
+
+      const project = Effect.fn("ReviewStorage.project")(function* (record: ReviewThreadRecord) {
+        const projection = record.agentSessionFile
+          ? yield* loadSession(record)
+          : { parts: [], usage: record.usage };
+        return projectReviewThread(record, projection);
+      });
+
+      const listSessionInternal = Effect.fn("ReviewStorage.listSessionInternal")(function* (
+        workspacePath: string,
+        sessionId: string,
+      ) {
+        const records = yield* listRecords(workspacePath, sessionId);
+        return yield* Effect.forEach(records, project, { concurrency: "unbounded" });
+      });
+
+      const refreshReviewContext = Effect.fn("ReviewStorage.refreshReviewContext")(function* (
+        workspacePath: string,
+        sessionId: string,
+      ) {
+        const key = serialKey(workspacePath, sessionId);
+        yield* withKeyLock(
+          contextLocks,
+          key,
+          Effect.gen(function* () {
+            const threads = yield* listSessionInternal(workspacePath, sessionId);
+            const sections = threads.map((thread) =>
+              [
+                `## Thread ${thread.id} · ${thread.status}`,
+                thread.anchor.view === "message"
+                  ? `Assistant message: ${thread.anchor.messageId ?? "unknown"}${thread.anchor.entryId ? ` · Pi entry ${thread.anchor.entryId}` : ""}`
+                  : thread.anchor.view === "session"
+                    ? "Session-level side chat"
+                    : `Code: ${thread.anchor.path} · diff rows ${thread.anchor.start.diffLine}-${thread.anchor.end.diffLine}`,
+                thread.anchor.selectedText
+                  ? `> ${thread.anchor.selectedText.replaceAll("\n", "\n> ")}`
+                  : "",
+                ...thread.parts.flatMap((part) =>
+                  part.kind === "text"
+                    ? [`### ${part.role === "user" ? "User" : "Assistant"}\n\n${part.text}`]
+                    : [],
+                ),
+              ].join("\n\n"),
+            );
+            const content = `# Side chats and review threads\n\nParent session: ${sessionId}\n\nThis is a derived index of session-level side chats, inline code reviews, and assistant-message discussions.\n\n${sections.join("\n\n---\n\n")}\n`;
+            yield* atomicWriteFile(
+              fileSystem,
+              path,
+              reviewContextPath(workspacePath, sessionId),
+              content,
+              (stage, cause) => storageError(`refreshContext:${stage}`, cause),
+            );
+          }),
+        );
+      });
+
+      const createDiscussionInternal = Effect.fn("ReviewStorage.createDiscussionInternal")(
+        function* (workspacePath: string, sessionId: string, anchor: ReviewAnchor) {
+          const now = DateTime.formatIso(yield* DateTime.now);
+          const record = yield* Schema.decodeUnknownEffect(reviewThreadRecordSchema)({
+            id: randomUUID(),
+            workspacePath,
+            sessionId,
+            anchor,
+            status: "open",
+            createdAt: now,
+            updatedAt: now,
+            pendingComments: [],
+          });
+          yield* write(record);
+          yield* refreshReviewContext(workspacePath, sessionId);
+          return record;
+        },
+      );
+
+      const update = Effect.fn("ReviewStorage.update")(function* (
+        workspacePath: string,
+        sessionId: string,
+        threadId: string,
+        mutate: (thread: ReviewThreadRecord) => ReviewThreadRecord,
+      ) {
+        const key = serialKey(workspacePath, sessionId, threadId);
+        return yield* withKeyLock(
+          updateLocks,
+          key,
+          Effect.gen(function* () {
+            const existing = yield* getRecord(workspacePath, sessionId, threadId);
+            if (!existing)
+              return yield* Effect.fail(new Error("That review thread no longer exists"));
+            const record = yield* Schema.decodeUnknownEffect(reviewThreadRecordSchema)(
+              mutate(existing),
+            );
+            yield* write(record);
+            return record;
+          }),
+        );
+      });
+
+      const changed = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+        effect.pipe(Effect.tap(() => SubscriptionRef.update(revision, (value) => value + 1)));
+      const boundary = <A, E, R>(operation: string, effect: Effect.Effect<A, E, R>) =>
+        effect.pipe(Effect.mapError((cause) => storageError(operation, cause)));
+
+      return ReviewStorage.of({
+        changes: () => SubscriptionRef.changes(revision),
+        agentSessionDirectory,
+        reviewContextPath,
+        discussionParentContextPath,
+        deleteSession: Effect.fn("ReviewStorage.deleteSession")((workspacePath, sessionId) =>
+          changed(
+            boundary(
+              "deleteSession",
+              Effect.all([
+                fileSystem.remove(sessionDirectory(workspacePath, sessionId), {
+                  recursive: true,
+                  force: true,
+                }),
+                fileSystem.remove(
+                  path.join(piSessionRoot, digestKey(workspacePath), digestKey(sessionId)),
+                  { recursive: true, force: true },
+                ),
+              ]).pipe(Effect.asVoid),
+            ),
+          ),
+        ),
+        listSession: Effect.fn("ReviewStorage.listSession")((workspacePath, sessionId) =>
+          boundary("listSession", listSessionInternal(workspacePath, sessionId)),
+        ),
+        listDiscussionRecords: Effect.fn("ReviewStorage.listDiscussionRecords")(
+          (workspacePath, sessionId) =>
+            boundary("listDiscussionRecords", listRecords(workspacePath, sessionId)),
+        ),
+        get: Effect.fn("ReviewStorage.get")((workspacePath, sessionId, threadId) =>
+          boundary("get", getRecord(workspacePath, sessionId, threadId)),
+        ),
+        createDiscussion: Effect.fn("ReviewStorage.createDiscussion")(
+          (workspacePath, sessionId, anchor) =>
+            changed(
+              boundary(
+                "createDiscussion",
+                createDiscussionInternal(workspacePath, sessionId, anchor),
+              ),
+            ),
+        ),
+        ensureDiscussion: Effect.fn("ReviewStorage.ensureDiscussion")(
+          (workspacePath, sessionId, anchor) =>
+            changed(
+              boundary(
+                "ensureDiscussion",
+                withKeyLock(
+                  creationLocks,
+                  serialKey(workspacePath, sessionId, anchor.view ?? "file", anchor.path),
+                  Effect.gen(function* () {
+                    const records = yield* listRecords(workspacePath, sessionId);
+                    const existing = records.find(
+                      (record) =>
+                        record.anchor.view === anchor.view && record.anchor.path === anchor.path,
+                    );
+                    return (
+                      existing ??
+                      (yield* createDiscussionInternal(workspacePath, sessionId, anchor))
+                    );
+                  }),
+                ),
+              ),
+            ),
+        ),
+        linkDiscussionSidecar: Effect.fn("ReviewStorage.linkDiscussionSidecar")(
+          (workspacePath, sessionId, threadId, sidecar) =>
+            changed(
+              boundary(
+                "linkDiscussionSidecar",
+                Effect.gen(function* () {
+                  const now = DateTime.formatIso(yield* DateTime.now);
+                  return yield* update(workspacePath, sessionId, threadId, (thread) => ({
+                    ...thread,
+                    agentSessionId: sidecar.sessionId,
+                    agentSessionFile: sidecar.sessionFile,
+                    pendingComments: [],
+                    submission: undefined,
+                    updatedAt: now,
+                  }));
+                }),
+              ),
+            ),
+        ),
+        resolve: Effect.fn("ReviewStorage.resolve")(
+          (workspacePath, sessionId, threadId, resolved) =>
+            changed(
+              boundary(
+                "resolve",
+                Effect.gen(function* () {
+                  const now = DateTime.formatIso(yield* DateTime.now);
+                  const record = yield* update(workspacePath, sessionId, threadId, (thread) => ({
+                    ...thread,
+                    status: resolved ? "resolved" : "open",
+                    resolvedAt: resolved ? now : undefined,
+                    updatedAt: now,
+                  }));
+                  yield* refreshReviewContext(workspacePath, sessionId);
+                  return yield* project(record);
+                }),
+              ),
+            ),
+        ),
+        refreshDiscussionContext: Effect.fn("ReviewStorage.refreshDiscussionContext")(
+          (workspacePath, sessionId) =>
+            changed(
+              boundary("refreshDiscussionContext", refreshReviewContext(workspacePath, sessionId)),
+            ),
+        ),
+      });
+    }),
+  );

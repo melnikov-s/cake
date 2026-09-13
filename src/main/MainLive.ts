@@ -89,7 +89,7 @@ export const makeMainLive = (options: MainLiveOptions) => {
     makeSessionArchiveStorageLive(paths.resolvedProjectMetadata),
     makeArtifactStorageLive(paths.artifacts),
     makeReviewStorageLive(paths.reviews, paths.piReviewSessions, (record) =>
-      loadReviewSessionProjection(record, paths.piReviewSessions),
+      Effect.tryPromise(() => loadReviewSessionProjection(record, paths.piReviewSessions)),
     ),
     makeWorktreeStorageLive(paths.worktrees),
     SessionCatalogChanges.layer,
