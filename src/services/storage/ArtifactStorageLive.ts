@@ -13,23 +13,50 @@ import { AtomicFileWriter } from "./internal/AtomicFileWriter";
 import { KeyedSerialExecutor } from "../../utils/KeyedSerialExecutor";
 import { ArtifactStorage, ArtifactStorageError } from "./ArtifactStorage";
 
+type StoredArtifactKind = CakeArtifactV1["kind"] | "architecture";
+
 interface StoredArtifactMetadata {
   protocol: "cake.artifact/v1";
   id: string;
   sessionId: string;
   workspacePath: string;
   revision: number;
-  kind: CakeArtifactV1["kind"];
+  kind: StoredArtifactKind;
   digest: string;
   createdAt: string;
   updatedAt: string;
 }
 
+const storedIdSchema = Schema.String.check(
+  Schema.isMinLength(1),
+  Schema.isMaxLength(256),
+  Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/),
+);
+const storedFallbackSchema = Schema.Struct({
+  markdown: Schema.String.check(Schema.isMaxLength(1_048_576)),
+});
+const historicalArchitectureArtifactSchema = Schema.Struct({
+  protocol: Schema.Literal("cake.artifact/v1"),
+  id: storedIdSchema,
+  sessionId: storedIdSchema,
+  revision: Schema.Int.check(Schema.isGreaterThan(0)),
+  kind: Schema.Literal("architecture"),
+  title: Schema.optional(Schema.String.check(Schema.isMaxLength(512))),
+  payload: Schema.Unknown,
+  fallback: storedFallbackSchema,
+  interaction: Schema.optional(
+    Schema.Struct({
+      mode: Schema.Literal("present"),
+      responseSchema: Schema.optional(Schema.Unknown),
+    }),
+  ),
+});
+
 const storedArtifactMetadataSchema: Schema.Codec<StoredArtifactMetadata> = Schema.Struct({
   protocol: Schema.Literal("cake.artifact/v1"),
-  id: Schema.String,
-  sessionId: Schema.String,
-  workspacePath: Schema.String,
+  id: storedIdSchema,
+  sessionId: storedIdSchema,
+  workspacePath: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4_096)),
   revision: Schema.Int.check(Schema.isGreaterThan(0)),
   kind: Schema.Literals([
     "markdown",
@@ -43,10 +70,60 @@ const storedArtifactMetadataSchema: Schema.Codec<StoredArtifactMetadata> = Schem
     "widget",
     "request",
   ]),
-  digest: Schema.String,
+  digest: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/)),
   createdAt: Schema.String,
   updatedAt: Schema.String,
 });
+
+interface DecodedStoredArtifact {
+  readonly artifact: CakeArtifactV1;
+  readonly storedKind: StoredArtifactKind;
+}
+
+function decodeStoredArtifact(untrustedInput: unknown): DecodedStoredArtifact {
+  const historical = Schema.decodeUnknownOption(historicalArchitectureArtifactSchema)(
+    untrustedInput,
+  );
+  if (historical._tag === "Some") {
+    const artifact = historical.value;
+    return {
+      storedKind: "architecture",
+      artifact: parseArtifactInput({
+        protocol: artifact.protocol,
+        id: artifact.id,
+        sessionId: artifact.sessionId,
+        revision: artifact.revision,
+        kind: "markdown",
+        title: artifact.title,
+        payload: { markdown: artifact.fallback.markdown },
+        fallback: artifact.fallback,
+        interaction: { mode: "present" },
+      }),
+    };
+  }
+  const artifact = parseArtifactInput(untrustedInput);
+  return { artifact, storedKind: artifact.kind };
+}
+
+function hydrateStoredRecord(serialized: string, metadata: StoredArtifactMetadata): ArtifactRecord {
+  const digest = createHash("sha256").update(serialized).digest("hex");
+  if (digest !== metadata.digest) throw new Error(`Artifact ${metadata.id} digest does not match`);
+  const decoded = decodeStoredArtifact(JSON.parse(serialized));
+  if (
+    decoded.artifact.id !== metadata.id ||
+    decoded.artifact.sessionId !== metadata.sessionId ||
+    decoded.artifact.revision !== metadata.revision ||
+    decoded.storedKind !== metadata.kind
+  )
+    throw new Error(`Artifact ${metadata.id} metadata does not match its immutable blob`);
+  return Schema.decodeUnknownSync(artifactRecordSchema)({
+    artifact: decoded.artifact,
+    workspacePath: metadata.workspacePath,
+    digest: metadata.digest,
+    createdAt: metadata.createdAt,
+    updatedAt: metadata.updatedAt,
+  });
+}
 
 class ArtifactRepository {
   private readonly updates = new KeyedSerialExecutor<string>();
@@ -104,13 +181,13 @@ class ArtifactRepository {
       pointers.map(async (pointer) => {
         const serialized = await readFile(this.blobPath(pointer.digest), "utf8");
         const digest = createHash("sha256").update(serialized).digest("hex");
-        const artifact = parseArtifactInput(JSON.parse(serialized));
+        const decoded = decodeStoredArtifact(JSON.parse(serialized));
         if (
           digest !== pointer.digest ||
-          artifact.id !== pointer.artifactId ||
-          artifact.sessionId !== pointer.sessionId ||
-          artifact.revision !== pointer.revision ||
-          artifact.kind !== pointer.kind
+          decoded.artifact.id !== pointer.artifactId ||
+          decoded.artifact.sessionId !== pointer.sessionId ||
+          decoded.artifact.revision !== pointer.revision ||
+          decoded.storedKind !== pointer.kind
         )
           throw new Error(
             `Artifact ${pointer.artifactId} revision ${pointer.revision} does not match its source pointer`,
@@ -121,17 +198,22 @@ class ArtifactRepository {
             `Artifact ${pointer.artifactId} is not associated with source session ${sourceSessionId}`,
           );
         const now = new Date().toISOString();
-        return Schema.decodeUnknownSync(artifactRecordSchema)({
-          artifact,
+        const record = Schema.decodeUnknownSync(artifactRecordSchema)({
+          artifact: decoded.artifact,
           workspacePath: destinationWorkspacePath,
           digest,
-          createdAt: current?.createdAt ?? now,
-          updatedAt: current?.updatedAt ?? now,
+          createdAt: current.createdAt ?? now,
+          updatedAt: current.updatedAt ?? now,
         });
+        return { record, storedKind: decoded.storedKind };
       }),
     );
 
-    await Promise.all(inherited.map((record) => this.linkSession(record, destinationSessionId)));
+    await Promise.all(
+      inherited.map(({ record, storedKind }) =>
+        this.linkSession(record, destinationSessionId, storedKind),
+      ),
+    );
   }
 
   async get(
@@ -143,8 +225,10 @@ class ArtifactRepository {
       const metadata = Schema.decodeUnknownSync(storedArtifactMetadataSchema)(
         JSON.parse(await readFile(this.recordPath(workspacePath, sessionId, artifactId), "utf8")),
       );
-      const artifact = JSON.parse(await readFile(this.blobPath(metadata.digest), "utf8"));
-      return Schema.decodeUnknownSync(artifactRecordSchema)({ artifact, ...metadata });
+      if (metadata.workspacePath !== workspacePath)
+        throw new Error(`Artifact ${metadata.id} workspace metadata does not match its index`);
+      const serialized = await readFile(this.blobPath(metadata.digest), "utf8");
+      return hydrateStoredRecord(serialized, metadata);
     } catch (error) {
       if (isMissing(error)) return undefined;
       throw error;
@@ -176,14 +260,18 @@ class ArtifactRepository {
       .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
   }
 
-  async linkSession(record: ArtifactRecord, sessionId: string): Promise<void> {
+  async linkSession(
+    record: ArtifactRecord,
+    sessionId: string,
+    storedKind: StoredArtifactKind = record.artifact.kind,
+  ): Promise<void> {
     await mkdir(this.recordDirectory(record.workspacePath, sessionId), {
       recursive: true,
       mode: 0o700,
     });
     await this.writer.write(
       this.recordPath(record.workspacePath, sessionId, record.artifact.id),
-      `${JSON.stringify(toMetadata(record), null, 2)}\n`,
+      `${JSON.stringify(toMetadata(record, storedKind), null, 2)}\n`,
     );
   }
 
@@ -208,14 +296,17 @@ class ArtifactRepository {
   }
 }
 
-function toMetadata(record: ArtifactRecord): StoredArtifactMetadata {
+function toMetadata(
+  record: ArtifactRecord,
+  kind: StoredArtifactKind = record.artifact.kind,
+): StoredArtifactMetadata {
   return {
     protocol: "cake.artifact/v1",
     id: record.artifact.id,
     sessionId: record.artifact.sessionId,
     workspacePath: record.workspacePath,
     revision: record.artifact.revision,
-    kind: record.artifact.kind,
+    kind,
     digest: record.digest,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,

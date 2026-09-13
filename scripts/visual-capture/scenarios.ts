@@ -179,129 +179,6 @@ const assistantMarkdownCode: VisualCaptureScenario = {
   },
 };
 
-const architectureArtifact = {
-  protocol: "cake.artifact/v1",
-  id: "cake-runtime-architecture",
-  sessionId: "visual-architecture-artifact",
-  revision: 1,
-  kind: "architecture",
-  title: "Cake runtime architecture",
-  payload: {
-    direction: "LR",
-    groups: [
-      { id: "renderer-boundary", label: "Sandboxed renderer" },
-      { id: "main-boundary", label: "Electron main process" },
-    ],
-    nodes: [
-      {
-        id: "chat",
-        label: "Chat & artifact panel",
-        description: "React presentation backed by window-scoped Stores and Models.",
-        category: "interface",
-        group: "renderer-boundary",
-        source: { path: "src/renderer/components/chat.tsx" },
-      },
-      {
-        id: "projection",
-        label: "Renderer projection",
-        description: "Applies authoritative snapshots and ordered runtime events.",
-        category: "module",
-        group: "renderer-boundary",
-        source: { path: "src/renderer/models/RootProjection.ts" },
-      },
-      {
-        id: "preload",
-        label: "Validated preload bridge",
-        description: "The narrow, schema-validated boundary between renderer and main.",
-        category: "service",
-        group: "main-boundary",
-        source: { path: "src/preload/index.ts" },
-      },
-      {
-        id: "domain",
-        label: "Cake domain services",
-        description: "Owns projects, worktrees, artifacts, reviews, and coordination policy.",
-        category: "service",
-        group: "main-boundary",
-      },
-      {
-        id: "pi",
-        label: "Pi session runtime",
-        description: "Owns agent loops, transcript history, tools, models, and compaction.",
-        category: "process",
-        group: "main-boundary",
-        source: { path: "src/services/pi" },
-      },
-      {
-        id: "storage",
-        label: "Cake persistence",
-        description: "Content-addressed artifacts and Cake-owned application state.",
-        category: "database",
-        group: "main-boundary",
-        source: { path: "src/services/storage" },
-      },
-      {
-        id: "providers",
-        label: "Model providers",
-        description: "External model APIs reached through Pi provider integrations.",
-        category: "external",
-      },
-    ],
-    edges: [
-      { id: "chat-projection", source: "projection", target: "chat", label: "reactive state" },
-      {
-        id: "bridge-projection",
-        source: "preload",
-        target: "projection",
-        label: "snapshots + events",
-        kind: "event",
-      },
-      {
-        id: "domain-bridge",
-        source: "domain",
-        target: "preload",
-        label: "Effect RPC",
-        kind: "control",
-      },
-      {
-        id: "domain-pi",
-        source: "domain",
-        target: "pi",
-        label: "session operations",
-        kind: "control",
-      },
-      { id: "domain-storage", source: "domain", target: "storage", label: "persist", kind: "data" },
-      {
-        id: "pi-providers",
-        source: "pi",
-        target: "providers",
-        label: "model requests",
-        kind: "dependency",
-      },
-    ],
-  },
-  fallback: {
-    markdown:
-      "Cake's sandboxed renderer receives validated snapshots and events from Electron main. Main owns domain services, persistence, and Pi runtimes; Pi communicates with external model providers.",
-  },
-  interaction: { mode: "present" },
-} as const;
-
-const architectureArtifactScenario: VisualCaptureScenario = {
-  name: "architecture-artifact",
-  description: "Interactive XYFlow architecture artifact in the artifact workspace",
-  states: ["default", "selected", "fullscreen"],
-  async seed(paths, theme) {
-    await seedArtifactScenario(paths, theme, architectureArtifact);
-  },
-  async prepare(page, state) {
-    await prepareArchitectureArtifact(page, state);
-  },
-  region(page) {
-    return page.getByRole("dialog").or(page.locator('[data-artifact-kind="architecture"]')).last();
-  },
-};
-
 async function seedArtifactScenario(
   paths: ScenarioFixturePaths,
   theme: "light" | "dark",
@@ -398,25 +275,6 @@ async function seedArtifactScenario(
       .join("\n")}\n`,
   );
   await seedArtifact(paths, artifact, timestamp);
-}
-
-async function prepareArchitectureArtifact(page: Page, state: string) {
-  const artifactButton = page.getByRole("button", { name: "1 artifacts" });
-  await artifactButton.waitFor({ state: "visible", timeout: 20_000 });
-  await artifactButton.click();
-  await page.getByRole("button", { name: "Cake runtime architecture" }).click();
-  const artifact = page.locator('[data-artifact-kind="architecture"]');
-  await artifact.waitFor({ state: "visible", timeout: 20_000 });
-  await page.locator(".react-flow__node").first().waitFor({ state: "visible", timeout: 20_000 });
-  await page.waitForFunction(() => document.fonts.status === "loaded");
-  if (state === "selected") {
-    await page.locator('.react-flow__node[data-id="chat"]').click();
-    await page.getByText("React presentation backed by window-scoped Stores and Models.").waitFor();
-  } else if (state === "fullscreen") {
-    await page.getByRole("button", { name: "View Cake runtime architecture fullscreen" }).click();
-    await page.getByRole("dialog").waitFor({ state: "visible" });
-    await page.getByRole("dialog").locator(".react-flow__node").first().waitFor();
-  }
 }
 
 const requestExplanationScenario: VisualCaptureScenario = {
@@ -527,7 +385,6 @@ const widgetPipelineScenario: VisualCaptureScenario = {
 
 export const visualCaptureScenarios = [
   assistantMarkdownCode,
-  architectureArtifactScenario,
   requestExplanationScenario,
   widgetPipelineScenario,
 ] as const;

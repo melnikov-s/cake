@@ -300,19 +300,17 @@ numeric pass results before a runnable prototype exists.
       revision visible and addressable. Do not score this for the first prototype
       unless the prototype explicitly implements and verifies the policy.
 
-## Capture handoff (Astra/parent)
+## Capture harness
 
-The existing harness is intentionally registry-driven. This task does not edit
-its shared registrations. Once Astra has a runnable prototype, the parent/Astra
-can integrate a named scenario at these exact points:
+The registry-driven harness now includes deterministic React widget scenarios
+for the request explanation and React Flow/ELK pipeline explanation. New
+benchmark scenarios should follow those widget patterns:
 
-1. Add a new `VisualCaptureScenario` object in
-   `scripts/visual-capture/scenarios.ts` (alongside the existing artifact
-   scenario), implementing its `name`, `description`, `states`, `seed`,
-   `prepare`, and `region`, then append it to
-   `visualCaptureScenarios`. A proposed name is
-   `interactive-explanation-widget`; it is not registered yet.
-2. In `seed`, follow the existing `architectureArtifactScenario` pattern:
+1. Add a `VisualCaptureScenario` object in
+   `scripts/visual-capture/scenarios.ts`, implementing its `name`,
+   `description`, `states`, `seed`, `prepare`, and `region`, then append it to
+   `visualCaptureScenarios`.
+2. In `seed`, follow the existing widget scenario pattern:
    create the isolated `window-state.json`, `state/application.json`, and
    deterministic Pi JSONL under the temporary `CAKE_HOME`/project paths; seed
    a widget artifact record/blob only after the prototype's artifact shape is

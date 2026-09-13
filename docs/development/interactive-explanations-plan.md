@@ -4,7 +4,7 @@
 
 Build a diagram-design workflow, not a replacement node-and-edge DSL. The specialist receives an explanation goal, audience, verified facts and source references, and chooses an appropriate interactive visual form. Its output is sandboxed React/SVG composed with curated visual primitives. React Flow or a layout engine may be tools, but neither dictates the artifact format. Mermaid may be an optional sketch, not the mandatory intermediate representation.
 
-The existing architecture graph renderer has no preservation requirement. Existing independent artifact persistence, widget sandbox/compiler, and Pi service boundaries may be reused when appropriate. Do not repair the old graph renderer as this project's objective.
+The obsolete architecture graph renderer and authoring API were removed after the unified widget path was integrated. Historical stored graph records are projected to their readable Markdown fallbacks without rewriting immutable blobs or Pi history.
 
 ### Clarified direction: one widget system with diagram capabilities
 
@@ -32,7 +32,7 @@ The parent owns shared decisions and integration. Children must not merge or res
 - Sol owns `docs/development/interactive-explanations-runtime.md` for this stage. Runtime changes require a subsequent implementation assignment.
 - Luna owns `docs/development/interactive-explanations-benchmarks.md` and new benchmark fixture files. Existing shared visual-harness registration is reserved to Astra during the prototype stage; report needed integration points rather than making conflicting edits.
 - The parent owns this plan and final shared contracts. Contract proposals remain proposals until integrated.
-- Follow repository styling, state ownership, sandbox, Pi integration, worktree, and verification rules. The user explicitly chose bespoke sandboxed visualizations over the current architecture-graph skill's structured graph path for this project.
+- Follow repository styling, state ownership, sandbox, Pi integration, worktree, and verification rules. Architecture guidance uses the unified `widgets.present` path with a semantic, source-backed brief.
 
 ## Acceptance criteria
 
@@ -74,5 +74,5 @@ Prototype with Astra to establish the quality ceiling. Compare Sol only after th
 - [Integrated Flow verification — Astra](cake://session/54193aac-4ce8-44c7-9c9f-7815bf074b81) owns fixture/interaction/capture refinements and the reproduced generic SVG-reset compiler CSS defect. Do not concurrently edit its compiler file or visual scenario.
 - [Widget visual-review implementation — Sol](cake://session/f22b7f8e-3d4e-49f3-8a52-251a045e2336) delivered the wired domain policy, preview/capture and specialist acceptance path. Parent reviewed two correction rounds and landed the implementation. Deterministic tests cover replacement/cancellation/serialization policy; actual Electron verifies settled widget-only pixels, preview cleanup and post-readiness resize, alongside the first walkthrough and Flow/ELK examples (six cases). No real provider-quality benchmark is claimed.
 - Runtime implementation preserves configured/caller model selection and explicitly requires image support, rather than hardcoding a preset name or silently skipping screenshot review. A dedicated specialist-model preference can be an explicit later decision.
-- Automatic visual review is now implemented in the working branch, not yet landed to the main checkout or deployed in the running application. Parent owns final combined verification and landing.
-- Remaining cleanup: remove the separate graph authoring tool/schema/renderer, redirect architecture instructions to widgets, and preserve persisted user data through a bounded storage-read migration to existing Markdown fallbacks without rewriting Pi history. No graph compatibility API or renderer is to remain.
+- Automatic visual review is implemented in the working branch. Parent owns final combined verification and landing.
+- The separate graph authoring tool/schema/renderer is removed. Architecture instructions use widgets, while a bounded storage-read migration projects historical graph records to their existing Markdown fallbacks without rewriting Pi history.

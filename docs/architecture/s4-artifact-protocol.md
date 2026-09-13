@@ -122,14 +122,13 @@ is the Cake-home artifact repository, and the v1 inline protocol cap is
 
 ## Tools and interaction lifecycle
 
-The built-in `cake` gateway exposes `artifacts.presentArchitecture` for
-non-blocking, persistent architecture graphs. The operation accepts semantic
-nodes, edges, groups, direction, source locations, and a readable fallback; it
-does not accept React source or pixel coordinates. Cake validates references,
-persists the graph, computes a layered layout with ELK, and renders the result
-through its trusted React Flow surface in the artifact panel. Small disposable
-diagrams remain inline Mermaid, while bespoke visualizations use the delegated
-widget path.
+The built-in `cake` gateway exposes one `widgets.present` path for substantial,
+persistent visual explanations, including architecture and dependency views. Its
+input is a semantic brief with audience, verified facts and relationships,
+source references, bounded data, and a readable Markdown fallback. A restricted
+specialist chooses the visual form and may combine prose and controls with React
+Flow and optional ELK inside the generated widget. Small diagrams remain inline
+Mermaid when they are clearest in the conversation.
 
 The gateway also exposes `interview.open`, which accepts one
 `cake.request/v1`, persists it at the tool-call position, and waits for one
@@ -154,12 +153,12 @@ Electron acceptance test.
 ## Trusted built-ins and untrusted HTML
 
 The trusted renderer includes Markdown, sortable/filterable/selectable/exportable
-tables, Mermaid diagrams, read-only React Flow architecture graphs, schema-defined
-forms, media, diffs, and HTML frames. Architecture graphs support ELK automatic
-layout, meaningful boundary groups, pan, zoom, minimap, fullscreen inspection,
-node details, and workspace source links. Every surface retains its Markdown
-fallback, and session export concatenates
-those fallbacks into a readable Markdown document.
+tables, Mermaid diagrams, schema-defined forms, media, diffs, HTML frames, and
+sandboxed generated widgets. Every surface retains its Markdown fallback, and
+session export concatenates those fallbacks into a readable Markdown document.
+Historical persisted architecture records are decoded only at the storage-read
+boundary and projected as their mandatory Markdown fallback; their immutable
+blobs, digests, metadata identity, and Pi pointers remain unchanged.
 
 Model HTML is never inserted into Cake's DOM. It is assigned to `iframe.srcDoc`
 with an empty sandbox token set and a document CSP that denies scripts, network,
@@ -253,9 +252,10 @@ JSON Schema.
 ## Verification
 
 Deterministic tests cover protocol versions, input limits, unsafe media,
-response schemas, architecture graph references and rendering, content addressing,
-revisions, hydration, Markdown export, driver correlation, duplicate/late
-responses, session replacement, table and form interaction, and the
-empty-sandbox/CSP boundary. The Electron smoke covers
+response schemas, widget generation and cancellation before persistence,
+historical architecture fallback migration and fork-pointer verification,
+content addressing, revisions, hydration, Markdown export, driver correlation,
+duplicate/late responses, session replacement, table and form interaction, and
+the empty-sandbox/CSP boundary. The Electron smoke covers
 table sorting, a structured form round trip acknowledged by revision update,
 HTML isolation, Mermaid rendering, and application-restart hydration.

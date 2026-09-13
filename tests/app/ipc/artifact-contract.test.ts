@@ -63,6 +63,13 @@ describe("cake.artifact/v1 contract", () => {
       assistantEntryId: "assistant-1",
       toolCallId: "tool-1",
     });
+    expect(
+      Schema.decodeUnknownSync(artifactPointerSchema)({
+        ...pointer,
+        artifactId: "historical-architecture",
+        kind: "architecture",
+      }).kind,
+    ).toBe("architecture");
   });
 
   it("validates structured responses against the declared JSON schema", () => {
@@ -74,63 +81,6 @@ describe("cake.artifact/v1 contract", () => {
     expect(validateArtifactResponse(schema, { answer: "yes" })).toEqual({ answer: "yes" });
     expect(() => validateArtifactResponse(schema, {})).toThrow("required");
     expect(() => validateArtifactResponse(schema, { answer: "" })).toThrow("length");
-  });
-
-  it("validates architecture graphs and their references", () => {
-    const architecture = {
-      protocol: "cake.artifact/v1",
-      id: "architecture-1",
-      sessionId: "session-1",
-      revision: 1,
-      kind: "architecture",
-      title: "Architecture",
-      payload: {
-        direction: "LR",
-        groups: [{ id: "runtime", label: "Runtime" }],
-        nodes: [
-          {
-            id: "renderer",
-            label: "Renderer",
-            category: "interface",
-            group: "runtime",
-            source: { path: "src/renderer/main.ts", range: { start: { line: 0 } } },
-          },
-          { id: "main", label: "Main", category: "process", group: "runtime" },
-        ],
-        edges: [
-          {
-            id: "renderer-main",
-            source: "renderer",
-            target: "main",
-            label: "RPC",
-            kind: "control",
-          },
-        ],
-      },
-      fallback: { markdown: "Renderer communicates with main." },
-      interaction: { mode: "present" },
-    } as const;
-
-    expect(parseArtifactInput(architecture).kind).toBe("architecture");
-    expect(() =>
-      parseArtifactInput({
-        ...architecture,
-        payload: {
-          ...architecture.payload,
-          edges: [{ id: "invalid", source: "missing", target: "main" }],
-        },
-      }),
-    ).toThrow("unknown source missing");
-    expect(() =>
-      parseArtifactInput({
-        ...architecture,
-        payload: {
-          ...architecture.payload,
-          nodes: [{ id: "renderer", label: "Renderer", group: "missing" }],
-          edges: [],
-        },
-      }),
-    ).toThrow("unknown group missing");
   });
 
   it("accepts delegated widget source as Cake-owned artifact payload", () => {

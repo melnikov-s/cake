@@ -8,7 +8,7 @@ import {
 
 const CAKE_OPERATION_PROTOCOL = "cake.operation/v1" as const;
 export const cakeToolDescription =
-  'Access Cake-native capabilities unavailable through files or the shell: inspect and arrange the app, manage sessions and context, inspect model presets, communicate with other sessions, enter and control embedded VS Code, delegate to subagents, conduct structured user interviews, create architecture diagram artifacts and interactive visual widgets, and send notifications. Call with {} for the topic index. Request a topic to discover its current operations, exact schemas, and examples, for example {"command":"sessions"} or {"command":"vscode"}; do not put the topic in input.';
+  'Access Cake-native capabilities unavailable through files or the shell: inspect and arrange the app, manage sessions and context, inspect model presets, communicate with other sessions, enter and control embedded VS Code, delegate to subagents, conduct structured user interviews, create interactive visual widgets including architecture diagrams, and send notifications. Call with {} for the topic index. Request a topic to discover its current operations, exact schemas, and examples, for example {"command":"sessions"} or {"command":"vscode"}; do not put the topic in input.';
 
 const commandSchema = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)).annotate({
   description: "Exact topic or operation command. Omit for the help index.",

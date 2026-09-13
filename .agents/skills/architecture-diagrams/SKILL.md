@@ -1,98 +1,67 @@
 ---
 name: architecture-diagrams
-description: Create rich, persistent architecture graph artifacts in Cake. Use when the user asks for an architectural overview, system map, dependency diagram, process-boundary diagram, trust-boundary diagram, or an explorable diagram of a codebase.
+description: Create rich, persistent architecture diagrams in Cake. Use when the user asks for an architectural overview, system map, dependency diagram, process-boundary diagram, trust-boundary diagram, or an explorable diagram of a codebase.
 ---
 
 # Architecture diagrams
 
-Create architecture diagrams as structured graph data rendered by Cake. Do not generate React, React Flow code, ELK coordinates, HTML, or a delegated widget for a graph that fits this format.
-
-Before presenting a graph, inspect enough of the project to support every important node and edge. Distinguish confirmed structure from interpretation in node descriptions and the readable fallback.
+Create substantial architecture explanations through the unified delegated React widget path. Before presenting one, inspect enough of the project to support every important fact and relationship. Distinguish verified structure from interpretation in both the brief and readable fallback.
 
 ## Choose the right output
 
-- Use `artifacts.presentArchitecture` for a substantial, reusable, explorable architecture or dependency view.
-- Use inline Mermaid for a small, disposable diagram that is clearest in the conversation.
-- Use `widgets.present` only for a bespoke visualization, simulation, or interaction the architecture graph cannot represent.
+- Use `widgets.present` for a substantial, reusable, explorable architecture or dependency view.
+- Use inline Mermaid for a small diagram that is clearest directly in the conversation.
+- Use ordinary prose or a table when interaction and a custom visual do not improve understanding.
 
-Call `cake artifacts` to inspect the current operation schema before creating an artifact.
+Call `cake widgets` to inspect the current operation schema before creating a widget.
 
-## Modeling rules
+## Brief requirements
 
-1. Pick one audience and one abstraction level. Do not mix packages, classes, infrastructure, and individual functions without a specific reason.
-2. Prefer 5–30 nodes. Split a large system into multiple purposeful views rather than making one exhaustive graph.
-3. Use short noun labels for nodes and short relationship labels for edges.
-4. Use groups only for meaningful ownership, deployment, process, or trust boundaries—not decoration.
-5. Select the closest node category: `interface`, `service`, `process`, `database`, `external`, or `module`.
-6. Select the closest edge kind: `data`, `control`, `dependency`, or `event`.
-7. Add a concise description when selection should reveal context that does not fit in the node label.
-8. Add workspace-relative source locations for important code-backed nodes. Line and column positions are zero-based.
-9. Do not provide pixel positions. Cake uses ELK to lay out the graph.
-10. Always include a useful Markdown fallback that explains the main boundaries and flow without requiring the visual artifact.
+Give the specialist a semantic explanation brief rather than React source, graph JSON, or pixel coordinates. Include:
 
-## Direction
+1. The intended audience and the question the explanation should answer.
+2. One clear abstraction level and a suggested reading path.
+3. Verified facts, meaningful boundaries, and relationships, with uncertainty labeled.
+4. Workspace-relative source references for important code-backed claims.
+5. Bounded local data needed to render the explanation.
+6. Useful interactions such as selection, filtering, progressive disclosure, or comparison—only when they help the audience.
+7. A concise, mandatory Markdown fallback that remains understandable without the visual.
 
-- `LR`: pipelines, request flows, layered runtime boundaries.
-- `TB`: hierarchies, ownership trees, dependency stacks.
-- `RL` or `BT`: use only when the domain convention makes the reverse flow clearer.
+The specialist chooses the best visual form. It may compose prose and accessible controls with React Flow, optional ELK layout, SVG/D3, or ordinary React. For connected systems, React Flow and ELK are available inside the widget compiler; describe relationships and boundaries rather than prescribing coordinates. Prefer a purposeful view over an exhaustive network.
 
 ## Quality check
 
 Before calling the tool, verify:
 
-- Every edge endpoint names an existing node.
-- Node, group, and edge IDs are unique; node and group IDs do not overlap.
-- Every node group exists.
-- Important process and trust boundaries are explicit.
-- Cross-boundary edge labels explain what crosses the boundary.
-- The diagram has a clear reading path and no speculative precision.
-- The fallback is understandable on its own.
+- Every important claim and relationship is supported by inspected evidence.
+- Process, ownership, deployment, or trust boundaries are explicit when relevant.
+- Cross-boundary relationships say what moves or depends across the boundary.
+- Source references are workspace-relative and useful to a maintainer.
+- The brief does not demand invented precision or a specific graph DSL.
+- The fallback explains the main boundaries and flow on its own.
 
 ## Example
 
 ```json
 {
-  "command": "artifacts.presentArchitecture",
+  "command": "widgets.present",
   "input": {
-    "architecture": {
+    "widget": {
       "id": "runtime-overview",
       "title": "Runtime overview",
-      "graph": {
-        "direction": "LR",
-        "groups": [{ "id": "electron", "label": "Electron" }],
-        "nodes": [
-          {
-            "id": "renderer",
-            "label": "Renderer",
-            "category": "interface",
-            "group": "electron",
-            "description": "Sandboxed React UI and window-scoped state.",
-            "source": { "path": "src/renderer/main.ts" }
-          },
-          {
-            "id": "main",
-            "label": "Main process",
-            "category": "process",
-            "group": "electron",
-            "description": "Owns native and privileged services."
-          }
-        ],
-        "edges": [
-          {
-            "id": "renderer-main",
-            "source": "renderer",
-            "target": "main",
-            "label": "Effect RPC",
-            "kind": "control"
-          }
+      "brief": "For maintainers, explain how the sandboxed renderer communicates with Electron main and where Pi runtime and persistence authority live. Show the renderer/main trust boundary, label the validated RPC and projection relationships, and provide selectable source-backed details. Verified sources: src/renderer/main.ts, src/main/main.ts, src/services/pi, src/services/storage, and docs/architecture/cake-architecture.md. Prefer a clear reading path over an exhaustive dependency graph; choose React Flow/ELK or another visual form as appropriate.",
+      "data": {
+        "facts": [
+          "The renderer is sandboxed and owns presentation projections.",
+          "Electron main owns Pi runtimes, filesystem access, and persistence."
         ]
       },
       "fallback": {
-        "markdown": "The sandboxed renderer communicates with the privileged Electron main process through validated Effect RPC."
+        "markdown": "The sandboxed renderer receives validated projections from Electron main. Main owns Pi runtimes and persistent storage."
       }
     }
   }
 }
 ```
 
-After presentation, summarize the view briefly in chat and refer to it as an artifact. Do not paste the full graph payload into the user-facing response.
+After presentation, summarize the view briefly in chat and refer to it as a widget artifact. Do not paste generated source into the user-facing response.

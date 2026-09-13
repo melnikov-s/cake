@@ -9,7 +9,6 @@ import type { SourceLocation } from "../../ipc/source-location";
 
 import { cakeRequestV1Schema } from "../../ipc/request-contract";
 import type { InlineWidgetStore } from "../stores/InlineWidgetStore";
-import { ArchitectureArtifact } from "./architecture-artifact";
 import { ArtifactForm } from "./artifact-form";
 import { RequestArtifact, WidgetArtifact } from "./artifact-widget";
 import { DiagramArtifact } from "./diagram-artifact";
@@ -82,9 +81,6 @@ export const ArtifactHost = observer(function ArtifactHost({
         ) : null}
         {artifact.kind === "table" ? <TableArtifact artifact={artifact} /> : null}
         {artifact.kind === "diagram" ? <DiagramArtifact artifact={artifact} /> : null}
-        {artifact.kind === "architecture" ? (
-          <ArchitectureArtifact artifact={artifact} onOpenSourceLocation={onOpenSourceLocation} />
-        ) : null}
         {artifact.kind === "form" ? (
           <ArtifactForm
             fields={artifact.payload.fields}
