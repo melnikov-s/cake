@@ -13,6 +13,7 @@ import {
   ScopedCache,
   Stream,
   SubscriptionRef,
+  type Scope,
 } from "effect";
 import { ApplicationState } from "../storage/ApplicationState";
 import { ProjectAccess } from "../projects/ProjectAccess";
@@ -35,6 +36,41 @@ const vscodeError = (operation: string, cause: unknown) =>
   new VsCodeServerError({
     operation,
     message: cause instanceof Error ? cause.message : String(cause),
+  });
+
+/** Layer-scoped single-flight whose callers may cancel their own wait independently. */
+export const makeInstallSingleFlight = <E>(
+  install: Effect.Effect<void, E>,
+): Effect.Effect<Effect.Effect<void, E>, never, Scope.Scope> =>
+  Effect.gen(function* () {
+    const scope = yield* Effect.scope;
+    const inFlight = yield* Ref.make<Option.Option<Deferred.Deferred<void, E>>>(Option.none());
+
+    return Effect.uninterruptibleMask((restore) =>
+      Effect.gen(function* () {
+        const candidate = yield* Deferred.make<void, E>();
+        const [deferred, ownsInstall] = yield* Ref.modify(
+          inFlight,
+          (
+            current,
+          ): readonly [
+            readonly [Deferred.Deferred<void, E>, boolean],
+            Option.Option<Deferred.Deferred<void, E>>,
+          ] =>
+            Option.match(current, {
+              onNone: () => [[candidate, true], Option.some(candidate)],
+              onSome: (active) => [[active, false], current],
+            }),
+        );
+        if (ownsInstall)
+          yield* Effect.exit(install).pipe(
+            Effect.flatMap((exit) => Deferred.done(deferred, exit)),
+            Effect.ensuring(Ref.set(inFlight, Option.none())),
+            Effect.forkIn(scope),
+          );
+        yield* restore(Deferred.await(deferred));
+      }),
+    );
   });
 
 export const makeVsCodeServerLive = (
@@ -75,8 +111,8 @@ export const makeVsCodeServerLive = (
           const separator = key.indexOf("\0");
           if (separator < 0) return yield* Effect.die("Invalid VS Code server cache key");
           return yield* Effect.acquireRelease(
-            Effect.tryPromise(() =>
-              runtime.startServer(key.slice(0, separator), key.slice(separator + 1)),
+            Effect.tryPromise((signal) =>
+              runtime.startServer(key.slice(0, separator), key.slice(separator + 1), signal),
             ),
             (instance) => Effect.sync(() => runtime.releaseServer(instance)),
           );
@@ -108,7 +144,7 @@ export const makeVsCodeServerLive = (
         invalidateServer: (key) => {
           runEviction(key, ScopedCache.invalidate(servers, key));
         },
-        pollUntil: (key, check, interval, timeout, failure) =>
+        pollUntil: (key, check, interval, timeout, failure, signal) =>
           runPoll(
             `${key}:${callbackSequence++}`,
             Effect.suspend(() => {
@@ -118,6 +154,7 @@ export const makeVsCodeServerLive = (
               Effect.retry(Schedule.spaced(interval).pipe(Schedule.upTo({ duration: timeout }))),
               Effect.mapError(() => new Error(failure)),
             ),
+            signal ? { signal } : undefined,
           ),
         evictServer: (key) =>
           runAcquisition(`evict:${callbackSequence++}`, ScopedCache.invalidate(servers, key)),
@@ -129,9 +166,6 @@ export const makeVsCodeServerLive = (
           ),
       });
       yield* Deferred.succeed(runtimeReady, runtime);
-      const installInFlight = yield* Ref.make<
-        Option.Option<Deferred.Deferred<void, VsCodeServerError>>
-      >(Option.none());
       yield* electron.fullscreenSurfaceChanges().pipe(
         Stream.runForEach(({ connectionId, open }) =>
           Effect.sync(() => runtime.setFullscreenSurfaceOpen(connectionId, open)),
@@ -144,6 +178,13 @@ export const makeVsCodeServerLive = (
           try: execute,
           catch: (cause) => vscodeError(operation, cause),
         });
+      const runInstall = yield* makeInstallSingleFlight(
+        tryNative("install", () => runtime.ensureInstalled()).pipe(
+          Effect.tap(() => Effect.sync(() => runtime.setStatus("ready"))),
+          Effect.tapError((error) => Effect.sync(() => runtime.setStatus("failed", error.message))),
+          Effect.asVoid,
+        ),
+      );
       const requireAllowed = Effect.fn("VsCodeServer.requireAllowed")(function* (
         workingDirectory: string,
       ) {
@@ -155,7 +196,7 @@ export const makeVsCodeServerLive = (
       });
 
       const updateTheme = Effect.fn("VsCodeServer.updateTheme")(() =>
-        tryNative("updateTheme", () => runtime.updateTheme()),
+        tryNative("updateTheme", (signal) => runtime.updateTheme(signal)),
       );
       const themeUpdates = yield* Queue.unbounded<void>();
       yield* Stream.fromQueue(themeUpdates).pipe(
@@ -186,34 +227,7 @@ export const makeVsCodeServerLive = (
           tryNative("refreshStatus", () => runtime.refreshStatus()),
         ),
         install: Effect.fn("VsCodeServer.install")(function* (request) {
-          const candidate = yield* Deferred.make<void, VsCodeServerError>();
-          const [deferred, ownsInstall] = yield* Ref.modify(
-            installInFlight,
-            (
-              current,
-            ): readonly [
-              readonly [Deferred.Deferred<void, VsCodeServerError>, boolean],
-              Option.Option<Deferred.Deferred<void, VsCodeServerError>>,
-            ] =>
-              Option.match(current, {
-                onNone: () => [[candidate, true], Option.some(candidate)],
-                onSome: (active) => [[active, false], current],
-              }),
-          );
-          if (ownsInstall) {
-            const install = tryNative("install", () => runtime.ensureInstalled()).pipe(
-              Effect.tap(() => Effect.sync(() => runtime.setStatus("ready"))),
-              Effect.tapError((error) =>
-                Effect.sync(() => runtime.setStatus("failed", error.message)),
-              ),
-              Effect.asVoid,
-            );
-            yield* Effect.exit(install).pipe(
-              Effect.tap((exit) => Deferred.done(deferred, exit)),
-              Effect.ensuring(Ref.set(installInFlight, Option.none())),
-            );
-          }
-          yield* Deferred.await(deferred);
+          yield* runInstall;
           return { requestId: request.requestId };
         }),
         open: Effect.fn("VsCodeServer.open")(function* (connectionId, request) {
@@ -253,18 +267,22 @@ export const makeVsCodeServerLive = (
           const { workspace, target } = yield* tryNative("reveal", () =>
             resolveSourceTarget(request.workspacePath, request.location.path),
           );
-          yield* tryNative("reveal", () =>
-            runtime.reveal(workspace, {
-              ...request.location,
-              path: relative(workspace, target),
-            }),
+          yield* tryNative("reveal", (signal) =>
+            runtime.reveal(
+              workspace,
+              {
+                ...request.location,
+                path: relative(workspace, target),
+              },
+              signal,
+            ),
           );
           return { requestId: request.requestId };
         }),
         openSourceControl: Effect.fn("VsCodeServer.openSourceControl")(function* (request) {
           yield* requireAllowed(request.workspacePath);
-          yield* tryNative("openSourceControl", () =>
-            runtime.openSourceControl(request.workspacePath),
+          yield* tryNative("openSourceControl", (signal) =>
+            runtime.openSourceControl(request.workspacePath, signal),
           );
           return { requestId: request.requestId };
         }),
@@ -291,11 +309,15 @@ export const makeVsCodeServerLive = (
               ),
             };
           });
-          yield* tryNative("updateAnnotations", () =>
-            runtime.updateAnnotations(normalized.workspace, {
-              sessionId: request.snapshot.sessionId,
-              annotations: normalized.annotations,
-            }),
+          yield* tryNative("updateAnnotations", (signal) =>
+            runtime.updateAnnotations(
+              normalized.workspace,
+              {
+                sessionId: request.snapshot.sessionId,
+                annotations: normalized.annotations,
+              },
+              signal,
+            ),
           );
           return { requestId: request.requestId };
         }),
@@ -315,7 +337,7 @@ export const makeVsCodeServerLive = (
                 type: "embedded-editor-entered",
                 workspacePath: workingDirectory,
               });
-              await runtime.waitUntilVisible(workingDirectory);
+              await runtime.waitUntilVisible(workingDirectory, signal);
               signal.throwIfAborted();
             });
           },
@@ -336,7 +358,7 @@ export const makeVsCodeServerLive = (
                 path: relative(workspace, target).split(sep).join("/"),
               };
               signal.throwIfAborted();
-              await runtime.reveal(workspace, normalized);
+              await runtime.reveal(workspace, normalized, signal);
               return { status: "completed" as const, value: normalized };
             });
           },
@@ -348,7 +370,7 @@ export const makeVsCodeServerLive = (
               signal.throwIfAborted();
               if (!(await runtime.isVisible(workingDirectory)))
                 return { status: "mode-required" as const };
-              const value = await runtime.runScript(workingDirectory, source, input);
+              const value = await runtime.runScript(workingDirectory, source, input, signal);
               signal.throwIfAborted();
               return { status: "completed" as const, value };
             });

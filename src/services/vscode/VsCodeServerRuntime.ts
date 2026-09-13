@@ -296,6 +296,8 @@ interface BroadcastTarget {
 }
 
 export interface VsCodeServerRuntimeProps extends BroadcastTarget {
+  /** Test seam for deterministic child-process lifecycle coverage. */
+  spawnServer?: typeof spawn;
   /** Directory that holds downloads, extracted servers, extensions, and per-workspace state. */
   root: string;
   /** Parsed companion manifest, serialized as the extension's package.json. */
@@ -317,6 +319,7 @@ export interface VsCodeServerRuntimeProps extends BroadcastTarget {
     interval: number,
     timeout: number,
     failure: string,
+    signal?: AbortSignal,
   ): Promise<A>;
   acquireServer(
     workspacePath: string,
@@ -399,6 +402,7 @@ export class VsCodeServerRuntime {
   private readonly bridgeToken = randomBytes(32).toString("hex");
   /** Theme last pushed to running companions; duplicated pushes are skipped. */
   private pushedTheme: "light" | "dark" | undefined;
+  private disposed = false;
 
   constructor(props: VsCodeServerRuntimeProps) {
     this.props = props;
@@ -487,8 +491,10 @@ export class VsCodeServerRuntime {
       throw error;
     }
     const resolved = await realpath(workspacePath);
+    signal?.throwIfAborted();
     this.presentedWorkspacePaths.set(resolved, workspacePath);
     const instance = await this.serverFor(resolved, binary, signal);
+    signal?.throwIfAborted();
 
     const window = getWindow();
     if (!window || window.isDestroyed())
@@ -525,16 +531,19 @@ export class VsCodeServerRuntime {
     try {
       const authSuffix = instance.flavor === "openvscode" ? `/?tkn=${instance.token}` : "/";
       await view.webContents.loadURL(`http://127.0.0.1:${instance.port}${authSuffix}`);
+      signal?.throwIfAborted();
       // loadURL resolves before the asynchronously bootstrapped workbench applies
       // its saved theme and before Cake's companion closes VS Code's primary sidebar.
       // Keep the unattached native view out of sight until both are reflected in the DOM.
       await view.webContents.executeJavaScript(waitForWorkbenchLayoutScript(theme));
+      signal?.throwIfAborted();
       await view.webContents.executeJavaScript(
         vscodeShellControlsScript(
           workspacePath,
           (this.requestedBounds.get(webContentsId)?.x ?? 0) > 0,
         ),
       );
+      signal?.throwIfAborted();
     } catch (error) {
       this.views.delete(webContentsId);
       this.releaseViewer(resolved);
@@ -590,13 +599,13 @@ export class VsCodeServerRuntime {
   }
 
   /** Asks the workspace's companion extension to reveal and highlight a source location. */
-  async reveal(workspacePath: string, location: SourceLocation) {
+  async reveal(workspacePath: string, location: SourceLocation, signal?: AbortSignal) {
     const resolved = await realpath(workspacePath);
     const instance = this.servers.get(resolved);
     if (!instance) throw new Error("The embedded editor is not running for this project yet");
-    const port = await this.waitForCompanionPort(resolved);
+    const port = await this.waitForCompanionPort(resolved, signal);
     this.touch(instance);
-    await postJson(port, "/", { type: "reveal", ...location }, this.bridgeToken);
+    await postJson(port, "/", { type: "reveal", ...location }, this.bridgeToken, signal);
   }
 
   /** Reports whether this workspace currently has a visible embedded editor surface. */
@@ -606,14 +615,17 @@ export class VsCodeServerRuntime {
   }
 
   /** Waits for the renderer to acknowledge agent-directed entry into VS Code mode. */
-  async waitUntilVisible(workspacePath: string) {
+  async waitUntilVisible(workspacePath: string, signal?: AbortSignal) {
+    signal?.throwIfAborted();
     const resolved = await realpath(workspacePath);
+    signal?.throwIfAborted();
     await this.props.pollUntil(
       `visible:${resolved}`,
       () => (this.isResolvedWorkspaceVisible(resolved) ? true : undefined),
       25,
       COMPANION_START_TIMEOUT,
       "Cake did not finish entering VS Code mode",
+      signal,
     );
   }
 
@@ -626,11 +638,16 @@ export class VsCodeServerRuntime {
   }
 
   /** Runs trusted JavaScript in the workspace's companion extension host. */
-  async runScript(workspacePath: string, source: string, input: JsonValue): Promise<JsonValue> {
+  async runScript(
+    workspacePath: string,
+    source: string,
+    input: JsonValue,
+    signal?: AbortSignal,
+  ): Promise<JsonValue> {
     const resolved = await realpath(workspacePath);
     const instance = this.servers.get(resolved);
     if (!instance) throw new Error("The embedded editor is not running for this project yet");
-    const port = await this.waitForCompanionPort(resolved);
+    const port = await this.waitForCompanionPort(resolved, signal);
     this.touch(instance);
     return postJsonResult(
       port,
@@ -638,27 +655,32 @@ export class VsCodeServerRuntime {
       { type: "script", source, input },
       this.bridgeToken,
       COMPANION_SCRIPT_TIMEOUT,
+      signal,
     );
   }
 
   /** Opens VS Code's native Source Control view for the workspace. */
-  async openSourceControl(workspacePath: string) {
+  async openSourceControl(workspacePath: string, signal?: AbortSignal) {
     const resolved = await realpath(workspacePath);
     const instance = this.servers.get(resolved);
     if (!instance) throw new Error("The embedded editor is not running for this project yet");
-    const port = await this.waitForCompanionPort(resolved);
+    const port = await this.waitForCompanionPort(resolved, signal);
     this.touch(instance);
-    await postJson(port, "/", { type: "open-source-control" }, this.bridgeToken);
+    await postJson(port, "/", { type: "open-source-control" }, this.bridgeToken, signal);
   }
 
   /** Replaces the active session's Cake discussion annotations in VS Code. */
-  async updateAnnotations(workspacePath: string, snapshot: EditorAnnotationSnapshot) {
+  async updateAnnotations(
+    workspacePath: string,
+    snapshot: EditorAnnotationSnapshot,
+    signal?: AbortSignal,
+  ) {
     const resolved = await realpath(workspacePath);
     const instance = this.servers.get(resolved);
     if (!instance) throw new Error("The embedded editor is not running for this project yet");
-    const port = await this.waitForCompanionPort(resolved);
+    const port = await this.waitForCompanionPort(resolved, signal);
     this.touch(instance);
-    await postJson(port, "/", { type: "annotations", ...snapshot }, this.bridgeToken);
+    await postJson(port, "/", { type: "annotations", ...snapshot }, this.bridgeToken, signal);
   }
 
   /**
@@ -666,8 +688,10 @@ export class VsCodeServerRuntime {
    * the preference is unchanged; servers started later pick the theme up from
    * their seeded preferences.
    */
-  async updateTheme() {
+  async updateTheme(signal?: AbortSignal) {
+    signal?.throwIfAborted();
     const theme = await this.props.preferredTheme();
+    signal?.throwIfAborted();
     if (theme === this.pushedTheme) return;
     this.pushedTheme = theme;
     const pushes: Array<Promise<void>> = [];
@@ -676,7 +700,8 @@ export class VsCodeServerRuntime {
       if (!instance) continue;
       this.touch(instance);
       pushes.push(
-        postJson(port, "/", { type: "set-theme", theme }, this.bridgeToken).catch(() => {
+        postJson(port, "/", { type: "set-theme", theme }, this.bridgeToken, signal).catch(() => {
+          signal?.throwIfAborted();
           // A stopping companion misses this push; the theme is applied on next start.
         }),
       );
@@ -684,7 +709,7 @@ export class VsCodeServerRuntime {
     await Promise.all(pushes);
   }
 
-  private waitForCompanionPort(workspacePath: string) {
+  private waitForCompanionPort(workspacePath: string, signal?: AbortSignal) {
     return this.props
       .pollUntil(
         `companion:${workspacePath}`,
@@ -695,6 +720,7 @@ export class VsCodeServerRuntime {
         50,
         COMPANION_START_TIMEOUT,
         "The VS Code companion extension did not finish starting",
+        signal,
       )
       .then((port) => {
         if (port === 0) throw new Error("The embedded editor is no longer running");
@@ -730,6 +756,7 @@ export class VsCodeServerRuntime {
   }
 
   disposeAll() {
+    this.disposed = true;
     for (const [, entry] of this.views) entry.view.setVisible(false);
     this.views.clear();
     this.requestedBounds.clear();
@@ -752,7 +779,13 @@ export class VsCodeServerRuntime {
     return this.props.acquireServer(resolvedWorkspace, binary, signal);
   }
 
-  async startServer(workspacePath: string, binary: string): Promise<ServerInstance> {
+  async startServer(
+    workspacePath: string,
+    binary: string,
+    signal?: AbortSignal,
+  ): Promise<ServerInstance> {
+    signal?.throwIfAborted();
+    if (this.disposed) throw new Error("The VS Code runtime has been disposed");
     this.setStatus("starting", "Starting VS Code");
     await this.enforceRunningCap();
     await this.startBridge();
@@ -764,7 +797,9 @@ export class VsCodeServerRuntime {
     await this.ensureEditorPreferences(userDataDir);
     const flavor = serverFlavor(binary);
 
-    const child = spawn(
+    signal?.throwIfAborted();
+    if (this.disposed) throw new Error("The VS Code runtime has been disposed");
+    const child = (this.props.spawnServer ?? spawn)(
       binary,
       // code-server (the common local install) and openvscode-server differ in
       // their listen/auth flags; both take the folder as the final positional.
@@ -834,7 +869,9 @@ export class VsCodeServerRuntime {
     child.once("exit", exitHandler);
 
     try {
-      await waitForServerStart(child, START_TIMEOUT);
+      await waitForServerStart(child, START_TIMEOUT, signal);
+      signal?.throwIfAborted();
+      if (this.disposed) throw new Error("The VS Code runtime has been disposed");
     } catch (error) {
       child.removeListener("exit", exitHandler);
       child.kill();
@@ -943,6 +980,10 @@ export class VsCodeServerRuntime {
     // SAFETY: the bridge listens on 127.0.0.1 with port 0, so the kernel-assigned
     // endpoint is always the net.AddressInfo form, never null or the string form.
     const address = untypedAddress as net.AddressInfo;
+    if (this.disposed) {
+      server.close();
+      throw new Error("The VS Code runtime has been disposed");
+    }
     this.bridge = server;
     this.bridgePort = address.port;
   }
@@ -1173,8 +1214,9 @@ async function postJson(
   requestPath: string,
   body: CompanionRequest,
   token: string,
+  signal?: AbortSignal,
 ): Promise<void> {
-  await postJsonResponse(port, requestPath, body, token, 5_000);
+  await postJsonResponse(port, requestPath, body, token, 5_000, signal);
 }
 
 async function postJsonResult(
@@ -1183,8 +1225,9 @@ async function postJsonResult(
   body: CompanionRequest,
   token: string,
   timeout: number,
+  signal?: AbortSignal,
 ): Promise<JsonValue> {
-  const response = await postJsonResponse(port, requestPath, body, token, timeout);
+  const response = await postJsonResponse(port, requestPath, body, token, timeout, signal);
   const parsed: unknown = response.length === 0 ? null : JSON.parse(response.toString("utf8"));
   return Schema.decodeUnknownSync(jsonValueSchema)(parsed);
 }
@@ -1195,9 +1238,11 @@ function postJsonResponse(
   body: CompanionRequest,
   token: string,
   timeout: number,
+  signal?: AbortSignal,
 ): Promise<Buffer> {
   const payload = Buffer.from(JSON.stringify(body));
   return new Promise<Buffer>((resolvePromise, reject) => {
+    signal?.throwIfAborted();
     const request = httpRequest({
       host: "127.0.0.1",
       port,
@@ -1210,6 +1255,9 @@ function postJsonResponse(
       },
       timeout,
     });
+    const onAbort = () => request.destroy(signal?.reason);
+    signal?.addEventListener("abort", onAbort, { once: true });
+    const cleanup = () => signal?.removeEventListener("abort", onAbort);
     request.on("response", (response) => {
       const chunks: Buffer[] = [];
       let size = 0;
@@ -1224,9 +1272,11 @@ function postJsonResponse(
       response.on("end", () => {
         const responseBody = Buffer.concat(chunks);
         if (response.statusCode && response.statusCode >= 200 && response.statusCode < 300) {
+          cleanup();
           resolvePromise(responseBody);
           return;
         }
+        cleanup();
         reject(
           new Error(
             responseBody.toString("utf8") ||
@@ -1234,18 +1284,29 @@ function postJsonResponse(
           ),
         );
       });
-      response.on("error", reject);
+      response.on("error", (error) => {
+        cleanup();
+        reject(error);
+      });
     });
     request.on("timeout", () => {
       request.destroy(new Error("Companion extension did not respond"));
     });
-    request.on("error", reject);
+    request.on("error", (error) => {
+      cleanup();
+      reject(error);
+    });
     request.end(payload);
   });
 }
 
-function waitForServerStart(child: ChildProcess, timeout: number): Promise<void> {
+function waitForServerStart(
+  child: ChildProcess,
+  timeout: number,
+  signal?: AbortSignal,
+): Promise<void> {
   return new Promise((resolvePromise, reject) => {
+    signal?.throwIfAborted();
     const timer = setTimeout(() => {
       cleanup();
       reject(new Error("VS Code did not finish starting in time"));
@@ -1264,17 +1325,24 @@ function waitForServerStart(child: ChildProcess, timeout: number): Promise<void>
       cleanup();
       reject(error);
     };
+    const onAbort = () => {
+      cleanup();
+      child.kill();
+      reject(signal?.reason);
+    };
     function cleanup() {
       clearTimeout(timer);
       child.stdout?.off("data", onData);
       child.stderr?.off("data", onData);
       child.off("exit", onExit);
       child.off("error", onError);
+      signal?.removeEventListener("abort", onAbort);
     }
     child.stdout?.on("data", onData);
     child.stderr?.on("data", onData);
     child.once("exit", onExit);
     child.once("error", onError);
+    signal?.addEventListener("abort", onAbort, { once: true });
   });
 }
 

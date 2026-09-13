@@ -1,6 +1,8 @@
-import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { EventEmitter } from "node:events";
+import { chmod, mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { createServer } from "node:http";
+import { PassThrough } from "node:stream";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { parse as parseJsonc } from "jsonc-parser";
@@ -8,6 +10,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   VsCodeServerRuntime,
   type CompanionManifest,
+  type ServerInstance,
 } from "../../../../src/services/vscode/VsCodeServerRuntime";
 
 const companionManifest: CompanionManifest = {
@@ -32,6 +35,8 @@ interface RuntimeOverrides {
   companionThemes?: RuntimeProps["companionThemes"];
   preferredTheme?: RuntimeProps["preferredTheme"];
   broadcast?: RuntimeProps["broadcast"];
+  pollUntil?: RuntimeProps["pollUntil"];
+  spawnServer?: RuntimeProps["spawnServer"];
 }
 
 function createRuntime({
@@ -40,10 +45,16 @@ function createRuntime({
   companionThemes = [],
   preferredTheme = async () => "dark" as const,
   broadcast = () => undefined,
+  pollUntil = async (_key, check, _interval, _timeout, failure) => {
+    const value = check();
+    if (value !== undefined) return value;
+    throw new Error(failure);
+  },
+  spawnServer,
 }: RuntimeOverrides) {
-  let runtime: VsCodeServerRuntime;
-  runtime = new VsCodeServerRuntime({
+  const runtime: VsCodeServerRuntime = new VsCodeServerRuntime({
     root,
+    ...(spawnServer ? { spawnServer } : null),
     companionManifest,
     companionMain,
     companionThemes,
@@ -55,12 +66,9 @@ function createRuntime({
     cancelIdleEviction: () => undefined,
     invalidateServer: () => undefined,
     evictServer: async () => undefined,
-    pollUntil: async (_key, check, _interval, _timeout, failure) => {
-      const value = check();
-      if (value !== undefined) return value;
-      throw new Error(failure);
-    },
-    acquireServer: (workspacePath, binary) => runtime.startServer(workspacePath, binary),
+    pollUntil,
+    acquireServer: (workspacePath, binary): Promise<ServerInstance> =>
+      runtime.startServer(workspacePath, binary),
   });
   return runtime;
 }
@@ -160,6 +168,145 @@ describe("VsCodeServerRuntime startup", () => {
       workspacePath: "/linked/project",
     });
     expect(runtime.backToAgentForWindow(17)).toBe(false);
+  });
+
+  it("kills a spawned server when startup is canceled", async () => {
+    root = await mkdtemp(join(tmpdir(), "cake-vscode-runtime-"));
+    const companionMain = join(root, "companion.js");
+    await writeFile(companionMain, "module.exports = {};\n");
+    let spawned!: () => void;
+    const didSpawn = new Promise<void>((resolvePromise) => {
+      spawned = resolvePromise;
+    });
+    const child = new EventEmitter() as EventEmitter & {
+      stdout: PassThrough;
+      stderr: PassThrough;
+      kill: ReturnType<typeof vi.fn>;
+    };
+    child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
+    child.kill = vi.fn(() => true);
+    const spawnServer = vi.fn(() => {
+      spawned();
+      return child;
+    });
+    runtime = createRuntime({ root, companionMain, spawnServer: spawnServer as never });
+    const controller = new AbortController();
+
+    const starting = runtime.startServer(root, "/fake/code-server", controller.signal);
+    await didSpawn;
+    controller.abort();
+
+    await expect(starting).rejects.toBeDefined();
+    expect(child.kill).toHaveBeenCalled();
+    expect(runtime["servers"].size).toBe(0);
+  });
+
+  it("does not register a server that becomes ready after runtime disposal", async () => {
+    root = await mkdtemp(join(tmpdir(), "cake-vscode-runtime-"));
+    const companionMain = join(root, "companion.js");
+    await writeFile(companionMain, "module.exports = {};\n");
+    let spawned!: () => void;
+    const didSpawn = new Promise<void>((resolvePromise) => {
+      spawned = resolvePromise;
+    });
+    const child = new EventEmitter() as EventEmitter & {
+      stdout: PassThrough;
+      stderr: PassThrough;
+      kill: ReturnType<typeof vi.fn>;
+    };
+    child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
+    child.kill = vi.fn(() => true);
+    runtime = createRuntime({
+      root,
+      companionMain,
+      spawnServer: vi.fn(() => {
+        spawned();
+        return child;
+      }) as never,
+    });
+
+    const starting = runtime.startServer(root, "/fake/code-server");
+    await didSpawn;
+    runtime.disposeAll();
+    child.stdout.write("HTTP server listening on http://127.0.0.1\n");
+
+    await expect(starting).rejects.toThrow("disposed");
+    expect(child.kill).toHaveBeenCalled();
+    expect(runtime["servers"].size).toBe(0);
+  });
+
+  it("threads cancellation through visibility polling", async () => {
+    root = await mkdtemp(join(tmpdir(), "cake-vscode-runtime-"));
+    let pollingStarted!: () => void;
+    const didStartPolling = new Promise<void>((resolvePromise) => {
+      pollingStarted = resolvePromise;
+    });
+    let pollingStopped = false;
+    runtime = createRuntime({
+      root,
+      pollUntil: (_key, _check, _interval, _timeout, _failure, signal) =>
+        new Promise((_resolve, reject) => {
+          pollingStarted();
+          signal?.addEventListener(
+            "abort",
+            () => {
+              pollingStopped = true;
+              reject(signal.reason);
+            },
+            { once: true },
+          );
+        }),
+    });
+    const controller = new AbortController();
+
+    const visible = runtime.waitUntilVisible(root, controller.signal);
+    await didStartPolling;
+    controller.abort();
+
+    await expect(visible).rejects.toBeDefined();
+    expect(pollingStopped).toBe(true);
+  });
+
+  it("destroys an in-flight companion request when canceled", async () => {
+    root = await mkdtemp(join(tmpdir(), "cake-vscode-runtime-"));
+    let requestStarted!: () => void;
+    const didStartRequest = new Promise<void>((resolvePromise) => {
+      requestStarted = resolvePromise;
+    });
+    let requestAborted!: () => void;
+    const didAbortRequest = new Promise<void>((resolvePromise) => {
+      requestAborted = resolvePromise;
+    });
+    const server = createServer((request) => {
+      requestStarted();
+      request.once("close", requestAborted);
+    });
+    await new Promise<void>((resolvePromise) => server.listen(0, "127.0.0.1", resolvePromise));
+    const companionPort = (server.address() as AddressInfo).port;
+    runtime = createRuntime({ root });
+    const resolvedRoot = await realpath(root);
+    runtime["servers"].set(resolvedRoot, {
+      workspacePath: resolvedRoot,
+      child: { kill: () => undefined, removeAllListeners: () => undefined } as never,
+      port: 1,
+      token: "token",
+      flavor: "codeserver",
+      binary: "/fake/code-server",
+      lastUsedAt: 0,
+      viewers: 1,
+    });
+    runtime["companionPorts"].set(resolvedRoot, companionPort);
+    const controller = new AbortController();
+
+    const request = runtime.runScript(root, "return input", null, controller.signal);
+    await didStartRequest;
+    controller.abort();
+
+    await expect(request).rejects.toBeDefined();
+    await didAbortRequest;
+    await new Promise<void>((resolvePromise) => server.close(() => resolvePromise()));
   });
 
   it("observes the listening message before pausing output", async () => {
