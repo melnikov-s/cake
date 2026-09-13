@@ -395,67 +395,70 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
         widgetPreviewLocks.set(connectionId, lock);
       }
       const leased = lock.withPermits(1)(
-        Effect.acquireUseRelease(
-          Effect.gen(function* () {
-            if (signal.aborted)
-              return yield* coordinatorError("withWidgetPreview", "Widget review was cancelled");
-            const operationId = crypto.randomUUID();
-            const previewRequestId = crypto.randomUUID();
-            const completion = yield* Deferred.make<JsonValue | undefined>();
-            const entry: PendingRequest = {
-              _tag: "WidgetPreview",
-              sessionId,
-              connectionId,
-              operationId,
-              token: widget.token,
-              completion,
-            };
-            pending.set(previewRequestId, entry);
-            yield* publishProjectEvent(connectionId, {
-              type: "widget-preview-requested",
-              requestId: operationId,
-              previewRequestId,
-              sessionId,
-              widget,
-            }).pipe(Effect.tapError(() => Effect.sync(() => pending.delete(previewRequestId))));
-            const value = yield* awaitPending(previewRequestId, entry, signal, 15_000);
-            if (value === undefined)
-              return yield* coordinatorError(
-                "withWidgetPreview",
-                signal.aborted
-                  ? "Widget review was cancelled"
-                  : "Widget preview did not become ready",
-              );
-            if (Schema.is(Schema.Struct({ cancelled: Schema.Literal(true) }))(value))
-              return yield* coordinatorError("widgetCancelled", "Widget review was cancelled");
-            const decoded = yield* Schema.decodeUnknownEffect(
-              Schema.Struct({
-                rect: Schema.optionalKey(
-                  Schema.Struct({
-                    x: Schema.Int,
-                    y: Schema.Int,
-                    width: Schema.Int,
-                    height: Schema.Int,
-                  }),
-                ),
-                diagnostics: Schema.Array(Schema.String),
-              }),
-            )(value).pipe(
-              Effect.mapError((cause) => coordinatorError("withWidgetPreview", cause.message)),
+        Effect.gen(function* () {
+          if (signal.aborted)
+            return yield* coordinatorError("withWidgetPreview", "Widget review was cancelled");
+          const operationId = crypto.randomUUID();
+          const previewRequestId = crypto.randomUUID();
+          const completion = yield* Deferred.make<JsonValue | undefined>();
+          const entry: PendingRequest = {
+            _tag: "WidgetPreview",
+            sessionId,
+            connectionId,
+            operationId,
+            token: widget.token,
+            completion,
+          };
+          pending.set(previewRequestId, entry);
+          yield* publishProjectEvent(connectionId, {
+            type: "widget-preview-requested",
+            requestId: operationId,
+            previewRequestId,
+            sessionId,
+            widget,
+          }).pipe(Effect.tapError(() => Effect.sync(() => pending.delete(previewRequestId))));
+          const value = yield* awaitPending(previewRequestId, entry, signal, 15_000);
+          if (value === undefined)
+            return yield* coordinatorError(
+              "withWidgetPreview",
+              signal.aborted
+                ? "Widget review was cancelled"
+                : "Widget preview did not become ready",
             );
-            if (!decoded.rect)
-              return yield* coordinatorError(
-                "widgetRuntime",
-                decoded.diagnostics.join("\n") || "Widget runtime failed before readiness",
-              );
-            return { connectionId, rect: decoded.rect, diagnostics: decoded.diagnostics };
-          }),
-          use,
-          () =>
+          if (Schema.is(Schema.Struct({ cancelled: Schema.Literal(true) }))(value))
+            return yield* coordinatorError("widgetCancelled", "Widget review was cancelled");
+          const decoded = yield* Schema.decodeUnknownEffect(
+            Schema.Struct({
+              rect: Schema.optionalKey(
+                Schema.Struct({
+                  x: Schema.Int,
+                  y: Schema.Int,
+                  width: Schema.Int,
+                  height: Schema.Int,
+                }),
+              ),
+              diagnostics: Schema.Array(Schema.String),
+            }),
+          )(value).pipe(
+            Effect.mapError((cause) => coordinatorError("withWidgetPreview", cause.message)),
+          );
+          if (!decoded.rect)
+            return yield* coordinatorError(
+              "widgetRuntime",
+              decoded.diagnostics.join("\n") || "Widget runtime failed before readiness",
+            );
+          return yield* use({
+            connectionId,
+            rect: decoded.rect,
+            diagnostics: decoded.diagnostics,
+          });
+        }).pipe(
+          Effect.ensuring(
             publishProjectEvent(connectionId, {
               type: "widget-preview-dismissed",
               token: widget.token,
             }).pipe(Effect.catch(() => Effect.void)),
+          ),
         ),
       );
       return yield* Effect.raceFirst(leased, widgetPreviewAbort(signal));

@@ -111,15 +111,14 @@ function runtimeBridge(token: string, capability: InlineWidgetCapability) {
       const settle = () => {
         const now = performance.now();
         if ((now - startedAt >= 600 && now - changedAt >= 200) || now - startedAt >= 2500) {
-          reportSize();
-          resize.disconnect();
           mutations.disconnect();
-          requestAnimationFrame(() => requestAnimationFrame(() => send("ready", true)));
+          document.documentElement.dataset.cakeWidgetReady = "true";
+          send("ready", true);
           return;
         }
-        requestAnimationFrame(settle);
+        setTimeout(settle, 50);
       };
-      requestAnimationFrame(settle);
+      setTimeout(settle, 50);
     });
   });
 })();

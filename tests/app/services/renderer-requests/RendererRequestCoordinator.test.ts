@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
 import { Context, Deferred, Effect, Exit, Fiber, Layer, Option, Queue, Stream } from "effect";
+import * as TestClock from "effect/testing/TestClock";
 import { describe, expect, vi } from "vitest";
 import type { CakeEvent } from "../../../../src/ipc/cake-rpc-contract";
 import {
@@ -206,6 +207,75 @@ describe("RendererRequestCoordinator", () => {
         rect: { x: 10, y: 20, width: 560, height: 480 },
         diagnostics: ["widget=560x480"],
       });
+    }),
+  );
+
+  it.effect(
+    "dismisses only the mounted token on abort before readiness and releases the lease",
+    () =>
+      Effect.gen(function* () {
+        const { coordinator, events } = yield* makeFixture;
+        yield* coordinator.registerProjectSession("project-1", "/projects/cake");
+        yield* coordinator.bind({ _tag: "ProjectSession", sessionId: "project-1" }, 45);
+        const controller = new AbortController();
+        const token = "00000000-0000-4000-8000-000000000021";
+        const aborted = yield* coordinator
+          .withWidgetPreview(
+            "project-1",
+            { token, url: `cake-widget://document/${token}` },
+            controller.signal,
+            Effect.succeed,
+          )
+          .pipe(Effect.forkChild);
+        const requested = yield* Queue.take(events);
+        assert.equal(requested.type, "widget-preview-requested");
+        controller.abort();
+        expect(Exit.isFailure(yield* Fiber.await(aborted))).toBe(true);
+        expect(yield* Queue.take(events)).toEqual({ type: "widget-preview-dismissed", token });
+
+        const nextToken = "00000000-0000-4000-8000-000000000022";
+        const next = yield* coordinator
+          .withWidgetPreview(
+            "project-1",
+            { token: nextToken, url: `cake-widget://document/${nextToken}` },
+            new AbortController().signal,
+            () => Effect.succeed("next"),
+          )
+          .pipe(Effect.forkChild);
+        const nextRequest = yield* Queue.take(events);
+        assert.equal(nextRequest.type, "widget-preview-requested");
+        yield* coordinator.respondWidgetPreview(45, "project-1", {
+          requestId: nextRequest.requestId,
+          previewRequestId: nextRequest.previewRequestId,
+          sessionId: "project-1",
+          token: nextToken,
+          cancelled: false,
+          rect: { x: 1, y: 1, width: 100, height: 100 },
+          diagnostics: [],
+        });
+        expect(yield* Fiber.join(next)).toBe("next");
+      }),
+  );
+
+  it.effect("dismisses and releases the lease when readiness times out", () =>
+    Effect.gen(function* () {
+      const { coordinator, events } = yield* makeFixture;
+      yield* coordinator.registerProjectSession("project-1", "/projects/cake");
+      yield* coordinator.bind({ _tag: "ProjectSession", sessionId: "project-1" }, 46);
+      const token = "00000000-0000-4000-8000-000000000023";
+      const timedOut = yield* coordinator
+        .withWidgetPreview(
+          "project-1",
+          { token, url: `cake-widget://document/${token}` },
+          new AbortController().signal,
+          Effect.succeed,
+        )
+        .pipe(Effect.forkChild);
+      const requested = yield* Queue.take(events);
+      assert.equal(requested.type, "widget-preview-requested");
+      yield* TestClock.adjust("15 seconds");
+      expect(Exit.isFailure(yield* Fiber.await(timedOut))).toBe(true);
+      expect(yield* Queue.take(events)).toEqual({ type: "widget-preview-dismissed", token });
     }),
   );
 

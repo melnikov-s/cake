@@ -90,6 +90,53 @@ export default function LayoutProof() {
     expect(section.startPoint.x).toBe(a!.x + a!.width);
     expect(section.endPoint.x).toBe(b!.x);
     await expect(iframe).toHaveAttribute("sandbox", "allow-scripts");
+
+    const expanding = await callRpcHarness<{
+      widget: { token: string; url: string };
+    }>(harness, "invokeNative", {
+      type: "compile-inline-widget",
+      language: "react",
+      capability: "display",
+      source: `import React, { useState } from "react";
+export default function ExpandingWidget() {
+  const [expanded, setExpanded] = useState(false);
+  return <main><button onClick={() => setExpanded(true)}>Expand after ready</button>
+    {expanded && <section style={{ minHeight: 720 }}><p>Late content</p><button>Reachable late control</button></section>}
+  </main>;
+}`,
+    });
+    await page.evaluate(({ url, token }) => {
+      const frame = document.querySelector<HTMLIFrameElement>('iframe[title="CSP React widget"]');
+      if (!frame) throw new Error("Widget frame is unavailable");
+      const receive = (event: MessageEvent) => {
+        if (event.source !== frame.contentWindow) return;
+        // SAFETY: Each field is checked below before use; this listener only adapts the fixed fixture bridge.
+        const data = event.data as {
+          source?: string;
+          token?: string;
+          type?: string;
+          value?: number;
+        };
+        if (data.source !== "cake-inline-widget" || data.token !== token) return;
+        if (data.type === "height" && typeof data.value === "number")
+          frame.style.height = `${Math.ceil(data.value)}px`;
+      };
+      window.addEventListener("message", receive);
+      frame.src = url;
+    }, expanding.widget);
+    const expandingFrame = iframe.contentFrame();
+    await expect(expandingFrame.getByRole("button", { name: "Expand after ready" })).toBeVisible();
+    await expect(expandingFrame.locator("html")).toHaveAttribute("data-cake-widget-ready", "true");
+    const initialHeight = await iframe.evaluate(
+      (element) => element.getBoundingClientRect().height,
+    );
+    await expandingFrame.getByRole("button", { name: "Expand after ready" }).click();
+    await expect
+      .poll(() => iframe.evaluate((element) => element.getBoundingClientRect().height))
+      .toBeGreaterThan(initialHeight + 500);
+    await expect(
+      expandingFrame.getByRole("button", { name: "Reachable late control" }),
+    ).toBeVisible();
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });
