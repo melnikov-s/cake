@@ -1,5 +1,17 @@
 import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
-import { Clock, Effect, FileSystem, Layer, Path, Stream } from "effect";
+import { createHash } from "node:crypto";
+import { stat } from "node:fs/promises";
+import {
+  Clock,
+  Deferred,
+  Effect,
+  Fiber,
+  FileSystem,
+  Layer,
+  Path,
+  PlatformError,
+  Stream,
+} from "effect";
 import { describe, expect, it } from "@effect/vitest";
 import {
   cakeWorkspaceSessionDirectory,
@@ -119,6 +131,18 @@ describe("SessionArchiveStorage", () => {
             worktreeName: "archive-index",
           }),
         );
+        const projectDirectory = yield* Effect.promise(() =>
+          stat(
+            `${metadataRoot}/projects/${createHash("sha256").update("/projects/cake").digest("hex")}`,
+          ),
+        );
+        expect(projectDirectory.mode & 0o777).toBe(0o700);
+        const projectEntry = yield* Effect.promise(() =>
+          stat(
+            `${metadataRoot}/projects/${createHash("sha256").update("/projects/cake").digest("hex")}/${createHash("sha256").update("session-1").digest("hex")}.json`,
+          ),
+        );
+        expect(projectEntry.mode & 0o777).toBe(0o600);
         expect(
           yield* runArchive(metadataRoot, (storage) =>
             storage.resolvedProjects("/projects/cake").pipe(Stream.runCollect),
@@ -141,6 +165,100 @@ describe("SessionArchiveStorage", () => {
         expect(
           yield* streamWorkspaceSessions(location.cwd, location.activeRoot).pipe(Stream.runCollect),
         ).toEqual([expect.objectContaining({ id: "session-1" })]);
+      }),
+    ),
+  );
+
+  it.effect("restores the active transcript when project metadata persistence is interrupted", () =>
+    withPlatform(
+      Effect.gen(function* () {
+        const metadataRoot = yield* makeMetadataRoot();
+        const location = yield* makeFixture();
+        const fileSystem = yield* FileSystem.FileSystem;
+        const locatorWriteStarted = yield* Deferred.make<void>();
+        const releaseLocatorWrite = yield* Deferred.make<void>();
+        const controlledFileSystem = FileSystem.makeNoop({
+          ...fileSystem,
+          writeFileString: (target, content, options) =>
+            fileSystem
+              .writeFileString(target, content, options)
+              .pipe(
+                Effect.andThen(
+                  target.startsWith(`${metadataRoot}/sessions/`)
+                    ? Deferred.succeed(locatorWriteStarted, undefined).pipe(
+                        Effect.andThen(Deferred.await(releaseLocatorWrite)),
+                      )
+                    : Effect.void,
+                ),
+              ),
+        });
+        const controlledPlatform = Layer.mergeAll(
+          Layer.succeed(FileSystem.FileSystem)(controlledFileSystem),
+          NodePath.layer,
+        );
+        yield* Effect.gen(function* () {
+          const storage = yield* SessionArchiveStorage;
+          const resolving = yield* storage
+            .resolveProject("session-1", location, {
+              projectPath: "/projects/cake",
+              projectName: "Cake",
+            })
+            .pipe(Effect.forkChild);
+          yield* Deferred.await(locatorWriteStarted);
+          yield* Fiber.interrupt(resolving);
+          expect(yield* storage.locate("session-1", location)).toBe("active");
+          expect(yield* storage.resolvedProjectEntry("session-1")).toBeUndefined();
+        }).pipe(
+          Effect.provide(
+            makeSessionArchiveStorageLive(metadataRoot).pipe(Layer.provide(controlledPlatform)),
+          ),
+        );
+      }),
+    ),
+  );
+
+  it.effect("restores archive metadata and transcript when restore metadata removal fails", () =>
+    withPlatform(
+      Effect.gen(function* () {
+        const metadataRoot = yield* makeMetadataRoot();
+        const location = yield* makeFixture();
+        const fileSystem = yield* FileSystem.FileSystem;
+        let failLocatorRemoval = false;
+        const controlledFileSystem = FileSystem.makeNoop({
+          ...fileSystem,
+          remove: (target, options) =>
+            failLocatorRemoval && target.startsWith(`${metadataRoot}/sessions/`)
+              ? Effect.fail(
+                  PlatformError.systemError({
+                    _tag: "Unknown",
+                    module: "SessionArchiveStorageTest",
+                    method: "remove",
+                  }),
+                )
+              : fileSystem.remove(target, options),
+        });
+        const controlledPlatform = Layer.mergeAll(
+          Layer.succeed(FileSystem.FileSystem)(controlledFileSystem),
+          NodePath.layer,
+        );
+        yield* Effect.gen(function* () {
+          const storage = yield* SessionArchiveStorage;
+          yield* storage.resolveProject("session-1", location, {
+            projectPath: "/projects/cake",
+            projectName: "Cake",
+          });
+          failLocatorRemoval = true;
+          const error = yield* storage.restoreProject("session-1").pipe(Effect.flip);
+          expect(error.operation).toBe("restoreProject");
+          expect(yield* storage.locate("session-1", location)).toBe("resolved");
+          expect(yield* storage.resolvedProjectEntry("session-1")).toEqual(
+            expect.objectContaining({ sessionId: "session-1" }),
+          );
+        }).pipe(
+          Effect.provide(
+            makeSessionArchiveStorageLive(metadataRoot).pipe(Layer.provide(controlledPlatform)),
+          ),
+        );
       }),
     ),
   );

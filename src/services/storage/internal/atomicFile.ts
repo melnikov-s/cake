@@ -17,7 +17,7 @@ export const atomicWriteFile = Effect.fn("atomicWriteFile")(function* <E>(
   // Storage directories under CakePaths are not created anywhere else, so a
   // first write on a fresh machine is what brings them into existence.
   yield* fileSystem
-    .makeDirectory(path.dirname(target), { recursive: true })
+    .makeDirectory(path.dirname(target), { recursive: true, mode: 0o700 })
     .pipe(Effect.mapError((cause) => onError("write", cause)));
 
   return yield* Effect.acquireUseRelease(

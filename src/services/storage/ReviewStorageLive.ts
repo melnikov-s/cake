@@ -50,6 +50,7 @@ export const makeReviewStorageLive = (
       const updateLocks = yield* RcMap.make({ lookup: () => Semaphore.make(1) });
       const creationLocks = yield* RcMap.make({ lookup: () => Semaphore.make(1) });
       const contextLocks = yield* RcMap.make({ lookup: () => Semaphore.make(1) });
+      const sessionLocks = yield* RcMap.make({ lookup: () => Semaphore.make(1) });
 
       const sessionDirectory = (workspacePath: string, sessionId: string) =>
         path.join(root, digestKey(workspacePath), digestKey(sessionId));
@@ -91,6 +92,12 @@ export const makeReviewStorageLive = (
             }),
           (leaseScope) => Scope.close(leaseScope, Exit.void),
         );
+
+      const withSessionLock = <A, E, R>(
+        workspacePath: string,
+        sessionId: string,
+        effect: Effect.Effect<A, E, R>,
+      ) => withKeyLock(sessionLocks, serialKey(workspacePath, sessionId), effect);
 
       const write = Effect.fn("ReviewStorage.write")(function* (record: ReviewThreadRecord) {
         const encoded = yield* Schema.encodeEffect(reviewThreadRecordSchema)(record);
@@ -260,106 +267,145 @@ export const makeReviewStorageLive = (
         reviewContextPath,
         discussionParentContextPath,
         deleteSession: Effect.fn("ReviewStorage.deleteSession")((workspacePath, sessionId) =>
-          changed(
-            boundary(
-              "deleteSession",
-              Effect.all([
-                fileSystem.remove(sessionDirectory(workspacePath, sessionId), {
-                  recursive: true,
-                  force: true,
-                }),
-                fileSystem.remove(
-                  path.join(piSessionRoot, digestKey(workspacePath), digestKey(sessionId)),
-                  { recursive: true, force: true },
-                ),
-              ]).pipe(Effect.asVoid),
+          withSessionLock(
+            workspacePath,
+            sessionId,
+            changed(
+              boundary(
+                "deleteSession",
+                Effect.all([
+                  fileSystem.remove(sessionDirectory(workspacePath, sessionId), {
+                    recursive: true,
+                    force: true,
+                  }),
+                  fileSystem.remove(
+                    path.join(piSessionRoot, digestKey(workspacePath), digestKey(sessionId)),
+                    { recursive: true, force: true },
+                  ),
+                ]).pipe(Effect.asVoid),
+              ),
             ),
           ),
         ),
         listSession: Effect.fn("ReviewStorage.listSession")((workspacePath, sessionId) =>
-          boundary("listSession", listSessionInternal(workspacePath, sessionId)),
+          withSessionLock(
+            workspacePath,
+            sessionId,
+            boundary("listSession", listSessionInternal(workspacePath, sessionId)),
+          ),
         ),
         listDiscussionRecords: Effect.fn("ReviewStorage.listDiscussionRecords")(
           (workspacePath, sessionId) =>
-            boundary("listDiscussionRecords", listRecords(workspacePath, sessionId)),
+            withSessionLock(
+              workspacePath,
+              sessionId,
+              boundary("listDiscussionRecords", listRecords(workspacePath, sessionId)),
+            ),
         ),
         get: Effect.fn("ReviewStorage.get")((workspacePath, sessionId, threadId) =>
-          boundary("get", getRecord(workspacePath, sessionId, threadId)),
+          withSessionLock(
+            workspacePath,
+            sessionId,
+            boundary("get", getRecord(workspacePath, sessionId, threadId)),
+          ),
         ),
         createDiscussion: Effect.fn("ReviewStorage.createDiscussion")(
           (workspacePath, sessionId, anchor) =>
-            changed(
-              boundary(
-                "createDiscussion",
-                createDiscussionInternal(workspacePath, sessionId, anchor),
+            withSessionLock(
+              workspacePath,
+              sessionId,
+              changed(
+                boundary(
+                  "createDiscussion",
+                  createDiscussionInternal(workspacePath, sessionId, anchor),
+                ),
               ),
             ),
         ),
         ensureDiscussion: Effect.fn("ReviewStorage.ensureDiscussion")(
           (workspacePath, sessionId, anchor) =>
-            changed(
-              boundary(
-                "ensureDiscussion",
-                withKeyLock(
-                  creationLocks,
-                  serialKey(workspacePath, sessionId, anchor.view ?? "file", anchor.path),
-                  Effect.gen(function* () {
-                    const records = yield* listRecords(workspacePath, sessionId);
-                    const existing = records.find(
-                      (record) =>
-                        record.anchor.view === anchor.view && record.anchor.path === anchor.path,
-                    );
-                    return (
-                      existing ??
-                      (yield* createDiscussionInternal(workspacePath, sessionId, anchor))
-                    );
-                  }),
+            withSessionLock(
+              workspacePath,
+              sessionId,
+              changed(
+                boundary(
+                  "ensureDiscussion",
+                  withKeyLock(
+                    creationLocks,
+                    serialKey(workspacePath, sessionId, anchor.view ?? "file", anchor.path),
+                    Effect.gen(function* () {
+                      const records = yield* listRecords(workspacePath, sessionId);
+                      const existing = records.find(
+                        (record) =>
+                          record.anchor.view === anchor.view && record.anchor.path === anchor.path,
+                      );
+                      return (
+                        existing ??
+                        (yield* createDiscussionInternal(workspacePath, sessionId, anchor))
+                      );
+                    }),
+                  ),
                 ),
               ),
             ),
         ),
         linkDiscussionSidecar: Effect.fn("ReviewStorage.linkDiscussionSidecar")(
           (workspacePath, sessionId, threadId, sidecar) =>
-            changed(
-              boundary(
-                "linkDiscussionSidecar",
-                Effect.gen(function* () {
-                  const now = DateTime.formatIso(yield* DateTime.now);
-                  return yield* update(workspacePath, sessionId, threadId, (thread) => ({
-                    ...thread,
-                    agentSessionId: sidecar.sessionId,
-                    agentSessionFile: sidecar.sessionFile,
-                    pendingComments: [],
-                    submission: undefined,
-                    updatedAt: now,
-                  }));
-                }),
+            withSessionLock(
+              workspacePath,
+              sessionId,
+              changed(
+                boundary(
+                  "linkDiscussionSidecar",
+                  Effect.gen(function* () {
+                    const now = DateTime.formatIso(yield* DateTime.now);
+                    return yield* update(workspacePath, sessionId, threadId, (thread) => ({
+                      ...thread,
+                      agentSessionId: sidecar.sessionId,
+                      agentSessionFile: sidecar.sessionFile,
+                      pendingComments: [],
+                      submission: undefined,
+                      updatedAt: now,
+                    }));
+                  }),
+                ),
               ),
             ),
         ),
         resolve: Effect.fn("ReviewStorage.resolve")(
           (workspacePath, sessionId, threadId, resolved) =>
-            changed(
-              boundary(
-                "resolve",
-                Effect.gen(function* () {
-                  const now = DateTime.formatIso(yield* DateTime.now);
-                  const record = yield* update(workspacePath, sessionId, threadId, (thread) => ({
-                    ...thread,
-                    status: resolved ? "resolved" : "open",
-                    resolvedAt: resolved ? now : undefined,
-                    updatedAt: now,
-                  }));
-                  yield* refreshReviewContext(workspacePath, sessionId);
-                  return yield* project(record);
-                }),
+            withSessionLock(
+              workspacePath,
+              sessionId,
+              changed(
+                boundary(
+                  "resolve",
+                  Effect.gen(function* () {
+                    const now = DateTime.formatIso(yield* DateTime.now);
+                    const record = yield* update(workspacePath, sessionId, threadId, (thread) => ({
+                      ...thread,
+                      status: resolved ? "resolved" : "open",
+                      resolvedAt: resolved ? now : undefined,
+                      updatedAt: now,
+                    }));
+                    yield* refreshReviewContext(workspacePath, sessionId);
+                    return yield* project(record);
+                  }),
+                ),
               ),
             ),
         ),
         refreshDiscussionContext: Effect.fn("ReviewStorage.refreshDiscussionContext")(
           (workspacePath, sessionId) =>
-            changed(
-              boundary("refreshDiscussionContext", refreshReviewContext(workspacePath, sessionId)),
+            withSessionLock(
+              workspacePath,
+              sessionId,
+              changed(
+                boundary(
+                  "refreshDiscussionContext",
+                  refreshReviewContext(workspacePath, sessionId),
+                ),
+              ),
             ),
         ),
       });

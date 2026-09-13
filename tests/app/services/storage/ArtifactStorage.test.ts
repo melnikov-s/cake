@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
-import { Effect, Layer, ManagedRuntime } from "effect";
+import { Deferred, Effect, Fiber, FileSystem, Layer, ManagedRuntime } from "effect";
 import { afterEach, describe, expect, it } from "vitest";
 import { ArtifactStorage } from "../../../../src/services/storage/ArtifactStorage";
 import { makeArtifactStorageLive } from "../../../../src/services/storage/ArtifactStorageLive";
@@ -11,10 +11,12 @@ import { makeArtifactStorageLive } from "../../../../src/services/storage/Artifa
 const directories: string[] = [];
 const disposeRuntimes: Array<() => Promise<void>> = [];
 
-const makeStorage = async (root: string) => {
-  const layer = makeArtifactStorageLive(root).pipe(
-    Layer.provideMerge(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer)),
+const makeStorage = async (root: string, fileSystem?: FileSystem.FileSystem) => {
+  const platform = Layer.mergeAll(
+    fileSystem ? Layer.succeed(FileSystem.FileSystem)(fileSystem) : NodeFileSystem.layer,
+    NodePath.layer,
   );
+  const layer = makeArtifactStorageLive(root).pipe(Layer.provideMerge(platform));
   const runtime = ManagedRuntime.make(layer);
   disposeRuntimes.push(() => runtime.dispose());
   return runtime.runPromise(ArtifactStorage);
@@ -164,6 +166,13 @@ describe("ArtifactStorage", () => {
       storage.upsert("/project", { ...baseArtifact, revision: 1, title: "Scores" }),
     );
     expect(first.digest).toMatch(/^[a-f0-9]{64}$/);
+    const digestKey = (value: string) => createHash("sha256").update(value).digest("hex");
+    const sessionMode = await stat(
+      join(root, "sessions", digestKey("/project"), digestKey("session-1")),
+    );
+    expect(sessionMode.mode & 0o777).toBe(0o700);
+    const blobMode = await stat(join(root, "blobs", `${first.digest}.json`));
+    expect(blobMode.mode & 0o777).toBe(0o600);
     await expect(
       Effect.runPromise(storage.upsert("/project", { ...baseArtifact, revision: 3 })),
     ).rejects.toThrow("revision must advance");
@@ -296,6 +305,62 @@ describe("ArtifactStorage", () => {
       ),
     ).rejects.toThrow();
     expect(await Effect.runPromise(storage.listSession("/project", "fork-1"))).toEqual([]);
+  });
+
+  it("serializes session deletion behind an in-flight artifact mutation", async () => {
+    const root = await mkdtemp(join(tmpdir(), "cake-artifacts-"));
+    directories.push(root);
+    const fileSystem = await Effect.runPromise(
+      FileSystem.FileSystem.pipe(Effect.provide(NodeFileSystem.layer)),
+    );
+    const recordWriteStarted = await Effect.runPromise(Deferred.make<void>());
+    const releaseRecordWrite = await Effect.runPromise(Deferred.make<void>());
+    const sessionOneDirectory = join(
+      root,
+      "sessions",
+      createHash("sha256").update("/project").digest("hex"),
+      createHash("sha256").update("session-1").digest("hex"),
+    );
+    const controlledFileSystem = FileSystem.makeNoop({
+      ...fileSystem,
+      writeFileString: (target, content, options) =>
+        fileSystem
+          .writeFileString(target, content, options)
+          .pipe(
+            Effect.andThen(
+              target.startsWith(sessionOneDirectory)
+                ? Deferred.succeed(recordWriteStarted, undefined).pipe(
+                    Effect.andThen(Deferred.await(releaseRecordWrite)),
+                  )
+                : Effect.void,
+            ),
+          ),
+    });
+    const storage = await makeStorage(root, controlledFileSystem);
+
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const mutation = yield* storage
+          .upsert("/project", { ...baseArtifact, revision: 1 })
+          .pipe(Effect.forkChild);
+        yield* Deferred.await(recordWriteStarted);
+        yield* storage.upsert("/project", {
+          ...baseArtifact,
+          id: "other-table",
+          sessionId: "session-2",
+          revision: 1,
+        });
+        const deletion = yield* storage
+          .deleteSession("/project", "session-1")
+          .pipe(Effect.forkChild);
+        yield* Effect.yieldNow;
+        expect(deletion.pollUnsafe()).toBeUndefined();
+        yield* Deferred.succeed(releaseRecordWrite, undefined);
+        yield* Fiber.join(mutation);
+        yield* Fiber.join(deletion);
+      }),
+    );
+    expect(await Effect.runPromise(storage.listSession("/project", "session-1"))).toEqual([]);
   });
 
   it("serializes revision validation and writes for the same artifact", async () => {

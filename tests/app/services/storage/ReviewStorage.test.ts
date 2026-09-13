@@ -1,8 +1,9 @@
 import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
 import { it } from "@effect/vitest";
 import { createHash } from "node:crypto";
+import { stat } from "node:fs/promises";
 import { describe, expect } from "vitest";
-import { Effect, Fiber, FileSystem, Layer, Path, Schema, Stream } from "effect";
+import { Deferred, Effect, Fiber, FileSystem, Layer, Path, Schema, Stream } from "effect";
 import {
   reviewThreadRecordSchema,
   type ReviewSessionProjection,
@@ -118,6 +119,21 @@ describe("ReviewStorage Discussion metadata", () => {
       (storage, fileSystem, path, root) =>
         Effect.gen(function* () {
           const created = yield* storage.createDiscussion("/project", "session", codeAnchor);
+          const sessionMode = yield* Effect.promise(() =>
+            stat(path.join(root, digestKey("/project"), digestKey("session"))),
+          );
+          expect(sessionMode.mode & 0o777).toBe(0o700);
+          const recordMode = yield* Effect.promise(() =>
+            stat(
+              path.join(
+                root,
+                digestKey("/project"),
+                digestKey("session"),
+                `${digestKey(created.id)}.json`,
+              ),
+            ),
+          );
+          expect(recordMode.mode & 0o777).toBe(0o600);
           const linked = yield* storage.linkDiscussionSidecar("/project", "session", created.id, {
             sessionId: "pi-discussion",
             sessionFile: "/reviews/pi-discussion.jsonl",
@@ -145,6 +161,48 @@ describe("ReviewStorage Discussion metadata", () => {
         }),
       () => Effect.succeed({ parts: projectedParts }),
     ),
+  );
+
+  it.effect("serializes deletion behind an in-flight session mutation", () =>
+    Effect.gen(function* () {
+      const loadStarted = yield* Deferred.make<void>();
+      const releaseLoad = yield* Deferred.make<void>();
+      let shouldBlock = true;
+      yield* withStorage(
+        "cake-review-delete-race-",
+        (storage) =>
+          Effect.gen(function* () {
+            const created = yield* storage.createDiscussion("/project", "session", codeAnchor);
+            yield* storage.linkDiscussionSidecar("/project", "session", created.id, {
+              sessionId: "pi-discussion",
+              sessionFile: "/reviews/pi-discussion.jsonl",
+            });
+            const mutation = yield* storage
+              .resolve("/project", "session", created.id, true)
+              .pipe(Effect.forkChild);
+            yield* Deferred.await(loadStarted);
+            yield* storage.createDiscussion("/project", "other-session", codeAnchor);
+            const deletion = yield* storage
+              .deleteSession("/project", "session")
+              .pipe(Effect.forkChild);
+            yield* Effect.yieldNow;
+            expect(deletion.pollUnsafe()).toBeUndefined();
+            yield* Deferred.succeed(releaseLoad, undefined);
+            yield* Fiber.join(mutation);
+            yield* Fiber.join(deletion);
+            expect(yield* storage.listDiscussionRecords("/project", "session")).toEqual([]);
+          }),
+        () =>
+          Effect.gen(function* () {
+            yield* Deferred.succeed(loadStarted, undefined);
+            if (shouldBlock) {
+              shouldBlock = false;
+              yield* Deferred.await(releaseLoad);
+            }
+            return { parts: projectedParts };
+          }),
+      );
+    }),
   );
 
   it.effect("refreshes the parent index and resolves Discussion anchors", () =>

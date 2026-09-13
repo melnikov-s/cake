@@ -125,55 +125,50 @@ export const makeSessionArchiveStorageLive = (archiveMetadataRoot: string) =>
         return entry;
       });
 
-      const writeProjectEntry = Effect.fn("SessionArchiveStorage.writeProjectEntry")(function* (
-        operation: string,
-        entry: ProjectSessionArchiveMetadata,
-      ) {
-        const target = projectEntryPath(entry.projectPath, entry.sessionId);
-        const locator = locatorPath(entry.sessionId);
-        yield* withUpdateLock(
-          locator,
-          Effect.gen(function* () {
-            const encodedEntry = yield* Schema.encodeEffect(ProjectSessionArchiveMetadata)(
-              entry,
-            ).pipe(Effect.mapError((cause) => archiveError(operation, entry.sessionId, cause)));
-            const encodedLocator = yield* Schema.encodeEffect(ProjectSessionArchiveLocator)({
-              version: 1,
-              projectPath: entry.projectPath,
-            }).pipe(Effect.mapError((cause) => archiveError(operation, entry.sessionId, cause)));
-            yield* atomicWriteFile(
-              fileSystem,
-              path,
-              target,
-              `${JSON.stringify(encodedEntry, null, 2)}\n`,
-              (_stage, cause) => archiveError(operation, entry.sessionId, cause),
-            );
-            yield* atomicWriteFile(
-              fileSystem,
-              path,
-              locator,
-              `${JSON.stringify(encodedLocator, null, 2)}\n`,
-              (_stage, cause) => archiveError(operation, entry.sessionId, cause),
-            );
-          }),
+      const writeProjectEntryUnlocked = Effect.fn(
+        "SessionArchiveStorage.writeProjectEntryUnlocked",
+      )(function* (operation: string, entry: ProjectSessionArchiveMetadata) {
+        const encodedEntry = yield* Schema.encodeEffect(ProjectSessionArchiveMetadata)(entry).pipe(
+          Effect.mapError((cause) => archiveError(operation, entry.sessionId, cause)),
+        );
+        const encodedLocator = yield* Schema.encodeEffect(ProjectSessionArchiveLocator)({
+          version: 1,
+          projectPath: entry.projectPath,
+        }).pipe(Effect.mapError((cause) => archiveError(operation, entry.sessionId, cause)));
+        yield* atomicWriteFile(
+          fileSystem,
+          path,
+          projectEntryPath(entry.projectPath, entry.sessionId),
+          `${JSON.stringify(encodedEntry, null, 2)}\n`,
+          (_stage, cause) => archiveError(operation, entry.sessionId, cause),
+        );
+        yield* atomicWriteFile(
+          fileSystem,
+          path,
+          locatorPath(entry.sessionId),
+          `${JSON.stringify(encodedLocator, null, 2)}\n`,
+          (_stage, cause) => archiveError(operation, entry.sessionId, cause),
         );
       });
 
-      const removeProjectEntry = Effect.fn("SessionArchiveStorage.removeProjectEntry")(function* (
-        operation: string,
-        entry: ProjectSessionArchiveMetadata,
-      ) {
-        const locator = locatorPath(entry.sessionId);
-        yield* withUpdateLock(
-          locator,
-          Effect.all([
-            fileSystem.remove(projectEntryPath(entry.projectPath, entry.sessionId), {
-              force: true,
-            }),
-            fileSystem.remove(locator, { force: true }),
-          ]).pipe(Effect.mapError((cause) => archiveError(operation, entry.sessionId, cause))),
-        );
-      });
+      const writeProjectEntry = Effect.fn("SessionArchiveStorage.writeProjectEntry")(
+        (operation: string, entry: ProjectSessionArchiveMetadata) =>
+          withUpdateLock(locatorPath(entry.sessionId), writeProjectEntryUnlocked(operation, entry)),
+      );
+
+      const removeProjectEntryUnlocked = Effect.fn(
+        "SessionArchiveStorage.removeProjectEntryUnlocked",
+      )((operation: string, entry: ProjectSessionArchiveMetadata) =>
+        Effect.all([
+          fileSystem.remove(projectEntryPath(entry.projectPath, entry.sessionId), {
+            force: true,
+          }),
+          fileSystem.remove(locatorPath(entry.sessionId), { force: true }),
+        ]).pipe(
+          Effect.asVoid,
+          Effect.mapError((cause) => archiveError(operation, entry.sessionId, cause)),
+        ),
+      );
 
       const directoryInput = (location: SessionArchiveLocation, resolved: boolean) => ({
         workingDirectory: location.cwd,
@@ -201,7 +196,7 @@ export const makeSessionArchiveStorageLive = (archiveMetadataRoot: string) =>
         );
       });
 
-      const move = Effect.fn("SessionArchiveStorage.move")(
+      const moveUnlocked = Effect.fn("SessionArchiveStorage.moveUnlocked")(
         function* (sessionId: string, location: SessionArchiveLocation, resolved: boolean) {
           const activeDirectory = sessionDirectoryPath(directoryInput(location, false));
           const resolvedDirectory = sessionDirectoryPath(directoryInput(location, true));
@@ -212,7 +207,7 @@ export const makeSessionArchiveStorageLive = (archiveMetadataRoot: string) =>
             if (alreadyMoved) return false;
             return yield* Effect.fail(new Error(`Cake could not find session ${sessionId}`));
           }
-          yield* fileSystem.makeDirectory(destinationDirectory, { recursive: true });
+          yield* fileSystem.makeDirectory(destinationDirectory, { recursive: true, mode: 0o700 });
           const destination = path.join(destinationDirectory, path.basename(source));
           if (yield* fileSystem.exists(destination)) {
             if (!(yield* fileSystem.exists(source))) return false;
@@ -234,7 +229,7 @@ export const makeSessionArchiveStorageLive = (archiveMetadataRoot: string) =>
           ),
       );
 
-      const deleteAt = Effect.fn("SessionArchiveStorage.deleteAt")(
+      const deleteAtUnlocked = Effect.fn("SessionArchiveStorage.deleteAtUnlocked")(
         function* (
           operation: "delete" | "deleteResolved",
           sessionId: string,
@@ -322,76 +317,121 @@ export const makeSessionArchiveStorageLive = (archiveMetadataRoot: string) =>
         },
       );
 
-      const resolveProject = Effect.fn("SessionArchiveStorage.resolveProject")(function* (
-        sessionId: string,
-        location: SessionArchiveLocation,
-        context: ProjectSessionArchiveContext,
-      ) {
-        const item = yield* findMetadataAt(sessionId, location, false).pipe(
-          Effect.flatMap((active) =>
-            active ? Effect.succeed(active) : findMetadataAt(sessionId, location, true),
+      const resolveProject = Effect.fn("SessionArchiveStorage.resolveProject")(
+        (
+          sessionId: string,
+          location: SessionArchiveLocation,
+          context: ProjectSessionArchiveContext,
+        ) =>
+          withUpdateLock(
+            locatorPath(sessionId),
+            Effect.uninterruptibleMask((restore) =>
+              Effect.gen(function* () {
+                const item = yield* restore(
+                  findMetadataAt(sessionId, location, false).pipe(
+                    Effect.flatMap((active) =>
+                      active ? Effect.succeed(active) : findMetadataAt(sessionId, location, true),
+                    ),
+                    Effect.mapError((cause) => archiveError("resolveProject", sessionId, cause)),
+                  ),
+                );
+                if (!item)
+                  return yield* archiveError(
+                    "resolveProject",
+                    sessionId,
+                    new Error(`Cake could not find session ${sessionId}`),
+                  );
+                const moved = yield* restore(moveUnlocked(sessionId, location, true));
+                const entryBase = {
+                  version: 1 as const,
+                  sessionId,
+                  projectPath: context.projectPath,
+                  projectName: context.projectName,
+                  workingDirectory: location.cwd,
+                  activeRoot: location.activeRoot,
+                  resolvedRoot: location.resolvedRoot,
+                  createdAt: item.createdAt,
+                  modifiedAt: item.modifiedAt,
+                };
+                const entry = ProjectSessionArchiveMetadata.make(
+                  context.worktreeName
+                    ? { ...entryBase, worktreeName: context.worktreeName }
+                    : entryBase,
+                );
+                yield* restore(writeProjectEntryUnlocked("resolveProject", entry)).pipe(
+                  Effect.onExit((exit) =>
+                    Exit.isSuccess(exit) || !moved
+                      ? Effect.void
+                      : Effect.all(
+                          [
+                            removeProjectEntryUnlocked("resolveProjectCompensation", entry),
+                            moveUnlocked(sessionId, location, false).pipe(Effect.asVoid),
+                          ],
+                          { concurrency: "unbounded", discard: true },
+                        ),
+                  ),
+                );
+                return moved;
+              }),
+            ),
           ),
-          Effect.mapError((cause) => archiveError("resolveProject", sessionId, cause)),
-        );
-        if (!item)
-          return yield* archiveError(
-            "resolveProject",
-            sessionId,
-            new Error(`Cake could not find session ${sessionId}`),
-          );
-        const moved = yield* move(sessionId, location, true);
-        const entryBase = {
-          version: 1 as const,
-          sessionId,
-          projectPath: context.projectPath,
-          projectName: context.projectName,
-          workingDirectory: location.cwd,
-          activeRoot: location.activeRoot,
-          resolvedRoot: location.resolvedRoot,
-          createdAt: item.createdAt,
-          modifiedAt: item.modifiedAt,
-        };
-        const entry = ProjectSessionArchiveMetadata.make(
-          context.worktreeName ? { ...entryBase, worktreeName: context.worktreeName } : entryBase,
-        );
-        yield* writeProjectEntry("resolveProject", entry);
-        return moved;
-      });
+      );
 
-      const restoreProject = Effect.fn("SessionArchiveStorage.restoreProject")(function* (
-        sessionId: string,
-      ) {
-        const entry = yield* resolvedProjectEntry(sessionId);
-        if (!entry) return undefined;
-        yield* move(
-          sessionId,
-          {
-            cwd: entry.workingDirectory,
-            activeRoot: entry.activeRoot,
-            resolvedRoot: entry.resolvedRoot,
-          },
-          false,
-        );
-        yield* removeProjectEntry("restoreProject", entry);
-        return entry;
-      });
+      const restoreProject = Effect.fn("SessionArchiveStorage.restoreProject")(
+        (sessionId: string) =>
+          withUpdateLock(
+            locatorPath(sessionId),
+            Effect.uninterruptibleMask((restore) =>
+              Effect.gen(function* () {
+                const entry = yield* restore(readProjectEntry("restoreProject", sessionId));
+                if (!entry) return undefined;
+                const location = {
+                  cwd: entry.workingDirectory,
+                  activeRoot: entry.activeRoot,
+                  resolvedRoot: entry.resolvedRoot,
+                };
+                const moved = yield* restore(moveUnlocked(sessionId, location, false));
+                yield* restore(removeProjectEntryUnlocked("restoreProject", entry)).pipe(
+                  Effect.onExit((exit) =>
+                    Exit.isSuccess(exit)
+                      ? Effect.void
+                      : Effect.all(
+                          [
+                            writeProjectEntryUnlocked("restoreProjectCompensation", entry),
+                            moved
+                              ? moveUnlocked(sessionId, location, true).pipe(Effect.asVoid)
+                              : Effect.void,
+                          ],
+                          { concurrency: "unbounded", discard: true },
+                        ),
+                  ),
+                );
+                return entry;
+              }),
+            ),
+          ),
+      );
 
       const deleteResolvedProject = Effect.fn("SessionArchiveStorage.deleteResolvedProject")(
-        function* (sessionId: string) {
-          const entry = yield* resolvedProjectEntry(sessionId);
-          if (!entry)
-            return yield* archiveError(
-              "deleteResolvedProject",
-              sessionId,
-              new Error("Only resolved project sessions can be deleted"),
-            );
-          yield* deleteAt("deleteResolved", sessionId, {
-            cwd: entry.workingDirectory,
-            activeRoot: entry.activeRoot,
-            resolvedRoot: entry.resolvedRoot,
-          });
-          yield* removeProjectEntry("deleteResolvedProject", entry);
-        },
+        (sessionId: string) =>
+          withUpdateLock(
+            locatorPath(sessionId),
+            Effect.gen(function* () {
+              const entry = yield* readProjectEntry("deleteResolvedProject", sessionId);
+              if (!entry)
+                return yield* archiveError(
+                  "deleteResolvedProject",
+                  sessionId,
+                  new Error("Only resolved project sessions can be deleted"),
+                );
+              yield* deleteAtUnlocked("deleteResolved", sessionId, {
+                cwd: entry.workingDirectory,
+                activeRoot: entry.activeRoot,
+                resolvedRoot: entry.resolvedRoot,
+              });
+              yield* removeProjectEntryUnlocked("deleteResolvedProject", entry);
+            }),
+          ),
       );
 
       const resolvedProjects = (projectPath: string) =>
@@ -502,10 +542,21 @@ export const makeSessionArchiveStorageLive = (archiveMetadataRoot: string) =>
       };
 
       return SessionArchiveStorage.of({
-        resolve: (sessionId, location) => move(sessionId, location, true),
-        restore: (sessionId, location) => move(sessionId, location, false),
-        deleteResolved: (sessionId, location) => deleteAt("deleteResolved", sessionId, location),
-        delete: (sessionId, location) => deleteAt("delete", sessionId, location),
+        resolve: Effect.fn("SessionArchiveStorage.resolve")((sessionId, location) =>
+          withUpdateLock(locatorPath(sessionId), moveUnlocked(sessionId, location, true)),
+        ),
+        restore: Effect.fn("SessionArchiveStorage.restore")((sessionId, location) =>
+          withUpdateLock(locatorPath(sessionId), moveUnlocked(sessionId, location, false)),
+        ),
+        deleteResolved: Effect.fn("SessionArchiveStorage.deleteResolved")((sessionId, location) =>
+          withUpdateLock(
+            locatorPath(sessionId),
+            deleteAtUnlocked("deleteResolved", sessionId, location),
+          ),
+        ),
+        delete: Effect.fn("SessionArchiveStorage.delete")((sessionId, location) =>
+          withUpdateLock(locatorPath(sessionId), deleteAtUnlocked("delete", sessionId, location)),
+        ),
         locate,
         resolved,
         resolvedEntry,
