@@ -1,5 +1,7 @@
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { build, type Message, type Plugin } from "esbuild";
 
 export type InlineWidgetLanguage = "html" | "react";
@@ -11,6 +13,7 @@ export interface CompiledInlineWidgetDocument {
 }
 
 const require = createRequire(import.meta.url);
+const cakeModuleResolveDirectory = dirname(fileURLToPath(import.meta.url));
 const d3Require = createRequire(require.resolve("d3"));
 const maximumSourceBytes = 1_048_576;
 const reactFlowStyles = readFileSync(require.resolve("@xyflow/react/dist/style.css"), "utf8");
@@ -146,7 +149,9 @@ function widgetModulePlugin(source: string): WidgetModulePlugin {
           if (args.path === "@xyflow/react" || args.path === "elkjs/lib/elk.bundled.js") {
             return builder.resolve(args.path, {
               kind: args.kind,
-              resolveDir: process.cwd(),
+              // Preserve esbuild's browser export conditions while anchoring
+              // resolution to Cake's installation rather than its launch cwd.
+              resolveDir: cakeModuleResolveDirectory,
               pluginData: { cakeApprovedLibrary: true },
             });
           }
