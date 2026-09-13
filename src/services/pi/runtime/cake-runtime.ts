@@ -67,6 +67,7 @@ import type { RuntimeUiRequest } from "./runtime-ui-request";
 import type {
   InlineWidgetGenerationRequest,
   InlineWidgetGenerationResult,
+  InlineWidgetRevisionRequest,
   ReviewParentContext,
 } from "./sidecar-runtime";
 
@@ -109,6 +110,9 @@ export interface CakeRuntimeOptions {
   generateInlineWidget?(
     input: InlineWidgetGenerationRequest,
   ): Promise<InlineWidgetGenerationResult>;
+  reviseInlineWidget?(input: InlineWidgetRevisionRequest): Promise<InlineWidgetGenerationResult>;
+  getArtifact?(artifactId: string): Promise<ArtifactRecord | undefined>;
+  listSessionArtifacts?(): Promise<ReadonlyArray<ArtifactRecord>>;
   listArtifacts?(pointers: ArtifactPointer[]): Promise<ArtifactRecord[]>;
   openExternal?(url: string): Promise<void>;
   reviewContextPath?(sessionId: string): string;

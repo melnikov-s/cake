@@ -64,6 +64,16 @@ export interface InlineWidgetGenerationResult {
   generationSessionId: string;
 }
 
+export interface InlineWidgetRevisionRequest {
+  sessionId: string;
+  source: string;
+  brief: string;
+  fallback: string;
+  instructions: string;
+  model?: { provider: string; id: string };
+  signal?: AbortSignal;
+}
+
 export async function runInlineWidgetVisualReview(options: {
   cwd: string;
   agentDir: string;

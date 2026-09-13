@@ -85,6 +85,30 @@ const generate = (
 };
 
 describe("ProjectSessionIntegrationHost widget rendered review", () => {
+  it("starts a durable revision from the existing source and reviews the replacement", async () => {
+    const fixture = host({ reviews: ["ACCEPT_CURRENT"] });
+    const revise = fixture.integration.runtimeIntegrations("project-session").reviseInlineWidget;
+    if (!revise) throw new Error("Missing widget revision integration");
+
+    const result = await revise({
+      sessionId: "project-session",
+      source: "export default function Existing(){ return <div>Existing</div> }",
+      brief: "Show the flow",
+      fallback: "Readable fallback",
+      instructions: "Increase contrast",
+      model: { provider: "fixture", id: "vision" },
+    });
+
+    expect(result.source).toContain("function Repaired");
+    expect(fixture.calls).toEqual([
+      "vision:vision",
+      "repair:Requested durable revision",
+      "compile:Repaired",
+      "capture:1",
+      "review",
+    ]);
+  });
+
   it("captures and reviews every rendered candidate before accepting a replacement", async () => {
     const fixture = host({ reviews: [source("Second"), "ACCEPT_CURRENT"] });
     const result = await generate(fixture.integration, request());

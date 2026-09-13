@@ -19,6 +19,9 @@ const idSchema = Schema.String.check(
   Schema.isMaxLength(256),
   Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/),
 );
+// Pi entry and tool-call IDs are opaque provider/runtime values. They are used
+// only for exact provenance correlation and do not share Cake artifact-ID syntax.
+const provenanceIdSchema = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4_096));
 const textSchema = Schema.String.check(Schema.isMaxLength(MAX_ARTIFACT_INPUT_BYTES));
 const scalarSchema = Schema.Union([
   Schema.String.check(Schema.isMaxLength(262_144)),
@@ -206,8 +209,8 @@ export const artifactPointerSchema = Schema.Struct({
   fallback: Schema.Struct({ markdown: textSchema }),
   origin: Schema.optionalKey(
     Schema.Struct({
-      assistantEntryId: idSchema,
-      toolCallId: idSchema,
+      assistantEntryId: provenanceIdSchema,
+      toolCallId: provenanceIdSchema,
     }),
   ),
 });

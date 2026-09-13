@@ -20,6 +20,7 @@ import {
   runInlineWidgetVisualReview,
   type InlineWidgetGenerationRequest,
   type InlineWidgetGenerationResult,
+  type InlineWidgetRevisionRequest,
 } from "./runtime/sidecar-runtime";
 import type { CakeRuntimeOptions } from "./runtime/cake-runtime";
 import type { RuntimeUiRequest } from "./runtime/runtime-ui-request";
@@ -45,6 +46,9 @@ interface ReviewRepositoryPort {
 export type ProjectSessionRuntimeIntegrations = Pick<
   CakeRuntimeOptions,
   | "generateInlineWidget"
+  | "reviseInlineWidget"
+  | "getArtifact"
+  | "listSessionArtifacts"
   | "listArtifacts"
   | "persistArtifact"
   | "requestArtifact"
@@ -206,6 +210,11 @@ export class ProjectSessionIntegrationHost {
       persistArtifact: (artifact) => this.persistArtifact(artifact, sessionId),
       requestArtifact: (record, signal) => this.requestArtifactFromRenderer(record, signal),
       generateInlineWidget: (input) => this.generateInlineWidget(input),
+      reviseInlineWidget: (input) => this.reviseInlineWidget(input),
+      getArtifact: (artifactId) =>
+        this.artifactRepository.get(this.workspacePath, sessionId, artifactId),
+      listSessionArtifacts: () =>
+        this.artifactRepository.listSession(this.workspacePath, sessionId),
       reviewContextPath: reviewContextPath
         ? (activeSessionId) => reviewContextPath(this.workspacePath, activeSessionId)
         : undefined,
@@ -260,15 +269,53 @@ export class ProjectSessionIntegrationHost {
       data: input.data,
       fallback: input.fallback,
     });
+    return this.reviewWidget(input, context, () =>
+      this.runWidgetGeneration({
+        cwd: this.workspacePath,
+        agentDir: this.agentDir,
+        sessionDir: this.widgetSessionDir,
+        ...input,
+      }),
+    );
+  }
+
+  private reviseInlineWidget(input: InlineWidgetRevisionRequest) {
+    const context = JSON.stringify({
+      brief: input.brief,
+      fallback: input.fallback,
+      revisionInstructions: input.instructions,
+    });
+    const generationInput: InlineWidgetGenerationRequest = {
+      sessionId: input.sessionId,
+      brief: input.brief,
+      fallback: input.fallback,
+      model: input.model,
+      signal: input.signal,
+    };
+    return this.reviewWidget(generationInput, context, () =>
+      this.runWidgetRepair({
+        cwd: this.workspacePath,
+        agentDir: this.agentDir,
+        sessionDir: this.widgetSessionDir,
+        language: "react",
+        capability: "display",
+        source: input.source,
+        context,
+        diagnostic: `Requested durable revision: ${input.instructions}`,
+        model: input.model,
+        signal: input.signal,
+      }),
+    );
+  }
+
+  private reviewWidget(
+    input: InlineWidgetGenerationRequest,
+    context: string,
+    generate: () => ReturnType<typeof runInlineWidgetGeneration>,
+  ) {
     return this.runReviewedWidget(input, {
       requireVisionModel: this.requireVisionModel,
-      generate: () =>
-        this.runWidgetGeneration({
-          cwd: this.workspacePath,
-          agentDir: this.agentDir,
-          sessionDir: this.widgetSessionDir,
-          ...input,
-        }),
+      generate,
       compile: async (source) => {
         const compiled = await this.compileWidget("react", source, "display");
         const widget = publishInlineWidget(compiled);

@@ -56,12 +56,15 @@ describe("cake.artifact/v1 contract", () => {
       kind: "markdown",
       digest: "a".repeat(64),
       fallback: { markdown: "Hello" },
-      origin: { assistantEntryId: "assistant-1", toolCallId: "tool-1" },
+      origin: {
+        assistantEntryId: "assistant/entry+1=",
+        toolCallId: "functions.cake/0#call+abc=",
+      },
     });
 
     expect(pointer.origin).toEqual({
-      assistantEntryId: "assistant-1",
-      toolCallId: "tool-1",
+      assistantEntryId: "assistant/entry+1=",
+      toolCallId: "functions.cake/0#call+abc=",
     });
     expect(
       Schema.decodeUnknownSync(artifactPointerSchema)({
