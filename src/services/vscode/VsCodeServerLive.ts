@@ -2,8 +2,11 @@ import { realpath } from "node:fs/promises";
 import { relative, sep } from "node:path";
 import { BrowserWindow } from "electron";
 import {
+  type Cause,
   Deferred,
+  Duration,
   Effect,
+  Exit,
   FiberMap,
   Layer,
   Option,
@@ -18,7 +21,7 @@ import {
 import { ApplicationState } from "../storage/ApplicationState";
 import { ProjectAccess } from "../projects/ProjectAccess";
 import { CAKE_TITLE_BAR_HEIGHT, Electron, VSCODE_TITLE_BAR_HEIGHT } from "../electron/Electron";
-import type { CompanionManifest } from "./VsCodeServerRuntime";
+import type { CompanionManifest, ServerInstance } from "./VsCodeServerRuntime";
 import { VSCODE_SERVER_IDLE_TTL, VsCodeServerRuntime } from "./VsCodeServerRuntime";
 import { resolveSourceTarget } from "./source-path-policy";
 import { VsCodeServer, VsCodeServerError } from "./VsCodeServer";
@@ -102,7 +105,7 @@ export const makeVsCodeServerLive = (
       const runPoll = yield* FiberMap.makeRuntimePromise<never, string>();
       const runAcquisition = yield* FiberMap.makeRuntimePromise<never, string>();
       const runtimeReady = yield* Deferred.make<VsCodeServerRuntime>();
-      const servers = yield* ScopedCache.make({
+      const servers = yield* ScopedCache.makeWith<string, ServerInstance, Cause.UnknownError>({
         // Runtime policy keeps three viewer-less servers; this outer bound avoids
         // evicting a server still leased by one of Cake's native views.
         capacity: 64,
@@ -117,6 +120,7 @@ export const makeVsCodeServerLive = (
             (instance) => Effect.sync(() => runtime.releaseServer(instance)),
           );
         }),
+        timeToLive: (exit) => (Exit.isSuccess(exit) ? Duration.infinity : Duration.zero),
       });
       let callbackSequence = 0;
       const runtime = new VsCodeServerRuntime({
