@@ -8,7 +8,7 @@ import { Badge } from "./ui/badge";
 import { IconButton } from "./ui/icon-button";
 import { Input } from "./ui/input";
 import { NavItem } from "./ui/nav-item";
-import { ChevronIcon, ResolveIcon, RestoreIcon } from "./ui/icons";
+import { CakeIcon, ChevronIcon, ResolveIcon, RestoreIcon } from "./ui/icons";
 import type { SidebarStore } from "../stores/SidebarStore";
 import { WorktreeStatusIcon } from "./worktree-status-icon";
 import type { SessionActivity } from "../lib/session-activity";
@@ -39,6 +39,9 @@ export interface SidebarSessionItemProps {
   labels: readonly SessionLabel[];
   avatarSeed: string;
   avatarsEnabled: boolean;
+  source?:
+    | { kind: "project"; name: string; avatarSeed: string; showAvatar: boolean }
+    | { kind: "cake-chat"; name: string };
   focusMode?: boolean;
   onOpen(sessionId: string): void;
   onToggleFamily?(sessionId: string): void;
@@ -63,6 +66,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
   labels,
   avatarSeed,
   avatarsEnabled,
+  source,
   focusMode = false,
   onOpen,
   onToggleFamily,
@@ -275,20 +279,39 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
                 selected ? "text-primary/80" : "text-muted-foreground/80",
               )}
             >
-              {branch && (
+              {source ? (
                 <>
-                  {managedWorktree && (
-                    <WorktreeStatusIcon state={managedWorktree.state} className="shrink-0" />
-                  )}
-                  <span className="truncate">{branch}</span>
-                  {showBaseBranch && (
-                    <>
-                      <span aria-hidden="true">→</span>
-                      <span className="truncate">{baseBranch}</span>
-                    </>
-                  )}
+                  <span className="flex min-w-0 items-center gap-1" title={source.name}>
+                    {source.kind === "cake-chat" ? (
+                      <CakeIcon />
+                    ) : source.showAvatar ? (
+                      <Avatar
+                        kind="project"
+                        seed={source.avatarSeed}
+                        className="size-3.5"
+                        aria-hidden="true"
+                      />
+                    ) : null}
+                    <span className="truncate">{source.name}</span>
+                  </span>
                   <span aria-hidden="true">·</span>
                 </>
+              ) : (
+                branch && (
+                  <>
+                    {managedWorktree && (
+                      <WorktreeStatusIcon state={managedWorktree.state} className="shrink-0" />
+                    )}
+                    <span className="truncate">{branch}</span>
+                    {showBaseBranch && (
+                      <>
+                        <span aria-hidden="true">→</span>
+                        <span className="truncate">{baseBranch}</span>
+                      </>
+                    )}
+                    <span aria-hidden="true">·</span>
+                  </>
+                )
               )}
               <time
                 className={cn(

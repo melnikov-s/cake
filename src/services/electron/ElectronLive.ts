@@ -557,6 +557,23 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
               };
               Menu.buildFromTemplate([
                 { label: "Project Settings…", click: () => finish("settings") },
+                {
+                  label: "Sort Sessions",
+                  submenu: [
+                    {
+                      label: "By Date",
+                      type: "radio",
+                      checked: request.sessionSort === "date",
+                      click: () => finish("sort-by-date"),
+                    },
+                    {
+                      label: "By Label",
+                      type: "radio",
+                      checked: request.sessionSort === "label",
+                      click: () => finish("sort-by-label"),
+                    },
+                  ],
+                },
                 { type: "separator" },
                 { label: "Copy Project Path", click: () => clipboard.writeText(request.path) },
                 { type: "separator" },
@@ -739,5 +756,10 @@ type SuccessSessionMenu = {
   readonly action?: "rename" | "mark-unread" | "resolve" | "unresolve" | "delete";
 };
 type SuccessProjectMenu = {
-  readonly action?: "settings" | "remove-project" | "delete-resolved-worktrees";
+  readonly action?:
+    | "settings"
+    | "sort-by-date"
+    | "sort-by-label"
+    | "remove-project"
+    | "delete-resolved-worktrees";
 };

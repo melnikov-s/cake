@@ -874,8 +874,8 @@ export class RootStore extends Store<{
   @child
   get projectCatalogStore(): ProjectCatalogStore {
     return createStore(ProjectCatalogStore, {
-      sessions: this.sessionCatalogStore,
       model: this.projectCatalogModel,
+      sessions: this.sessionCatalogStore,
     });
   }
 

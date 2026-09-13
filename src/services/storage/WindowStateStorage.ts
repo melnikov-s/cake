@@ -1,7 +1,7 @@
 import { Context, Effect, FileSystem, Layer, Path, Schema, Semaphore } from "effect";
 import { atomicWriteFile, type AtomicFileStage } from "./internal/atomicFile";
 
-const WINDOW_STATE_DOCUMENT_VERSION = 9;
+const WINDOW_STATE_DOCUMENT_VERSION = 10;
 const WINDOW_STATE_DOCUMENT_NAME = "window-state.json";
 
 const JsonRecord = Schema.Record(Schema.String, Schema.Json);
@@ -691,6 +691,27 @@ const migrateVersion8WindowState = (snapshot: Schema.Schema.Type<typeof Schema.J
   return { ...root, children: nextRootChildren };
 };
 
+/** Renames the Project order after removing activity-driven Project recency semantics. */
+const migrateVersion9WindowState = (snapshot: Schema.Schema.Type<typeof Schema.Json>) => {
+  const root = decodeJsonRecord(snapshot);
+  const children = decodeJsonRecord(root?.children);
+  const catalog = decodeJsonRecord(children?.projectCatalogStore);
+  const state = decodeJsonRecord(catalog?.state);
+  if (!root || !children || !catalog || !state || !("recentProjectPaths" in state)) return snapshot;
+  const projectOrder = decodeStringArray(state.recentProjectPaths);
+  const nextState = {
+    ...Object.fromEntries(Object.entries(state).filter(([key]) => key !== "recentProjectPaths")),
+    projectOrder,
+  };
+  return {
+    ...root,
+    children: {
+      ...children,
+      projectCatalogStore: { ...catalog, state: nextState },
+    },
+  };
+};
+
 const migrateLegacyWindowState = Effect.fn("WindowStateStorage.migrateLegacy")(function* (
   legacy: LegacyWindowState,
 ) {
@@ -860,7 +881,7 @@ const migrateLegacyWindowState = Effect.fn("WindowStateStorage.migrateLegacy")(f
         children: {},
       },
       projectCatalogStore: {
-        state: { recentProjectPaths: legacy.recentProjectPaths ?? [] },
+        state: { projectOrder: legacy.recentProjectPaths ?? [] },
         children: {},
       },
       sessionCatalogStore: {
@@ -930,10 +951,14 @@ const migrateLegacyWindowState = Effect.fn("WindowStateStorage.migrateLegacy")(f
   ).pipe(
     Effect.mapError((cause) => new WindowStateMalformedDocumentError({ message: cause.message })),
   );
-  return migrateVersion8WindowState(
-    migrateVersion7WindowState(
-      migrateVersion6WindowState(
-        migrateVersion5WindowState(migrateVersion4WindowState(migrateVersion3WindowState(decoded))),
+  return migrateVersion9WindowState(
+    migrateVersion8WindowState(
+      migrateVersion7WindowState(
+        migrateVersion6WindowState(
+          migrateVersion5WindowState(
+            migrateVersion4WindowState(migrateVersion3WindowState(decoded)),
+          ),
+        ),
       ),
     ),
   );
@@ -981,15 +1006,16 @@ export const makeWindowStateStorageLive = (userDataDirectory: string) =>
         if (envelope._tag === "Success") {
           if (envelope.success.version === WINDOW_STATE_DOCUMENT_VERSION)
             return envelope.success.data;
-          if (envelope.success.version >= 2 && envelope.success.version <= 8) {
+          if (envelope.success.version >= 2 && envelope.success.version <= 9) {
             let migrated = envelope.success.data;
             if (envelope.success.version <= 2) migrated = migrateVersion2WindowState(migrated);
             if (envelope.success.version <= 3) migrated = migrateVersion3WindowState(migrated);
             if (envelope.success.version <= 4) migrated = migrateVersion4WindowState(migrated);
             if (envelope.success.version <= 5) migrated = migrateVersion5WindowState(migrated);
             if (envelope.success.version <= 6) migrated = migrateVersion6WindowState(migrated);
-            migrated = migrateVersion7WindowState(migrated);
-            migrated = migrateVersion8WindowState(migrated);
+            if (envelope.success.version <= 7) migrated = migrateVersion7WindowState(migrated);
+            if (envelope.success.version <= 8) migrated = migrateVersion8WindowState(migrated);
+            migrated = migrateVersion9WindowState(migrated);
             yield* saveUnlocked(migrated);
             return migrated;
           }

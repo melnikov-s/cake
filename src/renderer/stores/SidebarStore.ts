@@ -38,6 +38,8 @@ export class SidebarStore extends Store<SidebarStoreProps> {
 
   @snapshot hidden = false;
   @snapshot width = 292;
+  @snapshot navigationMode: "projects" | "activity" = "projects";
+  @snapshot private readonly projectSessionSorts: Record<string, "date" | "label"> = observable({});
   /** Window-local presentation mode that narrows navigation to one Project. */
   @snapshot focusedProjectPath: string | undefined;
   private ideActive = false;
@@ -196,13 +198,43 @@ export class SidebarStore extends Store<SidebarStoreProps> {
     return this.props.setSessionLabels(sessionId, labelIds);
   }
 
-  showProjectContextMenu(path: string, x: number, y: number) {
-    return this.electron.showProjectContextMenu({
+  async showProjectContextMenu(path: string, x: number, y: number) {
+    const action = await this.electron.showProjectContextMenu({
       path,
       x,
       y,
       resolvedWorktreeCount: this.props.catalog.resolvedWorktrees(path).length,
+      sessionSort: this.projectSessionSort(path),
     });
+    if (action === "sort-by-date") this.projectSessionSorts[path] = "date";
+    if (action === "sort-by-label") this.projectSessionSorts[path] = "label";
+    return action;
+  }
+
+  projectSessionSort(path: string): "date" | "label" {
+    return this.projectSessionSorts[path] ?? "date";
+  }
+
+  showProjects() {
+    this.navigationMode = "projects";
+  }
+
+  showActivity() {
+    this.focusedProjectPath = undefined;
+    this.navigationMode = "activity";
+  }
+
+  get activeProjectSessions() {
+    return this.props.catalog.sessions
+      .filter((session) => !session.resolved)
+      .sort((left, right) => right.modifiedAt.localeCompare(left.modifiedAt));
+  }
+
+  get activeCakeChatSessions() {
+    return this.props
+      .cakeChat()
+      .summaries.filter((session) => !session.resolved)
+      .sort((left, right) => right.modifiedAt.localeCompare(left.modifiedAt));
   }
 
   projectSessionCount(path: string) {
@@ -464,12 +496,20 @@ export class SidebarStore extends Store<SidebarStoreProps> {
         const childLatest = latestActivity(child);
         return childLatest > latest ? childLatest : latest;
       }, session.modifiedAt);
-    roots.sort((left, right) =>
+    const compareByDate = (left: (typeof roots)[number], right: (typeof roots)[number]) =>
       compareSessionSummariesForSidebar(
         { modifiedAt: latestActivity(left), draft: left.draft },
         { modifiedAt: latestActivity(right), draft: right.draft },
-      ),
-    );
+      );
+    roots.sort((left, right) => {
+      if (this.projectSessionSort(workspacePath) === "date") return compareByDate(left, right);
+      const labelOrder = new Map(
+        this.projectLabels(workspacePath).map((label, index) => [label.id, index]),
+      );
+      const leftOrder = labelOrder.get(this.sessionLabelIds(left.sessionId)[0] ?? "") ?? Infinity;
+      const rightOrder = labelOrder.get(this.sessionLabelIds(right.sessionId)[0] ?? "") ?? Infinity;
+      return leftOrder - rightOrder || compareByDate(left, right);
+    });
     const frozenOrder = preserveActiveOrder
       ? this.activeLaneOrders.get(this.laneKey(workspacePath, resolved))
       : undefined;

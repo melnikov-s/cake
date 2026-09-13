@@ -92,9 +92,22 @@ interface ElectronCommands {
     options?: ClientCommandOptions,
   ): Promise<SessionContextMenuAction | undefined>;
   showProjectContextMenu(
-    input: { path: string; x: number; y: number; resolvedWorktreeCount: number },
+    input: {
+      path: string;
+      x: number;
+      y: number;
+      resolvedWorktreeCount: number;
+      sessionSort: "date" | "label";
+    },
     options?: ClientCommandOptions,
-  ): Promise<"settings" | "remove-project" | "delete-resolved-worktrees" | undefined>;
+  ): Promise<
+    | "settings"
+    | "sort-by-date"
+    | "sort-by-label"
+    | "remove-project"
+    | "delete-resolved-worktrees"
+    | undefined
+  >;
   setFullscreenSurfaceOpen(
     surfaceId: string,
     open: boolean,

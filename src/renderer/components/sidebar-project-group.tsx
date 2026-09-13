@@ -129,7 +129,8 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
                 .showProjectContextMenu(path, event.clientX, event.clientY)
                 .then((action) => {
                   if (action === "settings") onOpenSettings(path);
-                  else if (action) setProjectAction(action);
+                  else if (action === "remove-project" || action === "delete-resolved-worktrees")
+                    setProjectAction(action);
                 });
             }}
           >

@@ -306,6 +306,7 @@ export const cakeRpcPayloadSchemas = {
     x: coordinate,
     y: coordinate,
     resolvedWorktreeCount: Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 500 })),
+    sessionSort: Schema.Literals(["date", "label"]),
   }),
   "open-terminal": Schema.Struct({
     ...requestBase,
@@ -529,7 +530,13 @@ const cakeRpcResultSchemas = {
   }),
   "project-context-menu-closed": Schema.Struct({
     action: Schema.optional(
-      Schema.Literals(["settings", "remove-project", "delete-resolved-worktrees"]),
+      Schema.Literals([
+        "settings",
+        "sort-by-date",
+        "sort-by-label",
+        "remove-project",
+        "delete-resolved-worktrees",
+      ]),
     ),
   }),
   "embedded-editor-state-loaded": Schema.Struct({

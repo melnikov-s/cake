@@ -598,7 +598,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
         if (!ready || this.signal.aborted || revision !== this.sessionOpenRevision) return;
         this.activateLoadedSession(sessionId);
       }
-      this.props.projects.recordOpened(
+      this.props.projects.register(
         this.props.catalog.projectOfManagedWorktree(workspacePath) ?? workspacePath,
       );
     } catch (error) {

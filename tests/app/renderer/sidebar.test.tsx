@@ -78,15 +78,24 @@ function sidebarProps(store: ProjectWorkbenchStore) {
       isFamilyCollapsed: fixture.isFamilyCollapsed ?? (() => false),
       toggleFamilyCollapsed: fixture.toggleFamilyCollapsed ?? vi.fn(),
       sessionActivityTime: fixture.sessionActivityTime ?? (() => ""),
+      navigationMode: fixture.navigationMode ?? "projects",
+      showProjects: fixture.showProjects ?? vi.fn(),
+      showActivity: fixture.showActivity ?? vi.fn(),
+      activeProjectSessions: fixture.activeProjectSessions ?? [],
+      activeCakeChatSessions: (fixture.cakeChatSummaries ?? []).filter(
+        (session: { resolved?: boolean }) => !session.resolved,
+      ),
+      now: fixture.now ?? Date.now(),
     } as any,
     projects: {
-      recentProjectPaths: fixture.recentProjectPaths,
+      projectOrder: fixture.recentProjectPaths,
       orderedProjectPaths: fixture.orderedProjectPaths ?? fixture.recentProjectPaths,
       projects: fixture.projects,
       nameFromPath: fixture.nameFromPath,
       nameForPath: (path: string) =>
         fixture.projects.find((project: { path: string; name: string }) => project.path === path)
           ?.name ?? fixture.nameFromPath(path),
+      move: fixture.moveProject ?? vi.fn(),
     } as any,
     chat: store,
     cakeChat: {
@@ -1700,5 +1709,84 @@ describe("Sidebar projects", () => {
     expect(container.querySelector('[data-slot="resolved-lane"]')?.textContent).toContain(
       "Resolved Cake Chat",
     );
+  });
+
+  it("shows active Project and Cake Chat sessions together in date groups", () => {
+    const now = new Date(2026, 2, 10, 12).getTime();
+    const store = {
+      recentProjectPaths: ["/work/cake"],
+      projects: [{ path: "/work/cake", name: "Cake" }],
+      projectSessions: vi.fn(() => []),
+      activeProjectSessions: [
+        {
+          sessionId: "project-session",
+          title: "Build activity feed",
+          projectPath: "/work/cake",
+          workingDirectory: "/work/cake",
+          modifiedAt: new Date(2026, 2, 10, 10).toISOString(),
+        },
+      ],
+      cakeChatSummaries: [
+        {
+          sessionId: "cake-session",
+          title: "Plan navigation",
+          modifiedAt: new Date(2026, 2, 9, 10).toISOString(),
+          resolved: false,
+        },
+        {
+          sessionId: "resolved-session",
+          title: "Archived work",
+          modifiedAt: new Date(2026, 2, 10, 11).toISOString(),
+          resolved: true,
+        },
+      ],
+      navigationMode: "activity",
+      now,
+      sessionLimit: () => 10,
+      sessionActivity: vi.fn(),
+      sessionActivityTime: () => "recently",
+      nameFromPath: () => "cake",
+      showMoreSessions: vi.fn(),
+    } as unknown as ProjectWorkbenchStore;
+
+    act(() =>
+      root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onToggle={vi.fn()} />),
+    );
+
+    expect(container.querySelector('[data-slot="activity-feed"]')?.textContent).toContain("Today");
+    expect(container.querySelector('[data-slot="activity-feed"]')?.textContent).toContain(
+      "Yesterday",
+    );
+    expect(container.querySelector('[data-slot="activity-feed"]')?.textContent).toContain("Cake");
+    expect(container.querySelector('[data-slot="activity-feed"]')?.textContent).toContain(
+      "Cake Chat",
+    );
+    expect(container.textContent).not.toContain("Archived work");
+    expect(container.querySelector('[data-slot="resolved-lane"]')).toBeNull();
+  });
+
+  it("opens a new-session picker for Cake Chat and registered Projects", async () => {
+    const startNewSession = vi.fn();
+    const store = {
+      recentProjectPaths: ["/work/cake"],
+      projects: [{ path: "/work/cake", name: "Cake" }],
+      projectSessions: vi.fn(() => []),
+      sessionLimit: () => 10,
+      sessionActivity: vi.fn(),
+      sessionActivityTime: vi.fn(),
+      nameFromPath: () => "cake",
+      showMoreSessions: vi.fn(),
+      startNewSession,
+    } as unknown as ProjectWorkbenchStore;
+
+    act(() =>
+      root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onToggle={vi.fn()} />),
+    );
+    act(() => container.querySelector<HTMLButtonElement>('[aria-label="New session"]')!.click());
+    const projectOption = [...document.body.querySelectorAll<HTMLButtonElement>("button")].find(
+      (button) => button.textContent?.trim() === "Cake",
+    )!;
+    act(() => projectOption.click());
+    expect(startNewSession).toHaveBeenCalledWith("/work/cake");
   });
 });
