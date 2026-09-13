@@ -1,26 +1,29 @@
 import { type DragEvent, type ReactNode } from "react";
-import { cn } from "@/lib/utils";
+
+export interface SortableItemDragHandleProps {
+  draggable: true;
+  onDragStart(event: DragEvent): void;
+}
 
 export interface SortableItemProps {
   id: string;
-  children: ReactNode;
+  children(dragHandleProps: SortableItemDragHandleProps): ReactNode;
   className?: string;
   onMove(sourceId: string, targetId: string, placement: "before" | "after"): void;
 }
 
+const sortableItemDragType = "application/x-cake-item";
+
 /** Shared native drag-and-drop wrapper for persistently ordered navigation items. */
 export function SortableItem({ id, children, className, onMove }: SortableItemProps) {
-  const readSource = (event: DragEvent) => event.dataTransfer.getData("application/x-cake-item");
+  const readSource = (event: DragEvent) => event.dataTransfer.getData(sortableItemDragType);
   return (
     <div
-      className={cn("cursor-grab active:cursor-grabbing", className)}
-      draggable
-      onDragStart={(event) => {
-        event.dataTransfer.effectAllowed = "move";
-        event.dataTransfer.setData("application/x-cake-item", id);
-      }}
+      className={className}
       onDragOver={(event) => {
-        if (!readSource(event)) return;
+        // Browsers protect drag payload values until drop, so getData() is empty here.
+        // The advertised types remain readable and determine whether this is our drag.
+        if (!Array.from(event.dataTransfer.types).includes(sortableItemDragType)) return;
         event.preventDefault();
         event.dataTransfer.dropEffect = "move";
       }}
@@ -32,7 +35,13 @@ export function SortableItem({ id, children, className, onMove }: SortableItemPr
         onMove(sourceId, id, event.clientY < bounds.top + bounds.height / 2 ? "before" : "after");
       }}
     >
-      {children}
+      {children({
+        draggable: true,
+        onDragStart: (event) => {
+          event.dataTransfer.effectAllowed = "move";
+          event.dataTransfer.setData(sortableItemDragType, id);
+        },
+      })}
     </div>
   );
 }

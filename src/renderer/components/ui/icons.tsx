@@ -67,6 +67,12 @@ export const GripIcon = () => (
     <circle cx="16" cy="18" r="1" fill="currentColor" stroke="none" />
   </Icon>
 );
+export const SortIcon = () => (
+  <Icon size={15}>
+    <path d="M4 6h10M4 11h7M4 16h4" />
+    <path d="M17 5v13m-3-3 3 3 3-3" />
+  </Icon>
+);
 export const ExpandIcon = ({ size = 15, strokeWidth }: { size?: number; strokeWidth?: number }) => (
   <Icon size={size} strokeWidth={strokeWidth}>
     <path d="M9 4H4v5M15 4h5v5M20 15v5h-5M4 15v5h5" />

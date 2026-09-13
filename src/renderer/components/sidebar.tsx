@@ -28,7 +28,7 @@ import type { ProjectSettingsStore } from "../stores/ProjectSettingsStore";
 import type { AppearanceSettingsStore } from "../stores/AppearanceSettingsStore";
 import { SidebarActivityFeed } from "./sidebar-activity-feed";
 import { Popover, PopoverContent, PopoverIconTrigger } from "./ui/popover";
-import { SortableItem } from "./ui/sortable-item";
+import { SortableItem, type SortableItemDragHandleProps } from "./ui/sortable-item";
 
 export const Sidebar = observer(function Sidebar({
   store,
@@ -190,7 +190,7 @@ export const Sidebar = observer(function Sidebar({
                 </p>
               ) : (
                 projectPaths.map((path) => {
-                  const group = (
+                  const group = (dragHandleProps?: SortableItemDragHandleProps) => (
                     <SidebarProjectGroup
                       key={path}
                       store={store}
@@ -201,6 +201,7 @@ export const Sidebar = observer(function Sidebar({
                       path={path}
                       resolved={false}
                       focusMode={focusMode}
+                      dragHandleProps={dragHandleProps}
                       onToggleFocus={(path) =>
                         focusMode ? store.leaveProjectFocus() : store.focusProject(path)
                       }
@@ -211,7 +212,7 @@ export const Sidebar = observer(function Sidebar({
                     />
                   );
                   return focusMode ? (
-                    group
+                    group()
                   ) : (
                     <SortableItem
                       key={path}

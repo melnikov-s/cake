@@ -2,7 +2,7 @@ import { useState } from "react";
 import { observer } from "r-state-tree/react";
 import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
-import { BackIcon, ChevronIcon, ExpandIcon, PlusIcon, SettingsIcon } from "./ui/icons";
+import { BackIcon, CheckIcon, ChevronIcon, PlusIcon, SettingsIcon, SortIcon } from "./ui/icons";
 import { IconButton } from "./ui/icon-button";
 import { SidebarSessionItem } from "./sidebar-session-item";
 import type { AppShellStore } from "../stores/AppShellStore";
@@ -13,6 +13,8 @@ import { ProjectActionDialog, type ProjectAction } from "./project-action-dialog
 import { Avatar } from "./ui/avatar";
 import { AnimatedList } from "./ui/animated-list";
 import type { AppearanceSettingsStore } from "../stores/AppearanceSettingsStore";
+import type { SortableItemDragHandleProps } from "./ui/sortable-item";
+import { Popover, PopoverContent, PopoverIconTrigger } from "./ui/popover";
 
 export interface SidebarProjectGroupProps {
   store: SidebarStore;
@@ -24,6 +26,7 @@ export interface SidebarProjectGroupProps {
   resolved: boolean;
   focusMode?: boolean;
   flattenSessions?: boolean;
+  dragHandleProps?: SortableItemDragHandleProps;
   onToggleFocus?(path: string): void;
   onCreateSession(workspacePath: string): void;
   onOpenSession(sessionId: string): void;
@@ -42,6 +45,7 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
   resolved,
   focusMode = false,
   flattenSessions = false,
+  dragHandleProps,
   onToggleFocus,
   onCreateSession,
   onOpenSession,
@@ -50,6 +54,7 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
 }: SidebarProjectGroupProps) {
   const [projectAction, setProjectAction] = useState<ProjectAction>();
   const [actionBusy, setActionBusy] = useState(false);
+  const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const sessions = store.projectSessions(path, resolved);
   const visibleSessions =
     focusMode && !resolved ? sessions : store.visibleProjectSessions(path, resolved);
@@ -110,8 +115,10 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
           <Button
             data-slot="project-label"
             variant="ghost"
+            {...dragHandleProps}
             className={cn(
               "h-7 min-w-0 flex-1 justify-start px-1 text-[13px] font-medium text-inherit hover:text-foreground",
+              dragHandleProps && "cursor-grab active:cursor-grabbing",
               focusMode && "h-9 text-base font-semibold",
             )}
             type="button"
@@ -139,14 +146,45 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
           {!resolved && (
             <>
               {!focusMode && (
-                <IconButton
-                  className="size-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-sidebar-hover opacity-0 group-hover/proj:opacity-100 focus-visible:opacity-100 transition-opacity"
-                  tooltip="Focus on project"
-                  ariaLabel={`Focus on ${projects.nameFromPath(path)}`}
-                  onClick={() => onToggleFocus?.(path)}
-                >
-                  <ExpandIcon />
-                </IconButton>
+                <Popover open={sortMenuOpen} onOpenChange={setSortMenuOpen}>
+                  <PopoverIconTrigger
+                    className="size-6 flex items-center justify-center rounded text-muted-foreground hover:bg-sidebar-hover hover:text-foreground opacity-0 transition-opacity group-hover/proj:opacity-100 focus-visible:opacity-100 aria-expanded:opacity-100"
+                    tooltip={`Sort sessions by ${store.projectSessionSort(path)}`}
+                    ariaLabel={`Sort sessions in ${projects.nameFromPath(path)}`}
+                    aria-haspopup="menu"
+                  >
+                    <SortIcon />
+                  </PopoverIconTrigger>
+                  <PopoverContent
+                    side="bottom"
+                    align="end"
+                    role="menu"
+                    aria-label={`Sort sessions in ${projects.nameFromPath(path)}`}
+                    className="w-40 rounded-lg p-1"
+                  >
+                    {(["date", "label"] as const).map((sort) => {
+                      const selected = store.projectSessionSort(path) === sort;
+                      return (
+                        <Button
+                          key={sort}
+                          variant="ghost"
+                          role="menuitemradio"
+                          aria-checked={selected}
+                          className="h-8 w-full justify-start gap-2 rounded-md px-2 text-xs font-normal"
+                          onClick={() => {
+                            store.setProjectSessionSort(path, sort);
+                            setSortMenuOpen(false);
+                          }}
+                        >
+                          <span className="flex w-4 justify-center">
+                            {selected && <CheckIcon />}
+                          </span>
+                          By {sort === "date" ? "date" : "label"}
+                        </Button>
+                      );
+                    })}
+                  </PopoverContent>
+                </Popover>
               )}
               <IconButton
                 className="size-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-sidebar-hover opacity-0 group-hover/proj:opacity-100 focus-visible:opacity-100 transition-opacity"

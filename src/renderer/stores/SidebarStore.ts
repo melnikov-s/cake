@@ -206,13 +206,17 @@ export class SidebarStore extends Store<SidebarStoreProps> {
       resolvedWorktreeCount: this.props.catalog.resolvedWorktrees(path).length,
       sessionSort: this.projectSessionSort(path),
     });
-    if (action === "sort-by-date") this.projectSessionSorts[path] = "date";
-    if (action === "sort-by-label") this.projectSessionSorts[path] = "label";
+    if (action === "sort-by-date") this.setProjectSessionSort(path, "date");
+    if (action === "sort-by-label") this.setProjectSessionSort(path, "label");
     return action;
   }
 
   projectSessionSort(path: string): "date" | "label" {
     return this.projectSessionSorts[path] ?? "date";
+  }
+
+  setProjectSessionSort(path: string, sort: "date" | "label") {
+    this.projectSessionSorts[path] = sort;
   }
 
   showProjects() {

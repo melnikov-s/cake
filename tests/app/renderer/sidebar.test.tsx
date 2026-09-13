@@ -41,6 +41,8 @@ function sidebarProps(store: ProjectWorkbenchStore) {
       setSessionUnread: fixture.setSessionUnread ?? vi.fn(),
       showSessionContextMenu: fixture.showSessionContextMenu ?? vi.fn(),
       showProjectContextMenu: fixture.showProjectContextMenu ?? vi.fn(),
+      projectSessionSort: fixture.projectSessionSort ?? (() => "date"),
+      setProjectSessionSort: fixture.setProjectSessionSort ?? vi.fn(),
       projectSessionCount: fixture.projectSessionCount ?? (() => fixture.projectSessions().length),
       resolvedWorktreeCount: fixture.resolvedWorktreeCount ?? (() => 0),
       resolvedLaneExpanded: fixture.resolvedLaneExpanded ?? false,
@@ -623,6 +625,36 @@ describe("Sidebar projects", () => {
     );
 
     expect(startNewSession).toHaveBeenCalledWith("/work/cake");
+  });
+
+  it("changes project session sorting from the header action", () => {
+    const setProjectSessionSort = vi.fn();
+    const store = {
+      recentProjectPaths: ["/work/cake"],
+      projects: [{ path: "/work/cake", name: "Cake" }],
+      projectSessions: () => [],
+      sessionLimit: () => 8,
+      sessionActivity: vi.fn(),
+      nameFromPath: () => "cake",
+      projectSessionSort: () => "date" as const,
+      setProjectSessionSort,
+      showMoreSessions: vi.fn(),
+    } as unknown as ProjectWorkbenchStore;
+    const props = sidebarProps(store);
+    act(() => root.render(<Sidebar {...props} onOpenSettings={vi.fn()} onToggle={vi.fn()} />));
+
+    act(() =>
+      container.querySelector<HTMLButtonElement>('[aria-label="Sort sessions in cake"]')!.click(),
+    );
+    const labelOption = Array.from(
+      document.body.querySelectorAll<HTMLButtonElement>("button"),
+    ).find((button) => button.textContent?.includes("By label"))!;
+    expect(labelOption.getAttribute("aria-checked")).toBe("false");
+
+    act(() => labelOption.click());
+
+    expect(setProjectSessionSort).toHaveBeenCalledWith("/work/cake", "label");
+    expect(document.body.querySelector('[role="menu"]')).toBeNull();
   });
 
   it("opens project settings from the hover action and context menu", async () => {
