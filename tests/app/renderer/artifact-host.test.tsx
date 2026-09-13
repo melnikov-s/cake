@@ -461,6 +461,31 @@ describe("ArtifactHost", () => {
     expect(container.textContent).not.toContain("boom");
   });
 
+  it("renders an imported Markdown file as its readable document", () => {
+    const artifact = record({
+      protocol: "cake.artifact/v1",
+      id: "imported-notes",
+      sessionId: "session",
+      revision: 1,
+      kind: "file",
+      title: "Imported notes",
+      payload: {
+        name: "notes.md",
+        mimeType: "text/markdown",
+        data: btoa("# Imported notes\n\nReadable content."),
+        byteSize: 35,
+      },
+      fallback: { markdown: "Imported notes file." },
+      interaction: { mode: "present" },
+    });
+
+    act(() => root.render(<ArtifactHost record={artifact} />));
+
+    expect(container.textContent).toContain("Imported notes");
+    expect(container.textContent).toContain("Readable content.");
+    expect(container.textContent).not.toContain("Readable fallback");
+  });
+
   it("offers fullscreen for non-widget artifacts", () => {
     const artifact = record({
       protocol: "cake.artifact/v1",

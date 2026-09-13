@@ -7,6 +7,7 @@ import { ProjectSessionIntegrationHost } from "./ProjectSessionIntegrationHost";
 import { PiModels } from "./PiModels";
 import { RenderedWidgetCapture } from "../widgets/RenderedWidgetCapture";
 import { generateReviewedWidget } from "../../domain/widgets/widgetGenerationReview";
+import { importWorkspaceFile } from "../artifacts/importWorkspaceFile";
 import {
   ProjectSessionRuntimeHost,
   ProjectSessionRuntimeHostError,
@@ -114,6 +115,7 @@ export const makeProjectSessionRuntimeHostLive = (
                 `widgets.present requires image input, but ${model.provider}/${model.id} is text-only`,
               );
           },
+          importWorkspaceFile: (input) => runAdapter(importWorkspaceFile(input)),
           artifactRepository: {
             // Pi's artifact hooks are Promise callbacks. Keep the only execution
             // adapter at this host boundary and provide only ArtifactStorage.

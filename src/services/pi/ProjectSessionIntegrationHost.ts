@@ -25,6 +25,7 @@ import {
 import type { CakeRuntimeOptions } from "./runtime/cake-runtime";
 import type { RuntimeUiRequest } from "./runtime/runtime-ui-request";
 import type { WidgetGenerationReviewDependencies } from "../../domain/widgets/widgetGenerationReview";
+import type { ImportWorkspaceFileInput } from "../artifacts/importWorkspaceFile";
 
 interface ArtifactRepositoryPort {
   readonly upsert: (workingDirectory: string, artifact: CakeArtifactV1) => Promise<ArtifactRecord>;
@@ -49,6 +50,7 @@ export type ProjectSessionRuntimeIntegrations = Pick<
   | "reviseInlineWidget"
   | "getArtifact"
   | "listSessionArtifacts"
+  | "importArtifactFile"
   | "listArtifacts"
   | "persistArtifact"
   | "requestArtifact"
@@ -99,6 +101,7 @@ export interface ProjectSessionIntegrationHostOptions {
     model: { provider: string; id: string } | undefined,
   ) => Promise<void>;
   readonly artifactRepository?: ArtifactRepositoryPort;
+  readonly importWorkspaceFile?: (input: ImportWorkspaceFileInput) => Promise<CakeArtifactV1>;
   readonly reviewRepository?: ReviewRepositoryPort;
   readonly openExternal?: (url: string) => Promise<void>;
   readonly enterEditor?: (signal: AbortSignal) => Promise<void>;
@@ -143,6 +146,9 @@ export class ProjectSessionIntegrationHost {
     ProjectSessionIntegrationHostOptions["requireVisionModel"]
   >;
   private readonly artifactRepository: ArtifactRepositoryPort;
+  private readonly importWorkspaceFile: NonNullable<
+    ProjectSessionIntegrationHostOptions["importWorkspaceFile"]
+  >;
   private readonly reviewRepository: ReviewRepositoryPort;
   private disposed = false;
 
@@ -172,6 +178,11 @@ export class ProjectSessionIntegrationHost {
       (async (model) => {
         if (!model)
           throw new Error("Rendered widget review requires a configured vision-capable model");
+      });
+    this.importWorkspaceFile =
+      options.importWorkspaceFile ??
+      (async () => {
+        throw new Error("Workspace file artifact import is unavailable");
       });
     this.artifactRepository = options.artifactRepository ?? {
       async upsert(workingDirectory, artifact) {
@@ -215,6 +226,12 @@ export class ProjectSessionIntegrationHost {
         this.artifactRepository.get(this.workspacePath, sessionId, artifactId),
       listSessionArtifacts: () =>
         this.artifactRepository.listSession(this.workspacePath, sessionId),
+      importArtifactFile: (input) =>
+        this.importWorkspaceFile({
+          ...input,
+          workingDirectory: this.workspacePath,
+          sessionId,
+        }),
       reviewContextPath: reviewContextPath
         ? (activeSessionId) => reviewContextPath(this.workspacePath, activeSessionId)
         : undefined,

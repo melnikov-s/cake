@@ -142,6 +142,77 @@ describe("Cake durable artifact operations", () => {
     );
   });
 
+  it("imports a workspace file with derived ownership and can replace its snapshot", async () => {
+    const appendEntry = vi.fn();
+    const fileArtifact = (revision: number): CakeArtifactV1 => ({
+      protocol: "cake.artifact/v1",
+      id: "report",
+      sessionId: "session-1",
+      revision,
+      kind: "file",
+      title: "Report",
+      payload: {
+        name: revision === 1 ? "report.pdf" : "revised-report.pdf",
+        mimeType: "application/pdf",
+        data: "cGRm",
+        byteSize: 3,
+      },
+      fallback: { markdown: "PDF report." },
+      interaction: { mode: "present" },
+    });
+    const importArtifactFile = vi
+      .fn()
+      .mockResolvedValueOnce(fileArtifact(1))
+      .mockResolvedValueOnce(fileArtifact(2));
+    const persistArtifact = vi.fn(async (artifact: CakeArtifactV1) => record(artifact));
+    const getArtifact = vi
+      .fn()
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(record(fileArtifact(1)));
+    const registry = new CakeOperationRegistry(
+      createCakeArtifactOperations(
+        { appendEntry },
+        {
+          persistArtifact,
+          requestArtifact: vi.fn(),
+          getArtifact,
+          listArtifacts: vi.fn(async () => []),
+          importArtifactFile,
+        },
+      ),
+    );
+
+    await registry.invoke(
+      {
+        command: "artifacts.create",
+        input: {
+          artifact: { id: "report", title: "Report", kind: "file", path: "out/report.pdf" },
+        },
+      },
+      invokeContext(),
+    );
+    await registry.invoke(
+      { command: "artifacts.update", input: { id: "report", path: "out/revised-report.pdf" } },
+      invokeContext("tool-2"),
+    );
+
+    expect(importArtifactFile).toHaveBeenNthCalledWith(1, {
+      id: "report",
+      title: "Report",
+      path: "out/report.pdf",
+      revision: 1,
+    });
+    expect(importArtifactFile).toHaveBeenNthCalledWith(2, {
+      id: "report",
+      title: "Report",
+      path: "out/revised-report.pdf",
+      revision: 2,
+    });
+    expect(persistArtifact).toHaveBeenNthCalledWith(1, fileArtifact(1));
+    expect(persistArtifact).toHaveBeenNthCalledWith(2, fileArtifact(2));
+    expect(appendEntry).toHaveBeenCalledTimes(2);
+  });
+
   it("publishes the next complete Markdown revision", async () => {
     const appendEntry = vi.fn();
     const persistArtifact = vi.fn(async (artifact: CakeArtifactV1) => record(artifact));

@@ -12,6 +12,7 @@ import type { InlineWidgetStore } from "../stores/InlineWidgetStore";
 import { ArtifactForm } from "./artifact-form";
 import { RequestArtifact, WidgetArtifact } from "./artifact-widget";
 import { DiagramArtifact } from "./diagram-artifact";
+import { FileArtifact } from "./file-artifact";
 import { HtmlArtifact } from "./html-artifact";
 import { MediaArtifact } from "./media-artifact";
 import { TableArtifact } from "./table-artifact";
@@ -73,6 +74,7 @@ export const ArtifactHost = observer(function ArtifactHost({
         </pre>
       ) : null}
       {artifact.kind === "html" ? <HtmlArtifact artifact={artifact} /> : null}
+      {artifact.kind === "file" ? <FileArtifact artifact={artifact} /> : null}
       {artifact.kind === "widget" ? (
         <WidgetArtifact artifact={artifact} inlineWidgets={inlineWidgets} fill={fill} />
       ) : null}

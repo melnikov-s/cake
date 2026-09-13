@@ -113,6 +113,12 @@ export interface CakeRuntimeOptions {
   reviseInlineWidget?(input: InlineWidgetRevisionRequest): Promise<InlineWidgetGenerationResult>;
   getArtifact?(artifactId: string): Promise<ArtifactRecord | undefined>;
   listSessionArtifacts?(): Promise<ReadonlyArray<ArtifactRecord>>;
+  importArtifactFile?(input: {
+    path: string;
+    id: string;
+    revision: number;
+    title?: string;
+  }): Promise<CakeArtifactV1>;
   listArtifacts?(pointers: ArtifactPointer[]): Promise<ArtifactRecord[]>;
   openExternal?(url: string): Promise<void>;
   reviewContextPath?(sessionId: string): string;

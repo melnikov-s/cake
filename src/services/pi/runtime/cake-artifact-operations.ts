@@ -19,6 +19,13 @@ import type {
   CakeOperationExecutionContext,
 } from "./cake-operation-registry";
 
+interface ArtifactFileImportInput {
+  path: string;
+  id: string;
+  revision: number;
+  title?: string;
+}
+
 export interface CakeArtifactOperationOptions {
   persistArtifact(artifact: CakeArtifactV1): Promise<ArtifactRecord>;
   requestArtifact(record: ArtifactRecord, signal: AbortSignal): Promise<JsonValue | undefined>;
@@ -28,6 +35,7 @@ export interface CakeArtifactOperationOptions {
   reviseInlineWidget?(input: InlineWidgetRevisionRequest): Promise<InlineWidgetGenerationResult>;
   getArtifact?(artifactId: string): Promise<ArtifactRecord | undefined>;
   listArtifacts?(): Promise<ReadonlyArray<ArtifactRecord>>;
+  importArtifactFile?(input: ArtifactFileImportInput): Promise<CakeArtifactV1>;
 }
 
 interface PiOperationHost {
@@ -90,13 +98,26 @@ const markdownCreateSchema = Schema.Struct({
   kind: Schema.Literal("markdown"),
   markdown: markdownSchema,
 });
-const artifactCreateSchema = Schema.Struct({ artifact: markdownCreateSchema });
+const fileCreateSchema = Schema.Struct({
+  id: artifactIdSchema,
+  title: Schema.optionalKey(titleSchema),
+  kind: Schema.Literal("file"),
+  path: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4_096)),
+});
+const artifactCreateSchema = Schema.Struct({
+  artifact: Schema.Union([markdownCreateSchema, fileCreateSchema]),
+});
 const artifactReadSchema = Schema.Struct({ id: artifactIdSchema });
 const artifactUpdateSchema = Schema.Union([
   Schema.Struct({
     id: artifactIdSchema,
     title: Schema.optionalKey(titleSchema),
     markdown: markdownSchema,
+  }),
+  Schema.Struct({
+    id: artifactIdSchema,
+    title: Schema.optionalKey(titleSchema),
+    path: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4_096)),
   }),
   Schema.Struct({
     id: artifactIdSchema,
@@ -170,6 +191,15 @@ export function createCakeArtifactOperations(
           generationSessionId: artifact.payload.generationSessionId,
         },
       };
+    if (artifact.kind === "file")
+      return {
+        ...common,
+        payload: {
+          name: artifact.payload.name,
+          mimeType: artifact.payload.mimeType,
+          byteSize: artifact.payload.byteSize,
+        },
+      };
     // SAFETY: artifact payloads have passed cake.artifact/v1 parsing; request payloads are
     // validated again by their dedicated request boundary before they reach this operation.
     return { ...common, payload: artifact.payload } as JsonValue;
@@ -226,9 +256,11 @@ export function createCakeArtifactOperations(
     {
       command: "artifacts.create",
       topic: "artifacts",
-      summary: "Create a durable Markdown document artifact in the current session.",
+      summary:
+        "Create a durable Markdown document or imported file artifact in the current session.",
       guidance: [
         "Use a Markdown artifact for substantial reusable documents. Markdown is the readable content itself and does not need a separate fallback argument.",
+        "Import a workspace file when the file itself is the reusable deliverable. Cake snapshots it; later workspace changes do not mutate the artifact.",
         "Choose a stable descriptive ID. Use artifacts.update, rather than creating a second ID, when revising the same deliverable.",
       ],
       inputSchema: artifactCreateSchema,
@@ -251,17 +283,30 @@ export function createCakeArtifactOperations(
         if (options.getArtifact && (await options.getArtifact(draft.id)))
           throw new Error(`Artifact ${draft.id} already exists; use artifacts.update`);
         const sessionId = runtimeContext(context).sessionManager.getSessionId();
-        let artifact: CakeArtifactV1 = {
-          protocol: "cake.artifact/v1",
-          id: draft.id,
-          sessionId,
-          revision: 1,
-          kind: "markdown",
-          payload: { markdown: draft.markdown },
-          fallback: { markdown: draft.markdown },
-          interaction: { mode: "present" },
-        };
-        if (draft.title) artifact = { ...artifact, title: draft.title };
+        let artifact: CakeArtifactV1;
+        if (draft.kind === "file") {
+          if (!options.importArtifactFile)
+            throw new Error("Workspace file artifact import is unavailable");
+          const fileInput: ArtifactFileImportInput = {
+            id: draft.id,
+            path: draft.path,
+            revision: 1,
+          };
+          if (draft.title !== undefined) fileInput.title = draft.title;
+          artifact = await options.importArtifactFile(fileInput);
+        } else {
+          artifact = {
+            protocol: "cake.artifact/v1",
+            id: draft.id,
+            sessionId,
+            revision: 1,
+            kind: "markdown",
+            payload: { markdown: draft.markdown },
+            fallback: { markdown: draft.markdown },
+            interaction: { mode: "present" },
+          };
+          if (draft.title) artifact = { ...artifact, title: draft.title };
+        }
         const record = await persist(artifact, sessionId);
         appendPointer(record, pointerOrigin(context));
         return { artifactId: record.artifact.id, kind: record.artifact.kind, revision: 1 };
@@ -273,7 +318,7 @@ export function createCakeArtifactOperations(
       summary: "Durably edit, fix, revise, or repair an existing artifact.",
       guidance: [
         "Use this operation when the user asks to edit, fix, revise, or repair an artifact. Cake preserves its stable ID and publishes the next immutable revision.",
-        "Markdown updates replace the complete document. Widget updates accept revision instructions and run isolated generation, rendering, and visual review before publication.",
+        "Markdown updates replace the complete document. File updates snapshot a replacement workspace-relative path. Widget updates accept revision instructions and run isolated generation, rendering, and visual review before publication.",
       ],
       inputSchema: artifactUpdateSchema,
       examples: [{ input: { id: "design-plan", markdown: "# Revised design plan\n\nUpdated." } }],
@@ -295,6 +340,19 @@ export function createCakeArtifactOperations(
             fallback: { markdown: update.markdown },
           };
           if (update.title) artifact = { ...artifact, title: update.title };
+        } else if ("path" in update) {
+          if (current.artifact.kind !== "file")
+            throw new Error(`Artifact ${update.id} is ${current.artifact.kind}, not a file`);
+          if (!options.importArtifactFile)
+            throw new Error("Workspace file artifact import is unavailable");
+          const fileInput: ArtifactFileImportInput = {
+            id: current.artifact.id,
+            path: update.path,
+            revision,
+          };
+          const title = update.title ?? current.artifact.title;
+          if (title !== undefined) fileInput.title = title;
+          artifact = await options.importArtifactFile(fileInput);
         } else {
           if (current.artifact.kind !== "widget")
             throw new Error(

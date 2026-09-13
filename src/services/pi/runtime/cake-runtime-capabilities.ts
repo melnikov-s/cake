@@ -1323,6 +1323,7 @@ export async function createCakeRuntimeCapabilities(input: {
                       reviseInlineWidget: options.reviseInlineWidget,
                       getArtifact: options.getArtifact,
                       listArtifacts: options.listSessionArtifacts,
+                      importArtifactFile: options.importArtifactFile,
                     }),
                     ...(options.vscodeControl
                       ? createCakeVscodeOperations(options.vscodeControl)
@@ -1389,6 +1390,7 @@ export async function createCakeRuntimeCapabilities(input: {
                       reviseInlineWidget: options.reviseInlineWidget,
                       getArtifact: options.getArtifact,
                       listArtifacts: options.listSessionArtifacts,
+                      importArtifactFile: options.importArtifactFile,
                     }),
                     ...(options.vscodeControl
                       ? createCakeVscodeOperations(options.vscodeControl)
