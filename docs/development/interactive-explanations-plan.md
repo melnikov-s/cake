@@ -68,6 +68,7 @@ Prototype with Astra to establish the quality ceiling. Compare Sol only after th
   - [Evaluation fixtures — Luna](cake://session/a11c43f6-88c2-4e23-9ef8-ecd1fe38165b).
 - First-stage prototype, runtime design, and benchmarks: reviewed and landed in the parent worktree.
 - User approved Astra's guided visual explanation and explicitly requires that genuine diagrams remain an available form, not just walkthroughs.
-- Next milestone: integrate actual React Flow/ELK into the widget compiler (Sol) and use it in Astra's second composition. Astra owns fixture/scenario/visual review; Sol owns compiler/import/style integration and boundary tests. Parent serializes landing and updates shared specialist guidance.
+- React Flow/ELK compiler support and Astra's real-Flow second fixture are now landed in the parent worktree. The parent updated both generation and repair guidance and the widget tool description; focused prompt/compiler tests, typecheck, formatting and build pass. Full lint remains blocked by pre-existing DiscussionReducer and extension-compatibility findings.
+- Next milestone: integrated Electron visual/interaction verification and refinement of the real Flow fixture. Its earlier isolated-checkout runs were blocked by missing compiler support and are not accepted visual evidence.
 - The second composition must demonstrate connected nodes, readable edges, meaningful boundaries and useful path/neighborhood interaction within a React widget, not another hand-authored SVG-only proof or a repair of the old architecture canvas.
 - Automatic screenshot-review pipeline: still unimplemented; develop it as an improvement to the widget generation path, not a separate product.

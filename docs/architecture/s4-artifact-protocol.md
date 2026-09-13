@@ -191,15 +191,30 @@ validated source as a `widget` artifact and appends only the ordinary artifact
 pointer and fallback to Pi. The tool result contains the artifact ID, allowing
 the renderer to place the widget at the tool-call position.
 
-React source is bundled as TSX, must default-export one component, and may
-import React plus Cake's approved, bundled D3 modules (`d3` or `d3-*`) only.
-Prefer submodule imports for smaller bundles; `import * as d3 from "d3"` is
-supported for convenience. D3's network-oriented helpers remain unable to
-reach the network because the widget CSP blocks network access. The widget runs
-in an `allow-scripts` iframe without same-origin privilege, with a CSP that
-blocks network access, forms, navigation, and Cake, Node, Electron, and
-filesystem access. Runtime errors and frame height cross a token-tagged
-`postMessage` channel; no general bridge is exposed.
+React source is bundled as TSX and must default-export one component. Approved
+imports are React, Cake's bundled D3 modules (`d3` or approved `d3-*`),
+`@xyflow/react`, and `elkjs/lib/elk.bundled.js`. Prefer D3 submodule imports for
+smaller bundles; `import * as d3 from "d3"` is supported for convenience.
+React Flow's required package stylesheet is embedded automatically in the
+sandbox document when imported; generated source must not import CSS files.
+React and ReactDOM peer dependencies share the entrypoint's instances. ELK uses
+its bundled browser distribution without a remote worker URL.
+
+These are capabilities of the same React widget, not a separate flow-widget
+artifact type. The specialist can compose an actual React Flow diagram with
+ordinary React explanations, filters, source details, and accessible controls,
+or choose another visual form entirely. Diagram geometry belongs inside an
+explicitly sized canvas; surrounding content remains responsive normal-flow
+layout. Generation and repair share these instructions. Compilation does not
+prove visual quality: automatic rendered screenshot review is not implemented yet.
+
+The widget runs in an `allow-scripts` iframe without same-origin privilege.
+CSP blocks fetch/XHR/WebSocket (including D3's network helpers), while generic
+widgets permit passive HTTPS/data image and media loads. Specialist instructions
+require self-contained output with local data and no remote resources. The
+sandbox exposes no Cake, Node, Electron, filesystem or parent-DOM access.
+Runtime errors and frame height cross a token-tagged `postMessage` channel;
+no general bridge is exposed.
 
 Each widget shows Source and Repair controls. Repair starts another isolated Pi
 session with the stored source, stored brief, and diagnostic as untrusted data.

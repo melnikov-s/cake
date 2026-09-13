@@ -287,7 +287,8 @@ export function createCakeArtifactOperations(
       summary: "Delegate and present one self-contained interactive or highly visual React widget.",
       guidance: [
         "Prefer ordinary inline Markdown—including Mermaid and small tables—whenever it communicates the result clearly. Create a widget only for a substantial, reusable, or genuinely interactive/visual deliverable, especially when requested.",
-        "Supply a complete presentation brief, bounded data, and a readable Markdown fallback. Do not write the generated React source yourself.",
+        "Supply the explanation goal, audience, verified facts/source references, bounded data, and a readable Markdown fallback. Do not write the generated React source yourself.",
+        "The specialist can combine React Flow diagrams, optional ELK layout, ordinary React explanations, D3/SVG, filters and details inside one widget. Describe the intended relationships and useful interactions, not pixel coordinates or a mandatory graph DSL.",
       ],
       inputSchema: Schema.Struct({ widget: widgetSchema }),
       examples: [
@@ -304,7 +305,8 @@ export function createCakeArtifactOperations(
       ],
       result: "The persisted widget artifact ID after generation and compilation complete.",
       limitations: [
-        "Generated widgets have no network, filesystem, Node, Electron, parent, or Cake API access.",
+        "Generated widgets have no filesystem, Node, Electron, parent-DOM or Cake API access. CSP blocks fetch/XHR/WebSocket; generic widgets permit passive HTTPS/data images and media. Supply local data and request self-contained output.",
+        "Generation is compile-checked; automatic screenshot review is not yet provided.",
       ],
       async execute(input, context) {
         // SAFETY: CakeOperationRegistry parsed this value with the definition's input schema.
