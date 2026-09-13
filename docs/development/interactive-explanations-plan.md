@@ -6,6 +6,12 @@ Build a diagram-design workflow, not a replacement node-and-edge DSL. The specia
 
 The existing architecture graph renderer has no preservation requirement. Existing independent artifact persistence, widget sandbox/compiler, and Pi service boundaries may be reused when appropriate. Do not repair the old graph renderer as this project's objective.
 
+### Clarified direction: one widget system with diagram capabilities
+
+The user approved the first visual example but correctly noted that authored React widgets already exist. The product improvement must be integrated capabilities and generation quality, not more standalone widget examples or a parallel explanation artifact type. Keep one React widget authoring/rendering path and make React Flow plus ELK available as approved sandbox libraries. A generated widget can combine an actual flow diagram with prose, controls, filtering, and detail panels using ordinary React composition. No mandatory Cake node-edge DSL or separate flow-widget product. Evolve the existing widget specialist's guidance and eventually its rendered-review workflow; earlier runtime-note proposals for a separate public explanation operation are not the chosen product direction.
+
+Immediate implementation contract: approved imports `@xyflow/react` and `elkjs/lib/elk.bundled.js` in the existing widget compiler, with React Flow's required CSS delivered inside the sandbox (not a host-global import or a model-loaded URL). Preserve existing generic widget CSP behavior; do not widen it for these dependencies. No package installation is expected: both packages are already pinned. Use the library APIs directly for this slice; extract higher-level helpers only after demonstrated need.
+
 ## First milestone: prove the experience
 
 Produce one excellent interactive explanation of Cake on the actual Electron sandboxed artifact surface, with normal-panel and fullscreen captures and verified interactions. Manually exercise generation and visual revision before implementing an automatic generation service. If the result is not compelling, change the design before building more infrastructure.
@@ -62,5 +68,6 @@ Prototype with Astra to establish the quality ceiling. Compare Sol only after th
   - [Evaluation fixtures — Luna](cake://session/a11c43f6-88c2-4e23-9ef8-ecd1fe38165b).
 - First-stage prototype, runtime design, and benchmarks: reviewed and landed in the parent worktree.
 - User approved Astra's guided visual explanation and explicitly requires that genuine diagrams remain an available form, not just walkthroughs.
-- Next milestone: a second Astra prototype with connected nodes, readable edges, meaningful boundaries, and useful path/neighborhood interaction. Choose React/SVG/D3 or another justified approved tool; do not force the specialist into one visual form or repair the old graph renderer. Prove diagram composition on the real sandboxed Electron surface before extracting the shared kit.
-- Production pipeline: not implemented; next integration decisions follow the second composition and minimal-kit review.
+- Next milestone: integrate actual React Flow/ELK into the widget compiler (Sol) and use it in Astra's second composition. Astra owns fixture/scenario/visual review; Sol owns compiler/import/style integration and boundary tests. Parent serializes landing and updates shared specialist guidance.
+- The second composition must demonstrate connected nodes, readable edges, meaningful boundaries and useful path/neighborhood interaction within a React widget, not another hand-authored SVG-only proof or a repair of the old architecture canvas.
+- Automatic screenshot-review pipeline: still unimplemented; develop it as an improvement to the widget generation path, not a separate product.
