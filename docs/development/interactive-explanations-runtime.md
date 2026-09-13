@@ -68,8 +68,9 @@ operation.
 
 ## Minimal product contract
 
-The initial public request should remain semantic and source-backed. It should not expose source,
-layout coordinates, a graph DSL, compiler options, or capture selectors.
+Subject to prototype review, the proposed public request should remain semantic and source-backed.
+Its exact operation name and exposure are not decided by this note. It should not expose generated
+source, layout coordinates, a graph DSL, compiler options, or capture selectors.
 
 ```ts
 interface InteractiveExplanationBrief {
@@ -123,14 +124,17 @@ interface InteractiveExplanationSnapshot {
   readonly phase: InteractiveExplanationPhase;
   readonly attempt: 0 | 1 | 2; // 0 is initial generation; 1–2 are revision attempts
   readonly diagnostic?: string; // bounded, user-safe summary
+  readonly warning?: string; // post-commit pointer/event publication warning
   readonly published?: ArtifactRecord;
 }
 ```
 
 Commands are `start`, `cancel`, and a current-first `observe(operationId)` subscription. Start
 rejects another active operation for the same `(sessionId, artifactId)`; different artifacts may
-run independently under a small process-wide bound. Cancel is idempotent and interrupts generation,
-compilation/capture waiting, and specialist revision. It is not merely a renderer visibility flag.
+run independently under a small process-wide bound. Before publication begins, cancel is idempotent
+and interrupts generation, compilation/capture waiting, and specialist revision. It is not merely a
+renderer visibility flag. Once the publication commit boundary begins, cancel returns the eventual
+committed outcome rather than claiming that committed work was cancelled.
 
 ### Visual-kit contract
 
@@ -163,8 +167,8 @@ A main-process `interactiveExplanations` domain module should own this policy:
    Session identity to the renderer or copy its transcript into the Project Session.
 3. **Compile.** Extract exactly one fenced/default-exported React component and compile through
    `InlineWidgets`. Compiler failures become bounded diagnostics. The same specialist may revise
-   after a compiler failure; deterministic checks never consume a model call merely to restate a
-   passing result.
+   after a compiler failure. A compile pass does not trigger a separate model call that merely
+   restates the diagnostic result, but it still proceeds to the mandatory rendered screenshot review.
 4. **Render and inspect.** Ask the renderer connection bound to the target Project Session to mount
    the candidate in a transient explanation preview using the same `WidgetArtifact` iframe path,
    normal artifact-panel width, theme, and shared fullscreen surface when fullscreen review is
@@ -172,27 +176,39 @@ A main-process `interactiveExplanations` domain module should own this policy:
    settle condition. Collect runtime error messages and deterministic diagnostics (viewport,
    scroll width/height, clipped/overflow flags, target bounds). Then capture the actual Electron
    pixels as described below.
-5. **Revise, at most twice.** Send the same specialist a critique prompt containing the bounded
-   diagnostics and PNG as Pi image content. Ask it to preserve verified facts and return complete
-   replacement source. Recompile and rerender. Stop early when compile, runtime, and deterministic
-   layout checks pass; visual judgment still belongs to the vision-capable specialist/user rather
-   than a claimed deterministic score. `attempt` 2 is the final allowed revision.
-6. **Publish.** Only a candidate that compiled, reached ready without runtime error, and passed the
-   required render checks is converted to a `widget` artifact. Its revision is 1 or exactly the
-   stored revision plus one. Persist through `ArtifactStorage.upsert`, append the ordinary immutable
-   artifact pointer to Pi where the invoking operation contract requires it, and emit the existing
-   `artifact-updated` event. The renderer then uses its normal artifact projection/panel flow.
-   “Atomic publication” means the artifact authority advances once through its existing atomic
-   metadata replacement; no failed candidate writes that metadata. The Pi pointer and Cake metadata
-   are two authorities and cannot be one filesystem transaction: keep the current safe ordering
-   (durable artifact first, pointer second), do not emit the live update until both succeed, and let
-   restart reconciliation recover a durable unannounced artifact rather than risk a pointer whose
-   blob does not exist. Discard the transient preview and capture bytes after settlement.
-7. **Fail or cancel truthfully.** On exhausted attempts, model failure, renderer loss, timeout, or
-   cancellation, unmount the preview and settle the operation with a typed failure/cancellation.
-   Never call `upsert`, append a pointer, or emit `artifact-updated` for the rejected candidate.
-   If a prior successful revision exists, its metadata pointer and bytes remain untouched and it
-   stays selected/renderable.
+5. **Review every rendered candidate; revise at most twice.** After the initial candidate—and after
+   every revision that reaches a renderable state—send the same specialist the bounded diagnostics
+   and PNG as Pi image content. Passing compile, runtime, and layout checks never bypasses this first
+   screenshot review. The response contract allows either an exact `ACCEPT_CURRENT` decision or one
+   complete replacement component. `ACCEPT_CURRENT` publishes the unchanged candidate; replacement
+   source consumes one revision, then must be recompiled, rerendered, recaptured, and reviewed again.
+   A compiler/runtime failure also consumes a revision when the specialist returns replacement
+   source. After two replacements, the final screenshot is still reviewed: it may be accepted
+   unchanged, but another requested replacement exhausts the budget and fails explicitly. There is
+   no numerical beauty score and deterministic checks cannot accept on the specialist's behalf.
+6. **Publish.** Only an accepted candidate that compiled, reached ready without runtime error, and
+   passed the required render checks is converted to a `widget` artifact. Its revision is 1 or
+   exactly the stored revision plus one. Persist through `ArtifactStorage.upsert`, append the
+   ordinary immutable artifact pointer to Pi where the invoking operation contract requires it, and
+   emit the existing `artifact-updated` event. The renderer then uses its normal artifact
+   projection/panel flow. “Atomic publication” means the artifact authority advances once through
+   its existing atomic metadata replacement; no rejected candidate writes that metadata.
+
+   The **cancellation commit boundary** is the call to `ArtifactStorage.upsert`: cancellation wins
+   only when observed before that call begins. Publication is then a short non-cancellable section.
+   If `upsert` succeeds, the new revision is committed and the operation must settle as completed,
+   even if cancellation arrives or pointer/event publication later fails. Cake may make one bounded
+   immediate retry for the pointer/event; if it still fails, report a completed-with-warning outcome
+   and rely on normal artifact storage hydration to expose the committed revision. Do not claim the
+   old revision survived and do not add a cross-authority transaction or rollback. If `upsert`
+   fails, no commit occurred and the operation fails normally. Discard the transient preview and
+   capture bytes after settlement.
+
+7. **Fail or cancel truthfully.** Before the publication boundary, exhausted attempts, model
+   failure, renderer loss, timeout, or cancellation unmounts the preview and settles with a typed
+   failure/cancellation. No rejected pre-commit candidate calls `upsert`, appends a pointer, or emits
+   `artifact-updated`; a prior successful revision stays selected/renderable. After a successful
+   `upsert`, use the committed outcome above rather than reporting failure or cancellation.
 
 Compiler failure can count as one of the two revisions; it must not get an additional hidden repair
 budget. This keeps the product promise simple: one initial design plus at most two specialist
@@ -245,10 +261,14 @@ renderer chooses the target through a dedicated preview-host ref/data identity o
 Cake code—not a selector supplied by the model—and reports `getBoundingClientRect()` after the
 frame's token-correlated ready/height events. Main validates finite integral bounds, positive
 bounded dimensions, intersection with the selected `BrowserWindow` content bounds, and a maximum
-pixel/PNG size before calling `capturePage`. The returned PNG stays in main memory and is attached
-to the private specialist prompt as base64 `image/png`; it is not exposed through preload, written
-to the Project, or persisted in the artifact repository. A debug export can be a later explicit
-user action, not default behavior.
+pixel/PNG size before calling `capturePage`. Main attaches the PNG to the private specialist prompt
+as base64 `image/png`; it is not exposed through preload, written to the Project, or persisted in
+the artifact repository. It is **not memory-only** when the specialist Pi Session is persisted:
+Pi 0.85.1 builds the user message with the supplied image blocks and
+`AgentSession._handleAgentEvent` passes the completed user message to
+`SessionManager.appendMessage`, so the base64 image is stored in that private Pi JSONL transcript.
+The specialist-session retention/deletion policy therefore also governs screenshot retention. A
+debug export can be a later explicit user action, not default behavior.
 
 The request and capture run in the operation Scope. Abort interrupts the pending renderer request
 and specialist turn; the renderer unmounts on its request cancellation, session replacement,
@@ -277,7 +297,7 @@ fixtures and reviewed screenshots. Neither replaces targeted Electron interactio
 | Specialist transcript                      | Pi Session / restricted Pi runtime                                                                             | One generation operation plus up to two critique turns                  | Private Pi session directory; retention/cleanup policy like widget sidecars | One serialized turn; operation abort calls Pi abort and releases Scope         |
 | Candidate source and compiled capability   | Main operation coordinator plus `InlineWidgets`/scheme registry                                                | One attempt                                                             | None                                                                        | Replaced only by next attempt; old token invalidated/removed                   |
 | Preview readiness, bounds, and diagnostics | Focused renderer preview Store for presentation; main operation validates correlated response                  | One mounted attempt                                                     | None                                                                        | Latest token wins; Store passes `AbortSignal`, rejects late results            |
-| PNG feedback                               | `RenderedSurfaceCapture` in Electron main                                                                      | One critique handoff                                                    | None by default                                                             | Capture serialized per renderer; size/time bounded and interruptible           |
+| PNG feedback                               | Electron main until prompt handoff; then Pi owns the private specialist message                                | Operation plus retained private Pi Session                              | Base64 image persists in private Pi JSONL; never artifact/Project storage   | Capture serialized per renderer; late native results discarded after cancel    |
 | Operation phase/progress                   | Main process operation coordinator; renderer gets current-first projection                                     | Accepted operation/process lifetime                                     | None in v1                                                                  | Reject same artifact while active; bounded global parallelism; explicit cancel |
 | Published artifact revision                | `ArtifactStorage`                                                                                              | Session/artifact lineage                                                | Content-addressed immutable blob plus atomic metadata; Pi pointer           | Existing per-artifact serialization and exact `+1` revision rule               |
 | Artifact panel selection/open state        | Existing session `ArtifactWorkspaceStore`                                                                      | Loaded Project Session Store                                            | Existing renderer policy (currently not snapshot-decorated)                 | Existing event ordering; not workflow authority                                |
@@ -331,9 +351,12 @@ graph renderer.
    examples, publish only demonstrated kit primitives under one compiler allowlist entry. Add
    source-backed benchmark fixtures and named repository visual-capture scenarios; keep benchmark
    capture code out of the production service.
-5. **Product wiring and cleanup.** Replace `widgets.present` with the agreed brief/result operation
-   and artifact UI, update callers/tests/docs in one change, and remove obsolete graph-specific APIs
-   and renderer only after the replacement is integrated. Do not add compatibility aliases.
+5. **Product wiring and graph cleanup (still prototype-gated).** After prototype review, choose the
+   explanatory workflow's exact public operation and wire its artifact UI, callers, tests, and docs.
+   Remove obsolete graph-specific APIs and renderer only after the replacement is integrated. Keep
+   generic `widgets.present` for other bespoke-widget cases unless a separate product decision
+   replaces it; do not treat this work as authorization for collateral removal or add compatibility
+   aliases.
 
 ## Open decisions and blockers
 
@@ -351,8 +374,10 @@ graph renderer.
   trustworthy automatic visual-quality score. The first production cut should treat specialist
   critique plus those checks as advisory and keep explicit user regeneration/repair available; do
   not invent a numeric quality threshold.
-- **Private-session retention:** widget sidecars are currently persisted. Define a bounded retention
-  and deletion rule before shipping at scale; this is separate from immutable artifact retention.
+- **Private-session and screenshot retention:** widget sidecars are currently persisted, and Pi
+  persists image blocks supplied in prompts into their JSONL messages. Define a bounded retention
+  and deletion rule before shipping at scale; this is separate from immutable artifact retention
+  and must be disclosed as screenshot retention rather than described as memory-only.
 - **Compiled document cleanup:** the current `cake-widget:` registry is an unbounded process Map.
   The operation needs token invalidation on attempt replacement/settlement, and mounted published
   widgets need a scoped/recreatable registration policy. This is security/resource cleanup, not an
