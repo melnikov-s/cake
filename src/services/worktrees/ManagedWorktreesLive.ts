@@ -97,6 +97,12 @@ export const ManagedWorktreesLive: Layer.Layer<
     const git = Effect.fn("ManagedWorktrees.git")((cwd: string, ...args: ReadonlyArray<string>) =>
       gitService.run(cwd, args),
     );
+    // GitRunner only acknowledges Promise settlement, so defer interruption for mutations until
+    // settlement. Reads and repository-lock acquisition remain interruptible.
+    const gitMutation = Effect.fn("ManagedWorktrees.gitMutation")(
+      (cwd: string, ...args: ReadonlyArray<string>) =>
+        git(cwd, ...args).pipe(Effect.uninterruptible),
+    );
     const gitOptional = Effect.fn("ManagedWorktrees.gitOptional")(
       (cwd: string, args: ReadonlyArray<string>) =>
         git(cwd, ...args).pipe(
@@ -368,7 +374,7 @@ export const ManagedWorktreesLive: Layer.Layer<
             return yield* internalError(
               `The worktree creation command checked out ${createdBranch}, not ${branch}`,
             );
-        } else yield* git(root, "worktree", "add", "-b", branch, worktreePath, baseCommit);
+        } else yield* gitMutation(root, "worktree", "add", "-b", branch, worktreePath, baseCommit);
         if (setup) yield* runSetup(worktreePath, settings, variables);
       });
       const base = {
@@ -388,9 +394,9 @@ export const ManagedWorktreesLive: Layer.Layer<
         Effect.as(record),
         Effect.onExit((exit) =>
           Exit.isFailure(exit)
-            ? git(root, "worktree", "remove", "--force", worktreePath).pipe(
+            ? gitMutation(root, "worktree", "remove", "--force", worktreePath).pipe(
                 Effect.ignore,
-                Effect.andThen(git(root, "branch", "-D", branch).pipe(Effect.ignore)),
+                Effect.andThen(gitMutation(root, "branch", "-D", branch).pipe(Effect.ignore)),
                 Effect.andThen(
                   mutateRecords((current) => {
                     const next = current.filter(
@@ -526,7 +532,7 @@ export const ManagedWorktreesLive: Layer.Layer<
       branch: string,
     ) {
       const result = yield* Effect.result(
-        git(root, "merge-tree", "--write-tree", "--name-only", baseBranch, branch),
+        gitMutation(root, "merge-tree", "--write-tree", "--name-only", baseBranch, branch),
       );
       if (result._tag === "Success") return [];
       const cause = result.failure;
@@ -542,7 +548,7 @@ export const ManagedWorktreesLive: Layer.Layer<
       record: WorktreeRecord,
       target = record.baseBranch,
     ) {
-      const result = yield* Effect.result(git(record.worktreePath, "rebase", target));
+      const result = yield* Effect.result(gitMutation(record.worktreePath, "rebase", target));
       if (result._tag === "Success") return null;
       if (yield* rebaseInProgress(record.worktreePath))
         return yield* unmergedFiles(record.worktreePath);
@@ -589,9 +595,11 @@ export const ManagedWorktreesLive: Layer.Layer<
       message: string,
     ) {
       const targetPath = record.parentWorktreePath ?? record.projectPath;
-      yield* git(targetPath, "merge", "--squash", record.branch)
-        .pipe(Effect.andThen(git(targetPath, "commit", "-m", message)))
-        .pipe(Effect.tapCause(() => git(targetPath, "reset", "--merge").pipe(Effect.ignore)));
+      yield* gitMutation(targetPath, "merge", "--squash", record.branch)
+        .pipe(Effect.andThen(gitMutation(targetPath, "commit", "-m", message)))
+        .pipe(
+          Effect.tapCause(() => gitMutation(targetPath, "reset", "--merge").pipe(Effect.ignore)),
+        );
       const commit = (yield* git(targetPath, "rev-parse", "HEAD")).trim();
       yield* closeRecord(record, "landed");
       return commit;
@@ -611,9 +619,13 @@ export const ManagedWorktreesLive: Layer.Layer<
       }
       const conflicts = yield* dryRunConflicts(targetPath, record.baseBranch, record.branch);
       if (conflicts === null || conflicts.length > 0) {
-        yield* git(record.worktreePath, "merge", "--no-ff", "--no-edit", record.baseBranch).pipe(
-          Effect.ignore,
-        );
+        yield* gitMutation(
+          record.worktreePath,
+          "merge",
+          "--no-ff",
+          "--no-edit",
+          record.baseBranch,
+        ).pipe(Effect.ignore);
         if (yield* revParseExists(record.worktreePath, "MERGE_HEAD")) {
           yield* Ref.update(awaitingSquashProposals, (items) => new Set(items).add(normalized));
           return {
@@ -690,7 +702,9 @@ export const ManagedWorktreesLive: Layer.Layer<
           yield* rememberPendingLanding(record, "preserve");
           return { outcome: "resolving", files: conflicts };
         }
-        const merge = yield* Effect.result(git(targetPath, "merge", "--ff-only", record.branch));
+        const merge = yield* Effect.result(
+          gitMutation(targetPath, "merge", "--ff-only", record.branch),
+        );
         if (merge._tag === "Success") {
           const commit = (yield* git(targetPath, "rev-parse", "HEAD")).trim();
           yield* closeRecord(record, "landed");
@@ -716,12 +730,16 @@ export const ManagedWorktreesLive: Layer.Layer<
         return next;
       });
       if (yield* exists(record.worktreePath))
-        yield* git(record.projectPath, "worktree", "remove", "--force", record.worktreePath).pipe(
-          Effect.ignore,
-        );
-      yield* git(record.projectPath, "worktree", "prune").pipe(Effect.ignore);
+        yield* gitMutation(
+          record.projectPath,
+          "worktree",
+          "remove",
+          "--force",
+          record.worktreePath,
+        ).pipe(Effect.ignore);
+      yield* gitMutation(record.projectPath, "worktree", "prune").pipe(Effect.ignore);
       if (!options.keepBranch)
-        yield* git(record.projectPath, "branch", "-D", record.branch).pipe(Effect.ignore);
+        yield* gitMutation(record.projectPath, "branch", "-D", record.branch).pipe(Effect.ignore);
       yield* closeRecord(record, options.state);
     });
 
@@ -737,7 +755,7 @@ export const ManagedWorktreesLive: Layer.Layer<
       );
       if (!record || !["active", "landed"].includes(record.state ?? "active")) return undefined;
       if (!(yield* exists(record.worktreePath))) {
-        yield* git(record.projectPath, "worktree", "prune").pipe(Effect.ignore);
+        yield* gitMutation(record.projectPath, "worktree", "prune").pipe(Effect.ignore);
         yield* closeRecord(record, "missing");
         return undefined;
       }
@@ -1070,7 +1088,7 @@ export const ManagedWorktreesLive: Layer.Layer<
                   record.projectPath,
                   `refs/heads/${record.branch}`,
                 );
-                yield* git(
+                yield* gitMutation(
                   record.projectPath,
                   "worktree",
                   "add",

@@ -5,7 +5,8 @@ import { describe, expect } from "vitest";
 import { defaultProjectSettings } from "../../../../src/domain/application/application-data";
 import type { WorktreeRecord } from "../../../../src/domain/worktrees/managed-worktree-data";
 import { BootstrapLive } from "../../../../src/main/BootstrapLive";
-import { Git, GitError } from "../../../../src/services/git/Git";
+import { Git, GitError, type GitRunner } from "../../../../src/services/git/Git";
+import { makeGitLive } from "../../../../src/services/git/GitLive";
 import {
   WorktreeStorage,
   WorktreeStorageError,
@@ -22,6 +23,21 @@ const record = (projectPath: string, worktreePath: string, branch: string): Work
   createdAt: new Date(0).toISOString(),
   state: "active",
 });
+
+const makeStorageLayer = (initial: ReadonlyArray<WorktreeRecord>) =>
+  Layer.effect(
+    WorktreeStorage,
+    Effect.gen(function* () {
+      const records = yield* Ref.make(initial);
+      return WorktreeStorage.of({
+        load: () => Ref.get(records),
+        save: (next) => Ref.set(records, next),
+      });
+    }),
+  );
+
+const makeLiveLayer = (initial: ReadonlyArray<WorktreeRecord>, runner: GitRunner) =>
+  Layer.mergeAll(makeStorageLayer(initial), makeGitLive(runner), BootstrapLive);
 
 const makeLayer = (
   initial: ReadonlyArray<WorktreeRecord>,
@@ -388,6 +404,148 @@ describe("ManagedWorktrees Effect service", () => {
           expect(
             calls.some((call) => call.arguments_[0] === "branch" && call.arguments_[1] === "-D"),
           ).toBe(true);
+        }).pipe(Effect.provide(layer));
+      }),
+    ).pipe(Effect.provide(BootstrapLive)),
+  );
+
+  it.effect("waits for an interrupted Git checkout before rolling it back", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const temporary = yield* fileSystem.makeTempDirectoryScoped();
+        const repository = `${temporary}/repo`;
+        yield* fileSystem.makeDirectory(`${repository}/.git`, { recursive: true });
+
+        let checkoutExists = false;
+        let finishAdd: (() => void) | undefined;
+        let markAddStarted: (() => void) | undefined;
+        const addStarted = new Promise<void>((resolve) => {
+          markAddStarted = resolve;
+        });
+        const runner: GitRunner = (_cwd, arguments_) => {
+          const [command, ...args] = arguments_;
+          if (command === "worktree" && args[0] === "add") {
+            markAddStarted?.();
+            return new Promise<string>((resolve) => {
+              finishAdd = () => {
+                checkoutExists = true;
+                resolve("");
+              };
+            });
+          }
+          if (command === "worktree" && args[0] === "remove") {
+            checkoutExists = false;
+            return Promise.resolve("");
+          }
+          if (command === "rev-parse" && args[0] === "--show-toplevel")
+            return Promise.resolve(`${repository}\n`);
+          if (
+            command === "rev-parse" &&
+            args[0] === "--path-format=absolute" &&
+            args[1] === "--git-common-dir"
+          )
+            return Promise.resolve(`${repository}/.git\n`);
+          if (command === "rev-parse" && args[0] === "--abbrev-ref")
+            return Promise.resolve("main\n");
+          if (command === "rev-parse" && args[0] === "--verify")
+            return Promise.reject(new Error("missing"));
+          if (command === "symbolic-ref") return Promise.reject(new Error("missing"));
+          if (command === "rev-parse") return Promise.resolve("head\n");
+          return Promise.resolve("");
+        };
+        const layer = ManagedWorktreesLive.pipe(Layer.provide(makeLiveLayer([], runner)));
+
+        yield* Effect.gen(function* () {
+          const worktrees = yield* ManagedWorktrees;
+          const creation = yield* worktrees
+            .create(repository, undefined, "interrupted", undefined)
+            .pipe(Effect.forkScoped);
+          yield* Effect.promise(() => addStarted);
+
+          const interruption = yield* Fiber.interrupt(creation).pipe(Effect.forkScoped);
+          yield* Effect.yieldNow;
+          expect(interruption.pollUnsafe()).toBeUndefined();
+          expect(checkoutExists).toBe(false);
+
+          finishAdd?.();
+          yield* Fiber.join(interruption);
+          expect(checkoutExists).toBe(false);
+        }).pipe(Effect.provide(layer));
+      }),
+    ).pipe(Effect.provide(BootstrapLive)),
+  );
+
+  it.effect("keeps an interrupted landing mutation inside its repository lock", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const temporary = yield* fileSystem.makeTempDirectoryScoped();
+        const repository = `${temporary}/repo`;
+        const worktreePath = `${temporary}/worktree`;
+        yield* fileSystem.makeDirectory(`${repository}/.git`, { recursive: true });
+        yield* fileSystem.makeDirectory(worktreePath, { recursive: true });
+
+        let mutationRunning = false;
+        let lockViolation = false;
+        let finishRebase: (() => void) | undefined;
+        let markRebaseStarted: (() => void) | undefined;
+        const rebaseStarted = new Promise<void>((resolve) => {
+          markRebaseStarted = resolve;
+        });
+        const runner: GitRunner = (_cwd, arguments_) => {
+          const [command, ...args] = arguments_;
+          if (command === "rebase") {
+            mutationRunning = true;
+            markRebaseStarted?.();
+            return new Promise<string>((resolve) => {
+              finishRebase = () => {
+                mutationRunning = false;
+                resolve("");
+              };
+            });
+          }
+          if (command === "worktree" && args[0] === "remove") {
+            if (mutationRunning) lockViolation = true;
+            return Promise.resolve("");
+          }
+          if (
+            command === "rev-parse" &&
+            args[0] === "--path-format=absolute" &&
+            args[1] === "--git-common-dir"
+          )
+            return Promise.resolve(`${repository}/.git\n`);
+          if (command === "rev-parse" && args[0] === "--verify")
+            return Promise.reject(new Error("missing"));
+          if (command === "rev-parse" && args[0] === "--git-path") return Promise.resolve("\n");
+          if (command === "rev-parse" && args[0] === "--abbrev-ref")
+            return Promise.resolve("main\n");
+          if (command === "rev-parse") return Promise.resolve("head\n");
+          if (command === "status" || command === "diff") return Promise.resolve("");
+          if (command === "rev-list") return Promise.resolve("1\n");
+          return Promise.resolve("");
+        };
+        const initial = record(repository, worktreePath, "agent/interrupted");
+        const layer = ManagedWorktreesLive.pipe(Layer.provide(makeLiveLayer([initial], runner)));
+
+        yield* Effect.gen(function* () {
+          const worktrees = yield* ManagedWorktrees;
+          const landing = yield* worktrees
+            .land(worktreePath, "landing", { strategy: "preserve" })
+            .pipe(Effect.forkScoped);
+          yield* Effect.promise(() => rebaseStarted);
+
+          const interruption = yield* Fiber.interrupt(landing).pipe(Effect.forkScoped);
+          const discard = yield* worktrees.discard(worktreePath, false).pipe(Effect.forkScoped);
+          yield* Effect.yieldNow;
+          expect(interruption.pollUnsafe()).toBeUndefined();
+          expect(discard.pollUnsafe()).toBeUndefined();
+          expect(lockViolation).toBe(false);
+
+          finishRebase?.();
+          yield* Fiber.join(interruption);
+          yield* Fiber.join(discard);
+          expect(lockViolation).toBe(false);
         }).pipe(Effect.provide(layer));
       }),
     ).pipe(Effect.provide(BootstrapLive)),
