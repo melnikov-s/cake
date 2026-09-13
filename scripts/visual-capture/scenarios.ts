@@ -291,124 +291,133 @@ const architectureArtifactScenario: VisualCaptureScenario = {
   name: "architecture-artifact",
   description: "Interactive XYFlow architecture artifact in the artifact workspace",
   states: ["default", "selected", "fullscreen"],
-  async seed(paths, theme, artifact: CakeArtifactV1 = architectureArtifact) {
-    const sessionId = artifact.sessionId;
-    const timestamp = new Date(0).toISOString();
-    const sessionDirectory = workspaceSessionDirectory(
-      paths.project,
-      join(paths.cakeHome, "pi", "sessions"),
-    );
-    await Promise.all([
-      mkdir(paths.userData, { recursive: true }),
-      mkdir(paths.project, { recursive: true }),
-      mkdir(sessionDirectory, { recursive: true }),
-      mkdir(join(paths.cakeHome, "state"), { recursive: true }),
-    ]);
-    await writeFile(
-      join(paths.userData, "window-state.json"),
-      JSON.stringify({
-        projectPath: paths.project,
-        selectedSessionId: sessionId,
-        activeConversation: {
-          kind: "project-session",
-          workspacePath: paths.project,
-          sessionId,
-        },
-        recentProjectPaths: [paths.project],
-        draft: "",
-        draftsBySession: {},
-        theme,
-      }),
-    );
-    await writeFile(
-      join(paths.cakeHome, "state", "application.json"),
-      JSON.stringify({
-        schemaVersion: 1,
-        projects: [
-          {
-            path: paths.project,
-            name: "Cake architecture",
-            addedAt: timestamp,
-            lastOpenedAt: timestamp,
-          },
-        ],
-        trustedProjectPaths: [],
-      }),
-    );
-    await writeFile(
-      join(sessionDirectory, `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`),
-      `${[
-        { type: "session", version: 3, id: sessionId, timestamp, cwd: paths.project },
-        {
-          type: "message",
-          id: "user-architecture",
-          parentId: null,
-          timestamp,
-          message: {
-            role: "user",
-            content: [{ type: "text", text: "Explain how Cake's desktop architecture works." }],
-            timestamp: 0,
-          },
-        },
-        {
-          type: "message",
-          id: "assistant-architecture",
-          parentId: "user-architecture",
-          timestamp,
-          message: {
-            role: "assistant",
-            content: [
-              {
-                type: "text",
-                text: "Open the source-backed explanation to explore Cake’s process boundaries and who owns the conversation.",
-              },
-            ],
-            api: "anthropic-messages",
-            provider: "anthropic",
-            model: "visual-fixture",
-            usage: {
-              input: 0,
-              output: 0,
-              cacheRead: 0,
-              cacheWrite: 0,
-              totalTokens: 0,
-              cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-            },
-            stopReason: "stop",
-            timestamp: 1,
-          },
-        },
-      ]
-        .map((entry) => JSON.stringify(entry))
-        .join("\n")}\n`,
-    );
-    await seedArtifact(paths, artifact, timestamp);
+  async seed(paths, theme) {
+    await seedArtifactScenario(paths, theme, architectureArtifact);
   },
   async prepare(page, state) {
-    const artifactButton = page.getByRole("button", { name: "1 artifacts" });
-    await artifactButton.waitFor({ state: "visible", timeout: 20_000 });
-    await artifactButton.click();
-    await page.getByRole("button", { name: "Cake runtime architecture" }).click();
-    const artifact = page.locator('[data-artifact-kind="architecture"]');
-    await artifact.waitFor({ state: "visible", timeout: 20_000 });
-    await page.locator(".react-flow__node").first().waitFor({ state: "visible", timeout: 20_000 });
-    await page.waitForFunction(() => document.fonts.status === "loaded");
-    if (state === "selected") {
-      await page.locator('.react-flow__node[data-id="chat"]').click();
-      await page
-        .getByText("React presentation backed by window-scoped Stores and Models.")
-        .waitFor();
-    } else if (state === "fullscreen") {
-      await page.getByRole("button", { name: "View Cake runtime architecture fullscreen" }).click();
-      await page.getByRole("dialog").waitFor({ state: "visible" });
-      await page.getByRole("dialog").locator(".react-flow__node").first().waitFor();
-    }
+    await prepareArchitectureArtifact(page, state);
   },
   region(page) {
-    const dialog = page.getByRole("dialog");
-    return dialog.or(page.locator('[data-artifact-kind="architecture"]')).last();
+    return page.getByRole("dialog").or(page.locator('[data-artifact-kind="architecture"]')).last();
   },
 };
+
+async function seedArtifactScenario(
+  paths: ScenarioFixturePaths,
+  theme: "light" | "dark",
+  artifact: CakeArtifactV1,
+) {
+  const sessionId = artifact.sessionId;
+  const timestamp = new Date(0).toISOString();
+  const sessionDirectory = workspaceSessionDirectory(
+    paths.project,
+    join(paths.cakeHome, "pi", "sessions"),
+  );
+  await Promise.all([
+    mkdir(paths.userData, { recursive: true }),
+    mkdir(paths.project, { recursive: true }),
+    mkdir(sessionDirectory, { recursive: true }),
+    mkdir(join(paths.cakeHome, "state"), { recursive: true }),
+  ]);
+  await writeFile(
+    join(paths.userData, "window-state.json"),
+    JSON.stringify({
+      projectPath: paths.project,
+      selectedSessionId: sessionId,
+      activeConversation: {
+        kind: "project-session",
+        workspacePath: paths.project,
+        sessionId,
+      },
+      recentProjectPaths: [paths.project],
+      draft: "",
+      draftsBySession: {},
+      theme,
+    }),
+  );
+  await writeFile(
+    join(paths.cakeHome, "state", "application.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      projects: [
+        {
+          path: paths.project,
+          name: "Cake architecture",
+          addedAt: timestamp,
+          lastOpenedAt: timestamp,
+        },
+      ],
+      trustedProjectPaths: [],
+    }),
+  );
+  await writeFile(
+    join(sessionDirectory, `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`),
+    `${[
+      { type: "session", version: 3, id: sessionId, timestamp, cwd: paths.project },
+      {
+        type: "message",
+        id: "user-architecture",
+        parentId: null,
+        timestamp,
+        message: {
+          role: "user",
+          content: [{ type: "text", text: "Explain how Cake's desktop architecture works." }],
+          timestamp: 0,
+        },
+      },
+      {
+        type: "message",
+        id: "assistant-architecture",
+        parentId: "user-architecture",
+        timestamp,
+        message: {
+          role: "assistant",
+          content: [
+            {
+              type: "text",
+              text: "Open the source-backed explanation to explore Cake’s process boundaries and who owns the conversation.",
+            },
+          ],
+          api: "anthropic-messages",
+          provider: "anthropic",
+          model: "visual-fixture",
+          usage: {
+            input: 0,
+            output: 0,
+            cacheRead: 0,
+            cacheWrite: 0,
+            totalTokens: 0,
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+          },
+          stopReason: "stop",
+          timestamp: 1,
+        },
+      },
+    ]
+      .map((entry) => JSON.stringify(entry))
+      .join("\n")}\n`,
+  );
+  await seedArtifact(paths, artifact, timestamp);
+}
+
+async function prepareArchitectureArtifact(page: Page, state: string) {
+  const artifactButton = page.getByRole("button", { name: "1 artifacts" });
+  await artifactButton.waitFor({ state: "visible", timeout: 20_000 });
+  await artifactButton.click();
+  await page.getByRole("button", { name: "Cake runtime architecture" }).click();
+  const artifact = page.locator('[data-artifact-kind="architecture"]');
+  await artifact.waitFor({ state: "visible", timeout: 20_000 });
+  await page.locator(".react-flow__node").first().waitFor({ state: "visible", timeout: 20_000 });
+  await page.waitForFunction(() => document.fonts.status === "loaded");
+  if (state === "selected") {
+    await page.locator('.react-flow__node[data-id="chat"]').click();
+    await page.getByText("React presentation backed by window-scoped Stores and Models.").waitFor();
+  } else if (state === "fullscreen") {
+    await page.getByRole("button", { name: "View Cake runtime architecture fullscreen" }).click();
+    await page.getByRole("dialog").waitFor({ state: "visible" });
+    await page.getByRole("dialog").locator(".react-flow__node").first().waitFor();
+  }
+}
 
 const requestExplanationScenario: VisualCaptureScenario = {
   name: "cake-request-explanation",
@@ -419,7 +428,7 @@ const requestExplanationScenario: VisualCaptureScenario = {
       resolve(import.meta.dirname, "../../tests/fixtures/explanations/cake-request.react.txt"),
       "utf8",
     );
-    await architectureArtifactScenario.seed(paths, theme, {
+    await seedArtifactScenario(paths, theme, {
       protocol: "cake.artifact/v1",
       id: "cake-request-explanation",
       sessionId: "visual-cake-request-explanation",
@@ -462,10 +471,61 @@ const requestExplanationScenario: VisualCaptureScenario = {
   },
 };
 
+const widgetPipelineScenario: VisualCaptureScenario = {
+  name: "widget-pipeline-explanation",
+  description: "Connected sandboxed diagram of widget publication, repair and ownership",
+  states: ["default", "selected", "fullscreen"],
+  async seed(paths, theme) {
+    const source = await readFile(
+      resolve(import.meta.dirname, "../../tests/fixtures/explanations/widget-pipeline.react.txt"),
+      "utf8",
+    );
+    await seedArtifactScenario(paths, theme, {
+      protocol: "cake.artifact/v1",
+      id: "widget-pipeline-explanation",
+      sessionId: "visual-widget-pipeline",
+      revision: 1,
+      kind: "widget",
+      title: "Widget publication paths",
+      payload: {
+        language: "react",
+        source,
+        brief:
+          "Source-backed diagram of the existing delegated widget path, not a live execution trace.",
+        generationSessionId: "manual-diagram-prototype",
+      },
+      fallback: {
+        markdown:
+          "The primary Pi session delegates a brief to an isolated specialist. Source must compile before Cake persists the artifact and Pi appends a transcript pointer. Compile failure allows one restricted repair and recheck; a second failure propagates. The renderer compiles stored source for an opaque-origin allow-scripts iframe. Generated code has no host privileges.",
+      },
+      interaction: { mode: "present" },
+    });
+  },
+  async prepare(page, state) {
+    await page.getByRole("button", { name: "1 artifacts" }).click();
+    await page.getByRole("button", { name: "Widget publication paths" }).click();
+    let frame = page.frameLocator('iframe[title="Widget publication paths"]');
+    await frame.getByRole("heading", { name: "One gate. Two outcomes." }).waitFor();
+    if (state === "fullscreen") {
+      await page.getByRole("button", { name: "View Widget publication paths fullscreen" }).click();
+      frame = page.frameLocator('iframe[title="Widget publication paths fullscreen"]');
+    }
+    if (state !== "default") {
+      await frame.getByRole("button", { name: "Repair loop", exact: true }).click();
+      await frame.getByRole("button", { name: "Source evidence" }).click();
+    }
+    await page.mouse.move(1, 1);
+  },
+  region(page) {
+    return page.getByRole("dialog").or(page.locator('[data-artifact-kind="widget"]')).last();
+  },
+};
+
 export const visualCaptureScenarios = [
   assistantMarkdownCode,
   architectureArtifactScenario,
   requestExplanationScenario,
+  widgetPipelineScenario,
 ] as const;
 
 export function findVisualCaptureScenario(name: string) {
