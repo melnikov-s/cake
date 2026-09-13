@@ -1,0 +1,304 @@
+{
+  "schemaVersion": 1,
+  "benchmarks": [
+    {
+      "id": "request-flow",
+      "title": "One prompt through Cake and back",
+      "audience": "A new Cake contributor who understands React but not the Electron/Pi seam.",
+      "goal": "Trace one Project Session prompt from the composer to Pi and back to the visible transcript.",
+      "brief": "Choose a composition that makes the outbound command and inbound live projection easy to follow. Do not imply that the renderer talks to Pi directly.",
+      "facts": [
+        {
+          "claim": "Chat renders a supplied ChatStore; ConversationSessionStore.chatStore wires submit to its ConversationComposerStore child.",
+          "sources": [
+            { "path": "src/renderer/components/chat.tsx", "symbol": "Chat" },
+            {
+              "path": "src/renderer/stores/ConversationSessionStore.ts",
+              "symbol": "ConversationSessionStore.chatStore"
+            }
+          ]
+        },
+        {
+          "claim": "ConversationSessionStore.deliver selects Client.sessionChats.prompt, or steer for an explicit steer; makeClient runs through Runtime and forwards AbortSignal.",
+          "sources": [
+            {
+              "path": "src/renderer/stores/ConversationSessionStore.ts",
+              "symbol": "ConversationSessionStore.deliver"
+            },
+            { "path": "src/renderer/client/ClientLive.ts", "symbol": "makeClient" },
+            { "path": "src/renderer/client/Client.ts", "symbol": "Client" }
+          ]
+        },
+        {
+          "claim": "CakeIpcClientLive maps the command to Effect RPC; preload exposes only frozen window.cake.rpc; the client protocol sends through that transport.",
+          "sources": [
+            { "path": "src/ipc/client/CakeIpcClient.ts", "symbol": "CakeIpcClientLive" },
+            { "path": "src/preload/preload.ts", "symbol": "rpc" },
+            {
+              "path": "src/ipc/transport/ElectronRpcClientProtocol.ts",
+              "symbol": "makeElectronRpcClientProtocol"
+            }
+          ]
+        },
+        {
+          "claim": "The main server protocol parses the request and adds trusted connection/correlation metadata; sessionChatHandlers binds the connection and calls sessionChats.deliver.",
+          "sources": [
+            {
+              "path": "src/ipc/transport/ElectronRpcServerProtocol.ts",
+              "symbol": "ElectronRpcServerProtocolLive"
+            },
+            { "path": "src/ipc/server/SessionChatHandlers.ts", "symbol": "sessionChatHandlers" },
+            { "path": "src/domain/conversations/sessionChats.ts", "symbol": "deliver" }
+          ]
+        },
+        {
+          "claim": "conversations.deliver dispatches to a scoped PiSessionHandle and PiSessions.startTurn eventually calls the live runtime prompt.",
+          "sources": [
+            { "path": "src/domain/conversations/conversations.ts", "symbol": "deliver" },
+            { "path": "src/services/pi/PiSessions.ts", "symbol": "makePiSessionsLayer" },
+            { "path": "src/services/pi/PiSessions.ts", "symbol": "PiSessionHandle.prompt" }
+          ]
+        },
+        {
+          "claim": "createCakeRuntime adapts Pi createAgentSession and events; ProjectSessions.observe and conversations.observe feed createModelObserver and applyProjectSessionUpdate on return.",
+          "sources": [
+            { "path": "src/services/pi/runtime/cake-runtime.ts", "symbol": "createCakeRuntime" },
+            {
+              "path": "src/domain/project-sessions/projectSessionOperations.ts",
+              "symbol": "observe"
+            },
+            { "path": "src/domain/conversations/conversations.ts", "symbol": "observe" },
+            { "path": "src/renderer/observers/models.ts", "symbol": "createModelObserver" },
+            {
+              "path": "src/renderer/reducers/ConversationReducer.ts",
+              "symbol": "applyProjectSessionUpdate"
+            }
+          ]
+        }
+      ],
+      "relationships": [
+        "Renderer commands use Client and validated RPC, not Pi or privileged implementations.",
+        "Main handlers adapt to domain operations; the domain acquires Pi capabilities.",
+        "Pi owns transcript/runtime facts; renderer Models and optimistic composer state are projections or temporary presentation state.",
+        "Observation starts with a current snapshot and continues with ordered events."
+      ],
+      "primary": [
+        "composer submit",
+        "Client and preload/RPC",
+        "main handler and domain",
+        "Pi turn",
+        "projected events back to Model/Chat"
+      ],
+      "optional": [
+        "optimistic user-part",
+        "turn accepted/settled",
+        "queue versus steer",
+        "cancellation",
+        "correlation IDs"
+      ],
+      "revisionScenario": "Keep the end-to-end story, but select one turn and reveal accepted, streaming, and settled states while keeping the optimistic message renderer-local and Pi authority explicit."
+    },
+    {
+      "id": "process-authority",
+      "title": "Process and authority boundaries",
+      "audience": "A security-minded maintainer or reviewer.",
+      "goal": "Distinguish renderer, preload, main, Pi, Cake domain/storage, and generated-code sandbox boundaries without inventing a web/server tier.",
+      "brief": "Explain both privilege and authority. Show where code runs, where data is validated, and which system can reconstruct each durable fact after restart. Choose a boundary treatment rather than assuming a node-and-edge map.",
+      "facts": [
+        {
+          "claim": "main.ts creates the process ManagedRuntime from makeMainLive and starts MainApplication; makeMainLive composes storage, native, Pi, session workflows, workers, and RPC in main.",
+          "sources": [
+            { "path": "src/main/main.ts", "symbol": "mainRuntime" },
+            { "path": "src/main/MainLive.ts", "symbol": "makeMainLive" },
+            { "path": "src/main/MainApplication.ts", "symbol": "MainApplication" }
+          ]
+        },
+        {
+          "claim": "Renderer bootstrap creates one window Runtime, Client, RootProjection, and Store tree, then attaches observers and persistence; makeRuntime keeps ManagedRuntime private.",
+          "sources": [
+            { "path": "src/renderer/main.ts", "symbol": "bootstrap" },
+            { "path": "src/renderer/runtime.ts", "symbol": "makeRuntime" },
+            { "path": "src/renderer/client/ClientLive.ts", "symbol": "makeClient" },
+            { "path": "src/renderer/models/RootProjection.ts", "symbol": "RootProjection" }
+          ]
+        },
+        {
+          "claim": "Preload exposes only frozen rpc through contextBridge and has no Cake business logic or general Electron API.",
+          "sources": [{ "path": "src/preload/preload.ts", "symbol": "rpc" }]
+        },
+        {
+          "claim": "Both transport sides decode messages; the main server routes responses to the originating webContents and RendererConnectionMiddlewareLive supplies trusted connection/correlation context.",
+          "sources": [
+            {
+              "path": "src/ipc/transport/ElectronRpcClientProtocol.ts",
+              "symbol": "makeElectronRpcClientProtocol"
+            },
+            {
+              "path": "src/ipc/transport/ElectronRpcServerProtocol.ts",
+              "symbol": "ElectronRpcServerProtocolLive"
+            },
+            {
+              "path": "src/ipc/protocol/RendererConnectionMiddleware.ts",
+              "symbol": "RendererConnectionMiddlewareLive"
+            }
+          ]
+        },
+        {
+          "claim": "The source-of-truth table assigns Project Session transcripts/tool history/branching/compaction to Pi, application/workflow/artifact metadata to Cake, and renderer Models to validated projections.",
+          "sources": [
+            {
+              "path": "docs/architecture/cake-architecture.md",
+              "symbol": "Sources of truth"
+            }
+          ]
+        },
+        {
+          "claim": "compileInlineWidget restricts generated source, handleInlineWidgetScheme serves a CSP-limited document, and WidgetArtifact runs it in an allow-scripts iframe with tokenized messages.",
+          "sources": [
+            {
+              "path": "src/services/widgets/inline-widget-service.ts",
+              "symbol": "compileInlineWidget"
+            },
+            {
+              "path": "src/services/widgets/inline-widget-protocol.ts",
+              "symbol": "handleInlineWidgetScheme"
+            },
+            { "path": "src/renderer/components/widget-artifact.tsx", "symbol": "WidgetArtifact" }
+          ]
+        }
+      ],
+      "relationships": [
+        "Privileged filesystem, native Electron, storage, Cake domain, and Pi work remain in main; renderer access crosses the validated bridge.",
+        "Preload is mechanical transport, not an authority layer.",
+        "Pi owns transcript/runtime facts, Cake owns application/artifact metadata, and renderer Models are derived projections.",
+        "Generated React/SVG runs without Cake, Node, Electron, filesystem, parent-DOM, or arbitrary network/API privileges; CSP media allowances are the only remote-resource exception."
+      ],
+      "primary": [
+        "Electron process strips",
+        "narrow preload bridge",
+        "RPC validation",
+        "Pi/Cake/renderer authority split"
+      ],
+      "optional": [
+        "runtime scopes",
+        "connection correlation",
+        "content-addressed artifacts",
+        "widget CSP/token messages",
+        "VS Code and terminal services"
+      ],
+      "revisionScenario": "Make the renderer Model visibly a projection rather than a database. Move widget CSP and token details into an optional security disclosure while retaining the no-privilege iframe boundary and its documented media allowances."
+    },
+    {
+      "id": "delegated-widget-dependencies",
+      "title": "Dense delegated-widget dependency case",
+      "audience": "A specialist implementing an interactive explanation and a reviewer checking its seams.",
+      "goal": "Explain the existing delegated-widget path from a primary Pi request through isolated generation, compile/repair, artifact persistence, and sandboxed display. This is not a claim that the new automatic workflow is shipped.",
+      "brief": "Keep brief/data/fallback and security constraints primary. Choose a composition suited to dependency density; a graph is allowed but not required, and do not expose source code or coordinates just to represent the dependencies.",
+      "facts": [
+        {
+          "claim": "The widgets.present definition accepts bounded brief/data/fallback, calls generateInlineWidget with model and turn signal, persists a cake.artifact/v1 widget, and appends a Pi artifact pointer.",
+          "sources": [
+            {
+              "path": "src/services/pi/runtime/cake-artifact-operations.ts",
+              "symbol": "createCakeArtifactOperations"
+            },
+            { "path": "src/ipc/artifact-contract.ts", "symbol": "parseArtifactInput" }
+          ]
+        },
+        {
+          "claim": "ProjectSessionIntegrationHost.generateInlineWidget extracts one cake-react result, compile-checks it, and on compile failure runs repair with diagnostic/context before compiling repaired source; persistArtifact emits artifact-updated after upsert.",
+          "sources": [
+            {
+              "path": "src/services/pi/ProjectSessionIntegrationHost.ts",
+              "symbol": "ProjectSessionIntegrationHost.generateInlineWidget"
+            },
+            {
+              "path": "src/services/pi/ProjectSessionIntegrationHost.ts",
+              "symbol": "ProjectSessionIntegrationHost.persistArtifact"
+            }
+          ]
+        },
+        {
+          "claim": "Widget generation/repair use runIsolatedSession with projectTrusted false and noTools all; the resource loader disables extensions, skills, prompt templates, themes, and context files.",
+          "sources": [
+            {
+              "path": "src/services/pi/runtime/sidecar-runtime.ts",
+              "symbol": "runInlineWidgetGeneration"
+            },
+            {
+              "path": "src/services/pi/runtime/sidecar-runtime.ts",
+              "symbol": "runInlineWidgetRepair"
+            },
+            {
+              "path": "src/services/pi/runtime/isolated-session-runner.ts",
+              "symbol": "runIsolatedSession"
+            }
+          ]
+        },
+        {
+          "claim": "compileInlineWidget enforces a 1 MiB source limit and React/approved-D3 imports; the tokenized document CSP defaults to no sources and permits only explicit inline script/style and data/HTTPS media cases.",
+          "sources": [
+            {
+              "path": "src/services/widgets/inline-widget-service.ts",
+              "symbol": "compileInlineWidget"
+            },
+            {
+              "path": "src/services/widgets/inline-widget-service.ts",
+              "symbol": "widgetModulePlugin"
+            },
+            {
+              "path": "src/services/widgets/inline-widget-protocol.ts",
+              "symbol": "inlineWidgetContentSecurityPolicy"
+            }
+          ]
+        },
+        {
+          "claim": "WidgetArtifact uses InlineWidgetStore for compile/repair, renders sandbox allow-scripts, validates tokenized postMessage events, and can place the widget in FullscreenSurface.",
+          "sources": [
+            { "path": "src/renderer/components/widget-artifact.tsx", "symbol": "WidgetArtifact" },
+            {
+              "path": "src/renderer/stores/InlineWidgetStore.ts",
+              "symbol": "InlineWidgetStore.repair"
+            },
+            {
+              "path": "src/renderer/components/fullscreen-surface.tsx",
+              "symbol": "FullscreenSurface"
+            }
+          ]
+        },
+        {
+          "claim": "ArtifactRepository.upsert validates, content-addresses, writes immutable blobs, and requires one-step revisions; retaining a prior successful published artifact after a failed revision is production-phase policy, not a prototype result.",
+          "sources": [
+            {
+              "path": "src/services/storage/ArtifactStorageLive.ts",
+              "symbol": "ArtifactRepository.upsert"
+            },
+            { "path": "src/ipc/artifact-contract.ts", "symbol": "artifactRecordSchema" }
+          ]
+        }
+      ],
+      "relationships": [
+        "The primary Pi session supplies brief/data/fallback, not privileged generated code.",
+        "Repair receives source/diagnostics as untrusted data and must not widen tools, imports, frame privileges, or arbitrary network/API access.",
+        "Cake owns published artifact metadata, Pi owns the transcript pointer, and the iframe owns only local presentation runtime.",
+        "A failed revision is not a successful publication; prior-success retention is deferred to production until atomic publication is implemented."
+      ],
+      "primary": [
+        "brief/data/fallback",
+        "isolated Pi specialist",
+        "compile/repair",
+        "artifact record/pointer",
+        "sandboxed widget interaction"
+      ],
+      "optional": [
+        "token protocol",
+        "approved D3 submodules",
+        "content hashing",
+        "generation-session ID",
+        "source disclosure",
+        "fullscreen framing"
+      ],
+      "revisionScenario": "Keep the main composition, but make the compile/repair boundary inspectable, explain why repaired source remains sandboxed, and preserve the previous successful published revision if the requested revision fails. The final retention clause is production-phase."
+    }
+  ]
+}
