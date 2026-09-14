@@ -390,7 +390,12 @@ export class VsCodeServerRuntime {
   private props: VsCodeServerRuntimeProps;
   private servers = new Map<string, ServerInstance>();
   private views = new Map<number, ViewEntry>();
-  /** Latest renderer-owned rect, retained when it arrives before the native view exists. */
+  /** One window's in-flight `open`; later opens for that window wait so it never owns two views. */
+  private openings = new Map<number, Promise<void>>();
+  /**
+   * Latest renderer-owned rect, retained when it arrives before the native view
+   * exists. A hidden report without geometry keeps the previous rect.
+   */
   private requestedBounds = new Map<number, ViewBounds>();
   /** Windows whose Cake renderer currently owns the viewport with a fullscreen surface. */
   private fullscreenWindows = new Set<number>();
@@ -474,14 +479,38 @@ export class VsCodeServerRuntime {
   /**
    * Shows the embedded editor for `workspacePath` in one window. Reuses the
    * running server for that folder when one exists, replacing whatever this
-   * window was previously showing.
+   * window was previously showing. Opens for the same window run one at a
+   * time: a concurrent second open would otherwise attach its own view and
+   * orphan the first one in the window.
    */
-  async open(
+  open(
+    webContentsId: number,
+    getWindow: () => BrowserWindow | null,
+    workspacePath: string,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    const previous = this.openings.get(webContentsId) ?? Promise.resolve();
+    const current = previous
+      .catch(() => undefined)
+      .then(() => this.openNext(webContentsId, getWindow, workspacePath, signal));
+    const settled = current.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.openings.set(webContentsId, settled);
+    void settled.then(() => {
+      if (this.openings.get(webContentsId) === settled) this.openings.delete(webContentsId);
+    });
+    return current;
+  }
+
+  private async openNext(
     webContentsId: number,
     getWindow: () => BrowserWindow | null,
     workspacePath: string,
     signal?: AbortSignal,
   ) {
+    signal?.throwIfAborted();
     let binary: string;
     try {
       binary = await this.ensureInstalled();
@@ -556,9 +585,18 @@ export class VsCodeServerRuntime {
     this.touch(instance);
   }
 
-  /** Positions or hides the native view for one window. Bounds are DIPs relative to the content area. */
-  updateBounds(webContentsId: number, bounds: ViewBounds) {
+  /**
+   * Positions or hides the native view for one window. Bounds are DIPs relative
+   * to the content area. A hidden report without geometry (the surface is
+   * unmounted) keeps the last rect so the workbench stays laid out and showing
+   * it again only flips visibility instead of resizing from an empty view.
+   */
+  updateBounds(webContentsId: number, requested: ViewBounds) {
     const previousBounds = this.requestedBounds.get(webContentsId);
+    const bounds: ViewBounds =
+      hasGeometry(requested) || !previousBounds
+        ? requested
+        : { ...previousBounds, visible: requested.visible };
     const projectSidebarWasVisible = (previousBounds?.x ?? 0) > 0;
     const projectSidebarVisible = bounds.x > 0;
     this.requestedBounds.set(webContentsId, bounds);
@@ -583,13 +621,15 @@ export class VsCodeServerRuntime {
 
   private applyRequestedBounds(webContentsId: number, view: WebContentsView) {
     const bounds = this.requestedBounds.get(webContentsId);
-    if (!bounds) return;
+    if (!bounds) {
+      // Nothing has been reported for this window yet; never draw an unplaced view.
+      view.setVisible(false);
+      return;
+    }
     view.setVisible(
-      !this.fullscreenWindows.has(webContentsId) &&
-        bounds.visible &&
-        bounds.width > 0 &&
-        bounds.height > 0,
+      !this.fullscreenWindows.has(webContentsId) && bounds.visible && hasGeometry(bounds),
     );
+    if (!hasGeometry(bounds)) return;
     view.setBounds({
       x: Math.round(bounds.x),
       y: Math.round(bounds.y),
@@ -759,6 +799,7 @@ export class VsCodeServerRuntime {
     this.disposed = true;
     for (const [, entry] of this.views) entry.view.setVisible(false);
     this.views.clear();
+    this.openings.clear();
     this.requestedBounds.clear();
     this.fullscreenWindows.clear();
     this.companionPorts.clear();
@@ -1194,6 +1235,10 @@ export class VsCodeServerRuntime {
   private touch(instance: ServerInstance) {
     instance.lastUsedAt = Date.now();
   }
+}
+
+function hasGeometry(bounds: ViewBounds) {
+  return bounds.width > 0 && bounds.height > 0;
 }
 
 function workspaceHash(workspacePath: string) {

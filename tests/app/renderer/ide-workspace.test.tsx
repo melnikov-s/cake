@@ -123,7 +123,7 @@ describe("IdeWorkspace", () => {
     status: "ready",
     error: undefined,
     nativeViewReady: false,
-    reportBounds: vi.fn(async () => undefined),
+    setMeasuredBounds: vi.fn(),
   } as unknown as EmbeddedEditorStore;
   const reviews = {
     draftAnchor: undefined,

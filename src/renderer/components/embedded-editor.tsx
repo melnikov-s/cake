@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 import { observer } from "r-state-tree/react";
 import type { EmbeddedEditorStore } from "../stores/EmbeddedEditorStore";
 import { Button } from "./ui/button";
@@ -45,8 +45,9 @@ const StatusCard = observer(function StatusCard({ store }: { store: EmbeddedEdit
 
 /**
  * Host surface for the embedded VS Code editor. Renders placeholder states while
- * the native WebContentsView is unavailable and reports its own rect so the main
- * process can position the view exactly over this container.
+ * the native WebContentsView is unavailable and keeps the Store's measured rect
+ * current so the main process can position the view exactly over this container.
+ * Whether the view is drawn is the Store's decision, not this component's.
  */
 export const EmbeddedEditorPane = observer(function EmbeddedEditorPane({
   store,
@@ -58,42 +59,23 @@ export const EmbeddedEditorPane = observer(function EmbeddedEditorPane({
   useLayoutEffect(() => {
     const element = containerRef.current;
     if (!element) return;
-    if (!store.nativeViewReady) {
-      void store.reportBounds(null);
-      return;
-    }
-    const bounds = element.getBoundingClientRect();
-    void store.reportBounds({
-      x: bounds.left,
-      y: bounds.top,
-      width: bounds.width,
-      height: bounds.height,
-    });
-  }, [store, store.chatSidebarVisible, store.nativeViewReady]);
-
-  useEffect(() => {
-    const element = containerRef.current;
-    if (!element) return;
-    const report = () => {
-      if (!store.nativeViewReady) {
-        void store.reportBounds(null);
-        return;
-      }
+    const measure = () => {
       const bounds = element.getBoundingClientRect();
-      void store.reportBounds({
+      store.setMeasuredBounds({
         x: bounds.left,
         y: bounds.top,
         width: bounds.width,
         height: bounds.height,
       });
     };
-    const observer = new ResizeObserver(report);
+    measure();
+    const observer = new ResizeObserver(measure);
     observer.observe(element);
-    window.addEventListener("resize", report);
+    window.addEventListener("resize", measure);
     return () => {
       observer.disconnect();
-      window.removeEventListener("resize", report);
-      void store.reportBounds(null);
+      window.removeEventListener("resize", measure);
+      store.setMeasuredBounds(undefined);
     };
   }, [store]);
 

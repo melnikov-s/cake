@@ -23,6 +23,16 @@ export interface EmbeddedEditorStoreProps {
   projectSidebarWidth(): number;
 }
 
+/** Viewport rect of the editor surface in window DIPs. */
+export interface EmbeddedEditorViewport {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+const EMPTY_VIEWPORT: EmbeddedEditorViewport = { x: 0, y: 0, width: 0, height: 0 };
+
 /**
  * Owns the embedded VS Code workflow: IDE-mode visibility, install/launch
  * status, native view bounds reporting, and source reveal intents.
@@ -37,8 +47,10 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
   /** Most recent workspace-relative path and explicit user selection inside VS Code. */
   lastActivePath: string | undefined;
   activeContextAttachment: Extract<Attachment, { kind: "source" }> | undefined;
+  /** Rect the mounted editor surface last measured; undefined while it is unmounted. */
+  measuredBounds: EmbeddedEditorViewport | undefined;
   private openedWorkspace: string | undefined;
-  private boundsRevision = 0;
+  private opening: { readonly projectPath: string; readonly promise: Promise<void> } | undefined;
   private installation: Promise<void> | undefined;
   private sentAnnotationsFingerprint: string | undefined;
   private syncingAnnotations = false;
@@ -65,11 +77,33 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
     return this.visible && this.openedWorkspace === this.props.projectPath();
   }
 
+  /**
+   * What main should do with the native view: where the surface is (so the
+   * workbench loads at its final size even while still hidden) and whether to
+   * draw it. Derived from Store state so that hiding and re-showing within one
+   * tick always settles on the visible payload.
+   */
+  get nativeViewBounds() {
+    const rect = this.measuredBounds ?? EMPTY_VIEWPORT;
+    return {
+      visible: this.nativeViewReady && rect.width > 0 && rect.height > 0,
+      x: rect.x,
+      y: rect.y,
+      width: rect.width,
+      height: rect.height,
+      projectSidebarWidth: this.projectSidebarWidth,
+    };
+  }
+
   constructor(props: EmbeddedEditorStore["props"]) {
     super(props);
     this.reaction(
       () => JSON.stringify(this.props.annotations()),
       () => void this.syncAnnotations(),
+    );
+    this.reaction(
+      () => JSON.stringify(this.nativeViewBounds),
+      () => void this.pushNativeViewBounds(),
     );
   }
 
@@ -167,9 +201,19 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
     this.props.setChatSidebarWidth(width);
   }
 
+  /** Opens the current project's editor; concurrent callers share one in-flight open. */
   async open() {
     const projectPath = this.props.projectPath();
     if (!projectPath) throw new Error("No project is open");
+    if (this.opening?.projectPath === projectPath) return this.opening.promise;
+    const promise = this.performOpen(projectPath).finally(() => {
+      if (this.opening?.promise === promise) this.opening = undefined;
+    });
+    this.opening = { projectPath, promise };
+    return promise;
+  }
+
+  private async performOpen(projectPath: string) {
     this.error = undefined;
     this.errorDetails = undefined;
     try {
@@ -249,24 +293,16 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
     }
   }
 
-  /** Reports the visible rect of the embedded surface; null hides the native view. */
-  async reportBounds(bounds: { x: number; y: number; width: number; height: number } | null) {
-    const revision = ++this.boundsRevision;
-    const payload = bounds
-      ? { visible: true, projectSidebarWidth: this.projectSidebarWidth, ...bounds }
-      : {
-          visible: false,
-          x: 0,
-          y: 0,
-          width: 0,
-          height: 0,
-          projectSidebarWidth: this.projectSidebarWidth,
-        };
+  /** Records the editor surface's measured rect; undefined once the surface unmounts. */
+  setMeasuredBounds(bounds: EmbeddedEditorViewport | undefined) {
+    this.measuredBounds = bounds;
+  }
+
+  private async pushNativeViewBounds() {
     try {
-      await this.vscode.updateBounds(payload, { signal: this.signal });
+      await this.vscode.updateBounds(this.nativeViewBounds, { signal: this.signal });
     } catch {
-      // A stale bounds report after a newer one is expected and ignorable.
-      if (revision !== this.boundsRevision) return;
+      // The next derived change pushes again; a failed push of a superseded rect is ignorable.
     }
   }
 
@@ -321,7 +357,6 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
     this.visible = false;
     this.lastActivePath = undefined;
     this.activeContextAttachment = undefined;
-    void this.reportBounds(null);
   }
 
   /** Explicitly returns the selected session to Agent presentation. */

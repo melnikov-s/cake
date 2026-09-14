@@ -1,4 +1,4 @@
-import { createStore } from "r-state-tree";
+import { batch, createStore } from "r-state-tree";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { EditorAnnotationSnapshot } from "../../../../src/ipc/editor-annotation";
 import { EmbeddedEditorStore } from "../../../../src/renderer/stores/EmbeddedEditorStore";
@@ -16,8 +16,12 @@ function createHarness(annotations?: EditorAnnotationSnapshot) {
       unreadSessionIds: [],
       trustedProjectPaths: [],
     })),
-    open: vi.fn(async () => undefined),
-    updateBounds: vi.fn(async () => undefined),
+    open: vi.fn<(workingDirectory: string, options?: object) => Promise<undefined>>(
+      async () => undefined,
+    ),
+    updateBounds: vi.fn<(input: object, options?: object) => Promise<undefined>>(
+      async () => undefined,
+    ),
     reveal: vi.fn(async () => undefined),
     openSourceControl: vi.fn(async () => undefined),
     updateAnnotations: vi.fn(async () => undefined),
@@ -67,6 +71,10 @@ function stateEvent(status: "missing" | "downloading" | "starting" | "ready" | "
   return { status };
 }
 
+const surfaceRect = { x: 292, y: 0, width: 480, height: 820 };
+const shownBounds = { visible: true, ...surfaceRect, projectSidebarWidth: 292 };
+const hiddenBounds = { visible: false, ...surfaceRect, projectSidebarWidth: 292 };
+
 describe("EmbeddedEditorStore", () => {
   afterEach(() => {
     vi.clearAllMocks();
@@ -89,22 +97,93 @@ describe("EmbeddedEditorStore", () => {
     store.toggleChatSidebar();
     expect(store.chatSidebarVisible).toBe(true);
 
+    store.setMeasuredBounds(surfaceRect);
+    expect(client.updateBounds).toHaveBeenLastCalledWith(shownBounds, expect.any(Object));
+
     store.hide();
     expect(store.visible).toBe(false);
     expect(leaveProjectSidebarMode).toHaveBeenCalledTimes(1);
-    await vi.waitFor(() =>
-      expect(client.updateBounds).toHaveBeenCalledWith(
-        {
-          visible: false,
-          x: 0,
-          y: 0,
-          width: 0,
-          height: 0,
-          projectSidebarWidth: 292,
-        },
-        expect.any(Object),
-      ),
+    expect(client.updateBounds).toHaveBeenLastCalledWith(hiddenBounds, expect.any(Object));
+    root[Symbol.dispose]();
+  });
+
+  it("positions the native view while the workbench is still loading and draws it once open", async () => {
+    const { client, root, store } = createHarness();
+    let finishOpen!: () => void;
+    client.open.mockImplementationOnce(
+      () =>
+        new Promise<undefined>((resolve) => {
+          finishOpen = () => resolve(undefined);
+        }),
     );
+
+    const showing = store.show();
+    store.setMeasuredBounds(surfaceRect);
+
+    expect(store.nativeViewReady).toBe(false);
+    expect(client.updateBounds).toHaveBeenLastCalledWith(hiddenBounds, expect.any(Object));
+
+    finishOpen();
+    await showing;
+
+    expect(store.nativeViewReady).toBe(true);
+    expect(client.updateBounds).toHaveBeenLastCalledWith(shownBounds, expect.any(Object));
+
+    store.setMeasuredBounds(undefined);
+    expect(client.updateBounds).toHaveBeenLastCalledWith(
+      { visible: false, x: 0, y: 0, width: 0, height: 0, projectSidebarWidth: 292 },
+      expect.any(Object),
+    );
+    root[Symbol.dispose]();
+  });
+
+  it("keeps the native view visible when a session switch suspends and restores in one action", async () => {
+    const { client, root, store } = createHarness();
+    await store.show();
+    store.setMeasuredBounds(surfaceRect);
+    expect(client.updateBounds).toHaveBeenLastCalledWith(shownBounds, expect.any(Object));
+    client.updateBounds.mockClear();
+
+    let restored!: Promise<void>;
+    batch(() => {
+      store.suspend();
+      restored = store.restore();
+    });
+    await restored;
+
+    expect(store.visible).toBe(true);
+    expect(store.nativeViewReady).toBe(true);
+    const lastBounds = client.updateBounds.mock.calls.at(-1)?.[0];
+    if (lastBounds) expect(lastBounds).toEqual(shownBounds);
+
+    client.updateBounds.mockClear();
+    store.suspend();
+    expect(client.updateBounds).toHaveBeenLastCalledWith(hiddenBounds, expect.any(Object));
+    await store.restore();
+    expect(client.updateBounds).toHaveBeenLastCalledWith(shownBounds, expect.any(Object));
+    root[Symbol.dispose]();
+  });
+
+  it("shares one in-flight open between a user request and a session restore", async () => {
+    const { client, root, store } = createHarness();
+    let finishOpen!: () => void;
+    client.open.mockImplementationOnce(
+      () =>
+        new Promise<undefined>((resolve) => {
+          finishOpen = () => resolve(undefined);
+        }),
+    );
+
+    const shown = store.show();
+    const restored = store.restore();
+    expect(client.open).toHaveBeenCalledTimes(1);
+
+    finishOpen();
+    await Promise.all([shown, restored]);
+    expect(store.nativeViewReady).toBe(true);
+
+    await store.open();
+    expect(client.open).toHaveBeenCalledTimes(2);
     root[Symbol.dispose]();
   });
 
@@ -255,23 +334,14 @@ describe("EmbeddedEditorStore", () => {
     root[Symbol.dispose]();
   });
 
-  it("reports null bounds as a hidden view and swallows stale bound failures", async () => {
+  it("swallows a failed bounds push without surfacing an editor error", async () => {
     const { client, root, store } = createHarness();
     client.updateBounds.mockRejectedValueOnce(new Error("stale"));
 
-    await store.reportBounds(null);
+    store.setMeasuredBounds(surfaceRect);
+    await Promise.resolve();
 
-    expect(client.updateBounds).toHaveBeenCalledWith(
-      {
-        visible: false,
-        x: 0,
-        y: 0,
-        width: 0,
-        height: 0,
-        projectSidebarWidth: 292,
-      },
-      expect.any(Object),
-    );
+    expect(client.updateBounds).toHaveBeenCalledWith(hiddenBounds, expect.any(Object));
     expect(store.error).toBeUndefined();
     root[Symbol.dispose]();
   });
