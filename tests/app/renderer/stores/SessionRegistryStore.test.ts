@@ -407,22 +407,22 @@ describe("SessionRegistryStore materialization", () => {
     fixture.dispose();
   });
 
-  it("retains 20 idle observations without evicting a running session", () => {
+  it("retains four idle observations without evicting a running session", () => {
     const fixture = registryFixture();
     const { registry } = fixture;
     const running = registry.load("running", "/project");
     running.model.streaming = true;
 
-    for (let index = 0; index < 21; index += 1) registry.load(`idle-${index}`, "/project");
+    for (let index = 0; index < 5; index += 1) registry.load(`idle-${index}`, "/project");
 
-    expect(registry.observationRetention.sessions).toHaveLength(21);
+    expect(registry.observationRetention.sessions).toHaveLength(5);
     expect(registry.observationRetention.sessions).toContain(running);
     expect(
       registry.observationRetention.sessions.map((session) => session.sessionId),
     ).not.toContain("idle-0");
 
     running.model.streaming = false;
-    expect(registry.observationRetention.sessions).toHaveLength(20);
+    expect(registry.observationRetention.sessions).toHaveLength(4);
     expect(registry.observationRetention.sessions).toContain(running);
     expect(
       registry.observationRetention.sessions.map((session) => session.sessionId),

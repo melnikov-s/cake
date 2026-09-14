@@ -14,6 +14,7 @@ export interface CakeChatRegistryStoreProps {
   pendingSessions(): CakeChatPendingSessionsStore;
   management(): CakeChatManagementStore;
   operations: SessionOperationCoordinatorStore;
+  isVisible(sessionId: string): boolean;
   modelPresets?(): readonly ModelPreset[];
   openModelPresetSettings?(): void;
   settings?(): AppearanceSettingsStore | undefined;
@@ -42,10 +43,14 @@ export class CakeChatRegistryStore extends Store<CakeChatRegistryStoreProps> {
     );
   }
 
-  /** Loaded Cake Chat targets whose transcript projections should remain synchronized. */
+  /** Visible or running Cake Chats whose transcript projections should remain synchronized. */
   get observationTargets(): ReadonlyArray<CakeChatTarget> {
     return this.sessions
-      .filter((session) => !this.props.pendingSessions().isPending(session.sessionId))
+      .filter(
+        (session) =>
+          !this.props.pendingSessions().isPending(session.sessionId) &&
+          (this.props.isVisible(session.sessionId) || isRunning(session.model)),
+      )
       .map((session) => this.target(session.sessionId));
   }
 
@@ -78,4 +83,8 @@ export class CakeChatRegistryStore extends Store<CakeChatRegistryStoreProps> {
   target(sessionId: string): CakeChatTarget {
     return { sessionId, tools: this.props.tools() };
   }
+}
+
+function isRunning(model: Session) {
+  return model.streaming || model.activeTurnIds.length > 0 || model.backgroundWorkActive;
 }

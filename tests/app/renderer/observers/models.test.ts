@@ -216,6 +216,57 @@ describe("createModelObserver", () => {
     session[Symbol.dispose]();
   });
 
+  it("clears an evicted conversation projection while preserving its stable identity", async () => {
+    const client = {
+      ...clientWithProjectStream(() => Stream.never),
+      projectSessions: {
+        observeCatalog: () => Stream.concat(Stream.make(emptySessionCatalog), Stream.never),
+        observe: () => Stream.never,
+      },
+      discussionSessions: { observeCatalog: () => Stream.never },
+      subagents: { observe: () => Stream.never },
+    } as unknown as CakeIpcClientService;
+    const projects = ProjectCatalog.create();
+    const sessions = SessionCatalog.create();
+    const cakeChats = CakeChatCatalog.create();
+    const session = Session.create({
+      sessionId: "session",
+      workingDirectory: "/project",
+      sessionFile: "/sessions/session.jsonl",
+      diagnostics: ["large retained projection"],
+      activeTurnIds: ["turn"],
+    });
+    session.observedSnapshotRevision = 2;
+    const observer = observerFor(client);
+    const base = {
+      projects,
+      sessionCatalog: sessions,
+      cakeChatCatalog: cakeChats,
+      cakeChats: [],
+    };
+
+    observer.sync({
+      ...base,
+      projectSessions: [
+        { target: { sessionId: "session", workingDirectory: "/project" }, model: session },
+      ],
+    });
+    observer.sync({ ...base, projectSessions: [] });
+
+    expect(session.sessionId).toBe("session");
+    expect(session.workingDirectory).toBe("/project");
+    expect(session.sessionFile).toBe("");
+    expect(session.diagnostics).toEqual([]);
+    expect(session.activeTurnIds).toEqual([]);
+    expect(session.observedSnapshotRevision).toBe(0);
+
+    observer.stop();
+    projects[Symbol.dispose]();
+    sessions[Symbol.dispose]();
+    cakeChats[Symbol.dispose]();
+    session[Symbol.dispose]();
+  });
+
   it("maps one current-first stream into stable reactive Models with applySnapshot", async () => {
     const updates: ProjectCatalogUpdate[] = [
       {

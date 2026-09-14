@@ -73,6 +73,7 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
       pendingSessions: () => this.pendingSessions,
       management: () => this.management,
       operations: this.operations,
+      isVisible: (sessionId) => this.sessionLayoutStore.hasSession(sessionId),
       modelPresets: this.props.modelPresets,
       openModelPresetSettings: this.props.openModelPresetSettings,
       settings: this.props.settings,

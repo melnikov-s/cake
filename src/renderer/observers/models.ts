@@ -42,7 +42,11 @@ import {
   applySessionCatalogGroupUpdate,
   CatalogIdentityCollisionError,
 } from "../reducers/CatalogReducer";
-import { applyCakeChatUpdate, applyProjectSessionUpdate } from "../reducers/ConversationReducer";
+import {
+  applyCakeChatUpdate,
+  applyProjectSessionUpdate,
+  unloadConversationProjection,
+} from "../reducers/ConversationReducer";
 import { applyDiscussionCatalogUpdate, applyDiscussionUpdate } from "../reducers/DiscussionReducer";
 import { applySubagentUpdate } from "../reducers/SubagentReducer";
 import { applyScheduledMessageUpdate } from "../reducers/ScheduledMessageReducer";
@@ -232,6 +236,7 @@ export const createModelObserver = (
         (client) => client.projectSessions.observe(target),
         (update: ProjectSessionUpdate) =>
           applyProjectSessionUpdate(model, target.sessionId, update),
+        { clear: () => unloadConversationProjection(model) },
       );
       observe(
         `scheduled-messages:${target.sessionId}`,
@@ -280,6 +285,7 @@ export const createModelObserver = (
         model,
         (client) => client.cakeChats.observe(target),
         (update: CakeChatUpdate) => applyCakeChatUpdate(model, target.sessionId, update),
+        { clear: () => unloadConversationProjection(model) },
       );
     }
 

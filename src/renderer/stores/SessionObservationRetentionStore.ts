@@ -1,7 +1,7 @@
 import { Store, observable, snapshot } from "r-state-tree";
 import type { ProjectSessionStore } from "./ProjectSessionStore";
 
-const IDLE_OBSERVATION_LIMIT = 20;
+const IDLE_OBSERVATION_LIMIT = 4;
 
 export interface SessionObservationRetentionStoreProps {
   sessions(): readonly ProjectSessionStore[];

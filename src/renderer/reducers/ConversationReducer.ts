@@ -47,6 +47,43 @@ export function applyProjectSessionUpdate(
   applyConversationEvent(model, update.event);
 }
 
+export function unloadConversationProjection(model: Session) {
+  batch(() => {
+    // Apply only reset values so eviction does not first clone the potentially
+    // large transcript that it is trying to release.
+    applySnapshot(model, {
+      sessionFile: "",
+      parts: [],
+      model: undefined,
+      fastMode: false,
+      fastModeAvailable: false,
+      modelOptions: [],
+      thinkingLevel: "off",
+      availableThinkingLevels: [],
+      piSettings: undefined,
+      streaming: false,
+      activeTurnIds: [],
+      diagnostics: [],
+      commands: [],
+      usage: undefined,
+      resources: [],
+      resourceDiagnostics: [],
+      tree: [],
+      artifacts: [],
+      reviewThreads: [],
+      subagentActivities: [],
+      scheduledMessages: [],
+      releasedSubagentHandleIds: [],
+      backgroundWorkActive: false,
+      extensionUi: { statuses: [], compatibilityDiagnostics: [] },
+      controlRequests: [],
+    });
+    model.observedSnapshotRevision = 0;
+    model.settledTurnRevision = 0;
+    model.settledTurns.splice(0);
+  });
+}
+
 export function applyCakeChatUpdate(model: Session, sessionId: string, update: CakeChatUpdate) {
   if (update._tag === "Snapshot") {
     if (

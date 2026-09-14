@@ -9,6 +9,35 @@ import { RootProjection } from "../../../../src/renderer/models/RootProjection";
 import { Message } from "../../../../src/renderer/models/Message";
 
 describe("CakeChatCollectionStore", () => {
+  it("observes only visible or running loaded Cake Chats", () => {
+    const catalog = CakeChatCatalog.create();
+    const models = RootProjection.create();
+    const { root, subject: store } = mountWithClient(
+      createStore(CakeChatCollectionStore, {
+        catalog,
+        sessionModel: (sessionId) => models.cakeChat(sessionId),
+        tools: () => [],
+      }),
+      {} as Client,
+    );
+    const first = store.registry.load("first");
+    const second = store.registry.load("second");
+    store.sessionLayoutStore.ensureSession("first");
+    store.sessionLayoutStore.showSession("second");
+
+    expect(store.registry.observationTargets.map(({ sessionId }) => sessionId)).toEqual(["second"]);
+
+    first.model.streaming = true;
+    expect(store.registry.observationTargets.map(({ sessionId }) => sessionId)).toEqual([
+      "first",
+      "second",
+    ]);
+
+    root[Symbol.dispose]();
+    catalog[Symbol.dispose]();
+    models[Symbol.dispose]();
+  });
+
   it("restores a resolved Cake Chat before delivering a message or changing its model", async () => {
     const calls: string[] = [];
     const restore = vi.fn(async () => {

@@ -44,21 +44,21 @@ describe("SessionObservationRetentionStore", () => {
     store[Symbol.dispose]();
   });
 
-  it("keeps selected, visible, and running pins outside the 20-session idle LRU", () => {
+  it("keeps selected, visible, and running pins outside the four-session idle LRU", () => {
     const { sessions, store } = fixture({ selected: "selected", visible: "visible" });
     for (const item of [session("selected"), session("visible"), session("running", true)]) {
       sessions.push(item);
       store.materialize(item.sessionId);
     }
-    for (let index = 0; index < 21; index += 1) {
+    for (let index = 0; index < 5; index += 1) {
       const item = session(`idle-${index}`);
       sessions.push(item);
       store.materialize(item.sessionId);
     }
 
-    expect(store.sessions).toHaveLength(23);
+    expect(store.sessions).toHaveLength(7);
     expect(store.sessions.map((item) => item.sessionId)).toEqual(
-      expect.arrayContaining(["selected", "visible", "running", "idle-20"]),
+      expect.arrayContaining(["selected", "visible", "running", "idle-4"]),
     );
     expect(store.sessions.map((item) => item.sessionId)).not.toContain("idle-0");
 

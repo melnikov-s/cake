@@ -136,8 +136,8 @@ Session-owned model options and resource usages reference those shared identitie
 retaining runtime-specific authentication, capabilities, discovery, and activation data.
 Session Stores receive these Models as dependencies. Loaded Project Session identity is independent from observation
 lifetime: the selected and currently running sessions are pinned, while a process-local
-20-session idle LRU bounds warm observations. Persisted loaded identities do not demand
-subscriptions at startup. Window teardown first stops native events and Model
+four-session idle LRU bounds warm observations. Evicted projections release transcript data,
+and persisted loaded identities do not demand subscriptions at startup. Window teardown first stops native events and Model
 synchronization, then disposes the Store tree, and finally disposes the Models.
 
 Renderer Stores read those Models, invoke `Client`, and own window-local

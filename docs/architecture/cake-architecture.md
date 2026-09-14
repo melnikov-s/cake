@@ -464,10 +464,11 @@ The window Store hierarchy mirrors the product surfaces:
   project events and navigation share session identity. It owns target identity,
   keyed creation and lookup, and Session-ID/Working-Directory collision protection.
   Its `SessionObservationRetentionStore` child owns the process-local materialized
-  set, selected/running/visible pins, and 20-session idle LRU. Persisted loaded-session
+  set, selected/running/visible pins, and four-session idle LRU. Persisted loaded-session
   identity does not create transcript observation demand after restart. Selecting,
   opening, or starting a session refreshes that retention, and eviction stops its live
-  observation while preserving its loaded Store and Model for later reuse. Its
+  observation and clears its transcript projection while preserving stable Store and Model
+  identity for later hydration. Its
   `ProjectPendingSessionsStore` child owns staged and temporary membership,
   pending catalog summaries, Project materialization transitions, and relocation while a
   Working Directory is chosen. It composes one keyed `PendingConversationStore` per pending
