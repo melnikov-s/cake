@@ -477,10 +477,14 @@ async function activate(context) {
     revealDecorations.clear();
     if (!range) return;
     editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
+    // VS Code renders a decoration as one box per line, so a full border on a
+    // multi-line range draws a grid. A left-only border on whole-line boxes
+    // stacks into a single continuous rule beside the revealed lines.
     const decoration = vscode.window.createTextEditorDecorationType({
-      border: "1px solid",
+      isWholeLine: true,
+      borderWidth: "0 0 0 2px",
+      borderStyle: "solid",
       borderColor: new vscode.ThemeColor("editorInfo.foreground"),
-      isWholeLine: requestedRange?.start?.column === undefined,
     });
     revealDecorations.add(decoration);
     editor.setDecorations(decoration, [range]);
