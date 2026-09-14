@@ -455,8 +455,10 @@ describe("Discussion Sessions domain", () => {
         // Same profile and runtime as a side chat; only the configuration differs.
         assert.equal(sidecar.auxiliary, true);
         assert.equal(sidecar.globalControl, undefined);
-        assert.deepEqual(sidecar.tools, ["read", "cake"]);
+        // The assistant can run shell commands, unlike a read-only side chat.
+        assert.deepEqual(sidecar.tools, ["read", "bash", "cake"]);
         assert.match(sidecar.additionalSystemPrompt ?? "", /Session Assistant attached to/);
+        assert.match(sidecar.additionalSystemPrompt ?? "", /run shell commands with the bash tool/);
         assert.match(sidecar.additionalSystemPrompt ?? "", /sessions\.open/);
         assert.deepEqual(fixture.modelSelections.at(-1), {
           provider: "google",

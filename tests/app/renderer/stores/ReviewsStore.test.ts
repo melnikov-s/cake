@@ -1,7 +1,10 @@
 import { child, createStore, mount, Store } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
 import type { Client } from "../../../../src/renderer/client/Client";
-import type { DiscussionAnchor } from "../../../../src/domain/discussion-sessions/discussion-session-data";
+import {
+  sessionAssistantThreadPath,
+  type DiscussionAnchor,
+} from "../../../../src/domain/discussion-sessions/discussion-session-data";
 import type { ConversationSnapshot } from "../../../../src/domain/conversations/conversation-data";
 import { RootProjection } from "../../../../src/renderer/models/RootProjection";
 import type { Session } from "../../../../src/renderer/models/Session";
@@ -42,6 +45,17 @@ class ReviewsHarnessStore extends Store<{
 
 const sessionAnchor: DiscussionAnchor = {
   path: "session:parent-1",
+  view: "session",
+  start: { diffLine: 0 },
+  end: { diffLine: 0 },
+  selectedText: "",
+  contextBefore: "",
+  contextAfter: "",
+  diff: "",
+};
+
+const assistantAnchor: DiscussionAnchor = {
+  path: sessionAssistantThreadPath("parent-1"),
   view: "session",
   start: { diffLine: 0 },
   end: { diffLine: 0 },
@@ -400,6 +414,28 @@ describe("ReviewsStore", () => {
     );
     expect(parent.model?.modelId).toBe("gpt-5.6-sol");
     expect(parent.thinkingLevel).toBe("high");
+    dispose();
+  });
+
+  it("hides the model picker for the session assistant but not for a side chat", () => {
+    const { reviews, dispose } = fixture(
+      [
+        { id: "assistant", anchor: assistantAnchor },
+        { id: "thread-1", anchor: selectionAnchor },
+      ],
+      {},
+    );
+
+    const assistant = reviews.discussionSession("assistant")!;
+    expect(assistant.isSessionAssistant).toBe(true);
+    // The assistant is pinned to the utility model, so its chat keeps the
+    // shared configuration Store but offers no picker.
+    expect(assistant.chatStore.configuration).toBe(assistant.configurationStore);
+    expect(assistant.chatStore.modelPickerVisible).toBe(false);
+
+    const sideChat = reviews.discussionSession("thread-1")!;
+    expect(sideChat.isSessionAssistant).toBe(false);
+    expect(sideChat.chatStore.modelPickerVisible).toBe(true);
     dispose();
   });
 

@@ -168,6 +168,7 @@ export const Chat = observer(function Chat({
     text: string;
   }>();
   const composerVisible = store.composerVisible;
+  const composerConfiguration = store.modelPickerVisible ? store.configuration : undefined;
   const activatingDraft = store.isDraftSession && !store.editingMessage;
   const transcriptControls = useMemo(
     () => ({ scrollToBottom: () => transcriptRef.current?.scrollToBottom() }),
@@ -252,7 +253,7 @@ export const Chat = observer(function Chat({
     >
       <ChatComposer
         className={embedded ? "chat-embedded-workbench-composer" : undefined}
-        configuration={store.configuration}
+        configuration={composerConfiguration}
         header={
           (transcriptBehavior?.subagents || composerHeader) && (
             <>
@@ -292,7 +293,7 @@ export const Chat = observer(function Chat({
                   <PaperclipIcon />
                 </IconButton>
               )}
-              {store.canAttach && store.configuration && (
+              {store.canAttach && composerConfiguration && (
                 <div className="mx-0.5 h-4 w-px bg-border/60" aria-hidden="true" />
               )}
             </>

@@ -153,6 +153,62 @@ describe("Chat", () => {
     expect(submit).not.toHaveBeenCalled();
   });
 
+  it("hides the model picker when the surface pins its model", () => {
+    const configuration = {
+      session: {
+        model: { provider: "openai", id: '["openai","gpt"]', modelId: "gpt", name: "GPT" },
+        thinkingLevel: "medium",
+        availableThinkingLevels: ["off", "medium"],
+      },
+      activeOperations: [],
+      activePreset: undefined,
+      presets: [],
+      fastMode: false,
+      connectedModelsByProvider: [
+        {
+          id: "openai",
+          name: "OpenAI",
+          models: [{ provider: "openai", id: "gpt", name: "GPT", authenticated: true }],
+        },
+      ],
+      selectThinkingLevel: vi.fn(),
+    } as unknown as ChatConfigurationStore;
+    let modelPickerVisible = false;
+    store = mount(
+      createStore(ChatStore, {
+        id: () => "pinned-model-chat",
+        parts: () => [],
+        streaming: () => false,
+        submitting: () => false,
+        configuration: () => configuration,
+        commands: () => [],
+        placeholder: () => "Ask the session assistant…",
+        inputLabel: () => "Message session assistant",
+        canSubmit: (draft) => Boolean(draft.trim()),
+        submit: async () => true,
+        addAttachments: async () => undefined,
+        modelPickerVisible: () => modelPickerVisible,
+      }),
+    );
+
+    act(() => root.render(<Chat store={store!} />));
+
+    // The configuration Store stays attached, but the toolbar offers no picker
+    // and no divider between attach and the (absent) picker.
+    expect(store.configuration).toBe(configuration);
+    expect(container.querySelector('[aria-label="Model configuration"]')).toBeNull();
+    expect(container.querySelector('[aria-label="Attach files"]')).not.toBeNull();
+    expect(container.querySelector('[data-slot="composer-toolbar"] .w-px')).toBeNull();
+
+    // A surface that allows choosing the model shows the same picker as any other chat.
+    modelPickerVisible = true;
+    act(() => root.render(<Chat store={store!} key="visible" />));
+    expect(container.querySelector('[aria-label="Model configuration"]')?.textContent).toContain(
+      "GPT",
+    );
+    expect(container.querySelector('[data-slot="composer-toolbar"] .w-px')).not.toBeNull();
+  });
+
   it("keeps queue controls and shows cancellable progress only while steering", async () => {
     const steerQueuedPrompt = vi.fn();
     const editQueuedPrompt = vi.fn();

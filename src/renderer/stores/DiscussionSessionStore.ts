@@ -33,6 +33,11 @@ export class DiscussionSessionStore extends Store<DiscussionSessionStoreProps> {
     return this.thread.id;
   }
 
+  /** The parent's assistant side chat, as opposed to a user-opened side chat. */
+  get isSessionAssistant() {
+    return isSessionAssistantThread(this.thread);
+  }
+
   /** The sidecar Pi Session ID every shared conversation operation addresses. */
   get sessionId() {
     return this.props.model.sessionId;
@@ -86,9 +91,12 @@ export class DiscussionSessionStore extends Store<DiscussionSessionStoreProps> {
       chat: {
         commands: () => [],
         placeholder: () =>
-          isSessionAssistantThread(this.thread) ? "Ask the session assistant…" : "Ask a follow-up…",
+          this.isSessionAssistant ? "Ask the session assistant…" : "Ask a follow-up…",
+        // The assistant always runs on the utility model, which the runtime
+        // reapplies on every acquisition, so offering a picker would mislead.
+        modelPickerVisible: () => !this.isSessionAssistant,
         inputLabel: () =>
-          isSessionAssistantThread(this.thread)
+          this.isSessionAssistant
             ? "Message session assistant"
             : this.thread.anchor.view === "message"
               ? "Reply to selection side chat"

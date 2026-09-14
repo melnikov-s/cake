@@ -57,6 +57,8 @@ interface ConversationChatCapabilities {
   draftActivationCandidates?(): ExistingWorktreeCandidate[];
   isDraftSession?(): boolean;
   scheduledMessages?: ScheduledMessageCapabilities;
+  /** Hidden for a conversation whose model is fixed by its kind, such as the session assistant. */
+  modelPickerVisible?(): boolean;
   rewordWorkingDirectory?(): string | undefined;
   fallbackError?(): { message?: string; details?: string };
 }
@@ -279,6 +281,7 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
       },
       cancelSteering: () => this.composerStore.promptQueueStore.cancelSteering(),
       scheduledMessages: capabilities.scheduledMessages,
+      modelPickerVisible: capabilities.modelPickerVisible,
       composerReword: {
         showContextMenu: (selection, x, y) =>
           this.client.electron.showComposerContextMenu(

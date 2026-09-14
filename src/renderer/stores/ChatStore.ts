@@ -86,6 +86,12 @@ export interface ChatStoreProps {
   cancelSteering?(): Promise<void>;
   scheduledMessages?: ScheduledMessageCapabilities;
   composerVisible?(): boolean;
+  /**
+   * Whether the composer toolbar offers the model picker. A surface pinned to
+   * one model, such as the session assistant, hides it while keeping the
+   * configuration Store for its own commands.
+   */
+  modelPickerVisible?(): boolean;
   composerReword?: ComposerRewordCapabilities;
   hideThinking?(): boolean;
   error?(): { message?: string; details?: string; title?: string };
@@ -237,6 +243,9 @@ export class ChatStore extends Store<ChatStoreProps> {
   }
   get composerVisible() {
     return this.props.composerVisible?.() ?? true;
+  }
+  get modelPickerVisible() {
+    return this.props.modelPickerVisible?.() ?? true;
   }
   get hideThinking() {
     return this.props.hideThinking?.() ?? false;
