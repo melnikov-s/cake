@@ -333,6 +333,10 @@ export const deliver = Effect.fn("SessionFamilies.deliverNotice")(function* (tur
     (yield* storage.familyForMember(turn.sessionId)) ??
     (yield* storage.familyForMember(turn.senderSessionId));
   if (!family || !turn.outcome || turn.reported) return;
+  if (turn.outcome === "aborted") {
+    yield* storage.completeNotice(turn.turnId);
+    return;
+  }
   const senderMember = familyMember(family, turn.senderSessionId);
   const childMember = familyMember(family, turn.sessionId);
   if (!senderMember || !childMember) return;
@@ -405,12 +409,7 @@ export const deliver = Effect.fn("SessionFamilies.deliverNotice")(function* (tur
     yield* storage.completeNotice(turn.turnId);
     return;
   }
-  const outcome =
-    turn.outcome === "failed"
-      ? "stopped with an error"
-      : turn.outcome === "aborted"
-        ? "was aborted"
-        : "stopped";
+  const outcome = turn.outcome === "failed" ? "stopped with an error" : "stopped";
   const childSummary = yield* sessions
     .catalogEntry(
       {

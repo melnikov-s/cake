@@ -175,21 +175,20 @@ describe("SessionFamilyStorage", () => {
     }).pipe(Effect.provide(familyStorageHarness(files).layer));
   });
 
-  it.effect("settles informational success silently but retains factual failures", () =>
+  it.effect("settles successful informational and aborted turns silently", () =>
     Effect.gen(function* () {
       const storage = yield* SessionFamilyStorage;
       yield* storage.recordTurn(turn({ expectsResponse: false }));
       yield* storage.settleTurn("turn", "complete");
       assert.deepEqual((yield* storage.state()).turns, []);
 
+      yield* storage.recordTurn(turn({ turnId: "aborted", expectsResponse: true }));
+      yield* storage.settleTurn("aborted", "aborted");
+      assert.deepEqual((yield* storage.state()).turns, []);
+
       yield* storage.recordTurn(turn({ turnId: "failed", expectsResponse: false }));
       yield* storage.settleTurn("failed", "failed");
-      yield* storage.recordTurn(turn({ turnId: "aborted", expectsResponse: false }));
-      yield* storage.settleTurn("aborted", "aborted");
-      assert.deepEqual(
-        (yield* storage.state()).turns.map((pending) => pending.outcome),
-        ["failed", "aborted"],
-      );
+      assert.equal((yield* storage.state()).turns[0]?.outcome, "failed");
     }).pipe(Effect.provide(testLayer())),
   );
 

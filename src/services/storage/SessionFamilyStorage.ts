@@ -474,7 +474,9 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
             turns: document.turns.flatMap((turn) =>
               turn.turnId !== turnId
                 ? [turn]
-                : turn.reported || (outcome === "complete" && !turn.expectsResponse)
+                : turn.reported ||
+                    outcome === "aborted" ||
+                    (outcome === "complete" && !turn.expectsResponse)
                   ? []
                   : [{ ...turn, outcome }],
             ),

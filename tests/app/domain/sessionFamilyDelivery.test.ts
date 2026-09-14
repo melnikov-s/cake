@@ -68,6 +68,26 @@ const environment = Layer.mergeAll(
 );
 
 describe("Session Family outcome delivery", () => {
+  it.effect("discards persisted aborted outcomes without messaging the sender", () =>
+    Effect.gen(function* () {
+      const storage = yield* SessionFamilyStorage;
+      const aborted = { ...outcome, outcome: "aborted" as const };
+      yield* storage.addChild(reservation);
+      yield* storage.recordTurn(aborted);
+      yield* Effect.scoped(deliver(aborted));
+      assert.deepEqual((yield* storage.state()).turns, []);
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          familyStorageHarness().layer,
+          environment,
+          Layer.mock(SessionArchiveStorage, {}),
+          Layer.mock(PiSessions, {}),
+        ),
+      ),
+    ),
+  );
+
   it.effect("recovers an accepted reply when acknowledgement was interrupted", () => {
     const replyId = "367f6f87-5cc4-440f-b91f-28f6e722db81";
     return Effect.gen(function* () {
