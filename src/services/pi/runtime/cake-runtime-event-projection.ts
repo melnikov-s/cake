@@ -145,7 +145,13 @@ export function createCakeRuntimeEventProjection(input: {
     for (const partId of queuedPartIds) {
       if (!nextIds.has(partId)) emit({ type: "part-removed", sessionId, partId });
     }
-    for (const part of parts) emit({ type: "part-updated", sessionId, part });
+    // A queued part's id is derived from its queue, delivery state, and complete
+    // encoded content. Existing ids therefore already represent identical parts.
+    // Re-emitting every survivor made one removal produce an event storm for the
+    // entire queue, repeatedly re-rendering a large queued-prompt list.
+    for (const part of parts) {
+      if (!queuedPartIds.has(part.id)) emit({ type: "part-updated", sessionId, part });
+    }
     queuedPartIds = nextIds;
   };
 
