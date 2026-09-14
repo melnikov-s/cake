@@ -186,10 +186,18 @@ describe("EmbeddedEditorStore", () => {
   it("reveals through the client only while the IDE is visible", async () => {
     const { client, root, store } = createHarness();
 
-    await store.reveal({ path: "src/app.ts", range: { start: { line: 3 } } });
+    await store.reveal({
+      kind: "working-directory",
+      path: "src/app.ts",
+      range: { start: { line: 3 } },
+    });
     expect(client.reveal).not.toHaveBeenCalled();
 
-    const location = { path: "src/app.ts", range: { start: { line: 3 } } };
+    const location = {
+      kind: "working-directory" as const,
+      path: "src/app.ts",
+      range: { start: { line: 3 } },
+    };
     await store.show(location);
 
     expect(client.reveal).toHaveBeenCalledWith("/tmp/project", location, expect.any(Object));

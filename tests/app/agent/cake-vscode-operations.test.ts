@@ -1,14 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import { createCakeVscodeOperations } from "../../../src/services/pi/runtime/cake-vscode-operations";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
+import type { EditorLocation } from "../../../src/ipc/editor-location";
 import type { JsonValue } from "../../../src/ipc/json-contract";
-import type { SourceLocation } from "../../../src/ipc/source-location";
 import type { VscodeActionResult } from "../../../src/services/vscode/VsCodeServer";
 
 function registry() {
   const enter = vi.fn(async () => undefined);
   const open = vi.fn(
-    async (location: SourceLocation): Promise<VscodeActionResult<SourceLocation>> => ({
+    async (location: EditorLocation): Promise<VscodeActionResult<EditorLocation>> => ({
       status: "completed",
       value: location,
     }),
@@ -51,6 +51,7 @@ describe("Cake VS Code operations", () => {
 
     expect(open).toHaveBeenCalledWith(
       {
+        kind: "working-directory",
         path: "src/main/main.ts",
         range: {
           start: { line: 803, column: 4 },
@@ -93,7 +94,35 @@ describe("Cake VS Code operations", () => {
       },
     );
 
-    expect(open).toHaveBeenCalledWith({ path: "src/main.ts" }, expect.any(AbortSignal));
+    expect(open).toHaveBeenCalledWith(
+      { kind: "working-directory", path: "src/main.ts" },
+      expect.any(AbortSignal),
+    );
+  });
+
+  it("opens an absolute local file without changing the Working Directory", async () => {
+    const { open, operations } = registry();
+
+    const result = await operations.invoke(
+      { command: "vscode.open", input: { path: "/tmp/cake.log", line: 3 } },
+      {
+        signal: new AbortController().signal,
+        toolCallId: "tool-absolute-file",
+        runtime: {},
+      },
+    );
+
+    expect(open).toHaveBeenCalledWith(
+      {
+        kind: "absolute-file",
+        path: "/tmp/cake.log",
+        range: { start: { line: 2 }, end: { line: 2 } },
+      },
+      expect.any(AbortSignal),
+    );
+    expect(result.details).toMatchObject({
+      result: { opened: true, location: { path: "/tmp/cake.log", line: 3 } },
+    });
   });
 
   it("enters VS Code mode explicitly", async () => {

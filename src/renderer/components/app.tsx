@@ -51,6 +51,7 @@ import {
 } from "@/lib/hotkeys";
 import type { CakeHotkeyActionId } from "../../domain/application/cake-settings-data";
 import { cn } from "@/lib/utils";
+import { editorLocationFromPath } from "../../ipc/editor-location";
 import type { SourceLocation } from "../../ipc/source-location";
 import { toWorkspaceRelativePath } from "../../utils/workspace-relative-path";
 import { RootStore } from "../stores/RootStore";
@@ -240,10 +241,12 @@ export const App = observer(function App() {
           root.sessionLayoutStore.paneForSession(paneSession.sessionId)!.paneId,
         );
         void store
-          .openFileInIde({
-            ...location,
-            path: toWorkspaceRelativePath(location.path, paneSession.workspacePath),
-          })
+          .openFileInIde(
+            editorLocationFromPath({
+              ...location,
+              path: toWorkspaceRelativePath(location.path, paneSession.workspacePath),
+            }),
+          )
           .catch(() => undefined);
       },
       onOpenReviewRun: (threadId?: string) => {

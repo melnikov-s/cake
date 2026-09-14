@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 import type { JsonObject, JsonValue } from "../../../ipc/json-contract";
+import { editorLocationFromPath, type EditorLocation } from "../../../ipc/editor-location";
 import type { SourceLocation, SourcePosition } from "../../../ipc/source-location";
 import type { VscodeActionResult } from "../../vscode/VsCodeServer";
 import type { CakeOperationDefinition } from "./cake-operation-registry";
@@ -33,7 +34,7 @@ type VscodeScriptInput = typeof vscodeScriptInputSchema.Type;
 
 export interface VscodeControl {
   enter(signal: AbortSignal): Promise<void>;
-  open(location: SourceLocation, signal: AbortSignal): Promise<VscodeActionResult<SourceLocation>>;
+  open(location: EditorLocation, signal: AbortSignal): Promise<VscodeActionResult<EditorLocation>>;
   runScript(
     source: string,
     input: JsonValue,
@@ -62,7 +63,7 @@ interface AgentLocation {
   endColumn?: number;
 }
 
-function agentLocation(location: SourceLocation): JsonObject {
+function agentLocation(location: EditorLocation): JsonObject {
   const result: AgentLocation = { path: location.path };
   if (!location.range) return { ...result };
   result.line = location.range.start.line + 1;
@@ -108,9 +109,12 @@ export function createCakeVscodeOperations(control: VscodeControl): CakeOperatio
     {
       command: "vscode.open",
       topic: "vscode",
-      summary: "Open a workspace file in embedded VS Code and highlight an optional source range.",
+      summary:
+        "Open a Working Directory or absolute local file in embedded VS Code and highlight an optional source range.",
       guidance: [
         "Use this operation to direct the user's attention in embedded VS Code; use filesystem tools to read or edit files.",
+        "Paths may be relative to the Project Session's Working Directory or absolute local file paths.",
+        "Opening an absolute path does not add it to the project or change the Working Directory.",
         "Explain the location in the normal Cake conversation. Do not duplicate the explanation inside the editor.",
         "Lines and columns in this operation are one-based.",
       ],
@@ -125,13 +129,15 @@ export function createCakeVscodeOperations(control: VscodeControl): CakeOperatio
             endColumn: 6,
           },
         },
+        { input: { path: "/tmp/cake.log" }, description: "Open an absolute local file." },
       ],
       result:
-        "The normalized workspace-relative location, or VSCODE_MODE_REQUIRED when VS Code mode is inactive.",
+        "The normalized project-relative or absolute local location, or VSCODE_MODE_REQUIRED when VS Code mode is inactive.",
       limitations: ["Call vscode.enter before using this operation."],
       async execute(input, context) {
         // SAFETY: CakeOperationRegistry parsed this value with vscodeOpenInputSchema.
-        const result = await control.open(sourceLocation(input as VscodeOpenInput), context.signal);
+        const location = editorLocationFromPath(sourceLocation(input as VscodeOpenInput));
+        const result = await control.open(location, context.signal);
         if (result.status === "mode-required") return modeRequired();
         return { opened: true, location: agentLocation(result.value) };
       },

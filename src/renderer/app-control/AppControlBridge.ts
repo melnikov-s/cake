@@ -11,6 +11,7 @@ import type { SessionSummary } from "../models/SessionSummary";
 import type { WorktreeRecord } from "../../domain/worktrees/managed-worktree-data";
 import type { ProjectSessionPreview } from "../../domain/project-sessions/project-session-data";
 import type { ScheduledMessage } from "../../domain/scheduled-messages/scheduled-message-data";
+import { editorLocationFromPath, type EditorLocation } from "../../ipc/editor-location";
 import type { SourceLocation, SourcePosition } from "../../ipc/source-location";
 import type {
   CoordinationMessage,
@@ -404,7 +405,7 @@ export interface AppControlHost {
   };
   vscode: {
     enter(source: AgentControlSource): Promise<void>;
-    open(source: AgentControlSource, location: SourceLocation): Promise<void>;
+    open(source: AgentControlSource, location: EditorLocation): Promise<void>;
   };
   worktrees?: {
     merge(input: { sessionId: string; workingDirectory: string }): Promise<string>;
@@ -654,7 +655,7 @@ export type AppControlResult =
       sessionCount: number;
     }
   | { ok: true; command: "vscode.enter"; entered: true }
-  | { ok: true; command: "vscode.open"; opened: SourceLocation }
+  | { ok: true; command: "vscode.open"; opened: EditorLocation }
   | { ok: true; command: "notifications.send"; status: "queued" }
   | {
       ok: true;
@@ -696,16 +697,17 @@ const sessionAssistantControlOperations = [
     ...operation(
       "vscode.open",
       "vscode",
-      "Open a Working Directory file in embedded VS Code and highlight an optional source range.",
+      "Open a Working Directory or absolute local file in embedded VS Code and highlight an optional source range.",
       appControlArgumentSchemas["vscode.open"],
     ),
     guidance: [
       "These operations target the parent Project Session and its Working Directory.",
-      "Paths are relative to the parent Project Session's Working Directory. Lines and columns are one-based.",
+      "Paths may be relative to the parent Project Session's Working Directory or absolute local file paths.",
+      "Opening an absolute path does not add it to the project or change the Working Directory. Lines and columns are one-based.",
       "Call vscode.enter before vscode.open when the user asks to open a file in embedded VS Code.",
     ],
     examples: [{ input: { path: "src/main.ts", line: 1 } }],
-    result: "The workspace-relative location opened in embedded VS Code.",
+    result: "The project-relative or absolute local location opened in embedded VS Code.",
   },
 ] as const;
 
@@ -1241,7 +1243,7 @@ export class AppControlBridge {
         await this.host.vscode.enter(source);
         return { ok: true, command: invocation.name, entered: true };
       }
-      const location = sourceLocation(invocation.arguments);
+      const location = editorLocationFromPath(sourceLocation(invocation.arguments));
       await this.host.vscode.open(source, location);
       return { ok: true, command: invocation.name, opened: location };
     }

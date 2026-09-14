@@ -51,7 +51,7 @@ change status into the editor.
 
 Allow Cake and the agent to direct the user to a source location while explaining it in the ordinary project conversation.
 
-The Cake gateway should expose a progressively disclosed `vscode` topic with a focused `vscode.open` operation. The operation accepts a workspace-relative file and an optional exact line and column range. Calling it should enter IDE mode if necessary, open the file, center the range, select it, and briefly highlight it. Agent-facing line and column numbers are one-based even though Cake’s internal VS Code location contract is zero-based.
+The Cake gateway should expose a progressively disclosed `vscode` topic with a focused `vscode.open` operation. The operation accepts either a Working Directory-relative file or an absolute local file path, plus an optional exact line and column range. Calling it should enter IDE mode if necessary, open the file, center the range, select it, and briefly highlight it. Opening an absolute file presents it as an editor-only tab: it does not add the file to the Project, change the Project Session’s Working Directory, or opt it into project annotations and Source Control. Agent-facing line and column numbers are one-based even though Cake’s internal VS Code location contract is zero-based.
 
 This supports requests such as:
 

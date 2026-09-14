@@ -89,10 +89,13 @@ function gitRevisionUri(filePath: string, ref: string) {
 
 const commands = new Map<string, (...args: unknown[]) => unknown>();
 const showInformationMessage = vi.fn();
+const openTextDocument = vi.fn(async (uri: FakeUri) => ({ uri, version: 1, lineCount: 1 }));
+const showTextDocument = vi.fn(async () => ({}));
 const window = {
   activeTextEditor: undefined as FakeEditor | undefined,
   visibleTextEditors: [] as FakeEditor[],
   showInformationMessage,
+  showTextDocument,
   showWarningMessage: vi.fn(),
   showInputBox: vi.fn(async () => ""),
   createTextEditorDecorationType: () => ({ dispose() {} }),
@@ -118,6 +121,7 @@ const fakeVscode = {
     },
   },
   languages: { registerCodeLensProvider: () => ({ dispose() {} }) },
+  workspace: { openTextDocument },
 };
 
 const posted: Array<Record<string, unknown>> = [];
@@ -172,11 +176,31 @@ afterAll(async () => {
 afterEach(() => {
   posted.length = 0;
   showInformationMessage.mockClear();
+  openTextDocument.mockClear();
+  showTextDocument.mockClear();
   window.activeTextEditor = undefined;
   window.visibleTextEditors = [];
 });
 
 const lines = ["import a;", "", "export function run() {", "  return compute();", "}"];
+
+describe("companion editor reveals", () => {
+  it("opens an absolute local file without treating it as a workspace source location", async () => {
+    await commands.get("cake.reveal")!({ kind: "absolute-file", path: "/tmp/cake.log" });
+
+    expect(openTextDocument).toHaveBeenCalledWith(
+      expect.objectContaining({ scheme: "file", path: "/tmp/cake.log" }),
+    );
+    expect(showTextDocument).toHaveBeenCalledWith(expect.any(Object), { preview: false });
+  });
+
+  it("continues rejecting Working Directory locations that escape the workspace", async () => {
+    await expect(
+      commands.get("cake.reveal")!({ kind: "working-directory", path: "../outside.ts" }),
+    ).rejects.toThrow("outside the workspace");
+    expect(openTextDocument).not.toHaveBeenCalled();
+  });
+});
 
 describe("companion explicit selection actions in diff editors", () => {
   it("captures the original Git revision side that was right-clicked, not the active side", () => {

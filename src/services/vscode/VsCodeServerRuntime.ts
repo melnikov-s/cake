@@ -7,8 +7,8 @@ import { copyFile, mkdir, readFile, realpath, rm, writeFile } from "node:fs/prom
 import { dirname, join } from "node:path";
 import { WebContentsView, BrowserWindow } from "electron";
 import { applyEdits, modify, parse as parseJsonc, type ParseError } from "jsonc-parser";
-import type { SourceLocation } from "../../ipc/source-location";
 import type { EditorAnnotationSnapshot } from "../../ipc/editor-annotation";
+import type { EditorLocation } from "../../ipc/editor-location";
 import { jsonValueSchema, type JsonValue } from "../../ipc/json-contract";
 import cakeIconMarkup from "../../assets/cake-icon.svg?raw";
 import {
@@ -256,7 +256,7 @@ interface EmbeddedEditorExplicitSelection {
 
 /** Requests Cake posts to the companion extension's localhost server. */
 type CompanionRequest =
-  | ({ type: "reveal" } & SourceLocation)
+  | ({ type: "reveal" } & EditorLocation)
   | { type: "open-source-control" }
   | ({ type: "annotations" } & EditorAnnotationSnapshot)
   | { type: "set-theme"; theme: "light" | "dark" }
@@ -598,8 +598,8 @@ export class VsCodeServerRuntime {
     });
   }
 
-  /** Asks the workspace's companion extension to reveal and highlight a source location. */
-  async reveal(workspacePath: string, location: SourceLocation, signal?: AbortSignal) {
+  /** Asks the Working Directory's companion extension to reveal an editor location. */
+  async reveal(workspacePath: string, location: EditorLocation, signal?: AbortSignal) {
     const resolved = await realpath(workspacePath);
     const instance = this.servers.get(resolved);
     if (!instance) throw new Error("The embedded editor is not running for this project yet");

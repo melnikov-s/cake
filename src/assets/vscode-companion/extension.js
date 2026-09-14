@@ -417,10 +417,19 @@ async function activate(context) {
   );
 
   const reveal = async (payload) => {
-    const relativePath = String(payload.path || "");
-    if (!relativePath) throw new Error("A file path is required");
-    const target = path.resolve(WORKSPACE || context.extensionPath, relativePath);
-    if (!workspaceRelative(target)) throw new Error("The source location is outside the workspace");
+    const requestedPath = String(payload.path || "");
+    if (!requestedPath) throw new Error("A file path is required");
+    let target;
+    if (payload.kind === "absolute-file") {
+      if (!path.isAbsolute(requestedPath)) throw new Error("An absolute file path is required");
+      target = path.resolve(requestedPath);
+    } else if (payload.kind === "working-directory") {
+      target = path.resolve(WORKSPACE || context.extensionPath, requestedPath);
+      if (!workspaceRelative(target))
+        throw new Error("The source location is outside the workspace");
+    } else {
+      throw new Error("The editor location kind is invalid");
+    }
     const targetUri = vscode.Uri.file(target);
     if (payload.view === "changes" && (await hasGitChange(vscode, targetUri))) {
       await openSourceControl(vscode);

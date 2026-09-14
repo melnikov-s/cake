@@ -11,13 +11,13 @@ import type {
 } from "../../domain/worktrees/worktree-landing-data";
 import type { CakeIpcClientService } from "../../ipc/client/CakeIpcClient";
 import type { EditorAnnotationSnapshot } from "../../ipc/editor-annotation";
+import type { EditorLocation } from "../../ipc/editor-location";
 import type {
   CompiledInlineWidget,
   InlineWidgetCapability,
   InlineWidgetLanguage,
 } from "../../ipc/inline-widget-contract";
 import type { JsonValue } from "../../ipc/json-contract";
-import type { SourceLocation } from "../../ipc/source-location";
 import type {
   Attachment,
   ApplicationState,
@@ -289,7 +289,7 @@ interface VsCodeCommands {
   ): Promise<void>;
   reveal(
     workingDirectory: string,
-    location: SourceLocation,
+    location: EditorLocation,
     options?: ClientCommandOptions,
   ): Promise<void>;
   openSourceControl(workingDirectory: string, options?: ClientCommandOptions): Promise<void>;

@@ -1,6 +1,6 @@
 import { Store, batch, child, createStore, effect as reactiveEffect } from "r-state-tree";
 import type { ProjectSessionStartInput } from "../../domain/project-sessions/project-session-data";
-import type { SourceLocation } from "../../ipc/source-location";
+import { workingDirectoryEditorLocation, type EditorLocation } from "../../ipc/editor-location";
 import type { ChatConfiguration } from "../../ipc/session-contract";
 import {
   discussionAnchorFromEditorSelection,
@@ -690,25 +690,27 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     const thread = this.reviews.threads.find((item) => item.id === threadId);
     if (!thread || thread.anchor.view !== "file") return;
     this.reviews.selectThread(thread.id);
-    await this.openFileInIde({
-      path: thread.anchor.path,
-      range: {
-        start: {
-          line:
-            (thread.anchor.start.newLine ??
-              thread.anchor.start.oldLine ??
-              thread.anchor.start.diffLine + 1) - 1,
-          column: thread.anchor.start.column,
+    await this.openFileInIde(
+      workingDirectoryEditorLocation({
+        path: thread.anchor.path,
+        range: {
+          start: {
+            line:
+              (thread.anchor.start.newLine ??
+                thread.anchor.start.oldLine ??
+                thread.anchor.start.diffLine + 1) - 1,
+            column: thread.anchor.start.column,
+          },
+          end: {
+            line:
+              (thread.anchor.end.newLine ??
+                thread.anchor.end.oldLine ??
+                thread.anchor.end.diffLine + 1) - 1,
+            column: thread.anchor.end.column,
+          },
         },
-        end: {
-          line:
-            (thread.anchor.end.newLine ??
-              thread.anchor.end.oldLine ??
-              thread.anchor.end.diffLine + 1) - 1,
-          column: thread.anchor.end.column,
-        },
-      },
-    });
+      }),
+    );
   }
 
   async openIde() {
@@ -727,7 +729,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     await this.openIde();
   }
 
-  async openFileInIde(location: SourceLocation) {
+  async openFileInIde(location: EditorLocation) {
     if (!this.activeSession || !this.projectOpenStore.projectPath) return;
     this.commandPaneStore.dismiss();
     await this.embeddedEditorStore.show(location);

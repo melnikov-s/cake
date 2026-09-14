@@ -1,7 +1,7 @@
 import { Schema } from "effect";
 import { artifactRecordSchema } from "./artifact-contract";
 import { ipcProjectionArray, ipcProjectionString } from "./projection";
-import { sourceLocationSchema } from "./source-location";
+import { editorLocationSchema } from "./editor-location";
 import { editorAnnotationSnapshotSchema } from "./editor-annotation";
 import {
   compiledInlineWidgetSchema,
@@ -379,7 +379,7 @@ export const cakeRpcPayloadSchemas = {
   "reveal-in-embedded-editor": Schema.Struct({
     ...requestBase,
     workspacePath: stringMax(4_096),
-    location: sourceLocationSchema,
+    location: editorLocationSchema,
   }),
   "open-embedded-editor-source-control": Schema.Struct({
     ...requestBase,

@@ -1,7 +1,7 @@
 import { Context, Schema, type Effect, type Stream } from "effect";
 import type { EditorAnnotationSnapshot } from "../../ipc/editor-annotation";
+import type { EditorLocation } from "../../ipc/editor-location";
 import type { JsonValue } from "../../ipc/json-contract";
-import type { SourceLocation } from "../../ipc/source-location";
 
 interface EmbeddedEditorState {
   readonly status: "missing" | "downloading" | "starting" | "ready" | "failed";
@@ -27,7 +27,7 @@ interface UpdateEmbeddedEditorBoundsInput extends EmbeddedEditorRequestIdentity 
 }
 
 interface RevealInEmbeddedEditorInput extends OpenEmbeddedEditorInput {
-  readonly location: SourceLocation;
+  readonly location: EditorLocation;
 }
 
 interface UpdateEmbeddedEditorAnnotationsInput extends OpenEmbeddedEditorInput {
@@ -70,8 +70,8 @@ export interface VsCodeServerService {
   readonly enterProjectEditor: (workingDirectory: string) => Effect.Effect<void, VsCodeServerError>;
   readonly openProjectLocation: (
     workingDirectory: string,
-    location: SourceLocation,
-  ) => Effect.Effect<VscodeActionResult<SourceLocation>, VsCodeServerError>;
+    location: EditorLocation,
+  ) => Effect.Effect<VscodeActionResult<EditorLocation>, VsCodeServerError>;
   readonly runProjectScript: (
     workingDirectory: string,
     source: string,

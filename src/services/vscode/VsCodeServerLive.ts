@@ -23,7 +23,7 @@ import { ProjectAccess } from "../projects/ProjectAccess";
 import { CAKE_TITLE_BAR_HEIGHT, Electron, VSCODE_TITLE_BAR_HEIGHT } from "../electron/Electron";
 import type { CompanionManifest, ServerInstance } from "./VsCodeServerRuntime";
 import { VSCODE_SERVER_IDLE_TTL, VsCodeServerRuntime } from "./VsCodeServerRuntime";
-import { resolveSourceTarget } from "./source-path-policy";
+import { resolveEditorTarget, resolveSourceTarget } from "./source-path-policy";
 import { VsCodeServer, VsCodeServerError } from "./VsCodeServer";
 
 export interface VsCodeServerLiveOptions {
@@ -268,18 +268,11 @@ export const makeVsCodeServerLive = (
         ),
         reveal: Effect.fn("VsCodeServer.reveal")(function* (request) {
           yield* requireAllowed(request.workspacePath);
-          const { workspace, target } = yield* tryNative("reveal", () =>
-            resolveSourceTarget(request.workspacePath, request.location.path),
+          const resolved = yield* tryNative("reveal", () =>
+            resolveEditorTarget(request.workspacePath, request.location),
           );
           yield* tryNative("reveal", (signal) =>
-            runtime.reveal(
-              workspace,
-              {
-                ...request.location,
-                path: relative(workspace, target),
-              },
-              signal,
-            ),
+            runtime.reveal(resolved.workspace, resolved.location, signal),
           );
           return { requestId: request.requestId };
         }),
@@ -353,17 +346,10 @@ export const makeVsCodeServerLive = (
               signal.throwIfAborted();
               if (!(await runtime.isVisible(workingDirectory)))
                 return { status: "mode-required" as const };
-              const { workspace, target } = await resolveSourceTarget(
-                workingDirectory,
-                location.path,
-              );
-              const normalized = {
-                ...location,
-                path: relative(workspace, target).split(sep).join("/"),
-              };
+              const resolved = await resolveEditorTarget(workingDirectory, location);
               signal.throwIfAborted();
-              await runtime.reveal(workspace, normalized, signal);
-              return { status: "completed" as const, value: normalized };
+              await runtime.reveal(resolved.workspace, resolved.location, signal);
+              return { status: "completed" as const, value: resolved.location };
             });
           },
         ),

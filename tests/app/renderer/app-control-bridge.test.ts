@@ -201,12 +201,14 @@ describe("AppControlBridge", () => {
       ok: true,
       command: "vscode.open",
       opened: {
+        kind: "working-directory",
         path: "src/main.ts",
         range: { start: { line: 3, column: 1 }, end: { line: 4 } },
       },
     });
     expect(enter).toHaveBeenCalledWith(source);
     expect(open).toHaveBeenCalledWith(source, {
+      kind: "working-directory",
       path: "src/main.ts",
       range: { start: { line: 3, column: 1 }, end: { line: 4 } },
     });

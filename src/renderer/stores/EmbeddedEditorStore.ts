@@ -1,6 +1,6 @@
 import { Store } from "r-state-tree";
 import type { EditorAnnotationSnapshot } from "../../ipc/editor-annotation";
-import type { SourceLocation } from "../../ipc/source-location";
+import type { EditorLocation } from "../../ipc/editor-location";
 import type { Attachment } from "../../ipc/session-contract";
 import type { EmbeddedEditorStateSnapshot, EmbeddedEditorStatus } from "../client/Client";
 import { ClientContext } from "./context/ClientContext";
@@ -105,7 +105,7 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
     this.applySnapshot(state);
   }
 
-  async show(location?: SourceLocation) {
+  async show(location?: EditorLocation) {
     this.activate();
     await this.open();
     if (location) await this.reveal(location);
@@ -300,7 +300,7 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
     }
   }
 
-  async reveal(location: SourceLocation) {
+  async reveal(location: EditorLocation) {
     const projectPath = this.props.projectPath();
     if (!projectPath || !this.visible) return;
     if (this.openedWorkspace !== projectPath) await this.open();
