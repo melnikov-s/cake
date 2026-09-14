@@ -18,6 +18,7 @@ export function AnimatedList({ className, children, ...props }: HTMLAttributes<H
       listRef.current?.querySelectorAll<HTMLElement>(`:scope > ${ITEM_SELECTOR}`) ?? [],
     );
     const nextTops = new Map<string, number>();
+    const moves: { item: HTMLElement; offset: number }[] = [];
     const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
 
     for (const item of items) {
@@ -28,14 +29,18 @@ export function AnimatedList({ className, children, ...props }: HTMLAttributes<H
       nextTops.set(key, nextTop);
       const previousTop = previousTopsRef.current.get(key);
       const offset = previousTop === undefined ? 0 : previousTop - nextTop;
-      if (!reduceMotion && Math.abs(offset) >= 0.5) {
-        animationsRef.current.push(
-          item.animate([{ translate: `0 ${offset}px` }, { translate: "none" }], {
-            duration: REORDER_DURATION_MS,
-            easing: "cubic-bezier(0.2, 0, 0, 1)",
-          }),
-        );
-      }
+      if (!reduceMotion && Math.abs(offset) >= 0.5) moves.push({ item, offset });
+    }
+
+    // Measure the entire list before starting any animations. Interleaving
+    // animate() with getBoundingClientRect() forces layout for every shifted row.
+    for (const { item, offset } of moves) {
+      animationsRef.current.push(
+        item.animate([{ translate: `0 ${offset}px` }, { translate: "none" }], {
+          duration: REORDER_DURATION_MS,
+          easing: "cubic-bezier(0.2, 0, 0, 1)",
+        }),
+      );
     }
 
     previousTopsRef.current = nextTops;
