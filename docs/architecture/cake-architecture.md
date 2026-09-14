@@ -179,9 +179,12 @@ source navigation—but no shell or direct file mutation tools. Because Cake
 operation is this assistant's primary role, its system prompt eagerly embeds the
 complete protocol generated from its actual operation registry instead of making
 the utility model discover topics first. Its Pi transcript owns its conversation
-history across turns and application restarts. `SessionAssistantStore` owns only
-the window-local draft, quick processing and response presentation, cancellation,
-and single-turn-at-a-time policy. A primary avatar click presents a focused
+history across turns and application restarts. A non-empty parent-composer
+selection is snapshotted when the avatar opens and supplied eagerly as contextual
+data for assistant turns; it is not a discoverable tool result.
+`SessionAssistantStore` owns only the window-local draft, selection snapshot,
+quick processing and response presentation, cancellation, and single-turn-at-a-time
+policy. A primary avatar click presents a focused
 one-shot composer, replaces it immediately with an animated processing state,
 and then shows only the assistant's compact response bubble, which closes
 automatically; a secondary

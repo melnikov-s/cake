@@ -22,6 +22,7 @@ export class SessionAssistantStore extends Store<SessionAssistantStoreProps> {
   error: string | undefined;
   focusRequestRevision = 0;
   quickResponseRevision = 0;
+  composerSelection: string | undefined;
   private activeRequest: AbortController | undefined;
 
   get client() {
@@ -78,10 +79,17 @@ export class SessionAssistantStore extends Store<SessionAssistantStoreProps> {
     });
   }
 
-  beginQuickPrompt() {
+  beginQuickPrompt(composerSelection?: string) {
+    this.composerSelection = composerSelection;
     this.quickParts.splice(0);
     this.quickChatStore.setDraft("");
     this.quickResponseRevision = 0;
+    this.error = undefined;
+    this.requestFocus();
+  }
+
+  beginChat(composerSelection?: string) {
+    this.composerSelection = composerSelection;
     this.error = undefined;
     this.requestFocus();
   }
@@ -111,6 +119,7 @@ export class SessionAssistantStore extends Store<SessionAssistantStoreProps> {
           sessionId: this.props.sessionId,
           workspacePath: this.props.workspacePath,
           prompt: text,
+          composerSelection: this.composerSelection,
           staged: this.props.staged(),
           context: [...this.props.context()],
           tools: [...this.props.tools()],

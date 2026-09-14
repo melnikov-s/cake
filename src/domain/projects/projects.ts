@@ -217,6 +217,7 @@ export const chatWithSessionAssistant = Effect.fn("Projects.chatWithSessionAssis
     parentSessionId: request.sessionId,
     utilityModel,
     prompt: request.prompt,
+    composerSelection: request.composerSelection,
     parentContextPrompt: prepared.systemPrompt,
     tools: request.tools,
     invoke: (invocation, controlSignal) =>

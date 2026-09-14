@@ -10,6 +10,14 @@ import type { SessionAssistantStore } from "../stores/SessionAssistantStore";
 
 type AssistantSurface = "quick" | "chat";
 
+function composerSelection(trigger: HTMLElement) {
+  const input = trigger
+    .closest<HTMLElement>('[data-slot="composer-dock"]')
+    ?.querySelector<HTMLTextAreaElement>(".workbench-composer textarea");
+  if (!input || input.selectionStart === input.selectionEnd) return undefined;
+  return input.value.slice(input.selectionStart, input.selectionEnd).slice(0, 32_000);
+}
+
 /** Composer avatar trigger for quick and full views of its durable assistant side chat. */
 export const SessionAssistant = observer(function SessionAssistant({
   store,
@@ -48,7 +56,7 @@ export const SessionAssistant = observer(function SessionAssistant({
     event.preventDefault();
     setSurface("chat");
     setOpen(true);
-    store.requestFocus();
+    store.beginChat(composerSelection(event.currentTarget));
   };
 
   return (
@@ -56,9 +64,13 @@ export const SessionAssistant = observer(function SessionAssistant({
       <PopoverIconTrigger
         tooltip="Ask session assistant · Right-click for chat"
         ariaLabel="Ask session assistant"
-        onClick={() => {
+        onMouseDown={(event) => {
+          // Keep the parent composer selection intact until the assistant snapshots it.
+          if (event.button === 0) event.preventDefault();
+        }}
+        onClick={(event) => {
           setSurface("quick");
-          store.beginQuickPrompt();
+          store.beginQuickPrompt(composerSelection(event.currentTarget));
         }}
         onContextMenu={openFullChat}
         className="size-10 rounded-full p-0 hover:bg-muted [&_[data-slot=avatar]]:size-9"

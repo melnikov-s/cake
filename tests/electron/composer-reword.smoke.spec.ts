@@ -129,7 +129,7 @@ test("rewords composer text and opens the focused session assistant", async () =
 
   try {
     const page = await application.firstWindow();
-    const composer = page.getByLabel("Message");
+    const composer = page.getByRole("combobox", { name: "Message" });
     await expect(composer).toBeVisible({ timeout: 20_000 });
     await composer.fill("Before rough ramble after");
     await composer.evaluate((input: HTMLTextAreaElement) => input.setSelectionRange(7, 19));
@@ -155,6 +155,10 @@ test("rewords composer text and opens the focused session assistant", async () =
     await expect(composer).toHaveValue("Before rough ramble after!");
     await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
 
+    await composer.evaluate((input: HTMLTextAreaElement) => {
+      input.focus();
+      input.setSelectionRange(7, 19);
+    });
     const assistantTrigger = page.getByRole("button", { name: "Ask session assistant" });
     await assistantTrigger.click();
     const quickAssistant = page.getByRole("dialog", { name: "Quick session assistant" });
@@ -188,6 +192,16 @@ test("rewords composer text and opens the focused session assistant", async () =
     expect(prompts[1]).toContain("vscode.enter");
     expect(prompts[1]).toContain("vscode.open");
     expect(prompts[1]).toContain("The attached Project Session is your parent and its ID is");
+    expect(prompts[1]).toContain("this text was selected in the parent composer");
+    expect(prompts[1]).toContain("rough ramble");
+    await expect
+      .poll(() =>
+        composer.evaluate((input: HTMLTextAreaElement) => [
+          input.selectionStart,
+          input.selectionEnd,
+        ]),
+      )
+      .toEqual([7, 19]);
 
     await expect(quickAssistant).toHaveCount(0, { timeout: 6_000 });
     await assistantTrigger.click({ button: "right" });

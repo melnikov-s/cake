@@ -293,6 +293,7 @@ export const cakeRpcPayloadSchemas = {
     sessionId: bounded(1, 256),
     workspacePath: bounded(1, 4_096),
     prompt: bounded(1, 32_000),
+    composerSelection: Schema.optional(bounded(1, 32_000)),
     staged: Schema.Boolean,
     context: Schema.Array(
       Schema.Struct({ role: Schema.Literals(["user", "assistant"]), text: stringMax(262_144) }),
