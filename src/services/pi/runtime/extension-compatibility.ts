@@ -174,6 +174,8 @@ export function createUnavailableTheme(onUse?: () => void): Theme {
     reported = true;
     onUse?.();
   };
+  // SAFETY: the Proxy's `get` trap synthesizes every Theme member Pi reads;
+  // the empty target is never accessed directly.
   return new Proxy({} as Theme, {
     get(_target, property) {
       if (typeof property !== "string") return undefined;

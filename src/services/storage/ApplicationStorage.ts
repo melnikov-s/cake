@@ -222,7 +222,7 @@ const migrateVersionOne = Effect.fn("ApplicationStorage.migrateVersionOne")((
 const migrateVersionTwo = Effect.fn("ApplicationStorage.migrateVersionTwo")((
   state: ApplicationStateV2,
 ) => {
-  const globalSessionLabels = state.globalWorkflowStatuses;
+  const { globalWorkflowStatuses: globalSessionLabels, ...rest } = state;
   const projects = state.projects.map((project) =>
     project.workflow
       ? {
@@ -238,7 +238,6 @@ const migrateVersionTwo = Effect.fn("ApplicationStorage.migrateVersionTwo")((
         }
       : project,
   );
-  const { globalWorkflowStatuses: _, ...rest } = state;
   return Effect.succeed({ ...rest, projects, globalSessionLabels });
 });
 

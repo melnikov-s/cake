@@ -40,7 +40,7 @@ const asError =
     );
 
 /** Acquires the Pi runtime profile already assembled by the owning session collection. */
-export const acquire = Effect.fn("SessionChats.acquire")(function* (sessionId: string) {
+const acquire = Effect.fn("SessionChats.acquire")(function* (sessionId: string) {
   const sessions = yield* PiSessions;
   return yield* sessions.acquireSession(sessionId).pipe(asError("acquire"));
 });

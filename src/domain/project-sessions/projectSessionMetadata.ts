@@ -282,7 +282,7 @@ const familyCatalog = Effect.fn("ProjectSessions.familyCatalog")(function* (
   };
 });
 
-export const catalogForState = Effect.fn("ProjectSessions.catalogForState")(function* (
+const catalogForState = Effect.fn("ProjectSessions.catalogForState")(function* (
   query: ProjectSessionCatalogQuery,
   state: ApplicationState,
 ) {

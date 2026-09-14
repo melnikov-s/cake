@@ -17,10 +17,16 @@ function fixture(
       ? models.projectSession("session-1", "/project")
       : models.cakeChat("session-1");
   const operations = mount(createStore(SessionOperationCoordinatorStore));
-  const deliver = vi.fn(async (_input: unknown, _options?: unknown) => true);
-  const editMessage = vi.fn(async (_input: unknown, _options?: unknown) => undefined);
-  const setModel = vi.fn(async (_provider: string, _modelId: string) => undefined);
-  const abort = vi.fn(async (_input?: unknown, _options?: unknown) => undefined);
+  const deliver = vi.fn<(input: unknown, options?: unknown) => Promise<boolean>>(async () => true);
+  const editMessage = vi.fn<(input: unknown, options?: unknown) => Promise<undefined>>(
+    async () => undefined,
+  );
+  const setModel = vi.fn<(provider: string, modelId: string) => Promise<undefined>>(
+    async () => undefined,
+  );
+  const abort = vi.fn<(input?: unknown, options?: unknown) => Promise<undefined>>(
+    async () => undefined,
+  );
   const rewordComposerSelection = vi.fn(async () => "Reworded");
   const client = {
     sessionChats: {

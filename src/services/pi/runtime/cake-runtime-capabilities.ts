@@ -267,9 +267,7 @@ export function createAgentControlOperations(
   ];
 }
 
-function createCakeToolDefinition(
-  definitions: readonly CakeOperationDefinition[],
-): ToolDefinition {
+function createCakeToolDefinition(definitions: readonly CakeOperationDefinition[]): ToolDefinition {
   const registry = new CakeOperationRegistry(definitions);
   return {
     name: "cake",

@@ -21,7 +21,7 @@ describe("CakeChatCollectionStore", () => {
       {} as Client,
     );
     const first = store.registry.load("first");
-    const second = store.registry.load("second");
+    store.registry.load("second");
     store.sessionLayoutStore.ensureSession("first");
     store.sessionLayoutStore.showSession("second");
 

@@ -17,7 +17,7 @@ export interface DiscussionSessionRecord {
   readonly resolvedAt?: string;
 }
 
-export interface DiscussionSessionLocation {
+interface DiscussionSessionLocation {
   readonly agentDirectory: string;
   readonly sessionDirectory: string;
   readonly parentSessionDirectory: string;
