@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { RuntimeTurnCompletion } from "../../../../src/services/pi/runtime/RuntimeTurnCompletion";
+import {
+  RuntimeTurnCompletion,
+  TurnCanceledError,
+} from "../../../../src/services/pi/runtime/RuntimeTurnCompletion";
 
 describe("RuntimeTurnCompletion", () => {
   it("handles Pi-expanded input and commands that do not start a run", async () => {
@@ -66,5 +69,19 @@ describe("RuntimeTurnCompletion", () => {
     await expect(running).rejects.toThrow("Session was aborted");
     turns.settle();
     expect(turns.executingIds()).toEqual([]);
+  });
+
+  it("distinguishes user cancellation from dispatch failure", async () => {
+    const turns = new RuntimeTurnCompletion();
+    const removed = turns.track("removed", "review");
+    const cleared = turns.track("cleared", "summarize");
+    const failed = turns.track("failed", "implement");
+    turns.consume("implement");
+    turns.cancelQueued("review");
+    turns.cancel(true);
+    turns.failHandledInput("failed", new Error("delivery failed"));
+    await expect(removed).rejects.toBeInstanceOf(TurnCanceledError);
+    await expect(cleared).rejects.toBeInstanceOf(TurnCanceledError);
+    await expect(failed).rejects.not.toBeInstanceOf(TurnCanceledError);
   });
 });

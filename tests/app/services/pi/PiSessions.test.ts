@@ -8,6 +8,7 @@ import {
   type PiSessionsAdapter,
   type PiSessionAcquireOptions,
 } from "../../../../src/services/pi/PiSessions";
+import { TurnCanceledError } from "../../../../src/services/pi/runtime/RuntimeTurnCompletion";
 import { options, fakeRuntime } from "../../helpers/piRuntimeFixture";
 
 const adapter = (
@@ -71,6 +72,55 @@ describe("PiSessions", () => {
       yield* handle.abort();
       yield* Deferred.await(returned);
       assert.deepEqual(outcomes, ["aborted"]);
+    }),
+  );
+
+  it.effect("settles withdrawn queued input as aborted and runtime failures as failed", () =>
+    Effect.gen(function* () {
+      const outcomes: Array<{ text: string; outcome: string }> = [];
+      const settledTwice = yield* Deferred.make<void>();
+      const layer = makePiSessionsLayer({
+        sessionIds: () => Stream.empty,
+        catalog: () => Stream.empty,
+        catalogEntry: () => Effect.succeed(undefined),
+        inspect: () => Effect.succeed(undefined),
+        changelog: () => Effect.succeed(""),
+        createRuntime: (runtimeOptions) =>
+          Effect.succeed({
+            ...fakeRuntime(runtimeOptions, () => undefined),
+            // A removed queue row rejects its correlation as a cancellation; a
+            // broken delivery rejects with an ordinary error.
+            prompt: (text: string) =>
+              Promise.reject(
+                text === "withdrawn"
+                  ? new TurnCanceledError("Queued input was canceled")
+                  : new Error("Provider unavailable"),
+              ),
+          }),
+      });
+      const context = yield* Layer.build(layer);
+      const sessions = Context.get(context, PiSessions);
+      const turnTexts = new Map<string, string>();
+      const handle = yield* sessions.acquire({
+        ...options(),
+        admitTurn: (input, accept) =>
+          Effect.sync(() => turnTexts.set(input.turnId, input.text)).pipe(Effect.andThen(accept)),
+        onTurnSettled: (event) =>
+          Effect.sync(() => {
+            outcomes.push({ text: turnTexts.get(event.turnId) ?? "", outcome: event.outcome });
+            if (outcomes.length === 2) Deferred.doneUnsafe(settledTwice, Effect.void);
+          }),
+      });
+      yield* handle.followUp("withdrawn");
+      yield* handle.followUp("broken");
+      yield* Deferred.await(settledTwice);
+      assert.deepEqual(
+        [...outcomes].sort((left, right) => left.text.localeCompare(right.text)),
+        [
+          { text: "broken", outcome: "failed" },
+          { text: "withdrawn", outcome: "aborted" },
+        ],
+      );
     }),
   );
 

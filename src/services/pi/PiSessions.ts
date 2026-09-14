@@ -31,6 +31,7 @@ import {
   type CakeRuntimeEvent,
   type CakeRuntimeOptions,
 } from "./runtime/cake-runtime";
+import { TurnCanceledError } from "./runtime/RuntimeTurnCompletion";
 import {
   loadPiChangelog,
   loadWorkspaceSessionSummary,
@@ -566,12 +567,18 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
                 });
             }
           });
-          const run = runtimeOperation(delivery, () =>
-            retained.runtime.prompt(text, delivery, [...attachments], markdown, turnId),
-          ).pipe(
+          // Input the user withdrew (abort, removed queue row, cleared queue) is a
+          // cancellation of accepted work, not a failure of the session.
+          const run = Effect.tryPromise({
+            try: () => retained.runtime.prompt(text, delivery, [...attachments], markdown, turnId),
+            catch: (cause) => cause,
+          }).pipe(
             Effect.matchEffect({
               onSuccess: () => settle("complete"),
-              onFailure: (error) => settle("failed", error.message),
+              onFailure: (cause) =>
+                cause instanceof TurnCanceledError
+                  ? settle("aborted")
+                  : settle("failed", messageOf(cause)),
             }),
             Effect.ensuring(Scope.close(turnScope, Exit.void)),
           );

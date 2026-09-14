@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { Attachment, UiPart } from "../../../ipc/session-contract";
 import { parsePiBuiltinCommand } from "../../../ipc/session-contract";
-import { RuntimeTurnCompletion } from "./RuntimeTurnCompletion";
+import { RuntimeTurnCompletion, TurnCanceledError } from "./RuntimeTurnCompletion";
 import {
   imageContent,
   locateQueuedMessage,
@@ -83,7 +83,7 @@ export function createCakeRuntimeTurnController(input: {
 
   const assertNotAborted = (generation: number) => {
     assertActive();
-    if (generation !== abortGeneration) throw new Error("Session was aborted");
+    if (generation !== abortGeneration) throw new TurnCanceledError("Session was aborted");
   };
 
   const runCompact = async (instructions?: string, generation?: number) => {
@@ -333,7 +333,10 @@ export function createCakeRuntimeTurnController(input: {
         (item, index) => {
           compactionQueue.splice(index, 1);
           if (item.turnId)
-            turnCompletions.failHandledInput(item.turnId, new Error("Queued input was canceled"));
+            turnCompletions.failHandledInput(
+              item.turnId,
+              new TurnCanceledError("Queued input was canceled"),
+            );
         },
       ),
     steerQueuedMessage: (partId) =>

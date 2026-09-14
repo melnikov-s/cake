@@ -1,3 +1,11 @@
+/**
+ * Rejection for accepted input the user withdrew: an abort, a removed queue
+ * row, or a cleared queue. It is a cancellation, never a runtime failure.
+ */
+export class TurnCanceledError extends Error {
+  override readonly name = "TurnCanceledError";
+}
+
 /** Correlates accepted Pi input with consumption and the actual settled run. */
 export class RuntimeTurnCompletion {
   private readonly pending = new Map<
@@ -58,14 +66,16 @@ export class RuntimeTurnCompletion {
     const match = [...this.pending].find(([, item]) => !item.consumed && item.content === content);
     if (!match) return;
     this.pending.delete(match[0]);
-    match[1].reject(new Error("Queued input was canceled"));
+    match[1].reject(new TurnCanceledError("Queued input was canceled"));
   }
 
   cancel(queuedOnly = false) {
     for (const [id, item] of this.pending) {
       if (queuedOnly && item.consumed) continue;
       this.pending.delete(id);
-      item.reject(new Error(queuedOnly ? "Queued input was canceled" : "Session was aborted"));
+      item.reject(
+        new TurnCanceledError(queuedOnly ? "Queued input was canceled" : "Session was aborted"),
+      );
     }
   }
 }

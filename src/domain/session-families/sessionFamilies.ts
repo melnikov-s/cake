@@ -340,6 +340,13 @@ export const deliver = Effect.fn("SessionFamilies.deliverNotice")(function* (tur
   const senderMember = familyMember(family, turn.senderSessionId);
   const childMember = familyMember(family, turn.sessionId);
   if (!senderMember || !childMember) return;
+  // Outcome notices exist so a delegating parent learns when its child stops.
+  // A child is never told about its parent's turns, and no member is told
+  // about a session it does not own.
+  if (childMember.parentSessionId !== turn.senderSessionId) {
+    yield* storage.completeNotice(turn.turnId);
+    return;
+  }
   const locations = yield* projectSessionLocations.locations({ includeInactive: true });
   const senderLocation = locations.find(
     (item) =>

@@ -88,6 +88,49 @@ describe("Session Family outcome delivery", () => {
     ),
   );
 
+  it.effect("never messages a child about its parent's turn", () =>
+    Effect.gen(function* () {
+      const storage = yield* SessionFamilyStorage;
+      // The parent was processing the child's report when the user stopped it.
+      const parentTurn = {
+        sessionId: "session-1",
+        senderSessionId: childId,
+        turnId: "0a7d1e6c-3a8b-4d2e-9f11-6f2b7c1d9e01",
+        requestMessageId: "a262d069-78f8-4c36-9118-1b4aec199bf3",
+        threadId: "e648e33b-7192-499e-a471-3ee472e7d0a2",
+        expectsResponse: true,
+        reported: false,
+        outcome: "failed" as const,
+      };
+      yield* storage.addChild(reservation);
+      yield* storage.recordTurn(parentTurn);
+      yield* Effect.scoped(deliver(parentTurn));
+      assert.deepEqual((yield* storage.state()).turns, []);
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          familyStorageHarness().layer,
+          environment,
+          Layer.mock(SessionArchiveStorage, { locate: () => Effect.succeed("active" as const) }),
+          makePiSessionsLayer({
+            sessionIds: () => Stream.empty,
+            catalog: () => Stream.empty,
+            catalogEntry: () => Effect.succeed(undefined),
+            inspect: () => Effect.succeed(undefined),
+            changelog: () => Effect.succeed(""),
+            createRuntime: (runtimeOptions) =>
+              Effect.succeed({
+                ...fakeRuntime(runtimeOptions, () => undefined),
+                prompt: async () => {
+                  throw new Error("A child must not receive notices about its parent");
+                },
+              }),
+          }),
+        ),
+      ),
+    ),
+  );
+
   it.effect("recovers an accepted reply when acknowledgement was interrupted", () => {
     const replyId = "367f6f87-5cc4-440f-b91f-28f6e722db81";
     return Effect.gen(function* () {
