@@ -192,7 +192,9 @@ test("rewords composer text and opens the focused session assistant", async () =
     expect(prompts[1]).toContain("vscode.enter");
     expect(prompts[1]).toContain("vscode.open");
     expect(prompts[1]).toContain("The attached Project Session is your parent and its ID is");
-    expect(prompts[1]).toContain("this text was selected in the parent composer");
+    // The composer selection travels with the message as an annotation.
+    expect(prompts[1]).toContain("selected text was highlighted in the parent composer");
+    expect(prompts[1]).toContain("<cake-annotations>");
     expect(prompts[1]).toContain("rough ramble");
     await expect
       .poll(() =>

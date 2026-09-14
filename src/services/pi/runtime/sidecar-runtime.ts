@@ -173,6 +173,11 @@ export async function runInlineWidgetGeneration(options: {
 const MAX_DISCUSSION_PARENT_CONTEXT_LENGTH = 524_288;
 
 /** Writes one bounded, regenerated parent projection to a Cake-owned derived-context path. */
+export interface StagedParentMessage {
+  readonly role: "user" | "assistant";
+  readonly text: string;
+}
+
 export const writeDiscussionParentContext = Effect.fn("PiSidecar.writeDiscussionParentContext")(
   function* (
     fileSystem: FileSystem.FileSystem,
@@ -181,31 +186,35 @@ export const writeDiscussionParentContext = Effect.fn("PiSidecar.writeDiscussion
       readonly cwd: string;
       readonly parentSessionRoot: string;
       readonly parent?: ReviewParentContext;
+      /** Renderer-held messages of a staged parent that has no transcript yet. */
+      readonly staged?: ReadonlyArray<StagedParentMessage>;
       readonly target: string;
     },
   ) {
     const parentContext = options.parent;
-    if (!parentContext?.sessionFile)
-      return yield* Effect.fail(new Error("The parent session is unavailable for this discussion"));
-    const projection = yield* Effect.try({
-      try: () => {
-        assertSessionPath(
-          parentContext.sessionFile,
-          options.parentSessionRoot,
-          "Parent session file",
-        );
-        const parent = SessionManager.open(
-          parentContext.sessionFile,
-          options.parentSessionRoot,
-          options.cwd,
-        );
-        return renderParentTranscript(
-          parent.getSessionId(),
-          parent.getBranch(parentContext.leafId),
-        );
-      },
-      catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
-    });
+    const projection = parentContext?.sessionFile
+      ? yield* Effect.try({
+          try: () => {
+            assertSessionPath(
+              parentContext.sessionFile,
+              options.parentSessionRoot,
+              "Parent session file",
+            );
+            const parent = SessionManager.open(
+              parentContext.sessionFile,
+              options.parentSessionRoot,
+              options.cwd,
+            );
+            return renderParentTranscript(
+              parent.getSessionId(),
+              parent.getBranch(parentContext.leafId),
+            );
+          },
+          catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
+        })
+      : options.staged
+        ? renderStagedParentTranscript(options.staged)
+        : yield* Effect.fail(new Error("The parent session is unavailable for this discussion"));
     yield* atomicWriteFile(fileSystem, path, options.target, projection, (_stage, cause) =>
       cause instanceof Error ? cause : new Error(String(cause)),
     );
@@ -213,6 +222,16 @@ export const writeDiscussionParentContext = Effect.fn("PiSidecar.writeDiscussion
     return options.target;
   },
 );
+
+function renderStagedParentTranscript(messages: ReadonlyArray<StagedParentMessage>) {
+  const header = `# Staged parent session\n\nThe parent Project Session is still a staged chat, so its current user and assistant messages are supplied here as read-only context. Tool calls are intentionally omitted.\n\n`;
+  const transcript = messages
+    .filter((message) => message.text.trim())
+    .map((message) => `## ${message.role}\n\n${message.text.trim()}`)
+    .join("\n\n---\n\n")
+    .slice(-MAX_DISCUSSION_PARENT_CONTEXT_LENGTH);
+  return `${header}${transcript}\n`;
+}
 
 function renderParentTranscript(sessionId: string, entries: SessionEntry[]) {
   const sections = entries.flatMap((entry): string[] => {

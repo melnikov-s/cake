@@ -50,7 +50,11 @@ describe("SideChatsMenu", () => {
       updatedAt: "2026-01-01T00:00:00.000Z",
     });
     const openSideChat = vi.fn(() => true);
-    const store = { sideChatThreads: [thread], openSideChat } as unknown as ProjectSessionStore;
+    const store = {
+      sideChatThreads: [thread],
+      sideChatStreaming: () => true,
+      openSideChat,
+    } as unknown as ProjectSessionStore;
     const onOpen = vi.fn();
     const container = document.createElement("div");
     document.body.append(container);
@@ -64,6 +68,7 @@ describe("SideChatsMenu", () => {
 
     const popover = document.body.querySelector<HTMLElement>('[aria-label="Open side chats"]')!;
     expect(popover.textContent).toContain("The important selection");
+    expect(popover.textContent).toContain("Working…");
     const threadButton = Array.from(popover.querySelectorAll<HTMLButtonElement>("button")).find(
       (button) => button.textContent?.includes("The important selection"),
     )!;

@@ -8,6 +8,8 @@ import {
   TurnId,
   type ConversationSnapshot,
 } from "../../../../src/domain/conversations/conversation-data";
+import type { DiscussionCatalogUpdate } from "../../../../src/domain/application/catalog-data";
+import type { DiscussionSessionUpdate } from "../../../../src/domain/discussion-sessions/discussion-session-data";
 import type { ManagedWorktreeCatalogUpdate } from "../../../../src/domain/worktrees/managed-worktree-data";
 import {
   ProjectSessionError,
@@ -19,6 +21,7 @@ import { observationFailureDetails } from "../../../../src/renderer/observers/mo
 import { CatalogIdentityCollisionError } from "../../../../src/renderer/reducers/CatalogReducer";
 import type { Runtime } from "../../../../src/renderer/runtime";
 import { ProjectCatalog } from "../../../../src/renderer/models/ProjectCatalog";
+import { RootProjection } from "../../../../src/renderer/models/RootProjection";
 import { CakeChatCatalog } from "../../../../src/renderer/models/CakeChatCatalog";
 import { SessionCatalog } from "../../../../src/renderer/models/SessionCatalog";
 import { Session } from "../../../../src/renderer/models/Session";
@@ -901,6 +904,167 @@ describe("createModelObserver", () => {
       session[Symbol.dispose]();
       consoleError.mockRestore();
       vi.useRealTimers();
+    }
+  });
+
+  it("observes each Discussion sidecar as its own Session for as long as its thread is listed", async () => {
+    const catalogs = await Effect.runPromise(Queue.unbounded<DiscussionCatalogUpdate>());
+    const sidecarUpdates = await Effect.runPromise(Queue.unbounded<DiscussionSessionUpdate>());
+    const observedThreads: string[] = [];
+    const observedTargets: Array<{ threadId: string; tools?: unknown }> = [];
+    let sidecarObservations = 0;
+    const conversation: ConversationSnapshot = {
+      workingDirectory: "/cake",
+      sessionId: "sidecar-1",
+      sessionFile: "/reviews/sidecar-1.jsonl",
+      parts: [{ id: "user-1", kind: "text", role: "user", text: "Explain", status: "complete" }],
+      models: [],
+      thinkingLevel: "off",
+      availableThinkingLevels: ["off"],
+      streaming: true,
+      diagnostics: [],
+      commands: [],
+      compatibility: { resources: [], diagnostics: [] },
+      extensionUi: { statuses: [] },
+      tree: [],
+    };
+    const thread = {
+      id: "thread-1",
+      parentSessionId: "session",
+      workingDirectory: "/cake",
+      sidecarSessionId: "sidecar-1",
+      anchor: {
+        path: "session:session",
+        view: "session" as const,
+        start: { diffLine: 0 },
+        end: { diffLine: 0 },
+        selectedText: "",
+        contextBefore: "",
+        contextAfter: "",
+        diff: "",
+      },
+      parts: [],
+      status: "open" as const,
+      createdAt: "2026-01-01",
+      updatedAt: "2026-01-01",
+    };
+    const client = {
+      ...clientWithProjectStream(() => Stream.never),
+      projectSessions: {
+        observeCatalog: () => Stream.concat(Stream.make(emptySessionCatalog), Stream.never),
+        observe: () => Stream.never,
+      },
+      discussionSessions: {
+        observeCatalog: () => Stream.fromQueue(catalogs),
+        observe: (target: { threadId: string; tools?: unknown }) => {
+          observedThreads.push(target.threadId);
+          observedTargets.push(target);
+          sidecarObservations += 1;
+          return Stream.fromQueue(sidecarUpdates);
+        },
+      },
+      subagents: { observe: () => Stream.never },
+    } as unknown as CakeIpcClientService;
+    const projection = RootProjection.create({});
+    const observer = observerFor(client);
+    observer.observe({
+      projection,
+      projectSessionCatalogQueries: () => [],
+      projectSessionTargets: () => [{ sessionId: "session", workingDirectory: "/cake" }],
+      cakeChatTargets: () => [],
+      sessionAssistantTools: () => [
+        { command: "sessions.open", topic: "sessions", summary: "Open", parameters: {} },
+      ],
+    });
+
+    try {
+      await Effect.runPromise(
+        Queue.offer(catalogs, {
+          _tag: "Snapshot",
+          revision: 1,
+          parentSessionId: "session",
+          threads: [thread],
+        }),
+      );
+      await vi.waitFor(() => expect(observedThreads).toEqual(["thread-1"]));
+      // Ordinary side chats carry no control catalog.
+      expect(observedTargets[0]).not.toHaveProperty("tools");
+      const sidecar = projection.findDiscussionSession("sidecar-1");
+      expect(sidecar?.workingDirectory).toBe("/cake");
+
+      await Effect.runPromise(
+        Queue.offer(sidecarUpdates, {
+          _tag: "Snapshot",
+          revision: 1,
+          snapshot: {
+            identity: {
+              _tag: "DiscussionSession",
+              sessionId: "sidecar-1",
+              parentSessionId: "session",
+            },
+            conversation,
+          },
+        }),
+      );
+      await vi.waitFor(() => expect(sidecar?.observedSnapshotRevision).toBe(1));
+      expect(sidecar?.streaming).toBe(true);
+      expect(sidecar?.uiParts.map((part) => part.id)).toEqual(["user-1"]);
+
+      // A catalog refresh (turn settled) touches thread metadata only.
+      await Effect.runPromise(
+        Queue.offer(catalogs, {
+          _tag: "Event",
+          revision: 2,
+          parentSessionId: "session",
+          event: { _tag: "Replaced", threads: [{ ...thread, updatedAt: "2026-01-02" }] },
+        }),
+      );
+      await vi.waitFor(() =>
+        expect(projection.findProjectSession("session")?.reviewThreads[0]?.updatedAt).toBe(
+          "2026-01-02",
+        ),
+      );
+      expect(projection.findDiscussionSession("sidecar-1")).toBe(sidecar);
+      expect(sidecar?.uiParts.map((part) => part.id)).toEqual(["user-1"]);
+      expect(sidecarObservations).toBe(1);
+
+      // The session assistant thread is observed the same way, with the Cake
+      // control catalog its sidecar is acquired with.
+      const assistant = {
+        ...thread,
+        id: "assistant",
+        sidecarSessionId: "sidecar-assistant",
+        anchor: { ...thread.anchor, path: "session:session/assistant" },
+      };
+      await Effect.runPromise(
+        Queue.offer(catalogs, {
+          _tag: "Event",
+          revision: 3,
+          parentSessionId: "session",
+          event: { _tag: "Replaced", threads: [thread, assistant] },
+        }),
+      );
+      await vi.waitFor(() => expect(observedThreads).toEqual(["thread-1", "assistant"]));
+      expect(observedTargets[1]).toMatchObject({
+        threadId: "assistant",
+        tools: [expect.objectContaining({ command: "sessions.open" })],
+      });
+      expect(projection.findDiscussionSession("sidecar-assistant")).toBeDefined();
+
+      // Dropping the threads releases their conversation Models and observations.
+      await Effect.runPromise(
+        Queue.offer(catalogs, {
+          _tag: "Event",
+          revision: 4,
+          parentSessionId: "session",
+          event: { _tag: "Replaced", threads: [] },
+        }),
+      );
+      await vi.waitFor(() => expect(projection.findDiscussionSession("sidecar-1")).toBeUndefined());
+      expect(projection.findDiscussionSession("sidecar-assistant")).toBeUndefined();
+    } finally {
+      observer.stop();
+      projection[Symbol.dispose]();
     }
   });
 });

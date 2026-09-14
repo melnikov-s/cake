@@ -10,6 +10,8 @@ export interface MessageCommentsStoreProps {
   sessionModel(sessionId: string): Session | undefined;
   reviews(): ReviewsStore;
   context(): { sessionId: string } | undefined;
+  /** The selection draft became a Discussion Session; its chat can take over. */
+  onThreadCreated?(threadId: string): void;
 }
 
 export interface MessageSelectionAnchor {
@@ -40,16 +42,6 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
 
   threadsForMessage(messageId: string) {
     return this.threads.filter((thread) => thread.anchor.messageId === messageId);
-  }
-
-  threadStreaming(threadId: string) {
-    return this.props.reviews().threadStreaming(threadId);
-  }
-
-  private get draftThread() {
-    return this.createdThreadId
-      ? this.threads.find((thread) => thread.id === this.createdThreadId)
-      : undefined;
   }
 
   chatStore(threadId: string) {
@@ -85,37 +77,36 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
             text: selection.selectedText,
             status: "complete" as const,
           },
-          ...(this.draftThread?.uiParts ?? []),
         ];
       },
-      streaming: () => Boolean(this.createdThreadId && this.threadStreaming(this.createdThreadId)),
-      submitting: () => false,
+      streaming: () => false,
+      // Once the thread exists its own conversation Store takes over the side
+      // chat; the draft only bridges the moment until the catalog lists it.
+      submitting: () => Boolean(this.createdThreadId),
       configuration: () => this.props.reviews().configuration,
       commands: () => [],
       placeholder: () => "Ask Cake about this passage…",
       inputLabel: () => "Message about selected text",
       focusRequestRevision: () => this.draftFocusRequestRevision,
       canSubmit: (draft) =>
-        Boolean(this.draftSelection && (draft.trim() || this.annotationDraft.annotations.length)) &&
-        !this.draftThread?.pending &&
-        (!this.createdThreadId || !this.threadStreaming(this.createdThreadId)),
+        Boolean(
+          this.draftSelection &&
+          !this.createdThreadId &&
+          (draft.trim() || this.annotationDraft.annotations.length),
+        ),
       submit: async (draft) => {
-        if (!this.draftSelection) return false;
-        if (!this.createdThreadId) {
-          const threadId = await this.createThread(
-            this.draftSelection,
-            draft,
-            this.annotationDraft.annotations,
-          );
-          this.createdThreadId = threadId;
-          if (threadId) this.annotationDraft.clear();
-          return Boolean(threadId);
+        if (!this.draftSelection || this.createdThreadId) return false;
+        const threadId = await this.createThread(
+          this.draftSelection,
+          draft,
+          this.annotationDraft.annotations,
+        );
+        this.createdThreadId = threadId;
+        if (threadId) {
+          this.annotationDraft.clear();
+          this.props.onThreadCreated?.(threadId);
         }
-        const submitted = await this.props
-          .reviews()
-          .replyThread(this.createdThreadId, draft, this.annotationDraft.annotations);
-        if (submitted) this.annotationDraft.clear();
-        return submitted;
+        return Boolean(threadId);
       },
       annotations: () => this.annotationDraft.annotations,
       addAnnotation: (annotation) => this.annotationDraft.add(annotation),
@@ -125,7 +116,6 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
         message: this.props.reviews().error,
         details: this.props.reviews().errorDetails,
       }),
-      usage: () => this.draftThread?.usage,
     });
   }
 

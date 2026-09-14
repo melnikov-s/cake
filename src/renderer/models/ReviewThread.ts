@@ -3,9 +3,13 @@ import type {
   DiscussionAnchor,
   DiscussionThread,
 } from "../../domain/discussion-sessions/discussion-session-data";
-import type { SessionUsage, ThinkingLevel } from "../../ipc/session-contract";
 import { Message } from "./Message";
 
+/**
+ * Cake-owned Discussion Session metadata from the parent's Discussion catalog.
+ * The live sidecar conversation is a separate `Session` Model in
+ * `RootProjection.discussionSessions`, addressed by `sidecarSessionId`.
+ */
 export class ReviewThread extends Model {
   @id id = "";
   workingDirectory = "";
@@ -20,13 +24,9 @@ export class ReviewThread extends Model {
     contextAfter: "",
     diff: "",
   };
+  /** Persisted transcript preview refreshed when the sidecar settles; not the live conversation. */
   @child(Message) parts: Message[] = [];
-  usage: SessionUsage | undefined;
-  /** The sidecar session's current model, once it has run. */
-  model: { provider: string; modelId: string; name: string } | undefined;
-  thinkingLevel: ThinkingLevel | undefined;
   status: DiscussionThread["status"] = "open";
-  streaming = false;
   createdAt = "";
   updatedAt = "";
   resolvedAt: string | undefined;

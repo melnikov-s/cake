@@ -1,6 +1,6 @@
 import { Store, child, createStore, effect as reactiveEffect } from "r-state-tree";
 import type { Session } from "../models/Session";
-import type { ModelPreset, SessionSnapshot } from "../../ipc/session-contract";
+import type { ModelPreset, SessionSnapshot, UiPart } from "../../ipc/session-contract";
 import type { ComposerDeliveryInput } from "./ConversationComposerStore";
 import type { StoreEvent } from "../events/StoreEvent";
 import {
@@ -49,6 +49,8 @@ interface ConversationChatCapabilities {
   commands(): SessionSnapshot["commands"];
   placeholder(): string;
   inputLabel(): string;
+  /** Kind-specific context shown ahead of the transcript, such as a Discussion anchor. */
+  leadingParts?(): UiPart[];
   addAttachments?(): Promise<void>;
   suggestFiles?(prefix: string): ReturnType<NonNullable<ChatStoreProps["suggestFiles"]>>;
   sessionCreationChoice?(): WorktreeDraftChoice;
@@ -208,7 +210,10 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
     const capabilities = this.props.chat;
     return createStore(ChatStore, {
       id: () => this.sessionId,
-      parts: () => this.composerStore.parts,
+      parts: () =>
+        capabilities.leadingParts
+          ? [...capabilities.leadingParts(), ...this.composerStore.parts]
+          : this.composerStore.parts,
       streaming: () => this.streaming,
       draft: () => this.composerStore.draftStore.text,
       setDraft: (value) => this.composerStore.draftStore.setText(value),

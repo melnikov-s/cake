@@ -5,6 +5,7 @@ import type {
   ConversationEvent,
   ConversationSnapshot,
 } from "../../domain/conversations/conversation-data";
+import type { DiscussionSessionUpdate } from "../../domain/discussion-sessions/discussion-session-data";
 import type { ProjectSessionUpdate } from "../../domain/project-sessions/project-session-data";
 import {
   extensionUiEventSchema,
@@ -109,6 +110,29 @@ export function applyCakeChatUpdate(model: Session, sessionId: string, update: C
     return;
   }
   applyConversationEvent(model, event);
+}
+
+/** Applies one Discussion Session sidecar observation to its own `Session` Model. */
+export function applyDiscussionSessionUpdate(
+  model: Session,
+  sessionId: string,
+  update: DiscussionSessionUpdate,
+) {
+  if (update._tag === "Snapshot") {
+    if (
+      update.snapshot.identity._tag !== "DiscussionSession" ||
+      update.snapshot.identity.sessionId !== sessionId
+    )
+      throw new Error(`Discussion Session identity collision: ${sessionId}`);
+    batch(() => {
+      applyConversationSnapshot(model, update.snapshot.conversation, false);
+      model.observedSnapshotRevision += 1;
+    });
+    return;
+  }
+  if (update.sessionId !== sessionId)
+    throw new Error(`Discussion Session event identity collision: ${sessionId}`);
+  applyConversationEvent(model, update.event);
 }
 
 export function applyConversationSnapshot(

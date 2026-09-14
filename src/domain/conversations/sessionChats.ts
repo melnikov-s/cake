@@ -45,6 +45,11 @@ export const acquire = Effect.fn("SessionChats.acquire")(function* (sessionId: s
   return yield* sessions.acquireSession(sessionId).pipe(asError("acquire"));
 });
 
+/**
+ * Routes a primary session's renderer-facing UI requests to the prompting
+ * window. Auxiliary profiles (Discussion and Subagent Sessions) never raise
+ * renderer requests, so they have nothing to bind.
+ */
 export const bindRenderer = Effect.fn("SessionChats.bindRenderer")(function* (
   sessionId: string,
   connectionId: number,
@@ -56,11 +61,7 @@ export const bindRenderer = Effect.fn("SessionChats.bindRenderer")(function* (
       : handle.profile === "CakeChatSession"
         ? ({ _tag: "CakeChatSession", sessionId } as const)
         : undefined;
-  if (!target)
-    return yield* new SessionChatError({
-      operation: "bindRenderer",
-      message: `${handle.profile} is not a primary Session Chat profile`,
-    });
+  if (!target) return;
   const coordinator = yield* RendererRequestCoordinator;
   yield* coordinator.bind(target, connectionId).pipe(asError("bindRenderer"));
 });

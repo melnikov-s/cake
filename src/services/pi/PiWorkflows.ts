@@ -1,15 +1,11 @@
 import { Effect } from "effect";
-import type { JsonValue } from "../../ipc/json-contract";
 import {
   findSessionFile,
   forkWorkspaceSession,
   inspectWorkspace as inspectWorkspaceSync,
 } from "./runtime/session-discovery";
-import { runSessionAssistant } from "./runtime/session-assistant";
 import { rewordSelectionWithProjectContext } from "./runtime/rewording-agent";
 
-type SessionAssistantOptions = Parameters<typeof runSessionAssistant>[0];
-type SessionAssistantInvocation = Parameters<SessionAssistantOptions["invoke"]>[0];
 type RewordSelectionOptions = Parameters<typeof rewordSelectionWithProjectContext>[0];
 
 const asError = (cause: unknown) => (cause instanceof Error ? cause : new Error(String(cause)));
@@ -28,30 +24,6 @@ export const rewordProjectSelection = Effect.fn("PiWorkflows.rewordProjectSelect
         }),
       catch: asError,
     }),
-);
-
-export const runProjectSessionAssistant = Effect.fn("PiWorkflows.runProjectSessionAssistant")(
-  function* (
-    options: Omit<SessionAssistantOptions, "invoke"> & {
-      readonly invoke: (
-        invocation: SessionAssistantInvocation,
-        signal: AbortSignal,
-      ) => Effect.Effect<JsonValue, unknown, never>;
-    },
-  ) {
-    const context = yield* Effect.context<never>();
-    const runCallback = Effect.runPromiseWith(context);
-    return yield* Effect.tryPromise({
-      try: (signal) =>
-        runSessionAssistant({
-          ...options,
-          signal: options.signal ? AbortSignal.any([options.signal, signal]) : signal,
-          invoke: (invocation, callbackSignal) =>
-            runCallback(options.invoke(invocation, callbackSignal), { signal: callbackSignal }),
-        }),
-      catch: asError,
-    });
-  },
 );
 
 export const locateSessionFile = Effect.fn("PiWorkflows.locateSessionFile")(

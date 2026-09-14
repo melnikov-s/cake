@@ -22,11 +22,26 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
   const sessionDirectory = cakeWorkspaceSessionDirectory(project, join(cakeHome, "pi", "sessions"));
   const digest = (value: string) => createHash("sha256").update(value).digest("hex");
   const reviewDirectory = join(cakeHome, "state", "reviews", digest(project), digest(sessionId));
+  // A code-review thread is an ordinary side chat: its transcript is a Pi sidecar.
+  const sidecarSessionId = "vscode-annotation-sidecar";
+  const sidecarDirectory = cakeWorkspaceSessionDirectory(
+    project,
+    join(
+      cakeHome,
+      "pi",
+      "review-sessions",
+      digest(project),
+      digest(sessionId),
+      digest(reviewThreadId),
+    ),
+  );
+  const sidecarFile = join(sidecarDirectory, `1970-01-01T00-00-00-000Z_${sidecarSessionId}.jsonl`);
 
   await Promise.all([
     mkdir(userData, { recursive: true }),
     mkdir(join(project, "src"), { recursive: true }),
     mkdir(sessionDirectory, { recursive: true }),
+    mkdir(sidecarDirectory, { recursive: true }),
     mkdir(reviewDirectory, { recursive: true }),
   ]);
   await writeFile(join(project, "src", "modelMeta.ts"), "export const meta = 1;\n");
@@ -67,13 +82,32 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
         contextAfter: "",
         diff: "",
       },
-      pendingComments: [
-        { id: "annotation-question", body: "Why is this exported?", createdAt: timestamp },
-      ],
+      agentSessionId: sidecarSessionId,
+      agentSessionFile: sidecarFile,
+      pendingComments: [],
       status: "open",
       createdAt: timestamp,
       updatedAt: timestamp,
     })}\n`,
+  );
+  await writeFile(
+    sidecarFile,
+    [
+      { type: "session", version: 3, id: sidecarSessionId, timestamp, cwd: project },
+      {
+        type: "message",
+        id: "annotation-question",
+        parentId: null,
+        timestamp,
+        message: {
+          role: "user",
+          content: [{ type: "text", text: "Why is this exported?" }],
+          timestamp: 0,
+        },
+      },
+    ]
+      .map((entry) => JSON.stringify(entry))
+      .join("\n") + "\n",
   );
   await writeFile(
     join(sessionDirectory, `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`),
@@ -328,7 +362,7 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
     await expect.poll(() => hasVsCodeTitleAction("Toggle Sessions Sidebar")).toBe(false);
     await expect.poll(() => hasVsCodeText("Build with Agent")).toBe(false);
     await expect
-      .poll(() => clickVsCodeText("Cake: Pending · 0 replies"), { timeout: 20_000 })
+      .poll(() => clickVsCodeText("Cake: Open · 0 replies"), { timeout: 20_000 })
       .toBe(true);
     await expect(page.getByText("Chat about selection", { exact: true })).toBeVisible();
     await expect(page.getByText("Why is this exported?", { exact: true })).toBeVisible();

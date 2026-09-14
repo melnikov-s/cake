@@ -123,30 +123,56 @@ export const makeDiscussionSessionEnvironmentLive = (
             trusted: application.snapshot().trustedProjectPaths.includes(record.workingDirectory),
           }),
         ),
-        prepareParentContext: Effect.fn("DiscussionSessionEnvironment.prepareParentContext")(
-          function* (record, parent) {
+        sidecarSystemPrompt: Effect.fn("DiscussionSessionEnvironment.sidecarSystemPrompt")(
+          function* (record) {
             const stored = yield* storage
               .get(record.workingDirectory, record.parentSessionId, record.id)
-              .pipe(Effect.mapError((cause) => environmentError("prepareParentContext", cause)));
+              .pipe(Effect.mapError((cause) => environmentError("sidecarSystemPrompt", cause)));
             if (!stored)
               return yield* new DiscussionSessionEnvironmentError({
-                operation: "prepareParentContext",
+                operation: "sidecarSystemPrompt",
                 message: "That Discussion Session no longer exists",
               });
-            const target = storage.discussionParentContextPath(
-              record.workingDirectory,
-              record.parentSessionId,
-              record.id,
+            return reviewSidecarSystemPrompt(
+              stored,
+              storage.discussionParentContextPath(
+                record.workingDirectory,
+                record.parentSessionId,
+                record.id,
+              ),
             );
-            const contextPath = yield* writeDiscussionParentContext(fileSystem, path, {
+          },
+        ),
+        prepareParentContext: Effect.fn("DiscussionSessionEnvironment.prepareParentContext")(
+          function* (record, parent) {
+            yield* writeDiscussionParentContext(fileSystem, path, {
               cwd: record.workingDirectory,
               parentSessionRoot: options.parentSessionDirectory,
               parent,
-              target,
+              target: storage.discussionParentContextPath(
+                record.workingDirectory,
+                record.parentSessionId,
+                record.id,
+              ),
             }).pipe(Effect.mapError((cause) => environmentError("prepareParentContext", cause)));
-            return reviewSidecarSystemPrompt(stored, contextPath);
           },
         ),
+        prepareStagedParentContext: Effect.fn(
+          "DiscussionSessionEnvironment.prepareStagedParentContext",
+        )(function* (record, messages) {
+          yield* writeDiscussionParentContext(fileSystem, path, {
+            cwd: record.workingDirectory,
+            parentSessionRoot: options.parentSessionDirectory,
+            staged: messages,
+            target: storage.discussionParentContextPath(
+              record.workingDirectory,
+              record.parentSessionId,
+              record.id,
+            ),
+          }).pipe(
+            Effect.mapError((cause) => environmentError("prepareStagedParentContext", cause)),
+          );
+        }),
         refreshParentIndex: Effect.fn("DiscussionSessionEnvironment.refreshParentIndex")(
           function* (record) {
             yield* storage

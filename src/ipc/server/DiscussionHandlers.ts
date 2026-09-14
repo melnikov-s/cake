@@ -6,10 +6,10 @@ export const discussionHandlers = DiscussionRpc.of({
   "discussionSessions.observeCatalog": (input) =>
     Stream.unwrap(discussionSessions.observeCatalog(input)),
   "discussionSessions.list": (input) => discussionSessions.list(input),
-  "discussionSessions.create": (input) => discussionSessions.create(input),
   "discussionSessions.observe": (target) => Stream.unwrap(discussionSessions.observe(target)),
-  "discussionSessions.prompt": (input) => discussionSessions.prompt(input),
-  "discussionSessions.abort": (target) => discussionSessions.abort(target),
+  "discussionSessions.start": (input) => discussionSessions.start(input),
+  "discussionSessions.ensureSessionAssistant": (input) =>
+    discussionSessions.ensureSessionAssistant(input),
   "discussionSessions.setResolved": ({ resolved, ...target }) =>
     discussionSessions.setResolved(target, resolved),
 });

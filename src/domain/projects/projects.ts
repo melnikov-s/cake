@@ -1,5 +1,4 @@
 import * as projectSessionLocations from "../project-sessions/projectSessionLocations";
-import * as discussionSessions from "../discussion-sessions/discussionSessions";
 import type { WebContents } from "electron";
 import { Effect, Stream } from "effect";
 import type { cakeRpcPayloadSchemas } from "../../ipc/cake-rpc-contract";
@@ -11,12 +10,10 @@ import { ProjectSessionRuntimeHost } from "../../services/pi/ProjectSessionRunti
 import {
   inspectWorkspace as inspectPiWorkspace,
   rewordProjectSelection,
-  runProjectSessionAssistant,
 } from "../../services/pi/PiWorkflows";
 import { ProjectAccess } from "../../services/projects/ProjectAccess";
 import { ProjectConfiguration } from "../../services/projects/ProjectConfiguration";
 import { RewordingRequests } from "../../services/projects/RewordingRequests";
-import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
 import { Terminal } from "../../services/terminal/Terminal";
 import { SessionCatalogChanges } from "../../services/session-catalogs/SessionCatalogChanges";
 import { ApplicationState } from "../../services/storage/ApplicationState";
@@ -175,65 +172,6 @@ export const rewordComposerSelection = Effect.fn("Projects.rewordComposerSelecti
     return { text };
   });
   return yield* operation.pipe(Effect.ensuring(requests.release(sender.id, controller)));
-});
-
-export const chatWithSessionAssistant = Effect.fn("Projects.chatWithSessionAssistant")(function* (
-  connectionId: number,
-  request: Payload<"chat-with-session-assistant">,
-) {
-  const application = yield* ApplicationState;
-  const rendererRequests = yield* RendererRequestCoordinator;
-  const electron = yield* Electron;
-  const sender = yield* requireConnection(connectionId, "chatWithSessionAssistant");
-  const utilityModel = application.snapshot().utilityModel;
-  if (!utilityModel)
-    return yield* new ProjectError({
-      operation: "chatWithSessionAssistant",
-      message: "Configure a utility model in Settings before using the session assistant",
-    });
-  const workspacePath = yield* resolveAllowedWorkingDirectory(
-    "chatWithSessionAssistant",
-    request.workspacePath,
-    electron.workspaceForConnection(sender.id),
-  );
-  if (!workspacePath)
-    return yield* new ProjectError({
-      operation: "chatWithSessionAssistant",
-      message: "The session assistant requires an open Project workspace",
-    });
-  const prepared = yield* discussionSessions
-    .prepareSessionAssistant({
-      workingDirectory: workspacePath,
-      parentSessionId: request.sessionId,
-      staged: request.staged,
-      fallbackContext: request.context,
-    })
-    .pipe(Effect.mapError((cause) => projectError("chatWithSessionAssistant", cause)));
-  const result = yield* runProjectSessionAssistant({
-    workspacePath,
-    agentDirectory: prepared.location.agentDirectory,
-    sessionDirectory: prepared.location.sessionDirectory,
-    sessionFile: prepared.record.sidecarSessionFile,
-    parentSessionId: request.sessionId,
-    utilityModel,
-    prompt: request.prompt,
-    composerSelection: request.composerSelection,
-    parentContextPrompt: prepared.systemPrompt,
-    tools: request.tools,
-    invoke: (invocation, controlSignal) =>
-      rendererRequests.requestProjectControl(
-        request.sessionId,
-        { _tag: "InvokeAppControl", ...invocation },
-        controlSignal,
-      ),
-  }).pipe(Effect.mapError((cause) => projectError("chatWithSessionAssistant", cause)));
-  yield* discussionSessions
-    .completeSessionAssistant(prepared.record, {
-      sessionId: result.sessionId,
-      sessionFile: result.sessionFile,
-    })
-    .pipe(Effect.mapError((cause) => projectError("chatWithSessionAssistant", cause)));
-  return { text: result.response };
 });
 
 export const generateSessionTitle = Effect.fn("Projects.generateSessionTitle")(function* (

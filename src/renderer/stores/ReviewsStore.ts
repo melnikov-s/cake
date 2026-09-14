@@ -1,38 +1,42 @@
-import { Store, child, createStore, observable } from "r-state-tree";
+import { Store, child, createStore } from "r-state-tree";
 import {
-  isSessionAssistantThread,
+  hasSidecarConversation,
   type DiscussionAnchor,
 } from "../../domain/discussion-sessions/discussion-session-data";
-import type { Annotation, ChatConfiguration, ModelPreset } from "../../ipc/session-contract";
+import type { Annotation, ModelPreset } from "../../ipc/session-contract";
+import type { ReviewThread } from "../models/ReviewThread";
+import type { Session } from "../models/Session";
 import { ClientContext } from "./context/ClientContext";
 import { ActiveProjectSessionContext } from "./context/ActiveProjectSessionContext";
 import { describeError } from "../lib/error-details";
+import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import { ChatStore } from "./ChatStore";
-import { ChatConfigurationStore, type ChatConfigurationStoreProps } from "./ChatConfigurationStore";
+import { DiscussionSessionStore } from "./DiscussionSessionStore";
+import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
 import { AnnotationDraftStore } from "./AnnotationDraftStore";
 
 export interface ReviewsStoreProps {
   sessionRegistry: SessionRegistryStore;
-  operations: ChatConfigurationStoreProps["operations"];
+  /** The live conversation Model for one Discussion sidecar (created on demand). */
+  discussionSessionModel(sessionId: string, workingDirectory: string): Session;
+  operations: SessionOperationCoordinatorStore;
   modelPresets(): readonly ModelPreset[];
   openModelPresetSettings(): void;
+  settings?(): AppearanceSettingsStore | undefined;
 }
 
-/** Shared Discussion Session workflow projected into chat and embedded VS Code. */
+/**
+ * Discussion Session workflow across the loaded Project Sessions: drafting a
+ * new thread, the per-thread conversation Stores, and thread resolution.
+ */
 export class ReviewsStore extends Store<ReviewsStoreProps> {
   activeThreadId: string | undefined;
   draftAnchor: DiscussionAnchor | undefined;
   draftFocusRequestRevision = 0;
   error: string | undefined;
   errorDetails: string | undefined;
-  private readonly annotationDraftIds: string[] = observable(["code-review-draft"]);
   private readonly resolutionRevisions = new Map<string, number>();
-  /** Model choices made in a side chat's picker, kept per thread. */
-  private readonly threadConfigurations: Array<{
-    threadId: string;
-    configuration: ChatConfiguration;
-  }> = observable([]);
 
   get client() {
     return ClientContext.consume(this)!;
@@ -70,6 +74,7 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
   get activeThread() {
     return this.threads.find((thread) => thread.id === this.activeThreadId) ?? this.openThreads[0];
   }
+  /** The active parent's model picker; a new thread starts on the parent's model. */
   get configuration() {
     const context = this.context;
     return context ? this.configurationForSession(context.sessionId) : undefined;
@@ -78,55 +83,44 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
     return this.props.sessionRegistry.findSession(sessionId)?.conversationSessionStore
       .configurationStore;
   }
-  private get threadEntries() {
+  private get liveThreads(): ReviewThread[] {
     return this.props.sessionRegistry.sessions.flatMap((session) =>
-      session.model.reviewThreads
-        .filter((thread) => !isSessionAssistantThread(thread))
-        .map((thread) => ({ session, thread })),
+      session.model.reviewThreads.filter(hasSidecarConversation),
     );
-  }
-  private threadConfigurationStore(threadId: string) {
-    const index = this.threadEntries.findIndex((entry) => entry.thread.id === threadId);
-    return index >= 0 ? this.threadConfigurationStores[index] : undefined;
-  }
-  /**
-   * The configuration a side chat prompt carries: the picker's choice for that
-   * thread, else the model its sidecar last reported, else the parent's current
-   * model. A side chat starts where its parent is and then moves on its own.
-   */
-  threadConfiguration(threadId: string, parentSessionId: string): ChatConfiguration | undefined {
-    const chosen = this.threadConfigurations.find((entry) => entry.threadId === threadId);
-    if (chosen) return chosen.configuration;
-    const thread = this.thread(threadId);
-    if (thread?.model)
-      return {
-        provider: thread.model.provider,
-        modelId: thread.model.modelId,
-        thinkingLevel: thread.thinkingLevel ?? "off",
-        fastMode: false,
-      };
-    const parent = this.props.sessionRegistry.findModel(parentSessionId);
-    return parent?.model
-      ? {
-          provider: parent.model.provider,
-          modelId: parent.model.modelId,
-          thinkingLevel: parent.thinkingLevel,
-          fastMode: false,
-        }
-      : undefined;
-  }
-  private setThreadConfiguration(threadId: string, configuration: ChatConfiguration) {
-    const index = this.threadConfigurations.findIndex((entry) => entry.threadId === threadId);
-    if (index >= 0) this.threadConfigurations[index] = { threadId, configuration };
-    else this.threadConfigurations.push({ threadId, configuration });
   }
   private thread(threadId: string) {
     return this.props.sessionRegistry.sessions
       .flatMap((session) => session.model.reviewThreads)
       .find((thread) => thread.id === threadId);
   }
+
+  /** One conversation Store per thread whose sidecar this window observes. */
+  @child
+  get discussionSessions(): DiscussionSessionStore[] {
+    return this.liveThreads.map((thread) =>
+      createStore(DiscussionSessionStore, {
+        key: thread.id,
+        thread,
+        model: this.props.discussionSessionModel(thread.sidecarSessionId!, thread.workingDirectory),
+        operations: this.props.operations,
+        modelPresets: this.props.modelPresets,
+        openModelPresetSettings: this.props.openModelPresetSettings,
+        settings: this.props.settings,
+        setResolved: (resolved) => this.resolveThread(thread.id, resolved),
+      }),
+    );
+  }
+
+  discussionSession(threadId: string) {
+    return this.discussionSessions.find((session) => session.threadId === threadId);
+  }
+
+  chatStore(threadId: string) {
+    return this.discussionSession(threadId)?.chatStore;
+  }
+
   threadStreaming(threadId: string) {
-    return this.thread(threadId)?.streaming ?? false;
+    return this.discussionSession(threadId)?.streaming ?? false;
   }
 
   selectThread(threadId: string) {
@@ -152,20 +146,18 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
   cancelDraft() {
     this.draftAnchor = undefined;
     this.draftChatStore.setDraft("");
-    this.annotationDraft("code-review-draft")?.clear();
+    this.annotationDraft.clear();
   }
 
   @child
-  get annotationDrafts(): AnnotationDraftStore[] {
-    return this.annotationDraftIds.map((composerId) =>
-      createStore(AnnotationDraftStore, {
-        key: composerId,
-        onLimitReached: () =>
-          this.reportError(new Error("A message can include at most 100 annotations")),
-      }),
-    );
+  get annotationDraft(): AnnotationDraftStore {
+    return createStore(AnnotationDraftStore, {
+      onLimitReached: () =>
+        this.reportError(new Error("A message can include at most 100 annotations")),
+    });
   }
 
+  /** Composer for a code-anchored thread that does not exist yet. */
   @child
   get draftChatStore(): ChatStore {
     return createStore(ChatStore, {
@@ -190,121 +182,23 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
       inputLabel: () => "Message code chat",
       focusRequestRevision: () => this.draftFocusRequestRevision,
       canSubmit: (draft) =>
-        Boolean(
-          this.draftAnchor && (draft.trim() || this.annotationsFor("code-review-draft").length),
-        ),
+        Boolean(this.draftAnchor && (draft.trim() || this.annotationDraft.annotations.length)),
       submit: async (draft) => {
         const anchor = this.draftAnchor;
         if (!anchor) return false;
-        const threadId = await this.createThread(
-          anchor,
-          draft,
-          this.annotationsFor("code-review-draft"),
-        );
+        const threadId = await this.createThread(anchor, draft, this.annotationDraft.annotations);
         if (threadId && this.draftAnchor === anchor) {
           this.cancelDraft();
           this.selectThread(threadId);
         }
         return Boolean(threadId);
       },
-      annotations: () => this.annotationsFor("code-review-draft"),
-      addAnnotation: (annotation) =>
-        this.ensureAnnotationDraft("code-review-draft").add(annotation),
-      updateAnnotation: (id, update) =>
-        this.annotationDraft("code-review-draft")?.update(id, update),
-      removeAnnotation: (id) => this.annotationDraft("code-review-draft")?.remove(id),
+      annotations: () => this.annotationDraft.annotations,
+      addAnnotation: (annotation) => this.annotationDraft.add(annotation),
+      updateAnnotation: (id, update) => this.annotationDraft.update(id, update),
+      removeAnnotation: (id) => this.annotationDraft.remove(id),
       error: () => ({ message: this.error, details: this.errorDetails }),
     });
-  }
-
-  /**
-   * One picker per side chat. A side chat has no renderer session of its own,
-   * so its store runs in deferred mode: the parent's catalog lists the models
-   * and the choice stays local until the next prompt carries it.
-   */
-  @child
-  get threadConfigurationStores(): ChatConfigurationStore[] {
-    return this.threadEntries.map(({ session, thread }) => {
-      const write = (configuration: ChatConfiguration) =>
-        this.setThreadConfiguration(thread.id, configuration);
-      const current = () => this.threadConfiguration(thread.id, thread.parentSessionId);
-      return createStore(ChatConfigurationStore, {
-        key: `configuration:${thread.id}`,
-        session: () => session.model,
-        operations: this.props.operations,
-        operationOwner: `discussion:${thread.id}`,
-        presets: this.props.modelPresets,
-        openPresetSettings: this.props.openModelPresetSettings,
-        deferredNewSession: () => true,
-        effectiveConfiguration: current,
-        setPendingConfiguration: write,
-        setConfiguration: async (configuration) => write(configuration),
-        setModel: async (provider, modelId) => {
-          const base = current();
-          write({ thinkingLevel: "off", fastMode: false, ...base, provider, modelId });
-        },
-        setThinkingLevel: async (thinkingLevel) => {
-          const base = current();
-          if (base) write({ ...base, thinkingLevel });
-        },
-        setFastMode: async () => undefined,
-      });
-    });
-  }
-
-  @child
-  get chatStores(): ChatStore[] {
-    return this.props.sessionRegistry.sessions.flatMap((session) =>
-      session.model.reviewThreads
-        .filter((thread) => !isSessionAssistantThread(thread))
-        .map((thread) =>
-          createStore(ChatStore, {
-            key: thread.id,
-            id: () => thread.id,
-            parts: () => [
-              ...(thread.anchor.selectedText
-                ? [
-                    {
-                      id: `anchor:${thread.id}`,
-                      kind: "text" as const,
-                      role: "user" as const,
-                      text: thread.anchor.selectedText,
-                      status: "complete" as const,
-                    },
-                  ]
-                : []),
-              ...thread.uiParts,
-            ],
-            streaming: () => thread.streaming,
-            submitting: () => false,
-            configuration: () => this.threadConfigurationStore(thread.id),
-            commands: () => [],
-            placeholder: () => "Ask a follow-up…",
-            inputLabel: () =>
-              thread.anchor.view === "message"
-                ? "Reply to selection side chat"
-                : thread.anchor.view === "session"
-                  ? "Reply to side chat"
-                  : "Reply to code chat",
-            canSubmit: (draft) =>
-              Boolean(draft.trim() || this.annotationsFor(thread.id).length) &&
-              thread.status === "open" &&
-              !thread.streaming,
-            submit: (draft) => this.replyThread(thread.id, draft, this.annotationsFor(thread.id)),
-            annotations: () => this.annotationsFor(thread.id),
-            addAnnotation: (annotation) => this.ensureAnnotationDraft(thread.id).add(annotation),
-            updateAnnotation: (id, update) => this.annotationDraft(thread.id)?.update(id, update),
-            removeAnnotation: (id) => this.annotationDraft(thread.id)?.remove(id),
-            composerVisible: () => thread.status === "open" && !thread.streaming,
-            error: () => ({ message: this.error, details: this.errorDetails }),
-            usage: () => thread.usage,
-          }),
-        ),
-    );
-  }
-
-  chatStore(threadId: string) {
-    return this.chatStores.find((chat) => chat.id === threadId);
   }
 
   async createThread(
@@ -336,6 +230,7 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
     );
   }
 
+  /** Starts a thread on the parent's current model; it then moves on its own. */
   private async createThreadForSession(
     context: { sessionId: string; workingDirectory: string },
     anchor: DiscussionAnchor,
@@ -344,38 +239,34 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
   ) {
     if (!body.trim() && annotations.length === 0) return undefined;
     this.clearError();
+    const parent = this.props.sessionRegistry.findModel(context.sessionId);
     try {
-      const thread = await this.client.discussionSessions.create(
+      const accepted = await this.client.discussionSessions.start(
         {
           parentSessionId: context.sessionId,
           workingDirectory: context.workingDirectory,
           anchor,
+          text: body.trim(),
+          annotations: [...annotations],
+          model: parent?.model
+            ? { provider: parent.model.provider, id: parent.model.modelId }
+            : undefined,
+          thinkingLevel: parent?.model ? parent.thinkingLevel : undefined,
         },
         { signal: this.signal },
       );
-      if (this.signal.aborted) return undefined;
-      await this.promptThreadForSession(context, thread.id, body.trim(), annotations);
-      return thread.id;
+      return this.signal.aborted ? undefined : accepted.thread.id;
     } catch (error) {
       if (!this.signal.aborted) this.reportError(error);
       return undefined;
     }
   }
 
-  async replyThread(threadId: string, body: string, annotations: readonly Annotation[] = []) {
-    if (!body.trim() && annotations.length === 0) return false;
-    try {
-      await this.promptThread(threadId, body.trim(), annotations);
-      if (!this.signal.aborted) this.annotationDraft(threadId)?.clear();
-      return !this.signal.aborted;
-    } catch (error) {
-      if (!this.signal.aborted) this.reportError(error);
-      return false;
-    }
-  }
-
   async resolveThread(threadId: string, resolved = true) {
-    const context = this.context;
+    const thread = this.thread(threadId);
+    const context = thread
+      ? { sessionId: thread.parentSessionId, workingDirectory: thread.workingDirectory }
+      : this.context;
     if (!context) return false;
     const revision = (this.resolutionRevisions.get(threadId) ?? 0) + 1;
     this.resolutionRevisions.set(threadId, revision);
@@ -396,56 +287,6 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
         this.reportError(error);
       return false;
     }
-  }
-
-  private async promptThread(
-    threadId: string,
-    text: string,
-    annotations: readonly Annotation[] = [],
-  ) {
-    const thread = this.thread(threadId);
-    const context = thread
-      ? { sessionId: thread.parentSessionId, workingDirectory: thread.workingDirectory }
-      : this.context;
-    if (!context) throw new Error("There is no active Project Session");
-    await this.promptThreadForSession(context, threadId, text, annotations);
-  }
-
-  private async promptThreadForSession(
-    context: { sessionId: string; workingDirectory: string },
-    threadId: string,
-    text: string,
-    annotations: readonly Annotation[] = [],
-  ) {
-    const configuration = this.threadConfiguration(threadId, context.sessionId);
-    await this.client.discussionSessions.prompt(
-      {
-        parentSessionId: context.sessionId,
-        workingDirectory: context.workingDirectory,
-        threadId,
-        text,
-        annotations: [...annotations],
-        model: configuration
-          ? { provider: configuration.provider, id: configuration.modelId }
-          : undefined,
-        thinkingLevel: configuration?.thinkingLevel,
-      },
-      { signal: this.signal },
-    );
-  }
-
-  private annotationsFor(composerId: string): readonly Annotation[] {
-    return this.annotationDraft(composerId)?.annotations ?? [];
-  }
-
-  private annotationDraft(composerId: string) {
-    const index = this.annotationDraftIds.indexOf(composerId);
-    return index >= 0 ? this.annotationDrafts[index] : undefined;
-  }
-
-  private ensureAnnotationDraft(composerId: string) {
-    if (!this.annotationDraftIds.includes(composerId)) this.annotationDraftIds.push(composerId);
-    return this.annotationDraft(composerId)!;
   }
 
   private clearError() {

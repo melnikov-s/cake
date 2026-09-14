@@ -185,7 +185,6 @@ describe("IdeWorkspace", () => {
           updatedAt: sideChatThread.updatedAt,
         },
       ],
-      threadStreaming: () => false,
       chatStore: () => threadChat,
       replyThread: vi.fn(),
       resolveThread: vi.fn(),
@@ -239,6 +238,7 @@ describe("IdeWorkspace", () => {
   it("shows the session side chats menu in the chat sidebar header and opens the chosen chat", () => {
     const projectSession = {
       sideChatThreads: [sideChatThread],
+      sideChatStreaming: () => false,
       openSideChat: vi.fn((threadId: string) => {
         sideChat.open({
           key: `discussion:${threadId}`,

@@ -15,7 +15,12 @@ import type {
   DiscussionSessionTarget,
   DiscussionSessionUpdate,
 } from "../../domain/discussion-sessions/discussion-session-data";
-import { isSessionAssistantThread } from "../../domain/discussion-sessions/discussion-session-data";
+import {
+  hasSidecarConversation,
+  isSessionAssistantThread,
+} from "../../domain/discussion-sessions/discussion-session-data";
+import type { CakeControlTool } from "../../domain/cake-chats/cake-chat-data";
+import type { ReviewThread } from "../models/ReviewThread";
 import type {
   ProjectSessionCatalogQuery,
   ProjectSessionTarget,
@@ -44,10 +49,11 @@ import {
 } from "../reducers/CatalogReducer";
 import {
   applyCakeChatUpdate,
+  applyDiscussionSessionUpdate,
   applyProjectSessionUpdate,
   unloadConversationProjection,
 } from "../reducers/ConversationReducer";
-import { applyDiscussionCatalogUpdate, applyDiscussionUpdate } from "../reducers/DiscussionReducer";
+import { applyDiscussionCatalogUpdate } from "../reducers/DiscussionReducer";
 import { applySubagentUpdate } from "../reducers/SubagentReducer";
 import { applyScheduledMessageUpdate } from "../reducers/ScheduledMessageReducer";
 import { applyManagedWorktreeCatalogUpdate } from "../reducers/WorktreeCatalogReducer";
@@ -63,7 +69,14 @@ interface ModelSource {
   readonly loadedProjectSessions?: () => ReadonlyArray<ObservedProjectSessionTarget>;
   readonly loadedCakeChatIds?: () => ReadonlyArray<string>;
   readonly projectSessionTargets: () => ReadonlyArray<ObservedProjectSessionTarget>;
+  /**
+   * Staged Project Sessions have no Pi session to observe yet, but their
+   * Discussion catalog is observed so an assistant thread can exist first.
+   */
+  readonly stagedProjectSessionTargets?: () => ReadonlyArray<ObservedProjectSessionTarget>;
   readonly cakeChatTargets: () => ReadonlyArray<CakeChatTarget>;
+  /** The Cake control catalog a session assistant sidecar is acquired with. */
+  readonly sessionAssistantTools?: () => ReadonlyArray<CakeControlTool>;
 }
 
 type StreamFactory<Update> = (client: CakeIpcClientService) => Stream.Stream<Update, unknown>;
@@ -86,7 +99,14 @@ type ModelInput = {
   readonly cakeChatCatalog: CakeChatCatalog;
   readonly cakeChatCatalogQueries?: ReadonlyArray<CakeChatCatalogQuery>;
   readonly projectSessions: ReadonlyArray<{ target: ProjectSessionTarget; model: Session }>;
+  /** Parents observed for their Discussion catalog only. */
+  readonly discussionCatalogs?: ReadonlyArray<{ target: ProjectSessionTarget; model: Session }>;
   readonly cakeChats: ReadonlyArray<{ target: CakeChatTarget; model: Session }>;
+  readonly discussionSessions?: ReadonlyArray<{
+    thread: ReviewThread;
+    model: Session;
+    tools?: ReadonlyArray<CakeControlTool>;
+  }>;
 };
 
 /** Creates the window's dynamic observer for passive projection Models. */
@@ -163,6 +183,19 @@ export const createModelObserver = (
       active.add(key);
       observeModelStream(key, model, stream, apply, options);
     };
+
+    const observeDiscussionCatalog = (target: ProjectSessionTarget, model: Session) =>
+      observe(
+        `discussion-catalog:${target.sessionId}`,
+        model,
+        (client) =>
+          client.discussionSessions.observeCatalog({
+            parentSessionId: target.sessionId,
+            workingDirectory: target.workingDirectory ?? model.workingDirectory,
+          }),
+        (update: DiscussionCatalogUpdate) =>
+          applyDiscussionCatalogUpdate(model, target.sessionId, update),
+      );
 
     const worktreeOperations = input.worktreeOperations;
     if (worktreeOperations)
@@ -244,38 +277,36 @@ export const createModelObserver = (
         (client) => client.scheduledMessages.observe(target.sessionId),
         (update: ScheduledMessageUpdate) => applyScheduledMessageUpdate(model, update),
       );
-      observe(
-        `discussion-catalog:${target.sessionId}`,
-        model,
-        (client) =>
-          client.discussionSessions.observeCatalog({
-            parentSessionId: target.sessionId,
-            workingDirectory: target.workingDirectory ?? model.workingDirectory,
-          }),
-        (update: DiscussionCatalogUpdate) =>
-          applyDiscussionCatalogUpdate(model, target.sessionId, update),
-      );
+      observeDiscussionCatalog(target, model);
       observe(
         `subagents:${target.sessionId}`,
         model,
         (client) => client.subagents.observe(target.sessionId),
         (update: SubagentUpdate) => applySubagentUpdate(model, target.sessionId, update),
       );
+    }
 
-      for (const thread of model.reviewThreads) {
-        if (!thread.sidecarSessionId || isSessionAssistantThread(thread)) continue;
-        const target: DiscussionSessionTarget = {
-          parentSessionId: thread.parentSessionId,
-          workingDirectory: thread.workingDirectory,
-          threadId: thread.id,
-        };
-        observe(
-          `discussion:${thread.id}`,
-          thread,
-          (client) => client.discussionSessions.observe(target),
-          (update: DiscussionSessionUpdate) => applyDiscussionUpdate(thread, thread.id, update),
-        );
-      }
+    for (const { target, model } of input.discussionCatalogs ?? []) {
+      assertSessionIdentity(model, target.sessionId, target.workingDirectory);
+      observeDiscussionCatalog(target, model);
+    }
+
+    for (const { thread, model, tools } of input.discussionSessions ?? []) {
+      const sessionId = thread.sidecarSessionId!;
+      assertSessionIdentity(model, sessionId, thread.workingDirectory);
+      const target: DiscussionSessionTarget = {
+        parentSessionId: thread.parentSessionId,
+        workingDirectory: thread.workingDirectory,
+        threadId: thread.id,
+      };
+      if (tools) Object.assign(target, { tools });
+      observe(
+        `discussion-session:${sessionId}`,
+        model,
+        (client) => client.discussionSessions.observe(target),
+        (update: DiscussionSessionUpdate) => applyDiscussionSessionUpdate(model, sessionId, update),
+        { clear: () => unloadConversationProjection(model) },
+      );
     }
 
     for (const { target, model } of input.cakeChats) {
@@ -322,6 +353,27 @@ export const createModelObserver = (
         for (const sessionId of source.projection.cakeChats.map(({ sessionId }) => sessionId))
           if (!loadedIds.has(sessionId)) source.projection.removeCakeChat(sessionId);
       }
+      const projectSessions = source.projectSessionTargets().map((target) => ({
+        target,
+        model: source.projection.projectSession(target.sessionId, target.workingDirectory),
+      }));
+      const observedIds = new Set(projectSessions.map(({ target }) => target.sessionId));
+      const discussionCatalogs = (source.stagedProjectSessionTargets?.() ?? [])
+        .filter((target) => !observedIds.has(target.sessionId))
+        .map((target) => ({
+          target,
+          model: source.projection.projectSession(target.sessionId, target.workingDirectory),
+        }));
+      // Every observed parent's threads with a sidecar own a live conversation
+      // Model; sidecars whose thread or parent left the window are released.
+      const liveThreads = [...projectSessions, ...discussionCatalogs].flatMap(({ model }) =>
+        model.reviewThreads.filter(hasSidecarConversation),
+      );
+      const liveSidecarIds = new Set(liveThreads.map((thread) => thread.sidecarSessionId!));
+      for (const sessionId of source.projection.discussionSessions.map(
+        ({ sessionId }) => sessionId,
+      ))
+        if (!liveSidecarIds.has(sessionId)) source.projection.removeDiscussionSession(sessionId);
       sync({
         projects: source.projection.projects,
         sessionCatalog: source.projection.sessionCatalog,
@@ -330,14 +382,24 @@ export const createModelObserver = (
         projectSessionCatalogQueries: source.projectSessionCatalogQueries(),
         cakeChatCatalog: source.projection.cakeChatCatalog,
         cakeChatCatalogQueries: source.cakeChatCatalogQueries?.(),
-        projectSessions: source.projectSessionTargets().map((target) => ({
-          target,
-          model: source.projection.projectSession(target.sessionId, target.workingDirectory),
-        })),
+        projectSessions,
+        discussionCatalogs,
         cakeChats: source.cakeChatTargets().map((target) => ({
           target,
           model: source.projection.cakeChat(target.sessionId),
         })),
+        discussionSessions: liveThreads.map((thread) => {
+          const entry = {
+            thread,
+            model: source.projection.discussionSession(
+              thread.sidecarSessionId!,
+              thread.workingDirectory,
+            ),
+          };
+          if (isSessionAssistantThread(thread))
+            Object.assign(entry, { tools: source.sessionAssistantTools?.() ?? [] });
+          return entry;
+        }),
       });
     });
   };
@@ -402,7 +464,9 @@ export const observeModels = (runtime: Runtime, projection: RootProjection, root
       })),
     loadedCakeChatIds: () => root.cakeChatCollectionStore.registry.targets,
     projectSessionTargets: () => root.projectSessionObservationTargets,
+    stagedProjectSessionTargets: () => root.stagedProjectSessionTargets,
     cakeChatTargets: () => root.cakeChatCollectionStore.registry.observationTargets,
+    sessionAssistantTools: () => root.applicationControlStore.sessionAssistantTools(),
   });
   return observer.stop;
 };

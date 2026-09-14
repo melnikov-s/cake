@@ -1,5 +1,5 @@
 import { Context, Layer, Schema, type Effect } from "effect";
-import type { ReviewParentContext } from "../pi/runtime/sidecar-runtime";
+import type { ReviewParentContext, StagedParentMessage } from "../pi/runtime/sidecar-runtime";
 import type { DiscussionAnchor } from "../../domain/discussion-sessions/discussion-session-data";
 
 export interface DiscussionSessionRecord {
@@ -60,10 +60,20 @@ export interface DiscussionSessionEnvironmentService {
   readonly location: (
     record: DiscussionSessionRecord,
   ) => Effect.Effect<DiscussionSessionLocation, DiscussionSessionEnvironmentError>;
+  /** The sidecar's system prompt; it references the projection path and never changes per turn. */
+  readonly sidecarSystemPrompt: (
+    record: DiscussionSessionRecord,
+  ) => Effect.Effect<string, DiscussionSessionEnvironmentError>;
+  /** Rewrites the read-only parent projection the sidecar reads during a turn. */
   readonly prepareParentContext: (
     record: DiscussionSessionRecord,
     parent: ReviewParentContext,
-  ) => Effect.Effect<string, DiscussionSessionEnvironmentError>;
+  ) => Effect.Effect<void, DiscussionSessionEnvironmentError>;
+  /** Writes the projection from renderer-held messages while the parent is still staged. */
+  readonly prepareStagedParentContext: (
+    record: DiscussionSessionRecord,
+    messages: ReadonlyArray<StagedParentMessage>,
+  ) => Effect.Effect<void, DiscussionSessionEnvironmentError>;
   readonly refreshParentIndex: (
     record: DiscussionSessionRecord,
   ) => Effect.Effect<void, DiscussionSessionEnvironmentError>;

@@ -73,11 +73,14 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
 
   constructor(props: ProjectSessionStore["props"]) {
     super(props);
+    // A new thread is listed before its sidecar conversation is live; the side
+    // chat opens once the thread's own conversation Store exists.
     this.reaction(
       () =>
         Boolean(
           this.pendingSideChatThreadId &&
-          this.sideChatThreads.some((thread) => thread.id === this.pendingSideChatThreadId),
+          this.sideChatThreads.some((thread) => thread.id === this.pendingSideChatThreadId) &&
+          this.props.reviews().chatStore(this.pendingSideChatThreadId),
         ),
       (ready) => {
         if (ready && this.pendingSideChatThreadId) this.openSideChat(this.pendingSideChatThreadId);
@@ -131,6 +134,9 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   get canonicalParts() {
     return this.model.uiParts;
   }
+  sideChatStreaming(threadId: string) {
+    return this.props.reviews().threadStreaming(threadId);
+  }
 
   @child
   get sessionAssistantStore(): SessionAssistantStore {
@@ -139,13 +145,14 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       workspacePath: this.workspacePath,
       staged: () => this.props.pendingSessions.isTemporary(this.sessionId),
       thread: () => this.model.reviewThreads.find(isSessionAssistantThread),
-      context: () =>
+      stagedMessages: () =>
         this.canonicalParts.flatMap((part) => {
           if (part.kind === "text" && !part.draft) return [{ role: part.role, text: part.text }];
           if (part.kind === "skill") return [{ role: "user" as const, text: part.content }];
           return [];
         }),
       tools: () => this.props.assistantTools?.() ?? [],
+      discussionSession: (threadId) => this.props.reviews().discussionSession(threadId),
     });
   }
 
@@ -414,6 +421,14 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       sessionModel: () => this.model,
       reviews: this.props.reviews,
       context: () => ({ sessionId: this.sessionId }),
+      onThreadCreated: (threadId) => {
+        // The selection draft in the side chat becomes the thread's own chat,
+        // which carries the shared queue, stop, and reply behavior.
+        const sideChat = this.conversationSessionStore.sideChatStore;
+        if (sideChat.target?.chatStore !== this.messageCommentsStore.draftChatStore) return;
+        this.pendingSideChatThreadId = threadId;
+        this.openSideChat(threadId);
+      },
     });
   }
 }

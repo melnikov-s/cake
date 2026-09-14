@@ -30,7 +30,6 @@ export const WorkspaceRpc = RpcGroup.make(
     error: WorkspaceFileError,
   }),
   workspaceRpc("workspaces.reword-composer-selection", "reword-composer-selection"),
-  workspaceRpc("workspaces.chat-with-session-assistant", "chat-with-session-assistant"),
   workspaceRpc("workspaces.generate-session-title", "generate-session-title"),
   workspaceRpc("workspaces.set-utility-model", "set-utility-model"),
   workspaceRpc("workspaces.load-staged-slash-commands", "load-staged-slash-commands"),

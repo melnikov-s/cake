@@ -19,6 +19,8 @@ export class RootProjection extends Model {
   @child(CakeChatCatalog) cakeChatCatalog = CakeChatCatalog.create();
   @child(Session) projectSessions: Session[] = observable([]);
   @child(Session) cakeChats: Session[] = observable([]);
+  /** Live Discussion Session sidecars, keyed by their own Pi Session ID. */
+  @child(Session) discussionSessions: Session[] = observable([]);
 
   projectSession(sessionId: string, workingDirectory: string) {
     const existing = this.findProjectSession(sessionId);
@@ -48,5 +50,22 @@ export class RootProjection extends Model {
   removeCakeChat(sessionId: string) {
     const index = this.cakeChats.findIndex((session) => session.sessionId === sessionId);
     if (index >= 0) this.cakeChats.splice(index, 1);
+  }
+
+  discussionSession(sessionId: string, workingDirectory: string) {
+    const existing = this.findDiscussionSession(sessionId);
+    if (existing) return existing;
+    const session = Session.create({ sessionId, workingDirectory });
+    this.discussionSessions.push(session);
+    return session;
+  }
+
+  findDiscussionSession(sessionId: string) {
+    return this.discussionSessions.find((session) => session.sessionId === sessionId);
+  }
+
+  removeDiscussionSession(sessionId: string) {
+    const index = this.discussionSessions.findIndex((session) => session.sessionId === sessionId);
+    if (index >= 0) this.discussionSessions.splice(index, 1);
   }
 }

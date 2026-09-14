@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 import { ThinkingLevel } from "../../services/pi/model-data";
+import { CakeControlTool } from "../cake-chats/cake-chat-data";
 import {
   CakeSessionIdentity,
   ConversationEvent,
@@ -43,6 +44,14 @@ export const isSessionAssistantThread = (thread: {
   thread.anchor.view === "session" &&
   thread.anchor.path === sessionAssistantThreadPath(thread.parentSessionId);
 
+/**
+ * Whether a thread's conversation is authoritative from its own live sidecar
+ * observation rather than from the parent's Discussion catalog rows.
+ */
+export const hasSidecarConversation = (thread: {
+  readonly sidecarSessionId?: string | undefined;
+}) => Boolean(thread.sidecarSessionId);
+
 export const DiscussionThread = Schema.Struct({
   id: boundedId,
   workingDirectory: Schema.String,
@@ -62,14 +71,16 @@ export const DiscussionSessionTarget = Schema.Struct({
   parentSessionId: boundedId,
   workingDirectory: Schema.String,
   threadId: boundedId,
+  /** The Cake control catalog a session assistant thread's sidecar exposes; other threads omit it. */
+  tools: Schema.optionalKey(Schema.Array(CakeControlTool)),
 });
 export interface DiscussionSessionTarget extends Schema.Schema.Type<
   typeof DiscussionSessionTarget
 > {}
 
+/** Live sidecar conversation; the parent's Discussion catalog owns thread metadata. */
 export const DiscussionSessionSnapshot = Schema.Struct({
   identity: CakeSessionIdentity,
-  thread: DiscussionThread,
   conversation: ConversationSnapshot,
 });
 export interface DiscussionSessionSnapshot extends Schema.Schema.Type<
@@ -78,18 +89,9 @@ export interface DiscussionSessionSnapshot extends Schema.Schema.Type<
 
 export const DiscussionSessionUpdate = Schema.TaggedUnion({
   Snapshot: { revision: Schema.Int, snapshot: DiscussionSessionSnapshot },
-  Event: { revision: Schema.Int, threadId: boundedId, event: ConversationEvent },
+  Event: { revision: Schema.Int, sessionId: boundedId, event: ConversationEvent },
 });
 export type DiscussionSessionUpdate = Schema.Schema.Type<typeof DiscussionSessionUpdate>;
-
-export const DiscussionSessionCreateInput = Schema.Struct({
-  parentSessionId: boundedId,
-  workingDirectory: Schema.String,
-  anchor: DiscussionAnchor,
-});
-export interface DiscussionSessionCreateInput extends Schema.Schema.Type<
-  typeof DiscussionSessionCreateInput
-> {}
 
 const DiscussionAnnotation = Schema.Struct({
   id: Schema.String.check(Schema.isUUID()),
@@ -109,8 +111,15 @@ const DiscussionAnnotation = Schema.Struct({
   ),
 );
 
-export const DiscussionSessionPromptInput = Schema.Struct({
-  ...DiscussionSessionTarget.fields,
+/**
+ * Creates a Discussion Session and delivers its first prompt. Every later
+ * conversation operation addresses the sidecar through the shared Session Chat
+ * operations by its Pi Session ID.
+ */
+export const DiscussionSessionStartInput = Schema.Struct({
+  parentSessionId: boundedId,
+  workingDirectory: Schema.String,
+  anchor: DiscussionAnchor,
   text: boundedText,
   annotations: Schema.optionalKey(
     Schema.Array(DiscussionAnnotation).check(Schema.isMaxLength(100)),
@@ -118,8 +127,45 @@ export const DiscussionSessionPromptInput = Schema.Struct({
   model: Schema.optionalKey(Schema.Struct({ provider: Schema.String, id: Schema.String })),
   thinkingLevel: Schema.optionalKey(ThinkingLevel),
 });
-export interface DiscussionSessionPromptInput extends Schema.Schema.Type<
-  typeof DiscussionSessionPromptInput
+export interface DiscussionSessionStartInput extends Schema.Schema.Type<
+  typeof DiscussionSessionStartInput
+> {}
+
+/**
+ * Ensures a Project Session's single assistant Discussion Session exists. Like
+ * any side chat, its sidecar is created by delivering a first message, so the
+ * pending message is supplied while the thread has no sidecar yet. A staged
+ * parent has no transcript, so the renderer supplies its current messages for
+ * the read-only projection.
+ */
+export const SessionAssistantEnsureInput = Schema.Struct({
+  parentSessionId: boundedId,
+  workingDirectory: Schema.String,
+  tools: Schema.Array(CakeControlTool),
+  staged: Schema.Boolean,
+  stagedMessages: Schema.Array(
+    Schema.Struct({ role: Schema.Literals(["user", "assistant"]), text: boundedText }),
+  ).check(Schema.isMaxLength(500)),
+  firstPrompt: Schema.optionalKey(
+    Schema.Struct({
+      text: boundedText,
+      annotations: Schema.optionalKey(
+        Schema.Array(DiscussionAnnotation).check(Schema.isMaxLength(100)),
+      ),
+    }),
+  ),
+});
+export interface SessionAssistantEnsureInput extends Schema.Schema.Type<
+  typeof SessionAssistantEnsureInput
+> {}
+
+/** The assistant thread, plus the turn `ensure` delivered when it created the sidecar. */
+export const SessionAssistantEnsured = Schema.Struct({
+  thread: DiscussionThread,
+  turnId: Schema.optionalKey(TurnId),
+});
+export interface SessionAssistantEnsured extends Schema.Schema.Type<
+  typeof SessionAssistantEnsured
 > {}
 
 export const DiscussionSessionAcceptedTurn = Schema.Struct({

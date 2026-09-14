@@ -72,11 +72,11 @@ export const SideChatsMenu = observer(function SideChatsMenu({
                   if (store.openSideChat(thread.id)) setOpen(false);
                 }}
               >
-                <StatusDot status={thread.streaming ? "running" : "complete"} />
+                <StatusDot status={store.sideChatStreaming(thread.id) ? "running" : "complete"} />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-xs font-medium">{threadTitle(thread)}</span>
                   <span className="block truncate text-[10px] font-normal text-muted-foreground">
-                    {thread.streaming ? "Working…" : threadPreview(thread)}
+                    {store.sideChatStreaming(thread.id) ? "Working…" : threadPreview(thread)}
                   </span>
                 </span>
               </Button>

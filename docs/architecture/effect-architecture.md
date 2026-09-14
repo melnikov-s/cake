@@ -112,7 +112,12 @@ workingDirectoryTerminals
 
 Shared conversation functions live in `conversations`; Project Sessions, Cake
 Chat Sessions, Discussion Sessions, and Subagent Sessions do not implement
-parallel conversation engines.
+parallel conversation engines. Kind-specific modules own creation (`start`),
+lifecycle, catalog metadata, and the acquire options that attach Cake policy to
+the shared conversation hooks (`admitTurn`, `onSessionChanged`,
+`onTurnSettled`). Once a Project, Cake Chat, or Discussion Session exists, the
+renderer prompts, queues, steers, stops, edits, and configures it through the
+one `sessionChats` group addressed by its Pi Session ID.
 
 ### Renderer infrastructure adapts RPC; Stores own application state and logic
 

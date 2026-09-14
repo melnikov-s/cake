@@ -1918,7 +1918,6 @@ describe("Transcript scrolling", () => {
     );
     const comments = {
       threadsForMessage: () => [thread],
-      threadStreaming: () => false,
       chatStore: () => threadChat,
       replyThread: vi.fn(),
       resolveThread: vi.fn(),

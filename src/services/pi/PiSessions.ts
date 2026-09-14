@@ -315,6 +315,7 @@ const runtimeFingerprint = (options: PiSessionAcquireOptions): string => {
     // Relationship context is regenerated on acquisition and may change when a
     // standalone session is promoted. It does not redefine the live Pi runtime.
     hasGlobalControl: runtime.globalControl !== undefined,
+    hasSessionControl: runtime.sessionControl !== undefined,
     hasAgentControl: runtime.agentControl !== undefined,
   });
 };
@@ -328,11 +329,21 @@ const validateProfile = Effect.fn("PiSessions.validateProfile")(function* (
   const profile = decoded._tag;
   const runtime = options.runtime;
   const valid =
-    (profile === "ProjectSession" && !runtime.auxiliary && !runtime.globalControl) ||
-    (profile === "CakeChatSession" && runtime.globalControl !== undefined && !runtime.auxiliary) ||
-    ((profile === "DiscussionSession" || profile === "SubagentSession") &&
+    (profile === "ProjectSession" &&
+      !runtime.auxiliary &&
+      !runtime.globalControl &&
+      !runtime.sessionControl) ||
+    (profile === "CakeChatSession" &&
+      runtime.globalControl !== undefined &&
+      !runtime.auxiliary &&
+      !runtime.sessionControl) ||
+    (profile === "DiscussionSession" &&
       runtime.auxiliary === true &&
-      runtime.globalControl === undefined);
+      runtime.globalControl === undefined) ||
+    (profile === "SubagentSession" &&
+      runtime.auxiliary === true &&
+      runtime.globalControl === undefined &&
+      runtime.sessionControl === undefined);
   if (valid) return;
   return yield* new PiSessionError({
     operation: "acquire",

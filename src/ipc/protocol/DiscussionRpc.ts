@@ -3,12 +3,13 @@ import { Rpc, RpcGroup } from "effect/unstable/rpc";
 import { DiscussionCatalogUpdate } from "../../domain/application/catalog-data";
 import {
   DiscussionSessionAcceptedTurn,
-  DiscussionSessionCreateInput,
   DiscussionSessionError,
-  DiscussionSessionPromptInput,
+  DiscussionSessionStartInput,
   DiscussionSessionTarget,
   DiscussionSessionUpdate,
   DiscussionThread,
+  SessionAssistantEnsureInput,
+  SessionAssistantEnsured,
 } from "../../domain/discussion-sessions/discussion-session-data";
 
 const catalogTarget = {
@@ -16,6 +17,11 @@ const catalogTarget = {
   parentSessionId: DiscussionSessionTarget.fields.parentSessionId,
 };
 
+/**
+ * Cake-owned Discussion Session lifecycle and metadata. Conversation behavior
+ * (prompting, queueing, stopping, configuration) is the shared `sessionChats`
+ * group addressed by the sidecar's Pi Session ID.
+ */
 export const DiscussionRpc = RpcGroup.make(
   Rpc.make("discussionSessions.observeCatalog", {
     payload: catalogTarget,
@@ -28,24 +34,20 @@ export const DiscussionRpc = RpcGroup.make(
     success: Schema.Array(DiscussionThread),
     error: DiscussionSessionError,
   }),
-  Rpc.make("discussionSessions.create", {
-    payload: DiscussionSessionCreateInput,
-    success: DiscussionThread,
-    error: DiscussionSessionError,
-  }),
   Rpc.make("discussionSessions.observe", {
     payload: DiscussionSessionTarget,
     success: DiscussionSessionUpdate,
     error: DiscussionSessionError,
     stream: true,
   }),
-  Rpc.make("discussionSessions.prompt", {
-    payload: DiscussionSessionPromptInput,
+  Rpc.make("discussionSessions.start", {
+    payload: DiscussionSessionStartInput,
     success: DiscussionSessionAcceptedTurn,
     error: DiscussionSessionError,
   }),
-  Rpc.make("discussionSessions.abort", {
-    payload: DiscussionSessionTarget,
+  Rpc.make("discussionSessions.ensureSessionAssistant", {
+    payload: SessionAssistantEnsureInput,
+    success: SessionAssistantEnsured,
     error: DiscussionSessionError,
   }),
   Rpc.make("discussionSessions.setResolved", {

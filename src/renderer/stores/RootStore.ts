@@ -902,6 +902,13 @@ export class RootStore extends Store<{
       }));
   }
 
+  /** Staged Project Sessions whose Discussion catalog is observed before they have a transcript. */
+  get stagedProjectSessionTargets() {
+    return this.sessionRegistry.targets
+      .filter((target) => this.sessionRegistry.pendingSessions.isTemporary(target.sessionId))
+      .map((target) => ({ sessionId: target.sessionId, workingDirectory: target.workspacePath }));
+  }
+
   @child
   get sessionOperationCoordinator(): SessionOperationCoordinatorStore {
     return createStore(SessionOperationCoordinatorStore);
@@ -953,9 +960,12 @@ export class RootStore extends Store<{
   get reviewsStore(): ReviewsStore {
     return createStore(ReviewsStore, {
       sessionRegistry: this.sessionRegistry,
+      discussionSessionModel: (sessionId, workingDirectory) =>
+        this.props.projection.discussionSession(sessionId, workingDirectory),
       operations: this.sessionOperationCoordinator,
       modelPresets: () => this.settingsStore.modelPresets.presets,
       openModelPresetSettings: () => this.showModelPresetSettings(),
+      settings: () => this.settingsStore.appearance,
     });
   }
 

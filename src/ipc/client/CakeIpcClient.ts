@@ -61,12 +61,13 @@ import type {
   CakeChatUpdate,
 } from "../../domain/cake-chats/cake-chat-data";
 import type {
-  DiscussionSessionCreateInput,
   DiscussionSessionError,
-  DiscussionSessionPromptInput,
+  DiscussionSessionStartInput,
   DiscussionSessionTarget,
   DiscussionSessionUpdate,
   DiscussionThread,
+  SessionAssistantEnsureInput,
+  SessionAssistantEnsured,
 } from "../../domain/discussion-sessions/discussion-session-data";
 import type {
   CakeChatCatalogUpdate,
@@ -329,21 +330,18 @@ export interface CakeIpcClientService {
       readonly workingDirectory: string;
       readonly parentSessionId: string;
     }) => Effect.Effect<ReadonlyArray<DiscussionThread>, DiscussionSessionError | TransportError>;
-    readonly create: (
-      input: DiscussionSessionCreateInput,
-    ) => Effect.Effect<DiscussionThread, DiscussionSessionError | TransportError>;
     readonly observe: (
       target: DiscussionSessionTarget,
     ) => Stream.Stream<DiscussionSessionUpdate, DiscussionSessionError | TransportError>;
-    readonly prompt: (
-      input: DiscussionSessionPromptInput,
+    readonly start: (
+      input: DiscussionSessionStartInput,
     ) => Effect.Effect<
       { readonly turnId: TurnId; readonly thread: DiscussionThread },
       DiscussionSessionError | TransportError
     >;
-    readonly abort: (
-      target: DiscussionSessionTarget,
-    ) => Effect.Effect<void, DiscussionSessionError | TransportError>;
+    readonly ensureSessionAssistant: (
+      input: SessionAssistantEnsureInput,
+    ) => Effect.Effect<SessionAssistantEnsured, DiscussionSessionError | TransportError>;
     readonly setResolved: (
       target: DiscussionSessionTarget & { readonly resolved: boolean },
     ) => Effect.Effect<DiscussionThread, DiscussionSessionError | TransportError>;
@@ -457,7 +455,6 @@ export interface CakeIpcClientService {
   >;
   readonly workspaces: RpcOperations<
     | "reword-composer-selection"
-    | "chat-with-session-assistant"
     | "generate-session-title"
     | "set-utility-model"
     | "load-staged-slash-commands"
@@ -760,16 +757,13 @@ export const CakeIpcClientLive = Layer.effect(
         list: Effect.fn("CakeIpcClient.discussionSessions.list")((input) =>
           client("discussionSessions.list", input),
         ),
-        create: Effect.fn("CakeIpcClient.discussionSessions.create")((input) =>
-          client("discussionSessions.create", input),
-        ),
         observe: (target) => client("discussionSessions.observe", target),
-        prompt: Effect.fn("CakeIpcClient.discussionSessions.prompt")((input) =>
-          client("discussionSessions.prompt", input),
+        start: Effect.fn("CakeIpcClient.discussionSessions.start")((input) =>
+          client("discussionSessions.start", input),
         ),
-        abort: Effect.fn("CakeIpcClient.discussionSessions.abort")((target) =>
-          client("discussionSessions.abort", target),
-        ),
+        ensureSessionAssistant: Effect.fn(
+          "CakeIpcClient.discussionSessions.ensureSessionAssistant",
+        )((input) => client("discussionSessions.ensureSessionAssistant", input)),
         setResolved: Effect.fn("CakeIpcClient.discussionSessions.setResolved")((target) =>
           client("discussionSessions.setResolved", target),
         ),
@@ -884,9 +878,6 @@ export const CakeIpcClientLive = Layer.effect(
         "reword-composer-selection": Effect.fn(
           "CakeIpcClient.workspaces.reword-composer-selection",
         )((payload) => client("workspaces.reword-composer-selection", payload)),
-        "chat-with-session-assistant": Effect.fn(
-          "CakeIpcClient.workspaces.chat-with-session-assistant",
-        )((payload) => client("workspaces.chat-with-session-assistant", payload)),
         "generate-session-title": Effect.fn("CakeIpcClient.workspaces.generate-session-title")(
           (payload) => client("workspaces.generate-session-title", payload),
         ),

@@ -454,22 +454,16 @@ export function makeClient(runtime: Pick<Runtime, "execute">): Client {
           withClient((client) => client.discussionSessions.list(input)),
           options,
         ),
-      create: (input, options) =>
+      start: (input, options) =>
         run(
-          "discussionSessions.create",
-          withClient((client) => client.discussionSessions.create(input)),
+          "discussionSessions.start",
+          withClient((client) => client.discussionSessions.start(input)),
           options,
         ),
-      prompt: (input, options) =>
+      ensureSessionAssistant: (input, options) =>
         run(
-          "discussionSessions.prompt",
-          withClient((client) => client.discussionSessions.prompt(input)),
-          options,
-        ),
-      abort: (target, options) =>
-        run(
-          "discussionSessions.abort",
-          withClient((client) => client.discussionSessions.abort(target)),
+          "discussionSessions.ensureSessionAssistant",
+          withClient((client) => client.discussionSessions.ensureSessionAssistant(input)),
           options,
         ),
       setResolved: (target, options) =>

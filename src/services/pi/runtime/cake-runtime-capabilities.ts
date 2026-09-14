@@ -267,7 +267,7 @@ export function createAgentControlOperations(
   ];
 }
 
-export function createCakeToolDefinition(
+function createCakeToolDefinition(
   definitions: readonly CakeOperationDefinition[],
 ): ToolDefinition {
   const registry = new CakeOperationRegistry(definitions);
@@ -1377,8 +1377,8 @@ export async function createCakeRuntimeCapabilities(input: {
               noContextFiles: options.isolatedSystemPrompt !== undefined,
               extensionFactories: [
                 ...requestExtensions,
-                createCakeGatewayExtension((pi) =>
-                  filterRuntimeOperations([
+                createCakeGatewayExtension((pi) => [
+                  ...filterRuntimeOperations([
                     ...localOperations(),
                     ...(options.modelPresets
                       ? createCakeModelOperations(options.modelPresets)
@@ -1406,7 +1406,12 @@ export async function createCakeRuntimeCapabilities(input: {
                         )
                       : []),
                   ]),
-                ),
+                  // An explicitly granted control gateway is not subject to the
+                  // read-only auxiliary trimming above.
+                  ...(options.sessionControl
+                    ? createGlobalControlOperations(options.sessionControl, resolveApiModel)
+                    : []),
+                ]),
                 createCakeArtifactExtension({ persistArtifact, requestArtifact }),
                 ...(options.reviewContextPath
                   ? [

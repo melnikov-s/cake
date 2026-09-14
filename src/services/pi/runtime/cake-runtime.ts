@@ -196,6 +196,15 @@ export interface CakeRuntimeOptions {
     tools: readonly GlobalControlTool[];
     invoke(input: { name: string; arguments: JsonValue }, signal: AbortSignal): Promise<JsonValue>;
   };
+  /**
+   * The validated Cake application-control gateway scoped to one parent Project
+   * Session, added to an auxiliary sidecar's `cake` tool without any of the
+   * Cake Chat runtime semantics that `globalControl` implies.
+   */
+  sessionControl?: {
+    tools: readonly GlobalControlTool[];
+    invoke(input: { name: string; arguments: JsonValue }, signal: AbortSignal): Promise<JsonValue>;
+  };
   agentControl?: {
     run(
       input: DomainSubagentTaskInput,

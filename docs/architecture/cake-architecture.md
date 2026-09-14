@@ -108,6 +108,10 @@ are two presentations of that same durable transcript; it uses the configured
 utility model and adds only the validated Cake application-control gateway.
 Assistant, assistant-message, and code-anchored chats cannot modify project
 files. The code anchor changes the source material, not the sidecar's authority.
+In the renderer each sidecar is its own `Session` projection driven by the
+shared conversation reducer and wrapped by the shared conversation Store; the
+parent's Discussion catalog carries only thread metadata and a persisted
+preview, so a catalog refresh can never disturb a live side chat.
 Neither kind forks or records work in the parent transcript. A single derived
 Markdown thread index is also available to the parent agent through its ordinary
 project tools.
