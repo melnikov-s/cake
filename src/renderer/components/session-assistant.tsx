@@ -62,7 +62,6 @@ export const SessionAssistant = observer(function SessionAssistant({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverIconTrigger
-        tooltip="Ask session assistant · Right-click for chat"
         ariaLabel="Ask session assistant"
         onMouseDown={(event) => {
           // Keep the parent composer selection intact until the assistant snapshots it.
