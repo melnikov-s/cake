@@ -17,6 +17,7 @@ export const ChatSubmitAction = observer(function ChatSubmitAction({
     <>
       {(activatingDraft || !store.loading || hasInput) && (
         <IconButton
+          data-cake-hint-key="u"
           className="size-8 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-45"
           tooltip={
             activatingDraft

@@ -57,14 +57,19 @@ function targetName(element: HTMLElement) {
   );
 }
 
-function labelFor(index: number, length: number) {
+function dynamicLabelFor(index: number, length: number, firstCharacters: string) {
   let remaining = index;
   let label = "";
-  for (let position = 0; position < length; position += 1) {
+  for (let position = length - 1; position > 0; position -= 1) {
     label = hintAlphabet[remaining % hintAlphabet.length] + label;
     remaining = Math.floor(remaining / hintAlphabet.length);
   }
-  return label;
+  return firstCharacters[remaining % firstCharacters.length] + label;
+}
+
+function preferredStaticTarget(elements: readonly HTMLElement[], key: string) {
+  const matches = elements.filter((element) => element.dataset.cakeHintKey?.toLowerCase() === key);
+  return matches.find((element) => element.closest('[data-focused="true"]')) ?? matches[0]!;
 }
 
 function collectTargets(): HintTarget[] {
@@ -87,13 +92,28 @@ function collectTargets(): HintTarget[] {
       const rightRect = right.getBoundingClientRect();
       return leftRect.top - rightRect.top || leftRect.left - rightRect.left;
     });
-  const labelLength = Math.max(
-    1,
-    Math.ceil(Math.log(elements.length) / Math.log(hintAlphabet.length)),
+  const requestedStaticKeys = new Set(
+    elements
+      .map((element) => element.dataset.cakeHintKey?.toLowerCase())
+      .filter((key): key is string => Boolean(key && /^[a-z]$/.test(key))),
   );
-  return elements.map((element, index) => ({
+  const staticTargets = new Map(
+    [...requestedStaticKeys].map((key) => [preferredStaticTarget(elements, key), key]),
+  );
+  const firstCharacters = [...hintAlphabet]
+    .filter((character) => !requestedStaticKeys.has(character))
+    .join("");
+  const dynamicCount = elements.length - staticTargets.size;
+  let dynamicLength = 2;
+  while (dynamicCount > firstCharacters.length * hintAlphabet.length ** (dynamicLength - 1))
+    dynamicLength += 1;
+  let dynamicIndex = 0;
+
+  return elements.map((element) => ({
     element,
-    label: labelFor(index, labelLength),
+    label:
+      staticTargets.get(element) ??
+      dynamicLabelFor(dynamicIndex++, dynamicLength, firstCharacters || hintAlphabet),
     name: targetName(element),
     rect: element.getBoundingClientRect(),
   }));

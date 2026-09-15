@@ -130,6 +130,7 @@ export const SessionSplitLayout = observer(function SessionSplitLayout({
           <div className="flex min-w-0 shrink-0 items-center gap-1 [app-region:no-drag]">
             {renderHeader(node)}
             <IconButton
+              data-cake-hint-key="h"
               tooltip="Split right"
               disabled={!store.canSplit}
               onClick={() => onSplit("x")}
@@ -137,6 +138,7 @@ export const SessionSplitLayout = observer(function SessionSplitLayout({
               <SplitRightIcon />
             </IconButton>
             <IconButton
+              data-cake-hint-key="j"
               tooltip="Split down"
               disabled={!store.canSplit}
               onClick={() => onSplit("y")}
@@ -146,6 +148,7 @@ export const SessionSplitLayout = observer(function SessionSplitLayout({
             {multiplePanes && (
               <IconButton
                 className="absolute right-1 top-1/2 z-20 shrink-0 -translate-y-1/2 bg-background/95"
+                data-cake-hint-key="x"
                 tooltip="Close pane"
                 onClick={() => onClose(node.paneId)}
               >

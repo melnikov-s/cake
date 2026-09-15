@@ -30,6 +30,7 @@ export const ChatComposerInput = observer(function ChatComposerInput({
     <SlashCommandCombobox
       autoFocus={focusEnabled}
       focusEnabled={focusEnabled}
+      data-cake-hint-key="i"
       aria-label={store.inputLabel}
       aria-busy={store.rewording}
       inputRef={(input) => {

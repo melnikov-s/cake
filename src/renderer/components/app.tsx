@@ -287,6 +287,7 @@ export const App = observer(function App() {
               sidebarCollapsed ? "grid" : "hidden max-[620px]:grid",
             )}
             data-slot="header-sidebar-toggle"
+            data-cake-hint-key="s"
             tooltip="Toggle sidebar"
             onClick={toggleSidebar}
           >
@@ -295,6 +296,7 @@ export const App = observer(function App() {
         )}
         <WorkLogControls store={paneSession.conversationSessionStore.chatStore} />
         <IconButton
+          data-cake-hint-key="t"
           tooltip={`Terminal (${terminal.toggleAcceleratorHint})`}
           disabled={!terminal.available}
           aria-pressed={paneSession.sessionId === cakeChatCollection.sessionId && terminal.open}
@@ -383,6 +385,7 @@ export const App = observer(function App() {
         variant="ghost"
         size="sm"
         className="h-8 gap-1.5 px-2 text-muted-foreground"
+        data-cake-hint-key="a"
         aria-label={`${workspace.records.length} artifacts`}
         aria-pressed={workspace.open}
         onClick={() => {
@@ -411,6 +414,7 @@ export const App = observer(function App() {
               sidebarCollapsed ? "grid" : "hidden max-[620px]:grid",
             )}
             data-slot="header-sidebar-toggle"
+            data-cake-hint-key="s"
             tooltip="Toggle sidebar"
             onClick={toggleSidebar}
           >
@@ -418,6 +422,7 @@ export const App = observer(function App() {
           </IconButton>
         )}
         <IconButton
+          data-cake-hint-key="r"
           tooltip="Session tree"
           aria-pressed={focused && store.commandPaneStore.pane === "tree"}
           onClick={() => {
@@ -433,6 +438,7 @@ export const App = observer(function App() {
         <WorkLogControls store={paneSession.conversationSessionStore.chatStore} />
         <div className="mx-0.5 h-4 w-px shrink-0 bg-border/60" aria-hidden="true" />
         <IconButton
+          data-cake-hint-key="v"
           tooltip="Open VS Code"
           onClick={() => {
             focusPane();
@@ -443,6 +449,7 @@ export const App = observer(function App() {
         </IconButton>
         {!store.sessionRegistry.pendingSessions.isTemporary(paneSession.sessionId) && (
           <IconButton
+            data-cake-hint-key="d"
             tooltip="Open workspace changes in VS Code"
             onClick={() => {
               focusPane();
@@ -453,6 +460,7 @@ export const App = observer(function App() {
           </IconButton>
         )}
         <IconButton
+          data-cake-hint-key="t"
           tooltip={`Terminal (${terminal.toggleAcceleratorHint})`}
           disabled={!terminal.available}
           aria-pressed={focused && terminal.open}
@@ -614,6 +622,7 @@ export const App = observer(function App() {
         )}
         <SessionContinuationDialog store={store.sessionContinuationStore} />
         <TreeNavigationDialog store={store.commandPaneStore} />
+        <UiHintMode store={root.uiHintModeStore} />
       </>
     );
   const shellStyle: CSSProperties & Record<"--sidebar-width" | "--right-pane-width", string> = {
@@ -672,6 +681,7 @@ export const App = observer(function App() {
               sidebarCollapsed && "grid",
             )}
             data-slot="workspace-settings"
+            data-cake-hint-key="g"
             tooltip="Open settings"
             onClick={() => root.showSettings()}
           >
@@ -698,6 +708,7 @@ export const App = observer(function App() {
                       : "hidden max-[620px]:grid",
                 )}
                 data-slot="header-sidebar-toggle"
+                data-cake-hint-key="s"
                 tooltip="Toggle sidebar"
                 onClick={toggleSidebar}
               >
@@ -724,6 +735,7 @@ export const App = observer(function App() {
             <div className="flex min-w-0 shrink-0 items-center gap-1.5 [app-region:no-drag]">
               {terminal.available && (
                 <IconButton
+                  data-cake-hint-key="t"
                   tooltip={`Terminal (${terminal.toggleAcceleratorHint})`}
                   aria-pressed={terminal.open}
                   onClick={() => void terminal.toggle()}
@@ -797,6 +809,7 @@ export const App = observer(function App() {
               <div className="mt-6 flex gap-2.5">
                 <Button
                   size="lg"
+                  data-cake-hint-key="o"
                   disabled={store.agentAvailability !== "available" || projectOpen.isBusy}
                   onClick={() => void root.chooseProject()}
                 >
@@ -805,6 +818,7 @@ export const App = observer(function App() {
                 <Button
                   size="lg"
                   variant="outline"
+                  data-cake-hint-key="q"
                   disabled={store.agentAvailability !== "available" || projectOpen.isBusy}
                   onClick={() => void root.startOneOffChat()}
                 >

@@ -82,10 +82,11 @@ export const Sidebar = observer(function Sidebar({
       )}
     >
       <div className="flex h-[46px] shrink-0 items-center gap-1 pl-[103px] pr-3 [app-region:drag]">
-        <IconButton tooltip="Toggle sidebar" onClick={onToggle}>
+        <IconButton data-cake-hint-key="s" tooltip="Toggle sidebar" onClick={onToggle}>
           <SidebarIcon />
         </IconButton>
         <IconButton
+          data-cake-hint-key="b"
           tooltip="Back"
           disabled={!shell.canGoBack}
           onClick={onGoBack}
@@ -94,6 +95,7 @@ export const Sidebar = observer(function Sidebar({
           <BackIcon />
         </IconButton>
         <IconButton
+          data-cake-hint-key="f"
           tooltip="Forward"
           disabled={!shell.canGoForward}
           onClick={onGoForward}
@@ -104,7 +106,11 @@ export const Sidebar = observer(function Sidebar({
         {!focusMode && (
           <div className="ml-auto flex items-center gap-0.5 [app-region:no-drag]">
             <Popover open={newSessionMenuOpen} onOpenChange={setNewSessionMenuOpen}>
-              <PopoverIconTrigger tooltip="New session" ariaLabel="New session">
+              <PopoverIconTrigger
+                data-cake-hint-key="n"
+                tooltip="New session"
+                ariaLabel="New session"
+              >
                 <PlusIcon />
               </PopoverIconTrigger>
               <PopoverContent side="bottom" align="end" className="w-56 p-1.5">
@@ -178,7 +184,11 @@ export const Sidebar = observer(function Sidebar({
                     className="mt-0.5 flex items-center justify-between px-1.5 py-2 text-[13px] font-medium text-muted-foreground"
                   >
                     <span>Projects</span>
-                    <IconButton tooltip="Add project" onClick={onChooseProject}>
+                    <IconButton
+                      data-cake-hint-key="p"
+                      tooltip="Add project"
+                      onClick={onChooseProject}
+                    >
                       <FolderPlusIcon />
                     </IconButton>
                   </div>
@@ -295,6 +305,7 @@ export const Sidebar = observer(function Sidebar({
               "h-9 w-full justify-start gap-2 px-2 text-[13px] font-medium text-muted-foreground hover:bg-sidebar-hover hover:text-foreground",
               shell.selection.kind === "settings" && "bg-sidebar-hover text-foreground",
             )}
+            data-cake-hint-key="g"
             aria-label="Open settings"
             aria-current={shell.selection.kind === "settings" ? "page" : undefined}
             onClick={onOpenSettings}

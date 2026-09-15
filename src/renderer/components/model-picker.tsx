@@ -211,6 +211,7 @@ export function ModelPicker({
           "inline-flex max-w-[320px] min-w-0 items-center gap-1.5 rounded-full border border-border/60 bg-muted/40 px-3 py-1 text-xs font-medium text-foreground hover:bg-muted/70 hover:text-foreground transition-colors",
           className,
         )}
+        data-cake-hint-key="m"
         aria-label={ariaLabel}
       >
         <span className="flex min-w-0 items-center gap-1">

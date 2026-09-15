@@ -17,7 +17,11 @@ export const WorkLogControls = observer(function WorkLogControls({ store }: { st
 
   return (
     <Popover>
-      <PopoverIconTrigger className="w-10" tooltip="Work log display options">
+      <PopoverIconTrigger
+        className="w-10"
+        data-cake-hint-key="w"
+        tooltip="Work log display options"
+      >
         <span className="flex items-center gap-0.5">
           {viewMode === "auto" ? <SparkleIcon /> : viewMode === "diff" ? <DiffIcon /> : <LogIcon />}
           {expansion === "collapsed" ? (

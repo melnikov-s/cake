@@ -8,6 +8,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { UiHintMode } from "../../../src/renderer/components/ui/ui-hint-mode";
 import { UiHintModeStore } from "../../../src/renderer/stores/UiHintModeStore";
 
+function typeHint(label: string) {
+  for (const key of label) act(() => window.dispatchEvent(new KeyboardEvent("keydown", { key })));
+}
+
 describe("UiHintMode", () => {
   let container: HTMLDivElement;
   let root: Root;
@@ -57,7 +61,8 @@ describe("UiHintMode", () => {
     expect(button.getAttribute("data-cake-hint-target")).toBe("true");
     const buttonHint = button.getAttribute("data-cake-hint-label")!;
 
-    act(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: buttonHint })));
+    expect(buttonHint).toHaveLength(2);
+    typeHint(buttonHint);
     expect(clicked).toHaveBeenCalledOnce();
     expect(store.active).toBe(false);
     expect(document.querySelector('[data-slot="ui-hint-overlay"]')).toBeNull();
@@ -66,8 +71,34 @@ describe("UiHintMode", () => {
     act(() => store.open());
     const input = container.querySelector("input")!;
     const inputHint = input.getAttribute("data-cake-hint-label")!;
-    act(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: inputHint })));
+    expect(inputHint).toHaveLength(2);
+    typeHint(inputHint);
     expect(document.activeElement).toBe(input);
+  });
+
+  it("uses hardcoded single keys for static controls and reserves longer labels for dynamic ones", () => {
+    using store = mount(createStore(UiHintModeStore));
+    const opened = vi.fn();
+    act(() =>
+      root.render(
+        <>
+          <button type="button" data-cake-hint-key="s" onClick={opened}>
+            Toggle sidebar
+          </button>
+          <button type="button">Dynamic session</button>
+          <UiHintMode store={store} />
+        </>,
+      ),
+    );
+
+    act(() => store.open());
+    const [sidebar, dynamic] = container.querySelectorAll("button");
+    expect(sidebar!.getAttribute("data-cake-hint-label")).toBe("s");
+    expect(dynamic!.getAttribute("data-cake-hint-label")).toHaveLength(2);
+    expect(dynamic!.getAttribute("data-cake-hint-label")).not.toMatch(/^s/);
+
+    typeHint("s");
+    expect(opened).toHaveBeenCalledOnce();
   });
 
   it("omits hidden and explicitly excluded controls", () => {

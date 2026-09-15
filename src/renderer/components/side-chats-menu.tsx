@@ -37,6 +37,7 @@ export const SideChatsMenu = observer(function SideChatsMenu({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverIconTrigger
         className="relative"
+        data-cake-hint-key="c"
         tooltip={`Side chats, ${threads.length} open`}
         onClick={onOpen}
       >
