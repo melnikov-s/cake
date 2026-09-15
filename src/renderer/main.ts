@@ -65,6 +65,7 @@ async function bootstrap(bridge: NonNullable<typeof window.cake>) {
   const stopObservingModels = observeModels(runtime, projection, rootStore);
   const stopObservingEvents = observeEvents(runtime, projection, rootStore);
   void rootStore.settingsStore.modelPresets.hydrate();
+  void rootStore.settingsStore.providers.hydrate();
   void rootStore.initialize();
   if (hydrationError)
     rootStore.toastStore.show({

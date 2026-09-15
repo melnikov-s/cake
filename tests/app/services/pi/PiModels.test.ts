@@ -41,6 +41,8 @@ const run = <A, E>(models: ReadonlyArray<PiModel>, effect: Effect.Effect<A, E, P
   const adapter: PiModelsAdapter = {
     loadCatalog: () => Effect.succeed(models),
     refreshCatalog: () => Effect.void,
+    login: () => Effect.void,
+    logout: () => Effect.void,
     complete: () => Effect.succeed("completed response"),
   };
   return effect.pipe(Effect.provide(makePiModelsLayer(adapter)));
@@ -179,6 +181,8 @@ describe("PiModels", () => {
     const layer = makePiModelsLayer({
       loadCatalog: () => Effect.succeed([{ id: "missing-required-fields" }]),
       refreshCatalog: () => Effect.void,
+      login: () => Effect.void,
+      logout: () => Effect.void,
       complete: () => Effect.succeed(""),
     });
     return Effect.gen(function* () {
@@ -192,6 +196,8 @@ describe("PiModels", () => {
     const layer = makePiModelsLayer({
       loadCatalog: () => Effect.fail(new Error("catalog unavailable")),
       refreshCatalog: () => Effect.void,
+      login: () => Effect.void,
+      logout: () => Effect.void,
       complete: () => Effect.succeed(""),
     });
     return Effect.gen(function* () {
@@ -206,6 +212,8 @@ describe("PiModels", () => {
     const layer = makePiModelsLayer({
       loadCatalog: () => Effect.succeed([model()]),
       refreshCatalog: () => Effect.void,
+      login: () => Effect.void,
+      logout: () => Effect.void,
       complete: (input) =>
         Effect.sync(() => {
           received = input;
@@ -232,6 +240,8 @@ describe("PiModels", () => {
       const layer = makePiModelsLayer({
         loadCatalog: () => Effect.succeed([model()]),
         refreshCatalog: () => Effect.void,
+        login: () => Effect.void,
+        logout: () => Effect.void,
         complete: () =>
           Deferred.succeed(started, undefined).pipe(
             Effect.andThen(Effect.never),
@@ -258,6 +268,8 @@ describe("PiModels", () => {
     const layer = makePiModelsLayer({
       loadCatalog: () => Effect.succeed([model()]),
       refreshCatalog: () => Effect.void,
+      login: () => Effect.void,
+      logout: () => Effect.void,
       complete: () => Effect.fail(new Error("provider failed")),
     });
     return Effect.gen(function* () {

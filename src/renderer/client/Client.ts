@@ -328,6 +328,14 @@ export interface Client {
   readonly models: {
     readonly list: (options?: ClientCommandOptions) => Promise<ReadonlyArray<ModelOption>>;
     readonly refresh: (options?: ClientCommandOptions) => Promise<void>;
+    readonly login: (
+      input: { readonly provider: string; readonly authType: "api_key" | "oauth" },
+      options?: ClientCommandOptions,
+    ) => Promise<void>;
+    readonly logout: (
+      input: { readonly provider: string },
+      options?: ClientCommandOptions,
+    ) => Promise<void>;
   };
   readonly modelPresets: CommandGroup<CakeIpcClientService["modelPresets"]>;
   readonly sessionChats: CommandGroup<CakeIpcClientService["sessionChats"]>;

@@ -102,6 +102,7 @@ import type {
   PiModel,
   PiModelCatalogError,
   PiModelResolutionError,
+  PiProviderAuthError,
 } from "../../services/pi/model-data";
 import type {
   ApplicationEncodeError,
@@ -196,6 +197,13 @@ export interface CakeIpcClientService {
       PiModelCatalogError | TransportError
     >;
     readonly refresh: () => Effect.Effect<void, PiModelCatalogError | TransportError>;
+    readonly login: (input: {
+      readonly provider: string;
+      readonly authType: "api_key" | "oauth";
+    }) => Effect.Effect<void, PiProviderAuthError | TransportError>;
+    readonly logout: (input: {
+      readonly provider: string;
+    }) => Effect.Effect<void, PiProviderAuthError | TransportError>;
   };
   readonly modelPresets: {
     readonly list: () => Effect.Effect<ModelPresetProjection, TransportError>;
@@ -634,6 +642,8 @@ export const CakeIpcClientLive = Layer.effect(
         refresh: Effect.fn("CakeIpcClient.models.refresh")(() =>
           client("models.refresh", undefined),
         ),
+        login: Effect.fn("CakeIpcClient.models.login")((input) => client("models.login", input)),
+        logout: Effect.fn("CakeIpcClient.models.logout")((input) => client("models.logout", input)),
       },
       modelPresets: {
         list: Effect.fn("CakeIpcClient.modelPresets.list")(() =>

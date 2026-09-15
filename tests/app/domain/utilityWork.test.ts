@@ -45,6 +45,8 @@ const run = <A, E>(effect: Effect.Effect<A, E, PiModels>, complete: PiModelsAdap
       makePiModelsLayer({
         loadCatalog: () => Effect.succeed([model]),
         refreshCatalog: () => Effect.void,
+        login: () => Effect.void,
+        logout: () => Effect.void,
         complete,
       }),
     ),

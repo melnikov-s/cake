@@ -72,6 +72,11 @@ export interface RendererRequestCoordinatorService {
     sessionId: string,
     request: RendererUiRequest,
   ) => Effect.Effect<string | undefined, RendererRequestCoordinatorError>;
+  readonly requestUiForConnection: (
+    connectionId: number,
+    requestScopeId: string,
+    request: RendererUiRequest,
+  ) => Effect.Effect<string | undefined, RendererRequestCoordinatorError>;
   readonly requestArtifact: (
     sessionId: string,
     record: ArtifactRecord,
@@ -263,6 +268,40 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
         Effect.sync(() => bindings.set(targetKey(target), connectionId)),
     );
 
+    const requestUiForConnection = Effect.fn("RendererRequestCoordinator.requestUiForConnection")(
+      function* (connectionId: number, requestScopeId: string, request: RendererUiRequest) {
+        if (request.signal?.aborted) return undefined;
+        const operationId = crypto.randomUUID();
+        const uiRequestId = crypto.randomUUID();
+        const completion = yield* Deferred.make<JsonValue | undefined>();
+        const entry: PendingRequest = {
+          _tag: "Ui",
+          sessionId: requestScopeId,
+          connectionId,
+          operationId,
+          completion,
+        };
+        pending.set(uiRequestId, entry);
+        yield* publishProjectEvent(connectionId, {
+          type: "ui-request",
+          requestId: operationId,
+          uiRequestId,
+          sessionId: requestScopeId,
+          kind: request.kind,
+          title: request.title,
+          message: request.message,
+          placeholder: request.placeholder,
+          initialValue: request.initialValue,
+          multiline: request.multiline,
+          options: request.options,
+        }).pipe(Effect.tapError(() => Effect.sync(() => pending.delete(uiRequestId))));
+        const result = yield* awaitPending(uiRequestId, entry, request.signal, request.timeout);
+        return yield* Schema.decodeUnknownEffect(Schema.UndefinedOr(Schema.String))(result).pipe(
+          Effect.mapError((cause) => coordinatorError("requestUiForConnection", String(cause))),
+        );
+      },
+    );
+
     const requestUi = Effect.fn("RendererRequestCoordinator.requestUi")(function* (
       sessionId: string,
       request: RendererUiRequest,
@@ -274,34 +313,7 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
             ? cause
             : coordinatorError("requestUi", String(cause)),
       });
-      if (request.signal?.aborted) return undefined;
-      const operationId = crypto.randomUUID();
-      const uiRequestId = crypto.randomUUID();
-      const completion = yield* Deferred.make<JsonValue | undefined>();
-      const entry: PendingRequest = {
-        _tag: "Ui",
-        sessionId,
-        connectionId,
-        operationId,
-        completion,
-      };
-      pending.set(uiRequestId, entry);
-      yield* publishProjectEvent(connectionId, {
-        type: "ui-request",
-        requestId: operationId,
-        uiRequestId,
-        kind: request.kind,
-        title: request.title,
-        message: request.message,
-        placeholder: request.placeholder,
-        initialValue: request.initialValue,
-        multiline: request.multiline,
-        options: request.options,
-      }).pipe(Effect.tapError(() => Effect.sync(() => pending.delete(uiRequestId))));
-      const result = yield* awaitPending(uiRequestId, entry, request.signal, request.timeout);
-      return yield* Schema.decodeUnknownEffect(Schema.UndefinedOr(Schema.String))(result).pipe(
-        Effect.mapError((cause) => coordinatorError("requestUi", String(cause))),
-      );
+      return yield* requestUiForConnection(connectionId, sessionId, request);
     });
 
     const requestArtifact = Effect.fn("RendererRequestCoordinator.requestArtifact")(function* (
@@ -576,6 +588,7 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
       registerProjectSession,
       bind,
       requestUi,
+      requestUiForConnection,
       requestArtifact,
       requestProjectControl,
       requestCakeChatControl,

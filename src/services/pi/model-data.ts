@@ -100,6 +100,15 @@ export class PiModelCatalogError extends Schema.TaggedError<PiModelCatalogError>
   },
 ) {}
 
+export class PiProviderAuthError extends Schema.TaggedError<PiProviderAuthError>()(
+  "PiProviderAuthError",
+  {
+    operation: Schema.Literals(["login", "logout"]),
+    provider: Schema.String,
+    message: Schema.String,
+  },
+) {}
+
 export class PiModelCompletionError extends Schema.TaggedError<PiModelCompletionError>()(
   "PiModelCompletionError",
   { message: Schema.String },

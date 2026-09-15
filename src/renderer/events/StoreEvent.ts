@@ -37,6 +37,7 @@ export type StoreEvent =
       type: "ui-requested";
       operationId: string;
       uiRequestId: string;
+      sessionId: string;
       kind: "confirm" | "text" | "secret" | "select" | "manual_code" | "editor";
       title: string;
       message: string;
@@ -97,6 +98,7 @@ export function toStoreEvent(event: CakeEvent): StoreEvent | undefined {
       type: "ui-requested",
       operationId: event.requestId,
       uiRequestId: event.uiRequestId,
+      sessionId: event.sessionId,
       kind: event.kind,
       title: event.title,
       message: event.message,

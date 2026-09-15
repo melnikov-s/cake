@@ -78,6 +78,7 @@ const cakeEventSchemas = {
     type: Schema.Literal("ui-request"),
     requestId: uuid,
     uiRequestId: uuid,
+    sessionId: stringMax(256),
     kind: Schema.Literals(["confirm", "text", "secret", "select", "manual_code", "editor"]),
     title: ipcProjectionString(512),
     message: ipcProjectionString(4_096),

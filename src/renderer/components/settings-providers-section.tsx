@@ -7,11 +7,9 @@ import { StatusDot } from "./ui/status-dot";
 export const SettingsProvidersSection = observer(function SettingsProvidersSection({
   providers,
   providerGroups,
-  hasSession,
 }: {
   providers: ProviderSettingsStore;
   providerGroups: ChatConfigurationStore["modelsByProvider"];
-  hasSession: boolean;
 }) {
   return (
     <section className="border-t border-border py-5" aria-labelledby="providers-title">
@@ -28,7 +26,7 @@ export const SettingsProvidersSection = observer(function SettingsProvidersSecti
           variant="outline"
           size="sm"
           type="button"
-          disabled={!hasSession || providers.refreshingModels}
+          disabled={providers.refreshingModels}
           onClick={() => void providers.refreshModels()}
         >
           {providers.refreshingModels ? "Refreshing…" : "Refresh models"}
@@ -36,7 +34,7 @@ export const SettingsProvidersSection = observer(function SettingsProvidersSecti
       </header>
       {providerGroups.length === 0 ? (
         <p className="text-xs text-muted-foreground">
-          Provider details will appear after a chat is open.
+          {providers.loadingModels ? "Loading providers…" : "No providers are available."}
         </p>
       ) : (
         <div className="grid gap-3">

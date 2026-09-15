@@ -102,6 +102,18 @@ export function makeClient(runtime: Pick<Runtime, "execute">): Client {
           withClient((client) => client.models.refresh()),
           options,
         ),
+      login: (input, options) =>
+        run(
+          "models.login",
+          withClient((client) => client.models.login(input)),
+          options,
+        ),
+      logout: (input, options) =>
+        run(
+          "models.logout",
+          withClient((client) => client.models.logout(input)),
+          options,
+        ),
     },
     modelPresets: {
       list: (options) =>

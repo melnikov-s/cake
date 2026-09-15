@@ -2,7 +2,7 @@ import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai/compat";
 import type { SimpleStreamOptions } from "@earendil-works/pi-ai";
 import { Cache, Clock, Duration, Effect, Exit, Layer } from "effect";
-import { makePiModels, PiModels } from "../PiModels";
+import { makePiModels, PiModels, type PiProviderAuthInteraction } from "../PiModels";
 import type { BoundedCompletionInput, PiModel } from "../model-data";
 import { CODEX_FAST_MODE_SERVICE_TIER, supportsFastMode } from "../fast-mode";
 import { registerAgentDirectoryExtensionProviders } from "../runtime/extension-providers";
@@ -153,6 +153,54 @@ export const makePiModelsLive = (agentDirectory: string) =>
           catch: (cause) => cause,
         });
       });
+      const login = Effect.fn("PiModelsLive.login")(function* (
+        provider: string,
+        authType: "api_key" | "oauth",
+        interaction: PiProviderAuthInteraction,
+      ) {
+        const runtime = yield* getRuntime();
+        return yield* Effect.tryPromise({
+          try: (signal) =>
+            runtime.login(provider, authType, {
+              signal,
+              async prompt(prompt) {
+                const value = await interaction.request({
+                  kind: prompt.type,
+                  message: prompt.message,
+                  placeholder: "placeholder" in prompt ? prompt.placeholder : undefined,
+                  options:
+                    prompt.type === "select"
+                      ? prompt.options.map((option) => ({ id: option.id, label: option.label }))
+                      : undefined,
+                  signal: prompt.signal,
+                });
+                if (value === undefined) throw new Error("Authentication cancelled");
+                return value;
+              },
+              notify: interaction.notify,
+            }),
+          catch: (cause) => cause,
+        });
+      });
+      const logout = Effect.fn("PiModelsLive.logout")(function* (provider: string) {
+        const runtime = yield* getRuntime();
+        const status = runtime.getProviderAuthStatus(provider);
+        if (
+          status.configured &&
+          status.source &&
+          status.source !== "stored" &&
+          status.source !== "runtime"
+        )
+          return yield* Effect.fail(
+            new Error(
+              `${status.label ?? provider} is managed outside Cake. Remove that credential source and restart Cake to disconnect it.`,
+            ),
+          );
+        return yield* Effect.tryPromise({
+          try: (signal) => runtime.logout(provider, { signal }),
+          catch: (cause) => cause,
+        });
+      });
       const complete = Effect.fn("PiModelsLive.complete")(function* (
         input: BoundedCompletionInput,
       ) {
@@ -206,6 +254,6 @@ export const makePiModelsLive = (agentDirectory: string) =>
         });
       });
 
-      return makePiModels({ loadCatalog, refreshCatalog, complete });
+      return makePiModels({ loadCatalog, refreshCatalog, login, logout, complete });
     }),
   );

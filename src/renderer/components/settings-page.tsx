@@ -787,11 +787,7 @@ export const SettingsPage = observer(function SettingsPage({
           )}
 
           {activePage === "providers" && (
-            <SettingsProvidersSection
-              providers={providers}
-              providerGroups={providerGroups}
-              hasSession={Boolean(session)}
-            />
+            <SettingsProvidersSection providers={providers} providerGroups={providerGroups} />
           )}
           {activePage === "appearance" && <SettingsAppearanceSection appearance={appearance} />}
           {activePage === "hotkeys" && <SettingsHotkeysSection hotkeys={settings.hotkeys} />}

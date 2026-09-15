@@ -8,6 +8,7 @@ import { describeError } from "../lib/error-details";
 export interface UiRequestState {
   operationId: string;
   uiRequestId: string;
+  sessionId: string;
   kind: "confirm" | "text" | "secret" | "select" | "manual_code" | "editor";
   title: string;
   message: string;
@@ -61,11 +62,9 @@ export class ExtensionUiStore extends Store<ExtensionUiStoreProps> {
     this.request = undefined;
     this.props.requestComposerFocus();
     try {
-      const context = this.props.sessionContext();
-      if (!context) throw new Error("No active session");
       await this.artifacts.respondToUi({
         operationId: request.operationId,
-        sessionId: context.sessionId,
+        sessionId: request.sessionId,
         uiRequestId: request.uiRequestId,
         value,
         cancelled,

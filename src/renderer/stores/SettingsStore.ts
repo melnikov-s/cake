@@ -72,7 +72,7 @@ export class SettingsStore extends Store<SettingsStoreProps> {
     return this.activeSession?.model.piSettings;
   }
   get providerGroups() {
-    return this.configuration?.modelsByProvider ?? [];
+    return this.providers.modelsByProvider;
   }
   get authNotice() {
     return this.activeSession?.model.uiParts.find(

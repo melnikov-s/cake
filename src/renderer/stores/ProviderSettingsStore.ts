@@ -1,5 +1,5 @@
 import { Store, observable } from "r-state-tree";
-import type { PiSettingUpdate } from "../../ipc/session-contract";
+import type { ModelOption, PiSettingUpdate } from "../../ipc/session-contract";
 import { ClientContext } from "./context/ClientContext";
 import { SettingsSessionContext } from "./context/SettingsSessionContext";
 import { describeError } from "../lib/error-details";
@@ -13,8 +13,12 @@ export interface ProviderSettingsStoreProps {
 export class ProviderSettingsStore extends Store<ProviderSettingsStoreProps> {
   readonly providerOperations: Record<string, { provider: string; kind: "login" | "logout" }> =
     observable({});
+  readonly catalogModels: ModelOption[] = observable([]);
+  loadingModels = true;
   error: string | undefined;
   errorDetails: string | undefined;
+  private catalogLoadRevision = 0;
+  private hydration: Promise<void> | undefined;
   private refreshOperationId: string | undefined;
 
   get client() {
@@ -28,10 +32,24 @@ export class ProviderSettingsStore extends Store<ProviderSettingsStoreProps> {
   get activeOperations() {
     return this.props.operations.active("settings");
   }
+  get modelsByProvider() {
+    const groups = new Map<string, { name: string; models: ModelOption[] }>();
+    for (const model of this.catalogModels) {
+      const group = groups.get(model.provider) ?? { name: model.providerName, models: [] };
+      group.models.push(model);
+      groups.set(model.provider, group);
+    }
+    return [...groups.entries()].map(([id, group]) => ({ id, ...group }));
+  }
   get refreshingModels() {
     return Boolean(
       this.refreshOperationId && this.activeOperations.includes(this.refreshOperationId),
     );
+  }
+
+  hydrate() {
+    this.hydration ??= this.loadCatalog();
+    return this.hydration;
   }
 
   async setPiSetting(update: PiSettingUpdate) {
@@ -56,6 +74,7 @@ export class ProviderSettingsStore extends Store<ProviderSettingsStoreProps> {
     this.refreshOperationId = operationId;
     try {
       await this.client.models.refresh({ signal: this.signal });
+      await this.loadCatalog();
     } catch (error) {
       if (!this.signal.aborted) this.reportError(error);
     } finally {
@@ -69,11 +88,8 @@ export class ProviderSettingsStore extends Store<ProviderSettingsStoreProps> {
     const operationId = this.startOperation();
     this.providerOperations[operationId] = { provider, kind: "login" };
     try {
-      const target = this.requireSession();
-      await this.client.sessionChats.login(
-        { sessionId: target.sessionId, provider, authType },
-        { signal: this.signal },
-      );
+      await this.client.models.login({ provider, authType }, { signal: this.signal });
+      await this.loadCatalog();
     } catch (error) {
       if (!this.signal.aborted) this.reportError(error);
     } finally {
@@ -87,11 +103,8 @@ export class ProviderSettingsStore extends Store<ProviderSettingsStoreProps> {
     const operationId = this.startOperation();
     this.providerOperations[operationId] = { provider, kind: "logout" };
     try {
-      const target = this.requireSession();
-      await this.client.sessionChats.logout(
-        { sessionId: target.sessionId, provider },
-        { signal: this.signal },
-      );
+      await this.client.models.logout({ provider }, { signal: this.signal });
+      await this.loadCatalog();
     } catch (error) {
       if (!this.signal.aborted) this.reportError(error);
     } finally {
@@ -104,6 +117,19 @@ export class ProviderSettingsStore extends Store<ProviderSettingsStoreProps> {
     return Object.values(this.providerOperations).find(
       (operation) => operation.provider === provider,
     )?.kind;
+  }
+
+  private async loadCatalog() {
+    const revision = ++this.catalogLoadRevision;
+    try {
+      const models = await this.client.models.list({ signal: this.signal });
+      if (!this.signal.aborted && revision === this.catalogLoadRevision)
+        this.catalogModels.splice(0, this.catalogModels.length, ...models);
+    } catch (error) {
+      if (!this.signal.aborted && revision === this.catalogLoadRevision) this.reportError(error);
+    } finally {
+      if (!this.signal.aborted && revision === this.catalogLoadRevision) this.loadingModels = false;
+    }
   }
 
   private requireSession() {

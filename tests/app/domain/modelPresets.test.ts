@@ -89,6 +89,8 @@ const makeTestLayer = (options?: {
   const modelsLayer = makePiModelsLayer({
     loadCatalog: () => Effect.succeed([model]),
     refreshCatalog: () => Effect.void,
+    login: () => Effect.void,
+    logout: () => Effect.void,
     complete: () => Effect.succeed(""),
   });
   return {

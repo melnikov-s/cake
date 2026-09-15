@@ -5,6 +5,7 @@ import {
   PiModel,
   PiModelCatalogError,
   PiModelCompletionError,
+  PiProviderAuthError,
   UnauthenticatedPiModelError,
   UnavailablePiModelError,
   UnknownPiModelError,
@@ -15,9 +16,36 @@ import {
   type PiModelResolutionError,
 } from "./model-data";
 
+export interface PiProviderAuthInteraction {
+  readonly request: (input: {
+    readonly kind: "confirm" | "text" | "secret" | "select" | "manual_code";
+    readonly message: string;
+    readonly placeholder?: string;
+    readonly options?: ReadonlyArray<{ readonly id: string; readonly label: string }>;
+    readonly signal?: AbortSignal;
+  }) => Promise<string | undefined>;
+  readonly notify: (
+    event:
+      | { readonly type: "info"; readonly message: string }
+      | { readonly type: "progress"; readonly message: string }
+      | { readonly type: "auth_url"; readonly url: string; readonly instructions?: string }
+      | {
+          readonly type: "device_code";
+          readonly verificationUri: string;
+          readonly userCode: string;
+        },
+  ) => void;
+}
+
 export interface PiModelsAdapter {
   readonly loadCatalog: () => Effect.Effect<unknown, unknown>;
   readonly refreshCatalog: () => Effect.Effect<void, unknown>;
+  readonly login: (
+    provider: string,
+    authType: "api_key" | "oauth",
+    interaction: PiProviderAuthInteraction,
+  ) => Effect.Effect<void, unknown>;
+  readonly logout: (provider: string) => Effect.Effect<void, unknown>;
   readonly complete: (input: BoundedCompletionInputValue) => Effect.Effect<string, unknown>;
 }
 
@@ -26,6 +54,12 @@ export class PiModels extends Context.Service<
   {
     readonly list: () => Effect.Effect<ReadonlyArray<PiModel>, PiModelCatalogError>;
     readonly refreshCatalog: () => Effect.Effect<void, PiModelCatalogError>;
+    readonly login: (
+      provider: string,
+      authType: "api_key" | "oauth",
+      interaction: PiProviderAuthInteraction,
+    ) => Effect.Effect<void, PiProviderAuthError>;
+    readonly logout: (provider: string) => Effect.Effect<void, PiProviderAuthError>;
     readonly resolve: (
       selection: ModelSelectionValue,
     ) => Effect.Effect<ModelSelectionValue, PiModelCatalogError | PiModelResolutionError>;
@@ -65,6 +99,33 @@ export const makePiModels = (adapter: PiModelsAdapter): PiModels["Service"] => {
           (cause) => new PiModelCatalogError({ operation: "refresh", message: messageOf(cause) }),
         ),
       ),
+  );
+
+  const login = Effect.fn("PiModels.login")(
+    (provider: string, authType: "api_key" | "oauth", interaction: PiProviderAuthInteraction) =>
+      adapter.login(provider, authType, interaction).pipe(
+        Effect.mapError(
+          (cause) =>
+            new PiProviderAuthError({
+              operation: "login",
+              provider,
+              message: messageOf(cause),
+            }),
+        ),
+      ),
+  );
+
+  const logout = Effect.fn("PiModels.logout")((provider: string) =>
+    adapter.logout(provider).pipe(
+      Effect.mapError(
+        (cause) =>
+          new PiProviderAuthError({
+            operation: "logout",
+            provider,
+            message: messageOf(cause),
+          }),
+      ),
+    ),
   );
 
   const resolve = Effect.fn("PiModels.resolve")(function* (selection: ModelSelectionValue) {
@@ -128,7 +189,7 @@ export const makePiModels = (adapter: PiModelsAdapter): PiModels["Service"] => {
     return text.slice(0, decoded.maximumOutputCharacters);
   });
 
-  return PiModels.of({ list, refreshCatalog, resolve, complete });
+  return PiModels.of({ list, refreshCatalog, login, logout, resolve, complete });
 };
 
 export const makePiModelsLayer = (adapter: PiModelsAdapter) =>

@@ -15,6 +15,7 @@ import {
   ModelSelection,
   PiModel,
   PiModelCatalogError,
+  PiProviderAuthError,
   UnauthenticatedPiModelError,
   UnavailablePiModelError,
   UnknownPiModelError,
@@ -52,6 +53,17 @@ export const ModelRpc = RpcGroup.make(
     error: PiModelCatalogError,
   }),
   Rpc.make("models.refresh", { error: PiModelCatalogError }),
+  Rpc.make("models.login", {
+    payload: {
+      provider: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+      authType: Schema.Literals(["api_key", "oauth"]),
+    },
+    error: PiProviderAuthError,
+  }),
+  Rpc.make("models.logout", {
+    payload: { provider: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)) },
+    error: PiProviderAuthError,
+  }),
   Rpc.make("modelPresets.list", { success: ModelPresetProjection }),
   Rpc.make("modelPresets.create", {
     payload: ModelPresetCreateInput,
