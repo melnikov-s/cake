@@ -137,6 +137,7 @@ export const ChatTextMessage = forwardRef<
 });
 
 const messageHighlightRanges = new Map<string, Range[]>();
+const ASSISTANT_FULLSCREEN_MIN_CHARACTERS = 500;
 
 type HighlightValue = { readonly priority?: number };
 type HighlightRegistry = {
@@ -326,7 +327,10 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
   const draftAnnotations = behavior.store.annotations.filter(
     (annotation) => annotation.messageId === part.id,
   );
-  const openFullscreen = useCallback(() => setFullscreen(true), []);
+  const canOpenFullscreen = part.text.length >= ASSISTANT_FULLSCREEN_MIN_CHARACTERS;
+  const openFullscreen = useCallback(() => {
+    if (canOpenFullscreen) setFullscreen(true);
+  }, [canOpenFullscreen]);
   const closeFullscreen = useCallback(() => setFullscreen(false), []);
   useEffect(() => {
     const onHotkey = () => {
@@ -459,7 +463,7 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
       onMouseLeave={() => (hoveredRef.current = false)}
       onOpenSourceLocation={behavior.openSourceLocation}
     >
-      {behavior.showAssistantFullscreen !== false && (
+      {behavior.showAssistantFullscreen !== false && canOpenFullscreen && (
         <FullscreenButton
           className="absolute top-1.5 right-1.5 grid size-7 place-items-center rounded-md bg-transparent p-0 text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover/msg:opacity-100 group-focus-within/msg:opacity-100"
           label="View response fullscreen"

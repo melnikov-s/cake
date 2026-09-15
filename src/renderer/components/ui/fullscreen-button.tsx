@@ -15,7 +15,7 @@ export function FullscreenButton({
 }) {
   return (
     <IconButton
-      className={cn("fullscreen-trigger", className)}
+      className={cn("fullscreen-trigger -translate-x-0.5 -translate-y-0.5", className)}
       tooltip="View fullscreen"
       ariaLabel={label}
       disabled={disabled}

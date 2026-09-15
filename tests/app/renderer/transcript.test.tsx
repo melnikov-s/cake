@@ -1819,7 +1819,7 @@ describe("Transcript scrolling", () => {
                 kind: "text",
                 role: "assistant",
                 entryId: "entry-1",
-                text: "Alpha important detail.",
+                text: `Alpha important detail. ${"Context ".repeat(60)}`,
                 status: "complete",
               },
             ]}
@@ -1969,7 +1969,7 @@ describe("Transcript scrolling", () => {
     threadChat[Symbol.dispose]();
   });
 
-  it("opens every assistant response in a fullscreen reader regardless of text length or streaming state", () => {
+  it("offers fullscreen for assistant responses with at least 500 characters", () => {
     act(() =>
       root.render(
         <FullscreenSurfaceFixture>
@@ -1980,14 +1980,21 @@ describe("Transcript scrolling", () => {
                 id: "short",
                 kind: "text",
                 role: "assistant",
-                text: "Short answer",
+                text: "S".repeat(499),
+                status: "complete",
+              },
+              {
+                id: "long",
+                kind: "text",
+                role: "assistant",
+                text: "L".repeat(500),
                 status: "complete",
               },
               {
                 id: "streaming",
                 kind: "text",
                 role: "assistant",
-                text: "Working",
+                text: "W".repeat(500),
                 status: "streaming",
               },
             ])}
@@ -1995,6 +2002,9 @@ describe("Transcript scrolling", () => {
         </FullscreenSurfaceFixture>,
       ),
     );
+
+    const messages = container.querySelectorAll<HTMLElement>('[data-slot="message"]');
+    expect(messages[0]?.querySelector('[aria-label="View response fullscreen"]')).toBeNull();
 
     const expandButtons = container.querySelectorAll<HTMLButtonElement>(
       '[aria-label="View response fullscreen"]',
@@ -2004,7 +2014,7 @@ describe("Transcript scrolling", () => {
 
     const dialog = document.body.querySelector<HTMLElement>('[role="dialog"]');
     expect(dialog).not.toBeNull();
-    expect(dialog?.textContent).toContain("Short answer");
+    expect(dialog?.textContent).toContain("L".repeat(500));
     expect(document.body.style.overflow).toBe("hidden");
 
     act(() =>
@@ -2016,7 +2026,7 @@ describe("Transcript scrolling", () => {
     const streamingMessage = expandButtons[1]!.closest<HTMLElement>('[data-slot="message"]')!;
     act(() => streamingMessage.dispatchEvent(new MouseEvent("mouseover", { bubbles: true })));
     act(() => window.dispatchEvent(new CustomEvent(cakeHotkeyEventName)));
-    expect(document.body.querySelector('[role="dialog"]')?.textContent).toContain("Working");
+    expect(document.body.querySelector('[role="dialog"]')?.textContent).toContain("W".repeat(500));
   });
 
   it("renders submitted image attachments from Pi's persisted base64 block", () => {
