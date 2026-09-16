@@ -48,7 +48,6 @@ export const respondUi = Effect.fn("Artifacts.respondUi")(function* (
   connectionId: number,
   request: UiResponse,
 ) {
-  yield* authorizedWorkingDirectory(request.sessionId);
   const coordinator = yield* RendererRequestCoordinator;
   yield* coordinator.respondUi(connectionId, request.sessionId, request).pipe(asError("respondUi"));
   return { uiRequestId: request.uiRequestId };
