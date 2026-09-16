@@ -246,7 +246,7 @@ describe("companion editor reveals", () => {
     expect(openTextDocument).not.toHaveBeenCalled();
   });
 
-  it("selects the exact range and retains reveal highlights independently in split editors", async () => {
+  it("reveals disjoint ranges without selecting text and retains highlights in split editors", async () => {
     const document = {
       lineCount: lines.length,
       lineAt: (line: number) => ({ text: lines[line] ?? "" }),
@@ -268,7 +268,10 @@ describe("companion editor reveals", () => {
     await commands.get("cake.reveal")!({
       kind: "working-directory",
       path: "src/left.ts",
-      range: { start: { line: 1 }, end: { line: 2 } },
+      ranges: [
+        { start: { line: 1 }, end: { line: 1 } },
+        { start: { line: 3 }, end: { line: 4 } },
+      ],
     });
     await commands.get("cake.reveal")!({
       kind: "working-directory",
@@ -276,16 +279,13 @@ describe("companion editor reveals", () => {
       range: { start: { line: 2 }, end: { line: 3 } },
     });
 
-    expect(leftEditor.selection).toEqual(
-      new FakeSelection(new FakePosition(1, 0), new FakePosition(2, lines[2]!.length)),
-    );
-    expect(rightEditor.selection).toEqual(
-      new FakeSelection(new FakePosition(2, 0), new FakePosition(3, lines[3]!.length)),
-    );
+    expect(leftEditor.selection).toBeUndefined();
+    expect(rightEditor.selection).toBeUndefined();
     expect(revealDecorations).toHaveLength(2);
     expect(revealDecorations[0]?.dispose).not.toHaveBeenCalled();
     expect(revealDecorations[1]?.dispose).not.toHaveBeenCalled();
     expect(leftEditor.setDecorations).toHaveBeenCalledWith(revealDecorations[0], [
+      expect.anything(),
       expect.anything(),
     ]);
     expect(rightEditor.setDecorations).toHaveBeenCalledWith(revealDecorations[1], [
@@ -293,7 +293,7 @@ describe("companion editor reveals", () => {
     ]);
   });
 
-  it("opens a native diff and selects the requested range on either side", async () => {
+  it("opens a native diff and marks the requested range without selecting text", async () => {
     gitChangedPath = `${WORKSPACE}/src/run.ts`;
     const before = Object.assign(
       editorFor(gitRevisionUri(gitChangedPath, "HEAD"), lines, [0, 0], [0, 0]),
@@ -304,6 +304,8 @@ describe("companion editor reveals", () => {
       setDecorations: vi.fn(),
     });
     window.visibleTextEditors = [before, after];
+    const beforeSelection = before.selection;
+    const afterSelection = after.selection;
 
     await commands.get("cake.reveal")!({
       kind: "working-directory",
@@ -320,9 +322,7 @@ describe("companion editor reveals", () => {
     expect(fakeVscode.commands.executeCommand).toHaveBeenCalledWith(
       "workbench.action.compareEditor.focusPrimarySide",
     );
-    expect(before.selection).toEqual(
-      new FakeSelection(new FakePosition(2, 0), new FakePosition(3, lines[3]!.length)),
-    );
+    expect(before.selection).toBe(beforeSelection);
     expect(before.revealRange).toHaveBeenCalledOnce();
     expect(after.revealRange).not.toHaveBeenCalled();
 
@@ -336,9 +336,7 @@ describe("companion editor reveals", () => {
     expect(fakeVscode.commands.executeCommand).toHaveBeenCalledWith(
       "workbench.action.compareEditor.focusSecondarySide",
     );
-    expect(after.selection).toEqual(
-      new FakeSelection(new FakePosition(1, 0), new FakePosition(1, lines[1]!.length)),
-    );
+    expect(after.selection).toBe(afterSelection);
     expect(after.revealRange).toHaveBeenCalledOnce();
   });
 

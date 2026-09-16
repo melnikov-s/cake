@@ -10,6 +10,7 @@ const absoluteFileEditorLocationSchema = Schema.Struct({
   kind: Schema.Literal("absolute-file"),
   path: sourceLocationSchema.fields.path,
   range: sourceLocationSchema.fields.range,
+  ranges: sourceLocationSchema.fields.ranges,
   symbol: sourceLocationSchema.fields.symbol,
   documentVersion: sourceLocationSchema.fields.documentVersion,
 });

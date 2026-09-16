@@ -22,6 +22,11 @@ export const sourceRangeSchema = Schema.Struct({
   end: Schema.optional(sourcePositionSchema),
 });
 
+const sourceRangesSchema = Schema.Array(sourceRangeSchema).check(
+  Schema.isMinLength(2),
+  Schema.isMaxLength(32),
+);
+
 export const sourceLocationSchema = Schema.Struct({
   path: boundedText(8_192),
   /** Prefer VS Code's native working-tree diff when opening this file. */
@@ -29,6 +34,8 @@ export const sourceLocationSchema = Schema.Struct({
   /** Side of a native diff to reveal; omitted means the changed (after) side. */
   side: Schema.optional(Schema.Literals(["before", "after"])),
   range: Schema.optional(sourceRangeSchema),
+  /** Disjoint ranges in one document, ordered as they should be presented. */
+  ranges: Schema.optional(sourceRangesSchema),
   symbol: Schema.optional(boundedText(1_024)),
   documentVersion: Schema.optional(
     Schema.Int.check(

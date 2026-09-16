@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseSourceLocation } from "../../../src/utils/source-location";
+import { formatSourceLocation, parseSourceLocation } from "../../../src/utils/source-location";
 
 describe("parseSourceLocation", () => {
   it.each([
@@ -14,6 +14,16 @@ describe("parseSourceLocation", () => {
       },
     ],
     ["main.ts:2", { path: "main.ts", range: { start: { line: 1 } } }],
+    [
+      "src/main.ts#L153-L170,L182-L192",
+      {
+        path: "src/main.ts",
+        ranges: [
+          { start: { line: 152 }, end: { line: 169 } },
+          { start: { line: 181 }, end: { line: 191 } },
+        ],
+      },
+    ],
     [
       "src/main.ts?view=changes#L55-L64",
       {
@@ -31,6 +41,17 @@ describe("parseSourceLocation", () => {
         range: { start: { line: 54 }, end: { line: 63 } },
       },
     ],
+    [
+      "src/main.ts?view=changes#L55-L64,L80-L82",
+      {
+        path: "src/main.ts",
+        view: "changes",
+        ranges: [
+          { start: { line: 54 }, end: { line: 63 } },
+          { start: { line: 79 }, end: { line: 81 } },
+        ],
+      },
+    ],
   ])("parses %s", (reference, expected) => {
     expect(parseSourceLocation(reference)).toEqual(expected);
   });
@@ -39,6 +60,19 @@ describe("parseSourceLocation", () => {
     expect(parseSourceLocation("https://example.com/main.ts:2")).toBeUndefined();
     expect(parseSourceLocation("src/main.ts:0")).toBeUndefined();
     expect(parseSourceLocation("src/main.ts#L4-L2")).toBeUndefined();
+    expect(parseSourceLocation("src/main.ts#L4-L6,8-L9")).toBeUndefined();
     expect(parseSourceLocation("src/main.ts?view=changes&side=base#L4")).toBeUndefined();
+  });
+
+  it("formats multiple ranges as one source link", () => {
+    expect(
+      formatSourceLocation({
+        path: "src/main.ts",
+        ranges: [
+          { start: { line: 152 }, end: { line: 169 } },
+          { start: { line: 181 }, end: { line: 191 } },
+        ],
+      }),
+    ).toBe("src/main.ts#L153-L170,L182-L192");
   });
 });

@@ -28,7 +28,7 @@ const workspacePathPrefix = "/__cake_workspace__/";
 const sessionPathPrefix = "/__cake_session__/";
 const protectedMarkdown = /(```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]*`|!?\[[^\]]*\]\([^)]+\))/g;
 const bareSourceReference =
-  /(^|[\s(])((?:[^\s/:#()[\],]+\/)*[^\s/:#()[\],]+\.[a-z][a-z0-9._+-]*(?::\d+(?::\d+)?|#L\d+(?:-L?\d+)?)?)(?=$|[\s),.;!?])/gi;
+  /(^|[\s(])((?:[^\s/:#()[\],]+\/)*[^\s/:#()[\],]+\.[a-z][a-z0-9._+-]*(?::\d+(?::\d+)?|#L\d+(?:-L?\d+)?(?:,L\d+(?:-L?\d+)?)*)?)(?=$|[\s),.;!?])/gi;
 
 type AnchorProps = ComponentProps<"a"> & { node?: unknown };
 
@@ -387,6 +387,10 @@ export function Markdown({
         return (
           <a
             {...props}
+            className={cn(
+              "underline decoration-dashed decoration-border underline-offset-4 hover:decoration-muted-foreground",
+              props.className,
+            )}
             title={`Open ${label} in VS Code`}
             onClick={(event) => {
               event.preventDefault();

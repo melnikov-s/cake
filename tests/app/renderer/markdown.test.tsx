@@ -211,13 +211,13 @@ describe("Markdown", () => {
     act(() =>
       root.render(
         <Markdown onOpenSourceLocation={() => undefined}>
-          See src/main.ts:880:12 and `src/not-a-link.ts:3`.
+          See src/main.ts:880:12, src/main.ts#L153-L170,L182-L192, and `src/not-a-link.ts:3`.
         </Markdown>,
       ),
     );
 
     expect(vi.mocked(Streamdown).mock.calls.at(-1)![0].children).toBe(
-      "See [src/main.ts:880:12](/__cake_workspace__/src/main.ts:880:12) and `src/not-a-link.ts:3`.",
+      "See [src/main.ts:880:12](/__cake_workspace__/src/main.ts:880:12), [src/main.ts#L153-L170,L182-L192](/__cake_workspace__/src/main.ts#L153-L170,L182-L192), and `src/not-a-link.ts:3`.",
     );
   });
 
@@ -240,14 +240,14 @@ describe("Markdown", () => {
         <MarkdownLinkProvider actions={{ openExternalUrl, openSession }}>
           <Markdown onOpenSourceLocation={onOpenSourceLocation}>
             {
-              "[file](src/modelMeta.ts#L8-L12) · [before](src/modelMeta.ts?view=changes&side=before#L8-L12)"
+              "[file](src/modelMeta.ts#L8-L12) · [before](src/modelMeta.ts?view=changes&side=before#L8-L12) · [functions](src/modelMeta.ts#L153-L170,L182-L192)"
             }
           </Markdown>
         </MarkdownLinkProvider>,
       ),
     );
     expect(vi.mocked(Streamdown).mock.calls.at(-1)![0].children).toBe(
-      "[file](/__cake_workspace__/src/modelMeta.ts#L8-L12) · [before](/__cake_workspace__/src/modelMeta.ts?view=changes&side=before#L8-L12)",
+      "[file](/__cake_workspace__/src/modelMeta.ts#L8-L12) · [before](/__cake_workspace__/src/modelMeta.ts?view=changes&side=before#L8-L12) · [functions](/__cake_workspace__/src/modelMeta.ts#L153-L170,L182-L192)",
     );
     const anchorComponent = () => vi.mocked(Streamdown).mock.calls.at(-1)![0].components!.a!;
 
@@ -262,6 +262,14 @@ describe("Markdown", () => {
       href: "/__cake_workspace__/src/modelMeta.ts#L8-L12",
       children: "src/modelMeta.ts#L8-L12",
     });
+    expect([...fileLink.classList]).toEqual(
+      expect.arrayContaining([
+        "underline",
+        "decoration-dashed",
+        "decoration-border",
+        "underline-offset-4",
+      ]),
+    );
     act(() => {
       fileLink.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     });
@@ -287,13 +295,29 @@ describe("Markdown", () => {
       range: { start: { line: 7 }, end: { line: 11 } },
     });
 
+    const multiRangeLink = renderAnchor({
+      href: "/__cake_workspace__/src/modelMeta.ts#L153-L170,L182-L192",
+      children: "functions",
+    });
+    expect(multiRangeLink.title).toBe("Open src/modelMeta.ts#L153-L170,L182-L192 in VS Code");
+    act(() => {
+      multiRangeLink.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+    expect(onOpenSourceLocation).toHaveBeenLastCalledWith({
+      path: "src/modelMeta.ts",
+      ranges: [
+        { start: { line: 152 }, end: { line: 169 } },
+        { start: { line: 181 }, end: { line: 191 } },
+      ],
+    });
+
     const webLink = renderAnchor({ href: "https://example.com", children: "example" });
     expect(webLink.target).toBe("_blank");
     act(() => {
       webLink.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     });
     expect(openExternalUrl).toHaveBeenCalledWith("https://example.com");
-    expect(onOpenSourceLocation).toHaveBeenCalledTimes(2);
+    expect(onOpenSourceLocation).toHaveBeenCalledTimes(3);
 
     const sessionLink = renderAnchor({
       href: "cake://session/session-123",
@@ -309,6 +333,6 @@ describe("Markdown", () => {
     act(() => root.render(<Markdown>text</Markdown>));
     const defaultLink = renderAnchor({ href: "docs/readme.md", children: "readme" });
     expect(defaultLink.target).toBe("_blank");
-    expect(onOpenSourceLocation).toHaveBeenCalledTimes(2);
+    expect(onOpenSourceLocation).toHaveBeenCalledTimes(3);
   });
 });

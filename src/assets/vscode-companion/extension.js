@@ -248,15 +248,14 @@ function rangeFor(vscode, document, requestedRange) {
   return new vscode.Range(start, end.isBefore(start) ? start : end);
 }
 
-function revealEditorRange(vscode, editor, requestedRange) {
-  const range = rangeFor(vscode, editor.document, requestedRange);
+function revealEditorRanges(vscode, editor, requestedRanges) {
+  const ranges = requestedRanges.map((range) => rangeFor(vscode, editor.document, range));
   revealDecorations.get(editor)?.dispose();
   revealDecorations.delete(editor);
-  editor.selection = new vscode.Selection(range.start, range.end);
-  editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
+  editor.revealRange(ranges[0], vscode.TextEditorRevealType.InCenter);
   // VS Code renders a decoration as one box per line, so a full border on a
   // multi-line range draws a grid. A left-only border on whole-line boxes
-  // stacks into a single continuous rule beside the revealed lines.
+  // stacks into one continuous rule beside each revealed range.
   const decoration = vscode.window.createTextEditorDecorationType({
     isWholeLine: true,
     borderWidth: "0 0 0 2px",
@@ -264,7 +263,7 @@ function revealEditorRange(vscode, editor, requestedRange) {
     borderColor: new vscode.ThemeColor("editorInfo.foreground"),
   });
   revealDecorations.set(editor, decoration);
-  editor.setDecorations(decoration, [range]);
+  editor.setDecorations(decoration, ranges);
 }
 
 async function visibleDiffEditor(vscode, target, side) {
@@ -473,7 +472,8 @@ async function activate(context) {
       await openSourceControl(vscode);
       try {
         await vscode.commands.executeCommand("git.openChange", targetUri);
-        if (payload.range) {
+        const requestedRanges = payload.ranges || (payload.range ? [payload.range] : []);
+        if (requestedRanges.length > 0) {
           const side = payload.side === "before" ? "before" : "after";
           await vscode.commands.executeCommand(
             side === "before"
@@ -481,7 +481,7 @@ async function activate(context) {
               : "workbench.action.compareEditor.focusSecondarySide",
           );
           const editor = await visibleDiffEditor(vscode, target, side);
-          if (editor) revealEditorRange(vscode, editor, payload.range);
+          if (editor) revealEditorRanges(vscode, editor, requestedRanges);
         }
         return;
       } catch {
@@ -495,8 +495,8 @@ async function activate(context) {
         `This Cake source location was created for version ${payload.documentVersion}; the open document is version ${document.version}.`,
       );
 
-    let requestedRange = payload.range;
-    if (!requestedRange && payload.symbol) {
+    let requestedRanges = payload.ranges || (payload.range ? [payload.range] : []);
+    if (requestedRanges.length === 0 && payload.symbol) {
       const symbols =
         (await vscode.commands.executeCommand(
           "vscode.executeDocumentSymbolProvider",
@@ -514,14 +514,16 @@ async function activate(context) {
       const symbolRange =
         symbol && (symbol.selectionRange || symbol.range || symbol.location?.range);
       if (symbolRange)
-        requestedRange = {
-          start: { line: symbolRange.start.line, column: symbolRange.start.character },
-          end: { line: symbolRange.end.line, column: symbolRange.end.character },
-        };
+        requestedRanges = [
+          {
+            start: { line: symbolRange.start.line, column: symbolRange.start.character },
+            end: { line: symbolRange.end.line, column: symbolRange.end.character },
+          },
+        ];
     }
     const editor = await vscode.window.showTextDocument(document, { preview: false });
-    if (!requestedRange) return;
-    revealEditorRange(vscode, editor, requestedRange);
+    if (requestedRanges.length === 0) return;
+    revealEditorRanges(vscode, editor, requestedRanges);
   };
 
   revealServer = http.createServer((request, response) => {
