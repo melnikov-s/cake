@@ -13,7 +13,11 @@ import {
   Scope,
   Stream,
 } from "effect";
-import type { PiQueuedMessages } from "./conversation-data";
+import type {
+  PiPendingMessageReorder,
+  PiPendingMessages,
+  PiQueuedMessages,
+} from "./conversation-data";
 import type { ArtifactPointer } from "../../ipc/artifact-contract";
 import { jsonValueSchema } from "../../ipc/json-contract";
 import type {
@@ -136,6 +140,10 @@ export interface PiSessionHandle {
     renderUserMessageAsMarkdown?: boolean,
   ) => Effect.Effect<string, PiSessionError>;
   readonly listQueuedMessages: () => Effect.Effect<PiQueuedMessages, PiSessionError>;
+  readonly pendingMessages: () => Effect.Effect<PiPendingMessages, PiSessionError>;
+  readonly reorderPendingMessage: (
+    input: PiPendingMessageReorder,
+  ) => Effect.Effect<PiPendingMessages, PiSessionError>;
   readonly clearQueue: () => Effect.Effect<PiQueuedMessages, PiSessionError>;
   readonly cancelSteering: () => Effect.Effect<PiQueuedMessages, PiSessionError>;
   readonly removeQueuedMessage: (partId: string) => Effect.Effect<PiQueuedMessages, PiSessionError>;
@@ -624,6 +632,9 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
             startTurn("follow-up", text, attachments, markdown),
           listQueuedMessages: () =>
             call("listQueuedMessages", (runtime) => runtime.listQueuedMessages()),
+          pendingMessages: () => call("pendingMessages", (runtime) => runtime.pendingMessages()),
+          reorderPendingMessage: (input) =>
+            call("reorderPendingMessage", (runtime) => runtime.reorderPendingMessage(input)),
           clearQueue: () => call("clearQueue", (runtime) => runtime.clearQueue()),
           cancelSteering: () => call("cancelSteering", (runtime) => runtime.cancelSteering()),
           removeQueuedMessage: (partId) =>

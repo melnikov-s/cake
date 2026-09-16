@@ -57,6 +57,7 @@ import {
 } from "./subagent-contract";
 import { formatUnknown } from "./session-projection";
 import type { CakeRuntimeOptions } from "./cake-runtime";
+import { PiPendingMessageReorder, type PiPendingMessages } from "../conversation-data";
 
 const commonPrompt = renderPromptTemplate(commonPromptTemplate);
 const interviewPrompt = renderPromptTemplate(interviewPromptTemplate);
@@ -363,6 +364,12 @@ interface RuntimeOperationApi {
     destinationWorkingDirectory?: string;
   }): Promise<JsonValue>;
   invokeAppControl(command: string, input: JsonObject, signal: AbortSignal): Promise<JsonValue>;
+  pendingMessages(sessionId: string, signal: AbortSignal): Promise<PiPendingMessages>;
+  reorderPendingMessage(
+    sessionId: string,
+    input: typeof PiPendingMessageReorder.Type,
+    signal: AbortSignal,
+  ): Promise<PiPendingMessages>;
   mergeSession(targetSessionId: string | undefined, signal: AbortSignal): Promise<JsonValue>;
   discardSession(
     targetSessionId: string | undefined,
@@ -830,6 +837,57 @@ export async function createCakeRuntimeCapabilities(input: {
         result:
           "An informational correlated receipt with target identity, recipient context snapshot, queue facts when pending, and response expectation. No acknowledgment is needed.",
         execute: invokeAppControl("sessions.send"),
+      },
+      {
+        command: "sessions.pending",
+        topic: "sessions",
+        summary: "List the live pending inputs for an explicitly targeted Project Session.",
+        guidance: [
+          "Items have stable process-lifetime identities. position is one-based within the named lane.",
+          "The steering lane redirects an active turn at Pi's next steering boundary; follow-up starts after the active turn settles.",
+        ],
+        inputSchema: Schema.Struct({
+          sessionId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+        }),
+        examples: [{ input: { sessionId: "target-session-id" } }],
+        result: "The target session's ordered steering and follow-up queue items.",
+        execute: (input, context) => {
+          // SAFETY: CakeOperationRegistry decoded input with this operation's schema.
+          const { sessionId } = input as { sessionId: string };
+          return api().pendingMessages(sessionId, context.signal);
+        },
+      },
+      {
+        command: "sessions.reorder",
+        topic: "sessions",
+        summary: "Move one live pending input to an exact one-based position in its queue lane.",
+        guidance: [
+          "Call sessions.pending first and pass its itemId. Positions are one-based and interpreted within the item's existing lane after removing it.",
+          "Reordering never changes delivery semantics. Use the separate steering capability when an item should redirect active work.",
+        ],
+        inputSchema: Schema.Struct({
+          sessionId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+          ...PiPendingMessageReorder.fields,
+        }),
+        examples: [
+          {
+            input: {
+              sessionId: "target-session-id",
+              itemId: "00000000-0000-4000-8000-000000000000",
+              position: 1,
+            },
+          },
+        ],
+        result: "The target session's updated pending queue with authoritative lane positions.",
+        execute: (input, context) => {
+          // SAFETY: CakeOperationRegistry decoded input with this operation's schema.
+          const { sessionId, ...reorder } = input as {
+            sessionId: string;
+            itemId: string;
+            position: number;
+          };
+          return api().reorderPendingMessage(sessionId, reorder, context.signal);
+        },
       },
       {
         command: "sessions.abort",

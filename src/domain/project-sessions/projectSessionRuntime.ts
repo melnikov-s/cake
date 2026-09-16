@@ -413,6 +413,44 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
                 { _tag: "ForkSession", ...input },
                 new AbortController().signal,
               ),
+        pendingMessages: (targetSessionId, signal) =>
+          run(
+            Effect.scoped(
+              Effect.gen(function* () {
+                const target = yield* sessions
+                  .acquireSession(targetSessionId)
+                  .pipe(Effect.mapError((cause) => compositionError("pendingMessages", cause)));
+                if (target.profile !== "ProjectSession")
+                  return yield* compositionError(
+                    "pendingMessages",
+                    "The target is not a Project Session",
+                  );
+                return yield* target
+                  .pendingMessages()
+                  .pipe(Effect.mapError((cause) => compositionError("pendingMessages", cause)));
+              }),
+            ),
+            { signal },
+          ),
+        reorderPendingMessage: (targetSessionId, reorder, signal) =>
+          run(
+            Effect.scoped(
+              Effect.gen(function* () {
+                const target = yield* sessions
+                  .acquireSession(targetSessionId)
+                  .pipe(Effect.mapError((cause) => compositionError("reorderPending", cause)));
+                if (target.profile !== "ProjectSession")
+                  return yield* compositionError(
+                    "reorderPending",
+                    "The target is not a Project Session",
+                  );
+                return yield* target
+                  .reorderPendingMessage(reorder)
+                  .pipe(Effect.mapError((cause) => compositionError("reorderPending", cause)));
+              }),
+            ),
+            { signal },
+          ),
         mergeSession: async (targetSessionId, signal) => {
           const target = await run(worktreeOperationTarget(targetSessionId), { signal });
           return runtimeIntegrations.requestApplicationControl(

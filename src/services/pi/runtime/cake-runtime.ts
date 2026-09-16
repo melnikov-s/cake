@@ -27,6 +27,7 @@ import {
   crossSessionContextSnapshot,
   type CrossSessionContextSnapshot,
 } from "../../../domain/conversations/cross-session-coordination";
+import type { PiPendingMessageReorder, PiPendingMessages } from "../conversation-data";
 import type {
   ParallelSubagentInput as DomainParallelSubagentInput,
   SubagentTaskInput as DomainSubagentTaskInput,
@@ -195,6 +196,12 @@ export interface CakeRuntimeOptions {
       signal: AbortSignal,
     ): Promise<JsonValue>;
     invokeAppControl?(command: string, input: JsonObject, signal: AbortSignal): Promise<JsonValue>;
+    pendingMessages?(sessionId: string, signal: AbortSignal): Promise<PiPendingMessages>;
+    reorderPendingMessage?(
+      sessionId: string,
+      input: PiPendingMessageReorder,
+      signal: AbortSignal,
+    ): Promise<PiPendingMessages>;
   };
   vscodeControl?: VscodeControl;
   worktreeLandingControl?: WorktreeLandingControl;
@@ -267,6 +274,8 @@ export interface CakeRuntime {
     turnId?: string,
   ): Promise<void>;
   listQueuedMessages(): Promise<{ steering: string[]; followUp: string[] }>;
+  pendingMessages(): Promise<PiPendingMessages>;
+  reorderPendingMessage(input: PiPendingMessageReorder): Promise<PiPendingMessages>;
   clearQueue(): Promise<{ steering: string[]; followUp: string[] }>;
   cancelSteering(): Promise<{ steering: string[]; followUp: string[] }>;
   removeQueuedMessage(partId: string): Promise<{ steering: string[]; followUp: string[] }>;
@@ -663,6 +672,16 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     async forkSession(input) {
       return continuations.scheduleFork(input);
     },
+    async pendingMessages(sessionId, signal) {
+      const pending = options.currentSessionControl?.pendingMessages;
+      if (!pending) throw new Error("Project Session queues are unavailable in this runtime");
+      return pending(sessionId, signal);
+    },
+    async reorderPendingMessage(sessionId, input, signal) {
+      const reorder = options.currentSessionControl?.reorderPendingMessage;
+      if (!reorder) throw new Error("Project Session queues are unavailable in this runtime");
+      return reorder(sessionId, input, signal);
+    },
     async mergeSession(targetSessionId, signal) {
       const merge = options.currentSessionControl?.mergeSession;
       if (!merge) throw new Error("Managed Worktree merge is unavailable in this runtime");
@@ -740,6 +759,8 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     executingTurnIds: turnController.executingTurnIds,
     prompt: turnController.prompt,
     listQueuedMessages: turnController.listQueuedMessages,
+    pendingMessages: turnController.pendingMessages,
+    reorderPendingMessage: turnController.reorderPendingMessage,
     clearQueue: turnController.clearQueue,
     cancelSteering: turnController.cancelSteering,
     removeQueuedMessage: turnController.removeQueuedMessage,

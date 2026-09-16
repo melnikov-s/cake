@@ -107,6 +107,8 @@ const fakeRuntime = (
     onOperation?.("list-queue");
     return { steering: [], followUp: [] };
   },
+  pendingMessages: async () => ({ items: [] }),
+  reorderPendingMessage: async () => ({ items: [] }),
   clearQueue: async () => {
     onOperation?.("clear-queue");
     return { steering: [], followUp: [] };

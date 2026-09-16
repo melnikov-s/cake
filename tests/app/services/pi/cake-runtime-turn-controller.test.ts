@@ -208,6 +208,74 @@ describe("CakeRuntime turn controller", () => {
       await expect(tracked).resolves.toBeUndefined();
     });
 
+    it("reorders by stable identity with exact lane positions and preserves payload correlation", async () => {
+      const { controller, session } = createQueuedFixture({ steering: [], followUp: [] });
+      const attachment = {
+        kind: "image" as const,
+        name: "diagram.png",
+        mimeType: "image/png",
+        data: "aW1hZ2U=",
+      };
+      const first = controller.prompt("First", "follow-up", [attachment], false, "turn-first");
+      await controller.prompt("Second", "follow-up", []);
+
+      const initial = await controller.pendingMessages();
+      expect(
+        initial.items.map(({ lane, position, state, text }) => ({ lane, position, state, text })),
+      ).toEqual([
+        {
+          lane: "follow-up",
+          position: 1,
+          state: "queued",
+          text: expect.stringContaining("First"),
+        },
+        { lane: "follow-up", position: 2, state: "queued", text: "Second" },
+      ]);
+      const firstId = initial.items[0]!.itemId;
+
+      const reordered = await controller.reorderPendingMessage({
+        itemId: firstId,
+        position: 2,
+      });
+      expect(reordered.items).toEqual([
+        expect.objectContaining({ lane: "follow-up", position: 1, text: "Second" }),
+        expect.objectContaining({ itemId: firstId, lane: "follow-up", position: 2 }),
+      ]);
+      expect(vi.mocked(session.prompt).mock.calls.at(-1)).toEqual([
+        expect.stringContaining("First"),
+        expect.objectContaining({
+          images: [expect.objectContaining({ data: "aW1hZ2U=" })],
+          streamingBehavior: "followUp",
+        }),
+      ]);
+
+      const firstContent = vi.mocked(session.prompt).mock.calls[0]![0] as string;
+      controller.consumeUserMessage(firstContent);
+      controller.settleTurn();
+      await expect(first).resolves.toBeUndefined();
+    });
+
+    it("rejects stale identities and out-of-range positions without changing Pi's queue", async () => {
+      const { controller, session } = createQueuedFixture({
+        steering: [],
+        followUp: ["Do this next"],
+      });
+      const [item] = (await controller.pendingMessages()).items;
+      await expect(
+        controller.reorderPendingMessage({
+          itemId: item!.itemId,
+          position: 3,
+        }),
+      ).rejects.toThrow("outside the follow-up lane");
+      await expect(
+        controller.reorderPendingMessage({
+          itemId: "00000000-0000-4000-8000-000000000000",
+          position: 1,
+        }),
+      ).rejects.toThrow("no longer exists");
+      expect(session.clearQueue).not.toHaveBeenCalled();
+    });
+
     it("leaves the queue untouched for an unknown part id", async () => {
       const { controller, session } = createQueuedFixture({
         steering: [],
@@ -227,6 +295,20 @@ describe("CakeRuntime turn controller", () => {
       const removed = controller.prompt("Drop me", "prompt", [], false, "turn-drop");
       await controller.prompt("Steer me", "prompt", []);
       const [dropId, steerId] = partIds([], [], ["Drop me", "Steer me"]);
+      expect((await controller.pendingMessages()).items).toEqual([
+        expect.objectContaining({
+          lane: "follow-up",
+          position: 1,
+          state: "compaction-held",
+          text: "Drop me",
+        }),
+        expect.objectContaining({
+          lane: "follow-up",
+          position: 2,
+          state: "compaction-held",
+          text: "Steer me",
+        }),
+      ]);
 
       await expect(controller.removeQueuedMessage(dropId!)).resolves.toEqual({
         steering: [],

@@ -51,6 +51,8 @@ export function fakeRuntime(
       return snapshot;
     },
     listQueuedMessages: async () => ({ steering: [], followUp: [] }),
+    pendingMessages: async () => ({ items: [] }),
+    reorderPendingMessage: async () => ({ items: [] }),
     clearQueue: async () => ({ steering: [], followUp: [] }),
     cancelSteering: async () => ({ steering: [], followUp: [] }),
     removeQueuedMessage: async () => ({ steering: [], followUp: [] }),

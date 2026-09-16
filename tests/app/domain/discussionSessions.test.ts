@@ -104,6 +104,8 @@ const makeLayer = (options: { readonly assistant?: boolean } = {}) => {
           }),
       snapshot: async () => makeSnapshot(sessionId, sessionFile),
       listQueuedMessages: async () => ({ steering: [], followUp: [] }),
+      pendingMessages: async () => ({ items: [] }),
+      reorderPendingMessage: async () => ({ items: [] }),
       clearQueue: async () => ({ steering: [], followUp: [] }),
       cancelSteering: async () => {
         queueOperations.push(`${sessionId}:cancelSteering`);

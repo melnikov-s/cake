@@ -106,6 +106,8 @@ const makeLayer = (
       operations.push("list-queue");
       return { steering: [], followUp: [] };
     },
+    pendingMessages: async () => ({ items: [] }),
+    reorderPendingMessage: async () => ({ items: [] }),
     clearQueue: async () => {
       operations.push("clear-queue");
       return { steering: [], followUp: [] };
