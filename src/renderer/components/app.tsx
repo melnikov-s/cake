@@ -223,46 +223,58 @@ export const App = observer(function App() {
   }, [root, settings.hotkeys]);
 
   const projectTranscriptBehaviorFor = (paneSession: NonNullable<typeof session>) => {
+    const resolved = root.sessionCatalogStore.find(paneSession.sessionId)?.resolved === true;
     return {
       workspacePath: paneSession.workspacePath,
-      onFork: (entryId: string) => {
-        root.focusSessionPane(
-          root.sessionLayoutStore.paneForSession(paneSession.sessionId)!.paneId,
-        );
-        void store.sessionContinuationStore.forkAt(entryId);
-      },
-      onTree: (entryId: string) => {
-        root.focusSessionPane(
-          root.sessionLayoutStore.paneForSession(paneSession.sessionId)!.paneId,
-        );
-        store.commandPaneStore.requestNavigation(entryId);
-      },
-      openSourceLocation: (location: SourceLocation) => {
-        root.focusSessionPane(
-          root.sessionLayoutStore.paneForSession(paneSession.sessionId)!.paneId,
-        );
-        void store
-          .openFileInIde(
-            editorLocationFromPath({
-              ...location,
-              path: toWorkspaceRelativePath(location.path, paneSession.workspacePath),
-            }),
-          )
-          .catch(() => undefined);
-      },
-      onOpenReviewRun: (threadId?: string) => {
-        root.focusSessionPane(
-          root.sessionLayoutStore.paneForSession(paneSession.sessionId)!.paneId,
-        );
-        if (threadId) void store.openReviewThread(threadId);
-      },
+      onFork: resolved
+        ? undefined
+        : (entryId: string) => {
+            root.focusSessionPane(
+              root.sessionLayoutStore.paneForSession(paneSession.sessionId)!.paneId,
+            );
+            void store.sessionContinuationStore.forkAt(entryId);
+          },
+      onTree: resolved
+        ? undefined
+        : (entryId: string) => {
+            root.focusSessionPane(
+              root.sessionLayoutStore.paneForSession(paneSession.sessionId)!.paneId,
+            );
+            store.commandPaneStore.requestNavigation(entryId);
+          },
+      openSourceLocation: resolved
+        ? undefined
+        : (location: SourceLocation) => {
+            root.focusSessionPane(
+              root.sessionLayoutStore.paneForSession(paneSession.sessionId)!.paneId,
+            );
+            void store
+              .openFileInIde(
+                editorLocationFromPath({
+                  ...location,
+                  path: toWorkspaceRelativePath(location.path, paneSession.workspacePath),
+                }),
+              )
+              .catch(() => undefined);
+          },
+      onOpenReviewRun: resolved
+        ? undefined
+        : (threadId?: string) => {
+            root.focusSessionPane(
+              root.sessionLayoutStore.paneForSession(paneSession.sessionId)!.paneId,
+            );
+            if (threadId) void store.openReviewThread(threadId);
+          },
       waitingForUser:
+        !resolved &&
         paneSession.sessionId === root.sessionLayoutStore.focusedSessionId &&
         Boolean(extensionUi.request || paneSession.artifactInteractionStore.request),
-      messageComments: paneSession.messageCommentsStore,
+      messageComments: resolved ? undefined : paneSession.messageCommentsStore,
       subagents: paneSession.subagentActivityStore,
-      showSelectionContextMenu: (input: { canChat: boolean; canAnnotate: boolean }) =>
-        root.showTranscriptSelectionContextMenu(input),
+      showSelectionContextMenu: resolved
+        ? undefined
+        : (input: { canChat: boolean; canAnnotate: boolean }) =>
+            root.showTranscriptSelectionContextMenu(input),
       inlineWidgets: root.inlineWidgetStore,
       artifacts: {
         records: paneSession.model.artifacts.map((artifact) => artifact.value),
@@ -406,6 +418,27 @@ export const App = observer(function App() {
     const focusPane = () => root.focusSessionPane(pane.paneId);
     const focused = root.sessionLayoutStore.focusedPaneId === pane.paneId;
     const firstPane = root.sessionLayoutStore.panes[0]?.paneId === pane.paneId;
+    const resolved = root.sessionCatalogStore.find(paneSession.sessionId)?.resolved === true;
+    if (resolved)
+      return (
+        <>
+          {firstPane && (
+            <IconButton
+              className={cn(
+                "absolute left-[84px] top-[9px] z-20 size-7 place-items-center rounded-lg bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground",
+                sidebarCollapsed ? "grid" : "hidden max-[620px]:grid",
+              )}
+              data-slot="header-sidebar-toggle"
+              tooltip="Toggle sidebar"
+              onClick={toggleSidebar}
+            >
+              <SidebarIcon />
+            </IconButton>
+          )}
+          <SideChatsMenu store={paneSession} onOpen={focusPane} />
+          {artifactControl(paneSession, focusPane)}
+        </>
+      );
     return (
       <>
         {firstPane && (
@@ -531,7 +564,8 @@ export const App = observer(function App() {
         <LoadingState label="Opening session" />
       ),
       error: errorMessage ? { message: errorMessage, details: errorDetails } : undefined,
-      composerContent: (
+      composerContent: root.sessionCatalogStore.find(paneSession.sessionId)
+        ?.resolved ? undefined : (
         <BlockingArtifactRequest
           session={paneSession}
           inlineWidgets={root.inlineWidgetStore}

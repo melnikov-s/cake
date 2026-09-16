@@ -5,39 +5,46 @@ import { Button } from "./ui/button";
 import { LoadingState } from "./ui/loading-state";
 
 const StatusCard = observer(function StatusCard({ store }: { store: EmbeddedEditorStore }) {
+  const setupRequired = store.status === "missing";
   const managedDownloadAvailable = /Linux/.test(navigator.userAgent);
   return (
     <div
       className="m-auto grid max-w-[30rem] gap-2.5 rounded-xl border border-border bg-card p-5 shadow-lg"
-      role="status"
+      role={setupRequired ? "status" : "alert"}
     >
-      <strong className="text-sm font-semibold text-foreground">Full VS Code editing</strong>
-      <p className="text-xs leading-relaxed text-muted-foreground">
-        Run a real VS Code server for this project inside Cake, with full language services, your
-        extension workspace, and the command palette. On Mac, Cake needs code-server installed
-        locally (Homebrew works well).
-      </p>
+      <strong className="text-sm font-semibold text-foreground">
+        {setupRequired ? "Full VS Code editing" : "VS Code could not open"}
+      </strong>
+      {setupRequired ? (
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          Run a real VS Code server for this project inside Cake, with full language services, your
+          extension workspace, and the command palette. On Mac, Cake needs code-server installed
+          locally (Homebrew works well).
+        </p>
+      ) : null}
       {store.statusMessage ? (
         <p className="font-mono text-xs text-muted-foreground">{store.statusMessage}</p>
       ) : null}
-      {store.error ? (
-        <p className="font-mono text-xs text-destructive" role="alert">
-          {store.error}
-        </p>
+      {!setupRequired && store.error ? (
+        <p className="font-mono text-xs text-destructive">{store.error}</p>
       ) : null}
       <div className="flex flex-wrap items-center gap-2 pt-1">
-        {store.status === "downloading" || store.status === "starting" ? null : (
-          <Button size="sm" onClick={() => void store.askCakeToSetUp()}>
-            Ask Cake to set this up
+        {setupRequired ? (
+          <>
+            <Button size="sm" onClick={() => void store.askCakeToSetUp()}>
+              Ask Cake to set this up
+            </Button>
+            {managedDownloadAvailable ? (
+              <Button variant="outline" size="sm" onClick={() => void store.install()}>
+                Download openvscode-server
+              </Button>
+            ) : null}
+          </>
+        ) : (
+          <Button size="sm" onClick={() => store.hide()}>
+            Back to agent
           </Button>
         )}
-        {managedDownloadAvailable &&
-        store.status !== "downloading" &&
-        store.status !== "starting" ? (
-          <Button variant="outline" size="sm" onClick={() => void store.install()}>
-            Download openvscode-server
-          </Button>
-        ) : null}
       </div>
     </div>
   );

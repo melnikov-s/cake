@@ -1,5 +1,6 @@
 import { createStore, mount, toSnapshot } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
+import { workingDirectoryEditorLocation } from "../../../../src/ipc/editor-location";
 import type { Client } from "../../../../src/renderer/client/Client";
 import { Session } from "../../../../src/renderer/models/Session";
 import type { ExtensionUiStore } from "../../../../src/renderer/stores/ExtensionUiStore";
@@ -838,6 +839,45 @@ describe("ProjectWorkbenchStore startup selection", () => {
       comment: "Why is this here?",
     });
     expect(session.showIdeChatSidebar).toHaveBeenCalledTimes(2);
+
+    root[Symbol.dispose]();
+    operations[Symbol.dispose]();
+  });
+
+  it("does not open editing surfaces for a resolved session", async () => {
+    const session = {
+      ...loadedSessionStub({ sessionFile: "/session.jsonl" }),
+      ideMode: true,
+    };
+    const registry = {
+      findSession: vi.fn(() => session),
+      pendingSessions: { isTemporary: vi.fn(() => false) },
+    } as unknown as SessionRegistryStore;
+    const catalog = {
+      find: vi.fn(() => ({ sessionId: "session-1", resolved: true })),
+    } as unknown as SessionCatalogStore;
+    const open = vi.fn(async () => undefined);
+    const openSourceControl = vi.fn(async () => undefined);
+    const {
+      root,
+      subject: store,
+      operations,
+    } = mountWorkbench(
+      registry,
+      catalog,
+      { vscode: { open, openSourceControl } } as unknown as Client,
+      "session-1",
+    );
+    store.projectOpenStore.projectPath = "/project";
+
+    store.restoreSessionPresentation();
+    await store.openIde();
+    await store.openWorkspaceChanges();
+    await store.openFileInIde(workingDirectoryEditorLocation({ path: "src/app.ts" }));
+
+    expect(store.embeddedEditorStore.visible).toBe(false);
+    expect(open).not.toHaveBeenCalled();
+    expect(openSourceControl).not.toHaveBeenCalled();
 
     root[Symbol.dispose]();
     operations[Symbol.dispose]();

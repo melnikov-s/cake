@@ -192,10 +192,12 @@ describe("WorktreePill", () => {
     expect(candidates).not.toHaveBeenCalled();
   });
 
-  it("hides the entire worktree pill for a resolved session", () => {
+  it("replaces worktree actions with restoration guidance for a resolved session", () => {
     render(actionStore({ aheadCount: 1, dirtyCount: 0 }), undefined, undefined, true);
 
-    expect(container.querySelector('[data-slot="worktree-pill"]')).toBeNull();
+    expect(container.querySelector('[data-testid="resolved-session-notice"]')).not.toBeNull();
+    expect(container.textContent).toContain("Resolved session");
+    expect(container.textContent).toContain("Send a message to restore this session");
     expect(container.querySelector("button")).toBeNull();
   });
 

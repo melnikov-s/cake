@@ -83,7 +83,20 @@ export const WorktreePill = observer(function WorktreePill({
     void operation.catch(() => undefined);
   };
 
-  if (resolved) return null;
+  if (resolved)
+    return (
+      <div
+        data-testid="resolved-session-notice"
+        data-slot="worktree-pill"
+        className="mx-4 -mb-5 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-t-[1.75rem] border border-b-0 border-border/85 bg-card px-7 pt-3 pb-8 text-xs"
+        role="status"
+      >
+        <strong className="font-semibold text-foreground">Resolved session</strong>
+        <span className="text-muted-foreground">
+          Send a message to restore this session and continue working.
+        </span>
+      </div>
+    );
 
   if (configurationMode) {
     const selectedExisting =

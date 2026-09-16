@@ -22,6 +22,14 @@ const RELEASE_BASE =
 /** Which server distribution a resolved binary belongs to; their CLIs differ slightly. */
 export type ServerFlavor = "openvscode" | "codeserver";
 
+/** Signals that setup is required, rather than that an installed editor failed to open. */
+export class VsCodeServerNotInstalledError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "VsCodeServerNotInstalledError";
+  }
+}
+
 /**
  * Binary and archive plumbing for the embedded VS Code editor. Kept free of
  * Electron imports so the resolution rules are unit-testable in isolation.
@@ -126,10 +134,10 @@ export async function resolveServerBinary(root: string, customPath?: string): Pr
     }
   }
   if (process.platform === "darwin")
-    throw new Error(
+    throw new VsCodeServerNotInstalledError(
       "No VS Code server is installed on this Mac. Run `brew install code-server`, then retry, or set CAKE_VSCODE_SERVER_PATH to an existing server binary.",
     );
-  throw new Error(
+  throw new VsCodeServerNotInstalledError(
     "The VS Code editor is not installed yet. Download it from within Cake or choose an existing installation.",
   );
 }

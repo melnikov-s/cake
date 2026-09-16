@@ -437,6 +437,8 @@ export class RootStore extends Store<{
     if (action !== "show-ui-hints") this.uiHintModeStore.close();
     const selection = this.appShellStore.selection;
     const projectSelected = selection.kind === "project-session";
+    const projectResolved =
+      projectSelected && this.sessionCatalogStore.find(selection.sessionId)?.resolved === true;
     const chat =
       selection.kind === "cake-chat"
         ? selection.sessionId
@@ -448,25 +450,27 @@ export class RootStore extends Store<{
           : undefined;
     switch (action) {
       case "toggle-agent-editor":
-        if (projectSelected) void this.projectWorkbenchStore.toggleIde();
+        if (projectSelected && !projectResolved) void this.projectWorkbenchStore.toggleIde();
         break;
       case "open-editor":
-        if (projectSelected) void this.projectWorkbenchStore.openIde();
+        if (projectSelected && !projectResolved) void this.projectWorkbenchStore.openIde();
         break;
       case "open-changes":
-        if (projectSelected) void this.projectWorkbenchStore.openWorkspaceChanges();
+        if (projectSelected && !projectResolved)
+          void this.projectWorkbenchStore.openWorkspaceChanges();
         break;
       case "toggle-terminal":
-        void this.terminalStore.toggle();
+        if (!projectResolved) void this.terminalStore.toggle();
         break;
       case "new-terminal-tab":
-        if (this.terminalStore.open) void this.terminalStore.newTab();
+        if (!projectResolved && this.terminalStore.open) void this.terminalStore.newTab();
         break;
       case "toggle-sidebar":
         this.sidebarStore.toggle();
         break;
       case "toggle-session-tree":
-        if (projectSelected) this.projectWorkbenchStore.commandPaneStore.toggle("tree");
+        if (projectSelected && !projectResolved)
+          this.projectWorkbenchStore.commandPaneStore.toggle("tree");
         break;
       case "split-right":
       case "split-down": {

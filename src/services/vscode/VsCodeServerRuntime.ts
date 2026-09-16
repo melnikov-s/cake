@@ -19,6 +19,7 @@ import {
   resolveServerBinary,
   serverFlavor,
   VSCODE_SERVER_VERSION,
+  VsCodeServerNotInstalledError,
   type ServerFlavor,
 } from "./vscode-server-binary";
 
@@ -442,12 +443,17 @@ export class VsCodeServerRuntime {
   /** Downloads and extracts openvscode-server unless a usable binary already exists. */
   async ensureInstalled(): Promise<string> {
     try {
-      return await resolveServerBinary(this.props.root, this.props.customPath());
-    } catch {
-      // fall through to download
+      const binary = await resolveServerBinary(this.props.root, this.props.customPath());
+      this.setStatus("ready");
+      return binary;
+    } catch (error) {
+      if (error instanceof VsCodeServerNotInstalledError && process.platform !== "linux")
+        throw error;
     }
     await this.download();
-    return resolveServerBinary(this.props.root, this.props.customPath());
+    const binary = await resolveServerBinary(this.props.root, this.props.customPath());
+    this.setStatus("ready");
+    return binary;
   }
 
   private async download(): Promise<void> {
@@ -516,7 +522,10 @@ export class VsCodeServerRuntime {
       binary = await this.ensureInstalled();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      this.setStatus("failed", message);
+      this.setStatus(
+        error instanceof VsCodeServerNotInstalledError ? "missing" : "failed",
+        message,
+      );
       throw error;
     }
     const resolved = await realpath(workspacePath);

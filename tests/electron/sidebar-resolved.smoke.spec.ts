@@ -98,7 +98,18 @@ test("resolves and restores the selected project session in the desktop sidebar"
     await expect(resolvedToggle).toHaveAttribute("aria-expanded", "false");
     await resolvedToggle.click();
     await resolvedLane.getByRole("button", { name: "Expand project resolved" }).last().click();
-    const restoreAction = page.getByRole("button", { name: /^Restore / });
+    const resolvedSession = resolvedLane.locator(`.session-item[data-session-id="${sessionId}"]`);
+    await resolvedSession.locator(".session-row").click();
+    await expect(page.getByTestId("resolved-session-notice")).toContainText(
+      "Send a message to restore this session",
+    );
+    await expect(page.getByRole("button", { name: "Open VS Code" })).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "Open workspace changes in VS Code" }),
+    ).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /^Terminal/ })).toHaveCount(0);
+
+    const restoreAction = resolvedSession.getByRole("button", { name: /^Restore / });
     await expect(restoreAction).toBeVisible();
     await restoreAction.click();
     await expect(restoreAction).toHaveCount(0);

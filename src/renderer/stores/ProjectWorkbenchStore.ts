@@ -204,6 +204,12 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       : undefined;
   }
 
+  get activeSessionResolved() {
+    return this.activeSessionId
+      ? this.props.catalog.find(this.activeSessionId)?.resolved === true
+      : false;
+  }
+
   get session() {
     return this.activeSession?.model;
   }
@@ -522,7 +528,8 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   }
 
   restoreSessionPresentation() {
-    if (this.activeSession?.ideMode) void this.embeddedEditorStore.restore();
+    if (!this.activeSessionResolved && this.activeSession?.ideMode)
+      void this.embeddedEditorStore.restore();
   }
 
   private showTemporarySession(
@@ -679,14 +686,16 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   }
 
   async openWorkspaceChanges() {
-    if (!this.activeSession || !this.projectOpenStore.projectPath) return;
+    if (this.activeSessionResolved || !this.activeSession || !this.projectOpenStore.projectPath)
+      return;
     this.commandPaneStore.dismiss();
     this.reviews.clearActiveThread();
     await this.embeddedEditorStore.showSourceControl();
   }
 
   async openReviewThread(threadId: string) {
-    if (!this.activeSession || !this.projectOpenStore.projectPath) return;
+    if (this.activeSessionResolved || !this.activeSession || !this.projectOpenStore.projectPath)
+      return;
     const thread = this.reviews.threads.find((item) => item.id === threadId);
     if (!thread || thread.anchor.view !== "file") return;
     this.reviews.selectThread(thread.id);
@@ -714,7 +723,8 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   }
 
   async openIde() {
-    if (!this.activeSession || !this.projectOpenStore.projectPath) return;
+    if (this.activeSessionResolved || !this.activeSession || !this.projectOpenStore.projectPath)
+      return;
     this.commandPaneStore.dismiss();
     this.reviews.clearActiveThread();
     await this.embeddedEditorStore.show();
@@ -730,7 +740,8 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   }
 
   async openFileInIde(location: EditorLocation) {
-    if (!this.activeSession || !this.projectOpenStore.projectPath) return;
+    if (this.activeSessionResolved || !this.activeSession || !this.projectOpenStore.projectPath)
+      return;
     this.commandPaneStore.dismiss();
     await this.embeddedEditorStore.show(location);
   }
