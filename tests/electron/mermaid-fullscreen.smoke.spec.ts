@@ -114,8 +114,11 @@ test("stacks a Mermaid diagram's fullscreen view above a fullscreen reader", asy
     const reader = page.getByRole("dialog", { name: "Cake" });
     await expect(reader).toBeVisible();
 
-    const diagramFullscreen = reader.getByRole("button", { name: "View fullscreen" });
-    await expect(diagramFullscreen).toBeVisible();
+    const diagramBlock = reader.locator('[data-streamdown="mermaid-block"]');
+    const diagramFullscreen = diagramBlock.locator('button[title="View fullscreen"]');
+    await expect(diagramFullscreen).toHaveCSS("opacity", "0");
+    await diagramBlock.hover();
+    await expect(diagramFullscreen).toHaveCSS("opacity", "1");
     await diagramFullscreen.click();
 
     const overlay = page.locator("body > div.fixed.inset-0.z-50.backdrop-blur-sm");

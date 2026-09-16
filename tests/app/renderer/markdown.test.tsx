@@ -70,6 +70,30 @@ describe("Markdown", () => {
     );
   });
 
+  it("uses borderless table and Mermaid frames with only copy and hover-fullscreen actions", () => {
+    act(() => root.render(<Markdown>{"| A | B |\n| - | - |\n| 1 | 2 |"}</Markdown>));
+
+    const props = vi.mocked(Streamdown).mock.calls.at(-1)![0];
+    expect(props.controls).toEqual({
+      code: { copy: true, download: false },
+      table: { copy: true, download: false, fullscreen: true },
+      mermaid: {
+        copy: true,
+        download: false,
+        fullscreen: true,
+        panZoom: false,
+      },
+    });
+    expect(props.className).toContain("[&_[data-streamdown=table-wrapper]]:border-0");
+    expect(props.className).toContain("[&_[data-streamdown=mermaid-block]]:border-0");
+    expect(props.className).toContain(
+      "[&_[data-streamdown=table-wrapper]>div:first-child>button]:opacity-0",
+    );
+    expect(props.className).toContain(
+      "[&_[data-streamdown=mermaid-block-actions]>button:last-child]:opacity-0",
+    );
+  });
+
   it("marks only the incomplete fence for block-local plain rendering", () => {
     const source = ["```ts", "const settled = true;", "```", "", "```ts", "const changing ="].join(
       "\n",
