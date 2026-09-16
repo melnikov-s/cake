@@ -2,6 +2,7 @@ import { Schema } from "effect";
 import { describe, expect, it, vi } from "vitest";
 import {
   CakeOperationRegistry,
+  cakeToolDescription,
   cakeToolEnvelopeSchema,
 } from "../../../src/services/pi/runtime/cake-operation-registry";
 
@@ -49,6 +50,17 @@ describe("Cake operation registry", () => {
     expect(encoded).toContain(
       "Operation arguments only. Omit for help and topic protocol discovery.",
     );
+  });
+
+  it("advertises topic discovery before prose without eagerly disclosing operations", () => {
+    expect(cakeToolDescription).toContain(
+      "app, sessions, context, models, interview, artifacts, widgets, vscode, subagents, notifications, and worktrees",
+    );
+    expect(cakeToolDescription).toContain("Before defaulting to prose");
+    expect(cakeToolDescription).toContain("even when unsure");
+    expect(cakeToolDescription).toContain("Users do not need to name the tool explicitly");
+    expect(cakeToolDescription).not.toContain("vscode.open");
+    expect(cakeToolDescription).not.toContain("sessions.create");
   });
 
   it("treats a missing command and help with incidental input as equivalent", async () => {

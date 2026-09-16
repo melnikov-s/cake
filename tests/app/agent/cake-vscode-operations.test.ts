@@ -79,6 +79,16 @@ describe("Cake VS Code operations", () => {
     const { open, operations } = registry();
 
     expect(operations.help()).toContain("vscode —");
+    expect(operations.topicHelp("vscode")).toContain("code tours and walkthroughs");
+    expect(operations.topicHelp("vscode")).toContain(
+      "users do not need to ask for VS Code explicitly",
+    );
+    expect(operations.topicHelp("vscode")).toContain(
+      "Use vscode.open whenever showing code or directing the user's attention",
+    );
+    expect(operations.topicHelp("vscode")).toContain(
+      "Do not recreate source opening or selection with vscode.script.run",
+    );
     expect(operations.topicHelp("vscode")).toContain("vscode.enter");
     expect(operations.topicHelp("vscode")).toContain("vscode.open");
     expect(operations.topicHelp("vscode")).toContain("vscode.script.run");

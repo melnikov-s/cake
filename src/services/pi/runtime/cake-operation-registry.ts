@@ -8,7 +8,7 @@ import {
 
 const CAKE_OPERATION_PROTOCOL = "cake.operation/v1" as const;
 export const cakeToolDescription =
-  'Access Cake-native capabilities unavailable through files or the shell: inspect and arrange the app, manage sessions and context, inspect model presets, communicate with other sessions, list, read, create, and revise durable artifacts, enter and control embedded VS Code, delegate to subagents, conduct structured user interviews, create interactive visual widgets including architecture diagrams, and send notifications. Call with {} for the topic index. Request a topic to discover its current operations, exact schemas, and examples, for example {"command":"sessions"} or {"command":"vscode"}; do not put the topic in input.';
+  'Cake capabilities are part of the response and are progressively disclosed by topic: app, sessions, context, models, interview, artifacts, widgets, vscode, subagents, notifications, and worktrees. Before defaulting to prose, consider whether the request may imply a Cake interaction. If a topic seems potentially relevant—even when unsure—request it to discover its current operations, exact schemas, and examples, then use it when it better fulfills the request. Users do not need to name the tool explicitly. Call with {} for the topic index; request a topic with {"command":"<topic>"}, not in input.';
 
 const commandSchema = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)).annotate({
   description: "Exact topic or operation command. Omit for the help index.",
@@ -68,7 +68,11 @@ const cakeTopics = [
     summary: "List, read, create, and durably revise substantial reusable artifacts.",
   },
   { name: "widgets", summary: "Create interactive or highly visual presentations." },
-  { name: "vscode", summary: "Enter and control embedded VS Code." },
+  {
+    name: "vscode",
+    summary:
+      "Give code tours and walkthroughs, navigate and review source, or debug in embedded VS Code.",
+  },
   { name: "subagents", summary: "Delegate explicitly requested work." },
   { name: "notifications", summary: "Notify the user." },
   { name: "worktrees", summary: "Complete an active worktree landing workflow." },

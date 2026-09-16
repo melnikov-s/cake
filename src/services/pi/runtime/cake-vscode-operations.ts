@@ -94,6 +94,7 @@ export function createCakeVscodeOperations(control: VscodeControl): CakeOperatio
       topic: "vscode",
       summary: "Enter embedded VS Code mode for the calling project.",
       guidance: [
+        "Use embedded VS Code proactively for code tours, walkthroughs, visual source navigation, review, and debugging; users do not need to ask for VS Code explicitly.",
         "Enter VS Code mode when the user's request benefits from a visible editor, then invoke the desired VS Code operation.",
         "VS Code actions do not navigate Cake automatically; when they report VSCODE_MODE_REQUIRED, decide whether entering VS Code matches the user's intent.",
       ],
@@ -110,9 +111,11 @@ export function createCakeVscodeOperations(control: VscodeControl): CakeOperatio
       command: "vscode.open",
       topic: "vscode",
       summary:
-        "Open a Working Directory or absolute local file in embedded VS Code and highlight an optional source range.",
+        "Show code by opening a Working Directory or absolute local file in embedded VS Code and highlighting an optional source range.",
       guidance: [
-        "Use this operation to direct the user's attention in embedded VS Code; use filesystem tools to read or edit files.",
+        "Use vscode.open whenever showing code or directing the user's attention, including tours and walkthroughs; pass a source range when specific code should be highlighted.",
+        "Do not recreate source opening or selection with vscode.script.run; reserve scripts for layout or interactions that vscode.open cannot express.",
+        "Use filesystem tools to read or edit files; vscode.open is the visual presentation operation.",
         "Paths may be relative to the Project Session's Working Directory or absolute local file paths.",
         "Opening an absolute path does not add it to the project or change the Working Directory.",
         "Explain the location in the normal Cake conversation. Do not duplicate the explanation inside the editor.",
