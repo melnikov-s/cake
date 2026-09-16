@@ -101,6 +101,8 @@ function sidebarProps(store: ProjectWorkbenchStore) {
       projectOrder: fixture.recentProjectPaths,
       orderedProjectPaths: fixture.orderedProjectPaths ?? fixture.recentProjectPaths,
       projects: fixture.projects,
+      find: (path: string) =>
+        fixture.projects.find((project: { path: string }) => project.path === path),
       nameFromPath: fixture.nameFromPath,
       nameForPath: (path: string) =>
         fixture.projects.find((project: { path: string; name: string }) => project.path === path)

@@ -8,6 +8,7 @@ import {
   ConfirmationRequest,
   ConfirmationTitle,
 } from "@/components/ai-elements/confirmation";
+import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
 import { DialogBackdrop } from "@/components/ui/dialog";
@@ -723,13 +724,26 @@ export const App = observer(function App() {
                   <BackIcon />
                 </IconButton>
               )}
+              {surface === "workbench" && session && (
+                <Avatar
+                  kind="project"
+                  seed={projectOpen.projectName}
+                  customIcon={
+                    projectOpen.projectPath
+                      ? root.projectCatalogStore.find(projectOpen.projectPath)?.settings.icon
+                      : undefined
+                  }
+                  className="size-5"
+                  title={projectOpen.projectName}
+                  aria-hidden="true"
+                />
+              )}
               <strong className="block min-w-0 max-w-full truncate text-[13px] font-semibold">
                 {surface === "settings"
                   ? "Settings"
                   : surface === "cake-chat"
                     ? "Cake Chat"
-                    : (extensionUi.title ??
-                      (session ? `[${projectOpen.projectName}] ${store.sessionTitle}` : "Cake"))}
+                    : (extensionUi.title ?? (session ? store.sessionTitle : "Cake"))}
               </strong>
             </div>
             <div className="flex min-w-0 shrink-0 items-center gap-1.5 [app-region:no-drag]">
@@ -839,12 +853,27 @@ export const App = observer(function App() {
             store={root.sessionLayoutStore}
             findSession={(sessionId) => store.sessionRegistry.findSession(sessionId)}
             chatProps={projectChatProps}
-            title={(sessionId) => {
+            title={(sessionId) => root.sessionCatalogStore.find(sessionId)?.title ?? "New chat"}
+            titleLeading={(sessionId) => {
               const summary = root.sessionCatalogStore.find(sessionId);
-              const projectName = summary
-                ? root.projectCatalogStore.nameForPath(summary.projectPath)
+              const projectPath = summary?.projectPath ?? projectOpen.projectPath;
+              const projectName = projectPath
+                ? root.projectCatalogStore.nameForPath(projectPath)
                 : projectOpen.projectName;
-              return `[${projectName}] ${summary?.title ?? "New chat"}`;
+              return (
+                <Avatar
+                  kind="project"
+                  seed={projectName}
+                  customIcon={
+                    projectPath
+                      ? root.projectCatalogStore.find(projectPath)?.settings.icon
+                      : undefined
+                  }
+                  className="size-5"
+                  title={projectName}
+                  aria-hidden="true"
+                />
+              );
             }}
             loadingLabel="Opening session"
             headerClassName={(pane) =>

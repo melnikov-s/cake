@@ -85,11 +85,13 @@ describe("Application domain", () => {
           worktreeCreateCommand: "custom-worktree {worktreeName} {worktreePath}",
           worktreeSetupCommands: "pnpm install",
           worktreeSetupInstructions: "Install dependencies only when needed.",
+          icon: { mimeType: "image/png", data: "aWNvbg==" },
         });
         assert.deepEqual(configured.projects[0]?.settings, {
           worktreeCreateCommand: "custom-worktree {worktreeName} {worktreePath}",
           worktreeSetupCommands: "pnpm install",
           worktreeSetupInstructions: "Install dependencies only when needed.",
+          icon: { mimeType: "image/png", data: "aWNvbg==" },
         });
         const removed = yield* removeProject("/work/cake");
         assert.deepEqual(removed.projects, []);

@@ -7,6 +7,7 @@ export const ProjectSettingsChanges = Schema.Struct({
   worktreeCreateCommand: Schema.optionalKey(ProjectSettings.fields.worktreeCreateCommand),
   worktreeSetupCommands: Schema.optionalKey(ProjectSettings.fields.worktreeSetupCommands),
   worktreeSetupInstructions: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(16_384))),
+  icon: Schema.optionalKey(ProjectSettings.fields.icon),
 }).check(
   Schema.makeFilter((changes) => Object.values(changes).some((value) => value !== undefined), {
     expected: "at least one project setting",

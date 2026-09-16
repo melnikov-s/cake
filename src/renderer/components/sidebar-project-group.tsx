@@ -116,6 +116,7 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
             <Avatar
               kind="project"
               seed={projects.nameForPath(path)}
+              customIcon={projects.find(path)?.settings?.icon}
               title={`Avatar for ${projects.nameForPath(path)}`}
               aria-hidden="true"
             />

@@ -133,6 +133,7 @@ export const SidebarActivityFeed = observer(function SidebarActivityFeed({
                           kind: "project",
                           name: projectName,
                           avatarSeed: projectName,
+                          customIcon: projects.find(session.projectPath)?.settings?.icon,
                           showAvatar: appearance.projectAvatarsEnabled,
                         }}
                         onOpen={onOpenSession}

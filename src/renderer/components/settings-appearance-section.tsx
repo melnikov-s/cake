@@ -50,7 +50,7 @@ export const SettingsAppearanceSection = observer(function SettingsAppearanceSec
         <SettingsToggle
           id="setting-project-avatars"
           label="Project avatars"
-          description="Show deterministic Slice avatars for Projects."
+          description="Show project icons in the sidebar. Projects without a custom icon use a deterministic Slice avatar."
           checked={appearance.projectAvatarsEnabled}
           onChange={(enabled) => appearance.setProjectAvatarsEnabled(enabled)}
         />

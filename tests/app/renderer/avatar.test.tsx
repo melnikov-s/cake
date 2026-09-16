@@ -57,6 +57,21 @@ describe("Avatar", () => {
     expect(decodeURIComponent(source!)).toContain('<rect width="100" height="100" rx="0" ry="0"/>');
   });
 
+  it("uses a custom Project icon without changing Cake-owned sizing", () => {
+    const markup = renderToStaticMarkup(
+      <Avatar
+        kind="project"
+        seed="project"
+        customIcon={{ mimeType: "image/png", data: "aWNvbg==" }}
+        className="size-10"
+      />,
+    );
+
+    expect(markup).toContain('src="data:image/png;base64,aWNvbg=="');
+    expect(markup).toContain("size-10");
+    expect(markup).toContain("object-contain");
+  });
+
   it("colors the Session avatar from its merged labels without a ring", () => {
     const markup = renderToStaticMarkup(
       <Avatar kind="session" seed="session" labelColors={["violet"]} />,

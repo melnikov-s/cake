@@ -12,6 +12,7 @@ import {
 } from "./ui/dialog";
 import { Textarea } from "./ui/textarea";
 import { LabelSettings } from "./label-settings";
+import { Avatar } from "./ui/avatar";
 
 const variables = [
   ["{projectPath}", "registered project directory"],
@@ -45,12 +46,55 @@ export const ProjectSettingsDialog = observer(function ProjectSettingsDialog({
           <DialogHeader>
             <DialogTitle id="project-settings-title">{store.projectName} settings</DialogTitle>
             <DialogDescription id="project-settings-description">
-              Configure project-specific labels and how Cake prepares managed worktrees for this
-              project.
+              Configure the project icon, project-specific labels, and how Cake prepares managed
+              worktrees for this project.
             </DialogDescription>
           </DialogHeader>
 
           <div className="mt-5 grid gap-5">
+            <section aria-labelledby="project-icon-title" className="grid gap-2">
+              <span id="project-icon-title" className="text-xs font-semibold text-foreground">
+                Project icon
+              </span>
+              <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/25 p-3">
+                <Avatar
+                  kind="project"
+                  seed={store.projectName}
+                  customIcon={store.icon}
+                  className="size-10"
+                  aria-hidden="true"
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs text-foreground">
+                    {store.icon ? "Custom icon" : "Generated from the project name"}
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">
+                    PNG, JPEG, GIF, or WebP under 750 KB. Cake controls its displayed size.
+                  </p>
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  {store.icon && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => store.removeIcon()}
+                      disabled={store.choosingIcon || store.saving}
+                    >
+                      Remove
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => void store.chooseIcon()}
+                    disabled={store.choosingIcon || store.saving}
+                  >
+                    {store.choosingIcon ? "Choosing…" : "Choose icon…"}
+                  </Button>
+                </div>
+              </div>
+            </section>
+
             <label className="grid gap-2">
               <span className="text-xs font-semibold text-foreground">
                 Worktree creation command

@@ -32,12 +32,22 @@ const IsoTimestamp = Schema.String.check(
 const DEFAULT_WORKTREE_CREATE_COMMAND =
   "git worktree add -b {branchName} {worktreePath} {baseCommit}";
 
+export const PROJECT_ICON_DATA_MAX_LENGTH = 1_000_000;
+
+export const ProjectIcon = Schema.Struct({
+  mimeType: Schema.Literals(["image/png", "image/jpeg", "image/gif", "image/webp"]),
+  data: boundedString(PROJECT_ICON_DATA_MAX_LENGTH),
+});
+
+export interface ProjectIcon extends Schema.Schema.Type<typeof ProjectIcon> {}
+
 export const ProjectSettings = Schema.Struct({
   worktreeCreateCommand: boundedString(16_384),
   worktreeSetupCommands: boundedString(65_536),
   worktreeSetupInstructions: boundedString(16_384).pipe(
     Schema.withDecodingDefaultKey(Effect.succeed("")),
   ),
+  icon: Schema.optionalKey(ProjectIcon),
 });
 
 export interface ProjectSettings extends Schema.Schema.Type<typeof ProjectSettings> {}

@@ -1,6 +1,8 @@
 import { Store, observable } from "r-state-tree";
 import {
   defaultProjectSettings,
+  PROJECT_ICON_DATA_MAX_LENGTH,
+  type ProjectIcon,
   type ProjectSettings,
   type SessionLabelColor,
   type SessionLabelMutation,
@@ -18,7 +20,9 @@ export class ProjectSettingsStore extends Store<{
   worktreeCreateCommand = "";
   worktreeSetupCommands = "";
   worktreeSetupInstructions = "";
+  icon: ProjectIcon | undefined;
   saving = false;
+  choosingIcon = false;
   addingLabel = false;
   private readonly pendingLabelIds = observable(new Set<string>());
   error: string | undefined;
@@ -32,7 +36,9 @@ export class ProjectSettingsStore extends Store<{
   }
 
   get canSave() {
-    return Boolean(this.projectPath && this.worktreeCreateCommand.trim() && !this.saving);
+    return Boolean(
+      this.projectPath && this.worktreeCreateCommand.trim() && !this.saving && !this.choosingIcon,
+    );
   }
 
   get labels() {
@@ -52,6 +58,7 @@ export class ProjectSettingsStore extends Store<{
     this.worktreeCreateCommand = settings.worktreeCreateCommand;
     this.worktreeSetupCommands = settings.worktreeSetupCommands;
     this.worktreeSetupInstructions = settings.worktreeSetupInstructions;
+    this.icon = settings.icon;
     this.error = undefined;
   }
 
@@ -69,6 +76,44 @@ export class ProjectSettingsStore extends Store<{
 
   setWorktreeSetupInstructions(instructions: string) {
     this.worktreeSetupInstructions = instructions;
+  }
+
+  async chooseIcon() {
+    if (this.choosingIcon) return;
+    this.choosingIcon = true;
+    this.error = undefined;
+    try {
+      const selected = await this.client.filesystem.chooseAttachments({ signal: this.signal });
+      if (this.signal.aborted || selected.length === 0) return;
+      const image = selected.find(
+        (item): item is Extract<(typeof selected)[number], { kind: "image" }> =>
+          item.kind === "image",
+      );
+      if (
+        !image ||
+        (image.mimeType !== "image/png" &&
+          image.mimeType !== "image/jpeg" &&
+          image.mimeType !== "image/gif" &&
+          image.mimeType !== "image/webp")
+      ) {
+        this.error = "Choose a PNG, JPEG, GIF, or WebP image";
+        return;
+      }
+      if (image.data.length > PROJECT_ICON_DATA_MAX_LENGTH) {
+        this.error = "Project icons must be smaller than 750 KB";
+        return;
+      }
+      this.icon = { mimeType: image.mimeType, data: image.data };
+    } catch (error) {
+      if (!this.signal.aborted) this.error = describeError(error).message;
+    } finally {
+      if (!this.signal.aborted) this.choosingIcon = false;
+    }
+  }
+
+  removeIcon() {
+    this.icon = undefined;
+    this.error = undefined;
   }
 
   resetDefaults() {
@@ -150,6 +195,7 @@ export class ProjectSettingsStore extends Store<{
       worktreeCreateCommand: this.worktreeCreateCommand.trim(),
       worktreeSetupCommands: this.worktreeSetupCommands.trim(),
       worktreeSetupInstructions: this.worktreeSetupInstructions.trim(),
+      ...(this.icon ? { icon: this.icon } : undefined),
     };
     this.saving = true;
     this.error = undefined;

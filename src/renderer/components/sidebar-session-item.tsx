@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { observer } from "r-state-tree/react";
 import { SESSION_TITLE_MAX_LENGTH } from "../../ipc/session-contract";
-import type { SessionLabel } from "../../domain/application/application-data";
+import type { ProjectIcon, SessionLabel } from "../../domain/application/application-data";
 import type { WorktreeRecord } from "../../domain/worktrees/managed-worktree-data";
 import { cn } from "../lib/utils";
 import { Badge } from "./ui/badge";
@@ -40,7 +40,13 @@ export interface SidebarSessionItemProps {
   avatarSeed: string;
   avatarsEnabled: boolean;
   source?:
-    | { kind: "project"; name: string; avatarSeed: string; showAvatar: boolean }
+    | {
+        kind: "project";
+        name: string;
+        avatarSeed: string;
+        customIcon?: ProjectIcon;
+        showAvatar: boolean;
+      }
     | { kind: "cake-chat"; name: string };
   focusMode?: boolean;
   onOpen(sessionId: string): void;
@@ -288,6 +294,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
                       <Avatar
                         kind="project"
                         seed={source.avatarSeed}
+                        customIcon={source.customIcon}
                         className="size-3.5"
                         aria-hidden="true"
                       />

@@ -22,6 +22,7 @@ interface SessionSplitLayoutProps {
   store: SessionLayoutStore;
   node?: SessionLayoutNode;
   title(sessionId: string): string;
+  titleLeading?(sessionId: string): ReactNode;
   headerClassName?(pane: SessionPaneNode): string | undefined;
   renderHeader(pane: SessionPaneNode): ReactNode;
   renderPane(pane: SessionPaneNode): ReactNode;
@@ -36,6 +37,7 @@ export const SessionSplitLayout = observer(function SessionSplitLayout({
   store,
   node = store.layout,
   title,
+  titleLeading,
   headerClassName,
   renderHeader,
   renderPane,
@@ -124,6 +126,7 @@ export const SessionSplitLayout = observer(function SessionSplitLayout({
               {pane?.number}
             </span>
           )}
+          {titleLeading?.(sessionId)}
           <strong className="min-w-0 flex-1 truncate text-[13px] font-semibold">
             {title(sessionId)}
           </strong>
@@ -184,6 +187,7 @@ export const SessionSplitLayout = observer(function SessionSplitLayout({
         {...{
           store,
           title,
+          titleLeading,
           headerClassName,
           renderHeader,
           renderPane,
@@ -209,6 +213,7 @@ export const SessionSplitLayout = observer(function SessionSplitLayout({
         {...{
           store,
           title,
+          titleLeading,
           headerClassName,
           renderHeader,
           renderPane,

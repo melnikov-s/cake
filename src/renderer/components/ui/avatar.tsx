@@ -7,7 +7,7 @@ import {
   interactWithSessionAvatar,
   materializeSessionAvatar,
 } from "../../lib/animate-session-avatar";
-import type { SessionLabelColor } from "../../../domain/application/application-data";
+import type { ProjectIcon, SessionLabelColor } from "../../../domain/application/application-data";
 import { cn } from "../../lib/utils";
 import { mergedSessionLabelColor } from "../../../utils/session-label-color";
 
@@ -22,6 +22,7 @@ export interface AvatarProps extends HTMLAttributes<HTMLSpanElement> {
   kind: "project" | "session";
   seed: string;
   labelColors?: readonly SessionLabelColor[];
+  customIcon?: ProjectIcon;
   animated?: boolean;
   /** Opt-in row feedback instead of idle animation; activationTarget is a NavItem. */
   interaction?: {
@@ -35,6 +36,7 @@ export function Avatar({
   kind,
   seed,
   labelColors,
+  customIcon,
   animated = false,
   interaction,
   className,
@@ -105,7 +107,14 @@ export function Avatar({
       data-session-label-color={mergedSessionLabelColor(labelColors ?? [])}
       {...props}
     >
-      {"uri" in avatar ? (
+      {kind === "project" && customIcon ? (
+        <img
+          className="size-full object-contain"
+          src={`data:${customIcon.mimeType};base64,${customIcon.data}`}
+          alt=""
+          aria-hidden="true"
+        />
+      ) : "uri" in avatar ? (
         <img className="size-full" src={avatar.uri} alt="" aria-hidden="true" />
       ) : (
         <span className="contents" dangerouslySetInnerHTML={avatar} />
