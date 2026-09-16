@@ -14,7 +14,7 @@ import { Markdown } from "@/components/ai-elements/markdown";
 import { cakeHotkeyEventName } from "@/lib/hotkeys";
 import { cn } from "@/lib/utils";
 import { Message, MessageContent, MessageLabel } from "@/components/ai-elements/message";
-import { FullscreenSurface } from "@/components/fullscreen-surface";
+import { FullscreenMessage } from "@/components/fullscreen-message";
 import { FullscreenButton } from "@/components/ui/fullscreen-button";
 import { IconButton } from "@/components/ui/icon-button";
 import {
@@ -345,16 +345,6 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
     return () => window.clearTimeout(timeout);
   }, [copied]);
 
-  const content = () => (
-    <Markdown
-      streaming={part.status === "streaming"}
-      normalizeLatexDelimiters={part.status !== "streaming"}
-      onOpenSourceLocation={behavior.openSourceLocation}
-    >
-      {part.text}
-    </Markdown>
-  );
-
   useLayoutEffect(() => {
     const key = `${part.id}:${part.entryId ?? ""}`;
     const container = contentRef.current;
@@ -559,11 +549,16 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
         </div>
       )}
       {fullscreen && (
-        <FullscreenSurface eyebrow="Full response" title="Cake" onClose={closeFullscreen}>
-          <div className="w-full" data-part-id={part.id}>
-            {content()}
-          </div>
-        </FullscreenSurface>
+        <FullscreenMessage
+          eyebrow="Full response"
+          title="Cake"
+          text={part.text}
+          markdown
+          streaming={part.status === "streaming"}
+          partId={part.id}
+          onOpenSourceLocation={behavior.openSourceLocation}
+          onClose={closeFullscreen}
+        />
       )}
     </ChatTextMessage>
   );

@@ -331,6 +331,69 @@ describe("Chat", () => {
     expect(cancelSteering).toHaveBeenCalledOnce();
   });
 
+  it("opens queued message content fullscreen without invoking its actions", () => {
+    const steerQueuedPrompt = vi.fn();
+    const removeQueuedPrompt = vi.fn();
+    store = mount(
+      createStore(ChatStore, {
+        id: () => "queued-fullscreen-chat",
+        parts: () => [],
+        streaming: () => true,
+        submitting: () => false,
+        configuration: () => undefined,
+        commands: () => [],
+        placeholder: () => "Message",
+        inputLabel: () => "Message",
+        canSubmit: () => false,
+        submit: async () => false,
+        queuedPrompts: () => [
+          {
+            id: "child-report",
+            text: "# Child report\n\n- Built the feature\n- Ran the tests",
+            attachments: [],
+            renderUserMessageAsMarkdown: true,
+            state: "queued" as const,
+            editable: false,
+            source: {
+              version: 1 as const,
+              messageId: "f6debbbd-ced1-4a12-b0f7-fb60c292c623",
+              threadId: "8358c2b7-bd3c-42ee-9fec-fcb726b66c18",
+              sequence: 1,
+              expectsResponse: false,
+              sender: {
+                sessionId: "child-session",
+                title: "Feature child",
+                kind: "project-session" as const,
+              },
+            },
+          },
+        ],
+        steerQueuedPrompt,
+        removeQueuedPrompt,
+      }),
+    );
+
+    act(() =>
+      root.render(
+        <FullscreenSurfaceFixture>
+          <Chat store={store!} />
+        </FullscreenSurfaceFixture>,
+      ),
+    );
+    act(() =>
+      container
+        .querySelector<HTMLButtonElement>('[aria-label^="View queued message: # Child report"]')!
+        .click(),
+    );
+
+    const fullscreen = document.body.querySelector<HTMLElement>('[role="dialog"]')!;
+    expect(fullscreen.textContent).toContain("Feature child");
+    expect(fullscreen.querySelector("h1")?.textContent).toBe("Child report");
+    expect(fullscreen.querySelectorAll("li")).toHaveLength(2);
+    expect(steerQueuedPrompt).not.toHaveBeenCalled();
+    expect(removeQueuedPrompt).not.toHaveBeenCalled();
+  });
+
   it("shows a scheduled message countdown and allows cancellation", async () => {
     vi.useFakeTimers();
     vi.setSystemTime("2026-09-04T12:00:00.000Z");

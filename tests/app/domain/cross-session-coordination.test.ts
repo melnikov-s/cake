@@ -5,7 +5,10 @@ import {
   parseCrossSessionMessage,
   type CrossSessionMessageMetadata,
 } from "../../../src/domain/conversations/cross-session-coordination";
-import { projectQueuedMessages } from "../../../src/services/pi/runtime/session-projection";
+import {
+  projectQueuedMessages,
+  projectSessionEntries,
+} from "../../../src/services/pi/runtime/session-projection";
 
 const metadata: CrossSessionMessageMetadata = {
   version: 1,
@@ -57,14 +60,42 @@ describe("cross-session coordination metadata", () => {
     expect(encoded).toContain("<cake-session-message>");
   });
 
-  it("projects queued messages with a sender label without exposing the envelope as user text", () => {
-    const [part] = projectQueuedMessages([], [encodeCrossSessionMessage("Queued reply", metadata)]);
+  it("projects queued messages with sender metadata and detected Markdown", () => {
+    const [part] = projectQueuedMessages(
+      [],
+      [encodeCrossSessionMessage("# Queued reply\n\n- First detail", metadata)],
+    );
 
     expect(part).toMatchObject({
       kind: "text",
       role: "user",
-      text: "Queued reply",
+      text: "# Queued reply\n\n- First detail",
       deliveryState: "queued",
+      renderAs: "markdown",
+      crossSession: metadata,
+    });
+  });
+
+  it("detects Markdown when projecting delivered cross-session messages", () => {
+    const [part] = projectSessionEntries([
+      {
+        type: "message",
+        id: "cross-session-message",
+        parentId: null,
+        timestamp: new Date(0).toISOString(),
+        message: {
+          role: "user",
+          content: encodeCrossSessionMessage("**Completed** the review", metadata),
+          timestamp: 0,
+        },
+      },
+    ] as never);
+
+    expect(part).toMatchObject({
+      kind: "text",
+      role: "user",
+      text: "**Completed** the review",
+      renderAs: "markdown",
       crossSession: metadata,
     });
   });

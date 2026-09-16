@@ -9,6 +9,7 @@ import { Option, Schema } from "effect";
 import { artifactPointerSchema, type ArtifactPointer } from "../../../ipc/artifact-contract";
 import { parseCrossSessionMessage } from "../../../domain/conversations/cross-session-coordination";
 import { parseScheduledMessage } from "../../../domain/scheduled-messages/scheduled-message-envelope";
+import { shouldRenderMarkdown } from "../../../utils/markdown";
 import {
   attachmentSchema,
   toolOutputContentArraySchema,
@@ -236,6 +237,8 @@ function partsFromMessage(
     const envelope = parseUserMessageEnvelope(textFromContent(content));
     const parsedContext = parseContextAttachmentBlocks(envelope.text);
     const text = parsedContext.text;
+    const renderAsMarkdown =
+      renderUserMessageAsMarkdown || Boolean(envelope.crossSession && shouldRenderMarkdown(text));
     const skill = parseSkillBlock(text);
     if (skill) {
       parts.push({
@@ -253,7 +256,7 @@ function partsFromMessage(
           entryId,
           text: skill.userMessage,
           status: "complete",
-          renderAs: renderUserMessageAsMarkdown ? "markdown" : undefined,
+          renderAs: renderAsMarkdown ? "markdown" : undefined,
           crossSession: envelope.crossSession,
           scheduled: envelope.scheduled,
         });
@@ -265,7 +268,7 @@ function partsFromMessage(
         entryId,
         text,
         status: "complete",
-        renderAs: renderUserMessageAsMarkdown ? "markdown" : undefined,
+        renderAs: renderAsMarkdown ? "markdown" : undefined,
         crossSession: envelope.crossSession,
         scheduled: envelope.scheduled,
       });
@@ -631,6 +634,8 @@ export function projectQueuedMessages(
           text: envelope.text,
           status: "complete",
           deliveryState,
+          renderAs:
+            envelope.crossSession && shouldRenderMarkdown(envelope.text) ? "markdown" : undefined,
           crossSession: envelope.crossSession,
           scheduled: envelope.scheduled,
         },
