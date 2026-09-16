@@ -403,6 +403,11 @@ export const App = observer(function App() {
           session.workspacePath
         }
         resolved={root.sessionCatalogStore.find(session.sessionId)?.resolved}
+        isFamilyChild={
+          root.sessionCatalogStore.find(session.sessionId)?.familyParentSessionId !== undefined &&
+          root.sessionCatalogStore.find(session.sessionId)?.familyParentSessionId !==
+            session.sessionId
+        }
         configurationMode={worktreeConfigurationMode}
         onConfigured={() =>
           session.conversationSessionStore.composerStore.draftStore.requestFocus()
@@ -606,6 +611,12 @@ export const App = observer(function App() {
               paneSession.workspacePath
             }
             resolved={root.sessionCatalogStore.find(paneSession.sessionId)?.resolved}
+            isFamilyChild={
+              root.sessionCatalogStore.find(paneSession.sessionId)?.familyParentSessionId !==
+                undefined &&
+              root.sessionCatalogStore.find(paneSession.sessionId)?.familyParentSessionId !==
+                paneSession.sessionId
+            }
             configurationMode={configurationMode}
             onConfigured={() =>
               paneSession.conversationSessionStore.composerStore.draftStore.requestFocus()

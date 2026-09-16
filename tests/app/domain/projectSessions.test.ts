@@ -670,7 +670,7 @@ const sessionSummary = (id: string): SessionSummary => ({
 
 describe("Project Sessions domain", () => {
   it.effect(
-    "projects root-only resolve and restore through both catalog lanes for the whole nested family",
+    "projects parent-only resolve and restore through both catalog lanes for the whole nested family",
     () => {
       const archived: string[] = [];
       const restored: string[] = [];
@@ -742,7 +742,7 @@ describe("Project Sessions domain", () => {
         yield* Queue.take(received);
         assertFamily(true);
 
-        yield* projectSessionLifecycle.restore({ sessionId: "grandchild" });
+        yield* projectSessionLifecycle.restore({ sessionId: "parent" });
         yield* Queue.take(received);
         yield* Queue.take(received);
         assertFamily(false);
@@ -773,6 +773,15 @@ describe("Project Sessions domain", () => {
     },
   );
 
+  it.effect("rejects lifecycle actions addressed to a family child", () =>
+    Effect.gen(function* () {
+      for (const action of [projectSessionLifecycle.resolve, projectSessionLifecycle.restore]) {
+        const failure = yield* action({ sessionId: "child" }).pipe(Effect.flip);
+        assert.match(failure.message, /only session family parent parent/i);
+      }
+    }).pipe(Effect.provide(makeLayer(undefined, { family: nestedFamily }))),
+  );
+
   it.effect("checks descendant activity before changing the root authority", () =>
     Effect.gen(function* () {
       const sessions = yield* PiSessions;
@@ -780,7 +789,7 @@ describe("Project Sessions domain", () => {
         { streaming: true, pending: false, persisted: true },
         { streaming: false, pending: true, persisted: true },
       ]) {
-        const failure = yield* projectSessionLifecycle.resolve({ sessionId: "child" }).pipe(
+        const failure = yield* projectSessionLifecycle.resolve({ sessionId: "parent" }).pipe(
           Effect.provideService(PiSessions, {
             ...sessions,
             currentStatus: (target) =>
@@ -968,7 +977,7 @@ describe("Project Sessions domain", () => {
     }).pipe(Effect.provide(makeLayer(undefined, { sessionExists: false }))),
   );
 
-  it.effect("routes child lifecycle requests to the root authority", () => {
+  it.effect("rejects child lifecycle requests instead of routing them to the parent", () => {
     const transitions: string[] = [];
     const family = {
       familyId: "family-1",
@@ -985,15 +994,11 @@ describe("Project Sessions domain", () => {
       ],
     };
     return Effect.gen(function* () {
-      yield* projectSessionLifecycle.resolve({
-        sessionId: "session-1",
-        workingDirectory: "/project",
-      });
-      yield* projectSessionLifecycle.restore({
-        sessionId: "session-1",
-        workingDirectory: "/project",
-      });
-      assert.deepEqual(transitions, ["resolve:parent-1", "restore:parent-1"]);
+      const failure = yield* projectSessionLifecycle
+        .resolve({ sessionId: "session-1", workingDirectory: "/project" })
+        .pipe(Effect.flip);
+      assert.match(failure.message, /only session family parent parent-1/i);
+      assert.deepEqual(transitions, []);
     }).pipe(
       Effect.provide(
         makeLayer(undefined, {

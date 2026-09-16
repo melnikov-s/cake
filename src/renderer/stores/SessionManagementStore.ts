@@ -50,19 +50,15 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
       this.props.registry.removeSession(sessionId);
       return true;
     }
-    const transitionSession =
-      session.familyParentSessionId && session.familyParentSessionId !== sessionId
-        ? this.props.catalog.find(session.familyParentSessionId)
-        : session;
-    if (!transitionSession) return false;
-    const transitionSessionId = transitionSession.sessionId;
+    if (session.familyParentSessionId && session.familyParentSessionId !== sessionId) return false;
+    const transitionSessionId = session.sessionId;
     if (this.transitioningSessionIds.has(transitionSessionId)) return false;
     this.transitioningSessionIds.add(transitionSessionId);
     try {
       if (this.signal.aborted) return false;
       const target = {
         sessionId: transitionSessionId,
-        workingDirectory: transitionSession.workingDirectory,
+        workingDirectory: session.workingDirectory,
       };
       if (resolved) await this.client.projectSessions.resolve(target, { signal: this.signal });
       else await this.client.projectSessions.restore(target, { signal: this.signal });

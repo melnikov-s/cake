@@ -673,19 +673,6 @@ export const ManagedWorktreesLive: Layer.Layer<
         return yield* internalError(
           "The landing target has uncommitted changes. Commit or stash them first.",
         );
-      const records = yield* Ref.get(recordsRef);
-      const activeChildren = yield* Effect.filter(
-        records.filter(
-          (entry) =>
-            (entry.state ?? "active") === "active" &&
-            entry.parentWorktreePath === record.worktreePath,
-        ),
-        (entry) => exists(entry.worktreePath),
-      );
-      if (activeChildren.length > 0)
-        return yield* internalError(
-          "Land or discard this worktree's active child worktrees first.",
-        );
       if ((yield* revListCount(record.worktreePath, `${record.baseBranch}..HEAD`)) === 0) {
         yield* closeRecord(record, "landed");
         return { outcome: "landed" };

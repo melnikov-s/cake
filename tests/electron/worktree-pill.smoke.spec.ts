@@ -319,7 +319,7 @@ test("lands new commits from an already-landed worktree before resolving it", as
     const restore = resolvedSession.getByRole("button", { name: /^Restore / });
     await expect(restore).toBeVisible();
     await resolvedSession.locator(".session-row").click();
-    await expect(page.locator('[data-slot="worktree-pill"]')).toHaveCount(0);
+    await expect(page.getByTestId("resolved-session-notice")).toBeVisible();
     await restore.click();
     await expect.poll(() => existsSync(worktreePath)).toBe(true);
     await expect(page.getByText(/Cake could not find session/)).toHaveCount(0);

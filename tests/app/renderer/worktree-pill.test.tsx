@@ -97,6 +97,7 @@ describe("WorktreePill", () => {
     configurationMode?: "new-session" | "activate-draft" | "edit-draft",
     resolved = false,
     scrollToBottom?: () => void,
+    isFamilyChild = false,
   ) {
     act(() =>
       root.render(
@@ -110,6 +111,7 @@ describe("WorktreePill", () => {
             sessionId="session"
             projectPath="/project"
             resolved={resolved}
+            isFamilyChild={isFamilyChild}
             configurationMode={configurationMode}
             onConfigured={vi.fn()}
           />
@@ -328,5 +330,44 @@ describe("WorktreePill", () => {
     expect(button("Commit & merge")).toBeDefined();
     expect(button("Merge & resolve")).toBeDefined();
     expect(button("Discard & resolve")).toBeDefined();
+  });
+
+  it("limits child worktrees to merge and discard without resolving the family", () => {
+    const actions = actionStore({ aheadCount: 1, dirtyCount: 0 });
+    render(actions, undefined, undefined, false, undefined, true);
+
+    expect(button("Merge")).toBeDefined();
+    expect(button("Merge & resolve")).toBeUndefined();
+    expect(button("Discard & resolve")).toBeUndefined();
+    const trigger = button("Discard");
+    act(() => trigger.click());
+    const confirm = [...document.querySelectorAll("button")].find(
+      (candidate) => candidate.textContent === "Discard" && candidate !== trigger,
+    );
+    expect(confirm).toBeDefined();
+    act(() => confirm!.click());
+    expect(actions.discard).toHaveBeenCalledWith(false, false);
+  });
+
+  it("lets a merged child worktree be discarded instead of resolved", () => {
+    const actions = actionStore({ aheadCount: 0, dirtyCount: 0 });
+    render(
+      actions,
+      {
+        projectPath: "/project",
+        worktreePath: "/worktree",
+        branch: "agent/session",
+        baseBranch: "main",
+        state: "landed",
+        createdAt: new Date(0).toISOString(),
+      },
+      undefined,
+      false,
+      undefined,
+      true,
+    );
+
+    expect(button("Resolve")).toBeUndefined();
+    expect(button("Discard")).toBeDefined();
   });
 });

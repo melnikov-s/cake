@@ -44,6 +44,7 @@ export interface WorktreePillProps {
   sessionId: string;
   projectPath: string;
   resolved?: boolean;
+  isFamilyChild?: boolean;
   configurationMode?: "new-session" | "activate-draft" | "edit-draft";
   onConfigured(): void;
 }
@@ -58,6 +59,7 @@ export const WorktreePill = observer(function WorktreePill({
   sessionId,
   projectPath,
   resolved = false,
+  isFamilyChild = false,
   configurationMode,
   onConfigured,
 }: WorktreePillProps) {
@@ -359,25 +361,27 @@ export const WorktreePill = observer(function WorktreePill({
                 >
                   {mergeLabel}
                 </WorktreePillAction>
-                <WorktreePillAction
-                  icon={<MergeResolveIcon />}
-                  aria-label={mergeAndResolveLabel}
-                  tooltip={
-                    hasUncommittedChanges
-                      ? "Commit changes, merge, and resolve sessions"
-                      : "Merge and resolve sessions"
-                  }
-                  disabledReason={mergeDisabledReason}
-                  onClick={() => {
-                    if (status?.targetDirty) {
-                      setConfirmation("dirty-target-resolve");
-                      return;
+                {!isFamilyChild && (
+                  <WorktreePillAction
+                    icon={<MergeResolveIcon />}
+                    aria-label={mergeAndResolveLabel}
+                    tooltip={
+                      hasUncommittedChanges
+                        ? "Commit changes, merge, and resolve sessions"
+                        : "Merge and resolve sessions"
                     }
-                    run(actions.commitAndMerge(false, true));
-                  }}
-                >
-                  {mergeAndResolveLabel}
-                </WorktreePillAction>
+                    disabledReason={mergeDisabledReason}
+                    onClick={() => {
+                      if (status?.targetDirty) {
+                        setConfirmation("dirty-target-resolve");
+                        return;
+                      }
+                      run(actions.commitAndMerge(false, true));
+                    }}
+                  >
+                    {mergeAndResolveLabel}
+                  </WorktreePillAction>
+                )}
               </>
             )}
             {hasNewCommitsSinceLanding && (
@@ -397,7 +401,7 @@ export const WorktreePill = observer(function WorktreePill({
                 {landNewCommitsLabel}
               </WorktreePillAction>
             )}
-            {landed && !hasNewCommitsSinceLanding && (
+            {landed && !hasNewCommitsSinceLanding && !isFamilyChild && (
               <WorktreePillAction
                 icon={<ResolveIcon />}
                 aria-label="Resolve"
@@ -440,7 +444,7 @@ export const WorktreePill = observer(function WorktreePill({
                 Cancel
               </WorktreePillAction>
             )}
-            {!landed && (
+            {(!landed || isFamilyChild) && (
               <Popover
                 open={confirmation === "discard-resolve"}
                 onOpenChange={(open) => setConfirmation(open ? "discard-resolve" : undefined)}
@@ -448,20 +452,27 @@ export const WorktreePill = observer(function WorktreePill({
                 <WorktreePillAction
                   popoverTrigger
                   icon={<TrashIcon />}
-                  aria-label="Discard & resolve"
-                  tooltip="Discard worktree and resolve sessions"
+                  aria-label={isFamilyChild ? "Discard" : "Discard & resolve"}
+                  tooltip={
+                    isFamilyChild ? "Discard worktree" : "Discard worktree and resolve sessions"
+                  }
                   tone="destructive"
                   disabledReason={operationDisabledReason}
                 >
-                  {actions.phase === "discarding" ? "Discarding…" : "Discard & resolve"}
+                  {actions.phase === "discarding"
+                    ? "Discarding…"
+                    : isFamilyChild
+                      ? "Discard"
+                      : "Discard & resolve"}
                 </WorktreePillAction>
                 <PopoverContent align="end" side="top" className="!w-80 !p-0">
                   <Confirmation state="requested" className="border-0 shadow-none">
                     <ConfirmationRequest>
                       <ConfirmationTitle>Discard this worktree?</ConfirmationTitle>
                       <ConfirmationDescription>
-                        The worktree and its branch will be deleted, all unmerged work will be lost,
-                        and its sessions will be resolved.
+                        {isFamilyChild
+                          ? "The worktree and its branch will be deleted, and all unmerged work will be lost. The Session Family will remain active."
+                          : "The worktree and its branch will be deleted, all unmerged work will be lost, and its sessions will be resolved."}
                       </ConfirmationDescription>
                       <ConfirmationActions>
                         <ConfirmationAction
@@ -472,9 +483,9 @@ export const WorktreePill = observer(function WorktreePill({
                         </ConfirmationAction>
                         <ConfirmationAction
                           variant="destructive"
-                          onClick={() => run(actions.discard(false, true))}
+                          onClick={() => run(actions.discard(false, !isFamilyChild))}
                         >
-                          Discard & resolve
+                          {isFamilyChild ? "Discard" : "Discard & resolve"}
                         </ConfirmationAction>
                       </ConfirmationActions>
                     </ConfirmationRequest>

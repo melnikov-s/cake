@@ -46,7 +46,7 @@ describe("SessionManagementStore", () => {
     operations[Symbol.dispose]();
   });
 
-  it("restores a Session Family through its parent when messaging a resolved child", async () => {
+  it("does not expose family resolution through a child session", async () => {
     const restore = vi.fn(async () => undefined);
     const operations = mount(createStore(SessionOperationCoordinatorStore));
     const registry = {
@@ -77,12 +77,9 @@ describe("SessionManagementStore", () => {
       { projectSessions: { restore } } as unknown as Client,
     );
 
-    await expect(subject.resolveSession("child", false)).resolves.toBe(true);
+    await expect(subject.resolveSession("child", false)).resolves.toBe(false);
 
-    expect(restore).toHaveBeenCalledWith(
-      { sessionId: "parent", workingDirectory: "/project" },
-      expect.anything(),
-    );
+    expect(restore).not.toHaveBeenCalled();
     root[Symbol.dispose]();
     operations[Symbol.dispose]();
   });

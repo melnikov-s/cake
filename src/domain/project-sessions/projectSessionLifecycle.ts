@@ -266,6 +266,11 @@ const transition = Effect.fn("ProjectSessions.transitionLifecycle")(function* (
   const storage = yield* SessionFamilyStorage;
   const family = yield* storage.familyForMember(target.sessionId).pipe(asError(operation));
   if (!family) return yield* transitionStandalone(target, resolved, operation, publish);
+  if (target.sessionId !== family.parentSessionId)
+    return yield* error(
+      operation,
+      `Only Session Family parent ${family.parentSessionId} can be ${resolved ? "resolved" : "restored"}`,
+    );
   const location = yield* familyMemberLocation(family, family.parentSessionId, operation);
   const archive = yield* SessionArchiveStorage;
   const namespace = yield* archive

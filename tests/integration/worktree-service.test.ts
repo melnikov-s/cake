@@ -801,7 +801,7 @@ describe("WorktreeService", { timeout: 20_000 }, () => {
     expect(status).toMatchObject({ aheadCount: 0, dirtyCount: 0 });
   });
 
-  it("lands a stacked child into its parent worktree before the parent lands to main", async () => {
+  it("lands a parent while a stacked child remains active, then lands later child work", async () => {
     const repo = await repository();
     const worktrees = service();
     const parent = await worktrees.create(repo);
@@ -813,21 +813,19 @@ describe("WorktreeService", { timeout: 20_000 }, () => {
 
     await expect(
       worktrees.land(parent.worktreePath, { request: { strategy: "preserve" } }),
-    ).rejects.toThrow(/active child worktrees/i);
+    ).resolves.toMatchObject({ outcome: "landed" });
+    expect(existsSync(join(repo, "parent.ts"))).toBe(true);
+    expect(existsSync(join(repo, "child.ts"))).toBe(false);
+
     await expect(
       worktrees.land(child.worktreePath, { request: { strategy: "preserve" } }),
-    ).resolves.toMatchObject({
-      outcome: "landed",
-    });
+    ).resolves.toMatchObject({ outcome: "landed" });
     expect(existsSync(join(parent.worktreePath, "child.ts"))).toBe(true);
     expect(existsSync(join(repo, "child.ts"))).toBe(false);
 
     await expect(
       worktrees.land(parent.worktreePath, { request: { strategy: "preserve" } }),
-    ).resolves.toMatchObject({
-      outcome: "landed",
-    });
-    expect(existsSync(join(repo, "parent.ts"))).toBe(true);
+    ).resolves.toMatchObject({ outcome: "landed" });
     expect(existsSync(join(repo, "child.ts"))).toBe(true);
   });
 

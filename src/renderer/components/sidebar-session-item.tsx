@@ -91,7 +91,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
   const isFamilyParent = Boolean(session.familyChildSessionIds?.length);
   const isFamilyChild =
     Boolean(session.familyParentSessionId) && session.familyParentSessionId !== session.sessionId;
-  const canResolve = !activity;
+  const canResolve = !activity && !isFamilyChild;
   const labelIds = store.sessionLabelIds(session.sessionId);
   const availableLabels = store.availableSessionLabels(session.sessionId);
   const canSetLabels = !session.draft && !resolved && Boolean(onSetLabels);
