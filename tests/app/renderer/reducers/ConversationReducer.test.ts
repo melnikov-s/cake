@@ -110,6 +110,41 @@ describe("ConversationReducer", () => {
     session[Symbol.dispose]();
   });
 
+  it("applies ordered companion state events to the declared surface", () => {
+    const session = Session.create({ sessionId: "session", workingDirectory: "/cake" });
+    applyProjectSessionUpdate(
+      session,
+      "session",
+      snapshot({
+        statuses: [],
+        companions: [
+          {
+            id: "plan-mode",
+            name: "Plan mode",
+            slot: "composer.above",
+            moduleUrl: "cake-extension://module/plan-mode",
+            actions: ["exit"],
+            state: { active: true },
+          },
+        ],
+      }),
+    );
+
+    applyProjectSessionUpdate(session, "session", {
+      _tag: "Event",
+      revision: 2,
+      sessionId: "session",
+      event: {
+        _tag: "ExtensionUi",
+        sessionId: "session",
+        event: { kind: "companion-state", id: "plan-mode", state: { active: false } },
+      },
+    });
+
+    expect(session.extensionUi.companions[0]?.state).toEqual({ active: false });
+    session[Symbol.dispose]();
+  });
+
   it("applies ordered extension state events without a nested revision", () => {
     const session = Session.create({ sessionId: "session", workingDirectory: "/cake" });
     applyProjectSessionUpdate(session, "session", snapshot({ statuses: [] }));

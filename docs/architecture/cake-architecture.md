@@ -652,7 +652,7 @@ flowchart TD
   Reviews --> ThreadChats["ChatStore per review or selection thread"]
 ```
 
-## Rich UI has two trust paths
+## Rich UI trust paths
 
 Model-presented content does not become executable application code with Cake
 privileges.
@@ -666,6 +666,12 @@ privileges.
   stays in Cake's artifact repository rather than the project-session context.
   Electron main compiles that source and runs it in a script-enabled,
   opaque-origin frame whose CSP blocks network and application access.
+- Explicitly installed Pi extension packages may declare trusted React
+  companions for named Project Session slots. Main bundles the browser entry, and the
+  sandboxed renderer executes it with Cake's shared React instance, no Node or
+  Electron globals, an error boundary, and a schema-validated state/action
+  bridge over Pi's event bus. This is trusted renderer code, not a sandbox for
+  model-generated content; it can inspect and interfere with Cake's DOM.
 
 ## Development philosophy
 

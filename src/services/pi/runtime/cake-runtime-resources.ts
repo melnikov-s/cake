@@ -1,23 +1,35 @@
 import type {
   AgentSession,
+  EventBus,
   ResourceLoader,
   SettingsManager,
   SlashCommandInfo,
 } from "@earendil-works/pi-coding-agent";
-import type {
-  CompatibilityCatalog,
-  ExtensionUiEvent,
-  ExtensionUiIntent,
-  ResourceDiagnostic,
-  UiPart,
+import { Option, Schema } from "effect";
+import {
+  resourceDiagnosticSchema,
+  type CompatibilityCatalog,
+  type ExtensionCompanion,
+  type ExtensionUiEvent,
+  type ExtensionUiIntent,
+  type ResourceDiagnostic,
+  type UiPart,
 } from "../../../ipc/session-contract";
 import { compatibilityCatalog } from "../live/PiCompatibilityProjection";
 import { createCakeExtensionUiContext } from "./extension-compatibility";
 import { ReloadableResourceLoader } from "./ReloadableResourceLoader";
 import type { RuntimeUiRequest } from "./runtime-ui-request";
+import { jsonValueSchema, type JsonValue } from "../../../ipc/json-contract";
+import {
+  cakeCompanionActionChannel,
+  cakeCompanionStateChannel,
+  cakeCompanionStatePayloadSchema,
+  loadExtensionCompanions,
+} from "./extension-companions";
 
 interface CakeRuntimeExtensionUiState {
   statuses: Array<{ key: string; text: string }>;
+  companions: ExtensionCompanion[];
   title?: string;
 }
 
@@ -28,6 +40,7 @@ export interface CakeRuntimeResourceLifecycle {
   readonly commandCatalog: () => SlashCommandInfo[];
   readonly requestReload: () => Promise<void>;
   readonly drainReloads: () => Promise<void> | undefined;
+  readonly dispatchCompanionAction: (id: string, action: string, value: JsonValue) => Promise<void>;
   readonly dispose: () => void;
 }
 
@@ -43,6 +56,8 @@ export async function loadCakeRuntimeResourceLoader(input: {
 export async function createCakeRuntimeResourceLifecycle(input: {
   readonly resourceLoader: ReloadableResourceLoader;
   readonly settingsManager: SettingsManager;
+  readonly eventBus: EventBus;
+  readonly loadCompanions: boolean;
   readonly workingDirectory: string;
   readonly agentDirectory: string;
   readonly session: AgentSession;
@@ -60,21 +75,48 @@ export async function createCakeRuntimeResourceLifecycle(input: {
     input.workingDirectory,
     input.agentDirectory,
   );
-  const diagnostics: ResourceDiagnostic[] = [...initialCatalog.diagnostics];
+  let loadedCompanions = input.loadCompanions
+    ? await loadExtensionCompanions(resourceLoader)
+    : { companions: [], diagnostics: [], dispose() {} };
+  const diagnostics: ResourceDiagnostic[] = [
+    ...initialCatalog.diagnostics,
+    ...loadedCompanions.diagnostics,
+  ];
   const compatibility: CompatibilityCatalog = {
     ...initialCatalog,
     resources: [...initialCatalog.resources],
     diagnostics,
   };
-  const extensionUi: CakeRuntimeExtensionUiState = { statuses: [] };
+  const extensionUi: CakeRuntimeExtensionUiState = {
+    statuses: [],
+    companions: loadedCompanions.companions.map((companion) => ({ ...companion })),
+  };
   const diagnosticKeys = new Set(
-    compatibility.diagnostics.map((item) => `${item.method ?? ""}:${item.message}`),
+    compatibility.diagnostics.map(
+      (item) => `${item.path ?? ""}:${item.method ?? ""}:${item.message}`,
+    ),
   );
   let disposed = false;
   let reloadRequested = 0;
   let reloadCompleted = 0;
   let reloadInFlight: Promise<void> | undefined;
 
+  const pendingCompanionState = new Map<string, JsonValue>();
+  const unsubscribeCompanionState = input.eventBus.on(cakeCompanionStateChannel, (value) => {
+    const decoded = Schema.decodeUnknownOption(cakeCompanionStatePayloadSchema)(value);
+    if (Option.isNone(decoded)) return;
+    const { id, state } = decoded.value;
+    pendingCompanionState.set(id, state);
+    const index = extensionUi.companions.findIndex((item) => item.id === id);
+    const companion = extensionUi.companions[index];
+    if (!companion) return;
+    extensionUi.companions.splice(index, 1, { ...companion, state });
+    if (!disposed) input.emitEvent({ kind: "companion-state", id, state });
+  });
+
+  let loadedExtensionPaths = resourceLoader
+    .getExtensions()
+    .extensions.map((extension) => extension.resolvedPath);
   const uiContext = createCakeExtensionUiContext({
     request: input.requestUi,
     state: extensionUi,
@@ -84,22 +126,33 @@ export async function createCakeRuntimeResourceLifecycle(input: {
     emitIntent: (intent) => {
       if (!disposed) input.emitExtensionUiIntent?.(intent);
     },
-    addDiagnostic(method, message) {
-      const key = `${method}:${message}`;
+    addDiagnostic(method, message, stack) {
+      const path = stack
+        ? loadedExtensionPaths.find((extensionPath) => stack.includes(extensionPath))
+        : undefined;
+      const key = `${path ?? ""}:${method}:${message}`;
       if (diagnosticKeys.has(key)) return;
       diagnosticKeys.add(key);
-      const diagnostic: ResourceDiagnostic = {
-        id: `compatibility:${method}:${diagnosticKeys.size}`,
+      const diagnosticInput: ResourceDiagnostic = {
+        id: `compatibility:${method}:${diagnosticKeys.size}`.slice(0, 8_192),
         severity: "warning",
         source: "compatibility",
-        method,
-        message,
+        method: method.slice(0, 256),
+        message: message.slice(0, 4_096),
       };
+      if (path) Object.assign(diagnosticInput, { path: path.slice(0, 8_192) });
+      const diagnostic = Schema.decodeUnknownSync(resourceDiagnosticSchema)(diagnosticInput);
       diagnostics.push(diagnostic);
       if (!disposed) input.emitEvent({ kind: "diagnostic", diagnostic });
     },
   });
-  await input.session.bindExtensions({ mode: "rpc", uiContext });
+  try {
+    await input.session.bindExtensions({ mode: "rpc", uiContext });
+  } catch (error) {
+    unsubscribeCompanionState();
+    loadedCompanions.dispose();
+    throw error;
+  }
 
   const drainReloads = () => {
     if (reloadInFlight) return reloadInFlight;
@@ -125,7 +178,36 @@ export async function createCakeRuntimeResourceLifecycle(input: {
             title: "Reloading Pi",
             detail: "Refreshing settings, extensions, skills, prompts, and tools.",
           });
+          pendingCompanionState.clear();
           await input.session.reload();
+          loadedExtensionPaths = resourceLoader
+            .getExtensions()
+            .extensions.map((extension) => extension.resolvedPath);
+          const reloadedCompanions = input.loadCompanions
+            ? await loadExtensionCompanions(resourceLoader)
+            : { companions: [], diagnostics: [], dispose() {} };
+          if (disposed) {
+            reloadedCompanions.dispose();
+            break;
+          }
+          for (const diagnostic of reloadedCompanions.diagnostics) {
+            const key = `${diagnostic.path ?? ""}:${diagnostic.method ?? ""}:${diagnostic.message}`;
+            if (diagnosticKeys.has(key)) continue;
+            diagnosticKeys.add(key);
+            diagnostics.push(diagnostic);
+            if (!disposed) input.emitEvent({ kind: "diagnostic", diagnostic });
+          }
+          extensionUi.companions.splice(
+            0,
+            extensionUi.companions.length,
+            ...reloadedCompanions.companions.map((companion) => ({
+              ...companion,
+              state: pendingCompanionState.get(companion.id) ?? companion.state,
+            })),
+          );
+          const previousCompanions = loadedCompanions;
+          loadedCompanions = reloadedCompanions;
+          previousCompanions.dispose();
           reloadCompleted = target;
         }
         if (!disposed && reloadCompleted >= reloadRequested) input.removePart("pi-reload-status");
@@ -194,8 +276,21 @@ export async function createCakeRuntimeResourceLifecycle(input: {
       await drainReloads();
     },
     drainReloads,
+    async dispatchCompanionAction(id, action, value) {
+      const companion = extensionUi.companions.find((item) => item.id === id);
+      if (!companion) throw new Error(`Cake companion ${id} is not active`);
+      if (!companion.actions.includes(action))
+        throw new Error(`Cake companion ${id} does not declare action ${action}`);
+      input.eventBus.emit(cakeCompanionActionChannel, {
+        id,
+        action,
+        value: Schema.decodeUnknownSync(jsonValueSchema)(value),
+      });
+    },
     dispose() {
       disposed = true;
+      unsubscribeCompanionState();
+      loadedCompanions.dispose();
     },
   };
 }

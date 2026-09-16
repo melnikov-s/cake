@@ -1,4 +1,5 @@
 import { Store, observable } from "r-state-tree";
+import type { JsonValue } from "../../ipc/json-contract";
 import type { ResourceDiagnostic } from "../../ipc/session-contract";
 import { ClientContext } from "./context/ClientContext";
 import type { StoreEvent } from "../events/StoreEvent";
@@ -33,8 +34,12 @@ export interface ExtensionUiStoreProps {
 
 /** Owns extension-provided dialogs and transient renderer presentation. */
 export class ExtensionUiStore extends Store<ExtensionUiStoreProps> {
+  get client() {
+    return ClientContext.consume(this)!;
+  }
+
   get artifacts() {
-    return ClientContext.consume(this)!.artifacts;
+    return this.client.artifacts;
   }
 
   request: UiRequestState | undefined;
@@ -74,6 +79,21 @@ export class ExtensionUiStore extends Store<ExtensionUiStoreProps> {
       this.error = described.message;
       this.errorDetails = described.details;
     }
+  }
+
+  async dispatchCompanionAction(
+    target: { sessionId: string; workingDirectory: string },
+    companionId: string,
+    action: string,
+    value: JsonValue,
+  ) {
+    await this.client.projectSessions.dispatchExtensionCompanionAction({
+      sessionId: target.sessionId,
+      workingDirectory: target.workingDirectory,
+      companionId,
+      action,
+      value,
+    });
   }
 
   dismissNotification(id: string) {

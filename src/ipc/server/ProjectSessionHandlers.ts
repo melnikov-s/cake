@@ -61,6 +61,8 @@ export const projectSessionHandlers = ProjectSessionRpc.of({
     if (customInstructions !== undefined) Object.assign(options, { customInstructions });
     return projectSessionOperations.navigate(target, entryId, options);
   },
+  "projectSessions.dispatchExtensionCompanionAction": (input) =>
+    projectSessionOperations.dispatchExtensionCompanionAction(input),
   "projectSessions.toolCompact": ({ entryId, prompt, ...target }) => {
     const input: Parameters<typeof projectSessionContinuations.toolCompact>[0] = {
       target,

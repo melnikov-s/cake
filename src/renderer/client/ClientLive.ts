@@ -236,6 +236,12 @@ export function makeClient(runtime: Pick<Runtime, "execute">): Client {
           withClient((client) => client.projectSessions.navigate(input)),
           options,
         ),
+      dispatchExtensionCompanionAction: (input, options) =>
+        run(
+          "projectSessions.dispatchExtensionCompanionAction",
+          withClient((client) => client.projectSessions.dispatchExtensionCompanionAction(input)),
+          options,
+        ),
       toolCompact: (input, options) =>
         run(
           "projectSessions.toolCompact",

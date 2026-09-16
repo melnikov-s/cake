@@ -10,6 +10,7 @@ import {
 import { InlineWidgets } from "../services/widgets/InlineWidgets";
 import { RenderedWidgetCapture } from "../services/widgets/RenderedWidgetCapture";
 import { ArtifactStorage } from "../services/storage/ArtifactStorage";
+import { registerExtensionCompanionScheme } from "../services/pi/runtime/extension-companion-protocol";
 import { resolveCakePaths } from "../config/CakePaths";
 import { MainApplication } from "./MainApplication";
 import { makeMainLive } from "./MainLive";
@@ -23,6 +24,7 @@ import cakeDarkThemeSource from "../assets/vscode-companion/themes/cake-dark-col
 
 app.setName("Cake");
 registerInlineWidgetScheme();
+registerExtensionCompanionScheme();
 if (process.env.CAKE_ELECTRON_USER_DATA)
   app.setPath("userData", process.env.CAKE_ELECTRON_USER_DATA);
 

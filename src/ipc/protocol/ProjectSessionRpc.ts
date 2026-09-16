@@ -5,6 +5,7 @@ import { TurnId } from "../../domain/conversations/conversation-data";
 import {
   ProjectSessionError,
   ProjectSessionCatalogQuery,
+  ProjectSessionCompanionActionInput,
   ProjectSessionPreview,
   ProjectSessionStartInput,
   ProjectSessionTarget,
@@ -52,6 +53,10 @@ export const ProjectSessionRpc = RpcGroup.make(
       summarize: Schema.Boolean,
       customInstructions: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(16_384))),
     },
+    error: ProjectSessionError,
+  }),
+  Rpc.make("projectSessions.dispatchExtensionCompanionAction", {
+    payload: ProjectSessionCompanionActionInput,
     error: ProjectSessionError,
   }),
   Rpc.make("projectSessions.toolCompact", {

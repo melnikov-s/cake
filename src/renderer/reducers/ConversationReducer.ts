@@ -211,6 +211,12 @@ function applyExtensionUiEvent(model: Session, event: typeof extensionUiEventSch
     extensionUi.title = event.title;
     return;
   }
+  if (event.kind === "companion-state") {
+    const index = extensionUi.companions.findIndex((item) => item.id === event.id);
+    const companion = extensionUi.companions[index];
+    if (companion) extensionUi.companions.splice(index, 1, { ...companion, state: event.state });
+    return;
+  }
   if (!extensionUi.compatibilityDiagnostics.some((item) => item.id === event.diagnostic.id))
     extensionUi.compatibilityDiagnostics.push(event.diagnostic);
 }
@@ -264,6 +270,7 @@ function sessionSnapshot(parsed: SessionSnapshot): Snapshot<Session> {
     extensionUi: {
       title: parsed.extensionUi.title,
       statuses: parsed.extensionUi.statuses.map((status) => ({ ...status })),
+      companions: parsed.extensionUi.companions?.map((companion) => ({ ...companion })) ?? [],
       compatibilityDiagnostics: [],
     },
   };

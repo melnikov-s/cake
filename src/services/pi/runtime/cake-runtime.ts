@@ -282,6 +282,7 @@ export interface CakeRuntime {
   syncFastMode?(): Promise<void>;
   setPiSetting(update: PiSettingUpdate): Promise<void>;
   reload?(): Promise<void>;
+  dispatchExtensionCompanionAction?(id: string, action: string, value: JsonValue): Promise<void>;
   refreshModels?(): Promise<void>;
   login(provider: string, authType: "api_key" | "oauth"): Promise<void>;
   logout(provider: string): Promise<void>;
@@ -394,6 +395,8 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
   const resources = await createCakeRuntimeResourceLifecycle({
     resourceLoader: capabilities.resourceLoader,
     settingsManager,
+    eventBus: capabilities.eventBus,
+    loadCompanions: !options.globalControl && !options.auxiliary,
     workingDirectory: options.cwd,
     agentDirectory: agentDir,
     session,
@@ -753,6 +756,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     syncFastMode: configuration.syncFastMode,
     setPiSetting: configuration.setPiSetting,
     reload: resources.requestReload,
+    dispatchExtensionCompanionAction: resources.dispatchCompanionAction,
     refreshModels: configuration.refreshModels,
     login: configuration.login,
     logout: configuration.logout,

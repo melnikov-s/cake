@@ -158,6 +158,16 @@ export const ProjectSessionTarget = Schema.Struct({
 });
 export interface ProjectSessionTarget extends Schema.Schema.Type<typeof ProjectSessionTarget> {}
 
+export const ProjectSessionCompanionActionInput = Schema.Struct({
+  ...ProjectSessionTarget.fields,
+  companionId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+  action: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+  value: Schema.Json,
+});
+export interface ProjectSessionCompanionActionInput extends Schema.Schema.Type<
+  typeof ProjectSessionCompanionActionInput
+> {}
+
 export const ProjectSessionPromptInput = Schema.Struct({
   ...SessionChatPromptInput.fields,
   workingDirectory: Schema.optionalKey(boundedPath),

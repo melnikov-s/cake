@@ -108,6 +108,7 @@ export function projectCakeRuntimeSnapshot(input: CakeRuntimeSnapshotInput): Ses
     extensionUi: {
       title: input.extensionUi.title,
       statuses: input.extensionUi.statuses.map((status) => ({ ...status })),
+      companions: input.extensionUi.companions?.map((companion) => ({ ...companion })) ?? [],
     },
     tree: input.auxiliary ? [] : projectTree(session.sessionManager),
     artifacts: input.artifacts,

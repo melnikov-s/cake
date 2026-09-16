@@ -15,6 +15,7 @@ test("adapts extension dialogs and reports unsupported widgets", async () => {
     mkdir(userData, { recursive: true }),
     mkdir(join(project, ".pi"), { recursive: true }),
     mkdir(join(fixturePackage, "extensions"), { recursive: true }),
+    mkdir(join(fixturePackage, "cake"), { recursive: true }),
     mkdir(join(fixturePackage, "skills", "desktop-fixture"), { recursive: true }),
     mkdir(join(fixturePackage, "prompts"), { recursive: true }),
   ]);
@@ -57,6 +58,17 @@ test("adapts extension dialogs and reports unsupported widgets", async () => {
         skills: ["skills"],
         prompts: ["prompts"],
       },
+      cake: {
+        companions: [
+          {
+            id: "desktop-fixture",
+            extension: "extensions/desktop-fixture.ts",
+            entry: "cake/desktop-fixture.tsx",
+            slot: "composer.above",
+            actions: ["increment"],
+          },
+        ],
+      },
     }),
   );
   await writeFile(
@@ -68,9 +80,32 @@ test("adapts extension dialogs and reports unsupported widgets", async () => {
     "---\ndescription: Desktop fixture prompt\n---\nFixture.\n",
   );
   await writeFile(
+    join(fixturePackage, "cake", "desktop-fixture.tsx"),
+    `
+export default function DesktopFixture({ state, dispatch, ui }) {
+  const { Button, Callout } = ui;
+  return <Callout>
+    <span>Companion count: {state.count}</span>
+    <Button size="sm" onClick={() => dispatch("increment")}>Increment companion</Button>
+  </Callout>;
+}
+`,
+  );
+  await writeFile(
     join(fixturePackage, "extensions", "desktop-fixture.ts"),
     `
 export default function (pi) {
+  let count = 1;
+  const publish = () => pi.events.emit("cake:companion:state", {
+    id: "desktop-fixture",
+    state: { count },
+  });
+  pi.events.on("cake:companion:action", (event) => {
+    if (event?.id !== "desktop-fixture" || event.action !== "increment") return;
+    count += 1;
+    publish();
+  });
+  pi.on("session_start", publish);
   pi.registerCommand("desktop-fixture", { description: "Exercise Cake desktop UI", async handler(_args, ctx) {
     ctx.ui.notify("Extension connected", "info");
     ctx.ui.setStatus("fixture", "ready");
@@ -105,11 +140,14 @@ export default function (pi) {
     await page.getByLabel("Message").fill("/desktop-fixture");
     await page.getByRole("button", { name: "Send" }).click();
     await expect(page.getByText("Desktop extension", { exact: true })).toBeVisible();
+    await expect(page.getByText("Companion count: 1", { exact: true })).toBeVisible();
     await expect(page.getByText("Extension connected", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Confirm", exact: true }).click();
-    await expect(page.getByText("Extension workspace", { exact: true })).toBeVisible();
+    await expect(page).toHaveTitle("Extension workspace · Cake");
     await expect(page.getByLabel("Message")).toHaveValue("draft from extension once");
     await expect(page.getByText("fixture ready", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Increment companion" }).click();
+    await expect(page.getByText("Companion count: 2", { exact: true })).toBeVisible();
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

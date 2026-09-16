@@ -13,6 +13,7 @@ import type { Terminal } from "../services/terminal/Terminal";
 import { VsCodeServer } from "../services/vscode/VsCodeServer";
 import type { ManagedWorktrees } from "../services/worktrees/ManagedWorktrees";
 import { handleInlineWidgetScheme } from "../services/widgets/inline-widget-protocol";
+import { handleExtensionCompanionScheme } from "../services/pi/runtime/extension-companion-protocol";
 
 interface MainApplicationElectron {
   on(event: "before-quit", listener: (event: Event) => void): void;
@@ -47,7 +48,10 @@ export const MainApplication = Effect.fn("MainApplication")(function* ({
   application,
   platform = process.platform,
   reportDefect,
-  initializeNativeProtocols = handleInlineWidgetScheme,
+  initializeNativeProtocols = () => {
+    handleInlineWidgetScheme();
+    handleExtensionCompanionScheme();
+  },
   initializeDeveloperTools,
 }: MainApplicationOptions): Effect.fn.Return<void, unknown, MainApplicationServices> {
   yield* Effect.annotateCurrentSpan({

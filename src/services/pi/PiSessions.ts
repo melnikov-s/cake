@@ -193,6 +193,11 @@ export interface PiSessionHandle {
   ) => Effect.Effect<void, PiSessionError>;
   readonly reload: () => Effect.Effect<void, PiSessionError>;
   readonly publishSessionChanged: () => Effect.Effect<void, PiSessionError>;
+  readonly dispatchExtensionCompanionAction: (
+    id: string,
+    action: string,
+    value: Schema.Schema.Type<typeof Schema.Json>,
+  ) => Effect.Effect<void, PiSessionError>;
 }
 
 export interface PiSessionRuntimeStatus {
@@ -763,6 +768,20 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
             (key.options.onSessionChanged ?? Effect.void).pipe(
               sessionError("publishSessionChanged"),
             ),
+          dispatchExtensionCompanionAction: (id, action, value) =>
+            shared.runtime.dispatchExtensionCompanionAction
+              ? call(
+                  "dispatchExtensionCompanionAction",
+                  (runtime) =>
+                    runtime.dispatchExtensionCompanionAction?.(id, action, value) ??
+                    Promise.resolve(),
+                )
+              : Effect.fail(
+                  new PiSessionError({
+                    operation: "dispatchExtensionCompanionAction",
+                    message: "Extension companions are unavailable",
+                  }),
+                ),
         } satisfies PiSessionHandle;
       });
 

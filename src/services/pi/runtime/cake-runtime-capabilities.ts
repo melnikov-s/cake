@@ -1,6 +1,8 @@
 import {
   DefaultResourceLoader,
+  createEventBus,
   type AgentSession,
+  type EventBus,
   type InlineExtension,
   type SettingsManager,
   type ToolDefinition,
@@ -378,6 +380,7 @@ interface RuntimeIdentity {
 
 export interface CakeRuntimeCapabilities {
   readonly resourceLoader: Awaited<ReturnType<typeof loadCakeRuntimeResourceLoader>>;
+  readonly eventBus: EventBus;
   readonly operationApi: RuntimeOperationApiReference;
   setSessionId(sessionId: string): void;
   recordAppControlResult(result: JsonValue, session: AgentSession): Promise<JsonValue>;
@@ -407,6 +410,7 @@ export async function createCakeRuntimeCapabilities(input: {
       }));
   const requestArtifact = options.requestArtifact ?? (async () => undefined);
   const operationApi: RuntimeOperationApiReference = {};
+  const eventBus = createEventBus();
   const crossSessionReceiptSchema = Schema.Struct({
     ok: Schema.Literal(true),
     command: Schema.Literals(["sessions.send", "sessions.reply"]),
@@ -1305,6 +1309,7 @@ export async function createCakeRuntimeCapabilities(input: {
               cwd: options.cwd,
               agentDir,
               settingsManager,
+              eventBus,
               extensionFactories: [
                 ...requestExtensions,
                 createCakeGatewayExtension((pi) =>
@@ -1355,6 +1360,7 @@ export async function createCakeRuntimeCapabilities(input: {
               cwd: options.cwd,
               agentDir,
               settingsManager,
+              eventBus,
               systemPrompt: options.isolatedSystemPrompt,
               appendSystemPromptOverride: (base) =>
                 options.isolatedSystemPrompt
@@ -1425,6 +1431,7 @@ export async function createCakeRuntimeCapabilities(input: {
   });
   return {
     resourceLoader,
+    eventBus,
     operationApi,
     setSessionId(sessionId) {
       runtimeIdentity.sessionId = sessionId;

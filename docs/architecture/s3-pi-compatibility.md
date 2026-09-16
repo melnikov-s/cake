@@ -14,11 +14,13 @@ state into Cake-owned Effect Schemas before Effect RPC.
 | Runtime commands, tools, extension status, and title                  | Active Pi Extension runtime        | Scoped `PiSessions` handle and Cake Session projection                                          |
 | Notifications and compatibility warnings                              | Active Pi Extension runtime        | Focused renderer Store projection; never persisted                                              |
 | Dialog responses                                                      | User                               | Correlated RPC/runtime operation; interruption, timeout, or Scope disposal settles cancellation |
+| Companion manifest and module                                         | Installed Pi extension package     | Discovered and compiled by the scoped Pi runtime; never copied into Cake persistence            |
+| Companion state                                                       | Active Pi Extension runtime        | Published over Pi's event bus and projected with the owning Cake Session                        |
 | Composer draft                                                        | Cake renderer                      | Authoritative composer Store; supported extension editor intents use the same mutation path     |
 
-No compatibility catalog or extension UI state is written into Pi JSONL or
-Cake application metadata. Reopening a Pi Session Runtime reconstructs it
-through Pi.
+No compatibility catalog, companion state, or extension UI state is written
+into Pi JSONL or Cake application metadata. Reopening a Pi Session Runtime
+reconstructs it through Pi.
 
 ## Session-bound extensions
 
@@ -37,6 +39,60 @@ loads them.
 Cake adapts `select`, `confirm`, `input`, multiline `editor`, `notify`,
 `setStatus`, `setTitle`, `setEditorText`, and `pasteToEditor`. Dialog abort
 signals and timeouts are enforced by the scoped session runtime.
+
+## Trusted React companions
+
+An installed Pi package may provide an optional Cake companion for Project Sessions in
+`package.json`:
+
+```json
+{
+  "pi": { "extensions": ["extensions/plan.ts"] },
+  "cake": {
+    "companions": [
+      {
+        "id": "plan-mode",
+        "extension": "extensions/plan.ts",
+        "entry": "cake/plan-mode.tsx",
+        "slot": "composer.above",
+        "actions": ["exit"]
+      }
+    ]
+  }
+}
+```
+
+The companion entry default-exports one React component. Cake main bundles it
+for the browser, supplies Cake's existing React instance, and serves it over the
+private `cake-extension:` protocol. The sandboxed renderer loads it into the
+named slot with `{ state, dispatch, ui }` props. The initial contract exposes
+only `composer.above` and the shared `Button` and `Callout` primitives. Slots augment Cake's
+authoritative `Chat`; they do not replace its transcript or composer.
+
+The Pi extension publishes JSON state using its standard event bus:
+
+```ts
+pi.events.emit("cake:companion:state", { id: "plan-mode", state: { active: true } });
+pi.events.on("cake:companion:action", (event) => {
+  // event is { id, action, value }; validate extension-owned values before use.
+});
+```
+
+Cake validates the cross-process state and action envelope and rejects actions
+not declared by the manifest. Companion state is transient and is rebuilt by
+the extension on `session_start`. Reload recompiles the companion and
+reconstructs state through the same event path.
+
+This initial companion host is Project-Session-only; Cake Chat and auxiliary
+runtimes do not compile or advertise companion modules.
+
+Companions are trusted installed extension code, not model-presented widgets.
+They run as browser code in Cake's sandboxed renderer and therefore have no Node
+or Electron globals, but they can inspect or interfere with Cake's DOM and
+browser behavior. Installing a global package or trusting a project-local
+package is the trust decision for both its Pi runtime and declared companion.
+Each contribution has an error boundary so one broken companion does not crash
+the renderer.
 
 ## Explicit degradation
 

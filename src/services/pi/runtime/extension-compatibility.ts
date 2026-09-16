@@ -8,11 +8,11 @@ export function createCakeExtensionUiContext(options: {
   emitState(event: ExtensionUiEvent): void;
   emitIntent(intent: ExtensionUiIntent): void;
   state: { statuses: Array<{ key: string; text: string }>; title?: string };
-  addDiagnostic(method: string, message: string): void;
+  addDiagnostic(method: string, message: string, stack?: string): void;
 }): ExtensionUIContext {
   let editorText = "";
   const degraded = (method: string, detail: string) =>
-    options.addDiagnostic(method, `${method} is unavailable in Cake: ${detail}`);
+    options.addDiagnostic(method, `${method} is unavailable in Cake: ${detail}`, new Error().stack);
   const dialog = (request: RuntimeUiRequest) => options.request(request);
   return {
     async select(title, values, opts) {

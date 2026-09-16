@@ -393,7 +393,7 @@ const compatibilityResourceSchema = Schema.Struct({
   tools: defaultKey(ipcProjectionArray(stringMax(256), 1_000), []),
   enabled: defaultKey(Schema.Boolean, true),
 });
-const resourceDiagnosticSchema = Schema.Struct({
+export const resourceDiagnosticSchema = Schema.Struct({
   id: stringRange(1, 8_192),
   severity: Schema.Literals(["info", "warning", "error"]),
   source: Schema.Literals(["extension", "skill", "prompt", "package", "compatibility", "runtime"]),
@@ -414,6 +414,14 @@ const extensionEditorTextSchema = Schema.Struct({
   text: ipcProjectionString(262_144),
   mode: Schema.Literals(["replace", "insert"]),
 });
+export const extensionCompanionSchema = Schema.Struct({
+  id: stringRange(1, 256),
+  name: stringRange(1, 512),
+  slot: Schema.Literal("composer.above"),
+  moduleUrl: stringRange(1, 8_192),
+  actions: ipcProjectionArray(stringRange(1, 256), 100),
+  state: Schema.Json,
+});
 const extensionUiStateSchema = Schema.Struct({
   title: Schema.optional(ipcProjectionString(512)),
   statuses: defaultKey(
@@ -423,6 +431,7 @@ const extensionUiStateSchema = Schema.Struct({
     ),
     [],
   ),
+  companions: Schema.optionalKey(ipcProjectionArray(extensionCompanionSchema, 100)),
 });
 
 export const slashCommandSchema = Schema.Struct({
@@ -497,6 +506,11 @@ export const extensionUiEventSchema = Schema.Union([
     text: Schema.optional(ipcProjectionString(2_048)),
   }),
   Schema.Struct({ kind: Schema.Literal("title"), title: ipcProjectionString(512) }),
+  Schema.Struct({
+    kind: Schema.Literal("companion-state"),
+    id: extensionCompanionSchema.fields.id,
+    state: extensionCompanionSchema.fields.state,
+  }),
   Schema.Struct({ kind: Schema.Literal("diagnostic"), diagnostic: resourceDiagnosticSchema }),
 ]);
 
@@ -576,6 +590,7 @@ export type SessionTreeEntry = typeof sessionTreeEntrySchema.Type;
 export type CompatibilityResource = typeof compatibilityResourceSchema.Type;
 export type ResourceDiagnostic = typeof resourceDiagnosticSchema.Type;
 export type CompatibilityCatalog = typeof compatibilityCatalogSchema.Type;
+export type ExtensionCompanion = typeof extensionCompanionSchema.Type;
 export type ExtensionUiState = typeof extensionUiStateSchema.Type;
 export type ExtensionUiEvent = typeof extensionUiEventSchema.Type;
 export type ExtensionUiIntent = typeof extensionUiIntentSchema.Type;

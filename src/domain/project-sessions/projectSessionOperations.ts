@@ -17,6 +17,7 @@ import { resolutionNamespace } from "./projectSessionResolution";
 import { acquireOptions } from "./projectSessionRuntime";
 import {
   ProjectSessionError,
+  type ProjectSessionCompanionActionInput,
   type ProjectSessionPromptInput,
   type ProjectSessionSnapshot,
   type ProjectSessionStartInput,
@@ -357,6 +358,15 @@ export const navigate = Effect.fn("ProjectSessions.navigate")(function* (
   yield* useConversation(acquireExistingTarget(target), (handle) =>
     handle.navigate(entryId, options),
   ).pipe(asError("navigate"));
+});
+
+export const dispatchExtensionCompanionAction = Effect.fn(
+  "ProjectSessions.dispatchExtensionCompanionAction",
+)(function* (input: ProjectSessionCompanionActionInput) {
+  const { companionId, action, value, ...target } = input;
+  yield* useConversation(acquireExistingTarget(target), (handle) =>
+    handle.dispatchExtensionCompanionAction(companionId, action, value),
+  ).pipe(asError("dispatchExtensionCompanionAction"));
 });
 
 export const rename = Effect.fn("ProjectSessions.rename")(function* (

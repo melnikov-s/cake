@@ -37,6 +37,7 @@ import type { PiSettingUpdate } from "../session-contract";
 import type {
   ProjectSessionError,
   ProjectSessionCatalogQuery,
+  ProjectSessionCompanionActionInput,
   ProjectSessionPreview,
   ProjectSessionStartInput,
   ProjectSessionTarget,
@@ -391,6 +392,9 @@ export interface CakeIpcClientService {
         readonly summarize: boolean;
         readonly customInstructions?: string;
       },
+    ) => Effect.Effect<void, ProjectSessionError | TransportError>;
+    readonly dispatchExtensionCompanionAction: (
+      input: ProjectSessionCompanionActionInput,
     ) => Effect.Effect<void, ProjectSessionError | TransportError>;
     readonly toolCompact: (
       input: ProjectSessionTarget & {
@@ -808,6 +812,9 @@ export const CakeIpcClientLive = Layer.effect(
         navigate: Effect.fn("CakeIpcClient.projectSessions.navigate")((input) =>
           client("projectSessions.navigate", input),
         ),
+        dispatchExtensionCompanionAction: Effect.fn(
+          "CakeIpcClient.projectSessions.dispatchExtensionCompanionAction",
+        )((input) => client("projectSessions.dispatchExtensionCompanionAction", input)),
         toolCompact: Effect.fn("CakeIpcClient.projectSessions.toolCompact")((input) =>
           client("projectSessions.toolCompact", input),
         ),

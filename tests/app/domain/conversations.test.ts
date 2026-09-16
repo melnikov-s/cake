@@ -60,6 +60,7 @@ const makeHandle = (deliveries: string[], isStreaming: () => boolean): PiSession
   notifySubagentCompletion: () => Effect.void,
   reload: () => Effect.void,
   publishSessionChanged: () => Effect.void,
+  dispatchExtensionCompanionAction: () => Effect.void,
 });
 
 describe("conversation domain", () => {

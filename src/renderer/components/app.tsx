@@ -37,6 +37,7 @@ import { WorkLogControls } from "@/components/work-log-controls";
 import { SideChatsMenu } from "@/components/side-chats-menu";
 import { Sidebar } from "@/components/sidebar";
 import { ErrorNotice } from "@/components/error-notice";
+import { ExtensionCompanionSlot } from "@/components/extension-companion-slot";
 import { SessionContinuationDialog } from "@/components/session-continuation-dialog";
 import { TreeNavigationDialog } from "@/components/tree-navigation-dialog";
 import { ConversationSplitLayout } from "@/components/conversation-split-layout";
@@ -375,20 +376,39 @@ export const App = observer(function App() {
     : sessionIsTemporary
       ? "new-session"
       : undefined;
-  const projectComposerHeader = session ? (
-    <WorktreePill
-      creation={store.worktreeCreationStore}
-      actions={session.worktreeStore}
-      record={root.sessionCatalogStore.managedWorktree(session.workspacePath)}
-      sessionId={session.sessionId}
-      projectPath={
-        root.sessionCatalogStore.projectOfManagedWorktree(session.workspacePath) ??
-        session.workspacePath
+  const projectExtensionCompanions = (paneSession: NonNullable<typeof session>) => (
+    <ExtensionCompanionSlot
+      companions={paneSession.model.extensionUi.companions}
+      slot="composer.above"
+      onAction={(companionId, action, value) =>
+        extensionUi.dispatchCompanionAction(
+          { sessionId: paneSession.sessionId, workingDirectory: paneSession.workspacePath },
+          companionId,
+          action,
+          value,
+        )
       }
-      resolved={root.sessionCatalogStore.find(session.sessionId)?.resolved}
-      configurationMode={worktreeConfigurationMode}
-      onConfigured={() => session.conversationSessionStore.composerStore.draftStore.requestFocus()}
     />
+  );
+  const projectComposerHeader = session ? (
+    <>
+      {projectExtensionCompanions(session)}
+      <WorktreePill
+        creation={store.worktreeCreationStore}
+        actions={session.worktreeStore}
+        record={root.sessionCatalogStore.managedWorktree(session.workspacePath)}
+        sessionId={session.sessionId}
+        projectPath={
+          root.sessionCatalogStore.projectOfManagedWorktree(session.workspacePath) ??
+          session.workspacePath
+        }
+        resolved={root.sessionCatalogStore.find(session.sessionId)?.resolved}
+        configurationMode={worktreeConfigurationMode}
+        onConfigured={() =>
+          session.conversationSessionStore.composerStore.draftStore.requestFocus()
+        }
+      />
+    </>
   ) : undefined;
   const artifactControl = (paneSession: NonNullable<typeof session>, onOpen?: () => void) => {
     const workspace = paneSession.artifactWorkspaceStore;
@@ -574,21 +594,24 @@ export const App = observer(function App() {
       ),
       composerLeadingAccessory: projectComposerLeadingAccessory(paneSession),
       composerHeader: (
-        <WorktreePill
-          creation={store.worktreeCreationStore}
-          actions={paneSession.worktreeStore}
-          record={root.sessionCatalogStore.managedWorktree(paneSession.workspacePath)}
-          sessionId={paneSession.sessionId}
-          projectPath={
-            root.sessionCatalogStore.projectOfManagedWorktree(paneSession.workspacePath) ??
-            paneSession.workspacePath
-          }
-          resolved={root.sessionCatalogStore.find(paneSession.sessionId)?.resolved}
-          configurationMode={configurationMode}
-          onConfigured={() =>
-            paneSession.conversationSessionStore.composerStore.draftStore.requestFocus()
-          }
-        />
+        <>
+          {projectExtensionCompanions(paneSession)}
+          <WorktreePill
+            creation={store.worktreeCreationStore}
+            actions={paneSession.worktreeStore}
+            record={root.sessionCatalogStore.managedWorktree(paneSession.workspacePath)}
+            sessionId={paneSession.sessionId}
+            projectPath={
+              root.sessionCatalogStore.projectOfManagedWorktree(paneSession.workspacePath) ??
+              paneSession.workspacePath
+            }
+            resolved={root.sessionCatalogStore.find(paneSession.sessionId)?.resolved}
+            configurationMode={configurationMode}
+            onConfigured={() =>
+              paneSession.conversationSessionStore.composerStore.draftStore.requestFocus()
+            }
+          />
+        </>
       ),
       status:
         focused && extensionUi.statuses.length > 0 ? (
