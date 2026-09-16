@@ -14,6 +14,23 @@ describe("parseSourceLocation", () => {
       },
     ],
     ["main.ts:2", { path: "main.ts", range: { start: { line: 1 } } }],
+    [
+      "src/main.ts?view=changes#L55-L64",
+      {
+        path: "src/main.ts",
+        view: "changes",
+        range: { start: { line: 54 }, end: { line: 63 } },
+      },
+    ],
+    [
+      "src/main.ts?view=changes&side=before#L55-L64",
+      {
+        path: "src/main.ts",
+        view: "changes",
+        side: "before",
+        range: { start: { line: 54 }, end: { line: 63 } },
+      },
+    ],
   ])("parses %s", (reference, expected) => {
     expect(parseSourceLocation(reference)).toEqual(expected);
   });
@@ -22,5 +39,6 @@ describe("parseSourceLocation", () => {
     expect(parseSourceLocation("https://example.com/main.ts:2")).toBeUndefined();
     expect(parseSourceLocation("src/main.ts:0")).toBeUndefined();
     expect(parseSourceLocation("src/main.ts#L4-L2")).toBeUndefined();
+    expect(parseSourceLocation("src/main.ts?view=changes&side=base#L4")).toBeUndefined();
   });
 });

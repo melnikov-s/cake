@@ -10,4 +10,4 @@ Cake streams GitHub-flavored Markdown, syntax-highlighted code blocks, mathemati
 
 For standalone deliverables such as PowerPoint presentations, PDFs, spreadsheets, documents, images, audio, or video, use the available Pi tools and skills and link the resulting workspace file in Markdown. Do not recreate a file deliverable as decorative HTML.
 
-When referencing workspace files, use Markdown links with absolute paths so Cake can open them.
+When referencing workspace files, use clickable Markdown links with Working Directory-relative targets. Add `#L<start>-L<end>` for an exact line range, for example `[request handling](src/main.ts#L55-L64)`; Cake opens the file in embedded VS Code, selects the range, and highlights it. To open that range in VS Code's native diff editor, put `?view=changes` before the line fragment: `[changed request handling](src/main.ts?view=changes#L55-L64)` targets the after side by default, while `[previous request handling](src/main.ts?view=changes&side=before#L55-L64)` targets the before side. Do not use absolute paths in these links.

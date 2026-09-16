@@ -26,6 +26,8 @@ export const sourceLocationSchema = Schema.Struct({
   path: boundedText(8_192),
   /** Prefer VS Code's native working-tree diff when opening this file. */
   view: Schema.optional(Schema.Literal("changes")),
+  /** Side of a native diff to reveal; omitted means the changed (after) side. */
+  side: Schema.optional(Schema.Literals(["before", "after"])),
   range: Schema.optional(sourceRangeSchema),
   symbol: Schema.optional(boundedText(1_024)),
   documentVersion: Schema.optional(

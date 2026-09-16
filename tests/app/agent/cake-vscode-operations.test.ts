@@ -40,6 +40,8 @@ describe("Cake VS Code operations", () => {
           column: 5,
           endLine: 812,
           endColumn: 6,
+          view: "changes",
+          side: "before",
         },
       },
       {
@@ -53,6 +55,8 @@ describe("Cake VS Code operations", () => {
       {
         kind: "working-directory",
         path: "src/main/main.ts",
+        view: "changes",
+        side: "before",
         range: {
           start: { line: 803, column: 4 },
           end: { line: 811, column: 5 },
@@ -70,6 +74,8 @@ describe("Cake VS Code operations", () => {
           column: 5,
           endLine: 812,
           endColumn: 6,
+          view: "changes",
+          side: "before",
         },
       },
     });

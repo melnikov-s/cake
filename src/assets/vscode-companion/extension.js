@@ -248,6 +248,44 @@ function rangeFor(vscode, document, requestedRange) {
   return new vscode.Range(start, end.isBefore(start) ? start : end);
 }
 
+function revealEditorRange(vscode, editor, requestedRange) {
+  const range = rangeFor(vscode, editor.document, requestedRange);
+  revealDecorations.get(editor)?.dispose();
+  revealDecorations.delete(editor);
+  editor.selection = new vscode.Selection(range.start, range.end);
+  editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
+  // VS Code renders a decoration as one box per line, so a full border on a
+  // multi-line range draws a grid. A left-only border on whole-line boxes
+  // stacks into a single continuous rule beside the revealed lines.
+  const decoration = vscode.window.createTextEditorDecorationType({
+    isWholeLine: true,
+    borderWidth: "0 0 0 2px",
+    borderStyle: "solid",
+    borderColor: new vscode.ThemeColor("editorInfo.foreground"),
+  });
+  revealDecorations.set(editor, decoration);
+  editor.setDecorations(decoration, [range]);
+}
+
+async function visibleDiffEditor(vscode, target, side) {
+  const before = side === "before";
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const editor = vscode.window.visibleTextEditors.find((candidate) => {
+      const filePath = documentFilePath(candidate.document.uri);
+      return (
+        filePath &&
+        path.resolve(filePath) === target &&
+        (before
+          ? candidate.document.uri.scheme === "git"
+          : candidate.document.uri.scheme === "file")
+      );
+    });
+    if (editor) return editor;
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 25));
+  }
+  return undefined;
+}
+
 function annotationStatusLabel(status) {
   return (
     {
@@ -435,6 +473,16 @@ async function activate(context) {
       await openSourceControl(vscode);
       try {
         await vscode.commands.executeCommand("git.openChange", targetUri);
+        if (payload.range) {
+          const side = payload.side === "before" ? "before" : "after";
+          await vscode.commands.executeCommand(
+            side === "before"
+              ? "workbench.action.compareEditor.focusPrimarySide"
+              : "workbench.action.compareEditor.focusSecondarySide",
+          );
+          const editor = await visibleDiffEditor(vscode, target, side);
+          if (editor) revealEditorRange(vscode, editor, payload.range);
+        }
         return;
       } catch {
         // Deleted, untracked, or non-Git files may not have a native change editor.
@@ -471,23 +519,9 @@ async function activate(context) {
           end: { line: symbolRange.end.line, column: symbolRange.end.character },
         };
     }
-    const range = requestedRange ? rangeFor(vscode, document, requestedRange) : undefined;
     const editor = await vscode.window.showTextDocument(document, { preview: false });
-    revealDecorations.get(editor)?.dispose();
-    revealDecorations.delete(editor);
-    if (!range) return;
-    editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
-    // VS Code renders a decoration as one box per line, so a full border on a
-    // multi-line range draws a grid. A left-only border on whole-line boxes
-    // stacks into a single continuous rule beside the revealed lines.
-    const decoration = vscode.window.createTextEditorDecorationType({
-      isWholeLine: true,
-      borderWidth: "0 0 0 2px",
-      borderStyle: "solid",
-      borderColor: new vscode.ThemeColor("editorInfo.foreground"),
-    });
-    revealDecorations.set(editor, decoration);
-    editor.setDecorations(decoration, [range]);
+    if (!requestedRange) return;
+    revealEditorRange(vscode, editor, requestedRange);
   };
 
   revealServer = http.createServer((request, response) => {

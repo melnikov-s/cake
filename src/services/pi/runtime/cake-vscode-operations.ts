@@ -13,6 +13,8 @@ const vscodeOpenInputSchema = Schema.Struct({
   column: Schema.optionalKey(coordinate),
   endLine: Schema.optionalKey(coordinate),
   endColumn: Schema.optionalKey(coordinate),
+  view: Schema.optionalKey(Schema.Literal("changes")),
+  side: Schema.optionalKey(Schema.Literals(["before", "after"])),
 }).check(
   Schema.makeFilter((input) => {
     if (input.line === undefined && input.column !== undefined) return "column requires line";
@@ -20,6 +22,7 @@ const vscodeOpenInputSchema = Schema.Struct({
     if (input.line === undefined && input.endColumn !== undefined) return "endColumn requires line";
     if (input.endLine !== undefined && input.line !== undefined && input.endLine < input.line)
       return "endLine cannot precede line";
+    if (input.side !== undefined && input.view !== "changes") return "side requires changes view";
     return undefined;
   }),
 );
@@ -43,7 +46,11 @@ export interface VscodeControl {
 }
 
 function sourceLocation(input: VscodeOpenInput): SourceLocation {
-  if (input.line === undefined) return { path: input.path };
+  const presentation = {
+    ...(input.view ? { view: input.view } : null),
+    ...(input.side ? { side: input.side } : null),
+  };
+  if (input.line === undefined) return { path: input.path, ...presentation };
   const start: SourcePosition =
     input.column === undefined
       ? { line: input.line - 1 }
@@ -52,7 +59,7 @@ function sourceLocation(input: VscodeOpenInput): SourceLocation {
     input.endColumn === undefined
       ? { line: (input.endLine ?? input.line) - 1 }
       : { line: (input.endLine ?? input.line) - 1, column: input.endColumn - 1 };
-  return { path: input.path, range: { start, end } };
+  return { path: input.path, ...presentation, range: { start, end } };
 }
 
 interface AgentLocation {
@@ -61,10 +68,16 @@ interface AgentLocation {
   column?: number;
   endLine?: number;
   endColumn?: number;
+  view?: "changes";
+  side?: "before" | "after";
 }
 
 function agentLocation(location: EditorLocation): JsonObject {
-  const result: AgentLocation = { path: location.path };
+  const result: AgentLocation = {
+    path: location.path,
+    ...(location.kind === "working-directory" && location.view ? { view: location.view } : null),
+    ...(location.kind === "working-directory" && location.side ? { side: location.side } : null),
+  };
   if (!location.range) return { ...result };
   result.line = location.range.start.line + 1;
   if (location.range.start.column !== undefined) result.column = location.range.start.column + 1;
@@ -119,6 +132,9 @@ export function createCakeVscodeOperations(control: VscodeControl): CakeOperatio
         "Paths may be relative to the Project Session's Working Directory or absolute local file paths.",
         "Opening an absolute path does not add it to the project or change the Working Directory.",
         "Explain the location in the normal Cake conversation. Do not duplicate the explanation inside the editor.",
+        "In Project Session responses, source links such as [request handling](src/main.ts#L55-L64) are clickable and open with the exact range selected and highlighted.",
+        "To link an exact range in VS Code's native diff editor, use [changed request handling](src/main.ts?view=changes#L55-L64) for the after side or [previous request handling](src/main.ts?view=changes&side=before#L55-L64) for the before side.",
+        "Set view to changes to open this operation's range in the native diff editor; its side defaults to after.",
         "Lines and columns in this operation are one-based.",
       ],
       inputSchema: vscodeOpenInputSchema,
@@ -130,6 +146,8 @@ export function createCakeVscodeOperations(control: VscodeControl): CakeOperatio
             column: 5,
             endLine: 812,
             endColumn: 6,
+            view: "changes",
+            side: "after",
           },
         },
         { input: { path: "/tmp/cake.log" }, description: "Open an absolute local file." },

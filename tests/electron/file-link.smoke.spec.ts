@@ -134,7 +134,7 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
           content: [
             {
               type: "text",
-              text: "Phase 4 — Model references ([`src/modelMeta.ts`](src/modelMeta.ts)) is done.",
+              text: "Phase 4 — Model references ([`src/modelMeta.ts#L1`](src/modelMeta.ts#L1)) is done.",
             },
           ],
           api: "anthropic-messages",
@@ -170,9 +170,9 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
 
   try {
     const page = await application.firstWindow();
-    const link = page.locator('a[href="src/modelMeta.ts"]');
-    await expect(link).toHaveText("src/modelMeta.ts");
-    expect(await link.getAttribute("title")).toBe("Open src/modelMeta.ts in VS Code");
+    const link = page.locator('a[href="src/modelMeta.ts#L1"]');
+    await expect(link).toHaveText("src/modelMeta.ts#L1");
+    expect(await link.getAttribute("title")).toBe("Open src/modelMeta.ts:1 in VS Code");
     const agentInput = page.getByRole("combobox", { name: "Message" });
     const hasVsCodeTitleAction = (label: string) =>
       application.evaluate(async ({ webContents }, actionLabel) => {

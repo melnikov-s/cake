@@ -47,6 +47,8 @@ class FakeRange {
   ) {}
 }
 
+class FakeSelection extends FakeRange {}
+
 interface FakeEditor {
   document: {
     uri: FakeUri;
@@ -97,6 +99,7 @@ const openTextDocument = vi.fn(async (uri: FakeUri) => ({
 }));
 const showTextDocument = vi.fn(async () => ({}));
 const revealDecorations: Array<{ dispose: ReturnType<typeof vi.fn> }> = [];
+let gitChangedPath: string | undefined;
 let visibleTextEditorsListener: (editors: unknown[]) => void = () => {};
 const window = {
   activeTextEditor: undefined as FakeEditor | undefined,
@@ -121,6 +124,7 @@ const fakeVscode = {
   Uri: FakeUri,
   Position: FakePosition,
   Range: FakeRange,
+  Selection: FakeSelection,
   TextEditorRevealType: { InCenter: 0 },
   ThemeColor: class {
     constructor(readonly id: string) {}
@@ -137,6 +141,24 @@ const fakeVscode = {
       commands.set(id, handler);
       return { dispose() {} };
     },
+  },
+  extensions: {
+    getExtension: () =>
+      gitChangedPath
+        ? {
+            isActive: true,
+            exports: {
+              getAPI: () => ({
+                repositories: [
+                  {
+                    status: vi.fn(async () => undefined),
+                    state: { workingTreeChanges: [{ uri: FakeUri.file(gitChangedPath!) }] },
+                  },
+                ],
+              }),
+            },
+          }
+        : undefined,
   },
   languages: { registerCodeLensProvider: () => ({ dispose() {} }) },
   workspace: { openTextDocument },
@@ -196,7 +218,9 @@ afterEach(() => {
   visibleTextEditorsListener([]);
   posted.length = 0;
   revealDecorations.length = 0;
+  gitChangedPath = undefined;
   showInformationMessage.mockClear();
+  fakeVscode.commands.executeCommand.mockClear();
   openTextDocument.mockClear();
   showTextDocument.mockReset();
   showTextDocument.mockResolvedValue({});
@@ -222,9 +246,23 @@ describe("companion editor reveals", () => {
     expect(openTextDocument).not.toHaveBeenCalled();
   });
 
-  it("retains reveal highlights independently in split editors", async () => {
-    const leftEditor = { revealRange: vi.fn(), setDecorations: vi.fn() };
-    const rightEditor = { revealRange: vi.fn(), setDecorations: vi.fn() };
+  it("selects the exact range and retains reveal highlights independently in split editors", async () => {
+    const document = {
+      lineCount: lines.length,
+      lineAt: (line: number) => ({ text: lines[line] ?? "" }),
+    };
+    const leftEditor = {
+      document,
+      revealRange: vi.fn(),
+      setDecorations: vi.fn(),
+      selection: undefined,
+    };
+    const rightEditor = {
+      document,
+      revealRange: vi.fn(),
+      setDecorations: vi.fn(),
+      selection: undefined,
+    };
     showTextDocument.mockResolvedValueOnce(leftEditor).mockResolvedValueOnce(rightEditor);
 
     await commands.get("cake.reveal")!({
@@ -238,6 +276,12 @@ describe("companion editor reveals", () => {
       range: { start: { line: 2 }, end: { line: 3 } },
     });
 
+    expect(leftEditor.selection).toEqual(
+      new FakeSelection(new FakePosition(1, 0), new FakePosition(2, lines[2]!.length)),
+    );
+    expect(rightEditor.selection).toEqual(
+      new FakeSelection(new FakePosition(2, 0), new FakePosition(3, lines[3]!.length)),
+    );
     expect(revealDecorations).toHaveLength(2);
     expect(revealDecorations[0]?.dispose).not.toHaveBeenCalled();
     expect(revealDecorations[1]?.dispose).not.toHaveBeenCalled();
@@ -249,8 +293,65 @@ describe("companion editor reveals", () => {
     ]);
   });
 
+  it("opens a native diff and selects the requested range on either side", async () => {
+    gitChangedPath = `${WORKSPACE}/src/run.ts`;
+    const before = Object.assign(
+      editorFor(gitRevisionUri(gitChangedPath, "HEAD"), lines, [0, 0], [0, 0]),
+      { revealRange: vi.fn(), setDecorations: vi.fn() },
+    );
+    const after = Object.assign(editorFor(FakeUri.file(gitChangedPath), lines, [0, 0], [0, 0]), {
+      revealRange: vi.fn(),
+      setDecorations: vi.fn(),
+    });
+    window.visibleTextEditors = [before, after];
+
+    await commands.get("cake.reveal")!({
+      kind: "working-directory",
+      path: "src/run.ts",
+      view: "changes",
+      side: "before",
+      range: { start: { line: 2 }, end: { line: 3 } },
+    });
+
+    expect(fakeVscode.commands.executeCommand).toHaveBeenCalledWith(
+      "git.openChange",
+      expect.objectContaining({ path: gitChangedPath }),
+    );
+    expect(fakeVscode.commands.executeCommand).toHaveBeenCalledWith(
+      "workbench.action.compareEditor.focusPrimarySide",
+    );
+    expect(before.selection).toEqual(
+      new FakeSelection(new FakePosition(2, 0), new FakePosition(3, lines[3]!.length)),
+    );
+    expect(before.revealRange).toHaveBeenCalledOnce();
+    expect(after.revealRange).not.toHaveBeenCalled();
+
+    await commands.get("cake.reveal")!({
+      kind: "working-directory",
+      path: "src/run.ts",
+      view: "changes",
+      range: { start: { line: 1 }, end: { line: 1 } },
+    });
+
+    expect(fakeVscode.commands.executeCommand).toHaveBeenCalledWith(
+      "workbench.action.compareEditor.focusSecondarySide",
+    );
+    expect(after.selection).toEqual(
+      new FakeSelection(new FakePosition(1, 0), new FakePosition(1, lines[1]!.length)),
+    );
+    expect(after.revealRange).toHaveBeenCalledOnce();
+  });
+
   it("replaces the previous reveal highlight within the same editor", async () => {
-    const editor = { revealRange: vi.fn(), setDecorations: vi.fn() };
+    const editor = {
+      document: {
+        lineCount: lines.length,
+        lineAt: (line: number) => ({ text: lines[line] ?? "" }),
+      },
+      revealRange: vi.fn(),
+      setDecorations: vi.fn(),
+      selection: undefined,
+    };
     showTextDocument.mockResolvedValue(editor);
 
     await commands.get("cake.reveal")!({

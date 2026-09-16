@@ -31,8 +31,10 @@ Cake should recognize and open common references such as:
 - `src/main.ts:880`
 - `src/main.ts:880:12`
 - `src/main.ts#L880-L892`
+- `src/main.ts?view=changes#L880-L892` for the changed (after) side of VS Code's native diff
+- `src/main.ts?view=changes&side=before#L880-L892` for the previous (before) side
 
-Selecting a source reference anywhere in Cake should enter IDE mode if necessary, open the file in VS Code, center the relevant code, select the exact range, and briefly highlight it. References from assistant messages, tool activity, work logs, changes, review threads, and artifacts should behave consistently.
+Selecting a source reference anywhere in Cake should enter IDE mode if necessary, open the file in VS Code, center the relevant code, select the exact range, and briefly highlight it. Diff references should retain that behavior on their requested before or after side. References from assistant messages, tool activity, work logs, changes, review threads, and artifacts should behave consistently.
 
 The experience should make “show me where that is” a dependable application-wide capability.
 

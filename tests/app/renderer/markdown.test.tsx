@@ -239,13 +239,15 @@ describe("Markdown", () => {
       root.render(
         <MarkdownLinkProvider actions={{ openExternalUrl, openSession }}>
           <Markdown onOpenSourceLocation={onOpenSourceLocation}>
-            [file](src/modelMeta.ts#L8-L12)
+            {
+              "[file](src/modelMeta.ts#L8-L12) · [before](src/modelMeta.ts?view=changes&side=before#L8-L12)"
+            }
           </Markdown>
         </MarkdownLinkProvider>,
       ),
     );
     expect(vi.mocked(Streamdown).mock.calls.at(-1)![0].children).toBe(
-      "[file](/__cake_workspace__/src/modelMeta.ts#L8-L12)",
+      "[file](/__cake_workspace__/src/modelMeta.ts#L8-L12) · [before](/__cake_workspace__/src/modelMeta.ts?view=changes&side=before#L8-L12)",
     );
     const anchorComponent = () => vi.mocked(Streamdown).mock.calls.at(-1)![0].components!.a!;
 
@@ -268,13 +270,30 @@ describe("Markdown", () => {
       range: { start: { line: 7 }, end: { line: 11 } },
     });
 
+    const beforeLink = renderAnchor({
+      href: "/__cake_workspace__/src/modelMeta.ts?view=changes&side=before#L8-L12",
+      children: "before",
+    });
+    expect(beforeLink.title).toBe(
+      "Open src/modelMeta.ts?view=changes&side=before#L8-L12 in VS Code",
+    );
+    act(() => {
+      beforeLink.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+    expect(onOpenSourceLocation).toHaveBeenLastCalledWith({
+      path: "src/modelMeta.ts",
+      view: "changes",
+      side: "before",
+      range: { start: { line: 7 }, end: { line: 11 } },
+    });
+
     const webLink = renderAnchor({ href: "https://example.com", children: "example" });
     expect(webLink.target).toBe("_blank");
     act(() => {
       webLink.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     });
     expect(openExternalUrl).toHaveBeenCalledWith("https://example.com");
-    expect(onOpenSourceLocation).toHaveBeenCalledTimes(1);
+    expect(onOpenSourceLocation).toHaveBeenCalledTimes(2);
 
     const sessionLink = renderAnchor({
       href: "cake://session/session-123",
@@ -290,6 +309,6 @@ describe("Markdown", () => {
     act(() => root.render(<Markdown>text</Markdown>));
     const defaultLink = renderAnchor({ href: "docs/readme.md", children: "readme" });
     expect(defaultLink.target).toBe("_blank");
-    expect(onOpenSourceLocation).toHaveBeenCalledTimes(1);
+    expect(onOpenSourceLocation).toHaveBeenCalledTimes(2);
   });
 });
