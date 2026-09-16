@@ -844,6 +844,7 @@ export async function createCakeRuntimeCapabilities(input: {
         summary: "List the live pending inputs for an explicitly targeted Project Session.",
         guidance: [
           "Items have stable process-lifetime identities. position is one-based within the named lane.",
+          "Cross-session items expose plain message text plus crossSession routing and sender metadata; they do not expose transcript or tool history.",
           "The steering lane redirects an active turn at Pi's next steering boundary; follow-up starts after the active turn settles.",
         ],
         inputSchema: Schema.Struct({
@@ -1516,10 +1517,13 @@ export async function createCakeRuntimeCapabilities(input: {
         const queueLabel = queue
           ? ` · ${queue.lane} position ${queue.position}/${queue.length}`
           : "";
+        const queueHint = queue
+          ? " Inspect or reorder with sessions.pending/sessions.reorder."
+          : "";
         await session.sendCustomMessage(
           {
             customType: "Cross-session delivery",
-            content: `${receipt.value.status === "queued" ? "Queued" : "Accepted"} message${count} for “${receipt.value.targetTitle}”${contextLabel}${queueLabel}. Informational receipt; no acknowledgment needed.`,
+            content: `${receipt.value.status === "queued" ? "Queued" : "Accepted"} message${count} for “${receipt.value.targetTitle}”${contextLabel}${queueLabel}. Informational receipt; no acknowledgment needed.${queueHint}`,
             display: true,
             details: result,
           },

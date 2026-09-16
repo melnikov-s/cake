@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { CrossSessionMessageMetadata } from "../../domain/conversations/cross-session-coordination";
 
 const queuedText = Schema.String.check(Schema.isMaxLength(262_144));
 
@@ -15,6 +16,7 @@ const PiPendingMessage = Schema.Struct({
   position: Schema.Int.check(Schema.isGreaterThan(0)),
   state: Schema.Literals(["queued", "compaction-held"]),
   text: queuedText,
+  crossSession: Schema.optionalKey(CrossSessionMessageMetadata),
 });
 /** Structured, process-lifetime view of Pi's live queue. */
 export const PiPendingMessages = Schema.Struct({ items: Schema.Array(PiPendingMessage) });

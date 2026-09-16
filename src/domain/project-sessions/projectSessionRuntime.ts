@@ -614,6 +614,26 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
                       ? yield* destination.followUp(encoded, [], false)
                       : yield* destination.prompt(encoded, [], false);
                 if (replyToMessageId) yield* families.confirmResponse(messageId);
+                const pendingAfterSend =
+                  delivery === "queue"
+                    ? yield* destination
+                        .pendingMessages()
+                        .pipe(Effect.catch(() => Effect.succeed(undefined)))
+                    : undefined;
+                const queuedItem = pendingAfterSend?.items.find(
+                  (item) => item.crossSession?.messageId === messageId,
+                );
+                const queue =
+                  queuedItem && pendingAfterSend
+                    ? {
+                        itemId: queuedItem.itemId,
+                        lane: queuedItem.lane,
+                        position: queuedItem.position,
+                        length: pendingAfterSend.items.filter(
+                          (item) => item.lane === queuedItem.lane,
+                        ).length,
+                      }
+                    : undefined;
                 yield* catalogs.publish({
                   _tag: "ProjectSessionChanged",
                   sessionId: targetSessionId,
@@ -633,6 +653,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
                   ...(replyToMessageId ? { replyToMessageId } : null),
                   status: delivery === "queue" ? "queued" : "accepted",
                   recipientContext: crossSessionContextSnapshot(destinationSnapshot.usage?.context),
+                  ...(queue ? { queue } : null),
                 });
               }),
             ),

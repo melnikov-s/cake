@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { Attachment, UiPart } from "../../../ipc/session-contract";
 import { parsePiBuiltinCommand } from "../../../ipc/session-contract";
+import { parseCrossSessionMessage } from "../../../domain/conversations/cross-session-coordination";
 import type { PiPendingMessageReorder, PiPendingMessages } from "../conversation-data";
 import { RuntimeTurnCompletion, TurnCanceledError } from "./RuntimeTurnCompletion";
 import {
@@ -351,16 +352,26 @@ export function createCakeRuntimeTurnController(input: {
         ...trackedQueue[lane].map((item) => ({
           itemId: item.itemId,
           state: "queued" as const,
-          text: item.content,
+          content: item.content,
         })),
         ...compactionQueue
           .filter((item) => item.delivery === delivery)
           .map((item) => ({
             itemId: item.itemId,
             state: "compaction-held" as const,
-            text: item.text,
+            content: item.text,
           })),
-      ].map((item, index) => ({ ...item, lane, position: index + 1 }));
+      ].map((item, index) => {
+        const parsed = parseCrossSessionMessage(item.content);
+        return {
+          itemId: item.itemId,
+          state: item.state,
+          lane,
+          position: index + 1,
+          text: parsed?.text ?? item.content,
+          ...(parsed ? { crossSession: parsed.metadata } : null),
+        };
+      });
     };
     return { items: [...laneItems("steering"), ...laneItems("follow-up")] };
   };

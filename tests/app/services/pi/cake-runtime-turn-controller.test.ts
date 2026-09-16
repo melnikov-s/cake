@@ -1,6 +1,7 @@
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it, vi } from "vitest";
 import { createCakeRuntimeTurnController } from "../../../../src/services/pi/runtime/cake-runtime-turn-controller";
+import { encodeCrossSessionMessage } from "../../../../src/domain/conversations/cross-session-coordination";
 import { projectQueuedMessages } from "../../../../src/services/pi/runtime/session-projection";
 
 function deferred() {
@@ -253,6 +254,35 @@ describe("CakeRuntime turn controller", () => {
       controller.consumeUserMessage(firstContent);
       controller.settleTurn();
       await expect(first).resolves.toBeUndefined();
+    });
+
+    it("projects cross-session queue metadata without exposing the routing envelope as text", async () => {
+      const encoded = encodeCrossSessionMessage("Review the API", {
+        version: 1,
+        messageId: "f6debbbd-ced1-4a12-b0f7-fb60c292c623",
+        threadId: "8358c2b7-bd3c-42ee-9fec-fcb726b66c18",
+        sequence: 1,
+        expectsResponse: true,
+        context: { usedTokens: 81_000, windowTokens: 128_000 },
+        sender: {
+          kind: "project-session",
+          sessionId: "source-session",
+          title: "Review",
+        },
+      });
+      const { controller } = createQueuedFixture({ steering: [], followUp: [encoded] });
+
+      expect((await controller.pendingMessages()).items).toEqual([
+        expect.objectContaining({
+          lane: "follow-up",
+          position: 1,
+          text: "Review the API",
+          crossSession: expect.objectContaining({
+            messageId: "f6debbbd-ced1-4a12-b0f7-fb60c292c623",
+            context: { usedTokens: 81_000, windowTokens: 128_000 },
+          }),
+        }),
+      ]);
     });
 
     it("rejects stale identities and out-of-range positions without changing Pi's queue", async () => {
