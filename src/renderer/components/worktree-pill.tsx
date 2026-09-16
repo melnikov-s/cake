@@ -110,7 +110,7 @@ export const WorktreePill = observer(function WorktreePill({
           tooltip="Current checkout"
           aria-pressed={choice.kind === "current"}
           className={cn(
-            "flex h-7.5 w-auto shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs font-normal shadow-none @max-[460px]/worktree:w-7.5 @max-[460px]/worktree:gap-0 @max-[460px]/worktree:px-0",
+            "flex h-7.5 w-auto shrink-0 items-center justify-center gap-1.5 rounded-lg px-2 text-xs font-normal shadow-none @max-[460px]/worktree:w-7.5 @max-[460px]/worktree:gap-0 @max-[460px]/worktree:px-0",
             choice.kind === "current" &&
               "bg-muted text-foreground aria-pressed:bg-muted aria-pressed:text-foreground aria-pressed:hover:bg-muted aria-pressed:hover:text-foreground",
           )}
@@ -124,7 +124,7 @@ export const WorktreePill = observer(function WorktreePill({
           tooltip="New worktree"
           aria-pressed={choice.kind === "new"}
           className={cn(
-            "flex h-7.5 w-auto shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs font-normal shadow-none @max-[460px]/worktree:w-7.5 @max-[460px]/worktree:gap-0 @max-[460px]/worktree:px-0",
+            "flex h-7.5 w-auto shrink-0 items-center justify-center gap-1.5 rounded-lg px-2 text-xs font-normal shadow-none @max-[460px]/worktree:w-7.5 @max-[460px]/worktree:gap-0 @max-[460px]/worktree:px-0",
             choice.kind === "new" &&
               "bg-muted text-foreground aria-pressed:bg-muted aria-pressed:text-foreground aria-pressed:hover:bg-muted aria-pressed:hover:text-foreground",
           )}
@@ -139,7 +139,7 @@ export const WorktreePill = observer(function WorktreePill({
             tooltip="Choose existing worktree"
             aria-haspopup="menu"
             className={cn(
-              "flex h-7.5 w-auto shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs font-normal shadow-none @max-[460px]/worktree:w-7.5 @max-[460px]/worktree:gap-0 @max-[460px]/worktree:px-0",
+              "flex h-7.5 w-auto shrink-0 items-center justify-center gap-1.5 rounded-lg px-2 text-xs font-normal shadow-none @max-[460px]/worktree:w-7.5 @max-[460px]/worktree:gap-0 @max-[460px]/worktree:px-0",
               choice.kind === "reuse" &&
                 "bg-muted text-foreground aria-expanded:bg-muted aria-expanded:text-foreground",
             )}

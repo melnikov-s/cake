@@ -99,6 +99,19 @@ test("chooses an isolated worktree without disturbing the new-chat composer", as
     await expect
       .poll(() => currentCheckout.evaluate((element) => element.clientWidth))
       .toBeLessThanOrEqual(32);
+    await expect
+      .poll(() =>
+        currentCheckout.evaluate((element) => {
+          const icon = element.querySelector(":scope > svg");
+          if (!icon) return Number.POSITIVE_INFINITY;
+          const buttonBounds = element.getBoundingClientRect();
+          const iconBounds = icon.getBoundingClientRect();
+          return Math.abs(
+            buttonBounds.left + buttonBounds.width / 2 - (iconBounds.left + iconBounds.width / 2),
+          );
+        }),
+      )
+      .toBeLessThan(1);
     await expect(currentCheckout).toHaveAccessibleName("Current checkout");
     await currentCheckout.hover();
     await expect(page.getByRole("tooltip", { name: "Current checkout" })).toBeVisible();
