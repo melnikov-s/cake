@@ -15,6 +15,17 @@ export interface CrossSessionContextSnapshot extends Schema.Schema.Type<
   typeof CrossSessionContextSnapshot
 > {}
 
+/** Advisory position of one message in a live Pi delivery lane. */
+export const CrossSessionQueueSnapshot = Schema.Struct({
+  itemId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
+  lane: Schema.Literals(["steering", "follow-up"]),
+  position: positiveInt,
+  length: positiveInt,
+});
+export interface CrossSessionQueueSnapshot extends Schema.Schema.Type<
+  typeof CrossSessionQueueSnapshot
+> {}
+
 export function crossSessionContextSnapshot(
   context:
     | {

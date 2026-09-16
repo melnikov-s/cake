@@ -15,7 +15,10 @@ import {
   type ExplicitCakeModelSelection,
 } from "../../../domain/model-presets/cake-model-selection";
 import type { SubagentTaskInput as DomainSubagentTaskInput } from "../../../domain/subagents/subagent-data";
-import { CrossSessionContextSnapshot } from "../../../domain/conversations/cross-session-coordination";
+import {
+  CrossSessionContextSnapshot,
+  CrossSessionQueueSnapshot,
+} from "../../../domain/conversations/cross-session-coordination";
 import {
   CakeSettingsGetInput,
   CakeSettingsUpdateInput,
@@ -423,6 +426,7 @@ export async function createCakeRuntimeCapabilities(input: {
     expectsResponse: Schema.Boolean,
     replyToMessageId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
     recipientContext: Schema.optionalKey(CrossSessionContextSnapshot),
+    queue: Schema.optionalKey(CrossSessionQueueSnapshot),
     status: Schema.Literals(["accepted", "queued", "delivered", "processing", "answered"]),
   });
   const reportAgentAction = async (
@@ -1450,10 +1454,14 @@ export async function createCakeRuntimeCapabilities(input: {
         const contextLabel = context
           ? ` · recipient context ${context.usedTokens === null ? "unknown" : `${Math.round(context.usedTokens / 1_000)}K`}/${context.windowTokens === null ? "unknown" : `${Math.round(context.windowTokens / 1_000)}K`}`
           : "";
+        const queue = receipt.value.queue;
+        const queueLabel = queue
+          ? ` · ${queue.lane} position ${queue.position}/${queue.length}`
+          : "";
         await session.sendCustomMessage(
           {
             customType: "Cross-session delivery",
-            content: `${receipt.value.status === "queued" ? "Queued" : "Accepted"} message${count} for “${receipt.value.targetTitle}”${contextLabel}. Informational receipt; no acknowledgment needed.`,
+            content: `${receipt.value.status === "queued" ? "Queued" : "Accepted"} message${count} for “${receipt.value.targetTitle}”${contextLabel}${queueLabel}. Informational receipt; no acknowledgment needed.`,
             display: true,
             details: result,
           },

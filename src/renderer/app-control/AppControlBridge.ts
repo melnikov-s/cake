@@ -13,12 +13,14 @@ import type { ProjectSessionPreview } from "../../domain/project-sessions/projec
 import type { ScheduledMessage } from "../../domain/scheduled-messages/scheduled-message-data";
 import { editorLocationFromPath, type EditorLocation } from "../../ipc/editor-location";
 import type { SourceLocation, SourcePosition } from "../../ipc/source-location";
+import { parseCrossSessionMessage } from "../../domain/conversations/cross-session-coordination";
 import type {
   CoordinationMessage,
   CoordinationThread,
   CrossSessionDeliveryStatus,
   CrossSessionMessageMetadata,
   CrossSessionContextSnapshot,
+  CrossSessionQueueSnapshot,
 } from "../../domain/conversations/cross-session-coordination";
 import type { QueuedConversationMessages } from "../../domain/conversations/conversation-data";
 import { isActiveSessionActivity, type SessionActivity } from "../lib/session-activity";
@@ -598,6 +600,7 @@ export type AppControlResult =
       expectsResponse: boolean;
       replyToMessageId?: string;
       recipientContext?: CrossSessionContextSnapshot;
+      queue?: CrossSessionQueueSnapshot;
       status: CrossSessionDeliveryStatus;
     }
   | { ok: true; command: "sessions.thread"; thread: CoordinationThreadView }
@@ -1557,6 +1560,27 @@ export class AppControlBridge {
     );
   }
 
+  private async queuedMessageSnapshot(
+    sessionId: string,
+    messageId: string,
+  ): Promise<CrossSessionQueueSnapshot | undefined> {
+    try {
+      const messages = await this.host.sessions.listPendingMessages(sessionId);
+      for (const [lane, queue] of [
+        ["steering", messages.steering],
+        ["follow-up", messages.followUp],
+      ] as const) {
+        const index = queue.findIndex(
+          (content) => parseCrossSessionMessage(content)?.metadata.messageId === messageId,
+        );
+        if (index >= 0) return { lane, position: index + 1, length: queue.length };
+      }
+    } catch {
+      // Queue details are advisory and never turn an accepted send into a failure.
+    }
+    return undefined;
+  }
+
   private async sendCrossSessionMessage(
     command: "sessions.send" | "sessions.reply",
     targetSessionId: string,
@@ -1624,6 +1648,10 @@ export class AppControlBridge {
     }
     if (thread.maxMessages !== undefined && sequence >= thread.maxMessages)
       this.host.sessionCoordination.close(thread);
+    const queue =
+      message.status === "queued"
+        ? await this.queuedMessageSnapshot(targetSessionId, messageId)
+        : undefined;
     return {
       ok: true,
       command,
@@ -1637,6 +1665,7 @@ export class AppControlBridge {
       expectsResponse,
       ...(replyToMessageId ? { replyToMessageId } : null),
       recipientContext: this.contextSnapshot(targetSessionId),
+      ...(queue ? { queue } : null),
       status: message.status,
     };
   }

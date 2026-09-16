@@ -2,6 +2,7 @@ import { Schema } from "effect";
 import { createStore, mount } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
 import { CakeChatTarget } from "../../../src/domain/cake-chats/cake-chat-data";
+import { encodeCrossSessionMessage } from "../../../src/domain/conversations/cross-session-coordination";
 import {
   AppControlBridge,
   type AgentControlSource,
@@ -1282,7 +1283,12 @@ describe("AppControlBridge", () => {
   });
 
   it("tracks queued acknowledgements, enforces the limit, and rejects late continuation", async () => {
-    const sendSessionMessage = vi.fn(async () => "turn-b");
+    let queuedContent = "";
+    const sendSessionMessage = vi.fn(async (_sessionId, text, _delivery, metadata) => {
+      if (!metadata) throw new Error("Expected cross-session metadata");
+      queuedContent = encodeCrossSessionMessage(text, metadata);
+      return "turn-b";
+    });
     const targetSession = Session.create({ sessionId: "session-b" });
     const sessionCoordination = mount(
       createStore(SessionCoordinationStore, {
@@ -1316,6 +1322,10 @@ describe("AppControlBridge", () => {
         ],
         sessionActivity: (sessionId) => (sessionId === "session-b" ? "waiting" : undefined),
         sendMessage: sendSessionMessage,
+        listPendingMessages: async () => ({
+          steering: [],
+          followUp: ["Earlier work", queuedContent],
+        }),
       }),
     );
     const source = { kind: "project-session" as const, sessionId: "session-a", title: "A" };
@@ -1326,7 +1336,12 @@ describe("AppControlBridge", () => {
       },
       source,
     );
-    expect(sent).toMatchObject({ status: "queued", delivery: "queue", messageNumber: 1 });
+    expect(sent).toMatchObject({
+      status: "queued",
+      delivery: "queue",
+      messageNumber: 1,
+      queue: { lane: "follow-up", position: 2, length: 2 },
+    });
     expect(sendSessionMessage).toHaveBeenCalledWith(
       "session-b",
       "Only message",
