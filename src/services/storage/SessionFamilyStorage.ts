@@ -160,6 +160,7 @@ export class SessionFamilyStorage extends Context.Service<
       targetSessionId: string,
       requestMessageId: string,
       responseMessageId: string,
+      executingTurnIds: ReadonlyArray<string>,
     ) => Effect.Effect<boolean, SessionFamilyStorageError>;
     readonly confirmResponse: (
       responseMessageId: string,
@@ -512,26 +513,43 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
         targetSessionId: string,
         requestMessageId: string,
         responseMessageId: string,
+        executingTurnIds: ReadonlyArray<string>,
       ) {
         let matched = false;
-        yield* update((document) => ({
-          ...document,
-          turns: document.turns.map((turn) => {
-            if (
-              turn.sessionId !== sessionId ||
-              turn.senderSessionId !== targetSessionId ||
-              turn.requestMessageId !== requestMessageId ||
-              !turn.expectsResponse ||
-              turn.reported
-            )
-              return turn;
-            matched = true;
-            return {
-              ...turn,
-              replyMessageIds: [...(turn.replyMessageIds ?? []), responseMessageId],
-            };
-          }),
-        }));
+        const executing = new Set(executingTurnIds);
+        yield* update((document) => {
+          const requestedTurn = document.turns.find(
+            (turn) =>
+              turn.sessionId === sessionId &&
+              turn.senderSessionId === targetSessionId &&
+              turn.requestMessageId === requestMessageId &&
+              turn.expectsResponse &&
+              !turn.reported,
+          );
+          if (!requestedTurn) return document;
+          matched = true;
+          // One model response covers all requests from this sender that Pi consumed into
+          // the same run. Keep queued requests and requests from other family members open.
+          const coversExecutingInputs = executing.has(requestedTurn.turnId);
+          return {
+            ...document,
+            turns: document.turns.map((turn) => {
+              const isRequestedTurn = turn === requestedTurn;
+              const isCoveredExecutingInput =
+                coversExecutingInputs &&
+                turn.sessionId === sessionId &&
+                turn.senderSessionId === targetSessionId &&
+                turn.expectsResponse &&
+                !turn.reported &&
+                executing.has(turn.turnId);
+              if (!isRequestedTurn && !isCoveredExecutingInput) return turn;
+              return {
+                ...turn,
+                replyMessageIds: [...(turn.replyMessageIds ?? []), responseMessageId],
+              };
+            }),
+          };
+        });
         return matched;
       });
       const confirmResponse = Effect.fn("SessionFamilyStorage.confirmResponse")(

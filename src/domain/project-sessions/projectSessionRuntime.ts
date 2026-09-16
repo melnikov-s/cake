@@ -449,15 +449,19 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
                   .familyForMember(sessionId)
                   .pipe(Effect.mapError((cause) => compositionError("familyMessage", cause)));
                 if (!family) return undefined;
+                const executingTurnIds =
+                  command === "sessions.reply"
+                    ? yield* sessions.executingTurnIds({
+                        sessionId,
+                        workingDirectory: location.workingDirectory,
+                        sessionDirectory: location.sessionDirectory,
+                      })
+                    : [];
                 const pending =
                   command === "sessions.reply"
                     ? yield* families.pendingResponseRequest(
                         sessionId,
-                        yield* sessions.executingTurnIds({
-                          sessionId,
-                          workingDirectory: location.workingDirectory,
-                          sessionDirectory: location.sessionDirectory,
-                        }),
+                        executingTurnIds,
                         input.threadId,
                         input.replyToMessageId,
                       )
@@ -544,6 +548,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
                     targetSessionId,
                     replyToMessageId,
                     messageId,
+                    executingTurnIds,
                   ))
                 )
                   return yield* compositionError(

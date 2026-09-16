@@ -87,7 +87,7 @@ describe("SessionFamilyStorage", () => {
       assert.deepEqual(yield* storage.state(), { families: [], turns: [] });
       yield* storage.addChild(child("request", "child"));
       yield* storage.recordTurn(turn());
-      yield* storage.prepareResponse("child", "parent", "request-message", "response");
+      yield* storage.prepareResponse("child", "parent", "request-message", "response", []);
       yield* storage.confirmResponse("response");
       yield* storage.settleTurn("turn", "complete");
       assert.deepEqual((yield* storage.state()).turns, []);
@@ -197,20 +197,59 @@ describe("SessionFamilyStorage", () => {
       const storage = yield* SessionFamilyStorage;
       yield* storage.recordTurn(turn());
       assert.equal(
-        yield* storage.prepareResponse("child", "sibling", "request-message", "unrelated"),
+        yield* storage.prepareResponse("child", "sibling", "request-message", "unrelated", []),
         false,
       );
       assert.equal(
-        yield* storage.prepareResponse("child", "parent", "other-request", "unrelated"),
+        yield* storage.prepareResponse("child", "parent", "other-request", "unrelated", []),
         false,
       );
       assert.equal(
-        yield* storage.prepareResponse("child", "parent", "request-message", "response"),
+        yield* storage.prepareResponse("child", "parent", "request-message", "response", []),
         true,
       );
       yield* storage.confirmResponse("response");
       yield* storage.settleTurn("turn", "complete");
       assert.deepEqual((yield* storage.state()).turns, []);
+    }).pipe(Effect.provide(testLayer())),
+  );
+
+  it.effect("one reply covers every consumed request from the same sender", () =>
+    Effect.gen(function* () {
+      const storage = yield* SessionFamilyStorage;
+      yield* storage.recordTurn(turn({ turnId: "initial", requestMessageId: "initial-request" }));
+      yield* storage.recordTurn(
+        turn({ turnId: "refinement", requestMessageId: "refinement-request" }),
+      );
+      yield* storage.recordTurn(
+        turn({
+          senderSessionId: "sibling",
+          turnId: "sibling-turn",
+          requestMessageId: "sibling-request",
+        }),
+      );
+      yield* storage.recordTurn(
+        turn({ turnId: "queued-turn", requestMessageId: "queued-request" }),
+      );
+
+      assert.equal(
+        yield* storage.prepareResponse("child", "parent", "refinement-request", "response", [
+          "initial",
+          "refinement",
+          "sibling-turn",
+        ]),
+        true,
+      );
+      yield* storage.confirmResponse("response");
+      yield* storage.settleTurn("initial", "complete");
+      yield* storage.settleTurn("refinement", "complete");
+
+      const remaining = (yield* storage.state()).turns;
+      assert.deepEqual(
+        remaining.map((item) => item.turnId),
+        ["sibling-turn", "queued-turn"],
+      );
+      assert.ok(remaining.every((item) => !item.reported));
     }).pipe(Effect.provide(testLayer())),
   );
 

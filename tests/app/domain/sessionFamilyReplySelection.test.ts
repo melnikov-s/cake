@@ -171,6 +171,60 @@ it.effect("routes an automatic reply to the consumed request instead of later qu
   }),
 );
 
+it.effect("one reply satisfies all consumed requests from the same sender", () =>
+  Effect.gen(function* () {
+    const entered = yield* Queue.unbounded<string>();
+    const release = yield* Deferred.make<void>();
+    const delivered = yield* Deferred.make<void>();
+    const received: Array<{ target: string; text: string }> = [];
+    let executing: ReadonlyArray<string> = [];
+    yield* Effect.gen(function* () {
+      yield* initializeFamily;
+      const options = yield* acquireOptions({ location, sessionId: "child", newSession: false });
+      const handle = yield* (yield* PiSessions).acquire(options);
+      const initialTurnId = yield* handle.prompt(message("root", requestA, threadA, true));
+      yield* Queue.take(entered);
+      const refinementTurnId = yield* handle.followUp(message("root", requestB, threadB, true));
+      yield* Queue.take(entered);
+      executing = [initialTurnId, refinementTurnId];
+
+      const route = options.runtime.currentSessionControl?.routeFamilyMessage;
+      assert.ok(route);
+      yield* Effect.tryPromise(() =>
+        route(
+          "sessions.reply",
+          { text: "Completed both requests", replyToMessageId: requestB },
+          new AbortController().signal,
+        ),
+      );
+      yield* Deferred.await(delivered);
+
+      assert.equal(
+        parseCrossSessionMessage(received[0]?.text ?? "")?.metadata.replyToMessageId,
+        requestB,
+      );
+      const storage = yield* SessionFamilyStorage;
+      const pending = (yield* storage.state()).turns;
+      assert.equal(pending.find((turn) => turn.requestMessageId === requestA)?.reported, true);
+      assert.equal(pending.find((turn) => turn.requestMessageId === requestB)?.reported, true);
+      yield* storage.settleTurn(initialTurnId, "complete");
+      yield* storage.settleTurn(refinementTurnId, "complete");
+      assert.equal(
+        (yield* storage.state()).turns.filter((turn) => turn.sessionId === "child").length,
+        0,
+      );
+    }).pipe(
+      Effect.ensuring(Deferred.succeed(release, undefined)),
+      Effect.provide(
+        Layer.mergeAll(
+          environment(),
+          piLayer(entered, release, delivered, received, () => executing),
+        ),
+      ),
+    );
+  }),
+);
+
 it.effect(
   "rejects queued or unrelated explicit replies while accepting the executing request",
   () =>

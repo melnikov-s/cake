@@ -137,7 +137,7 @@ describe("Session Family outcome delivery", () => {
       const storage = yield* SessionFamilyStorage;
       yield* storage.addChild(reservation);
       yield* storage.recordTurn(outcome);
-      yield* storage.prepareResponse(childId, "session-1", childId, replyId);
+      yield* storage.prepareResponse(childId, "session-1", childId, replyId, [childId]);
       const pending = (yield* storage.state()).turns[0];
       assert.ok(pending);
       yield* Effect.scoped(deliver(pending));
