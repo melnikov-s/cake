@@ -19,7 +19,7 @@ const SELECTION_CONTEXT_LINES = 3;
 let revealServer;
 let selectionSubscription;
 let selectionTimer;
-const revealDecorations = new Set();
+const revealDecorations = new Map();
 let annotationSessionId;
 let annotations = [];
 let annotationEmitter;
@@ -473,8 +473,8 @@ async function activate(context) {
     }
     const range = requestedRange ? rangeFor(vscode, document, requestedRange) : undefined;
     const editor = await vscode.window.showTextDocument(document, { preview: false });
-    for (const decoration of revealDecorations) decoration.dispose();
-    revealDecorations.clear();
+    revealDecorations.get(editor)?.dispose();
+    revealDecorations.delete(editor);
     if (!range) return;
     editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
     // VS Code renders a decoration as one box per line, so a full border on a
@@ -486,7 +486,7 @@ async function activate(context) {
       borderStyle: "solid",
       borderColor: new vscode.ThemeColor("editorInfo.foreground"),
     });
-    revealDecorations.add(decoration);
+    revealDecorations.set(editor, decoration);
     editor.setDecorations(decoration, [range]);
   };
 
@@ -528,7 +528,7 @@ async function activate(context) {
       dispose: () => {
         selectionSubscription?.dispose();
         if (selectionTimer) clearTimeout(selectionTimer);
-        for (const decoration of revealDecorations) decoration.dispose();
+        for (const decoration of revealDecorations.values()) decoration.dispose();
         revealDecorations.clear();
         revealServer?.close();
         revealServer = undefined;
@@ -555,7 +555,12 @@ async function activate(context) {
     vscode.commands.registerCommand("cake.toggleChatSidebar", () =>
       postBridge({ type: "toggle-chat-sidebar" }),
     ),
-    vscode.window.onDidChangeVisibleTextEditors(() => {
+    vscode.window.onDidChangeVisibleTextEditors((editors) => {
+      for (const [editor, decoration] of revealDecorations) {
+        if (editors.includes(editor)) continue;
+        decoration.dispose();
+        revealDecorations.delete(editor);
+      }
       applyAnnotationDecorations(vscode);
       annotationEmitter.fire();
     }),
@@ -575,7 +580,7 @@ async function activate(context) {
 function deactivate() {
   selectionSubscription?.dispose();
   if (selectionTimer) clearTimeout(selectionTimer);
-  for (const decoration of revealDecorations) decoration.dispose();
+  for (const decoration of revealDecorations.values()) decoration.dispose();
   revealDecorations.clear();
   revealServer?.close();
 }

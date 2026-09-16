@@ -89,8 +89,15 @@ function gitRevisionUri(filePath: string, ref: string) {
 
 const commands = new Map<string, (...args: unknown[]) => unknown>();
 const showInformationMessage = vi.fn();
-const openTextDocument = vi.fn(async (uri: FakeUri) => ({ uri, version: 1, lineCount: 1 }));
+const openTextDocument = vi.fn(async (uri: FakeUri) => ({
+  uri,
+  version: 1,
+  lineCount: lines.length,
+  lineAt: (line: number) => ({ text: lines[line] ?? "" }),
+}));
 const showTextDocument = vi.fn(async () => ({}));
+const revealDecorations: Array<{ dispose: ReturnType<typeof vi.fn> }> = [];
+let visibleTextEditorsListener: (editors: unknown[]) => void = () => {};
 const window = {
   activeTextEditor: undefined as FakeEditor | undefined,
   visibleTextEditors: [] as FakeEditor[],
@@ -98,8 +105,15 @@ const window = {
   showTextDocument,
   showWarningMessage: vi.fn(),
   showInputBox: vi.fn(async () => ""),
-  createTextEditorDecorationType: () => ({ dispose() {} }),
-  onDidChangeVisibleTextEditors: () => ({ dispose() {} }),
+  createTextEditorDecorationType: (options: { borderWidth?: string }) => {
+    const decoration = { dispose: vi.fn() };
+    if (options.borderWidth) revealDecorations.push(decoration);
+    return decoration;
+  },
+  onDidChangeVisibleTextEditors: (listener: (editors: unknown[]) => void) => {
+    visibleTextEditorsListener = listener;
+    return { dispose() {} };
+  },
   onDidChangeTextEditorSelection: () => ({ dispose() {} }),
   onDidChangeActiveTextEditor: () => ({ dispose() {} }),
 };
@@ -107,6 +121,10 @@ const fakeVscode = {
   Uri: FakeUri,
   Position: FakePosition,
   Range: FakeRange,
+  TextEditorRevealType: { InCenter: 0 },
+  ThemeColor: class {
+    constructor(readonly id: string) {}
+  },
   EventEmitter: class {
     event = () => ({ dispose() {} });
     fire() {}
@@ -174,12 +192,15 @@ afterAll(async () => {
 });
 
 afterEach(() => {
+  window.visibleTextEditors = [];
+  visibleTextEditorsListener([]);
   posted.length = 0;
+  revealDecorations.length = 0;
   showInformationMessage.mockClear();
   openTextDocument.mockClear();
-  showTextDocument.mockClear();
+  showTextDocument.mockReset();
+  showTextDocument.mockResolvedValue({});
   window.activeTextEditor = undefined;
-  window.visibleTextEditors = [];
 });
 
 const lines = ["import a;", "", "export function run() {", "  return compute();", "}"];
@@ -199,6 +220,54 @@ describe("companion editor reveals", () => {
       commands.get("cake.reveal")!({ kind: "working-directory", path: "../outside.ts" }),
     ).rejects.toThrow("outside the workspace");
     expect(openTextDocument).not.toHaveBeenCalled();
+  });
+
+  it("retains reveal highlights independently in split editors", async () => {
+    const leftEditor = { revealRange: vi.fn(), setDecorations: vi.fn() };
+    const rightEditor = { revealRange: vi.fn(), setDecorations: vi.fn() };
+    showTextDocument.mockResolvedValueOnce(leftEditor).mockResolvedValueOnce(rightEditor);
+
+    await commands.get("cake.reveal")!({
+      kind: "working-directory",
+      path: "src/left.ts",
+      range: { start: { line: 1 }, end: { line: 2 } },
+    });
+    await commands.get("cake.reveal")!({
+      kind: "working-directory",
+      path: "src/right.ts",
+      range: { start: { line: 2 }, end: { line: 3 } },
+    });
+
+    expect(revealDecorations).toHaveLength(2);
+    expect(revealDecorations[0]?.dispose).not.toHaveBeenCalled();
+    expect(revealDecorations[1]?.dispose).not.toHaveBeenCalled();
+    expect(leftEditor.setDecorations).toHaveBeenCalledWith(revealDecorations[0], [
+      expect.anything(),
+    ]);
+    expect(rightEditor.setDecorations).toHaveBeenCalledWith(revealDecorations[1], [
+      expect.anything(),
+    ]);
+  });
+
+  it("replaces the previous reveal highlight within the same editor", async () => {
+    const editor = { revealRange: vi.fn(), setDecorations: vi.fn() };
+    showTextDocument.mockResolvedValue(editor);
+
+    await commands.get("cake.reveal")!({
+      kind: "working-directory",
+      path: "src/run.ts",
+      range: { start: { line: 1 }, end: { line: 1 } },
+    });
+    await commands.get("cake.reveal")!({
+      kind: "working-directory",
+      path: "src/run.ts",
+      range: { start: { line: 3 }, end: { line: 3 } },
+    });
+
+    expect(revealDecorations).toHaveLength(2);
+    expect(revealDecorations[0]?.dispose).toHaveBeenCalledOnce();
+    expect(revealDecorations[1]?.dispose).not.toHaveBeenCalled();
+    expect(editor.setDecorations).toHaveBeenCalledTimes(2);
   });
 });
 
