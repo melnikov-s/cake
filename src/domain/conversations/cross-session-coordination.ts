@@ -3,6 +3,32 @@ import { Effect, Option, Schema } from "effect";
 const boundedId = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
 const boundedLabel = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(1_024));
 const boundedPath = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4_096));
+const nonNegativeInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
+const positiveInt = Schema.Int.check(Schema.isGreaterThan(0));
+
+/** Estimated Pi context occupancy captured at one point in time. */
+export const CrossSessionContextSnapshot = Schema.Struct({
+  usedTokens: Schema.NullOr(nonNegativeInt),
+  windowTokens: Schema.NullOr(positiveInt),
+});
+export interface CrossSessionContextSnapshot extends Schema.Schema.Type<
+  typeof CrossSessionContextSnapshot
+> {}
+
+export function crossSessionContextSnapshot(
+  context:
+    | {
+        readonly tokens: number | null;
+        readonly contextWindow: number;
+      }
+    | null
+    | undefined,
+): CrossSessionContextSnapshot {
+  return {
+    usedTokens: context?.tokens ?? null,
+    windowTokens: context?.contextWindow ?? null,
+  };
+}
 
 /** Cake-owned routing metadata carried by an ordinary Pi user message. */
 export const CrossSessionMessageMetadata = Schema.Struct({
@@ -13,6 +39,7 @@ export const CrossSessionMessageMetadata = Schema.Struct({
   expectsResponse: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
   replyToMessageId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
   generatedNotice: Schema.optionalKey(Schema.Boolean),
+  context: Schema.optionalKey(CrossSessionContextSnapshot),
   sender: Schema.Struct({
     sessionId: boundedId,
     title: boundedLabel,

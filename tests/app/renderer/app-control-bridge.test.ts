@@ -92,6 +92,8 @@ function createHost(overrides: AppControlHostOverrides = {}): AppControlHost {
       } satisfies AppControlHost["vscode"]),
     ...(overrides.worktrees ? { worktrees: overrides.worktrees } : null),
     sessions: {
+      contextSnapshot:
+        overrides.contextSnapshot ?? (() => ({ usedTokens: null, windowTokens: null })),
       inspect:
         overrides.inspect ??
         (async () => {
@@ -1192,6 +1194,10 @@ describe("AppControlBridge", () => {
     const bridge = new AppControlBridge(
       createHost({
         sessions: () => sessions,
+        contextSnapshot: (sessionId) =>
+          sessionId === "session-a"
+            ? { usedTokens: 64_000, windowTokens: 128_000 }
+            : { usedTokens: 96_000, windowTokens: 128_000 },
         sendMessage: sendSessionMessage,
         showAgentAction,
       }),
@@ -1216,6 +1222,7 @@ describe("AppControlBridge", () => {
       messageNumber: 1,
       maxMessages: 3,
       expectsResponse: true,
+      recipientContext: { usedTokens: 96_000, windowTokens: 128_000 },
     });
     const threadId = (first as { threadId: string }).threadId;
     expect(sendSessionMessage).toHaveBeenNthCalledWith(
@@ -1227,6 +1234,7 @@ describe("AppControlBridge", () => {
         threadId,
         sequence: 1,
         expectsResponse: true,
+        context: { usedTokens: 64_000, windowTokens: 128_000 },
         sender: {
           kind: "project-session",
           sessionId: "session-a",
@@ -1254,6 +1262,7 @@ describe("AppControlBridge", () => {
       threadId,
       expectsResponse: false,
       replyToMessageId: (first as { messageId: string }).messageId,
+      recipientContext: { usedTokens: 64_000, windowTokens: 128_000 },
     });
     expect(sendSessionMessage).toHaveBeenNthCalledWith(
       2,

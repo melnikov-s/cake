@@ -146,16 +146,19 @@ it.effect("routes an automatic reply to the consumed request instead of later qu
           "sessions.reply",
           { text: "The active assignment is done." },
           new AbortController().signal,
+          { usedTokens: 80_000, windowTokens: 128_000 },
         ),
       );
       yield* Deferred.await(delivered);
 
       assert.equal(received.length, 1);
       assert.equal(received[0]?.target, "root");
-      assert.equal(
-        parseCrossSessionMessage(received[0]?.text ?? "")?.metadata.replyToMessageId,
-        requestA,
-      );
+      const replyMetadata = parseCrossSessionMessage(received[0]?.text ?? "")?.metadata;
+      assert.equal(replyMetadata?.replyToMessageId, requestA);
+      assert.deepEqual(replyMetadata?.context, {
+        usedTokens: 80_000,
+        windowTokens: 128_000,
+      });
       const pending = (yield* (yield* SessionFamilyStorage).state()).turns;
       assert.equal(pending.find((turn) => turn.requestMessageId === requestA)?.reported, true);
       assert.equal(pending.find((turn) => turn.requestMessageId === requestB)?.reported, false);

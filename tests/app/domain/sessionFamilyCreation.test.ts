@@ -27,6 +27,7 @@ const input = {
   title: "Implement",
   initialPrompt: "Implement and report back",
   model: { provider: "test", modelId: "test", thinkingLevel: "off" as const, fastMode: false },
+  senderContext: { usedTokens: 64_000, windowTokens: 128_000 },
 };
 const modelLayer = Layer.mock(PiModels, { resolve: (selection) => Effect.succeed(selection) });
 const archiveLayer = Layer.mock(SessionArchiveStorage, { locate: () => Effect.succeed(undefined) });
@@ -242,6 +243,7 @@ describe("Session Family creation", () => {
             threadId: first.familyId,
             sequence: 1,
             expectsResponse: true,
+            context: input.senderContext,
             sender: {
               sessionId: "parent",
               title: "Parent session parent",

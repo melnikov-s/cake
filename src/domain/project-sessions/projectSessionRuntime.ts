@@ -6,7 +6,11 @@ import {
   setProjectSessionLabelsIfUnlabelled,
   setSessionFastMode,
 } from "../application/application";
-import { encodeCrossSessionMessage } from "../conversations/cross-session-coordination";
+import {
+  crossSessionContextSnapshot,
+  encodeCrossSessionMessage,
+  type CrossSessionContextSnapshot,
+} from "../conversations/cross-session-coordination";
 import type { ProjectSessionLocation } from "./project-session-data";
 import { makeSubagentControl } from "../subagents/subagentControl";
 import {
@@ -438,7 +442,12 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
             signal,
           );
         },
-        routeFamilyMessage: (command, untrustedInput, signal) =>
+        routeFamilyMessage: (
+          command,
+          untrustedInput,
+          signal,
+          senderContext?: CrossSessionContextSnapshot,
+        ) =>
           run(
             Effect.scoped(
               Effect.gen(function* () {
@@ -527,6 +536,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
                   sequence: 1,
                   expectsResponse,
                   ...(replyToMessageId ? { replyToMessageId } : null),
+                  ...(senderContext ? { context: senderContext } : null),
                   sender: {
                     sessionId,
                     title: senderSummary?.title ?? `Project Session ${sessionId}`,
@@ -584,6 +594,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
                   expectsResponse,
                   ...(replyToMessageId ? { replyToMessageId } : null),
                   status: delivery === "queue" ? "queued" : "accepted",
+                  recipientContext: crossSessionContextSnapshot(destinationSnapshot.usage?.context),
                 });
               }),
             ),

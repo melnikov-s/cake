@@ -15,6 +15,7 @@ import {
   type ExplicitCakeModelSelection,
 } from "../../../domain/model-presets/cake-model-selection";
 import type { SubagentTaskInput as DomainSubagentTaskInput } from "../../../domain/subagents/subagent-data";
+import { CrossSessionContextSnapshot } from "../../../domain/conversations/cross-session-coordination";
 import {
   CakeSettingsGetInput,
   CakeSettingsUpdateInput,
@@ -421,6 +422,7 @@ export async function createCakeRuntimeCapabilities(input: {
     maxMessages: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThan(0))),
     expectsResponse: Schema.Boolean,
     replyToMessageId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
+    recipientContext: Schema.optionalKey(CrossSessionContextSnapshot),
     status: Schema.Literals(["accepted", "queued", "delivered", "processing", "answered"]),
   });
   const reportAgentAction = async (
@@ -791,6 +793,7 @@ export async function createCakeRuntimeCapabilities(input: {
           "expectsResponse defaults to true. Use true only for an assignment, actionable coordination, blocker, or question whose missing result must be reported; set false for substantive results and informational notices.",
           "Set replyToMessageId when this message answers a specific request. A different or unrelated message never clears that request's response obligation.",
           "Send one substantive completion report. Never send acknowledgment-only messages or duplicate lifecycle reports; receiving a report or notification does not require a response.",
+          "Delivery receipts are informational tool results. Never acknowledge a receipt; send another message only for substantive coordination.",
         ],
         inputSchema: Schema.Struct({
           sessionId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
@@ -821,7 +824,7 @@ export async function createCakeRuntimeCapabilities(input: {
           },
         ],
         result:
-          "A visible correlated receipt with target label, thread and message IDs, response expectation, count, delivery state, and accepted delivery mode.",
+          "An informational correlated receipt with target identity, recipient context snapshot, queue facts when pending, and response expectation. No acknowledgment is needed.",
         execute: invokeAppControl("sessions.send"),
       },
       {
@@ -972,7 +975,7 @@ export async function createCakeRuntimeCapabilities(input: {
         guidance: [
           "Replies default to expectsResponse=false because substantive results and informational responses do not request acknowledgment.",
           "Provide replyToMessageId when more than one request may be pending. Cake otherwise selects the latest matching request in the thread.",
-          "Do not reply merely to acknowledge a result, notice, confirmation, or lifecycle event.",
+          "Do not reply merely to acknowledge a result, notice, confirmation, lifecycle event, or delivery receipt.",
         ],
         inputSchema: Schema.Struct({
           text: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(100_000))),
@@ -1196,7 +1199,8 @@ export async function createCakeRuntimeCapabilities(input: {
         summary: "Inspect estimated current context use through Pi's public usage facilities.",
         inputSchema: empty,
         examples: [{}],
-        result: "tokens, limit, remaining, utilization, and measurement only.",
+        result:
+          "tokens, limit, remaining, utilization, and measurement; unavailable estimates remain null rather than appearing as zero.",
         execute: async () => api().contextStatus(),
       },
       {
@@ -1442,10 +1446,14 @@ export async function createCakeRuntimeCapabilities(input: {
         const count = receipt.value.messageNumber
           ? ` ${receipt.value.messageNumber}${receipt.value.maxMessages ? `/${receipt.value.maxMessages}` : ""}`
           : "";
+        const context = receipt.value.recipientContext;
+        const contextLabel = context
+          ? ` · recipient context ${context.usedTokens === null ? "unknown" : `${Math.round(context.usedTokens / 1_000)}K`}/${context.windowTokens === null ? "unknown" : `${Math.round(context.windowTokens / 1_000)}K`}`
+          : "";
         await session.sendCustomMessage(
           {
             customType: "Cross-session delivery",
-            content: `${receipt.value.status === "queued" ? "Queued" : "Accepted"} message${count} for “${receipt.value.targetTitle}”`,
+            content: `${receipt.value.status === "queued" ? "Queued" : "Accepted"} message${count} for “${receipt.value.targetTitle}”${contextLabel}. Informational receipt; no acknowledgment needed.`,
             display: true,
             details: result,
           },

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  crossSessionContextSnapshot,
   deriveCrossSessionDeliveryStatus,
   encodeCrossSessionMessage,
   parseCrossSessionMessage,
@@ -17,6 +18,7 @@ const metadata: CrossSessionMessageMetadata = {
   sequence: 2,
   expectsResponse: true,
   maxMessages: 15,
+  context: { usedTokens: 81_000, windowTokens: 128_000 },
   sender: {
     kind: "project-session",
     sessionId: "source-session",
@@ -27,6 +29,21 @@ const metadata: CrossSessionMessageMetadata = {
 };
 
 describe("cross-session coordination metadata", () => {
+  it("normalizes known and unknown Pi context without zero sentinels", () => {
+    expect(crossSessionContextSnapshot(undefined)).toEqual({
+      usedTokens: null,
+      windowTokens: null,
+    });
+    expect(crossSessionContextSnapshot({ tokens: null, contextWindow: 128_000 })).toEqual({
+      usedTokens: null,
+      windowTokens: 128_000,
+    });
+    expect(crossSessionContextSnapshot({ tokens: 81_000, contextWindow: 128_000 })).toEqual({
+      usedTokens: 81_000,
+      windowTokens: 128_000,
+    });
+  });
+
   it.each([
     ["queue", "missing", "unknown", false, "queued"],
     ["prompt", "missing", "unknown", false, "accepted"],
@@ -98,6 +115,16 @@ describe("cross-session coordination metadata", () => {
       renderAs: "markdown",
       crossSession: metadata,
     });
+  });
+
+  it("preserves unknown context occupancy without inventing zero usage", () => {
+    const unknown = {
+      ...metadata,
+      context: { usedTokens: null, windowTokens: 128_000 },
+    };
+    expect(
+      parseCrossSessionMessage(encodeCrossSessionMessage("Continue", unknown))?.metadata,
+    ).toEqual(unknown);
   });
 
   it("decodes legacy coordination messages as informational", () => {

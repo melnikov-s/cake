@@ -23,6 +23,10 @@ import type {
   UtilityModel,
 } from "../../../ipc/session-contract";
 import type { CakeModelPresetCatalog } from "../../../domain/model-presets/cake-model-selection";
+import {
+  crossSessionContextSnapshot,
+  type CrossSessionContextSnapshot,
+} from "../../../domain/conversations/cross-session-coordination";
 import type {
   ParallelSubagentInput as DomainParallelSubagentInput,
   SubagentTaskInput as DomainSubagentTaskInput,
@@ -166,6 +170,7 @@ export interface CakeRuntimeOptions {
         model: ChatConfiguration;
         placement: "none" | "right" | "down";
         worktreeName?: string;
+        senderContext: CrossSessionContextSnapshot;
       },
       signal: AbortSignal,
     ): Promise<JsonValue>;
@@ -181,6 +186,7 @@ export interface CakeRuntimeOptions {
       command: "sessions.send" | "sessions.reply",
       input: JsonObject,
       signal: AbortSignal,
+      senderContext?: CrossSessionContextSnapshot,
     ): Promise<JsonValue | undefined>;
     mergeSession?(targetSessionId: string | undefined, signal: AbortSignal): Promise<JsonValue>;
     discardSession?(
@@ -559,6 +565,9 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
   });
   void recovery.resumeInterruptedTurn();
 
+  const currentContextSnapshot = () =>
+    crossSessionContextSnapshot(session.getSessionStats().contextUsage);
+
   capabilities.operationApi.current = {
     resolveModelSelection: configuration.resolveModelSelection,
     info() {
@@ -600,14 +609,12 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       });
     },
     contextStatus() {
-      const context = session.getSessionStats().contextUsage;
-      const tokens = context?.tokens ?? 0;
-      const limit = context?.contextWindow ?? 1;
+      const { usedTokens: tokens, windowTokens: limit } = currentContextSnapshot();
       return Schema.decodeUnknownSync(jsonValueSchema)({
         tokens,
         limit,
-        remaining: Math.max(0, limit - tokens),
-        utilization: tokens / limit,
+        remaining: tokens === null || limit === null ? null : Math.max(0, limit - tokens),
+        utilization: tokens === null || limit === null ? null : tokens / limit,
         measurement: "estimated",
       });
     },
@@ -648,6 +655,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
           placement: input.placement,
           model: configuration.resolveModelSelection(input.model),
           ...(input.worktreeName === undefined ? null : { worktreeName: input.worktreeName }),
+          senderContext: currentContextSnapshot(),
         },
         signal,
       );
@@ -668,7 +676,12 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     async invokeAppControl(command, input, signal) {
       const familyResult =
         command === "sessions.send" || command === "sessions.reply"
-          ? await options.currentSessionControl?.routeFamilyMessage?.(command, input, signal)
+          ? await options.currentSessionControl?.routeFamilyMessage?.(
+              command,
+              input,
+              signal,
+              currentContextSnapshot(),
+            )
           : undefined;
       let result = familyResult;
       if (result === undefined) {

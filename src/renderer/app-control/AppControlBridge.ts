@@ -18,6 +18,7 @@ import type {
   CoordinationThread,
   CrossSessionDeliveryStatus,
   CrossSessionMessageMetadata,
+  CrossSessionContextSnapshot,
 } from "../../domain/conversations/cross-session-coordination";
 import type { QueuedConversationMessages } from "../../domain/conversations/conversation-data";
 import { isActiveSessionActivity, type SessionActivity } from "../lib/session-activity";
@@ -431,6 +432,7 @@ export interface AppControlHost {
       initialPrompt: string;
       model?: ChatConfiguration;
     }): Promise<{ workspacePath: string; sessionId: string }>;
+    contextSnapshot?(sessionId: string): CrossSessionContextSnapshot;
     sendMessage(
       sessionId: string,
       text: string,
@@ -595,6 +597,7 @@ export type AppControlResult =
       delivery: "prompt" | "queue" | "steer";
       expectsResponse: boolean;
       replyToMessageId?: string;
+      recipientContext?: CrossSessionContextSnapshot;
       status: CrossSessionDeliveryStatus;
     }
   | { ok: true; command: "sessions.thread"; thread: CoordinationThreadView }
@@ -1412,6 +1415,7 @@ export class AppControlBridge {
           messageId: turnId,
           delivery,
           expectsResponse: invocation.arguments.expectsResponse,
+          recipientContext: this.contextSnapshot(sessionId),
           status: delivery === "queue" ? "queued" : "accepted",
         };
       }
@@ -1544,6 +1548,15 @@ export class AppControlBridge {
     return this.host.sessionCoordination.find(sessionId, explicitThreadId);
   }
 
+  private contextSnapshot(sessionId: string): CrossSessionContextSnapshot {
+    return (
+      this.host.sessions.contextSnapshot?.(sessionId) ?? {
+        usedTokens: null,
+        windowTokens: null,
+      }
+    );
+  }
+
   private async sendCrossSessionMessage(
     command: "sessions.send" | "sessions.reply",
     targetSessionId: string,
@@ -1577,6 +1590,7 @@ export class AppControlBridge {
       sequence,
       expectsResponse,
       ...(replyToMessageId ? { replyToMessageId } : null),
+      context: this.contextSnapshot(source.sessionId),
       sender: {
         sessionId: source.sessionId,
         title: source.title,
@@ -1622,6 +1636,7 @@ export class AppControlBridge {
       delivery,
       expectsResponse,
       ...(replyToMessageId ? { replyToMessageId } : null),
+      recipientContext: this.contextSnapshot(targetSessionId),
       status: message.status,
     };
   }

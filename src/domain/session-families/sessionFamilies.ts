@@ -22,6 +22,7 @@ import { SessionCatalogChanges } from "../../services/session-catalogs/SessionCa
 import {
   encodeCrossSessionMessage,
   parseCrossSessionMessage,
+  type CrossSessionContextSnapshot,
 } from "../conversations/cross-session-coordination";
 
 const failure = (message: string) =>
@@ -98,6 +99,7 @@ export const createChild = Effect.fn("SessionFamilies.createChild")(function* <
     initialPrompt: string;
     model: ChatConfiguration;
     worktreeName?: string;
+    senderContext: CrossSessionContextSnapshot;
   },
   runtimeOptions: (
     sessionId: string,
@@ -254,6 +256,7 @@ export const createChild = Effect.fn("SessionFamilies.createChild")(function* <
     threadId: prepared.family.familyId,
     sequence: 1,
     expectsResponse: true,
+    context: input.senderContext,
     sender: {
       sessionId: parentSessionId,
       title: `Parent session ${parentSessionId}`,

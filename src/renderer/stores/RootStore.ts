@@ -2,6 +2,7 @@ import { Store, child, createStore, untracked } from "r-state-tree";
 import type { CakeHotkeyActionId } from "../../domain/application/cake-settings-data";
 import { defaultProjectSettings } from "../../domain/application/application-data";
 import type { ProjectSessionControlInvocation } from "../../domain/project-sessions/project-session-data";
+import { crossSessionContextSnapshot } from "../../domain/conversations/cross-session-coordination";
 import type { JsonValue } from "../../ipc/json-contract";
 import type { ChatConfiguration } from "../../ipc/session-contract";
 import type { Client } from "../client/Client";
@@ -1261,6 +1262,12 @@ export class RootStore extends Store<{
         },
       },
       sessions: {
+        contextSnapshot: (sessionId) => {
+          const model =
+            this.sessionRegistry.findSession(sessionId)?.model ??
+            this.cakeChatCollectionStore.registry.find(sessionId)?.model;
+          return crossSessionContextSnapshot(model?.usage?.context);
+        },
         inspect: (sessionId) =>
           this.client.projectSessions.inspect({ sessionId }, { signal: this.signal }),
         open: (sessionId, messageId) => this.openSession(sessionId, messageId),
