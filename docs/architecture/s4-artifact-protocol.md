@@ -20,9 +20,10 @@ small tables, code fences, and other rich blocks. The agent should create an
 artifact only when the deliverable, rather than its syntax, benefits from a durable
 independent surface.
 
-Full artifacts live in the owning Cake Session's accessory panel. The panel opens
-from that session's header, not from a permanent application-wide workspace and
-not by replacing the transcript. Creating a new artifact automatically opens the
+Full artifacts are global lineages projected into a Cake Session's accessory
+panel through an explicit session or Session Family link. The panel opens from
+that session's header, not from a permanent application-wide workspace and not
+by replacing the transcript. Creating a new artifact automatically opens the
 panel and selects that artifact; later updates may refresh the selected artifact
 without stealing focus. The originating assistant message renders a compact
 `Artifact created · <title>` reference that opens the artifact rather than a second
@@ -35,9 +36,8 @@ active Pi branch. Readable fallbacks preserve production context for Pi.
 
 The panel is session-scoped rather than branch-scoped. Selecting another Pi
 session-tree branch, restoring an earlier branch, or running tool compaction does
-not move, clone, or re-create artifacts. These operations may change which
-transcript pointers are visible, but the owning session's artifact collection and
-stable artifact identities remain unchanged.
+not move, clone, or re-create artifacts. These operations may change which transcript pointers are visible, but effective
+session/family links and stable lineage identities remain unchanged.
 
 Blocking requests are different. They stay inline at the active tool-call position
 because the conversation cannot continue until the user submits or cancels them.
@@ -52,71 +52,54 @@ infrastructure.
   artifact writes a new revision and never mutates the bytes or digest of an old
   one.
 - Electron main stores payloads under `$CAKE_HOME/state/artifacts` (defaulting
-  to `~/.cake/state/artifacts`) as
-  SHA-256-addressed JSON blobs. Atomic per-session metadata files point to the
-  blobs. Artifact IDs are stable within a session and revisions must begin at
-  one and advance exactly one step.
-- Pi receives a `cake.artifact/v1` custom entry containing the artifact ID,
-  session ID, revision, kind, digest, Markdown fallback, and—when created by an
-  agent tool—the originating assistant-entry and tool-call IDs. It never receives
-  a second Cake-owned transcript.
+  to `~/.cake/state/artifacts`) as SHA-256-addressed JSON blobs. One atomically
+  replaced, versioned catalog manifest indexes global lineages, all revisions,
+  and session/family links. Lineage IDs are global; revisions begin at one and
+  advance exactly one step through `expectedLatestRevision` compare-and-swap.
+- Stable references are `cake://artifact/<lineage-id>` and exact
+  `cake://artifact/<lineage-id>@rN`. A link itself appends no Pi entry and copies
+  no payload. Existing `cake.artifact/v1` transcript pointers retain exact
+  revision, digest, fallback, and provenance context; Pi never receives a second
+  Cake-owned transcript.
 - Renderer `Artifact` instances are disposable projections of validated
   repository records. Session snapshots hydrate current records; a focused
   artifact observer applies live repository updates from the existing native
   event stream directly to loaded Session Models. Pending response ownership,
   cancellation, and routing remain in a focused renderer artifact workflow
   Store and the main artifact domain operations above `PiSessions`.
-- Cake indexes the persisted Pi session reference in window state and records
-  artifact session associations when Pi materializes a new persistent session ID.
-  Hydration combines validated Pi pointers with that Cake index, so artifacts
-  survive both renderer reload and application restart without guessing from
-  transcript content. Tool compaction and session-tree navigation retain the same
-  session association. A fork associates only the exact revisions referenced by
-  Pi's source branch through the selected fork entry; those records are snapshots,
-  so later source revisions or newly created source artifacts do not appear in the
-  fork. Historical content-addressed blobs are retained even after an association
-  is deleted because an older Pi transcript pointer may still become reachable
-  through a later fork; metadata deletion remains scoped to the deleted session.
+- The catalog records explicit links to a Cake Session or Session Family. A link
+  either follows the lineage's latest revision or pins one exact revision. Family
+  creation workflows automatically create a family link; standalone fork policy
+  may pin refs visible at the fork point. Hydration reads catalog links directly
+  rather than reconstructing associations from transcript content.
 
-## Branches, forks, and revision inheritance
+## Branches, forks, families, and revision selection
 
-A Pi session-tree branch and a Cake Session fork have different artifact behavior.
-Changing branches within one Pi Session never changes artifact ownership: the
-session continues to expose its one artifact collection. Tool compaction likewise
-keeps that collection in place and records no duplicate artifact merely because it
-replays transcript text into a new root branch.
+Changing Pi branches or compacting tools does not alter artifact links or create
+revisions. A family-linked lineage is effectively linked to every family member,
+and any such session may publish its next revision; there are no owners,
+permissions, or private mode. A follow-latest link advances as the lineage does.
+A pinned link remains at its exact revision.
 
-A fork creates a new Cake Session, so it receives a point-in-time inherited
-artifact index. For each artifact lineage, Cake inherits the latest exact revision
-established by a transcript pointer at or before the selected fork point; revisions
-produced after that point are not inherited. Each inherited entry references the
-exact source session ID, artifact ID, revision, and digest. It is immutable in the
-fork and does not follow later source-session revisions.
-
-Inheritance is reference-based, not a payload copy and not a transfer of ownership.
-The fork may present the inherited artifact in its own session panel, labeled as
-inherited, while the source keeps its original. Revising inherited content in the
-fork is copy-on-write: Cake creates a fork-owned artifact lineage from the inherited
-revision, leaving both the inherited revision and source lineage unchanged. A
-source revision created later and a fork-owned revision therefore never overwrite
-or silently merge with one another.
+Fork and family workflows create links, never payload copies or ownership
+transfers. A point-in-time fork can pin the exact revisions established at its
+selected entry. Creating an artifact while operating in a Session Family instead
+links the new lineage to the family so current and future members share it. Those
+workflow operations are layered above storage; the repository only validates and
+atomically records explicit links.
 
 ## Deletion and garbage collection
 
 Resolving, restoring, changing branches, compacting tools, or merely unloading a
-renderer projection never deletes artifact data. Permanently deleting a Cake
-Session removes that session's owned and inherited index references. It must not
-remove an immutable revision still referenced by another session, including a fork
-that inherited it.
+renderer projection never deletes artifact data. Permanently deleting a Cake Session or Session Family removes only links targeting
+it. It does not mutate a lineage or revision.
 
-Repository garbage collection may remove a metadata revision and its
-content-addressed blob only after no surviving session index, inherited reference,
-or durable Pi transcript pointer can reach it. Shared blobs remain while any
-reachable revision uses their digest. Collection is conservative and
-restart-safe: uncertain reachability retains data, and interrupted collection
-must not leave a live pointer without its payload. Once the last owning or
-inheriting session and its transcript are permanently deleted, unreachable
-metadata and blobs are eligible for collection rather than retained forever.
+A lineage with no effective session/family link is eligible for eventual garbage
+collection. Repository collection must also account for durable exact Pi refs;
+shared blobs remain while any catalog revision uses their digest. Collection is
+conservative and restart-safe. The storage slice supplies only an orphan-blob
+primitive that refuses to delete any digest referenced by a catalog revision;
+full lineage reachability and collection are separate workflow work.
 
 The maximum serialized tool input and response size is 1 MiB. Larger payloads
 are rejected before display. This is the S4 answer to Q4: the durable location
@@ -125,14 +108,17 @@ is the Cake-home artifact repository, and the v1 inline protocol cap is
 
 ## Tools and interaction lifecycle
 
-The built-in `cake` gateway exposes session-scoped `artifacts.list`,
-`artifacts.read`, `artifacts.create`, and `artifacts.update` operations. Agents
+The built-in `cake` gateway exposes session-contextual `artifacts.list`,
+`artifacts.read`, `artifacts.create`, and `artifacts.update` operations over
+global lineages and their effective links. Agents
 create substantial Markdown documents directly without supplying duplicate
 fallback text; Markdown is both the payload and readable fallback. They can also
 import bounded workspace-relative files as immutable snapshots with a safe
-filename, MIME type, byte size, and encoded content. Cake derives session IDs and
-revision numbers. Create begins a new lineage at revision one, while update keeps
-the stable artifact ID and publishes exactly the next immutable revision. List
+filename, MIME type, byte size, and encoded content. Cake derives lineage IDs and revision numbers. Create begins a new global lineage
+at revision one and creates the appropriate session or family link. Update keeps
+the stable lineage ID and publishes exactly the next immutable revision using
+latest-revision CAS. Restore is the same publication path with old content and
+`restoredFromRevision` metadata, producing `N+1` rather than moving latest. List
 and read do not append transcript pointers. Widget reads return the presentation
 brief and fallback rather than generated implementation source.
 

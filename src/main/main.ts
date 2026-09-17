@@ -9,6 +9,7 @@ import {
 } from "../services/widgets/inline-widget-protocol";
 import { InlineWidgets } from "../services/widgets/InlineWidgets";
 import { RenderedWidgetCapture } from "../services/widgets/RenderedWidgetCapture";
+import { ArtifactLineageId } from "../domain/artifacts/artifact-lineage";
 import { ArtifactStorage } from "../services/storage/ArtifactStorage";
 import { registerExtensionCompanionScheme } from "../services/pi/runtime/extension-companion-protocol";
 import { resolveCakePaths } from "../config/CakePaths";
@@ -112,11 +113,8 @@ if (process.env.CAKE_ELECTRON_SMOKE === "1") {
           const widgets = yield* InlineWidgets;
           const captures = yield* RenderedWidgetCapture;
           const artifacts = yield* ArtifactStorage;
-          const before = yield* artifacts.get(
-            input.workingDirectory,
-            input.sessionId,
-            input.artifactId,
-          );
+          const lineageId = yield* Schema.decodeUnknownEffect(ArtifactLineageId)(input.artifactId);
+          const before = yield* artifacts.read(lineageId);
           const compiled = yield* widgets.compile({
             language: "react",
             capability: "display",
@@ -137,28 +135,33 @@ if (process.env.CAKE_ELECTRON_SMOKE === "1") {
                 }),
               ),
             );
-          const record = yield* artifacts.upsert(input.workingDirectory, {
-            protocol: "cake.artifact/v1",
-            id: input.artifactId,
-            sessionId: input.sessionId,
-            revision: 1,
-            kind: "widget",
-            title: "Captured widget fixture",
-            payload: {
-              language: "react",
-              source: input.source,
-              brief: "Electron rendered-review fixture",
-              generationSessionId: "smoke-review",
+          const record = yield* artifacts.publish({
+            lineageId,
+            expectedLatestRevision: 0,
+            workingDirectory: input.workingDirectory,
+            snapshot: {
+              protocol: "cake.artifact/v1",
+              id: input.artifactId,
+              sessionId: input.sessionId,
+              revision: 1,
+              kind: "widget",
+              title: "Captured widget fixture",
+              payload: {
+                language: "react",
+                source: input.source,
+                brief: "Electron rendered-review fixture",
+                generationSessionId: "smoke-review",
+              },
+              fallback: { markdown: "Captured widget fixture." },
+              interaction: { mode: "present" },
             },
-            fallback: { markdown: "Captured widget fixture." },
-            interaction: { mode: "present" },
           });
           return {
             pngBase64: capture.pngBase64,
             diagnostics: capture.diagnostics,
             persistedBeforeCapture: before !== undefined,
             persistedAfterCapture:
-              record.artifact.kind === "widget" && record.artifact.payload.source === input.source,
+              record.snapshot.kind === "widget" && record.snapshot.payload.source === input.source,
           };
         }),
       );

@@ -1,5 +1,6 @@
-import { Effect, Stream } from "effect";
+import { DateTime, Effect, Schema, Stream } from "effect";
 import type { ArtifactPointer } from "../../ipc/artifact-contract";
+import { ArtifactLineageId, ArtifactRevisionNumber } from "../artifacts/artifact-lineage";
 import * as projectSessionLocations from "./projectSessionLocations";
 import { resolutionNamespace } from "./projectSessionResolution";
 import type { ProjectSessionLocation } from "./project-session-data";
@@ -147,15 +148,33 @@ export const fork = Effect.fn("ProjectSessions.fork")(function* (input: {
         artifactPointers = result.artifactPointers;
       }
       const artifactStorage = yield* ArtifactStorage;
-      yield* artifactStorage
-        .inheritFork(
-          source.workingDirectory,
-          input.target.sessionId,
-          destination.workingDirectory,
-          sessionId,
-          artifactPointers,
-        )
-        .pipe(asError("fork"));
+      const linkedAt = DateTime.formatIso(yield* DateTime.now);
+      yield* Effect.forEach(
+        artifactPointers,
+        Effect.fn("ProjectSessions.linkForkArtifact")(function* (pointer) {
+          const lineageId = yield* Schema.decodeUnknownEffect(ArtifactLineageId)(
+            pointer.artifactId,
+          ).pipe(asError("fork"));
+          const revision = yield* Schema.decodeUnknownEffect(ArtifactRevisionNumber)(
+            pointer.revision,
+          ).pipe(asError("fork"));
+          const stored = yield* artifactStorage.read(lineageId, revision).pipe(asError("fork"));
+          if (!stored || stored.metadata.digest !== pointer.digest)
+            return yield* new ProjectSessionError({
+              operation: "fork",
+              message: `Artifact ${pointer.artifactId}@r${pointer.revision} does not match storage`,
+            });
+          yield* artifactStorage
+            .putLink({
+              lineageId,
+              target: { type: "session", sessionId },
+              selection: { mode: "pinned", revision },
+              createdAt: linkedAt,
+            })
+            .pipe(asError("fork"));
+        }),
+        { discard: true },
+      );
       return { sessionId, destination };
     }),
   );

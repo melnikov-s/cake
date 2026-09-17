@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
-import { Deferred, Effect, Fiber, Layer, Queue, Stream, SubscriptionRef } from "effect";
+import { Deferred, Effect, Fiber, Layer, Queue, Schema, Stream, SubscriptionRef } from "effect";
 import * as TestClock from "effect/testing/TestClock";
 import { describe, vi } from "vitest";
 import * as projectSessionMetadata from "../../../src/domain/project-sessions/projectSessionMetadata";
@@ -12,6 +12,7 @@ import { SessionCatalog } from "../../../src/renderer/models/SessionCatalog";
 import { applySessionCatalogGroupUpdate } from "../../../src/renderer/reducers/CatalogReducer";
 import * as sessionChats from "../../../src/domain/conversations/sessionChats";
 import type { SessionCatalogUpdate } from "../../../src/domain/application/catalog-data";
+import { ArtifactDigest } from "../../../src/domain/artifacts/artifact-lineage";
 import type { ArtifactPointer } from "../../../src/ipc/artifact-contract";
 import { getState } from "../../../src/domain/application/application";
 import {
@@ -450,8 +451,45 @@ const makeLayer = (
         }),
     }),
     Layer.mock(ArtifactStorage, {
-      inheritFork: (...args) => Effect.sync(() => hooks.onInheritFork?.(...args)),
-      deleteSession: () => Effect.void,
+      read: (lineageId, artifactRevision) =>
+        Effect.sync(() => {
+          const pointer = hooks.forkArtifactPointers?.find(
+            (candidate) =>
+              candidate.artifactId === lineageId && candidate.revision === artifactRevision,
+          );
+          if (!pointer || artifactRevision === undefined) return undefined;
+          return {
+            lineageId,
+            metadata: {
+              revision: artifactRevision,
+              digest: Schema.decodeUnknownSync(ArtifactDigest)(pointer.digest),
+              kind: pointer.kind,
+              publishedAt: new Date(0).toISOString(),
+              publishedBySessionId: pointer.sessionId,
+              workingDirectory: "/project",
+            },
+            snapshot: {
+              protocol: "cake.artifact/v1" as const,
+              id: pointer.artifactId,
+              sessionId: pointer.sessionId,
+              revision: pointer.revision,
+              kind: "markdown" as const,
+              payload: { markdown: pointer.fallback.markdown },
+              fallback: pointer.fallback,
+            },
+          };
+        }),
+      putLink: (link) =>
+        Effect.sync(() =>
+          hooks.onInheritFork?.(
+            "/project",
+            hooks.forkArtifactPointers?.[0]?.sessionId ?? "session-1",
+            "/project",
+            link.target.type === "session" ? link.target.sessionId : "family",
+            hooks.forkArtifactPointers ?? [],
+          ),
+        ),
+      removeTargetLinks: () => Effect.void,
     }),
     Layer.mock(ReviewStorage, {
       agentSessionDirectory: () => "/reviews/agent",

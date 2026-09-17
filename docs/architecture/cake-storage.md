@@ -199,17 +199,31 @@ never stores provider secrets or utility-completion transcripts.
 
 ## Artifact and review storage
 
-Artifacts use bounded, versioned metadata and content-addressed payloads. Every
-revision is immutable. A Cake Session index owns its artifacts and may reference
-exact revisions inherited from another session at a fork point; inheritance
-shares the stored payload rather than copying it and never follows later source
-revisions. Branch selection, tool compaction, resolution, restoration, and
-renderer unloading do not alter those indexes.
+Artifacts use one global, atomically replaced, versioned catalog manifest plus
+SHA-256-addressed JSON blobs. The catalog records global lineages, immutable
+full-snapshot revision indexes, and explicit links to either sessions or Session
+Families. A link either follows latest or pins an exact revision. Links never copy
+a payload. Publishing uses `expectedLatestRevision` compare-and-swap while one
+process-wide storage lock serializes catalog mutations; stale writers receive a
+typed conflict. Blob creation precedes the atomic catalog replacement, so an
+interrupted publish can leave only an unreferenced blob, never a live revision
+without payload.
 
-Permanent session deletion removes only that session's references. Artifact
-garbage collection is reachability-based across owning indexes, fork-inherited
-references, and durable Pi transcript pointers. A metadata revision or shared
-blob is eligible only when none remains; uncertain or interrupted collection
-retains data rather than risking a live dangling pointer.
+The artifact catalog is storage-authoritative and validates every digest and
+revision identity on read. Restoring historical content later publishes it as a
+new `N+1` full snapshot and records the source revision in metadata; it never
+rewinds or mutates history. Blocking request records remain outside this catalog.
+The storage migration scans the former session-indexed metadata and immutable
+blobs once, reconstructs complete revision indexes, converts owning associations
+to follow-latest links and fork associations to pinned links, excludes request
+records, then writes the current catalog envelope. Unknown versions, corrupt
+blobs, gaps, and ambiguous links fail with a typed storage error rather than
+silently dropping data.
+
+Deleting a session or family removes only its links. Unlinked lineages are
+eligible for eventual reachability-based garbage collection. This slice exposes
+only a conservative orphan-blob deletion primitive: a blob is removable only
+when no catalog revision references its digest. Full lineage collection also
+accounts for durable transcript refs and belongs to a later workflow slice.
 
 Reviews store Cake-owned anchors and workflow metadata.

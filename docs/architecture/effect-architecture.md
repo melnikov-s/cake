@@ -599,6 +599,11 @@ SessionArchiveStorage
 Each Service owns its document Schema, version envelope, migration sequence,
 location, atomic-write behavior, and typed errors. Shared internal file helpers
 may implement atomic writes, but domain code uses focused storage Services.
+`ArtifactStorage` owns one global lineage catalog and content-addressed blobs.
+Its operations expose immutable exact reads, revision publication with a typed
+`expectedLatestRevision` conflict, and session/family links that either follow
+latest or pin a revision. A single Service-owned semaphore serializes atomic
+catalog replacements. Request records are not artifact-storage entities.
 
 The default persistence format is versioned files:
 

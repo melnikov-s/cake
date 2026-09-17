@@ -55,7 +55,7 @@ Every durable concept has one authority.
 | Cross-session coordination threads and delivery correlation                   | Cake                                                                                   | Bind participants, limits, closure, and acknowledgements without copying transcript text  |
 | Resolved-session status                                                       | Cake-managed active/archive transcript location of a standalone session or family root | Children inherit resolution; keep resolved conversations read-only                        |
 | Reviews and inline discussions                                                | Cake workflow services, with Pi sidecar-session references where relevant              | Persist anchors and workflow metadata without copying Pi transcripts                      |
-| Substantial, reusable artifacts                                               | Cake artifact repository plus Pi transcript pointers/fallbacks                         | Persist bounded, immutable revisions in a session-scoped accessory panel                  |
+| Substantial, reusable artifacts                                               | Cake global artifact-lineage repository plus explicit session/family links             | Persist immutable revisions; project linked lineages into session accessory panels        |
 | Blocking structured requests                                                  | `cake.request/v1` plus the active Pi tool call                                         | Render one inline interaction and return one validated value                              |
 
 Do not introduce a second transcript database, reconstruct Pi state into a
@@ -506,14 +506,17 @@ The window Store hierarchy mirrors the product surfaces:
 - Each `ProjectSessionStore` owns that session's activity, session-local Agent/IDE presentation preference and IDE
   chat-drawer geometry, managed-worktree status and action presentation, artifact accessory-panel workflow, and message comments. Full
   artifacts are explicit substantial or reusable deliverables, not a presentation selected from syntax: ordinary Markdown, including
-  Mermaid and small tables, stays inline. Rich architectural overviews use the unified delegated React widget path: a restricted specialist
+  Mermaid and small tables, stays inline. Artifact identity is a global Cake-owned lineage, while sessions and Session Families receive
+  explicit follow-latest or exact-revision links. Links do not copy payloads, confer ownership, or add Pi transcript entries. A session
+  effectively linked through either scope may publish the next immutable full snapshot with latest-revision compare-and-swap. Rich architectural overviews use the unified delegated React widget path: a restricted specialist
   can compose React Flow, optional ELK layout, explanations, and controls inside the widget sandbox. Generated candidates are compile-checked
   and reviewed from actual widget-only screenshots captured in a serialized, main-owned hidden offscreen Electron host before publication,
   with at most two replacements. Original historical graph blobs
   and Pi pointers remain immutable; storage projects their readable Markdown fallbacks instead of maintaining a second graph renderer.
-  The session header opens the panel, and creating an artifact opens and selects it automatically.
-  Session-tree branch changes and tool compaction neither move nor duplicate artifacts. Blocking requests remain inline interactions and
-  never enter the panel, even when shared infrastructure stores or renders them. Project Sessions and Cake Chat
+  The session header opens the panel, and creating an artifact opens and selects it automatically. Creation from a family session links the
+  lineage to that family by default. Session-tree branch changes and tool compaction neither move nor duplicate artifacts. Stable refs use
+  `cake://artifact/<lineage-id>` and exact refs append `@rN`. Blocking requests remain inline interactions and never enter the reusable
+  catalog, even when they share rendering infrastructure. Project Sessions and Cake Chat
   Sessions each compose one `ConversationSessionStore`, the window-local active-conversation aggregate whose lifetime matches its owning
   primary session. It owns the stable `ChatStore`, `ConversationComposerStore`, and `ChatConfigurationStore` children plus their common
   delivery, queuing, configuration, transcript-interaction, draft, and operation wiring. Every materialized primary chat uses the single

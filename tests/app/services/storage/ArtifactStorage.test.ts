@@ -1,387 +1,303 @@
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
-import { Deferred, Effect, Fiber, FileSystem, Layer, ManagedRuntime } from "effect";
+import { Effect, Layer, ManagedRuntime, Schema } from "effect";
 import { afterEach, describe, expect, it } from "vitest";
-import { ArtifactStorage } from "../../../../src/services/storage/ArtifactStorage";
+import {
+  ArtifactDigest,
+  ArtifactLineageId,
+  ArtifactRevisionNumber,
+  formatArtifactRef,
+  parseArtifactRef,
+} from "../../../../src/domain/artifacts/artifact-lineage";
+import type { CakeArtifactV1 } from "../../../../src/ipc/artifact-contract";
+import {
+  ArtifactPublicationConflict,
+  ArtifactStorage,
+} from "../../../../src/services/storage/ArtifactStorage";
 import { makeArtifactStorageLive } from "../../../../src/services/storage/ArtifactStorageLive";
 
 const directories: string[] = [];
 const disposeRuntimes: Array<() => Promise<void>> = [];
 
-const makeStorage = async (root: string, fileSystem?: FileSystem.FileSystem) => {
-  const platform = Layer.mergeAll(
-    fileSystem ? Layer.succeed(FileSystem.FileSystem)(fileSystem) : NodeFileSystem.layer,
-    NodePath.layer,
+const lineageId = (value: string) => Schema.decodeUnknownSync(ArtifactLineageId)(value);
+const revision = (value: number) => Schema.decodeUnknownSync(ArtifactRevisionNumber)(value);
+const digestValue = (value: string) => Schema.decodeUnknownSync(ArtifactDigest)(value);
+const hash = (value: string) => createHash("sha256").update(value).digest("hex");
+
+const makeStorage = async (root: string) => {
+  const layer = makeArtifactStorageLive(root).pipe(
+    Layer.provideMerge(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer)),
   );
-  const layer = makeArtifactStorageLive(root).pipe(Layer.provideMerge(platform));
   const runtime = ManagedRuntime.make(layer);
   disposeRuntimes.push(() => runtime.dispose());
   return runtime.runPromise(ArtifactStorage);
 };
 
+const tableSnapshot = (
+  value: number,
+  options: { id?: string; sessionId?: string; revision?: number; kind?: "table" | "request" } = {},
+): CakeArtifactV1 =>
+  options.kind === "request"
+    ? {
+        protocol: "cake.artifact/v1",
+        id: options.id ?? "scores",
+        sessionId: options.sessionId ?? "session-1",
+        revision: options.revision ?? 1,
+        kind: "request",
+        payload: { request: { value } },
+        fallback: { markdown: `Request ${value}` },
+        interaction: { mode: "request" },
+      }
+    : {
+        protocol: "cake.artifact/v1",
+        id: options.id ?? "scores",
+        sessionId: options.sessionId ?? "session-1",
+        revision: options.revision ?? 1,
+        kind: "table",
+        title: `Scores ${value}`,
+        payload: {
+          columns: [{ id: "score", label: "Score", type: "number" }],
+          rows: [{ id: "one", score: value }],
+        },
+        fallback: { markdown: `| Score |\n| ---: |\n| ${value} |` },
+        interaction: { mode: "present" },
+      };
+
 afterEach(async () => {
   await Promise.all(disposeRuntimes.splice(0).map((dispose) => dispose()));
   await Promise.all(
-    directories.splice(0).map((path) => rm(path, { recursive: true, force: true })),
+    directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
   );
 });
 
-async function seedHistoricalArchitecture(root: string) {
-  const artifact = {
-    protocol: "cake.artifact/v1",
-    id: "architecture-1",
-    sessionId: "session-1",
-    revision: 1,
-    kind: "architecture",
-    title: "Runtime architecture",
-    payload: {
-      nodes: [
-        { id: "renderer", label: "Renderer" },
-        { id: "main", label: "Main" },
-      ],
-      edges: [{ id: "rpc", source: "renderer", target: "main", label: "RPC" }],
-    },
-    fallback: { markdown: "Renderer communicates with main." },
-    interaction: { mode: "present" },
-  };
-  const serialized = `${JSON.stringify(artifact, null, 2)}\n`;
-  const digest = createHash("sha256").update(serialized).digest("hex");
-  const digestKey = (value: string) => createHash("sha256").update(value).digest("hex");
-  const blobPath = join(root, "blobs", `${digest}.json`);
-  const recordDirectory = join(root, "sessions", digestKey("/project"), digestKey("session-1"));
-  await mkdir(join(root, "blobs"), { recursive: true });
-  await mkdir(recordDirectory, { recursive: true });
-  await writeFile(blobPath, serialized);
-  await writeFile(
-    join(recordDirectory, `${digestKey("architecture-1")}.json`),
-    `${JSON.stringify(
-      {
-        protocol: "cake.artifact/v1",
-        id: artifact.id,
-        sessionId: artifact.sessionId,
-        workspacePath: "/project",
-        revision: artifact.revision,
-        kind: artifact.kind,
-        digest,
-        createdAt: new Date(0).toISOString(),
-        updatedAt: new Date(0).toISOString(),
-      },
-      null,
-      2,
-    )}\n`,
-  );
-  return { blobPath, digest, serialized };
-}
-
-const baseArtifact = {
-  protocol: "cake.artifact/v1" as const,
-  id: "table-1",
-  sessionId: "session-1",
-  kind: "table" as const,
-  payload: {
-    columns: [{ id: "score", label: "Score", type: "number" as const }],
-    rows: [{ id: "one", score: 1 }],
-    selectable: false,
-  },
-  fallback: { markdown: "| Score |\n| ---: |\n| 1 |" },
-  interaction: { mode: "present" as const },
+const temporaryRoot = async () => {
+  const state = await mkdtemp(join(tmpdir(), "cake-artifact-lineages-"));
+  directories.push(state);
+  return { state, root: join(state, "artifacts") };
 };
 
+describe("artifact lineage references", () => {
+  it("formats and parses stable lineage and exact revision references", () => {
+    const id = lineageId("runtime-overview");
+    expect(formatArtifactRef({ lineageId: id })).toBe("cake://artifact/runtime-overview");
+    const exact = formatArtifactRef({ lineageId: id, revision: revision(12) });
+    expect(exact).toBe("cake://artifact/runtime-overview@r12");
+    expect(parseArtifactRef(exact)).toEqual({ lineageId: id, revision: 12 });
+    expect(() => parseArtifactRef("cake://artifact/runtime-overview@r0")).toThrow();
+  });
+});
+
 describe("ArtifactStorage", () => {
-  it("projects historical architecture blobs to readable Markdown without rewriting storage", async () => {
-    const root = await mkdtemp(join(tmpdir(), "cake-artifacts-"));
-    directories.push(root);
-    const historical = await seedHistoricalArchitecture(root);
+  it("publishes immutable revisions, supports exact reads and rejects stale CAS", async () => {
+    const { root } = await temporaryRoot();
     const storage = await makeStorage(root);
+    const id = lineageId("scores");
 
-    const record = await Effect.runPromise(storage.get("/project", "session-1", "architecture-1"));
-    expect(record).toMatchObject({
-      digest: historical.digest,
-      artifact: {
-        id: "architecture-1",
-        kind: "markdown",
-        payload: { markdown: "Renderer communicates with main." },
-      },
-    });
-    expect(await Effect.runPromise(storage.listSession("/project", "session-1"))).toHaveLength(1);
-    expect(await Effect.runPromise(storage.exportMarkdown("/project", "session-1"))).toContain(
-      "Renderer communicates with main.",
-    );
-    expect(await readFile(historical.blobPath, "utf8")).toBe(historical.serialized);
-  });
-
-  it("verifies historical architecture pointers while inheriting a fork", async () => {
-    const root = await mkdtemp(join(tmpdir(), "cake-artifacts-"));
-    directories.push(root);
-    const historical = await seedHistoricalArchitecture(root);
-    const storage = await makeStorage(root);
-
-    await Effect.runPromise(
-      storage.inheritFork("/project", "session-1", "/project", "fork-1", [
-        {
-          protocol: "cake.artifact/v1",
-          artifactId: "architecture-1",
-          sessionId: "session-1",
-          revision: 1,
-          kind: "architecture",
-          digest: historical.digest,
-          fallback: { markdown: "Renderer communicates with main." },
-        },
-      ]),
-    );
-
-    const inherited = await Effect.runPromise(storage.listSession("/project", "fork-1"));
-    expect(inherited[0]).toMatchObject({
-      digest: historical.digest,
-      artifact: { id: "architecture-1", kind: "markdown" },
-    });
-    expect(await readFile(historical.blobPath, "utf8")).toBe(historical.serialized);
-
-    await expect(
-      Effect.runPromise(
-        storage.inheritFork("/project", "session-1", "/project", "invalid-fork", [
-          {
-            protocol: "cake.artifact/v1",
-            artifactId: "architecture-1",
-            sessionId: "session-1",
-            revision: 1,
-            kind: "markdown",
-            digest: historical.digest,
-            fallback: { markdown: "Renderer communicates with main." },
-          },
-        ]),
-      ),
-    ).rejects.toThrow("does not match its source pointer");
-    expect(await Effect.runPromise(storage.listSession("/project", "invalid-fork"))).toEqual([]);
-  });
-
-  it("persists content-addressed payloads, enforces revisions, hydrates, and exports fallbacks", async () => {
-    const root = await mkdtemp(join(tmpdir(), "cake-artifacts-"));
-    directories.push(root);
-    const storage = await makeStorage(root);
     const first = await Effect.runPromise(
-      storage.upsert("/project", { ...baseArtifact, revision: 1, title: "Scores" }),
+      storage.publish({
+        lineageId: id,
+        expectedLatestRevision: 0,
+        snapshot: tableSnapshot(1),
+        workingDirectory: "/project",
+      }),
     );
-    expect(first.digest).toMatch(/^[a-f0-9]{64}$/);
-    const digestKey = (value: string) => createHash("sha256").update(value).digest("hex");
-    const sessionMode = await stat(
-      join(root, "sessions", digestKey("/project"), digestKey("session-1")),
-    );
-    expect(sessionMode.mode & 0o777).toBe(0o700);
-    const blobMode = await stat(join(root, "blobs", `${first.digest}.json`));
-    expect(blobMode.mode & 0o777).toBe(0o600);
-    await expect(
-      Effect.runPromise(storage.upsert("/project", { ...baseArtifact, revision: 3 })),
-    ).rejects.toThrow("revision must advance");
     const second = await Effect.runPromise(
-      storage.upsert("/project", {
-        ...baseArtifact,
-        revision: 2,
-        payload: { ...baseArtifact.payload, rows: [{ id: "one", score: 2 }] },
+      storage.publish({
+        lineageId: id,
+        expectedLatestRevision: 1,
+        snapshot: tableSnapshot(2, { revision: 2, sessionId: "session-2" }),
+        workingDirectory: "/other-worktree",
+        restoredFromRevision: revision(1),
       }),
     );
-    expect(second.createdAt).toBe(first.createdAt);
-    const reloaded = await makeStorage(root);
+
+    expect((await Effect.runPromise(storage.read(id)))?.snapshot.title).toBe("Scores 2");
+    expect((await Effect.runPromise(storage.read(id, revision(1))))?.snapshot.title).toBe(
+      "Scores 1",
+    );
     expect(
-      (await Effect.runPromise(reloaded.listSession("/project", "session-1")))[0]?.artifact,
-    ).toMatchObject({ id: "table-1", revision: 2 });
-    expect(await Effect.runPromise(storage.exportMarkdown("/project", "session-1"))).toContain(
-      "| Score |",
+      (await Effect.runPromise(storage.listRevisions(id))).map((item) => item.metadata.revision),
+    ).toEqual([1, 2]);
+    expect(second.metadata.restoredFromRevision).toBe(1);
+    expect(first.metadata.digest).not.toBe(second.metadata.digest);
+
+    const conflict = await Effect.runPromise(
+      Effect.flip(
+        storage.publish({
+          lineageId: id,
+          expectedLatestRevision: 1,
+          snapshot: tableSnapshot(3, { revision: 2 }),
+          workingDirectory: "/project",
+        }),
+      ),
     );
-    await Effect.runPromise(storage.deleteSession("/project", "session-1"));
-    expect(await Effect.runPromise(storage.listSession("/project", "session-1"))).toEqual([]);
+    expect(conflict).toBeInstanceOf(ArtifactPublicationConflict);
+    expect(conflict).toMatchObject({ expectedLatestRevision: 1, actualLatestRevision: 2 });
   });
 
-  it("persists and hydrates immutable file metadata", async () => {
-    const root = await mkdtemp(join(tmpdir(), "cake-artifacts-"));
-    directories.push(root);
+  it("resolves session and family links as follow-latest or pinned without copying blobs", async () => {
+    const { root } = await temporaryRoot();
     const storage = await makeStorage(root);
-    const data = Buffer.from([0, 1, 2, 255]).toString("base64");
-
+    const id = lineageId("scores");
     await Effect.runPromise(
-      storage.upsert("/project", {
-        protocol: "cake.artifact/v1",
-        id: "file-1",
-        sessionId: "session-1",
-        revision: 1,
-        kind: "file",
-        title: "Binary snapshot",
-        payload: {
-          name: "snapshot.bin",
-          mimeType: "application/octet-stream",
-          data,
-          byteSize: 4,
-        },
-        fallback: { markdown: "File: `snapshot.bin` (application/octet-stream, 4 bytes)." },
-        interaction: { mode: "present" },
-      }),
-    );
-
-    const [record] = await Effect.runPromise(storage.listSession("/project", "session-1"));
-    expect(record?.artifact).toMatchObject({
-      kind: "file",
-      payload: { name: "snapshot.bin", mimeType: "application/octet-stream", data, byteSize: 4 },
-    });
-  });
-
-  it("freezes fork associations at the revisions reachable from the fork entry", async () => {
-    const root = await mkdtemp(join(tmpdir(), "cake-artifacts-"));
-    directories.push(root);
-    const storage = await makeStorage(root);
-    const first = await Effect.runPromise(
-      storage.upsert("/project", { ...baseArtifact, revision: 1, title: "At fork" }),
-    );
-
-    await Effect.runPromise(
-      storage.upsert("/project", { ...baseArtifact, revision: 2, title: "After fork entry" }),
-    );
-    await Effect.runPromise(
-      storage.upsert("/project", {
-        ...baseArtifact,
-        id: "later-artifact",
-        revision: 1,
-        title: "Created later",
+      storage.publish({
+        lineageId: id,
+        expectedLatestRevision: 0,
+        snapshot: tableSnapshot(1),
+        workingDirectory: "/project",
       }),
     );
     await Effect.runPromise(
-      storage.inheritFork("/project", "session-1", "/project", "fork-1", [
-        {
-          protocol: "cake.artifact/v1",
-          artifactId: first.artifact.id,
-          sessionId: first.artifact.sessionId,
-          revision: first.artifact.revision,
-          kind: first.artifact.kind,
-          digest: first.digest,
-          fallback: first.artifact.fallback,
-        },
-      ]),
+      storage.putLink({
+        lineageId: id,
+        target: { type: "session", sessionId: "session-1" },
+        selection: { mode: "follow-latest" },
+        createdAt: new Date(0).toISOString(),
+      }),
     );
-
-    const inherited = await Effect.runPromise(storage.listSession("/project", "fork-1"));
-    expect(inherited).toHaveLength(1);
-    expect(inherited[0]?.artifact).toMatchObject({ id: "table-1", revision: 1, title: "At fork" });
-
     await Effect.runPromise(
-      storage.upsert("/project", {
-        ...inherited[0]!.artifact,
-        sessionId: "fork-1",
-        revision: 2,
-        title: "Revised in fork",
+      storage.putLink({
+        lineageId: id,
+        target: { type: "family", familyId: "family-1" },
+        selection: { mode: "pinned", revision: revision(1) },
+        createdAt: new Date(0).toISOString(),
+      }),
+    );
+    await Effect.runPromise(
+      storage.publish({
+        lineageId: id,
+        expectedLatestRevision: 1,
+        snapshot: tableSnapshot(2, { revision: 2, sessionId: "session-2" }),
+        workingDirectory: "/project",
       }),
     );
 
-    await Effect.runPromise(storage.deleteSession("/project", "session-1"));
-    expect(
-      (await Effect.runPromise(storage.get("/project", "fork-1", "table-1")))?.artifact,
-    ).toMatchObject({ sessionId: "fork-1", revision: 2, title: "Revised in fork" });
-    await Effect.runPromise(storage.deleteSession("/project", "fork-1"));
-    expect(await Effect.runPromise(storage.listSession("/project", "fork-1"))).toEqual([]);
+    const session = await Effect.runPromise(
+      storage.resolveLinks({ type: "session", sessionId: "session-1" }),
+    );
+    const family = await Effect.runPromise(
+      storage.resolveLinks({ type: "family", familyId: "family-1" }),
+    );
+    expect(session[0]?.metadata.revision).toBe(2);
+    expect(family[0]?.metadata.revision).toBe(1);
+    expect(await readdir(join(root, "blobs"))).toHaveLength(2);
   });
 
-  it("rejects fork associations that do not match the source snapshot", async () => {
-    const root = await mkdtemp(join(tmpdir(), "cake-artifacts-"));
-    directories.push(root);
+  it("validates digests and removes only unreferenced orphan blobs", async () => {
+    const { root } = await temporaryRoot();
     const storage = await makeStorage(root);
-    const first = await Effect.runPromise(
-      storage.upsert("/project", { ...baseArtifact, revision: 1 }),
+    const id = lineageId("scores");
+    const published = await Effect.runPromise(
+      storage.publish({
+        lineageId: id,
+        expectedLatestRevision: 0,
+        snapshot: tableSnapshot(1),
+        workingDirectory: "/project",
+      }),
+    );
+    expect(await Effect.runPromise(storage.deleteBlobIfOrphaned(published.metadata.digest))).toBe(
+      false,
     );
 
-    await expect(
-      Effect.runPromise(
-        storage.inheritFork("/project", "session-1", "/project", "fork-1", [
+    const orphanContent = "orphan";
+    const orphanDigest = digestValue(hash(orphanContent));
+    await writeFile(join(root, "blobs", `${orphanDigest}.json`), orphanContent);
+    expect(await Effect.runPromise(storage.deleteBlobIfOrphaned(orphanDigest))).toBe(true);
+
+    await writeFile(join(root, "blobs", `${published.metadata.digest}.json`), "corrupt");
+    await expect(Effect.runPromise(storage.read(id))).rejects.toThrow("digest does not match");
+  });
+
+  it("migrates legacy revisions and fork links once while excluding request records", async () => {
+    const { state, root } = await temporaryRoot();
+    const blobs = join(root, "blobs");
+    const sessions = join(root, "sessions");
+    await mkdir(blobs, { recursive: true });
+
+    const first = tableSnapshot(1);
+    const second = tableSnapshot(2, { revision: 2 });
+    const request = tableSnapshot(0, { id: "blocking", kind: "request" });
+    const writeBlob = async (snapshot: CakeArtifactV1) => {
+      const serialized = `${JSON.stringify(snapshot, null, 2)}\n`;
+      const value = hash(serialized);
+      await writeFile(join(blobs, `${value}.json`), serialized);
+      return value;
+    };
+    const firstDigest = await writeBlob(first);
+    const secondDigest = await writeBlob(second);
+    const requestDigest = await writeBlob(request);
+    const writeIndex = async (targetSessionId: string, snapshot: CakeArtifactV1, value: string) => {
+      const directory = join(sessions, hash("/project"), hash(targetSessionId));
+      await mkdir(directory, { recursive: true });
+      await writeFile(
+        join(directory, `${hash(snapshot.id)}.json`),
+        `${JSON.stringify(
           {
             protocol: "cake.artifact/v1",
-            artifactId: first.artifact.id,
-            sessionId: first.artifact.sessionId,
-            revision: first.artifact.revision,
-            kind: first.artifact.kind,
-            digest: "f".repeat(64),
-            fallback: first.artifact.fallback,
+            id: snapshot.id,
+            sessionId: snapshot.sessionId,
+            workspacePath: "/project",
+            revision: snapshot.revision,
+            kind: snapshot.kind,
+            digest: value,
+            createdAt: new Date(0).toISOString(),
+            updatedAt: new Date(1).toISOString(),
           },
-        ]),
-      ),
-    ).rejects.toThrow();
-    expect(await Effect.runPromise(storage.listSession("/project", "fork-1"))).toEqual([]);
-  });
-
-  it("serializes session deletion behind an in-flight artifact mutation", async () => {
-    const root = await mkdtemp(join(tmpdir(), "cake-artifacts-"));
-    directories.push(root);
-    const fileSystem = await Effect.runPromise(
-      FileSystem.FileSystem.pipe(Effect.provide(NodeFileSystem.layer)),
+          null,
+          2,
+        )}\n`,
+      );
+    };
+    await writeIndex("session-1", second, secondDigest);
+    await writeIndex("fork-1", first, firstDigest);
+    await writeIndex("session-1", request, requestDigest);
+    await writeFile(
+      join(state, "session-families.json"),
+      `${JSON.stringify({
+        version: 5,
+        data: {
+          families: [
+            {
+              familyId: "family-1",
+              parentSessionId: "session-1",
+              children: [{ sessionId: "fork-1" }],
+            },
+          ],
+        },
+      })}\n`,
     );
-    const recordWriteStarted = await Effect.runPromise(Deferred.make<void>());
-    const releaseRecordWrite = await Effect.runPromise(Deferred.make<void>());
-    const sessionOneDirectory = join(
-      root,
-      "sessions",
-      createHash("sha256").update("/project").digest("hex"),
-      createHash("sha256").update("session-1").digest("hex"),
-    );
-    const controlledFileSystem = FileSystem.makeNoop({
-      ...fileSystem,
-      writeFileString: (target, content, options) =>
-        fileSystem
-          .writeFileString(target, content, options)
-          .pipe(
-            Effect.andThen(
-              target.startsWith(sessionOneDirectory)
-                ? Deferred.succeed(recordWriteStarted, undefined).pipe(
-                    Effect.andThen(Deferred.await(releaseRecordWrite)),
-                  )
-                : Effect.void,
-            ),
-          ),
-    });
-    const storage = await makeStorage(root, controlledFileSystem);
 
-    await Effect.runPromise(
-      Effect.gen(function* () {
-        const mutation = yield* storage
-          .upsert("/project", { ...baseArtifact, revision: 1 })
-          .pipe(Effect.forkChild);
-        yield* Deferred.await(recordWriteStarted);
-        yield* storage.upsert("/project", {
-          ...baseArtifact,
-          id: "other-table",
-          sessionId: "session-2",
-          revision: 1,
-        });
-        const deletion = yield* storage
-          .deleteSession("/project", "session-1")
-          .pipe(Effect.forkChild);
-        yield* Effect.yieldNow;
-        expect(deletion.pollUnsafe()).toBeUndefined();
-        yield* Deferred.succeed(releaseRecordWrite, undefined);
-        yield* Fiber.join(mutation);
-        yield* Fiber.join(deletion);
-      }),
-    );
-    expect(await Effect.runPromise(storage.listSession("/project", "session-1"))).toEqual([]);
-  });
-
-  it("serializes revision validation and writes for the same artifact", async () => {
-    const root = await mkdtemp(join(tmpdir(), "cake-artifacts-"));
-    directories.push(root);
     const storage = await makeStorage(root);
-    await Effect.runPromise(storage.upsert("/project", { ...baseArtifact, revision: 1 }));
+    const catalog = await Effect.runPromise(storage.catalog());
+    expect(catalog.lineages).toHaveLength(1);
+    expect(catalog.lineages[0]?.revisions.map((item) => item.revision)).toEqual([1, 2]);
+    expect(catalog.links).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          target: { type: "session", sessionId: "session-1" },
+          selection: { mode: "follow-latest" },
+        }),
+        expect.objectContaining({
+          target: { type: "session", sessionId: "fork-1" },
+          selection: { mode: "pinned", revision: 1 },
+        }),
+      ]),
+    );
+    expect(JSON.parse(await readFile(join(root, "catalog.json"), "utf8")).version).toBe(2);
 
-    const results = await Promise.allSettled([
-      Effect.runPromise(
-        storage.upsert("/project", { ...baseArtifact, revision: 2, title: "First" }),
-      ),
-      Effect.runPromise(
-        storage.upsert("/project", { ...baseArtifact, revision: 2, title: "Second" }),
-      ),
-    ]);
+    await rm(join(root, "sessions"), { recursive: true });
+    const reloaded = await makeStorage(root);
+    expect((await Effect.runPromise(reloaded.catalog())).lineages).toHaveLength(1);
+  });
 
-    expect(results.filter(({ status }) => status === "fulfilled")).toHaveLength(1);
-    expect(results.filter(({ status }) => status === "rejected")).toHaveLength(1);
-    expect(
-      (await Effect.runPromise(storage.get("/project", "session-1", "table-1")))?.artifact.revision,
-    ).toBe(2);
+  it("fails migration rather than accepting a corrupt legacy blob", async () => {
+    const { root } = await temporaryRoot();
+    await mkdir(join(root, "blobs"), { recursive: true });
+    await writeFile(join(root, "blobs", `${"a".repeat(64)}.json`), "{}\n");
+    const storage = await makeStorage(root);
+    await expect(Effect.runPromise(storage.catalog())).rejects.toThrow("invalid digest");
   });
 });

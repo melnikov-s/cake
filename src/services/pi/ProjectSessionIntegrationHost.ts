@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { resolve } from "node:path";
 import { Effect } from "effect";
 import type { SourceLocation } from "../../ipc/source-location";
@@ -165,6 +166,7 @@ export class ProjectSessionIntegrationHost {
     ProjectSessionIntegrationHostOptions["importWorkspaceFile"]
   >;
   private readonly reviewRepository: ReviewRepositoryPort;
+  private readonly requestRevisions = new Map<string, number>();
   private disposed = false;
 
   constructor(options: ProjectSessionIntegrationHostOptions) {
@@ -279,17 +281,26 @@ export class ProjectSessionIntegrationHost {
     const repository = this.artifactRepository;
     const workingDirectory = this.workspacePath;
     const emit = (event: CakeEvent) => this.emit(event);
+    const requestRevisions = this.requestRevisions;
     return Effect.gen(function* () {
-      const persistedArtifact =
-        artifact.kind === "request"
-          ? {
-              ...artifact,
-              revision:
-                ((yield* repository.get(workingDirectory, artifact.sessionId, artifact.id))
-                  ?.artifact.revision ?? 0) + 1,
-            }
-          : artifact;
-      const record = yield* repository.upsert(workingDirectory, persistedArtifact);
+      if (artifact.kind === "request") {
+        const key = `${artifact.sessionId}\u0000${artifact.id}`;
+        const revision = (requestRevisions.get(key) ?? 0) + 1;
+        requestRevisions.set(key, revision);
+        const snapshot = parseArtifactInput({ ...artifact, revision });
+        const serialized = `${JSON.stringify(snapshot, null, 2)}\n`;
+        const now = new Date().toISOString();
+        const record: ArtifactRecord = {
+          artifact: snapshot,
+          workspacePath: workingDirectory,
+          digest: createHash("sha256").update(serialized).digest("hex"),
+          createdAt: now,
+          updatedAt: now,
+        };
+        emit({ type: "artifact-updated", record });
+        return record;
+      }
+      const record = yield* repository.upsert(workingDirectory, artifact);
       if (activeSessionId !== artifact.sessionId)
         yield* repository.linkSession(record, activeSessionId);
       emit({ type: "artifact-updated", record });

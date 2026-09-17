@@ -1,4 +1,8 @@
-import { Effect, Layer } from "effect";
+import { DateTime, Effect, Layer, Schema } from "effect";
+import {
+  ArtifactLineageId,
+  artifactRevisionToRecord,
+} from "../../domain/artifacts/artifact-lineage";
 import { Electron } from "../electron/Electron";
 import { ArtifactStorage } from "../storage/ArtifactStorage";
 import { ReviewStorage } from "../storage/ReviewStorage";
@@ -117,10 +121,46 @@ export const makeProjectSessionRuntimeHostLive = (
           },
           importWorkspaceFile: (input) => runAdapter(importWorkspaceFile(input)),
           artifactRepository: {
-            upsert: artifacts.upsert,
-            get: artifacts.get,
-            listSession: artifacts.listSession,
-            linkSession: artifacts.linkSession,
+            upsert: (workingDirectory, artifact) =>
+              Effect.gen(function* () {
+                const lineageId = yield* Schema.decodeUnknownEffect(ArtifactLineageId)(artifact.id);
+                const revision = yield* artifacts.publish({
+                  lineageId,
+                  expectedLatestRevision: artifact.revision - 1,
+                  snapshot: artifact,
+                  workingDirectory,
+                });
+                yield* artifacts.putLink({
+                  lineageId,
+                  target: { type: "session", sessionId: artifact.sessionId },
+                  selection: { mode: "follow-latest" },
+                  createdAt: DateTime.formatIso(yield* DateTime.now),
+                });
+                return artifactRevisionToRecord(revision);
+              }),
+            get: (_workingDirectory, sessionId, artifactId) =>
+              Effect.gen(function* () {
+                const lineageId = yield* Schema.decodeUnknownEffect(ArtifactLineageId)(artifactId);
+                const linked = yield* artifacts.resolveLinks({ type: "session", sessionId });
+                const revision = linked.find((candidate) => candidate.lineageId === lineageId);
+                return revision ? artifactRevisionToRecord(revision) : undefined;
+              }),
+            listSession: (_workingDirectory, sessionId) =>
+              artifacts
+                .resolveLinks({ type: "session", sessionId })
+                .pipe(Effect.map((items) => items.map(artifactRevisionToRecord))),
+            linkSession: (record, sessionId) =>
+              Effect.gen(function* () {
+                const lineageId = yield* Schema.decodeUnknownEffect(ArtifactLineageId)(
+                  record.artifact.id,
+                );
+                yield* artifacts.putLink({
+                  lineageId,
+                  target: { type: "session", sessionId },
+                  selection: { mode: "follow-latest" },
+                  createdAt: DateTime.formatIso(yield* DateTime.now),
+                });
+              }),
           },
           reviewRepository: {
             reviewContextPath: reviews.reviewContextPath,

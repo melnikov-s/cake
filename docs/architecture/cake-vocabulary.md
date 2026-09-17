@@ -134,16 +134,21 @@ interactive visualization, or exportable data set may be an Artifact; ordinary
 Markdown remains conversation content even when it contains Mermaid, a small table,
 or another richly rendered block.
 
-An Artifact belongs to one Cake Session and appears in that session's accessory
-panel. Cake owns its bounded payload, immutable revisions, and repository metadata;
-Pi owns the transcript pointers that record where its revisions were produced.
+An Artifact is a global Cake-owned lineage of immutable full-snapshot revisions.
+A lineage is visible through explicit links to either a Cake Session or a Session
+Family; it is not owned by either target. A link follows the latest revision or
+pins one exact revision, without copying payload bytes or appending a Pi entry.
+Any effectively linked session may publish the next revision with compare-and-swap
+against the latest revision. Cake owns bounded payloads and lineage metadata; Pi
+owns only transcript references to stable `cake://artifact/<lineage-id>` or exact
+`cake://artifact/<lineage-id>@rN` refs.
 
 ### Blocking request
 
 A transient, inline interaction through which an active tool call waits for one
-validated user response or cancellation. A blocking request is not an Artifact,
-even when its implementation reuses artifact schemas, persistence, rendering, or
-sandbox infrastructure.
+validated user response or cancellation. A blocking request is not an Artifact
+and is never stored in the reusable artifact catalog, even when it reuses snapshot
+schemas, rendering, or sandbox infrastructure.
 
 ### Session handle
 

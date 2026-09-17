@@ -3,7 +3,7 @@ import { jsonValueSchema, type JsonValue } from "./json-contract";
 
 const ARTIFACT_PROTOCOL = "cake.artifact/v1" as const;
 export const MAX_ARTIFACT_INPUT_BYTES = 1_048_576;
-const artifactKindSchema = Schema.Literals([
+export const artifactKindSchema = Schema.Literals([
   "markdown",
   "table",
   "diagram",
@@ -15,7 +15,7 @@ const artifactKindSchema = Schema.Literals([
   "file",
   "request",
 ]);
-const idSchema = Schema.String.check(
+export const idSchema = Schema.String.check(
   Schema.isMinLength(1),
   Schema.isMaxLength(256),
   Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/),
@@ -220,7 +220,7 @@ const requestArtifactSchema = Schema.Struct({
   payload: Schema.Struct({ request: Schema.Unknown }),
 });
 
-const cakeArtifactV1Schema = Schema.Union([
+export const cakeArtifactV1Schema = Schema.Union([
   markdownArtifactSchema,
   tableArtifactSchema,
   diagramArtifactSchema,

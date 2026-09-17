@@ -54,11 +54,14 @@ export const respondUi = Effect.fn("Artifacts.respondUi")(function* (
 });
 
 export const exportArtifacts = Effect.fn("Artifacts.export")(function* (request: ExportArtifacts) {
-  const workingDirectory = yield* authorizedWorkingDirectory(request.sessionId);
+  yield* authorizedWorkingDirectory(request.sessionId);
   const storage = yield* ArtifactStorage;
-  const markdown = yield* storage
-    .exportMarkdown(workingDirectory, request.sessionId)
+  const revisions = yield* storage
+    .resolveLinks({ type: "session", sessionId: request.sessionId })
     .pipe(asError("export"));
+  const markdown = revisions
+    .map(({ snapshot }) => `## ${snapshot.title ?? snapshot.id}\n\n${snapshot.fallback.markdown}`)
+    .join("\n\n---\n\n");
   return { markdown };
 });
 
@@ -67,5 +70,5 @@ export const deleteSession = Effect.fn("Artifacts.deleteSession")(function* (
   sessionId: string,
 ) {
   const storage = yield* ArtifactStorage;
-  yield* storage.deleteSession(workingDirectory, sessionId).pipe(asError("deleteSession"));
+  yield* storage.removeTargetLinks({ type: "session", sessionId }).pipe(asError("deleteSession"));
 });
