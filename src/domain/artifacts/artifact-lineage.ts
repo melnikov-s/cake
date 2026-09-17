@@ -30,7 +30,7 @@ export const ArtifactLinkTarget = Schema.Union([
 ]);
 export type ArtifactLinkTarget = typeof ArtifactLinkTarget.Type;
 
-const ArtifactLinkSelection = Schema.Union([
+export const ArtifactLinkSelection = Schema.Union([
   Schema.Struct({ mode: Schema.Literal("follow-latest") }),
   Schema.Struct({ mode: Schema.Literal("pinned"), revision: ArtifactRevisionNumber }),
 ]);
@@ -80,6 +80,72 @@ export const ArtifactStableRef = Schema.String.check(
   Schema.isPattern(/^cake:\/\/artifact\/[A-Za-z0-9][A-Za-z0-9._:-]*(?:@r[1-9][0-9]*)?$/),
 );
 export type ArtifactStableRef = typeof ArtifactStableRef.Type;
+
+export const ArtifactLineageSummary = Schema.Struct({
+  id: ArtifactLineageId,
+  createdAt: Schema.String,
+  latestRevision: ArtifactRevisionNumber,
+  latest: ArtifactRevisionMetadata,
+  title: Schema.optionalKey(Schema.String),
+  stableRef: ArtifactStableRef,
+});
+export interface ArtifactLineageSummary extends Schema.Schema.Type<typeof ArtifactLineageSummary> {}
+
+export const ArtifactLineagePage = Schema.Struct({
+  items: Schema.Array(ArtifactLineageSummary),
+  offset: Schema.Int,
+  limit: Schema.Int,
+  total: Schema.Int,
+  hasMore: Schema.Boolean,
+});
+export interface ArtifactLineagePage extends Schema.Schema.Type<typeof ArtifactLineagePage> {}
+
+export const ArtifactRevisionPage = Schema.Struct({
+  items: Schema.Array(ArtifactRevisionMetadata),
+  offset: Schema.Int,
+  limit: Schema.Int,
+  total: Schema.Int,
+  hasMore: Schema.Boolean,
+});
+export interface ArtifactRevisionPage extends Schema.Schema.Type<typeof ArtifactRevisionPage> {}
+
+export const ArtifactLineageDetail = Schema.Struct({
+  lineage: ArtifactLineageSummary,
+  links: Schema.Array(ArtifactLink),
+  stableRef: ArtifactStableRef,
+});
+export interface ArtifactLineageDetail extends Schema.Schema.Type<typeof ArtifactLineageDetail> {}
+
+export const EffectiveArtifactProjection = Schema.Struct({
+  revision: ArtifactRevision,
+  link: ArtifactLink,
+  latestRevision: ArtifactRevisionNumber,
+  stableRef: ArtifactStableRef,
+  exactRef: ArtifactStableRef,
+});
+export interface EffectiveArtifactProjection extends Schema.Schema.Type<
+  typeof EffectiveArtifactProjection
+> {}
+
+export const ArtifactReferenceMetadata = Schema.Struct({
+  lineage: ArtifactLineageSummary,
+  revision: ArtifactRevisionMetadata,
+  links: Schema.Array(ArtifactLink),
+  stableRef: ArtifactStableRef,
+  exactRef: ArtifactStableRef,
+});
+export interface ArtifactReferenceMetadata extends Schema.Schema.Type<
+  typeof ArtifactReferenceMetadata
+> {}
+
+export const ArtifactTextComparison = Schema.Struct({
+  lineageId: ArtifactLineageId,
+  fromRevision: ArtifactRevisionNumber,
+  toRevision: ArtifactRevisionNumber,
+  fromText: Schema.String,
+  toText: Schema.String,
+});
+export interface ArtifactTextComparison extends Schema.Schema.Type<typeof ArtifactTextComparison> {}
 
 export interface ParsedArtifactRef {
   readonly lineageId: ArtifactLineageId;

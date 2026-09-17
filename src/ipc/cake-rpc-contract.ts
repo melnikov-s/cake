@@ -68,6 +68,10 @@ const cakeEventSchemas = {
     type: Schema.Literal("artifact-updated"),
     record: artifactRecordSchema,
   }),
+  "artifact-catalog-invalidated": Schema.Struct({
+    type: Schema.Literal("artifact-catalog-invalidated"),
+    lineageId: stringMax(256),
+  }),
   "artifact-requested": Schema.Struct({
     type: Schema.Literal("artifact-requested"),
     requestId: uuid,
@@ -196,6 +200,7 @@ export const applicationEventSchema = Schema.Union([
 export const artifactEventSchema = Schema.Union([
   cakeEventSchemas["renderer-events-ready"],
   cakeEventSchemas["artifact-updated"],
+  cakeEventSchemas["artifact-catalog-invalidated"],
   cakeEventSchemas["artifact-requested"],
   cakeEventSchemas["ui-request"],
 ]);
@@ -231,6 +236,7 @@ export const cakeEventSchema = Schema.Union([
   cakeEventSchemas["fullscreen-surface-close-requested"],
   cakeEventSchemas["changelog-snapshot"],
   cakeEventSchemas["artifact-updated"],
+  cakeEventSchemas["artifact-catalog-invalidated"],
   cakeEventSchemas["artifact-requested"],
   cakeEventSchemas["ui-request"],
   cakeEventSchemas["complete"],

@@ -43,13 +43,27 @@ describe("observeArtifactEvents", () => {
     const client = {
       events: {
         artifacts: () =>
-          Stream.concat(Stream.make({ type: "artifact-updated" as const, record }), Stream.never),
+          Stream.concat(
+            Stream.make(
+              { type: "artifact-updated" as const, record },
+              { type: "artifact-catalog-invalidated" as const, lineageId: "shared" },
+            ),
+            Stream.never,
+          ),
       },
     } as unknown as CakeIpcClientService;
 
-    const cancel = observeArtifactEvents(runtimeFor(client), projection, {} as RootStore);
+    const refresh = vi.fn();
+    const root = {
+      sessionRegistry: { sessions: [{ sessionArtifactsStore: { receive: refresh } }] },
+      artifactLibraryStore: { load: vi.fn(async () => undefined) },
+      projectWorkbenchStore: { setError: vi.fn() },
+    } as unknown as RootStore;
+    const cancel = observeArtifactEvents(runtimeFor(client), projection, root);
 
     await vi.waitFor(() => expect(session.artifacts[0]?.value).toEqual(record));
+    expect(refresh).toHaveBeenNthCalledWith(1, "artifact");
+    expect(refresh).toHaveBeenNthCalledWith(2, "shared");
     cancel();
     projection[Symbol.dispose]();
   });

@@ -22,7 +22,7 @@ export const ArtifactWorkspaceLayout = observer(function ArtifactWorkspaceLayout
   onOpenSourceLocation?(location: SourceLocation): void;
   children: ReactNode;
 }) {
-  const workspace = session.artifactWorkspaceStore;
+  const workspace = session.sessionArtifactsStore;
   const selected = workspace.selectedRecord;
   const title = selected?.artifact.title ?? selected?.artifact.id ?? "Artifacts";
   return (

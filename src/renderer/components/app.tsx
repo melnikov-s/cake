@@ -281,7 +281,7 @@ export const App = observer(function App() {
         records: paneSession.model.artifacts.map((artifact) => artifact.value),
         interaction: paneSession.artifactInteractionStore,
         openArtifact: (artifactId: string) =>
-          paneSession.artifactWorkspaceStore.openArtifact(artifactId),
+          paneSession.sessionArtifactsStore.openArtifact(artifactId),
       },
     };
   };
@@ -416,7 +416,7 @@ export const App = observer(function App() {
     </>
   ) : undefined;
   const artifactControl = (paneSession: NonNullable<typeof session>, onOpen?: () => void) => {
-    const workspace = paneSession.artifactWorkspaceStore;
+    const workspace = paneSession.sessionArtifactsStore;
     if (workspace.records.length === 0) return null;
     return (
       <Button

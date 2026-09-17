@@ -1,5 +1,6 @@
 import { Effect, Stream } from "effect";
 import * as artifacts from "../../domain/artifacts/artifacts";
+import { Electron } from "../../services/electron/Electron";
 import { NativeEvents } from "../../services/electron/NativeEvents";
 import { ArtifactRpc } from "../protocol/ArtifactRpc";
 import { RendererConnection } from "../protocol/RendererConnectionMiddleware";
@@ -15,6 +16,49 @@ export const artifactHandlers = ArtifactRpc.of({
     ),
   "artifacts.export-artifacts": (request) =>
     Effect.flatMap(RendererConnection, () => artifacts.exportArtifacts(request)),
+  "artifacts.catalog": (request) => artifacts.listCatalog(request),
+  "artifacts.effective": ({ sessionId }) => artifacts.listEffective(sessionId),
+  "artifacts.detail": ({ lineageId }) => artifacts.detail(lineageId),
+  "artifacts.history": (request) => artifacts.history(request),
+  "artifacts.readExact": (request) => artifacts.readExact(request),
+  "artifacts.referenceMetadata": ({ reference }) => artifacts.referenceMetadata(reference),
+  "artifacts.compareText": (request) => artifacts.compareText(request),
+  "artifacts.restore": (request) =>
+    Effect.gen(function* () {
+      const result = yield* artifacts.restore(request);
+      (yield* Electron).broadcast({
+        type: "artifact-catalog-invalidated",
+        lineageId: request.lineageId,
+      });
+      return result;
+    }),
+  "artifacts.link": (request) =>
+    Effect.gen(function* () {
+      const result = yield* artifacts.link(request);
+      (yield* Electron).broadcast({
+        type: "artifact-catalog-invalidated",
+        lineageId: request.lineageId,
+      });
+      return result;
+    }),
+  "artifacts.unlink": (request) =>
+    Effect.gen(function* () {
+      yield* artifacts.unlink(request);
+      (yield* Electron).broadcast({
+        type: "artifact-catalog-invalidated",
+        lineageId: request.lineageId,
+      });
+    }),
+  "artifacts.setSelection": (request) =>
+    Effect.gen(function* () {
+      const result = yield* artifacts.setSelection(request);
+      (yield* Electron).broadcast({
+        type: "artifact-catalog-invalidated",
+        lineageId: request.lineageId,
+      });
+      return result;
+    }),
+  "artifacts.materialize": (request) => artifacts.materialize(request),
   "artifacts.observeEvents": () =>
     Stream.unwrap(
       Effect.gen(function* () {

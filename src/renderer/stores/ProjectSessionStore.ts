@@ -13,7 +13,8 @@ import { parseScheduledMessage } from "../../utils/scheduled-message-time";
 import { ConversationSessionStore } from "./ConversationSessionStore";
 import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import { ArtifactInteractionStore } from "./ArtifactInteractionStore";
-import { ArtifactWorkspaceStore } from "./ArtifactWorkspaceStore";
+import { SessionArtifactsStore } from "./SessionArtifactsStore";
+import type { ArtifactCatalog } from "../models/ArtifactCatalog";
 import { MessageCommentsStore } from "./MessageCommentsStore";
 import { SubagentActivityStore } from "./SubagentActivityStore";
 import { WorktreeStore, type WorktreeStoreProps } from "./WorktreeStore";
@@ -30,6 +31,7 @@ export interface SessionTarget {
 
 export interface ProjectSessionStoreProps extends SessionTarget {
   model: Session;
+  artifactModel: ArtifactCatalog;
   pendingSessions: ProjectPendingSessionsStore;
   operations: SessionOperationCoordinatorStore;
   reviews(): ReviewsStore;
@@ -395,10 +397,12 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   }
 
   @child
-  get artifactWorkspaceStore(): ArtifactWorkspaceStore {
-    return createStore(ArtifactWorkspaceStore, {
-      model: this.model,
+  get sessionArtifactsStore(): SessionArtifactsStore {
+    return createStore(SessionArtifactsStore, {
+      sessionId: this.sessionId,
+      model: this.props.artifactModel,
       isActive: this.props.isActive,
+      enabled: () => !this.props.pendingSessions.isTemporary(this.sessionId),
     });
   }
 

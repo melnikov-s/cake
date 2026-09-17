@@ -17,6 +17,7 @@ import {
   ArtifactStorage,
 } from "../../../src/services/storage/ArtifactStorage";
 import { makeArtifactStorageLive } from "../../../src/services/storage/ArtifactStorageLive";
+import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
 import {
   SessionFamilyStorage,
   SessionFamilyStorageError,
@@ -248,6 +249,18 @@ describe("artifact lineage workflows", () => {
           formatArtifactRef({ lineageId: id, revision: revision(1) }),
         );
         expect(metadata.revision.revision).toBe(1);
+        expect(metadata.stableRef).toBe("cake://artifact/restore-plan");
+        expect(metadata.exactRef).toBe("cake://artifact/restore-plan@r1");
+        const staleRestore = yield* workflows
+          .restore({
+            sessionId: "author",
+            lineageId: id,
+            sourceRevision: revision(1),
+            expectedLatestRevision: 2,
+            workingDirectory: "/project",
+          })
+          .pipe(Effect.flip);
+        expect(staleRestore).toBeInstanceOf(ArtifactPublicationConflict);
       }).pipe(Effect.provide(layer)),
     );
   });
@@ -379,6 +392,78 @@ describe("artifact lineage workflows", () => {
           "family-plan",
           "standalone-delete",
         ]);
+      }).pipe(Effect.provide(layer)),
+    );
+  });
+
+  it("authorizes renderer session reads and translates effective refs", async () => {
+    const base = await makeLayer(() => []);
+    const allowed = Layer.mock(ProjectAccess, {
+      resolveSessionWorkingDirectory: () => Effect.succeed("/project"),
+      isAllowed: () => Effect.succeed(true),
+    });
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const id = lineageId("renderer-read");
+        yield* workflows.create({
+          sessionId: "author",
+          lineageId: id,
+          snapshot: snapshot(id, "author", 1, "one"),
+          workingDirectory: "/project",
+        });
+        const [item] = yield* artifacts.listEffective("author");
+        expect(item?.stableRef).toBe("cake://artifact/renderer-read");
+        expect(item?.exactRef).toBe("cake://artifact/renderer-read@r1");
+        expect(item?.latestRevision).toBe(1);
+      }).pipe(Effect.provide(Layer.merge(base, allowed))),
+    );
+
+    const denied = Layer.mock(ProjectAccess, {
+      resolveSessionWorkingDirectory: () => Effect.succeed("/project"),
+      isAllowed: () => Effect.succeed(false),
+    });
+    const failure = await Effect.runPromise(
+      artifacts
+        .listEffective("author")
+        .pipe(Effect.flip, Effect.provide(Layer.merge(base, denied))),
+    );
+    expect(failure).toMatchObject({ _tag: "ArtifactError", operation: "authorize" });
+  });
+
+  it("bounds and searches the global catalog and compares exact revision text", async () => {
+    const layer = await makeLayer(() => []);
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        for (const [index, id] of ["alpha", "beta", "gamma"].entries())
+          yield* workflows.create({
+            sessionId: "author",
+            lineageId: lineageId(id),
+            snapshot: snapshot(id, "author", 1, `${id}-${index}`),
+            workingDirectory: "/project",
+          });
+        yield* workflows.publish({
+          sessionId: "author",
+          lineageId: lineageId("alpha"),
+          expectedLatestRevision: 1,
+          snapshot: snapshot("alpha", "author", 2, "alpha-new"),
+          workingDirectory: "/project",
+        });
+
+        const page = yield* workflows.searchGlobalLineages({ search: "alpha", limit: 1 });
+        expect(page.items.map((item) => item.id)).toEqual(["alpha"]);
+        expect(page.total).toBe(1);
+        expect(page.hasMore).toBe(false);
+        const historyPage = yield* workflows.paginatedHistory(lineageId("alpha"), 0, 1);
+        expect(historyPage.items.map((item) => item.revision)).toEqual([2]);
+        expect(historyPage.total).toBe(2);
+        expect(historyPage.hasMore).toBe(true);
+        const comparison = yield* workflows.compareText(
+          lineageId("alpha"),
+          revision(1),
+          revision(2),
+        );
+        expect(comparison.fromText).toBe("alpha-0");
+        expect(comparison.toText).toBe("alpha-new");
       }).pipe(Effect.provide(layer)),
     );
   });

@@ -1,4 +1,19 @@
 import type { Effect } from "effect";
+import type {
+  ArtifactLineageDetail,
+  ArtifactLineageId,
+  ArtifactLineagePage,
+  ArtifactLink,
+  ArtifactLinkTarget,
+  ArtifactRevision,
+  ArtifactRevisionNumber,
+  ArtifactRevisionPage,
+  ArtifactReferenceMetadata,
+  ArtifactStableRef,
+  ArtifactTextComparison,
+  EffectiveArtifactProjection,
+} from "../../domain/artifacts/artifact-lineage";
+import type { ArtifactProjectionMetadata } from "../../services/artifacts/ArtifactProjection";
 import type { ProjectSettings } from "../../domain/application/application-data";
 import type {
   ResolvedManagedWorktreeCleanupPlan,
@@ -310,6 +325,74 @@ interface ArtifactCommands {
     options?: ClientCommandOptions,
   ): Promise<void>;
   export(sessionId: string, options?: ClientCommandOptions): Promise<string>;
+  catalog(
+    input: { search?: string; offset?: number; limit?: number },
+    options?: ClientCommandOptions,
+  ): Promise<ArtifactLineagePage>;
+  effective(
+    sessionId: string,
+    options?: ClientCommandOptions,
+  ): Promise<ReadonlyArray<EffectiveArtifactProjection>>;
+  detail(
+    lineageId: ArtifactLineageId,
+    options?: ClientCommandOptions,
+  ): Promise<ArtifactLineageDetail>;
+  history(
+    input: { lineageId: ArtifactLineageId; offset?: number; limit?: number },
+    options?: ClientCommandOptions,
+  ): Promise<ArtifactRevisionPage>;
+  readExact(
+    lineageId: ArtifactLineageId,
+    revision: ArtifactRevisionNumber,
+    options?: ClientCommandOptions,
+  ): Promise<ArtifactRevision>;
+  referenceMetadata(
+    reference: ArtifactStableRef,
+    options?: ClientCommandOptions,
+  ): Promise<ArtifactReferenceMetadata>;
+  compareText(
+    lineageId: ArtifactLineageId,
+    fromRevision: ArtifactRevisionNumber,
+    toRevision: ArtifactRevisionNumber,
+    options?: ClientCommandOptions,
+  ): Promise<ArtifactTextComparison>;
+  restore(
+    input: {
+      sessionId: string;
+      lineageId: ArtifactLineageId;
+      sourceRevision: ArtifactRevisionNumber;
+      expectedLatestRevision: number;
+    },
+    options?: ClientCommandOptions,
+  ): Promise<ArtifactRevision>;
+  link(
+    input: {
+      sessionId: string;
+      lineageId: ArtifactLineageId;
+      target: ArtifactLinkTarget;
+      selection: ArtifactLink["selection"];
+    },
+    options?: ClientCommandOptions,
+  ): Promise<ArtifactLink>;
+  unlink(
+    input: { sessionId: string; lineageId: ArtifactLineageId; target: ArtifactLinkTarget },
+    options?: ClientCommandOptions,
+  ): Promise<void>;
+  setSelection(
+    input: {
+      sessionId: string;
+      lineageId: ArtifactLineageId;
+      target: ArtifactLinkTarget;
+      selection: ArtifactLink["selection"];
+    },
+    options?: ClientCommandOptions,
+  ): Promise<ArtifactLink>;
+  materialize(
+    sessionId: string,
+    lineageId: ArtifactLineageId,
+    revision: ArtifactRevisionNumber,
+    options?: ClientCommandOptions,
+  ): Promise<ArtifactProjectionMetadata>;
 }
 
 interface InlineWidgetCommands {

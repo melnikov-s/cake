@@ -2,6 +2,7 @@ import { Store, batch, child, createStore, observable, snapshot, updateStore } f
 import type { ChatConfiguration, ModelPreset } from "../../ipc/session-contract";
 import type { CakeControlTool } from "../../domain/cake-chats/cake-chat-data";
 import type { Session } from "../models/Session";
+import type { ArtifactCatalog } from "../models/ArtifactCatalog";
 import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import { ProjectPendingSessionsStore } from "./ProjectPendingSessionsStore";
 import { ProjectSessionStore, type SessionTarget } from "./ProjectSessionStore";
@@ -16,6 +17,7 @@ import type { ExistingWorktreeCandidate, WorktreeDraftChoice } from "./WorktreeC
 export interface SessionRegistryStoreProps {
   catalog?: SessionCatalogStore;
   sessionModel(sessionId: string, workingDirectory: string): Session;
+  artifactModel: ArtifactCatalog;
   operations: SessionOperationCoordinatorStore;
   reviews(): ReviewsStore;
   canSubmit(sessionId: string): boolean;
@@ -83,6 +85,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
         key: target.sessionId,
         ...target,
         model: this.props.sessionModel(target.sessionId, target.workspacePath),
+        artifactModel: this.props.artifactModel,
         pendingSessions: this.pendingSessions,
         operations: this.props.operations,
         reviews: this.props.reviews,

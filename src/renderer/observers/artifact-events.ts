@@ -14,14 +14,19 @@ export const observeArtifactEvents = (
     (client) => client.events.artifacts(),
     (event) => {
       try {
-        if (event.type === "artifact-updated") {
-          const sessionId = event.record.artifact.sessionId;
-          const sessionStore = root.sessionRegistry?.findSession(sessionId);
-          // Notify presentation before applying the projection so a lazily-created
-          // Store can compare the event with the revisions already hydrated.
-          sessionStore?.artifactWorkspaceStore.receive(event.record);
-          const session = projection.findProjectSession(sessionId);
-          if (session) applyArtifactUpdate(session, event.record);
+        if (event.type === "artifact-updated" || event.type === "artifact-catalog-invalidated") {
+          const lineageId =
+            event.type === "artifact-updated" ? event.record.artifact.id : event.lineageId;
+          // Native artifact events are ordered invalidations. Every loaded panel refetches its
+          // effective projection because a family link may make a change visible there;
+          // reconnect/remount starts with that same authoritative current query.
+          for (const sessionStore of root.sessionRegistry.sessions)
+            sessionStore.sessionArtifactsStore.receive(lineageId);
+          void root.artifactLibraryStore.load();
+          if (event.type === "artifact-updated") {
+            const session = projection.findProjectSession(event.record.artifact.sessionId);
+            if (session) applyArtifactUpdate(session, event.record);
+          }
           return;
         }
         const storeEvent = toStoreEvent(event);

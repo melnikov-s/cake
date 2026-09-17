@@ -36,6 +36,7 @@ import { resolveDraftUpdate } from "../../utils/resolve-draft-update";
 import type { RootProjection } from "../models/RootProjection";
 import { formatHotkey } from "../lib/hotkeys";
 import { UiHintModeStore } from "./UiHintModeStore";
+import { ArtifactLibraryStore } from "./ArtifactLibraryStore";
 
 export class RootStore extends Store<{
   client: Client;
@@ -86,6 +87,17 @@ export class RootStore extends Store<{
     }
     return undefined;
   }
+  @child
+  get artifactLibraryStore(): ArtifactLibraryStore {
+    return createStore(ArtifactLibraryStore, {
+      model: this.props.projection.artifacts,
+      artifactsChanged: (lineageId) => {
+        for (const session of this.sessionRegistry.sessions)
+          session.sessionArtifactsStore.receive(lineageId);
+      },
+    });
+  }
+
   @child
   get inlineWidgetStore(): InlineWidgetStore {
     return createStore(InlineWidgetStore);
@@ -758,6 +770,7 @@ export class RootStore extends Store<{
       reviews: () => this.reviewsStore,
       sessionModel: (sessionId, workingDirectory) =>
         this.props.projection.projectSession(sessionId, workingDirectory),
+      artifactModel: this.props.projection.artifacts,
       canSubmit: (sessionId) => this.projectWorkbenchStore.canSubmitSession(sessionId),
       isActive: (sessionId) =>
         this.appShellStore.selection.kind === "project-session" &&

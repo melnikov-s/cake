@@ -38,6 +38,7 @@ describe("ProjectSessionStore", () => {
         workspacePath: "/project",
         sessionId: "resolved-session",
         model,
+        artifactModel: models.artifacts,
         pendingSessions,
         operations,
         reviews: () => {
@@ -133,6 +134,7 @@ describe("ProjectSessionStore", () => {
         workspacePath: "/project",
         sessionId: "session-1",
         model,
+        artifactModel: models.artifacts,
         pendingSessions,
         operations,
         reviews: () => reviews,
@@ -242,6 +244,7 @@ describe("ProjectSessionStore", () => {
         workspacePath: "/project",
         sessionId: "session-1",
         model,
+        artifactModel: models.artifacts,
         pendingSessions,
         operations,
         reviews: () => reviews,

@@ -9,9 +9,9 @@ import {
   type ArtifactLink,
   type ArtifactLinkTarget,
   type ArtifactRevision,
-  type ArtifactRevisionMetadata,
   type ArtifactRevisionNumber,
   type ArtifactStableRef,
+  formatArtifactRef,
   parseArtifactRef,
 } from "./artifact-lineage";
 
@@ -20,10 +20,13 @@ export class ArtifactNotFound extends Schema.TaggedError<ArtifactNotFound>()("Ar
   revision: Schema.optionalKey(Schema.Int),
 }) {}
 
-class ArtifactNotLinked extends Schema.TaggedError<ArtifactNotLinked>()("ArtifactNotLinked", {
-  sessionId: Schema.String,
-  lineageId: Schema.String,
-}) {}
+export class ArtifactNotLinked extends Schema.TaggedError<ArtifactNotLinked>()(
+  "ArtifactNotLinked",
+  {
+    sessionId: Schema.String,
+    lineageId: Schema.String,
+  },
+) {}
 
 export interface CreateArtifactInput {
   readonly sessionId: string;
@@ -40,12 +43,6 @@ export interface PublishArtifactInput extends CreateArtifactInput {
 export interface EffectiveArtifact {
   readonly revision: ArtifactRevision;
   readonly link: ArtifactLink;
-}
-
-interface ArtifactReferenceMetadata {
-  readonly lineage: ArtifactLineage;
-  readonly revision: ArtifactRevisionMetadata;
-  readonly links: ReadonlyArray<ArtifactLink>;
 }
 
 const sameTarget = (left: ArtifactLinkTarget, right: ArtifactLinkTarget) =>
@@ -331,8 +328,113 @@ export const setSelection = Effect.fn("Artifacts.setSelection")(function* (
   yield* storage.putLink({ ...existing, selection });
 });
 
+export const searchGlobalLineages = Effect.fn("Artifacts.searchGlobalLineages")(function* (input?: {
+  readonly search?: string;
+  readonly offset?: number;
+  readonly limit?: number;
+}) {
+  const catalog = yield* (yield* ArtifactStorage).catalog();
+  const search = input?.search?.trim().toLocaleLowerCase();
+  const offset = Math.max(0, input?.offset ?? 0);
+  const limit = Math.min(100, Math.max(1, input?.limit ?? 50));
+  const storage = yield* ArtifactStorage;
+  const summaries = (yield* Effect.forEach(
+    catalog.lineages,
+    Effect.fn("Artifacts.summarizeLineage")(function* (lineage) {
+      const latest = lineage.revisions.find(
+        (revision) => revision.revision === lineage.latestRevision,
+      )!;
+      const value = yield* storage.read(lineage.id, lineage.latestRevision);
+      return {
+        id: lineage.id,
+        createdAt: lineage.createdAt,
+        latestRevision: lineage.latestRevision,
+        latest,
+        ...(value?.snapshot.title === undefined ? null : { title: value.snapshot.title }),
+        stableRef: formatArtifactRef({ lineageId: lineage.id }),
+      };
+    }),
+  ))
+    .filter((summary) => {
+      if (!search) return true;
+      return (
+        summary.id.toLocaleLowerCase().includes(search) ||
+        summary.title?.toLocaleLowerCase().includes(search) ||
+        summary.latest.kind.toLocaleLowerCase().includes(search)
+      );
+    })
+    .toSorted((left, right) => right.latest.publishedAt.localeCompare(left.latest.publishedAt));
+  return {
+    items: summaries.slice(offset, offset + limit),
+    offset,
+    limit,
+    total: summaries.length,
+    hasMore: offset + limit < summaries.length,
+  };
+});
+
 export const listGlobalLineages = Effect.fn("Artifacts.listGlobalLineages")(function* () {
   return (yield* (yield* ArtifactStorage).catalog()).lineages;
+});
+
+export const lineageDetail = Effect.fn("Artifacts.lineageDetail")(function* (
+  lineageId: ArtifactLineageId,
+) {
+  const catalog = yield* (yield* ArtifactStorage).catalog();
+  const lineage = yield* requireLineage(catalog, lineageId);
+  const latest = lineage.revisions.find(
+    (revision) => revision.revision === lineage.latestRevision,
+  )!;
+  const value = yield* (yield* ArtifactStorage).read(lineage.id, lineage.latestRevision);
+  return {
+    lineage: {
+      id: lineage.id,
+      createdAt: lineage.createdAt,
+      latestRevision: lineage.latestRevision,
+      latest,
+      ...(value?.snapshot.title === undefined ? null : { title: value.snapshot.title }),
+      stableRef: formatArtifactRef({ lineageId }),
+    },
+    links: catalog.links.filter((link) => link.lineageId === lineageId),
+    stableRef: formatArtifactRef({ lineageId }),
+  };
+});
+
+export const paginatedHistory = Effect.fn("Artifacts.paginatedHistory")(function* (
+  lineageId: ArtifactLineageId,
+  offset = 0,
+  requestedLimit = 50,
+) {
+  const revisions = [...(yield* history(lineageId))].toSorted(
+    (left, right) => right.metadata.revision - left.metadata.revision,
+  );
+  const boundedOffset = Math.max(0, offset);
+  const limit = Math.min(100, Math.max(1, requestedLimit));
+  return {
+    items: revisions.slice(boundedOffset, boundedOffset + limit).map(({ metadata }) => metadata),
+    offset: boundedOffset,
+    limit,
+    total: revisions.length,
+    hasMore: boundedOffset + limit < revisions.length,
+  };
+});
+
+export const compareText = Effect.fn("Artifacts.compareText")(function* (
+  lineageId: ArtifactLineageId,
+  fromRevision: ArtifactRevisionNumber,
+  toRevision: ArtifactRevisionNumber,
+) {
+  const [from, to] = yield* Effect.all([
+    readExactRevision(lineageId, fromRevision),
+    readExactRevision(lineageId, toRevision),
+  ]);
+  return {
+    lineageId,
+    fromRevision,
+    toRevision,
+    fromText: from.snapshot.fallback.markdown,
+    toText: to.snapshot.fallback.markdown,
+  };
 });
 
 export const listLineageLinks = Effect.fn("Artifacts.listLineageLinks")(function* (
@@ -356,11 +458,25 @@ export const resolveReferenceMetadata = Effect.fn("Artifacts.resolveReferenceMet
       lineageId: parsed.lineageId,
       revision: revisionNumber,
     });
+  const latest = lineage.revisions.find(
+    (candidate) => candidate.revision === lineage.latestRevision,
+  )!;
+  const latestValue = yield* (yield* ArtifactStorage).read(lineage.id, lineage.latestRevision);
+  const stableRef = formatArtifactRef({ lineageId: parsed.lineageId });
   return {
-    lineage,
+    lineage: {
+      id: lineage.id,
+      createdAt: lineage.createdAt,
+      latestRevision: lineage.latestRevision,
+      latest,
+      ...(latestValue?.snapshot.title === undefined ? null : { title: latestValue.snapshot.title }),
+      stableRef,
+    },
     revision,
     links: catalog.links.filter((link) => link.lineageId === parsed.lineageId),
-  } satisfies ArtifactReferenceMetadata;
+    stableRef,
+    exactRef: formatArtifactRef({ lineageId: parsed.lineageId, revision: revisionNumber }),
+  };
 });
 
 export const removeSessionLinks = Effect.fn("Artifacts.removeSessionLinks")(function* (

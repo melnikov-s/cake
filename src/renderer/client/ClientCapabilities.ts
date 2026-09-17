@@ -516,6 +516,50 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
           (client) => client.artifacts["export-artifacts"]({ sessionId }),
           options,
         ).then((response) => response.markdown),
+      catalog: (input, options) =>
+        execute("artifacts.catalog", (client) => client.artifacts.catalog(input), options),
+      effective: (sessionId, options) =>
+        execute("artifacts.effective", (client) => client.artifacts.effective(sessionId), options),
+      detail: (lineageId, options) =>
+        execute("artifacts.detail", (client) => client.artifacts.detail(lineageId), options),
+      history: (input, options) =>
+        execute("artifacts.history", (client) => client.artifacts.history(input), options),
+      readExact: (lineageId, revision, options) =>
+        execute(
+          "artifacts.readExact",
+          (client) => client.artifacts.readExact(lineageId, revision),
+          options,
+        ),
+      referenceMetadata: (reference, options) =>
+        execute(
+          "artifacts.referenceMetadata",
+          (client) => client.artifacts.referenceMetadata(reference),
+          options,
+        ),
+      compareText: (lineageId, fromRevision, toRevision, options) =>
+        execute(
+          "artifacts.compareText",
+          (client) => client.artifacts.compareText(lineageId, fromRevision, toRevision),
+          options,
+        ),
+      restore: (input, options) =>
+        execute("artifacts.restore", (client) => client.artifacts.restore(input), options),
+      link: (input, options) =>
+        execute("artifacts.link", (client) => client.artifacts.link(input), options),
+      unlink: (input, options) =>
+        execute("artifacts.unlink", (client) => client.artifacts.unlink(input), options),
+      setSelection: (input, options) =>
+        execute(
+          "artifacts.setSelection",
+          (client) => client.artifacts.setSelection(input),
+          options,
+        ),
+      materialize: (sessionId, lineageId, revision, options) =>
+        execute(
+          "artifacts.materialize",
+          (client) => client.artifacts.materialize(sessionId, lineageId, revision),
+          options,
+        ),
     },
     inlineWidgets: {
       compile: (language, source, capability, options) =>

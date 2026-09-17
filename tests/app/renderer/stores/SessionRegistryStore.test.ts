@@ -29,6 +29,7 @@ function registryFixture(
       catalog,
       sessionModel: (sessionId, workingDirectory) =>
         models.projectSession(sessionId, workingDirectory),
+      artifactModel: models.artifacts,
       operations,
       reviews: () => {
         throw new Error("ReviewsStore is not used by this test");

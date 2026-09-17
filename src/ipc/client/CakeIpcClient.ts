@@ -3,6 +3,30 @@ import { RpcClient } from "effect/unstable/rpc";
 import type { RpcClientError } from "effect/unstable/rpc";
 import { CakeRpc, type FoundationFailure } from "../protocol/CakeRpc";
 import type { ArtifactError } from "../../domain/artifacts/artifact-data";
+import type { ArtifactNotFound, ArtifactNotLinked } from "../../domain/artifacts/artifactWorkflows";
+import type {
+  ArtifactLineageDetail,
+  ArtifactLineageId,
+  ArtifactLineagePage,
+  ArtifactLink,
+  ArtifactLinkTarget,
+  ArtifactRevision,
+  ArtifactRevisionNumber,
+  ArtifactRevisionPage,
+  ArtifactReferenceMetadata,
+  ArtifactStableRef,
+  ArtifactTextComparison,
+  EffectiveArtifactProjection,
+} from "../../domain/artifacts/artifact-lineage";
+import type {
+  ArtifactProjectionError,
+  ArtifactProjectionMetadata,
+} from "../../services/artifacts/ArtifactProjection";
+import type {
+  ArtifactPublicationConflict,
+  ArtifactStorageError,
+} from "../../services/storage/ArtifactStorage";
+import type { SessionFamilyStorageError } from "../../services/storage/SessionFamilyStorage";
 import type { ElectronError } from "../../services/electron/Electron";
 import type { InlineWidgetError } from "../../services/widgets/InlineWidgets";
 import type { TerminalError } from "../../services/terminal/Terminal";
@@ -128,6 +152,15 @@ type RpcCommand<Type extends CakeRpcOperation, OperationError> = (
 type RpcOperations<Types extends CakeRpcOperation, OperationError> = {
   readonly [Type in Types]: RpcCommand<Type, OperationError>;
 };
+type ArtifactOperationFailure =
+  | ArtifactError
+  | ArtifactNotFound
+  | ArtifactNotLinked
+  | ArtifactStorageError
+  | ArtifactPublicationConflict
+  | ArtifactProjectionError
+  | SessionFamilyStorageError
+  | TransportError;
 type ModelPresetMutationError =
   | ModelPresetValidationError
   | ModelPresetNotFoundError
@@ -534,7 +567,64 @@ export interface CakeIpcClientService {
   readonly artifacts: RpcOperations<
     "respond-artifact" | "respond-ui" | "export-artifacts",
     ArtifactError
-  >;
+  > & {
+    readonly catalog: (input: {
+      readonly search?: string;
+      readonly offset?: number;
+      readonly limit?: number;
+    }) => Effect.Effect<ArtifactLineagePage, ArtifactOperationFailure>;
+    readonly effective: (
+      sessionId: string,
+    ) => Effect.Effect<ReadonlyArray<EffectiveArtifactProjection>, ArtifactOperationFailure>;
+    readonly detail: (
+      lineageId: ArtifactLineageId,
+    ) => Effect.Effect<ArtifactLineageDetail, ArtifactOperationFailure>;
+    readonly history: (input: {
+      readonly lineageId: ArtifactLineageId;
+      readonly offset?: number;
+      readonly limit?: number;
+    }) => Effect.Effect<ArtifactRevisionPage, ArtifactOperationFailure>;
+    readonly readExact: (
+      lineageId: ArtifactLineageId,
+      revision: ArtifactRevisionNumber,
+    ) => Effect.Effect<ArtifactRevision, ArtifactOperationFailure>;
+    readonly referenceMetadata: (
+      reference: ArtifactStableRef,
+    ) => Effect.Effect<ArtifactReferenceMetadata, ArtifactOperationFailure>;
+    readonly compareText: (
+      lineageId: ArtifactLineageId,
+      fromRevision: ArtifactRevisionNumber,
+      toRevision: ArtifactRevisionNumber,
+    ) => Effect.Effect<ArtifactTextComparison, ArtifactOperationFailure>;
+    readonly restore: (input: {
+      readonly sessionId: string;
+      readonly lineageId: ArtifactLineageId;
+      readonly sourceRevision: ArtifactRevisionNumber;
+      readonly expectedLatestRevision: number;
+    }) => Effect.Effect<ArtifactRevision, ArtifactOperationFailure>;
+    readonly link: (input: {
+      readonly sessionId: string;
+      readonly lineageId: ArtifactLineageId;
+      readonly target: ArtifactLinkTarget;
+      readonly selection: ArtifactLink["selection"];
+    }) => Effect.Effect<ArtifactLink, ArtifactOperationFailure>;
+    readonly unlink: (input: {
+      readonly sessionId: string;
+      readonly lineageId: ArtifactLineageId;
+      readonly target: ArtifactLinkTarget;
+    }) => Effect.Effect<void, ArtifactOperationFailure>;
+    readonly setSelection: (input: {
+      readonly sessionId: string;
+      readonly lineageId: ArtifactLineageId;
+      readonly target: ArtifactLinkTarget;
+      readonly selection: ArtifactLink["selection"];
+    }) => Effect.Effect<ArtifactLink, ArtifactOperationFailure>;
+    readonly materialize: (
+      sessionId: string,
+      lineageId: ArtifactLineageId,
+      revision: ArtifactRevisionNumber,
+    ) => Effect.Effect<ArtifactProjectionMetadata, ArtifactOperationFailure>;
+  };
   readonly widgets: RpcOperations<"compile-inline-widget", InlineWidgetError>;
   readonly events: {
     readonly application: () => Stream.Stream<
@@ -552,7 +642,11 @@ export interface CakeIpcClientService {
     >;
     readonly artifacts: () => Stream.Stream<
       FocusedCakeEvent<
-        "artifact-updated" | "artifact-requested" | "ui-request" | "renderer-events-ready"
+        | "artifact-updated"
+        | "artifact-catalog-invalidated"
+        | "artifact-requested"
+        | "ui-request"
+        | "renderer-events-ready"
       >,
       TransportError
     >;
@@ -1026,6 +1120,44 @@ export const CakeIpcClientLive = Layer.effect(
         ),
         "export-artifacts": Effect.fn("CakeIpcClient.artifacts.export-artifacts")((payload) =>
           client("artifacts.export-artifacts", payload),
+        ),
+        catalog: Effect.fn("CakeIpcClient.artifacts.catalog")((payload) =>
+          client("artifacts.catalog", payload),
+        ),
+        effective: Effect.fn("CakeIpcClient.artifacts.effective")((sessionId) =>
+          client("artifacts.effective", { sessionId }),
+        ),
+        detail: Effect.fn("CakeIpcClient.artifacts.detail")((lineageId) =>
+          client("artifacts.detail", { lineageId }),
+        ),
+        history: Effect.fn("CakeIpcClient.artifacts.history")((payload) =>
+          client("artifacts.history", payload),
+        ),
+        readExact: Effect.fn("CakeIpcClient.artifacts.readExact")((lineageId, revision) =>
+          client("artifacts.readExact", { lineageId, revision }),
+        ),
+        referenceMetadata: Effect.fn("CakeIpcClient.artifacts.referenceMetadata")((reference) =>
+          client("artifacts.referenceMetadata", { reference }),
+        ),
+        compareText: Effect.fn("CakeIpcClient.artifacts.compareText")(
+          (lineageId, fromRevision, toRevision) =>
+            client("artifacts.compareText", { lineageId, fromRevision, toRevision }),
+        ),
+        restore: Effect.fn("CakeIpcClient.artifacts.restore")((payload) =>
+          client("artifacts.restore", payload),
+        ),
+        link: Effect.fn("CakeIpcClient.artifacts.link")((payload) =>
+          client("artifacts.link", payload),
+        ),
+        unlink: Effect.fn("CakeIpcClient.artifacts.unlink")((payload) =>
+          client("artifacts.unlink", payload),
+        ),
+        setSelection: Effect.fn("CakeIpcClient.artifacts.setSelection")((payload) =>
+          client("artifacts.setSelection", payload),
+        ),
+        materialize: Effect.fn("CakeIpcClient.artifacts.materialize")(
+          (sessionId, lineageId, revision) =>
+            client("artifacts.materialize", { sessionId, lineageId, revision }),
         ),
       },
       widgets: {

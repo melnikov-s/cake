@@ -1,5 +1,6 @@
 import { Model, child, observable } from "r-state-tree";
 import { LlmModel } from "./LlmModel";
+import { ArtifactCatalog } from "./ArtifactCatalog";
 import { Resource } from "./Resource";
 import { CakeChatCatalog } from "./CakeChatCatalog";
 import { ProjectCatalog } from "./ProjectCatalog";
@@ -17,6 +18,7 @@ export class RootProjection extends Model {
   @child(WorktreeCatalog) worktrees = WorktreeCatalog.create();
   @child(WorktreeOperationCatalog) worktreeOperations = WorktreeOperationCatalog.create();
   @child(CakeChatCatalog) cakeChatCatalog = CakeChatCatalog.create();
+  @child(ArtifactCatalog) artifacts = ArtifactCatalog.create();
   @child(Session) projectSessions: Session[] = observable([]);
   @child(Session) cakeChats: Session[] = observable([]);
   /** Live Discussion Session sidecars, keyed by their own Pi Session ID. */
