@@ -2,8 +2,8 @@ import { Effect } from "effect";
 import type { cakeRpcPayloadSchemas } from "../../ipc/cake-rpc-contract";
 import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
 import { ProjectAccess } from "../../services/projects/ProjectAccess";
-import { ArtifactStorage } from "../../services/storage/ArtifactStorage";
 import { ArtifactError } from "./artifact-data";
+import * as artifactWorkflows from "./artifactWorkflows";
 
 type ArtifactResponse = (typeof cakeRpcPayloadSchemas)["respond-artifact"]["Type"];
 type UiResponse = (typeof cakeRpcPayloadSchemas)["respond-ui"]["Type"];
@@ -55,20 +55,25 @@ export const respondUi = Effect.fn("Artifacts.respondUi")(function* (
 
 export const exportArtifacts = Effect.fn("Artifacts.export")(function* (request: ExportArtifacts) {
   yield* authorizedWorkingDirectory(request.sessionId);
-  const storage = yield* ArtifactStorage;
-  const revisions = yield* storage
-    .resolveLinks({ type: "session", sessionId: request.sessionId })
+  const artifacts = yield* artifactWorkflows
+    .listEffectiveSessionArtifacts(request.sessionId)
     .pipe(asError("export"));
-  const markdown = revisions
-    .map(({ snapshot }) => `## ${snapshot.title ?? snapshot.id}\n\n${snapshot.fallback.markdown}`)
+  const markdown = artifacts
+    .map(
+      ({ revision: { snapshot } }) =>
+        `## ${snapshot.title ?? snapshot.id}\n\n${snapshot.fallback.markdown}`,
+    )
     .join("\n\n---\n\n");
   return { markdown };
 });
 
 export const deleteSession = Effect.fn("Artifacts.deleteSession")(function* (
-  workingDirectory: string,
+  _workingDirectory: string,
   sessionId: string,
 ) {
-  const storage = yield* ArtifactStorage;
-  yield* storage.removeTargetLinks({ type: "session", sessionId }).pipe(asError("deleteSession"));
+  yield* artifactWorkflows.removeSessionLinks(sessionId).pipe(asError("deleteSession"));
+});
+
+export const deleteFamily = Effect.fn("Artifacts.deleteFamily")(function* (familyId: string) {
+  yield* artifactWorkflows.removeFamilyLinks(familyId).pipe(asError("deleteFamily"));
 });

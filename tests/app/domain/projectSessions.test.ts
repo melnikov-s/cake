@@ -12,7 +12,11 @@ import { SessionCatalog } from "../../../src/renderer/models/SessionCatalog";
 import { applySessionCatalogGroupUpdate } from "../../../src/renderer/reducers/CatalogReducer";
 import * as sessionChats from "../../../src/domain/conversations/sessionChats";
 import type { SessionCatalogUpdate } from "../../../src/domain/application/catalog-data";
-import { ArtifactDigest } from "../../../src/domain/artifacts/artifact-lineage";
+import {
+  ArtifactDigest,
+  type ArtifactLink,
+  type ArtifactLinkTarget,
+} from "../../../src/domain/artifacts/artifact-lineage";
 import type { ArtifactPointer } from "../../../src/ipc/artifact-contract";
 import { getState } from "../../../src/domain/application/application";
 import {
@@ -205,6 +209,7 @@ const makeLayer = (
       destinationSessionId: string,
       pointers: ReadonlyArray<ArtifactPointer>,
     ): void;
+    onArtifactLink?(link: ArtifactLink): void;
     onOperation?(operation: string): void;
     onInspect?(): void;
     onDispose?(): void;
@@ -223,6 +228,7 @@ const makeLayer = (
     onRestoreResolved?(): void;
     onCloseWorkingDirectory?(): void;
     onRemoveFamilyProject?(projectPath: string): void;
+    onRemoveArtifactTarget?(target: ArtifactLinkTarget): void;
     initialResolvedSessionIds?: ReadonlyArray<string>;
     family?: {
       readonly familyId: string;
@@ -480,16 +486,17 @@ const makeLayer = (
           };
         }),
       putLink: (link) =>
-        Effect.sync(() =>
+        Effect.sync(() => {
+          hooks.onArtifactLink?.(link);
           hooks.onInheritFork?.(
             "/project",
             hooks.forkArtifactPointers?.[0]?.sessionId ?? "session-1",
             "/project",
             link.target.type === "session" ? link.target.sessionId : "family",
             hooks.forkArtifactPointers ?? [],
-          ),
-        ),
-      removeTargetLinks: () => Effect.void,
+          );
+        }),
+      removeTargetLinks: (target) => Effect.sync(() => hooks.onRemoveArtifactTarget?.(target)),
     }),
     Layer.mock(ReviewStorage, {
       agentSessionDirectory: () => "/reviews/agent",
@@ -1499,6 +1506,7 @@ describe("Project Sessions domain", () => {
       fallback: { markdown: "| Before |" },
     };
     let inherited: ReadonlyArray<ArtifactPointer> | undefined;
+    let link: ArtifactLink | undefined;
 
     return Effect.gen(function* () {
       yield* projectSessionContinuations.fork({
@@ -1507,10 +1515,15 @@ describe("Project Sessions domain", () => {
       });
 
       assert.deepEqual(inherited, [pointer]);
+      assert.deepEqual(link?.target, { type: "session", sessionId: "forked" });
+      assert.deepEqual(link?.selection, { mode: "pinned", revision: 2 });
     }).pipe(
       Effect.provide(
         makeLayer(defaultApplicationState(), {
           forkArtifactPointers: [pointer],
+          onArtifactLink: (createdLink) => {
+            link = createdLink;
+          },
           onInheritFork: (
             sourceWorkingDirectory,
             sourceSessionId,
@@ -1522,6 +1535,59 @@ describe("Project Sessions domain", () => {
             assert.equal(sourceSessionId, "session-1");
             assert.equal(destinationWorkingDirectory, "/project");
             assert.equal(destinationSessionId, "forked");
+            inherited = pointers;
+          },
+        }),
+      ),
+    );
+  });
+
+  it.effect("keeps a fork from a family member standalone with exact pinned links", () => {
+    const pointer: ArtifactPointer = {
+      protocol: "cake.artifact/v1",
+      artifactId: "family-artifact",
+      sessionId: "session-1",
+      revision: 3,
+      kind: "markdown",
+      digest: "b".repeat(64),
+      fallback: { markdown: "Family revision three" },
+    };
+    let inherited: ReadonlyArray<ArtifactPointer> | undefined;
+    let link: ArtifactLink | undefined;
+
+    return Effect.gen(function* () {
+      const result = yield* projectSessionContinuations.fork({
+        target: { sessionId: "session-1", workingDirectory: "/project" },
+        entryId: "assistant-entry",
+      });
+
+      assert.equal(result.sessionId, "forked");
+      assert.deepEqual(inherited, [pointer]);
+      assert.deepEqual(link?.target, { type: "session", sessionId: "forked" });
+      assert.deepEqual(link?.selection, { mode: "pinned", revision: 3 });
+    }).pipe(
+      Effect.provide(
+        makeLayer(defaultApplicationState(), {
+          family: {
+            familyId: "family-1",
+            parentSessionId: "session-1",
+            projectPath: "/project",
+            workingDirectory: "/project",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            children: [
+              {
+                sessionId: "child",
+                requestId: "request-child",
+                createdAt: "2026-01-01T00:00:01.000Z",
+              },
+            ],
+          },
+          forkArtifactPointers: [pointer],
+          onArtifactLink: (createdLink) => {
+            link = createdLink;
+          },
+          onInheritFork: (_sourcePath, _sourceId, _destinationPath, destinationId, pointers) => {
+            assert.equal(destinationId, "forked");
             inherited = pointers;
           },
         }),
@@ -1888,17 +1954,28 @@ describe("Project Sessions domain", () => {
     );
   });
 
-  it.effect("removes family metadata after cascading Project Session deletion", () => {
+  it.effect("removes family artifact links before cascading family metadata deletion", () => {
     const removedProjects: string[] = [];
+    const removedArtifactTargets: ArtifactLinkTarget[] = [];
     return projectSessionLifecycle.deleteProjectSessions("/project", []).pipe(
       Effect.tap(() =>
         Effect.sync(() => {
+          assert.deepEqual(removedArtifactTargets, [{ type: "family", familyId: "family-1" }]);
           assert.deepEqual(removedProjects, ["/project"]);
         }),
       ),
       Effect.provide(
         makeLayer(defaultApplicationState(), {
           sessionExists: false,
+          family: {
+            familyId: "family-1",
+            parentSessionId: "parent",
+            projectPath: "/project",
+            workingDirectory: "/project",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            children: [],
+          },
+          onRemoveArtifactTarget: (target) => removedArtifactTargets.push(target),
           onRemoveFamilyProject: (projectPath) => removedProjects.push(projectPath),
         }),
       ),

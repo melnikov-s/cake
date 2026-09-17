@@ -1,6 +1,7 @@
-import { DateTime, Effect, Schema, Stream } from "effect";
+import { Effect, Schema, Stream } from "effect";
 import type { ArtifactPointer } from "../../ipc/artifact-contract";
 import { ArtifactLineageId, ArtifactRevisionNumber } from "../artifacts/artifact-lineage";
+import * as artifactWorkflows from "../artifacts/artifactWorkflows";
 import * as projectSessionLocations from "./projectSessionLocations";
 import { resolutionNamespace } from "./projectSessionResolution";
 import type { ProjectSessionLocation } from "./project-session-data";
@@ -148,7 +149,6 @@ export const fork = Effect.fn("ProjectSessions.fork")(function* (input: {
         artifactPointers = result.artifactPointers;
       }
       const artifactStorage = yield* ArtifactStorage;
-      const linkedAt = DateTime.formatIso(yield* DateTime.now);
       yield* Effect.forEach(
         artifactPointers,
         Effect.fn("ProjectSessions.linkForkArtifact")(function* (pointer) {
@@ -164,13 +164,8 @@ export const fork = Effect.fn("ProjectSessions.fork")(function* (input: {
               operation: "fork",
               message: `Artifact ${pointer.artifactId}@r${pointer.revision} does not match storage`,
             });
-          yield* artifactStorage
-            .putLink({
-              lineageId,
-              target: { type: "session", sessionId },
-              selection: { mode: "pinned", revision },
-              createdAt: linkedAt,
-            })
+          yield* artifactWorkflows
+            .linkSession(lineageId, sessionId, { mode: "pinned", revision })
             .pipe(asError("fork"));
         }),
         { discard: true },

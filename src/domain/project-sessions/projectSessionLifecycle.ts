@@ -404,6 +404,9 @@ export const deleteProjectSessions = Effect.fn("ProjectSessions.deleteProjectSes
   const access = yield* ProjectAccess;
   const configuration = yield* ProjectSessionConfiguration;
   const families = yield* SessionFamilyStorage;
+  const projectFamilies = (yield* families.list().pipe(asError(operation))).filter(
+    (family) => family.projectPath === projectPath,
+  );
   const workingDirectories = [
     projectPath,
     ...records
@@ -456,6 +459,13 @@ export const deleteProjectSessions = Effect.fn("ProjectSessions.deleteProjectSes
       access.forgetSessionLocation(id).pipe(asError(operation)),
     );
   }
+  // Session deletion removes direct links only. Family links remain effective while
+  // any member survives and are removed only with the permanent family record.
+  yield* Effect.forEach(
+    projectFamilies,
+    (family) => artifacts.deleteFamily(family.familyId).pipe(asError(operation)),
+    { discard: true },
+  );
   yield* families.removeProject(projectPath).pipe(asError(operation));
 });
 
