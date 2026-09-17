@@ -1,5 +1,6 @@
 import { Store, child, createStore, untracked } from "r-state-tree";
 import type { CakeHotkeyActionId } from "../../domain/application/cake-settings-data";
+import { decodeArtifactLineageId } from "../../domain/artifacts/artifact-lineage";
 import { defaultProjectSettings } from "../../domain/application/application-data";
 import type { ProjectSessionControlInvocation } from "../../domain/project-sessions/project-session-data";
 import { crossSessionContextSnapshot } from "../../domain/conversations/cross-session-coordination";
@@ -638,6 +639,12 @@ export class RootStore extends Store<{
     return this.client.electron.showTranscriptSelectionContextMenu(input, { signal: this.signal });
   }
 
+  showArtifactLibrary(sessionId?: string, lineageId?: string) {
+    this.projectWorkbenchStore.dismissSecondarySurfaces();
+    this.artifactLibraryStore.open(sessionId);
+    this.appShellStore.showArtifactLibrary();
+    if (lineageId) void this.artifactLibraryStore.select(decodeArtifactLineageId(lineageId));
+  }
   showSettings() {
     this.projectWorkbenchStore.dismissSecondarySurfaces();
     this.appShellStore.showSettings();

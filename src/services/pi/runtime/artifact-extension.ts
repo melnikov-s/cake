@@ -73,6 +73,14 @@ export function createCakeArtifactExtension(options: ArtifactExtensionOptions): 
           sessionId,
         );
         appendPointer(table);
+        const tableRevisionTwo = await persist(
+          {
+            ...table.artifact,
+            revision: 2,
+          },
+          sessionId,
+        );
+        appendPointer(tableRevisionTwo);
         const diagram = await persist(
           {
             protocol: "cake.artifact/v1",

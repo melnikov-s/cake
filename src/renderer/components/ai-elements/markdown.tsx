@@ -26,15 +26,19 @@ import { MarkdownCodeBlock, streamingCodeMarker } from "./markdown-code-block";
 const nonPathHref = /^(?:[a-z][a-z0-9+.-]*:|\/\/|#)/i;
 const workspacePathPrefix = "/__cake_workspace__/";
 const sessionPathPrefix = "/__cake_session__/";
+const artifactPathPrefix = "/__cake_artifact__/";
 const protectedMarkdown = /(```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]*`|!?\[[^\]]*\]\([^)]+\))/g;
 const bareSourceReference =
   /(^|[\s(])((?:[^\s/:#()[\],]+\/)*[^\s/:#()[\],]+\.[a-z][a-z0-9._+-]*(?::\d+(?::\d+)?|#L\d+(?:-L?\d+)?(?:,L\d+(?:-L?\d+)?)*)?)(?=$|[\s),.;!?])/gi;
+const bareArtifactReference =
+  /(^|[\s(])(cake:\/\/artifact\/[A-Za-z0-9][A-Za-z0-9._:-]*(?:@r[1-9][0-9]*)?)(?=$|[\s),.;!?])/g;
 
 type AnchorProps = ComponentProps<"a"> & { node?: unknown };
 
 type MarkdownLinkActions = {
   openExternalUrl(url: string): void;
   openSession(sessionId: string): void;
+  renderArtifactReference?(reference: string): ReactNode;
 };
 
 const MarkdownLinkContext = createContext<MarkdownLinkActions | undefined>(undefined);
@@ -69,6 +73,25 @@ function sourceHref(reference: string) {
   return `${workspacePathPrefix}${reference}`;
 }
 
+function artifactReferenceFromHref(href: string) {
+  try {
+    if (href.startsWith(artifactPathPrefix)) {
+      const reference = decodeURIComponent(href.slice(artifactPathPrefix.length));
+      return /^cake:\/\/artifact\/[A-Za-z0-9][A-Za-z0-9._:-]*(?:@r[1-9][0-9]*)?$/.test(reference)
+        ? reference
+        : undefined;
+    }
+    const url = new URL(href);
+    if (url.protocol !== "cake:" || url.hostname !== "artifact") return undefined;
+    const id = decodeURIComponent(url.pathname.slice(1));
+    return /^[A-Za-z0-9][A-Za-z0-9._:-]*(?:@r[1-9][0-9]*)?$/.test(id)
+      ? `cake://artifact/${id}`
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Makes Cake session links and workspace source references parseable and clickable. */
 function prepareMarkdownLinks(markdown: string, sourceLinks: boolean) {
   return markdown
@@ -78,14 +101,24 @@ function prepareMarkdownLinks(markdown: string, sourceLinks: boolean) {
         return segment.replace(/\]\(([^)\s]+)\)$/, (match, target: string) => {
           const sessionId = sessionIdFromHref(target);
           if (sessionId) return `](${sessionPathPrefix}${encodeURIComponent(sessionId)})`;
+          const artifactReference = artifactReferenceFromHref(target);
+          if (artifactReference)
+            return `](${artifactPathPrefix}${encodeURIComponent(artifactReference)})`;
           return sourceLinks && parseSourceLocation(target) ? `](${sourceHref(target)})` : match;
         });
       }
-      if (!sourceLinks) return segment;
-      return segment.replace(bareSourceReference, (match, prefix: string, reference: string) =>
-        parseSourceLocation(reference)
-          ? `${prefix}[${reference}](${sourceHref(reference)})`
-          : match,
+      const withArtifacts = segment.replace(
+        bareArtifactReference,
+        (_match, prefix: string, reference: string) =>
+          `${prefix}[${reference}](${artifactPathPrefix}${encodeURIComponent(reference)})`,
+      );
+      if (!sourceLinks) return withArtifacts;
+      return withArtifacts.replace(
+        bareSourceReference,
+        (match, prefix: string, reference: string) =>
+          parseSourceLocation(reference)
+            ? `${prefix}[${reference}](${sourceHref(reference)})`
+            : match,
       );
     })
     .join("");
@@ -162,6 +195,9 @@ function linkAnchor(allProps: AnchorProps, actions?: MarkdownLinkActions) {
   const props = { ...allProps };
   delete props.node;
   const href = props.href;
+  const artifactReference = href ? artifactReferenceFromHref(href) : undefined;
+  if (artifactReference && actions?.renderArtifactReference)
+    return actions.renderArtifactReference(artifactReference);
   const sessionId = href ? sessionIdFromHref(href) : undefined;
   if (sessionId) {
     return (

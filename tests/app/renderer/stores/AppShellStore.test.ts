@@ -18,6 +18,17 @@ const createShell = (
   );
 
 describe("AppShellStore session history", () => {
+  it("selects the top-level Artifact Library and clears the active conversation", () => {
+    const shell = createShell();
+    shell.selectProjectSession("session-1");
+    shell.showArtifactLibrary();
+
+    expect(shell.selection).toEqual({ kind: "artifact-library" });
+    expect(shell.surface).toBe("artifact-library");
+    expect(shell.activeConversation).toBeUndefined();
+    shell[Symbol.dispose]();
+  });
+
   it("notifies a Project Session when navigating away from it", () => {
     const departed: string[] = [];
     const shell = createShell((sessionId) => departed.push(sessionId));

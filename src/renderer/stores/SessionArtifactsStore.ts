@@ -1,9 +1,11 @@
 import { computed, Store, untracked } from "r-state-tree";
 import type { ArtifactRecord } from "../../ipc/artifact-contract";
-import type {
-  ArtifactLineageId,
-  ArtifactLink,
-  ArtifactRevisionNumber,
+import {
+  decodeArtifactLineageId,
+  decodeArtifactRevisionNumber,
+  type ArtifactLineageId,
+  type ArtifactLink,
+  type ArtifactRevisionNumber,
 } from "../../domain/artifacts/artifact-lineage";
 import type { ArtifactCatalog } from "../models/ArtifactCatalog";
 import { ClientContext } from "./context/ClientContext";
@@ -23,8 +25,10 @@ export class SessionArtifactsStore extends Store<{
 }> {
   open = false;
   selectedArtifactId: string | undefined;
+  viewedRevision: ArtifactRevisionNumber | undefined;
   width = 416;
   loading = false;
+  operationLoading = false;
   error: string | undefined;
   private request = 0;
 
@@ -59,8 +63,27 @@ export class SessionArtifactsStore extends Store<{
   }
 
   @computed
+  get selectedAssociation() {
+    return this.associations.find(
+      (association) => association.lineage?.id === this.selectedArtifactId,
+    );
+  }
+  @computed
   get selectedRecord() {
-    return this.records.find((record) => record.artifact.id === this.selectedArtifactId);
+    const association = this.selectedAssociation;
+    if (!association?.lineage) return undefined;
+    return association.lineage.revision(this.viewedRevision ?? association.selectedRevision)
+      ?.record;
+  }
+  @computed
+  get selectedStableRef() {
+    return this.selectedAssociation?.stableRef;
+  }
+  @computed
+  get selectedExactRef() {
+    const association = this.selectedAssociation;
+    const revision = this.viewedRevision ?? association?.selectedRevision;
+    return association && revision ? `${association.stableRef}@r${revision}` : undefined;
   }
   @computed get selectedIndex() {
     return this.records.findIndex((record) => record.artifact.id === this.selectedArtifactId);
@@ -110,11 +133,65 @@ export class SessionArtifactsStore extends Store<{
   }
   showList() {
     this.selectedArtifactId = undefined;
+    this.viewedRevision = undefined;
   }
   openArtifact(artifactId: string) {
-    if (!this.records.some((record) => record.artifact.id === artifactId)) return;
+    const association = this.associations.find((value) => value.lineage?.id === artifactId);
+    if (!association) return;
     this.selectedArtifactId = artifactId;
+    this.viewedRevision = decodeArtifactRevisionNumber(association.selectedRevision);
     this.open = true;
+    void this.loadHistory(decodeArtifactLineageId(artifactId));
+  }
+  async loadHistory(lineageId: ArtifactLineageId) {
+    try {
+      const page = await this.client.artifacts.history(
+        { lineageId, offset: 0, limit: 50 },
+        { signal: this.signal },
+      );
+      if (!this.signal.aborted) this.props.model.applyHistory(lineageId, page.items);
+      return page;
+    } catch (error) {
+      if (!this.signal.aborted) this.error = error instanceof Error ? error.message : String(error);
+      return undefined;
+    }
+  }
+  async viewRevision(lineageId: ArtifactLineageId, revision: ArtifactRevisionNumber) {
+    this.operationLoading = true;
+    this.error = undefined;
+    try {
+      const value = await this.client.artifacts.readExact(lineageId, revision, {
+        signal: this.signal,
+      });
+      if (!this.signal.aborted) {
+        this.props.model.upsertRevision(value);
+        this.viewedRevision = revision;
+      }
+      return value;
+    } catch (error) {
+      if (!this.signal.aborted) this.error = error instanceof Error ? error.message : String(error);
+      return undefined;
+    } finally {
+      if (!this.signal.aborted) this.operationLoading = false;
+    }
+  }
+  async readablePath(lineageId: ArtifactLineageId, revision: ArtifactRevisionNumber) {
+    this.operationLoading = true;
+    this.error = undefined;
+    try {
+      const value = await this.client.artifacts.materialize(
+        this.props.sessionId,
+        lineageId,
+        revision,
+        { signal: this.signal },
+      );
+      return value.exactPath;
+    } catch (error) {
+      if (!this.signal.aborted) this.error = error instanceof Error ? error.message : String(error);
+      return undefined;
+    } finally {
+      if (!this.signal.aborted) this.operationLoading = false;
+    }
   }
   showPrevious() {
     if (this.hasPrevious)
@@ -135,11 +212,23 @@ export class SessionArtifactsStore extends Store<{
   async setSelection(lineageId: ArtifactLineageId, selection: ArtifactLink["selection"]) {
     const current = this.associations.find((value) => value.lineage?.id === lineageId);
     if (!current?.link) return;
-    await this.client.artifacts.setSelection(
-      { sessionId: this.props.sessionId, lineageId, target: current.link.target, selection },
-      { signal: this.signal },
-    );
-    await this.refresh();
+    this.operationLoading = true;
+    this.error = undefined;
+    try {
+      await this.client.artifacts.setSelection(
+        { sessionId: this.props.sessionId, lineageId, target: current.link.target, selection },
+        { signal: this.signal },
+      );
+      await this.refresh();
+      const updated = this.associations.find((value) => value.lineage?.id === lineageId);
+      this.viewedRevision = updated
+        ? decodeArtifactRevisionNumber(updated.selectedRevision)
+        : undefined;
+    } catch (error) {
+      if (!this.signal.aborted) this.error = error instanceof Error ? error.message : String(error);
+    } finally {
+      if (!this.signal.aborted) this.operationLoading = false;
+    }
   }
   follow(lineageId: ArtifactLineageId) {
     return this.setSelection(lineageId, { mode: "follow-latest" });
@@ -150,10 +239,19 @@ export class SessionArtifactsStore extends Store<{
   async unlink(lineageId: ArtifactLineageId) {
     const current = this.associations.find((value) => value.lineage?.id === lineageId);
     if (!current?.link) return;
-    await this.client.artifacts.unlink(
-      { sessionId: this.props.sessionId, lineageId, target: current.link.target },
-      { signal: this.signal },
-    );
-    await this.refresh();
+    this.operationLoading = true;
+    this.error = undefined;
+    try {
+      await this.client.artifacts.unlink(
+        { sessionId: this.props.sessionId, lineageId, target: current.link.target },
+        { signal: this.signal },
+      );
+      await this.refresh();
+      if (this.selectedArtifactId === lineageId) this.showList();
+    } catch (error) {
+      if (!this.signal.aborted) this.error = error instanceof Error ? error.message : String(error);
+    } finally {
+      if (!this.signal.aborted) this.operationLoading = false;
+    }
   }
 }

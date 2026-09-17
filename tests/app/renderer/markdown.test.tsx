@@ -231,6 +231,38 @@ describe("Markdown", () => {
     );
   });
 
+  it("turns a bare artifact URI into a bounded application reference surface", () => {
+    const renderArtifactReference = vi.fn((reference: string) => (
+      <span data-testid="artifact-reference">{reference}</span>
+    ));
+    act(() =>
+      root.render(
+        <MarkdownLinkProvider
+          actions={{ openExternalUrl: vi.fn(), openSession: vi.fn(), renderArtifactReference }}
+        >
+          <Markdown>Review cake://artifact/report-1@r2 before publishing.</Markdown>
+        </MarkdownLinkProvider>,
+      ),
+    );
+
+    expect(vi.mocked(Streamdown).mock.calls.at(-1)![0].children).toBe(
+      "Review [cake://artifact/report-1@r2](/__cake_artifact__/cake%3A%2F%2Fartifact%2Freport-1%40r2) before publishing.",
+    );
+    const anchorComponent = vi.mocked(Streamdown).mock.calls.at(-1)![0].components!.a!;
+    act(() => {
+      root.render(
+        createElement(anchorComponent, {
+          href: "/__cake_artifact__/cake%3A%2F%2Fartifact%2Freport-1%40r2",
+          children: "cake://artifact/report-1@r2",
+        }),
+      );
+    });
+    expect(renderArtifactReference).toHaveBeenCalledWith("cake://artifact/report-1@r2");
+    expect(container.querySelector("[data-testid=artifact-reference]")?.textContent).toBe(
+      "cake://artifact/report-1@r2",
+    );
+  });
+
   it("opens source, website, and session links with their owning application actions", () => {
     const onOpenSourceLocation = vi.fn();
     const openExternalUrl = vi.fn();

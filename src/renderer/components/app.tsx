@@ -42,6 +42,7 @@ import { SessionContinuationDialog } from "@/components/session-continuation-dia
 import { TreeNavigationDialog } from "@/components/tree-navigation-dialog";
 import { ConversationSplitLayout } from "@/components/conversation-split-layout";
 import { ArtifactWorkspaceLayout } from "@/components/artifact-workspace-layout";
+import { ArtifactLibrary } from "@/components/artifact-library";
 import { BlockingArtifactRequest } from "@/components/blocking-artifact-request";
 import { UiDialog } from "@/components/ui-dialog";
 import { CommandPane } from "@/components/command-pane";
@@ -141,6 +142,7 @@ export const App = observer(function App() {
     [sidebar.focusModeProjectPath, sidebarMax],
   );
   const openSettings = useCallback(() => root.showSettings(), [root]);
+  const openArtifactLibrary = useCallback(() => root.showArtifactLibrary(), [root]);
   const openCakeChat = useCallback(
     (sessionId?: string) => {
       void root.openCakeChat(sessionId);
@@ -353,6 +355,7 @@ export const App = observer(function App() {
       appearance={root.settingsStore.appearance}
       onToggle={toggleSidebar}
       onOpenSettings={openSettings}
+      onOpenArtifactLibrary={openArtifactLibrary}
       onOpenCakeChat={openCakeChat}
       onCreateCakeChat={createCakeChat}
       onOpenSession={openSession}
@@ -664,6 +667,9 @@ export const App = observer(function App() {
                 session={session}
                 inlineWidgets={root.inlineWidgetStore}
                 onOpenSourceLocation={projectTranscriptBehavior.openSourceLocation}
+                onOpenLibrary={(lineageId) =>
+                  root.showArtifactLibrary(session.sessionId, lineageId)
+                }
               >
                 {children}
               </ArtifactWorkspaceLayout>
@@ -809,9 +815,11 @@ export const App = observer(function App() {
               <strong className="block min-w-0 max-w-full truncate text-[13px] font-semibold">
                 {surface === "settings"
                   ? "Settings"
-                  : surface === "cake-chat"
-                    ? "Cake Chat"
-                    : (extensionUi.title ?? (session ? store.sessionTitle : "Cake"))}
+                  : surface === "artifact-library"
+                    ? "Artifact Library"
+                    : surface === "cake-chat"
+                      ? "Cake Chat"
+                      : (extensionUi.title ?? (session ? store.sessionTitle : "Cake"))}
               </strong>
             </div>
             <div className="flex min-w-0 shrink-0 items-center gap-1.5 [app-region:no-drag]">
@@ -832,6 +840,12 @@ export const App = observer(function App() {
           <div className="h-full min-h-0 w-full overflow-hidden">
             <SettingsPage settings={settings} />
           </div>
+        ) : surface === "artifact-library" ? (
+          <ArtifactLibrary
+            store={root.artifactLibraryStore}
+            sessions={root.sessionCatalogStore}
+            inlineWidgets={root.inlineWidgetStore}
+          />
         ) : cakeChatCollection ? (
           cakeChatSession ? (
             <ConversationSplitLayout
@@ -955,6 +969,9 @@ export const App = observer(function App() {
                 session={paneSession}
                 inlineWidgets={root.inlineWidgetStore}
                 onOpenSourceLocation={projectTranscriptBehaviorFor(paneSession).openSourceLocation}
+                onOpenLibrary={(lineageId) =>
+                  root.showArtifactLibrary(paneSession.sessionId, lineageId)
+                }
               >
                 {children}
               </ArtifactWorkspaceLayout>

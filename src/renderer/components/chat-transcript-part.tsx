@@ -22,6 +22,9 @@ import { RetryNotice } from "./retry-notice";
 import { SkillMessage } from "./skill-message";
 import { SourceAttachment } from "./source-attachment";
 
+const artifactReferenceInText =
+  /(?:^|\s)cake:\/\/artifact\/[A-Za-z0-9][A-Za-z0-9._:-]*(?:@r[1-9][0-9]*)?(?=$|[\s),.;!?])/;
+
 const TranscriptPartContent = observer(function TranscriptPartContent({
   part,
   behavior,
@@ -48,6 +51,9 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
           part.renderAs === "markdown",
         )
       : false;
+  const hasArtifactReference =
+    part.kind === "text" && part.role === "user" && artifactReferenceInText.test(part.text);
+  const userMessageDisplaysAsMarkdown = userMessageRendersAsMarkdown || hasArtifactReference;
   if (part.kind === "text")
     return part.role === "assistant" ? (
       <AssistantTextMessage part={part} behavior={behavior} />
@@ -55,13 +61,14 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
       <ChatTextMessage
         part={{
           ...part,
-          renderAs: userMessageRendersAsMarkdown ? "markdown" : undefined,
+          renderAs: userMessageDisplaysAsMarkdown ? "markdown" : undefined,
         }}
         onOpenSourceLocation={behavior.openSourceLocation}
       >
         <div className="ml-auto flex min-h-[30px] items-center gap-2" aria-label="User actions">
           {part.entryId &&
             behavior.store.transcriptInteraction.canToggleUserMessageMarkdown &&
+            !hasArtifactReference &&
             !part.draft && (
               <IconButton
                 className="pointer-events-none opacity-0 transition-opacity group-hover/msg:pointer-events-auto group-hover/msg:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"

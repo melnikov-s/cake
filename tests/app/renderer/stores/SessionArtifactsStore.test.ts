@@ -99,6 +99,59 @@ describe("SessionArtifactsStore", () => {
     root[Symbol.dispose]();
   });
 
+  it("exposes stable/exact copy data, family provenance, pinning, and readable projection", async () => {
+    let projection = effective("session-1", 2, "Two");
+    const client = {
+      artifacts: {
+        effective: vi.fn(async () => [projection]),
+        history: vi.fn(async () => ({
+          items: [projection.revision.metadata],
+          offset: 0,
+          limit: 50,
+          total: 1,
+          hasMore: false,
+        })),
+        materialize: vi.fn(async () => ({ exactPath: "/cache/report/revision-2.md" })),
+        setSelection: vi.fn(async (input) => {
+          projection = {
+            ...projection,
+            link: { ...projection.link, selection: input.selection },
+          };
+          return projection.link;
+        }),
+      },
+    } as unknown as Client;
+    const { root, subject } = mountWithClient(
+      createStore(SessionArtifactsStore, {
+        sessionId: "session-1",
+        model: ArtifactCatalog.create(),
+        isActive: () => true,
+      }),
+      client,
+    );
+    await flush();
+    subject.openArtifact("shared");
+    await flush();
+
+    expect(subject.selectedAssociation?.link?.target).toEqual({
+      type: "family",
+      familyId: "family-1",
+    });
+    expect(subject.selectedStableRef).toBe("cake://artifact/shared");
+    expect(subject.selectedExactRef).toBe("cake://artifact/shared@r2");
+    await expect(subject.readablePath("shared" as never, 2 as never)).resolves.toBe(
+      "/cache/report/revision-2.md",
+    );
+
+    await subject.pin("shared" as never, 2 as never);
+    expect(client.artifacts.setSelection).toHaveBeenCalledWith(
+      expect.objectContaining({ selection: { mode: "pinned", revision: 2 } }),
+      expect.anything(),
+    );
+    expect(subject.selectedAssociation?.link?.mode).toBe("pinned");
+    root[Symbol.dispose]();
+  });
+
   it("rejects a stale refresh result", async () => {
     const pending: Array<(value: ReturnType<typeof effective>[]) => void> = [];
     const client = {

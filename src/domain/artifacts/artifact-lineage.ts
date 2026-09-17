@@ -16,6 +16,9 @@ export const ArtifactRevisionNumber = Schema.Int.check(
 ).pipe(Schema.brand("ArtifactRevisionNumber"));
 export type ArtifactRevisionNumber = typeof ArtifactRevisionNumber.Type;
 
+export const decodeArtifactLineageId = Schema.decodeUnknownSync(ArtifactLineageId);
+export const decodeArtifactRevisionNumber = Schema.decodeUnknownSync(ArtifactRevisionNumber);
+
 export const ArtifactDigest = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/)).pipe(
   Schema.brand("ArtifactDigest"),
 );

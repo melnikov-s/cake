@@ -1,6 +1,6 @@
 import { Store, observable, snapshot } from "r-state-tree";
 
-export type AppSurface = "workbench" | "cake-chat" | "settings";
+export type AppSurface = "workbench" | "cake-chat" | "artifact-library" | "settings";
 
 export type WindowConversationSelection =
   | { kind: "project-session"; sessionId: string }
@@ -10,6 +10,7 @@ export type AppSelection =
   | { kind: "workbench" }
   | { kind: "project-session"; sessionId: string }
   | { kind: "cake-chat"; sessionId?: string }
+  | { kind: "artifact-library" }
   | { kind: "settings" };
 
 /** One visited conversation in the window's back/forward session history. */
@@ -64,6 +65,7 @@ export class AppShellStore extends Store<AppShellStoreProps> {
 
   get surface(): AppSurface {
     if (this.selection.kind === "settings") return "settings";
+    if (this.selection.kind === "artifact-library") return "artifact-library";
     if (this.selection.kind === "cake-chat") return "cake-chat";
     return "workbench";
   }
@@ -189,9 +191,15 @@ export class AppShellStore extends Store<AppShellStoreProps> {
     this.selection = selection;
     this.activeConversation = sessionId ? { kind: "cake-chat", sessionId } : undefined;
   }
+  showArtifactLibrary() {
+    this.markDepartingProjectSession();
+    this.selection = { kind: "artifact-library" };
+    this.activeConversation = undefined;
+  }
   showSettings() {
     this.markDepartingProjectSession();
     this.selection = { kind: "settings" };
+    this.activeConversation = undefined;
   }
 
   private markDepartingProjectSession(nextSessionId?: string) {
