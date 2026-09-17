@@ -515,8 +515,10 @@ The window Store hierarchy mirrors the product surfaces:
   and Pi pointers remain immutable; storage projects their readable Markdown fallbacks instead of maintaining a second graph renderer.
   The session header opens the panel, and creating an artifact opens and selects it automatically. Creation from a family session links the
   lineage to that family by default. Session-tree branch changes and tool compaction neither move nor duplicate artifacts. Stable refs use
-  `cake://artifact/<lineage-id>` and exact refs append `@rN`. Blocking requests remain inline interactions and never enter the reusable
-  catalog, even when they share rendering infrastructure. Project Sessions and Cake Chat
+  `cake://artifact/<lineage-id>` and exact refs append `@rN`. Project agents receive only a bounded linked-artifact metadata manifest,
+  never automatic payload injection. They inspect content with ordinary file tools through disposable, read-only, digest-verified
+  exact-revision projections under Cake's cache root; those projections are not persistence authority and widget generated source is
+  excluded. Blocking requests remain inline interactions and never enter the reusable catalog, even when they share rendering infrastructure. Project Sessions and Cake Chat
   Sessions each compose one `ConversationSessionStore`, the window-local active-conversation aggregate whose lifetime matches its owning
   primary session. It owns the stable `ChatStore`, `ConversationComposerStore`, and `ChatConfigurationStore` children plus their common
   delivery, queuing, configuration, transcript-interaction, draft, and operation wiring. Every materialized primary chat uses the single

@@ -153,7 +153,7 @@ export const fork = Effect.fn("ProjectSessions.fork")(function* (input: {
         artifactPointers,
         Effect.fn("ProjectSessions.linkForkArtifact")(function* (pointer) {
           const lineageId = yield* Schema.decodeUnknownEffect(ArtifactLineageId)(
-            pointer.artifactId,
+            pointer.lineageId,
           ).pipe(asError("fork"));
           const revision = yield* Schema.decodeUnknownEffect(ArtifactRevisionNumber)(
             pointer.revision,
@@ -162,7 +162,7 @@ export const fork = Effect.fn("ProjectSessions.fork")(function* (input: {
           if (!stored || stored.metadata.digest !== pointer.digest)
             return yield* new ProjectSessionError({
               operation: "fork",
-              message: `Artifact ${pointer.artifactId}@r${pointer.revision} does not match storage`,
+              message: `Artifact ${pointer.lineageId}@r${pointer.revision} does not match storage`,
             });
           yield* artifactWorkflows
             .linkSession(lineageId, sessionId, { mode: "pinned", revision })

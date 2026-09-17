@@ -14,6 +14,7 @@ import type {
   InlineWidgetGenerationResult,
   InlineWidgetRevisionRequest,
 } from "./sidecar-runtime";
+import type { ArtifactProjectionMetadata } from "../../artifacts/ArtifactProjection";
 import type {
   CakeOperationDefinition,
   CakeOperationExecutionContext,
@@ -26,6 +27,11 @@ interface ArtifactFileImportInput {
   title?: string;
 }
 
+export interface ResolvedAgentArtifact {
+  readonly record: ArtifactRecord;
+  readonly metadata: ArtifactProjectionMetadata;
+}
+
 export interface CakeArtifactOperationOptions {
   persistArtifact(artifact: CakeArtifactV1): Promise<ArtifactRecord>;
   requestArtifact(record: ArtifactRecord, signal: AbortSignal): Promise<JsonValue | undefined>;
@@ -33,31 +39,35 @@ export interface CakeArtifactOperationOptions {
     input: InlineWidgetGenerationRequest,
   ): Promise<InlineWidgetGenerationResult>;
   reviseInlineWidget?(input: InlineWidgetRevisionRequest): Promise<InlineWidgetGenerationResult>;
-  getArtifact?(artifactId: string): Promise<ArtifactRecord | undefined>;
-  listArtifacts?(): Promise<ReadonlyArray<ArtifactRecord>>;
+  resolveArtifact?(reference: string): Promise<ResolvedAgentArtifact>;
+  listArtifactMetadata?(): Promise<ReadonlyArray<ArtifactProjectionMetadata>>;
+  historyArtifact?(reference: string): Promise<ReadonlyArray<ArtifactProjectionMetadata>>;
+  restoreArtifact?(input: {
+    lineageId: string;
+    sourceRevision: number;
+    expectedRevision: number;
+  }): Promise<ResolvedAgentArtifact>;
+  linkArtifact?(reference: string): Promise<ArtifactProjectionMetadata>;
+  unlinkArtifact?(lineageId: string): Promise<void>;
   importArtifactFile?(input: ArtifactFileImportInput): Promise<CakeArtifactV1>;
 }
 
-interface PiOperationHost {
+interface ArtifactContextInjection {
+  readonly message: {
+    readonly customType: "cake.artifact-context/v1";
+    readonly display: false;
+    readonly content: string;
+  };
+}
+
+type ArtifactContextHandlerResult = void | ArtifactContextInjection;
+
+export interface PiArtifactOperationHost {
   appendEntry(type: string, data: JsonValue): void;
-}
-
-interface ArtifactReadBase {
-  id: string;
-  title?: string;
-  kind: CakeArtifactV1["kind"];
-  revision: number;
-  createdAt: string;
-  updatedAt: string;
-  fallback: { readonly markdown: string };
-}
-
-interface ArtifactSummary {
-  id: string;
-  title?: string;
-  kind: CakeArtifactV1["kind"];
-  revision: number;
-  updatedAt: string;
+  on?(
+    event: "before_agent_start",
+    handler: () => ArtifactContextHandlerResult | Promise<ArtifactContextHandlerResult>,
+  ): void;
 }
 
 interface PiToolRuntimeContext {
@@ -107,32 +117,97 @@ const fileCreateSchema = Schema.Struct({
 const artifactCreateSchema = Schema.Struct({
   artifact: Schema.Union([markdownCreateSchema, fileCreateSchema]),
 });
-const artifactReadSchema = Schema.Struct({ id: artifactIdSchema });
+const artifactReferenceSchema = Schema.String.check(
+  Schema.isMinLength(1),
+  Schema.isMaxLength(512),
+  Schema.isPattern(/^(?:cake:\/\/artifact\/)?[A-Za-z0-9][A-Za-z0-9._:-]*(?:@r[1-9][0-9]*)?$/),
+);
+const artifactResolveSchema = Schema.Struct({ reference: artifactReferenceSchema });
+const expectedRevisionSchema = Schema.Int.check(Schema.isGreaterThan(0));
 const artifactUpdateSchema = Schema.Union([
   Schema.Struct({
-    id: artifactIdSchema,
+    lineageId: artifactIdSchema,
+    expectedRevision: expectedRevisionSchema,
     title: Schema.optionalKey(titleSchema),
     markdown: markdownSchema,
   }),
   Schema.Struct({
-    id: artifactIdSchema,
+    lineageId: artifactIdSchema,
+    expectedRevision: expectedRevisionSchema,
     title: Schema.optionalKey(titleSchema),
     path: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4_096)),
   }),
   Schema.Struct({
-    id: artifactIdSchema,
+    lineageId: artifactIdSchema,
+    expectedRevision: expectedRevisionSchema,
     title: Schema.optionalKey(titleSchema),
     instructions: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(262_144)),
   }),
 ]);
+const artifactRestoreSchema = Schema.Struct({
+  lineageId: artifactIdSchema,
+  sourceRevision: expectedRevisionSchema,
+  expectedRevision: expectedRevisionSchema,
+});
+const artifactLinkSchema = Schema.Struct({ reference: artifactReferenceSchema });
+const artifactUnlinkSchema = Schema.Struct({ lineageId: artifactIdSchema });
+const artifactSearchSchema = Schema.Struct({
+  query: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(512)),
+  limit: Schema.optionalKey(
+    Schema.Int.check(Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(50)),
+  ),
+});
+const artifactHistorySchema = Schema.Struct({
+  lineageId: artifactIdSchema,
+  limit: Schema.optionalKey(
+    Schema.Int.check(Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(100)),
+  ),
+});
 
 function runtimeContext(context: CakeOperationExecutionContext) {
   // SAFETY: createCakeGatewayExtension supplies Pi's validated tool execution context.
   return context.runtime as PiToolRuntimeContext;
 }
 
+const stableReference = (value: string) =>
+  value.startsWith("cake://artifact/") ? value : `cake://artifact/${value}`;
+
+export function formatArtifactContextManifest(
+  artifacts: ReadonlyArray<ArtifactProjectionMetadata>,
+  options: { readonly maxCount?: number; readonly maxBytes?: number } = {},
+) {
+  const maxCount = options.maxCount ?? 32;
+  const maxBytes = options.maxBytes ?? 16_384;
+  const heading =
+    "Linked artifact metadata (content is not injected; inspect exactPath with read/rg/shell):\n";
+  let result = heading;
+  let count = 0;
+  for (const artifact of artifacts.slice(0, maxCount)) {
+    const line = `${JSON.stringify({
+      lineageId: artifact.lineageId,
+      ...(artifact.title === undefined ? null : { title: artifact.title }),
+      kind: artifact.kind,
+      selectedRevision: artifact.selectedRevision,
+      latestRevision: artifact.latestRevision,
+      digest: artifact.digest,
+      linkMode: artifact.linkMode,
+      stableRef: artifact.stableRef,
+      exactRef: artifact.exactRef,
+      exactPath: artifact.exactPath,
+    })}\n`;
+    if (new TextEncoder().encode(result + line).byteLength > maxBytes) break;
+    result += line;
+    count += 1;
+  }
+  if (count < artifacts.length) {
+    const suffix = `… ${artifacts.length - count} additional linked artifacts omitted by bounds.\n`;
+    if (new TextEncoder().encode(result + suffix).byteLength <= maxBytes) result += suffix;
+  }
+  return result;
+}
+
 export function createCakeArtifactOperations(
-  pi: PiOperationHost,
+  pi: PiArtifactOperationHost,
   options: CakeArtifactOperationOptions,
 ): CakeOperationDefinition[] {
   const persist = async (input: unknown, sessionId: string) => {
@@ -149,12 +224,13 @@ export function createCakeArtifactOperations(
       "cake.artifact/v1",
       Schema.decodeUnknownSync(artifactPointerSchema)({
         protocol: "cake.artifact/v1",
-        artifactId: record.artifact.id,
-        sessionId: record.artifact.sessionId,
+        lineageId: record.artifact.id,
         revision: record.artifact.revision,
         kind: record.artifact.kind,
         digest: record.digest,
-        fallback: record.artifact.fallback,
+        ...(record.artifact.title === undefined ? null : { title: record.artifact.title }),
+        stableRef: `cake://artifact/${record.artifact.id}`,
+        exactRef: `cake://artifact/${record.artifact.id}@r${record.artifact.revision}`,
         origin,
       }),
     );
@@ -166,91 +242,102 @@ export function createCakeArtifactOperations(
       throw new Error("Artifact creation requires an originating assistant message");
     return { assistantEntryId, toolCallId: context.toolCallId };
   };
-  const requireArtifact = async (id: string) => {
-    const record = await options.getArtifact?.(id);
-    if (!record) throw new Error(`Artifact ${id} was not found in the current session`);
-    return record;
+  const resolveArtifact = async (reference: string) => {
+    if (!options.resolveArtifact) throw new Error("Artifact resolution is unavailable");
+    return options.resolveArtifact(stableReference(reference));
   };
-  const readableRecord = (record: ArtifactRecord): JsonValue => {
-    const { artifact } = record;
-    const common: ArtifactReadBase = {
-      id: artifact.id,
-      kind: artifact.kind,
-      revision: artifact.revision,
-      createdAt: record.createdAt,
-      updatedAt: record.updatedAt,
-      fallback: artifact.fallback,
-    };
-    if (artifact.title) common.title = artifact.title;
-    if (artifact.kind === "widget")
+
+  if (pi.on && options.listArtifactMetadata)
+    pi.on("before_agent_start", async () => {
+      const manifest = formatArtifactContextManifest(await options.listArtifactMetadata!());
+      if (manifest.endsWith(":\n")) return;
       return {
-        ...common,
-        payload: {
-          language: artifact.payload.language,
-          brief: artifact.payload.brief,
-          generationSessionId: artifact.payload.generationSessionId,
+        message: {
+          customType: "cake.artifact-context/v1",
+          display: false,
+          content: manifest,
         },
       };
-    if (artifact.kind === "file")
-      return {
-        ...common,
-        payload: {
-          name: artifact.payload.name,
-          mimeType: artifact.payload.mimeType,
-          byteSize: artifact.payload.byteSize,
-        },
-      };
-    // SAFETY: artifact payloads have passed cake.artifact/v1 parsing; request payloads are
-    // validated again by their dedicated request boundary before they reach this operation.
-    return { ...common, payload: artifact.payload } as JsonValue;
-  };
+    });
 
   const operations: CakeOperationDefinition[] = [
     {
       command: "artifacts.list",
       topic: "artifacts",
-      summary: "List the current session's durable artifacts and their latest revisions.",
+      summary: "List bounded metadata for artifacts effectively linked to this session.",
       guidance: [
-        "Use artifacts.list when the user refers to an artifact ambiguously or before choosing one to inspect or revise.",
-        "Artifacts are scoped to the current Cake session. Updates publish immutable revisions under the same artifact ID.",
+        "Artifact payloads are never injected into context or returned by Cake operations. Inspect canonical exact-revision files with ordinary read, rg, or shell tools.",
+        "Stable cake://artifact/<id> references follow latest; exact @rN references are reproducible.",
       ],
       inputSchema: Schema.Struct({}),
       examples: [{}],
-      result: "The artifact count and bounded summaries for the current Cake session.",
+      result: "Up to 100 linked artifact metadata records and exact read-only paths.",
       async execute() {
-        if (!options.listArtifacts) throw new Error("Artifact listing is unavailable");
-        const records = (await options.listArtifacts()).filter(
-          (record) => record.artifact.kind !== "request",
-        );
-        return {
-          count: records.length,
-          artifacts: records.map((record) => {
-            const summary: ArtifactSummary = {
-              id: record.artifact.id,
-              kind: record.artifact.kind,
-              revision: record.artifact.revision,
-              updatedAt: record.updatedAt,
-            };
-            if (record.artifact.title) summary.title = record.artifact.title;
-            return Schema.decodeUnknownSync(jsonValueSchema)(summary);
-          }),
-        };
+        if (!options.listArtifactMetadata) throw new Error("Artifact listing is unavailable");
+        const all = await options.listArtifactMetadata();
+        return { total: all.length, truncated: all.length > 100, artifacts: all.slice(0, 100) };
       },
     },
     {
-      command: "artifacts.read",
+      command: "artifacts.search",
       topic: "artifacts",
-      summary: "Read the latest durable revision of one artifact in the current session.",
-      guidance: [
-        "Read an artifact before revising it. Widget implementation source stays isolated; reads return its brief and readable fallback instead.",
-      ],
-      inputSchema: artifactReadSchema,
-      examples: [{ input: { id: "design-plan" } }],
-      result: "The current revision and editable artifact content or safe widget metadata.",
+      summary: "Search linked artifact titles, kinds, IDs, and references.",
+      inputSchema: artifactSearchSchema,
+      examples: [{ input: { query: "design", limit: 20 } }],
+      result: "Bounded matching artifact metadata; payload content is not searched or returned.",
       async execute(input) {
-        // SAFETY: CakeOperationRegistry parsed input with artifactReadSchema.
-        const parsed = input as typeof artifactReadSchema.Type;
-        return readableRecord(await requireArtifact(parsed.id));
+        if (!options.listArtifactMetadata) throw new Error("Artifact search is unavailable");
+        // SAFETY: CakeOperationRegistry parsed input with artifactSearchSchema.
+        const parsed = input as typeof artifactSearchSchema.Type;
+        const query = parsed.query.toLocaleLowerCase();
+        const all = (await options.listArtifactMetadata()).filter((artifact) =>
+          [
+            artifact.lineageId,
+            artifact.title ?? "",
+            artifact.kind,
+            artifact.stableRef,
+            artifact.exactRef,
+          ]
+            .join("\n")
+            .toLocaleLowerCase()
+            .includes(query),
+        );
+        const limit = parsed.limit ?? 20;
+        return { total: all.length, truncated: all.length > limit, artifacts: all.slice(0, limit) };
+      },
+    },
+    {
+      command: "artifacts.history",
+      topic: "artifacts",
+      summary: "List bounded immutable revision metadata for one linked lineage.",
+      inputSchema: artifactHistorySchema,
+      examples: [{ input: { lineageId: "design-plan", limit: 50 } }],
+      result: "Bounded exact revision metadata and read-only paths, newest first.",
+      async execute(input) {
+        if (!options.historyArtifact) throw new Error("Artifact history is unavailable");
+        // SAFETY: CakeOperationRegistry parsed input with artifactHistorySchema.
+        const parsed = input as typeof artifactHistorySchema.Type;
+        const all = [
+          ...(await options.historyArtifact(stableReference(parsed.lineageId))),
+        ].reverse();
+        const limit = parsed.limit ?? 50;
+        return { total: all.length, truncated: all.length > limit, revisions: all.slice(0, limit) };
+      },
+    },
+    {
+      command: "artifacts.resolve-reference",
+      topic: "artifacts",
+      summary: "Resolve a linked stable or exact artifact reference to an exact read-only path.",
+      guidance: [
+        "An unlinked pasted URI is not readable. Explicitly link it first; temporary read leases are deferred until Cake has a durable lease owner.",
+      ],
+      inputSchema: artifactResolveSchema,
+      examples: [{ input: { reference: "cake://artifact/design-plan@r1" } }],
+      result: "Bounded metadata and canonical files for the selected exact revision.",
+      async execute(input) {
+        // SAFETY: CakeOperationRegistry parsed input with artifactResolveSchema.
+        const parsed = input as typeof artifactResolveSchema.Type;
+        return (await resolveArtifact(parsed.reference)).metadata;
       },
     },
     {
@@ -276,12 +363,10 @@ export function createCakeArtifactOperations(
           },
         },
       ],
-      result: "The persisted artifact ID, kind, and revision.",
+      result: "Bounded exact-revision metadata and the read-only projection path.",
       async execute(input, context) {
         // SAFETY: CakeOperationRegistry parsed input with artifactCreateSchema.
         const draft = (input as typeof artifactCreateSchema.Type).artifact;
-        if (options.getArtifact && (await options.getArtifact(draft.id)))
-          throw new Error(`Artifact ${draft.id} already exists; use artifacts.update`);
         const sessionId = runtimeContext(context).sessionManager.getSessionId();
         let artifact: CakeArtifactV1;
         if (draft.kind === "file") {
@@ -309,7 +394,7 @@ export function createCakeArtifactOperations(
         }
         const record = await persist(artifact, sessionId);
         appendPointer(record, pointerOrigin(context));
-        return { artifactId: record.artifact.id, kind: record.artifact.kind, revision: 1 };
+        return (await resolveArtifact(`cake://artifact/${record.artifact.id}@r1`)).metadata;
       },
     },
     {
@@ -321,19 +406,33 @@ export function createCakeArtifactOperations(
         "Markdown updates replace the complete document. File updates snapshot a replacement workspace-relative path. Widget updates accept revision instructions and run isolated generation, rendering, and visual review before publication.",
       ],
       inputSchema: artifactUpdateSchema,
-      examples: [{ input: { id: "design-plan", markdown: "# Revised design plan\n\nUpdated." } }],
-      result: "The artifact ID, kind, and newly published revision.",
+      examples: [
+        {
+          input: {
+            lineageId: "design-plan",
+            expectedRevision: 1,
+            markdown: "# Revised design plan\n\nUpdated.",
+          },
+        },
+      ],
+      result: "Bounded newly published revision metadata and its read-only projection path.",
       async execute(input, context) {
         // SAFETY: CakeOperationRegistry parsed input with artifactUpdateSchema.
         const update = input as typeof artifactUpdateSchema.Type;
-        const current = await requireArtifact(update.id);
+        const current = (await resolveArtifact(update.lineageId)).record;
+        if (current.artifact.revision !== update.expectedRevision)
+          throw new Error(
+            `Artifact ${update.lineageId} is at revision ${current.artifact.revision}; expected ${update.expectedRevision}`,
+          );
         const runtime = runtimeContext(context);
         const sessionId = runtime.sessionManager.getSessionId();
-        const revision = current.artifact.revision + 1;
+        const revision = update.expectedRevision + 1;
         let artifact: CakeArtifactV1;
         if ("markdown" in update) {
           if (current.artifact.kind !== "markdown")
-            throw new Error(`Artifact ${update.id} is ${current.artifact.kind}, not markdown`);
+            throw new Error(
+              `Artifact ${update.lineageId} is ${current.artifact.kind}, not markdown`,
+            );
           artifact = {
             ...current.artifact,
             revision,
@@ -343,7 +442,7 @@ export function createCakeArtifactOperations(
           if (update.title) artifact = { ...artifact, title: update.title };
         } else if ("path" in update) {
           if (current.artifact.kind !== "file")
-            throw new Error(`Artifact ${update.id} is ${current.artifact.kind}, not a file`);
+            throw new Error(`Artifact ${update.lineageId} is ${current.artifact.kind}, not a file`);
           if (!options.importArtifactFile)
             throw new Error("Workspace file artifact import is unavailable");
           const fileInput: ArtifactFileImportInput = {
@@ -357,7 +456,7 @@ export function createCakeArtifactOperations(
         } else {
           if (current.artifact.kind !== "widget")
             throw new Error(
-              `Artifact ${update.id} is ${current.artifact.kind}; revision instructions are only valid for widgets`,
+              `Artifact ${update.lineageId} is ${current.artifact.kind}; revision instructions are only valid for widgets`,
             );
           if (!options.reviseInlineWidget)
             throw new Error("Durable widget revision is unavailable");
@@ -382,12 +481,57 @@ export function createCakeArtifactOperations(
           };
           if (update.title) artifact = { ...artifact, title: update.title };
         }
-        // Forks inherit the source revision's immutable blob. The first edit creates a
-        // fork-owned lineage so later events and revisions remain scoped to this session.
+        // The publishing session is revision provenance; the global lineage identity stays stable.
         artifact = { ...artifact, sessionId };
         const record = await persist(artifact, sessionId);
         appendPointer(record, pointerOrigin(context));
-        return { artifactId: record.artifact.id, kind: record.artifact.kind, revision };
+        return (await resolveArtifact(`cake://artifact/${record.artifact.id}@r${revision}`))
+          .metadata;
+      },
+    },
+    {
+      command: "artifacts.restore",
+      topic: "artifacts",
+      summary: "Publish a historical snapshot as the next immutable revision.",
+      inputSchema: artifactRestoreSchema,
+      examples: [{ input: { lineageId: "design-plan", sourceRevision: 1, expectedRevision: 3 } }],
+      result: "The newly published exact revision metadata and read-only path.",
+      async execute(input, context) {
+        if (!options.restoreArtifact) throw new Error("Artifact restore is unavailable");
+        // SAFETY: CakeOperationRegistry parsed input with artifactRestoreSchema.
+        const parsed = input as typeof artifactRestoreSchema.Type;
+        const restored = await options.restoreArtifact(parsed);
+        appendPointer(restored.record, pointerOrigin(context));
+        return restored.metadata;
+      },
+    },
+    {
+      command: "artifacts.link",
+      topic: "artifacts",
+      summary: "Explicitly link a global stable or exact artifact reference to this session scope.",
+      inputSchema: artifactLinkSchema,
+      examples: [{ input: { reference: "cake://artifact/design-plan" } }],
+      result: "The selected linked revision metadata. Linking appends no Pi pointer.",
+      async execute(input) {
+        if (!options.linkArtifact) throw new Error("Artifact linking is unavailable");
+        // SAFETY: CakeOperationRegistry parsed input with artifactLinkSchema.
+        const parsed = input as typeof artifactLinkSchema.Type;
+        return options.linkArtifact(stableReference(parsed.reference));
+      },
+    },
+    {
+      command: "artifacts.unlink",
+      topic: "artifacts",
+      summary: "Remove this session's effective direct or family artifact link.",
+      inputSchema: artifactUnlinkSchema,
+      examples: [{ input: { lineageId: "design-plan" } }],
+      result: "Confirmation only. Unlinking appends no Pi pointer and does not delete history.",
+      async execute(input) {
+        if (!options.unlinkArtifact) throw new Error("Artifact unlinking is unavailable");
+        // SAFETY: CakeOperationRegistry parsed input with artifactUnlinkSchema.
+        const parsed = input as typeof artifactUnlinkSchema.Type;
+        await options.unlinkArtifact(parsed.lineageId);
+        return { lineageId: parsed.lineageId, unlinked: true };
       },
     },
     {

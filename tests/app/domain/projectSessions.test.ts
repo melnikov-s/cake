@@ -461,7 +461,7 @@ const makeLayer = (
         Effect.sync(() => {
           const pointer = hooks.forkArtifactPointers?.find(
             (candidate) =>
-              candidate.artifactId === lineageId && candidate.revision === artifactRevision,
+              candidate.lineageId === lineageId && candidate.revision === artifactRevision,
           );
           if (!pointer || artifactRevision === undefined) return undefined;
           return {
@@ -469,19 +469,19 @@ const makeLayer = (
             metadata: {
               revision: artifactRevision,
               digest: Schema.decodeUnknownSync(ArtifactDigest)(pointer.digest),
-              kind: pointer.kind,
+              kind: "markdown" as const,
               publishedAt: new Date(0).toISOString(),
-              publishedBySessionId: pointer.sessionId,
+              publishedBySessionId: "session-1",
               workingDirectory: "/project",
             },
             snapshot: {
               protocol: "cake.artifact/v1" as const,
-              id: pointer.artifactId,
-              sessionId: pointer.sessionId,
+              id: pointer.lineageId,
+              sessionId: "session-1",
               revision: pointer.revision,
               kind: "markdown" as const,
-              payload: { markdown: pointer.fallback.markdown },
-              fallback: pointer.fallback,
+              payload: { markdown: "Historical artifact" },
+              fallback: { markdown: "Historical artifact" },
             },
           };
         }),
@@ -490,7 +490,7 @@ const makeLayer = (
           hooks.onArtifactLink?.(link);
           hooks.onInheritFork?.(
             "/project",
-            hooks.forkArtifactPointers?.[0]?.sessionId ?? "session-1",
+            "session-1",
             "/project",
             link.target.type === "session" ? link.target.sessionId : "family",
             hooks.forkArtifactPointers ?? [],
@@ -1498,12 +1498,12 @@ describe("Project Sessions domain", () => {
   it.effect("associates only the fork runtime's reachable artifact revisions", () => {
     const pointer: ArtifactPointer = {
       protocol: "cake.artifact/v1",
-      artifactId: "artifact-before-entry",
-      sessionId: "session-1",
+      lineageId: "artifact-before-entry",
       revision: 2,
       kind: "table",
       digest: "a".repeat(64),
-      fallback: { markdown: "| Before |" },
+      stableRef: "cake://artifact/artifact-before-entry",
+      exactRef: "cake://artifact/artifact-before-entry@r2",
     };
     let inherited: ReadonlyArray<ArtifactPointer> | undefined;
     let link: ArtifactLink | undefined;
@@ -1545,12 +1545,12 @@ describe("Project Sessions domain", () => {
   it.effect("keeps a fork from a family member standalone with exact pinned links", () => {
     const pointer: ArtifactPointer = {
       protocol: "cake.artifact/v1",
-      artifactId: "family-artifact",
-      sessionId: "session-1",
+      lineageId: "family-artifact",
       revision: 3,
       kind: "markdown",
       digest: "b".repeat(64),
-      fallback: { markdown: "Family revision three" },
+      stableRef: "cake://artifact/family-artifact",
+      exactRef: "cake://artifact/family-artifact@r3",
     };
     let inherited: ReadonlyArray<ArtifactPointer> | undefined;
     let link: ArtifactLink | undefined;

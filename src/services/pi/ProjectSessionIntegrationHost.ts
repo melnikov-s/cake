@@ -30,6 +30,8 @@ import type {
 import type { CakeRuntimeOptions } from "./runtime/cake-runtime";
 import type { RuntimeUiRequest } from "./runtime/runtime-ui-request";
 import type { ImportWorkspaceFileInput } from "../artifacts/importWorkspaceFile";
+import type { ArtifactProjectionMetadata } from "../artifacts/ArtifactProjection";
+import type { ResolvedAgentArtifact } from "./runtime/cake-artifact-operations";
 
 interface ArtifactRepositoryPort {
   readonly upsert: (
@@ -49,6 +51,31 @@ interface ArtifactRepositoryPort {
     record: ArtifactRecord,
     sessionId: string,
   ) => Effect.Effect<void, unknown, never>;
+  readonly resolve: (
+    sessionId: string,
+    reference: string,
+  ) => Effect.Effect<ResolvedAgentArtifact, unknown, never>;
+  readonly listMetadata: (
+    sessionId: string,
+  ) => Effect.Effect<ReadonlyArray<ArtifactProjectionMetadata>, unknown, never>;
+  readonly history: (
+    sessionId: string,
+    reference: string,
+  ) => Effect.Effect<ReadonlyArray<ArtifactProjectionMetadata>, unknown, never>;
+  readonly restore: (
+    workingDirectory: string,
+    sessionId: string,
+    input: {
+      readonly lineageId: string;
+      readonly sourceRevision: number;
+      readonly expectedRevision: number;
+    },
+  ) => Effect.Effect<ResolvedAgentArtifact, unknown, never>;
+  readonly link: (
+    sessionId: string,
+    reference: string,
+  ) => Effect.Effect<ArtifactProjectionMetadata, unknown, never>;
+  readonly unlink: (sessionId: string, lineageId: string) => Effect.Effect<void, unknown, never>;
 }
 interface ReviewRepositoryPort {
   readonly reviewContextPath?: (workingDirectory: string, sessionId: string) => string;
@@ -58,8 +85,12 @@ export type ProjectSessionRuntimeIntegrations = Pick<
   CakeRuntimeOptions,
   | "generateInlineWidget"
   | "reviseInlineWidget"
-  | "getArtifact"
-  | "listSessionArtifacts"
+  | "resolveArtifact"
+  | "listArtifactMetadata"
+  | "historyArtifact"
+  | "restoreArtifact"
+  | "linkArtifact"
+  | "unlinkArtifact"
   | "importArtifactFile"
   | "listArtifacts"
   | "persistArtifact"
@@ -217,6 +248,12 @@ export class ProjectSessionIntegrationHost {
       get: () => Effect.succeed(undefined),
       listSession: () => Effect.succeed([]),
       linkSession: () => Effect.void,
+      resolve: () => Effect.die(new Error("Artifact resolution is unavailable")),
+      listMetadata: () => Effect.succeed([]),
+      history: () => Effect.die(new Error("Artifact history is unavailable")),
+      restore: () => Effect.die(new Error("Artifact restore is unavailable")),
+      link: () => Effect.die(new Error("Artifact linking is unavailable")),
+      unlink: () => Effect.die(new Error("Artifact unlinking is unavailable")),
     };
     this.reviewRepository = options.reviewRepository ?? {};
   }
@@ -237,10 +274,16 @@ export class ProjectSessionIntegrationHost {
       requestArtifact: (record, signal) => this.requestArtifactFromRenderer(record, signal),
       generateInlineWidget: (input) => this.execute(this.generateInlineWidget(input), input.signal),
       reviseInlineWidget: (input) => this.execute(this.reviseInlineWidget(input), input.signal),
-      getArtifact: (artifactId) =>
-        this.execute(this.artifactRepository.get(this.workspacePath, sessionId, artifactId)),
-      listSessionArtifacts: () =>
-        this.execute(this.artifactRepository.listSession(this.workspacePath, sessionId)),
+      resolveArtifact: (reference) =>
+        this.execute(this.artifactRepository.resolve(sessionId, reference)),
+      listArtifactMetadata: () => this.execute(this.artifactRepository.listMetadata(sessionId)),
+      historyArtifact: (reference) =>
+        this.execute(this.artifactRepository.history(sessionId, reference)),
+      restoreArtifact: (input) =>
+        this.execute(this.artifactRepository.restore(this.workspacePath, sessionId, input)),
+      linkArtifact: (reference) => this.execute(this.artifactRepository.link(sessionId, reference)),
+      unlinkArtifact: (lineageId) =>
+        this.execute(this.artifactRepository.unlink(sessionId, lineageId)),
       importArtifactFile: (input) =>
         this.importWorkspaceFile({
           ...input,
@@ -255,12 +298,12 @@ export class ProjectSessionIntegrationHost {
         const workingDirectory = this.workspacePath;
         return this.execute(
           Effect.gen(function* () {
-            const direct = yield* Effect.forEach(pointers, (pointer) =>
-              repository.get(workingDirectory, pointer.sessionId, pointer.artifactId),
-            );
+            // Catalog links are authoritative for visibility. Pointers are retained only
+            // for exact transcript provenance and fork reachability.
+            void pointers;
             const indexed = yield* repository.listSession(workingDirectory, sessionId);
             const records = new Map<string, ArtifactRecord>();
-            for (const record of [...direct, ...indexed]) {
+            for (const record of indexed) {
               if (!record) continue;
               const current = records.get(record.artifact.id);
               if (!current || record.artifact.revision > current.artifact.revision)

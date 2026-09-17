@@ -32,7 +32,10 @@ import { jsonObjectSchema, type JsonObject, type JsonValue } from "../../../ipc/
 import { SESSION_TITLE_MAX_LENGTH } from "../../../ipc/session-contract";
 import { artifactRecordSchema, type CakeArtifactV1 } from "../../../ipc/artifact-contract";
 import { createCakeArtifactExtension } from "./artifact-extension";
-import { createCakeArtifactOperations } from "./cake-artifact-operations";
+import {
+  createCakeArtifactOperations,
+  type PiArtifactOperationHost,
+} from "./cake-artifact-operations";
 import { createCakeModelOperations } from "./cake-model-operations";
 import { createCakeVscodeOperations } from "./cake-vscode-operations";
 import { createCakeWorktreeOperations } from "./cake-worktree-operations";
@@ -303,9 +306,7 @@ function createCakeToolDefinition(definitions: readonly CakeOperationDefinition[
 }
 
 function createCakeGatewayExtension(
-  definitions: (pi: {
-    appendEntry(type: string, data: JsonValue): void;
-  }) => CakeOperationDefinition[],
+  definitions: (pi: PiArtifactOperationHost) => CakeOperationDefinition[],
 ): InlineExtension {
   return (pi) => {
     pi.registerTool(createCakeToolDefinition(definitions(pi)));
@@ -1391,8 +1392,12 @@ export async function createCakeRuntimeCapabilities(input: {
                       requestArtifact,
                       generateInlineWidget: options.generateInlineWidget,
                       reviseInlineWidget: options.reviseInlineWidget,
-                      getArtifact: options.getArtifact,
-                      listArtifacts: options.listSessionArtifacts,
+                      resolveArtifact: options.resolveArtifact,
+                      listArtifactMetadata: options.listArtifactMetadata,
+                      historyArtifact: options.historyArtifact,
+                      restoreArtifact: options.restoreArtifact,
+                      linkArtifact: options.linkArtifact,
+                      unlinkArtifact: options.unlinkArtifact,
                       importArtifactFile: options.importArtifactFile,
                     }),
                     ...(options.vscodeControl
@@ -1459,8 +1464,12 @@ export async function createCakeRuntimeCapabilities(input: {
                       requestArtifact,
                       generateInlineWidget: options.generateInlineWidget,
                       reviseInlineWidget: options.reviseInlineWidget,
-                      getArtifact: options.getArtifact,
-                      listArtifacts: options.listSessionArtifacts,
+                      resolveArtifact: options.resolveArtifact,
+                      listArtifactMetadata: options.listArtifactMetadata,
+                      historyArtifact: options.historyArtifact,
+                      restoreArtifact: options.restoreArtifact,
+                      linkArtifact: options.linkArtifact,
+                      unlinkArtifact: options.unlinkArtifact,
                       importArtifactFile: options.importArtifactFile,
                     }),
                     ...(options.vscodeControl

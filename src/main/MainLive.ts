@@ -27,6 +27,7 @@ import { RendererRequestCoordinatorLive } from "../services/renderer-requests/Re
 import { ScheduledMessages } from "../services/scheduled-messages/ScheduledMessages";
 import { SessionCatalogChanges } from "../services/session-catalogs/SessionCatalogChanges";
 import { makeArtifactStorageLive } from "../services/storage/ArtifactStorageLive";
+import { makeArtifactProjectionLive } from "../services/artifacts/ArtifactProjectionLive";
 import { makeApplicationStorageLive } from "../services/storage/ApplicationStorage";
 import { ApplicationState } from "../services/storage/ApplicationState";
 import { makeReviewStorageLive } from "../services/storage/ReviewStorageLive";
@@ -137,11 +138,15 @@ export const makeMainLive = (options: MainLiveOptions) => {
     ).pipe(Layer.provide(Layer.mergeAll(PlatformLive, StorageLive, NativeFoundationLive))),
   );
 
+  const ArtifactProjectionLive = makeArtifactProjectionLive(paths.cache).pipe(
+    Layer.provide(BootstrapLive),
+  );
   const ApplicationCapabilitiesLive = Layer.mergeAll(
     PlatformLive,
     StorageLive,
     NativeServicesLive,
     PiLive,
+    ArtifactProjectionLive,
   );
 
   const SessionCoreLive = Layer.mergeAll(

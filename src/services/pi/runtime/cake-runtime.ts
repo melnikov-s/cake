@@ -38,6 +38,8 @@ import type {
   ArtifactPointer,
   CakeArtifactV1,
 } from "../../../ipc/artifact-contract";
+import type { ArtifactProjectionMetadata } from "../../artifacts/ArtifactProjection";
+import type { ResolvedAgentArtifact } from "./cake-artifact-operations";
 import type { VscodeControl } from "./cake-vscode-operations";
 import type { WorktreeLandingControl } from "./cake-worktree-operations";
 import { assertSessionPath } from "./session-path";
@@ -116,8 +118,16 @@ export interface CakeRuntimeOptions {
     input: InlineWidgetGenerationRequest,
   ): Promise<InlineWidgetGenerationResult>;
   reviseInlineWidget?(input: InlineWidgetRevisionRequest): Promise<InlineWidgetGenerationResult>;
-  getArtifact?(artifactId: string): Promise<ArtifactRecord | undefined>;
-  listSessionArtifacts?(): Promise<ReadonlyArray<ArtifactRecord>>;
+  resolveArtifact?(reference: string): Promise<ResolvedAgentArtifact>;
+  listArtifactMetadata?(): Promise<ReadonlyArray<ArtifactProjectionMetadata>>;
+  historyArtifact?(reference: string): Promise<ReadonlyArray<ArtifactProjectionMetadata>>;
+  restoreArtifact?(input: {
+    lineageId: string;
+    sourceRevision: number;
+    expectedRevision: number;
+  }): Promise<ResolvedAgentArtifact>;
+  linkArtifact?(reference: string): Promise<ArtifactProjectionMetadata>;
+  unlinkArtifact?(lineageId: string): Promise<void>;
   importArtifactFile?(input: {
     path: string;
     id: string;

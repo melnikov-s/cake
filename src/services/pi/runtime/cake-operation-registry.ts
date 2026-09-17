@@ -65,7 +65,7 @@ const cakeTopics = [
   { name: "interview", summary: "Gather requirements through structured user interviews." },
   {
     name: "artifacts",
-    summary: "List, read, create, and durably revise substantial reusable artifacts.",
+    summary: "List, search, resolve, create, revise, restore, link, and unlink artifacts.",
   },
   { name: "widgets", summary: "Create interactive or highly visual presentations." },
   {

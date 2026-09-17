@@ -33,7 +33,14 @@ replaces that root for tests and alternate installations.
 │   └── global-chat/
 │       ├── sessions/
 │       └── resolved-sessions/
+└── cache/
+    └── artifact-projections/
 ```
+
+`cache/artifact-projections` contains disposable, read-only, digest-verified
+exact-revision files derived from the authoritative artifact repository. Cache
+files can be deleted or rematerialized at any time and never participate in
+publication, lineage reachability, or garbage collection.
 
 Cake-owned durable domain data and configuration—including registered Projects,
 each Project's managed-worktree commands, and Project-scoped custom session workflow
@@ -42,7 +49,8 @@ when `CAKE_HOME` changes. Workflow status is independent from the Pi transcript 
 Cake's active/resolved transcript namespace. Electron's
 `app.getPath("userData")`, with `CAKE_ELECTRON_USER_DATA` as its test override,
 contains only window/renderer presentation state and machine-local Electron or
-embedded-editor data. `CakePaths` resolves durable Cake locations in main;
+embedded-editor data. `CakePaths` resolves durable Cake locations and disposable
+cache roots in main;
 renderer code never constructs storage paths.
 
 ## Focused storage Services

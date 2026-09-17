@@ -241,26 +241,71 @@ export const artifactRecordSchema = Schema.Struct({
   updatedAt: Schema.String,
 });
 
+const artifactStableRefSchema = Schema.String.check(
+  Schema.isPattern(/^cake:\/\/artifact\/[A-Za-z0-9][A-Za-z0-9._:-]*$/),
+);
+const artifactExactRefSchema = Schema.String.check(
+  Schema.isPattern(/^cake:\/\/artifact\/[A-Za-z0-9][A-Za-z0-9._:-]*@r[1-9][0-9]*$/),
+);
+const artifactPointerOriginSchema = Schema.Struct({
+  assistantEntryId: provenanceIdSchema,
+  toolCallId: provenanceIdSchema,
+});
+
+/** Bounded exact-revision transcript reference. Artifact payload and fallback are never included. */
 export const artifactPointerSchema = Schema.Struct({
+  protocol: Schema.Literal(ARTIFACT_PROTOCOL),
+  lineageId: idSchema,
+  revision: Schema.Int.check(Schema.isGreaterThan(0)),
+  // "architecture" is retained only for immutable historical reachability.
+  kind: Schema.Union([artifactKindSchema, Schema.Literal("architecture")]),
+  digest: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/)),
+  title: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(512))),
+  stableRef: artifactStableRefSchema,
+  exactRef: artifactExactRefSchema,
+  origin: Schema.optionalKey(artifactPointerOriginSchema),
+}).check(
+  Schema.makeFilter((pointer) =>
+    pointer.stableRef === `cake://artifact/${pointer.lineageId}` &&
+    pointer.exactRef === `cake://artifact/${pointer.lineageId}@r${pointer.revision}`
+      ? undefined
+      : "Artifact pointer references must match lineageId and revision",
+  ),
+);
+
+const legacyArtifactPointerSchema = Schema.Struct({
   protocol: Schema.Literal(ARTIFACT_PROTOCOL),
   artifactId: idSchema,
   sessionId: idSchema,
   revision: Schema.Int.check(Schema.isGreaterThan(0)),
-  // "architecture" is retained only to decode immutable historical Pi pointers.
   kind: Schema.Union([artifactKindSchema, Schema.Literal("architecture")]),
   digest: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/)),
   fallback: Schema.Struct({ markdown: textSchema }),
-  origin: Schema.optionalKey(
-    Schema.Struct({
-      assistantEntryId: provenanceIdSchema,
-      toolCallId: provenanceIdSchema,
-    }),
-  ),
+  origin: Schema.optionalKey(artifactPointerOriginSchema),
 });
 
 export type CakeArtifactV1 = typeof cakeArtifactV1Schema.Type;
 export type ArtifactRecord = typeof artifactRecordSchema.Type;
 export type ArtifactPointer = typeof artifactPointerSchema.Type;
+
+/** Decodes current pointers and normalizes persisted legacy pointers for reachability only. */
+export function decodeArtifactPointer(input: unknown): ArtifactPointer | undefined {
+  const current = Schema.decodeUnknownOption(artifactPointerSchema)(input);
+  if (current._tag === "Some") return current.value;
+  const legacy = Schema.decodeUnknownOption(legacyArtifactPointerSchema)(input);
+  if (legacy._tag === "None") return undefined;
+  const value = legacy.value;
+  return Schema.decodeUnknownSync(artifactPointerSchema)({
+    protocol: ARTIFACT_PROTOCOL,
+    lineageId: value.artifactId,
+    revision: value.revision,
+    kind: value.kind,
+    digest: value.digest,
+    stableRef: `cake://artifact/${value.artifactId}`,
+    exactRef: `cake://artifact/${value.artifactId}@r${value.revision}`,
+    ...(value.origin === undefined ? null : { origin: value.origin }),
+  });
+}
 
 export function parseArtifactInput(input: unknown): CakeArtifactV1 {
   const bytes = new TextEncoder().encode(JSON.stringify(input)).byteLength;

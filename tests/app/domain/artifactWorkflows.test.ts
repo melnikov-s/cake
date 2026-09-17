@@ -146,7 +146,7 @@ describe("artifact lineage workflows", () => {
         expect(yield* visible("other")).toEqual([]);
 
         yield* workflows.linkSession(id, "other");
-        yield* workflows.linkFamily(id, "family-1");
+        yield* workflows.linkForSession(id, "family-child");
         expect(yield* visible("other")).toEqual(["standalone-plan@r1"]);
         expect(yield* visible("family-child")).toEqual(["standalone-plan@r1"]);
 
@@ -158,8 +158,13 @@ describe("artifact lineage workflows", () => {
         ]);
 
         yield* workflows.unlinkSession(id, "other");
-        yield* workflows.unlinkFamily(id, "family-1");
+        yield* workflows.unlinkEffectiveSessionArtifact("family-child", id);
         expect(yield* visible("other")).toEqual([]);
+        expect(yield* visible("family-child")).toEqual([]);
+
+        yield* workflows.linkFamily(id, "family-1");
+        expect(yield* visible("family-child")).toEqual(["standalone-plan@r1"]);
+        yield* workflows.unlinkFamily(id, "family-1");
         expect(yield* visible("family-child")).toEqual([]);
       }).pipe(Effect.provide(layer)),
     );
@@ -187,6 +192,11 @@ describe("artifact lineage workflows", () => {
         });
         expect(yield* visible("pinned")).toEqual(["revisions@r1"]);
         expect(yield* visible("latest")).toEqual(["revisions@r2"]);
+        const stableFromPinnedSession = yield* workflows.resolveEffectiveReference(
+          "pinned",
+          formatArtifactRef({ lineageId: id }),
+        );
+        expect(stableFromPinnedSession.revision.metadata.revision).toBe(2);
 
         yield* workflows.setSelection(
           id,
@@ -238,6 +248,41 @@ describe("artifact lineage workflows", () => {
           formatArtifactRef({ lineageId: id, revision: revision(1) }),
         );
         expect(metadata.revision.revision).toBe(1);
+      }).pipe(Effect.provide(layer)),
+    );
+  });
+
+  it("resolves linked exact refs reproducibly and rejects unlinked sessions", async () => {
+    const layer = await makeLayer(() => []);
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const id = lineageId("exact-resolution");
+        yield* workflows.create({
+          sessionId: "author",
+          lineageId: id,
+          snapshot: snapshot(id, "author", 1, "one"),
+          workingDirectory: "/project",
+        });
+        yield* workflows.publish({
+          sessionId: "author",
+          lineageId: id,
+          expectedLatestRevision: 1,
+          snapshot: snapshot(id, "author", 2, "two"),
+          workingDirectory: "/project",
+        });
+        const exact = yield* workflows.resolveEffectiveReference(
+          "author",
+          formatArtifactRef({ lineageId: id, revision: revision(1) }),
+        );
+        expect(exact.revision.snapshot.fallback.markdown).toBe("one");
+        expect(exact.latestRevision).toBe(2);
+        const failure = yield* workflows
+          .resolveEffectiveReference(
+            "unlinked",
+            formatArtifactRef({ lineageId: id, revision: revision(1) }),
+          )
+          .pipe(Effect.flip);
+        expect(failure._tag).toBe("ArtifactNotLinked");
       }).pipe(Effect.provide(layer)),
     );
   });

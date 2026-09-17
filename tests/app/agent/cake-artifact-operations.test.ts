@@ -82,7 +82,7 @@ describe("Cake widget presentation operation", () => {
     expect(appendEntry).toHaveBeenCalledWith(
       "cake.artifact/v1",
       expect.objectContaining({
-        artifactId: "runtime-overview",
+        lineageId: "runtime-overview",
         kind: "widget",
         origin: { assistantEntryId: "assistant-1", toolCallId: "tool-1" },
       }),

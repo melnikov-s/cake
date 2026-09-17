@@ -1,7 +1,10 @@
 import { Effect, Layer, Schema } from "effect";
 import {
   ArtifactLineageId,
+  ArtifactRevisionNumber,
+  ArtifactStableRef,
   artifactRevisionToRecord,
+  parseArtifactRef,
 } from "../../domain/artifacts/artifact-lineage";
 import * as artifactWorkflows from "../../domain/artifacts/artifactWorkflows";
 import { Electron } from "../electron/Electron";
@@ -14,6 +17,7 @@ import { PiModels } from "./PiModels";
 import { RenderedWidgetCapture } from "../widgets/RenderedWidgetCapture";
 import { generateReviewedWidget } from "../../domain/widgets/widgetGenerationReview";
 import { importWorkspaceFile } from "../artifacts/importWorkspaceFile";
+import { ArtifactProjection } from "../artifacts/ArtifactProjection";
 import {
   ProjectSessionRuntimeHost,
   ProjectSessionRuntimeHostError,
@@ -42,6 +46,7 @@ export const makeProjectSessionRuntimeHostLive = (
 ): Layer.Layer<
   ProjectSessionRuntimeHost,
   never,
+  | ArtifactProjection
   | ArtifactStorage
   | Electron
   | PiModels
@@ -54,6 +59,7 @@ export const makeProjectSessionRuntimeHostLive = (
     ProjectSessionRuntimeHost,
     Effect.gen(function* () {
       const artifacts = yield* ArtifactStorage;
+      const artifactProjection = yield* ArtifactProjection;
       const families = yield* SessionFamilyStorage;
       const electron = yield* Electron;
       const reviews = yield* ReviewStorage;
@@ -61,7 +67,11 @@ export const makeProjectSessionRuntimeHostLive = (
       const models = yield* PiModels;
       const widgetCapture = yield* RenderedWidgetCapture;
       const adapterContext = yield* Effect.context<
-        ArtifactStorage | PiModels | RenderedWidgetCapture | RendererRequestCoordinator
+        | ArtifactProjection
+        | ArtifactStorage
+        | PiModels
+        | RenderedWidgetCapture
+        | RendererRequestCoordinator
       >();
       const runAdapter = Effect.runPromiseWith(adapterContext);
       const provideArtifactServices = <A, E>(
@@ -71,6 +81,52 @@ export const makeProjectSessionRuntimeHostLive = (
           Effect.provideService(ArtifactStorage, artifacts),
           Effect.provideService(SessionFamilyStorage, families),
         );
+      const projectEffective = Effect.fn("ProjectSessionRuntimeHost.projectArtifact")(function* (
+        sessionId: string,
+        effective: artifactWorkflows.EffectiveArtifact,
+        latestRevision: ArtifactRevisionNumber,
+      ) {
+        return yield* artifactProjection.materialize({
+          sessionId,
+          revision: effective.revision,
+          latestRevision,
+          linkMode: effective.link.selection.mode,
+        });
+      });
+      const resolveForSession = Effect.fn("ProjectSessionRuntimeHost.resolveArtifact")(function* (
+        sessionId: string,
+        reference: string,
+      ) {
+        const stableRef = Schema.decodeUnknownSync(ArtifactStableRef)(reference);
+        const effective = yield* provideArtifactServices(
+          artifactWorkflows.resolveEffectiveReference(sessionId, stableRef),
+        );
+        const metadata = yield* artifactProjection.materialize({
+          sessionId,
+          revision: effective.revision,
+          latestRevision: effective.latestRevision,
+          linkMode: effective.link.selection.mode,
+        });
+        return { record: artifactRevisionToRecord(effective.revision), metadata };
+      });
+      const listMetadataForSession = Effect.fn("ProjectSessionRuntimeHost.listArtifactMetadata")(
+        function* (sessionId: string) {
+          const effective = yield* provideArtifactServices(
+            artifactWorkflows.listEffectiveSessionArtifacts(sessionId),
+          );
+          const catalog = yield* artifacts.catalog();
+          return yield* Effect.forEach(effective.slice(0, 100), (item) => {
+            const lineage = catalog.lineages.find(
+              (candidate) => candidate.id === item.revision.lineageId,
+            );
+            return projectEffective(
+              sessionId,
+              item,
+              lineage?.latestRevision ?? item.revision.metadata.revision,
+            );
+          });
+        },
+      );
       const sessions = new Map<string, SessionIntegration>();
 
       const disposeHost = (sessionId: string) => {
@@ -181,6 +237,87 @@ export const makeProjectSessionRuntimeHostLive = (
                   record.artifact.id,
                 );
                 yield* provideArtifactServices(artifactWorkflows.linkSession(lineageId, sessionId));
+              }),
+            resolve: resolveForSession,
+            listMetadata: listMetadataForSession,
+            history: (targetSessionId, reference) =>
+              Effect.gen(function* () {
+                const parsed = parseArtifactRef(
+                  Schema.decodeUnknownSync(ArtifactStableRef)(reference),
+                );
+                const revisions = yield* provideArtifactServices(
+                  artifactWorkflows.historyForSession(targetSessionId, parsed.lineageId),
+                );
+                const effective = yield* provideArtifactServices(
+                  artifactWorkflows.resolveEffectiveReference(
+                    targetSessionId,
+                    Schema.decodeUnknownSync(ArtifactStableRef)(
+                      `cake://artifact/${parsed.lineageId}`,
+                    ),
+                  ),
+                );
+                const latest = revisions.at(-1)?.metadata.revision;
+                if (latest === undefined) return [];
+                return yield* Effect.forEach(revisions.slice(-100), (revision) =>
+                  artifactProjection.materialize({
+                    sessionId: targetSessionId,
+                    revision,
+                    latestRevision: latest,
+                    linkMode: effective.link.selection.mode,
+                  }),
+                );
+              }),
+            restore: (workingDirectory, targetSessionId, input) =>
+              Effect.gen(function* () {
+                const lineageId = yield* Schema.decodeUnknownEffect(ArtifactLineageId)(
+                  input.lineageId,
+                );
+                const sourceRevision = yield* Schema.decodeUnknownEffect(ArtifactRevisionNumber)(
+                  input.sourceRevision,
+                );
+                const revision = yield* provideArtifactServices(
+                  artifactWorkflows.restore({
+                    sessionId: targetSessionId,
+                    lineageId,
+                    sourceRevision,
+                    expectedLatestRevision: input.expectedRevision,
+                    workingDirectory,
+                  }),
+                );
+                return yield* resolveForSession(
+                  targetSessionId,
+                  `cake://artifact/${lineageId}@r${revision.metadata.revision}`,
+                );
+              }),
+            link: (targetSessionId, reference) =>
+              Effect.gen(function* () {
+                const parsed = parseArtifactRef(
+                  Schema.decodeUnknownSync(ArtifactStableRef)(reference),
+                );
+                yield* provideArtifactServices(
+                  artifactWorkflows.resolveReferenceMetadata(
+                    Schema.decodeUnknownSync(ArtifactStableRef)(reference),
+                  ),
+                );
+                yield* provideArtifactServices(
+                  artifactWorkflows.linkForSession(
+                    parsed.lineageId,
+                    targetSessionId,
+                    parsed.revision === undefined
+                      ? { mode: "follow-latest" }
+                      : { mode: "pinned", revision: parsed.revision },
+                  ),
+                );
+                return (yield* resolveForSession(targetSessionId, reference)).metadata;
+              }),
+            unlink: (targetSessionId, lineageIdInput) =>
+              Effect.gen(function* () {
+                const lineageId =
+                  yield* Schema.decodeUnknownEffect(ArtifactLineageId)(lineageIdInput);
+                yield* provideArtifactServices(
+                  artifactWorkflows.unlinkEffectiveSessionArtifact(targetSessionId, lineageId),
+                );
+                yield* artifactProjection.cleanupLineage(targetSessionId, lineageId);
               }),
           },
           reviewRepository: {

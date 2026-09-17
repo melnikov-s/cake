@@ -90,12 +90,12 @@ describe("cake.artifact/v1 contract", () => {
     expect(
       Schema.decodeUnknownSync(artifactPointerSchema)({
         protocol: "cake.artifact/v1",
-        artifactId: "file-1",
-        sessionId: "session-1",
+        lineageId: "file-1",
         revision: 1,
         kind: "file",
         digest: "a".repeat(64),
-        fallback: file.fallback,
+        stableRef: "cake://artifact/file-1",
+        exactRef: "cake://artifact/file-1@r1",
       }).kind,
     ).toBe("file");
   });
@@ -103,12 +103,12 @@ describe("cake.artifact/v1 contract", () => {
   it("records optional assistant-message provenance on durable pointers", () => {
     const pointer = Schema.decodeUnknownSync(artifactPointerSchema)({
       protocol: "cake.artifact/v1",
-      artifactId: "artifact-1",
-      sessionId: "session-1",
+      lineageId: "artifact-1",
       revision: 1,
       kind: "markdown",
       digest: "a".repeat(64),
-      fallback: { markdown: "Hello" },
+      stableRef: "cake://artifact/artifact-1",
+      exactRef: "cake://artifact/artifact-1@r1",
       origin: {
         assistantEntryId: "assistant/entry+1=",
         toolCallId: "functions.cake/0#call+abc=",
@@ -122,7 +122,9 @@ describe("cake.artifact/v1 contract", () => {
     expect(
       Schema.decodeUnknownSync(artifactPointerSchema)({
         ...pointer,
-        artifactId: "historical-architecture",
+        lineageId: "historical-architecture",
+        stableRef: "cake://artifact/historical-architecture",
+        exactRef: "cake://artifact/historical-architecture@r1",
         kind: "architecture",
       }).kind,
     ).toBe("architecture");

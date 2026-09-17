@@ -34,12 +34,13 @@ export function createCakeArtifactExtension(options: ArtifactExtensionOptions): 
         "cake.artifact/v1",
         Schema.decodeUnknownSync(artifactPointerSchema)({
           protocol: "cake.artifact/v1",
-          artifactId: record.artifact.id,
-          sessionId: record.artifact.sessionId,
+          lineageId: record.artifact.id,
           revision: record.artifact.revision,
           kind: record.artifact.kind,
           digest: record.digest,
-          fallback: record.artifact.fallback,
+          ...(record.artifact.title === undefined ? null : { title: record.artifact.title }),
+          stableRef: `cake://artifact/${record.artifact.id}`,
+          exactRef: `cake://artifact/${record.artifact.id}@r${record.artifact.revision}`,
         }),
       );
     };

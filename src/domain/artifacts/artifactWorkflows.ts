@@ -223,6 +223,34 @@ export const history = Effect.fn("Artifacts.history")(function* (lineageId: Arti
   return yield* storage.listRevisions(lineageId);
 });
 
+export const historyForSession = Effect.fn("Artifacts.historyForSession")(function* (
+  sessionId: string,
+  lineageId: ArtifactLineageId,
+) {
+  yield* requireEffectiveLink(sessionId, lineageId);
+  return yield* history(lineageId);
+});
+
+export const resolveEffectiveReference = Effect.fn("Artifacts.resolveEffectiveReference")(
+  function* (sessionId: string, reference: ArtifactStableRef) {
+    const parsed = parseArtifactRef(reference);
+    const link = yield* requireEffectiveLink(sessionId, parsed.lineageId);
+    const storage = yield* ArtifactStorage;
+    const catalog = yield* storage.catalog();
+    const lineage = yield* requireLineage(catalog, parsed.lineageId);
+    // URI semantics are independent from the visibility link's selected projection:
+    // stable refs always follow latest and exact refs always select their named revision.
+    const selectedRevision = parsed.revision ?? lineage.latestRevision;
+    const value = yield* storage.read(parsed.lineageId, selectedRevision);
+    if (!value)
+      return yield* new ArtifactNotFound({
+        lineageId: parsed.lineageId,
+        revision: selectedRevision,
+      });
+    return { revision: value, link, latestRevision: lineage.latestRevision };
+  },
+);
+
 const putLink = Effect.fn("Artifacts.putLink")(function* (
   lineageId: ArtifactLineageId,
   target: ArtifactLinkTarget,
@@ -243,6 +271,21 @@ export const linkSession = Effect.fn("Artifacts.linkSession")(
     selection: ArtifactLink["selection"] = { mode: "follow-latest" },
   ) => putLink(lineageId, { type: "session", sessionId }, selection),
 );
+
+export const linkForSession = Effect.fn("Artifacts.linkForSession")(function* (
+  lineageId: ArtifactLineageId,
+  sessionId: string,
+  selection: ArtifactLink["selection"] = { mode: "follow-latest" },
+) {
+  const families = yield* SessionFamilyStorage;
+  yield* families.withMemberLock(
+    sessionId,
+    Effect.gen(function* () {
+      const familyTarget = yield* familyTargetForSession(sessionId);
+      yield* putLink(lineageId, familyTarget ?? { type: "session", sessionId }, selection);
+    }),
+  );
+});
 
 export const linkFamily = Effect.fn("Artifacts.linkFamily")(
   (
@@ -265,6 +308,14 @@ export const unlinkFamily = Effect.fn("Artifacts.unlinkFamily")(function* (
 ) {
   yield* (yield* ArtifactStorage).removeLink({ type: "family", familyId }, lineageId);
 });
+
+/** Removes the direct link when present, otherwise the effective family link. */
+export const unlinkEffectiveSessionArtifact = Effect.fn("Artifacts.unlinkEffectiveSessionArtifact")(
+  function* (sessionId: string, lineageId: ArtifactLineageId) {
+    const link = yield* requireEffectiveLink(sessionId, lineageId);
+    yield* (yield* ArtifactStorage).removeLink(link.target, lineageId);
+  },
+);
 
 export const setSelection = Effect.fn("Artifacts.setSelection")(function* (
   lineageId: ArtifactLineageId,

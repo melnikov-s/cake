@@ -17,6 +17,7 @@ export interface CakePaths {
   artifacts: string;
   reviews: string;
   worktrees: string;
+  cache: string;
 }
 
 export interface ResolveCakePathsOptions {
@@ -24,7 +25,7 @@ export interface ResolveCakePathsOptions {
   homeDirectory?: string;
 }
 
-/** The single authority for Cake-owned persistent filesystem locations. */
+/** The single authority for Cake-owned durable and disposable filesystem locations. */
 export function resolveCakePaths(options: ResolveCakePathsOptions = {}): CakePaths {
   const env = options.env ?? process.env;
   const homeDirectory = options.homeDirectory ?? homedir();
@@ -47,5 +48,6 @@ export function resolveCakePaths(options: ResolveCakePathsOptions = {}): CakePat
     artifacts: join(state, "artifacts"),
     reviews: join(state, "reviews"),
     worktrees: join(state, "worktrees.json"),
+    cache: join(home, "cache"),
   };
 }

@@ -32,7 +32,9 @@ for the collection, previous/next traversal, fullscreen, and close actions; the
 artifact content is not wrapped in repeated titles, status headers, or source
 controls. The durable pointer records the originating assistant entry
 and tool call, so the reference appears only while that assistant message is on the
-active Pi branch. Readable fallbacks preserve production context for Pi.
+active Pi branch. Readable fallbacks remain in Cake's artifact repository and
+exact-revision projection; they are not copied into the pointer or automatically
+injected into Pi context.
 
 The panel is session-scoped rather than branch-scoped. Selecting another Pi
 session-tree branch, restoring an earlier branch, or running tool compaction does
@@ -58,9 +60,11 @@ infrastructure.
   advance exactly one step through `expectedLatestRevision` compare-and-swap.
 - Stable references are `cake://artifact/<lineage-id>` and exact
   `cake://artifact/<lineage-id>@rN`. A link itself appends no Pi entry and copies
-  no payload. Existing `cake.artifact/v1` transcript pointers retain exact
-  revision, digest, fallback, and provenance context; Pi never receives a second
-  Cake-owned transcript.
+  no payload. Current `cake.artifact/v1` transcript pointers retain exact
+  lineage, revision, digest, title, kind, stable/exact refs, and provenance only;
+  persisted legacy pointers with inline fallback are decoded solely for migration,
+  display correlation, and reachability. Pi never receives a second Cake-owned
+  transcript.
 - Renderer `Artifact` instances are disposable projections of validated
   repository records. Session snapshots hydrate current records; a focused
   artifact observer applies live repository updates from the existing native
@@ -109,18 +113,21 @@ is the Cake-home artifact repository, and the v1 inline protocol cap is
 ## Tools and interaction lifecycle
 
 The built-in `cake` gateway exposes session-contextual `artifacts.list`,
-`artifacts.read`, `artifacts.create`, and `artifacts.update` operations over
-global lineages and their effective links. Agents
-create substantial Markdown documents directly without supplying duplicate
-fallback text; Markdown is both the payload and readable fallback. They can also
-import bounded workspace-relative files as immutable snapshots with a safe
-filename, MIME type, byte size, and encoded content. Cake derives lineage IDs and revision numbers. Create begins a new global lineage
-at revision one and creates the appropriate session or family link. Update keeps
-the stable lineage ID and publishes exactly the next immutable revision using
-latest-revision CAS. Restore is the same publication path with old content and
-`restoredFromRevision` metadata, producing `N+1` rather than moving latest. List
-and read do not append transcript pointers. Widget reads return the presentation
-brief and fallback rather than generated implementation source.
+`artifacts.search`, `artifacts.history`, `artifacts.resolve-reference`,
+`artifacts.create`, `artifacts.update`, `artifacts.restore`, `artifacts.link`, and
+`artifacts.unlink` operations over global lineages and their effective links.
+There is no payload-returning `artifacts.read` operation. Agents create
+substantial Markdown documents directly without supplying duplicate fallback
+text; Markdown is both the payload and readable fallback. They can also import
+bounded workspace-relative files as immutable snapshots with a safe filename,
+MIME type, byte size, and encoded content. Cake derives revision numbers. Create
+begins a new global lineage at revision one and creates the appropriate session
+or family link. Update keeps the stable lineage ID and publishes exactly the next
+immutable revision using latest-revision CAS. Restore is the same publication
+path with old content and `restoredFromRevision` metadata, producing `N+1`
+rather than moving latest. Link and unlink append no transcript pointers.
+Create, update, and restore each append one bounded exact-revision pointer without
+payload or fallback content.
 
 The `widgets.present` path remains the creation operation for substantial,
 persistent visual explanations, including architecture and dependency views. Its
@@ -204,8 +211,9 @@ including the final replacement, receives screenshot review. Cancellation and
 capture/provider infrastructure failures stop the operation rather than consuming source-repair
 attempts. Hidden windows and transient compiled tokens are released on settlement.
 
-Only accepted source reaches existing widget artifact persistence and the Pi
-pointer/fallback path. Review turns use separate persisted restricted Pi sessions
+Only accepted source reaches existing widget artifact persistence. The Pi
+pointer remains bounded metadata, while the fallback is available through the
+exact-revision projection. Review turns use separate persisted restricted Pi sessions
 with the same resolved model and full context; they do not share one transcript.
 PNG image blocks are retained in those private Pi transcripts, not in the widget
 artifact or the primary conversation. The screenshot covers a bounded preview,
@@ -240,14 +248,29 @@ sandbox exposes no Cake, Node, Electron, filesystem or parent-DOM access.
 Runtime errors and frame height cross a token-tagged `postMessage` channel;
 no general bridge is exposed.
 
+For agent inspection, main derives disposable read-only exact-revision filesystem
+projections beneath
+`$CAKE_HOME/cache/artifact-projections/v1/sessions/<session-id>/<lineage-id>/revisions/r000000NN/`.
+Each projection contains bounded metadata plus canonical public files for the
+artifact kind. It is never persistence authority, cannot publish, verifies its
+files before reuse, and is safely rematerialized from the content-addressed
+repository after modification or deletion. Artifact payloads are not injected
+into prompts or transcripts. Each turn receives only a bounded metadata manifest
+for effectively linked artifacts, including stable and exact refs and the exact
+projection path. Widget projections contain only the public brief, metadata, and
+fallback; generated source never enters them. Pasted unlinked refs require an
+explicit link: temporary read leases are deferred until Cake has a truthful
+lifetime and persistence owner for them.
+
 Normal artifact presentation does not expose generated Source or a renderer-local
 Repair control. User-requested repair is a durable `artifacts.update`: another
 isolated Pi session receives stored source, stored brief, requested delta, and
 bounded diagnostics as untrusted data. Cake compiles and visually reviews the
 returned source through the same boundary before publishing the next revision.
 The generated implementation never enters the primary project-session context.
-Readable fallback remains required for transcript context, export, history, and
-render-failure recovery, but is not duplicated as routine viewer chrome. If a
+Readable fallback remains required for explicit artifact inspection, export,
+history, and render-failure recovery, but is not automatically injected into
+transcript context or duplicated as routine viewer chrome. If a
 specialized renderer fails, the viewer displays that fallback directly.
 
 Custom request widgets use that same compiler and sandbox with one additional

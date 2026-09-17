@@ -1,345 +1,184 @@
 import { describe, expect, it, vi } from "vitest";
+import type { ArtifactProjectionMetadata } from "../../../src/services/artifacts/ArtifactProjection";
 import type { ArtifactRecord, CakeArtifactV1 } from "../../../src/ipc/artifact-contract";
-import { createCakeArtifactOperations } from "../../../src/services/pi/runtime/cake-artifact-operations";
+import {
+  createCakeArtifactOperations,
+  formatArtifactContextManifest,
+  type CakeArtifactOperationOptions,
+} from "../../../src/services/pi/runtime/cake-artifact-operations";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
 
 const runtime = {
-  sessionManager: {
-    getSessionId: () => "session-1",
-    getLeafId: () => "assistant-1",
-  },
+  sessionManager: { getSessionId: () => "session-1", getLeafId: () => "assistant-1" },
   model: { provider: "provider", id: "model" },
 };
-
+const context = (toolCallId = "tool-1") => ({
+  signal: new AbortController().signal,
+  toolCallId,
+  runtime,
+});
 const record = (artifact: CakeArtifactV1): ArtifactRecord => ({
   artifact,
   workspacePath: "/workspace",
-  digest: "a".repeat(64),
-  createdAt: new Date(0).toISOString(),
-  updatedAt: new Date(1).toISOString(),
+  digest: String(artifact.revision).padStart(64, "a").slice(-64),
+  createdAt: "2026-01-01T00:00:00.000Z",
+  updatedAt: "2026-01-01T00:00:00.000Z",
 });
-
-const markdownArtifact: CakeArtifactV1 = {
+const metadata = (artifact: CakeArtifactV1): ArtifactProjectionMetadata => ({
+  lineageId: artifact.id,
+  ...(artifact.title === undefined ? null : { title: artifact.title }),
+  kind: artifact.kind,
+  selectedRevision: artifact.revision,
+  latestRevision: artifact.revision,
+  digest: record(artifact).digest,
+  linkMode: "follow-latest",
+  stableRef: `cake://artifact/${artifact.id}`,
+  exactRef: `cake://artifact/${artifact.id}@r${artifact.revision}`,
+  exactPath: `/cache/${artifact.id}/r${artifact.revision}`,
+  latestPath: `/cache/${artifact.id}/r${artifact.revision}`,
+  files: [
+    {
+      name: "content.md",
+      path: `/cache/${artifact.id}/r${artifact.revision}/content.md`,
+      byteSize: 4,
+      sha256: "b".repeat(64),
+    },
+  ],
+});
+const markdown = (revision: number, value: string): CakeArtifactV1 => ({
   protocol: "cake.artifact/v1",
   id: "design-plan",
   sessionId: "session-1",
-  revision: 1,
+  revision,
   kind: "markdown",
   title: "Design plan",
-  payload: { markdown: "# Design plan" },
-  fallback: { markdown: "# Design plan" },
+  payload: { markdown: value },
+  fallback: { markdown: value },
   interaction: { mode: "present" },
-};
-
-const invokeContext = (toolCallId = "tool-1", runtimeOverride: unknown = runtime) => ({
-  signal: new AbortController().signal,
-  toolCallId,
-  runtime: runtimeOverride,
 });
 
-describe("Cake durable artifact operations", () => {
-  it("lists and reads the current session without exposing widget source", async () => {
-    const widget = record({
-      protocol: "cake.artifact/v1",
-      id: "runtime-overview",
-      sessionId: "session-1",
-      revision: 2,
-      kind: "widget",
-      title: "Runtime overview",
-      payload: {
-        language: "react",
-        source: "SECRET GENERATED SOURCE",
-        brief: "Explain the runtime",
-        generationSessionId: "generation-1",
-      },
-      fallback: { markdown: "Runtime overview." },
-      interaction: { mode: "present" },
-    });
-    const registry = new CakeOperationRegistry(
-      createCakeArtifactOperations(
-        { appendEntry: vi.fn() },
-        {
-          persistArtifact: vi.fn(),
-          requestArtifact: vi.fn(),
-          getArtifact: vi.fn(async () => widget),
-          listArtifacts: vi.fn(async () => [record(markdownArtifact), widget]),
-        },
-      ),
-    );
+function makeHarness(initial: CakeArtifactV1 = markdown(1, "one")) {
+  let current = initial;
+  const appendEntry = vi.fn();
+  const callbacks: CakeArtifactOperationOptions = {
+    persistArtifact: vi.fn(async (artifact) => {
+      current = artifact;
+      return record(artifact);
+    }),
+    requestArtifact: vi.fn(),
+    resolveArtifact: vi.fn(async (reference) => {
+      const match = /@r(\d+)$/.exec(reference);
+      const selected = match
+        ? markdown(Number(match[1]), Number(match[1]) === 1 ? "one" : "two")
+        : current;
+      return { record: record(selected), metadata: metadata(selected) };
+    }),
+    listArtifactMetadata: vi.fn(async () => [metadata(current)]),
+    historyArtifact: vi.fn(async () => [metadata(markdown(1, "one")), metadata(current)]),
+    restoreArtifact: vi.fn(async ({ sourceRevision, expectedRevision }) => {
+      current = markdown(expectedRevision + 1, sourceRevision === 1 ? "one" : "two");
+      return { record: record(current), metadata: metadata(current) };
+    }),
+    linkArtifact: vi.fn(async () => metadata(current)),
+    unlinkArtifact: vi.fn(async () => undefined),
+  };
+  return {
+    appendEntry,
+    callbacks,
+    registry: new CakeOperationRegistry(createCakeArtifactOperations({ appendEntry }, callbacks)),
+  };
+}
 
-    const listed = await registry.invoke({ command: "artifacts.list" }, invokeContext());
+describe("Cake artifact management operations", () => {
+  it("exposes bounded metadata operations without a payload-returning read command", async () => {
+    const { registry } = makeHarness();
+    expect(registry.definitions().map((item) => item.command)).not.toContain("artifacts.read");
+    const listed = await registry.invoke({ command: "artifacts.list" }, context());
     expect(listed.details).toMatchObject({
       result: {
-        count: 2,
-        artifacts: [
-          { id: "design-plan", kind: "markdown", revision: 1 },
-          { id: "runtime-overview", kind: "widget", revision: 2 },
-        ],
+        total: 1,
+        artifacts: [{ lineageId: "design-plan", exactPath: "/cache/design-plan/r1" }],
       },
     });
-
-    const read = await registry.invoke(
-      { command: "artifacts.read", input: { id: "runtime-overview" } },
-      invokeContext(),
+    const resolved = await registry.invoke(
+      { command: "artifacts.resolve-reference", input: { reference: "design-plan@r1" } },
+      context(),
     );
-    expect(JSON.stringify(read.details)).not.toContain("SECRET GENERATED SOURCE");
-    expect(read.details).toMatchObject({
-      result: {
-        id: "runtime-overview",
-        revision: 2,
-        payload: { brief: "Explain the runtime" },
-      },
+    expect(JSON.stringify(resolved.details)).not.toContain('"payload"');
+    expect(resolved.details).toMatchObject({
+      result: { exactRef: "cake://artifact/design-plan@r1" },
     });
   });
 
-  it("creates Markdown with derived session and revision and accepts opaque provenance IDs", async () => {
-    const appendEntry = vi.fn();
-    const persistArtifact = vi.fn(async (artifact: CakeArtifactV1) => record(artifact));
-    const registry = new CakeOperationRegistry(
-      createCakeArtifactOperations(
-        { appendEntry },
-        {
-          persistArtifact,
-          requestArtifact: vi.fn(),
-          getArtifact: vi.fn(async () => undefined),
-          listArtifacts: vi.fn(async () => []),
-        },
-      ),
-    );
-    const opaqueRuntime = {
-      ...runtime,
-      sessionManager: {
-        ...runtime.sessionManager,
-        getLeafId: () => "assistant/entry+1=",
-      },
-    };
-
+  it("requires expectedRevision, publishes one exact pointer, and rejects a stale update", async () => {
+    const { registry, appendEntry, callbacks } = makeHarness();
     await registry.invoke(
       {
-        command: "artifacts.create",
-        input: {
-          artifact: {
-            id: "design-plan",
-            title: "Design plan",
-            kind: "markdown",
-            markdown: "# Design plan",
-          },
-        },
+        command: "artifacts.update",
+        input: { lineageId: "design-plan", expectedRevision: 1, markdown: "two" },
       },
-      invokeContext("functions.cake/0#call+abc=", opaqueRuntime),
+      context("tool-update"),
     );
-
-    expect(persistArtifact).toHaveBeenCalledWith(markdownArtifact);
+    expect(callbacks.persistArtifact).toHaveBeenCalledOnce();
+    expect(appendEntry).toHaveBeenCalledOnce();
     expect(appendEntry).toHaveBeenCalledWith(
       "cake.artifact/v1",
       expect.objectContaining({
-        artifactId: "design-plan",
-        origin: {
-          assistantEntryId: "assistant/entry+1=",
-          toolCallId: "functions.cake/0#call+abc=",
-        },
-      }),
-    );
-  });
-
-  it("imports a workspace file with derived ownership and can replace its snapshot", async () => {
-    const appendEntry = vi.fn();
-    const fileArtifact = (revision: number): CakeArtifactV1 => ({
-      protocol: "cake.artifact/v1",
-      id: "report",
-      sessionId: "session-1",
-      revision,
-      kind: "file",
-      title: "Report",
-      payload: {
-        name: revision === 1 ? "report.pdf" : "revised-report.pdf",
-        mimeType: "application/pdf",
-        data: "cGRm",
-        byteSize: 3,
-      },
-      fallback: { markdown: "PDF report." },
-      interaction: { mode: "present" },
-    });
-    const importArtifactFile = vi
-      .fn()
-      .mockResolvedValueOnce(fileArtifact(1))
-      .mockResolvedValueOnce(fileArtifact(2));
-    const persistArtifact = vi.fn(async (artifact: CakeArtifactV1) => record(artifact));
-    const getArtifact = vi
-      .fn()
-      .mockResolvedValueOnce(undefined)
-      .mockResolvedValueOnce(record(fileArtifact(1)));
-    const registry = new CakeOperationRegistry(
-      createCakeArtifactOperations(
-        { appendEntry },
-        {
-          persistArtifact,
-          requestArtifact: vi.fn(),
-          getArtifact,
-          listArtifacts: vi.fn(async () => []),
-          importArtifactFile,
-        },
-      ),
-    );
-
-    await registry.invoke(
-      {
-        command: "artifacts.create",
-        input: {
-          artifact: { id: "report", title: "Report", kind: "file", path: "out/report.pdf" },
-        },
-      },
-      invokeContext(),
-    );
-    await registry.invoke(
-      { command: "artifacts.update", input: { id: "report", path: "out/revised-report.pdf" } },
-      invokeContext("tool-2"),
-    );
-
-    expect(importArtifactFile).toHaveBeenNthCalledWith(1, {
-      id: "report",
-      title: "Report",
-      path: "out/report.pdf",
-      revision: 1,
-    });
-    expect(importArtifactFile).toHaveBeenNthCalledWith(2, {
-      id: "report",
-      title: "Report",
-      path: "out/revised-report.pdf",
-      revision: 2,
-    });
-    expect(persistArtifact).toHaveBeenNthCalledWith(1, fileArtifact(1));
-    expect(persistArtifact).toHaveBeenNthCalledWith(2, fileArtifact(2));
-    expect(appendEntry).toHaveBeenCalledTimes(2);
-  });
-
-  it("publishes the next complete Markdown revision", async () => {
-    const appendEntry = vi.fn();
-    const persistArtifact = vi.fn(async (artifact: CakeArtifactV1) => record(artifact));
-    const registry = new CakeOperationRegistry(
-      createCakeArtifactOperations(
-        { appendEntry },
-        {
-          persistArtifact,
-          requestArtifact: vi.fn(),
-          getArtifact: vi.fn(async () => record(markdownArtifact)),
-          listArtifacts: vi.fn(async () => [record(markdownArtifact)]),
-        },
-      ),
-    );
-
-    const result = await registry.invoke(
-      {
-        command: "artifacts.update",
-        input: { id: "design-plan", markdown: "# Revised plan" },
-      },
-      invokeContext("tool-2"),
-    );
-
-    expect(result.details).toMatchObject({ result: { artifactId: "design-plan", revision: 2 } });
-    expect(persistArtifact).toHaveBeenCalledWith(
-      expect.objectContaining({
-        id: "design-plan",
+        lineageId: "design-plan",
         revision: 2,
-        payload: { markdown: "# Revised plan" },
-        fallback: { markdown: "# Revised plan" },
+        stableRef: "cake://artifact/design-plan",
+        exactRef: "cake://artifact/design-plan@r2",
       }),
+    );
+    expect(JSON.stringify(appendEntry.mock.calls[0]?.[1])).not.toContain("fallback");
+    await expect(
+      registry.invoke(
+        {
+          command: "artifacts.update",
+          input: { lineageId: "design-plan", expectedRevision: 1, markdown: "stale" },
+        },
+        context(),
+      ),
+    ).rejects.toThrow("expected 1");
+  });
+
+  it("appends one restore pointer while link and unlink append none", async () => {
+    const { registry, appendEntry, callbacks } = makeHarness(markdown(2, "two"));
+    await registry.invoke(
+      { command: "artifacts.link", input: { reference: "cake://artifact/design-plan@r1" } },
+      context(),
+    );
+    await registry.invoke(
+      { command: "artifacts.unlink", input: { lineageId: "design-plan" } },
+      context(),
+    );
+    expect(appendEntry).not.toHaveBeenCalled();
+    expect(callbacks.linkArtifact).toHaveBeenCalledWith("cake://artifact/design-plan@r1");
+    await registry.invoke(
+      {
+        command: "artifacts.restore",
+        input: { lineageId: "design-plan", sourceRevision: 1, expectedRevision: 2 },
+      },
+      context("tool-restore"),
     );
     expect(appendEntry).toHaveBeenCalledOnce();
-  });
-
-  it("creates a fork-owned revision when updating an inherited artifact", async () => {
-    const inherited = record({ ...markdownArtifact, sessionId: "source-session" });
-    const appendEntry = vi.fn();
-    const persistArtifact = vi.fn(async (artifact: CakeArtifactV1) => record(artifact));
-    const registry = new CakeOperationRegistry(
-      createCakeArtifactOperations(
-        { appendEntry },
-        {
-          persistArtifact,
-          requestArtifact: vi.fn(),
-          getArtifact: vi.fn(async () => inherited),
-          listArtifacts: vi.fn(async () => [inherited]),
-        },
-      ),
-    );
-
-    await registry.invoke(
-      {
-        command: "artifacts.update",
-        input: { id: "design-plan", markdown: "# Fork revision" },
-      },
-      invokeContext("tool-2"),
-    );
-
-    expect(persistArtifact).toHaveBeenCalledWith(
-      expect.objectContaining({
-        id: "design-plan",
-        sessionId: "session-1",
-        revision: 2,
-        payload: { markdown: "# Fork revision" },
-      }),
-    );
     expect(appendEntry).toHaveBeenCalledWith(
       "cake.artifact/v1",
-      expect.objectContaining({ artifactId: "design-plan", sessionId: "session-1", revision: 2 }),
+      expect.objectContaining({ revision: 3, exactRef: "cake://artifact/design-plan@r3" }),
     );
   });
 
-  it("revises a widget in isolation and persists only the accepted source", async () => {
-    const current = record({
-      protocol: "cake.artifact/v1",
-      id: "runtime-overview",
-      sessionId: "session-1",
-      revision: 1,
-      kind: "widget",
-      payload: {
-        language: "react",
-        source: "old source",
-        brief: '{"brief":"Runtime"}',
-        generationSessionId: "generation-1",
-      },
-      fallback: { markdown: "Runtime." },
-      interaction: { mode: "present" },
-    });
-    const persistArtifact = vi.fn(async (artifact: CakeArtifactV1) => record(artifact));
-    const reviseInlineWidget = vi.fn(async () => ({
-      language: "react" as const,
-      source: "accepted revised source",
-      generationSessionId: "generation-2",
+  it("bounds linked metadata context by count and UTF-8 bytes without payloads", () => {
+    const items = Array.from({ length: 20 }, (_, index) => ({
+      ...metadata(markdown(index + 1, "secret payload")),
+      lineageId: `artifact-${index}`,
+      title: `Artifact ${index}`,
+      stableRef: `cake://artifact/artifact-${index}`,
+      exactRef: `cake://artifact/artifact-${index}@r${index + 1}`,
     }));
-    const registry = new CakeOperationRegistry(
-      createCakeArtifactOperations(
-        { appendEntry: vi.fn() },
-        {
-          persistArtifact,
-          requestArtifact: vi.fn(),
-          getArtifact: vi.fn(async () => current),
-          listArtifacts: vi.fn(async () => [current]),
-          reviseInlineWidget,
-        },
-      ),
-    );
-
-    await registry.invoke(
-      {
-        command: "artifacts.update",
-        input: { id: "runtime-overview", instructions: "Increase contrast" },
-      },
-      invokeContext("tool-2"),
-    );
-
-    expect(reviseInlineWidget).toHaveBeenCalledWith(
-      expect.objectContaining({ source: "old source", instructions: "Increase contrast" }),
-    );
-    expect(persistArtifact).toHaveBeenCalledWith(
-      expect.objectContaining({
-        revision: 2,
-        payload: expect.objectContaining({
-          source: "accepted revised source",
-          generationSessionId: "generation-2",
-        }),
-      }),
-    );
+    const manifest = formatArtifactContextManifest(items, { maxCount: 3, maxBytes: 2_000 });
+    expect(manifest.match(/"lineageId"/g)).toHaveLength(3);
+    expect(new TextEncoder().encode(manifest).byteLength).toBeLessThanOrEqual(2_000);
+    expect(manifest).not.toContain("secret payload");
   });
 });

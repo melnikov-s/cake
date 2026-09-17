@@ -19,6 +19,7 @@ describe("resolveCakePaths", () => {
       artifacts: "/Users/fixture/.cake/state/artifacts",
       reviews: "/Users/fixture/.cake/state/reviews",
       worktrees: "/Users/fixture/.cake/state/worktrees.json",
+      cache: "/Users/fixture/.cake/cache",
     });
   });
 
@@ -33,5 +34,6 @@ describe("resolveCakePaths", () => {
     expect(paths.piWidgetSessions).toBe("/opt/cake-data/pi/widget-sessions");
     expect(paths.piSubagentSessions).toBe("/opt/cake-data/pi/subagent-sessions");
     expect(paths.worktrees).toBe("/opt/cake-data/state/worktrees.json");
+    expect(paths.cache).toBe("/opt/cake-data/cache");
   });
 });

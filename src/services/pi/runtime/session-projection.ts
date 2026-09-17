@@ -6,7 +6,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { createHash } from "node:crypto";
 import { Option, Schema } from "effect";
-import { artifactPointerSchema, type ArtifactPointer } from "../../../ipc/artifact-contract";
+import { decodeArtifactPointer, type ArtifactPointer } from "../../../ipc/artifact-contract";
 import { parseCrossSessionMessage } from "../../../domain/conversations/cross-session-coordination";
 import { parseScheduledMessage } from "../../../domain/scheduled-messages/scheduled-message-envelope";
 import { shouldRenderMarkdown } from "../../../utils/markdown";
@@ -789,9 +789,9 @@ export function projectSessionEntries(
     }
     if (entry.type !== "custom") continue;
     if (entry.customType === "cake.artifact/v1") {
-      const pointer = Schema.decodeUnknownOption(artifactPointerSchema)(entry.data);
-      if (Option.isSome(pointer) && pointer.value.origin) {
-        const origin = pointer.value.origin;
+      const pointer = decodeArtifactPointer(entry.data);
+      if (pointer?.origin) {
+        const origin = pointer.origin;
         const originatingAssistant = entries.find(
           (candidate) =>
             candidate.id === origin.assistantEntryId &&
@@ -801,14 +801,11 @@ export function projectSessionEntries(
               (content) => content.type === "toolCall" && content.id === origin.toolCallId,
             ),
         );
-        if (originatingAssistant) artifactOrigins.set(origin.toolCallId, pointer.value.artifactId);
+        if (originatingAssistant) artifactOrigins.set(origin.toolCallId, pointer.lineageId);
       }
       if (
-        Option.isSome(pointer) &&
-        pointer.value.kind === "request" &&
-        !projected.some(
-          (part) => part.kind === "tool" && part.artifactId === pointer.value.artifactId,
-        )
+        pointer?.kind === "request" &&
+        !projected.some((part) => part.kind === "tool" && part.artifactId === pointer.lineageId)
       ) {
         const id = `entry-${entry.id}-artifact`;
         syntheticArtifactPartIds.add(id);
@@ -818,7 +815,7 @@ export function projectSessionEntries(
           name: "cake",
           command: "interview.open",
           input: "",
-          artifactId: pointer.value.artifactId,
+          artifactId: pointer.lineageId,
           state: "success",
         });
       }
@@ -950,11 +947,10 @@ export function projectArtifactPointers(sessionManager: SessionManager): Artifac
   for (const entry of sessionManager.getBranch()) {
     if (entry.type !== "custom" || Reflect.get(entry, "customType") !== "cake.artifact/v1")
       continue;
-    const parsed = Schema.decodeUnknownOption(artifactPointerSchema)(Reflect.get(entry, "data"));
-    if (Option.isNone(parsed)) continue;
-    const current = pointers.get(parsed.value.artifactId);
-    if (!current || parsed.value.revision > current.revision)
-      pointers.set(parsed.value.artifactId, parsed.value);
+    const parsed = decodeArtifactPointer(Reflect.get(entry, "data"));
+    if (!parsed || parsed.kind === "request") continue;
+    const current = pointers.get(parsed.lineageId);
+    if (!current || parsed.revision > current.revision) pointers.set(parsed.lineageId, parsed);
   }
   return [...pointers.values()];
 }
