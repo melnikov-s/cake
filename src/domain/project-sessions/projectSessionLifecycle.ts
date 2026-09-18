@@ -384,15 +384,17 @@ export const deleteResolved = Effect.fn("ProjectSessions.deleteResolved")(functi
   const archive = yield* SessionArchiveStorage;
   const entry = yield* archive.resolvedProjectEntry(sessionId).pipe(asError(operation));
   if (!entry) return yield* error(operation, "Only resolved project sessions can be deleted");
-  yield* artifacts.deleteSession(entry.workingDirectory, sessionId).pipe(asError(operation));
-  yield* reviews.deleteSession(entry.workingDirectory, sessionId).pipe(asError(operation));
   yield* archive.deleteResolvedProject(sessionId).pipe(asError(operation));
-  yield* (yield* ProjectAccess).forgetSessionLocation(sessionId).pipe(asError(operation));
-  yield* forgetProjectSessions([sessionId]).pipe(asError(operation));
-  yield* (yield* SessionCatalogChanges)
-    .publish({ _tag: "ProjectSessionRemoved", sessionId })
-    .pipe(asError(operation));
-  yield* (yield* ArtifactGarbageCollector).request();
+  const garbageCollector = yield* ArtifactGarbageCollector;
+  yield* Effect.gen(function* () {
+    yield* artifacts.deleteSession(entry.workingDirectory, sessionId).pipe(asError(operation));
+    yield* reviews.deleteSession(entry.workingDirectory, sessionId).pipe(asError(operation));
+    yield* (yield* ProjectAccess).forgetSessionLocation(sessionId).pipe(asError(operation));
+    yield* forgetProjectSessions([sessionId]).pipe(asError(operation));
+    yield* (yield* SessionCatalogChanges)
+      .publish({ _tag: "ProjectSessionRemoved", sessionId })
+      .pipe(asError(operation));
+  }).pipe(Effect.ensuring(garbageCollector.request()));
 });
 
 export const deleteProjectSessions = Effect.fn("ProjectSessions.deleteProjectSessions")(function* (
@@ -406,6 +408,7 @@ export const deleteProjectSessions = Effect.fn("ProjectSessions.deleteProjectSes
   const access = yield* ProjectAccess;
   const configuration = yield* ProjectSessionConfiguration;
   const families = yield* SessionFamilyStorage;
+  const garbageCollector = yield* ArtifactGarbageCollector;
   const projectFamilies = (yield* families.list().pipe(asError(operation))).filter(
     (family) => family.projectPath === projectPath,
   );
@@ -420,7 +423,6 @@ export const deleteProjectSessions = Effect.fn("ProjectSessions.deleteProjectSes
     workingDirectory: string,
     sessionId: string,
   ) {
-    yield* subagents.releaseParent(sessionId).pipe(asError(operation));
     yield* artifacts.deleteSession(workingDirectory, sessionId).pipe(asError(operation));
     yield* reviews.deleteSession(workingDirectory, sessionId).pipe(asError(operation));
     forgotten.add(sessionId);
@@ -432,7 +434,7 @@ export const deleteProjectSessions = Effect.fn("ProjectSessions.deleteProjectSes
       .pipe(
         Stream.runForEach((session) =>
           Effect.gen(function* () {
-            yield* deleteRelated(workingDirectory, session.id);
+            yield* subagents.releaseParent(session.id).pipe(asError(operation));
             yield* archive
               .delete(session.id, {
                 cwd: workingDirectory,
@@ -440,6 +442,9 @@ export const deleteProjectSessions = Effect.fn("ProjectSessions.deleteProjectSes
                 resolvedRoot: configuration.resolvedSessionDirectory,
               })
               .pipe(asError(operation));
+            yield* deleteRelated(workingDirectory, session.id).pipe(
+              Effect.ensuring(garbageCollector.request()),
+            );
           }),
         ),
         asError(operation),
@@ -448,8 +453,11 @@ export const deleteProjectSessions = Effect.fn("ProjectSessions.deleteProjectSes
   yield* archive.resolvedProjects(projectPath).pipe(
     Stream.runForEach((entry) =>
       Effect.gen(function* () {
-        yield* deleteRelated(entry.workingDirectory, entry.sessionId);
+        yield* subagents.releaseParent(entry.sessionId).pipe(asError(operation));
         yield* archive.deleteResolvedProject(entry.sessionId).pipe(asError(operation));
+        yield* deleteRelated(entry.workingDirectory, entry.sessionId).pipe(
+          Effect.ensuring(garbageCollector.request()),
+        );
       }),
     ),
     asError(operation),
@@ -462,14 +470,13 @@ export const deleteProjectSessions = Effect.fn("ProjectSessions.deleteProjectSes
     );
   }
   // Session deletion removes direct links only. Family links remain effective while
-  // any member survives and are removed only with the permanent family record.
+  // any member survives and are removed only after the permanent family record commits.
+  yield* families.removeProject(projectPath).pipe(asError(operation));
   yield* Effect.forEach(
     projectFamilies,
     (family) => artifacts.deleteFamily(family.familyId).pipe(asError(operation)),
     { discard: true },
-  );
-  yield* families.removeProject(projectPath).pipe(asError(operation));
-  yield* (yield* ArtifactGarbageCollector).request();
+  ).pipe(Effect.ensuring(garbageCollector.request()));
 });
 
 /** Validates and assigns the ordered labels for one active Project Session. */

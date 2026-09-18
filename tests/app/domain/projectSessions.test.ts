@@ -45,13 +45,19 @@ import { SubagentEnvironment } from "../../../src/services/subagents/SubagentEnv
 import { VsCodeServer } from "../../../src/services/vscode/VsCodeServer";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { ArtifactGarbageCollector } from "../../../src/services/artifacts/ArtifactGarbageCollector";
-import { ArtifactStorage } from "../../../src/services/storage/ArtifactStorage";
+import {
+  ArtifactStorage,
+  ArtifactStorageError,
+} from "../../../src/services/storage/ArtifactStorage";
 import { ReviewStorage } from "../../../src/services/storage/ReviewStorage";
 import {
   SessionArchiveStorage,
   SessionArchiveStorageError,
 } from "../../../src/services/storage/SessionArchiveStorage";
-import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
+import {
+  SessionFamilyStorage,
+  SessionFamilyStorageError,
+} from "../../../src/services/storage/SessionFamilyStorage";
 import { SubagentCoordinatorLive } from "../../../src/services/subagents/SubagentCoordinator";
 import { Terminal } from "../../../src/services/terminal/Terminal";
 import {
@@ -182,6 +188,8 @@ const makeLayer = (
     onCreateRuntime?(): void;
     onArchive?(sessionId: string): void;
     archiveErrorSessionId?: string;
+    onDeleteArchive?(sessionId: string): void;
+    archiveDeleteErrorSessionId?: string;
     onRestore?(sessionId: string): void;
     onCatalog?(workingDirectory: string): void;
     onSessionIds?(): void;
@@ -229,7 +237,9 @@ const makeLayer = (
     onRestoreResolved?(): void;
     onCloseWorkingDirectory?(): void;
     onRemoveFamilyProject?(projectPath: string): void;
+    familyRemovalError?: boolean;
     onRemoveArtifactTarget?(target: ArtifactLinkTarget): void;
+    artifactRemovalFails?(target: ArtifactLinkTarget): boolean;
     onArtifactGarbageCollection?(): void;
     initialResolvedSessionIds?: ReadonlyArray<string>;
     family?: {
@@ -397,7 +407,15 @@ const makeLayer = (
       markNoticeAttempt: () => Effect.void,
       completeNotice: () => Effect.void,
       removeUnmaterializedChild: () => Effect.void,
-      removeProject: (projectPath) => Effect.sync(() => hooks.onRemoveFamilyProject?.(projectPath)),
+      removeProject: (projectPath) =>
+        hooks.familyRemovalError
+          ? Effect.fail(
+              new SessionFamilyStorageError({
+                operation: "removeProject",
+                message: `Cannot remove families for ${projectPath}`,
+              }),
+            )
+          : Effect.sync(() => hooks.onRemoveFamilyProject?.(projectPath)),
     }),
     makePiSessionsLayer(adapter),
     SubagentCoordinatorLive,
@@ -408,6 +426,7 @@ const makeLayer = (
     }),
     Layer.mock(ProjectAccess, {
       rememberSessionLocation: () => Effect.void,
+      forgetSessionLocation: () => Effect.void,
       isAllowed: () => Effect.succeed(true),
     }),
     Layer.mock(ProjectSessionRuntimeHost, {
@@ -501,7 +520,15 @@ const makeLayer = (
             hooks.forkArtifactPointers ?? [],
           );
         }),
-      removeTargetLinks: (target) => Effect.sync(() => hooks.onRemoveArtifactTarget?.(target)),
+      removeTargetLinks: (target) =>
+        hooks.artifactRemovalFails?.(target)
+          ? Effect.fail(
+              new ArtifactStorageError({
+                operation: "removeTargetLinks",
+                message: "Cannot remove artifact links",
+              }),
+            )
+          : Effect.sync(() => hooks.onRemoveArtifactTarget?.(target)),
     }),
     Layer.mock(ReviewStorage, {
       agentSessionDirectory: () => "/reviews/agent",
@@ -515,7 +542,16 @@ const makeLayer = (
         resolve: () => Effect.succeed(false),
         restore: () => Effect.succeed(false),
         deleteResolved: () => Effect.void,
-        delete: () => Effect.void,
+        delete: (sessionId) =>
+          hooks.archiveDeleteErrorSessionId === sessionId
+            ? Effect.fail(
+                new SessionArchiveStorageError({
+                  operation: "delete",
+                  sessionId,
+                  message: `Cannot delete ${sessionId}`,
+                }),
+              )
+            : Effect.sync(() => hooks.onDeleteArchive?.(sessionId)),
         locate: (sessionId) =>
           Effect.succeed(
             hooks.sessionExists === false
@@ -575,7 +611,19 @@ const makeLayer = (
             if (resolvedSessionIds.delete(sessionId)) hooks.onRestore?.(sessionId);
             return undefined;
           }),
-        deleteResolvedProject: () => Effect.void,
+        deleteResolvedProject: (sessionId) =>
+          hooks.archiveDeleteErrorSessionId === sessionId
+            ? Effect.fail(
+                new SessionArchiveStorageError({
+                  operation: "deleteResolvedProject",
+                  sessionId,
+                  message: `Cannot delete ${sessionId}`,
+                }),
+              )
+            : Effect.sync(() => {
+                resolvedSessionIds.delete(sessionId);
+                hooks.onDeleteArchive?.(sessionId);
+              }),
         resolvedProjects: (projectPath) => {
           hooks.onResolvedCatalog?.(projectPath);
           const entries = hooks.resolvedProjectEntries ?? [
@@ -1959,42 +2007,115 @@ describe("Project Sessions domain", () => {
     );
   });
 
-  it.effect(
-    "removes family links and triggers GC only after cascading family metadata deletion",
-    () => {
-      const removedProjects: string[] = [];
-      const removedArtifactTargets: ArtifactLinkTarget[] = [];
-      const lifecycleOrder: string[] = [];
-      return projectSessionLifecycle.deleteProjectSessions("/project", []).pipe(
-        Effect.tap(() =>
-          Effect.sync(() => {
-            assert.deepEqual(removedArtifactTargets, [{ type: "family", familyId: "family-1" }]);
-            assert.deepEqual(removedProjects, ["/project"]);
-            assert.deepEqual(lifecycleOrder, ["family-removed", "gc"]);
-          }),
-        ),
-        Effect.provide(
-          makeLayer(defaultApplicationState(), {
-            sessionExists: false,
-            family: {
-              familyId: "family-1",
-              parentSessionId: "parent",
-              projectPath: "/project",
-              workingDirectory: "/project",
-              createdAt: "2026-01-01T00:00:00.000Z",
-              children: [],
-            },
-            onRemoveArtifactTarget: (target) => removedArtifactTargets.push(target),
-            onRemoveFamilyProject: (projectPath) => {
-              removedProjects.push(projectPath);
-              lifecycleOrder.push("family-removed");
-            },
-            onArtifactGarbageCollection: () => lifecycleOrder.push("gc"),
-          }),
-        ),
-      );
-    },
-  );
+  it.effect("preserves direct artifact links when resolved transcript deletion fails", () => {
+    const removedArtifactTargets: ArtifactLinkTarget[] = [];
+    let garbageCollections = 0;
+    return Effect.gen(function* () {
+      const failure = yield* projectSessionLifecycle.deleteResolved("session-1").pipe(Effect.flip);
+      assert.match(failure.message, /Cannot delete session-1/);
+      assert.deepEqual(removedArtifactTargets, []);
+      assert.equal(garbageCollections, 0);
+    }).pipe(
+      Effect.provide(
+        makeLayer(defaultApplicationState(), {
+          resolvedOnDisk: true,
+          archiveDeleteErrorSessionId: "session-1",
+          onRemoveArtifactTarget: (target) => removedArtifactTargets.push(target),
+          onArtifactGarbageCollection: () => garbageCollections++,
+        }),
+      ),
+    );
+  });
+
+  it.effect("preserves family artifact links when family metadata deletion fails", () => {
+    const removedArtifactTargets: ArtifactLinkTarget[] = [];
+    let garbageCollections = 0;
+    return Effect.gen(function* () {
+      const failure = yield* projectSessionLifecycle
+        .deleteProjectSessions("/project", [])
+        .pipe(Effect.flip);
+      assert.match(failure.message, /Cannot remove families for \/project/);
+      assert.deepEqual(removedArtifactTargets, []);
+      assert.equal(garbageCollections, 0);
+    }).pipe(
+      Effect.provide(
+        makeLayer(defaultApplicationState(), {
+          sessionExists: false,
+          familyRemovalError: true,
+          family: {
+            familyId: "family-1",
+            parentSessionId: "parent",
+            projectPath: "/project",
+            workingDirectory: "/project",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            children: [],
+          },
+          onRemoveArtifactTarget: (target) => removedArtifactTargets.push(target),
+          onArtifactGarbageCollection: () => garbageCollections++,
+        }),
+      ),
+    );
+  });
+
+  it.effect("cleans session and family links only after their authorities commit", () => {
+    const lifecycleOrder: string[] = [];
+    return projectSessionLifecycle.deleteProjectSessions("/project", []).pipe(
+      Effect.tap(() =>
+        Effect.sync(() => {
+          assert.deepEqual(lifecycleOrder, [
+            "session-authority:session-1",
+            "session-link:session-1",
+            "gc",
+            "family-authority",
+            "family-link:family-1",
+            "gc",
+          ]);
+        }),
+      ),
+      Effect.provide(
+        makeLayer(defaultApplicationState(), {
+          family: {
+            familyId: "family-1",
+            parentSessionId: "parent",
+            projectPath: "/project",
+            workingDirectory: "/project",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            children: [],
+          },
+          onDeleteArchive: (sessionId) => lifecycleOrder.push(`session-authority:${sessionId}`),
+          onRemoveArtifactTarget: (target) =>
+            lifecycleOrder.push(
+              target.type === "session"
+                ? `session-link:${target.sessionId}`
+                : `family-link:${target.familyId}`,
+            ),
+          onRemoveFamilyProject: () => lifecycleOrder.push("family-authority"),
+          onArtifactGarbageCollection: () => lifecycleOrder.push("gc"),
+        }),
+      ),
+    );
+  });
+
+  it.effect("requests conservative cleanup when link removal fails after deletion commits", () => {
+    const lifecycleOrder: string[] = [];
+    return Effect.gen(function* () {
+      const failure = yield* projectSessionLifecycle.deleteResolved("session-1").pipe(Effect.flip);
+      assert.match(failure.message, /Cannot remove artifact links/);
+      assert.deepEqual(lifecycleOrder, ["session-authority", "link-cleanup-attempt", "gc"]);
+    }).pipe(
+      Effect.provide(
+        makeLayer(defaultApplicationState(), {
+          resolvedOnDisk: true,
+          onDeleteArchive: () => lifecycleOrder.push("session-authority"),
+          artifactRemovalFails: (target) => {
+            if (target.type === "session") lifecycleOrder.push("link-cleanup-attempt");
+            return target.type === "session";
+          },
+          onArtifactGarbageCollection: () => lifecycleOrder.push("gc"),
+        }),
+      ),
+    );
+  });
 
   it.effect("reports partial Working Directory resolution failures and batches successes", () => {
     const archived: string[] = [];
