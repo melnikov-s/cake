@@ -318,17 +318,13 @@ function reviewContextExtension(
   sessionId: () => string | undefined,
 ): InlineExtension {
   return (pi) => {
-    pi.on("before_agent_start", () => {
+    pi.on("before_agent_start", (event) => {
       const id = sessionId();
       if (!id) return;
       const path = pathForSession(id);
       if (!existsSync(path)) return;
       return {
-        message: {
-          customType: "cake.review-context",
-          display: false,
-          content: `Inline code reviews and assistant-message discussions for this session are indexed at ${path}. Read or search that file when the user asks you to incorporate, summarize, or reason about those threads; otherwise leave it alone.`,
-        },
+        systemPrompt: `${event.systemPrompt}\n\nInline code reviews and assistant-message discussions for this session are indexed at ${path}. Read or search that file when the user asks you to incorporate, summarize, or reason about those threads; otherwise leave it alone.`,
       };
     });
   };
@@ -1393,6 +1389,7 @@ export async function createCakeRuntimeCapabilities(input: {
                       generateInlineWidget: options.generateInlineWidget,
                       reviseInlineWidget: options.reviseInlineWidget,
                       resolveArtifact: options.resolveArtifact,
+                      hasLinkedArtifacts: options.hasLinkedArtifacts,
                       listArtifactMetadata: options.listArtifactMetadata,
                       historyArtifact: options.historyArtifact,
                       restoreArtifact: options.restoreArtifact,
@@ -1465,6 +1462,7 @@ export async function createCakeRuntimeCapabilities(input: {
                       generateInlineWidget: options.generateInlineWidget,
                       reviseInlineWidget: options.reviseInlineWidget,
                       resolveArtifact: options.resolveArtifact,
+                      hasLinkedArtifacts: options.hasLinkedArtifacts,
                       listArtifactMetadata: options.listArtifactMetadata,
                       historyArtifact: options.historyArtifact,
                       restoreArtifact: options.restoreArtifact,

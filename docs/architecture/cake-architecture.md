@@ -515,8 +515,9 @@ The window Store hierarchy mirrors the product surfaces:
   and Pi pointers remain immutable; storage projects their readable Markdown fallbacks instead of maintaining a second graph renderer.
   The session header opens the panel, and creating an artifact opens and selects it automatically. Creation from a family session links the
   lineage to that family by default. Session-tree branch changes and tool compaction neither move nor duplicate artifacts. Stable refs use
-  `cake://artifact/<lineage-id>` and exact refs append `@rN`. Project agents receive only a bounded linked-artifact metadata manifest,
-  never automatic payload injection. They inspect content with ordinary file tools through disposable, read-only, digest-verified
+  `cake://artifact/<lineage-id>` and exact refs append `@rN`. Project agents discover linked artifacts explicitly through Cake's artifact
+  operations. The system prompt contains trusted static discovery guidance and, only when effective links exist, one metadata-free capability hint;
+  artifact payloads and metadata are never automatically injected. Agents inspect content with ordinary file tools through disposable, read-only, digest-verified
   exact-revision projections under Cake's cache root; those projections are not persistence authority and widget generated source is
   excluded. Permanent session/family deletion triggers conservative best-effort lineage collection after its authority mutation commits; startup runs the same maintenance pass. Surviving direct/family links and durable exact Pi transcript pointers retain the complete lineage history, while unverifiable reachability retains rather than deletes. Projection caches are disposable and cleaned independently. Blocking requests remain inline interactions and never enter the reusable catalog, even when they share rendering infrastructure. Project Sessions and Cake Chat
   Sessions each compose one `ConversationSessionStore`, the window-local active-conversation aggregate whose lifetime matches its owning

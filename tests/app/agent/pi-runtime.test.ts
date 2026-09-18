@@ -105,6 +105,135 @@ describe("Pi 0.85.1 foundation contract", () => {
     expect(activeTools).toContain("cake");
   });
 
+  it("keeps artifact and review discovery in system guidance without persistent context messages", async () => {
+    const directory = await createTemporaryDirectory();
+    const agentDir = join(directory, "agent");
+    const reviewContextPath = join(directory, "reviews", "context.md");
+    const requestBodies: Array<Record<string, unknown>> = [];
+    const server = createServer((request, response) => {
+      let body = "";
+      request.on("data", (chunk) => {
+        body += String(chunk);
+      });
+      request.on("end", () => {
+        requestBodies.push(JSON.parse(body) as Record<string, unknown>);
+        response.writeHead(200, { "content-type": "text/event-stream" });
+        response.write(
+          `data: ${JSON.stringify({
+            id: `artifact-guidance-${requestBodies.length}`,
+            object: "chat.completion.chunk",
+            created: 0,
+            model: "fixture-model",
+            choices: [
+              {
+                index: 0,
+                delta: { role: "assistant", content: "Done." },
+                finish_reason: null,
+              },
+            ],
+          })}\n\n`,
+        );
+        response.write(
+          `data: ${JSON.stringify({
+            id: `artifact-guidance-${requestBodies.length}`,
+            object: "chat.completion.chunk",
+            created: 0,
+            model: "fixture-model",
+            choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+          })}\n\n`,
+        );
+        response.end("data: [DONE]\n\n");
+      });
+    });
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", resolve);
+    });
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("Expected a TCP test server");
+    await mkdir(join(directory, ".pi", "extensions"), { recursive: true });
+    await writeFile(
+      join(directory, ".pi", "extensions", "fixture-provider.ts"),
+      `export default function (pi) { pi.registerProvider("fixture-provider", ${JSON.stringify({
+        name: "Fixture provider",
+        baseUrl: `http://127.0.0.1:${(address as AddressInfo).port}/v1`,
+        apiKey: "fixture",
+        api: "openai-completions",
+        models: [
+          {
+            id: "fixture-model",
+            name: "Fixture model",
+            reasoning: false,
+            input: ["text"],
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+            contextWindow: 16_384,
+            maxTokens: 1_024,
+          },
+        ],
+      })}); }\n`,
+    );
+    let hasLinkedArtifacts = false;
+    const listArtifactMetadata = vi.fn(async () => []);
+    try {
+      const runtime = await createCakeRuntime({
+        cwd: directory,
+        agentDir,
+        sessionDir: join(directory, "sessions"),
+        trusted: true,
+        newSession: true,
+        requestUi: async () => undefined,
+        hasLinkedArtifacts: async () => hasLinkedArtifacts,
+        listArtifactMetadata,
+        reviewContextPath: () => reviewContextPath,
+        onEvent: () => undefined,
+      });
+      runtimes.push(runtime);
+      await runtime.setModel("fixture-provider", "fixture-model");
+
+      await runtime.prompt("Short prompt one", "prompt", []);
+      hasLinkedArtifacts = true;
+      await mkdir(join(directory, "reviews"), { recursive: true });
+      await writeFile(reviewContextPath, "# Review context\n");
+      await runtime.prompt("Short prompt two", "prompt", []);
+      await runtime.prompt("Short prompt three", "prompt", []);
+      hasLinkedArtifacts = false;
+      await rm(reviewContextPath);
+      await runtime.prompt("Short prompt four", "prompt", []);
+
+      expect(requestBodies).toHaveLength(4);
+      const requestText = requestBodies.map((body) => JSON.stringify(body));
+      const linkedGuidance =
+        "This session has linked artifacts. Use artifacts.list to inspect them when relevant.";
+      expect(requestText[0]).not.toContain(linkedGuidance);
+      expect(requestText[1]).toContain(linkedGuidance);
+      expect(requestText[2]).toContain(linkedGuidance);
+      expect(requestText[3]).not.toContain(linkedGuidance);
+      expect(requestText[0]).not.toContain("Inline code reviews and assistant-message discussions");
+      expect(requestText[1]).toContain(
+        `Inline code reviews and assistant-message discussions for this session are indexed at ${reviewContextPath}`,
+      );
+      expect(requestText[2]).toContain(
+        `Inline code reviews and assistant-message discussions for this session are indexed at ${reviewContextPath}`,
+      );
+      expect(requestText[3]).not.toContain("Inline code reviews and assistant-message discussions");
+      expect(listArtifactMetadata).not.toHaveBeenCalled();
+
+      const persisted = SessionManager.open(runtime.sessionFile).getBranch();
+      expect(
+        persisted.filter(
+          (entry) =>
+            entry.type === "custom_message" &&
+            (entry.customType === "cake.artifact-context/v1" ||
+              entry.customType === "cake.review-context"),
+        ),
+      ).toEqual([]);
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
+  });
+
   it("accepts only managed worktree names supported by Project Session-local session.create", () => {
     expect(
       Schema.decodeUnknownSync(projectSessionCreateInputSchema)({

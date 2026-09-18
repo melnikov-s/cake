@@ -116,6 +116,9 @@ describe("artifact lineage workflows", () => {
         expect(yield* visible("child")).toEqual(["parent-plan@r1"]);
         expect(yield* visible("sibling")).toEqual(["parent-plan@r1"]);
         expect(yield* visible("unrelated")).toEqual([]);
+        expect(yield* workflows.hasEffectiveSessionArtifacts("parent")).toBe(true);
+        expect(yield* workflows.hasEffectiveSessionArtifacts("child")).toBe(true);
+        expect(yield* workflows.hasEffectiveSessionArtifacts("unrelated")).toBe(false);
 
         yield* workflows.create({
           sessionId: "child",

@@ -3,7 +3,6 @@ import type { ArtifactProjectionMetadata } from "../../../src/services/artifacts
 import type { ArtifactRecord, CakeArtifactV1 } from "../../../src/ipc/artifact-contract";
 import {
   createCakeArtifactOperations,
-  formatArtifactContextManifest,
   type CakeArtifactOperationOptions,
 } from "../../../src/services/pi/runtime/cake-artifact-operations";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
@@ -168,17 +167,53 @@ describe("Cake artifact management operations", () => {
     );
   });
 
-  it("bounds linked metadata context by count and UTF-8 bytes without payloads", () => {
-    const items = Array.from({ length: 20 }, (_, index) => ({
-      ...metadata(markdown(index + 1, "secret payload")),
-      lineageId: `artifact-${index}`,
-      title: `Artifact ${index}`,
-      stableRef: `cake://artifact/artifact-${index}`,
-      exactRef: `cake://artifact/artifact-${index}@r${index + 1}`,
-    }));
-    const manifest = formatArtifactContextManifest(items, { maxCount: 3, maxBytes: 2_000 });
-    expect(manifest.match(/"lineageId"/g)).toHaveLength(3);
-    expect(new TextEncoder().encode(manifest).byteLength).toBeLessThanOrEqual(2_000);
-    expect(manifest).not.toContain("secret payload");
+  it("adds only metadata-free system guidance when effective links currently exist", async () => {
+    let linked = false;
+    let beforeAgentStart:
+      | ((event: {
+          systemPrompt: string;
+        }) => void | { systemPrompt: string } | Promise<void | { systemPrompt: string }>)
+      | undefined;
+    const listArtifactMetadata = vi.fn(async () => [metadata(markdown(1, "secret payload"))]);
+    const registry = new CakeOperationRegistry(
+      createCakeArtifactOperations(
+        {
+          appendEntry: vi.fn(),
+          on: (_event, handler) => {
+            beforeAgentStart = handler;
+          },
+        },
+        {
+          persistArtifact: vi.fn(),
+          requestArtifact: vi.fn(),
+          hasLinkedArtifacts: vi.fn(async () => linked),
+          listArtifactMetadata,
+          linkArtifact: vi.fn(async () => {
+            linked = true;
+            return metadata(markdown(1, "secret payload"));
+          }),
+          unlinkArtifact: vi.fn(async () => {
+            linked = false;
+          }),
+        },
+      ),
+    );
+    if (!beforeAgentStart) throw new Error("Expected artifact system-guidance handler");
+
+    await expect(beforeAgentStart({ systemPrompt: "base" })).resolves.toBeUndefined();
+    await registry.invoke(
+      { command: "artifacts.link", input: { reference: "cake://artifact/design-plan" } },
+      context(),
+    );
+    await expect(beforeAgentStart({ systemPrompt: "base" })).resolves.toEqual({
+      systemPrompt:
+        "base\n\nThis session has linked artifacts. Use artifacts.list to inspect them when relevant.",
+    });
+    await registry.invoke(
+      { command: "artifacts.unlink", input: { lineageId: "design-plan" } },
+      context(),
+    );
+    await expect(beforeAgentStart({ systemPrompt: "base" })).resolves.toBeUndefined();
+    expect(listArtifactMetadata).not.toHaveBeenCalled();
   });
 });

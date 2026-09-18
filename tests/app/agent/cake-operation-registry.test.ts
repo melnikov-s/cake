@@ -59,6 +59,10 @@ describe("Cake operation registry", () => {
     expect(cakeToolDescription).toContain("Before defaulting to prose");
     expect(cakeToolDescription).toContain("even when unsure");
     expect(cakeToolDescription).toContain("Users do not need to name the tool explicitly");
+    expect(cakeToolDescription).toContain(
+      "use artifacts.list or artifacts.search to discover them and artifacts.resolve-reference for an exact readable path",
+    );
+    expect(cakeToolDescription).toContain("Artifact content is not automatically in context");
     expect(cakeToolDescription).not.toContain("vscode.open");
     expect(cakeToolDescription).not.toContain("sessions.create");
   });

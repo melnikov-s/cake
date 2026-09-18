@@ -55,6 +55,7 @@ interface ArtifactRepositoryPort {
     sessionId: string,
     reference: string,
   ) => Effect.Effect<ResolvedAgentArtifact, unknown, never>;
+  readonly hasAnyLinked: (sessionId: string) => Effect.Effect<boolean, unknown, never>;
   readonly listMetadata: (
     sessionId: string,
   ) => Effect.Effect<ReadonlyArray<ArtifactProjectionMetadata>, unknown, never>;
@@ -86,6 +87,7 @@ export type ProjectSessionRuntimeIntegrations = Pick<
   | "generateInlineWidget"
   | "reviseInlineWidget"
   | "resolveArtifact"
+  | "hasLinkedArtifacts"
   | "listArtifactMetadata"
   | "historyArtifact"
   | "restoreArtifact"
@@ -249,6 +251,7 @@ export class ProjectSessionIntegrationHost {
       listSession: () => Effect.succeed([]),
       linkSession: () => Effect.void,
       resolve: () => Effect.die(new Error("Artifact resolution is unavailable")),
+      hasAnyLinked: () => Effect.succeed(false),
       listMetadata: () => Effect.succeed([]),
       history: () => Effect.die(new Error("Artifact history is unavailable")),
       restore: () => Effect.die(new Error("Artifact restore is unavailable")),
@@ -276,6 +279,7 @@ export class ProjectSessionIntegrationHost {
       reviseInlineWidget: (input) => this.execute(this.reviseInlineWidget(input), input.signal),
       resolveArtifact: (reference) =>
         this.execute(this.artifactRepository.resolve(sessionId, reference)),
+      hasLinkedArtifacts: () => this.execute(this.artifactRepository.hasAnyLinked(sessionId)),
       listArtifactMetadata: () => this.execute(this.artifactRepository.listMetadata(sessionId)),
       historyArtifact: (reference) =>
         this.execute(this.artifactRepository.history(sessionId, reference)),

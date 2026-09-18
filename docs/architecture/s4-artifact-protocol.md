@@ -262,10 +262,12 @@ projections beneath
 Each projection contains bounded metadata plus canonical public files for the
 artifact kind. It is never persistence authority, cannot publish, verifies its
 files before reuse, and is safely rematerialized from the content-addressed
-repository after modification or deletion. Artifact payloads are not injected
-into prompts or transcripts. Each turn receives only a bounded metadata manifest
-for effectively linked artifacts, including stable and exact refs and the exact
-projection path. Widget projections contain only the public brief, metadata, and
+repository after modification or deletion. Artifact payloads and metadata are not
+automatically injected into prompts or transcripts. Trusted static system guidance
+directs agents to discover artifacts through `artifacts.list` or `artifacts.search`
+and resolve an exact readable path through `artifacts.resolve-reference`. When the
+session has effective direct or family links, one metadata-free system line notes
+that linked artifacts exist. Widget projections contain only the public brief, metadata, and
 fallback; generated source never enters them. Pasted unlinked refs require an
 explicit link: temporary read leases are deferred until Cake has a truthful
 lifetime and persistence owner for them.

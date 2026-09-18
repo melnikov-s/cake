@@ -239,6 +239,10 @@ export const makeProjectSessionRuntimeHostLive = (
                 yield* provideArtifactServices(artifactWorkflows.linkSession(lineageId, sessionId));
               }),
             resolve: resolveForSession,
+            hasAnyLinked: (targetSessionId) =>
+              provideArtifactServices(
+                artifactWorkflows.hasEffectiveSessionArtifacts(targetSessionId),
+              ),
             listMetadata: listMetadataForSession,
             history: (targetSessionId, reference) =>
               Effect.gen(function* () {

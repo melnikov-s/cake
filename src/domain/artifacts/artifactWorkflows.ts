@@ -119,6 +119,13 @@ export const create = Effect.fn("Artifacts.create")(function* (input: CreateArti
   );
 });
 
+export const hasEffectiveSessionArtifacts = Effect.fn("Artifacts.hasEffectiveSessionArtifacts")(
+  function* (sessionId: string) {
+    const { links } = yield* effectiveLinks(sessionId);
+    return links.length > 0;
+  },
+);
+
 export const listEffectiveSessionArtifacts = Effect.fn("Artifacts.listEffectiveSessionArtifacts")(
   function* (sessionId: string) {
     const storage = yield* ArtifactStorage;

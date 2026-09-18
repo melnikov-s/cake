@@ -40,6 +40,7 @@ export interface CakeArtifactOperationOptions {
   ): Promise<InlineWidgetGenerationResult>;
   reviseInlineWidget?(input: InlineWidgetRevisionRequest): Promise<InlineWidgetGenerationResult>;
   resolveArtifact?(reference: string): Promise<ResolvedAgentArtifact>;
+  hasLinkedArtifacts?(): Promise<boolean>;
   listArtifactMetadata?(): Promise<ReadonlyArray<ArtifactProjectionMetadata>>;
   historyArtifact?(reference: string): Promise<ReadonlyArray<ArtifactProjectionMetadata>>;
   restoreArtifact?(input: {
@@ -52,21 +53,21 @@ export interface CakeArtifactOperationOptions {
   importArtifactFile?(input: ArtifactFileImportInput): Promise<CakeArtifactV1>;
 }
 
-interface ArtifactContextInjection {
-  readonly message: {
-    readonly customType: "cake.artifact-context/v1";
-    readonly display: false;
-    readonly content: string;
-  };
+interface BeforeAgentStartEvent {
+  readonly systemPrompt: string;
 }
 
-type ArtifactContextHandlerResult = void | ArtifactContextInjection;
+interface SystemPromptGuidance {
+  readonly systemPrompt: string;
+}
 
 export interface PiArtifactOperationHost {
   appendEntry(type: string, data: JsonValue): void;
   on?(
     event: "before_agent_start",
-    handler: () => ArtifactContextHandlerResult | Promise<ArtifactContextHandlerResult>,
+    handler: (
+      event: BeforeAgentStartEvent,
+    ) => void | SystemPromptGuidance | Promise<void | SystemPromptGuidance>,
   ): void;
 }
 
@@ -172,39 +173,8 @@ function runtimeContext(context: CakeOperationExecutionContext) {
 const stableReference = (value: string) =>
   value.startsWith("cake://artifact/") ? value : `cake://artifact/${value}`;
 
-export function formatArtifactContextManifest(
-  artifacts: ReadonlyArray<ArtifactProjectionMetadata>,
-  options: { readonly maxCount?: number; readonly maxBytes?: number } = {},
-) {
-  const maxCount = options.maxCount ?? 32;
-  const maxBytes = options.maxBytes ?? 16_384;
-  const heading =
-    "Linked artifact metadata (content is not injected; inspect exactPath with read/rg/shell):\n";
-  let result = heading;
-  let count = 0;
-  for (const artifact of artifacts.slice(0, maxCount)) {
-    const line = `${JSON.stringify({
-      lineageId: artifact.lineageId,
-      ...(artifact.title === undefined ? null : { title: artifact.title }),
-      kind: artifact.kind,
-      selectedRevision: artifact.selectedRevision,
-      latestRevision: artifact.latestRevision,
-      digest: artifact.digest,
-      linkMode: artifact.linkMode,
-      stableRef: artifact.stableRef,
-      exactRef: artifact.exactRef,
-      exactPath: artifact.exactPath,
-    })}\n`;
-    if (new TextEncoder().encode(result + line).byteLength > maxBytes) break;
-    result += line;
-    count += 1;
-  }
-  if (count < artifacts.length) {
-    const suffix = `… ${artifacts.length - count} additional linked artifacts omitted by bounds.\n`;
-    if (new TextEncoder().encode(result + suffix).byteLength <= maxBytes) result += suffix;
-  }
-  return result;
-}
+const linkedArtifactSystemGuidance =
+  "This session has linked artifacts. Use artifacts.list to inspect them when relevant.";
 
 export function createCakeArtifactOperations(
   pi: PiArtifactOperationHost,
@@ -247,17 +217,10 @@ export function createCakeArtifactOperations(
     return options.resolveArtifact(stableReference(reference));
   };
 
-  if (pi.on && options.listArtifactMetadata)
-    pi.on("before_agent_start", async () => {
-      const manifest = formatArtifactContextManifest(await options.listArtifactMetadata!());
-      if (manifest.endsWith(":\n")) return;
-      return {
-        message: {
-          customType: "cake.artifact-context/v1",
-          display: false,
-          content: manifest,
-        },
-      };
+  if (pi.on && options.hasLinkedArtifacts)
+    pi.on("before_agent_start", async (event) => {
+      if (!(await options.hasLinkedArtifacts!())) return;
+      return { systemPrompt: `${event.systemPrompt}\n\n${linkedArtifactSystemGuidance}` };
     });
 
   const operations: CakeOperationDefinition[] = [
