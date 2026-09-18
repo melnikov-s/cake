@@ -312,6 +312,10 @@ export const makeProjectSessionRuntimeHostLive = (
                       : { mode: "pinned", revision: parsed.revision },
                   ),
                 );
+                electron.broadcast({
+                  type: "artifact-catalog-invalidated",
+                  lineageId: parsed.lineageId,
+                });
                 return (yield* resolveForSession(targetSessionId, reference)).metadata;
               }),
             unlink: (targetSessionId, lineageIdInput) =>
@@ -321,6 +325,7 @@ export const makeProjectSessionRuntimeHostLive = (
                 yield* provideArtifactServices(
                   artifactWorkflows.unlinkEffectiveSessionArtifact(targetSessionId, lineageId),
                 );
+                electron.broadcast({ type: "artifact-catalog-invalidated", lineageId });
                 yield* artifactProjection.cleanupLineage(targetSessionId, lineageId);
               }),
           },
