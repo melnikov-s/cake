@@ -942,6 +942,18 @@ export function projectTree(sessionManager: SessionManager): SessionTreeEntry[] 
   return entries;
 }
 
+export function projectDurableArtifactLineageIds(sessionManager: SessionManager): string[] {
+  const lineageIds = new Set<string>();
+  for (const entry of sessionManager.getEntries()) {
+    if (entry.type !== "custom" || Reflect.get(entry, "customType") !== "cake.artifact/v1")
+      continue;
+    const pointer = decodeArtifactPointer(Reflect.get(entry, "data"));
+    if (!pointer) throw new Error("Malformed durable cake.artifact/v1 Pi entry");
+    if (pointer.kind !== "request") lineageIds.add(pointer.lineageId);
+  }
+  return [...lineageIds];
+}
+
 export function projectArtifactPointers(sessionManager: SessionManager): ArtifactPointer[] {
   const pointers = new Map<string, ArtifactPointer>();
   for (const entry of sessionManager.getBranch()) {

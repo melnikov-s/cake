@@ -46,6 +46,11 @@ export interface MaterializeArtifactProjectionInput {
   readonly linkMode: ArtifactProjectionLinkMode;
 }
 
+export interface ArtifactProjectionCleanupStats {
+  readonly sessionsRemoved: number;
+  readonly lineagesRemoved: number;
+}
+
 export class ArtifactProjection extends Context.Service<
   ArtifactProjection,
   {
@@ -59,5 +64,12 @@ export class ArtifactProjection extends Context.Service<
       sessionId: string,
       lineageId: ArtifactLineageId,
     ) => Effect.Effect<void, ArtifactProjectionError>;
+    /** Reconciles disposable caches against authoritative surviving identities. */
+    readonly cleanup: (input: {
+      readonly retained: ReadonlyArray<{
+        readonly sessionId: string;
+        readonly lineageIds: ReadonlyArray<ArtifactLineageId>;
+      }>;
+    }) => Effect.Effect<ArtifactProjectionCleanupStats, ArtifactProjectionError>;
   }
 >()("cake/services/artifacts/ArtifactProjection") {}

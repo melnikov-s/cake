@@ -27,6 +27,7 @@ import {
   publishCatalogChange,
   publishCatalogStatus,
 } from "./projectSessionMetadata";
+import { ArtifactGarbageCollector } from "../../services/artifacts/ArtifactGarbageCollector";
 import { PiSessions } from "../../services/pi/PiSessions";
 import { ProjectAccess } from "../../services/projects/ProjectAccess";
 import { ProjectSessionConfiguration } from "../../services/project-sessions/ProjectSessionConfiguration";
@@ -391,6 +392,7 @@ export const deleteResolved = Effect.fn("ProjectSessions.deleteResolved")(functi
   yield* (yield* SessionCatalogChanges)
     .publish({ _tag: "ProjectSessionRemoved", sessionId })
     .pipe(asError(operation));
+  yield* (yield* ArtifactGarbageCollector).request();
 });
 
 export const deleteProjectSessions = Effect.fn("ProjectSessions.deleteProjectSessions")(function* (
@@ -467,6 +469,7 @@ export const deleteProjectSessions = Effect.fn("ProjectSessions.deleteProjectSes
     { discard: true },
   );
   yield* families.removeProject(projectPath).pipe(asError(operation));
+  yield* (yield* ArtifactGarbageCollector).request();
 });
 
 /** Validates and assigns the ordered labels for one active Project Session. */

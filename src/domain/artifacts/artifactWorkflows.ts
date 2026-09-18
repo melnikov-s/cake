@@ -101,19 +101,20 @@ export const create = Effect.fn("Artifacts.create")(function* (input: CreateArti
     Effect.gen(function* () {
       const familyTarget = yield* familyTargetForSession(input.sessionId);
       const storage = yield* ArtifactStorage;
-      const revision = yield* storage.publish({
-        lineageId: input.lineageId,
-        expectedLatestRevision: 0,
-        snapshot: input.snapshot,
-        workingDirectory: input.workingDirectory,
-      });
-      yield* storage.putLink({
-        lineageId: input.lineageId,
-        target: familyTarget ?? { type: "session", sessionId: input.sessionId },
-        selection: { mode: "follow-latest" },
-        createdAt: DateTime.formatIso(yield* DateTime.now),
-      });
-      return revision;
+      return yield* storage.publishWithLink(
+        {
+          lineageId: input.lineageId,
+          expectedLatestRevision: 0,
+          snapshot: input.snapshot,
+          workingDirectory: input.workingDirectory,
+        },
+        {
+          lineageId: input.lineageId,
+          target: familyTarget ?? { type: "session", sessionId: input.sessionId },
+          selection: { mode: "follow-latest" },
+          createdAt: DateTime.formatIso(yield* DateTime.now),
+        },
+      );
     }),
   );
 });

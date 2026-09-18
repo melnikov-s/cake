@@ -228,10 +228,24 @@ records, then writes the current catalog envelope. Unknown versions, corrupt
 blobs, gaps, and ambiguous links fail with a typed storage error rather than
 silently dropping data.
 
-Deleting a session or family removes only its links. Unlinked lineages are
-eligible for eventual reachability-based garbage collection. This slice exposes
-only a conservative orphan-blob deletion primitive: a blob is removable only
-when no catalog revision references its digest. Full lineage collection also
-accounts for durable transcript refs and belongs to a later workflow slice.
+Deleting a session or family removes its links without synchronously deleting
+artifact history. After the transcript/family authority mutation commits, and
+once at startup, best-effort garbage collection snapshots the catalog, asks Pi's
+`SessionManager` APIs to enumerate durable artifact pointers across active and
+resolved Project Session roots, and reads current Session Family membership. A
+lineage is retained by a link to a surviving session, a link to a family with a
+surviving member, or any durable exact pointer in a surviving Pi transcript. The
+Artifact Library is only a projection and is not a retention root.
+
+The storage mutation runs under the same process-wide semaphore as publish and
+link operations and proceeds only if the catalog still matches the snapshot used
+for reachability verification. Initial publish and link are one catalog mutation,
+so collection cannot observe a newly created lineage between those steps. A Pi
+scan failure, malformed pointer, session-ID collision, or concurrent catalog
+change retains data. Collection atomically removes proven-unreachable lineage,
+revision, and stale-link metadata, then deletes only blobs unused by every
+retained revision. All historical revisions of a retained lineage remain.
+Disposable projection caches are reconciled separately against surviving session
+and retained-lineage identities; cache deletion never affects authoritative blobs.
 
 Reviews store Cake-owned anchors and workflow metadata.

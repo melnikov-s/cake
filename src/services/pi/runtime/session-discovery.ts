@@ -5,6 +5,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { CombinedAutocompleteProvider } from "@earendil-works/pi-tui";
 import { existsSync, readFileSync, unlinkSync } from "node:fs";
+import { readdir } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { Effect, Stream } from "effect";
 import {
@@ -12,7 +13,11 @@ import {
   type SessionPreview,
   type SessionSummary,
 } from "../../../ipc/session-contract";
-import { projectArtifactPointers, projectSessionEntries } from "./session-projection";
+import {
+  projectArtifactPointers,
+  projectDurableArtifactLineageIds,
+  projectSessionEntries,
+} from "./session-projection";
 import { sessionTitleFromFile } from "./session-title";
 import {
   findSessionFileMetadataById,
@@ -21,6 +26,66 @@ import {
   streamSessionFiles,
   workingDirectorySessionPath,
 } from "../../storage/session-files";
+
+export interface DurableArtifactReferences {
+  readonly sessionIds: ReadonlyArray<string>;
+  readonly lineageIds: ReadonlyArray<string>;
+}
+
+/** Enumerates durable pointers through Pi's SessionManager rather than parsing Pi JSONL. */
+export async function loadDurableArtifactReferences(
+  sessionRoots: ReadonlyArray<string>,
+): Promise<DurableArtifactReferences> {
+  const sessionIds = new Set<string>();
+  const lineageIds = new Set<string>();
+  for (const root of sessionRoots) {
+    let entries;
+    try {
+      entries = await readdir(root, { withFileTypes: true });
+    } catch (cause) {
+      if (cause instanceof Error && "code" in cause && cause.code === "ENOENT") continue;
+      throw cause;
+    }
+    if (entries.some((entry) => entry.isSymbolicLink()))
+      throw new Error(`Cannot verify durable artifact reachability through symlinks in ${root}`);
+    const directories = [
+      root,
+      ...entries.filter((entry) => entry.isDirectory()).map((entry) => join(root, entry.name)),
+    ];
+    for (const directory of directories) {
+      const directoryEntries = await readdir(directory, { withFileTypes: true });
+      if (
+        directoryEntries.some(
+          (entry) => entry.name.endsWith(".jsonl") && (!entry.isFile() || entry.isSymbolicLink()),
+        )
+      )
+        throw new Error(`Cannot verify non-regular Pi Session files in ${directory}`);
+      const expectedPaths = new Set(
+        directoryEntries
+          .filter((entry) => entry.isFile() && entry.name.endsWith(".jsonl"))
+          .map((entry) => resolve(directory, entry.name)),
+      );
+      const sessions = await SessionManager.listAll(directory);
+      const listedPaths = new Set(sessions.map((session) => resolve(session.path)));
+      if (
+        expectedPaths.size !== listedPaths.size ||
+        [...expectedPaths].some((sessionPath) => !listedPaths.has(sessionPath))
+      )
+        throw new Error(`Pi could not authoritatively enumerate every Session in ${directory}`);
+      for (const session of sessions) {
+        if (sessionIds.has(session.id))
+          throw new Error(
+            `Pi Session ID collision detected while scanning artifact pointers: ${session.id}`,
+          );
+        sessionIds.add(session.id);
+        const manager = SessionManager.open(session.path, dirname(session.path), session.cwd);
+        for (const lineageId of projectDurableArtifactLineageIds(manager))
+          lineageIds.add(lineageId);
+      }
+    }
+  }
+  return { sessionIds: [...sessionIds], lineageIds: [...lineageIds] };
+}
 
 export function loadPiChangelog() {
   try {

@@ -518,7 +518,7 @@ The window Store hierarchy mirrors the product surfaces:
   `cake://artifact/<lineage-id>` and exact refs append `@rN`. Project agents receive only a bounded linked-artifact metadata manifest,
   never automatic payload injection. They inspect content with ordinary file tools through disposable, read-only, digest-verified
   exact-revision projections under Cake's cache root; those projections are not persistence authority and widget generated source is
-  excluded. Blocking requests remain inline interactions and never enter the reusable catalog, even when they share rendering infrastructure. Project Sessions and Cake Chat
+  excluded. Permanent session/family deletion triggers conservative best-effort lineage collection after its authority mutation commits; startup runs the same maintenance pass. Surviving direct/family links and durable exact Pi transcript pointers retain the complete lineage history, while unverifiable reachability retains rather than deletes. Projection caches are disposable and cleaned independently. Blocking requests remain inline interactions and never enter the reusable catalog, even when they share rendering infrastructure. Project Sessions and Cake Chat
   Sessions each compose one `ConversationSessionStore`, the window-local active-conversation aggregate whose lifetime matches its owning
   primary session. It owns the stable `ChatStore`, `ConversationComposerStore`, and `ChatConfigurationStore` children plus their common
   delivery, queuing, configuration, transcript-interaction, draft, and operation wiring. Every materialized primary chat uses the single

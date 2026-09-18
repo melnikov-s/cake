@@ -20,6 +20,7 @@ import {
   ArtifactPublicationConflict,
   ArtifactStorage,
   ArtifactStorageError,
+  type ArtifactCollectionInput,
 } from "./ArtifactStorage";
 import { atomicWriteFile } from "./internal/atomicFile";
 
@@ -490,93 +491,111 @@ export const makeArtifactStorageLive = (root: string) =>
         }).pipe(Effect.mapError((cause) => storageError("read", cause)));
       });
 
-      const publish = Effect.fn("ArtifactStorage.publish")(function* (input) {
-        return yield* lock.withPermits(1)(
-          Effect.gen(function* () {
-            const catalog = yield* loadUnlocked();
-            const lineage = catalog.lineages.find((candidate) => candidate.id === input.lineageId);
-            const actualLatestRevision = lineage?.latestRevision ?? 0;
-            if (actualLatestRevision !== input.expectedLatestRevision)
-              return yield* new ArtifactPublicationConflict({
-                lineageId: input.lineageId,
-                expectedLatestRevision: input.expectedLatestRevision,
-                actualLatestRevision,
-              });
-            const nextRevision = actualLatestRevision + 1;
-            if (
-              input.snapshot.kind === "request" ||
-              input.snapshot.id !== input.lineageId ||
-              input.snapshot.revision !== nextRevision
-            )
-              return yield* storageError(
-                "publish",
-                "Artifact snapshot identity/revision must match the lineage next revision and requests are not reusable artifacts",
-              );
-            if (
-              input.restoredFromRevision !== undefined &&
-              (input.restoredFromRevision > actualLatestRevision || actualLatestRevision === 0)
-            )
-              return yield* storageError("publish", "Restore source must be an existing revision");
-            const serialized = `${JSON.stringify(input.snapshot, null, 2)}\n`;
-            const blobDigest = yield* Schema.decodeUnknownEffect(ArtifactDigest)(
-              digest(serialized),
-            ).pipe(Effect.mapError((cause) => storageError("publish", cause)));
-            const targetBlob = blobPath(blobDigest);
-            if (
-              yield* fileSystem
-                .exists(targetBlob)
-                .pipe(Effect.mapError((cause) => storageError("publish", cause)))
-            ) {
-              const existing = yield* readText("publish", targetBlob);
-              if (existing !== serialized || digest(existing) !== blobDigest)
-                return yield* storageError(
-                  "publish",
-                  `Existing content-addressed blob ${blobDigest} is corrupt`,
-                );
-            } else yield* writeText("publish", targetBlob, serialized);
-            const now = DateTime.formatIso(yield* DateTime.now);
-            const revision = yield* Schema.decodeUnknownEffect(ArtifactRevisionNumber)(
-              nextRevision,
-            ).pipe(Effect.mapError((cause) => storageError("publish", cause)));
-            const metadata: ArtifactRevisionMetadata = {
-              revision,
-              digest: blobDigest,
-              kind: input.snapshot.kind,
-              publishedAt: now,
-              publishedBySessionId: input.snapshot.sessionId,
-              workingDirectory: input.workingDirectory,
-              ...(input.restoredFromRevision === undefined
-                ? null
-                : { restoredFromRevision: input.restoredFromRevision }),
+      const publishUnlocked = Effect.fn("ArtifactStorage.publishUnlocked")(function* (
+        input: Parameters<ArtifactStorage["Service"]["publish"]>[0],
+        initialLink?: ArtifactLink,
+      ) {
+        const catalog = yield* loadUnlocked();
+        const lineage = catalog.lineages.find((candidate) => candidate.id === input.lineageId);
+        const actualLatestRevision = lineage?.latestRevision ?? 0;
+        if (actualLatestRevision !== input.expectedLatestRevision)
+          return yield* new ArtifactPublicationConflict({
+            lineageId: input.lineageId,
+            expectedLatestRevision: input.expectedLatestRevision,
+            actualLatestRevision,
+          });
+        const nextRevision = actualLatestRevision + 1;
+        if (
+          input.snapshot.kind === "request" ||
+          input.snapshot.id !== input.lineageId ||
+          input.snapshot.revision !== nextRevision
+        )
+          return yield* storageError(
+            "publish",
+            "Artifact snapshot identity/revision must match the lineage next revision and requests are not reusable artifacts",
+          );
+        if (
+          input.restoredFromRevision !== undefined &&
+          (input.restoredFromRevision > actualLatestRevision || actualLatestRevision === 0)
+        )
+          return yield* storageError("publish", "Restore source must be an existing revision");
+        if (
+          initialLink &&
+          (actualLatestRevision !== 0 ||
+            initialLink.lineageId !== input.lineageId ||
+            (initialLink.selection.mode === "pinned" && initialLink.selection.revision !== 1))
+        )
+          return yield* storageError("publishWithLink", "Initial link must select revision one");
+        const serialized = `${JSON.stringify(input.snapshot, null, 2)}\n`;
+        const blobDigest = yield* Schema.decodeUnknownEffect(ArtifactDigest)(
+          digest(serialized),
+        ).pipe(Effect.mapError((cause) => storageError("publish", cause)));
+        const targetBlob = blobPath(blobDigest);
+        if (
+          yield* fileSystem
+            .exists(targetBlob)
+            .pipe(Effect.mapError((cause) => storageError("publish", cause)))
+        ) {
+          const existing = yield* readText("publish", targetBlob);
+          if (existing !== serialized || digest(existing) !== blobDigest)
+            return yield* storageError(
+              "publish",
+              `Existing content-addressed blob ${blobDigest} is corrupt`,
+            );
+        } else yield* writeText("publish", targetBlob, serialized);
+        const now = DateTime.formatIso(yield* DateTime.now);
+        const revision = yield* Schema.decodeUnknownEffect(ArtifactRevisionNumber)(
+          nextRevision,
+        ).pipe(Effect.mapError((cause) => storageError("publish", cause)));
+        const metadata: ArtifactRevisionMetadata = {
+          revision,
+          digest: blobDigest,
+          kind: input.snapshot.kind,
+          publishedAt: now,
+          publishedBySessionId: input.snapshot.sessionId,
+          workingDirectory: input.workingDirectory,
+          ...(input.restoredFromRevision === undefined
+            ? null
+            : { restoredFromRevision: input.restoredFromRevision }),
+        };
+        const nextLineage: ArtifactLineage = lineage
+          ? {
+              ...lineage,
+              latestRevision: revision,
+              revisions: [...lineage.revisions, metadata],
+            }
+          : {
+              id: input.lineageId,
+              createdAt: now,
+              latestRevision: revision,
+              revisions: [metadata],
             };
-            const nextLineage: ArtifactLineage = lineage
-              ? {
-                  ...lineage,
-                  latestRevision: revision,
-                  revisions: [...lineage.revisions, metadata],
-                }
-              : {
-                  id: input.lineageId,
-                  createdAt: now,
-                  latestRevision: revision,
-                  revisions: [metadata],
-                };
-            yield* saveUnlocked({
-              ...catalog,
-              lineages: lineage
-                ? catalog.lineages.map((candidate) =>
-                    candidate.id === input.lineageId ? nextLineage : candidate,
-                  )
-                : [...catalog.lineages, nextLineage],
-            });
-            return yield* Schema.decodeUnknownEffect(ArtifactRevision)({
-              lineageId: input.lineageId,
-              metadata,
-              snapshot: input.snapshot,
-            }).pipe(Effect.mapError((cause) => storageError("publish", cause)));
-          }),
-        );
+        yield* saveUnlocked({
+          lineages: lineage
+            ? catalog.lineages.map((candidate) =>
+                candidate.id === input.lineageId ? nextLineage : candidate,
+              )
+            : [...catalog.lineages, nextLineage],
+          links: initialLink ? [...catalog.links, initialLink] : catalog.links,
+        });
+        return yield* Schema.decodeUnknownEffect(ArtifactRevision)({
+          lineageId: input.lineageId,
+          metadata,
+          snapshot: input.snapshot,
+        }).pipe(Effect.mapError((cause) => storageError("publish", cause)));
       });
+
+      const publish = Effect.fn("ArtifactStorage.publish")((input) =>
+        lock.withPermits(1)(publishUnlocked(input)),
+      );
+      const publishWithLink = Effect.fn("ArtifactStorage.publishWithLink")((input, link) =>
+        lock.withPermits(1)(
+          Schema.decodeUnknownEffect(ArtifactLink)(link).pipe(
+            Effect.mapError((cause) => storageError("publishWithLink", cause)),
+            Effect.flatMap((decoded) => publishUnlocked(input, decoded)),
+          ),
+        ),
+      );
 
       const read = Effect.fn("ArtifactStorage.read")((lineageId, revision) =>
         lock.withPermits(1)(
@@ -682,9 +701,89 @@ export const makeArtifactStorageLive = (root: string) =>
           }),
         ),
       );
+      const catalogToken = (value: ArtifactCatalog) => digest(JSON.stringify(value));
       const catalog = Effect.fn("ArtifactStorage.catalog")(() =>
         lock.withPermits(1)(loadUnlocked()),
       );
+      const collectionSnapshot = Effect.fn("ArtifactStorage.collectionSnapshot")(() =>
+        lock.withPermits(1)(
+          loadUnlocked().pipe(Effect.map((catalog) => ({ catalog, token: catalogToken(catalog) }))),
+        ),
+      );
+      const collectUnreachable = Effect.fn("ArtifactStorage.collectUnreachable")(function* (
+        input: ArtifactCollectionInput,
+      ) {
+        return yield* lock.withPermits(1)(
+          Effect.gen(function* () {
+            const current = yield* loadUnlocked();
+            if (catalogToken(current) !== input.expectedCatalogToken)
+              return {
+                skipped: true,
+                lineagesRemoved: 0,
+                revisionsRemoved: 0,
+                linksRemoved: 0,
+                blobsRemoved: 0,
+              };
+
+            const sessions = new Set(input.survivingSessionIds);
+            const families = new Set(input.survivingFamilyIds);
+            const transcriptLineages = new Set(input.transcriptLineageIds);
+            const retainedLinks = current.links.filter((link) =>
+              link.target.type === "session"
+                ? sessions.has(link.target.sessionId)
+                : families.has(link.target.familyId),
+            );
+            const retainedLineageIds = new Set<string>([
+              ...transcriptLineages,
+              ...retainedLinks.map((link) => link.lineageId),
+            ]);
+            const retainedLineages = current.lineages.filter((lineage) =>
+              retainedLineageIds.has(lineage.id),
+            );
+            const removedLineages = current.lineages.filter(
+              (lineage) => !retainedLineageIds.has(lineage.id),
+            );
+            const retainedIdSet = new Set(retainedLineages.map((lineage) => lineage.id));
+            const nextLinks = retainedLinks.filter((link) => retainedIdSet.has(link.lineageId));
+            const linksRemoved = current.links.length - nextLinks.length;
+            if (removedLineages.length > 0 || linksRemoved > 0)
+              yield* saveUnlocked({ lineages: retainedLineages, links: nextLinks });
+
+            const retainedDigests = new Set<string>(
+              retainedLineages.flatMap((lineage) =>
+                lineage.revisions.map((revision) => revision.digest),
+              ),
+            );
+            const hasBlobDirectory = yield* fileSystem
+              .exists(blobDirectory)
+              .pipe(Effect.mapError((cause) => storageError("collectUnreachable", cause)));
+            const blobNames = hasBlobDirectory
+              ? yield* fileSystem
+                  .readDirectory(blobDirectory)
+                  .pipe(Effect.mapError((cause) => storageError("collectUnreachable", cause)))
+              : [];
+            let blobsRemoved = 0;
+            for (const name of blobNames) {
+              const match = /^([a-f0-9]{64})\.json$/.exec(name);
+              if (!match || retainedDigests.has(match[1]!)) continue;
+              yield* fileSystem
+                .remove(path.join(blobDirectory, name), { force: true })
+                .pipe(Effect.mapError((cause) => storageError("collectUnreachable", cause)));
+              blobsRemoved += 1;
+            }
+            return {
+              skipped: false,
+              lineagesRemoved: removedLineages.length,
+              revisionsRemoved: removedLineages.reduce(
+                (count, lineage) => count + lineage.revisions.length,
+                0,
+              ),
+              linksRemoved,
+              blobsRemoved,
+            };
+          }),
+        );
+      });
       const deleteBlobIfOrphaned = Effect.fn("ArtifactStorage.deleteBlobIfOrphaned")((value) =>
         lock.withPermits(1)(
           Effect.gen(function* () {
@@ -712,6 +811,7 @@ export const makeArtifactStorageLive = (root: string) =>
 
       return ArtifactStorage.of({
         publish,
+        publishWithLink,
         read,
         listRevisions,
         putLink,
@@ -719,6 +819,8 @@ export const makeArtifactStorageLive = (root: string) =>
         resolveLinks,
         removeTargetLinks,
         catalog,
+        collectionSnapshot,
+        collectUnreachable,
         deleteBlobIfOrphaned,
       });
     }),

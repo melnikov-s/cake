@@ -211,6 +211,57 @@ describe("ArtifactStorage", () => {
     await expect(Effect.runPromise(storage.read(id))).rejects.toThrow("digest does not match");
   });
 
+  it("retains a blob shared by a retained revision while collecting another lineage", async () => {
+    const { root } = await temporaryRoot();
+    const storage = await makeStorage(root);
+    const retained = await Effect.runPromise(
+      storage.publishWithLink(
+        {
+          lineageId: lineageId("retained"),
+          expectedLatestRevision: 0,
+          snapshot: tableSnapshot(1, { id: "retained" }),
+          workingDirectory: "/project",
+        },
+        {
+          lineageId: lineageId("retained"),
+          target: { type: "session", sessionId: "surviving" },
+          selection: { mode: "follow-latest" },
+          createdAt: new Date(0).toISOString(),
+        },
+      ),
+    );
+    await Effect.runPromise(
+      storage.publish({
+        lineageId: lineageId("removed"),
+        expectedLatestRevision: 0,
+        snapshot: tableSnapshot(2, { id: "removed" }),
+        workingDirectory: "/project",
+      }),
+    );
+    // Exercise the collector's digest-level invariant directly. Normal publication
+    // embeds identity in the blob, but migrated/catalog-level data may still share a digest.
+    const catalogPath = join(root, "catalog.json");
+    const envelope = JSON.parse(await readFile(catalogPath, "utf8"));
+    envelope.data.lineages.find(
+      (item: { id: string }) => item.id === "removed",
+    ).revisions[0].digest = retained.metadata.digest;
+    await writeFile(catalogPath, `${JSON.stringify(envelope, null, 2)}\n`);
+
+    const before = await Effect.runPromise(storage.collectionSnapshot());
+    const stats = await Effect.runPromise(
+      storage.collectUnreachable({
+        expectedCatalogToken: before.token,
+        survivingSessionIds: ["surviving"],
+        survivingFamilyIds: [],
+        transcriptLineageIds: [],
+      }),
+    );
+    expect(stats.lineagesRemoved).toBe(1);
+    expect(
+      await readFile(join(root, "blobs", `${retained.metadata.digest}.json`), "utf8"),
+    ).toContain('"id": "retained"');
+  });
+
   it("migrates legacy revisions and fork links once while excluding request records", async () => {
     const { state, root } = await temporaryRoot();
     const blobs = join(root, "blobs");

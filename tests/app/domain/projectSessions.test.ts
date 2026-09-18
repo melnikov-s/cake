@@ -44,6 +44,7 @@ import { ProjectSessionConfiguration } from "../../../src/services/project-sessi
 import { SubagentEnvironment } from "../../../src/services/subagents/SubagentEnvironment";
 import { VsCodeServer } from "../../../src/services/vscode/VsCodeServer";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
+import { ArtifactGarbageCollector } from "../../../src/services/artifacts/ArtifactGarbageCollector";
 import { ArtifactStorage } from "../../../src/services/storage/ArtifactStorage";
 import { ReviewStorage } from "../../../src/services/storage/ReviewStorage";
 import {
@@ -229,6 +230,7 @@ const makeLayer = (
     onCloseWorkingDirectory?(): void;
     onRemoveFamilyProject?(projectPath: string): void;
     onRemoveArtifactTarget?(target: ArtifactLinkTarget): void;
+    onArtifactGarbageCollection?(): void;
     initialResolvedSessionIds?: ReadonlyArray<string>;
     family?: {
       readonly familyId: string;
@@ -455,6 +457,9 @@ const makeLayer = (
           sessionDirectory: "/subagents",
           trusted: true,
         }),
+    }),
+    Layer.mock(ArtifactGarbageCollector, {
+      request: () => Effect.sync(() => hooks.onArtifactGarbageCollection?.()),
     }),
     Layer.mock(ArtifactStorage, {
       read: (lineageId, artifactRevision) =>
@@ -1954,33 +1959,42 @@ describe("Project Sessions domain", () => {
     );
   });
 
-  it.effect("removes family artifact links before cascading family metadata deletion", () => {
-    const removedProjects: string[] = [];
-    const removedArtifactTargets: ArtifactLinkTarget[] = [];
-    return projectSessionLifecycle.deleteProjectSessions("/project", []).pipe(
-      Effect.tap(() =>
-        Effect.sync(() => {
-          assert.deepEqual(removedArtifactTargets, [{ type: "family", familyId: "family-1" }]);
-          assert.deepEqual(removedProjects, ["/project"]);
-        }),
-      ),
-      Effect.provide(
-        makeLayer(defaultApplicationState(), {
-          sessionExists: false,
-          family: {
-            familyId: "family-1",
-            parentSessionId: "parent",
-            projectPath: "/project",
-            workingDirectory: "/project",
-            createdAt: "2026-01-01T00:00:00.000Z",
-            children: [],
-          },
-          onRemoveArtifactTarget: (target) => removedArtifactTargets.push(target),
-          onRemoveFamilyProject: (projectPath) => removedProjects.push(projectPath),
-        }),
-      ),
-    );
-  });
+  it.effect(
+    "removes family links and triggers GC only after cascading family metadata deletion",
+    () => {
+      const removedProjects: string[] = [];
+      const removedArtifactTargets: ArtifactLinkTarget[] = [];
+      const lifecycleOrder: string[] = [];
+      return projectSessionLifecycle.deleteProjectSessions("/project", []).pipe(
+        Effect.tap(() =>
+          Effect.sync(() => {
+            assert.deepEqual(removedArtifactTargets, [{ type: "family", familyId: "family-1" }]);
+            assert.deepEqual(removedProjects, ["/project"]);
+            assert.deepEqual(lifecycleOrder, ["family-removed", "gc"]);
+          }),
+        ),
+        Effect.provide(
+          makeLayer(defaultApplicationState(), {
+            sessionExists: false,
+            family: {
+              familyId: "family-1",
+              parentSessionId: "parent",
+              projectPath: "/project",
+              workingDirectory: "/project",
+              createdAt: "2026-01-01T00:00:00.000Z",
+              children: [],
+            },
+            onRemoveArtifactTarget: (target) => removedArtifactTargets.push(target),
+            onRemoveFamilyProject: (projectPath) => {
+              removedProjects.push(projectPath);
+              lifecycleOrder.push("family-removed");
+            },
+            onArtifactGarbageCollection: () => lifecycleOrder.push("gc"),
+          }),
+        ),
+      );
+    },
+  );
 
   it.effect("reports partial Working Directory resolution failures and batches successes", () => {
     const archived: string[] = [];

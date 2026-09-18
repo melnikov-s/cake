@@ -98,12 +98,20 @@ Resolving, restoring, changing branches, compacting tools, or merely unloading a
 renderer projection never deletes artifact data. Permanently deleting a Cake Session or Session Family removes only links targeting
 it. It does not mutate a lineage or revision.
 
-A lineage with no effective session/family link is eligible for eventual garbage
-collection. Repository collection must also account for durable exact Pi refs;
-shared blobs remain while any catalog revision uses their digest. Collection is
-conservative and restart-safe. The storage slice supplies only an orphan-blob
-primitive that refuses to delete any digest referenced by a catalog revision;
-full lineage reachability and collection are separate workflow work.
+A lineage is reachable when it has a direct link to a surviving session, a family
+link whose family still has a surviving member, or a durable exact artifact pointer
+anywhere in a surviving Pi transcript. The Artifact Library is not a retention
+root. A reachable lineage retains every exact historical revision, and a blob is
+removed only when no retained revision uses its digest.
+
+Collection runs best-effort after permanent deletion commits and once at startup.
+It uses Pi's `SessionManager` APIs rather than parsing JSONL, removes links to
+proven-absent targets, and fails closed: incomplete or malformed transcript
+enumeration, ambiguous session identity, operational failure, or concurrent
+catalog mutation retains data. Initial publication and its first link are atomic;
+other publish/link mutations serialize with collection through the artifact
+storage semaphore. Disposable exact-revision projection caches are cleaned
+independently and never retain or delete authoritative artifact content.
 
 The maximum serialized tool input and response size is 1 MiB. Larger payloads
 are rejected before display. This is the S4 answer to Q4: the durable location

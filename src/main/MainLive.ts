@@ -27,6 +27,7 @@ import { RendererRequestCoordinatorLive } from "../services/renderer-requests/Re
 import { ScheduledMessages } from "../services/scheduled-messages/ScheduledMessages";
 import { SessionCatalogChanges } from "../services/session-catalogs/SessionCatalogChanges";
 import { makeArtifactStorageLive } from "../services/storage/ArtifactStorageLive";
+import { ArtifactGarbageCollectorLive } from "../services/artifacts/ArtifactGarbageCollectorLive";
 import { makeArtifactProjectionLive } from "../services/artifacts/ArtifactProjectionLive";
 import { makeApplicationStorageLive } from "../services/storage/ApplicationStorage";
 import { ApplicationState } from "../services/storage/ApplicationState";
@@ -162,6 +163,7 @@ export const makeMainLive = (options: MainLiveOptions) => {
       sessionDirectory: paths.piSubagentSessions,
     }),
     makeWorkspaceFilesLive(paths.piAgent),
+    ArtifactGarbageCollectorLive,
   ).pipe(Layer.provide(ApplicationCapabilitiesLive));
 
   const SessionFoundationLive = Layer.merge(ApplicationCapabilitiesLive, SessionCoreLive);

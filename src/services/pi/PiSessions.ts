@@ -37,6 +37,7 @@ import {
 } from "./runtime/cake-runtime";
 import { TurnCanceledError } from "./runtime/RuntimeTurnCompletion";
 import {
+  loadDurableArtifactReferences,
   loadPiChangelog,
   loadWorkspaceSessionSummary,
   loadWorkspaceSessionPreview,
@@ -224,6 +225,12 @@ export interface PiSessionsAdapter {
   readonly inspect: (target: PiSessionTarget) => Effect.Effect<SessionPreview | undefined, unknown>;
   readonly createRuntime: (options: CakeRuntimeOptions) => Effect.Effect<CakeRuntime, unknown>;
   readonly changelog: () => Effect.Effect<string, unknown>;
+  readonly durableArtifactReferences?: (
+    sessionRoots: ReadonlyArray<string>,
+  ) => Effect.Effect<
+    { readonly sessionIds: ReadonlyArray<string>; readonly lineageIds: ReadonlyArray<string> },
+    unknown
+  >;
 }
 
 export class PiSessions extends Context.Service<
@@ -262,6 +269,13 @@ export class PiSessions extends Context.Service<
     ) => Effect.Effect<void, PiSessionError>;
     readonly reloadAll: () => Effect.Effect<void, PiSessionError>;
     readonly reloadCakeChatContext: () => Effect.Effect<void, PiSessionError>;
+    /** Reads durable pointers from every Pi Session under the supplied roots. */
+    readonly durableArtifactReferences: (
+      sessionRoots: ReadonlyArray<string>,
+    ) => Effect.Effect<
+      { readonly sessionIds: ReadonlyArray<string>; readonly lineageIds: ReadonlyArray<string> },
+      PiSessionError
+    >;
   }
 >()("cake/services/pi/PiSessions") {}
 
@@ -864,6 +878,18 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
           [...activeRuntimes].filter((shared) => shared.profile === "CakeChatSession"),
         );
       });
+      const durableArtifactReferences = Effect.fn("PiSessions.durableArtifactReferences")(
+        function* (sessionRoots: ReadonlyArray<string>) {
+          if (!adapter.durableArtifactReferences)
+            return yield* new PiSessionError({
+              operation: "durableArtifactReferences",
+              message: "Durable artifact pointer enumeration is unavailable",
+            });
+          return yield* adapter
+            .durableArtifactReferences(sessionRoots)
+            .pipe(sessionError("durableArtifactReferences"));
+        },
+      );
 
       const acquireCurrent = Effect.fn("PiSessions.acquireCurrent")(function* (
         target: Pick<PiSessionTarget, "workingDirectory" | "sessionId" | "sessionDirectory">,
@@ -935,6 +961,7 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
         reloadWorkingDirectory,
         reloadAll,
         reloadCakeChatContext,
+        durableArtifactReferences,
       });
     }),
   );
@@ -972,4 +999,9 @@ export const makePiSessionsLive = (): Layer.Layer<PiSessions> =>
     createRuntime: (options) =>
       Effect.tryPromise({ try: () => createCakeRuntime(options), catch: (cause) => cause }),
     changelog: () => Effect.sync(loadPiChangelog),
+    durableArtifactReferences: (sessionRoots) =>
+      Effect.tryPromise({
+        try: () => loadDurableArtifactReferences(sessionRoots),
+        catch: (cause) => cause,
+      }),
   });

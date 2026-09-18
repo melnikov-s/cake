@@ -1,4 +1,14 @@
-import { chmod, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
@@ -164,6 +174,49 @@ describe("ArtifactProjection", () => {
       }).pipe(Effect.provide(layer)),
     );
     expect(failure.message).toContain("Unsafe session ID");
+  });
+
+  it("reconciles stale session and lineage caches without following symlinks", async () => {
+    const root = await mkdtemp(join(tmpdir(), "cake-artifact-projection-cleanup-"));
+    roots.push(root);
+    const cacheRoot = join(root, "cache");
+    const layer = makeArtifactProjectionLive(cacheRoot).pipe(
+      Layer.provide(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer)),
+    );
+    const external = join(root, "external");
+    await mkdir(external, { recursive: true });
+    await writeFile(join(external, "sentinel"), "keep");
+
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const service = yield* ArtifactProjection;
+        yield* service.materialize({
+          sessionId: "surviving",
+          revision: revision(markdown(1, "keep")),
+          latestRevision: revisionNumber(1),
+          linkMode: "follow-latest",
+        });
+        yield* service.materialize({
+          sessionId: "deleted",
+          revision: revision(markdown(1, "drop")),
+          latestRevision: revisionNumber(1),
+          linkMode: "follow-latest",
+        });
+        const sessionsRoot = join(cacheRoot, "artifact-projections", "v1", "sessions");
+        yield* Effect.promise(() => symlink(external, join(sessionsRoot, "escaped")));
+        const stats = yield* service.cleanup({
+          retained: [
+            { sessionId: "surviving", lineageIds: [] },
+            { sessionId: "escaped", lineageIds: [] },
+          ],
+        });
+        expect(stats).toEqual({ sessionsRemoved: 2, lineagesRemoved: 1 });
+      }).pipe(Effect.provide(layer)),
+    );
+    expect(await readFile(join(external, "sentinel"), "utf8")).toBe("keep");
+    await expect(
+      stat(join(cacheRoot, "artifact-projections", "v1", "sessions", "escaped")),
+    ).rejects.toThrow();
   });
 
   it("emits canonical files for every stored kind and excludes private widget source", () => {
