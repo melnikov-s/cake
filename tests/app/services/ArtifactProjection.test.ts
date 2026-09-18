@@ -1,9 +1,11 @@
 import {
   chmod,
+  lstat,
   mkdir,
   mkdtemp,
   readFile,
   readdir,
+  rename,
   rm,
   stat,
   symlink,
@@ -29,8 +31,8 @@ import {
 
 const roots: string[] = [];
 const unlock = async (target: string): Promise<void> => {
-  const info = await stat(target).catch(() => undefined);
-  if (!info?.isDirectory()) return;
+  const info = await lstat(target).catch(() => undefined);
+  if (!info?.isDirectory() || info.isSymbolicLink()) return;
   await chmod(target, 0o755);
   await Promise.all((await readdir(target)).map((name) => unlock(join(target, name))));
 };
@@ -158,6 +160,72 @@ describe("ArtifactProjection", () => {
     await expect(readFile(target, "utf8")).rejects.toThrow();
   });
 
+  it("rejects symlinked cache and sessions roots without writing through them", async () => {
+    for (const intermediate of ["cache", "sessions"] as const) {
+      const root = await mkdtemp(join(tmpdir(), `cake-artifact-projection-${intermediate}-link-`));
+      roots.push(root);
+      const external = join(root, "external");
+      const cacheRoot = join(root, "cache");
+      await mkdir(external);
+      await writeFile(join(external, "sentinel"), "keep");
+      if (intermediate === "cache") {
+        await symlink(external, cacheRoot);
+      } else {
+        const versionRoot = join(cacheRoot, "artifact-projections", "v1");
+        await mkdir(versionRoot, { recursive: true });
+        await symlink(external, join(versionRoot, "sessions"));
+      }
+      const layer = makeArtifactProjectionLive(cacheRoot).pipe(
+        Layer.provide(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer)),
+      );
+      const failure = await Effect.runPromise(
+        Effect.gen(function* () {
+          const service = yield* ArtifactProjection;
+          yield* service.materialize({
+            sessionId: "session-1",
+            revision: revision(markdown(1, "one")),
+            latestRevision: revisionNumber(1),
+            linkMode: "follow-latest",
+          });
+        }).pipe(Effect.provide(layer), Effect.flip),
+      );
+      expect(String(failure)).toContain("Unsafe projection path");
+      expect(await readFile(join(external, "sentinel"), "utf8")).toBe("keep");
+      await expect(stat(join(external, "session-1"))).rejects.toThrow();
+    }
+  });
+
+  it("rejects replaced sessions directories before later mutations", async () => {
+    const root = await mkdtemp(join(tmpdir(), "cake-artifact-projection-replaced-root-"));
+    roots.push(root);
+    const cacheRoot = join(root, "cache");
+    const layer = makeArtifactProjectionLive(cacheRoot).pipe(
+      Layer.provide(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer)),
+    );
+    const sessionsRoot = join(cacheRoot, "artifact-projections", "v1", "sessions");
+    const failure = await Effect.runPromise(
+      Effect.gen(function* () {
+        const service = yield* ArtifactProjection;
+        yield* Effect.promise(async () => {
+          await rename(sessionsRoot, `${sessionsRoot}-original`);
+          await mkdir(sessionsRoot);
+          await writeFile(join(sessionsRoot, "sentinel"), "keep");
+        });
+        return yield* service
+          .materialize({
+            sessionId: "session-1",
+            revision: revision(markdown(1, "one")),
+            latestRevision: revisionNumber(1),
+            linkMode: "follow-latest",
+          })
+          .pipe(Effect.flip);
+      }).pipe(Effect.provide(layer)),
+    );
+    expect(failure.message).toContain("Unsafe projection path");
+    expect(await readFile(join(sessionsRoot, "sentinel"), "utf8")).toBe("keep");
+    await expect(stat(join(sessionsRoot, "session-1"))).rejects.toThrow();
+  });
+
   it("rejects traversal segments", async () => {
     const layer = await makeLayer();
     const failure = await Effect.runPromise(
@@ -174,6 +242,56 @@ describe("ArtifactProjection", () => {
       }).pipe(Effect.provide(layer)),
     );
     expect(failure.message).toContain("Unsafe session ID");
+  });
+
+  it("unlinks descendant cleanup symlinks without traversing their targets", async () => {
+    const root = await mkdtemp(join(tmpdir(), "cake-artifact-projection-descendant-link-"));
+    roots.push(root);
+    const cacheRoot = join(root, "cache");
+    const layer = makeArtifactProjectionLive(cacheRoot).pipe(
+      Layer.provide(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer)),
+    );
+    const external = join(root, "external");
+    await mkdir(external);
+    await writeFile(join(external, "sentinel"), "keep");
+
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const service = yield* ArtifactProjection;
+        yield* service.materialize({
+          sessionId: "session-1",
+          revision: revision(markdown(1, "one")),
+          latestRevision: revisionNumber(1),
+          linkMode: "follow-latest",
+        });
+        const sessionsRoot = join(cacheRoot, "artifact-projections", "v1", "sessions");
+        const linkedSession = join(sessionsRoot, "linked-session");
+        yield* Effect.promise(() => symlink(external, linkedSession));
+        const failure = yield* service
+          .materialize({
+            sessionId: "linked-session",
+            revision: revision(markdown(1, "escaped")),
+            latestRevision: revisionNumber(1),
+            linkMode: "follow-latest",
+          })
+          .pipe(Effect.flip);
+        expect(failure.message).toContain("Unsafe projection path");
+        expect(yield* Effect.promise(() => readFile(join(external, "sentinel"), "utf8"))).toBe(
+          "keep",
+        );
+
+        const lineageRoot = join(sessionsRoot, "session-1", "escaped");
+        yield* Effect.promise(() => symlink(external, lineageRoot));
+        yield* service.cleanupLineage(
+          "session-1",
+          Schema.decodeUnknownSync(ArtifactLineageId)("escaped"),
+        );
+        expect(
+          yield* Effect.promise(() => lstat(lineageRoot).catch(() => undefined)),
+        ).toBeUndefined();
+      }).pipe(Effect.provide(layer)),
+    );
+    expect(await readFile(join(external, "sentinel"), "utf8")).toBe("keep");
   });
 
   it("reconciles stale session and lineage caches without following symlinks", async () => {

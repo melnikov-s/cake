@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { Buffer } from "node:buffer";
-import { lstat } from "node:fs/promises";
+import { constants } from "node:fs";
+import { lstat, open, realpath, rmdir, unlink } from "node:fs/promises";
 import { Effect, FileSystem, Layer, Path, Schema, Semaphore } from "effect";
 import { formatArtifactRef } from "../../domain/artifacts/artifact-lineage";
 import type { CakeArtifactV1 } from "../../ipc/artifact-contract";
@@ -157,60 +158,257 @@ export const makeArtifactProjectionLive = (cacheRoot: string) =>
       const fileSystem = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const lock = yield* Semaphore.make(1);
+      const configuredCacheRoot = path.resolve(cacheRoot);
       const sessionsRoot = path.join(
-        cacheRoot,
+        configuredCacheRoot,
         "artifact-projections",
         `v${projectionVersion}`,
         "sessions",
       );
+      const infrastructure = [
+        configuredCacheRoot,
+        path.join(configuredCacheRoot, "artifact-projections"),
+        path.join(configuredCacheRoot, "artifact-projections", `v${projectionVersion}`),
+        sessionsRoot,
+      ];
+      type EntryType = "missing" | "symlink" | "directory" | "file" | "other";
+      interface DirectoryIdentity {
+        readonly dev: number;
+        readonly ino: number;
+      }
+      const trustedInfrastructure = new Map<string, DirectoryIdentity>();
 
-      const entryType = Effect.fn("ArtifactProjection.entryType")(function* (target: string) {
-        return yield* Effect.tryPromise({
-          try: async () => {
+      const sameIdentity = (left: DirectoryIdentity, right: DirectoryIdentity) =>
+        left.dev === right.dev && left.ino === right.ino;
+      const isInside = (root: string, target: string) => {
+        const relative = path.relative(root, target);
+        return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== "..");
+      };
+      const nodePromise = <A>(evaluate: () => Promise<A>) =>
+        Effect.tryPromise({ try: evaluate, catch: (cause) => cause });
+      const entry = Effect.fn("ArtifactProjection.entry")(function* (target: string) {
+        return yield* nodePromise(async () => {
+          try {
             const info = await lstat(target);
-            if (info.isSymbolicLink()) return "symlink" as const;
-            if (info.isDirectory()) return "directory" as const;
-            return "other" as const;
-          },
-          catch: (cause) => cause,
-        }).pipe(
-          Effect.catch((cause) =>
-            cause instanceof Error && "code" in cause && cause.code === "ENOENT"
-              ? Effect.succeed("missing" as const)
-              : Effect.fail(cause),
-          ),
-        );
-      });
-      const unlockTree: (target: string) => Effect.Effect<void, unknown> = Effect.fn(
-        "ArtifactProjection.unlockTree",
-      )(function* (target: string) {
-        if ((yield* entryType(target)) !== "directory") return;
-        yield* fileSystem.chmod(target, 0o755);
-        const names = yield* fileSystem.readDirectory(target);
-        yield* Effect.forEach(names, (name) => unlockTree(path.join(target, name)), {
-          discard: true,
+            const type: EntryType = info.isSymbolicLink()
+              ? "symlink"
+              : info.isDirectory()
+                ? "directory"
+                : info.isFile()
+                  ? "file"
+                  : "other";
+            return { type, identity: { dev: info.dev, ino: info.ino } };
+          } catch (cause) {
+            if (cause instanceof Error && "code" in cause && cause.code === "ENOENT")
+              return { type: "missing" as const };
+            throw cause;
+          }
         });
       });
-      const requireDirectoryOrMissing = Effect.fn("ArtifactProjection.requireDirectoryOrMissing")(
-        function* (operation: string, target: string) {
-          const type = yield* entryType(target).pipe(
+      const canonicalPath = (target: string) => nodePromise(() => realpath(target));
+      const unsafePath = (operation: string, target: string) =>
+        projectionError(operation, `Unsafe projection path ${target}`);
+
+      const ensureInfrastructure = Effect.fn("ArtifactProjection.ensureInfrastructure")(function* (
+        operation: string,
+      ) {
+        for (const [index, target] of infrastructure.entries()) {
+          let current = yield* entry(target).pipe(
             Effect.mapError((cause) => projectionError(operation, cause)),
           );
-          if (type === "symlink" || type === "other")
-            return yield* projectionError(operation, `Unsafe projection path ${target}`);
-        },
-      );
-      const remove = (operation: string, target: string) =>
-        unlockTree(target).pipe(
-          Effect.andThen(fileSystem.remove(target, { recursive: true, force: true })),
-          Effect.mapError((cause) => projectionError(operation, cause)),
-        );
+          if (current.type === "missing") {
+            if (index === 0)
+              yield* fileSystem
+                .makeDirectory(target, { recursive: true })
+                .pipe(Effect.mapError((cause) => projectionError(operation, cause)));
+            else
+              yield* fileSystem
+                .makeDirectory(target)
+                .pipe(Effect.mapError((cause) => projectionError(operation, cause)));
+            current = yield* entry(target).pipe(
+              Effect.mapError((cause) => projectionError(operation, cause)),
+            );
+            if (current.type !== "directory" || current.identity === undefined)
+              return yield* unsafePath(operation, target);
+            trustedInfrastructure.set(target, current.identity);
+          } else {
+            if (current.type !== "directory" || current.identity === undefined)
+              return yield* unsafePath(operation, target);
+            const trusted = trustedInfrastructure.get(target);
+            if (trusted !== undefined && !sameIdentity(trusted, current.identity))
+              return yield* unsafePath(operation, target);
+            trustedInfrastructure.set(target, current.identity);
+          }
+
+          const canonical = yield* canonicalPath(target).pipe(
+            Effect.mapError((cause) => projectionError(operation, cause)),
+          );
+          const canonicalRoot = yield* canonicalPath(configuredCacheRoot).pipe(
+            Effect.mapError((cause) => projectionError(operation, cause)),
+          );
+          const expected = path.join(canonicalRoot, path.relative(configuredCacheRoot, target));
+          if (canonical !== expected || !isInside(canonicalRoot, canonical))
+            return yield* unsafePath(operation, target);
+        }
+      });
+
+      const makeGuard = (operation: string) => {
+        const trustedDirectories = new Map<string, DirectoryIdentity>();
+        const validate = Effect.fn("ArtifactProjection.validatePath")(function* (
+          target: string,
+          leaf: "any" | "directory-or-missing" | "file",
+        ) {
+          if (!isInside(sessionsRoot, target)) return yield* unsafePath(operation, target);
+          yield* ensureInfrastructure(operation);
+          for (const [index, segment] of path
+            .relative(sessionsRoot, target)
+            .split(path.sep)
+            .entries()) {
+            if (segment === "") continue;
+            const currentPath = path.join(
+              sessionsRoot,
+              ...path
+                .relative(sessionsRoot, target)
+                .split(path.sep)
+                .slice(0, index + 1),
+            );
+            const isLeaf = currentPath === target;
+            const current = yield* entry(currentPath).pipe(
+              Effect.mapError((cause) => projectionError(operation, cause)),
+            );
+            if (current.type === "missing") {
+              if (isLeaf && leaf !== "file") return "missing" as const;
+              return yield* unsafePath(operation, currentPath);
+            }
+            if (!isLeaf || leaf === "directory-or-missing") {
+              if (current.type !== "directory" || current.identity === undefined)
+                return yield* unsafePath(operation, currentPath);
+              const trusted = trustedDirectories.get(currentPath);
+              if (trusted !== undefined && !sameIdentity(trusted, current.identity))
+                return yield* unsafePath(operation, currentPath);
+              trustedDirectories.set(currentPath, current.identity);
+              const canonical = yield* canonicalPath(currentPath).pipe(
+                Effect.mapError((cause) => projectionError(operation, cause)),
+              );
+              const canonicalSessions = yield* canonicalPath(sessionsRoot).pipe(
+                Effect.mapError((cause) => projectionError(operation, cause)),
+              );
+              const expected = path.join(
+                canonicalSessions,
+                path.relative(sessionsRoot, currentPath),
+              );
+              if (canonical !== expected || !isInside(canonicalSessions, canonical))
+                return yield* unsafePath(operation, currentPath);
+            } else if (leaf === "file" && current.type !== "file") {
+              return yield* unsafePath(operation, currentPath);
+            }
+            if (isLeaf) return current.type;
+          }
+          return "directory" as const;
+        });
+
+        const ensureDirectory = Effect.fn("ArtifactProjection.ensureDirectory")(function* (
+          target: string,
+        ) {
+          if ((yield* validate(target, "directory-or-missing")) === "directory") return;
+          yield* validate(path.dirname(target), "directory-or-missing");
+          yield* fileSystem
+            .makeDirectory(target)
+            .pipe(Effect.mapError((cause) => projectionError(operation, cause)));
+          yield* validate(target, "directory-or-missing");
+        });
+
+        const chmodDirectory = Effect.fn("ArtifactProjection.chmodDirectory")(function* (
+          target: string,
+          mode: number,
+        ) {
+          yield* validate(target, "directory-or-missing");
+          const expected = trustedDirectories.get(target);
+          if (expected === undefined) return yield* unsafePath(operation, target);
+          yield* nodePromise(async () => {
+            const handle = await open(
+              target,
+              constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
+            );
+            try {
+              const before = await handle.stat();
+              if (!sameIdentity(expected, { dev: before.dev, ino: before.ino }))
+                throw new Error(`Projection directory changed before chmod: ${target}`);
+              await handle.chmod(mode);
+              const after = await handle.stat();
+              if (before.dev !== after.dev || before.ino !== after.ino)
+                throw new Error(`Projection directory changed during chmod: ${target}`);
+            } finally {
+              await handle.close();
+            }
+          }).pipe(Effect.mapError((cause) => projectionError(operation, cause)));
+          yield* validate(target, "directory-or-missing");
+        });
+
+        const writeNewFile = Effect.fn("ArtifactProjection.writeNewFile")(function* (
+          target: string,
+          content: Uint8Array | string,
+        ) {
+          if ((yield* validate(target, "any")) !== "missing")
+            return yield* unsafePath(operation, target);
+          yield* validate(path.dirname(target), "directory-or-missing");
+          yield* nodePromise(async () => {
+            const handle = await open(
+              target,
+              constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
+              0o600,
+            );
+            try {
+              await handle.writeFile(content);
+              await handle.chmod(0o444);
+            } finally {
+              await handle.close();
+            }
+          }).pipe(Effect.mapError((cause) => projectionError(operation, cause)));
+          yield* validate(target, "file");
+        });
+
+        const removeTree: (target: string) => Effect.Effect<void, ArtifactProjectionError> =
+          Effect.fn("ArtifactProjection.removeTree")(function* (target: string) {
+            const type = yield* validate(target, "any");
+            if (type === "missing") return;
+            if (type !== "directory") {
+              yield* validate(path.dirname(target), "directory-or-missing");
+              yield* nodePromise(() => unlink(target)).pipe(
+                Effect.mapError((cause) => projectionError(operation, cause)),
+              );
+              trustedDirectories.delete(target);
+              yield* ensureInfrastructure(operation);
+              yield* validate(path.dirname(target), "directory-or-missing");
+              return;
+            }
+            yield* chmodDirectory(target, 0o755);
+            const names = yield* fileSystem
+              .readDirectory(target)
+              .pipe(Effect.mapError((cause) => projectionError(operation, cause)));
+            yield* validate(target, "directory-or-missing");
+            for (const name of names) yield* removeTree(path.join(target, name));
+            yield* validate(target, "directory-or-missing");
+            yield* validate(path.dirname(target), "directory-or-missing");
+            yield* nodePromise(() => rmdir(target)).pipe(
+              Effect.mapError((cause) => projectionError(operation, cause)),
+            );
+            trustedDirectories.delete(target);
+            yield* ensureInfrastructure(operation);
+            yield* validate(path.dirname(target), "directory-or-missing");
+          });
+
+        return { chmodDirectory, ensureDirectory, removeTree, validate, writeNewFile };
+      };
+
+      yield* ensureInfrastructure("initialize");
 
       const materialize = Effect.fn("ArtifactProjection.materialize")(function* (
         input: MaterializeArtifactProjectionInput,
       ) {
         return yield* lock.withPermits(1)(
           Effect.gen(function* () {
+            const guard = makeGuard("materialize");
             const sessionId = yield* Effect.try({
               try: () => requireSafeSegment("session ID", input.sessionId),
               catch: (cause) => projectionError("materialize", cause),
@@ -220,13 +418,23 @@ export const makeArtifactProjectionLive = (cacheRoot: string) =>
               catch: (cause) => projectionError("materialize", cause),
             });
             const revisionName = `r${String(input.revision.metadata.revision).padStart(8, "0")}`;
-            const lineageRoot = path.join(sessionsRoot, sessionId, lineageId);
+            const sessionRoot = path.join(sessionsRoot, sessionId);
+            const lineageRoot = path.join(sessionRoot, lineageId);
             const revisionsRoot = path.join(lineageRoot, "revisions");
             const revisionRoot = path.join(revisionsRoot, revisionName);
-            yield* requireDirectoryOrMissing("materialize", path.join(sessionsRoot, sessionId));
-            yield* requireDirectoryOrMissing("materialize", lineageRoot);
-            yield* requireDirectoryOrMissing("materialize", revisionsRoot);
-            yield* requireDirectoryOrMissing("materialize", revisionRoot);
+            const sessionType = yield* guard.validate(sessionRoot, "directory-or-missing");
+            const lineageType =
+              sessionType === "directory"
+                ? yield* guard.validate(lineageRoot, "directory-or-missing")
+                : "missing";
+            const revisionsType =
+              lineageType === "directory"
+                ? yield* guard.validate(revisionsRoot, "directory-or-missing")
+                : "missing";
+            const revisionType =
+              revisionsType === "directory"
+                ? yield* guard.validate(revisionRoot, "directory-or-missing")
+                : "missing";
             const latestPath = path.join(
               lineageRoot,
               "revisions",
@@ -267,19 +475,22 @@ export const makeArtifactProjectionLive = (cacheRoot: string) =>
             };
             const metadataContent = `${JSON.stringify(metadata, null, 2)}\n`;
 
-            const reusable = yield* fileSystem.exists(revisionRoot).pipe(
-              Effect.flatMap((exists) => {
-                if (!exists) return Effect.succeed(false);
+            const reusable = yield* Effect.succeed(revisionType).pipe(
+              Effect.flatMap((type) => {
+                if (type === "missing") return Effect.succeed(false);
                 return Effect.gen(function* () {
-                  const stored = yield* fileSystem.readFileString(
-                    path.join(revisionRoot, "metadata.json"),
-                  );
+                  const metadataPath = path.join(revisionRoot, "metadata.json");
+                  yield* guard.validate(metadataPath, "file");
+                  const stored = yield* fileSystem.readFileString(metadataPath);
+                  yield* guard.validate(metadataPath, "file");
                   const decoded = yield* Schema.decodeUnknownEffect(
                     Schema.fromJsonString(ArtifactProjectionMetadata),
                   )(stored);
                   if (JSON.stringify(decoded) !== JSON.stringify(metadata)) return false;
                   for (const [index, item] of values.entries()) {
+                    yield* guard.validate(files[index]!.path, "file");
                     const storedFile = yield* fileSystem.readFile(files[index]!.path);
+                    yield* guard.validate(files[index]!.path, "file");
                     if (sha256(storedFile) !== sha256(item.content)) return false;
                   }
                   return true;
@@ -289,28 +500,30 @@ export const makeArtifactProjectionLive = (cacheRoot: string) =>
             );
             if (reusable) return metadata;
 
-            yield* remove("materialize", revisionRoot);
-            yield* fileSystem
-              .makeDirectory(revisionsRoot, { recursive: true })
-              .pipe(Effect.mapError((cause) => projectionError("materialize", cause)));
+            if (revisionType === "directory") yield* guard.removeTree(revisionRoot);
+            yield* guard.ensureDirectory(sessionRoot);
+            yield* guard.ensureDirectory(lineageRoot);
+            yield* guard.ensureDirectory(revisionsRoot);
+            yield* guard.validate(revisionsRoot, "directory-or-missing");
             const temporary = yield* fileSystem
               .makeTempDirectory({ directory: revisionsRoot, prefix: ".materialize-" })
               .pipe(Effect.mapError((cause) => projectionError("materialize", cause)));
+            yield* guard.validate(temporary, "directory-or-missing");
             const build = Effect.gen(function* () {
               for (const item of values)
-                yield* fileSystem.writeFile(path.join(temporary, item.name), item.content);
-              yield* fileSystem.writeFileString(
-                path.join(temporary, "metadata.json"),
-                metadataContent,
-              );
-              for (const item of [...values.map((item) => item.name), "metadata.json"])
-                yield* fileSystem.chmod(path.join(temporary, item), 0o444);
-              yield* fileSystem.rename(temporary, revisionRoot);
-              yield* fileSystem.chmod(revisionRoot, 0o555);
-            }).pipe(Effect.mapError((cause) => projectionError("materialize", cause)));
+                yield* guard.writeNewFile(path.join(temporary, item.name), item.content);
+              yield* guard.writeNewFile(path.join(temporary, "metadata.json"), metadataContent);
+              yield* guard.validate(temporary, "directory-or-missing");
+              yield* guard.validate(revisionRoot, "directory-or-missing");
+              yield* fileSystem
+                .rename(temporary, revisionRoot)
+                .pipe(Effect.mapError((cause) => projectionError("materialize", cause)));
+              yield* guard.validate(revisionRoot, "directory-or-missing");
+              yield* guard.chmodDirectory(revisionRoot, 0o555);
+            });
             yield* build.pipe(
               Effect.onError(() =>
-                remove("materializeCleanup", temporary).pipe(Effect.catch(() => Effect.void)),
+                guard.removeTree(temporary).pipe(Effect.catch(() => Effect.void)),
               ),
             );
             return metadata;
@@ -325,7 +538,9 @@ export const makeArtifactProjectionLive = (cacheRoot: string) =>
           try: () => requireSafeSegment("session ID", sessionId),
           catch: (cause) => projectionError("cleanupSession", cause),
         });
-        yield* lock.withPermits(1)(remove("cleanupSession", path.join(sessionsRoot, safe)));
+        yield* lock.withPermits(1)(
+          makeGuard("cleanupSession").removeTree(path.join(sessionsRoot, safe)),
+        );
       });
       const cleanupLineage = Effect.fn("ArtifactProjection.cleanupLineage")(function* (
         sessionId: string,
@@ -341,11 +556,12 @@ export const makeArtifactProjectionLive = (cacheRoot: string) =>
         });
         yield* lock.withPermits(1)(
           Effect.gen(function* () {
-            yield* requireDirectoryOrMissing(
-              "cleanupLineage",
-              path.join(sessionsRoot, safeSession),
-            );
-            yield* remove("cleanupLineage", path.join(sessionsRoot, safeSession, safeLineage));
+            const guard = makeGuard("cleanupLineage");
+            const sessionRoot = path.join(sessionsRoot, safeSession);
+            const sessionType = yield* guard.validate(sessionRoot, "any");
+            if (sessionType === "missing") return;
+            yield* guard.validate(sessionRoot, "directory-or-missing");
+            yield* guard.removeTree(path.join(sessionRoot, safeLineage));
           }),
         );
       });
@@ -355,18 +571,15 @@ export const makeArtifactProjectionLive = (cacheRoot: string) =>
       ) {
         return yield* lock.withPermits(1)(
           Effect.gen(function* () {
+            const guard = makeGuard("cleanup");
+            yield* ensureInfrastructure("cleanup");
             const retainedBySession = new Map(
               input.retained.map((item) => [item.sessionId, new Set<string>(item.lineageIds)]),
             );
-            if (
-              !(yield* fileSystem
-                .exists(sessionsRoot)
-                .pipe(Effect.mapError((cause) => projectionError("cleanup", cause))))
-            )
-              return { sessionsRemoved: 0, lineagesRemoved: 0 };
             const sessionNames = yield* fileSystem
               .readDirectory(sessionsRoot)
               .pipe(Effect.mapError((cause) => projectionError("cleanup", cause)));
+            yield* ensureInfrastructure("cleanup");
             let sessionsRemoved = 0;
             let lineagesRemoved = 0;
             for (const sessionName of sessionNames) {
@@ -377,18 +590,16 @@ export const makeArtifactProjectionLive = (cacheRoot: string) =>
               }
               const sessionRoot = path.join(sessionsRoot, sessionName);
               const retainedLineages = retainedBySession.get(sessionName);
-              const sessionType = yield* entryType(sessionRoot).pipe(
-                Effect.mapError((cause) => projectionError("cleanup", cause)),
-              );
+              const sessionType = yield* guard.validate(sessionRoot, "any");
               if (!retainedLineages || sessionType !== "directory") {
-                yield* remove("cleanup", sessionRoot);
+                yield* guard.removeTree(sessionRoot);
                 sessionsRemoved += 1;
                 continue;
               }
-              const lineageNames = yield* fileSystem.readDirectory(sessionRoot).pipe(
-                Effect.mapError((cause) => projectionError("cleanup", cause)),
-                Effect.catch(() => Effect.succeed([])),
-              );
+              const lineageNames = yield* fileSystem
+                .readDirectory(sessionRoot)
+                .pipe(Effect.mapError((cause) => projectionError("cleanup", cause)));
+              yield* guard.validate(sessionRoot, "directory-or-missing");
               for (const lineageName of lineageNames) {
                 try {
                   requireSafeSegment("lineage ID", lineageName);
@@ -396,7 +607,7 @@ export const makeArtifactProjectionLive = (cacheRoot: string) =>
                   continue;
                 }
                 if (retainedLineages.has(lineageName)) continue;
-                yield* remove("cleanup", path.join(sessionRoot, lineageName));
+                yield* guard.removeTree(path.join(sessionRoot, lineageName));
                 lineagesRemoved += 1;
               }
             }
