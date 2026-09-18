@@ -160,6 +160,26 @@ export const ArtifactLineageDetail = observer(function ArtifactLineageDetail({
                 </option>
               ))}
           </Select>
+          {store.historyError && (
+            <Callout variant="error" className="mt-2">
+              {store.historyError}
+            </Callout>
+          )}
+          {(store.historyHasMore || store.historyError) && (
+            <Button
+              className="mt-2 w-full"
+              variant="outline"
+              size="sm"
+              disabled={store.historyLoading}
+              onClick={() => void store.loadOlderHistory()}
+            >
+              {store.historyLoading
+                ? "Loading revision history…"
+                : store.historyError
+                  ? "Retry revision history"
+                  : "Load older revisions"}
+            </Button>
+          )}
           <div className="mt-2 grid gap-2">
             {selectedNumber !== lineage.latestRevision && (
               <>

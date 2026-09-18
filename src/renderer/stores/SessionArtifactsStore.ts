@@ -29,8 +29,17 @@ export class SessionArtifactsStore extends Store<{
   width = 416;
   loading = false;
   operationLoading = false;
+  historyLoading = false;
+  historyOffset = 0;
+  historyLimit = 50;
+  historyTotal = 0;
+  historyHasMore = false;
   error: string | undefined;
+  historyError: string | undefined;
   private request = 0;
+  private selectionRequest = 0;
+  private historyRequest = 0;
+  private revisionRequest = 0;
 
   constructor(props: SessionArtifactsStore["props"]) {
     super(props);
@@ -132,47 +141,99 @@ export class SessionArtifactsStore extends Store<{
     this.open = false;
   }
   showList() {
+    this.selectionRequest += 1;
+    this.historyRequest += 1;
+    this.revisionRequest += 1;
     this.selectedArtifactId = undefined;
     this.viewedRevision = undefined;
+    this.operationLoading = false;
+    this.historyLoading = false;
+    this.historyError = undefined;
   }
   openArtifact(artifactId: string) {
     const association = this.associations.find((value) => value.lineage?.id === artifactId);
     if (!association) return;
+    const selectionRequest = ++this.selectionRequest;
+    this.historyRequest += 1;
+    this.revisionRequest += 1;
     this.selectedArtifactId = artifactId;
     this.viewedRevision = decodeArtifactRevisionNumber(association.selectedRevision);
+    this.operationLoading = false;
+    this.historyOffset = 0;
+    this.historyTotal = 0;
+    this.historyHasMore = false;
+    this.historyError = undefined;
     this.open = true;
-    void this.loadHistory(decodeArtifactLineageId(artifactId));
+    void this.loadHistoryPage(decodeArtifactLineageId(artifactId), 0, selectionRequest);
   }
-  async loadHistory(lineageId: ArtifactLineageId) {
+  async loadOlderHistory() {
+    const lineageId = this.selectedArtifactId;
+    if (!lineageId || this.historyLoading || (!this.historyHasMore && !this.historyError))
+      return undefined;
+    return this.loadHistoryPage(
+      decodeArtifactLineageId(lineageId),
+      this.historyOffset,
+      this.selectionRequest,
+    );
+  }
+  private isCurrentSelection(request: number, lineageId: ArtifactLineageId) {
+    return (
+      !this.signal.aborted &&
+      request === this.selectionRequest &&
+      this.selectedArtifactId === lineageId
+    );
+  }
+  private async loadHistoryPage(
+    lineageId: ArtifactLineageId,
+    offset: number,
+    selectionRequest: number,
+  ) {
+    const request = ++this.historyRequest;
+    this.historyLoading = true;
+    this.historyError = undefined;
     try {
       const page = await this.client.artifacts.history(
-        { lineageId, offset: 0, limit: 50 },
+        { lineageId, offset, limit: this.historyLimit },
         { signal: this.signal },
       );
-      if (!this.signal.aborted) this.props.model.applyHistory(lineageId, page.items);
+      if (!this.isCurrentSelection(selectionRequest, lineageId) || request !== this.historyRequest)
+        return undefined;
+      this.props.model.applyHistory(lineageId, page.items);
+      this.historyOffset = page.offset + page.items.length;
+      this.historyTotal = page.total;
+      this.historyHasMore = page.hasMore;
       return page;
     } catch (error) {
-      if (!this.signal.aborted) this.error = error instanceof Error ? error.message : String(error);
+      if (this.isCurrentSelection(selectionRequest, lineageId) && request === this.historyRequest)
+        this.historyError = error instanceof Error ? error.message : String(error);
       return undefined;
+    } finally {
+      if (this.isCurrentSelection(selectionRequest, lineageId) && request === this.historyRequest)
+        this.historyLoading = false;
     }
   }
   async viewRevision(lineageId: ArtifactLineageId, revision: ArtifactRevisionNumber) {
+    if (this.selectedArtifactId !== lineageId) return undefined;
+    const selectionRequest = this.selectionRequest;
+    const request = ++this.revisionRequest;
     this.operationLoading = true;
     this.error = undefined;
     try {
       const value = await this.client.artifacts.readExact(lineageId, revision, {
         signal: this.signal,
       });
-      if (!this.signal.aborted) {
-        this.props.model.upsertRevision(value);
-        this.viewedRevision = revision;
-      }
+      if (!this.isCurrentSelection(selectionRequest, lineageId) || request !== this.revisionRequest)
+        return undefined;
+      this.props.model.upsertRevision(value);
+      this.viewedRevision = revision;
       return value;
     } catch (error) {
-      if (!this.signal.aborted) this.error = error instanceof Error ? error.message : String(error);
+      if (this.isCurrentSelection(selectionRequest, lineageId) && request === this.revisionRequest)
+        this.error = error instanceof Error ? error.message : String(error);
       return undefined;
     } finally {
-      if (!this.signal.aborted) this.operationLoading = false;
+      if (this.isCurrentSelection(selectionRequest, lineageId) && request === this.revisionRequest)
+        this.operationLoading = false;
     }
   }
   async readablePath(lineageId: ArtifactLineageId, revision: ArtifactRevisionNumber) {
@@ -194,11 +255,12 @@ export class SessionArtifactsStore extends Store<{
     }
   }
   showPrevious() {
-    if (this.hasPrevious)
-      this.selectedArtifactId = this.records[this.selectedIndex - 1]?.artifact.id;
+    const artifactId = this.records[this.selectedIndex - 1]?.artifact.id;
+    if (this.hasPrevious && artifactId) this.openArtifact(artifactId);
   }
   showNext() {
-    if (this.hasNext) this.selectedArtifactId = this.records[this.selectedIndex + 1]?.artifact.id;
+    const artifactId = this.records[this.selectedIndex + 1]?.artifact.id;
+    if (this.hasNext && artifactId) this.openArtifact(artifactId);
   }
   setWidth(width: number) {
     this.width = Math.max(320, width);

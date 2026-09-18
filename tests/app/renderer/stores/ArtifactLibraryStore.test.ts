@@ -7,6 +7,7 @@ import type {
   ArtifactRevision,
   ArtifactRevisionNumber,
   ArtifactRevisionPage,
+  ArtifactTextComparison,
 } from "../../../../src/domain/artifacts/artifact-lineage";
 import type { Client } from "../../../../src/renderer/client/Client";
 import { ArtifactCatalog } from "../../../../src/renderer/models/ArtifactCatalog";
@@ -114,6 +115,13 @@ describe("ArtifactLibraryStore", () => {
         readExact: vi.fn(async (_lineageId, selected: ArtifactRevisionNumber) =>
           revision(selected),
         ),
+        compareText: vi.fn(async (_lineageId, from, to) => ({
+          lineageId: id,
+          fromRevision: from,
+          toRevision: to,
+          fromText: `revision ${from}`,
+          toText: `revision ${to}`,
+        })),
         restore: vi.fn(async () => {
           restored = true;
           return {
@@ -152,6 +160,8 @@ describe("ArtifactLibraryStore", () => {
     expect(subject.selectedLineage?.revision(1)?.snapshot?.payload).toEqual({
       markdown: "revision 1",
     });
+    await subject.compare(id, revisionNumber(1), revisionNumber(2));
+    expect(subject.comparison?.fromText).toBe("revision 1");
 
     await subject.restore("session-1", id, revisionNumber(1), 2);
     expect(client.artifacts.restore).toHaveBeenCalledWith(
@@ -186,6 +196,207 @@ describe("ArtifactLibraryStore", () => {
 
     expect(subject.total).toBe(2);
     root[Symbol.dispose]();
+  });
+
+  it("loads more than 50 newest-first revisions with dedupe and retry", async () => {
+    const latest = revisionNumber(52);
+    const pagedDetail: ArtifactLineageDetail = {
+      ...detail,
+      lineage: {
+        ...detail.lineage,
+        latestRevision: latest,
+        latest: metadata(52),
+      },
+    };
+    let olderAttempts = 0;
+    let restored = false;
+    const client = {
+      artifacts: {
+        catalog: vi.fn(async () => ({ ...page, items: [pagedDetail.lineage] })),
+        detail: vi.fn(async () =>
+          restored
+            ? {
+                ...pagedDetail,
+                lineage: {
+                  ...pagedDetail.lineage,
+                  latestRevision: revisionNumber(53),
+                  latest: { ...metadata(53), restoredFromRevision: revisionNumber(1) },
+                },
+              }
+            : pagedDetail,
+        ),
+        history: vi.fn(async ({ offset }: { offset: number }) => {
+          if (offset === 0)
+            return {
+              items: Array.from({ length: 50 }, (_, index) =>
+                metadata((restored ? 53 : 52) - index),
+              ),
+              offset: 0,
+              limit: 50,
+              total: restored ? 53 : 52,
+              hasMore: true,
+            };
+          olderAttempts += 1;
+          if (olderAttempts === 1) throw new Error("history unavailable");
+          return {
+            items: [metadata(3), metadata(2), metadata(1)],
+            offset: 50,
+            limit: 50,
+            total: 52,
+            hasMore: false,
+          };
+        }),
+        readExact: vi.fn(async (_lineageId, selected: ArtifactRevisionNumber) =>
+          revision(selected),
+        ),
+        compareText: vi.fn(async (_lineageId, from, to) => ({
+          lineageId: id,
+          fromRevision: from,
+          toRevision: to,
+          fromText: `revision ${from}`,
+          toText: `revision ${to}`,
+        })),
+        restore: vi.fn(async () => {
+          restored = true;
+          return {
+            ...revision(53),
+            metadata: { ...metadata(53), restoredFromRevision: revisionNumber(1) },
+          };
+        }),
+      },
+    } as unknown as Client;
+    const { root, subject } = mountWithClient(
+      createStore(ArtifactLibraryStore, {
+        model: ArtifactCatalog.create(),
+        artifactsChanged: vi.fn(),
+      }),
+      client,
+    );
+    await flush();
+    await subject.select(id);
+
+    expect(subject.selectedLineage?.revisions).toHaveLength(50);
+    expect(
+      subject.selectedLineage?.revisions.map((item) => item.revision).toSorted((a, b) => b - a),
+    ).toEqual(Array.from({ length: 50 }, (_, index) => 52 - index));
+    expect(subject.historyHasMore).toBe(true);
+
+    await subject.loadOlderHistory();
+    expect(subject.historyError).toBe("history unavailable");
+    expect(subject.historyOffset).toBe(50);
+    expect(subject.selectedLineage?.revisions).toHaveLength(50);
+
+    await subject.loadOlderHistory();
+    expect(subject.historyError).toBeUndefined();
+    expect(subject.historyHasMore).toBe(false);
+    expect(subject.selectedLineage?.revisions).toHaveLength(52);
+    await subject.selectRevision(id, revisionNumber(1));
+    expect(subject.selectedLineage?.revision(1)?.snapshot?.payload).toEqual({
+      markdown: "revision 1",
+    });
+    await subject.compare(id, revisionNumber(1), revisionNumber(52));
+    expect(subject.comparison?.fromText).toBe("revision 1");
+    await subject.restore("session-1", id, revisionNumber(1), 52);
+    expect(subject.selectedLineage?.latestRevision).toBe(53);
+    expect(client.artifacts.restore).toHaveBeenCalledWith(
+      { sessionId: "session-1", lineageId: id, sourceRevision: 1, expectedLatestRevision: 52 },
+      expect.anything(),
+    );
+    root[Symbol.dispose]();
+  });
+
+  it("ignores comparisons from an old selection and older repeated requests", async () => {
+    const secondId = "appendix" as ArtifactLineageId;
+    const summary = (lineageId: ArtifactLineageId) => ({
+      ...page.items[0]!,
+      id: lineageId,
+      stableRef: `cake://artifact/${lineageId}` as never,
+    });
+    const comparisonResolvers: Array<(value: ArtifactTextComparison) => void> = [];
+    const client = {
+      artifacts: {
+        catalog: vi.fn(async () => ({
+          ...page,
+          items: [summary(id), summary(secondId)],
+          total: 2,
+        })),
+        detail: vi.fn(async (lineageId: ArtifactLineageId) => ({
+          ...detail,
+          lineage: summary(lineageId),
+          stableRef: `cake://artifact/${lineageId}`,
+        })),
+        history: vi.fn(async () => history),
+        readExact: vi.fn(
+          async (lineageId: ArtifactLineageId, selected: ArtifactRevisionNumber) => ({
+            ...revision(selected),
+            lineageId,
+            snapshot: { ...revision(selected).snapshot, id: lineageId },
+          }),
+        ),
+        compareText: vi.fn(
+          (...args: [ArtifactLineageId, ArtifactRevisionNumber, ArtifactRevisionNumber]) => {
+            void args;
+            return new Promise<ArtifactTextComparison>((resolve) =>
+              comparisonResolvers.push(resolve),
+            );
+          },
+        ),
+      },
+    } as unknown as Client;
+    const { root, subject } = mountWithClient(
+      createStore(ArtifactLibraryStore, {
+        model: ArtifactCatalog.create(),
+        artifactsChanged: vi.fn(),
+      }),
+      client,
+    );
+    await flush();
+    await subject.select(id);
+    await subject.selectRevision(id, revisionNumber(1));
+    const staleSelection = subject.compare(id, revisionNumber(1), revisionNumber(2));
+    await subject.select(secondId);
+    comparisonResolvers[0]!({
+      lineageId: id,
+      fromRevision: revisionNumber(1),
+      toRevision: revisionNumber(2),
+      fromText: "stale A",
+      toText: "stale A latest",
+    });
+    await staleSelection;
+    expect(subject.comparison).toBeUndefined();
+
+    await subject.selectRevision(secondId, revisionNumber(1));
+    const older = subject.compare(secondId, revisionNumber(1), revisionNumber(2));
+    const newer = subject.compare(secondId, revisionNumber(1), revisionNumber(2));
+    comparisonResolvers[2]!({
+      lineageId: secondId,
+      fromRevision: revisionNumber(1),
+      toRevision: revisionNumber(2),
+      fromText: "newer",
+      toText: "newer latest",
+    });
+    await newer;
+    comparisonResolvers[1]!({
+      lineageId: secondId,
+      fromRevision: revisionNumber(1),
+      toRevision: revisionNumber(2),
+      fromText: "older",
+      toText: "older latest",
+    });
+    await older;
+    expect(subject.comparison?.fromText).toBe("newer");
+    root[Symbol.dispose]();
+  });
+
+  it("does not replace a latest title when reading a historical revision", async () => {
+    const model = ArtifactCatalog.create();
+    model.upsertSummary({ ...page.items[0]!, title: "Latest r2 title" });
+    model.upsertRevision({
+      ...revision(1),
+      snapshot: { ...revision(1).snapshot, title: "Historical r1 title" },
+    });
+
+    expect(model.find(id)?.title).toBe("Latest r2 title");
   });
 
   it("keeps current detail visible and surfaces a restore conflict", async () => {

@@ -152,6 +152,70 @@ describe("SessionArtifactsStore", () => {
     root[Symbol.dispose]();
   });
 
+  it("loads and reads revisions beyond the first 50 with dedupe and retry", async () => {
+    const projection = effective("session-1", 52, "Latest r52 title");
+    let olderAttempts = 0;
+    const client = {
+      artifacts: {
+        effective: vi.fn(async () => [projection]),
+        history: vi.fn(async ({ offset }: { offset: number }) => {
+          if (offset === 0)
+            return {
+              items: Array.from(
+                { length: 50 },
+                (_, index) =>
+                  effective("session-1", 52 - index, `Revision ${52 - index}`).revision.metadata,
+              ),
+              offset: 0,
+              limit: 50,
+              total: 52,
+              hasMore: true,
+            };
+          olderAttempts += 1;
+          if (olderAttempts === 1) throw new Error("history unavailable");
+          return {
+            items: [3, 2, 1].map(
+              (value) => effective("session-1", value, `Revision ${value}`).revision.metadata,
+            ),
+            offset: 50,
+            limit: 50,
+            total: 52,
+            hasMore: false,
+          };
+        }),
+        readExact: vi.fn(
+          async (_lineageId, revision: number) =>
+            effective("session-1", revision, `Historical r${revision} title`).revision,
+        ),
+      },
+    } as unknown as Client;
+    const { root, subject } = mountWithClient(
+      createStore(SessionArtifactsStore, {
+        sessionId: "session-1",
+        model: ArtifactCatalog.create(),
+        isActive: () => true,
+      }),
+      client,
+    );
+    await flush();
+    subject.openArtifact("shared");
+    await vi.waitFor(() => expect(subject.historyOffset).toBe(50));
+    expect(subject.selectedAssociation?.lineage?.revisions).toHaveLength(50);
+
+    await subject.loadOlderHistory();
+    expect(subject.historyError).toBe("history unavailable");
+    expect(subject.historyOffset).toBe(50);
+
+    await subject.loadOlderHistory();
+    expect(subject.historyHasMore).toBe(false);
+    expect(subject.selectedAssociation?.lineage?.revisions).toHaveLength(52);
+    await subject.viewRevision("shared" as never, 1 as never);
+    expect(subject.viewedRevision).toBe(1);
+    expect(subject.selectedRecord?.artifact.title).toBe("Historical r1 title");
+    expect(subject.selectedAssociation?.lineage?.title).toBe("Latest r52 title");
+    root[Symbol.dispose]();
+  });
+
   it("rejects a stale refresh result", async () => {
     const pending: Array<(value: ReturnType<typeof effective>[]) => void> = [];
     const client = {

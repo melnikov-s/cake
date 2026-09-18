@@ -132,6 +132,26 @@ export const ArtifactWorkspaceLayout = observer(function ArtifactWorkspaceLayout
                           </option>
                         ))}
                     </Select>
+                    {workspace.historyError && (
+                      <Callout variant="error" className="mt-2">
+                        {workspace.historyError}
+                      </Callout>
+                    )}
+                    {(workspace.historyHasMore || workspace.historyError) && (
+                      <Button
+                        className="mt-2 w-full"
+                        size="sm"
+                        variant="outline"
+                        disabled={workspace.historyLoading}
+                        onClick={() => void workspace.loadOlderHistory()}
+                      >
+                        {workspace.historyLoading
+                          ? "Loading revision history…"
+                          : workspace.historyError
+                            ? "Retry revision history"
+                            : "Load older revisions"}
+                      </Button>
+                    )}
                     <div className="mt-3 flex flex-wrap gap-2">
                       <Button
                         size="sm"

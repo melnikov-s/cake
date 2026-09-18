@@ -125,21 +125,33 @@ export class ArtifactCatalog extends Model {
     });
   }
 
-  upsertRevision(value: ArtifactRevisionValue) {
+  upsertRevision(
+    value: ArtifactRevisionValue,
+    authoritativeLatestRevision: number = value.metadata.revision,
+  ) {
     batch(() => {
       let lineage = this.find(value.lineageId);
       if (!lineage) {
         lineage = ArtifactLineage.create({
           id: value.lineageId,
           createdAt: value.metadata.publishedAt,
-          latestRevision: value.metadata.revision,
-          title: value.snapshot.title,
+          latestRevision: authoritativeLatestRevision,
+          title:
+            value.metadata.revision >= authoritativeLatestRevision
+              ? value.snapshot.title
+              : undefined,
           stableRef: `cake://artifact/${value.lineageId}`,
         });
         this.lineages.push(lineage);
       }
-      lineage.latestRevision = Math.max(lineage.latestRevision, value.metadata.revision);
-      lineage.title = value.snapshot.title ?? lineage.title;
+      const previousLatestRevision = lineage.latestRevision;
+      lineage.latestRevision = Math.max(
+        previousLatestRevision,
+        authoritativeLatestRevision,
+        value.metadata.revision,
+      );
+      if (value.metadata.revision >= lineage.latestRevision && value.snapshot.title !== undefined)
+        lineage.title = value.snapshot.title;
       const existing = lineage.revision(value.metadata.revision);
       if (existing) applySnapshot(existing, revisionSnapshot(value.lineageId, value));
       else
@@ -157,8 +169,7 @@ export class ArtifactCatalog extends Model {
           this.associations.splice(index, 1);
       }
       for (const value of values) {
-        const lineage = this.upsertRevision(value.revision);
-        lineage.latestRevision = value.latestRevision;
+        const lineage = this.upsertRevision(value.revision, value.latestRevision);
         const canonicalLinkId = linkId(value.link);
         let link = this.links.find((candidate) => candidate.id === canonicalLinkId);
         if (link) applySnapshot(link, linkSnapshot(value.link));
