@@ -221,12 +221,15 @@ The artifact catalog is storage-authoritative and validates every digest and
 revision identity on read. Restoring historical content later publishes it as a
 new `N+1` full snapshot and records the source revision in metadata; it never
 rewinds or mutates history. Blocking request records remain outside this catalog.
-The storage migration scans the former session-indexed metadata and immutable
-blobs once, reconstructs complete revision indexes, converts owning associations
-to follow-latest links and fork associations to pinned links, excludes request
-records, then writes the current catalog envelope. Unknown versions, corrupt
-blobs, gaps, and ambiguous links fail with a typed storage error rather than
-silently dropping data.
+The storage migration scans the former session-indexed metadata, fork/family
+provenance, and immutable blobs once. It reconstructs complete revision chains,
+converts owning associations to follow-latest links and inherited associations
+to pinned links, excludes request records, and then writes the current catalog
+envelope. When unrelated legacy chains reused the same artifact ID, migration
+assigns a collision-safe global lineage ID and rewrites that chain's blobs so
+their embedded snapshot IDs and content digests match the new identity. Unknown
+versions, corrupt blobs, revision gaps, divergent ancestry, and ambiguous links
+fail with a typed storage error rather than silently dropping data.
 
 Deleting a session or family removes its links without synchronously deleting
 artifact history. After the transcript/family authority mutation commits, and

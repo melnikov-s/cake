@@ -79,6 +79,43 @@ const temporaryRoot = async () => {
   return { state, root: join(state, "artifacts") };
 };
 
+const writeLegacyBlob = async (root: string, snapshot: CakeArtifactV1) => {
+  const serialized = `${JSON.stringify(snapshot, null, 2)}\n`;
+  const value = hash(serialized);
+  await mkdir(join(root, "blobs"), { recursive: true });
+  await writeFile(join(root, "blobs", `${value}.json`), serialized);
+  return value;
+};
+
+const writeLegacyIndex = async (
+  root: string,
+  targetSessionId: string,
+  snapshot: CakeArtifactV1,
+  value: string,
+  workspacePath = "/project",
+) => {
+  const directory = join(root, "sessions", hash(workspacePath), hash(targetSessionId));
+  await mkdir(directory, { recursive: true });
+  await writeFile(
+    join(directory, `${hash(snapshot.id)}.json`),
+    `${JSON.stringify(
+      {
+        protocol: "cake.artifact/v1",
+        id: snapshot.id,
+        sessionId: snapshot.sessionId,
+        workspacePath,
+        revision: snapshot.revision,
+        kind: snapshot.kind,
+        digest: value,
+        createdAt: new Date(0).toISOString(),
+        updatedAt: new Date(snapshot.revision).toISOString(),
+      },
+      null,
+      2,
+    )}\n`,
+  );
+};
+
 describe("artifact lineage references", () => {
   it("formats and parses stable lineage and exact revision references", () => {
     const id = lineageId("runtime-overview");
@@ -342,6 +379,133 @@ describe("ArtifactStorage", () => {
     await rm(join(root, "sessions"), { recursive: true });
     const reloaded = await makeStorage(root);
     expect((await Effect.runPromise(reloaded.catalog())).lineages).toHaveLength(1);
+  });
+
+  it("reconstructs a fork-published chain and globally normalizes colliding legacy IDs", async () => {
+    const { state, root } = await temporaryRoot();
+    const parentFirst = tableSnapshot(1, { id: "design-plan", sessionId: "parent" });
+    const forkSecond = tableSnapshot(2, {
+      id: "design-plan",
+      sessionId: "fork",
+      revision: 2,
+    });
+    const unrelatedFirst = tableSnapshot(7, {
+      id: "design-plan",
+      sessionId: "unrelated",
+    });
+    const parentDigest = await writeLegacyBlob(root, parentFirst);
+    const forkDigest = await writeLegacyBlob(root, forkSecond);
+    const unrelatedDigest = await writeLegacyBlob(root, unrelatedFirst);
+    await writeLegacyIndex(root, "parent", parentFirst, parentDigest);
+    await writeLegacyIndex(root, "fork", forkSecond, forkDigest);
+    await writeLegacyIndex(root, "unrelated", unrelatedFirst, unrelatedDigest);
+    await writeFile(
+      join(state, "session-families.json"),
+      `${JSON.stringify({
+        version: 5,
+        data: {
+          families: [
+            {
+              familyId: "family",
+              parentSessionId: "parent",
+              children: [{ sessionId: "fork", parentSessionId: "parent" }],
+            },
+          ],
+        },
+      })}\n`,
+    );
+
+    const storage = await makeStorage(root);
+    const catalog = await Effect.runPromise(storage.catalog());
+    expect(catalog.lineages).toHaveLength(2);
+    const forkLineage = catalog.lineages.find((lineage) => lineage.latestRevision === 2);
+    const unrelatedLineage = catalog.lineages.find((lineage) => lineage.latestRevision === 1);
+    expect(forkLineage?.revisions.map((item) => item.publishedBySessionId)).toEqual([
+      "parent",
+      "fork",
+    ]);
+    expect(forkLineage).toBeDefined();
+    expect(unrelatedLineage).toBeDefined();
+    if (!forkLineage || !unrelatedLineage) throw new Error("Expected both migrated lineages");
+    expect(catalog.lineages.map((lineage) => lineage.id)).toContain("design-plan");
+    expect(forkLineage.id).not.toBe(unrelatedLineage.id);
+    expect(catalog.links).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          lineageId: forkLineage.id,
+          target: { type: "session", sessionId: "parent" },
+          selection: { mode: "follow-latest" },
+        }),
+        expect.objectContaining({
+          lineageId: forkLineage.id,
+          target: { type: "session", sessionId: "fork" },
+          selection: { mode: "follow-latest" },
+        }),
+        expect.objectContaining({
+          lineageId: unrelatedLineage.id,
+          target: { type: "session", sessionId: "unrelated" },
+          selection: { mode: "follow-latest" },
+        }),
+      ]),
+    );
+
+    const collisionLineage = catalog.lineages.find((lineage) => lineage.id !== "design-plan");
+    expect(collisionLineage?.id).toMatch(/^design-plan-[a-f0-9]{12}$/);
+    if (!collisionLineage) throw new Error("Expected a collision-safe lineage");
+    const normalized = await Effect.runPromise(
+      storage.listRevisions(lineageId(collisionLineage.id)),
+    );
+    expect(normalized.map((item) => item.snapshot.id)).toEqual(
+      Array.from({ length: normalized.length }, () => collisionLineage?.id),
+    );
+    for (const item of normalized) {
+      const serialized = await readFile(
+        join(root, "blobs", `${item.metadata.digest}.json`),
+        "utf8",
+      );
+      expect(hash(serialized)).toBe(item.metadata.digest);
+      expect(JSON.parse(serialized).id).toBe(collisionLineage?.id);
+    }
+  });
+
+  it("fails legacy migration when fork ancestry is genuinely ambiguous", async () => {
+    const { root } = await temporaryRoot();
+    const firstA = tableSnapshot(1, { id: "design-plan", sessionId: "session-a" });
+    const firstB = tableSnapshot(2, { id: "design-plan", sessionId: "session-b" });
+    const forkSecond = tableSnapshot(3, {
+      id: "design-plan",
+      sessionId: "fork",
+      revision: 2,
+    });
+    for (const [target, snapshot] of [
+      ["session-a", firstA],
+      ["session-b", firstB],
+      ["fork", forkSecond],
+    ] as const) {
+      const value = await writeLegacyBlob(root, snapshot);
+      await writeLegacyIndex(root, target, snapshot, value);
+    }
+
+    const storage = await makeStorage(root);
+    await expect(Effect.runPromise(storage.catalog())).rejects.toThrow(
+      "ambiguous legacy predecessor",
+    );
+  });
+
+  it("fails legacy migration when an indexed revision has a missing predecessor", async () => {
+    const { root } = await temporaryRoot();
+    const second = tableSnapshot(2, {
+      id: "design-plan",
+      sessionId: "session-1",
+      revision: 2,
+    });
+    const value = await writeLegacyBlob(root, second);
+    await writeLegacyIndex(root, "session-1", second, value);
+
+    const storage = await makeStorage(root);
+    await expect(Effect.runPromise(storage.catalog())).rejects.toThrow(
+      "non-contiguous legacy revision history before r2",
+    );
   });
 
   it("fails migration rather than accepting a corrupt legacy blob", async () => {
