@@ -108,7 +108,7 @@ export const DrawWorkspace = observer(function DrawWorkspace({
             onGoForward={onGoForward}
           />
           <div className="min-h-0 flex-1">
-            {draw.activeBoardId && !draw.loading ? (
+            {draw.activeBoardId && draw.documentLoaded && !draw.loading ? (
               <DrawCanvas key={draw.activeBoardId} store={draw} />
             ) : null}
           </div>

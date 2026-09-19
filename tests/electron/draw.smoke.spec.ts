@@ -118,6 +118,13 @@ test("Cake Draw preserves chat and its session board through Electron", async ()
     await expect(composer).toHaveValue("Retained Draw draft");
     await page.getByRole("button", { name: "Back to agent" }).click();
     await expect(page.getByRole("button", { name: "Open Cake Draw" })).toBeVisible();
+    await page.getByRole("button", { name: "Open Cake Draw" }).click();
+    await expect(canvas).toBeVisible();
+    await canvas.click();
+    await page.keyboard.press(process.platform === "darwin" ? "Meta+a" : "Control+a");
+    await page.keyboard.press("Backspace");
+    await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
+    await page.keyboard.press(process.platform === "darwin" ? "Meta+z" : "Control+z");
 
     await application.close();
     application = undefined;
@@ -136,7 +143,12 @@ test("Cake Draw preserves chat and its session board through Electron", async ()
     const reopenedDraw = reopened.getByRole("region", { name: "Cake Draw whiteboard" });
     if (!(await reopenedDraw.isVisible()))
       await reopened.getByRole("button", { name: "Open Cake Draw" }).click();
-    await expect(reopened.locator(".excalidraw__canvas.interactive")).toBeVisible();
+    const reopenedCanvas = reopened.locator(".excalidraw__canvas.interactive");
+    await expect(reopenedCanvas).toBeVisible();
+    await reopenedCanvas.click();
+    await reopened.keyboard.press(process.platform === "darwin" ? "Meta+a" : "Control+a");
+    await reopened.keyboard.press("Backspace");
+    await expect(reopened.getByRole("button", { name: "Undo" })).toBeEnabled();
   } finally {
     await application?.close();
     await rm(temporaryRoot, { recursive: true, force: true });

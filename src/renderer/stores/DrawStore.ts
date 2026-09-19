@@ -29,6 +29,7 @@ export class DrawStore extends Store<DrawStoreProps> {
   agentDrawing = false;
   error: string | undefined;
   errorDetails: string | undefined;
+  documentLoaded = false;
   documentSnapshot: DrawDocumentSnapshot | null = null;
   private initialized = false;
   private loadRevision = 0;
@@ -193,6 +194,7 @@ export class DrawStore extends Store<DrawStoreProps> {
   private async loadBoard(boardId: string) {
     const revision = ++this.loadRevision;
     this.loading = true;
+    this.documentLoaded = false;
     this.documentSnapshot = null;
     this.activeBoardId = boardId;
     try {
@@ -203,6 +205,7 @@ export class DrawStore extends Store<DrawStoreProps> {
       if (this.signal.aborted || revision !== this.loadRevision) return;
       this.replaceBoard(result.board);
       this.documentSnapshot = result.snapshot;
+      this.documentLoaded = true;
       this.savedGeneration = this.dirtyGeneration;
     } catch (error) {
       if (!this.signal.aborted && revision === this.loadRevision) this.setError(error);

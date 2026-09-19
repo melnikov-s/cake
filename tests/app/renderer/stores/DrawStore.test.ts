@@ -91,9 +91,12 @@ describe("DrawStore", () => {
     const { subject, draw } = mountDrawStore();
     subject.activeBoardId = secondBoard.id;
 
+    expect(subject.documentLoaded).toBe(false);
+
     await subject.initialize();
 
     expect(subject.activeBoard?.id).toBe(secondBoard.id);
+    expect(subject.documentLoaded).toBe(true);
     expect(subject.documentSnapshot).toEqual(emptyDocument);
     expect(draw.read).toHaveBeenCalledWith(
       { sessionId: "session-1", boardId: secondBoard.id },

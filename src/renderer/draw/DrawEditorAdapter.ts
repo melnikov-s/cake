@@ -697,7 +697,13 @@ function plainSnapshot(api: ExcalidrawImperativeAPI): DrawSnapshot {
   };
 }
 
-function validatedSnapshot(snapshot: DrawDocumentSnapshot): DrawSnapshot {
+interface RestoredDrawDocument {
+  readonly elements: readonly ExcalidrawElement[];
+  readonly appState: Readonly<Pick<AppState, "viewBackgroundColor">>;
+  readonly files: BinaryFiles;
+}
+
+export function restoreDrawDocument(snapshot: DrawDocumentSnapshot): RestoredDrawDocument {
   assertPersistableDrawDocument(snapshot);
   // Excalidraw's restore function is the schema/migration boundary for its JSON document format.
   const elements: readonly ExcalidrawElement[] = JSON.parse(JSON.stringify(snapshot.elements));
@@ -714,9 +720,6 @@ function validatedSnapshot(snapshot: DrawDocumentSnapshot): DrawSnapshot {
     { repairBindings: true },
   );
   return {
-    type: DRAW_SNAPSHOT_TYPE,
-    version: DRAW_SNAPSHOT_VERSION,
-    source: "cake",
     elements: restored.elements,
     appState: { viewBackgroundColor: restored.appState.viewBackgroundColor },
     files: restored.files,
@@ -1064,11 +1067,11 @@ export function createDrawEditorAdapter(api: ExcalidrawImperativeAPI): DrawEdito
       return receipt;
     },
     loadDocument(snapshot) {
-      const validated = validatedSnapshot(snapshot);
-      api.addFiles(Object.values(validated.files));
+      const restored = restoreDrawDocument(snapshot);
+      api.addFiles(Object.values(restored.files));
       api.updateScene({
-        elements: validated.elements,
-        appState: validated.appState,
+        elements: restored.elements,
+        appState: restored.appState,
         captureUpdate: CaptureUpdateAction.NEVER,
       });
       api.history.clear();

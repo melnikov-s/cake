@@ -3,7 +3,11 @@ import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import { useCallback, useEffect, useRef } from "react";
 import { observer } from "r-state-tree/react";
 import type { DrawStore } from "../stores/DrawStore";
-import { createDrawEditorAdapter, type DrawEditorAdapter } from "../draw/DrawEditorAdapter";
+import {
+  createDrawEditorAdapter,
+  restoreDrawDocument,
+  type DrawEditorAdapter,
+} from "../draw/DrawEditorAdapter";
 import { cn } from "../lib/utils";
 import { Badge } from "./ui/badge";
 
@@ -13,7 +17,6 @@ export const DrawCanvas = observer(function DrawCanvas({ store }: { store: DrawS
   const mounted = useCallback(
     (api: ExcalidrawImperativeAPI) => {
       const adapter = createDrawEditorAdapter(api);
-      if (store.documentSnapshot) adapter.loadDocument(store.documentSnapshot);
       adapterRef.current = adapter;
       store.attachEditor(adapter);
     },
@@ -30,11 +33,15 @@ export const DrawCanvas = observer(function DrawCanvas({ store }: { store: DrawS
   );
 
   const theme = document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+  // Excalidraw restores initialData after publishing its imperative API. Loading through
+  // the API callback races that initialization and can be reset to an empty scene.
+  const initialData = store.documentSnapshot ? restoreDrawDocument(store.documentSnapshot) : null;
   return (
     <div className="relative h-full min-h-0 w-full bg-background" data-slot="draw-canvas">
       <div className={cn("h-full", store.agentDrawing && "pointer-events-none")}>
         <Excalidraw
           excalidrawAPI={mounted}
+          initialData={initialData}
           theme={theme}
           autoFocus
           viewModeEnabled={store.agentDrawing}
