@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useRef,
@@ -38,7 +40,6 @@ import { SessionAssistant } from "@/components/session-assistant";
 import { ResizeHandle } from "@/components/ui/resize-handle";
 import { UiHintMode } from "@/components/ui/ui-hint-mode";
 import { IdeWorkspace } from "@/components/ide-workspace";
-import { DrawWorkspace } from "@/components/draw-workspace";
 import { SettingsPage } from "@/components/settings-page";
 import { ToastHost } from "@/components/toast-host";
 import { WorktreePill } from "@/components/worktree-pill";
@@ -68,6 +69,10 @@ import type { SourceLocation } from "../../ipc/source-location";
 import { toWorkspaceRelativePath } from "../../utils/workspace-relative-path";
 import { RootStore } from "../stores/RootStore";
 import type { SessionPaneNode } from "../stores/SessionLayoutStore";
+
+const DrawWorkspace = lazy(() =>
+  import("@/components/draw-workspace").then((module) => ({ default: module.DrawWorkspace })),
+);
 
 export const App = observer(function App() {
   const root = useStore(RootStore);
@@ -691,42 +696,53 @@ export const App = observer(function App() {
     return (
       <>
         <StoreProvider key={session.sessionId} store={session}>
-          <DrawWorkspace
-            draw={session.drawStore}
-            sidebarCollapsed={sidebarCollapsed}
-            canGoBack={shell.canGoBack}
-            canGoForward={shell.canGoForward}
-            onBackToAgent={() => void store.backToAgent()}
-            onToggleSidebar={toggleSidebar}
-            onGoBack={goBack}
-            onGoForward={goForward}
-            projectChat={session.conversationSessionStore.chatStore}
-            sideChat={session.conversationSessionStore.sideChatStore}
-            projectSidebar={projectSidebar}
-            projectSidebarVisible={!sidebarCollapsed}
-            projectSidebarWidth={displayedSidebarWidth}
-            onProjectSidebarWidthChange={setSidebarWidth}
-            headerActions={
-              <>
-                <SideChatsMenu store={session} />
-                {artifactControl(session)}
-              </>
+          <Suspense
+            fallback={
+              <div className="flex h-full items-center justify-center">
+                <LoadingState label="Opening Cake Draw" />
+              </div>
             }
-            conversationAccessory={workspaceConversationAccessory}
-            projectComposerHeader={projectComposerHeader}
-            projectComposerContent={workspaceComposerContent}
-            projectComposerLeadingAccessory={projectComposerLeadingAccessory(session)}
-            sessionTitle={store.sessionTitle}
-            terminalDock={
-              terminal.docked ? (
-                <QuakeTerminal store={terminal} retirement={root.workingDirectoryRetirementStore} />
-              ) : undefined
-            }
-            transcriptBehavior={projectTranscriptBehavior}
-            chatSidebarVisible={session.workspaceChatSidebarVisible}
-            chatSidebarWidth={session.workspaceChatSidebarWidth}
-            onChatSidebarWidthChange={(width) => session.setWorkspaceChatSidebarWidth(width)}
-          />
+          >
+            <DrawWorkspace
+              draw={session.drawStore}
+              sidebarCollapsed={sidebarCollapsed}
+              canGoBack={shell.canGoBack}
+              canGoForward={shell.canGoForward}
+              onBackToAgent={() => void store.backToAgent()}
+              onToggleSidebar={toggleSidebar}
+              onGoBack={goBack}
+              onGoForward={goForward}
+              projectChat={session.conversationSessionStore.chatStore}
+              sideChat={session.conversationSessionStore.sideChatStore}
+              projectSidebar={projectSidebar}
+              projectSidebarVisible={!sidebarCollapsed}
+              projectSidebarWidth={displayedSidebarWidth}
+              onProjectSidebarWidthChange={setSidebarWidth}
+              headerActions={
+                <>
+                  <SideChatsMenu store={session} />
+                  {artifactControl(session)}
+                </>
+              }
+              conversationAccessory={workspaceConversationAccessory}
+              projectComposerHeader={projectComposerHeader}
+              projectComposerContent={workspaceComposerContent}
+              projectComposerLeadingAccessory={projectComposerLeadingAccessory(session)}
+              sessionTitle={store.sessionTitle}
+              terminalDock={
+                terminal.docked ? (
+                  <QuakeTerminal
+                    store={terminal}
+                    retirement={root.workingDirectoryRetirementStore}
+                  />
+                ) : undefined
+              }
+              transcriptBehavior={projectTranscriptBehavior}
+              chatSidebarVisible={session.workspaceChatSidebarVisible}
+              chatSidebarWidth={session.workspaceChatSidebarWidth}
+              onChatSidebarWidthChange={(width) => session.setWorkspaceChatSidebarWidth(width)}
+            />
+          </Suspense>
         </StoreProvider>
         {!terminal.docked && (
           <QuakeTerminal store={terminal} retirement={root.workingDirectoryRetirementStore} />

@@ -150,6 +150,36 @@ describe("DrawStore", () => {
     expect(draw.read).toHaveBeenCalledTimes(2);
   });
 
+  it("waits for the editor adapter to mount before applying agent operations", async () => {
+    const { subject } = mountDrawStore();
+    await subject.initialize();
+    const editor = adapterHarness();
+
+    const applying = subject.apply([
+      {
+        type: "create",
+        shape: { id: "one", type: "geo", x: 0, y: 0, width: 100, height: 80 },
+      },
+    ]);
+    let settled = false;
+    void applying.then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+
+    expect(settled).toBe(false);
+    expect(editor.apply).not.toHaveBeenCalled();
+
+    subject.attachEditor(editor.adapter);
+
+    await expect(applying).resolves.toEqual({
+      createdIds: [],
+      updatedIds: ["shape:one"],
+      deletedIds: [],
+    });
+    expect(editor.apply).toHaveBeenCalledOnce();
+  });
+
   it("owns visible agent playback and persists only the final scene", async () => {
     const { subject, save } = mountDrawStore();
     await subject.initialize();

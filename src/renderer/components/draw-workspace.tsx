@@ -1,5 +1,6 @@
 import type { ComponentProps, ReactNode } from "react";
 import { observer } from "r-state-tree/react";
+import "@excalidraw/excalidraw/index.css";
 import type { ChatTranscriptBehavior } from "./chat-message";
 import type { ChatStore } from "../stores/ChatStore";
 import type { DrawStore } from "../stores/DrawStore";
