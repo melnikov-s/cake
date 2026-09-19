@@ -123,8 +123,9 @@ export function createCakeDrawOperations(control: CakeDrawControl): CakeOperatio
       "Cake Draw commands always target the calling Project Session and never accept a sessionId.",
       "enter and open explicitly foreground Cake Draw. read, render, mermaid, and apply never switch the user's board or mode; follow their recovery code when Draw is not visible.",
       "User drawing never triggers an agent turn. Every agent canvas change requires an explicit draw.mermaid or draw.apply call.",
-      "Prefer draw.mermaid for architecture, flow, sequence, class, state, and entity-relationship diagrams. It produces native editable Excalidraw elements without manual placement.",
-      "Use draw.apply for freeform drawings, small targeted edits, or diagram types Mermaid cannot express. enter and open return the visible viewport, selection, shape bounds, and compact style summaries for manual placement and editing.",
+      "Prefer draw.mermaid for architecture, flow, sequence, class, state, and entity-relationship diagrams. It produces native editable Excalidraw elements without manual placement. Use plain-text labels; write multiline labels with \\n or a plain <br>, <br/>, or <br /> break, not other HTML markup.",
+      "Give flowcharts an explicit direction (usually LR for pipelines or TB for hierarchies), keep labels concise, and avoid duplicate edges between the same nodes when one labeled edge communicates the relationship. Cake uses linear Mermaid routes and separates coincident parallel connectors after conversion; use draw.read and draw.apply for further cleanup.",
+      "Use draw.apply for freeform drawings, small targeted edits, post-Mermaid cleanup, or diagram types Mermaid cannot express. Mermaid-imported shapes have the same shape: IDs returned by draw.read and support the applicable update, style, move, arrange, lock, select, and delete operations. enter and open return the visible viewport, selection, shape bounds, and compact style summaries for manual placement and editing.",
       "Edit existing shapes without replacing them: update changes position, size, endpoints, rotation, text, opacity, or rectangle/ellipse/diamond geometry while preserving the shape ID; style applies colors, fill, stroke, opacity, roundness, typography/alignment, or arrowheads to one or more IDs.",
       "New agent-generated diagrams use a deterministic layer order automatically: subgraph/frame backgrounds, then connectors behind nodes, then node shapes and readable labels. This applies to draw.mermaid and draw.apply creation batches, including standalone lines/arrows and connect operations, so do not emit redundant send-to-back cleanup operations.",
       "Selection and arrangement operations include select (an empty IDs list clears selection), zoom-to, move, align, distribute, four explicit layer-order operations, set-locked, and delete. Explicit layer operations remain available when the requested composition intentionally overrides the creation default. Use read scope selection to inspect the current selection.",
@@ -303,13 +304,16 @@ export function createCakeDrawOperations(control: CakeDrawControl): CakeOperatio
         diagram: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(50_000)),
       }),
       example: {
-        diagram: "flowchart LR\n  Request --> Service\n  Service --> Database",
+        diagram:
+          'flowchart LR\n  Request["HTTP Request\\nvalidated"] --> Service["API Service"]\n  Service -->|query| Database[(Database)]',
       },
       result:
         "The open board ID and number of native Excalidraw elements created and durably saved.",
       limitations: [
         "The Mermaid source must be valid and is limited to 50,000 characters.",
-        "The converted diagram is inserted near the center of the current viewport.",
+        "Native editable conversion supports flowchart, sequenceDiagram, classDiagram, stateDiagram, and erDiagram. Diagram kinds that the converter can only render as an image are rejected.",
+        "Labels support plain text plus \\n, <br>, <br/>, or <br /> line breaks. Other HTML markup is rejected instead of being rendered literally.",
+        "The converted diagram is inserted at the nearest collision-free position around the current viewport and selected. Exact coincident parallel connectors are separated; broader routing cleanup remains available through draw.apply.",
       ],
       execute: async (input, signal) => {
         requireMutable(control);

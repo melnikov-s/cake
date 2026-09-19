@@ -468,9 +468,12 @@ The window Store hierarchy mirrors the product surfaces:
   Draw embeds Excalidraw as an editor, not as another agent runtime or conversation. Explicit
   `cake draw` operations use the existing renderer-request coordinator to inspect or edit the
   invoking session's board. For structured diagrams, `draw.mermaid` converts bounded Mermaid source
-  in the renderer into native editable Excalidraw elements, centers them in the visible viewport,
-  and persists the resulting scene. Manual agent edit batches are validated before mutation,
-  presented on the visible canvas operation by operation with active-shape focus and bounded camera
+  in the renderer into native editable Excalidraw elements, gives every imported element a stable
+  agent-addressable `shape:` ID while preserving bindings, fits plain-text labels, separates exact
+  coincident connectors, places the diagram collision-free near the visible viewport, and persists
+  the resulting scene. Unsupported Mermaid markup and diagram kinds that only convert to images are
+  rejected rather than stored as lossy canvas content. Manual agent edit batches are validated before
+  mutation, presented on the visible canvas operation by operation with active-shape focus and bounded camera
   following, then persisted once after playback. Opening or reading a board returns viewport,
   selection, shape bounds, and compact style summaries; later shapes can use relative placement
   against stable shape IDs so Pi can reason about layout without raw Excalidraw elements. Explicit

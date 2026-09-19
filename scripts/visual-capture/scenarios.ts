@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import type { Locator, Page } from "@playwright/test";
+import { expect, type ElectronApplication, type Locator, type Page } from "@playwright/test";
 import type { VisualCaptureTheme } from "./arguments.ts";
 import type { CakeArtifactV1 } from "../../src/ipc/artifact-contract.ts";
+import type { CakeEvent } from "../../src/ipc/cake-rpc-contract.ts";
 
 interface ScenarioFixturePaths {
   readonly cakeHome: string;
@@ -20,7 +21,7 @@ interface VisualCaptureScenario {
     theme: VisualCaptureTheme,
     artifact?: CakeArtifactV1,
   ): Promise<void>;
-  prepare(page: Page, state: string): Promise<void>;
+  prepare(page: Page, state: string, application?: ElectronApplication): Promise<void>;
   region(page: Page): Locator;
 }
 
@@ -329,6 +330,130 @@ const requestExplanationScenario: VisualCaptureScenario = {
   },
 };
 
+const drawMermaidArchitectureScenario: VisualCaptureScenario = {
+  name: "draw-mermaid-architecture",
+  description: "Native editable architecture diagram imported from Mermaid into Cake Draw",
+  states: ["default"],
+  async seed(paths, theme) {
+    const sessionId = "visual-draw-mermaid-architecture";
+    const timestamp = new Date(0).toISOString();
+    const sessionDirectory = workspaceSessionDirectory(
+      paths.project,
+      join(paths.cakeHome, "pi", "sessions"),
+    );
+    await Promise.all([
+      mkdir(paths.userData, { recursive: true }),
+      mkdir(paths.project, { recursive: true }),
+      mkdir(sessionDirectory, { recursive: true }),
+      mkdir(join(paths.cakeHome, "state"), { recursive: true }),
+    ]);
+    await writeFile(
+      join(paths.userData, "window-state.json"),
+      JSON.stringify({
+        projectPath: paths.project,
+        selectedSessionId: sessionId,
+        activeConversation: {
+          kind: "project-session",
+          workspacePath: paths.project,
+          sessionId,
+        },
+        recentProjectPaths: [paths.project],
+        draft: "",
+        draftsBySession: {},
+        theme,
+      }),
+    );
+    await writeFile(
+      join(paths.cakeHome, "state", "application.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        projects: [
+          {
+            path: paths.project,
+            name: "Cake Draw architecture",
+            addedAt: timestamp,
+            lastOpenedAt: timestamp,
+          },
+        ],
+        trustedProjectPaths: [],
+      }),
+    );
+    await writeFile(
+      join(sessionDirectory, `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`),
+      `${[
+        { type: "session", version: 3, id: sessionId, timestamp, cwd: paths.project },
+        {
+          type: "message",
+          id: "user-draw",
+          parentId: null,
+          timestamp,
+          message: {
+            role: "user",
+            content: [{ type: "text", text: "Diagram Cake's desktop architecture." }],
+            timestamp: 0,
+          },
+        },
+      ]
+        .map((entry) => JSON.stringify(entry))
+        .join("\n")}\n`,
+    );
+  },
+  async prepare(page, _state, application) {
+    if (!application) throw new Error("The Draw visual scenario requires its Electron application");
+    await page.getByRole("combobox", { name: "Message", exact: true }).waitFor({
+      state: "visible",
+      timeout: 20_000,
+    });
+    await page.getByRole("button", { name: "Open Cake Draw" }).click();
+    await page.getByRole("region", { name: "Cake Draw whiteboard" }).waitFor({
+      state: "visible",
+      timeout: 20_000,
+    });
+    await page.locator(".excalidraw__canvas.interactive").waitFor({
+      state: "visible",
+      timeout: 20_000,
+    });
+    const event: CakeEvent = {
+      type: "draw-control-requested",
+      sessionId: "visual-draw-mermaid-architecture",
+      drawRequestId: "00000000-0000-4000-8000-000000000099",
+      invocation: {
+        _tag: "Mermaid",
+        diagram: [
+          "flowchart LR",
+          '  Renderer["Sandboxed Renderer<br/>Models + Stores"] -->|typed RPC| Main["Electron Main<br/>Cake services"]',
+          '  Main --> Pi["Pi Runtime<br/>agent loop + transcript"]',
+          '  Main --> Storage[("Cake state<br/>boards + metadata")]',
+          "  Pi -->|validated events| Renderer",
+        ].join("\n"),
+      },
+    };
+    await application.evaluate((_electron, input) => {
+      const emit = (
+        globalThis as typeof globalThis & {
+          cakeSmokeEmitRendererEvent?: (event: CakeEvent) => void;
+        }
+      ).cakeSmokeEmitRendererEvent;
+      if (!emit) throw new Error("Cake smoke event source is unavailable");
+      emit(input);
+    }, event);
+    try {
+      await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled({ timeout: 20_000 });
+    } catch (cause) {
+      const body = (await page.locator("body").innerText()).replaceAll(/\s+/g, " ").slice(0, 2_000);
+      throw new Error(`Mermaid insertion did not complete. Visible Cake UI: ${body}`, {
+        cause,
+      });
+    }
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await page.waitForTimeout(500);
+    await page.mouse.move(1, 1);
+  },
+  region(page) {
+    return page.getByRole("region", { name: "Cake Draw whiteboard" });
+  },
+};
+
 const widgetPipelineScenario: VisualCaptureScenario = {
   name: "widget-pipeline-explanation",
   description: "Connected sandboxed diagram of widget publication, repair and ownership",
@@ -386,6 +511,7 @@ const widgetPipelineScenario: VisualCaptureScenario = {
 export const visualCaptureScenarios = [
   assistantMarkdownCode,
   requestExplanationScenario,
+  drawMermaidArchitectureScenario,
   widgetPipelineScenario,
 ] as const;
 

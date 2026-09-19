@@ -12,6 +12,7 @@ import {
   restore,
   viewportCoordsToSceneCoords,
 } from "@excalidraw/excalidraw";
+import type { ExcalidrawElementSkeleton } from "@excalidraw/excalidraw/data/transform";
 import type {
   Arrowhead,
   ExcalidrawElement,
@@ -54,6 +55,11 @@ const MAX_RENDER_DIMENSION = 4_096;
 const MAX_TEXT_LENGTH = 16_384;
 const MAX_SUMMARY_TEXT_LENGTH = 4_000;
 const MAX_MERMAID_ELEMENTS = 1_000;
+const MERMAID_FONT_SIZE = 20;
+const MERMAID_INSERTION_GAP = 80;
+const MERMAID_PARALLEL_CONNECTOR_GAP = 18;
+const MERMAID_LABEL_HORIZONTAL_PADDING = 24;
+const MERMAID_LABEL_VERTICAL_PADDING = 16;
 
 const colorPalette = new Map([
   ["black", "#1b1b1f"],
@@ -1467,32 +1473,306 @@ function applyPreparedOperations(
   return compactReceipt(receipt);
 }
 
+const mermaidBreakPattern = /<br\s*\/?>/giu;
+const mermaidHtmlPattern = /<\/?[A-Za-z][^>\n]*>/u;
+
+function assertSupportedMermaidLabelMarkup(value: string) {
+  if (mermaidHtmlPattern.test(value))
+    throw new Error(
+      "Cake Draw Mermaid labels support plain text and line breaks (\\n, <br>, <br/>, or <br />); other HTML markup is not supported",
+    );
+  return value;
+}
+
+function normalizeMermaidSource(value: string) {
+  return assertSupportedMermaidLabelMarkup(value.replace(mermaidBreakPattern, "\\n"));
+}
+
+function normalizeConvertedMermaidLabel(value: string) {
+  return assertSupportedMermaidLabelMarkup(
+    value.replace(mermaidBreakPattern, "\n").replaceAll("\\n", "\n"),
+  );
+}
+
+function normalizeMermaidSkeletonLabels(
+  skeletons: readonly ExcalidrawElementSkeleton[],
+): ExcalidrawElementSkeleton[] {
+  return skeletons.map((skeleton) => {
+    const label = "label" in skeleton ? skeleton.label : undefined;
+    const normalized = {
+      ...skeleton,
+      ...(skeleton.type === "text"
+        ? { text: normalizeConvertedMermaidLabel(skeleton.text) }
+        : null),
+      ...(label ? { label: { ...label, text: normalizeConvertedMermaidLabel(label.text) } } : null),
+    };
+    // SAFETY: only the text fields of the converter's validated skeleton union are replaced.
+    return normalized as ExcalidrawElementSkeleton;
+  });
+}
+
+function remapMermaidElementIds(
+  elements: readonly ExcalidrawElement[],
+  reservedIds: ReadonlySet<string>,
+) {
+  const usedIds = new Set(reservedIds);
+  const idMap = new Map<string, string>();
+  for (const element of elements) {
+    let id = generatedShapeId();
+    while (usedIds.has(id)) id = generatedShapeId();
+    usedIds.add(id);
+    idMap.set(element.id, id);
+  }
+  const remap = (id: string | null) => (id === null ? null : (idMap.get(id) ?? id));
+  return elements.map((element): ExcalidrawElement => {
+    const common = {
+      id: idMap.get(element.id)!,
+      frameId: remap(element.frameId),
+      boundElements:
+        element.boundElements?.map((binding) => ({ ...binding, id: remap(binding.id)! })) ?? null,
+    };
+    if (element.type === "text")
+      return { ...element, ...common, containerId: remap(element.containerId) };
+    if (element.type === "line" || element.type === "arrow")
+      return {
+        ...element,
+        ...common,
+        startBinding: element.startBinding
+          ? { ...element.startBinding, elementId: remap(element.startBinding.elementId)! }
+          : null,
+        endBinding: element.endBinding
+          ? { ...element.endBinding, elementId: remap(element.endBinding.elementId)! }
+          : null,
+      };
+    return { ...element, ...common };
+  });
+}
+
+function fitMermaidLabels(elements: readonly ExcalidrawElement[]) {
+  let fitted = [...elements];
+  const labels = fitted.filter(
+    (element): element is ExcalidrawTextElement => element.type === "text" && !!element.containerId,
+  );
+  for (const label of labels) {
+    const container = elementMap(fitted).get(label.containerId!);
+    if (
+      !container ||
+      (container.type !== "rectangle" &&
+        container.type !== "ellipse" &&
+        container.type !== "diamond")
+    )
+      continue;
+    const scale = container.type === "ellipse" ? Math.SQRT2 : container.type === "diamond" ? 2 : 1;
+    const width = Math.max(
+      container.width,
+      (label.width + MERMAID_LABEL_HORIZONTAL_PADDING) * scale,
+    );
+    const height = Math.max(
+      container.height,
+      (label.height + MERMAID_LABEL_VERTICAL_PADDING) * scale,
+    );
+    const x = container.x - (width - container.width) / 2;
+    const y = container.y - (height - container.height) / 2;
+    fitted = fitted.map((element) => {
+      if (element.id === container.id) return newElementWith(container, { x, y, width, height });
+      if (element.id === label.id)
+        return newElementWith(label, {
+          x: x + (width - label.width) / 2,
+          y: y + (height - label.height) / 2,
+        });
+      return element;
+    });
+  }
+  return fitted;
+}
+
+function absoluteArrowPoints(element: Extract<ExcalidrawElement, { type: "arrow" }>) {
+  return element.points.map(([x, y]) => [element.x + x, element.y + y] as const);
+}
+
+function spreadOverlappingMermaidConnectors(elements: readonly ExcalidrawElement[]) {
+  const arrows = elements.filter(
+    (element): element is Extract<ExcalidrawElement, { type: "arrow" }> =>
+      element.type === "arrow" && !!element.startBinding && !!element.endBinding,
+  );
+  const groups = new Map<string, typeof arrows>();
+  for (const arrow of arrows) {
+    const route = absoluteArrowPoints(arrow)
+      .map(([x, y]) => `${Math.round(x / 4)},${Math.round(y / 4)}`)
+      .join(";");
+    const key = `${arrow.startBinding!.elementId}>${arrow.endBinding!.elementId}:${route}`;
+    groups.set(key, [...(groups.get(key) ?? []), arrow]);
+  }
+  let spread = [...elements];
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+    const first = group[0]!;
+    const start = first.points[0]!;
+    const end = first.points.at(-1)!;
+    const length = Math.hypot(end[0] - start[0], end[1] - start[1]);
+    if (length === 0) continue;
+    const normalX = -(end[1] - start[1]) / length;
+    const normalY = (end[0] - start[0]) / length;
+    group.forEach((arrow, index) => {
+      const offset = (index - (group.length - 1) / 2) * MERMAID_PARALLEL_CONNECTOR_GAP;
+      const sourcePoints = arrow.points;
+      const points =
+        sourcePoints.length === 2
+          ? [
+              sourcePoints[0]!,
+              [
+                sourcePoints[0]![0] +
+                  (sourcePoints[1]![0] - sourcePoints[0]![0]) / 3 +
+                  normalX * offset,
+                sourcePoints[0]![1] +
+                  (sourcePoints[1]![1] - sourcePoints[0]![1]) / 3 +
+                  normalY * offset,
+              ],
+              [
+                sourcePoints[0]![0] +
+                  ((sourcePoints[1]![0] - sourcePoints[0]![0]) * 2) / 3 +
+                  normalX * offset,
+                sourcePoints[0]![1] +
+                  ((sourcePoints[1]![1] - sourcePoints[0]![1]) * 2) / 3 +
+                  normalY * offset,
+              ],
+              sourcePoints[1]!,
+            ]
+          : sourcePoints.map((point, pointIndex) =>
+              pointIndex === 0 || pointIndex === sourcePoints.length - 1
+                ? point
+                : [point[0] + normalX * offset, point[1] + normalY * offset],
+            );
+      const minX = Math.min(...points.map((point) => point[0]));
+      const minY = Math.min(...points.map((point) => point[1]));
+      const maxX = Math.max(...points.map((point) => point[0]));
+      const maxY = Math.max(...points.map((point) => point[1]));
+      // SAFETY: every tuple is derived from a validated Excalidraw local point using finite arithmetic.
+      const normalizedPoints = points.map(
+        ([x, y]) => [x - minX, y - minY] as (typeof arrow.points)[number],
+      );
+      spread = spread.map((element) => {
+        if (element.id === arrow.id)
+          return newElementWith(arrow, {
+            x: arrow.x + minX,
+            y: arrow.y + minY,
+            points: normalizedPoints,
+            width: maxX - minX,
+            height: maxY - minY,
+          });
+        if (element.type === "text" && element.containerId === arrow.id)
+          return newElementWith(element, {
+            x: element.x + normalX * offset,
+            y: element.y + normalY * offset,
+          });
+        return element;
+      });
+    });
+  }
+  return spread;
+}
+
+interface ElementBounds {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+function boundsOverlap(left: ElementBounds, right: ElementBounds, gap: number) {
+  return (
+    left.x < right.x + right.width + gap &&
+    left.x + left.width + gap > right.x &&
+    left.y < right.y + right.height + gap &&
+    left.y + left.height + gap > right.y
+  );
+}
+
+function collisionAwareMermaidDelta(
+  created: readonly ExcalidrawElement[],
+  existing: readonly ExcalidrawElement[],
+  viewportCenter: { readonly x: number; readonly y: number },
+) {
+  const [minX, minY, maxX, maxY] = getCommonBounds(created);
+  const width = maxX - minX;
+  const height = maxY - minY;
+  const desired = {
+    x: viewportCenter.x - width / 2,
+    y: viewportCenter.y - height / 2,
+    width,
+    height,
+  };
+  const occupied = visibleElements(existing).map((element) => boundsOf(element, existing));
+  const available = (candidate: ElementBounds) =>
+    occupied.every((bounds) => !boundsOverlap(candidate, bounds, MERMAID_INSERTION_GAP));
+  let target = desired;
+  if (!available(target)) {
+    const stepX = Math.max(width + MERMAID_INSERTION_GAP, 1);
+    const stepY = Math.max(height + MERMAID_INSERTION_GAP, 1);
+    let found: ElementBounds | undefined;
+    for (let ring = 1; ring <= 32 && !found; ring += 1) {
+      for (let y = -ring; y <= ring && !found; y += 1) {
+        for (let x = -ring; x <= ring; x += 1) {
+          if (Math.max(Math.abs(x), Math.abs(y)) !== ring) continue;
+          const candidate = {
+            ...desired,
+            x: desired.x + x * stepX,
+            y: desired.y + y * stepY,
+          };
+          if (available(candidate)) {
+            found = candidate;
+            break;
+          }
+        }
+      }
+    }
+    if (found) target = found;
+    else if (occupied.length > 0) {
+      const rightEdge = Math.max(...occupied.map((bounds) => bounds.x + bounds.width));
+      target = { ...desired, x: rightEdge + MERMAID_INSERTION_GAP };
+    }
+  }
+  return { x: target.x - minX, y: target.y - minY };
+}
+
 async function insertMermaid(
   api: ExcalidrawImperativeAPI,
   diagram: string,
 ): Promise<DrawMermaidReceipt> {
-  const { elements: skeletons, files } = await parseMermaidToExcalidraw(diagram, {
+  const normalizedDiagram = normalizeMermaidSource(diagram);
+  const { elements: parsedSkeletons, files } = await parseMermaidToExcalidraw(normalizedDiagram, {
+    flowchart: { curve: "linear" },
     maxEdges: 500,
     maxTextSize: 50_000,
+    themeVariables: { fontSize: `${MERMAID_FONT_SIZE}px` },
   });
-  if (skeletons.length === 0) throw new Error("Mermaid diagram did not produce any elements");
-  if (skeletons.length > MAX_MERMAID_ELEMENTS)
+  if (parsedSkeletons.length === 0) throw new Error("Mermaid diagram did not produce any elements");
+  if (parsedSkeletons.length > MAX_MERMAID_ELEMENTS)
     throw new Error(`Mermaid diagram exceeds ${MAX_MERMAID_ELEMENTS} elements`);
+  if (parsedSkeletons.some((skeleton) => skeleton.type === "image") || files)
+    throw new Error(
+      "This Mermaid diagram cannot be converted to native editable shapes; use flowchart, sequenceDiagram, classDiagram, stateDiagram, or erDiagram",
+    );
 
-  const created = convertToExcalidrawElements(skeletons, { regenerateIds: true });
-  const [minX, minY, maxX, maxY] = getCommonBounds(created);
+  const skeletons = normalizeMermaidSkeletonLabels(parsedSkeletons);
+  const converted = convertToExcalidrawElements(skeletons, { regenerateIds: true });
+  const existing = api.getSceneElementsIncludingDeleted();
+  const reservedIds = new Set(existing.map((element) => element.id));
+  const created = spreadOverlappingMermaidConnectors(
+    fitMermaidLabels(remapMermaidElementIds(converted, reservedIds)),
+  );
   const appState = api.getAppState();
   const viewportStart = viewportCoordsToSceneCoords({ clientX: 0, clientY: 0 }, appState);
   const viewportEnd = viewportCoordsToSceneCoords(
     { clientX: appState.width, clientY: appState.height },
     appState,
   );
-  const targetX = (viewportStart.x + viewportEnd.x) / 2;
-  const targetY = (viewportStart.y + viewportEnd.y) / 2;
-  const deltaX = targetX - (minX + maxX) / 2;
-  const deltaY = targetY - (minY + maxY) / 2;
+  const delta = collisionAwareMermaidDelta(created, existing, {
+    x: (viewportStart.x + viewportEnd.x) / 2,
+    y: (viewportStart.y + viewportEnd.y) / 2,
+  });
   const positioned = created.map((element) =>
-    newElementWith(element, { x: element.x + deltaX, y: element.y + deltaY }),
+    newElementWith(element, { x: element.x + delta.x, y: element.y + delta.y }),
   );
   const ordered = normalizeCreatedDiagramOrder(
     [...api.getSceneElementsIncludingDeleted(), ...positioned],
@@ -1504,7 +1784,6 @@ async function insertMermaid(
       .map((element) => [element.id, true as const]),
   );
 
-  if (files) api.addFiles(Object.values(files));
   api.updateScene({
     elements: ordered,
     appState: { selectedElementIds },

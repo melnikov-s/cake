@@ -115,6 +115,12 @@ describe("Cake Draw operations", () => {
     expect(help.text).toContain("draw.export");
     expect(help.text).toContain("draw.mermaid");
     expect(help.text).toContain("Prefer draw.mermaid for architecture");
+    expect(help.text).toContain("plain <br>, <br/>, or <br />");
+    expect(help.text).toContain("explicit direction");
+    expect(help.text).toContain("linear Mermaid routes");
+    expect(help.text).toContain("Mermaid-imported shapes have the same shape: IDs");
+    expect(help.text).toContain("nearest collision-free position");
+    expect(help.text).toContain("only render as an image are rejected");
     expect(help.text).toContain("one visible stage of at most 8 operations");
     expect(help.text).toContain("draw.read or draw.render between major stages");
     expect(help.text).toContain("update changes position, size, endpoints");

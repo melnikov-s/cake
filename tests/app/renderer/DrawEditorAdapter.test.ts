@@ -93,16 +93,36 @@ describe("DrawEditorAdapter", () => {
   let adapter: DrawEditorAdapter;
 
   beforeEach(() => {
+    vi.mocked(parseMermaidToExcalidraw)
+      .mockReset()
+      .mockResolvedValue({
+        elements: [
+          { id: "mermaid-a", type: "rectangle", x: 0, y: 0, width: 120, height: 80 },
+          { id: "mermaid-b", type: "rectangle", x: 240, y: 0, width: 120, height: 80 },
+          {
+            id: "mermaid-edge",
+            type: "arrow",
+            x: 120,
+            y: 40,
+            points: [
+              [0, 0],
+              [120, 0],
+            ],
+          },
+        ],
+      });
     harness = editorHarness();
     adapter = createDrawEditorAdapter(harness.api);
   });
 
-  it("inserts Mermaid as native editable elements centered in the viewport", async () => {
+  it("inserts Mermaid as native editable elements centered in an empty viewport", async () => {
     const receipt = await adapter.insertMermaid("flowchart LR\n  A --> B");
 
     expect(parseMermaidToExcalidraw).toHaveBeenCalledWith("flowchart LR\n  A --> B", {
+      flowchart: { curve: "linear" },
       maxEdges: 500,
       maxTextSize: 50_000,
+      themeVariables: { fontSize: "20px" },
     });
     expect(receipt.elementCount).toBe(3);
     expect(harness.elements()).toHaveLength(3);
@@ -177,6 +197,197 @@ describe("DrawEditorAdapter", () => {
       );
       expect(labelIndex).toBe(elements.findIndex(({ id }) => id === root.id) + 1);
     }
+  });
+
+  it("assigns shape IDs, preserves every binding, and supports read-to-apply edits", async () => {
+    vi.mocked(parseMermaidToExcalidraw).mockResolvedValue({
+      elements: [
+        {
+          id: "source",
+          type: "rectangle",
+          x: 0,
+          y: 0,
+          width: 140,
+          height: 70,
+          label: { text: "Source" },
+        },
+        {
+          id: "target",
+          type: "rectangle",
+          x: 280,
+          y: 0,
+          width: 140,
+          height: 70,
+          label: { text: "Target" },
+        },
+        {
+          id: "edge",
+          type: "arrow",
+          x: 140,
+          y: 35,
+          points: [
+            [0, 0],
+            [140, 0],
+          ],
+          start: { id: "source" },
+          end: { id: "target" },
+        },
+      ],
+    } as never);
+
+    await adapter.insertMermaid("flowchart LR\n  source --> target");
+
+    const imported = harness.elements();
+    expect(imported.every(({ id }) => /^shape:[A-Za-z0-9_-]+$/.test(id))).toBe(true);
+    const ids = new Set(imported.map(({ id }) => id));
+    for (const element of imported) {
+      expect(element.boundElements?.every(({ id }) => ids.has(id)) ?? true).toBe(true);
+      if (element.type === "text" && element.containerId)
+        expect(ids.has(element.containerId)).toBe(true);
+      if (element.type === "arrow") {
+        if (element.startBinding) expect(ids.has(element.startBinding.elementId)).toBe(true);
+        if (element.endBinding) expect(ids.has(element.endBinding.elementId)).toBe(true);
+      }
+    }
+
+    const scene = adapter.read({ scope: "page" });
+    const rectangles = scene.shapes.filter(({ type }) => type === "rectangle");
+    const arrow = scene.shapes.find(({ type }) => type === "arrow")!;
+    const source = rectangles.find(({ text }) => text === "Source")!;
+    const target = rectangles.find(({ text }) => text === "Target")!;
+    const receipt = adapter.apply({
+      operations: [
+        { type: "update", id: source.id, text: "Edited source" },
+        { type: "move", ids: [target.id], deltaX: 50, deltaY: 20 },
+        { type: "style", ids: [arrow.id], style: { strokeColor: "blue" } },
+      ],
+    });
+
+    expect(new Set(receipt.updatedIds)).toEqual(new Set([source.id, target.id, arrow.id]));
+    expect(adapter.read({ scope: "page" }).shapes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: source.id, text: "Edited source" }),
+        expect.objectContaining({
+          id: arrow.id,
+          style: expect.objectContaining({ strokeColor: "#1971c2" }),
+        }),
+      ]),
+    );
+    expect(() =>
+      adapter.apply({ operations: [{ type: "delete", ids: [source.id, target.id, arrow.id] }] }),
+    ).not.toThrow();
+  });
+
+  it("normalizes safe HTML breaks, fits converted labels, and rejects other HTML", async () => {
+    vi.mocked(parseMermaidToExcalidraw).mockResolvedValue({
+      elements: [
+        {
+          id: "labelled",
+          type: "rectangle",
+          x: 0,
+          y: 0,
+          width: 40,
+          height: 20,
+          label: { text: "First\\nSecond line" },
+        },
+      ],
+    } as never);
+
+    await adapter.insertMermaid('flowchart LR\n  A["First<br/>Second line"]');
+
+    expect(parseMermaidToExcalidraw).toHaveBeenCalledWith(
+      'flowchart LR\n  A["First\\nSecond line"]',
+      expect.anything(),
+    );
+    const container = harness.elements().find(({ type }) => type === "rectangle")!;
+    const label = harness
+      .elements()
+      .find(
+        (element): element is Extract<ExcalidrawElement, { type: "text" }> =>
+          element.type === "text" && element.containerId === container.id,
+      )!;
+    expect(label.text).toBe("First\nSecond line");
+    expect(container.width).toBeGreaterThanOrEqual(label.width + 24);
+    expect(container.height).toBeGreaterThanOrEqual(label.height + 16);
+
+    await expect(
+      adapter.insertMermaid('flowchart LR\n  A["<strong>Unsafe</strong>"]'),
+    ).rejects.toThrow("other HTML markup is not supported");
+  });
+
+  it("places a new Mermaid diagram away from existing content", async () => {
+    adapter.apply({
+      operations: [
+        {
+          type: "create",
+          shape: { id: "existing", type: "geo", x: 300, y: 250, width: 200, height: 100 },
+        },
+      ],
+    });
+
+    await adapter.insertMermaid("flowchart LR\n  A --> B");
+
+    const existing = adapter
+      .read({ scope: "page" })
+      .shapes.find(({ id }) => id === "shape:existing")!;
+    const imported = adapter
+      .read({ scope: "page" })
+      .shapes.filter(({ id }) => id !== "shape:existing");
+    const existingBounds = existing.bounds!;
+    const overlapsExisting = imported.some(({ bounds }) =>
+      bounds
+        ? bounds.x < existingBounds.x + existingBounds.width + 80 &&
+          bounds.x + bounds.width + 80 > existingBounds.x &&
+          bounds.y < existingBounds.y + existingBounds.height + 80 &&
+          bounds.y + bounds.height + 80 > existingBounds.y
+        : false,
+    );
+    expect(overlapsExisting).toBe(false);
+  });
+
+  it("separates coincident parallel Mermaid connectors deterministically", async () => {
+    vi.mocked(parseMermaidToExcalidraw).mockResolvedValue({
+      elements: [
+        { id: "left", type: "rectangle", x: 0, y: 0, width: 100, height: 60 },
+        { id: "right", type: "rectangle", x: 300, y: 0, width: 100, height: 60 },
+        ...["first", "second"].map((id) => ({
+          id,
+          type: "arrow" as const,
+          x: 100,
+          y: 30,
+          points: [
+            [0, 0],
+            [200, 0],
+          ],
+          start: { id: "left" },
+          end: { id: "right" },
+        })),
+      ],
+    } as never);
+
+    await adapter.insertMermaid("flowchart LR\n  A --> B\n  A --> B");
+
+    const arrows = harness
+      .elements()
+      .filter(
+        (element): element is Extract<ExcalidrawElement, { type: "arrow" }> =>
+          element.type === "arrow",
+      );
+    expect(arrows).toHaveLength(2);
+    expect(arrows[0]!.points).not.toEqual(arrows[1]!.points);
+    expect(arrows.every(({ points }) => points.length === 4)).toBe(true);
+  });
+
+  it("rejects Mermaid diagram kinds that only convert to an image", async () => {
+    vi.mocked(parseMermaidToExcalidraw).mockResolvedValue({
+      elements: [{ type: "image", x: 0, y: 0, width: 100, height: 100 }],
+      files: { image: {} },
+    } as never);
+
+    await expect(adapter.insertMermaid("pie\n  title Unsupported")).rejects.toThrow(
+      "cannot be converted to native editable shapes",
+    );
+    expect(harness.elements()).toHaveLength(0);
   });
 
   it("creates native shapes and a bound arrow", () => {

@@ -78,7 +78,7 @@ export async function captureVisual(
       (dimensions) => innerWidth === dimensions.width && innerHeight === dimensions.height,
       { width: options.width, height: options.height },
     );
-    await scenario.prepare(page, options.state);
+    await scenario.prepare(page, options.state, application);
 
     const target = options.capture === "window" ? page : scenario.region(page);
     await mkdir(dirname(outputPath), { recursive: true });
