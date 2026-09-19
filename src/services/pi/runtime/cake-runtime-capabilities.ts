@@ -776,11 +776,29 @@ export async function createCakeRuntimeCapabilities(input: {
         command: "sessions.list",
         topic: "sessions",
         summary: "List Project Sessions across all registered Cake projects.",
+        guidance: [
+          "Use sessions.list-family when only the calling Project Session's family is needed.",
+        ],
         inputSchema: empty,
         examples: [{}],
         result:
           "Project Session identities, projects, paths, titles, activity, and resolution state.",
         execute: (_input, context) => api().invokeAppControl("sessions.list", {}, context.signal),
+      },
+      {
+        command: "sessions.list-family",
+        topic: "sessions",
+        summary: "List only the Project Sessions in the calling session's family.",
+        guidance: [
+          "The family is derived from the calling Project Session; this operation never accepts a sessionId.",
+          "Use sessions.list when sessions outside the calling session's family are needed.",
+        ],
+        inputSchema: empty,
+        examples: [{}],
+        result:
+          "The family identity, root and calling session identities, and family members in stable tree order.",
+        execute: (_input, context) =>
+          api().invokeAppControl("sessions.list-family", {}, context.signal),
       },
       {
         command: "sessions.info",

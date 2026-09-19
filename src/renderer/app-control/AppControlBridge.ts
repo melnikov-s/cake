@@ -79,6 +79,7 @@ const appControlArgumentSchemas = {
   "projects.settings.get": ProjectSettingsGetInput,
   "projects.settings.update": ProjectSettingsUpdateInput,
   "sessions.list": emptyArgumentsSchema,
+  "sessions.list-family": emptyArgumentsSchema,
   "sessions.info": sessionIdTargetSchema,
   "sessions.open": sessionNavigationTargetSchema,
   "sessions.create": Schema.Struct({
@@ -268,6 +269,7 @@ const appControlInvocationSchema = Schema.Union([
   invocation("projects.settings.get"),
   invocation("projects.settings.update"),
   invocation("sessions.list"),
+  invocation("sessions.list-family"),
   invocation("sessions.info"),
   invocation("sessions.open"),
   invocation("sessions.create"),
@@ -561,6 +563,14 @@ export type AppControlResult =
       command: "sessions.list";
       sessions: AppControlSession[];
       attentionSessions: AppControlSession[];
+    }
+  | {
+      ok: true;
+      command: "sessions.list-family";
+      familyId: string;
+      rootSessionId: string;
+      currentSessionId: string;
+      sessions: AppControlSession[];
     }
   | {
       ok: true;
@@ -1197,6 +1207,37 @@ export class AppControlBridge {
         command: invocation.name,
         sessions: state.recentSessions,
         attentionSessions: state.attentionSessions,
+      });
+    }
+    if (invocation.name === "sessions.list-family") {
+      if (source?.kind !== "project-session")
+        return {
+          ok: false,
+          command,
+          error: "Listing a Session Family requires a calling Project Session.",
+        };
+      const current = this.knownSession(source.sessionId);
+      if (!current?.familyId)
+        return {
+          ok: false,
+          command,
+          error: "The calling Project Session does not belong to a Session Family.",
+        };
+      const sessions = this.orderedFamilySessions(current.familyId);
+      const root = sessions.find((session) => session.familyDepth === 0);
+      if (!root)
+        return {
+          ok: false,
+          command,
+          error: "Cake could not find the Session Family root.",
+        };
+      return toStrictJson({
+        ok: true,
+        command: invocation.name,
+        familyId: current.familyId,
+        rootSessionId: root.sessionId,
+        currentSessionId: current.sessionId,
+        sessions: sessions.map((session) => this.toControlSession(session)),
       });
     }
     if (invocation.name === "worktrees.merge") {
@@ -1904,6 +1945,37 @@ export class AppControlBridge {
 
   private knownSession(sessionId: string) {
     return this.host.state.sessions().find((session) => session.sessionId === sessionId);
+  }
+
+  private orderedFamilySessions(familyId: string): SessionSummaryView[] {
+    const members = this.host.state.sessions().filter((session) => session.familyId === familyId);
+    const byId = new Map(members.map((session) => [session.sessionId, session]));
+    const root = members.find((session) => session.familyDepth === 0);
+    if (!root) return [];
+
+    const ordered: SessionSummaryView[] = [];
+    const visited = new Set<string>();
+    const visit = (session: SessionSummaryView) => {
+      if (visited.has(session.sessionId)) return;
+      visited.add(session.sessionId);
+      ordered.push(session);
+      for (const childId of session.familyChildSessionIds ?? []) {
+        const child = byId.get(childId);
+        if (child) visit(child);
+      }
+    };
+    visit(root);
+
+    // Preserve visibility if a temporarily incomplete projection omits a child link.
+    for (const session of members
+      .filter((member) => !visited.has(member.sessionId))
+      .sort(
+        (left, right) =>
+          (left.familyDepth ?? 0) - (right.familyDepth ?? 0) ||
+          (left.familyChildOrder ?? 0) - (right.familyChildOrder ?? 0),
+      ))
+      visit(session);
+    return ordered;
   }
 
   private async createSession(

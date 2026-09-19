@@ -151,9 +151,12 @@ no child-resolution replay.
 
 Catalog summaries project family ID, immediate-parent ID, direct-child IDs,
 stable sibling order, depth, and resolution derived from the root. These
-window-lifetime projections are not independent lifecycle authorities. A root
-change refreshes the entire family, including descendants in retired worktrees
-and transcripts still physically in active storage. The sidebar derives contiguous depth-first
+window-lifetime projections are not independent lifecycle authorities. The
+caller-scoped `sessions.list-family` Cake operation exposes only the calling
+Project Session's family in stable depth-first order; unlike `sessions.list`, it
+never accepts a target ID or includes unrelated sessions. A root change refreshes
+the entire family, including descendants in retired worktrees and transcripts
+still physically in active storage. The sidebar derives contiguous depth-first
 clusters, latest-descendant ordering, whole-family pagination, subtree collapse,
 and aggregate attention. It keeps session titles aligned and renders nesting as
 compact vertical depth rails instead of increasing indentation. Collapse state

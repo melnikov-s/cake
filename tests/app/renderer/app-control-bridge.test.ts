@@ -1164,6 +1164,138 @@ describe("AppControlBridge", () => {
     });
   });
 
+  it("lists only the calling session family in stable tree order", async () => {
+    const sessions = [
+      {
+        workingDirectory: "/projects/cake/child-b",
+        projectName: "Cake",
+        sessionId: "child-b",
+        title: "Child B",
+        modifiedAt: "2026-03-04T13:00:00.000Z",
+        messageCount: 2,
+        resolved: false,
+        draft: false,
+        familyId: "family-1",
+        familyParentSessionId: "root",
+        familyChildSessionIds: [],
+        familyChildOrder: 1,
+        familyDepth: 1,
+      },
+      {
+        workingDirectory: "/projects/other",
+        projectName: "Other",
+        sessionId: "unrelated",
+        title: "Unrelated",
+        modifiedAt: "2026-03-05T13:00:00.000Z",
+        messageCount: 1,
+        resolved: false,
+        draft: false,
+      },
+      {
+        workingDirectory: "/projects/cake",
+        projectName: "Cake",
+        sessionId: "root",
+        title: "Root",
+        modifiedAt: "2026-03-01T13:00:00.000Z",
+        messageCount: 4,
+        resolved: false,
+        draft: false,
+        familyId: "family-1",
+        familyParentSessionId: "root",
+        familyChildSessionIds: ["child-a", "child-b"],
+        familyDepth: 0,
+      },
+      {
+        workingDirectory: "/projects/cake/child-a/grandchild",
+        projectName: "Cake",
+        sessionId: "grandchild",
+        title: "Grandchild",
+        modifiedAt: "2026-03-03T13:00:00.000Z",
+        messageCount: 1,
+        resolved: false,
+        draft: false,
+        familyId: "family-1",
+        familyParentSessionId: "child-a",
+        familyChildSessionIds: [],
+        familyChildOrder: 0,
+        familyDepth: 2,
+      },
+      {
+        workingDirectory: "/projects/cake/child-a",
+        projectName: "Cake",
+        sessionId: "child-a",
+        title: "Child A",
+        modifiedAt: "2026-03-02T13:00:00.000Z",
+        messageCount: 3,
+        resolved: false,
+        draft: false,
+        familyId: "family-1",
+        familyParentSessionId: "root",
+        familyChildSessionIds: ["grandchild"],
+        familyChildOrder: 0,
+        familyDepth: 1,
+      },
+    ];
+    const bridge = new AppControlBridge(createHost({ sessions: () => sessions }));
+    const source: AgentControlSource = {
+      kind: "project-session",
+      sessionId: "child-a",
+      title: "Child A",
+      projectName: "Cake",
+      workingDirectory: "/projects/cake/child-a",
+    };
+
+    await expect(
+      bridge.invoke({ name: "sessions.list-family", arguments: {} }, source),
+    ).resolves.toMatchObject({
+      ok: true,
+      command: "sessions.list-family",
+      familyId: "family-1",
+      rootSessionId: "root",
+      currentSessionId: "child-a",
+      sessions: [
+        { sessionId: "root" },
+        { sessionId: "child-a" },
+        { sessionId: "grandchild" },
+        { sessionId: "child-b" },
+      ],
+    });
+  });
+
+  it("rejects family listing outside a Session Family", async () => {
+    const bridge = new AppControlBridge(
+      createHost({
+        sessions: () => [
+          {
+            workingDirectory: "/projects/cake",
+            projectName: "Cake",
+            sessionId: "standalone",
+            title: "Standalone",
+            modifiedAt: "2026-03-01T13:00:00.000Z",
+            messageCount: 1,
+            resolved: false,
+            draft: false,
+          },
+        ],
+      }),
+    );
+    const source: AgentControlSource = {
+      kind: "project-session",
+      sessionId: "standalone",
+      title: "Standalone",
+      projectName: "Cake",
+      workingDirectory: "/projects/cake",
+    };
+
+    await expect(
+      bridge.invoke({ name: "sessions.list-family", arguments: {} }, source),
+    ).resolves.toMatchObject({
+      ok: false,
+      command: "sessions.list-family",
+      error: expect.stringContaining("does not belong"),
+    });
+  });
+
   it("attaches sender metadata and routes replies through the thread binding", async () => {
     const sendSessionMessage = vi
       .fn()
