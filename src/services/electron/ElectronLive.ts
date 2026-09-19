@@ -715,6 +715,7 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
         "notification",
         "extension-ui-intent",
         "project-session-control-requested",
+        "draw-control-requested",
         "application-hotkey-input",
       ),
     artifacts: (connectionId) =>
