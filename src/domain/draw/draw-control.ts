@@ -1,4 +1,4 @@
-/* oxlint-disable anti-slop/no-shape-in-symbol-names -- Shape is tldraw's precise domain entity. */
+/* oxlint-disable anti-slop/no-shape-in-symbol-names -- Shape is the drawing-domain entity. */
 import { Schema } from "effect";
 import { DrawBoardId, DrawBoardMetadata } from "./draw-board-data";
 
@@ -55,9 +55,7 @@ const DrawCreateShape = Schema.Union([
     width: coordinate,
     height: coordinate,
     text: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(16_384))),
-    geo: Schema.optionalKey(
-      Schema.Literals(["rectangle", "ellipse", "triangle", "diamond", "hexagon", "cloud", "star"]),
-    ),
+    geo: Schema.optionalKey(Schema.Literals(["rectangle", "ellipse", "diamond"])),
     color: Schema.optionalKey(boundedString(64)),
     fill: Schema.optionalKey(Schema.Literals(["none", "semi", "solid", "pattern"])),
   }),

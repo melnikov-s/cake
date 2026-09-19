@@ -1,4 +1,4 @@
-/* oxlint-disable anti-slop/no-shape-in-symbol-names -- Shape is tldraw's precise drawing-domain entity. */
+/* oxlint-disable anti-slop/no-shape-in-symbol-names -- Shape is the drawing-domain entity. */
 import type { JsonValue } from "../../ipc/json-contract";
 
 /** JSON-safe Cake Draw contracts shared by renderer presentation and explicit agent controls. */
@@ -17,7 +17,7 @@ interface DrawShapeConnection {
   readonly shapeId: string;
 }
 
-/** Compact summary only; raw tldraw records and freehand point arrays never cross the control boundary. */
+/** Compact summary only; raw Excalidraw elements and freehand point arrays never cross the control boundary. */
 export interface DrawShapeSummary {
   readonly id: string;
   readonly type: string;
@@ -38,7 +38,7 @@ export interface DrawScene {
   readonly truncated: boolean;
 }
 
-type DrawGeoType = "rectangle" | "ellipse" | "triangle" | "diamond" | "hexagon" | "cloud" | "star";
+type DrawGeoType = "rectangle" | "ellipse" | "diamond";
 
 export type DrawCreateShape =
   | {
@@ -149,7 +149,7 @@ export interface DrawRender {
   readonly data: string;
 }
 
-/** Cake-owned, JSON-safe persisted form of a migrated tldraw document snapshot. */
+/** Cake-owned, JSON-safe persisted Excalidraw scene snapshot. */
 export type DrawDocumentSnapshot = JsonValue;
 
 /** Mounted renderer capability. Callers must explicitly enter Draw before using it. */

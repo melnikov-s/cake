@@ -1,25 +1,25 @@
-/* oxlint-disable anti-slop/no-shape-in-symbol-names -- Shape is tldraw's precise drawing-domain entity. */
+/* oxlint-disable anti-slop/no-shape-in-symbol-names -- Shape is Cake's drawing-domain entity. */
 import {
-  DefaultColorStyle,
-  createShapeId,
-  createTLStore,
-  getSnapshot,
-  type Box,
-  type Editor,
-  type TLArrowBinding,
-  type TLArrowShape,
-  type TLDefaultColorStyle,
-  type TLGeoShape,
-  type IndexKey,
-  type TLLineShape,
-  type TLNoteShape,
-  type TLShape,
-  type TLShapeId,
-  type TLStoreSnapshot,
-  type TLTextShape,
-  toRichText,
-} from "tldraw";
-import type { JsonObject, JsonValue } from "../../ipc/json-contract";
+  CaptureUpdateAction,
+  convertToExcalidrawElements,
+  exportToBlob,
+  exportToSvg,
+  getCommonBounds,
+  newElementWith,
+  restore,
+  viewportCoordsToSceneCoords,
+} from "@excalidraw/excalidraw";
+import type {
+  ExcalidrawElement,
+  ExcalidrawTextElement,
+  OrderedExcalidrawElement,
+} from "@excalidraw/excalidraw/element/types";
+import type { AppState, BinaryFiles, ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
+import {
+  assertPersistableDrawDocument,
+  DRAW_SNAPSHOT_TYPE,
+  DRAW_SNAPSHOT_VERSION,
+} from "./DrawDocumentValidation";
 import type {
   DrawCreateShape,
   DrawDocumentSnapshot,
@@ -29,11 +29,7 @@ import type {
   DrawShapeSummary,
 } from "../../domain/draw/draw-editor";
 
-export type { DrawDocumentSnapshot } from "../../domain/draw/draw-editor";
-
 export interface DrawEditorAdapter extends DrawEditorController {
-  undo(): void;
-  redo(): void;
   loadDocument(snapshot: DrawDocumentSnapshot): void;
   snapshotDocument(): DrawDocumentSnapshot;
   onDocumentChange(listener: () => void): () => void;
@@ -47,23 +43,48 @@ const MAX_RENDER_DIMENSION = 4_096;
 const MAX_TEXT_LENGTH = 16_384;
 const MAX_SUMMARY_TEXT_LENGTH = 4_000;
 
+const colorPalette = new Map([
+  ["black", "#1b1b1f"],
+  ["blue", "#1971c2"],
+  ["green", "#2f9e44"],
+  ["grey", "#868e96"],
+  ["light-blue", "#4dabf7"],
+  ["light-green", "#69db7c"],
+  ["light-red", "#ff8787"],
+  ["light-violet", "#b197fc"],
+  ["orange", "#f08c00"],
+  ["red", "#e03131"],
+  ["violet", "#7048e8"],
+  ["white", "#ffffff"],
+  ["yellow", "#f59f00"],
+]);
+
+interface DrawSnapshot {
+  readonly type: typeof DRAW_SNAPSHOT_TYPE;
+  readonly version: typeof DRAW_SNAPSHOT_VERSION;
+  readonly source: "cake";
+  readonly elements: readonly ExcalidrawElement[];
+  readonly appState: Readonly<Pick<AppState, "viewBackgroundColor">>;
+  readonly files: BinaryFiles;
+}
+
 interface PreparedCreateOperation {
   readonly type: "create";
   readonly shape: DrawCreateShape;
-  readonly id: TLShapeId;
+  readonly id: string;
 }
 
 interface MutableDrawApplyReceipt {
-  createdIds: TLShapeId[];
-  updatedIds: TLShapeId[];
-  deletedIds: TLShapeId[];
+  createdIds: string[];
+  updatedIds: string[];
+  deletedIds: string[];
 }
 
 interface PreparedConnectOperation {
   readonly type: "connect";
-  readonly id: TLShapeId;
-  readonly fromId: TLShapeId;
-  readonly toId: TLShapeId;
+  readonly id: string;
+  readonly fromId: string;
+  readonly toId: string;
   readonly text?: string;
 }
 
@@ -90,31 +111,90 @@ function text(value: string, name = "text") {
   return value;
 }
 
-function shapeId(value: string): TLShapeId {
+function shapeId(value: string) {
   const id = value.startsWith("shape:") ? value : `shape:${value}`;
   if (!/^shape:[A-Za-z0-9_-]{1,256}$/.test(id)) throw new Error(`Invalid shape ID: ${value}`);
-  // SAFETY: The tldraw ID prefix and allowed identifier characters were validated above.
-  return id as TLShapeId;
+  return id;
 }
 
-function idsForScope(editor: Editor, scope: DrawReadScope): TLShapeId[] {
-  if (scope === "selection") return [...editor.getSelectedShapeIds()];
-  const shapes = editor.getCurrentPageShapesSorted();
-  if (scope === "page") return shapes.map((shape) => shape.id);
-  const viewport = editor.getViewportPageBounds();
-  return shapes
-    .filter((shape) => {
-      const bounds = editor.getShapePageBounds(shape);
-      return bounds ? viewport.collides(bounds) : false;
+function generatedShapeId() {
+  return `shape:${crypto.randomUUID().replaceAll("-", "")}`;
+}
+
+function color(value: string | undefined, fallback = colorPalette.get("black")!) {
+  if (value === undefined) return fallback;
+  const resolved = colorPalette.get(value) ?? value;
+  if (!colorPalette.has(value) && !/^#[0-9a-f]{3,8}$/i.test(value))
+    throw new Error(`Unsupported shape color: ${value}`);
+  return resolved;
+}
+
+function nonDeleted(api: ExcalidrawImperativeAPI) {
+  return api.getSceneElements().filter((element) => !element.isDeleted);
+}
+
+function elementMap(elements: readonly ExcalidrawElement[]) {
+  return new Map(elements.map((element) => [element.id, element]));
+}
+
+function boundLabel(
+  element: ExcalidrawElement,
+  elements: readonly ExcalidrawElement[],
+): ExcalidrawTextElement | undefined {
+  return elements.find(
+    (candidate): candidate is ExcalidrawTextElement =>
+      candidate.type === "text" && candidate.containerId === element.id && !candidate.isDeleted,
+  );
+}
+
+function visibleElements(elements: readonly ExcalidrawElement[]) {
+  return elements.filter(
+    (element) => !element.isDeleted && !(element.type === "text" && element.containerId),
+  );
+}
+
+function boundsOf(element: ExcalidrawElement, elements: readonly ExcalidrawElement[]) {
+  const related = [element];
+  const label = boundLabel(element, elements);
+  if (label) related.push(label);
+  const [minX, minY, maxX, maxY] = getCommonBounds(related);
+  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+}
+
+function idsForScope(
+  api: ExcalidrawImperativeAPI,
+  elements: readonly ExcalidrawElement[],
+  scope: DrawReadScope,
+) {
+  const visible = visibleElements(elements);
+  if (scope === "selection") {
+    const selected = api.getAppState().selectedElementIds;
+    return visible.filter((element) => selected[element.id]).map((element) => element.id);
+  }
+  if (scope === "page") return visible.map((element) => element.id);
+  const appState = api.getAppState();
+  const start = viewportCoordsToSceneCoords({ clientX: 0, clientY: 0 }, appState);
+  const end = viewportCoordsToSceneCoords(
+    { clientX: appState.width, clientY: appState.height },
+    appState,
+  );
+  const viewport = {
+    x: Math.min(start.x, end.x),
+    y: Math.min(start.y, end.y),
+    width: Math.abs(end.x - start.x),
+    height: Math.abs(end.y - start.y),
+  };
+  return visible
+    .filter((element) => {
+      const bounds = boundsOf(element, elements);
+      return (
+        bounds.x <= viewport.x + viewport.width &&
+        bounds.x + bounds.width >= viewport.x &&
+        bounds.y <= viewport.y + viewport.height &&
+        bounds.y + bounds.height >= viewport.y
+      );
     })
-    .map((shape) => shape.id);
-}
-
-function validColor(value: string | undefined): TLDefaultColorStyle | undefined {
-  if (value === undefined) return undefined;
-  const color = DefaultColorStyle.values.find((candidate) => candidate === value);
-  if (!color) throw new Error(`Unsupported shape color: ${value}`);
-  return color;
+    .map((element) => element.id);
 }
 
 function validateCreateShape(shape: DrawCreateShape) {
@@ -125,7 +205,7 @@ function validateCreateShape(shape: DrawCreateShape) {
       positive(shape.width, "width");
       positive(shape.height, "height");
       if (shape.text !== undefined) text(shape.text);
-      validColor(shape.color);
+      color(shape.color);
       break;
     case "text":
       text(shape.text);
@@ -133,7 +213,7 @@ function validateCreateShape(shape: DrawCreateShape) {
       break;
     case "note":
       text(shape.text);
-      validColor(shape.color);
+      color(shape.color, colorPalette.get("yellow")!);
       break;
     case "line":
     case "arrow":
@@ -151,37 +231,33 @@ function uniqueTargetIds(values: readonly string[], operation: string) {
   return ids;
 }
 
-function requireTargets(
-  known: ReadonlySet<TLShapeId>,
-  ids: readonly TLShapeId[],
-  operation: string,
-) {
+function requireTargets(known: ReadonlySet<string>, ids: readonly string[], operation: string) {
   for (const id of ids) {
     if (!known.has(id)) throw new Error(`Shape not found for ${operation}: ${id}`);
   }
 }
 
 function prepareOperations(
-  editor: Editor,
+  api: ExcalidrawImperativeAPI,
   operations: readonly DrawOperation[],
 ): PreparedOperation[] {
   if (operations.length === 0 || operations.length > 500)
     throw new Error("A draw batch must contain between 1 and 500 operations");
 
-  const known = new Set(editor.getCurrentPageShapes().map((shape) => shape.id));
+  const known = new Set(visibleElements(nonDeleted(api)).map((element) => element.id));
   const prepared: PreparedOperation[] = [];
   for (const operation of operations) {
     switch (operation.type) {
       case "create": {
         validateCreateShape(operation.shape);
-        const id = operation.shape.id ? shapeId(operation.shape.id) : createShapeId();
+        const id = operation.shape.id ? shapeId(operation.shape.id) : generatedShapeId();
         if (known.has(id)) throw new Error(`Duplicate shape ID: ${id}`);
         known.add(id);
         prepared.push({ ...operation, id });
         break;
       }
       case "connect": {
-        const id = operation.id ? shapeId(operation.id) : createShapeId();
+        const id = operation.id ? shapeId(operation.id) : generatedShapeId();
         const fromId = shapeId(operation.fromId);
         const toId = shapeId(operation.toId);
         if (known.has(id)) throw new Error(`Duplicate shape ID: ${id}`);
@@ -202,12 +278,7 @@ function prepareOperations(
           (!Number.isFinite(operation.opacity) || operation.opacity < 0 || operation.opacity > 1)
         )
           throw new Error("opacity must be between 0 and 1");
-        if (operation.text !== undefined) {
-          text(operation.text);
-          const target = editor.getShape(id);
-          if (target && !("richText" in target.props))
-            throw new Error(`Shape does not support text: ${id}`);
-        }
+        if (operation.text !== undefined) text(operation.text);
         prepared.push(operation);
         break;
       }
@@ -242,152 +313,348 @@ function prepareOperations(
   return prepared;
 }
 
-function createShape(editor: Editor, shape: DrawCreateShape, id: TLShapeId) {
-  const x = shape.x;
-  const y = shape.y;
+function createElements(shape: DrawCreateShape, id: string): OrderedExcalidrawElement[] {
   switch (shape.type) {
-    case "geo":
-      editor.createShape<TLGeoShape>({
-        id,
-        type: "geo",
-        x,
-        y,
-        props: {
-          w: shape.width,
-          h: shape.height,
-          geo: shape.geo ?? "rectangle",
-          richText: toRichText(shape.text ?? ""),
-          ...(shape.color ? { color: validColor(shape.color) } : null),
-          ...(shape.fill ? { fill: shape.fill } : null),
-        },
-      });
-      break;
-    case "text":
-      editor.createShape<TLTextShape>({
-        id,
-        type: "text",
-        x,
-        y,
-        props: {
-          richText: toRichText(shape.text),
-          ...(shape.width === undefined ? { autoSize: true } : { autoSize: false, w: shape.width }),
-        },
-      });
-      break;
-    case "note":
-      editor.createShape<TLNoteShape>({
-        id,
-        type: "note",
-        x,
-        y,
-        props: {
-          richText: toRichText(shape.text),
-          ...(shape.color ? { color: validColor(shape.color) } : null),
-        },
-      });
-      break;
-    case "line":
-      editor.createShape<TLLineShape>({
-        id,
-        type: "line",
-        x,
-        y,
-        props: {
-          points: {
-            a1: {
-              id: "a1",
-              // SAFETY: "a1" is the canonical first fractional index used by tldraw.
-              index: "a1" as IndexKey,
-              x: 0,
-              y: 0,
-            },
-            a2: {
-              id: "a2",
-              // SAFETY: "a2" is the canonical fractional index immediately after "a1".
-              index: "a2" as IndexKey,
-              x: shape.endX - x,
-              y: shape.endY - y,
-            },
+    case "geo": {
+      const type = shape.geo ?? "rectangle";
+      return convertToExcalidrawElements(
+        [
+          {
+            id,
+            type,
+            x: shape.x,
+            y: shape.y,
+            width: shape.width,
+            height: shape.height,
+            strokeColor: color(shape.color),
+            backgroundColor:
+              shape.fill === "none" || !shape.fill ? "transparent" : color(shape.color),
+            fillStyle:
+              shape.fill === "solid"
+                ? "solid"
+                : shape.fill === "pattern"
+                  ? "cross-hatch"
+                  : "hachure",
+            ...(shape.text ? { label: { text: shape.text } } : null),
           },
-        },
-      });
-      break;
+        ],
+        { regenerateIds: false },
+      );
+    }
+    case "note":
+      return convertToExcalidrawElements(
+        [
+          {
+            id,
+            type: "rectangle",
+            x: shape.x,
+            y: shape.y,
+            width: 200,
+            height: 200,
+            strokeColor: color(shape.color, colorPalette.get("yellow")!),
+            backgroundColor: color(shape.color, colorPalette.get("yellow")!),
+            fillStyle: "solid",
+            label: { text: shape.text },
+          },
+        ],
+        { regenerateIds: false },
+      );
+    case "text":
+      return convertToExcalidrawElements(
+        [{ id, type: "text", x: shape.x, y: shape.y, text: shape.text, width: shape.width }],
+        { regenerateIds: false },
+      );
+    case "line":
     case "arrow":
-      editor.createShape<TLArrowShape>({
-        id,
+      return convertToExcalidrawElements(
+        [
+          {
+            id,
+            type: shape.type,
+            x: shape.x,
+            y: shape.y,
+            points: [
+              [0, 0],
+              [shape.endX - shape.x, shape.endY - shape.y],
+            ],
+            ...(shape.text ? { label: { text: shape.text } } : null),
+          },
+        ],
+        { regenerateIds: false },
+      );
+  }
+}
+
+function center(element: ExcalidrawElement, elements: readonly ExcalidrawElement[]) {
+  const bounds = boundsOf(element, elements);
+  return { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+}
+
+function connectElements(
+  elements: readonly ExcalidrawElement[],
+  operation: PreparedConnectOperation,
+): ExcalidrawElement[] {
+  const byId = elementMap(elements);
+  const from = byId.get(operation.fromId);
+  const to = byId.get(operation.toId);
+  if (!from || !to) throw new Error("Connection target disappeared");
+  const start = center(from, elements);
+  const end = center(to, elements);
+  const created = convertToExcalidrawElements(
+    [
+      {
+        id: operation.id,
         type: "arrow",
-        x,
-        y,
-        props: {
-          start: { x: 0, y: 0 },
-          end: { x: shape.endX - x, y: shape.endY - y },
-          richText: toRichText(shape.text ?? ""),
-        },
-      });
-      break;
-  }
-}
-
-function centerOfShape(editor: Editor, id: TLShapeId) {
-  const bounds = editor.getShapePageBounds(id);
-  if (!bounds) throw new Error(`Shape has no page bounds: ${id}`);
-  return bounds.center;
-}
-
-function connectShapes(editor: Editor, operation: PreparedConnectOperation) {
-  const start = centerOfShape(editor, operation.fromId);
-  const end = centerOfShape(editor, operation.toId);
-  editor.createShape<TLArrowShape>({
-    id: operation.id,
-    type: "arrow",
-    x: start.x,
-    y: start.y,
-    props: {
-      start: { x: 0, y: 0 },
-      end: { x: end.x - start.x, y: end.y - start.y },
-      richText: toRichText(operation.text ?? ""),
-    },
+        x: start.x,
+        y: start.y,
+        points: [
+          [0, 0],
+          [end.x - start.x, end.y - start.y],
+        ],
+        startBinding: { elementId: operation.fromId, focus: 0, gap: 1 },
+        endBinding: { elementId: operation.toId, focus: 0, gap: 1 },
+        ...(operation.text ? { label: { text: operation.text } } : null),
+      },
+    ],
+    { regenerateIds: false },
+  );
+  const arrow = created.find((element) => element.id === operation.id);
+  if (!arrow || arrow.type !== "arrow") throw new Error("Could not create connected arrow");
+  const boundArrow = newElementWith(arrow, {
+    startBinding: { elementId: operation.fromId, focus: 0, gap: 1 },
+    endBinding: { elementId: operation.toId, focus: 0, gap: 1 },
   });
-  const bindingProps = {
-    normalizedAnchor: { x: 0.5, y: 0.5 },
-    isExact: false,
-    isPrecise: false,
-    snap: "none" as const,
-  };
-  editor.createBindings<TLArrowBinding>([
-    {
-      type: "arrow",
-      fromId: operation.id,
-      toId: operation.fromId,
-      props: { ...bindingProps, terminal: "start" },
-    },
-    {
-      type: "arrow",
-      fromId: operation.id,
-      toId: operation.toId,
-      props: { ...bindingProps, terminal: "end" },
-    },
-  ]);
+  const createdWithBindings = created.map((element) =>
+    element.id === operation.id ? boundArrow : element,
+  );
+  const withBindings = elements.map((element) => {
+    if (element.id !== operation.fromId && element.id !== operation.toId) return element;
+    const boundElements = [
+      ...(element.boundElements ?? []),
+      { id: operation.id, type: "arrow" as const },
+    ];
+    return newElementWith(element, { boundElements });
+  });
+  return [...withBindings, ...createdWithBindings];
 }
 
-function updateShape(editor: Editor, operation: Extract<DrawOperation, { type: "update" }>) {
-  const id = shapeId(operation.id);
-  const current = editor.getShape(id);
-  if (!current) throw new Error(`Shape not found: ${operation.id}`);
-  const update: Partial<TLShape> & Pick<TLShape, "id" | "type"> = {
-    id,
-    type: current.type,
-  };
-  if (operation.x !== undefined) update.x = operation.x;
-  if (operation.y !== undefined) update.y = operation.y;
-  if (operation.rotation !== undefined) update.rotation = operation.rotation;
-  if (operation.opacity !== undefined) update.opacity = operation.opacity;
-  if (operation.text !== undefined) {
-    if (!("richText" in current.props))
-      throw new Error(`Shape does not support text: ${operation.id}`);
-    update.props = { richText: toRichText(operation.text) };
+function withPosition(element: ExcalidrawElement, x: number, y: number) {
+  return newElementWith(element, { x, y });
+}
+
+function moveRelated(
+  elements: readonly ExcalidrawElement[],
+  ids: ReadonlySet<string>,
+  dx: number,
+  dy: number,
+) {
+  return elements.map((element) => {
+    const related =
+      ids.has(element.id) ||
+      (element.type === "text" && !!element.containerId && ids.has(element.containerId));
+    return related ? withPosition(element, element.x + dx, element.y + dy) : element;
+  });
+}
+
+function updateConnections(elements: readonly ExcalidrawElement[]) {
+  const byId = elementMap(elements);
+  return elements.map((element) => {
+    if (element.type !== "arrow" || !element.startBinding || !element.endBinding) return element;
+    const from = byId.get(element.startBinding.elementId);
+    const to = byId.get(element.endBinding.elementId);
+    if (!from || !to) return element;
+    const start = center(from, elements);
+    const end = center(to, elements);
+    return newElementWith(element, {
+      x: start.x,
+      y: start.y,
+      points: [
+        [0, 0],
+        [end.x - start.x, end.y - start.y],
+      ],
+    });
+  });
+}
+
+function updateElementText(
+  elements: readonly ExcalidrawElement[],
+  target: ExcalidrawElement,
+  value: string,
+) {
+  const label = boundLabel(target, elements);
+  if (target.type === "text")
+    return elements.map((element) =>
+      element.id === target.id
+        ? newElementWith(target, { text: value, originalText: value })
+        : element,
+    );
+  if (label)
+    return elements.map((element) =>
+      element.id === label.id
+        ? newElementWith(label, { text: value, originalText: value })
+        : element,
+    );
+  throw new Error(`Shape does not support text: ${target.id}`);
+}
+
+function alignElements(
+  elements: readonly ExcalidrawElement[],
+  ids: readonly string[],
+  alignment: Extract<DrawOperation, { type: "align" }>["alignment"],
+) {
+  const byId = elementMap(elements);
+  const selected = ids.map((id) => byId.get(id)!);
+  const bounds = selected.map((element) => boundsOf(element, elements));
+  const minX = Math.min(...bounds.map((value) => value.x));
+  const maxX = Math.max(...bounds.map((value) => value.x + value.width));
+  const minY = Math.min(...bounds.map((value) => value.y));
+  const maxY = Math.max(...bounds.map((value) => value.y + value.height));
+  let next = elements;
+  selected.forEach((element, index) => {
+    const bound = bounds[index]!;
+    const dx =
+      alignment === "left"
+        ? minX - bound.x
+        : alignment === "right"
+          ? maxX - bound.x - bound.width
+          : alignment === "center-horizontal"
+            ? (minX + maxX - bound.width) / 2 - bound.x
+            : 0;
+    const dy =
+      alignment === "top"
+        ? minY - bound.y
+        : alignment === "bottom"
+          ? maxY - bound.y - bound.height
+          : alignment === "center-vertical"
+            ? (minY + maxY - bound.height) / 2 - bound.y
+            : 0;
+    next = moveRelated(next, new Set([element.id]), dx, dy);
+  });
+  return next;
+}
+
+function distributeElements(
+  elements: readonly ExcalidrawElement[],
+  ids: readonly string[],
+  direction: Extract<DrawOperation, { type: "distribute" }>["direction"],
+) {
+  if (ids.length < 3) return elements;
+  const byId = elementMap(elements);
+  const entries = ids
+    .map((id) => ({ element: byId.get(id)!, bounds: boundsOf(byId.get(id)!, elements) }))
+    .sort((left, right) =>
+      direction === "horizontal" ? left.bounds.x - right.bounds.x : left.bounds.y - right.bounds.y,
+    );
+  const first = entries[0]!.bounds;
+  const last = entries.at(-1)!.bounds;
+  const totalSize = entries.reduce(
+    (sum, entry) => sum + (direction === "horizontal" ? entry.bounds.width : entry.bounds.height),
+    0,
+  );
+  const span =
+    direction === "horizontal" ? last.x + last.width - first.x : last.y + last.height - first.y;
+  const gap = (span - totalSize) / (entries.length - 1);
+  let cursor = direction === "horizontal" ? first.x : first.y;
+  let next = elements;
+  for (const entry of entries) {
+    const position = direction === "horizontal" ? entry.bounds.x : entry.bounds.y;
+    const delta = cursor - position;
+    next = moveRelated(
+      next,
+      new Set([entry.element.id]),
+      direction === "horizontal" ? delta : 0,
+      direction === "vertical" ? delta : 0,
+    );
+    cursor += (direction === "horizontal" ? entry.bounds.width : entry.bounds.height) + gap;
   }
-  editor.updateShape(update);
+  return next;
+}
+
+function reorder(elements: readonly ExcalidrawElement[], ids: ReadonlySet<string>, front: boolean) {
+  const selected = elements.filter(
+    (element) =>
+      ids.has(element.id) ||
+      (element.type === "text" && !!element.containerId && ids.has(element.containerId)),
+  );
+  const rest = elements.filter((element) => !selected.includes(element));
+  return front ? [...rest, ...selected] : [...selected, ...rest];
+}
+
+function plainSnapshot(api: ExcalidrawImperativeAPI): DrawSnapshot {
+  return {
+    type: DRAW_SNAPSHOT_TYPE,
+    version: DRAW_SNAPSHOT_VERSION,
+    source: "cake",
+    elements: api.getSceneElementsIncludingDeleted(),
+    appState: { viewBackgroundColor: api.getAppState().viewBackgroundColor },
+    files: api.getFiles(),
+  };
+}
+
+function validatedSnapshot(snapshot: DrawDocumentSnapshot): DrawSnapshot {
+  assertPersistableDrawDocument(snapshot);
+  // Excalidraw's restore function is the schema/migration boundary for its JSON document format.
+  const elements: readonly ExcalidrawElement[] = JSON.parse(JSON.stringify(snapshot.elements));
+  const appState: Partial<AppState> = JSON.parse(JSON.stringify(snapshot.appState));
+  const files: BinaryFiles = JSON.parse(JSON.stringify(snapshot.files));
+  const restored = restore(
+    {
+      elements,
+      appState,
+      files,
+    },
+    null,
+    null,
+    { repairBindings: true },
+  );
+  return {
+    type: DRAW_SNAPSHOT_TYPE,
+    version: DRAW_SNAPSHOT_VERSION,
+    source: "cake",
+    elements: restored.elements,
+    appState: { viewBackgroundColor: restored.appState.viewBackgroundColor },
+    files: restored.files,
+  };
+}
+
+function asDrawDocumentSnapshot(snapshot: DrawSnapshot): DrawDocumentSnapshot {
+  const document: DrawDocumentSnapshot = JSON.parse(JSON.stringify(snapshot));
+  return document;
+}
+
+interface ShapeSummaryResult {
+  readonly summary: DrawShapeSummary;
+  readonly textTruncated: boolean;
+}
+
+function summaryFor(
+  element: ExcalidrawElement,
+  elements: readonly ExcalidrawElement[],
+): ShapeSummaryResult {
+  const label = boundLabel(element, elements);
+  const fullText = element.type === "text" ? element.text : (label?.text ?? "");
+  const bounds = boundsOf(element, elements);
+  const connections =
+    element.type === "arrow"
+      ? [
+          ...(element.startBinding
+            ? [{ terminal: "start" as const, shapeId: element.startBinding.elementId }]
+            : []),
+          ...(element.endBinding
+            ? [{ terminal: "end" as const, shapeId: element.endBinding.elementId }]
+            : []),
+        ]
+      : undefined;
+  return {
+    summary: {
+      id: element.id,
+      type: element.type,
+      bounds,
+      ...(fullText ? { text: fullText.slice(0, MAX_SUMMARY_TEXT_LENGTH) } : null),
+      ...(connections?.length ? { connections } : null),
+    },
+    textTruncated: fullText.length > MAX_SUMMARY_TEXT_LENGTH,
+  };
 }
 
 function dataUrl(blob: Blob) {
@@ -399,109 +666,39 @@ function dataUrl(blob: Blob) {
   });
 }
 
-function plainBounds(box: Box) {
-  return { x: box.x, y: box.y, width: box.width, height: box.height };
-}
-
-function shapeSummary(editor: Editor, id: TLShapeId) {
-  const shape = editor.getShape(id);
-  if (!shape) return undefined;
-  const bounds = editor.getShapePageBounds(shape);
-  const fullText = editor.getShapeUtil(shape).getText(shape) ?? "";
-  const connections =
-    shape.type === "arrow"
-      ? editor
-          .getBindingsFromShape(shape, "arrow")
-          .map((binding) => ({
-            terminal: binding.props.terminal,
-            shapeId: binding.toId,
-          }))
-          .sort((left, right) =>
-            left.terminal === right.terminal ? 0 : left.terminal === "start" ? -1 : 1,
-          )
-      : undefined;
-  const summary: DrawShapeSummary = {
-    id: shape.id,
-    type: shape.type,
-    ...(bounds ? { bounds: plainBounds(bounds) } : null),
-    ...(fullText ? { text: fullText.slice(0, MAX_SUMMARY_TEXT_LENGTH) } : null),
-    ...(connections?.length ? { connections } : null),
-  };
-  return { summary, textTruncated: fullText.length > MAX_SUMMARY_TEXT_LENGTH };
-}
-
-function isJsonObject(value: JsonValue | undefined): value is JsonObject {
-  return (
-    value !== null && value !== undefined && typeof value === "object" && !Array.isArray(value)
-  );
-}
-
-function isString(value: JsonValue | undefined): value is string {
-  return typeof value === "string";
-}
-
-function asStoreSnapshot(snapshot: DrawDocumentSnapshot): TLStoreSnapshot {
-  if (!isJsonObject(snapshot) || !isJsonObject(snapshot.store) || !isJsonObject(snapshot.schema))
-    throw new Error("Invalid Cake Draw document snapshot");
-  // The isolated tldraw Store created by validateDocumentSnapshot performs migration and validates
-  // every nested record and property. tldraw's records use `any` for extensible JSON metadata, so
-  // TypeScript cannot prove their compatibility with Cake's stricter JsonValue contract.
-  // @ts-expect-error -- Deliberately entering tldraw's validator from checked Cake JSON.
-  return snapshot;
-}
-
-function asDrawDocumentSnapshot(snapshot: TLStoreSnapshot): DrawDocumentSnapshot {
-  // tldraw serializes store snapshots as JSON, but its extensible metadata is typed as `any`.
-  // @ts-expect-error -- The SDK-produced snapshot is JSON-safe by its persistence contract.
-  return snapshot;
-}
-
-function assertInlineImageAssets(snapshot: DrawDocumentSnapshot) {
-  if (!isJsonObject(snapshot) || !isJsonObject(snapshot.store))
-    throw new Error("Invalid Cake Draw document snapshot");
-  for (const record of Object.values(snapshot.store)) {
-    if (!isJsonObject(record) || record.typeName !== "asset") continue;
-    if (record.type === "video") throw new Error("Video assets are not supported in Cake Draw");
-    if (record.type !== "image" || !isJsonObject(record.props)) continue;
-    const src = record.props.src;
-    const mimeType = record.props.mimeType;
-    if (
-      !isString(src) ||
-      !isString(mimeType) ||
-      !["image/png", "image/jpeg", "image/webp"].includes(mimeType) ||
-      !src.startsWith(`data:${mimeType};base64,`)
-    )
-      throw new Error("Draw images must be inline PNG, JPEG, or WebP data URLs");
-  }
-}
-
-function validateDocumentSnapshot(editor: Editor, snapshot: DrawDocumentSnapshot) {
-  assertInlineImageAssets(snapshot);
-  const validationStore = createTLStore({
-    schema: editor.store.schema,
-    snapshot: asStoreSnapshot(snapshot),
-  });
-  const document = getSnapshot(validationStore).document;
-  const validated = asDrawDocumentSnapshot(document);
-  assertInlineImageAssets(validated);
-  return document;
-}
-
-export function createDrawEditorAdapter(editor: Editor): DrawEditorAdapter {
+export function createDrawEditorAdapter(api: ExcalidrawImperativeAPI): DrawEditorAdapter {
   return {
     read({ scope }) {
-      const ids = idsForScope(editor, scope);
-      const selectedShapeIds = [...editor.getSelectedShapeIds()];
+      const elements = nonDeleted(api);
+      const ids = idsForScope(api, elements, scope);
+      const selectedShapeIds = Object.keys(api.getAppState().selectedElementIds).filter((id) =>
+        elements.some(
+          (element) => element.id === id && !(element.type === "text" && element.containerId),
+        ),
+      );
       let summaryTextTruncated = false;
+      const byId = elementMap(elements);
       const shapes = ids.slice(0, MAX_READ_SHAPES).flatMap((id) => {
-        const result = shapeSummary(editor, id);
-        if (!result) return [];
+        const element = byId.get(id);
+        if (!element) return [];
+        const result = summaryFor(element, elements);
         summaryTextTruncated ||= result.textTruncated;
         return [result.summary];
       });
+      const appState = api.getAppState();
+      const start = viewportCoordsToSceneCoords({ clientX: 0, clientY: 0 }, appState);
+      const end = viewportCoordsToSceneCoords(
+        { clientX: appState.width, clientY: appState.height },
+        appState,
+      );
       return {
-        pageId: editor.getCurrentPageId(),
-        viewportBounds: plainBounds(editor.getViewportPageBounds()),
+        pageId: "page:default",
+        viewportBounds: {
+          x: Math.min(start.x, end.x),
+          y: Math.min(start.y, end.y),
+          width: Math.abs(end.x - start.x),
+          height: Math.abs(end.y - start.y),
+        },
         selectedShapeIds: selectedShapeIds.slice(0, MAX_READ_SHAPES),
         shapes,
         truncated:
@@ -511,141 +708,189 @@ export function createDrawEditorAdapter(editor: Editor): DrawEditorAdapter {
       };
     },
     async render({ scope, format, background = true, scale = 1 }) {
-      const ids = idsForScope(editor, scope);
-      if (ids.length === 0) throw new Error("There are no shapes to render");
+      const allElements = nonDeleted(api);
+      const ids = new Set(idsForScope(api, allElements, scope));
+      const elements = allElements.filter(
+        (element) =>
+          ids.has(element.id) ||
+          (element.type === "text" && !!element.containerId && ids.has(element.containerId)),
+      );
+      if (elements.length === 0) throw new Error("There are no shapes to render");
       if (!Number.isFinite(scale) || scale <= 0 || scale > MAX_RENDER_SCALE)
         throw new Error(`scale must be between 0 and ${MAX_RENDER_SCALE}`);
+      const [minX, minY, maxX, maxY] = getCommonBounds(elements);
+      const width = Math.ceil((maxX - minX + 20) * scale);
+      const height = Math.ceil((maxY - minY + 20) * scale);
+      if (width > MAX_RENDER_DIMENSION || height > MAX_RENDER_DIMENSION)
+        throw new Error(`Rendered ${format.toUpperCase()} is too large`);
+      const appState = {
+        exportBackground: background,
+        exportWithDarkMode: false,
+        viewBackgroundColor: background ? api.getAppState().viewBackgroundColor : "transparent",
+      };
       if (format === "svg") {
-        const result = await editor.getSvgString(ids, { background, scale });
-        if (!result) throw new Error("Canvas could not be rendered");
-        if (
-          result.width > MAX_RENDER_DIMENSION ||
-          result.height > MAX_RENDER_DIMENSION ||
-          new TextEncoder().encode(result.svg).byteLength > MAX_RENDER_BYTES
-        )
+        const svg = await exportToSvg({
+          elements,
+          appState,
+          files: api.getFiles(),
+          exportPadding: 10,
+          exportingFrame: null,
+        });
+        const data = new XMLSerializer().serializeToString(svg);
+        if (new TextEncoder().encode(data).byteLength > MAX_RENDER_BYTES)
           throw new Error("Rendered SVG is too large");
-        return {
-          format,
-          mediaType: "image/svg+xml",
-          width: result.width,
-          height: result.height,
-          data: result.svg,
-        };
+        return { format, mediaType: "image/svg+xml", width, height, data };
       }
-      const result = await editor.toImage(ids, { format: "png", background, scale });
-      if (
-        result.width > MAX_RENDER_DIMENSION ||
-        result.height > MAX_RENDER_DIMENSION ||
-        result.blob.size > MAX_RENDER_BYTES
-      )
-        throw new Error("Rendered PNG is too large");
+      const blob = await exportToBlob({
+        elements,
+        appState,
+        files: api.getFiles(),
+        mimeType: "image/png",
+        exportPadding: 10,
+        getDimensions: (sourceWidth: number, sourceHeight: number) => ({
+          width: sourceWidth * scale,
+          height: sourceHeight * scale,
+          scale,
+        }),
+      });
+      if (blob.size > MAX_RENDER_BYTES) throw new Error("Rendered PNG is too large");
       return {
         format,
         mediaType: "image/png",
-        width: result.width,
-        height: result.height,
-        data: await dataUrl(result.blob),
+        width,
+        height,
+        data: await dataUrl(blob),
       };
     },
     apply({ operations }) {
-      const prepared = prepareOperations(editor, operations);
+      const prepared = prepareOperations(api, operations);
+      let elements: readonly ExcalidrawElement[] = api.getSceneElementsIncludingDeleted();
       const receipt: MutableDrawApplyReceipt = {
         createdIds: [],
         updatedIds: [],
         deletedIds: [],
       };
-      const mark = editor.markHistoryStoppingPoint("Cake Draw batch");
-      try {
-        editor.run(() => {
-          for (const operation of prepared) {
-            switch (operation.type) {
-              case "create":
-                createShape(editor, operation.shape, operation.id);
-                receipt.createdIds.push(operation.id);
-                break;
-              case "connect":
-                connectShapes(editor, operation);
-                receipt.createdIds.push(operation.id);
-                break;
-              case "update":
-                updateShape(editor, operation);
-                receipt.updatedIds.push(shapeId(operation.id));
-                break;
-              case "delete": {
-                const ids = operation.ids.map(shapeId);
-                editor.deleteShapes(ids);
-                receipt.deletedIds.push(...ids);
-                break;
-              }
-              case "move": {
-                const dx = operation.deltaX;
-                const dy = operation.deltaY;
-                const updates = operation.ids.map((value) => {
-                  const target = editor.getShape(shapeId(value));
-                  if (!target) throw new Error(`Shape not found: ${value}`);
-                  return { id: target.id, type: target.type, x: target.x + dx, y: target.y + dy };
-                });
-                editor.updateShapes(updates);
-                receipt.updatedIds.push(...updates.map((update) => update.id));
-                break;
-              }
-              case "align": {
-                const ids = operation.ids.map(shapeId);
-                editor.alignShapes(ids, operation.alignment);
-                receipt.updatedIds.push(...ids);
-                break;
-              }
-              case "distribute": {
-                const ids = operation.ids.map(shapeId);
-                editor.distributeShapes(ids, operation.direction);
-                receipt.updatedIds.push(...ids);
-                break;
-              }
-              case "bring-to-front": {
-                const ids = operation.ids.map(shapeId);
-                editor.bringToFront(ids);
-                receipt.updatedIds.push(...ids);
-                break;
-              }
-              case "send-to-back": {
-                const ids = operation.ids.map(shapeId);
-                editor.sendToBack(ids);
-                receipt.updatedIds.push(...ids);
-                break;
-              }
-              case "select":
-                editor.setSelectedShapes(operation.ids.map(shapeId));
-                break;
-              case "zoom-to":
-                editor.setSelectedShapes(operation.ids.map(shapeId));
-                editor.zoomToSelection({ animation: { duration: 0 } });
-                break;
-            }
+      let selectedElementIds: Record<string, true> | undefined;
+      let zoomIds: string[] | undefined;
+      for (const operation of prepared) {
+        switch (operation.type) {
+          case "create":
+            elements = [...elements, ...createElements(operation.shape, operation.id)];
+            receipt.createdIds.push(operation.id);
+            break;
+          case "connect":
+            elements = connectElements(elements, operation);
+            receipt.createdIds.push(operation.id);
+            break;
+          case "update": {
+            const id = shapeId(operation.id);
+            const target = elementMap(elements).get(id);
+            if (!target) throw new Error(`Shape not found: ${id}`);
+            if (operation.text !== undefined)
+              elements = updateElementText(elements, target, operation.text);
+            elements = elements.map((element) => {
+              if (element.id !== id) return element;
+              return newElementWith(element, {
+                ...(operation.x === undefined ? null : { x: operation.x }),
+                ...(operation.y === undefined ? null : { y: operation.y }),
+                ...(operation.rotation === undefined ? null : { angle: operation.rotation }),
+                ...(operation.opacity === undefined ? null : { opacity: operation.opacity * 100 }),
+              });
+            });
+            receipt.updatedIds.push(id);
+            break;
           }
-        });
-        editor.squashToMark(mark);
-      } catch (error) {
-        editor.bailToMark(mark);
-        throw error;
+          case "delete": {
+            const ids = new Set(operation.ids.map(shapeId));
+            elements = elements.map((element) =>
+              ids.has(element.id) ||
+              (element.type === "text" && !!element.containerId && ids.has(element.containerId))
+                ? newElementWith(element, { isDeleted: true })
+                : element,
+            );
+            receipt.deletedIds.push(...ids);
+            break;
+          }
+          case "move": {
+            const ids = new Set(operation.ids.map(shapeId));
+            elements = moveRelated(elements, ids, operation.deltaX, operation.deltaY);
+            receipt.updatedIds.push(...ids);
+            break;
+          }
+          case "align": {
+            const ids = operation.ids.map(shapeId);
+            elements = alignElements(elements, ids, operation.alignment);
+            receipt.updatedIds.push(...ids);
+            break;
+          }
+          case "distribute": {
+            const ids = operation.ids.map(shapeId);
+            elements = distributeElements(elements, ids, operation.direction);
+            receipt.updatedIds.push(...ids);
+            break;
+          }
+          case "bring-to-front": {
+            const ids = new Set(operation.ids.map(shapeId));
+            elements = reorder(elements, ids, true);
+            receipt.updatedIds.push(...ids);
+            break;
+          }
+          case "send-to-back": {
+            const ids = new Set(operation.ids.map(shapeId));
+            elements = reorder(elements, ids, false);
+            receipt.updatedIds.push(...ids);
+            break;
+          }
+          case "select":
+            selectedElementIds = Object.fromEntries(operation.ids.map((id) => [shapeId(id), true]));
+            break;
+          case "zoom-to":
+            selectedElementIds = Object.fromEntries(operation.ids.map((id) => [shapeId(id), true]));
+            zoomIds = operation.ids.map(shapeId);
+            break;
+        }
+      }
+      elements = updateConnections(elements);
+      api.updateScene({
+        elements,
+        ...(selectedElementIds ? { appState: { selectedElementIds } } : null),
+        captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+      });
+      if (zoomIds) {
+        const ids = new Set(zoomIds);
+        api.scrollToContent(
+          elements.filter((element) => ids.has(element.id)),
+          {
+            animate: false,
+            fitToContent: true,
+          },
+        );
       }
       return receipt;
     },
-    undo: () => editor.undo(),
-    redo: () => editor.redo(),
     loadDocument(snapshot) {
-      editor.loadSnapshot(validateDocumentSnapshot(editor, snapshot));
+      const validated = validatedSnapshot(snapshot);
+      api.addFiles(Object.values(validated.files));
+      api.updateScene({
+        elements: validated.elements,
+        appState: validated.appState,
+        captureUpdate: CaptureUpdateAction.NEVER,
+      });
+      api.history.clear();
     },
     snapshotDocument() {
-      const document = getSnapshot(editor.store).document;
-      const snapshot = asDrawDocumentSnapshot(document);
-      assertInlineImageAssets(snapshot);
+      const snapshot = asDrawDocumentSnapshot(plainSnapshot(api));
+      assertPersistableDrawDocument(snapshot);
       return snapshot;
     },
-    onDocumentChange: (listener) =>
-      editor.store.listen(listener, { source: "all", scope: "document" }),
+    onDocumentChange(listener) {
+      let fingerprint = JSON.stringify(plainSnapshot(api));
+      return api.onChange(() => {
+        const nextFingerprint = JSON.stringify(plainSnapshot(api));
+        if (nextFingerprint === fingerprint) return;
+        fingerprint = nextFingerprint;
+        listener();
+      });
+    },
   };
-}
-
-export function assertPersistableDrawDocument(snapshot: DrawDocumentSnapshot) {
-  assertInlineImageAssets(snapshot);
 }

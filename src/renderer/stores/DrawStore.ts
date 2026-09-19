@@ -9,7 +9,8 @@ import type {
   DrawRenderInput,
   DrawScene,
 } from "../../domain/draw/draw-editor";
-import { assertPersistableDrawDocument, type DrawEditorAdapter } from "../draw/DrawEditorAdapter";
+import type { DrawEditorAdapter } from "../draw/DrawEditorAdapter";
+import { assertPersistableDrawDocument } from "../draw/DrawDocumentValidation";
 import { describeError } from "../lib/error-details";
 import { ClientContext } from "./context/ClientContext";
 

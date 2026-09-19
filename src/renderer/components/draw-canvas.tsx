@@ -1,41 +1,41 @@
-import { getAssetUrlsByImport } from "@tldraw/assets/imports.vite";
-import { memo, useCallback, useState } from "react";
-import { Tldraw, createTLStore, inlineBase64AssetStore, type Editor } from "tldraw";
+import { Excalidraw } from "@excalidraw/excalidraw";
+import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
+import { memo, useCallback, useEffect, useRef } from "react";
 import type { DrawStore } from "../stores/DrawStore";
-import { createDrawEditorAdapter } from "../draw/DrawEditorAdapter";
+import { createDrawEditorAdapter, type DrawEditorAdapter } from "../draw/DrawEditorAdapter";
 
-const assetUrls = getAssetUrlsByImport();
-const acceptedImageMimeTypes = ["image/png", "image/jpeg", "image/webp"] as const;
-const licenseKey = import.meta.env.VITE_TLDRAW_LICENSE_KEY;
-
-/** A locally bundled tldraw canvas whose document persistence is owned by DrawStore. */
+/** A locally bundled Excalidraw canvas whose document persistence is owned by DrawStore. */
 export const DrawCanvas = memo(function DrawCanvas({ store }: { store: DrawStore }) {
-  const [tlStore] = useState(() => createTLStore({ assets: inlineBase64AssetStore }));
-
+  const adapterRef = useRef<DrawEditorAdapter>(null);
   const mounted = useCallback(
-    (editor: Editor) => {
-      const theme = document.documentElement.dataset.theme;
-      if (theme === "light" || theme === "dark")
-        editor.user.updateUserPreferences({ colorScheme: theme });
-      const nextAdapter = createDrawEditorAdapter(editor);
-      if (store.documentSnapshot) nextAdapter.loadDocument(store.documentSnapshot);
-      store.attachEditor(nextAdapter);
-      return () => store.detachEditor(nextAdapter);
+    (api: ExcalidrawImperativeAPI) => {
+      const adapter = createDrawEditorAdapter(api);
+      if (store.documentSnapshot) adapter.loadDocument(store.documentSnapshot);
+      adapterRef.current = adapter;
+      store.attachEditor(adapter);
     },
     [store],
   );
 
+  useEffect(
+    () => () => {
+      const adapter = adapterRef.current;
+      if (adapter) store.detachEditor(adapter);
+      adapterRef.current = null;
+    },
+    [store],
+  );
+
+  const theme = document.documentElement.dataset.theme === "dark" ? "dark" : "light";
   return (
     <div className="h-full min-h-0 w-full bg-background" data-slot="draw-canvas">
-      <Tldraw
-        store={tlStore}
-        assetUrls={assetUrls}
-        licenseKey={licenseKey}
-        acceptedImageMimeTypes={acceptedImageMimeTypes}
-        acceptedVideoMimeTypes={[]}
-        maxAssetSize={8 * 1024 * 1024}
-        maxImageDimension={4_096}
-        onMount={mounted}
+      <Excalidraw
+        excalidrawAPI={mounted}
+        theme={theme}
+        autoFocus
+        UIOptions={{
+          canvasActions: { loadScene: false, saveToActiveFile: false },
+        }}
       />
     </div>
   );

@@ -20,7 +20,14 @@ const secondBoard: DrawBoardMetadata = {
   id: "22222222-2222-4222-8222-222222222222",
   title: "Board 2",
 };
-const emptyDocument: DrawDocumentSnapshot = { store: {}, schema: {} };
+const emptyDocument: DrawDocumentSnapshot = {
+  type: "cake-excalidraw",
+  version: 1,
+  source: "cake",
+  elements: [],
+  appState: { viewBackgroundColor: "#ffffff" },
+  files: {},
+};
 
 function mountDrawStore(boards: DrawBoardMetadata[] = [firstBoard, secondBoard]) {
   const save = vi.fn(async (input: { boardId: string; expectedRevision: number }) => {
@@ -69,8 +76,6 @@ function adapterHarness(snapshot: DrawDocumentSnapshot = emptyDocument) {
     read: vi.fn(),
     render: vi.fn(),
     apply,
-    undo: vi.fn(),
-    redo: vi.fn(),
     loadDocument: vi.fn(),
   } as unknown as DrawEditorAdapter;
   return { adapter, apply, change: () => listener?.() };
@@ -117,7 +122,10 @@ describe("DrawStore", () => {
   it("keeps the current board open when its dirty document cannot be saved", async () => {
     const { subject, save, draw } = mountDrawStore();
     await subject.initialize();
-    const changedDocument: DrawDocumentSnapshot = { store: {}, schema: { schemaVersion: 2 } };
+    const changedDocument: DrawDocumentSnapshot = {
+      ...emptyDocument,
+      appState: { viewBackgroundColor: "#f8f9fa" },
+    };
     const editor = adapterHarness(changedDocument);
     subject.attachEditor(editor.adapter);
     editor.change();

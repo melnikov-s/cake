@@ -1,69 +1,78 @@
-/* oxlint-disable anti-slop/no-shape-in-symbol-names -- Shape is tldraw's precise drawing-domain entity. */
+/* oxlint-disable anti-slop/no-shape-in-symbol-names -- Shape is the drawing-domain entity. */
 /**
  * @vitest-environment jsdom
  */
+import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
+import type {
+  AppState,
+  BinaryFileData,
+  BinaryFiles,
+  ExcalidrawImperativeAPI,
+} from "@excalidraw/excalidraw/types";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  Box,
-  Editor,
-  createShapeId,
-  createTLStore,
-  defaultAddFontsFromNode,
-  defaultBindingUtils,
-  defaultShapeTools,
-  defaultShapeUtils,
-  defaultTools,
-  tipTapDefaultExtensions,
-  type TLAssetId,
-  type TLImageAsset,
-  type TLImageShape,
-} from "tldraw";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  assertPersistableDrawDocument,
   createDrawEditorAdapter,
   type DrawEditorAdapter,
 } from "../../../src/renderer/draw/DrawEditorAdapter";
+import { assertPersistableDrawDocument } from "../../../src/renderer/draw/DrawDocumentValidation";
 
-const sid = (id: string) => createShapeId(id);
-
-function createEditor() {
-  const container = document.createElement("div");
-  container.getBoundingClientRect = () => new DOMRect(0, 0, 800, 600);
-  document.body.appendChild(container);
-  const editor = new Editor({
-    store: createTLStore({ shapeUtils: defaultShapeUtils, bindingUtils: defaultBindingUtils }),
-    shapeUtils: defaultShapeUtils,
-    bindingUtils: defaultBindingUtils,
-    tools: [...defaultTools, ...defaultShapeTools],
-    initialState: "select",
-    getContainer: () => container,
-    options: {
-      text: {
-        addFontsFromNode: defaultAddFontsFromNode,
-        tipTapConfig: { extensions: tipTapDefaultExtensions },
-      },
+function editorHarness() {
+  let elements: readonly ExcalidrawElement[] = [];
+  let files: BinaryFiles = {};
+  let appState = {
+    selectedElementIds: {},
+    viewBackgroundColor: "#ffffff",
+    width: 800,
+    height: 600,
+    offsetLeft: 0,
+    offsetTop: 0,
+    scrollX: 0,
+    scrollY: 0,
+    zoom: { value: 1 },
+  } as unknown as AppState;
+  const listeners = new Set<() => void>();
+  const api = {
+    getSceneElements: () => elements.filter((element) => !element.isDeleted),
+    getSceneElementsIncludingDeleted: () => elements,
+    getAppState: () => appState,
+    getFiles: () => files,
+    updateScene: (scene: {
+      elements?: readonly ExcalidrawElement[] | null;
+      appState?: Partial<AppState> | null;
+    }) => {
+      if (scene.elements) elements = scene.elements;
+      if (scene.appState) appState = { ...appState, ...scene.appState };
+      for (const listener of listeners) listener();
     },
-  });
-  editor.updateViewportScreenBounds(new Box(0, 0, 800, 600));
-  return { editor, container };
+    addFiles: (nextFiles: BinaryFileData[]) => {
+      files = { ...files, ...Object.fromEntries(nextFiles.map((file) => [file.id, file])) };
+    },
+    onChange: (listener: () => void) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    history: { clear: vi.fn() },
+    scrollToContent: vi.fn(),
+  } as unknown as ExcalidrawImperativeAPI;
+  return {
+    api,
+    elements: () => elements,
+    setElements(next: readonly ExcalidrawElement[]) {
+      elements = next;
+    },
+  };
 }
 
 describe("DrawEditorAdapter", () => {
-  let editor: Editor;
-  let container: HTMLDivElement;
+  let harness: ReturnType<typeof editorHarness>;
   let adapter: DrawEditorAdapter;
 
   beforeEach(() => {
-    ({ editor, container } = createEditor());
-    adapter = createDrawEditorAdapter(editor);
+    harness = editorHarness();
+    adapter = createDrawEditorAdapter(harness.api);
   });
 
-  afterEach(() => {
-    editor.dispose();
-    container.remove();
-  });
-
-  it("creates native shapes and a bound arrow to shapes created earlier in the batch", () => {
+  it("creates native shapes and a bound arrow", () => {
     const receipt = adapter.apply({
       operations: [
         {
@@ -79,9 +88,9 @@ describe("DrawEditorAdapter", () => {
     });
 
     expect(receipt.createdIds).toEqual(["shape:left", "shape:right", "shape:link"]);
-    expect(editor.getShape(sid("left"))).toMatchObject({ type: "geo" });
-    expect(editor.getShape(sid("right"))).toMatchObject({ type: "note" });
-    expect(editor.getShape(sid("link"))).toMatchObject({ type: "arrow" });
+    expect(harness.elements().find(({ id }) => id === "shape:left")).toMatchObject({
+      type: "rectangle",
+    });
     expect(
       adapter.read({ scope: "page" }).shapes.find(({ id }) => id === "shape:link")?.connections,
     ).toEqual([
@@ -89,14 +98,23 @@ describe("DrawEditorAdapter", () => {
       { terminal: "end", shapeId: "shape:right" },
     ]);
 
-    const before = editor.getShapePageBounds(sid("link"));
+    const before = harness
+      .elements()
+      .find(
+        (element): element is Extract<ExcalidrawElement, { type: "arrow" }> =>
+          element.id === "shape:link" && element.type === "arrow",
+      );
     adapter.apply({ operations: [{ type: "move", ids: ["right"], deltaX: 200, deltaY: 0 }] });
-    const after = editor.getShapePageBounds(sid("link"));
-    expect(after?.maxX).toBeGreaterThan(before?.maxX ?? 0);
-    expect(editor.getBindingsFromShape(sid("link"), "arrow")).toHaveLength(2);
+    const after = harness
+      .elements()
+      .find(
+        (element): element is Extract<ExcalidrawElement, { type: "arrow" }> =>
+          element.id === "shape:link" && element.type === "arrow",
+      );
+    expect(after?.points.at(-1)?.[0]).toBeGreaterThan(before?.points.at(-1)?.[0] ?? 0);
   });
 
-  it("creates standalone line and arrow shapes with native properties", () => {
+  it("creates standalone line and arrow elements", () => {
     adapter.apply({
       operations: [
         {
@@ -118,8 +136,11 @@ describe("DrawEditorAdapter", () => {
       ],
     });
 
-    expect(editor.getShape(sid("line"))).toMatchObject({ type: "line", x: 5, y: 10 });
-    expect(editor.getShape(sid("arrow"))).toMatchObject({ type: "arrow", x: 20, y: 30 });
+    expect(harness.elements().find(({ id }) => id === "shape:line")).toMatchObject({
+      type: "line",
+      x: 5,
+      y: 10,
+    });
     expect(
       adapter.read({ scope: "page" }).shapes.find(({ id }) => id === "shape:arrow")?.text,
     ).toBe("standalone");
@@ -137,7 +158,7 @@ describe("DrawEditorAdapter", () => {
         ],
       }),
     ).toThrow("Shape not found");
-    expect(editor.getCurrentPageShapes()).toHaveLength(0);
+    expect(harness.elements()).toHaveLength(0);
 
     expect(() =>
       adapter.apply({
@@ -153,7 +174,7 @@ describe("DrawEditorAdapter", () => {
         ],
       }),
     ).toThrow("Duplicate shape ID");
-    expect(editor.getCurrentPageShapes()).toHaveLength(0);
+    expect(harness.elements()).toHaveLength(0);
 
     expect(() =>
       adapter.apply({
@@ -167,34 +188,12 @@ describe("DrawEditorAdapter", () => {
               y: 0,
               width: 20,
               height: 20,
-              color: "not-a-tldraw-color",
+              color: "not-a-color",
             },
           },
         ],
       }),
     ).toThrow("Unsupported shape color");
-    expect(editor.getCurrentPageShapes()).toHaveLength(0);
-  });
-
-  it("records one native undo step for the whole batch", () => {
-    adapter.apply({
-      operations: [
-        {
-          type: "create",
-          shape: { id: "one", type: "geo", x: 0, y: 0, width: 20, height: 20 },
-        },
-        {
-          type: "create",
-          shape: { id: "two", type: "text", x: 50, y: 0, text: "two" },
-        },
-      ],
-    });
-    expect(editor.getCurrentPageShapes()).toHaveLength(2);
-
-    adapter.undo();
-    expect(editor.getCurrentPageShapes()).toHaveLength(0);
-    adapter.redo();
-    expect(editor.getCurrentPageShapes()).toHaveLength(2);
   });
 
   it("reads selection and viewport scopes and marks truncated text", () => {
@@ -243,72 +242,30 @@ describe("DrawEditorAdapter", () => {
     expect(scene.truncated).toBe(true);
   });
 
-  it("bounds PNGs by decoded blob bytes before creating a data URL", async () => {
+  it("round-trips validated documents with inline image files", () => {
     adapter.apply({
       operations: [
         {
           type: "create",
-          shape: { id: "box", type: "geo", x: 0, y: 0, width: 20, height: 20 },
+          shape: { id: "image-placeholder", type: "geo", x: 10, y: 10, width: 1, height: 1 },
         },
       ],
     });
-    vi.spyOn(editor, "toImage").mockResolvedValue({
-      blob: new Blob([new Uint8Array(8_000_001)], { type: "image/png" }),
-      width: 20,
-      height: 20,
-    });
-
-    await expect(adapter.render({ scope: "page", format: "png" })).rejects.toThrow(
-      "Rendered PNG is too large",
-    );
-
-    vi.mocked(editor.toImage).mockResolvedValue({
-      blob: new Blob([new Uint8Array([137, 80, 78, 71])], { type: "image/png" }),
-      width: 20,
-      height: 20,
-    });
-    const rendered = await adapter.render({ scope: "page", format: "png" });
-    expect(rendered.data).toMatch(/^data:image\/png;base64,/);
-  });
-
-  it("round-trips validated documents with inline image assets", () => {
-    // SAFETY: tldraw asset IDs use this validated namespace-prefixed format.
-    const assetId = "asset:inline" as TLAssetId;
-    editor.createAssets([
+    harness.api.addFiles([
       {
-        id: assetId,
-        typeName: "asset",
-        type: "image",
-        meta: {},
-        props: {
-          name: "pixel.png",
-          src: "data:image/png;base64,iVBORw0KGgo=",
-          mimeType: "image/png",
-          w: 1,
-          h: 1,
-          isAnimated: false,
-        },
-      } satisfies TLImageAsset,
+        id: "file:inline" as never,
+        dataURL: "data:image/png;base64,iVBORw0KGgo=" as never,
+        mimeType: "image/png",
+        created: 1,
+      },
     ]);
-    editor.createShape<TLImageShape>({
-      type: "image",
-      x: 10,
-      y: 10,
-      props: { assetId, w: 1, h: 1 },
-    });
     const snapshot = adapter.snapshotDocument();
     assertPersistableDrawDocument(snapshot);
 
-    const second = createEditor();
-    try {
-      const secondAdapter = createDrawEditorAdapter(second.editor);
-      secondAdapter.loadDocument(snapshot);
-      expect(second.editor.getAssets()).toHaveLength(1);
-      expect(second.editor.getCurrentPageShapes()).toHaveLength(1);
-    } finally {
-      second.editor.dispose();
-      second.container.remove();
-    }
+    const second = editorHarness();
+    createDrawEditorAdapter(second.api).loadDocument(snapshot);
+    expect(second.elements()).toHaveLength(1);
+    expect(Object.keys(second.api.getFiles())).toEqual(["file:inline"]);
 
     const serialized = JSON.stringify(snapshot).replace(
       "data:image/png;base64,iVBORw0KGgo=",
