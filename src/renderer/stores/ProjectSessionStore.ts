@@ -9,6 +9,7 @@ import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordin
 import type { ReviewsStore } from "./ReviewsStore";
 import type { ComposerDeliveryInput } from "./ConversationComposerStore";
 import type { ProjectSessionStartInput } from "../../domain/project-sessions/project-session-data";
+import type { EditorLocation } from "../../ipc/editor-location";
 import { parseScheduledMessage } from "../../utils/scheduled-message-time";
 import { ConversationSessionStore } from "./ConversationSessionStore";
 import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
@@ -76,6 +77,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   private artifactRequestActive = false;
   private readSettledTurnRevision = 0;
   private pendingSideChatThreadId: string | undefined;
+  private pendingEditorLocation: EditorLocation | undefined;
 
   constructor(props: ProjectSessionStore["props"]) {
     super(props);
@@ -96,6 +98,17 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
 
   showPresentation(mode: ProjectSessionPresentationMode) {
     this.presentationMode = mode;
+    if (mode !== "vscode") this.pendingEditorLocation = undefined;
+  }
+
+  requestEditorLocation(location: EditorLocation) {
+    this.pendingEditorLocation = location;
+  }
+
+  takePendingEditorLocation() {
+    const location = this.pendingEditorLocation;
+    this.pendingEditorLocation = undefined;
+    return location;
   }
 
   toggleWorkspaceChatSidebar() {

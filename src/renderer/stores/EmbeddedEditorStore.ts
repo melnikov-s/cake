@@ -183,10 +183,9 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
   }
 
   /** Restores the selected session's IDE presentation without changing its preference. */
-  async restore() {
+  async restore(location?: EditorLocation) {
     if (this.props.presentationMode() !== "vscode") return;
-    this.activate();
-    await this.open();
+    await this.show(location);
   }
 
   /** Toggles only Cake's chat drawer while leaving the VS Code surface mounted. */

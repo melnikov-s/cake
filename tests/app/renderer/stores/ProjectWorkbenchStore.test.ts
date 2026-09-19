@@ -902,6 +902,51 @@ describe("ProjectWorkbenchStore startup selection", () => {
     operations[Symbol.dispose]();
   });
 
+  it("targets a background session's Draw mode without changing the active session", async () => {
+    const background = {
+      ...loadedSessionStub({ sessionFile: "/background.jsonl" }),
+      sessionId: "background",
+      showPresentation: vi.fn(),
+      drawStore: { initialize: vi.fn(async () => undefined), activeBoard: undefined },
+    };
+    const focused = {
+      ...loadedSessionStub({ sessionFile: "/focused.jsonl" }),
+      sessionId: "focused",
+      drawStore: { initialize: vi.fn(async () => undefined), activeBoard: undefined },
+    };
+    const registry = {
+      sessions: [background, focused],
+      findSession: vi.fn((sessionId: string) =>
+        sessionId === background.sessionId ? background : focused,
+      ),
+      pendingSessions: { isTemporary: vi.fn(() => false) },
+    } as unknown as SessionRegistryStore;
+    const controls = new Map<string, DrawControl>();
+    const { root, operations, selectSession } = mountWorkbench(
+      registry,
+      { find: () => undefined } as unknown as SessionCatalogStore,
+      {} as Client,
+      "focused",
+      undefined,
+      {
+        registerDrawControl: (control) => {
+          controls.set(control.sessionId, control);
+          return () => controls.delete(control.sessionId);
+        },
+      },
+    );
+
+    await controls.get("background")!.invoke({ _tag: "Enter" });
+
+    expect(background.showPresentation).toHaveBeenCalledWith("draw");
+    expect(background.drawStore.initialize).toHaveBeenCalledOnce();
+    expect(focused.showPresentation).not.toHaveBeenCalled();
+    expect(selectSession).not.toHaveBeenCalled();
+
+    root[Symbol.dispose]();
+    operations[Symbol.dispose]();
+  });
+
   it("registers loaded sessions and returns Apply only after the Draw Store flush completes", async () => {
     let finishApply!: () => void;
     const applyFinished = new Promise<void>((resolve) => {

@@ -73,7 +73,8 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       const unregister = (this.sessionRegistry.sessions ?? []).map((session) =>
         this.props.registerDrawControl({
           sessionId: session.sessionId,
-          invoke: (invocation, signal) => this.invokeDrawControl(invocation, signal),
+          invoke: (invocation, signal) =>
+            this.invokeDrawControl(session.sessionId, invocation, signal),
         }),
       );
       return () => {
@@ -563,9 +564,24 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
 
   restoreSessionPresentation() {
     if (this.activeSessionResolved || !this.activeSession) return;
-    if (this.activeSession.presentationMode === "vscode") void this.embeddedEditorStore.restore();
+    if (this.activeSession.presentationMode === "vscode")
+      void this.embeddedEditorStore.restore(this.activeSession.takePendingEditorLocation());
     else if (this.activeSession.presentationMode === "draw")
       void this.activeSession.drawStore.initialize();
+  }
+
+  /** Switches a session to VS Code without changing the window's focused conversation. */
+  async showSessionEditor(sessionId: string, location?: EditorLocation) {
+    const session = this.sessionRegistry.findSession(sessionId);
+    if (!session || this.props.catalog.find(sessionId)?.resolved)
+      throw new Error("Cake could not open VS Code for that Project Session");
+    if (this.activeSessionId === sessionId) {
+      if (location) await this.openFileInIde(location);
+      else await this.openIde();
+      return;
+    }
+    session.showPresentation("vscode");
+    if (location) session.requestEditorLocation(location);
   }
 
   private showTemporarySession(
@@ -779,6 +795,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   }
 
   private async invokeDrawControl(
+    sessionId: string,
     invocation: DrawControlInvocation,
     signal?: AbortSignal,
   ): Promise<DrawControlResponse> {
@@ -788,25 +805,39 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       message: "The Draw request was cancelled.",
     });
     if (signal?.aborted) return cancelled();
-    if (this.activeSessionResolved)
+    const targetSession = this.sessionRegistry.findSession(sessionId);
+    if (!targetSession)
+      return {
+        ok: false,
+        code: "SESSION_NOT_VISIBLE",
+        message: "This Project Session is not loaded in the invoking Cake window.",
+      };
+    if (this.props.catalog.find(sessionId)?.resolved)
       return {
         ok: false,
         code: "SESSION_RESOLVED",
         message: "Resolved Project Sessions cannot change a whiteboard.",
       };
+    const enterDraw = async () => {
+      if (this.activeSessionId === sessionId) await this.openDraw();
+      else {
+        targetSession.showPresentation("draw");
+        await targetSession.drawStore.initialize();
+      }
+    };
     if (invocation._tag === "Enter") {
-      await this.openDraw();
+      await enterDraw();
       if (signal?.aborted) return cancelled();
-      const draw = this.activeSession?.drawStore;
+      const draw = targetSession.drawStore;
       const board = draw?.activeBoard;
       return board && draw
         ? { ok: true, kind: "entered", board, scene: await draw.read("viewport") }
         : { ok: false, code: "BOARD_NOT_OPEN", message: "No whiteboard is open." };
     }
     if (invocation._tag === "Open") {
-      await this.openDraw();
+      await enterDraw();
       if (signal?.aborted) return cancelled();
-      const draw = this.activeSession?.drawStore;
+      const draw = targetSession.drawStore;
       if (!draw?.boards.some((board) => board.id === invocation.boardId))
         return {
           ok: false,
@@ -819,8 +850,8 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
         ? { ok: true, kind: "opened", board, scene: await draw.read("viewport") }
         : { ok: false, code: "BOARD_NOT_OPEN", message: "That whiteboard is not open." };
     }
-    const session = this.activeSession;
-    if (!session || session.presentationMode !== "draw")
+    const session = targetSession;
+    if (session.presentationMode !== "draw")
       return {
         ok: false,
         code: "DRAW_MODE_REQUIRED",

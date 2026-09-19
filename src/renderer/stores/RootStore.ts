@@ -63,20 +63,6 @@ export class RootStore extends Store<{
     invocation: DrawControlInvocation,
     signal?: AbortSignal,
   ): Promise<DrawControlResponse> {
-    let active = this.appShellStore.activeConversation;
-    if (
-      (active?.kind !== "project-session" || active.sessionId !== sessionId) &&
-      (invocation._tag === "Enter" || invocation._tag === "Open")
-    ) {
-      await this.openSession(sessionId);
-      active = this.appShellStore.activeConversation;
-    }
-    if (active?.kind !== "project-session" || active.sessionId !== sessionId)
-      return {
-        ok: false,
-        code: "SESSION_NOT_VISIBLE",
-        message: "Open this Project Session in the invoking Cake window, then retry.",
-      };
     const control = this.drawControls.get(sessionId);
     if (!control)
       return {
@@ -1250,14 +1236,9 @@ export class RootStore extends Store<{
           }),
       },
       vscode: {
-        enter: async (source) => {
-          await this.openSession(source.sessionId);
-          await this.projectWorkbenchStore.embeddedEditorStore.show();
-        },
-        open: async (source, location) => {
-          await this.openSession(source.sessionId);
-          await this.projectWorkbenchStore.embeddedEditorStore.show(location);
-        },
+        enter: (source) => this.projectWorkbenchStore.showSessionEditor(source.sessionId),
+        open: (source, location) =>
+          this.projectWorkbenchStore.showSessionEditor(source.sessionId, location),
       },
       sessionLabels: {
         mutate: ({ projectPath }, mutation) =>

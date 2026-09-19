@@ -150,6 +150,84 @@ describe("RootStore session navigation", () => {
     }
   });
 
+  it("switches a background session to VS Code without stealing pane focus", async () => {
+    const models = RootProjection.create();
+    applySnapshot(models.sessionCatalog, {
+      sessions: [sessionSummary("focused", projectPath), sessionSummary("background", projectPath)],
+      resolvedHasMoreByProject: {},
+    });
+    const respondControl = vi.fn(async () => undefined);
+    const client = { projectSessions: { respondControl } } as unknown as Client;
+    const root = mountRootStore(client, { state: {}, children: {} }, async () => undefined, models);
+
+    try {
+      root.sessionRegistry.load("focused", projectPath);
+      root.sessionRegistry.load("background", projectPath);
+      root.sessionLayoutStore.ensureSession("focused");
+      root.appShellStore.selectProjectSession("focused");
+      root.projectWorkbenchStore.showLoadedSession("focused");
+
+      await root.applicationControlStore.handleProjectSessionRequest({
+        sessionId: "background",
+        controlRequestId: "00000000-0000-4000-8000-000000000020",
+        invocation: {
+          _tag: "InvokeAppControl",
+          command: "vscode.enter",
+          input: {},
+        },
+      });
+
+      expect(root.appShellStore.activeConversation).toEqual({
+        kind: "project-session",
+        sessionId: "focused",
+      });
+      expect(root.sessionLayoutStore.focusedSessionId).toBe("focused");
+      expect(root.sessionRegistry.findSession("background")?.presentationMode).toBe("vscode");
+      expect(respondControl).toHaveBeenCalledWith(
+        "background",
+        "00000000-0000-4000-8000-000000000020",
+        expect.objectContaining({ ok: true, command: "vscode.enter" }),
+        expect.anything(),
+      );
+    } finally {
+      root[Symbol.dispose]();
+      models[Symbol.dispose]();
+    }
+  });
+
+  it("does not navigate to a background session for a Draw control", async () => {
+    const models = RootProjection.create();
+    const root = mountRootStore(
+      {} as Client,
+      { state: {}, children: {} },
+      async () => undefined,
+      models,
+    );
+    const invoke = vi.fn(async () => ({
+      ok: false as const,
+      code: "BOARD_NOT_OPEN" as const,
+      message: "No whiteboard is open.",
+    }));
+
+    try {
+      root.appShellStore.selectProjectSession("focused");
+      root.sessionLayoutStore.ensureSession("focused");
+      root.registerDrawControl({ sessionId: "background", invoke });
+
+      await root.invokeDrawControl("background", { _tag: "Enter" });
+
+      expect(invoke).toHaveBeenCalledOnce();
+      expect(root.appShellStore.activeConversation).toEqual({
+        kind: "project-session",
+        sessionId: "focused",
+      });
+      expect(root.sessionLayoutStore.focusedSessionId).toBe("focused");
+    } finally {
+      root[Symbol.dispose]();
+      models[Symbol.dispose]();
+    }
+  });
+
   it("routes agent worktree merge and discard controls through the managed queue client", async () => {
     const models = RootProjection.create();
     applySnapshot(models.sessionCatalog, {
