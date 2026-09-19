@@ -46,6 +46,13 @@ interface DrawScene extends Schema.Schema.Type<typeof DrawScene> {}
 const optionalShapeFields = {
   id: Schema.optionalKey(shapeId),
 };
+const DrawRelativePlacement = Schema.Struct({
+  relativeTo: shapeId,
+  side: Schema.Literals(["left", "right", "above", "below"]),
+  gap: Schema.optionalKey(Schema.Number.check(Schema.isFinite(), Schema.isGreaterThanOrEqualTo(0))),
+  align: Schema.optionalKey(Schema.Literals(["start", "center", "end"])),
+});
+
 const DrawCreateShape = Schema.Union([
   Schema.Struct({
     ...optionalShapeFields,
@@ -86,8 +93,37 @@ const DrawCreateShape = Schema.Union([
   }),
 ]);
 
+const DrawRelativeShape = Schema.Union([
+  Schema.Struct({
+    ...optionalShapeFields,
+    type: Schema.Literal("geo"),
+    width: coordinate,
+    height: coordinate,
+    text: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(16_384))),
+    geo: Schema.optionalKey(Schema.Literals(["rectangle", "ellipse", "diamond"])),
+    color: Schema.optionalKey(boundedString(64)),
+    fill: Schema.optionalKey(Schema.Literals(["none", "semi", "solid", "pattern"])),
+    placement: DrawRelativePlacement,
+  }),
+  Schema.Struct({
+    ...optionalShapeFields,
+    type: Schema.Literal("text"),
+    text: Schema.String.check(Schema.isMaxLength(16_384)),
+    width: Schema.optionalKey(coordinate),
+    placement: DrawRelativePlacement,
+  }),
+  Schema.Struct({
+    ...optionalShapeFields,
+    type: Schema.Literal("note"),
+    text: Schema.String.check(Schema.isMaxLength(16_384)),
+    color: Schema.optionalKey(boundedString(64)),
+    placement: DrawRelativePlacement,
+  }),
+]);
+
 export const DrawOperation = Schema.Union([
   Schema.Struct({ type: Schema.Literal("create"), shape: DrawCreateShape }),
+  Schema.Struct({ type: Schema.Literal("create-relative"), shape: DrawRelativeShape }),
   Schema.Struct({
     type: Schema.Literal("update"),
     id: shapeId,
@@ -204,11 +240,13 @@ export const DrawControlResponse = Schema.Union([
     ok: Schema.Literal(true),
     kind: Schema.Literal("entered"),
     board: DrawBoardMetadata,
+    scene: DrawScene,
   }),
   Schema.Struct({
     ok: Schema.Literal(true),
     kind: Schema.Literal("opened"),
     board: DrawBoardMetadata,
+    scene: DrawScene,
   }),
   Schema.Struct({
     ok: Schema.Literal(true),
@@ -227,6 +265,7 @@ export const DrawControlResponse = Schema.Union([
     kind: Schema.Literal("applied"),
     boardId: DrawBoardId,
     receipt: DrawApplyReceipt,
+    scene: DrawScene,
   }),
 ]);
 export type DrawControlResponse = typeof DrawControlResponse.Type;

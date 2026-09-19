@@ -25,7 +25,9 @@ import type {
   DrawDocumentSnapshot,
   DrawEditorController,
   DrawOperation,
+  DrawPlaybackOptions,
   DrawReadScope,
+  DrawRelativeShape,
   DrawShapeSummary,
 } from "../../domain/draw/draw-editor";
 
@@ -80,6 +82,13 @@ interface MutableDrawApplyReceipt {
   deletedIds: string[];
 }
 
+interface PreparedRelativeCreateOperation {
+  readonly type: "create-relative";
+  readonly shape: DrawRelativeShape;
+  readonly id: string;
+  readonly relativeTo: string;
+}
+
 interface PreparedConnectOperation {
   readonly type: "connect";
   readonly id: string;
@@ -90,8 +99,9 @@ interface PreparedConnectOperation {
 
 type PreparedOperation =
   | PreparedCreateOperation
+  | PreparedRelativeCreateOperation
   | PreparedConnectOperation
-  | Exclude<DrawOperation, { type: "create" | "connect" }>;
+  | Exclude<DrawOperation, { type: "create" | "create-relative" | "connect" }>;
 
 function finite(value: number, name: string) {
   if (!Number.isFinite(value) || Math.abs(value) > MAX_ABSOLUTE_COORDINATE)
@@ -224,6 +234,28 @@ function validateCreateShape(shape: DrawCreateShape) {
   }
 }
 
+function validateRelativeShape(shape: DrawRelativeShape) {
+  const { placement } = shape;
+  if (placement.gap !== undefined && (!Number.isFinite(placement.gap) || placement.gap < 0))
+    throw new Error("gap must be a non-negative canvas distance");
+  switch (shape.type) {
+    case "geo":
+      positive(shape.width, "width");
+      positive(shape.height, "height");
+      if (shape.text !== undefined) text(shape.text);
+      color(shape.color);
+      break;
+    case "text":
+      text(shape.text);
+      if (shape.width !== undefined) positive(shape.width, "width");
+      break;
+    case "note":
+      text(shape.text);
+      color(shape.color, colorPalette.get("yellow")!);
+      break;
+  }
+}
+
 function uniqueTargetIds(values: readonly string[], operation: string) {
   const ids = values.map(shapeId);
   if (new Set(ids).size !== ids.length)
@@ -254,6 +286,16 @@ function prepareOperations(
         if (known.has(id)) throw new Error(`Duplicate shape ID: ${id}`);
         known.add(id);
         prepared.push({ ...operation, id });
+        break;
+      }
+      case "create-relative": {
+        validateRelativeShape(operation.shape);
+        const id = operation.shape.id ? shapeId(operation.shape.id) : generatedShapeId();
+        const relativeTo = shapeId(operation.shape.placement.relativeTo);
+        if (known.has(id)) throw new Error(`Duplicate shape ID: ${id}`);
+        requireTargets(known, [relativeTo], "create-relative");
+        known.add(id);
+        prepared.push({ ...operation, id, relativeTo });
         break;
       }
       case "connect": {
@@ -311,6 +353,70 @@ function prepareOperations(
     }
   }
   return prepared;
+}
+
+function relativeSize(shape: DrawRelativeShape) {
+  switch (shape.type) {
+    case "geo":
+      return { width: shape.width, height: shape.height };
+    case "note":
+      return { width: 200, height: 200 };
+    case "text":
+      return {
+        width: shape.width ?? Math.min(480, Math.max(80, shape.text.length * 10)),
+        height: 32,
+      };
+  }
+}
+
+function resolveRelativeShape(
+  shape: DrawRelativeShape,
+  relativeTo: string,
+  elements: readonly ExcalidrawElement[],
+): DrawCreateShape {
+  const target = elementMap(elements).get(relativeTo);
+  if (!target) throw new Error(`Relative placement target disappeared: ${relativeTo}`);
+  const targetBounds = boundsOf(target, elements);
+  const size = relativeSize(shape);
+  const gap = shape.placement.gap ?? 80;
+  const align = shape.placement.align ?? "center";
+  const crossPosition = (start: number, span: number, ownSpan: number) =>
+    align === "start"
+      ? start
+      : align === "end"
+        ? start + span - ownSpan
+        : start + (span - ownSpan) / 2;
+  const x =
+    shape.placement.side === "left"
+      ? targetBounds.x - gap - size.width
+      : shape.placement.side === "right"
+        ? targetBounds.x + targetBounds.width + gap
+        : crossPosition(targetBounds.x, targetBounds.width, size.width);
+  const y =
+    shape.placement.side === "above"
+      ? targetBounds.y - gap - size.height
+      : shape.placement.side === "below"
+        ? targetBounds.y + targetBounds.height + gap
+        : crossPosition(targetBounds.y, targetBounds.height, size.height);
+  switch (shape.type) {
+    case "geo":
+      return {
+        id: shape.id,
+        type: "geo",
+        x,
+        y,
+        width: shape.width,
+        height: shape.height,
+        text: shape.text,
+        geo: shape.geo,
+        color: shape.color,
+        fill: shape.fill,
+      };
+    case "text":
+      return { id: shape.id, type: "text", x, y, text: shape.text, width: shape.width };
+    case "note":
+      return { id: shape.id, type: "note", x, y, text: shape.text, color: shape.color };
+  }
 }
 
 function createElements(shape: DrawCreateShape, id: string): OrderedExcalidrawElement[] {
@@ -666,6 +772,168 @@ function dataUrl(blob: Blob) {
   });
 }
 
+function mergeReceipt(target: MutableDrawApplyReceipt, source: MutableDrawApplyReceipt) {
+  target.createdIds.push(...source.createdIds);
+  target.updatedIds.push(...source.updatedIds);
+  target.deletedIds.push(...source.deletedIds);
+}
+
+function applyPreparedOperations(
+  api: ExcalidrawImperativeAPI,
+  prepared: readonly PreparedOperation[],
+  captureUpdate: NonNullable<
+    Parameters<ExcalidrawImperativeAPI["updateScene"]>[0]["captureUpdate"]
+  >,
+  highlightActive: boolean,
+) {
+  let elements: readonly ExcalidrawElement[] = api.getSceneElementsIncludingDeleted();
+  const receipt: MutableDrawApplyReceipt = {
+    createdIds: [],
+    updatedIds: [],
+    deletedIds: [],
+  };
+  let selectedElementIds: Record<string, true> | undefined;
+  let zoomIds: string[] | undefined;
+  for (const operation of prepared) {
+    switch (operation.type) {
+      case "create":
+        elements = [...elements, ...createElements(operation.shape, operation.id)];
+        receipt.createdIds.push(operation.id);
+        if (highlightActive) selectedElementIds = { [operation.id]: true };
+        break;
+      case "create-relative": {
+        const shape = resolveRelativeShape(operation.shape, operation.relativeTo, elements);
+        elements = [...elements, ...createElements(shape, operation.id)];
+        receipt.createdIds.push(operation.id);
+        if (highlightActive) selectedElementIds = { [operation.id]: true };
+        break;
+      }
+      case "connect":
+        elements = connectElements(elements, operation);
+        receipt.createdIds.push(operation.id);
+        if (highlightActive) selectedElementIds = { [operation.id]: true };
+        break;
+      case "update": {
+        const id = shapeId(operation.id);
+        const target = elementMap(elements).get(id);
+        if (!target) throw new Error(`Shape not found: ${id}`);
+        if (operation.text !== undefined)
+          elements = updateElementText(elements, target, operation.text);
+        elements = elements.map((element) => {
+          if (element.id !== id) return element;
+          return newElementWith(element, {
+            ...(operation.x === undefined ? null : { x: operation.x }),
+            ...(operation.y === undefined ? null : { y: operation.y }),
+            ...(operation.rotation === undefined ? null : { angle: operation.rotation }),
+            ...(operation.opacity === undefined ? null : { opacity: operation.opacity * 100 }),
+          });
+        });
+        receipt.updatedIds.push(id);
+        if (highlightActive) selectedElementIds = { [id]: true };
+        break;
+      }
+      case "delete": {
+        const ids = new Set(operation.ids.map(shapeId));
+        elements = elements.map((element) =>
+          ids.has(element.id) ||
+          (element.type === "text" && !!element.containerId && ids.has(element.containerId))
+            ? newElementWith(element, { isDeleted: true })
+            : element,
+        );
+        receipt.deletedIds.push(...ids);
+        if (highlightActive) selectedElementIds = {};
+        break;
+      }
+      case "move": {
+        const ids = new Set(operation.ids.map(shapeId));
+        elements = moveRelated(elements, ids, operation.deltaX, operation.deltaY);
+        receipt.updatedIds.push(...ids);
+        if (highlightActive)
+          selectedElementIds = Object.fromEntries([...ids].map((id) => [id, true]));
+        break;
+      }
+      case "align": {
+        const ids = operation.ids.map(shapeId);
+        elements = alignElements(elements, ids, operation.alignment);
+        receipt.updatedIds.push(...ids);
+        if (highlightActive) selectedElementIds = Object.fromEntries(ids.map((id) => [id, true]));
+        break;
+      }
+      case "distribute": {
+        const ids = operation.ids.map(shapeId);
+        elements = distributeElements(elements, ids, operation.direction);
+        receipt.updatedIds.push(...ids);
+        if (highlightActive) selectedElementIds = Object.fromEntries(ids.map((id) => [id, true]));
+        break;
+      }
+      case "bring-to-front": {
+        const ids = new Set(operation.ids.map(shapeId));
+        elements = reorder(elements, ids, true);
+        receipt.updatedIds.push(...ids);
+        if (highlightActive)
+          selectedElementIds = Object.fromEntries([...ids].map((id) => [id, true]));
+        break;
+      }
+      case "send-to-back": {
+        const ids = new Set(operation.ids.map(shapeId));
+        elements = reorder(elements, ids, false);
+        receipt.updatedIds.push(...ids);
+        if (highlightActive)
+          selectedElementIds = Object.fromEntries([...ids].map((id) => [id, true]));
+        break;
+      }
+      case "select":
+        selectedElementIds = Object.fromEntries(operation.ids.map((id) => [shapeId(id), true]));
+        break;
+      case "zoom-to":
+        selectedElementIds = Object.fromEntries(operation.ids.map((id) => [shapeId(id), true]));
+        zoomIds = operation.ids.map(shapeId);
+        break;
+    }
+  }
+  elements = updateConnections(elements);
+  api.updateScene({
+    elements,
+    ...(selectedElementIds ? { appState: { selectedElementIds } } : null),
+    captureUpdate,
+  });
+  if (zoomIds) {
+    const ids = new Set(zoomIds);
+    api.scrollToContent(
+      elements.filter((element) => ids.has(element.id)),
+      { animate: true, fitToContent: true },
+    );
+  } else if (highlightActive && selectedElementIds) {
+    const activeIds = Object.keys(selectedElementIds);
+    const visibleIds = new Set(idsForScope(api, elements, "viewport"));
+    if (activeIds.some((id) => !visibleIds.has(id))) {
+      const ids = new Set(activeIds);
+      api.scrollToContent(
+        elements.filter((element) => ids.has(element.id)),
+        { animate: true, fitToContent: false },
+      );
+    }
+  }
+  return receipt;
+}
+
+function playbackDelay(milliseconds: number, signal?: AbortSignal) {
+  if (milliseconds <= 0) return Promise.resolve();
+  return new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(done, milliseconds);
+    function done() {
+      signal?.removeEventListener("abort", abort);
+      resolve();
+    }
+    function abort() {
+      clearTimeout(timer);
+      reject(new DOMException("Draw playback was cancelled", "AbortError"));
+    }
+    if (signal?.aborted) abort();
+    else signal?.addEventListener("abort", abort, { once: true });
+  });
+}
+
 export function createDrawEditorAdapter(api: ExcalidrawImperativeAPI): DrawEditorAdapter {
   return {
     read({ scope }) {
@@ -764,108 +1032,35 @@ export function createDrawEditorAdapter(api: ExcalidrawImperativeAPI): DrawEdito
     },
     apply({ operations }) {
       const prepared = prepareOperations(api, operations);
-      let elements: readonly ExcalidrawElement[] = api.getSceneElementsIncludingDeleted();
+      return applyPreparedOperations(api, prepared, CaptureUpdateAction.IMMEDIATELY, false);
+    },
+    async applyAnimated({ operations }, options: DrawPlaybackOptions = {}) {
+      const prepared = prepareOperations(api, operations);
       const receipt: MutableDrawApplyReceipt = {
         createdIds: [],
         updatedIds: [],
         deletedIds: [],
       };
-      let selectedElementIds: Record<string, true> | undefined;
-      let zoomIds: string[] | undefined;
-      for (const operation of prepared) {
-        switch (operation.type) {
-          case "create":
-            elements = [...elements, ...createElements(operation.shape, operation.id)];
-            receipt.createdIds.push(operation.id);
-            break;
-          case "connect":
-            elements = connectElements(elements, operation);
-            receipt.createdIds.push(operation.id);
-            break;
-          case "update": {
-            const id = shapeId(operation.id);
-            const target = elementMap(elements).get(id);
-            if (!target) throw new Error(`Shape not found: ${id}`);
-            if (operation.text !== undefined)
-              elements = updateElementText(elements, target, operation.text);
-            elements = elements.map((element) => {
-              if (element.id !== id) return element;
-              return newElementWith(element, {
-                ...(operation.x === undefined ? null : { x: operation.x }),
-                ...(operation.y === undefined ? null : { y: operation.y }),
-                ...(operation.rotation === undefined ? null : { angle: operation.rotation }),
-                ...(operation.opacity === undefined ? null : { opacity: operation.opacity * 100 }),
-              });
-            });
-            receipt.updatedIds.push(id);
-            break;
-          }
-          case "delete": {
-            const ids = new Set(operation.ids.map(shapeId));
-            elements = elements.map((element) =>
-              ids.has(element.id) ||
-              (element.type === "text" && !!element.containerId && ids.has(element.containerId))
-                ? newElementWith(element, { isDeleted: true })
-                : element,
-            );
-            receipt.deletedIds.push(...ids);
-            break;
-          }
-          case "move": {
-            const ids = new Set(operation.ids.map(shapeId));
-            elements = moveRelated(elements, ids, operation.deltaX, operation.deltaY);
-            receipt.updatedIds.push(...ids);
-            break;
-          }
-          case "align": {
-            const ids = operation.ids.map(shapeId);
-            elements = alignElements(elements, ids, operation.alignment);
-            receipt.updatedIds.push(...ids);
-            break;
-          }
-          case "distribute": {
-            const ids = operation.ids.map(shapeId);
-            elements = distributeElements(elements, ids, operation.direction);
-            receipt.updatedIds.push(...ids);
-            break;
-          }
-          case "bring-to-front": {
-            const ids = new Set(operation.ids.map(shapeId));
-            elements = reorder(elements, ids, true);
-            receipt.updatedIds.push(...ids);
-            break;
-          }
-          case "send-to-back": {
-            const ids = new Set(operation.ids.map(shapeId));
-            elements = reorder(elements, ids, false);
-            receipt.updatedIds.push(...ids);
-            break;
-          }
-          case "select":
-            selectedElementIds = Object.fromEntries(operation.ids.map((id) => [shapeId(id), true]));
-            break;
-          case "zoom-to":
-            selectedElementIds = Object.fromEntries(operation.ids.map((id) => [shapeId(id), true]));
-            zoomIds = operation.ids.map(shapeId);
-            break;
-        }
+      const requestedDelay = options.stepDelayMs ?? 160;
+      const maxDuration = options.maxDurationMs ?? 3_500;
+      const delay =
+        prepared.length <= 1
+          ? 0
+          : Math.max(0, Math.min(requestedDelay, maxDuration / (prepared.length - 1)));
+      for (let index = 0; index < prepared.length; index += 1) {
+        const step = applyPreparedOperations(
+          api,
+          [prepared[index]!],
+          CaptureUpdateAction.NEVER,
+          true,
+        );
+        mergeReceipt(receipt, step);
+        if (index < prepared.length - 1) await playbackDelay(delay, options.signal);
       }
-      elements = updateConnections(elements);
       api.updateScene({
-        elements,
-        ...(selectedElementIds ? { appState: { selectedElementIds } } : null),
+        elements: api.getSceneElementsIncludingDeleted(),
         captureUpdate: CaptureUpdateAction.IMMEDIATELY,
       });
-      if (zoomIds) {
-        const ids = new Set(zoomIds);
-        api.scrollToContent(
-          elements.filter((element) => ids.has(element.id)),
-          {
-            animate: false,
-            fitToContent: true,
-          },
-        );
-      }
       return receipt;
     },
     loadDocument(snapshot) {

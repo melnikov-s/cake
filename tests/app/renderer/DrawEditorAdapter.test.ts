@@ -31,6 +31,7 @@ function editorHarness() {
     zoom: { value: 1 },
   } as unknown as AppState;
   const listeners = new Set<() => void>();
+  const sceneUpdates: string[][] = [];
   const api = {
     getSceneElements: () => elements.filter((element) => !element.isDeleted),
     getSceneElementsIncludingDeleted: () => elements,
@@ -42,6 +43,9 @@ function editorHarness() {
     }) => {
       if (scene.elements) elements = scene.elements;
       if (scene.appState) appState = { ...appState, ...scene.appState };
+      sceneUpdates.push(
+        elements.filter((element) => !element.isDeleted).map((element) => element.id),
+      );
       for (const listener of listeners) listener();
     },
     addFiles: (nextFiles: BinaryFileData[]) => {
@@ -57,6 +61,7 @@ function editorHarness() {
   return {
     api,
     elements: () => elements,
+    sceneUpdates: () => sceneUpdates,
     setElements(next: readonly ExcalidrawElement[]) {
       elements = next;
     },
@@ -112,6 +117,41 @@ describe("DrawEditorAdapter", () => {
           element.id === "shape:link" && element.type === "arrow",
       );
     expect(after?.points.at(-1)?.[0]).toBeGreaterThan(before?.points.at(-1)?.[0] ?? 0);
+  });
+
+  it("plays operations progressively and resolves relative positions", async () => {
+    const receipt = await adapter.applyAnimated(
+      {
+        operations: [
+          {
+            type: "create",
+            shape: { id: "left", type: "geo", x: 20, y: 30, width: 100, height: 80 },
+          },
+          {
+            type: "create-relative",
+            shape: {
+              id: "right",
+              type: "geo",
+              width: 120,
+              height: 60,
+              placement: { relativeTo: "left", side: "right", gap: 50 },
+            },
+          },
+          { type: "connect", id: "link", fromId: "left", toId: "right" },
+        ],
+      },
+      { stepDelayMs: 0 },
+    );
+
+    expect(receipt.createdIds).toEqual(["shape:left", "shape:right", "shape:link"]);
+    expect(
+      adapter.read({ scope: "page" }).shapes.find(({ id }) => id === "shape:right")?.bounds,
+    ).toMatchObject({ x: 170, y: 40, width: 120, height: 60 });
+    expect(harness.sceneUpdates().slice(0, 3)).toEqual([
+      ["shape:left"],
+      ["shape:left", "shape:right"],
+      ["shape:left", "shape:right", "shape:link"],
+    ]);
   });
 
   it("creates standalone line and arrow elements", () => {

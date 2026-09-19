@@ -1,11 +1,14 @@
 import { Excalidraw } from "@excalidraw/excalidraw";
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
-import { memo, useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
+import { observer } from "r-state-tree/react";
 import type { DrawStore } from "../stores/DrawStore";
 import { createDrawEditorAdapter, type DrawEditorAdapter } from "../draw/DrawEditorAdapter";
+import { cn } from "../lib/utils";
+import { Badge } from "./ui/badge";
 
 /** A locally bundled Excalidraw canvas whose document persistence is owned by DrawStore. */
-export const DrawCanvas = memo(function DrawCanvas({ store }: { store: DrawStore }) {
+export const DrawCanvas = observer(function DrawCanvas({ store }: { store: DrawStore }) {
   const adapterRef = useRef<DrawEditorAdapter>(null);
   const mounted = useCallback(
     (api: ExcalidrawImperativeAPI) => {
@@ -28,15 +31,23 @@ export const DrawCanvas = memo(function DrawCanvas({ store }: { store: DrawStore
 
   const theme = document.documentElement.dataset.theme === "dark" ? "dark" : "light";
   return (
-    <div className="h-full min-h-0 w-full bg-background" data-slot="draw-canvas">
-      <Excalidraw
-        excalidrawAPI={mounted}
-        theme={theme}
-        autoFocus
-        UIOptions={{
-          canvasActions: { loadScene: false, saveToActiveFile: false },
-        }}
-      />
+    <div className="relative h-full min-h-0 w-full bg-background" data-slot="draw-canvas">
+      <div className={cn("h-full", store.agentDrawing && "pointer-events-none")}>
+        <Excalidraw
+          excalidrawAPI={mounted}
+          theme={theme}
+          autoFocus
+          viewModeEnabled={store.agentDrawing}
+          UIOptions={{
+            canvasActions: { loadScene: false, saveToActiveFile: false },
+          }}
+        />
+      </div>
+      {store.agentDrawing ? (
+        <div className="pointer-events-none absolute top-3 left-1/2 z-10 -translate-x-1/2">
+          <Badge variant="secondary">Agent drawing…</Badge>
+        </div>
+      ) : null}
     </div>
   );
 });

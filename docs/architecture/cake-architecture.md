@@ -467,7 +467,11 @@ The window Store hierarchy mirrors the product surfaces:
   Cake sidebar may sit beside it, and Cake's authoritative `Chat` occupies the right drawer.
   Draw embeds Excalidraw as an editor, not as another agent runtime or conversation. Explicit
   `cake draw` operations use the existing renderer-request coordinator to inspect or edit the
-  invoking session's board. Drawing gestures trigger persistence, never autonomous Pi turns.
+  invoking session's board. Agent edit batches are validated before mutation, presented on the
+  visible canvas operation by operation with active-shape focus and bounded camera following, then
+  persisted once after playback. Opening a board returns viewport and shape bounds; later shapes
+  can use relative placement against stable shape IDs so Pi can reason about layout without raw
+  Excalidraw elements. Drawing gestures trigger persistence, never autonomous Pi turns.
   Each child owns its own operation
   state and lifetime; the workbench does not re-export one-for-one child APIs.
 - The root-scoped `SessionRegistryStore` preserves one keyed
@@ -510,9 +514,11 @@ The window Store hierarchy mirrors the product surfaces:
 - Each `ProjectSessionStore` owns that session's activity, remembered `normal`/`vscode`/`draw`
   presentation preference and shared workspace chat-drawer geometry, managed-worktree status and
   action presentation, artifact accessory-panel workflow, and message comments. Its focused
-  `DrawStore` child owns board navigation, the remembered active board, editor readiness, and
-  serialized autosave. Excalidraw owns the editable shape graph; Cake does not duplicate it in renderer
-  Models. Main owns saved board documents and session association. Boards autosave independently
+  `DrawStore` child owns board navigation, the remembered active board, editor readiness, agent
+  playback state, and serialized autosave. During agent playback it suppresses intermediate
+  autosaves and user pointer edits, then flushes the final scene before reporting success.
+  Excalidraw owns the editable shape graph; Cake does not duplicate it in renderer Models. Main owns
+  saved board documents and session association. Boards autosave independently
   of artifact publication, and switching presentation does not create another conversation. Full
   artifacts are explicit substantial or reusable deliverables, not a presentation selected from syntax: ordinary Markdown, including
   Mermaid and small tables, stays inline. Artifact identity is a global Cake-owned lineage, while sessions and Session Families receive

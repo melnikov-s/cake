@@ -103,6 +103,8 @@ export function createCakeDrawOperations(control: CakeDrawControl): CakeOperatio
       "Cake Draw commands always target the calling Project Session and never accept a sessionId.",
       "enter and open explicitly foreground Cake Draw. read, render, and apply never switch the user's board or mode; follow their recovery code when Draw is not visible.",
       "User drawing never triggers an agent turn. Every agent canvas change requires an explicit draw.apply call.",
+      "enter and open return the visible viewport and shape bounds. Inspect those coordinates before placing the first shape, prefer create-relative for later shapes, and render the result for visual verification.",
+      "draw.apply is presented on the canvas operation by operation, then persisted once; order node creation before connections so the user can follow the construction.",
     ],
     inputSchema: definition.schema,
     examples: [{ input: definition.example }],
@@ -124,7 +126,7 @@ export function createCakeDrawOperations(control: CakeDrawControl): CakeOperatio
       summary: "Foreground Cake Draw for the calling Project Session.",
       schema: empty,
       example: {},
-      result: "The board opened in Cake Draw.",
+      result: "The board opened in Cake Draw with its visible viewport and shape positions.",
       execute: async (_input, signal) => {
         const boards = await control.list(signal);
         if (boards.length > 0)
@@ -158,7 +160,7 @@ export function createCakeDrawOperations(control: CakeDrawControl): CakeOperatio
       summary: "Foreground Cake Draw and open one board owned by the calling Project Session.",
       schema: Schema.Struct({ boardId: Schema.String.check(Schema.isUUID(4)) }),
       example: { boardId: "00000000-0000-4000-8000-000000000000" },
-      result: "The board opened in Cake Draw.",
+      result: "The board opened in Cake Draw with its visible viewport and shape positions.",
       execute: async (input, signal) => requireSuccess(await control.open(input.boardId, signal)),
     }),
     operation({
@@ -283,11 +285,32 @@ export function createCakeDrawOperations(control: CakeDrawControl): CakeOperatio
         operations: [
           {
             type: "create",
-            shape: { type: "geo", x: 80, y: 80, width: 240, height: 120, text: "Idea" },
+            shape: {
+              id: "idea",
+              type: "geo",
+              x: 80,
+              y: 80,
+              width: 240,
+              height: 120,
+              text: "Idea",
+            },
           },
+          {
+            type: "create-relative",
+            shape: {
+              id: "result",
+              type: "geo",
+              width: 240,
+              height: 120,
+              text: "Result",
+              placement: { relativeTo: "idea", side: "right", gap: 100 },
+            },
+          },
+          { type: "connect", fromId: "idea", toId: "result" },
         ],
       },
-      result: "The open board ID and created, updated, and deleted shape IDs after durable flush.",
+      result:
+        "The open board ID, operation receipt, and resulting visible shape positions after animated playback and durable flush.",
       execute: async (input, signal) => {
         requireMutable(control);
         return requireSuccess(await control.request({ _tag: "Apply", ...input }, signal));

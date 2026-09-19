@@ -64,7 +64,11 @@ function mountDrawStore(boards: DrawBoardMetadata[] = [firstBoard, secondBoard])
 
 function adapterHarness(snapshot: DrawDocumentSnapshot = emptyDocument) {
   let listener: (() => void) | undefined;
-  const apply = vi.fn(() => ({ createdIds: [], updatedIds: ["shape:one"], deletedIds: [] }));
+  const apply = vi.fn<DrawEditorAdapter["applyAnimated"]>(async () => ({
+    createdIds: [],
+    updatedIds: ["shape:one"],
+    deletedIds: [],
+  }));
   const adapter = {
     snapshotDocument: () => snapshot,
     onDocumentChange: (next: () => void) => {
@@ -75,7 +79,8 @@ function adapterHarness(snapshot: DrawDocumentSnapshot = emptyDocument) {
     },
     read: vi.fn(),
     render: vi.fn(),
-    apply,
+    apply: vi.fn(),
+    applyAnimated: apply,
     loadDocument: vi.fn(),
   } as unknown as DrawEditorAdapter;
   return { adapter, apply, change: () => listener?.() };
@@ -142,6 +147,41 @@ describe("DrawStore", () => {
     expect(draw.read).toHaveBeenCalledTimes(2);
   });
 
+  it("owns visible agent playback and persists only the final scene", async () => {
+    const { subject, save } = mountDrawStore();
+    await subject.initialize();
+    const editor = adapterHarness();
+    let finishPlayback!: () => void;
+    editor.apply.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishPlayback = () =>
+            resolve({ createdIds: ["shape:one"], updatedIds: [], deletedIds: [] });
+        }),
+    );
+    subject.attachEditor(editor.adapter);
+
+    const applying = subject.apply([
+      {
+        type: "create",
+        shape: { id: "one", type: "geo", x: 0, y: 0, width: 100, height: 80 },
+      },
+    ]);
+    await Promise.resolve();
+    expect(subject.agentDrawing).toBe(true);
+    editor.change();
+    expect(save).not.toHaveBeenCalled();
+
+    finishPlayback();
+    await expect(applying).resolves.toEqual({
+      createdIds: ["shape:one"],
+      updatedIds: [],
+      deletedIds: [],
+    });
+    expect(subject.agentDrawing).toBe(false);
+    expect(save).toHaveBeenCalledOnce();
+  });
+
   it("rejects an explicit apply when persistence fails and retries the dirty generation", async () => {
     const { subject, save } = mountDrawStore();
     await subject.initialize();
@@ -155,6 +195,10 @@ describe("DrawStore", () => {
     ).rejects.toThrow("disk full");
 
     expect(editor.apply).toHaveBeenCalledOnce();
+    expect(editor.apply).toHaveBeenCalledWith(
+      { operations: [{ type: "move", ids: ["shape:one"], deltaX: 10, deltaY: 0 }] },
+      expect.objectContaining({ stepDelayMs: 160, maxDurationMs: 3_500 }),
+    );
     expect(subject.activeBoard?.revision).toBe(0);
     expect(subject.error).toContain("disk full");
 

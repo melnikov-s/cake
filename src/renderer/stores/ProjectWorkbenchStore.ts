@@ -797,9 +797,10 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     if (invocation._tag === "Enter") {
       await this.openDraw();
       if (signal?.aborted) return cancelled();
-      const board = this.activeSession?.drawStore.activeBoard;
-      return board
-        ? { ok: true, kind: "entered", board }
+      const draw = this.activeSession?.drawStore;
+      const board = draw?.activeBoard;
+      return board && draw
+        ? { ok: true, kind: "entered", board, scene: await draw.read("viewport") }
         : { ok: false, code: "BOARD_NOT_OPEN", message: "No whiteboard is open." };
     }
     if (invocation._tag === "Open") {
@@ -815,7 +816,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       await draw.selectBoard(invocation.boardId);
       const board = draw.activeBoard;
       return board
-        ? { ok: true, kind: "opened", board }
+        ? { ok: true, kind: "opened", board, scene: await draw.read("viewport") }
         : { ok: false, code: "BOARD_NOT_OPEN", message: "That whiteboard is not open." };
     }
     const session = this.activeSession;
@@ -862,7 +863,13 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
               code: "APPLY_OUTCOME_UNKNOWN",
               message: "The request was cancelled while the Draw batch was being saved.",
             };
-          return { ok: true, kind: "applied", boardId: draw.activeBoard.id, receipt };
+          return {
+            ok: true,
+            kind: "applied",
+            boardId: draw.activeBoard.id,
+            receipt,
+            scene: await draw.read("page"),
+          };
         }
       }
     } catch (error) {

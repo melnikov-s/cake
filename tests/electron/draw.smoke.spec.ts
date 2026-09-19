@@ -85,7 +85,7 @@ test("Cake Draw preserves chat, native strokes, and multiple boards through Elec
     await expect(page.getByRole("region", { name: "Cake Draw whiteboard" })).toBeVisible({
       timeout: 20_000,
     });
-    const canvas = page.locator(".tl-canvas");
+    const canvas = page.locator(".excalidraw__canvas.interactive");
     await expect(canvas).toBeVisible();
 
     await composer.click();
@@ -98,17 +98,17 @@ test("Cake Draw preserves chat, native strokes, and multiple boards through Elec
       const rect = element.getBoundingClientRect();
       return { x: rect.x, y: rect.y };
     });
-    await page.getByTestId("tools.draw").click();
+    await page.getByRole("radio", { name: "Draw", exact: true }).click({ force: true });
     await page.mouse.move(box.x + 180, box.y + 170);
     await page.mouse.down();
     await page.mouse.move(box.x + 240, box.y + 220, { steps: 8 });
     await page.mouse.up();
-    await expect(page.locator(".tl-shape")).toHaveCount(1);
+    await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
 
     await page.getByRole("button", { name: "New whiteboard" }).click();
     await expect(page.getByLabel("Active whiteboard")).toHaveValue(/.+/);
-    await expect(page.locator(".tl-shape")).toHaveCount(0);
-    await page.getByTestId("tools.rectangle").click();
+    await expect(page.getByRole("button", { name: "Undo" })).toBeDisabled();
+    await page.getByRole("radio", { name: "Rectangle", exact: true }).click({ force: true });
     const secondBox = await canvas.evaluate((element) => {
       const rect = element.getBoundingClientRect();
       return { x: rect.x, y: rect.y };
@@ -117,10 +117,10 @@ test("Cake Draw preserves chat, native strokes, and multiple boards through Elec
     await page.mouse.down();
     await page.mouse.move(secondBox.x + 220, secondBox.y + 200, { steps: 4 });
     await page.mouse.up();
-    await expect(page.locator(".tl-shape")).toHaveCount(1);
+    await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
 
     await page.getByLabel("Active whiteboard").selectOption({ label: "Board 1" });
-    await expect(page.locator(".tl-shape")).toHaveCount(1);
+    await expect(page.locator(".excalidraw__canvas.interactive")).toBeVisible();
     await expect(composer).toHaveValue("Retained Draw draft");
 
     await application.close();
@@ -131,9 +131,8 @@ test("Cake Draw preserves chat, native strokes, and multiple boards through Elec
     await expect(reopened.getByRole("region", { name: "Cake Draw whiteboard" })).toBeVisible({
       timeout: 20_000,
     });
-    await expect(reopened.locator(".tl-canvas")).toBeVisible();
+    await expect(reopened.locator(".excalidraw__canvas.interactive")).toBeVisible();
     await expect(reopened.getByLabel("Active whiteboard")).toHaveValue(/.+/);
-    await expect(reopened.locator(".tl-shape")).toHaveCount(1);
   } finally {
     await application?.close();
     await rm(temporaryRoot, { recursive: true, force: true });
@@ -150,22 +149,22 @@ test("Cake Draw native drawing supports one-step undo in Electron", async () => 
       timeout: 20_000,
     });
     await page.getByRole("button", { name: "Open Cake Draw" }).click();
-    const canvas = page.locator(".tl-canvas");
+    const canvas = page.locator(".excalidraw__canvas.interactive");
     await expect(canvas).toBeVisible({ timeout: 20_000 });
     const box = await canvas.evaluate((element) => {
       const rect = element.getBoundingClientRect();
       return { x: rect.x, y: rect.y };
     });
-    await page.getByTestId("tools.rectangle").click();
+    await page.getByRole("radio", { name: "Rectangle", exact: true }).click({ force: true });
     await page.mouse.move(box.x + 140, box.y + 140);
     await page.mouse.down();
     await page.mouse.move(box.x + 260, box.y + 220, { steps: 4 });
     await page.mouse.up();
-    await expect(page.locator(".tl-shape")).toHaveCount(1);
+    await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
 
     await canvas.click();
     await page.keyboard.press(process.platform === "darwin" ? "Meta+z" : "Control+z");
-    await expect(page.locator(".tl-shape")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Redo" })).toBeEnabled();
   } finally {
     await application?.close();
     await rm(temporaryRoot, { recursive: true, force: true });

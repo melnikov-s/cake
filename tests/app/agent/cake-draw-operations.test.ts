@@ -9,6 +9,14 @@ import {
 const tinyPng =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
 
+const scene = {
+  pageId: "page:default",
+  viewportBounds: { x: 0, y: 0, width: 800, height: 600 },
+  selectedShapeIds: [],
+  shapes: [],
+  truncated: false,
+};
+
 const board = {
   id: "00000000-0000-4000-8000-000000000001",
   sessionId: "caller-session",
@@ -34,9 +42,10 @@ function control(overrides: Partial<CakeDrawControl> = {}): CakeDrawControl {
       ok: true,
       kind: "opened",
       board,
+      scene,
     })),
     request: vi.fn<CakeDrawControl["request"]>(async (invocation) => {
-      if (invocation._tag === "Enter") return { ok: true, kind: "entered", board };
+      if (invocation._tag === "Enter") return { ok: true, kind: "entered", board, scene };
       if (invocation._tag === "Render")
         return {
           ok: true,
@@ -56,6 +65,7 @@ function control(overrides: Partial<CakeDrawControl> = {}): CakeDrawControl {
           kind: "applied",
           boardId: board.id,
           receipt: { createdIds: ["shape:one"], updatedIds: [], deletedIds: [] },
+          scene,
         };
       return {
         ok: false,

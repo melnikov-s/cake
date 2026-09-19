@@ -40,6 +40,16 @@ export interface DrawScene {
 
 type DrawGeoType = "rectangle" | "ellipse" | "diamond";
 
+type DrawRelativeSide = "left" | "right" | "above" | "below";
+type DrawRelativeAlignment = "start" | "center" | "end";
+
+interface DrawRelativePlacement {
+  readonly relativeTo: string;
+  readonly side: DrawRelativeSide;
+  readonly gap?: number;
+  readonly align?: DrawRelativeAlignment;
+}
+
 export type DrawCreateShape =
   | {
       readonly id?: string;
@@ -79,8 +89,36 @@ export type DrawCreateShape =
       readonly text?: string;
     };
 
+export type DrawRelativeShape =
+  | {
+      readonly id?: string;
+      readonly type: "geo";
+      readonly width: number;
+      readonly height: number;
+      readonly text?: string;
+      readonly geo?: DrawGeoType;
+      readonly color?: string;
+      readonly fill?: "none" | "semi" | "solid" | "pattern";
+      readonly placement: DrawRelativePlacement;
+    }
+  | {
+      readonly id?: string;
+      readonly type: "text";
+      readonly text: string;
+      readonly width?: number;
+      readonly placement: DrawRelativePlacement;
+    }
+  | {
+      readonly id?: string;
+      readonly type: "note";
+      readonly text: string;
+      readonly color?: string;
+      readonly placement: DrawRelativePlacement;
+    };
+
 export type DrawOperation =
   | { readonly type: "create"; readonly shape: DrawCreateShape }
+  | { readonly type: "create-relative"; readonly shape: DrawRelativeShape }
   | {
       readonly type: "connect";
       readonly id?: string;
@@ -127,6 +165,12 @@ interface DrawApplyInput {
   readonly operations: readonly DrawOperation[];
 }
 
+export interface DrawPlaybackOptions {
+  readonly maxDurationMs?: number;
+  readonly stepDelayMs?: number;
+  readonly signal?: AbortSignal;
+}
+
 export interface DrawApplyReceipt {
   readonly createdIds: readonly string[];
   readonly updatedIds: readonly string[];
@@ -157,4 +201,5 @@ export interface DrawEditorController {
   read(input: DrawReadInput): DrawScene;
   render(input: DrawRenderInput): Promise<DrawRender>;
   apply(input: DrawApplyInput): DrawApplyReceipt;
+  applyAnimated(input: DrawApplyInput, options?: DrawPlaybackOptions): Promise<DrawApplyReceipt>;
 }

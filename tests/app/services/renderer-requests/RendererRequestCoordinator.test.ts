@@ -258,17 +258,26 @@ describe("RendererRequestCoordinator", () => {
       controller.abort();
       expect(applying.pollUnsafe()).toBeUndefined();
 
+      const scene = {
+        pageId: "page:default",
+        viewportBounds: { x: 0, y: 0, width: 800, height: 600 },
+        selectedShapeIds: ["shape:one"],
+        shapes: [],
+        truncated: false,
+      };
       yield* coordinator.respondDrawControl(37, "project-1", event.drawRequestId, {
         ok: true,
         kind: "applied",
         boardId: "00000000-0000-4000-8000-000000000001",
         receipt: { createdIds: [], updatedIds: ["shape:one"], deletedIds: [] },
+        scene,
       });
       expect(yield* Fiber.join(applying)).toEqual({
         ok: true,
         kind: "applied",
         boardId: "00000000-0000-4000-8000-000000000001",
         receipt: { createdIds: [], updatedIds: ["shape:one"], deletedIds: [] },
+        scene,
       });
     }),
   );

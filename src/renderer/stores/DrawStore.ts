@@ -26,6 +26,7 @@ export class DrawStore extends Store<DrawStoreProps> {
   readonly boards: DrawBoardMetadata[] = observable([]);
   loading = false;
   saving = false;
+  agentDrawing = false;
   error: string | undefined;
   errorDetails: string | undefined;
   documentSnapshot: DrawDocumentSnapshot | null = null;
@@ -42,6 +43,7 @@ export class DrawStore extends Store<DrawStoreProps> {
     | { boardId: string; generation: number; snapshot: DrawDocumentSnapshot }
     | undefined;
   private detachDocumentListener: (() => void) | undefined;
+  private suppressDocumentChanges = false;
   private readonly readyWaiters = new Set<(adapter: DrawEditorAdapter) => void>();
 
   get client() {
@@ -192,10 +194,35 @@ export class DrawStore extends Store<DrawStoreProps> {
   }
 
   async apply(operations: readonly DrawOperation[]): Promise<DrawApplyReceipt> {
+    if (this.agentDrawing) throw new Error("Cake Draw is already presenting an agent edit");
     this.clearError();
-    const receipt = (await this.waitUntilReady()).apply({ operations });
-    await this.flush();
-    return receipt;
+    const adapter = await this.waitUntilReady();
+    const beforePlayback = JSON.stringify(adapter.snapshotDocument());
+    this.agentDrawing = true;
+    this.suppressDocumentChanges = true;
+    try {
+      let receipt: DrawApplyReceipt;
+      try {
+        receipt = await adapter.applyAnimated(
+          { operations },
+          { stepDelayMs: 160, maxDurationMs: 3_500, signal: this.signal },
+        );
+      } catch (error) {
+        this.suppressDocumentChanges = false;
+        if (JSON.stringify(adapter.snapshotDocument()) !== beforePlayback) {
+          this.documentChanged();
+          await this.flush();
+        }
+        throw error;
+      }
+      this.suppressDocumentChanges = false;
+      this.documentChanged();
+      await this.flush();
+      return receipt;
+    } finally {
+      this.suppressDocumentChanges = false;
+      this.agentDrawing = false;
+    }
   }
 
   async flush() {
@@ -239,6 +266,7 @@ export class DrawStore extends Store<DrawStoreProps> {
   }
 
   private documentChanged() {
+    if (this.suppressDocumentChanges) return;
     this.dirtyGeneration += 1;
     if (this.saveTimer) clearTimeout(this.saveTimer);
     this.saveTimer = setTimeout(() => {

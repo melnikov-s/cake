@@ -919,10 +919,17 @@ describe("ProjectWorkbenchStore startup selection", () => {
       createdAt: "2026-01-01T00:00:00.000Z",
       updatedAt: "2026-01-01T00:00:00.000Z",
     };
+    const scene = {
+      pageId: "page:default",
+      viewportBounds: { x: 0, y: 0, width: 800, height: 600 },
+      selectedShapeIds: ["shape:agent"],
+      shapes: [],
+      truncated: false,
+    };
     const session = {
       ...loadedSessionStub({ sessionFile: "/session.jsonl" }),
       presentationMode: "draw" as const,
-      drawStore: { activeBoard: board, apply },
+      drawStore: { activeBoard: board, apply, read: vi.fn(async () => scene) },
     };
     const registry = {
       sessions: [session],
@@ -968,6 +975,7 @@ describe("ProjectWorkbenchStore startup selection", () => {
       kind: "applied",
       boardId: board.id,
       receipt: { createdIds: ["shape:agent"], updatedIds: [], deletedIds: [] },
+      scene,
     });
 
     root[Symbol.dispose]();
