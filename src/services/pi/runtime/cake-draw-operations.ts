@@ -5,6 +5,7 @@ import { Schema } from "effect";
 import type { DrawBoardMetadata } from "../../../domain/draw/draw-board-data";
 import type { JsonObject } from "../../../ipc/json-contract";
 import {
+  DRAW_APPLY_MAX_OPERATIONS,
   type DrawControlResponse,
   DrawOperation,
   DrawReadScope,
@@ -104,7 +105,8 @@ export function createCakeDrawOperations(control: CakeDrawControl): CakeOperatio
       "enter and open explicitly foreground Cake Draw. read, render, and apply never switch the user's board or mode; follow their recovery code when Draw is not visible.",
       "User drawing never triggers an agent turn. Every agent canvas change requires an explicit draw.apply call.",
       "enter and open return the visible viewport and shape bounds. Inspect those coordinates before placing the first shape, prefer create-relative for later shapes, and render the result for visual verification.",
-      "draw.apply is presented on the canvas operation by operation, then persisted once; order node creation before connections so the user can follow the construction.",
+      `Keep each draw.apply to one visible stage of at most ${DRAW_APPLY_MAX_OPERATIONS} operations (for example, one region, then connections, then cleanup). Use another apply for the next stage so the user sees steady progress.`,
+      "draw.apply is presented on the canvas operation by operation, then persisted once; order node creation before connections so the user can follow the construction. Use draw.read or draw.render between major stages when visual feedback could improve accuracy.",
     ],
     inputSchema: definition.schema,
     examples: [{ input: definition.example }],
@@ -278,7 +280,7 @@ export function createCakeDrawOperations(control: CakeDrawControl): CakeOperatio
         boardId: optionalBoardId,
         operations: Schema.Array(DrawOperation).check(
           Schema.isMinLength(1),
-          Schema.isMaxLength(100),
+          Schema.isMaxLength(DRAW_APPLY_MAX_OPERATIONS),
         ),
       }),
       example: {
@@ -310,10 +312,13 @@ export function createCakeDrawOperations(control: CakeDrawControl): CakeOperatio
         ],
       },
       result:
-        "The open board ID, operation receipt, and resulting visible shape positions after animated playback and durable flush.",
+        "The open board ID and a compact created, updated, and deleted shape receipt after animated playback and durable flush. Use draw.read when the next stage needs resulting positions.",
       execute: async (input, signal) => {
         requireMutable(control);
-        return requireSuccess(await control.request({ _tag: "Apply", ...input }, signal));
+        const response = requireSuccess(await control.request({ _tag: "Apply", ...input }, signal));
+        if (response.kind !== "applied")
+          throw new Error("INVALID_REQUEST: Unexpected Draw response");
+        return { boardId: response.boardId, receipt: response.receipt };
       },
     }),
   ];

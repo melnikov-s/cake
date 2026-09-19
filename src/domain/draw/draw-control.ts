@@ -171,6 +171,8 @@ export const DrawOperation = Schema.Union([
 ]);
 export type DrawOperation = typeof DrawOperation.Type;
 
+export const DRAW_APPLY_MAX_OPERATIONS = 8;
+
 const DrawApplyReceipt = Schema.Struct({
   createdIds: shapeIds,
   updatedIds: shapeIds,
@@ -214,7 +216,10 @@ export const DrawControlInvocation = Schema.TaggedUnion({
   },
   Apply: {
     boardId: Schema.optionalKey(DrawBoardId),
-    operations: Schema.Array(DrawOperation).check(Schema.isMinLength(1), Schema.isMaxLength(100)),
+    operations: Schema.Array(DrawOperation).check(
+      Schema.isMinLength(1),
+      Schema.isMaxLength(DRAW_APPLY_MAX_OPERATIONS),
+    ),
   },
 });
 export type DrawControlInvocation = typeof DrawControlInvocation.Type;

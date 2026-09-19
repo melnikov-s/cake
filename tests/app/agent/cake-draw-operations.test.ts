@@ -89,6 +89,8 @@ describe("Cake Draw operations", () => {
     expect(help.text).toContain("draw.list");
     expect(help.text).toContain("draw.apply");
     expect(help.text).toContain("draw.export");
+    expect(help.text).toContain("one visible stage of at most 8 operations");
+    expect(help.text).toContain("draw.read or draw.render between major stages");
     expect(help.text).toContain('"format"');
     expect(help.text).toContain('"path"');
     expect(help.text).toContain("An existing target file is replaced");
@@ -112,7 +114,7 @@ describe("Cake Draw operations", () => {
     await registry
       .invoke({ command: "draw.read", input: { boardId: board.id, scope: "page" } }, context())
       .catch(() => undefined);
-    await registry.invoke(
+    const applyResult = await registry.invoke(
       {
         command: "draw.apply",
         input: {
@@ -135,6 +137,27 @@ describe("Cake Draw operations", () => {
       },
       expect.any(AbortSignal),
     );
+    expect(applyResult.details).toMatchObject({
+      result: {
+        boardId: board.id,
+        receipt: { createdIds: ["shape:one"], updatedIds: [], deletedIds: [] },
+      },
+    });
+    expect(JSON.stringify(applyResult.details)).not.toContain('"scene"');
+  });
+
+  it("limits each visible drawing stage to eight operations", async () => {
+    const fake = control();
+    const registry = new CakeOperationRegistry(createCakeDrawOperations(fake));
+    const operations = Array.from({ length: 9 }, (_, index) => ({
+      type: "select",
+      ids: [`shape:${index}`],
+    }));
+
+    await expect(
+      registry.invoke({ command: "draw.apply", input: { operations } }, context()),
+    ).rejects.toThrow();
+    expect(fake.request).not.toHaveBeenCalled();
   });
 
   it("returns PNG bytes as image content without duplicating base64 in details", async () => {
