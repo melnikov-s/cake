@@ -188,6 +188,24 @@ export const ForwardIcon = () => (
     <path d="m9 18 6-6-6-6" />
   </Icon>
 );
+export const ReloadIcon = () => (
+  <Icon>
+    <path d="M20 6v5h-5" />
+    <path d="M18.5 15a7 7 0 1 1-1-8.5L20 11" />
+  </Icon>
+);
+export const BrowserIcon = () => (
+  <Icon>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" />
+  </Icon>
+);
+export const InspectIcon = () => (
+  <Icon>
+    <path d="M5 4h6M5 4v6M19 20h-6M19 20v-6" />
+    <path d="m8 8 8 4-4 2-2 4z" />
+  </Icon>
+);
 export const SidebarIcon = () => (
   <Icon>
     <rect x="3.5" y="4" width="17" height="16" rx="3" />

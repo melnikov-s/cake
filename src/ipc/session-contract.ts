@@ -191,6 +191,15 @@ export const attachmentSchema = Schema.Union([
     comment: Schema.optionalKey(ipcProjectionString(16_000).check(Schema.isMinLength(1))),
   }),
   Schema.Struct({
+    kind: Schema.Literal("browser"),
+    name: stringMax(512),
+    url: stringMax(16_384),
+    tagName: stringRange(1, 256),
+    selector: ipcProjectionString(4_096),
+    outerHTML: ipcProjectionString(48_000),
+    text: ipcProjectionString(8_000),
+  }),
+  Schema.Struct({
     kind: Schema.Literal("annotation"),
     annotations: Schema.Array(annotationSchema).check(
       Schema.isMinLength(1),

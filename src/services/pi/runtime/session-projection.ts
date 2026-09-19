@@ -871,6 +871,8 @@ export function promptText(text: string, attachments: Attachment[]) {
     const encoded = JSON.stringify(item).replaceAll("<", "\\u003c");
     if (item.kind === "source")
       return [`<cake-source-attachment>${encoded}</cake-source-attachment>`];
+    if (item.kind === "browser")
+      return [`<cake-browser-attachment>${encoded}</cake-browser-attachment>`];
     if (item.kind === "annotation") return [`<cake-annotations>${encoded}</cake-annotations>`];
     return [];
   });

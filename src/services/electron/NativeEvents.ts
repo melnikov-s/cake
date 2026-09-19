@@ -19,6 +19,9 @@ export interface NativeEventsService {
       | "project-session-control-requested"
       | "draw-control-requested"
       | "application-hotkey-input"
+      | "browser-entered"
+      | "browser-state-changed"
+      | "browser-element-selected"
       | "renderer-events-ready"
     >
   >;

@@ -32,6 +32,7 @@ describe("Client", () => {
       "workspaces",
       "managedWorktrees",
       "terminals",
+      "browser",
       "vscode",
       "artifacts",
       "inlineWidgets",

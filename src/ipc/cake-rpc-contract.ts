@@ -36,6 +36,15 @@ const nonNegativeInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
 const coordinate = Schema.Int.check(Schema.isBetween({ minimum: -1_000_000, maximum: 1_000_000 }));
 const requestBase = { requestId: uuid };
 const accepted = Schema.Struct({ requestId: uuid });
+const browserStateFields = {
+  sessionId: bounded(1, 256),
+  url: stringMax(16_384),
+  title: ipcProjectionString(2_048),
+  loading: Schema.Boolean,
+  canGoBack: Schema.Boolean,
+  canGoForward: Schema.Boolean,
+  inspecting: Schema.Boolean,
+};
 /** An explicit VS Code selection the user handed to a Cake action; positions are zero-based. */
 const embeddedEditorExplicitSelectionFields = {
   workspacePath: stringMax(4_096),
@@ -188,6 +197,24 @@ const cakeEventSchemas = {
     type: Schema.Literal("embedded-editor-side-chat-requested"),
     ...embeddedEditorExplicitSelectionFields,
   }),
+  "browser-entered": Schema.Struct({
+    type: Schema.Literal("browser-entered"),
+    sessionId: bounded(1, 256),
+    workspacePath: stringMax(4_096),
+  }),
+  "browser-state-changed": Schema.Struct({
+    type: Schema.Literal("browser-state-changed"),
+    ...browserStateFields,
+  }),
+  "browser-element-selected": Schema.Struct({
+    type: Schema.Literal("browser-element-selected"),
+    sessionId: bounded(1, 256),
+    url: stringMax(16_384),
+    tagName: bounded(1, 256),
+    selector: ipcProjectionString(4_096),
+    outerHTML: ipcProjectionString(48_000),
+    text: ipcProjectionString(8_000),
+  }),
 } as const;
 
 export const applicationEventSchema = Schema.Union([
@@ -200,6 +227,9 @@ export const applicationEventSchema = Schema.Union([
   cakeEventSchemas["project-session-control-requested"],
   cakeEventSchemas["draw-control-requested"],
   cakeEventSchemas["application-hotkey-input"],
+  cakeEventSchemas["browser-entered"],
+  cakeEventSchemas["browser-state-changed"],
+  cakeEventSchemas["browser-element-selected"],
 ]);
 
 export const artifactEventSchema = Schema.Union([
@@ -264,6 +294,9 @@ export const cakeEventSchema = Schema.Union([
   cakeEventSchemas["embedded-editor-entered"],
   cakeEventSchemas["embedded-editor-annotation-requested"],
   cakeEventSchemas["embedded-editor-side-chat-requested"],
+  cakeEventSchemas["browser-entered"],
+  cakeEventSchemas["browser-state-changed"],
+  cakeEventSchemas["browser-element-selected"],
 ]);
 
 const terminalTarget = Schema.Struct({
@@ -396,6 +429,41 @@ export const cakeRpcPayloadSchemas = {
     ...requestBase,
     workspacePath: stringMax(4_096),
     snapshot: editorAnnotationSnapshotSchema,
+  }),
+  "open-browser": Schema.Struct({
+    ...requestBase,
+    sessionId: bounded(1, 256),
+    url: Schema.optionalKey(stringMax(16_384)),
+  }),
+  "get-browser-state": Schema.Struct({ sessionId: bounded(1, 256) }),
+  "update-browser-bounds": Schema.Struct({
+    ...requestBase,
+    sessionId: bounded(1, 256),
+    visible: Schema.Boolean,
+    x: Schema.Number,
+    y: Schema.Number,
+    width: Schema.Number.check(
+      Schema.isGreaterThanOrEqualTo(0),
+      Schema.isLessThanOrEqualTo(100_000),
+    ),
+    height: Schema.Number.check(
+      Schema.isGreaterThanOrEqualTo(0),
+      Schema.isLessThanOrEqualTo(100_000),
+    ),
+  }),
+  "navigate-browser": Schema.Struct({
+    ...requestBase,
+    sessionId: bounded(1, 256),
+    url: bounded(1, 16_384),
+  }),
+  "browser-action": Schema.Struct({
+    ...requestBase,
+    sessionId: bounded(1, 256),
+    action: Schema.Literals(["back", "forward", "reload", "stop"]),
+  }),
+  "inspect-browser-element": Schema.Struct({
+    ...requestBase,
+    sessionId: bounded(1, 256),
   }),
   "choose-attachments": Schema.Struct({}),
   "suggest-files": Schema.Struct({
@@ -555,6 +623,7 @@ const cakeRpcResultSchemas = {
     message: Schema.optional(ipcProjectionString(4_096)),
     customPath: Schema.optional(stringMax(4_096)),
   }),
+  "browser-state-loaded": Schema.Struct(browserStateFields),
   "terminal-opened": Schema.Struct({
     ...requestBase,
     terminalId: uuid,
@@ -656,6 +725,12 @@ export const cakeRpcSuccessSchemas = {
   "reveal-in-embedded-editor": cakeRpcResultSchemas.accepted,
   "open-embedded-editor-source-control": cakeRpcResultSchemas.accepted,
   "update-embedded-editor-annotations": cakeRpcResultSchemas.accepted,
+  "open-browser": cakeRpcResultSchemas["browser-state-loaded"],
+  "get-browser-state": cakeRpcResultSchemas["browser-state-loaded"],
+  "update-browser-bounds": cakeRpcResultSchemas["browser-state-loaded"],
+  "navigate-browser": cakeRpcResultSchemas["browser-state-loaded"],
+  "browser-action": cakeRpcResultSchemas["browser-state-loaded"],
+  "inspect-browser-element": cakeRpcResultSchemas["browser-state-loaded"],
   "respond-artifact": cakeRpcResultSchemas["artifact-response-accepted"],
   "respond-ui": cakeRpcResultSchemas["ui-response-accepted"],
   "export-artifacts": cakeRpcResultSchemas["artifacts-exported"],

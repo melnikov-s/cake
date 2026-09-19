@@ -7,8 +7,11 @@ The user has entered embedded VS Code. They may now be looking at the editor. Us
   enterDraw: `<system-reminder>
 The user has entered Draw. They may now be looking at the active whiteboard. Use Cake's Draw operations when they would help.
 </system-reminder>`,
+  enterBrowser: `<system-reminder>
+The user has entered Browser Mode. They may now be looking at the embedded browser. Use Cake's browser CDP operations when they would help.
+</system-reminder>`,
   returnToNormal: `<system-reminder>
-The user has returned to the normal conversation view and is no longer viewing embedded VS Code or Draw.
+The user has returned to the normal conversation view and is no longer viewing embedded VS Code, Draw, or Browser Mode.
 </system-reminder>`,
   vscodeToDraw: `<system-reminder>
 The user has switched from embedded VS Code to Draw. They may now be looking at the active whiteboard. Use Cake's Draw operations when they would help.
@@ -26,6 +29,7 @@ type Reminder = {
 const knownReminders: readonly Reminder[] = [
   { mode: "vscode", content: reminders.enterVscode },
   { mode: "draw", content: reminders.enterDraw },
+  { mode: "browser", content: reminders.enterBrowser },
   { mode: "normal", content: reminders.returnToNormal },
   { mode: "draw", content: reminders.vscodeToDraw },
   { mode: "vscode", content: reminders.drawToVscode },
@@ -52,12 +56,14 @@ export function addPresentationModeReminder(
   const reminder =
     currentMode === "normal"
       ? reminders.returnToNormal
-      : currentMode === "vscode"
-        ? previousMode === "draw"
-          ? reminders.drawToVscode
-          : reminders.enterVscode
-        : previousMode === "vscode"
-          ? reminders.vscodeToDraw
-          : reminders.enterDraw;
+      : currentMode === "browser"
+        ? reminders.enterBrowser
+        : currentMode === "vscode"
+          ? previousMode === "draw"
+            ? reminders.drawToVscode
+            : reminders.enterVscode
+          : previousMode === "vscode"
+            ? reminders.vscodeToDraw
+            : reminders.enterDraw;
   return `${reminder}${text ? `\n\n${text}` : ""}`;
 }

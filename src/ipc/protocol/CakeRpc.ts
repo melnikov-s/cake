@@ -1,5 +1,6 @@
 import { ApplicationRpc } from "./ApplicationRpc";
 import { ArtifactRpc } from "./ArtifactRpc";
+import { BrowserRpc } from "./BrowserRpc";
 import { CakeChatRpc } from "./CakeChatRpc";
 import { DiscussionRpc } from "./DiscussionRpc";
 import { DrawRpc } from "./DrawRpc";
@@ -24,6 +25,7 @@ export { FoundationFailure } from "./FoundationRpc";
 
 export const CakeRpc = ApplicationRpc.merge(
   ArtifactRpc,
+  BrowserRpc,
   CakeChatRpc,
   DiscussionRpc,
   DrawRpc,

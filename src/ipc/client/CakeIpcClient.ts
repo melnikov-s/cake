@@ -40,6 +40,7 @@ import type { ManagedWorktreeCatalogUpdate } from "../../domain/worktrees/manage
 import type { WorktreeOperationCatalogUpdate } from "../../domain/worktrees/worktree-operation-data";
 import type { ManagedWorktreeError } from "../../services/worktrees/ManagedWorktrees";
 import type { VsCodeServerError } from "../../services/vscode/VsCodeServer";
+import type { BrowserError } from "../../services/browser/Browser";
 import type { WorkspaceFileError } from "../../services/filesystem/WorkspaceFiles";
 import type { ProjectError } from "../../domain/projects/project-error";
 import type {
@@ -593,6 +594,15 @@ export interface CakeIpcClientService {
     | "close-working-directory-terminals",
     TerminalError
   >;
+  readonly browser: RpcOperations<
+    | "open-browser"
+    | "get-browser-state"
+    | "update-browser-bounds"
+    | "navigate-browser"
+    | "browser-action"
+    | "inspect-browser-element",
+    BrowserError
+  >;
   readonly vscode: RpcOperations<
     | "get-embedded-editor-state"
     | "set-vscode-server-path"
@@ -682,6 +692,9 @@ export interface CakeIpcClientService {
         | "project-session-control-requested"
         | "draw-control-requested"
         | "application-hotkey-input"
+        | "browser-entered"
+        | "browser-state-changed"
+        | "browser-element-selected"
         | "renderer-events-ready"
       >,
       TransportError
@@ -1144,6 +1157,26 @@ export const CakeIpcClientLive = Layer.effect(
         "close-working-directory-terminals": Effect.fn(
           "CakeIpcClient.terminals.close-working-directory-terminals",
         )((payload) => client("terminals.close-working-directory-terminals", payload)),
+      },
+      browser: {
+        "open-browser": Effect.fn("CakeIpcClient.browser.open-browser")((payload) =>
+          client("browser.open-browser", payload),
+        ),
+        "get-browser-state": Effect.fn("CakeIpcClient.browser.get-browser-state")((payload) =>
+          client("browser.get-browser-state", payload),
+        ),
+        "update-browser-bounds": Effect.fn("CakeIpcClient.browser.update-browser-bounds")(
+          (payload) => client("browser.update-browser-bounds", payload),
+        ),
+        "navigate-browser": Effect.fn("CakeIpcClient.browser.navigate-browser")((payload) =>
+          client("browser.navigate-browser", payload),
+        ),
+        "browser-action": Effect.fn("CakeIpcClient.browser.browser-action")((payload) =>
+          client("browser.browser-action", payload),
+        ),
+        "inspect-browser-element": Effect.fn("CakeIpcClient.browser.inspect-browser-element")(
+          (payload) => client("browser.inspect-browser-element", payload),
+        ),
       },
       vscode: {
         observeState: () => client("vscode.observeState", undefined),

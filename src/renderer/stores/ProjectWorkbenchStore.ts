@@ -13,6 +13,7 @@ import type {
   AgentAvailabilityState,
 } from "../../domain/application/agent-availability-data";
 import { EmbeddedEditorStore } from "./EmbeddedEditorStore";
+import { BrowserStore } from "./BrowserStore";
 import type { ReviewsStore } from "./ReviewsStore";
 import type { ExtensionUiStore } from "./ExtensionUiStore";
 import type { ProjectCatalogStore } from "./ProjectCatalogStore";
@@ -139,6 +140,24 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       enterProjectSidebarMode: () => this.props.enterIdeSidebarMode(),
       leaveProjectSidebarMode: () => this.props.leaveIdeSidebarMode(),
       projectSidebarWidth: () => this.props.projectSidebarWidth(),
+    });
+  }
+
+  @child
+  get browserStore(): BrowserStore {
+    return createStore(BrowserStore, {
+      sessionId: () => this.activeSessionId,
+      presentationMode: () => this.activeSession?.presentationMode ?? "normal",
+      setPresentationMode: (mode) => this.activeSession?.showPresentation(mode),
+      chatSidebarVisible: () => this.activeSession?.workspaceChatSidebarVisible ?? true,
+      chatSidebarWidth: () => this.activeSession?.workspaceChatSidebarWidth ?? 420,
+      setChatSidebarWidth: (width) => this.activeSession?.setWorkspaceChatSidebarWidth(width),
+      appendAttachment: (attachment) =>
+        this.activeSession?.conversationSessionStore.composerStore.draftStore.appendAttachments([
+          attachment,
+        ]),
+      enterProjectSidebarMode: () => this.props.enterIdeSidebarMode(),
+      leaveProjectSidebarMode: () => this.props.leaveIdeSidebarMode(),
     });
   }
 
@@ -537,6 +556,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     if (this.activeSession?.presentationMode === "draw")
       void this.activeSession.drawStore.flush().catch(() => undefined);
     this.embeddedEditorStore.suspend();
+    this.browserStore.suspend();
   }
 
   private async flushDrawBeforeLeaving() {
@@ -558,6 +578,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       undefined,
     );
     this.embeddedEditorStore.suspend();
+    this.browserStore.suspend();
     session?.showPresentation("normal");
     session?.conversationSessionStore.composerStore.draftStore.requestFocus();
   }
@@ -568,6 +589,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       void this.embeddedEditorStore.restore(this.activeSession.takePendingEditorLocation());
     else if (this.activeSession.presentationMode === "draw")
       void this.activeSession.drawStore.initialize();
+    else if (this.activeSession.presentationMode === "browser") void this.browserStore.restore();
   }
 
   /** Switches a session to VS Code without changing the window's focused conversation. */
@@ -781,7 +803,18 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     if (!(await this.flushDrawBeforeLeaving())) return;
     this.commandPaneStore.dismiss();
     this.reviews.clearActiveThread();
+    this.browserStore.suspend();
     await this.embeddedEditorStore.show();
+  }
+
+  async openBrowser() {
+    if (this.activeSessionResolved || !this.activeSession || !this.projectOpenStore.projectPath)
+      return;
+    if (!(await this.flushDrawBeforeLeaving())) return;
+    this.commandPaneStore.dismiss();
+    this.reviews.clearActiveThread();
+    this.embeddedEditorStore.suspend();
+    await this.browserStore.show();
   }
 
   async openDraw() {
@@ -790,6 +823,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     this.commandPaneStore.dismiss();
     this.reviews.clearActiveThread();
     this.embeddedEditorStore.suspend();
+    this.browserStore.suspend();
     this.activeSession.showPresentation("draw");
     await this.activeSession.drawStore.initialize();
   }
@@ -949,6 +983,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       return;
     if (!(await this.flushDrawBeforeLeaving())) return;
     this.commandPaneStore.dismiss();
+    this.browserStore.suspend();
     await this.embeddedEditorStore.show(location);
   }
 
@@ -993,6 +1028,8 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
 
   receive(event: StoreEvent) {
     this.projectOpenStore.receive(event);
+    if (event.type === "browser-state-changed" || event.type === "browser-element-selected")
+      this.browserStore.receive(event);
     if (
       event.type === "embedded-editor-selection" ||
       event.type === "embedded-editor-selection-cleared"
@@ -1034,6 +1071,16 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     if (event.type === "embedded-editor-entered") {
       if (event.workspacePath === this.projectOpenStore.projectPath)
         this.embeddedEditorStore.showAgentEditor();
+      return;
+    }
+    if (event.type === "browser-entered") {
+      if (
+        event.workspacePath === this.projectOpenStore.projectPath &&
+        event.sessionId === this.activeSessionId
+      ) {
+        this.embeddedEditorStore.suspend();
+        this.browserStore.showAgentBrowser();
+      }
       return;
     }
     if (event.type === "embedded-editor-side-chat-requested") {

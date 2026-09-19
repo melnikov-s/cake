@@ -66,6 +66,16 @@ export interface EmbeddedEditorStateSnapshot {
   readonly customPath?: string;
 }
 
+export interface BrowserStateSnapshot {
+  readonly sessionId: string;
+  readonly url: string;
+  readonly title: string;
+  readonly loading: boolean;
+  readonly canGoBack: boolean;
+  readonly canGoForward: boolean;
+  readonly inspecting: boolean;
+}
+
 type TerminalTarget = { readonly workingDirectory: string };
 
 type SessionContextMenuAction = {
@@ -135,6 +145,37 @@ interface ElectronCommands {
     open: boolean,
     options?: ClientCommandOptions,
   ): Promise<void>;
+}
+
+interface BrowserCommands {
+  open(
+    sessionId: string,
+    url?: string,
+    options?: ClientCommandOptions,
+  ): Promise<BrowserStateSnapshot>;
+  state(sessionId: string, options?: ClientCommandOptions): Promise<BrowserStateSnapshot>;
+  updateBounds(
+    input: {
+      sessionId: string;
+      visible: boolean;
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    },
+    options?: ClientCommandOptions,
+  ): Promise<BrowserStateSnapshot>;
+  navigate(
+    sessionId: string,
+    url: string,
+    options?: ClientCommandOptions,
+  ): Promise<BrowserStateSnapshot>;
+  action(
+    sessionId: string,
+    action: "back" | "forward" | "reload" | "stop",
+    options?: ClientCommandOptions,
+  ): Promise<BrowserStateSnapshot>;
+  inspect(sessionId: string, options?: ClientCommandOptions): Promise<BrowserStateSnapshot>;
 }
 
 interface FilesystemCommands {
@@ -444,6 +485,7 @@ export interface Client {
   readonly workspaces: WorkspaceCommands;
   readonly managedWorktrees: ManagedWorktreeCommands;
   readonly terminals: TerminalCommands;
+  readonly browser: BrowserCommands;
   readonly vscode: VsCodeCommands;
   readonly artifacts: ArtifactCommands;
   readonly inlineWidgets: InlineWidgetCommands;

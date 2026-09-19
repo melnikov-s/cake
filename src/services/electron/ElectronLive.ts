@@ -752,6 +752,9 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
         "project-session-control-requested",
         "draw-control-requested",
         "application-hotkey-input",
+        "browser-entered",
+        "browser-state-changed",
+        "browser-element-selected",
       ),
     artifacts: (connectionId) =>
       focused(

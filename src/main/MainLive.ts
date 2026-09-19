@@ -12,6 +12,7 @@ import { makeSubagentEnvironmentLive } from "../layers/SubagentEnvironmentLive";
 import { WorktreeLandingAgentLive } from "../layers/WorktreeLandingAgentLive";
 import { WorktreeLandingCompletionLive } from "../layers/WorktreeLandingCompletionLive";
 import { AgentAvailability } from "../services/pi/AgentAvailability";
+import { BrowserLive } from "../services/browser/BrowserLive";
 import { makeElectronLive } from "../services/electron/ElectronLive";
 import { makeWorkspaceFilesLive } from "../services/filesystem/WorkspaceFilesLive";
 import { WorkspaceFileExportLive } from "../services/filesystem/WorkspaceFileExport";
@@ -134,6 +135,7 @@ export const makeMainLive = (options: MainLiveOptions) => {
     Layer.mergeAll(
       makeTerminalLive(),
       WorkspaceFileExportLive,
+      BrowserLive,
       makeVsCodeServerLive({
         root: join(options.userData, "vscode-editor"),
         companionManifest: options.companionManifest,

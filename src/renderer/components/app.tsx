@@ -25,6 +25,7 @@ import { IconButton } from "@/components/ui/icon-button";
 import {
   ArtifactIcon,
   BackIcon,
+  BrowserIcon,
   ChangesIcon,
   ChatIcon,
   FolderIcon,
@@ -40,6 +41,7 @@ import { SessionAssistant } from "@/components/session-assistant";
 import { ResizeHandle } from "@/components/ui/resize-handle";
 import { UiHintMode } from "@/components/ui/ui-hint-mode";
 import { IdeWorkspace } from "@/components/ide-workspace";
+import { BrowserWorkspace } from "@/components/browser-workspace";
 import { SettingsPage } from "@/components/settings-page";
 import { ToastHost } from "@/components/toast-host";
 import { WorktreePill } from "@/components/worktree-pill";
@@ -523,6 +525,15 @@ export const App = observer(function App() {
           <WhiteboardIcon />
         </IconButton>
         <IconButton
+          tooltip="Open Browser Mode"
+          onClick={() => {
+            focusPane();
+            void store.openBrowser();
+          }}
+        >
+          <BrowserIcon />
+        </IconButton>
+        <IconButton
           data-cake-hint-key="v"
           tooltip="Open VS Code"
           onClick={() => {
@@ -743,6 +754,52 @@ export const App = observer(function App() {
               onChatSidebarWidthChange={(width) => session.setWorkspaceChatSidebarWidth(width)}
             />
           </Suspense>
+        </StoreProvider>
+        {!terminal.docked && (
+          <QuakeTerminal store={terminal} retirement={root.workingDirectoryRetirementStore} />
+        )}
+        <SessionContinuationDialog store={store.sessionContinuationStore} />
+        <TreeNavigationDialog store={store.commandPaneStore} />
+        <UiHintMode store={root.uiHintModeStore} />
+      </>
+    );
+
+  if (
+    session?.presentationMode === "browser" &&
+    !store.activeSessionResolved &&
+    store.browserStore.visible &&
+    projectTranscriptBehavior
+  )
+    return (
+      <>
+        <StoreProvider key={session.sessionId} store={session}>
+          <BrowserWorkspace
+            browser={store.browserStore}
+            projectSidebar={projectSidebar}
+            projectSidebarVisible={!sidebarCollapsed}
+            projectSidebarWidth={displayedSidebarWidth}
+            onProjectSidebarWidthChange={setSidebarWidth}
+            onBackToAgent={() => void store.backToAgent()}
+            projectChat={session.conversationSessionStore.chatStore}
+            sideChat={session.conversationSessionStore.sideChatStore}
+            headerActions={
+              <>
+                <SideChatsMenu store={session} />
+                {artifactControl(session)}
+              </>
+            }
+            conversationAccessory={workspaceConversationAccessory}
+            projectComposerHeader={projectComposerHeader}
+            projectComposerContent={workspaceComposerContent}
+            projectComposerLeadingAccessory={projectComposerLeadingAccessory(session)}
+            sessionTitle={store.sessionTitle}
+            terminalDock={
+              terminal.docked ? (
+                <QuakeTerminal store={terminal} retirement={root.workingDirectoryRetirementStore} />
+              ) : undefined
+            }
+            transcriptBehavior={projectTranscriptBehavior}
+          />
         </StoreProvider>
         {!terminal.docked && (
           <QuakeTerminal store={terminal} retirement={root.workingDirectoryRetirementStore} />

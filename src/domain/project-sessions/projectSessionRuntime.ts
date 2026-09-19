@@ -1,7 +1,7 @@
 import * as sessionFamilies from "../session-families/sessionFamilies";
 import * as projectSessionLocations from "./projectSessionLocations";
 import * as managedWorktrees from "../worktrees/managedWorktrees";
-import { Effect, Schema, Schedule } from "effect";
+import { Effect, Option, Schema, Schedule } from "effect";
 import {
   setProjectSessionLabelsIfUnlabelled,
   setSessionFastMode,
@@ -41,6 +41,7 @@ import {
 import type { SubagentCoordinator } from "../../services/subagents/SubagentCoordinator";
 import type { SubagentEnvironment } from "../../services/subagents/SubagentEnvironment";
 import { VsCodeServer } from "../../services/vscode/VsCodeServer";
+import { Browser } from "../../services/browser/Browser";
 import { ManagedWorktrees } from "../../services/worktrees/ManagedWorktrees";
 import type { Terminal } from "../../services/terminal/Terminal";
 import { toJsonValue } from "../../utils/to-json-value";
@@ -89,6 +90,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
   const sessions = yield* PiSessions;
   const families = yield* SessionFamilyStorage;
   const catalogs = yield* SessionCatalogChanges;
+  const browser = yield* Effect.serviceOption(Browser);
   const vscode = yield* VsCodeServer;
   const worktrees = yield* ManagedWorktrees;
   const context = yield* Effect.context<
@@ -689,6 +691,30 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
                   workspacePath: location.workingDirectory,
                   ...message,
                 }),
+              ),
+          }
+        : undefined,
+      browserControl: Option.isSome(browser)
+        ? {
+            enter: (signal) =>
+              run(browser.value.enterProjectBrowser(sessionId, location.workingDirectory), {
+                signal,
+              }),
+            cdp: (method, params, signal) =>
+              run(
+                browser.value.sendProjectCdp(sessionId, location.workingDirectory, method, params),
+                { signal },
+              ),
+            events: (methods, limit, clear, signal) =>
+              run(
+                browser.value.takeProjectCdpEvents(
+                  sessionId,
+                  location.workingDirectory,
+                  methods,
+                  limit,
+                  clear,
+                ),
+                { signal },
               ),
           }
         : undefined,

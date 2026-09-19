@@ -300,6 +300,16 @@ export const projectAttachments = (values: ReadonlyArray<Attachment>): ReadonlyA
             },
           },
         };
+      case "browser":
+        return {
+          kind: "browser",
+          name: value.name,
+          url: value.url,
+          tagName: value.tagName,
+          selector: value.selector,
+          outerHTML: value.outerHTML,
+          text: value.text,
+        };
       case "annotation":
         return {
           kind: "annotation",

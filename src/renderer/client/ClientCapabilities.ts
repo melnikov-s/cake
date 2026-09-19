@@ -15,6 +15,7 @@ export type ClientCapabilities = Pick<
   | "workspaces"
   | "managedWorktrees"
   | "terminals"
+  | "browser"
   | "vscode"
   | "artifacts"
   | "inlineWidgets"
@@ -388,6 +389,55 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
               workingDirectory,
             }),
           requestId,
+          options,
+        );
+      },
+    },
+    browser: {
+      open: (sessionId, url, options) => {
+        const requestId = crypto.randomUUID();
+        return execute(
+          "browser.open-browser",
+          (client) =>
+            client.browser["open-browser"]({ requestId, sessionId, ...(url ? { url } : null) }),
+          options,
+        );
+      },
+      state: (sessionId, options) =>
+        execute(
+          "browser.get-browser-state",
+          (client) => client.browser["get-browser-state"]({ sessionId }),
+          options,
+        ),
+      updateBounds: (input, options) => {
+        const requestId = crypto.randomUUID();
+        return execute(
+          "browser.update-browser-bounds",
+          (client) => client.browser["update-browser-bounds"]({ requestId, ...input }),
+          options,
+        );
+      },
+      navigate: (sessionId, url, options) => {
+        const requestId = crypto.randomUUID();
+        return execute(
+          "browser.navigate-browser",
+          (client) => client.browser["navigate-browser"]({ requestId, sessionId, url }),
+          options,
+        );
+      },
+      action: (sessionId, action, options) => {
+        const requestId = crypto.randomUUID();
+        return execute(
+          "browser.browser-action",
+          (client) => client.browser["browser-action"]({ requestId, sessionId, action }),
+          options,
+        );
+      },
+      inspect: (sessionId, options) => {
+        const requestId = crypto.randomUUID();
+        return execute(
+          "browser.inspect-browser-element",
+          (client) => client.browser["inspect-browser-element"]({ requestId, sessionId }),
           options,
         );
       },

@@ -75,7 +75,27 @@ export type StoreEvent =
     }
   | { type: "embedded-editor-toggle-chat"; workspacePath: string }
   | { type: "embedded-editor-toggle-sidebar"; workspacePath: string }
-  | { type: "embedded-editor-selection-cleared"; workspacePath: string };
+  | { type: "embedded-editor-selection-cleared"; workspacePath: string }
+  | { type: "browser-entered"; sessionId: string; workspacePath: string }
+  | {
+      type: "browser-state-changed";
+      sessionId: string;
+      url: string;
+      title: string;
+      loading: boolean;
+      canGoBack: boolean;
+      canGoForward: boolean;
+      inspecting: boolean;
+    }
+  | {
+      type: "browser-element-selected";
+      sessionId: string;
+      url: string;
+      tagName: string;
+      selector: string;
+      outerHTML: string;
+      text: string;
+    };
 
 export function toStoreEvent(event: CakeEvent): StoreEvent | undefined {
   if (event.type === "artifact-requested")
@@ -135,7 +155,10 @@ export function toStoreEvent(event: CakeEvent): StoreEvent | undefined {
     event.type === "embedded-editor-selection-cleared" ||
     event.type === "embedded-editor-entered" ||
     event.type === "embedded-editor-annotation-requested" ||
-    event.type === "embedded-editor-side-chat-requested"
+    event.type === "embedded-editor-side-chat-requested" ||
+    event.type === "browser-entered" ||
+    event.type === "browser-state-changed" ||
+    event.type === "browser-element-selected"
   )
     return event;
   return undefined;

@@ -38,6 +38,7 @@ import {
 } from "./cake-artifact-operations";
 import { createCakeModelOperations } from "./cake-model-operations";
 import { createCakeVscodeOperations } from "./cake-vscode-operations";
+import { createCakeBrowserOperations } from "./cake-browser-operations";
 import { createCakeDrawOperations } from "./cake-draw-operations";
 import { createCakeWorktreeOperations } from "./cake-worktree-operations";
 import {
@@ -1430,6 +1431,9 @@ export async function createCakeRuntimeCapabilities(input: {
                     ...(options.vscodeControl
                       ? createCakeVscodeOperations(options.vscodeControl)
                       : []),
+                    ...(options.browserControl
+                      ? createCakeBrowserOperations(options.browserControl)
+                      : []),
                     ...(drawControl ? createCakeDrawOperations(drawControl) : []),
                     ...(options.worktreeLandingControl
                       ? createCakeWorktreeOperations(options.worktreeLandingControl)
@@ -1503,6 +1507,9 @@ export async function createCakeRuntimeCapabilities(input: {
                     }),
                     ...(options.vscodeControl
                       ? createCakeVscodeOperations(options.vscodeControl)
+                      : []),
+                    ...(options.browserControl
+                      ? createCakeBrowserOperations(options.browserControl)
                       : []),
                     ...(drawControl ? createCakeDrawOperations(drawControl) : []),
                     ...(options.worktreeLandingControl
