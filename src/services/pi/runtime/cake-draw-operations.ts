@@ -104,7 +104,9 @@ export function createCakeDrawOperations(control: CakeDrawControl): CakeOperatio
       "enter and open explicitly foreground Cake Draw. read, render, mermaid, and apply never switch the user's board or mode; follow their recovery code when Draw is not visible.",
       "User drawing never triggers an agent turn. Every agent canvas change requires an explicit draw.mermaid or draw.apply call.",
       "Prefer draw.mermaid for architecture, flow, sequence, class, state, and entity-relationship diagrams. It produces native editable Excalidraw elements without manual placement.",
-      "Use draw.apply for freeform drawings, small targeted edits, or diagram types Mermaid cannot express. enter and open return the visible viewport and shape bounds for manual placement.",
+      "Use draw.apply for freeform drawings, small targeted edits, or diagram types Mermaid cannot express. enter and open return the visible viewport, selection, shape bounds, and compact style summaries for manual placement and editing.",
+      "Edit existing shapes without replacing them: update changes position, size, endpoints, rotation, text, opacity, or rectangle/ellipse/diamond geometry while preserving the shape ID; style applies colors, fill, stroke, opacity, roundness, typography/alignment, or arrowheads to one or more IDs.",
+      "Selection and arrangement operations include select (an empty IDs list clears selection), zoom-to, move, align, distribute, four layer-order operations, set-locked, and delete. Use read scope selection to inspect the current selection.",
       `Keep each draw.apply to one visible stage of at most ${DRAW_APPLY_MAX_OPERATIONS} operations (for example, one region, then connections, then cleanup). Use another apply for the next stage so the user sees steady progress.`,
       "draw.apply is presented on the canvas operation by operation, then persisted once; order node creation before connections so the user can follow the construction. Use draw.read or draw.render between major stages when visual feedback could improve accuracy.",
     ],
@@ -293,7 +295,7 @@ export function createCakeDrawOperations(control: CakeDrawControl): CakeOperatio
     operation({
       command: "draw.apply",
       summary:
-        "Apply an explicit bounded semantic operation batch to the open board and durably flush it.",
+        "Create, select, move, resize, restyle, arrange, lock, or delete shapes on the open board, preserving existing IDs.",
       schema: Schema.Struct({
         boardId: optionalBoardId,
         operations: Schema.Array(DrawOperation).check(
@@ -327,10 +329,26 @@ export function createCakeDrawOperations(control: CakeDrawControl): CakeOperatio
             },
           },
           { type: "connect", fromId: "idea", toId: "result" },
+          {
+            type: "style",
+            ids: ["idea", "result"],
+            style: {
+              strokeColor: "blue",
+              backgroundColor: "light-blue",
+              fill: "solid",
+              roundness: "round",
+            },
+          },
+          { type: "update", id: "result", width: 280, height: 140, geo: "ellipse" },
         ],
       },
       result:
-        "The open board ID and a compact created, updated, and deleted shape receipt after animated playback and durable flush. Use draw.read when the next stage needs resulting positions.",
+        "The open board ID and a compact created, updated, and deleted shape receipt after animated playback and durable flush. Updated shapes retain their IDs. Use draw.read when the next stage needs resulting geometry or styles.",
+      limitations: [
+        "Geometry conversion is intentionally limited to rectangle, ellipse, and diamond. Linear shapes resize through endX/endY; free-draw point editing is not exposed.",
+        "Fill/background/roundness apply only to rectangle, ellipse, and diamond; typography applies only to text or labeled shapes; arrowheads apply only to lines and arrows.",
+        "The semantic agent protocol does not expose raw Excalidraw patches, clipboard actions, image import, freehand creation, grouping, hyperlinks, or undo/redo.",
+      ],
       execute: async (input, signal) => {
         requireMutable(control);
         const response = requireSuccess(await control.request({ _tag: "Apply", ...input }, signal));

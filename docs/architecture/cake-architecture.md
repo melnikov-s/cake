@@ -471,9 +471,14 @@ The window Store hierarchy mirrors the product surfaces:
   in the renderer into native editable Excalidraw elements, centers them in the visible viewport,
   and persists the resulting scene. Manual agent edit batches are validated before mutation,
   presented on the visible canvas operation by operation with active-shape focus and bounded camera
-  following, then persisted once after playback. Opening a board returns viewport and shape bounds;
-  later shapes can use relative placement against stable shape IDs so Pi can reason about layout
-  without raw Excalidraw elements. Drawing gestures trigger persistence, never autonomous Pi turns.
+  following, then persisted once after playback. Opening or reading a board returns viewport,
+  selection, shape bounds, and compact style summaries; later shapes can use relative placement
+  against stable shape IDs so Pi can reason about layout without raw Excalidraw elements. Explicit
+  semantic operations preserve existing IDs while changing geometry, text, colors, fill, strokes,
+  typography/alignment, arrowheads, locking, selection, position, alignment, distribution, and
+  layer order. Raw Excalidraw elements, arbitrary patches, freehand point arrays, and unbounded
+  batches never cross the control boundary. Drawing gestures trigger persistence, never
+  autonomous Pi turns.
   Each child owns its own operation
   state and lifetime; the workbench does not re-export one-for-one child APIs.
 - The root-scoped `SessionRegistryStore` preserves one keyed

@@ -225,6 +225,196 @@ describe("DrawEditorAdapter", () => {
     expect(
       adapter.read({ scope: "page" }).shapes.find(({ id }) => id === "shape:arrow")?.text,
     ).toBe("standalone");
+
+    adapter.apply({
+      operations: [
+        { type: "update", id: "arrow", endX: 320, endY: 180 },
+        {
+          type: "style",
+          ids: ["arrow"],
+          style: { startArrowhead: "dot", endArrowhead: "triangle", strokeStyle: "dotted" },
+        },
+      ],
+    });
+    const updatedArrow = harness
+      .elements()
+      .find(
+        (element): element is Extract<ExcalidrawElement, { type: "arrow" }> =>
+          element.id === "shape:arrow" && element.type === "arrow",
+      );
+    expect(updatedArrow).toMatchObject({
+      id: "shape:arrow",
+      startArrowhead: "dot",
+      endArrowhead: "triangle",
+      strokeStyle: "dotted",
+    });
+    expect(updatedArrow?.points.at(-1)).toEqual([300, 150]);
+    expect(
+      adapter.read({ scope: "page" }).shapes.find(({ id }) => id === "shape:arrow")?.style,
+    ).toMatchObject({
+      startArrowhead: "dot",
+      endArrowhead: "triangle",
+      strokeStyle: "dotted",
+    });
+  });
+
+  it("resizes, converts, and restyles an existing labeled shape without replacing its ID", () => {
+    adapter.apply({
+      operations: [
+        {
+          type: "create",
+          shape: {
+            id: "card",
+            type: "geo",
+            x: 40,
+            y: 50,
+            width: 160,
+            height: 90,
+            text: "Editable",
+          },
+        },
+      ],
+    });
+    const originalIds = harness.elements().map(({ id }) => id);
+
+    const receipt = adapter.apply({
+      operations: [
+        {
+          type: "update",
+          id: "card",
+          x: 80,
+          y: 100,
+          width: 280,
+          height: 140,
+          geo: "ellipse",
+          text: "Still the same shape",
+        },
+        {
+          type: "style",
+          ids: ["card"],
+          style: {
+            strokeColor: "blue",
+            backgroundColor: "light-blue",
+            fill: "solid",
+            strokeWidth: 4,
+            strokeStyle: "dashed",
+            roughness: 0,
+            opacity: 0.75,
+            roundness: "round",
+            fontSize: 32,
+            fontFamily: "monospace",
+            textAlign: "center",
+            verticalAlign: "middle",
+          },
+        },
+      ],
+    });
+
+    expect(receipt.createdIds).toEqual([]);
+    expect(receipt.deletedIds).toEqual([]);
+    expect(receipt.updatedIds).toEqual(["shape:card"]);
+    expect(harness.elements().map(({ id }) => id)).toEqual(originalIds);
+    expect(harness.elements().find(({ id }) => id === "shape:card")).toMatchObject({
+      id: "shape:card",
+      type: "ellipse",
+      x: 80,
+      y: 100,
+      width: 280,
+      height: 140,
+      strokeColor: "#1971c2",
+      backgroundColor: "#4dabf7",
+      fillStyle: "solid",
+      strokeWidth: 4,
+      strokeStyle: "dashed",
+      roughness: 0,
+      opacity: 75,
+    });
+    const summary = adapter.read({ scope: "page" }).shapes[0];
+    expect(summary).toMatchObject({
+      id: "shape:card",
+      type: "ellipse",
+      bounds: { x: 80, y: 100, width: 280, height: 140 },
+      text: "Still the same shape",
+      style: {
+        strokeColor: "#1971c2",
+        backgroundColor: "#4dabf7",
+        fill: "solid",
+        strokeWidth: 4,
+        strokeStyle: "dashed",
+        roughness: 0,
+        opacity: 0.75,
+        roundness: "round",
+        fontSize: 32,
+        fontFamily: "monospace",
+        textAlign: "center",
+        verticalAlign: "middle",
+        locked: false,
+      },
+    });
+  });
+
+  it("applies selection, movement, shared style, layer, and locking workflows", () => {
+    adapter.apply({
+      operations: [
+        {
+          type: "create",
+          shape: { id: "first", type: "geo", x: 0, y: 0, width: 80, height: 60 },
+        },
+        {
+          type: "create",
+          shape: { id: "second", type: "geo", x: 120, y: 0, width: 80, height: 60 },
+        },
+      ],
+    });
+
+    const receipt = adapter.apply({
+      operations: [
+        {
+          type: "style",
+          ids: ["first", "second"],
+          style: { strokeColor: "red", backgroundColor: "yellow", fill: "pattern" },
+        },
+        { type: "move", ids: ["first", "second"], deltaX: 25, deltaY: 40 },
+        { type: "bring-to-front", ids: ["first"] },
+        { type: "set-locked", ids: ["first", "second"], locked: true },
+        { type: "select", ids: ["first", "second"] },
+      ],
+    });
+
+    expect(new Set(receipt.updatedIds)).toEqual(new Set(["shape:first", "shape:second"]));
+    expect(adapter.read({ scope: "selection" }).selectedShapeIds).toEqual([
+      "shape:first",
+      "shape:second",
+    ]);
+    expect(
+      adapter.read({ scope: "page" }).shapes.map(({ id, bounds, style }) => ({
+        id,
+        x: bounds?.x,
+        y: bounds?.y,
+        strokeColor: style.strokeColor,
+        fill: style.fill,
+        locked: style.locked,
+      })),
+    ).toEqual(
+      expect.arrayContaining([
+        {
+          id: "shape:first",
+          x: 25,
+          y: 40,
+          strokeColor: "#e03131",
+          fill: "pattern",
+          locked: true,
+        },
+        {
+          id: "shape:second",
+          x: 145,
+          y: 40,
+          strokeColor: "#e03131",
+          fill: "pattern",
+          locked: true,
+        },
+      ]),
+    );
   });
 
   it("validates the full batch before mutation", () => {
@@ -275,6 +465,44 @@ describe("DrawEditorAdapter", () => {
         ],
       }),
     ).toThrow("Unsupported shape color");
+
+    adapter.apply({
+      operations: [
+        {
+          type: "create",
+          shape: { id: "plain", type: "geo", x: 0, y: 0, width: 20, height: 20 },
+        },
+        {
+          type: "create",
+          shape: { id: "linear", type: "arrow", x: 50, y: 0, endX: 100, endY: 20 },
+        },
+      ],
+    });
+    const beforeInvalidEdit = JSON.stringify(harness.elements());
+    expect(() =>
+      adapter.apply({
+        operations: [
+          { type: "move", ids: ["plain"], deltaX: 100, deltaY: 0 },
+          { type: "style", ids: ["plain"], style: { fontSize: 40 } },
+        ],
+      }),
+    ).toThrow("Typography requires text or a labeled shape");
+    expect(JSON.stringify(harness.elements())).toBe(beforeInvalidEdit);
+    expect(() =>
+      adapter.apply({
+        operations: [{ type: "update", id: "linear", width: 200 }],
+      }),
+    ).toThrow("use endX/endY");
+    expect(() =>
+      adapter.apply({
+        operations: [{ type: "update", id: "plain" }],
+      }),
+    ).toThrow("update must change at least one property");
+    expect(() =>
+      adapter.apply({
+        operations: [{ type: "style", ids: ["plain"], style: {} }],
+      }),
+    ).toThrow("style must change at least one property");
   });
 
   it("reads selection and viewport scopes and marks truncated text", () => {

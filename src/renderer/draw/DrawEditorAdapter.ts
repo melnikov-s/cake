@@ -2,6 +2,8 @@
 import { parseMermaidToExcalidraw } from "@excalidraw/mermaid-to-excalidraw";
 import {
   CaptureUpdateAction,
+  FONT_FAMILY,
+  ROUNDNESS,
   convertToExcalidrawElements,
   exportToBlob,
   exportToSvg,
@@ -11,6 +13,7 @@ import {
   viewportCoordsToSceneCoords,
 } from "@excalidraw/excalidraw";
 import type {
+  Arrowhead,
   ExcalidrawElement,
   ExcalidrawTextElement,
   OrderedExcalidrawElement,
@@ -22,6 +25,7 @@ import {
   DRAW_SNAPSHOT_VERSION,
 } from "./DrawDocumentValidation";
 import type {
+  DrawArrowhead,
   DrawCreateShape,
   DrawDocumentSnapshot,
   DrawEditorController,
@@ -30,7 +34,9 @@ import type {
   DrawPlaybackOptions,
   DrawReadScope,
   DrawRelativeShape,
+  DrawShapeStyle,
   DrawShapeSummary,
+  DrawStyleUpdate,
 } from "../../domain/draw/draw-editor";
 
 export interface DrawEditorAdapter extends DrawEditorController {
@@ -140,6 +146,46 @@ function color(value: string | undefined, fallback = colorPalette.get("black")!)
   if (!colorPalette.has(value) && !/^#[0-9a-f]{3,8}$/i.test(value))
     throw new Error(`Unsupported shape color: ${value}`);
   return resolved;
+}
+
+const fontFamilies = {
+  "hand-drawn": FONT_FAMILY.Excalifont,
+  "sans-serif": FONT_FAMILY.Helvetica,
+  monospace: FONT_FAMILY.Cascadia,
+} as const;
+
+function fontFamilyName(value: number) {
+  if (value === fontFamilies["hand-drawn"]) return "hand-drawn" as const;
+  if (value === fontFamilies["sans-serif"]) return "sans-serif" as const;
+  if (value === fontFamilies.monospace) return "monospace" as const;
+  return undefined;
+}
+
+function arrowhead(value: DrawArrowhead): Arrowhead | null {
+  return value === "none" ? null : value;
+}
+
+function arrowheadName(value: Arrowhead | null): DrawArrowhead {
+  if (
+    value === "arrow" ||
+    value === "bar" ||
+    value === "dot" ||
+    value === "circle" ||
+    value === "triangle" ||
+    value === "diamond"
+  )
+    return value;
+  return "none";
+}
+
+function fillStyle(fill: DrawStyleUpdate["fill"]) {
+  return fill === "solid"
+    ? "solid"
+    : fill === "pattern"
+      ? "cross-hatch"
+      : fill === "semi"
+        ? "hachure"
+        : undefined;
 }
 
 function nonDeleted(api: ExcalidrawImperativeAPI) {
@@ -266,10 +312,76 @@ function uniqueTargetIds(values: readonly string[], operation: string) {
   return ids;
 }
 
-function requireTargets(known: ReadonlySet<string>, ids: readonly string[], operation: string) {
+function requireTargetCount(ids: readonly string[], operation: string, minimum: number) {
+  if (ids.length < minimum)
+    throw new Error(
+      `${operation} requires at least ${minimum} shape target${minimum === 1 ? "" : "s"}`,
+    );
+}
+
+interface KnownShape {
+  readonly type: ExcalidrawElement["type"];
+  readonly hasText: boolean;
+}
+
+function requireTargets(
+  known: ReadonlyMap<string, KnownShape>,
+  ids: readonly string[],
+  operation: string,
+) {
   for (const id of ids) {
     if (!known.has(id)) throw new Error(`Shape not found for ${operation}: ${id}`);
   }
+}
+
+function knownCreatedShape(shape: DrawCreateShape | DrawRelativeShape): KnownShape {
+  if (shape.type === "geo")
+    return { type: shape.geo ?? "rectangle", hasText: shape.text !== undefined };
+  if (shape.type === "note") return { type: "rectangle", hasText: true };
+  return { type: shape.type, hasText: shape.type === "text" || shape.text !== undefined };
+}
+
+function validateStyleUpdate(style: DrawStyleUpdate, targets: readonly KnownShape[]) {
+  if (Object.values(style).every((value) => value === undefined))
+    throw new Error("style must change at least one property");
+  if (style.strokeColor !== undefined) color(style.strokeColor);
+  if (style.backgroundColor !== undefined) color(style.backgroundColor);
+  if (
+    style.strokeWidth !== undefined &&
+    (!Number.isFinite(style.strokeWidth) || style.strokeWidth <= 0 || style.strokeWidth > 20)
+  )
+    throw new Error("strokeWidth must be greater than zero and at most 20");
+  if (
+    style.fontSize !== undefined &&
+    (!Number.isFinite(style.fontSize) || style.fontSize < 1 || style.fontSize > 512)
+  )
+    throw new Error("fontSize must be between 1 and 512");
+  if (
+    style.opacity !== undefined &&
+    (!Number.isFinite(style.opacity) || style.opacity < 0 || style.opacity > 1)
+  )
+    throw new Error("opacity must be between 0 and 1");
+  const needsFillable =
+    style.backgroundColor !== undefined ||
+    style.fill !== undefined ||
+    style.roundness !== undefined;
+  if (
+    needsFillable &&
+    targets.some(({ type }) => type !== "rectangle" && type !== "ellipse" && type !== "diamond")
+  )
+    throw new Error(
+      "backgroundColor, fill, and roundness require rectangle, ellipse, or diamond shapes",
+    );
+  const needsText =
+    style.fontSize !== undefined ||
+    style.fontFamily !== undefined ||
+    style.textAlign !== undefined ||
+    style.verticalAlign !== undefined;
+  if (needsText && targets.some(({ hasText }) => !hasText))
+    throw new Error("Typography requires text or a labeled shape");
+  const needsArrow = style.startArrowhead !== undefined || style.endArrowhead !== undefined;
+  if (needsArrow && targets.some(({ type }) => type !== "line" && type !== "arrow"))
+    throw new Error("Arrowheads require line or arrow shapes");
 }
 
 function prepareOperations(
@@ -279,7 +391,16 @@ function prepareOperations(
   if (operations.length === 0 || operations.length > 500)
     throw new Error("A draw batch must contain between 1 and 500 operations");
 
-  const known = new Set(visibleElements(nonDeleted(api)).map((element) => element.id));
+  const sceneElements = nonDeleted(api);
+  const known = new Map(
+    visibleElements(sceneElements).map((element) => [
+      element.id,
+      {
+        type: element.type,
+        hasText: element.type === "text" || !!boundLabel(element, sceneElements),
+      },
+    ]),
+  );
   const prepared: PreparedOperation[] = [];
   for (const operation of operations) {
     switch (operation.type) {
@@ -287,7 +408,7 @@ function prepareOperations(
         validateCreateShape(operation.shape);
         const id = operation.shape.id ? shapeId(operation.shape.id) : generatedShapeId();
         if (known.has(id)) throw new Error(`Duplicate shape ID: ${id}`);
-        known.add(id);
+        known.set(id, knownCreatedShape(operation.shape));
         prepared.push({ ...operation, id });
         break;
       }
@@ -297,7 +418,7 @@ function prepareOperations(
         const relativeTo = shapeId(operation.shape.placement.relativeTo);
         if (known.has(id)) throw new Error(`Duplicate shape ID: ${id}`);
         requireTargets(known, [relativeTo], "create-relative");
-        known.add(id);
+        known.set(id, knownCreatedShape(operation.shape));
         prepared.push({ ...operation, id, relativeTo });
         break;
       }
@@ -308,27 +429,78 @@ function prepareOperations(
         if (known.has(id)) throw new Error(`Duplicate shape ID: ${id}`);
         requireTargets(known, [fromId, toId], "connect");
         if (operation.text !== undefined) text(operation.text);
-        known.add(id);
+        known.set(id, { type: "arrow", hasText: operation.text !== undefined });
         prepared.push({ ...operation, id, fromId, toId });
         break;
       }
       case "update": {
         const id = shapeId(operation.id);
         requireTargets(known, [id], "update");
+        const target = known.get(id)!;
+        if (
+          operation.x === undefined &&
+          operation.y === undefined &&
+          operation.width === undefined &&
+          operation.height === undefined &&
+          operation.endX === undefined &&
+          operation.endY === undefined &&
+          operation.rotation === undefined &&
+          operation.opacity === undefined &&
+          operation.text === undefined &&
+          operation.geo === undefined
+        )
+          throw new Error("update must change at least one property");
         if (operation.x !== undefined) finite(operation.x, "x");
         if (operation.y !== undefined) finite(operation.y, "y");
+        if (operation.width !== undefined) positive(operation.width, "width");
+        if (operation.height !== undefined) positive(operation.height, "height");
+        if (operation.endX !== undefined) finite(operation.endX, "endX");
+        if (operation.endY !== undefined) finite(operation.endY, "endY");
         if (operation.rotation !== undefined) finite(operation.rotation, "rotation");
         if (
           operation.opacity !== undefined &&
           (!Number.isFinite(operation.opacity) || operation.opacity < 0 || operation.opacity > 1)
         )
           throw new Error("opacity must be between 0 and 1");
-        if (operation.text !== undefined) text(operation.text);
+        if (operation.text !== undefined) {
+          text(operation.text);
+          if (!target.hasText) throw new Error(`Shape does not support text: ${id}`);
+        }
+        const linear = target.type === "line" || target.type === "arrow";
+        if (
+          (operation.width !== undefined || operation.height !== undefined) &&
+          (linear || target.type === "freedraw")
+        )
+          throw new Error(
+            "width and height cannot resize line, arrow, or free-draw shapes; use endX/endY for linear shapes",
+          );
+        if ((operation.endX !== undefined || operation.endY !== undefined) && !linear)
+          throw new Error("endX and endY require a line or arrow shape");
+        if (
+          operation.geo !== undefined &&
+          target.type !== "rectangle" &&
+          target.type !== "ellipse" &&
+          target.type !== "diamond"
+        )
+          throw new Error("geo conversion requires a rectangle, ellipse, or diamond shape");
+        if (operation.geo !== undefined) known.set(id, { ...target, type: operation.geo });
+        prepared.push(operation);
+        break;
+      }
+      case "style": {
+        const ids = uniqueTargetIds(operation.ids, "style");
+        requireTargetCount(ids, "style", 1);
+        requireTargets(known, ids, "style");
+        validateStyleUpdate(
+          operation.style,
+          ids.map((id) => known.get(id)!),
+        );
         prepared.push(operation);
         break;
       }
       case "delete": {
         const ids = uniqueTargetIds(operation.ids, "delete");
+        requireTargetCount(ids, "delete", 1);
         requireTargets(known, ids, "delete");
         for (const id of ids) known.delete(id);
         prepared.push(operation);
@@ -336,6 +508,7 @@ function prepareOperations(
       }
       case "move": {
         const ids = uniqueTargetIds(operation.ids, "move");
+        requireTargetCount(ids, "move", 1);
         requireTargets(known, ids, "move");
         finite(operation.deltaX, "deltaX");
         finite(operation.deltaY, "deltaY");
@@ -345,10 +518,22 @@ function prepareOperations(
       case "align":
       case "distribute":
       case "bring-to-front":
+      case "bring-forward":
+      case "send-backward":
       case "send-to-back":
+      case "set-locked":
       case "select":
       case "zoom-to": {
         const ids = uniqueTargetIds(operation.ids, operation.type);
+        const minimum =
+          operation.type === "select"
+            ? 0
+            : operation.type === "align"
+              ? 2
+              : operation.type === "distribute"
+                ? 3
+                : 1;
+        requireTargetCount(ids, operation.type, minimum);
         requireTargets(known, ids, operation.type);
         prepared.push(operation);
         break;
@@ -606,6 +791,132 @@ function updateElementText(
   throw new Error(`Shape does not support text: ${target.id}`);
 }
 
+function recenterBoundLabel(
+  elements: readonly ExcalidrawElement[],
+  containerId: string,
+): readonly ExcalidrawElement[] {
+  const container = elementMap(elements).get(containerId);
+  if (!container) return elements;
+  const label = boundLabel(container, elements);
+  if (!label) return elements;
+  return elements.map((element) =>
+    element.id === label.id
+      ? newElementWith(label, {
+          x: container.x + (container.width - label.width) / 2,
+          y: container.y + (container.height - label.height) / 2,
+          angle: container.angle,
+        })
+      : element,
+  );
+}
+
+function updateElementGeometry(
+  elements: readonly ExcalidrawElement[],
+  id: string,
+  operation: Extract<DrawOperation, { type: "update" }>,
+) {
+  let target = elementMap(elements).get(id);
+  if (!target) throw new Error(`Shape not found: ${id}`);
+  const nextX = operation.x ?? target.x;
+  const nextY = operation.y ?? target.y;
+  let next = moveRelated(elements, new Set([id]), nextX - target.x, nextY - target.y);
+  target = elementMap(next).get(id)!;
+  if (
+    (target.type === "line" || target.type === "arrow") &&
+    (operation.endX !== undefined || operation.endY !== undefined)
+  ) {
+    const points = [...target.points];
+    const last = points.at(-1) ?? [0, 0];
+    points[points.length - 1] = [
+      (operation.endX ?? target.x + last[0]) - target.x,
+      (operation.endY ?? target.y + last[1]) - target.y,
+    ];
+    next = next.map((element) =>
+      element.id === id
+        ? newElementWith(target, {
+            points,
+            width: Math.abs(points.at(-1)![0]),
+            height: Math.abs(points.at(-1)![1]),
+            ...(operation.rotation === undefined ? null : { angle: operation.rotation }),
+            ...(operation.opacity === undefined ? null : { opacity: operation.opacity * 100 }),
+          })
+        : element,
+    );
+  } else {
+    next = next.map((element) => {
+      if (element.id !== id) return element;
+      return newElementWith(target!, {
+        ...(operation.width === undefined ? null : { width: operation.width }),
+        ...(operation.height === undefined ? null : { height: operation.height }),
+        ...(operation.rotation === undefined ? null : { angle: operation.rotation }),
+        ...(operation.opacity === undefined ? null : { opacity: operation.opacity * 100 }),
+        ...(operation.geo === undefined ? null : { type: operation.geo }),
+        ...(target!.type === "text" && operation.width !== undefined
+          ? { autoResize: false }
+          : null),
+      });
+    });
+  }
+  return recenterBoundLabel(next, id);
+}
+
+function styleTextElement(element: ExcalidrawTextElement, style: DrawStyleUpdate) {
+  return newElementWith(element, {
+    ...(style.strokeColor === undefined ? null : { strokeColor: color(style.strokeColor) }),
+    ...(style.opacity === undefined ? null : { opacity: style.opacity * 100 }),
+    ...(style.fontSize === undefined ? null : { fontSize: style.fontSize }),
+    ...(style.fontFamily === undefined ? null : { fontFamily: fontFamilies[style.fontFamily] }),
+    ...(style.textAlign === undefined ? null : { textAlign: style.textAlign }),
+    ...(style.verticalAlign === undefined ? null : { verticalAlign: style.verticalAlign }),
+  });
+}
+
+function styleElements(
+  elements: readonly ExcalidrawElement[],
+  ids: ReadonlySet<string>,
+  style: DrawStyleUpdate,
+) {
+  let next = elements.map((element) => {
+    if (element.type === "text" && element.containerId && ids.has(element.containerId))
+      return styleTextElement(element, style);
+    if (!ids.has(element.id)) return element;
+    if (element.type === "text") return styleTextElement(element, style);
+    const nextFill = fillStyle(style.fill);
+    const backgroundColor =
+      style.fill === "none"
+        ? "transparent"
+        : style.backgroundColor !== undefined
+          ? color(style.backgroundColor)
+          : style.fill !== undefined && element.backgroundColor === "transparent"
+            ? color(style.strokeColor, element.strokeColor)
+            : element.backgroundColor;
+    return newElementWith(element, {
+      ...(style.strokeColor === undefined ? null : { strokeColor: color(style.strokeColor) }),
+      ...(style.backgroundColor === undefined && style.fill === undefined
+        ? null
+        : { backgroundColor }),
+      ...(nextFill === undefined ? null : { fillStyle: nextFill }),
+      ...(style.strokeWidth === undefined ? null : { strokeWidth: style.strokeWidth }),
+      ...(style.strokeStyle === undefined ? null : { strokeStyle: style.strokeStyle }),
+      ...(style.roughness === undefined ? null : { roughness: style.roughness }),
+      ...(style.opacity === undefined ? null : { opacity: style.opacity * 100 }),
+      ...(style.roundness === undefined
+        ? null
+        : {
+            roundness: style.roundness === "round" ? { type: ROUNDNESS.PROPORTIONAL_RADIUS } : null,
+          }),
+      ...(style.startArrowhead === undefined
+        ? null
+        : { startArrowhead: arrowhead(style.startArrowhead) }),
+      ...(style.endArrowhead === undefined
+        ? null
+        : { endArrowhead: arrowhead(style.endArrowhead) }),
+    });
+  });
+  for (const id of ids) next = [...recenterBoundLabel(next, id)];
+  return next;
+}
+
 function alignElements(
   elements: readonly ExcalidrawElement[],
   ids: readonly string[],
@@ -689,6 +1000,31 @@ function reorder(elements: readonly ExcalidrawElement[], ids: ReadonlySet<string
   return front ? [...rest, ...selected] : [...selected, ...rest];
 }
 
+function reorderOneStep(
+  elements: readonly ExcalidrawElement[],
+  ids: ReadonlySet<string>,
+  forward: boolean,
+) {
+  const blocks = elements.map((element) => ({
+    element,
+    selected:
+      ids.has(element.id) ||
+      (element.type === "text" && !!element.containerId && ids.has(element.containerId)),
+  }));
+  if (forward) {
+    for (let index = blocks.length - 2; index >= 0; index -= 1) {
+      if (blocks[index]!.selected && !blocks[index + 1]!.selected)
+        [blocks[index], blocks[index + 1]] = [blocks[index + 1]!, blocks[index]!];
+    }
+  } else {
+    for (let index = 1; index < blocks.length; index += 1) {
+      if (blocks[index]!.selected && !blocks[index - 1]!.selected)
+        [blocks[index], blocks[index - 1]] = [blocks[index - 1]!, blocks[index]!];
+    }
+  }
+  return blocks.map(({ element }) => element);
+}
+
 function plainSnapshot(api: ExcalidrawImperativeAPI): DrawSnapshot {
   return {
     type: DRAW_SNAPSHOT_TYPE,
@@ -739,6 +1075,52 @@ interface ShapeSummaryResult {
   readonly textTruncated: boolean;
 }
 
+function summaryFill(element: ExcalidrawElement) {
+  if (element.backgroundColor === "transparent") return "none" as const;
+  if (element.fillStyle === "solid") return "solid" as const;
+  if (element.fillStyle === "hachure") return "semi" as const;
+  return "pattern" as const;
+}
+
+function textAlignName(value: string): "left" | "center" | "right" {
+  return value === "center" || value === "right" ? value : "left";
+}
+
+function verticalAlignName(value: string): "top" | "middle" | "bottom" {
+  return value === "middle" || value === "bottom" ? value : "top";
+}
+
+function summaryStyle(element: ExcalidrawElement, label?: ExcalidrawTextElement): DrawShapeStyle {
+  const typography = element.type === "text" ? element : label;
+  const linear = element.type === "line" || element.type === "arrow" ? element : undefined;
+  const family = typography ? fontFamilyName(typography.fontFamily) : undefined;
+  return {
+    strokeColor: element.strokeColor,
+    backgroundColor: element.backgroundColor,
+    fill: summaryFill(element),
+    strokeWidth: element.strokeWidth,
+    strokeStyle: element.strokeStyle,
+    roughness: element.roughness,
+    opacity: element.opacity / 100,
+    roundness: element.roundness ? ("round" as const) : ("sharp" as const),
+    ...(typography
+      ? {
+          fontSize: typography.fontSize,
+          ...(family ? { fontFamily: family } : null),
+          textAlign: textAlignName(typography.textAlign),
+          verticalAlign: verticalAlignName(typography.verticalAlign),
+        }
+      : null),
+    ...(linear
+      ? {
+          startArrowhead: arrowheadName(linear.startArrowhead),
+          endArrowhead: arrowheadName(linear.endArrowhead),
+        }
+      : null),
+    locked: element.locked,
+  };
+}
+
 function summaryFor(
   element: ExcalidrawElement,
   elements: readonly ExcalidrawElement[],
@@ -763,6 +1145,7 @@ function summaryFor(
       type: element.type,
       bounds,
       ...(fullText ? { text: fullText.slice(0, MAX_SUMMARY_TEXT_LENGTH) } : null),
+      style: summaryStyle(element, label),
       ...(connections?.length ? { connections } : null),
     },
     textTruncated: fullText.length > MAX_SUMMARY_TEXT_LENGTH,
@@ -779,9 +1162,20 @@ function dataUrl(blob: Blob) {
 }
 
 function mergeReceipt(target: MutableDrawApplyReceipt, source: MutableDrawApplyReceipt) {
-  target.createdIds.push(...source.createdIds);
-  target.updatedIds.push(...source.updatedIds);
-  target.deletedIds.push(...source.deletedIds);
+  for (const id of source.createdIds)
+    if (!target.createdIds.includes(id)) target.createdIds.push(id);
+  for (const id of source.updatedIds)
+    if (!target.updatedIds.includes(id)) target.updatedIds.push(id);
+  for (const id of source.deletedIds)
+    if (!target.deletedIds.includes(id)) target.deletedIds.push(id);
+}
+
+function compactReceipt(receipt: MutableDrawApplyReceipt): MutableDrawApplyReceipt {
+  return {
+    createdIds: [...new Set(receipt.createdIds)],
+    updatedIds: [...new Set(receipt.updatedIds)],
+    deletedIds: [...new Set(receipt.deletedIds)],
+  };
 }
 
 function applyPreparedOperations(
@@ -825,17 +1219,17 @@ function applyPreparedOperations(
         if (!target) throw new Error(`Shape not found: ${id}`);
         if (operation.text !== undefined)
           elements = updateElementText(elements, target, operation.text);
-        elements = elements.map((element) => {
-          if (element.id !== id) return element;
-          return newElementWith(element, {
-            ...(operation.x === undefined ? null : { x: operation.x }),
-            ...(operation.y === undefined ? null : { y: operation.y }),
-            ...(operation.rotation === undefined ? null : { angle: operation.rotation }),
-            ...(operation.opacity === undefined ? null : { opacity: operation.opacity * 100 }),
-          });
-        });
+        elements = updateElementGeometry(elements, id, operation);
         receipt.updatedIds.push(id);
         if (highlightActive) selectedElementIds = { [id]: true };
+        break;
+      }
+      case "style": {
+        const ids = new Set(operation.ids.map(shapeId));
+        elements = styleElements(elements, ids, operation.style);
+        receipt.updatedIds.push(...ids);
+        if (highlightActive)
+          selectedElementIds = Object.fromEntries([...ids].map((id) => [id, true]));
         break;
       }
       case "delete": {
@@ -872,17 +1266,30 @@ function applyPreparedOperations(
         if (highlightActive) selectedElementIds = Object.fromEntries(ids.map((id) => [id, true]));
         break;
       }
-      case "bring-to-front": {
+      case "bring-to-front":
+      case "bring-forward":
+      case "send-backward":
+      case "send-to-back": {
         const ids = new Set(operation.ids.map(shapeId));
-        elements = reorder(elements, ids, true);
+        elements =
+          operation.type === "bring-to-front"
+            ? reorder(elements, ids, true)
+            : operation.type === "send-to-back"
+              ? reorder(elements, ids, false)
+              : reorderOneStep(elements, ids, operation.type === "bring-forward");
         receipt.updatedIds.push(...ids);
         if (highlightActive)
           selectedElementIds = Object.fromEntries([...ids].map((id) => [id, true]));
         break;
       }
-      case "send-to-back": {
+      case "set-locked": {
         const ids = new Set(operation.ids.map(shapeId));
-        elements = reorder(elements, ids, false);
+        elements = elements.map((element) =>
+          ids.has(element.id) ||
+          (element.type === "text" && !!element.containerId && ids.has(element.containerId))
+            ? newElementWith(element, { locked: operation.locked })
+            : element,
+        );
         receipt.updatedIds.push(...ids);
         if (highlightActive)
           selectedElementIds = Object.fromEntries([...ids].map((id) => [id, true]));
@@ -920,7 +1327,7 @@ function applyPreparedOperations(
       );
     }
   }
-  return receipt;
+  return compactReceipt(receipt);
 }
 
 async function insertMermaid(

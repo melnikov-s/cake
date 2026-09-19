@@ -10,6 +10,15 @@ const coordinate = Schema.Number.check(
 );
 const shapeId = boundedString(262);
 const shapeIds = Schema.Array(shapeId).check(Schema.isMaxLength(500));
+const nonEmptyShapeIds = shapeIds.check(Schema.isMinLength(1));
+const atLeastTwoShapeIds = shapeIds.check(Schema.isMinLength(2));
+const atLeastThreeShapeIds = shapeIds.check(Schema.isMinLength(3));
+const positiveDimension = coordinate.check(Schema.isGreaterThan(0));
+const drawColor = boundedString(64);
+const opacity = Schema.Number.check(
+  Schema.isFinite(),
+  Schema.isBetween({ minimum: 0, maximum: 1 }),
+);
 const summarizedShapeIds = Schema.Array(shapeId).check(Schema.isMaxLength(200));
 const mermaidDiagram = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(50_000));
 
@@ -23,11 +32,41 @@ const DrawBounds = Schema.Struct({
   height: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThanOrEqualTo(0)),
 });
 
+const DrawFill = Schema.Literals(["none", "semi", "solid", "pattern"]);
+const DrawFontFamily = Schema.Literals(["hand-drawn", "sans-serif", "monospace"]);
+const DrawArrowhead = Schema.Literals([
+  "none",
+  "arrow",
+  "bar",
+  "dot",
+  "circle",
+  "triangle",
+  "diamond",
+]);
+const DrawShapeStyle = Schema.Struct({
+  strokeColor: drawColor,
+  backgroundColor: drawColor,
+  fill: DrawFill,
+  strokeWidth: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0)),
+  strokeStyle: Schema.Literals(["solid", "dashed", "dotted"]),
+  roughness: Schema.Number.check(Schema.isFinite(), Schema.isBetween({ minimum: 0, maximum: 2 })),
+  opacity,
+  roundness: Schema.Literals(["round", "sharp"]),
+  fontSize: Schema.optionalKey(positiveDimension),
+  fontFamily: Schema.optionalKey(DrawFontFamily),
+  textAlign: Schema.optionalKey(Schema.Literals(["left", "center", "right"])),
+  verticalAlign: Schema.optionalKey(Schema.Literals(["top", "middle", "bottom"])),
+  startArrowhead: Schema.optionalKey(DrawArrowhead),
+  endArrowhead: Schema.optionalKey(DrawArrowhead),
+  locked: Schema.Boolean,
+});
+
 const DrawShapeSummary = Schema.Struct({
   id: shapeId,
   type: boundedString(128),
   bounds: Schema.optionalKey(DrawBounds),
   text: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(16_384))),
+  style: DrawShapeStyle,
   connections: Schema.optionalKey(
     Schema.Array(Schema.Struct({ terminal: Schema.Literals(["start", "end"]), shapeId })).check(
       Schema.isMaxLength(100),
@@ -60,8 +99,8 @@ const DrawCreateShape = Schema.Union([
     type: Schema.Literal("geo"),
     x: coordinate,
     y: coordinate,
-    width: coordinate,
-    height: coordinate,
+    width: positiveDimension,
+    height: positiveDimension,
     text: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(16_384))),
     geo: Schema.optionalKey(Schema.Literals(["rectangle", "ellipse", "diamond"])),
     color: Schema.optionalKey(boundedString(64)),
@@ -73,7 +112,7 @@ const DrawCreateShape = Schema.Union([
     x: coordinate,
     y: coordinate,
     text: Schema.String.check(Schema.isMaxLength(16_384)),
-    width: Schema.optionalKey(coordinate),
+    width: Schema.optionalKey(positiveDimension),
   }),
   Schema.Struct({
     ...optionalShapeFields,
@@ -98,8 +137,8 @@ const DrawRelativeShape = Schema.Union([
   Schema.Struct({
     ...optionalShapeFields,
     type: Schema.Literal("geo"),
-    width: coordinate,
-    height: coordinate,
+    width: positiveDimension,
+    height: positiveDimension,
     text: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(16_384))),
     geo: Schema.optionalKey(Schema.Literals(["rectangle", "ellipse", "diamond"])),
     color: Schema.optionalKey(boundedString(64)),
@@ -110,7 +149,7 @@ const DrawRelativeShape = Schema.Union([
     ...optionalShapeFields,
     type: Schema.Literal("text"),
     text: Schema.String.check(Schema.isMaxLength(16_384)),
-    width: Schema.optionalKey(coordinate),
+    width: Schema.optionalKey(positiveDimension),
     placement: DrawRelativePlacement,
   }),
   Schema.Struct({
@@ -122,6 +161,35 @@ const DrawRelativeShape = Schema.Union([
   }),
 ]);
 
+const DrawStyleUpdate = Schema.Struct({
+  strokeColor: Schema.optionalKey(drawColor),
+  backgroundColor: Schema.optionalKey(drawColor),
+  fill: Schema.optionalKey(DrawFill),
+  strokeWidth: Schema.optionalKey(
+    Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(20)),
+  ),
+  strokeStyle: Schema.optionalKey(Schema.Literals(["solid", "dashed", "dotted"])),
+  roughness: Schema.optionalKey(Schema.Literals([0, 1, 2])),
+  opacity: Schema.optionalKey(opacity),
+  roundness: Schema.optionalKey(Schema.Literals(["round", "sharp"])),
+  fontSize: Schema.optionalKey(
+    Schema.Number.check(
+      Schema.isFinite(),
+      Schema.isGreaterThanOrEqualTo(1),
+      Schema.isLessThanOrEqualTo(512),
+    ),
+  ),
+  fontFamily: Schema.optionalKey(DrawFontFamily),
+  textAlign: Schema.optionalKey(Schema.Literals(["left", "center", "right"])),
+  verticalAlign: Schema.optionalKey(Schema.Literals(["top", "middle", "bottom"])),
+  startArrowhead: Schema.optionalKey(DrawArrowhead),
+  endArrowhead: Schema.optionalKey(DrawArrowhead),
+}).check(
+  Schema.makeFilter((style) => Object.values(style).some((value) => value !== undefined), {
+    expected: "at least one shape style property",
+  }),
+);
+
 export const DrawOperation = Schema.Union([
   Schema.Struct({ type: Schema.Literal("create"), shape: DrawCreateShape }),
   Schema.Struct({ type: Schema.Literal("create-relative"), shape: DrawRelativeShape }),
@@ -130,22 +198,34 @@ export const DrawOperation = Schema.Union([
     id: shapeId,
     x: Schema.optionalKey(coordinate),
     y: Schema.optionalKey(coordinate),
+    width: Schema.optionalKey(positiveDimension),
+    height: Schema.optionalKey(positiveDimension),
+    endX: Schema.optionalKey(coordinate),
+    endY: Schema.optionalKey(coordinate),
     rotation: Schema.optionalKey(coordinate),
-    opacity: Schema.optionalKey(
-      Schema.Number.check(Schema.isFinite(), Schema.isBetween({ minimum: 0, maximum: 1 })),
-    ),
+    opacity: Schema.optionalKey(opacity),
     text: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(16_384))),
-  }),
-  Schema.Struct({ type: Schema.Literal("delete"), ids: shapeIds }),
+    geo: Schema.optionalKey(Schema.Literals(["rectangle", "ellipse", "diamond"])),
+  }).check(
+    Schema.makeFilter(
+      (update) =>
+        Object.entries(update).some(
+          ([key, value]) => key !== "type" && key !== "id" && value !== undefined,
+        ),
+      { expected: "at least one shape update property" },
+    ),
+  ),
+  Schema.Struct({ type: Schema.Literal("style"), ids: nonEmptyShapeIds, style: DrawStyleUpdate }),
+  Schema.Struct({ type: Schema.Literal("delete"), ids: nonEmptyShapeIds }),
   Schema.Struct({
     type: Schema.Literal("move"),
-    ids: shapeIds,
+    ids: nonEmptyShapeIds,
     deltaX: coordinate,
     deltaY: coordinate,
   }),
   Schema.Struct({
     type: Schema.Literal("align"),
-    ids: shapeIds,
+    ids: atLeastTwoShapeIds,
     alignment: Schema.Literals([
       "left",
       "center-horizontal",
@@ -157,11 +237,20 @@ export const DrawOperation = Schema.Union([
   }),
   Schema.Struct({
     type: Schema.Literal("distribute"),
-    ids: shapeIds,
+    ids: atLeastThreeShapeIds,
     direction: Schema.Literals(["horizontal", "vertical"]),
   }),
-  Schema.Struct({ type: Schema.Literals(["bring-to-front", "send-to-back"]), ids: shapeIds }),
-  Schema.Struct({ type: Schema.Literals(["select", "zoom-to"]), ids: shapeIds }),
+  Schema.Struct({
+    type: Schema.Literals(["bring-to-front", "bring-forward", "send-backward", "send-to-back"]),
+    ids: nonEmptyShapeIds,
+  }),
+  Schema.Struct({
+    type: Schema.Literal("set-locked"),
+    ids: nonEmptyShapeIds,
+    locked: Schema.Boolean,
+  }),
+  Schema.Struct({ type: Schema.Literal("select"), ids: shapeIds }),
+  Schema.Struct({ type: Schema.Literal("zoom-to"), ids: nonEmptyShapeIds }),
   Schema.Struct({
     type: Schema.Literal("connect"),
     id: Schema.optionalKey(shapeId),

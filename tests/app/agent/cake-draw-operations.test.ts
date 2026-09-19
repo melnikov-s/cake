@@ -101,6 +101,11 @@ describe("Cake Draw operations", () => {
     expect(help.text).toContain("Prefer draw.mermaid for architecture");
     expect(help.text).toContain("one visible stage of at most 8 operations");
     expect(help.text).toContain("draw.read or draw.render between major stages");
+    expect(help.text).toContain("update changes position, size, endpoints");
+    expect(help.text).toContain("style applies colors, fill, stroke");
+    expect(help.text).toContain("set-locked");
+    expect(help.text).toContain('"backgroundColor"');
+    expect(help.text).toContain('"fontFamily"');
     expect(help.text).toContain('"format"');
     expect(help.text).toContain('"path"');
     expect(help.text).toContain("An existing target file is replaced");
@@ -172,6 +177,87 @@ describe("Cake Draw operations", () => {
       result: { boardId: board.id, elementCount: 5 },
     });
     expect(JSON.stringify(result.details)).not.toContain(diagram);
+  });
+
+  it("accepts bounded in-place geometry, style, selection, and locking edits", async () => {
+    const fake = control();
+    const registry = new CakeOperationRegistry(createCakeDrawOperations(fake));
+    const operations = [
+      {
+        type: "update" as const,
+        id: "shape:card",
+        width: 320,
+        height: 180,
+        geo: "diamond" as const,
+      },
+      {
+        type: "style" as const,
+        ids: ["shape:card"],
+        style: {
+          strokeColor: "blue",
+          backgroundColor: "#dbeafe",
+          fill: "solid" as const,
+          fontSize: 28,
+          fontFamily: "sans-serif" as const,
+          textAlign: "center" as const,
+        },
+      },
+      { type: "move" as const, ids: ["shape:card"], deltaX: 40, deltaY: -20 },
+      { type: "select" as const, ids: ["shape:card"] },
+      { type: "set-locked" as const, ids: ["shape:card"], locked: true },
+    ];
+
+    await registry.invoke({ command: "draw.apply", input: { operations } }, context());
+
+    expect(fake.request).toHaveBeenCalledWith(
+      { _tag: "Apply", operations },
+      expect.any(AbortSignal),
+    );
+  });
+
+  it("rejects invalid resize and empty style inputs at the tool boundary", async () => {
+    const fake = control();
+    const registry = new CakeOperationRegistry(createCakeDrawOperations(fake));
+
+    await expect(
+      registry.invoke(
+        {
+          command: "draw.apply",
+          input: { operations: [{ type: "update", id: "shape:card", width: 0 }] },
+        },
+        context(),
+      ),
+    ).rejects.toThrow();
+    await expect(
+      registry.invoke(
+        {
+          command: "draw.apply",
+          input: { operations: [{ type: "update", id: "shape:card" }] },
+        },
+        context(),
+      ),
+    ).rejects.toThrow();
+    await expect(
+      registry.invoke(
+        {
+          command: "draw.apply",
+          input: { operations: [{ type: "style", ids: ["shape:card"], style: {} }] },
+        },
+        context(),
+      ),
+    ).rejects.toThrow();
+    await expect(
+      registry.invoke(
+        {
+          command: "draw.apply",
+          input: {
+            operations: [{ type: "style", ids: ["shape:card"], style: { fill: "gradient" } }],
+          },
+        },
+        context(),
+      ),
+    ).rejects.toThrow();
+    expect(fake.request).not.toHaveBeenCalled();
   });
 
   it("limits each visible drawing stage to eight operations", async () => {
