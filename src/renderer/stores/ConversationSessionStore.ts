@@ -357,6 +357,9 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
         text: input.text,
         attachments: input.attachments,
         renderUserMessageAsMarkdown: input.renderUserMessageAsMarkdown,
+        ...(input.presentationMode === undefined
+          ? null
+          : { presentationMode: input.presentationMode }),
       },
       { signal: this.signal },
     );

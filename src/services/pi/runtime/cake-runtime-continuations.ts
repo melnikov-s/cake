@@ -6,6 +6,7 @@ import { SESSION_TITLE_MAX_LENGTH, type UtilityModel } from "../../../ipc/sessio
 import type { CakeRuntimeOptions } from "./cake-runtime";
 import { appendToolCompactedBranch } from "./session-tool-compaction";
 import { projectArtifactPointers, textFromContent } from "./session-projection";
+import { stripPresentationModeReminder } from "../../../domain/project-sessions/presentation-mode-reminders";
 
 interface PendingSessionFork {
   readonly entryId?: string;
@@ -78,7 +79,7 @@ export function createCakeRuntimeContinuations(input: {
           !("content" in entry.message)
         )
           return [];
-        return [textFromContent(entry.message.content).trim()];
+        return [stripPresentationModeReminder(textFromContent(entry.message.content)).trim()];
       })
       .find(Boolean);
     return (session.sessionManager.getSessionName() || firstUserMessage || "New chat").slice(
@@ -104,9 +105,9 @@ export function createCakeRuntimeContinuations(input: {
         .getBranch()
         .flatMap((entry) => (entry.type === "message" ? [entry.message] : []))
         .filter((message) => message.role === "user")
-        .map((message) => textFromContent(message.content).trim())
+        .map((message) => stripPresentationModeReminder(textFromContent(message.content)).trim())
         .find(Boolean);
-      const userText = firstUserMessage || currentUserMessage.trim();
+      const userText = firstUserMessage || stripPresentationModeReminder(currentUserMessage).trim();
       if (!userText) return;
       const utilityModel: UtilityModel | undefined = options.utilityModel?.();
       if (!utilityModel) return;

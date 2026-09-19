@@ -10,6 +10,7 @@ import { decodeArtifactPointer, type ArtifactPointer } from "../../../ipc/artifa
 import { parseCrossSessionMessage } from "../../../domain/conversations/cross-session-coordination";
 import { parseScheduledMessage } from "../../../domain/scheduled-messages/scheduled-message-envelope";
 import { shouldRenderMarkdown } from "../../../utils/markdown";
+import { stripPresentationModeReminder } from "../../../domain/project-sessions/presentation-mode-reminders";
 import {
   attachmentSchema,
   toolOutputContentArraySchema,
@@ -577,6 +578,7 @@ type UserMessageEnvelope = {
 
 /** Strips Cake's provenance envelope from a Pi user message and surfaces its metadata. */
 function parseUserMessageEnvelope(content: string): UserMessageEnvelope {
+  content = stripPresentationModeReminder(content);
   const scheduled = parseScheduledMessage(content);
   if (scheduled) return { text: scheduled.text, scheduled: scheduled.origin };
   const crossSession = parseCrossSessionMessage(content);
@@ -887,7 +889,9 @@ function entryPreview(entry: SessionEntry) {
   if (entry.type === "message") {
     const message = entry.message;
     const role = message.role;
-    const text = ("content" in message ? textFromContent(message.content) : "")
+    const text = stripPresentationModeReminder(
+      "content" in message ? textFromContent(message.content) : "",
+    )
       .replace(/[\n\t]+/g, " ")
       .trim();
     if (role === "user") return text.slice(0, 2_048);
@@ -930,7 +934,7 @@ export function projectTree(sessionManager: SessionManager): SessionTreeEntry[] 
       messageRole: node.entry.type === "message" ? node.entry.message.role : undefined,
       editorText:
         node.entry.type === "message" && node.entry.message.role === "user"
-          ? textFromContent(node.entry.message.content)
+          ? stripPresentationModeReminder(textFromContent(node.entry.message.content))
           : undefined,
       label: node.label,
       preview: entryPreview(node.entry),

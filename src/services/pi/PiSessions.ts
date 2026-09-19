@@ -45,6 +45,7 @@ import {
   streamWorkspaceSessions,
 } from "./runtime/session-discovery";
 import type { ReviewParentContext } from "./runtime/sidecar-runtime";
+import type { ProjectSessionPresentationMode } from "../../domain/project-sessions/project-session-presentation";
 
 const PiSessionCapabilityProfile = Schema.TaggedUnion({
   ProjectSession: {},
@@ -129,16 +130,19 @@ export interface PiSessionHandle {
     text: string,
     attachments?: ReadonlyArray<Attachment>,
     renderUserMessageAsMarkdown?: boolean,
+    presentationMode?: ProjectSessionPresentationMode,
   ) => Effect.Effect<string, PiSessionError>;
   readonly steer: (
     text: string,
     attachments?: ReadonlyArray<Attachment>,
     renderUserMessageAsMarkdown?: boolean,
+    presentationMode?: ProjectSessionPresentationMode,
   ) => Effect.Effect<string, PiSessionError>;
   readonly followUp: (
     text: string,
     attachments?: ReadonlyArray<Attachment>,
     renderUserMessageAsMarkdown?: boolean,
+    presentationMode?: ProjectSessionPresentationMode,
   ) => Effect.Effect<string, PiSessionError>;
   readonly listQueuedMessages: () => Effect.Effect<PiQueuedMessages, PiSessionError>;
   readonly pendingMessages: () => Effect.Effect<PiPendingMessages, PiSessionError>;
@@ -154,6 +158,7 @@ export interface PiSessionHandle {
     text: string,
     attachments: ReadonlyArray<Attachment>,
     renderUserMessageAsMarkdown: boolean,
+    presentationMode?: ProjectSessionPresentationMode,
   ) => Effect.Effect<void, PiSessionError>;
   readonly setUserMessageMarkdown: (
     entryId: string,
@@ -559,6 +564,7 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
           text: string,
           attachments: ReadonlyArray<Attachment>,
           markdown = false,
+          presentationMode?: ProjectSessionPresentationMode,
         ) {
           const turnId = crypto.randomUUID();
           const turnScope = yield* Scope.make();
@@ -597,7 +603,15 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
           // Input the user withdrew (abort, removed queue row, cleared queue) is a
           // cancellation of accepted work, not a failure of the session.
           const run = Effect.tryPromise({
-            try: () => retained.runtime.prompt(text, delivery, [...attachments], markdown, turnId),
+            try: () =>
+              retained.runtime.prompt(
+                text,
+                delivery,
+                [...attachments],
+                markdown,
+                turnId,
+                presentationMode,
+              ),
             catch: (cause) => cause,
           }).pipe(
             Effect.matchEffect({
@@ -638,12 +652,12 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
           profile: shared.profile,
           updates,
           snapshot: () => call("snapshot", (runtime) => runtime.snapshot()),
-          prompt: (text, attachments = [], markdown = false) =>
-            startTurn("prompt", text, attachments, markdown),
-          steer: (text, attachments = [], markdown = false) =>
-            startTurn("steer", text, attachments, markdown),
-          followUp: (text, attachments = [], markdown = false) =>
-            startTurn("follow-up", text, attachments, markdown),
+          prompt: (text, attachments = [], markdown = false, presentationMode) =>
+            startTurn("prompt", text, attachments, markdown, presentationMode),
+          steer: (text, attachments = [], markdown = false, presentationMode) =>
+            startTurn("steer", text, attachments, markdown, presentationMode),
+          followUp: (text, attachments = [], markdown = false, presentationMode) =>
+            startTurn("follow-up", text, attachments, markdown, presentationMode),
           listQueuedMessages: () =>
             call("listQueuedMessages", (runtime) => runtime.listQueuedMessages()),
           pendingMessages: () => call("pendingMessages", (runtime) => runtime.pendingMessages()),
@@ -655,7 +669,13 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
             call("removeQueuedMessage", (runtime) => runtime.removeQueuedMessage(partId)),
           steerQueuedMessage: (partId) =>
             call("steerQueuedMessage", (runtime) => runtime.steerQueuedMessage(partId)),
-          editMessage: (entryId, text, attachments, renderUserMessageAsMarkdown) =>
+          editMessage: (
+            entryId,
+            text,
+            attachments,
+            renderUserMessageAsMarkdown,
+            presentationMode,
+          ) =>
             shared.runtime.editMessage
               ? call(
                   "editMessage",
@@ -665,6 +685,7 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
                       text,
                       [...attachments],
                       renderUserMessageAsMarkdown,
+                      presentationMode,
                     ) ?? Promise.resolve(),
                 )
               : Effect.fail(

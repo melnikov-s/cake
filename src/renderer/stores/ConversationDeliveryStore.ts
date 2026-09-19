@@ -5,6 +5,7 @@ import type { StoreEvent } from "../events/StoreEvent";
 import { describeError } from "../lib/error-details";
 import { OptimisticUserMessagesStore } from "./OptimisticUserMessagesStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
+import type { ProjectSessionPresentationMode } from "../../domain/project-sessions/project-session-presentation";
 
 export interface ConversationDeliveryInput {
   sessionId: string;
@@ -12,6 +13,7 @@ export interface ConversationDeliveryInput {
   attachments: Attachment[];
   delivery: "prompt" | "steer";
   renderUserMessageAsMarkdown: boolean;
+  presentationMode?: ProjectSessionPresentationMode;
 }
 
 export interface ConversationDeliveryStoreProps {
@@ -29,6 +31,7 @@ export interface ConversationDeliveryStoreProps {
   replaceDraft(text: string, attachments: readonly Attachment[]): void;
   requestFocus(): void;
   editorText?(entryId: string): string | undefined;
+  presentationMode?(): ProjectSessionPresentationMode;
 }
 
 /** Owns optimistic projection, operation correlation, editing, and delivery failure recovery. */
@@ -69,12 +72,14 @@ export class ConversationDeliveryStore extends Store<ConversationDeliveryStorePr
     const operationId = this.props.operations.start(this.props.operationOwner);
     this.addPending(operationId, text, attachments, delivery, renderUserMessageAsMarkdown);
     try {
+      const presentationMode = this.props.presentationMode?.();
       const delivered = await this.props.deliver({
         sessionId,
         text,
         attachments,
         delivery,
         renderUserMessageAsMarkdown,
+        ...(presentationMode === undefined ? null : { presentationMode }),
       });
       if (delivered === false) {
         this.optimisticUserMessages.remove(operationId);
@@ -108,12 +113,14 @@ export class ConversationDeliveryStore extends Store<ConversationDeliveryStorePr
     const operationId = this.props.operations.start(this.props.operationOwner);
     this.addPending(operationId, text, attachments, "prompt", renderUserMessageAsMarkdown, entryId);
     try {
+      const presentationMode = this.props.presentationMode?.();
       await this.props.editMessage({
         sessionId,
         entryId,
         text,
         attachments,
         renderUserMessageAsMarkdown,
+        ...(presentationMode === undefined ? null : { presentationMode }),
       });
       this.optimisticUserMessages.remove(operationId);
       this.finish(operationId);

@@ -24,8 +24,9 @@ import { ClientContext } from "./context/ClientContext";
 import { DrawStore } from "./DrawStore";
 import type { ExistingWorktreeCandidate, WorktreeDraftChoice } from "./WorktreeCreationStore";
 import type { SessionActivity } from "../lib/session-activity";
+import type { ProjectSessionPresentationMode } from "../../domain/project-sessions/project-session-presentation";
 
-export type ProjectSessionPresentationMode = "normal" | "vscode" | "draw";
+export type { ProjectSessionPresentationMode } from "../../domain/project-sessions/project-session-presentation";
 
 export interface SessionTarget {
   workspacePath: string;
@@ -292,6 +293,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       ensureSessionActive: this.props.ensureSessionActive,
       composer: {
         projectPath: () => this.workspacePath,
+        presentationMode: () => this.presentationMode,
         openCommandPane: (pane) => this.props.openCommandPane(pane),
         createSideChat: (prompt) => this.createSideChat(prompt),
         renameSession: (name) => this.props.renameSession(name),
@@ -373,6 +375,8 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
         renderUserMessageAsMarkdown: input.renderUserMessageAsMarkdown,
         attachments: input.attachments,
       };
+      if (input.presentationMode !== undefined)
+        Object.assign(startInput, { presentationMode: input.presentationMode });
       if (newSession.configuration !== undefined)
         Object.assign(startInput, { configuration: newSession.configuration });
       if (newSession.name !== undefined) Object.assign(startInput, { name: newSession.name });

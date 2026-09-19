@@ -8,6 +8,7 @@ import type {
   PiSessionUpdate,
 } from "../../services/pi/PiSessions";
 import type { PiQueuedMessages } from "../../services/pi/conversation-data";
+import type { ProjectSessionPresentationMode } from "../project-sessions/project-session-presentation";
 import type {
   Annotation,
   Attachment,
@@ -162,15 +163,16 @@ export const deliver = Effect.fn("Conversations.deliver")(function* <E, R>(
   text: string,
   attachments: ReadonlyArray<Attachment>,
   renderUserMessageAsMarkdown: boolean,
+  presentationMode?: ProjectSessionPresentationMode,
 ) {
   return yield* use(acquisition, (handle) => {
     switch (delivery) {
       case "prompt":
-        return handle.prompt(text, attachments, renderUserMessageAsMarkdown);
+        return handle.prompt(text, attachments, renderUserMessageAsMarkdown, presentationMode);
       case "steer":
-        return handle.steer(text, attachments, renderUserMessageAsMarkdown);
+        return handle.steer(text, attachments, renderUserMessageAsMarkdown, presentationMode);
       case "follow-up":
-        return handle.followUp(text, attachments, renderUserMessageAsMarkdown);
+        return handle.followUp(text, attachments, renderUserMessageAsMarkdown, presentationMode);
     }
   });
 });
@@ -217,9 +219,10 @@ export const editMessage = Effect.fn("Conversations.editMessage")(function* <E, 
   text: string,
   attachments: ReadonlyArray<Attachment>,
   renderUserMessageAsMarkdown: boolean,
+  presentationMode?: ProjectSessionPresentationMode,
 ) {
   yield* use(acquisition, (handle) =>
-    handle.editMessage(entryId, text, attachments, renderUserMessageAsMarkdown),
+    handle.editMessage(entryId, text, attachments, renderUserMessageAsMarkdown, presentationMode),
   );
 });
 

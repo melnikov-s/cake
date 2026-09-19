@@ -1,10 +1,16 @@
 import { randomUUID } from "node:crypto";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { Attachment, UiPart } from "../../../ipc/session-contract";
+import type { ProjectSessionPresentationMode } from "../../../domain/project-sessions/project-session-presentation";
 import { parsePiBuiltinCommand } from "../../../ipc/session-contract";
 import { parseCrossSessionMessage } from "../../../domain/conversations/cross-session-coordination";
 import type { PiPendingMessageReorder, PiPendingMessages } from "../conversation-data";
 import { RuntimeTurnCompletion, TurnCanceledError } from "./RuntimeTurnCompletion";
+import {
+  addPresentationModeReminder,
+  presentationModeFromReminder,
+  stripPresentationModeReminder,
+} from "../../../domain/project-sessions/presentation-mode-reminders";
 import {
   imageContent,
   locateQueuedMessage,
@@ -26,12 +32,14 @@ export interface CakeRuntimeTurnController {
     attachments: Attachment[],
     renderUserMessageAsMarkdown?: boolean,
     turnId?: string,
+    presentationMode?: ProjectSessionPresentationMode,
   ) => Promise<void>;
   readonly editMessage: (
     entryId: string,
     text: string,
     attachments: Attachment[],
     renderUserMessageAsMarkdown: boolean,
+    presentationMode?: ProjectSessionPresentationMode,
   ) => Promise<void>;
   readonly compact: (instructions?: string) => Promise<void>;
   readonly listQueuedMessages: () => Promise<{ steering: string[]; followUp: string[] }>;
@@ -90,9 +98,11 @@ export function createCakeRuntimeTurnController(input: {
     itemId: string;
     turnId?: string;
     text: string;
+    content: string;
     attachments: Attachment[];
     delivery: "steer" | "follow-up";
     renderUserMessageAsMarkdown: boolean;
+    presentationMode?: ProjectSessionPresentationMode;
   }[] = [];
   let abortGeneration = 0;
   let queueGeneration = 0;
@@ -116,6 +126,52 @@ export function createCakeRuntimeTurnController(input: {
     await input.emitSnapshot();
   };
 
+  const previousPresentationMode = (delivery: "prompt" | "steer" | "follow-up") => {
+    let mode: ProjectSessionPresentationMode = "normal";
+    const consume = (messages: readonly string[]) => {
+      for (const message of messages) mode = presentationModeFromReminder(message) ?? mode;
+    };
+    consume(
+      session.sessionManager.getBranch().flatMap((entry) =>
+        entry.type === "message" && entry.message.role === "user"
+          ? [
+              typeof entry.message.content === "string"
+                ? entry.message.content
+                : entry.message.content
+                    .filter((item) => item.type === "text")
+                    .map((item) => item.text)
+                    .join("\n"),
+            ]
+          : [],
+      ),
+    );
+    if (delivery !== "prompt") {
+      consume(session.getSteeringMessages());
+      consume(
+        compactionQueue.filter((item) => item.delivery === "steer").map((item) => item.content),
+      );
+    }
+    if (delivery === "follow-up") {
+      consume(session.getFollowUpMessages());
+      consume(
+        compactionQueue.filter((item) => item.delivery === "follow-up").map((item) => item.content),
+      );
+    }
+    return mode;
+  };
+
+  const contentForPresentation = (
+    text: string,
+    attachments: Attachment[],
+    delivery: "prompt" | "steer" | "follow-up",
+    presentationMode?: ProjectSessionPresentationMode,
+  ) => {
+    const content = promptText(text, attachments);
+    return presentationMode === undefined
+      ? content
+      : addPresentationModeReminder(content, previousPresentationMode(delivery), presentationMode);
+  };
+
   const deliverPrompt = (
     content: string,
     images: ReturnType<typeof imageContent>,
@@ -136,14 +192,15 @@ export function createCakeRuntimeTurnController(input: {
       if (!item) break;
       input.syncQueuedParts();
       try {
-        const content = promptText(item.text, item.attachments);
+        const delivery = item.delivery === "steer" ? "steer" : "follow-up";
+        const content = item.content;
         const images = imageContent(item.attachments);
         await input.deliverTrackedUserMessage(content, item.renderUserMessageAsMarkdown, () =>
           input.withResponseRetries(() =>
             session.prompt(content, {
               images,
               source: "interactive",
-              streamingBehavior: item.delivery === "steer" ? "steer" : "followUp",
+              streamingBehavior: delivery === "steer" ? "steer" : "followUp",
             }),
           ),
         );
@@ -181,6 +238,7 @@ export function createCakeRuntimeTurnController(input: {
     attachments: Attachment[],
     renderUserMessageAsMarkdown = false,
     turnId?: string,
+    presentationMode?: ProjectSessionPresentationMode,
   ) => {
     assertActive();
     const generation = abortGeneration;
@@ -224,24 +282,24 @@ export function createCakeRuntimeTurnController(input: {
       await input.beforeIdleTurn();
       assertNotAborted(generation);
     }
-    const completion = turnId
-      ? turnCompletions.track(turnId, promptText(text, attachments), true)
-      : undefined;
+    const content = contentForPresentation(text, attachments, delivery, presentationMode);
+    const completion = turnId ? turnCompletions.track(turnId, content, true) : undefined;
     try {
       if (session.isCompacting) {
         compactionQueue.push({
           itemId: randomUUID(),
           turnId,
           text,
+          content,
           attachments,
           delivery: delivery === "steer" ? "steer" : "follow-up",
           renderUserMessageAsMarkdown,
+          ...(presentationMode === undefined ? null : { presentationMode }),
         });
         input.syncQueuedParts();
         await completion;
         return;
       }
-      const content = promptText(text, attachments);
       const images = imageContent(attachments);
       const wasStreaming = session.isStreaming;
       await input.deliverTrackedUserMessage(content, renderUserMessageAsMarkdown, () =>
@@ -284,6 +342,7 @@ export function createCakeRuntimeTurnController(input: {
     text: string,
     attachments: Attachment[],
     renderUserMessageAsMarkdown: boolean,
+    presentationMode?: ProjectSessionPresentationMode,
   ) => {
     assertActive();
     if (session.isStreaming || session.isCompacting)
@@ -301,7 +360,7 @@ export function createCakeRuntimeTurnController(input: {
     await input.emitSnapshot();
     assertNotAborted(generation);
     await deliverPrompt(
-      promptText(text, attachments),
+      contentForPresentation(text, attachments, "prompt", presentationMode),
       imageContent(attachments),
       renderUserMessageAsMarkdown,
     );
@@ -362,13 +421,14 @@ export function createCakeRuntimeTurnController(input: {
             content: item.text,
           })),
       ].map((item, index) => {
-        const parsed = parseCrossSessionMessage(item.content);
+        const visibleContent = stripPresentationModeReminder(item.content);
+        const parsed = parseCrossSessionMessage(visibleContent);
         return {
           itemId: item.itemId,
           state: item.state,
           lane,
           position: index + 1,
-          text: parsed?.text ?? item.content,
+          text: parsed?.text ?? visibleContent,
           ...(parsed ? { crossSession: parsed.metadata } : null),
         };
       });

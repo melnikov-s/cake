@@ -2,6 +2,7 @@ import { Schema } from "effect";
 import { attachmentSchema } from "../../ipc/session-contract";
 import { ThinkingLevel } from "../../services/pi/model-data";
 import { CrossSessionMessageMetadata } from "./cross-session-coordination";
+import { ProjectSessionPresentationMode } from "../project-sessions/project-session-presentation";
 
 const boundedId = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
 const boundedText = Schema.String.check(Schema.isMaxLength(262_144));
@@ -29,6 +30,7 @@ export const SessionChatPromptInput = Schema.Struct({
   text: boundedText,
   attachments: Schema.Array(attachmentSchema).check(Schema.isMaxLength(20)),
   renderUserMessageAsMarkdown: Schema.Boolean,
+  presentationMode: Schema.optionalKey(ProjectSessionPresentationMode),
   crossSession: Schema.optionalKey(CrossSessionMessageMetadata),
 });
 export interface SessionChatPromptInput extends Schema.Schema.Type<typeof SessionChatPromptInput> {}

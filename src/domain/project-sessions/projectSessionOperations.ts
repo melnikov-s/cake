@@ -81,7 +81,12 @@ export const start = Effect.fn("ProjectSessions.start")(function* (
   if (input.name?.trim()) yield* handle.rename(input.name.trim()).pipe(asError("start"));
   const turnId = TurnId.make(
     yield* handle
-      .prompt(input.text, projectAttachments(input.attachments), input.renderUserMessageAsMarkdown)
+      .prompt(
+        input.text,
+        projectAttachments(input.attachments),
+        input.renderUserMessageAsMarkdown,
+        input.presentationMode,
+      )
       .pipe(asError("start")),
   );
   yield* publishCatalogChange(input.sessionId, location, false).pipe(asError("start"));

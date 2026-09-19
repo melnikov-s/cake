@@ -43,6 +43,7 @@ import type { ResolvedAgentArtifact } from "./cake-artifact-operations";
 import type { VscodeControl } from "./cake-vscode-operations";
 import type { WorktreeLandingControl } from "./cake-worktree-operations";
 import type { CakeDrawControl } from "./cake-draw-operations";
+import type { ProjectSessionPresentationMode } from "../../../domain/project-sessions/project-session-presentation";
 import { assertSessionPath } from "./session-path";
 import { cakeWorkspaceSessionDirectory, findSessionFile } from "./session-discovery";
 import {
@@ -64,6 +65,7 @@ import { projectCakeRuntimeSnapshot } from "./cake-runtime-snapshot";
 import { createCakeRuntimeTurnController } from "./cake-runtime-turn-controller";
 import { createCakeRuntimeRecovery } from "./cake-runtime-recovery";
 import { createCakeRuntimeResourceLifecycle } from "./cake-runtime-resources";
+import { stripPresentationModeReminder } from "../../../domain/project-sessions/presentation-mode-reminders";
 import { createCakeRuntimeCapabilities, type GlobalControlTool } from "./cake-runtime-capabilities";
 import { createPromptCacheLineage } from "./prompt-cache-lineage";
 import {
@@ -285,6 +287,7 @@ export interface CakeRuntime {
     attachments: Attachment[],
     renderUserMessageAsMarkdown?: boolean,
     turnId?: string,
+    presentationMode?: ProjectSessionPresentationMode,
   ): Promise<void>;
   listQueuedMessages(): Promise<{ steering: string[]; followUp: string[] }>;
   pendingMessages(): Promise<PiPendingMessages>;
@@ -298,6 +301,7 @@ export interface CakeRuntime {
     text: string,
     attachments: Attachment[],
     renderUserMessageAsMarkdown: boolean,
+    presentationMode?: ProjectSessionPresentationMode,
   ): Promise<void>;
   setUserMessageMarkdown(entryId: string, renderAsMarkdown: boolean): Promise<void>;
   compact(instructions?: string): Promise<void>;
@@ -597,7 +601,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         .getBranch()
         .flatMap((entry) =>
           entry.type === "message" && entry.message.role === "user"
-            ? [textFromContent(entry.message.content).trim()]
+            ? [stripPresentationModeReminder(textFromContent(entry.message.content)).trim()]
             : [],
         )
         .find(Boolean);

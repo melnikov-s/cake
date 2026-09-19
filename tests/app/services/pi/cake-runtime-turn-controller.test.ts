@@ -76,6 +76,32 @@ describe("CakeRuntime turn controller", () => {
     controller.dispose();
   });
 
+  it("injects a hidden reminder only when the Project Session presentation changes", async () => {
+    const branch: Array<{
+      type: "message";
+      message: { role: "user"; content: string };
+    }> = [];
+    const prompt = vi.fn(async (content: string) => {
+      branch.push({ type: "message", message: { role: "user", content } });
+    });
+    const { controller } = createFixture({
+      prompt,
+      sessionManager: {
+        getBranch: vi.fn(() => branch),
+      } as unknown as AgentSession["sessionManager"],
+    });
+
+    await controller.prompt("Open this", "prompt", [], false, undefined, "vscode");
+    await controller.prompt("Keep going", "prompt", [], false, undefined, "vscode");
+    await controller.prompt("Summarize", "prompt", [], false, undefined, "normal");
+
+    expect(prompt.mock.calls[0]?.[0]).toContain("entered embedded VS Code");
+    expect(prompt.mock.calls[0]?.[0]).toContain("Open this");
+    expect(prompt.mock.calls[1]?.[0]).toBe("Keep going");
+    expect(prompt.mock.calls[2]?.[0]).toContain("returned to the normal conversation view");
+    expect(prompt.mock.calls[2]?.[0]).toContain("Summarize");
+  });
+
   it("keeps later compaction-held input visible and clearable while the first item runs", async () => {
     const delivery = deferred();
     const prompt = vi.fn(() => delivery.promise);

@@ -191,6 +191,7 @@ export const ProjectSessionStartInput = Schema.Struct({
   text: SessionChatPromptInput.fields.text,
   attachments: SessionChatPromptInput.fields.attachments,
   renderUserMessageAsMarkdown: SessionChatPromptInput.fields.renderUserMessageAsMarkdown,
+  presentationMode: SessionChatPromptInput.fields.presentationMode,
 });
 export interface ProjectSessionStartInput extends Schema.Schema.Type<
   typeof ProjectSessionStartInput
