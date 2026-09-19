@@ -1,5 +1,6 @@
 /* oxlint-disable anti-slop/no-shape-in-symbol-names -- Shape is the drawing-domain entity. */
 import type { JsonValue } from "../../ipc/json-contract";
+import type { DrawSourceLink } from "./draw-source-link";
 
 /** JSON-safe Cake Draw contracts shared by renderer presentation and explicit agent controls. */
 
@@ -48,6 +49,7 @@ export interface DrawShapeSummary {
   readonly text?: string;
   readonly style: DrawShapeStyle;
   readonly connections?: readonly DrawShapeConnection[];
+  readonly sourceLink?: DrawSourceLink;
 }
 
 interface DrawReadInput {
@@ -84,6 +86,7 @@ export type DrawCreateShape =
       readonly geo?: DrawGeoType;
       readonly color?: string;
       readonly fill?: DrawFill;
+      readonly sourceLink?: DrawSourceLink;
     }
   | {
       readonly id?: string;
@@ -92,6 +95,7 @@ export type DrawCreateShape =
       readonly y: number;
       readonly text: string;
       readonly width?: number;
+      readonly sourceLink?: DrawSourceLink;
     }
   | {
       readonly id?: string;
@@ -100,6 +104,7 @@ export type DrawCreateShape =
       readonly y: number;
       readonly text: string;
       readonly color?: string;
+      readonly sourceLink?: DrawSourceLink;
     }
   | {
       readonly id?: string;
@@ -109,6 +114,7 @@ export type DrawCreateShape =
       readonly endX: number;
       readonly endY: number;
       readonly text?: string;
+      readonly sourceLink?: DrawSourceLink;
     };
 
 export type DrawRelativeShape =
@@ -121,6 +127,7 @@ export type DrawRelativeShape =
       readonly geo?: DrawGeoType;
       readonly color?: string;
       readonly fill?: DrawFill;
+      readonly sourceLink?: DrawSourceLink;
       readonly placement: DrawRelativePlacement;
     }
   | {
@@ -128,6 +135,7 @@ export type DrawRelativeShape =
       readonly type: "text";
       readonly text: string;
       readonly width?: number;
+      readonly sourceLink?: DrawSourceLink;
       readonly placement: DrawRelativePlacement;
     }
   | {
@@ -135,6 +143,7 @@ export type DrawRelativeShape =
       readonly type: "note";
       readonly text: string;
       readonly color?: string;
+      readonly sourceLink?: DrawSourceLink;
       readonly placement: DrawRelativePlacement;
     };
 
@@ -178,6 +187,8 @@ export type DrawOperation =
       readonly opacity?: number;
       readonly text?: string;
       readonly geo?: DrawGeoType;
+      /** null removes an existing source link. */
+      readonly sourceLink?: DrawSourceLink | null;
     }
   | { readonly type: "style"; readonly ids: readonly string[]; readonly style: DrawStyleUpdate }
   | { readonly type: "delete"; readonly ids: readonly string[] }

@@ -1027,6 +1027,50 @@ describe("ProjectWorkbenchStore startup selection", () => {
     operations[Symbol.dispose]();
   });
 
+  it("switches from Draw to VS Code and reveals an exact source location", async () => {
+    const flush = vi.fn(async () => undefined);
+    const session = {
+      ...loadedSessionStub({ sessionFile: "/session.jsonl" }),
+      presentationMode: "draw" as const,
+      drawStore: { flush },
+    };
+    const registry = {
+      findSession: vi.fn(() => session),
+      pendingSessions: { isTemporary: vi.fn(() => false) },
+    } as unknown as SessionRegistryStore;
+    const catalog = {
+      find: vi.fn(() => ({ sessionId: "session-1", resolved: false })),
+    } as unknown as SessionCatalogStore;
+    const open = vi.fn(async () => undefined);
+    const reveal = vi.fn(async () => undefined);
+    const updateAnnotations = vi.fn(async () => undefined);
+    const {
+      root,
+      subject: store,
+      operations,
+    } = mountWorkbench(
+      registry,
+      catalog,
+      { vscode: { open, reveal, updateAnnotations } } as unknown as Client,
+      "session-1",
+    );
+    store.projectOpenStore.projectPath = "/project";
+    const location = workingDirectoryEditorLocation({
+      path: "src/app.ts",
+      range: { start: { line: 4, column: 2 }, end: { line: 8, column: 7 } },
+    });
+
+    await store.openFileInIde(location);
+
+    expect(flush).toHaveBeenCalledOnce();
+    expect(session.showPresentation).toHaveBeenCalledWith("vscode");
+    expect(open).toHaveBeenCalledWith("/project", expect.anything());
+    expect(reveal).toHaveBeenCalledWith("/project", location, expect.anything());
+
+    root[Symbol.dispose]();
+    operations[Symbol.dispose]();
+  });
+
   it("does not open editing surfaces for a resolved session", async () => {
     const session = {
       ...loadedSessionStub({ sessionFile: "/session.jsonl" }),

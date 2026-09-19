@@ -1,6 +1,8 @@
 /* oxlint-disable anti-slop/no-shape-in-symbol-names -- Shape is the drawing-domain entity. */
 import { Schema } from "effect";
+import { sourceRangeSchema } from "../../ipc/source-location";
 import { DrawBoardId, DrawBoardMetadata } from "./draw-board-data";
+import { isValidDrawSourceLink, isValidDrawSourcePath } from "./draw-source-link";
 
 const boundedString = (maximum: number) =>
   Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(maximum));
@@ -21,6 +23,15 @@ const opacity = Schema.Number.check(
 );
 const summarizedShapeIds = Schema.Array(shapeId).check(Schema.isMaxLength(200));
 const mermaidDiagram = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(50_000));
+const DrawSourceLink = Schema.Struct({
+  path: Schema.String.check(
+    Schema.isMinLength(1),
+    Schema.isMaxLength(8_192),
+    Schema.makeFilter(isValidDrawSourcePath, { expected: "a Working Directory-relative path" }),
+  ),
+  range: Schema.optionalKey(sourceRangeSchema),
+}).check(Schema.makeFilter(isValidDrawSourceLink, { expected: "a valid Cake Draw source link" }));
+const optionalSourceLink = { sourceLink: Schema.optionalKey(DrawSourceLink) };
 
 export const DrawReadScope = Schema.Literals(["selection", "viewport", "page"]);
 export type DrawReadScope = typeof DrawReadScope.Type;
@@ -72,6 +83,7 @@ const DrawShapeSummary = Schema.Struct({
       Schema.isMaxLength(100),
     ),
   ),
+  sourceLink: Schema.optionalKey(DrawSourceLink),
 });
 
 const DrawScene = Schema.Struct({
@@ -105,6 +117,7 @@ const DrawCreateShape = Schema.Union([
     geo: Schema.optionalKey(Schema.Literals(["rectangle", "ellipse", "diamond"])),
     color: Schema.optionalKey(boundedString(64)),
     fill: Schema.optionalKey(Schema.Literals(["none", "semi", "solid", "pattern"])),
+    ...optionalSourceLink,
   }),
   Schema.Struct({
     ...optionalShapeFields,
@@ -113,6 +126,7 @@ const DrawCreateShape = Schema.Union([
     y: coordinate,
     text: Schema.String.check(Schema.isMaxLength(16_384)),
     width: Schema.optionalKey(positiveDimension),
+    ...optionalSourceLink,
   }),
   Schema.Struct({
     ...optionalShapeFields,
@@ -121,6 +135,7 @@ const DrawCreateShape = Schema.Union([
     y: coordinate,
     text: Schema.String.check(Schema.isMaxLength(16_384)),
     color: Schema.optionalKey(boundedString(64)),
+    ...optionalSourceLink,
   }),
   Schema.Struct({
     ...optionalShapeFields,
@@ -130,6 +145,7 @@ const DrawCreateShape = Schema.Union([
     endX: coordinate,
     endY: coordinate,
     text: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(16_384))),
+    ...optionalSourceLink,
   }),
 ]);
 
@@ -143,6 +159,7 @@ const DrawRelativeShape = Schema.Union([
     geo: Schema.optionalKey(Schema.Literals(["rectangle", "ellipse", "diamond"])),
     color: Schema.optionalKey(boundedString(64)),
     fill: Schema.optionalKey(Schema.Literals(["none", "semi", "solid", "pattern"])),
+    ...optionalSourceLink,
     placement: DrawRelativePlacement,
   }),
   Schema.Struct({
@@ -150,6 +167,7 @@ const DrawRelativeShape = Schema.Union([
     type: Schema.Literal("text"),
     text: Schema.String.check(Schema.isMaxLength(16_384)),
     width: Schema.optionalKey(positiveDimension),
+    ...optionalSourceLink,
     placement: DrawRelativePlacement,
   }),
   Schema.Struct({
@@ -157,6 +175,7 @@ const DrawRelativeShape = Schema.Union([
     type: Schema.Literal("note"),
     text: Schema.String.check(Schema.isMaxLength(16_384)),
     color: Schema.optionalKey(boundedString(64)),
+    ...optionalSourceLink,
     placement: DrawRelativePlacement,
   }),
 ]);
@@ -206,6 +225,7 @@ export const DrawOperation = Schema.Union([
     opacity: Schema.optionalKey(opacity),
     text: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(16_384))),
     geo: Schema.optionalKey(Schema.Literals(["rectangle", "ellipse", "diamond"])),
+    sourceLink: Schema.optionalKey(Schema.NullOr(DrawSourceLink)),
   }).check(
     Schema.makeFilter(
       (update) =>

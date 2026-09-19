@@ -26,6 +26,7 @@ import {
   DRAW_SNAPSHOT_VERSION,
 } from "./DrawDocumentValidation";
 import { serializeExcalidrawDocument } from "./DrawExportSerializer";
+import { formatDrawSourceLink, parseDrawSourceLink } from "../../domain/draw/draw-source-link";
 import type {
   DrawArrowhead,
   DrawCreateShape,
@@ -265,6 +266,7 @@ function idsForScope(
 
 function validateCreateShape(shape: DrawCreateShape) {
   finite(shape.x, "x");
+  if (shape.sourceLink) formatDrawSourceLink(shape.sourceLink);
   finite(shape.y, "y");
   switch (shape.type) {
     case "geo":
@@ -292,6 +294,7 @@ function validateCreateShape(shape: DrawCreateShape) {
 
 function validateRelativeShape(shape: DrawRelativeShape) {
   const { placement } = shape;
+  if (shape.sourceLink) formatDrawSourceLink(shape.sourceLink);
   if (placement.gap !== undefined && (!Number.isFinite(placement.gap) || placement.gap < 0))
     throw new Error("gap must be a non-negative canvas distance");
   switch (shape.type) {
@@ -454,7 +457,8 @@ function prepareOperations(
           operation.rotation === undefined &&
           operation.opacity === undefined &&
           operation.text === undefined &&
-          operation.geo === undefined
+          operation.geo === undefined &&
+          operation.sourceLink === undefined
         )
           throw new Error("update must change at least one property");
         if (operation.x !== undefined) finite(operation.x, "x");
@@ -491,6 +495,7 @@ function prepareOperations(
         )
           throw new Error("geo conversion requires a rectangle, ellipse, or diamond shape");
         if (operation.geo !== undefined) known.set(id, { ...target, type: operation.geo });
+        if (operation.sourceLink) formatDrawSourceLink(operation.sourceLink);
         prepared.push(operation);
         break;
       }
@@ -606,82 +611,116 @@ function resolveRelativeShape(
         geo: shape.geo,
         color: shape.color,
         fill: shape.fill,
+        sourceLink: shape.sourceLink,
       };
     case "text":
-      return { id: shape.id, type: "text", x, y, text: shape.text, width: shape.width };
+      return {
+        id: shape.id,
+        type: "text",
+        x,
+        y,
+        text: shape.text,
+        width: shape.width,
+        sourceLink: shape.sourceLink,
+      };
     case "note":
-      return { id: shape.id, type: "note", x, y, text: shape.text, color: shape.color };
+      return {
+        id: shape.id,
+        type: "note",
+        x,
+        y,
+        text: shape.text,
+        color: shape.color,
+        sourceLink: shape.sourceLink,
+      };
   }
 }
 
 function createElements(shape: DrawCreateShape, id: string): OrderedExcalidrawElement[] {
+  const sourceLink = shape.sourceLink;
+  const withSourceLink = (elements: OrderedExcalidrawElement[]) =>
+    sourceLink
+      ? elements.map((element) =>
+          element.id === id
+            ? newElementWith(element, { link: formatDrawSourceLink(sourceLink) })
+            : element,
+        )
+      : elements;
   switch (shape.type) {
     case "geo": {
       const type = shape.geo ?? "rectangle";
-      return convertToExcalidrawElements(
-        [
-          {
-            id,
-            type,
-            x: shape.x,
-            y: shape.y,
-            width: shape.width,
-            height: shape.height,
-            strokeColor: color(shape.color),
-            backgroundColor:
-              shape.fill === "none" || !shape.fill ? "transparent" : color(shape.color),
-            fillStyle:
-              shape.fill === "solid"
-                ? "solid"
-                : shape.fill === "pattern"
-                  ? "cross-hatch"
-                  : "hachure",
-            ...(shape.text ? { label: { text: shape.text } } : null),
-          },
-        ],
-        { regenerateIds: false },
+      return withSourceLink(
+        convertToExcalidrawElements(
+          [
+            {
+              id,
+              type,
+              x: shape.x,
+              y: shape.y,
+              width: shape.width,
+              height: shape.height,
+              strokeColor: color(shape.color),
+              backgroundColor:
+                shape.fill === "none" || !shape.fill ? "transparent" : color(shape.color),
+              fillStyle:
+                shape.fill === "solid"
+                  ? "solid"
+                  : shape.fill === "pattern"
+                    ? "cross-hatch"
+                    : "hachure",
+              ...(shape.text ? { label: { text: shape.text } } : null),
+            },
+          ],
+          { regenerateIds: false },
+        ),
       );
     }
     case "note":
-      return convertToExcalidrawElements(
-        [
-          {
-            id,
-            type: "rectangle",
-            x: shape.x,
-            y: shape.y,
-            width: 200,
-            height: 200,
-            strokeColor: color(shape.color, colorPalette.get("yellow")!),
-            backgroundColor: color(shape.color, colorPalette.get("yellow")!),
-            fillStyle: "solid",
-            label: { text: shape.text },
-          },
-        ],
-        { regenerateIds: false },
+      return withSourceLink(
+        convertToExcalidrawElements(
+          [
+            {
+              id,
+              type: "rectangle",
+              x: shape.x,
+              y: shape.y,
+              width: 200,
+              height: 200,
+              strokeColor: color(shape.color, colorPalette.get("yellow")!),
+              backgroundColor: color(shape.color, colorPalette.get("yellow")!),
+              fillStyle: "solid",
+              label: { text: shape.text },
+            },
+          ],
+          { regenerateIds: false },
+        ),
       );
     case "text":
-      return convertToExcalidrawElements(
-        [{ id, type: "text", x: shape.x, y: shape.y, text: shape.text, width: shape.width }],
-        { regenerateIds: false },
+      return withSourceLink(
+        convertToExcalidrawElements(
+          [{ id, type: "text", x: shape.x, y: shape.y, text: shape.text, width: shape.width }],
+          { regenerateIds: false },
+        ),
       );
     case "line":
     case "arrow":
-      return convertToExcalidrawElements(
-        [
-          {
-            id,
-            type: shape.type,
-            x: shape.x,
-            y: shape.y,
-            points: [
-              [0, 0],
-              [shape.endX - shape.x, shape.endY - shape.y],
-            ],
-            ...(shape.text ? { label: { text: shape.text } } : null),
-          },
-        ],
-        { regenerateIds: false },
+      return withSourceLink(
+        convertToExcalidrawElements(
+          [
+            {
+              id,
+              type: shape.type,
+              x: shape.x,
+              y: shape.y,
+              points: [
+                [0, 0],
+                [shape.endX - shape.x, shape.endY - shape.y],
+              ],
+              ...(shape.text ? { label: { text: shape.text } } : null),
+            },
+          ],
+          { regenerateIds: false },
+        ),
       );
   }
 }
@@ -1275,6 +1314,7 @@ function summaryFor(
             : []),
         ]
       : undefined;
+  const sourceLink = element.link ? parseDrawSourceLink(element.link) : undefined;
   return {
     summary: {
       id: element.id,
@@ -1283,6 +1323,7 @@ function summaryFor(
       ...(fullText ? { text: fullText.slice(0, MAX_SUMMARY_TEXT_LENGTH) } : null),
       style: summaryStyle(element, label),
       ...(connections?.length ? { connections } : null),
+      ...(sourceLink ? { sourceLink } : null),
     },
     textTruncated: fullText.length > MAX_SUMMARY_TEXT_LENGTH,
   };
@@ -1363,6 +1404,14 @@ function applyPreparedOperations(
         if (operation.text !== undefined)
           elements = updateElementText(elements, target, operation.text);
         elements = updateElementGeometry(elements, id, operation);
+        if (operation.sourceLink !== undefined)
+          elements = elements.map((element) =>
+            element.id === id
+              ? newElementWith(element, {
+                  link: operation.sourceLink ? formatDrawSourceLink(operation.sourceLink) : null,
+                })
+              : element,
+          );
         receipt.updatedIds.push(id);
         if (highlightActive) selectedElementIds = { [id]: true };
         break;

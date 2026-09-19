@@ -1,6 +1,8 @@
 import { Excalidraw } from "@excalidraw/excalidraw";
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
-import { useCallback, useEffect, useRef } from "react";
+import type { SourceLocation } from "../../ipc/source-location";
+import { isCakeDrawSourceUrl, parseDrawSourceLink } from "../../domain/draw/draw-source-link";
+import { useCallback, useEffect, useRef, type PointerEvent } from "react";
 import { observer } from "r-state-tree/react";
 import type { DrawStore } from "../stores/DrawStore";
 import {
@@ -12,7 +14,13 @@ import { cn } from "../lib/utils";
 import { Badge } from "./ui/badge";
 
 /** A locally bundled Excalidraw canvas whose document persistence is owned by DrawStore. */
-export const DrawCanvas = observer(function DrawCanvas({ store }: { store: DrawStore }) {
+export const DrawCanvas = observer(function DrawCanvas({
+  store,
+  onOpenSourceLocation,
+}: {
+  store: DrawStore;
+  onOpenSourceLocation?(location: SourceLocation): void | Promise<void>;
+}) {
   const adapterRef = useRef<DrawEditorAdapter>(null);
   const mounted = useCallback(
     (api: ExcalidrawImperativeAPI) => {
@@ -32,6 +40,19 @@ export const DrawCanvas = observer(function DrawCanvas({ store }: { store: DrawS
     [store],
   );
 
+  const openLink = useCallback(
+    (
+      element: { link: string | null },
+      event: CustomEvent<{ nativeEvent: MouseEvent | PointerEvent<HTMLCanvasElement> }>,
+    ) => {
+      if (!element.link || !isCakeDrawSourceUrl(element.link)) return;
+      event.preventDefault();
+      const location = parseDrawSourceLink(element.link);
+      if (location) void onOpenSourceLocation?.(location);
+    },
+    [onOpenSourceLocation],
+  );
+
   const theme = document.documentElement.dataset.theme === "dark" ? "dark" : "light";
   // Excalidraw restores initialData after publishing its imperative API. Loading through
   // the API callback races that initialization and can be reset to an empty scene.
@@ -46,6 +67,7 @@ export const DrawCanvas = observer(function DrawCanvas({ store }: { store: DrawS
           theme={theme}
           autoFocus
           viewModeEnabled={store.agentDrawing}
+          onLinkOpen={openLink}
           UIOptions={{
             canvasActions: { loadScene: false, saveToActiveFile: false },
           }}

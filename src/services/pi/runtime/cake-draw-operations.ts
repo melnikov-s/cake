@@ -126,7 +126,8 @@ export function createCakeDrawOperations(control: CakeDrawControl): CakeOperatio
       "Prefer draw.mermaid for architecture, flow, sequence, class, state, and entity-relationship diagrams. It produces native editable Excalidraw elements without manual placement. Use plain-text labels; write multiline labels with \\n or a plain <br>, <br/>, or <br /> break, not other HTML markup.",
       "Give flowcharts an explicit direction (usually LR for pipelines or TB for hierarchies), keep labels concise, and avoid duplicate edges between the same nodes when one labeled edge communicates the relationship. Cake uses linear Mermaid routes and separates coincident parallel connectors after conversion; use draw.read and draw.apply for further cleanup.",
       "Use draw.apply for freeform drawings, small targeted edits, post-Mermaid cleanup, or diagram types Mermaid cannot express. Mermaid-imported shapes have the same shape: IDs returned by draw.read and support the applicable update, style, move, arrange, lock, select, and delete operations. enter and open return the visible viewport, selection, shape bounds, and compact style summaries for manual placement and editing.",
-      "Edit existing shapes without replacing them: update changes position, size, endpoints, rotation, text, opacity, or rectangle/ellipse/diamond geometry while preserving the shape ID; style applies colors, fill, stroke, opacity, roundness, typography/alignment, or arrowheads to one or more IDs.",
+      "Edit existing shapes without replacing them: update changes position, size, endpoints, rotation, text, opacity, rectangle/ellipse/diamond geometry, or a Cake sourceLink while preserving the shape ID; style applies colors, fill, stroke, opacity, roundness, typography/alignment, or arrowheads to one or more IDs.",
+      "A create or update sourceLink uses a Working Directory-relative path and optional zero-based source range. Activating it opens that exact location in Cake's embedded VS Code editor. Set update sourceLink to null to remove it.",
       "New agent-generated diagrams use a deterministic layer order automatically: subgraph/frame backgrounds, then connectors behind nodes, then node shapes and readable labels. This applies to draw.mermaid and draw.apply creation batches, including standalone lines/arrows and connect operations, so do not emit redundant send-to-back cleanup operations.",
       "Selection and arrangement operations include select (an empty IDs list clears selection), zoom-to, move, align, distribute, four explicit layer-order operations, set-locked, and delete. Explicit layer operations remain available when the requested composition intentionally overrides the creation default. Use read scope selection to inspect the current selection.",
       `Keep each draw.apply to one visible stage of at most ${DRAW_APPLY_MAX_OPERATIONS} operations (for example, one region, then connections, then cleanup). Use another apply for the next stage so the user sees steady progress.`,
@@ -351,6 +352,10 @@ export function createCakeDrawOperations(control: CakeDrawControl): CakeOperatio
               width: 240,
               height: 120,
               text: "Idea",
+              sourceLink: {
+                path: "src/idea.ts",
+                range: { start: { line: 11 }, end: { line: 18 } },
+              },
             },
           },
           {
@@ -379,11 +384,11 @@ export function createCakeDrawOperations(control: CakeDrawControl): CakeOperatio
         ],
       },
       result:
-        "The open board ID and a compact created, updated, and deleted shape receipt after animated playback and durable flush. Updated shapes retain their IDs. Use draw.read when the next stage needs resulting geometry or styles.",
+        "The open board ID and a compact created, updated, and deleted shape receipt after animated playback and durable flush. Updated shapes retain their IDs. draw.read summaries include valid Cake source links. Use draw.read when the next stage needs resulting geometry or styles.",
       limitations: [
         "Geometry conversion is intentionally limited to rectangle, ellipse, and diamond. Linear shapes resize through endX/endY; free-draw point editing is not exposed.",
         "Fill/background/roundness apply only to rectangle, ellipse, and diamond; typography applies only to text or labeled shapes; arrowheads apply only to lines and arrows.",
-        "The semantic agent protocol does not expose raw Excalidraw patches, clipboard actions, image import, freehand creation, grouping, hyperlinks, or undo/redo.",
+        "The semantic agent protocol exposes only validated Cake source links, not arbitrary hyperlinks, raw Excalidraw patches, clipboard actions, image import, freehand creation, grouping, or undo/redo.",
       ],
       execute: async (input, signal) => {
         requireMutable(control);

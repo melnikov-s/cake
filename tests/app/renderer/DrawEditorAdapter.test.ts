@@ -1103,6 +1103,60 @@ describe("DrawEditorAdapter", () => {
     expect(scene.truncated).toBe(true);
   });
 
+  it("creates, reads, updates, removes, persists, and exports Cake source links", () => {
+    adapter.apply({
+      operations: [
+        {
+          type: "create",
+          shape: {
+            id: "linked",
+            type: "geo",
+            x: 10,
+            y: 10,
+            width: 80,
+            height: 60,
+            text: "Implementation",
+            sourceLink: {
+              path: "src/implementation.ts",
+              range: { start: { line: 10 }, end: { line: 14 } },
+            },
+          },
+        },
+      ],
+    });
+
+    expect(adapter.read({ scope: "page" }).shapes[0]?.sourceLink).toEqual({
+      path: "src/implementation.ts",
+      range: { start: { line: 10 }, end: { line: 14 } },
+    });
+    expect(harness.elements().find(({ id }) => id === "shape:linked")?.link).toContain(
+      "https://cake.invalid/draw/source?",
+    );
+
+    const snapshot = adapter.snapshotDocument();
+    const exported = JSON.parse(adapter.exportDocument());
+    expect(JSON.stringify(snapshot)).toContain("cake.invalid/draw/source");
+    expect(JSON.stringify(exported)).toContain("cake.invalid/draw/source");
+
+    const restored = editorHarness();
+    const restoredAdapter = createDrawEditorAdapter(restored.api);
+    restoredAdapter.loadDocument(snapshot);
+    expect(restoredAdapter.read({ scope: "page" }).shapes[0]?.sourceLink?.path).toBe(
+      "src/implementation.ts",
+    );
+
+    adapter.apply({
+      operations: [{ type: "update", id: "linked", sourceLink: { path: "src/replacement.ts" } }],
+    });
+    expect(adapter.read({ scope: "page" }).shapes[0]?.sourceLink).toEqual({
+      path: "src/replacement.ts",
+    });
+
+    adapter.apply({ operations: [{ type: "update", id: "linked", sourceLink: null }] });
+    expect(adapter.read({ scope: "page" }).shapes[0]?.sourceLink).toBeUndefined();
+    expect(harness.elements().find(({ id }) => id === "shape:linked")?.link).toBeNull();
+  });
+
   it("serializes a native editable Excalidraw document rather than Cake persistence", () => {
     adapter.apply({
       operations: [

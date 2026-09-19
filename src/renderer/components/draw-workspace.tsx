@@ -110,7 +110,11 @@ export const DrawWorkspace = observer(function DrawWorkspace({
           />
           <div className="min-h-0 flex-1">
             {draw.activeBoardId && draw.documentLoaded && !draw.loading ? (
-              <DrawCanvas key={draw.activeBoardId} store={draw} />
+              <DrawCanvas
+                key={draw.activeBoardId}
+                store={draw}
+                onOpenSourceLocation={transcriptBehavior.openSourceLocation}
+              />
             ) : null}
           </div>
         </div>

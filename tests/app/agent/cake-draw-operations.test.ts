@@ -125,6 +125,9 @@ describe("Cake Draw operations", () => {
     expect(help.text).toContain("draw.read or draw.render between major stages");
     expect(help.text).toContain("update changes position, size, endpoints");
     expect(help.text).toContain("style applies colors, fill, stroke");
+    expect(help.text).toContain("sourceLink");
+    expect(help.text).toContain("Working Directory-relative path");
+    expect(help.text).toContain("Set update sourceLink to null to remove it");
     expect(help.text).toContain("connectors behind nodes");
     expect(help.text).toContain("do not emit redundant send-to-back cleanup operations");
     expect(help.text).toContain("set-locked");
@@ -230,6 +233,14 @@ describe("Cake Draw operations", () => {
       { type: "move" as const, ids: ["shape:card"], deltaX: 40, deltaY: -20 },
       { type: "select" as const, ids: ["shape:card"] },
       { type: "set-locked" as const, ids: ["shape:card"], locked: true },
+      {
+        type: "update" as const,
+        id: "shape:card",
+        sourceLink: {
+          path: "src/card.ts",
+          range: { start: { line: 4, column: 2 }, end: { line: 8, column: 5 } },
+        },
+      },
     ];
 
     await registry.invoke({ command: "draw.apply", input: { operations } }, context());
@@ -277,6 +288,28 @@ describe("Cake Draw operations", () => {
           command: "draw.apply",
           input: {
             operations: [{ type: "style", ids: ["shape:card"], style: { fill: "gradient" } }],
+          },
+        },
+        context(),
+      ),
+    ).rejects.toThrow();
+    await expect(
+      registry.invoke(
+        {
+          command: "draw.apply",
+          input: {
+            operations: [
+              {
+                type: "create",
+                shape: {
+                  type: "text",
+                  x: 0,
+                  y: 0,
+                  text: "unsafe",
+                  sourceLink: { path: "../outside.ts" },
+                },
+              },
+            ],
           },
         },
         context(),

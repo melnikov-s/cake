@@ -479,10 +479,13 @@ The window Store hierarchy mirrors the product surfaces:
   selection, shape bounds, and compact style summaries; later shapes can use relative placement
   against stable shape IDs so Pi can reason about layout without raw Excalidraw elements. Explicit
   semantic operations preserve existing IDs while changing geometry, text, colors, fill, strokes,
-  typography/alignment, arrowheads, locking, selection, position, alignment, distribution, and
-  layer order. Raw Excalidraw elements, arbitrary patches, freehand point arrays, and unbounded
-  batches never cross the control boundary. Drawing gestures trigger persistence, never
-  autonomous Pi turns. Cake keeps Excalidraw's generic main menu hidden and owns a compact toolbar
+  typography/alignment, arrowheads, locking, selection, position, alignment, distribution, layer
+  order, and validated Cake source links. A source link stores only a Working Directory-relative
+  path and optional range behind Cake's reserved Draw URL; activation is intercepted in the
+  renderer and uses the existing embedded-editor reveal workflow. Ordinary Excalidraw links retain
+  their normal safe handling. Raw Excalidraw elements, arbitrary patches, arbitrary hyperlinks,
+  freehand point arrays, and unbounded batches never cross the control boundary. Drawing gestures
+  trigger persistence, never autonomous Pi turns. Cake keeps Excalidraw's generic main menu hidden and owns a compact toolbar
   export surface for whole-board PNG, SVG, and native editable `.excalidraw` documents. Interactive
   exports use the owning Electron window's native save dialog and main-process filesystem access;
   `draw.export` writes the same three formats to an explicit workspace-relative path. Exporting
