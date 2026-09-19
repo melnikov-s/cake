@@ -119,6 +119,8 @@ describe("Cake Draw operations", () => {
     expect(help.text).toContain("draw.read or draw.render between major stages");
     expect(help.text).toContain("update changes position, size, endpoints");
     expect(help.text).toContain("style applies colors, fill, stroke");
+    expect(help.text).toContain("connectors behind nodes");
+    expect(help.text).toContain("do not emit redundant send-to-back cleanup operations");
     expect(help.text).toContain("set-locked");
     expect(help.text).toContain('"backgroundColor"');
     expect(help.text).toContain('"fontFamily"');

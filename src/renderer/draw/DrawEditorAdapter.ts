@@ -991,6 +991,135 @@ function distributeElements(
   return next;
 }
 
+type DiagramLayer = "background" | "connector" | "node" | "foreground";
+
+function containsElement(container: ExcalidrawElement, child: ExcalidrawElement) {
+  return (
+    child.id !== container.id &&
+    child.x >= container.x &&
+    child.y >= container.y &&
+    child.x + child.width <= container.x + container.width &&
+    child.y + child.height <= container.y + container.height
+  );
+}
+
+function diagramBackgroundIds(
+  elements: readonly ExcalidrawElement[],
+  diagramIds: ReadonlySet<string>,
+) {
+  const candidates = elements.filter(
+    (element) =>
+      diagramIds.has(element.id) &&
+      !element.isDeleted &&
+      element.type !== "text" &&
+      element.type !== "line" &&
+      element.type !== "arrow",
+  );
+  const backgrounds = new Set(
+    candidates
+      .filter((element) => element.type === "frame" || element.type === "magicframe")
+      .map(({ id }) => id),
+  );
+  for (const candidate of candidates) {
+    if (candidate.type !== "rectangle" || candidate.groupIds.length === 0) continue;
+    const groups = new Set(candidate.groupIds);
+    if (
+      candidates.some(
+        (child) =>
+          child.id !== candidate.id &&
+          child.groupIds.some((groupId) => groups.has(groupId)) &&
+          containsElement(candidate, child),
+      )
+    )
+      backgrounds.add(candidate.id);
+  }
+  return backgrounds;
+}
+
+function diagramLayer(element: ExcalidrawElement, backgrounds: ReadonlySet<string>): DiagramLayer {
+  if (backgrounds.has(element.id)) return "background";
+  if (element.type === "line" || element.type === "arrow") return "connector";
+  if (element.type === "text" && !element.containerId) return "foreground";
+  return "node";
+}
+
+/**
+ * Applies Cake Draw's creation-time diagram order without sorting existing artwork. Bound text
+ * travels with its container because Excalidraw requires the text to immediately follow it.
+ * Excalidraw's updateScene boundary subsequently synchronizes fractional indices with this order.
+ */
+function normalizeCreatedDiagramOrder(
+  elements: readonly ExcalidrawElement[],
+  createdIds: ReadonlySet<string>,
+) {
+  if (createdIds.size === 0) return elements;
+  const movableIds = new Set(createdIds);
+  for (const element of elements) {
+    if (element.type === "text" && element.containerId && createdIds.has(element.containerId))
+      movableIds.add(element.id);
+  }
+  const backgrounds = diagramBackgroundIds(
+    elements,
+    new Set(elements.filter((element) => !element.isDeleted).map(({ id }) => id)),
+  );
+  const moved = new Set<string>();
+  const blocks = {
+    background: new Array<ExcalidrawElement[]>(),
+    connector: new Array<ExcalidrawElement[]>(),
+    node: new Array<ExcalidrawElement[]>(),
+    foreground: new Array<ExcalidrawElement[]>(),
+  } satisfies Record<DiagramLayer, ExcalidrawElement[][]>;
+  for (const element of elements) {
+    if (!movableIds.has(element.id) || moved.has(element.id)) continue;
+    if (element.type === "text" && element.containerId && movableIds.has(element.containerId))
+      continue;
+    const companions = elements.filter(
+      (candidate) =>
+        candidate.type === "text" &&
+        candidate.containerId === element.id &&
+        movableIds.has(candidate.id),
+    );
+    const block = [element, ...companions];
+    for (const member of block) moved.add(member.id);
+    blocks[diagramLayer(element, backgrounds)].push(block);
+  }
+  // Retain malformed/orphan imported companions rather than dropping them.
+  for (const element of elements) {
+    if (movableIds.has(element.id) && !moved.has(element.id)) {
+      blocks[diagramLayer(element, backgrounds)].push([element]);
+      moved.add(element.id);
+    }
+  }
+
+  blocks.background.sort(
+    (left, right) => right[0]!.width * right[0]!.height - left[0]!.width * left[0]!.height,
+  );
+  const untouched = elements.filter((element) => !movableIds.has(element.id));
+  const ordered = [...blocks.background.flat(), ...untouched];
+  const connectorAnchor = ordered.findIndex(
+    (element) =>
+      !element.isDeleted &&
+      !(element.type === "text" && element.containerId) &&
+      diagramLayer(element, backgrounds) !== "background" &&
+      diagramLayer(element, backgrounds) !== "connector",
+  );
+  ordered.splice(
+    connectorAnchor < 0 ? ordered.length : connectorAnchor,
+    0,
+    ...blocks.connector.flat(),
+  );
+
+  let nodeAnchor = ordered.length;
+  while (nodeAnchor > 0) {
+    const previous = ordered[nodeAnchor - 1]!;
+    if (previous.type !== "text" || previous.containerId) break;
+    nodeAnchor -= 1;
+  }
+  ordered.splice(nodeAnchor, 0, ...blocks.node.flat());
+  ordered.push(...blocks.foreground.flat());
+  return ordered;
+}
+
 function reorder(elements: readonly ExcalidrawElement[], ids: ReadonlySet<string>, front: boolean) {
   const selected = elements.filter(
     (element) =>
@@ -1195,22 +1324,29 @@ function applyPreparedOperations(
   };
   let selectedElementIds: Record<string, true> | undefined;
   let zoomIds: string[] | undefined;
+  const createdDiagramIds = new Set<string>();
   for (const operation of prepared) {
     switch (operation.type) {
       case "create":
         elements = [...elements, ...createElements(operation.shape, operation.id)];
+        createdDiagramIds.add(operation.id);
+        elements = normalizeCreatedDiagramOrder(elements, createdDiagramIds);
         receipt.createdIds.push(operation.id);
         if (highlightActive) selectedElementIds = { [operation.id]: true };
         break;
       case "create-relative": {
         const shape = resolveRelativeShape(operation.shape, operation.relativeTo, elements);
         elements = [...elements, ...createElements(shape, operation.id)];
+        createdDiagramIds.add(operation.id);
+        elements = normalizeCreatedDiagramOrder(elements, createdDiagramIds);
         receipt.createdIds.push(operation.id);
         if (highlightActive) selectedElementIds = { [operation.id]: true };
         break;
       }
       case "connect":
         elements = connectElements(elements, operation);
+        createdDiagramIds.add(operation.id);
+        elements = normalizeCreatedDiagramOrder(elements, createdDiagramIds);
         receipt.createdIds.push(operation.id);
         if (highlightActive) selectedElementIds = { [operation.id]: true };
         break;
@@ -1358,6 +1494,10 @@ async function insertMermaid(
   const positioned = created.map((element) =>
     newElementWith(element, { x: element.x + deltaX, y: element.y + deltaY }),
   );
+  const ordered = normalizeCreatedDiagramOrder(
+    [...api.getSceneElementsIncludingDeleted(), ...positioned],
+    new Set(positioned.map(({ id }) => id)),
+  );
   const selectedElementIds = Object.fromEntries(
     positioned
       .filter((element) => !(element.type === "text" && element.containerId))
@@ -1366,11 +1506,14 @@ async function insertMermaid(
 
   if (files) api.addFiles(Object.values(files));
   api.updateScene({
-    elements: [...api.getSceneElementsIncludingDeleted(), ...positioned],
+    elements: ordered,
     appState: { selectedElementIds },
     captureUpdate: CaptureUpdateAction.IMMEDIATELY,
   });
-  api.scrollToContent(positioned, { animate: true, fitToContent: true });
+  api.scrollToContent(
+    ordered.filter((element) => selectedElementIds[element.id]),
+    { animate: true, fitToContent: true },
+  );
   return { elementCount: positioned.length };
 }
 

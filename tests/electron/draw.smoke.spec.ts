@@ -16,7 +16,7 @@ async function mockNextSave(application: ElectronApplication, filePath: string) 
   }, filePath);
 }
 
-async function launchFixture(root: string, initialize = true) {
+async function launchFixture(root: string, initialize = true, seedLayeringBoard = false) {
   const userData = join(root, "user-data");
   const project = join(root, "project");
   const cakeHome = join(root, "cake-home");
@@ -37,7 +37,7 @@ async function launchFixture(root: string, initialize = true) {
         activeConversation: { kind: "project-session", workspacePath: project, sessionId },
         recentProjectPaths: [project],
         draft: "",
-        theme: "dark",
+        theme: seedLayeringBoard ? "light" : "dark",
         draftsBySession: {},
       }),
     );
@@ -68,6 +68,35 @@ async function launchFixture(root: string, initialize = true) {
         .map((entry) => JSON.stringify(entry))
         .join("\n") + "\n",
     );
+    if (seedLayeringBoard) {
+      const boardId = "00000000-0000-4000-8000-000000000001";
+      const board = {
+        id: boardId,
+        sessionId,
+        title: "Connector layering",
+        revision: 1,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+      const drawRoot = join(cakeHome, "state", "draw-boards");
+      const snapshot = JSON.parse(
+        await readFile(
+          join(repositoryRoot, "tests/fixtures/draw-connector-layering.snapshot.json"),
+          "utf8",
+        ),
+      );
+      await mkdir(join(drawRoot, "boards"), { recursive: true });
+      await Promise.all([
+        writeFile(
+          join(drawRoot, "catalog.json"),
+          `${JSON.stringify({ version: 1, boards: [board] }, null, 2)}\n`,
+        ),
+        writeFile(
+          join(drawRoot, "boards", `${boardId}.json`),
+          `${JSON.stringify({ version: 1, data: { board, snapshot } })}\n`,
+        ),
+      ]);
+    }
   }
   const application = await electron.launch({
     args: [repositoryRoot],
@@ -187,6 +216,120 @@ test("Cake Draw preserves chat and its session board through Electron", async ()
     await reopened.keyboard.press(process.platform === "darwin" ? "Meta+a" : "Control+a");
     await reopened.keyboard.press("Backspace");
     await expect(reopened.getByRole("button", { name: "Undo" })).toBeEnabled();
+  } finally {
+    await application?.close();
+    await rm(temporaryRoot, { recursive: true, force: true });
+  }
+});
+
+test("Cake Draw masks agent connectors beneath opaque nodes while keeping edge labels visible", async () => {
+  const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-draw-layering-smoke-"));
+  let application: ElectronApplication | undefined;
+  try {
+    ({ application } = await launchFixture(temporaryRoot, true, true));
+    const page = await application.firstWindow();
+    await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible({
+      timeout: 20_000,
+    });
+    await page.getByRole("button", { name: "Open Cake Draw" }).click();
+    const canvas = page.locator(".excalidraw__canvas.interactive");
+    await expect(canvas).toBeVisible({ timeout: 20_000 });
+    const renderedCanvas = page.locator(".excalidraw__canvas.static");
+    await expect(renderedCanvas).toBeVisible();
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+
+    const rendering = await renderedCanvas.evaluate((element: HTMLCanvasElement) => {
+      const context = element.getContext("2d", { willReadFrequently: true });
+      if (!context) throw new Error("Cake Draw canvas did not expose a 2D context");
+      const { width, height } = element;
+      const pixels = context.getImageData(0, 0, width, height).data;
+      const closeTo = (offset: number, target: readonly [number, number, number]) =>
+        Math.abs(pixels[offset]! - target[0]) <= 12 &&
+        Math.abs(pixels[offset + 1]! - target[1]) <= 12 &&
+        Math.abs(pixels[offset + 2]! - target[2]) <= 12 &&
+        pixels[offset + 3]! > 200;
+      const boundsFor = (target: readonly [number, number, number]) => {
+        let minX = width;
+        let minY = height;
+        let maxX = -1;
+        let maxY = -1;
+        for (let y = 0; y < height; y += 1) {
+          for (let x = 0; x < width; x += 1) {
+            if (!closeTo((y * width + x) * 4, target)) continue;
+            minX = Math.min(minX, x);
+            minY = Math.min(minY, y);
+            maxX = Math.max(maxX, x);
+            maxY = Math.max(maxY, y);
+          }
+        }
+        return { minX, minY, maxX, maxY };
+      };
+      const blue = boundsFor([77, 171, 247]);
+      const green = boundsFor([105, 219, 124]);
+      if (blue.maxX < 0 || green.maxX < 0) {
+        const colors = new Map<string, number>();
+        for (let offset = 0; offset < pixels.length; offset += 64) {
+          const key = `${pixels[offset]},${pixels[offset + 1]},${pixels[offset + 2]},${pixels[offset + 3]}`;
+          colors.set(key, (colors.get(key) ?? 0) + 1);
+        }
+        return {
+          foundNodes: false,
+          blueInteriorIsFill: false,
+          greenInteriorIsFill: false,
+          connectorPixels: 0,
+          labelPixelsAwayFromStroke: 0,
+          topColors: [...colors].toSorted((left, right) => right[1] - left[1]).slice(0, 10),
+        };
+      }
+      const centerY = Math.round((blue.minY + blue.maxY) / 2);
+      const isDark = (x: number, y: number) => {
+        const offset = (y * width + x) * 4;
+        return (
+          pixels[offset]! < 90 &&
+          pixels[offset + 1]! < 90 &&
+          pixels[offset + 2]! < 90 &&
+          pixels[offset + 3]! > 150
+        );
+      };
+      const blueInteriorIsFill = closeTo(
+        (centerY * width + Math.round(blue.minX + (blue.maxX - blue.minX) * 0.2)) * 4,
+        [77, 171, 247],
+      );
+      const greenInteriorIsFill = closeTo(
+        (centerY * width + Math.round(green.minX + (green.maxX - green.minX) * 0.8)) * 4,
+        [105, 219, 124],
+      );
+      const gapStart = blue.maxX + 3;
+      const gapEnd = green.minX - 3;
+      let connectorPixels = 0;
+      let labelPixelsAwayFromStroke = 0;
+      const labelCenter = Math.round((gapStart + gapEnd) / 2);
+      for (let y = centerY - 24; y <= centerY + 24; y += 1) {
+        for (let x = gapStart; x <= gapEnd; x += 1) {
+          if (!isDark(x, y)) continue;
+          if (Math.abs(y - centerY) <= 3) connectorPixels += 1;
+          if (Math.abs(x - labelCenter) <= 55 && Math.abs(y - centerY) >= 6)
+            labelPixelsAwayFromStroke += 1;
+        }
+      }
+      return {
+        foundNodes: true,
+        blueInteriorIsFill,
+        greenInteriorIsFill,
+        connectorPixels,
+        labelPixelsAwayFromStroke,
+        topColors: [] as [string, number][],
+      };
+    });
+
+    expect(rendering.foundNodes, JSON.stringify(rendering)).toBe(true);
+    expect(rendering).toMatchObject({
+      foundNodes: true,
+      blueInteriorIsFill: true,
+      greenInteriorIsFill: true,
+    });
+    expect(rendering.connectorPixels).toBeGreaterThan(20);
+    expect(rendering.labelPixelsAwayFromStroke).toBeGreaterThan(10);
   } finally {
     await application?.close();
     await rm(temporaryRoot, { recursive: true, force: true });

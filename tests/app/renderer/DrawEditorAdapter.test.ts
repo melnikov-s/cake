@@ -106,7 +106,7 @@ describe("DrawEditorAdapter", () => {
     });
     expect(receipt.elementCount).toBe(3);
     expect(harness.elements()).toHaveLength(3);
-    expect(harness.elements().map(({ type }) => type)).toEqual(["rectangle", "rectangle", "arrow"]);
+    expect(harness.elements().map(({ type }) => type)).toEqual(["arrow", "rectangle", "rectangle"]);
     expect(harness.api.scrollToContent).toHaveBeenCalledWith(harness.elements(), {
       animate: true,
       fitToContent: true,
@@ -116,6 +116,67 @@ describe("DrawEditorAdapter", () => {
     );
     expect((minX + maxX) / 2).toBeCloseTo(400);
     expect((minY + maxY) / 2).toBeCloseTo(300);
+  });
+
+  it("orders Mermaid backgrounds, connectors, nodes, and their bound labels", async () => {
+    vi.mocked(parseMermaidToExcalidraw).mockResolvedValueOnce({
+      elements: [
+        {
+          id: "subgraph",
+          type: "rectangle",
+          x: 0,
+          y: 0,
+          width: 500,
+          height: 220,
+          groupIds: ["subgraph-group"],
+          label: { text: "System" },
+        },
+        {
+          id: "node-a",
+          type: "rectangle",
+          x: 40,
+          y: 70,
+          width: 120,
+          height: 80,
+          groupIds: ["subgraph-group"],
+          label: { text: "A" },
+        },
+        {
+          id: "node-b",
+          type: "rectangle",
+          x: 340,
+          y: 70,
+          width: 120,
+          height: 80,
+          groupIds: ["subgraph-group"],
+          label: { text: "B" },
+        },
+        {
+          id: "edge",
+          type: "arrow",
+          x: 160,
+          y: 110,
+          points: [
+            [0, 0],
+            [180, 0],
+          ],
+          label: { text: "request" },
+        },
+      ],
+    } as never);
+
+    await adapter.insertMermaid("flowchart LR\n  subgraph System\n  A --> B\n  end");
+
+    const elements = harness.elements();
+    const roots = elements.filter((element) => !(element.type === "text" && element.containerId));
+    expect(roots.map(({ type }) => type)).toEqual(["rectangle", "arrow", "rectangle", "rectangle"]);
+    expect(roots[0]?.width).toBe(500);
+    for (const root of roots) {
+      const labelIndex = elements.findIndex(
+        (element) => element.type === "text" && element.containerId === root.id,
+      );
+      expect(labelIndex).toBe(elements.findIndex(({ id }) => id === root.id) + 1);
+    }
   });
 
   it("creates native shapes and a bound arrow", () => {
@@ -191,8 +252,105 @@ describe("DrawEditorAdapter", () => {
     expect(harness.sceneUpdates().slice(0, 3)).toEqual([
       ["shape:left"],
       ["shape:left", "shape:right"],
-      ["shape:left", "shape:right", "shape:link"],
+      ["shape:link", "shape:left", "shape:right"],
     ]);
+  });
+
+  it("layers same-batch connectors behind nodes independent of creation order", () => {
+    adapter.apply({
+      operations: [
+        {
+          type: "create",
+          shape: {
+            id: "arrow-first",
+            type: "arrow",
+            x: 20,
+            y: 70,
+            endX: 420,
+            endY: 70,
+            text: "visible edge label",
+          },
+        },
+        {
+          type: "create",
+          shape: {
+            id: "left",
+            type: "geo",
+            x: 0,
+            y: 20,
+            width: 140,
+            height: 100,
+            text: "Left",
+            fill: "solid",
+          },
+        },
+        {
+          type: "create-relative",
+          shape: {
+            id: "right",
+            type: "geo",
+            width: 140,
+            height: 100,
+            text: "Right",
+            fill: "solid",
+            placement: { relativeTo: "left", side: "right", gap: 120 },
+          },
+        },
+      ],
+    });
+
+    const elements = harness.elements();
+    const arrowIndex = elements.findIndex(({ id }) => id === "shape:arrow-first");
+    const arrowLabelIndex = elements.findIndex(
+      (element) => element.type === "text" && element.containerId === "shape:arrow-first",
+    );
+    const leftIndex = elements.findIndex(({ id }) => id === "shape:left");
+    const rightIndex = elements.findIndex(({ id }) => id === "shape:right");
+    expect(arrowIndex).toBe(0);
+    expect(arrowLabelIndex).toBe(arrowIndex + 1);
+    expect(leftIndex).toBeGreaterThan(arrowLabelIndex);
+    expect(rightIndex).toBeGreaterThan(arrowLabelIndex);
+  });
+
+  it("places new connections without reordering pre-existing artwork", () => {
+    adapter.apply({
+      operations: [
+        {
+          type: "create",
+          shape: { id: "old-a", type: "geo", x: 0, y: 0, width: 100, height: 80 },
+        },
+        {
+          type: "create",
+          shape: { id: "old-b", type: "geo", x: 400, y: 0, width: 100, height: 80 },
+        },
+        { type: "bring-to-front", ids: ["old-a"] },
+      ],
+    });
+    const oldOrder = harness
+      .elements()
+      .filter(({ id }) => id === "shape:old-a" || id === "shape:old-b")
+      .map(({ id }) => id);
+
+    adapter.apply({
+      operations: [
+        { type: "connect", id: "new-edge", fromId: "old-a", toId: "old-b", text: "flow" },
+      ],
+    });
+
+    const elements = harness.elements();
+    expect(
+      elements.filter(({ id }) => id === "shape:old-a" || id === "shape:old-b").map(({ id }) => id),
+    ).toEqual(oldOrder);
+    const edgeIndex = elements.findIndex(({ id }) => id === "shape:new-edge");
+    const edgeLabelIndex = elements.findIndex(
+      (element) => element.type === "text" && element.containerId === "shape:new-edge",
+    );
+    expect(edgeIndex).toBeLessThan(elements.findIndex(({ id }) => id === oldOrder[0]));
+    expect(edgeLabelIndex).toBe(edgeIndex + 1);
+    expect(elements.find(({ id }) => id === "shape:old-a")?.boundElements).toContainEqual({
+      id: "shape:new-edge",
+      type: "arrow",
+    });
   });
 
   it("creates standalone line and arrow elements", () => {
@@ -414,6 +572,69 @@ describe("DrawEditorAdapter", () => {
           locked: true,
         },
       ]),
+    );
+  });
+
+  it("allows explicit layer operations to override the creation default", () => {
+    adapter.apply({
+      operations: [
+        {
+          type: "create",
+          shape: { id: "box", type: "geo", x: 40, y: 20, width: 160, height: 100 },
+        },
+        {
+          type: "create",
+          shape: { id: "edge", type: "arrow", x: 0, y: 70, endX: 240, endY: 70, text: "edge" },
+        },
+        { type: "bring-to-front", ids: ["edge"] },
+      ],
+    });
+    let elements = harness.elements();
+    expect(elements.findIndex(({ id }) => id === "shape:edge")).toBeGreaterThan(
+      elements.findIndex(({ id }) => id === "shape:box"),
+    );
+    expect(
+      elements.findIndex(
+        (element) => element.type === "text" && element.containerId === "shape:edge",
+      ),
+    ).toBe(elements.findIndex(({ id }) => id === "shape:edge") + 1);
+
+    adapter.apply({ operations: [{ type: "send-to-back", ids: ["box"] }] });
+    elements = harness.elements();
+    expect(elements.findIndex(({ id }) => id === "shape:box")).toBe(0);
+  });
+
+  it("preserves normalized order across snapshots, restore, and semantic reads", () => {
+    adapter.apply({
+      operations: [
+        {
+          type: "create",
+          shape: { id: "box", type: "geo", x: 20, y: 20, width: 180, height: 100, text: "Box" },
+        },
+        {
+          type: "create",
+          shape: {
+            id: "edge",
+            type: "arrow",
+            x: 0,
+            y: 70,
+            endX: 240,
+            endY: 70,
+            text: "Readable",
+          },
+        },
+      ],
+    });
+    const before = adapter.read({ scope: "page" });
+    const snapshot = adapter.snapshotDocument();
+    const second = editorHarness();
+    const restoredAdapter = createDrawEditorAdapter(second.api);
+    restoredAdapter.loadDocument(snapshot);
+
+    expect(second.elements().map(({ id }) => id)).toEqual(harness.elements().map(({ id }) => id));
+    expect(restoredAdapter.read({ scope: "page" })).toEqual(before);
+    expect(second.elements().findIndex(({ id }) => id === "shape:edge")).toBeLessThan(
+      second.elements().findIndex(({ id }) => id === "shape:box"),
     );
   });
 
