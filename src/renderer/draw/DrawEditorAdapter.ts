@@ -219,6 +219,46 @@ function visibleElements(elements: readonly ExcalidrawElement[]) {
   );
 }
 
+function isConnector(element: ExcalidrawElement) {
+  return element.type === "line" || element.type === "arrow";
+}
+
+function isNodeBox(element: ExcalidrawElement) {
+  return element.type === "rectangle" || element.type === "ellipse" || element.type === "diamond";
+}
+
+function isDiagramBackground(element: ExcalidrawElement, elements: readonly ExcalidrawElement[]) {
+  if (element.type === "frame" || element.type === "magicframe") return true;
+  if (element.type !== "rectangle") return false;
+  const label = boundLabel(element, elements);
+  if (!label || label.verticalAlign !== "top") return false;
+  const subgraphIds = element.groupIds.filter((id) => id.startsWith("subgraph_group_"));
+  if (subgraphIds.length === 0) return false;
+  return elements.some(
+    (candidate) =>
+      candidate.id !== element.id &&
+      isNodeBox(candidate) &&
+      candidate.groupIds.some((id) => subgraphIds.includes(id)) &&
+      candidate.x >= element.x &&
+      candidate.y >= element.y &&
+      candidate.x + candidate.width <= element.x + element.width &&
+      candidate.y + candidate.height <= element.y + element.height,
+  );
+}
+
+function enforceConnectorNodeOrdering(elements: readonly ExcalidrawElement[]) {
+  const backgrounds = elements
+    .filter((element) => isDiagramBackground(element, elements))
+    .sort((left, right) => right.width * right.height - left.width * left.height);
+  const backgroundIds = new Set(backgrounds.map(({ id }) => id));
+  const connectors = elements.filter(isConnector);
+  const labels = elements.filter((element) => element.type === "text");
+  const nodes = elements.filter(
+    (element) => !backgroundIds.has(element.id) && !isConnector(element) && element.type !== "text",
+  );
+  return [...backgrounds, ...connectors, ...nodes, ...labels];
+}
+
 function boundsOf(element: ExcalidrawElement, elements: readonly ExcalidrawElement[]) {
   const related = [element];
   const label = boundLabel(element, elements);
@@ -1447,7 +1487,7 @@ function applyPreparedOperations(
         break;
     }
   }
-  elements = updateConnections(elements);
+  elements = enforceConnectorNodeOrdering(updateConnections(elements));
   api.updateScene({
     elements,
     ...(selectedElementIds ? { appState: { selectedElementIds } } : null),
@@ -1758,8 +1798,10 @@ async function insertMermaid(
   const converted = convertToExcalidrawElements(skeletons, { regenerateIds: true });
   const existing = api.getSceneElementsIncludingDeleted();
   const reservedIds = new Set(existing.map((element) => element.id));
-  const created = spreadOverlappingMermaidConnectors(
-    fitMermaidLabels(remapMermaidElementIds(converted, reservedIds)),
+  const created = enforceConnectorNodeOrdering(
+    spreadOverlappingMermaidConnectors(
+      fitMermaidLabels(remapMermaidElementIds(converted, reservedIds)),
+    ),
   );
   const appState = api.getAppState();
   const viewportStart = viewportCoordsToSceneCoords({ clientX: 0, clientY: 0 }, appState);

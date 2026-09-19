@@ -253,6 +253,16 @@ describe("DrawEditorAdapter", () => {
     const scene = adapter.read({ scope: "page" });
     const rectangles = scene.shapes.filter(({ type }) => type === "rectangle");
     const arrow = scene.shapes.find(({ type }) => type === "arrow")!;
+    const importedOrder = harness.elements().map(({ id }) => id);
+    expect(importedOrder.indexOf(arrow.id)).toBeLessThan(
+      Math.min(...rectangles.map(({ id }) => importedOrder.indexOf(id))),
+    );
+    expect(
+      harness
+        .elements()
+        .filter((element) => element.type === "text")
+        .every(({ id }) => importedOrder.indexOf(id) > importedOrder.indexOf(rectangles[0]!.id)),
+    ).toBe(true);
     const source = rectangles.find(({ text }) => text === "Source")!;
     const target = rectangles.find(({ text }) => text === "Target")!;
     const receipt = adapter.apply({
@@ -345,6 +355,94 @@ describe("DrawEditorAdapter", () => {
     expect(overlapsExisting).toBe(false);
   });
 
+  it("orders Mermaid subgraph backgrounds, connectors, nodes, and labels by visual role", async () => {
+    vi.mocked(parseMermaidToExcalidraw).mockResolvedValue({
+      elements: [
+        {
+          id: "frame",
+          type: "frame",
+          x: -30,
+          y: -30,
+          width: 560,
+          height: 300,
+          children: ["cluster", "left", "right", "edge"],
+        },
+        {
+          id: "cluster",
+          type: "rectangle",
+          x: 0,
+          y: 0,
+          width: 500,
+          height: 240,
+          groupIds: ["subgraph_group_cluster"],
+          label: { text: "Services", verticalAlign: "top" },
+        },
+        {
+          id: "left",
+          type: "rectangle",
+          x: 60,
+          y: 80,
+          width: 120,
+          height: 70,
+          groupIds: ["subgraph_group_cluster"],
+          label: { text: "API" },
+        },
+        {
+          id: "right",
+          type: "rectangle",
+          x: 320,
+          y: 80,
+          width: 120,
+          height: 70,
+          groupIds: ["subgraph_group_cluster"],
+          label: { text: "Worker" },
+        },
+        {
+          id: "edge",
+          type: "arrow",
+          x: 180,
+          y: 115,
+          points: [
+            [0, 0],
+            [140, 0],
+          ],
+          start: { id: "left" },
+          end: { id: "right" },
+          label: { text: "dispatch" },
+        },
+      ],
+    } as never);
+
+    await adapter.insertMermaid("flowchart LR\n  subgraph Services\n  API --> Worker\n  end");
+
+    const elements = harness.elements();
+    const background = elements.find(
+      (element) => element.type === "rectangle" && element.width >= 500,
+    )!;
+    const frame = elements.find((element) => element.type === "frame")!;
+    const connector = elements.find((element) => element.type === "arrow")!;
+    const nodes = elements.filter(
+      (element) => element.type === "rectangle" && element.id !== background.id,
+    );
+    const labels = elements.filter((element) => element.type === "text");
+    const order = elements.map(({ id }) => id);
+    expect(order.indexOf(frame.id)).toBeLessThan(order.indexOf(connector.id));
+    expect(order.indexOf(background.id)).toBeLessThan(order.indexOf(connector.id));
+    expect(nodes.every(({ id }) => order.indexOf(connector.id) < order.indexOf(id))).toBe(true);
+    expect(labels.every(({ id }) => order.indexOf(id) > order.indexOf(nodes.at(-1)!.id))).toBe(
+      true,
+    );
+    expect(
+      connector.type === "arrow" && connector.startBinding && connector.endBinding,
+    ).toBeTruthy();
+    expect(background.boundElements?.every(({ id }) => order.includes(id))).toBe(true);
+    expect(
+      elements
+        .filter(({ frameId }) => frameId === frame.id)
+        .every(({ id }) => id !== frame.id && order.includes(id)),
+    ).toBe(true);
+  });
+
   it("separates coincident parallel Mermaid connectors deterministically", async () => {
     vi.mocked(parseMermaidToExcalidraw).mockResolvedValue({
       elements: [
@@ -409,6 +507,13 @@ describe("DrawEditorAdapter", () => {
     expect(harness.elements().find(({ id }) => id === "shape:left")).toMatchObject({
       type: "rectangle",
     });
+    const order = harness.elements().map(({ id }) => id);
+    expect(order.indexOf("shape:link")).toBeLessThan(order.indexOf("shape:left"));
+    expect(order.indexOf("shape:link")).toBeLessThan(order.indexOf("shape:right"));
+    const linkLabel = harness
+      .elements()
+      .find((element) => element.type === "text" && element.containerId === "shape:link");
+    expect(order.indexOf(linkLabel!.id)).toBeGreaterThan(order.indexOf("shape:right"));
     expect(
       adapter.read({ scope: "page" }).shapes.find(({ id }) => id === "shape:link")?.connections,
     ).toEqual([
@@ -569,6 +674,18 @@ describe("DrawEditorAdapter", () => {
       operations: [
         {
           type: "create",
+          shape: {
+            id: "node",
+            type: "geo",
+            x: 140,
+            y: 10,
+            width: 120,
+            height: 90,
+            fill: "solid",
+          },
+        },
+        {
+          type: "create",
           shape: { id: "line", type: "line", x: 5, y: 10, endX: 105, endY: 60 },
         },
         {
@@ -591,6 +708,9 @@ describe("DrawEditorAdapter", () => {
       x: 5,
       y: 10,
     });
+    const order = harness.elements().map(({ id }) => id);
+    expect(order.indexOf("shape:line")).toBeLessThan(order.indexOf("shape:node"));
+    expect(order.indexOf("shape:arrow")).toBeLessThan(order.indexOf("shape:node"));
     expect(
       adapter.read({ scope: "page" }).shapes.find(({ id }) => id === "shape:arrow")?.text,
     ).toBe("standalone");

@@ -59,6 +59,19 @@ test("imports Mermaid as readable native shapes with intact agent IDs in Electro
     expect(elements.map(({ text }) => text).filter(Boolean)).toContain(
       "Sandboxed Renderer\nModels + Stores",
     );
+    const connectorIndexes = elements.flatMap((element, index) =>
+      element.type === "line" || element.type === "arrow" ? [index] : [],
+    );
+    const nodeIndexes = elements.flatMap((element, index) =>
+      element.type === "rectangle" || element.type === "ellipse" || element.type === "diamond"
+        ? [index]
+        : [],
+    );
+    const labelIndexes = elements.flatMap((element, index) =>
+      element.type === "text" ? [index] : [],
+    );
+    expect(Math.max(...connectorIndexes)).toBeLessThan(Math.min(...nodeIndexes));
+    expect(Math.min(...labelIndexes)).toBeGreaterThan(Math.max(...nodeIndexes));
     for (const element of elements) {
       if (element.containerId) expect(ids.has(element.containerId)).toBe(true);
       if (element.frameId) expect(ids.has(element.frameId)).toBe(true);
