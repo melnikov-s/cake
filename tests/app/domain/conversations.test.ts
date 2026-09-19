@@ -42,6 +42,7 @@ const makeHandle = (deliveries: string[], isStreaming: () => boolean): PiSession
   cancelSteering: () => Effect.succeed({ steering: [], followUp: [] }),
   removeQueuedMessage: () => Effect.succeed({ steering: [], followUp: [] }),
   steerQueuedMessage: () => Effect.succeed({ steering: [], followUp: [] }),
+  sendQueuedMessageNow: () => Effect.succeed({ steering: [], followUp: [] }),
   editMessage: () => Effect.void,
   setUserMessageMarkdown: () => Effect.void,
   abort: () => Effect.void,

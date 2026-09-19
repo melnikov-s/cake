@@ -119,6 +119,10 @@ const makeLayer = (options: { readonly assistant?: boolean } = {}) => {
         queueOperations.push(`${sessionId}:steer:${partId}`);
         return { steering: [], followUp: [] };
       },
+      sendQueuedMessageNow: async () => ({
+        queued: { steering: [], followUp: [] },
+        abortedTurnIds: [],
+      }),
       prompt: async (...input) => {
         prompts.push(input);
         options.onEvent({ type: "streaming", sessionId, streaming: false });

@@ -57,6 +57,10 @@ export function fakeRuntime(
     cancelSteering: async () => ({ steering: [], followUp: [] }),
     removeQueuedMessage: async () => ({ steering: [], followUp: [] }),
     steerQueuedMessage: async () => ({ steering: [], followUp: [] }),
+    sendQueuedMessageNow: async () => ({
+      queued: { steering: [], followUp: [] },
+      abortedTurnIds: [],
+    }),
     prompt: async () => undefined,
     setUserMessageMarkdown: async () => undefined,
     compact: async () => undefined,

@@ -53,6 +53,10 @@ export interface CakeRuntimeTurnController {
   readonly steerQueuedMessage: (
     partId: string,
   ) => Promise<{ steering: string[]; followUp: string[] }>;
+  readonly sendQueuedMessageNow: (partId?: string) => Promise<{
+    queued: { steering: string[]; followUp: string[] };
+    abortedTurnIds: string[];
+  }>;
   readonly consumeUserMessage: (content: string) => void;
   readonly settleTurn: () => void;
   readonly compactionEnded: (willRetry: boolean) => void;
@@ -106,6 +110,18 @@ export function createCakeRuntimeTurnController(input: {
   }[] = [];
   let abortGeneration = 0;
   let queueGeneration = 0;
+  let steeringWaiters: Array<() => void> = [];
+
+  const notifySteeringQueued = () => {
+    const waiters = steeringWaiters;
+    steeringWaiters = [];
+    for (const resolve of waiters) resolve();
+  };
+
+  const waitForSteering = () =>
+    new Promise<void>((resolve) => {
+      steeringWaiters.push(resolve);
+    });
 
   const assertActive = () => {
     if (input.isDisposed()) throw new Error("The Cake runtime has been disposed");
@@ -296,6 +312,7 @@ export function createCakeRuntimeTurnController(input: {
           renderUserMessageAsMarkdown,
           ...(presentationMode === undefined ? null : { presentationMode }),
         });
+        if (delivery === "steer") notifySteeringQueued();
         input.syncQueuedParts();
         await completion;
         return;
@@ -321,6 +338,7 @@ export function createCakeRuntimeTurnController(input: {
           attachments: [...attachments],
           renderUserMessageAsMarkdown,
         });
+        if (lane === "steering") notifySteeringQueued();
       }
       // Pi extensions may handle input without creating a user message or run.
       if (
@@ -460,6 +478,58 @@ export function createCakeRuntimeTurnController(input: {
     };
   };
 
+  // Unlike prompt(), these Pi primitives keep messages held even after the
+  // active run has stopped. This is the queue-preserving half of explicit stop.
+  const holdQueue = async (queues: TrackedQueue) => {
+    for (const item of queues.steering)
+      await session.steer(item.content, imageContent(item.attachments));
+    for (const item of queues["follow-up"])
+      await session.followUp(item.content, imageContent(item.attachments));
+    trackedQueue = {
+      steering: [...queues.steering],
+      "follow-up": [...queues["follow-up"]],
+    };
+  };
+
+  const queuedForStop = () => {
+    reconcileQueue();
+    return {
+      steering: [
+        ...trackedQueue.steering,
+        ...compactionQueue
+          .filter((item) => item.delivery === "steer")
+          .map((item) => ({
+            itemId: item.itemId,
+            content: item.content,
+            attachments: item.attachments,
+            renderUserMessageAsMarkdown: item.renderUserMessageAsMarkdown,
+          })),
+      ],
+      "follow-up": [
+        ...trackedQueue["follow-up"],
+        ...compactionQueue
+          .filter((item) => item.delivery === "follow-up")
+          .map((item) => ({
+            itemId: item.itemId,
+            content: item.content,
+            attachments: item.attachments,
+            renderUserMessageAsMarkdown: item.renderUserMessageAsMarkdown,
+          })),
+      ],
+    } satisfies TrackedQueue;
+  };
+
+  const stopActiveTurn = async () => {
+    abortGeneration += 1;
+    queueGeneration += 1;
+    const abortedTurnIds = turnCompletions.cancelExecuting();
+    input.recovery.onAbort();
+    input.cancelResponseRetries();
+    if (session.isBashRunning) session.abortBash();
+    else await session.abort();
+    return abortedTurnIds;
+  };
+
   const editQueuedMessage = async (
     partId: string,
     edit: (
@@ -567,6 +637,66 @@ export function createCakeRuntimeTurnController(input: {
           item.delivery = "steer";
         },
       ),
+    async sendQueuedMessageNow(partId) {
+      assertActive();
+      if (
+        !partId &&
+        session.getSteeringMessages().length === 0 &&
+        !compactionQueue.some((item) => item.delivery === "steer")
+      )
+        await waitForSteering();
+      assertActive();
+      const queues = queuedForStop();
+      const rawSteering = session.getSteeringMessages();
+      const rawFollowUp = session.getFollowUpMessages();
+      const pending = compactionQueue.map((item) => item.text);
+      const location = partId
+        ? locateQueuedMessage(partId, rawSteering, rawFollowUp, pending)
+        : queues.steering.length > 0
+          ? { list: "steering" as const, index: 0 }
+          : undefined;
+      if (!location) throw new Error("That queued message is no longer available");
+
+      const lane =
+        location.list === "pending"
+          ? compactionQueue[location.index]?.delivery === "steer"
+            ? "steering"
+            : "follow-up"
+          : location.list === "steering"
+            ? "steering"
+            : "follow-up";
+      const laneIndex =
+        location.list === "pending"
+          ? compactionQueue
+              .slice(0, location.index)
+              .filter((item) => item.delivery === (lane === "steering" ? "steer" : "follow-up"))
+              .length + trackedQueue[lane].length
+          : location.index;
+      const [selected] = queues[lane].splice(laneIndex, 1);
+      if (!selected) throw new Error("That queued message is no longer available");
+
+      session.clearQueue();
+      compactionQueue = [];
+      trackedQueue = { steering: [], "follow-up": [] };
+      const abortedTurnIds = await stopActiveTurn();
+      await holdQueue(queues);
+      input.syncQueuedParts();
+      await input.emitSnapshot();
+
+      await input.beforeIdleTurn();
+      await input.deliverTrackedUserMessage(
+        selected.content,
+        selected.renderUserMessageAsMarkdown,
+        () =>
+          input.withResponseRetries(() =>
+            session.prompt(selected.content, {
+              images: imageContent(selected.attachments),
+              source: "interactive",
+            }),
+          ),
+      );
+      return { queued: await listQueuedMessages(), abortedTurnIds };
+    },
     async clearQueue() {
       queueGeneration += 1;
       reconcileQueue();
@@ -625,20 +755,15 @@ export function createCakeRuntimeTurnController(input: {
     compactionEnded(willRetry) {
       if (!willRetry) void flushCompactionQueue();
     },
-    abort() {
-      abortGeneration += 1;
-      queueGeneration += 1;
-      turnCompletions.cancel();
+    async abort() {
+      const queues = queuedForStop();
+      session.clearQueue();
       compactionQueue = [];
       trackedQueue = { steering: [], "follow-up": [] };
+      await stopActiveTurn();
+      await holdQueue(queues);
       input.syncQueuedParts();
-      input.recovery.onAbort();
-      input.cancelResponseRetries();
-      if (session.isBashRunning) {
-        session.abortBash();
-        return Promise.resolve();
-      }
-      return session.abort();
+      await input.emitSnapshot();
     },
     dispose() {
       abortGeneration += 1;
@@ -646,6 +771,7 @@ export function createCakeRuntimeTurnController(input: {
       turnCompletions.cancel();
       compactionQueue = [];
       trackedQueue = { steering: [], "follow-up": [] };
+      notifySteeringQueued();
     },
   };
 }

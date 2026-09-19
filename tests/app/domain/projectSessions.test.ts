@@ -138,6 +138,10 @@ const fakeRuntime = (
     onOperation?.("steer-queued");
     return { steering: [], followUp: [] };
   },
+  sendQueuedMessageNow: async () => ({
+    queued: { steering: [], followUp: [] },
+    abortedTurnIds: [],
+  }),
   prompt: async (_text, delivery) => {
     onOperation?.(delivery);
     await prompt();

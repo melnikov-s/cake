@@ -38,6 +38,7 @@ function fixture(
       cancelSteering: async () => ({ steering: [], followUp: [] }),
       removeQueuedMessage: vi.fn(async () => ({ steering: [], followUp: [] })),
       steerQueuedMessage: vi.fn(async () => ({ steering: [], followUp: [] })),
+      sendQueuedMessageNow: vi.fn(async () => ({ steering: [], followUp: [] })),
       setModel: async ({ provider, modelId }: { provider: string; modelId: string }) =>
         setModel(provider, modelId),
       setThinkingLevel: async () => undefined,

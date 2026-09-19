@@ -296,6 +296,10 @@ export interface CakeRuntime {
   cancelSteering(): Promise<{ steering: string[]; followUp: string[] }>;
   removeQueuedMessage(partId: string): Promise<{ steering: string[]; followUp: string[] }>;
   steerQueuedMessage(partId: string): Promise<{ steering: string[]; followUp: string[] }>;
+  sendQueuedMessageNow(partId?: string): Promise<{
+    queued: { steering: string[]; followUp: string[] };
+    abortedTurnIds: string[];
+  }>;
   editMessage?(
     entryId: string,
     text: string,
@@ -782,6 +786,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     cancelSteering: turnController.cancelSteering,
     removeQueuedMessage: turnController.removeQueuedMessage,
     steerQueuedMessage: turnController.steerQueuedMessage,
+    sendQueuedMessageNow: turnController.sendQueuedMessageNow,
     async setUserMessageMarkdown(entryId, renderAsMarkdown) {
       if (disposed) throw new Error("The Cake runtime has been disposed");
       const target = session.sessionManager

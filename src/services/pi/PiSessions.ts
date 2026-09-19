@@ -153,6 +153,9 @@ export interface PiSessionHandle {
   readonly cancelSteering: () => Effect.Effect<PiQueuedMessages, PiSessionError>;
   readonly removeQueuedMessage: (partId: string) => Effect.Effect<PiQueuedMessages, PiSessionError>;
   readonly steerQueuedMessage: (partId: string) => Effect.Effect<PiQueuedMessages, PiSessionError>;
+  readonly sendQueuedMessageNow: (
+    partId?: string,
+  ) => Effect.Effect<PiQueuedMessages, PiSessionError>;
   readonly editMessage: (
     entryId: string,
     text: string,
@@ -648,6 +651,49 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
           return turnId;
         });
 
+        const claimAbortedTurns = Effect.fn("PiSessions.claimAbortedTurns")(function* (
+          turnIds: ReadonlyArray<string>,
+        ) {
+          return yield* Ref.modify(shared.activeTurns, (turns) => {
+            const claimed = turnIds.filter((turnId) => turns.has(turnId));
+            const next = new Map(turns);
+            for (const turnId of claimed) next.delete(turnId);
+            return [claimed, next] as const;
+          });
+        });
+
+        const settleAbortedTurns = Effect.fn("PiSessions.settleAbortedTurns")(function* (
+          turnIds: ReadonlyArray<string>,
+        ) {
+          yield* Effect.forEach(
+            turnIds,
+            (turnId) =>
+              Effect.gen(function* () {
+                shared.settledInputIds.delete(turnId);
+                yield* PubSub.publish(shared.events, {
+                  type: "turn-settled",
+                  sessionId: shared.runtime.sessionId,
+                  turnId,
+                  outcome: "aborted",
+                });
+                if (options.onTurnSettled)
+                  yield* options
+                    .onTurnSettled({
+                      sessionId: shared.runtime.sessionId,
+                      turnId,
+                      outcome: "aborted",
+                    })
+                    .pipe(
+                      Effect.mapError(
+                        (cause) =>
+                          new PiSessionError({ operation: "abort", message: String(cause) }),
+                      ),
+                    );
+              }),
+            { discard: true },
+          );
+        });
+
         return {
           profile: shared.profile,
           updates,
@@ -669,6 +715,15 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
             call("removeQueuedMessage", (runtime) => runtime.removeQueuedMessage(partId)),
           steerQueuedMessage: (partId) =>
             call("steerQueuedMessage", (runtime) => runtime.steerQueuedMessage(partId)),
+          sendQueuedMessageNow: (partId) =>
+            Effect.gen(function* () {
+              const claimed = yield* claimAbortedTurns(shared.runtime.executingTurnIds?.() ?? []);
+              const result = yield* call("sendQueuedMessageNow", (runtime) =>
+                runtime.sendQueuedMessageNow(partId),
+              );
+              yield* settleAbortedTurns(claimed);
+              return result.queued;
+            }),
           editMessage: (
             entryId,
             text,
@@ -699,35 +754,9 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
               runtime.setUserMessageMarkdown(entryId, renderAsMarkdown),
             ),
           abort: Effect.fn("PiSessions.abort")(function* () {
-            const active = yield* Ref.getAndSet(shared.activeTurns, new Map());
-            shared.settledInputIds.clear();
+            const claimed = yield* claimAbortedTurns(shared.runtime.executingTurnIds?.() ?? []);
             yield* call("abort", (runtime) => runtime.abort());
-            yield* Effect.forEach(
-              active,
-              ([turnId]) =>
-                Effect.gen(function* () {
-                  yield* PubSub.publish(shared.events, {
-                    type: "turn-settled",
-                    sessionId: shared.runtime.sessionId,
-                    turnId,
-                    outcome: "aborted",
-                  });
-                  if (options.onTurnSettled)
-                    yield* options
-                      .onTurnSettled({
-                        sessionId: shared.runtime.sessionId,
-                        turnId,
-                        outcome: "aborted",
-                      })
-                      .pipe(
-                        Effect.mapError(
-                          (cause) =>
-                            new PiSessionError({ operation: "abort", message: String(cause) }),
-                        ),
-                      );
-                }),
-              { discard: true },
-            );
+            yield* settleAbortedTurns(claimed);
           }),
           executeCommand: (command, arguments_) =>
             command === "changelog"

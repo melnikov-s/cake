@@ -388,6 +388,12 @@ export function makeClient(runtime: Pick<Runtime, "execute">): Client {
           withClient((client) => client.sessionChats.steerQueuedMessage(input)),
           options,
         ),
+      sendQueuedMessageNow: (input, options) =>
+        run(
+          "sessionChats.sendQueuedMessageNow",
+          withClient((client) => client.sessionChats.sendQueuedMessageNow(input)),
+          options,
+        ),
       compact: (input, options) =>
         run(
           "sessionChats.compact",

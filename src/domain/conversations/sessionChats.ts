@@ -136,6 +136,16 @@ export const steerQueuedMessage = Effect.fn("SessionChats.steerQueuedMessage")(f
   ).pipe(Effect.map(projectQueuedMessages), asError("steerQueuedMessage"));
 });
 
+export const sendQueuedMessageNow = Effect.fn("SessionChats.sendQueuedMessageNow")(function* (
+  target: SessionChatTarget,
+  partId?: string,
+) {
+  yield* subagents.abortParentChildren(target.sessionId).pipe(asError("sendQueuedMessageNow"));
+  return yield* useConversation(acquire(target.sessionId), (handle) =>
+    handle.sendQueuedMessageNow(partId),
+  ).pipe(Effect.map(projectQueuedMessages), asError("sendQueuedMessageNow"));
+});
+
 export const compact = Effect.fn("SessionChats.compact")(function* (
   target: SessionChatTarget,
   instructions?: string,

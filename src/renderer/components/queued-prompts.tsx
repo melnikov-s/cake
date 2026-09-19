@@ -2,7 +2,14 @@ import { useState } from "react";
 import { observer } from "r-state-tree/react";
 import { FullscreenMessage } from "@/components/fullscreen-message";
 import { Button } from "@/components/ui/button";
-import { ChatIcon, ClockIcon, EditIcon, RemoveIcon, SteerIcon } from "@/components/ui/icons";
+import {
+  ChatIcon,
+  ClockIcon,
+  EditIcon,
+  RemoveIcon,
+  SteerIcon,
+  StopIcon,
+} from "@/components/ui/icons";
 import { IconButton } from "@/components/ui/icon-button";
 import { LoadingSpinner } from "@/components/ui/loading-state";
 import type { ChatStore } from "../stores/ChatStore";
@@ -63,6 +70,15 @@ export const QueuedPrompts = observer(function QueuedPrompts({ store }: { store:
                 {entry.state === "steering" ? (
                   <>
                     <LoadingSpinner label={`Steering: ${label}`} />
+                    {store.canStopAndSendQueuedPrompt && (
+                      <IconButton
+                        tooltip="Stop current response and send now"
+                        ariaLabel={`Stop and send now: ${label}`}
+                        onClick={() => void store.stopAndSendQueuedPrompt(entry.id)}
+                      >
+                        <StopIcon />
+                      </IconButton>
+                    )}
                     {store.canCancelSteering && (
                       <IconButton
                         tooltip="Cancel steering"
@@ -79,9 +95,18 @@ export const QueuedPrompts = observer(function QueuedPrompts({ store }: { store:
                       <IconButton
                         tooltip="Send now as steering"
                         ariaLabel={`Send now as steering: ${label}`}
-                        onClick={() => store.steerQueuedPrompt(entry.id)}
+                        onClick={() => void store.steerQueuedPrompt(entry.id)}
                       >
                         <SteerIcon />
+                      </IconButton>
+                    )}
+                    {store.canStopAndSendQueuedPrompt && (
+                      <IconButton
+                        tooltip="Stop current response and send now"
+                        ariaLabel={`Stop and send now: ${label}`}
+                        onClick={() => void store.stopAndSendQueuedPrompt(entry.id)}
+                      >
+                        <StopIcon />
                       </IconButton>
                     )}
                     {entry.editable !== false && store.canEditQueuedPrompt && (

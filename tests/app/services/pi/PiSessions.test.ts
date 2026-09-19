@@ -37,6 +37,7 @@ describe("PiSessions", () => {
       const release = yield* Deferred.make<void>();
       const returned = yield* Deferred.make<void>();
       const outcomes: string[] = [];
+      let executingTurnIds: string[] = [];
       const layer = makePiSessionsLayer({
         sessionIds: () => Stream.empty,
         catalog: () => Stream.empty,
@@ -46,14 +47,17 @@ describe("PiSessions", () => {
         createRuntime: (runtimeOptions) =>
           Effect.succeed({
             ...fakeRuntime(runtimeOptions, () => undefined),
-            prompt: () =>
-              Effect.runPromise(
+            prompt: (_text, _delivery, _attachments, _markdown, turnId) => {
+              if (turnId) executingTurnIds = [turnId];
+              return Effect.runPromise(
                 Effect.gen(function* () {
                   yield* Deferred.succeed(started, undefined);
                   yield* Deferred.await(release);
                   yield* Deferred.succeed(returned, undefined);
                 }),
-              ),
+              );
+            },
+            executingTurnIds: () => executingTurnIds,
             abort: () =>
               Effect.runPromise(Deferred.succeed(release, undefined)).then(() => undefined),
           }),

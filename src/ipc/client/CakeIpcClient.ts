@@ -296,6 +296,9 @@ export interface CakeIpcClientService {
     readonly steerQueuedMessage: (
       input: SessionChatTarget & { readonly partId: string },
     ) => Effect.Effect<QueuedConversationMessages, SessionChatError | TransportError>;
+    readonly sendQueuedMessageNow: (
+      input: SessionChatTarget & { readonly partId?: string },
+    ) => Effect.Effect<QueuedConversationMessages, SessionChatError | TransportError>;
     readonly compact: (
       input: SessionChatTarget & { readonly instructions?: string },
     ) => Effect.Effect<void, SessionChatError | TransportError>;
@@ -833,6 +836,9 @@ export const CakeIpcClientLive = Layer.effect(
         ),
         steerQueuedMessage: Effect.fn("CakeIpcClient.sessionChats.steerQueuedMessage")((input) =>
           client("sessionChats.steerQueuedMessage", input),
+        ),
+        sendQueuedMessageNow: Effect.fn("CakeIpcClient.sessionChats.sendQueuedMessageNow")(
+          (input) => client("sessionChats.sendQueuedMessageNow", input),
         ),
         compact: Effect.fn("CakeIpcClient.sessionChats.compact")((input) =>
           client("sessionChats.compact", input),

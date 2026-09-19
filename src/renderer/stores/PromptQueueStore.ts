@@ -61,21 +61,21 @@ export class PromptQueueStore extends Store<PromptQueueStoreProps> {
     return entry.renderUserMessageAsMarkdown;
   }
 
-  steer(id: string) {
+  async steer(id: string) {
     const index = this.prompts.findIndex((entry) => entry.id === id);
     const entry = this.take(id);
-    if (!entry) return;
+    if (!entry) return false;
     const position = [...this.steering]
       .sort((left, right) => left.position - right.position)
       .reduce((candidate, active) => candidate + (active.position <= candidate ? 1 : 0), index);
     const pending = { entry, position };
     this.steering.push(pending);
-    void this.props
-      .deliver(entry, this.props.isStreaming() ? "steer" : "prompt")
-      .then((delivered) => {
-        if (delivered || this.signal.aborted) return;
-        this.restoreSteering(pending);
-      });
+    const delivered = await this.props.deliver(
+      entry,
+      this.props.isStreaming() ? "steer" : "prompt",
+    );
+    if (!delivered && !this.signal.aborted) this.restoreSteering(pending);
+    return delivered;
   }
 
   async cancelSteering() {

@@ -80,7 +80,8 @@ export interface ChatStoreProps {
   usage?(): SessionSnapshot["usage"];
   promptCacheModel?(): { provider: string; modelId: string } | undefined;
   queuedPrompts?(): readonly QueuedPrompt[];
-  steerQueuedPrompt?(id: string): void;
+  steerQueuedPrompt?(id: string): void | Promise<void>;
+  stopAndSendQueuedPrompt?(id: string): void | Promise<void>;
   editQueuedPrompt?(id: string): boolean | undefined;
   removeQueuedPrompt?(id: string): void;
   cancelSteering?(): Promise<void>;
@@ -232,6 +233,9 @@ export class ChatStore extends Store<ChatStoreProps> {
   get canSteerQueuedPrompt() {
     return Boolean(this.props.steerQueuedPrompt);
   }
+  get canStopAndSendQueuedPrompt() {
+    return Boolean(this.props.stopAndSendQueuedPrompt);
+  }
   get canEditQueuedPrompt() {
     return Boolean(this.props.editQueuedPrompt);
   }
@@ -312,9 +316,15 @@ export class ChatStore extends Store<ChatStoreProps> {
 
   async submit(value = this.draft, options?: { renderUserMessageAsMarkdown?: boolean }) {
     if (value !== this.draft) this.setDraft(value);
+    const empty = !value.trim() && this.attachments.length === 0 && this.annotations.length === 0;
+    const steering = this.queuedPrompts.find((entry) => entry.state === "steering");
+    if (empty && steering && this.canStopAndSendQueuedPrompt) {
+      await this.stopAndSendQueuedPrompt(steering.id);
+      return true;
+    }
     const queued = this.queuedPrompts.find((entry) => entry.state === "queued");
-    if (!value.trim() && this.attachments.length === 0 && this.annotations.length === 0 && queued) {
-      this.steerQueuedPrompt(queued.id);
+    if (empty && queued) {
+      await this.steerQueuedPrompt(queued.id);
       return true;
     }
     if (!this.props.canSubmit(value) || this.submittingLocally) return false;
@@ -334,7 +344,10 @@ export class ChatStore extends Store<ChatStoreProps> {
   }
 
   steerQueuedPrompt(id: string) {
-    this.props.steerQueuedPrompt?.(id);
+    return this.props.steerQueuedPrompt?.(id);
+  }
+  stopAndSendQueuedPrompt(id: string) {
+    return this.props.stopAndSendQueuedPrompt?.(id);
   }
   editQueuedPrompt(id: string) {
     this.props.editQueuedPrompt?.(id);

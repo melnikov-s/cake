@@ -124,6 +124,10 @@ const makeLayer = (
       operations.push("steer-queued");
       return { steering: [], followUp: [] };
     },
+    sendQueuedMessageNow: async () => ({
+      queued: { steering: [], followUp: [] },
+      abortedTurnIds: [],
+    }),
     prompt: async () => {
       options.onEvent({ type: "streaming", sessionId: snapshot.sessionId, streaming: false });
     },

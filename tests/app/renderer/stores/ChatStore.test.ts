@@ -89,6 +89,39 @@ describe("ChatStore empty-composer submit", () => {
     store[Symbol.dispose]();
   });
 
+  it("stops and sends the steering head on the next empty-composer submit", async () => {
+    const stopAndSendQueuedPrompt = vi.fn(async () => undefined);
+    const steerQueuedPrompt = vi.fn();
+    const submit = vi.fn(() => Promise.resolve(true));
+    const store = createChatStore(submit, {
+      queuedPrompts: () => [
+        {
+          id: "steering",
+          text: "Send immediately",
+          attachments: [],
+          renderUserMessageAsMarkdown: false,
+          state: "steering",
+        },
+        {
+          id: "later",
+          text: "Later",
+          attachments: [],
+          renderUserMessageAsMarkdown: false,
+          state: "queued",
+        },
+      ],
+      steerQueuedPrompt,
+      stopAndSendQueuedPrompt,
+    });
+
+    await expect(store.submit("")).resolves.toBe(true);
+
+    expect(stopAndSendQueuedPrompt).toHaveBeenCalledWith("steering");
+    expect(steerQueuedPrompt).not.toHaveBeenCalled();
+    expect(submit).not.toHaveBeenCalled();
+    store[Symbol.dispose]();
+  });
+
   it("keeps an empty-composer submit as a no-op without queued prompts", async () => {
     const submit = vi.fn(() => Promise.resolve(true));
     const store = createChatStore(submit, {

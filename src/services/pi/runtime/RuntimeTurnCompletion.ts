@@ -78,4 +78,16 @@ export class RuntimeTurnCompletion {
       );
     }
   }
+
+  /** Rejects only input already consumed by the active run, preserving held queue work. */
+  cancelExecuting() {
+    const ids = this.executingIds();
+    for (const id of ids) {
+      const item = this.pending.get(id);
+      if (!item) continue;
+      this.pending.delete(id);
+      item.reject(new TurnCanceledError("Session was aborted"));
+    }
+    return ids;
+  }
 }

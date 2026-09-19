@@ -270,9 +270,10 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
       ],
       steerQueuedPrompt: (id) => {
         if (this.composerStore.promptQueueStore.has(id))
-          this.composerStore.promptQueueStore.steer(id);
-        else this.editRuntimeQueuedPrompt(id, "steer");
+          return this.composerStore.promptQueueStore.steer(id).then(() => undefined);
+        this.editRuntimeQueuedPrompt(id, "steer");
       },
+      stopAndSendQueuedPrompt: (id) => this.stopAndSendQueuedPrompt(id),
       editQueuedPrompt: (id) => this.composerStore.promptQueueStore.edit(id),
       removeQueuedPrompt: (id) => {
         if (this.composerStore.promptQueueStore.has(id))
@@ -420,6 +421,29 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
       await this.client.sessionChats.abort({ sessionId: this.sessionId }, { signal: this.signal });
     } catch (error) {
       if (!this.signal.aborted) this.composerStore.reportError(error);
+    }
+  }
+
+  private async stopAndSendQueuedPrompt(partId: string) {
+    try {
+      if (this.composerStore.promptQueueStore.has(partId)) {
+        const steered = await this.composerStore.promptQueueStore.steer(partId);
+        if (!steered || this.signal.aborted) return;
+        await this.client.sessionChats.sendQueuedMessageNow(
+          { sessionId: this.sessionId },
+          { signal: this.signal },
+        );
+        return;
+      }
+      await this.client.sessionChats.sendQueuedMessageNow(
+        {
+          sessionId: this.sessionId,
+          ...(partId.startsWith("queued-") ? { partId } : null),
+        },
+        { signal: this.signal },
+      );
+    } catch (error) {
+      if (!this.signal.aborted) this.composerStore.reportError(error, "Queued prompt");
     }
   }
 

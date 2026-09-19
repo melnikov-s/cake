@@ -213,6 +213,7 @@ describe("Chat", () => {
     const steerQueuedPrompt = vi.fn();
     const editQueuedPrompt = vi.fn();
     const removeQueuedPrompt = vi.fn();
+    const stopAndSendQueuedPrompt = vi.fn(async () => undefined);
     const cancelSteering = vi.fn(async () => undefined);
     store = mount(
       createStore(ChatStore, {
@@ -279,6 +280,7 @@ describe("Chat", () => {
         steerQueuedPrompt,
         editQueuedPrompt,
         removeQueuedPrompt,
+        stopAndSendQueuedPrompt,
         cancelSteering,
       }),
     );
@@ -295,6 +297,12 @@ describe("Chat", () => {
       container.querySelector('[aria-label="Remove queued prompt: Do this next"]'),
     ).not.toBeNull();
     expect(container.querySelector('[aria-label="Steering: Change direction"]')).not.toBeNull();
+    expect(
+      container.querySelector('[aria-label="Stop and send now: Do this next"]'),
+    ).not.toBeNull();
+    expect(
+      container.querySelector('[aria-label="Stop and send now: Change direction"]'),
+    ).not.toBeNull();
     expect(
       container.querySelector('[aria-label="Message from Storage implementation"]'),
     ).not.toBeNull();
@@ -322,6 +330,13 @@ describe("Chat", () => {
         .click();
     });
     expect(steerQueuedPrompt).toHaveBeenLastCalledWith("family-message");
+
+    await act(async () => {
+      container
+        .querySelector<HTMLButtonElement>('[aria-label="Stop and send now: Change direction"]')!
+        .click();
+    });
+    expect(stopAndSendQueuedPrompt).toHaveBeenCalledWith("steering");
 
     await act(async () => {
       container

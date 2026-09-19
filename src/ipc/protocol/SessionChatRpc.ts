@@ -53,6 +53,11 @@ export const SessionChatRpc = RpcGroup.make(
     success: QueuedConversationMessages,
     error: SessionChatError,
   }),
+  Rpc.make("sessionChats.sendQueuedMessageNow", {
+    payload: { ...SessionChatTarget.fields, partId: Schema.optionalKey(Schema.String) },
+    success: QueuedConversationMessages,
+    error: SessionChatError,
+  }),
   Rpc.make("sessionChats.compact", {
     payload: { ...SessionChatTarget.fields, instructions: Schema.optional(Schema.String) },
     error: SessionChatError,

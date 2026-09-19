@@ -147,24 +147,37 @@ describe("CakeRuntime turn controller", () => {
     expect(controller.executingTurnIds()).toEqual([]);
   });
 
-  it("drops compaction-held input when the session is aborted", async () => {
+  it("keeps compaction-held input queued without dispatching it when the session is aborted", async () => {
+    const live = { followUp: [] as string[] };
     const { controller, session, syncQueuedParts } = createFixture({
       isStreaming: true,
       isCompacting: true,
+      followUp: vi.fn(async (text: string) => {
+        live.followUp.push(text);
+      }),
+      getFollowUpMessages: vi.fn(() => live.followUp),
+      clearQueue: vi.fn(() => {
+        const queued = { steering: [], followUp: [...live.followUp] };
+        live.followUp = [];
+        return queued;
+      }),
     });
 
     const prompt = controller.prompt("Do work later", "prompt", [], false, "turn-1");
     await controller.abort();
-    await expect(prompt).rejects.toThrow("Session was aborted");
-
-    Object.assign(session, { isStreaming: false, isCompacting: false });
-    controller.compactionEnded(false);
-    await Promise.resolve();
 
     expect(session.prompt).not.toHaveBeenCalled();
-    expect(session.followUp).not.toHaveBeenCalled();
+    expect(session.followUp).toHaveBeenCalledWith("Do work later", []);
+    expect(await controller.listQueuedMessages()).toEqual({
+      steering: [],
+      followUp: ["Do work later"],
+    });
     expect(controller.compactionQueuedMessages()).toEqual([]);
     expect(syncQueuedParts).toHaveBeenCalledTimes(2);
+
+    const [part] = projectQueuedMessages([], ["Do work later"]);
+    await controller.removeQueuedMessage(part!.id);
+    await expect(prompt).rejects.toThrow("Queued input was canceled");
   });
 
   describe("per-item edits of Pi's queue", () => {
@@ -177,7 +190,13 @@ describe("CakeRuntime turn controller", () => {
         isStreaming: true,
         prompt: vi.fn(async (text: string, options?: { streamingBehavior?: string }) => {
           if (options?.streamingBehavior === "steer") live.steering.push(text);
-          else live.followUp.push(text);
+          else if (options?.streamingBehavior === "followUp") live.followUp.push(text);
+        }),
+        steer: vi.fn(async (text: string) => {
+          live.steering.push(text);
+        }),
+        followUp: vi.fn(async (text: string) => {
+          live.followUp.push(text);
         }),
         getSteeringMessages: vi.fn(() => live.steering),
         getFollowUpMessages: vi.fn(() => live.followUp),
@@ -189,6 +208,61 @@ describe("CakeRuntime turn controller", () => {
         }),
       });
     }
+
+    it("aborts active work without dispatching or dropping the held queue", async () => {
+      const { controller, session } = createQueuedFixture({
+        steering: ["Change direction"],
+        followUp: ["Do this next"],
+      });
+
+      await controller.abort();
+
+      expect(session.abort).toHaveBeenCalledOnce();
+      expect(session.prompt).not.toHaveBeenCalled();
+      expect(await controller.listQueuedMessages()).toEqual({
+        steering: ["Change direction"],
+        followUp: ["Do this next"],
+      });
+    });
+
+    it("stops and sends only the selected queued item while preserving the rest", async () => {
+      const { controller, session } = createQueuedFixture({
+        steering: ["Send immediately"],
+        followUp: ["Keep queued"],
+      });
+      const [selectedId] = partIds(["Send immediately"], ["Keep queued"]);
+
+      await expect(controller.sendQueuedMessageNow(selectedId)).resolves.toEqual({
+        queued: { steering: [], followUp: ["Keep queued"] },
+        abortedTurnIds: [],
+      });
+
+      expect(session.abort).toHaveBeenCalledOnce();
+      expect(vi.mocked(session.prompt).mock.calls).toEqual([
+        ["Send immediately", expect.objectContaining({ source: "interactive" })],
+      ]);
+      expect(await controller.listQueuedMessages()).toEqual({
+        steering: [],
+        followUp: ["Keep queued"],
+      });
+    });
+
+    it("waits for an admitted steering message so rapid third-enter delivery cannot miss it", async () => {
+      const { controller, session } = createQueuedFixture({ steering: [], followUp: [] });
+
+      const sendNow = controller.sendQueuedMessageNow();
+      await Promise.resolve();
+      await controller.prompt("Rapid steering", "steer", []);
+
+      await expect(sendNow).resolves.toEqual({
+        queued: { steering: [], followUp: [] },
+        abortedTurnIds: [],
+      });
+      expect(vi.mocked(session.prompt).mock.calls.at(-1)).toEqual([
+        "Rapid steering",
+        expect.objectContaining({ source: "interactive" }),
+      ]);
+    });
 
     it("removes one held follow-up, re-queues the rest in order, and cancels its correlation", async () => {
       const { controller, session, syncQueuedParts } = createQueuedFixture({
