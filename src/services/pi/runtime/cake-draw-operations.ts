@@ -70,6 +70,26 @@ function decodeDrawPng(dataUrl: string) {
   return { data, bytes };
 }
 
+const ExcalidrawDocument = Schema.Struct({
+  type: Schema.Literal("excalidraw"),
+  version: Schema.Number,
+  source: Schema.String,
+  elements: Schema.Array(Schema.Json),
+  appState: Schema.Record(Schema.String, Schema.Json),
+  files: Schema.Record(Schema.String, Schema.Json),
+});
+
+function encodeExcalidrawDocument(source: string) {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(source);
+    Schema.decodeUnknownSync(ExcalidrawDocument)(parsed);
+  } catch {
+    throw new Error("INVALID_REQUEST: Cake Draw returned an invalid Excalidraw document");
+  }
+  return new TextEncoder().encode(source);
+}
+
 function encodeDrawSvg(source: string) {
   if (source.length > MAX_CAKE_OPERATION_IMAGE_BYTES)
     throw new Error(
@@ -206,21 +226,21 @@ export function createCakeDrawOperations(control: CakeDrawControl): CakeOperatio
     operation({
       command: "draw.export",
       summary:
-        "Render the open board and write it to an explicit workspace-relative PNG or SVG path.",
+        "Export the open board to an explicit workspace-relative PNG, SVG, or editable Excalidraw path.",
       schema: Schema.Struct({
         boardId: optionalBoardId,
         scope: Schema.optionalKey(DrawReadScope),
-        format: Schema.Literals(["png", "svg"]),
+        format: Schema.Literals(["png", "svg", "excalidraw"]),
         path: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(8_192))),
       }),
       example: { format: "png", scope: "page", path: "docs/architecture-board.png" },
       result:
-        "The workspace-relative output path, exact byte count, format, and source board ID. Image or SVG content is never returned in the transcript.",
+        "The workspace-relative output path, exact byte count, format, and source board ID. Export content is never returned in the transcript.",
       limitations: [
-        "Export supports only PNG to a .png path and SVG to a .svg path.",
+        "Export supports PNG to a .png path, SVG to a .svg path, and editable Excalidraw JSON to a .excalidraw path. scope applies to image exports; editable export always includes the whole board.",
         "The path must be relative to the calling session's Working Directory, its parent directory must already exist, and symlink escapes are rejected.",
         "An existing target file is replaced using Cake's normal write-file semantics.",
-        "Export does not publish an artifact or create an editable .tldr document.",
+        "Export does not publish an artifact or alter the active Cake Draw board or its persistence binding.",
       ],
       execute: async (input, signal) => {
         const expectedExtension = `.${input.format}`;
@@ -230,28 +250,39 @@ export function createCakeDrawOperations(control: CakeDrawControl): CakeOperatio
           );
         const response = requireSuccess(
           await control.request(
-            {
-              _tag: "Render",
-              boardId: input.boardId,
-              scope: input.scope ?? "page",
-              format: input.format,
-            },
+            input.format === "excalidraw"
+              ? {
+                  _tag: "ExportDocument",
+                  ...(input.boardId ? { boardId: input.boardId } : null),
+                }
+              : {
+                  _tag: "Render",
+                  boardId: input.boardId,
+                  scope: input.scope ?? "page",
+                  format: input.format,
+                },
             signal,
           ),
         );
-        if (response.kind !== "rendered")
-          throw new Error("INVALID_REQUEST: Unexpected Draw response");
-        if (response.render.format !== input.format)
-          throw new Error("INVALID_REQUEST: Cake Draw returned the wrong export format");
         let content: Uint8Array;
-        if (input.format === "png") {
-          if (response.render.mediaType !== "image/png")
-            throw new Error("INVALID_REQUEST: Cake Draw returned a non-PNG export");
-          content = decodeDrawPng(response.render.data).bytes;
+        if (input.format === "excalidraw") {
+          if (response.kind !== "exported-document")
+            throw new Error("INVALID_REQUEST: Unexpected Draw response");
+          content = encodeExcalidrawDocument(response.document);
         } else {
-          if (response.render.mediaType !== "image/svg+xml")
-            throw new Error("INVALID_REQUEST: Cake Draw returned a non-SVG export");
-          content = encodeDrawSvg(response.render.data);
+          if (response.kind !== "rendered")
+            throw new Error("INVALID_REQUEST: Unexpected Draw response");
+          if (response.render.format !== input.format)
+            throw new Error("INVALID_REQUEST: Cake Draw returned the wrong export format");
+          if (input.format === "png") {
+            if (response.render.mediaType !== "image/png")
+              throw new Error("INVALID_REQUEST: Cake Draw returned a non-PNG export");
+            content = decodeDrawPng(response.render.data).bytes;
+          } else {
+            if (response.render.mediaType !== "image/svg+xml")
+              throw new Error("INVALID_REQUEST: Cake Draw returned a non-SVG export");
+            content = encodeDrawSvg(response.render.data);
+          }
         }
         const written = await control.exportFile(input.path, content, signal);
         return {

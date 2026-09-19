@@ -478,7 +478,11 @@ The window Store hierarchy mirrors the product surfaces:
   typography/alignment, arrowheads, locking, selection, position, alignment, distribution, and
   layer order. Raw Excalidraw elements, arbitrary patches, freehand point arrays, and unbounded
   batches never cross the control boundary. Drawing gestures trigger persistence, never
-  autonomous Pi turns.
+  autonomous Pi turns. Cake keeps Excalidraw's generic main menu hidden and owns a compact toolbar
+  export surface for whole-board PNG, SVG, and native editable `.excalidraw` documents. Interactive
+  exports use the owning Electron window's native save dialog and main-process filesystem access;
+  `draw.export` writes the same three formats to an explicit workspace-relative path. Exporting
+  serializes a copy and never changes the active board or its Cake persistence binding.
   Each child owns its own operation
   state and lifetime; the workbench does not re-export one-for-one child APIs.
 - The root-scoped `SessionRegistryStore` preserves one keyed

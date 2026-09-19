@@ -551,6 +551,74 @@ describe("DrawEditorAdapter", () => {
     expect(scene.truncated).toBe(true);
   });
 
+  it("serializes a native editable Excalidraw document rather than Cake persistence", () => {
+    adapter.apply({
+      operations: [
+        {
+          type: "create",
+          shape: { id: "editable", type: "geo", x: 10, y: 10, width: 80, height: 60 },
+        },
+      ],
+    });
+    harness.api.addFiles([
+      {
+        id: "file:export" as never,
+        dataURL: "data:image/png;base64,iVBORw0KGgo=" as never,
+        mimeType: "image/png",
+        created: 1,
+      },
+    ]);
+    harness.setElements([
+      ...harness.elements(),
+      {
+        id: "image:export",
+        type: "image",
+        x: 120,
+        y: 10,
+        width: 40,
+        height: 40,
+        angle: 0,
+        strokeColor: "transparent",
+        backgroundColor: "transparent",
+        fillStyle: "solid",
+        strokeWidth: 1,
+        strokeStyle: "solid",
+        roughness: 0,
+        opacity: 100,
+        groupIds: [],
+        frameId: null,
+        index: "a1",
+        roundness: null,
+        seed: 1,
+        version: 1,
+        versionNonce: 1,
+        isDeleted: false,
+        boundElements: null,
+        updated: 1,
+        link: null,
+        locked: false,
+        fileId: "file:export",
+        status: "saved",
+        scale: [1, 1],
+        crop: null,
+      } as unknown as ExcalidrawElement,
+    ]);
+
+    const document = JSON.parse(adapter.exportDocument());
+
+    expect(document).toMatchObject({
+      type: "excalidraw",
+      version: 2,
+      elements: [
+        expect.objectContaining({ id: "shape:editable" }),
+        expect.objectContaining({ id: "image:export", fileId: "file:export" }),
+      ],
+      appState: expect.objectContaining({ viewBackgroundColor: "#ffffff" }),
+      files: { "file:export": expect.objectContaining({ mimeType: "image/png" }) },
+    });
+    expect(document.type).not.toBe("cake-excalidraw");
+  });
+
   it("round-trips validated documents with inline image files", () => {
     adapter.apply({
       operations: [

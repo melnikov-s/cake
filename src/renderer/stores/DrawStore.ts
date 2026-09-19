@@ -28,6 +28,8 @@ export class DrawStore extends Store<DrawStoreProps> {
   loading = false;
   saving = false;
   agentDrawing = false;
+  exportingFormat: "png" | "svg" | "excalidraw" | undefined;
+  exportMessage: string | undefined;
   error: string | undefined;
   errorDetails: string | undefined;
   documentLoaded = false;
@@ -50,6 +52,10 @@ export class DrawStore extends Store<DrawStoreProps> {
 
   get client() {
     return ClientContext.consume(this)!.draw;
+  }
+
+  get electron() {
+    return ClientContext.consume(this)!.electron;
   }
 
   get activeBoard() {
@@ -139,6 +145,49 @@ export class DrawStore extends Store<DrawStoreProps> {
 
   async render(input: DrawRenderInput): Promise<DrawRender> {
     return (await this.waitUntilReady()).render(input);
+  }
+
+  async exportDocument() {
+    return (await this.waitUntilReady()).exportDocument();
+  }
+
+  async exportBoard(format: "png" | "svg" | "excalidraw") {
+    if (this.exportingFormat) return;
+    this.clearError();
+    this.exportMessage = undefined;
+    this.exportingFormat = format;
+    try {
+      const adapter = await this.waitUntilReady();
+      const data =
+        format === "excalidraw"
+          ? adapter.exportDocument()
+          : (
+              await adapter.render({
+                scope: "page",
+                format,
+                background: true,
+                scale: 1,
+              })
+            ).data;
+      const title = Array.from(this.activeBoard?.title ?? "Cake Draw")
+        .map((character) =>
+          character.charCodeAt(0) < 32 || /[<>:"/\\|?*]/u.test(character) ? "-" : character,
+        )
+        .join("")
+        .trim();
+      const path = await this.electron.saveDrawExport(
+        { format, suggestedName: title || "Cake Draw", data },
+        { signal: this.signal },
+      );
+      if (this.signal.aborted) return;
+      this.exportMessage = path ? `Exported ${format.toUpperCase()}` : "Export cancelled";
+      return path;
+    } catch (error) {
+      if (!this.signal.aborted) this.setError(error);
+      return undefined;
+    } finally {
+      if (!this.signal.aborted) this.exportingFormat = undefined;
+    }
   }
 
   async apply(operations: readonly DrawOperation[]): Promise<DrawApplyReceipt> {

@@ -12,6 +12,10 @@ export const electronHandlers = ElectronRpc.of({
     withConnection((connectionId) =>
       Effect.flatMap(Electron, (service) => service.chooseProject(connectionId, request)),
     ),
+  "electron.save-draw-export": (request) =>
+    withConnection((connectionId) =>
+      Effect.flatMap(Electron, (service) => service.saveDrawExport(connectionId, request)),
+    ),
   "electron.open-external-url": (request) =>
     withConnection((connectionId) =>
       Effect.flatMap(Electron, (service) => service.openExternalUrl(connectionId, request)),

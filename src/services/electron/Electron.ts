@@ -35,6 +35,10 @@ export interface ElectronService {
     connectionId: number,
     request: Payload<"choose-project">,
   ) => Effect.Effect<Success<"choose-project">, ElectronError>;
+  readonly saveDrawExport: (
+    connectionId: number,
+    request: Payload<"save-draw-export">,
+  ) => Effect.Effect<Success<"save-draw-export">, ElectronError>;
   readonly openExternalUrl: (
     connectionId: number,
     request: Payload<"open-external-url">,

@@ -24,6 +24,7 @@ import {
   DRAW_SNAPSHOT_TYPE,
   DRAW_SNAPSHOT_VERSION,
 } from "./DrawDocumentValidation";
+import { serializeExcalidrawDocument } from "./DrawExportSerializer";
 import type {
   DrawArrowhead,
   DrawCreateShape,
@@ -1485,6 +1486,13 @@ export function createDrawEditorAdapter(api: ExcalidrawImperativeAPI): DrawEdito
         height,
         data: await dataUrl(blob),
       };
+    },
+    exportDocument() {
+      return serializeExcalidrawDocument({
+        elements: api.getSceneElementsIncludingDeleted(),
+        appState: api.getAppState(),
+        files: api.getFiles(),
+      });
     },
     apply({ operations }) {
       const prepared = prepareOperations(api, operations);

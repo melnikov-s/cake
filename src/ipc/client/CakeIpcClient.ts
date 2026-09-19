@@ -529,6 +529,7 @@ export interface CakeIpcClientService {
   };
   readonly electron: RpcOperations<
     | "choose-project"
+    | "save-draw-export"
     | "open-external-url"
     | "show-notification"
     | "show-transcript-selection-context-menu"
@@ -1015,6 +1016,9 @@ export const CakeIpcClientLive = Layer.effect(
       electron: {
         "choose-project": Effect.fn("CakeIpcClient.electron.choose-project")((payload) =>
           client("electron.choose-project", payload),
+        ),
+        "save-draw-export": Effect.fn("CakeIpcClient.electron.save-draw-export")((payload) =>
+          client("electron.save-draw-export", payload),
         ),
         "open-external-url": Effect.fn("CakeIpcClient.electron.open-external-url")((payload) =>
           client("electron.open-external-url", payload),

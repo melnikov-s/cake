@@ -7,6 +7,15 @@ import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/ses
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const sessionId = "draw-smoke-session";
 
+async function mockNextSave(application: ElectronApplication, filePath: string) {
+  await application.evaluate(({ dialog }, target) => {
+    Object.defineProperty(dialog, "showSaveDialog", {
+      configurable: true,
+      value: async () => ({ canceled: false, filePath: target }),
+    });
+  }, filePath);
+}
+
 async function launchFixture(root: string, initialize = true) {
   const userData = join(root, "user-data");
   const project = join(root, "project");
@@ -117,6 +126,32 @@ test("Cake Draw preserves chat and its session board through Electron", async ()
     await page.mouse.move(box.x + 240, box.y + 220, { steps: 8 });
     await page.mouse.up();
     await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
+
+    const pngPath = join(temporaryRoot, "board.png");
+    await mockNextSave(application, pngPath);
+    await page.getByRole("button", { name: "Export Cake Draw board" }).click();
+    await page.getByRole("menuitem", { name: "PNG image" }).click();
+    await expect(page.getByRole("status")).toContainText("Exported PNG");
+    expect([...(await readFile(pngPath))].slice(0, 8)).toEqual([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+    ]);
+
+    const svgPath = join(temporaryRoot, "board.svg");
+    await mockNextSave(application, svgPath);
+    await page.getByRole("button", { name: "Export Cake Draw board" }).click();
+    await page.getByRole("menuitem", { name: "SVG image" }).click();
+    await expect(page.getByRole("status")).toContainText("Exported SVG");
+    expect(await readFile(svgPath, "utf8")).toContain("<svg");
+
+    const excalidrawPath = join(temporaryRoot, "board.excalidraw");
+    await mockNextSave(application, excalidrawPath);
+    await page.getByRole("button", { name: "Export Cake Draw board" }).click();
+    await page.getByRole("menuitem", { name: "Editable Excalidraw" }).click();
+    await expect(page.getByRole("status")).toContainText("Exported EXCALIDRAW");
+    const exportedDocument = JSON.parse(await readFile(excalidrawPath, "utf8"));
+    expect(exportedDocument.type).toBe("excalidraw");
+    expect(exportedDocument.elements.length).toBeGreaterThan(0);
+    expect(exportedDocument.files).toEqual({});
 
     await expect(composer).toHaveValue("Retained Draw draft");
     await page.getByRole("button", { name: "Back to agent" }).click();

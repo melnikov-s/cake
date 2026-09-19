@@ -39,6 +39,7 @@ export const DrawCanvas = observer(function DrawCanvas({ store }: { store: DrawS
   return (
     <div className="relative h-full min-h-0 w-full bg-background" data-slot="draw-canvas">
       <div className={cn("h-full", store.agentDrawing && "pointer-events-none")}>
+        {/* MainMenu is intentionally not mounted: Cake owns the three-format export surface in its toolbar. */}
         <Excalidraw
           excalidrawAPI={mounted}
           initialData={initialData}

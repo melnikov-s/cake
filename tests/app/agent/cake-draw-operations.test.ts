@@ -9,6 +9,15 @@ import {
 const tinyPng =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
 
+const editableDocument = JSON.stringify({
+  type: "excalidraw",
+  version: 2,
+  source: "https://excalidraw.com",
+  elements: [{ id: "shape:one", type: "rectangle" }],
+  appState: { viewBackgroundColor: "#ffffff" },
+  files: { image: { dataURL: "data:image/png;base64,iVBORw0KGgo=" } },
+});
+
 const scene = {
   pageId: "page:default",
   viewportBounds: { x: 0, y: 0, width: 800, height: 600 },
@@ -58,6 +67,13 @@ function control(overrides: Partial<CakeDrawControl> = {}): CakeDrawControl {
             height: 16,
             data: `data:image/png;base64,${tinyPng}`,
           },
+        };
+      if (invocation._tag === "ExportDocument")
+        return {
+          ok: true,
+          kind: "exported-document",
+          boardId: board.id,
+          document: editableDocument,
         };
       if (invocation._tag === "Apply")
         return {
@@ -109,6 +125,7 @@ describe("Cake Draw operations", () => {
     expect(help.text).toContain('"format"');
     expect(help.text).toContain('"path"');
     expect(help.text).toContain("An existing target file is replaced");
+    expect(help.text).toContain("editable Excalidraw JSON");
     expect(help.text).toContain("does not publish an artifact");
   });
 
@@ -384,6 +401,27 @@ describe("Cake Draw operations", () => {
     const writtenSvg = vi.mocked(svgControl.exportFile).mock.calls[0]?.[1];
     expect(writtenSvg && new TextDecoder().decode(writtenSvg)).toBe(svg);
     expect(JSON.stringify(svgResult.details)).not.toContain("<svg");
+  });
+
+  it("exports editable native Excalidraw JSON without returning it in the transcript", async () => {
+    const fake = control();
+    const registry = new CakeOperationRegistry(createCakeDrawOperations(fake));
+
+    const result = await registry.invoke(
+      {
+        command: "draw.export",
+        input: { format: "excalidraw", path: "docs/board.excalidraw" },
+      },
+      context(),
+    );
+
+    expect(fake.request).toHaveBeenCalledWith({ _tag: "ExportDocument" }, expect.any(AbortSignal));
+    const written = vi.mocked(fake.exportFile).mock.calls[0]?.[1];
+    expect(written && new TextDecoder().decode(written)).toBe(editableDocument);
+    expect(JSON.stringify(result.details)).not.toContain("shape:one");
+    expect(result.details).toMatchObject({
+      result: { format: "excalidraw", path: "docs/board.excalidraw" },
+    });
   });
 
   it("rejects malformed SVG before writing", async () => {

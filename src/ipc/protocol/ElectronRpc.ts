@@ -9,6 +9,7 @@ import {
 type ElectronOperation = keyof Pick<
   typeof cakeRpcPayloadSchemas,
   | "choose-project"
+  | "save-draw-export"
   | "open-external-url"
   | "show-notification"
   | "show-transcript-selection-context-menu"
@@ -27,6 +28,7 @@ const electronRpc = <Type extends ElectronOperation>(type: Type) =>
 
 export const ElectronRpc = RpcGroup.make(
   electronRpc("choose-project"),
+  electronRpc("save-draw-export"),
   electronRpc("open-external-url"),
   electronRpc("show-notification"),
   electronRpc("show-transcript-selection-context-menu"),

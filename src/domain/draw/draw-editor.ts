@@ -253,6 +253,7 @@ export type DrawDocumentSnapshot = JsonValue;
 export interface DrawEditorController {
   read(input: DrawReadInput): DrawScene;
   render(input: DrawRenderInput): Promise<DrawRender>;
+  exportDocument(): string;
   apply(input: DrawApplyInput): DrawApplyReceipt;
   applyAnimated(input: DrawApplyInput, options?: DrawPlaybackOptions): Promise<DrawApplyReceipt>;
   insertMermaid(diagram: string): Promise<DrawMermaidReceipt>;

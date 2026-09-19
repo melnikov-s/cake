@@ -42,6 +42,12 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
           (client) => client.electron["choose-project"]({}),
           options,
         ).then((response) => response.path),
+      saveDrawExport: (input, options) =>
+        execute(
+          "electron.save-draw-export",
+          (client) => client.electron["save-draw-export"](input),
+          options,
+        ).then((response) => response.path),
       openExternalUrl: (url, options) =>
         execute(
           "electron.open-external-url",

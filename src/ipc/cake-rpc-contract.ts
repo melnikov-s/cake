@@ -272,6 +272,11 @@ const terminalTarget = Schema.Struct({
 
 export const cakeRpcPayloadSchemas = {
   "choose-project": Schema.Struct({}),
+  "save-draw-export": Schema.Struct({
+    format: Schema.Literals(["png", "svg", "excalidraw"]),
+    suggestedName: bounded(1, 240),
+    data: bounded(1, 12_000_000),
+  }),
   "open-external-url": Schema.Struct({
     url: stringMax(8_192),
   }),
@@ -512,6 +517,9 @@ const cakeRpcResultSchemas = {
   "project-chosen": Schema.Struct({
     path: Schema.optional(stringMax(4_096)),
   }),
+  "draw-export-saved": Schema.Struct({
+    path: Schema.optional(stringMax(8_192)),
+  }),
   "external-url-opened": Schema.Struct({}),
   "notification-shown": Schema.Struct({}),
   "transcript-selection-context-menu-closed": Schema.Struct({
@@ -602,6 +610,7 @@ const cakeRpcResultSchemas = {
 
 export const cakeRpcSuccessSchemas = {
   "choose-project": cakeRpcResultSchemas["project-chosen"],
+  "save-draw-export": cakeRpcResultSchemas["draw-export-saved"],
   "open-external-url": cakeRpcResultSchemas["external-url-opened"],
   "show-notification": cakeRpcResultSchemas["notification-shown"],
   "show-transcript-selection-context-menu":

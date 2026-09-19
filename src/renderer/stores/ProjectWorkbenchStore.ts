@@ -886,6 +886,13 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
               scale: invocation.scale,
             }),
           };
+        case "ExportDocument":
+          return {
+            ok: true,
+            kind: "exported-document",
+            boardId: draw.activeBoard.id,
+            document: await draw.exportDocument(),
+          };
         case "Apply": {
           const receipt = await draw.apply(invocation.operations);
           if (signal?.aborted)

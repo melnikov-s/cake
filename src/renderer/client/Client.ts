@@ -74,6 +74,14 @@ type SessionContextMenuAction = {
 
 interface ElectronCommands {
   chooseProject(options?: ClientCommandOptions): Promise<string | undefined>;
+  saveDrawExport(
+    input: {
+      format: "png" | "svg" | "excalidraw";
+      suggestedName: string;
+      data: string;
+    },
+    options?: ClientCommandOptions,
+  ): Promise<string | undefined>;
   openExternalUrl(url: string, options?: ClientCommandOptions): Promise<void>;
   showNotification(
     input: {

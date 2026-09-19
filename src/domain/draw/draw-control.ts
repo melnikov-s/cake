@@ -304,6 +304,7 @@ export const DrawControlInvocation = Schema.TaggedUnion({
       ),
     ),
   },
+  ExportDocument: { boardId: Schema.optionalKey(DrawBoardId) },
   Apply: {
     boardId: Schema.optionalKey(DrawBoardId),
     operations: Schema.Array(DrawOperation).check(
@@ -358,6 +359,12 @@ export const DrawControlResponse = Schema.Union([
     kind: Schema.Literal("rendered"),
     boardId: DrawBoardId,
     render: DrawRender,
+  }),
+  Schema.Struct({
+    ok: Schema.Literal(true),
+    kind: Schema.Literal("exported-document"),
+    boardId: DrawBoardId,
+    document: boundedString(12_000_000),
   }),
   Schema.Struct({
     ok: Schema.Literal(true),

@@ -36,6 +36,7 @@ function mountDrawStore(boards: DrawBoardMetadata[] = [firstBoard, secondBoard])
     boards.splice(boards.indexOf(board), 1, updated);
     return updated;
   });
+  const saveDrawExport = vi.fn(async () => "/tmp/Board 1.excalidraw");
   const draw = {
     list: vi.fn(async () => [...boards]),
     create: vi.fn(async ({ sessionId, title }: { sessionId: string; title: string }) => {
@@ -58,8 +59,9 @@ function mountDrawStore(boards: DrawBoardMetadata[] = [firstBoard, secondBoard])
   };
   const mounted = mountWithClient(createStore(DrawStore, { sessionId: "session-1" }), {
     draw,
+    electron: { saveDrawExport },
   } as unknown as Client);
-  return { ...mounted, draw, save };
+  return { ...mounted, draw, save, saveDrawExport };
 }
 
 function adapterHarness(snapshot: DrawDocumentSnapshot = emptyDocument) {
@@ -74,6 +76,15 @@ function adapterHarness(snapshot: DrawDocumentSnapshot = emptyDocument) {
   }));
   const adapter = {
     snapshotDocument: () => snapshot,
+    exportDocument: () =>
+      JSON.stringify({
+        type: "excalidraw",
+        version: 2,
+        source: "https://excalidraw.com",
+        elements: [],
+        appState: { viewBackgroundColor: "#ffffff" },
+        files: {},
+      }),
     onDocumentChange: (next: () => void) => {
       listener = next;
       return () => {
@@ -152,6 +163,51 @@ describe("DrawStore", () => {
     await expect(subject.selectBoard(secondBoard.id)).resolves.toBeUndefined();
     expect(subject.activeBoardId).toBe(secondBoard.id);
     expect(draw.read).toHaveBeenCalledTimes(2);
+  });
+
+  it("exports an editable native document through the trusted client without changing persistence", async () => {
+    const { subject, save, saveDrawExport } = mountDrawStore();
+    await subject.initialize();
+    const editor = adapterHarness();
+    subject.attachEditor(editor.adapter);
+
+    await expect(subject.exportBoard("excalidraw")).resolves.toBe("/tmp/Board 1.excalidraw");
+
+    expect(saveDrawExport).toHaveBeenCalledWith(
+      {
+        format: "excalidraw",
+        suggestedName: "Board 1",
+        data: expect.stringContaining('"type":"excalidraw"'),
+      },
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(save).not.toHaveBeenCalled();
+    expect(subject.exportMessage).toBe("Exported EXCALIDRAW");
+  });
+
+  it("reports native save cancellation without false success", async () => {
+    const { subject, saveDrawExport } = mountDrawStore();
+    await subject.initialize();
+    subject.attachEditor(adapterHarness().adapter);
+    saveDrawExport.mockResolvedValueOnce(undefined as never);
+
+    await expect(subject.exportBoard("excalidraw")).resolves.toBeUndefined();
+
+    expect(subject.exportMessage).toBe("Export cancelled");
+    expect(subject.error).toBeUndefined();
+  });
+
+  it("surfaces export failures without reporting success", async () => {
+    const { subject, saveDrawExport } = mountDrawStore();
+    await subject.initialize();
+    subject.attachEditor(adapterHarness().adapter);
+    saveDrawExport.mockRejectedValueOnce(new Error("native save failed"));
+
+    await expect(subject.exportBoard("excalidraw")).resolves.toBeUndefined();
+
+    expect(subject.error).toContain("native save failed");
+    expect(subject.exportMessage).toBeUndefined();
+    expect(subject.exportingFormat).toBeUndefined();
   });
 
   it("waits for the editor adapter to mount before applying agent operations", async () => {

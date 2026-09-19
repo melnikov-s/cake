@@ -308,6 +308,12 @@ export const MoveTopIcon = () => (
     <path d="M4 10h16M9 7h6" />
   </Icon>
 );
+export const ExportIcon = () => (
+  <Icon size={15}>
+    <path d="M12 3v12M7 10l5 5 5-5" />
+    <path d="M5 20h14" />
+  </Icon>
+);
 export const ChangesIcon = () => (
   <Icon size={15}>
     <path d="M4 7h10M4 17h10M17 4v6M14 7l3 3 3-3M17 14v6M14 17l3 3 3-3" />
