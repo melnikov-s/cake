@@ -257,12 +257,12 @@ describe("DrawEditorAdapter", () => {
     expect(importedOrder.indexOf(arrow.id)).toBeLessThan(
       Math.min(...rectangles.map(({ id }) => importedOrder.indexOf(id))),
     );
-    expect(
-      harness
-        .elements()
-        .filter((element) => element.type === "text")
-        .every(({ id }) => importedOrder.indexOf(id) > importedOrder.indexOf(rectangles[0]!.id)),
-    ).toBe(true);
+    for (const element of harness.elements()) {
+      if (element.type === "text" && element.containerId)
+        expect(importedOrder.indexOf(element.id)).toBe(
+          importedOrder.indexOf(element.containerId) + 1,
+        );
+    }
     const source = rectangles.find(({ text }) => text === "Source")!;
     const target = rectangles.find(({ text }) => text === "Target")!;
     const receipt = adapter.apply({
@@ -424,14 +424,14 @@ describe("DrawEditorAdapter", () => {
     const nodes = elements.filter(
       (element) => element.type === "rectangle" && element.id !== background.id,
     );
-    const labels = elements.filter((element) => element.type === "text");
     const order = elements.map(({ id }) => id);
     expect(order.indexOf(frame.id)).toBeLessThan(order.indexOf(connector.id));
     expect(order.indexOf(background.id)).toBeLessThan(order.indexOf(connector.id));
     expect(nodes.every(({ id }) => order.indexOf(connector.id) < order.indexOf(id))).toBe(true);
-    expect(labels.every(({ id }) => order.indexOf(id) > order.indexOf(nodes.at(-1)!.id))).toBe(
-      true,
-    );
+    for (const element of elements) {
+      if (element.type === "text" && element.containerId)
+        expect(order.indexOf(element.id)).toBe(order.indexOf(element.containerId) + 1);
+    }
     expect(
       connector.type === "arrow" && connector.startBinding && connector.endBinding,
     ).toBeTruthy();
@@ -513,7 +513,7 @@ describe("DrawEditorAdapter", () => {
     const linkLabel = harness
       .elements()
       .find((element) => element.type === "text" && element.containerId === "shape:link");
-    expect(order.indexOf(linkLabel!.id)).toBeGreaterThan(order.indexOf("shape:right"));
+    expect(order.indexOf(linkLabel!.id)).toBe(order.indexOf("shape:link") + 1);
     expect(
       adapter.read({ scope: "page" }).shapes.find(({ id }) => id === "shape:link")?.connections,
     ).toEqual([

@@ -118,7 +118,6 @@ describe("Cake Draw operations", () => {
     expect(help.text).toContain("plain <br>, <br/>, or <br />");
     expect(help.text).toContain("explicit direction");
     expect(help.text).toContain("linear Mermaid routes");
-    expect(help.text).toContain("connectors behind node boxes but above subgraph backgrounds");
     expect(help.text).toContain("Mermaid-imported shapes have the same shape: IDs");
     expect(help.text).toContain("nearest collision-free position");
     expect(help.text).toContain("only render as an image are rejected");

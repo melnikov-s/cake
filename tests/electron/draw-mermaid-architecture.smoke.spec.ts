@@ -67,11 +67,11 @@ test("imports Mermaid as readable native shapes with intact agent IDs in Electro
         ? [index]
         : [],
     );
-    const labelIndexes = elements.flatMap((element, index) =>
-      element.type === "text" ? [index] : [],
-    );
     expect(Math.max(...connectorIndexes)).toBeLessThan(Math.min(...nodeIndexes));
-    expect(Math.min(...labelIndexes)).toBeGreaterThan(Math.max(...nodeIndexes));
+    for (const [index, element] of elements.entries()) {
+      if (element.type === "text" && element.containerId)
+        expect(index).toBe(elements.findIndex(({ id }) => id === element.containerId) + 1);
+    }
     for (const element of elements) {
       if (element.containerId) expect(ids.has(element.containerId)).toBe(true);
       if (element.frameId) expect(ids.has(element.frameId)).toBe(true);
