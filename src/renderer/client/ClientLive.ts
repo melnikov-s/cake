@@ -115,6 +115,26 @@ export function makeClient(runtime: Pick<Runtime, "execute">): Client {
           options,
         ),
     },
+    piSettings: {
+      get: (options) =>
+        run(
+          "piSettings.get",
+          withClient((client) => client.piSettings.get()),
+          options,
+        ),
+      update: (update, options) =>
+        run(
+          "piSettings.update",
+          withClient((client) => client.piSettings.update(update)),
+          options,
+        ),
+      reload: (options) =>
+        run(
+          "piSettings.reload",
+          withClient((client) => client.piSettings.reload()),
+          options,
+        ),
+    },
     modelPresets: {
       list: (options) =>
         run(
@@ -434,18 +454,6 @@ export function makeClient(runtime: Pick<Runtime, "execute">): Client {
         run(
           "sessionChats.setFastMode",
           withClient((client) => client.sessionChats.setFastMode(input)),
-          options,
-        ),
-      setPiSetting: (input, options) =>
-        run(
-          "sessionChats.setPiSetting",
-          withClient((client) => client.sessionChats.setPiSetting(input)),
-          options,
-        ),
-      reload: (target, options) =>
-        run(
-          "sessionChats.reload",
-          withClient((client) => client.sessionChats.reload(target)),
           options,
         ),
       login: (input, options) =>

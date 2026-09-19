@@ -15,6 +15,7 @@ import { makeFoundationHandlers } from "./FoundationHandlers";
 import { inlineWidgetHandlers } from "./InlineWidgetHandlers";
 import { managedWorktreeHandlers } from "./ManagedWorktreeHandlers";
 import { modelHandlers } from "./ModelHandlers";
+import { piSettingsHandlers } from "./PiSettingsHandlers";
 import { projectSessionHandlers } from "./ProjectSessionHandlers";
 import { projectWorkflowHandlers } from "./ProjectWorkflowHandlers";
 import { scheduledMessageHandlers } from "./ScheduledMessageHandlers";
@@ -40,6 +41,7 @@ export const makeCakeIpcServerLive = (
     ...inlineWidgetHandlers,
     ...managedWorktreeHandlers,
     ...modelHandlers,
+    ...piSettingsHandlers,
     ...projectSessionHandlers,
     ...projectWorkflowHandlers,
     ...scheduledMessageHandlers,

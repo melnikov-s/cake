@@ -26,7 +26,7 @@ import {
 import { projectModelCatalog } from "../live/PiModelsLive";
 import type { CakeRuntimeOptions } from "./cake-runtime";
 import type { RuntimeUiRequest } from "./runtime-ui-request";
-import { applyPiSetting } from "./settings-translation";
+import { applyRuntimePiSetting } from "./settings-translation";
 
 export interface CakeRuntimeConfigurationState {
   readonly fastModeExtension: InlineExtension;
@@ -198,7 +198,7 @@ export function createCakeRuntimeConfiguration(input: {
       if (options.fastMode) await state.syncFastMode();
     },
     async setPiSetting(update) {
-      applyPiSetting(settingsManager, session, update);
+      applyRuntimePiSetting(settingsManager, session, update);
       if (update.key === "retryEnabled" && !update.value) cancelResponseRetries();
       await settingsManager.flush();
       await emitSnapshot();

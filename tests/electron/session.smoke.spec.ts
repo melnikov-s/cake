@@ -107,19 +107,20 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
     await expect(page.locator('[data-slot="sidebar"]')).toHaveCount(0);
     await expect(page.getByLabel("Settings sections")).toBeVisible();
     await page.getByRole("button", { name: /Agent/ }).click();
-    await expect(
-      page
-        .getByRole("region", { name: "Agent behavior" })
-        .getByText("Open a chat to load Pi’s settings."),
-    ).toBeVisible();
+    const autoCompact = page
+      .getByRole("region", { name: "Agent behavior" })
+      .getByLabel("Auto-compact");
+    await expect(autoCompact).toBeVisible();
+    const autoCompactWasChecked = await autoCompact.isChecked();
+    await autoCompact.click();
+    if (autoCompactWasChecked) await expect(autoCompact).not.toBeChecked();
+    else await expect(autoCompact).toBeChecked();
     await page.getByRole("button", { name: "Network & privacy" }).click();
     await expect(
-      page.getByRole("region", { name: "Network" }).getByText("Open a chat to load Pi’s settings."),
+      page.getByRole("region", { name: "Network" }).getByLabel("Provider transport"),
     ).toBeVisible();
     await expect(
-      page
-        .getByRole("region", { name: "Safety & privacy" })
-        .getByText("Open a chat to load Pi’s settings."),
+      page.getByRole("region", { name: "Safety & privacy" }).getByLabel("Default project trust"),
     ).toBeVisible();
     await page.getByRole("button", { name: "Appearance" }).click();
     await expect(page.getByLabel("Color theme")).toHaveValue("system");

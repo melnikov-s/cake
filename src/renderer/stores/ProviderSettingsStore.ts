@@ -1,7 +1,6 @@
 import { Store, observable } from "r-state-tree";
-import type { ModelOption, PiSettingUpdate } from "../../ipc/session-contract";
+import type { ModelOption, PiSettingUpdate, PiSettings } from "../../ipc/session-contract";
 import { ClientContext } from "./context/ClientContext";
-import { SettingsSessionContext } from "./context/SettingsSessionContext";
 import { describeError } from "../lib/error-details";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 
@@ -15,6 +14,8 @@ export class ProviderSettingsStore extends Store<ProviderSettingsStoreProps> {
     observable({});
   readonly catalogModels: ModelOption[] = observable([]);
   loadingModels = true;
+  loadingSettings = true;
+  piSettings: PiSettings | undefined;
   error: string | undefined;
   errorDetails: string | undefined;
   private catalogLoadRevision = 0;
@@ -23,10 +24,6 @@ export class ProviderSettingsStore extends Store<ProviderSettingsStoreProps> {
 
   get client() {
     return ClientContext.consume(this)!;
-  }
-
-  get activeSession() {
-    return SettingsSessionContext.consume(this);
   }
 
   get activeOperations() {
@@ -48,23 +45,20 @@ export class ProviderSettingsStore extends Store<ProviderSettingsStoreProps> {
   }
 
   hydrate() {
-    this.hydration ??= this.loadCatalog();
+    this.hydration ??= Promise.all([this.loadCatalog(), this.loadSettings()]).then(() => undefined);
     return this.hydration;
   }
 
   async setPiSetting(update: PiSettingUpdate) {
-    await this.run((target) =>
-      this.client.sessionChats.setPiSetting(
-        { sessionId: target.sessionId, update },
-        { signal: this.signal },
-      ),
-    );
+    await this.run(async () => {
+      this.piSettings = await this.client.piSettings.update(update, { signal: this.signal });
+    });
   }
 
   async reloadPi() {
-    await this.run((target) =>
-      this.client.sessionChats.reload({ sessionId: target.sessionId }, { signal: this.signal }),
-    );
+    await this.run(async () => {
+      this.piSettings = await this.client.piSettings.reload({ signal: this.signal });
+    });
   }
 
   async refreshModels() {
@@ -132,18 +126,23 @@ export class ProviderSettingsStore extends Store<ProviderSettingsStoreProps> {
     }
   }
 
-  private requireSession() {
-    const context = this.activeSession;
-    if (!context) throw new Error("No active chat");
-    return context;
+  private async loadSettings() {
+    try {
+      const settings = await this.client.piSettings.get({ signal: this.signal });
+      if (!this.signal.aborted) this.piSettings = settings;
+    } catch (error) {
+      if (!this.signal.aborted) this.reportError(error);
+    } finally {
+      if (!this.signal.aborted) this.loadingSettings = false;
+    }
   }
 
-  private async run(command: (target: NonNullable<typeof this.activeSession>) => Promise<void>) {
+  private async run(command: () => Promise<void>) {
     if (this.signal.aborted) return;
     this.clearError();
     const operationId = this.startOperation();
     try {
-      await command(this.requireSession());
+      await command();
     } catch (error) {
       if (!this.signal.aborted) this.reportError(error);
     } finally {

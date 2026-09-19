@@ -1,6 +1,6 @@
 import { child, createStore, mount, Store } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
-import type { ModelOption } from "../../../../src/ipc/session-contract";
+import type { ModelOption, PiSettings } from "../../../../src/ipc/session-contract";
 import type { Client } from "../../../../src/renderer/client/Client";
 import { ProviderSettingsStore } from "../../../../src/renderer/stores/ProviderSettingsStore";
 import { SessionOperationCoordinatorStore } from "../../../../src/renderer/stores/SessionOperationCoordinatorStore";
@@ -41,9 +41,25 @@ function mountStore(catalogs: ReadonlyArray<ReadonlyArray<ModelOption>>) {
   const refresh = vi.fn(async () => undefined);
   const login = vi.fn(async () => undefined);
   const logout = vi.fn(async () => undefined);
-  const client = { models: { list, refresh, login, logout } } as unknown as Client;
+  const initialSettings = { shellPath: "", reloadPending: false } as PiSettings;
+  const getSettings = vi.fn(async () => initialSettings);
+  const updateSettings = vi.fn(async () => ({ ...initialSettings, shellPath: "/bin/fish" }));
+  const reloadSettings = vi.fn(async () => initialSettings);
+  const client = {
+    models: { list, refresh, login, logout },
+    piSettings: { get: getSettings, update: updateSettings, reload: reloadSettings },
+  } as unknown as Client;
   const root = mount(createStore(HarnessStore, { client }));
-  return { root, store: root.providers, list, refresh, login, logout };
+  return {
+    root,
+    store: root.providers,
+    list,
+    refresh,
+    login,
+    logout,
+    getSettings,
+    updateSettings,
+  };
 }
 
 describe("ProviderSettingsStore", () => {
@@ -66,11 +82,28 @@ describe("ProviderSettingsStore", () => {
 
     expect(list).toHaveBeenCalledOnce();
     expect(store.loadingModels).toBe(false);
+    expect(store.loadingSettings).toBe(false);
+    expect(store.piSettings?.shellPath).toBe("");
     expect(store.modelsByProvider).toEqual([
       expect.objectContaining({ id: "anthropic", name: "Anthropic", models: expect.any(Array) }),
       expect.objectContaining({ id: "openai", name: "OpenAI", models: expect.any(Array) }),
     ]);
     expect(store.modelsByProvider[0]?.models).toHaveLength(2);
+    root[Symbol.dispose]();
+  });
+
+  it("loads and updates Pi settings without an active chat", async () => {
+    const { root, store, getSettings, updateSettings } = mountStore([[model()]]);
+
+    await store.hydrate();
+    await store.setPiSetting({ key: "shellPath", value: "/bin/fish" });
+
+    expect(getSettings).toHaveBeenCalledOnce();
+    expect(updateSettings).toHaveBeenCalledWith(
+      { key: "shellPath", value: "/bin/fish" },
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(store.piSettings?.shellPath).toBe("/bin/fish");
     root[Symbol.dispose]();
   });
 

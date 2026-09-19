@@ -9,6 +9,7 @@ import { FoundationRpc } from "./FoundationRpc";
 import { InlineWidgetRpc } from "./InlineWidgetRpc";
 import { ManagedWorktreeRpc } from "./ManagedWorktreeRpc";
 import { ModelRpc } from "./ModelRpc";
+import { PiSettingsRpc } from "./PiSettingsRpc";
 import { ProjectSessionRpc } from "./ProjectSessionRpc";
 import { ProjectWorkflowRpc } from "./ProjectWorkflowRpc";
 import { RendererConnectionMiddleware } from "./RendererConnectionMiddleware";
@@ -32,6 +33,7 @@ export const CakeRpc = ApplicationRpc.merge(
   InlineWidgetRpc,
   ManagedWorktreeRpc,
   ModelRpc,
+  PiSettingsRpc,
   ProjectSessionRpc,
   ProjectWorkflowRpc,
   ScheduledMessageRpc,

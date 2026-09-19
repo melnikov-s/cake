@@ -26,6 +26,7 @@ import type {
   ArtifactPublicationConflict,
   ArtifactStorageError,
 } from "../../services/storage/ArtifactStorage";
+import type { PiSettingsError } from "../../services/pi/PiSettings";
 import type { SessionFamilyStorageError } from "../../services/storage/SessionFamilyStorage";
 import type { ElectronError } from "../../services/electron/Electron";
 import type { InlineWidgetError } from "../../services/widgets/InlineWidgets";
@@ -57,7 +58,7 @@ import type {
   ProjectWorkflowSessionDetails,
 } from "../../domain/application/application-data";
 import type { AgentAvailabilitySnapshot } from "../../domain/application/agent-availability-data";
-import type { PiSettingUpdate } from "../session-contract";
+import type { PiSettingUpdate, PiSettings } from "../session-contract";
 import type {
   ProjectSessionError,
   ProjectSessionCatalogQuery,
@@ -251,6 +252,13 @@ export interface CakeIpcClientService {
       readonly provider: string;
     }) => Effect.Effect<void, PiProviderAuthError | TransportError>;
   };
+  readonly piSettings: {
+    readonly get: () => Effect.Effect<PiSettings, PiSettingsError | TransportError>;
+    readonly update: (
+      update: PiSettingUpdate,
+    ) => Effect.Effect<PiSettings, PiSettingsError | TransportError>;
+    readonly reload: () => Effect.Effect<PiSettings, PiSettingsError | TransportError>;
+  };
   readonly modelPresets: {
     readonly list: () => Effect.Effect<ModelPresetProjection, TransportError>;
     readonly create: (
@@ -319,12 +327,6 @@ export interface CakeIpcClientService {
     ) => Effect.Effect<void, SessionChatError | TransportError>;
     readonly setFastMode: (
       input: SessionChatTarget & { readonly enabled: boolean },
-    ) => Effect.Effect<void, SessionChatError | TransportError>;
-    readonly setPiSetting: (
-      input: SessionChatTarget & { readonly update: PiSettingUpdate },
-    ) => Effect.Effect<void, SessionChatError | TransportError>;
-    readonly reload: (
-      target: SessionChatTarget,
     ) => Effect.Effect<void, SessionChatError | TransportError>;
     readonly login: (
       input: SessionChatTarget & {
@@ -786,6 +788,15 @@ export const CakeIpcClientLive = Layer.effect(
         login: Effect.fn("CakeIpcClient.models.login")((input) => client("models.login", input)),
         logout: Effect.fn("CakeIpcClient.models.logout")((input) => client("models.logout", input)),
       },
+      piSettings: {
+        get: Effect.fn("CakeIpcClient.piSettings.get")(() => client("piSettings.get", undefined)),
+        update: Effect.fn("CakeIpcClient.piSettings.update")((update) =>
+          client("piSettings.update", { update }),
+        ),
+        reload: Effect.fn("CakeIpcClient.piSettings.reload")(() =>
+          client("piSettings.reload", undefined),
+        ),
+      },
       modelPresets: {
         list: Effect.fn("CakeIpcClient.modelPresets.list")(() =>
           client("modelPresets.list", undefined),
@@ -860,12 +871,6 @@ export const CakeIpcClientLive = Layer.effect(
         ),
         setFastMode: Effect.fn("CakeIpcClient.sessionChats.setFastMode")((input) =>
           client("sessionChats.setFastMode", input),
-        ),
-        setPiSetting: Effect.fn("CakeIpcClient.sessionChats.setPiSetting")((input) =>
-          client("sessionChats.setPiSetting", input),
-        ),
-        reload: Effect.fn("CakeIpcClient.sessionChats.reload")((target) =>
-          client("sessionChats.reload", target),
         ),
         login: Effect.fn("CakeIpcClient.sessionChats.login")((input) =>
           client("sessionChats.login", input),

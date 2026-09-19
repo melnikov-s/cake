@@ -16,6 +16,7 @@ import type {
 import { piBuiltinSlashCommands, slashCommandSchema } from "../../../ipc/session-contract";
 import { supportsFastMode } from "../fast-mode";
 import { projectSessionEntries, projectTree } from "./session-projection";
+import { projectPiSettings } from "./settings-translation";
 
 export interface CakeRuntimeSnapshotInput {
   readonly workspacePath: string;
@@ -40,7 +41,6 @@ export interface CakeRuntimeSnapshotInput {
 
 export function projectCakeRuntimeSnapshot(input: CakeRuntimeSnapshotInput): SessionSnapshot {
   const { session, settingsManager } = input;
-  const globalSettings = settingsManager.getGlobalSettings();
   const branchParts = projectSessionEntries(session.sessionManager.getBranch(), undefined, {
     live: session.isStreaming,
   });
@@ -59,35 +59,11 @@ export function projectCakeRuntimeSnapshot(input: CakeRuntimeSnapshotInput): Ses
     thinkingLevel: session.thinkingLevel,
     availableThinkingLevels: session.getAvailableThinkingLevels(),
     piSettings: {
-      defaultProvider: settingsManager.getDefaultProvider(),
-      defaultModel: settingsManager.getDefaultModel(),
-      defaultThinkingLevel: settingsManager.getDefaultThinkingLevel(),
-      autoCompact: session.autoCompactionEnabled,
-      autoResizeImages: settingsManager.getImageAutoResize(),
-      blockImages: settingsManager.getBlockImages(),
-      enableSkillCommands: settingsManager.getEnableSkillCommands(),
-      steeringMode: session.steeringMode,
-      followUpMode: session.followUpMode,
-      transport: settingsManager.getTransport(),
-      httpIdleTimeoutMs: settingsManager.getHttpIdleTimeoutMs(),
-      hideThinkingBlock: settingsManager.getHideThinkingBlock(),
-      mermaidRenderingMode: settingsManager.getMermaidRenderingMode(),
-      showCacheMissNotices: settingsManager.getShowCacheMissNotices(),
-      collapseChangelog: settingsManager.getCollapseChangelog(),
-      quietStartup: settingsManager.getQuietStartup(),
-      enableInstallTelemetry: settingsManager.getEnableInstallTelemetry(),
-      defaultProjectTrust: settingsManager.getDefaultProjectTrust(),
-      doubleEscapeAction: settingsManager.getDoubleEscapeAction(),
-      treeFilterMode: settingsManager.getTreeFilterMode(),
-      anthropicExtraUsageWarning: settingsManager.getWarnings().anthropicExtraUsage ?? true,
-      retryEnabled: globalSettings.retry?.enabled ?? true,
-      shellPath: globalSettings.shellPath ?? "",
-      shellCommandPrefix: globalSettings.shellCommandPrefix ?? "",
-      npmCommand: globalSettings.npmCommand ?? [],
-      packages: globalSettings.packages ?? [],
-      extensions: globalSettings.extensions ?? [],
-      skills: globalSettings.skills ?? [],
-      prompts: globalSettings.prompts ?? [],
+      ...projectPiSettings(settingsManager, {
+        autoCompact: session.autoCompactionEnabled,
+        steeringMode: session.steeringMode,
+        followUpMode: session.followUpMode,
+      }),
       reloadPending: input.reloadPending,
     } satisfies PiSettings,
     streaming: session.isStreaming,

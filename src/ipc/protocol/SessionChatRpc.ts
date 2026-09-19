@@ -8,7 +8,6 @@ import {
   SessionChatTarget,
   TurnId,
 } from "../../domain/conversations/conversation-data";
-import { piSettingUpdateSchema } from "../session-contract";
 
 /** Conversation behavior shared by every primary Project Session and Cake Chat. */
 export const SessionChatRpc = RpcGroup.make(
@@ -90,11 +89,6 @@ export const SessionChatRpc = RpcGroup.make(
     payload: { ...SessionChatTarget.fields, enabled: Schema.Boolean },
     error: SessionChatError,
   }),
-  Rpc.make("sessionChats.setPiSetting", {
-    payload: { ...SessionChatTarget.fields, update: piSettingUpdateSchema },
-    error: SessionChatError,
-  }),
-  Rpc.make("sessionChats.reload", { payload: SessionChatTarget, error: SessionChatError }),
   Rpc.make("sessionChats.login", {
     payload: {
       ...SessionChatTarget.fields,

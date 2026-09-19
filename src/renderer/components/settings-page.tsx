@@ -54,6 +54,9 @@ export const SettingsPage = observer(function SettingsPage({
   const error = settings.error;
   const providerGroups = settings.providerGroups;
   const utilityModel = utility.model;
+  const piSettingsStatus = providers.loadingSettings
+    ? "Loading Pi’s settings…"
+    : "Pi’s settings are unavailable.";
   const [searchQuery, setSearchQuery] = useState("");
   const [scrollRequest, setScrollRequest] = useState<{ targetId: string }>();
   const hotkeySearchItems = settings.hotkeys.definitions.map((definition) => ({
@@ -279,7 +282,7 @@ export const SettingsPage = observer(function SettingsPage({
                     <ModelPicker
                       ariaLabel="Default agent model"
                       placeholder="Choose default model"
-                      groups={configuration?.connectedModelsByProvider ?? []}
+                      groups={providerGroups}
                       value={
                         pi.defaultProvider && pi.defaultModel
                           ? {
@@ -304,9 +307,7 @@ export const SettingsPage = observer(function SettingsPage({
                     />
                   </div>
                 ) : (
-                  <p className="text-xs text-muted-foreground">
-                    Open a chat to load Pi’s defaults.
-                  </p>
+                  <p className="text-xs text-muted-foreground">{piSettingsStatus}</p>
                 )}
               </section>
 
@@ -461,7 +462,7 @@ export const SettingsPage = observer(function SettingsPage({
                   </label>
                 </div>
               ) : (
-                <p className="text-xs text-muted-foreground">Open a chat to load Pi’s settings.</p>
+                <p className="text-xs text-muted-foreground">{piSettingsStatus}</p>
               )}
             </section>
           )}
@@ -508,9 +509,7 @@ export const SettingsPage = observer(function SettingsPage({
                     />
                   </div>
                 ) : (
-                  <p className="text-xs text-muted-foreground">
-                    Open a chat to load Pi’s settings.
-                  </p>
+                  <p className="text-xs text-muted-foreground">{piSettingsStatus}</p>
                 )}
               </section>
 
@@ -529,7 +528,6 @@ export const SettingsPage = observer(function SettingsPage({
                     variant="outline"
                     size="sm"
                     type="button"
-                    disabled={!session}
                     onClick={() => void providers.reloadPi()}
                   >
                     {pi?.reloadPending ? "Reload queued" : "Reload Pi"}
@@ -565,9 +563,7 @@ export const SettingsPage = observer(function SettingsPage({
                     />
                   </div>
                 ) : (
-                  <p className="text-xs text-muted-foreground">
-                    Open a chat to load Pi’s settings.
-                  </p>
+                  <p className="text-xs text-muted-foreground">{piSettingsStatus}</p>
                 )}
               </section>
             </>
@@ -623,7 +619,7 @@ export const SettingsPage = observer(function SettingsPage({
                   />
                 </div>
               ) : (
-                <p className="text-xs text-muted-foreground">Open a chat to load Pi’s settings.</p>
+                <p className="text-xs text-muted-foreground">{piSettingsStatus}</p>
               )}
             </section>
           )}
@@ -702,9 +698,7 @@ export const SettingsPage = observer(function SettingsPage({
                     </label>
                   </div>
                 ) : (
-                  <p className="text-xs text-muted-foreground">
-                    Open a chat to load Pi’s settings.
-                  </p>
+                  <p className="text-xs text-muted-foreground">{piSettingsStatus}</p>
                 )}
               </section>
 
@@ -769,9 +763,7 @@ export const SettingsPage = observer(function SettingsPage({
                     />
                   </div>
                 ) : (
-                  <p className="text-xs text-muted-foreground">
-                    Open a chat to load Pi’s settings.
-                  </p>
+                  <p className="text-xs text-muted-foreground">{piSettingsStatus}</p>
                 )}
               </section>
             </>

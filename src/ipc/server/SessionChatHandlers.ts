@@ -39,8 +39,6 @@ export const sessionChatHandlers = SessionChatRpc.of({
   "sessionChats.setThinkingLevel": ({ level, ...target }) =>
     sessionChats.setThinkingLevel(target, level),
   "sessionChats.setFastMode": ({ enabled, ...target }) => sessionChats.setFastMode(target, enabled),
-  "sessionChats.setPiSetting": ({ update, ...target }) => sessionChats.setPiSetting(target, update),
-  "sessionChats.reload": sessionChats.reload,
   "sessionChats.login": ({ provider, authType, ...target }) =>
     sessionChats.login(target, provider, authType),
   "sessionChats.logout": ({ provider, ...target }) => sessionChats.logout(target, provider),

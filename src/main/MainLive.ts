@@ -18,6 +18,7 @@ import { WorkspaceFileExportLive } from "../services/filesystem/WorkspaceFileExp
 import { makeGitLive } from "../services/git/GitLive";
 import { makePiAgentResourcesLive } from "../services/pi/live/PiAgentResourcesLive";
 import { makePiModelsLive } from "../services/pi/live/PiModelsLive";
+import { makePiSettingsLive } from "../services/pi/live/PiSettingsLive";
 import { makePiSessionsLive } from "../services/pi/PiSessions";
 import { makeProjectSessionRuntimeHostLive } from "../services/pi/ProjectSessionRuntimeHostLive";
 import { ProjectSessionConfiguration } from "../services/project-sessions/ProjectSessionConfiguration";
@@ -102,6 +103,7 @@ export const makeMainLive = (options: MainLiveOptions) => {
 
   const PiLive = Layer.mergeAll(
     makePiModelsLive(paths.piAgent),
+    makePiSettingsLive(paths.piAgent),
     makePiAgentResourcesLive(paths.piAgent),
     makePiSessionsLive(),
     AgentAvailability.layer,

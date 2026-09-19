@@ -222,12 +222,6 @@ export const setPiSetting = Effect.fn("SessionChats.setPiSetting")(function* (
   yield* setConversationPiSetting(acquire(target.sessionId), update).pipe(asError("setPiSetting"));
 });
 
-export const reload = Effect.fn("SessionChats.reload")(function* (target: SessionChatTarget) {
-  yield* useConversation(acquire(target.sessionId), (handle) => handle.reload()).pipe(
-    asError("reload"),
-  );
-});
-
 export const login = Effect.fn("SessionChats.login")(function* (
   target: SessionChatTarget,
   provider: string,

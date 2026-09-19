@@ -9,7 +9,6 @@ import type { ChatConfiguration } from "../../ipc/session-contract";
 import type { Client } from "../client/Client";
 import { ClientContext } from "./context/ClientContext";
 import { ActiveProjectSessionContext } from "./context/ActiveProjectSessionContext";
-import { SettingsSessionContext } from "./context/SettingsSessionContext";
 import type { SessionHistoryEntry } from "./AppShellStore";
 import { SessionRegistryStore } from "./SessionRegistryStore";
 import { ProjectWorkbenchStore } from "./ProjectWorkbenchStore";
@@ -109,29 +108,6 @@ export class RootStore extends Store<{
       : undefined;
   }
 
-  [SettingsSessionContext.provide]() {
-    const active = this.appShellStore.activeConversation;
-    if (active?.kind === "project-session") {
-      const context = this.projectWorkbenchStore.sessionContext();
-      return context?.sessionId === active.sessionId
-        ? {
-            kind: "project-session" as const,
-            sessionId: context.sessionId,
-            workingDirectory: context.workspacePath,
-          }
-        : undefined;
-    }
-    if (active?.kind === "cake-chat") {
-      const session = this.cakeChatCollectionStore.registry.find(active.sessionId);
-      return session
-        ? {
-            kind: "cake-chat" as const,
-            ...this.cakeChatCollectionStore.registry.target(active.sessionId),
-          }
-        : undefined;
-    }
-    return undefined;
-  }
   @child
   get artifactLibraryStore(): ArtifactLibraryStore {
     return createStore(ArtifactLibraryStore, {

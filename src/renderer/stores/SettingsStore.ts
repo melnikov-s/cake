@@ -69,7 +69,7 @@ export class SettingsStore extends Store<SettingsStoreProps> {
     return this.activeSession?.conversationSessionStore.configurationStore;
   }
   get piSettings() {
-    return this.activeSession?.model.piSettings;
+    return this.providers.piSettings;
   }
   get providerGroups() {
     return this.providers.modelsByProvider;

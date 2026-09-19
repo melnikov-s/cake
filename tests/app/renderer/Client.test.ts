@@ -16,6 +16,7 @@ describe("Client", () => {
       "application",
       "windowState",
       "models",
+      "piSettings",
       "modelPresets",
       "draw",
       "drawControl",

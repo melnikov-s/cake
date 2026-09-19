@@ -1,26 +1,59 @@
 import type { AgentSession, SettingsManager } from "@earendil-works/pi-coding-agent";
-import type { PiSettingUpdate } from "../../../ipc/session-contract";
+import type { PiSettingUpdate, PiSettings } from "../../../ipc/session-contract";
 
-export function applyPiSetting(
+export function projectPiSettings(
   settingsManager: SettingsManager,
-  session: AgentSession,
-  update: PiSettingUpdate,
-) {
+  overrides: Partial<Pick<PiSettings, "autoCompact" | "steeringMode" | "followUpMode">> = {},
+): PiSettings {
+  const globalSettings = settingsManager.getGlobalSettings();
+  return {
+    defaultProvider: settingsManager.getDefaultProvider(),
+    defaultModel: settingsManager.getDefaultModel(),
+    defaultThinkingLevel: settingsManager.getDefaultThinkingLevel(),
+    autoCompact: overrides.autoCompact ?? settingsManager.getCompactionEnabled(),
+    autoResizeImages: settingsManager.getImageAutoResize(),
+    blockImages: settingsManager.getBlockImages(),
+    enableSkillCommands: settingsManager.getEnableSkillCommands(),
+    steeringMode: overrides.steeringMode ?? settingsManager.getSteeringMode(),
+    followUpMode: overrides.followUpMode ?? settingsManager.getFollowUpMode(),
+    transport: settingsManager.getTransport(),
+    httpIdleTimeoutMs: settingsManager.getHttpIdleTimeoutMs(),
+    hideThinkingBlock: settingsManager.getHideThinkingBlock(),
+    mermaidRenderingMode: settingsManager.getMermaidRenderingMode(),
+    showCacheMissNotices: settingsManager.getShowCacheMissNotices(),
+    collapseChangelog: settingsManager.getCollapseChangelog(),
+    quietStartup: settingsManager.getQuietStartup(),
+    enableInstallTelemetry: settingsManager.getEnableInstallTelemetry(),
+    defaultProjectTrust: settingsManager.getDefaultProjectTrust(),
+    doubleEscapeAction: settingsManager.getDoubleEscapeAction(),
+    treeFilterMode: settingsManager.getTreeFilterMode(),
+    anthropicExtraUsageWarning: settingsManager.getWarnings().anthropicExtraUsage ?? true,
+    retryEnabled: globalSettings.retry?.enabled ?? true,
+    shellPath: globalSettings.shellPath ?? "",
+    shellCommandPrefix: globalSettings.shellCommandPrefix ?? "",
+    npmCommand: globalSettings.npmCommand ?? [],
+    packages: globalSettings.packages ?? [],
+    extensions: globalSettings.extensions ?? [],
+    skills: globalSettings.skills ?? [],
+    prompts: globalSettings.prompts ?? [],
+    reloadPending: false,
+  };
+}
+
+export function applyPiSetting(settingsManager: SettingsManager, update: PiSettingUpdate) {
   if (update.key === "defaultModel")
     settingsManager.setDefaultModelAndProvider(update.provider, update.modelId);
   else if (update.key === "defaultThinkingLevel")
     settingsManager.setDefaultThinkingLevel(update.value);
-  else if (update.key === "autoCompact") session.setAutoCompactionEnabled(update.value);
+  else if (update.key === "autoCompact") settingsManager.setCompactionEnabled(update.value);
   else if (update.key === "autoResizeImages") settingsManager.setImageAutoResize(update.value);
   else if (update.key === "blockImages") settingsManager.setBlockImages(update.value);
   else if (update.key === "enableSkillCommands")
     settingsManager.setEnableSkillCommands(update.value);
-  else if (update.key === "steeringMode") session.setSteeringMode(update.value);
-  else if (update.key === "followUpMode") session.setFollowUpMode(update.value);
-  else if (update.key === "transport") {
-    settingsManager.setTransport(update.value);
-    session.agent.transport = update.value;
-  } else if (update.key === "httpIdleTimeoutMs") settingsManager.setHttpIdleTimeoutMs(update.value);
+  else if (update.key === "steeringMode") settingsManager.setSteeringMode(update.value);
+  else if (update.key === "followUpMode") settingsManager.setFollowUpMode(update.value);
+  else if (update.key === "transport") settingsManager.setTransport(update.value);
+  else if (update.key === "httpIdleTimeoutMs") settingsManager.setHttpIdleTimeoutMs(update.value);
   else if (update.key === "hideThinkingBlock") settingsManager.setHideThinkingBlock(update.value);
   else if (update.key === "mermaidRenderingMode")
     settingsManager.setMermaidRenderingMode(update.value);
@@ -39,10 +72,8 @@ export function applyPiSetting(
       ...settingsManager.getWarnings(),
       anthropicExtraUsage: update.value,
     });
-  else if (update.key === "retryEnabled") {
-    if (!update.value) session.abortRetry();
-    settingsManager.setRetryEnabled(update.value);
-  } else if (update.key === "shellPath")
+  else if (update.key === "retryEnabled") settingsManager.setRetryEnabled(update.value);
+  else if (update.key === "shellPath")
     settingsManager.setShellPath(update.value.trim() || undefined);
   else if (update.key === "shellCommandPrefix")
     settingsManager.setShellCommandPrefix(update.value.trim() || undefined);
@@ -65,4 +96,17 @@ export function applyPiSetting(
   else if (update.key === "extensions") settingsManager.setExtensionPaths([...update.value]);
   else if (update.key === "skills") settingsManager.setSkillPaths([...update.value]);
   else if (update.key === "prompts") settingsManager.setPromptTemplatePaths([...update.value]);
+}
+
+export function applyRuntimePiSetting(
+  settingsManager: SettingsManager,
+  session: AgentSession,
+  update: PiSettingUpdate,
+) {
+  applyPiSetting(settingsManager, update);
+  if (update.key === "autoCompact") session.setAutoCompactionEnabled(update.value);
+  else if (update.key === "steeringMode") session.setSteeringMode(update.value);
+  else if (update.key === "followUpMode") session.setFollowUpMode(update.value);
+  else if (update.key === "transport") session.agent.transport = update.value;
+  else if (update.key === "retryEnabled" && !update.value) session.abortRetry();
 }
