@@ -1,4 +1,5 @@
 /* oxlint-disable anti-slop/no-shape-in-symbol-names -- Shape is Cake's drawing-domain entity. */
+import { parseMermaidToExcalidraw } from "@excalidraw/mermaid-to-excalidraw";
 import {
   CaptureUpdateAction,
   convertToExcalidrawElements,
@@ -24,6 +25,7 @@ import type {
   DrawCreateShape,
   DrawDocumentSnapshot,
   DrawEditorController,
+  DrawMermaidReceipt,
   DrawOperation,
   DrawPlaybackOptions,
   DrawReadScope,
@@ -44,6 +46,7 @@ const MAX_READ_SHAPES = 200;
 const MAX_RENDER_DIMENSION = 4_096;
 const MAX_TEXT_LENGTH = 16_384;
 const MAX_SUMMARY_TEXT_LENGTH = 4_000;
+const MAX_MERMAID_ELEMENTS = 1_000;
 
 const colorPalette = new Map([
   ["black", "#1b1b1f"],
@@ -920,6 +923,49 @@ function applyPreparedOperations(
   return receipt;
 }
 
+async function insertMermaid(
+  api: ExcalidrawImperativeAPI,
+  diagram: string,
+): Promise<DrawMermaidReceipt> {
+  const { elements: skeletons, files } = await parseMermaidToExcalidraw(diagram, {
+    maxEdges: 500,
+    maxTextSize: 50_000,
+  });
+  if (skeletons.length === 0) throw new Error("Mermaid diagram did not produce any elements");
+  if (skeletons.length > MAX_MERMAID_ELEMENTS)
+    throw new Error(`Mermaid diagram exceeds ${MAX_MERMAID_ELEMENTS} elements`);
+
+  const created = convertToExcalidrawElements(skeletons, { regenerateIds: true });
+  const [minX, minY, maxX, maxY] = getCommonBounds(created);
+  const appState = api.getAppState();
+  const viewportStart = viewportCoordsToSceneCoords({ clientX: 0, clientY: 0 }, appState);
+  const viewportEnd = viewportCoordsToSceneCoords(
+    { clientX: appState.width, clientY: appState.height },
+    appState,
+  );
+  const targetX = (viewportStart.x + viewportEnd.x) / 2;
+  const targetY = (viewportStart.y + viewportEnd.y) / 2;
+  const deltaX = targetX - (minX + maxX) / 2;
+  const deltaY = targetY - (minY + maxY) / 2;
+  const positioned = created.map((element) =>
+    newElementWith(element, { x: element.x + deltaX, y: element.y + deltaY }),
+  );
+  const selectedElementIds = Object.fromEntries(
+    positioned
+      .filter((element) => !(element.type === "text" && element.containerId))
+      .map((element) => [element.id, true as const]),
+  );
+
+  if (files) api.addFiles(Object.values(files));
+  api.updateScene({
+    elements: [...api.getSceneElementsIncludingDeleted(), ...positioned],
+    appState: { selectedElementIds },
+    captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+  });
+  api.scrollToContent(positioned, { animate: true, fitToContent: true });
+  return { elementCount: positioned.length };
+}
+
 function playbackDelay(milliseconds: number, signal?: AbortSignal) {
   if (milliseconds <= 0) return Promise.resolve();
   return new Promise<void>((resolve, reject) => {
@@ -1065,6 +1111,9 @@ export function createDrawEditorAdapter(api: ExcalidrawImperativeAPI): DrawEdito
         captureUpdate: CaptureUpdateAction.IMMEDIATELY,
       });
       return receipt;
+    },
+    insertMermaid(diagram) {
+      return insertMermaid(api, diagram);
     },
     loadDocument(snapshot) {
       const restored = restoreDrawDocument(snapshot);

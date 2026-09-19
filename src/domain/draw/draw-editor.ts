@@ -177,6 +177,10 @@ export interface DrawApplyReceipt {
   readonly deletedIds: readonly string[];
 }
 
+export interface DrawMermaidReceipt {
+  readonly elementCount: number;
+}
+
 export interface DrawRenderInput {
   readonly scope: DrawReadScope;
   readonly format: "svg" | "png";
@@ -202,4 +206,5 @@ export interface DrawEditorController {
   render(input: DrawRenderInput): Promise<DrawRender>;
   apply(input: DrawApplyInput): DrawApplyReceipt;
   applyAnimated(input: DrawApplyInput, options?: DrawPlaybackOptions): Promise<DrawApplyReceipt>;
+  insertMermaid(diagram: string): Promise<DrawMermaidReceipt>;
 }

@@ -87,6 +87,9 @@ test("Cake Draw preserves chat and its session board through Electron", async ()
     });
     const canvas = page.locator(".excalidraw__canvas.interactive");
     await expect(canvas).toBeVisible();
+    const drawWorkspace = page.getByRole("region", { name: "Cake Draw whiteboard" });
+    await expect(drawWorkspace.locator(".main-menu-trigger")).toBeHidden();
+    await expect(drawWorkspace.locator(".default-sidebar-trigger")).toBeHidden();
 
     await page.getByRole("button", { name: "Toggle sidebar" }).click();
     const collapsedSidebarToggle = page.locator(

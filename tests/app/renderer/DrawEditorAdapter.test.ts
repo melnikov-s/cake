@@ -2,6 +2,7 @@
 /**
  * @vitest-environment jsdom
  */
+import { parseMermaidToExcalidraw } from "@excalidraw/mermaid-to-excalidraw";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import type {
   AppState,
@@ -15,6 +16,25 @@ import {
   type DrawEditorAdapter,
 } from "../../../src/renderer/draw/DrawEditorAdapter";
 import { assertPersistableDrawDocument } from "../../../src/renderer/draw/DrawDocumentValidation";
+
+vi.mock("@excalidraw/mermaid-to-excalidraw", () => ({
+  parseMermaidToExcalidraw: vi.fn(async () => ({
+    elements: [
+      { id: "mermaid-a", type: "rectangle", x: 0, y: 0, width: 120, height: 80 },
+      { id: "mermaid-b", type: "rectangle", x: 240, y: 0, width: 120, height: 80 },
+      {
+        id: "mermaid-edge",
+        type: "arrow",
+        x: 120,
+        y: 40,
+        points: [
+          [0, 0],
+          [120, 0],
+        ],
+      },
+    ],
+  })),
+}));
 
 function editorHarness() {
   let elements: readonly ExcalidrawElement[] = [];
@@ -75,6 +95,27 @@ describe("DrawEditorAdapter", () => {
   beforeEach(() => {
     harness = editorHarness();
     adapter = createDrawEditorAdapter(harness.api);
+  });
+
+  it("inserts Mermaid as native editable elements centered in the viewport", async () => {
+    const receipt = await adapter.insertMermaid("flowchart LR\n  A --> B");
+
+    expect(parseMermaidToExcalidraw).toHaveBeenCalledWith("flowchart LR\n  A --> B", {
+      maxEdges: 500,
+      maxTextSize: 50_000,
+    });
+    expect(receipt.elementCount).toBe(3);
+    expect(harness.elements()).toHaveLength(3);
+    expect(harness.elements().map(({ type }) => type)).toEqual(["rectangle", "rectangle", "arrow"]);
+    expect(harness.api.scrollToContent).toHaveBeenCalledWith(harness.elements(), {
+      animate: true,
+      fitToContent: true,
+    });
+    const [minX, minY, maxX, maxY] = await import("@excalidraw/excalidraw").then(
+      ({ getCommonBounds }) => getCommonBounds(harness.elements()),
+    );
+    expect((minX + maxX) / 2).toBeCloseTo(400);
+    expect((minY + maxY) / 2).toBeCloseTo(300);
   });
 
   it("creates native shapes and a bound arrow", () => {

@@ -101,9 +101,10 @@ export function createCakeDrawOperations(control: CakeDrawControl): CakeOperatio
     summary: definition.summary,
     guidance: [
       "Cake Draw commands always target the calling Project Session and never accept a sessionId.",
-      "enter and open explicitly foreground Cake Draw. read, render, and apply never switch the user's board or mode; follow their recovery code when Draw is not visible.",
-      "User drawing never triggers an agent turn. Every agent canvas change requires an explicit draw.apply call.",
-      "enter and open return the visible viewport and shape bounds. Inspect those coordinates before placing the first shape, prefer create-relative for later shapes, and render the result for visual verification.",
+      "enter and open explicitly foreground Cake Draw. read, render, mermaid, and apply never switch the user's board or mode; follow their recovery code when Draw is not visible.",
+      "User drawing never triggers an agent turn. Every agent canvas change requires an explicit draw.mermaid or draw.apply call.",
+      "Prefer draw.mermaid for architecture, flow, sequence, class, state, and entity-relationship diagrams. It produces native editable Excalidraw elements without manual placement.",
+      "Use draw.apply for freeform drawings, small targeted edits, or diagram types Mermaid cannot express. enter and open return the visible viewport and shape bounds for manual placement.",
       `Keep each draw.apply to one visible stage of at most ${DRAW_APPLY_MAX_OPERATIONS} operations (for example, one region, then connections, then cleanup). Use another apply for the next stage so the user sees steady progress.`,
       "draw.apply is presented on the canvas operation by operation, then persisted once; order node creation before connections so the user can follow the construction. Use draw.read or draw.render between major stages when visual feedback could improve accuracy.",
     ],
@@ -257,6 +258,35 @@ export function createCakeDrawOperations(control: CakeDrawControl): CakeOperatio
           bytes: written.bytes,
           format: input.format,
           overwritePolicy: "replace-existing",
+        };
+      },
+    }),
+    operation({
+      command: "draw.mermaid",
+      summary: "Convert Mermaid source into native editable Excalidraw elements on the open board.",
+      schema: Schema.Struct({
+        boardId: optionalBoardId,
+        diagram: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(50_000)),
+      }),
+      example: {
+        diagram: "flowchart LR\n  Request --> Service\n  Service --> Database",
+      },
+      result:
+        "The open board ID and number of native Excalidraw elements created and durably saved.",
+      limitations: [
+        "The Mermaid source must be valid and is limited to 50,000 characters.",
+        "The converted diagram is inserted near the center of the current viewport.",
+      ],
+      execute: async (input, signal) => {
+        requireMutable(control);
+        const response = requireSuccess(
+          await control.request({ _tag: "Mermaid", ...input }, signal),
+        );
+        if (response.kind !== "mermaid")
+          throw new Error("INVALID_REQUEST: Unexpected Draw response");
+        return {
+          boardId: response.boardId,
+          elementCount: response.elementCount,
         };
       },
     }),

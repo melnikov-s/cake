@@ -3,6 +3,7 @@ import type { DrawBoardMetadata } from "../../domain/draw/draw-board-data";
 import type {
   DrawApplyReceipt,
   DrawDocumentSnapshot,
+  DrawMermaidReceipt,
   DrawOperation,
   DrawReadScope,
   DrawRender,
@@ -162,6 +163,24 @@ export class DrawStore extends Store<DrawStoreProps> {
         }
         throw error;
       }
+      this.suppressDocumentChanges = false;
+      this.documentChanged();
+      await this.flush();
+      return receipt;
+    } finally {
+      this.suppressDocumentChanges = false;
+      this.agentDrawing = false;
+    }
+  }
+
+  async insertMermaid(diagram: string): Promise<DrawMermaidReceipt> {
+    if (this.agentDrawing) throw new Error("Cake Draw is already presenting an agent edit");
+    this.clearError();
+    const adapter = await this.waitUntilReady();
+    this.agentDrawing = true;
+    this.suppressDocumentChanges = true;
+    try {
+      const receipt = await adapter.insertMermaid(diagram);
       this.suppressDocumentChanges = false;
       this.documentChanged();
       await this.flush();

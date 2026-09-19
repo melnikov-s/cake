@@ -254,6 +254,12 @@
   }
 }
 
+/* Cake owns Draw navigation and does not expose Excalidraw's file menu or library. */
+[data-slot="draw-canvas"] .excalidraw .main-menu-trigger,
+[data-slot="draw-canvas"] .excalidraw .default-sidebar-trigger {
+  display: none;
+}
+
 @keyframes pixel-on {
   0%,
   100% {

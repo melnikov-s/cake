@@ -902,6 +902,22 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
             scene: await draw.read("page"),
           };
         }
+        case "Mermaid": {
+          const receipt = await draw.insertMermaid(invocation.diagram);
+          if (signal?.aborted)
+            return {
+              ok: false,
+              code: "APPLY_OUTCOME_UNKNOWN",
+              message: "The request was cancelled while the Mermaid diagram was being saved.",
+            };
+          return {
+            ok: true,
+            kind: "mermaid",
+            boardId: draw.activeBoard.id,
+            elementCount: receipt.elementCount,
+            scene: await draw.read("page"),
+          };
+        }
       }
     } catch (error) {
       return {

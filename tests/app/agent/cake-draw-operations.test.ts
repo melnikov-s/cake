@@ -67,6 +67,14 @@ function control(overrides: Partial<CakeDrawControl> = {}): CakeDrawControl {
           receipt: { createdIds: ["shape:one"], updatedIds: [], deletedIds: [] },
           scene,
         };
+      if (invocation._tag === "Mermaid")
+        return {
+          ok: true,
+          kind: "mermaid",
+          boardId: board.id,
+          elementCount: 5,
+          scene,
+        };
       return {
         ok: false,
         code: "DRAW_MODE_REQUIRED",
@@ -89,6 +97,8 @@ describe("Cake Draw operations", () => {
     expect(help.text).toContain("draw.list");
     expect(help.text).toContain("draw.apply");
     expect(help.text).toContain("draw.export");
+    expect(help.text).toContain("draw.mermaid");
+    expect(help.text).toContain("Prefer draw.mermaid for architecture");
     expect(help.text).toContain("one visible stage of at most 8 operations");
     expect(help.text).toContain("draw.read or draw.render between major stages");
     expect(help.text).toContain('"format"');
@@ -142,6 +152,26 @@ describe("Cake Draw operations", () => {
       },
     });
     expect(JSON.stringify(applyResult.details)).not.toContain('"scene"');
+  });
+
+  it("converts Mermaid through one explicit renderer request", async () => {
+    const fake = control();
+    const registry = new CakeOperationRegistry(createCakeDrawOperations(fake));
+    const diagram = "flowchart LR\n  A --> B";
+
+    const result = await registry.invoke(
+      { command: "draw.mermaid", input: { boardId: board.id, diagram } },
+      context(),
+    );
+
+    expect(fake.request).toHaveBeenCalledWith(
+      { _tag: "Mermaid", boardId: board.id, diagram },
+      expect.any(AbortSignal),
+    );
+    expect(result.details).toMatchObject({
+      result: { boardId: board.id, elementCount: 5 },
+    });
+    expect(JSON.stringify(result.details)).not.toContain(diagram);
   });
 
   it("limits each visible drawing stage to eight operations", async () => {
@@ -324,6 +354,12 @@ describe("Cake Draw operations", () => {
             ],
           },
         },
+        context(),
+      ),
+    ).rejects.toThrow("SESSION_RESOLVED");
+    await expect(
+      registry.invoke(
+        { command: "draw.mermaid", input: { diagram: "flowchart LR\nA --> B" } },
         context(),
       ),
     ).rejects.toThrow("SESSION_RESOLVED");

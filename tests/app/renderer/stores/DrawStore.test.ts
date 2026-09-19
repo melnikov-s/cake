@@ -69,6 +69,9 @@ function adapterHarness(snapshot: DrawDocumentSnapshot = emptyDocument) {
     updatedIds: ["shape:one"],
     deletedIds: [],
   }));
+  const insertMermaid = vi.fn<DrawEditorAdapter["insertMermaid"]>(async () => ({
+    elementCount: 4,
+  }));
   const adapter = {
     snapshotDocument: () => snapshot,
     onDocumentChange: (next: () => void) => {
@@ -81,9 +84,10 @@ function adapterHarness(snapshot: DrawDocumentSnapshot = emptyDocument) {
     render: vi.fn(),
     apply: vi.fn(),
     applyAnimated: apply,
+    insertMermaid,
     loadDocument: vi.fn(),
   } as unknown as DrawEditorAdapter;
-  return { adapter, apply, change: () => listener?.() };
+  return { adapter, apply, insertMermaid, change: () => listener?.() };
 }
 
 describe("DrawStore", () => {
@@ -178,6 +182,21 @@ describe("DrawStore", () => {
       deletedIds: [],
     });
     expect(editor.apply).toHaveBeenCalledOnce();
+  });
+
+  it("converts Mermaid and persists the resulting native scene", async () => {
+    const { subject, save } = mountDrawStore();
+    await subject.initialize();
+    const editor = adapterHarness();
+    subject.attachEditor(editor.adapter);
+
+    await expect(subject.insertMermaid("flowchart LR\nA --> B")).resolves.toEqual({
+      elementCount: 4,
+    });
+
+    expect(editor.insertMermaid).toHaveBeenCalledWith("flowchart LR\nA --> B");
+    expect(save).toHaveBeenCalledOnce();
+    expect(subject.agentDrawing).toBe(false);
   });
 
   it("owns visible agent playback and persists only the final scene", async () => {

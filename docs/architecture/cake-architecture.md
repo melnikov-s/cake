@@ -467,11 +467,13 @@ The window Store hierarchy mirrors the product surfaces:
   Cake sidebar may sit beside it, and Cake's authoritative `Chat` occupies the right drawer.
   Draw embeds Excalidraw as an editor, not as another agent runtime or conversation. Explicit
   `cake draw` operations use the existing renderer-request coordinator to inspect or edit the
-  invoking session's board. Agent edit batches are validated before mutation, presented on the
-  visible canvas operation by operation with active-shape focus and bounded camera following, then
-  persisted once after playback. Opening a board returns viewport and shape bounds; later shapes
-  can use relative placement against stable shape IDs so Pi can reason about layout without raw
-  Excalidraw elements. Drawing gestures trigger persistence, never autonomous Pi turns.
+  invoking session's board. For structured diagrams, `draw.mermaid` converts bounded Mermaid source
+  in the renderer into native editable Excalidraw elements, centers them in the visible viewport,
+  and persists the resulting scene. Manual agent edit batches are validated before mutation,
+  presented on the visible canvas operation by operation with active-shape focus and bounded camera
+  following, then persisted once after playback. Opening a board returns viewport and shape bounds;
+  later shapes can use relative placement against stable shape IDs so Pi can reason about layout
+  without raw Excalidraw elements. Drawing gestures trigger persistence, never autonomous Pi turns.
   Each child owns its own operation
   state and lifetime; the workbench does not re-export one-for-one child APIs.
 - The root-scoped `SessionRegistryStore` preserves one keyed
@@ -523,8 +525,10 @@ The window Store hierarchy mirrors the product surfaces:
   artifacts are explicit substantial or reusable deliverables, not a presentation selected from syntax: ordinary Markdown, including
   Mermaid and small tables, stays inline. Artifact identity is a global Cake-owned lineage, while sessions and Session Families receive
   explicit follow-latest or exact-revision links. Links do not copy payloads, confer ownership, or add Pi transcript entries. A session
-  effectively linked through either scope may publish the next immutable full snapshot with latest-revision compare-and-swap. Rich architectural overviews use the unified delegated React widget path: a restricted specialist
-  can compose React Flow, optional ELK layout, explanations, and controls inside the widget sandbox. Generated candidates are compile-checked
+  effectively linked through either scope may publish the next immutable full snapshot with latest-revision compare-and-swap. Architecture diagrams default to native editable Draw boards through
+  `draw.mermaid`; the unified delegated React widget path is reserved for custom interactive or
+  explorable visualizations that Draw cannot express. A restricted widget specialist can compose
+  React Flow, optional ELK layout, explanations, and controls inside the widget sandbox. Generated candidates are compile-checked
   and reviewed from actual widget-only screenshots captured in a serialized, main-owned hidden offscreen Electron host before publication,
   with at most two replacements. Original historical graph blobs
   and Pi pointers remain immutable; storage projects their readable Markdown fallbacks instead of maintaining a second graph renderer.

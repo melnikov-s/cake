@@ -11,6 +11,7 @@ const coordinate = Schema.Number.check(
 const shapeId = boundedString(262);
 const shapeIds = Schema.Array(shapeId).check(Schema.isMaxLength(500));
 const summarizedShapeIds = Schema.Array(shapeId).check(Schema.isMaxLength(200));
+const mermaidDiagram = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(50_000));
 
 export const DrawReadScope = Schema.Literals(["selection", "viewport", "page"]);
 export type DrawReadScope = typeof DrawReadScope.Type;
@@ -221,6 +222,10 @@ export const DrawControlInvocation = Schema.TaggedUnion({
       Schema.isMaxLength(DRAW_APPLY_MAX_OPERATIONS),
     ),
   },
+  Mermaid: {
+    boardId: Schema.optionalKey(DrawBoardId),
+    diagram: mermaidDiagram,
+  },
 });
 export type DrawControlInvocation = typeof DrawControlInvocation.Type;
 
@@ -270,6 +275,13 @@ export const DrawControlResponse = Schema.Union([
     kind: Schema.Literal("applied"),
     boardId: DrawBoardId,
     receipt: DrawApplyReceipt,
+    scene: DrawScene,
+  }),
+  Schema.Struct({
+    ok: Schema.Literal(true),
+    kind: Schema.Literal("mermaid"),
+    boardId: DrawBoardId,
+    elementCount: Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0)),
     scene: DrawScene,
   }),
 ]);
