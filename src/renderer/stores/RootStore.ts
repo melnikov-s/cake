@@ -264,7 +264,6 @@ export class RootStore extends Store<{
   }
 
   async createSession(workspacePath: string) {
-    this.showEmptyWorkbench();
     await this.projectWorkbenchStore.startNewSession(workspacePath);
     const sessionId = this.projectWorkbenchStore.activeSession?.sessionId;
     if (sessionId) this.selectProjectSessionForShell(sessionId);

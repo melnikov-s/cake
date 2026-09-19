@@ -31,6 +31,31 @@ function deferred<T = void>() {
 }
 
 describe("RootStore session navigation", () => {
+  it("keeps the current session selected while a new session is prepared", async () => {
+    const models = RootProjection.create();
+    const client = {} as Client;
+    const root = mountRootStore(client, { state: {}, children: {} }, async () => undefined, models);
+    const preparation = deferred();
+    vi.spyOn(root.projectWorkbenchStore, "startNewSession").mockReturnValue(preparation.promise);
+
+    try {
+      root.appShellStore.selectProjectSession("current-session");
+
+      const creating = root.createSession("/projects/another");
+
+      expect(root.appShellStore.activeConversation).toEqual({
+        kind: "project-session",
+        sessionId: "current-session",
+      });
+
+      preparation.resolve();
+      await creating;
+    } finally {
+      root[Symbol.dispose]();
+      models[Symbol.dispose]();
+    }
+  });
+
   it("opens projected family children in one reusable pane", async () => {
     const models = RootProjection.create();
     applySnapshot(models.sessionCatalog, {
