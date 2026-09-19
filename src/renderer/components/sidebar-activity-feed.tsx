@@ -1,4 +1,5 @@
 import { observer } from "r-state-tree/react";
+import { compareSessionSummariesForSidebar } from "../../utils/session-summary-order";
 import type { AppearanceSettingsStore } from "../stores/AppearanceSettingsStore";
 import type { AppShellStore } from "../stores/AppShellStore";
 import type { CakeChatCollectionStore } from "../stores/CakeChatCollectionStore";
@@ -48,17 +49,21 @@ export const SidebarActivityFeed = observer(function SidebarActivityFeed({
     ...store.activeProjectSessionFamilies.map((family) => ({
       kind: "project" as const,
       modifiedAt: family.latestModifiedAt,
+      draft: family.sessions.some((session) => session.draft),
       family,
     })),
     ...store.activeCakeChatSessions.map((session) => ({
       kind: "cake-chat" as const,
       modifiedAt: session.modifiedAt,
+      draft: false,
       session,
     })),
-  ].sort((left, right) => right.modifiedAt.localeCompare(left.modifiedAt));
+  ].sort(compareSessionSummariesForSidebar);
   const groups = new Map<string, typeof entries>();
   for (const entry of entries) {
-    const key = dayKey(entry.modifiedAt);
+    // Keep draft and non-draft date groups separate so an older draft can never
+    // be pulled below a newer regular session that happens to share its date.
+    const key = `${entry.draft ? "draft" : "session"}:${dayKey(entry.modifiedAt)}`;
     const group = groups.get(key) ?? [];
     group.push(entry);
     groups.set(key, group);
@@ -69,8 +74,8 @@ export const SidebarActivityFeed = observer(function SidebarActivityFeed({
 
   return (
     <div data-slot="activity-feed" className="space-y-4">
-      {[...groups.values()].map((group) => (
-        <section key={dayKey(group[0]!.modifiedAt)}>
+      {[...groups.entries()].map(([key, group]) => (
+        <section key={key}>
           <h2 className="px-2 pb-1.5 text-[13px] font-medium text-muted-foreground">
             {dayLabel(group[0]!.modifiedAt, store.now)}
           </h2>

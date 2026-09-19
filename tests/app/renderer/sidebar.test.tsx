@@ -1840,6 +1840,67 @@ describe("Sidebar projects", () => {
     expect(container.querySelector('[data-slot="resolved-lane"]')).toBeNull();
   });
 
+  it("keeps every draft above newer non-draft activity", () => {
+    const newestDraft = {
+      sessionId: "newest-draft",
+      title: "Newest draft",
+      projectPath: "/work/cake",
+      workingDirectory: "/work/cake",
+      modifiedAt: new Date(2026, 2, 10, 9).toISOString(),
+      draft: true,
+    };
+    const olderDraft = {
+      sessionId: "older-draft",
+      title: "Older draft",
+      projectPath: "/work/cake",
+      workingDirectory: "/work/cake",
+      modifiedAt: new Date(2026, 2, 9, 9).toISOString(),
+      draft: true,
+    };
+    const regular = {
+      sessionId: "regular",
+      title: "Regular session",
+      projectPath: "/work/cake",
+      workingDirectory: "/work/cake",
+      modifiedAt: new Date(2026, 2, 10, 11).toISOString(),
+    };
+    const store = {
+      recentProjectPaths: ["/work/cake"],
+      projects: [{ path: "/work/cake", name: "Cake" }],
+      projectSessions: vi.fn(() => []),
+      activeProjectSessionFamilies: [newestDraft, olderDraft, regular].map((session) => ({
+        rootSessionId: session.sessionId,
+        latestModifiedAt: session.modifiedAt,
+        sessions: [session],
+      })),
+      cakeChatSummaries: [
+        {
+          sessionId: "cake-chat",
+          title: "New Cake Chat",
+          modifiedAt: new Date(2026, 2, 10, 12).toISOString(),
+          resolved: false,
+        },
+      ],
+      navigationMode: "activity",
+      now: new Date(2026, 2, 10, 12).getTime(),
+      sessionLimit: () => 10,
+      sessionActivity: vi.fn(),
+      sessionActivityTime: () => "recently",
+      nameFromPath: () => "cake",
+      showMoreSessions: vi.fn(),
+    } as unknown as ProjectWorkbenchStore;
+
+    act(() =>
+      root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onToggle={vi.fn()} />),
+    );
+
+    expect(
+      [...container.querySelectorAll<HTMLElement>("[data-session-id]")].map(
+        (session) => session.dataset.sessionId,
+      ),
+    ).toEqual(["newest-draft", "older-draft", "cake-chat", "regular"]);
+  });
+
   it("keeps activity families together and positions them by their latest descendant", () => {
     const parentModifiedAt = new Date(2026, 2, 9, 10).toISOString();
     const childModifiedAt = new Date(2026, 2, 10, 11).toISOString();
